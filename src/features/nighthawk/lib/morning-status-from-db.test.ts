@@ -55,6 +55,45 @@ test("morningStatusFromDb: rebuilds status from durable outcome pins", () => {
   assert.equal(result!.summary.invalidated, 1);
 });
 
+// 2026-09-13 finding: the live cron (nighthawk-morning-confirm/route.ts's
+// `plays.map((play) => ...)`) always emits ONE PlayStatus per edition play, using
+// UNVERIFIED as the honest "could not check this one" status when a per-ticker
+// verdict is missing (morning-confirm-verdict.ts's "zero checks ran" branch). This DB
+// fallback (used once the 24h Redis cache expires) used to silently DROP any edition
+// play lacking a pinned morning_verdict instead — a member polling after the TTL
+// window would see fewer plays than the edition actually publishes.
+test("morningStatusFromDb: a play with no pinned verdict still appears, as UNVERIFIED — never silently dropped", () => {
+  const result = morningStatusFromDb({
+    editionFor: "2026-08-07",
+    editionPlays: [
+      { rank: 1, ticker: "NVDA", direction: "LONG" },
+      { rank: 2, ticker: "AMD", direction: "LONG" },
+    ],
+    outcomeRows: [
+      {
+        ticker: "NVDA",
+        morning_verdict: {
+          verdict_version: MORNING_VERDICT_VERSION,
+          status: "CONFIRMED",
+          reason: "All checks passed",
+          checked_at: "2026-08-07T13:16:00.000Z",
+          metrics: { regime: "risk_on" },
+        },
+      },
+      // AMD never got a pinned verdict (e.g. a per-ticker Cortex/data error).
+      { ticker: "AMD", morning_verdict: null },
+    ],
+  });
+
+  assert.ok(result);
+  assert.equal(result!.plays.length, 2, "both edition plays must appear, not just the pinned one");
+  const amd = result!.plays.find((p) => p.ticker === "AMD");
+  assert.ok(amd, "AMD must not be silently dropped from the reconstructed status list");
+  assert.equal(amd!.status, "UNVERIFIED");
+  assert.equal(result!.summary.unverified, 1);
+  assert.equal(result!.summary.confirmed, 1);
+});
+
 test("morningStatusFromDb: returns null when no readable verdicts exist", () => {
   assert.equal(
     morningStatusFromDb({

@@ -758,6 +758,22 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS discord_live_state JSONB;
   `);
+  // Night Hawk Legacy Signal Intelligence Phase 1.7: the OPTION-PREMIUM MFE/MAE observed by
+  // the live Chief Trade Alert Bot (discord_live_state.peak_premium/trough_premium) relative
+  // to entry_premium, computed and written every time resolveOutcome grades a row
+  // (play-outcomes.ts's premiumExcursionFromLiveState). ADDITIVE and non-authoritative: it
+  // never feeds hit_target/hit_stop/outcome above, which stay purely stock-price-based, same
+  // as before this column existed — a distinct-basis measurement, not a replacement grade
+  // (docs/audit/OUTCOME-GRADING-SPEC.md's "intentionally different views" discipline). Direct
+  // overwrite on every grade write (no COALESCE pin) — it reflects the premium excursion AS OF
+  // THE MOST RECENT grading pass, not a lifetime-final claim, since discord_live_state can keep
+  // updating on later live-sync polls after this row's stock-based outcome already resolved.
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS premium_mfe_pct NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS premium_mae_pct NUMERIC;
+  `);
   // PR-N2 boot backfill: a resolved row with no methodology stamp was, by construction,
   // graded before stamping existed (every post-PR-N2 grade write stamps at write time), so
   // its provenance is unprovable from the row — tag it LEGACY. Deliberately conservative:
@@ -1534,6 +1550,80 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_nighthawk_scoring_history_edition
       ON nighthawk_scoring_history(edition_for);
 
+    -- nighthawk_candidate_snapshot (Night Hawk Legacy Signal Intelligence, Phase 1 foundation):
+    -- append-only per-STAGE capture of every candidate the discovery/scoring/ranking/publish
+    -- pipeline touches, published or not — the measurement gap nighthawk_scoring_history above
+    -- does not close, because that table is upserted ONE ROW PER (edition_for, ticker), so a
+    -- later archive overwrites an earlier one and there is no way to see how a candidate's score/
+    -- rank changed as it moved through the pipeline's 5 distinct sort/filter passes
+    -- (candidates.ts's confluence gate, scorer.ts's scoreCandidate, cross-edition-governor.ts,
+    -- bearish-posture.ts, deterministic-edition.ts's grounding merge, edition-builder.ts's final
+    -- PR-N26 sort). This table is append-only and structured like zerodte_discovery_events
+    -- (typed filter columns + one frozen JSONB payload) rather than upserted like
+    -- nighthawk_scoring_history, specifically so EVERY stage transition for a ticker within one
+    -- edition gets its own durable row instead of being overwritten by the next stage.
+    --
+    -- stage is a free-text pipeline-stage tag (not CHECK-constrained, same convention as
+    -- zerodte_discovery_events.kind), expected values as of this writing: 'discovery' (STAGE 2,
+    -- pre-confluence-gate candidate pool), 'scored' (STAGE 4, scoreCandidate output),
+    -- 'rank_initial'/'rank_governor'/'rank_bearish_posture'/'rank_grounding_merge'/'rank_final'
+    -- (STAGE 5's 5 sort passes — see edition-builder.ts/cross-edition-governor.ts/
+    -- bearish-posture.ts/deterministic-edition.ts), 'rejected' (STAGE 2 confluence gate or
+    -- STAGE 6 geometry/premium-cap/illiquid/ungrounded/sector/publish-gate/governor rejection —
+    -- ONLY confluence_gate and governor actually wrote here from Phase 1.5 through 2026-09-18;
+    -- the other 5 wrote solely to the older alert_audit_log table, invisible to this table's own
+    -- forward-return shadow grading, despite this comment already claiming full coverage — closed
+    -- by buildStageRejectionSnapshotRows/recordStageRejectionSnapshots, edition-builder.ts),
+    -- 'published' (STAGE 7 final decision). rank/score/gov_penalty are nullable because not
+    -- every stage produces all three (e.g. a 'discovery' row has no rank yet; a 'rejected' row at
+    -- the confluence gate never reached scoring). rejection_reason/selected_for_publish are
+    -- only meaningful at terminal stages ('rejected'/'published' respectively) and null elsewhere.
+    --
+    -- snapshot_json is the frozen point-in-time payload — raw pipeline inputs and outputs at
+    -- THIS stage only, written once and never rewritten later (same "freeze what the system saw
+    -- that night, never re-derive" discipline publish_context/zerodte's entry_context/
+    -- feature_vector already use) — never re-fetched or backfilled with "current" data. Shape is
+    -- versioned via a schema_version key inside snapshot_json (mirrors PUBLISH_CONTEXT_VERSION's
+    -- own in-payload versioning, publish-context.ts) rather than a DB column, so it can evolve
+    -- additively without a migration. This is the mechanism that lets Phase 3's shadow-ranking
+    -- variants (e.g. shadow_bugfix, correcting the unusualness-multiplier unit-mismatch bug and
+    -- the governor-blind final-sort bug — both confirmed live, neither fixed here) be computed
+    -- retroactively from real historical rows without look-ahead contamination: the raw inputs a
+    -- correction needs (e.g. discovery-stage raw flow premium vs the normalized lane-point value
+    -- production's own bug conflates) are captured once, here, even though production's own
+    -- ranking logic is left completely unchanged by this table's existence.
+    CREATE TABLE IF NOT EXISTS nighthawk_candidate_snapshot (
+      id                   BIGSERIAL PRIMARY KEY,
+      edition_for          DATE NOT NULL,
+      ticker               TEXT NOT NULL,
+      stage                TEXT NOT NULL,
+      observed_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      rank                 INTEGER,
+      score                NUMERIC,
+      gov_penalty          NUMERIC,
+      rejection_reason     TEXT,
+      selected_for_publish BOOLEAN,
+      snapshot_json        JSONB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_candidate_snapshot_edition
+      ON nighthawk_candidate_snapshot (edition_for, ticker, observed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_candidate_snapshot_stage
+      ON nighthawk_candidate_snapshot (stage, edition_for);
+    -- Night Hawk Legacy Signal Intelligence Phase 1.8: the multi-horizon (5m/15m/30m/1h/EOD)
+    -- forward-return series for this (edition_for, ticker) session, computed offline by
+    -- candidate-forward-grade.ts's computeCandidateForwardReturns from real Polygon minute bars,
+    -- ANCHORED AT SESSION OPEN (same convention nighthawk_play_outcomes' next_day_open/
+    -- next_day_close already use, not this row's own observed_at -- a candidate is typically
+    -- captured overnight during edition build, well before market open). DIRECTION-AGNOSTIC: raw
+    -- underlying % move, never sign-aligned against this row's own direction (see that module's
+    -- header doc) -- every stage row for the same (edition_for, ticker) shares one identical
+    -- blob. Frozen once computed (COALESCE first-write-wins in
+    -- pinNighthawkCandidateSnapshotForwardReturns below), same "never re-derive" discipline as
+    -- snapshot_json itself.
+    ALTER TABLE nighthawk_candidate_snapshot ADD COLUMN IF NOT EXISTS forward_returns JSONB;
+    CREATE INDEX IF NOT EXISTS idx_nighthawk_candidate_snapshot_forward_grade_pending
+      ON nighthawk_candidate_snapshot (edition_for) WHERE forward_returns IS NULL;
+
     -- zerodte_scan_rejections (task #147): durable near-miss/rejection log for 0DTE
     -- Command's scanner (src/lib/zerodte/board.ts's deriveZeroDteSetups, src/lib/
     -- zerodte/scan.ts's warmZeroDteBoard) — the 0DTE-Command analogue of
@@ -1586,6 +1676,13 @@ async function runMigrations(): Promise<void> {
     -- visible discipline, never a silent drop). NULL for the original 4 evidence gates, whose
     -- rows predate the hard-gate stack and whose numeric columns already tell the whole story.
     ALTER TABLE zerodte_scan_rejections ADD COLUMN IF NOT EXISTS reason TEXT;
+    -- blocks_json (2026-09-09): EVERY gate code that failed, not just the primary one
+    -- gate_failed already carries. Prerequisite for gate-ablation/marginal-value analysis —
+    -- see ZeroDteGateRejection's own doc comment (board.ts) for the full rationale. Additive
+    -- nullable JSONB, same idempotent-ALTER pattern as counterfactual_json (skip-grading.ts):
+    -- rows written before this column existed carry NULL forever, and every reader must
+    -- treat it as optional.
+    ALTER TABLE zerodte_scan_rejections ADD COLUMN IF NOT EXISTS blocks_json JSONB;
 
     -- swing_scan_rejections (Swing Engine V2 P1): durable near-miss / cap-drop log for the
     -- multi-day swing discovery funnel. Tier-1 budget caps silently dropped strong names before
@@ -2119,6 +2216,29 @@ async function runMigrations(): Promise<void> {
             OR peak_premium < entry_premium
             OR trough_premium > entry_premium);
   `);
+  // FINDINGS 2026-09-11 (SEV-2, unbracketed watermarks at EXIT): the fix above only brackets
+  // peak/trough_premium around ENTRY. Those columns are latched ONLY during RTH, on a 15-minute
+  // cadence (swing-active-refresh's updateSwingLiveState), so they can never see an overnight/
+  // pre-market gap or an intrabar move between polls — a CLOSED position's REALIZED exit can
+  // land outside the very range its own command-deck card presents as "the full excursion since
+  // entry" (PlayTerminal.tsx's Peak/Trough caption). Live proof 2026-09-11: AAPL (positionId 36)
+  // showed trough -30.5% while its actual realized exit was -56.2%; INTC/MSTR/CCI/IGV all showed
+  // the same shape the same window. Same repair discipline as the entry-premium fix above: only
+  // WIDENS (GREATEST/LEAST), never narrows a genuinely-ratcheted extreme; the WHERE clause makes
+  // it a no-op once converged, so it is safe (and cheap) to re-run on every boot. Going forward,
+  // gradeSwingPosition itself performs the same widening at grade time (mirrored in the pure
+  // swingGradeWatermarkBracket helper below) so newly-closed rows never regress into this state —
+  // this migration only needs to repair rows graded before that fix shipped.
+  await p.query(`
+    UPDATE swing_positions
+       SET peak_premium = GREATEST(peak_premium, entry_premium * (1 + realized_pnl_pct / 100.0)),
+           trough_premium = LEAST(trough_premium, entry_premium * (1 + realized_pnl_pct / 100.0))
+     WHERE entry_premium IS NOT NULL
+       AND realized_pnl_pct IS NOT NULL
+       AND graded_at IS NOT NULL
+       AND (peak_premium < entry_premium * (1 + realized_pnl_pct / 100.0)
+            OR trough_premium > entry_premium * (1 + realized_pnl_pct / 100.0));
+  `);
 
   // ── swing_shadow_positions (2026-08-06, member-authorized) — a DELIBERATELY SEPARATE table, never
   // read by fetchOpenSwingPositions/active-refresh/the member board. A candidate that clears every
@@ -2324,6 +2444,22 @@ async function runMigrations(): Promise<void> {
     WHERE status NOT IN ('CLOSED_RUNNER', 'STOPPED');
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_positions_session ON banger_positions(session_date DESC)`);
+  // FINDINGS 2026-09-11: banger_positions never carried a per-MARK timestamp — only a generic
+  // `updated_at` that updateBangerLiveState stamps on EVERY tick regardless of whether a fresh
+  // mark actually landed ($3 IS NOT NULL or not), so it can't distinguish "quoted just now" from
+  // "some other field changed, mark untouched". swing_positions solved this exact problem with its
+  // own CASE-guarded `last_mark_at` (see the ALTER above and updateSwingLiveState) — banger never
+  // got the same column, so horizonPlayFromBangerPosition (banger-lane-merge.ts) has always served
+  // its HorizonPlay with NO markAsOf at all. Since Engine B banger positions are folded into the
+  // Swing lane's MANAGING/SCALING_OUT sections (mergeBangerPositionsIntoSwingPlays) and today make
+  // up the large majority of that lane's live book, every consumer of mark freshness for that
+  // majority — the swing-e2e-healthcheck Stage F staleness check AND Ask Largo's play-brief mark
+  // narrative alike — has been silently blind for every banger-origin live position: mark=<value>
+  // age=unknown, indistinguishable from "genuinely unknown" even when the mark is one tick old.
+  // Mirrors swing_positions' own last_mark_at column + CASE-guarded stamp exactly.
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS last_mark_at TIMESTAMPTZ;
+  `);
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS email_captures (
@@ -4451,6 +4587,8 @@ export async function insertZeroDteScanRejection(row: {
   last_seen: string | null;
   /** Human-readable block sentence (hard-gate rows only; evidence-gate rows pass null). */
   reason?: string | null;
+  /** EVERY gate code that failed this evaluation (see blocks_json's schema comment above). */
+  blocks?: string[] | null;
 }): Promise<void> {
   await ensureSchema();
   await dbQuery(
@@ -4458,9 +4596,9 @@ export async function insertZeroDteScanRejection(row: {
     INSERT INTO zerodte_scan_rejections (
       session_date, ticker, gate_failed, threshold, gross_premium,
       aggression, side_dominance, otm_pct, direction, prints,
-      first_seen, last_seen, reason
+      first_seen, last_seen, reason, blocks_json
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `,
     [
       row.session_date,
@@ -4476,6 +4614,7 @@ export async function insertZeroDteScanRejection(row: {
       row.first_seen,
       row.last_seen,
       row.reason ?? null,
+      row.blocks && row.blocks.length > 0 ? JSON.stringify(row.blocks) : null,
     ]
   );
 }
@@ -4519,6 +4658,9 @@ export async function insertSwingScanRejection(row: {
 export async function fetchZeroDteScanRejections(opts?: {
   ticker?: string;
   session_date?: string;
+  /** Filter to one gate code (e.g. "early_window_prime_score") — additive, optional;
+   *  omitted means every gate, same as before this filter existed. */
+  gate_failed?: string;
   limit?: number;
 }): Promise<
   Array<{
@@ -4537,37 +4679,41 @@ export async function fetchZeroDteScanRejections(opts?: {
     first_seen: string | null;
     last_seen: string | null;
     reason: string | null;
+    /** Every gate code that failed this evaluation — null on rows written before
+     *  blocks_json existed (2026-09-09) or on the four evidence-gate rejections. */
+    blocks: string[] | null;
+    /** The skip-grading counterfactual (skip-grading.ts's SkipCounterfactual) — null on rows
+     *  never graded (either the async grader hasn't reached them yet, or they're ungradeable:
+     *  no direction, block after the 15:50 time-stop, or no bars in the plan window). Added
+     *  so a caller can see WHICH specific ticker/session a gate's would_have_won/lost verdict
+     *  belongs to, not just the aggregate rate `blockedValueLines` (calibration.ts) reports. */
+    counterfactual: {
+      verdict: "would_have_won" | "would_have_lost" | "ungradeable";
+      outcome: "doubled" | "stopped" | "time_stop" | null;
+      pnl_pct: number | null;
+      basis: "premium" | "underlying" | null;
+    } | null;
   }>
 > {
   await ensureSchema();
   const limit = opts?.limit ?? 50;
   const ticker = opts?.ticker?.toUpperCase();
   const sessionDate = opts?.session_date;
+  const gateFailed = opts?.gate_failed;
   const cols = `id, observed_at, session_date, ticker, gate_failed, threshold,
            gross_premium, aggression, side_dominance, otm_pct, direction, prints,
-           first_seen, last_seen, reason`;
-  let res;
-  if (ticker && sessionDate) {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 AND session_date = $2 ORDER BY observed_at DESC LIMIT $3`,
-      [ticker, sessionDate, limit]
-    );
-  } else if (ticker) {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
-      [ticker, limit]
-    );
-  } else if (sessionDate) {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections WHERE session_date = $1 ORDER BY observed_at DESC LIMIT $2`,
-      [sessionDate, limit]
-    );
-  } else {
-    res = await dbQuery(
-      `SELECT ${cols} FROM zerodte_scan_rejections ORDER BY observed_at DESC LIMIT $1`,
-      [limit]
-    );
-  }
+           first_seen, last_seen, reason, blocks_json, counterfactual_json`;
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (ticker) { params.push(ticker); conditions.push(`ticker = $${params.length}`); }
+  if (sessionDate) { params.push(sessionDate); conditions.push(`session_date = $${params.length}`); }
+  if (gateFailed) { params.push(gateFailed); conditions.push(`gate_failed = $${params.length}`); }
+  params.push(limit);
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const res = await dbQuery(
+    `SELECT ${cols} FROM zerodte_scan_rejections ${where} ORDER BY observed_at DESC LIMIT $${params.length}`,
+    params
+  );
   return res.rows.map((r) => ({
     id: Number(r.id),
     observed_at: isoTimestampString(r.observed_at) ?? "",
@@ -4592,7 +4738,30 @@ export async function fetchZeroDteScanRejections(opts?: {
     first_seen: isoTimestampString(r.first_seen),
     last_seen: isoTimestampString(r.last_seen),
     reason: r.reason != null ? String(r.reason) : null,
+    // node-postgres parses JSONB columns into a JS value already (unlike DATE, which needs
+    // isoDateString's funnel above) — but validate the shape rather than trust it blindly,
+    // since a hand-edited row or a future schema change could leave something else there.
+    blocks: Array.isArray(r.blocks_json) ? r.blocks_json.map((b: unknown) => String(b)) : null,
+    counterfactual: parseZeroDteRejectionCounterfactual(r.counterfactual_json),
   })  );
+}
+
+/** Defensive parse of counterfactual_json — never trust a JSONB blob blindly (same discipline as
+ *  blocks_json above); a malformed/legacy row reads as null, never as a fabricated verdict. */
+export function parseZeroDteRejectionCounterfactual(v: unknown): {
+  verdict: "would_have_won" | "would_have_lost" | "ungradeable";
+  outcome: "doubled" | "stopped" | "time_stop" | null;
+  pnl_pct: number | null;
+  basis: "premium" | "underlying" | null;
+} | null {
+  if (v == null || typeof v !== "object") return null;
+  const rec = v as Record<string, unknown>;
+  const verdict = rec.verdict;
+  if (verdict !== "would_have_won" && verdict !== "would_have_lost" && verdict !== "ungradeable") return null;
+  const outcome = rec.outcome === "doubled" || rec.outcome === "stopped" || rec.outcome === "time_stop" ? rec.outcome : null;
+  const basis = rec.basis === "premium" || rec.basis === "underlying" ? rec.basis : null;
+  const pnl_pct = typeof rec.pnl_pct === "number" && Number.isFinite(rec.pnl_pct) ? rec.pnl_pct : null;
+  return { verdict, outcome, pnl_pct, basis };
 }
 
 /**
@@ -7243,6 +7412,34 @@ export function isMonotonicSwingStatusTransition(from: string, to: string): bool
   return toRank >= fromRank;
 }
 
+/**
+ * Pure mirror of the peak/trough-premium bracket widening in gradeSwingPosition's SQL (and the
+ * matching one-time backfill in ensureSchema — see its FINDINGS 2026-09-11 comment). The ledger's
+ * peak_premium/trough_premium watermarks are latched ONLY during RTH, on a 15-minute cadence
+ * (swing-active-refresh's updateSwingLiveState), so they can never capture an overnight/pre-market
+ * gap or an intrabar move between polls — a CLOSED position's REALIZED exit can therefore land
+ * outside the [trough, peak] range its own command-deck card presents as "the full excursion
+ * since entry" (PlayTerminal.tsx). Live proof 2026-09-11: AAPL (positionId 36) showed trough
+ * -30.5% while its actual realized exit was -56.2%; INTC/MSTR/CCI/IGV showed the same pattern the
+ * same window. Same repair discipline as the entry_premium bracket (FINDINGS 2026-08-06, SEV-2):
+ * only ever WIDENS the bracket, never narrows a genuinely-ratcheted extreme.
+ */
+export function swingGradeWatermarkBracket(
+  entryPremium: number | null,
+  peakPremium: number | null,
+  troughPremium: number | null,
+  realizedPnlPct: number | null
+): { peakPremium: number | null; troughPremium: number | null } {
+  if (entryPremium == null || realizedPnlPct == null) {
+    return { peakPremium, troughPremium };
+  }
+  const exitPremium = entryPremium * (1 + realizedPnlPct / 100);
+  return {
+    peakPremium: Math.max(peakPremium ?? entryPremium, exitPremium),
+    troughPremium: Math.min(troughPremium ?? entryPremium, exitPremium),
+  };
+}
+
 /** Parse a JSONB column value into a plain object. node-pg usually hands back an already
  *  parsed object for jsonb, but some pool/type-parser configs surface it as a string —
  *  handle both so the mappers never leak a raw JSON string to a consumer. */
@@ -7667,7 +7864,22 @@ export async function gradeSwingPosition(
        status = CASE WHEN status = 'ROLLED' THEN 'ROLLED' ELSE $6 END,
        closed_at = COALESCE(closed_at, NOW()),
        graded_at = NOW(),
-       updated_at = NOW()
+       updated_at = NOW(),
+       -- FINDINGS 2026-09-11 (SEV-2, unbracketed watermarks at EXIT) — same widen-only bracket as
+       -- the entry_premium fix (2026-08-06), mirrored in the pure swingGradeWatermarkBracket
+       -- helper above. Applied HERE (at grade time) so a newly-CLOSED row's realized exit can
+       -- never land outside the range its own card presents as "the full excursion since entry" —
+       -- the one-time ensureSchema backfill only repairs rows graded before this shipped.
+       peak_premium = CASE
+         WHEN $5 IS NOT NULL AND entry_premium IS NOT NULL
+           THEN GREATEST(COALESCE(peak_premium, entry_premium), entry_premium * (1 + $5 / 100.0))
+         ELSE peak_premium
+       END,
+       trough_premium = CASE
+         WHEN $5 IS NOT NULL AND entry_premium IS NOT NULL
+           THEN LEAST(COALESCE(trough_premium, entry_premium), entry_premium * (1 + $5 / 100.0))
+         ELSE trough_premium
+       END
      WHERE id = $1 AND graded_at IS NULL`;
   const params = [
     id,
@@ -7769,7 +7981,7 @@ export async function fetchLatestSwingSnapshotEvents(
   await ensureSchema();
   if (positionIds.length === 0) return new Map();
   const res = await dbQuery<QueryResultRow>(
-    `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state
+    `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state, running_mfe, running_mae
        FROM swing_position_snapshots
       WHERE position_id = ANY($1::bigint[])
       ORDER BY position_id, created_at DESC`,
@@ -7780,6 +7992,11 @@ export async function fetchLatestSwingSnapshotEvents(
     const id = Number(r.position_id);
     const event: Record<string, unknown> = { ...(jsonbColumnToObject(r.event_json) ?? {}) };
     if (r.thesis_state != null) event.thesis_state = String(r.thesis_state);
+    // Underlying excursion % (running_mfe/running_mae) — dedicated snapshot columns, not part of
+    // event_json, so they must be selected/merged here explicitly. See HorizonPlay's own
+    // `underlyingExcursion` doc comment for the full gap this closes.
+    if (r.running_mfe != null) event.running_mfe = Number(r.running_mfe);
+    if (r.running_mae != null) event.running_mae = Number(r.running_mae);
     out.set(id, event);
   }
   return out;
@@ -8002,6 +8219,25 @@ export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000):
   return res.rows.map(mapSwingPositionRow);
 }
 
+/**
+ * Every row (any status/leg) on ONE ticker, most recent first — the ticker-scoped historical-
+ * context read (Largo product contract C10; play-brief-ticker-history.ts). Deliberately unfiltered
+ * on status: `record.ts`'s `selectSwingRecordRootIds` needs OPEN rows too (to know which roots to
+ * SKIP as still-live, not just which to count), and rolled-leg children carry `root_position_id`
+ * rather than a status of their own that would make a status filter safe here. `ticker` is indexed
+ * implicitly via the existing `(ticker, ...)` access patterns elsewhere in this file (e.g. the
+ * cross-session persistence query at line ~8484) — this is a small, ticker-scoped read, not a
+ * table scan of the whole ledger.
+ */
+export async function fetchSwingPositionsByTicker(ticker: string, limit = 200): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_positions WHERE ticker = $1 ORDER BY session_date DESC, id DESC LIMIT $2`,
+    [ticker.toUpperCase(), limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
 /** Terminal-but-ungraded positions the lazy grader picks up (a leg is graded once it is
  *  CLOSED/ROLLED and its forward bars exist). Capped — grading is incremental. */
 export async function fetchUngradedSwingPositions(limit = 25): Promise<SwingPositionRow[]> {
@@ -8218,6 +8454,31 @@ export async function fetchAccumulating(minSessionDays = 1, limit = 500): Promis
       ORDER BY last_seen_at DESC
       LIMIT $2`,
     [minSessionDays, limit]
+  );
+  return res.rows.map(mapSwingAccumRow);
+}
+
+/**
+ * Every accumulation row (promoted AND still-pending) first seen on or after `sinceDate` —
+ * unlike `fetchAccumulating`, which drops any row with `promoted_position_id` set. A recall
+ * study of the persistence gate needs BOTH cohorts to compare: candidates that cleared the bar
+ * (promoted, or distinct_session_days >= MIN_PERSISTENCE_SESSIONS) against ones still stuck on
+ * a single sighting, so dropping the promoted half would silently exclude the gate's own
+ * "worked as intended" cases from the comparison. Read-only, admin-export use only.
+ */
+export async function fetchSwingAccumulationExport(
+  sinceDate: string,
+  limit = 2000
+): Promise<SwingAccumRow[]> {
+  await ensureSchema();
+  const normalized = normalizeIsoDateInput(sinceDate);
+  if (!normalized) return [];
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_candidate_accumulation
+      WHERE first_seen_at >= $1::date
+      ORDER BY first_seen_at DESC
+      LIMIT $2`,
+    [normalized, limit]
   );
   return res.rows.map(mapSwingAccumRow);
 }
@@ -9040,6 +9301,12 @@ export type NighthawkPlayOutcomeRow = {
   scale_out_grade?: Record<string, unknown> | null;
   /** Live Chief Trade Alert Bot management state (trims, scale-out latch, closed flag). */
   discord_live_state?: LegacyDiscordLiveState | null;
+  // Night Hawk Legacy Signal Intelligence Phase 1.7 additive fields — same optionality
+  // convention as the blocks above. The live-managed OPTION-premium MFE/MAE (relative to
+  // entry_premium), written by resolveOutcome/premiumExcursionFromLiveState every grade pass.
+  // NULL until first graded, or when entry_premium/discord_live_state can't resolve one.
+  premium_mfe_pct?: number | null;
+  premium_mae_pct?: number | null;
 };
 
 export type LegacyDiscordLiveState = {
@@ -9085,6 +9352,8 @@ function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow 
     debrief: (r.debrief as Record<string, unknown>) ?? null,
     scale_out_grade: (r.scale_out_grade as Record<string, unknown>) ?? null,
     discord_live_state: (r.discord_live_state as LegacyDiscordLiveState) ?? null,
+    premium_mfe_pct: r.premium_mfe_pct != null ? Number(r.premium_mfe_pct) : null,
+    premium_mae_pct: r.premium_mae_pct != null ? Number(r.premium_mae_pct) : null,
   };
 }
 
@@ -9464,6 +9733,11 @@ export async function updateNighthawkPlayOutcome(
     hit_target: boolean;
     hit_stop: boolean;
     outcome: "target" | "stop" | "open" | "ambiguous" | "pending" | "unfilled";
+    // Night Hawk Legacy Signal Intelligence Phase 1.7 — optional so pre-existing callers
+    // (and every prior test fixture) keep compiling; direct-overwrite like the other grade
+    // fields above (see the column's own migration comment for why this is not pinned).
+    premium_mfe_pct?: number | null;
+    premium_mae_pct?: number | null;
   }
 ): Promise<void> {
   await ensureSchema();
@@ -9483,6 +9757,8 @@ export async function updateNighthawkPlayOutcome(
         -- back to 'pending' (no verdict yet) does not stamp: an ungraded row has no
         -- methodology to claim.
         grade_methodology = CASE WHEN $8 = 'pending' THEN grade_methodology ELSE '${GRADE_METHODOLOGY_CURRENT}' END,
+        premium_mfe_pct = $9,
+        premium_mae_pct = $10,
         updated_at = NOW()
     WHERE id = $1 AND outcome = 'pending'
     `,
@@ -9495,6 +9771,8 @@ export async function updateNighthawkPlayOutcome(
       patch.hit_target,
       patch.hit_stop,
       patch.outcome,
+      patch.premium_mfe_pct ?? null,
+      patch.premium_mae_pct ?? null,
     ]
   );
 }
@@ -9928,7 +10206,12 @@ export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
       FROM nighthawk_play_outcomes o
       INNER JOIN nighthawk_editions e ON e.edition_for = o.edition_for
       WHERE o.outcome <> 'pending'
-        AND o.edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)
+        -- ET calendar date, not the bare UTC-session date (2026-09-12) -- edition_for is an ET
+        -- trading day, and the un-anchored SQL "today" resolves in the DB session's UTC
+        -- timezone, so between 8pm and midnight ET it has already ticked to tomorrow and
+        -- prematurely drops the oldest day out of the window. Same fix as the flow-alerts DTE
+        -- query above.
+        AND o.edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
       ORDER BY o.edition_for DESC, o.ticker ASC
       `,
       [safeWindowDays]
@@ -9976,14 +10259,17 @@ export async function fetchNighthawkFunnelStats(windowDays = 30): Promise<Nighth
     dbQuery<{ count: string }>(
       `SELECT COUNT(*)::int AS count
        FROM nighthawk_play_outcomes
-       WHERE edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)`,
+       -- ET calendar date, not the bare UTC-session date -- see fetchNighthawkOutcomeAnalytics
+       -- above, which this function must stay in lockstep with (same window, published vs
+       -- rejected sides of the same funnel).
+       WHERE edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)`,
       [safeWindowDays]
     ),
     dbQuery<{ trigger_reason: string; n: string }>(
       `SELECT trigger_reason, COUNT(*)::int AS n
        FROM alert_audit_log
        WHERE alert_type = 'nighthawk_rejected'
-         AND (source_key->>'edition_for')::date >= (CURRENT_DATE - ($1::int || ' days')::interval)
+         AND (source_key->>'edition_for')::date >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
        GROUP BY trigger_reason
        ORDER BY n DESC`,
       [safeWindowDays]
@@ -10252,6 +10538,215 @@ export async function fetchNighthawkScoringHistory(
   }));
 }
 
+/**
+ * Write ONE candidate-snapshot row (nighthawk_candidate_snapshot, see that table's own doc
+ * comment above for the full rationale). Always insert, never upsert — every call from every
+ * pipeline stage produces its own durable row, by design, so a later stage's write never
+ * overwrites an earlier stage's. Callers decide WHEN to call this (per-stage, per-candidate);
+ * this function only persists what it's given.
+ */
+export async function insertNighthawkCandidateSnapshot(row: {
+  edition_for: string;
+  ticker: string;
+  stage: string;
+  rank?: number | null;
+  score?: number | null;
+  gov_penalty?: number | null;
+  rejection_reason?: string | null;
+  selected_for_publish?: boolean | null;
+  snapshot_json: Record<string, unknown>;
+}): Promise<void> {
+  await ensureSchema();
+  await dbQuery(
+    `INSERT INTO nighthawk_candidate_snapshot (
+      edition_for, ticker, stage, rank, score, gov_penalty,
+      rejection_reason, selected_for_publish, snapshot_json
+    ) VALUES ($1::date,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      row.edition_for,
+      row.ticker.toUpperCase(),
+      row.stage,
+      row.rank ?? null,
+      row.score ?? null,
+      row.gov_penalty ?? null,
+      row.rejection_reason ?? null,
+      row.selected_for_publish ?? null,
+      JSON.stringify(row.snapshot_json),
+    ]
+  );
+}
+
+/**
+ * Bulk write path for insertNighthawkCandidateSnapshot — a single stage transition typically
+ * produces one row per candidate in the pool (e.g. every scored candidate at once), and a
+ * per-row round trip for a 15-90 ticker pool would be needlessly slow. Same "insert, caller
+ * already decided what to write" contract; still append-only, still no upsert.
+ */
+export async function insertNighthawkCandidateSnapshots(
+  rows: Array<{
+    edition_for: string;
+    ticker: string;
+    stage: string;
+    rank?: number | null;
+    score?: number | null;
+    gov_penalty?: number | null;
+    rejection_reason?: string | null;
+    selected_for_publish?: boolean | null;
+    snapshot_json: Record<string, unknown>;
+  }>
+): Promise<void> {
+  if (!rows.length) return;
+  await ensureSchema();
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+  rows.forEach((row, i) => {
+    const base = i * 9;
+    tuples.push(
+      `($${base + 1}::date,$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9})`
+    );
+    values.push(
+      row.edition_for,
+      row.ticker.toUpperCase(),
+      row.stage,
+      row.rank ?? null,
+      row.score ?? null,
+      row.gov_penalty ?? null,
+      row.rejection_reason ?? null,
+      row.selected_for_publish ?? null,
+      JSON.stringify(row.snapshot_json)
+    );
+  });
+  await dbQuery(
+    `INSERT INTO nighthawk_candidate_snapshot (
+      edition_for, ticker, stage, rank, score, gov_penalty,
+      rejection_reason, selected_for_publish, snapshot_json
+    ) VALUES ${tuples.join(",")}`,
+    values
+  );
+}
+
+export type NighthawkCandidateSnapshotRow = {
+  id: number;
+  edition_for: string;
+  ticker: string;
+  stage: string;
+  observed_at: string;
+  rank: number | null;
+  score: number | null;
+  gov_penalty: number | null;
+  rejection_reason: string | null;
+  selected_for_publish: boolean | null;
+  snapshot_json: Record<string, unknown>;
+  /** Phase 1.8 additive field — see the column's own migration comment. NULL until graded. */
+  forward_returns?: Record<string, unknown> | null;
+};
+
+/**
+ * Pure row mapper for nighthawk_candidate_snapshot — separated from the query so it's directly
+ * unit-testable without Postgres (raw PG is blocked in CI/this sandbox; source-inspection +
+ * pure-mapper tests are this file's established substitute, see db-swing-ledger.test.ts). Handles
+ * node-pg's usual surprises: NUMERIC columns arrive as strings, not numbers; JSONB columns already
+ * arrive parsed as objects, never as strings needing a second JSON.parse.
+ */
+export function mapNighthawkCandidateSnapshotRow(r: Record<string, unknown>): NighthawkCandidateSnapshotRow {
+  return {
+    id: Number(r.id),
+    edition_for: isoDateString(r.edition_for),
+    ticker: String(r.ticker).toUpperCase(),
+    stage: String(r.stage),
+    observed_at: isoTimestampString(r.observed_at) ?? "",
+    rank: r.rank != null ? Number(r.rank) : null,
+    score: r.score != null ? Number(r.score) : null,
+    gov_penalty: r.gov_penalty != null ? Number(r.gov_penalty) : null,
+    rejection_reason: r.rejection_reason != null ? String(r.rejection_reason) : null,
+    selected_for_publish: r.selected_for_publish != null ? Boolean(r.selected_for_publish) : null,
+    snapshot_json: (r.snapshot_json as Record<string, unknown>) ?? {},
+    forward_returns: (r.forward_returns as Record<string, unknown>) ?? null,
+  };
+}
+
+/**
+ * Read path for nighthawk_candidate_snapshot. Pass `stage` to scope to one pipeline stage
+ * (e.g. every 'rejected' row for the night); omit it to see a ticker's/edition's full
+ * stage-by-stage history. Always ordered oldest-first so a caller reconstructing "how did this
+ * candidate's rank change across the pipeline" gets rows in the order the pipeline actually
+ * produced them.
+ */
+export async function fetchNighthawkCandidateSnapshots(
+  editionFor: string,
+  opts?: { ticker?: string; stage?: string }
+): Promise<NighthawkCandidateSnapshotRow[]> {
+  await ensureSchema();
+  const conditions = ["edition_for = $1::date"];
+  const params: unknown[] = [editionFor];
+  if (opts?.ticker) {
+    params.push(opts.ticker.toUpperCase());
+    conditions.push(`ticker = $${params.length}`);
+  }
+  if (opts?.stage) {
+    params.push(opts.stage);
+    conditions.push(`stage = $${params.length}`);
+  }
+  const res = await dbQuery(
+    `SELECT id, edition_for, ticker, stage, observed_at, rank, score, gov_penalty,
+            rejection_reason, selected_for_publish, snapshot_json, forward_returns
+     FROM nighthawk_candidate_snapshot
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY observed_at ASC, id ASC`,
+    params
+  );
+  return res.rows.map(mapNighthawkCandidateSnapshotRow);
+}
+
+/**
+ * Phase 1.8: candidate_snapshot rows still missing their forward-return grade, within lookback.
+ * Minimal projection (id/edition_for/ticker) -- the grading pass groups by (edition_for, ticker)
+ * so it fetches each session's minute bars ONCE and shares the result across every stage row for
+ * that ticker that night, same efficiency shape as fetchNighthawkRowsMissingScaleOutGrade's
+ * sibling query for nighthawk_play_outcomes.
+ */
+export async function fetchNighthawkCandidateSnapshotsMissingForwardGrade(
+  lookbackDays = 21
+): Promise<Array<{ id: number; edition_for: string; ticker: string }>> {
+  await ensureSchema();
+  const safe = Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 21;
+  const res = await dbQuery(
+    `
+    SELECT id, edition_for, ticker
+    FROM nighthawk_candidate_snapshot
+    WHERE forward_returns IS NULL
+      AND edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
+    ORDER BY edition_for ASC, ticker ASC
+    `,
+    [safe]
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    edition_for: isoDateString(r.edition_for),
+    ticker: String(r.ticker),
+  }));
+}
+
+/**
+ * Phase 1.8: pin one candidate_snapshot row's forward-return grade, FIRST-WRITE-WINS (same
+ * COALESCE + WHERE-IS-NULL discipline as pinNighthawkScaleOutGrade) -- the grade is frozen once
+ * computed and must never be silently recomputed/overwritten by a later pass.
+ */
+export async function pinNighthawkCandidateSnapshotForwardReturns(
+  id: number,
+  forwardReturns: Record<string, unknown>
+): Promise<void> {
+  await ensureSchema();
+  await dbQuery(
+    `
+    UPDATE nighthawk_candidate_snapshot
+    SET forward_returns = COALESCE(forward_returns, $2::jsonb)
+    WHERE id = $1 AND forward_returns IS NULL
+    `,
+    [id, JSON.stringify(forwardReturns)]
+  );
+}
+
 /** Fail jobs stuck in `running` (or intermediate stage) long enough to block resume/idempotency. */
 export async function failStaleNighthawkJobs(
   staleAfterMinutes?: number
@@ -10408,16 +10903,29 @@ export async function fetchCronJobLastRuns(): Promise<CronJobRunRow[]> {
   return res.rows.map(mapCronJobRunRow);
 }
 
-export async function fetchCronJobRecentRuns(limit = 48): Promise<CronJobRunRow[]> {
+/**
+ * All runs across every job in the last 24h — TIME-bounded, not row-count-bounded.
+ *
+ * This used to be `fetchCronJobRecentRuns(48)` (`ORDER BY started_at DESC LIMIT 48`, no per-job or
+ * time filter at the query level) — deleted; its only caller (`admin-cron-health.ts`, feeding a
+ * `runs_24h` aggregate) now calls this instead. A flat `LIMIT 48` across the WHOLE table starves
+ * any job whose neighbors fire more often: with ~48 registered crons and several on 1-5 min
+ * schedules, the 48 most recent rows fleet-wide can cover a few minutes, not a day. A moderately-
+ * frequent job then reads `runs_24h: {ok:0,failed:0,skipped:2}` — which looks like "barely ran
+ * today" to an admin, when the job may be running perfectly on schedule and simply lost the race
+ * for a slot in those 48 rows. Bounding by TIME instead returns whatever a real 24h window
+ * actually contains, matching the field's own name and the `idx_cron_job_runs_key_at (job_key,
+ * started_at DESC)` index this table already carries.
+ */
+export async function fetchCronJobRunsLast24h(): Promise<CronJobRunRow[]> {
   await ensureSchema();
   const res = await dbQuery(
     `
     SELECT id, job_key, status, started_at, duration_ms, message, meta_json
     FROM cron_job_runs
-    ORDER BY started_at DESC
-    LIMIT $1
-    `,
-    [limit]
+    WHERE started_at > NOW() - INTERVAL '24 hours'
+    ORDER BY job_key, started_at DESC
+    `
   );
   return res.rows.map(mapCronJobRunRow);
 }

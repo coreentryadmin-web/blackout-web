@@ -15,6 +15,7 @@ import {
   type VectorBoardMeter,
 } from "@/features/nighthawk/lib/vector-board-table-utils";
 import type { VectorBoardTab } from "@/features/nighthawk/lib/vector-board-table-utils";
+import { isNeverEnteredPull } from "@/features/nighthawk/lib/vector-board-row-utils";
 
 export type LegacyBoardTableRow = VectorBoardTableRow & { play: TerminalPlay };
 
@@ -34,11 +35,32 @@ function legacyVectorStatus(play: TerminalPlay): { status: VectorBoardStatus; la
   if (play.status === "SKIP") return { status: "invalidated", label: "PULLED" };
   if (play.status === "CLOSED") return { status: "closed", label: "CLOSED" };
   if (play.status === "WATCH") return { status: "open", label: "WATCH" };
-  if (play.morningStatus === "CONFIRMED") return { status: "open", label: "CONFIRMED" };
-  const base = playStatusDisplay(play.status);
-  const status: VectorBoardStatus =
-    base.tone === "closed" ? "closed" : base.tone === "watch" ? "caution" : "open";
-  return { status, label: base.label };
+
+  let status: VectorBoardStatus;
+  let label: string;
+  if (play.morningStatus === "CONFIRMED") {
+    status = "open";
+    label = "CONFIRMED";
+  } else {
+    const base = playStatusDisplay(play.status);
+    status = base.tone === "closed" ? "closed" : base.tone === "watch" ? "caution" : "open";
+    label = base.label;
+  }
+
+  // A live, open play (never WATCH — not-yet-entered plays have no real pnlPct and already
+  // returned above) that has crossed the winner/runner premium thresholds must present that way
+  // to the shared scorecard: vectorBoardScorecard's winners/runners/winnersFloorPct/
+  // runnerPipelinePct all key off `status`, not `kind` — and no branch above this point ever
+  // emits "winner"/"runner", so those four figures were structurally always zero for every
+  // Legacy row regardless of real performance. Live evidence, 2026-09-10: FICO open at +24.19%
+  // (clears the same 15% runner threshold legacyRowKind already uses below) still showed
+  // "0 runners" / "Runner pipeline 0%" on the live scorecard.
+  if (status === "open") {
+    const pct = play.pnlPct;
+    if (pct != null && pct >= 50) return { status: "winner", label: "Winner" };
+    if (pct != null && pct >= 15) return { status: "runner", label: "Runner" };
+  }
+  return { status, label };
 }
 
 function legacyRowKind(play: TerminalPlay): VectorBoardRowKind {
@@ -163,19 +185,52 @@ export function legacyBoardCalendarBuckets(
   }
   return editionDates.map((session_date) => {
     const day = byDate.get(session_date) ?? [];
-    const net = day.reduce((s, r) => s + (r.premiumPct ?? 0), 0);
-    const winners = day.filter((r) => (r.premiumPct ?? 0) >= 50).length;
+    // A pulled play's premiumPct is a hypothetical counterfactual, not an achieved result — it
+    // must never inflate the day's blended "Net premium" or count as a "winner" tile, same
+    // reasoning (and the same statusLabel:"PULLED" check) as vectorBoardScorecard's fix. Measured
+    // live, 2026-09-10: with real SIG -82% and FICO +29%, this tile read +109.7% before the fix,
+    // driven entirely by blending in a pulled ASO's +300%-range counterfactual.
+    const resolved = day.filter((r) => !isNeverEnteredPull(r));
+    // A stock-only Legacy play (no resolvable option contract) carries premiumPct: null by design
+    // — overlayLegacyQuotes fail-closes rather than reporting the underlying's move as an option
+    // return (see that file's own MU-$880C comment). Averaging a null premium in as 0 silently
+    // dilutes a real winner/loser toward zero on a mixed day, and on an ALL-stock-only day (the
+    // tile's only real-world case measured so far) reads as a flat "+0%" even while the underlying
+    // is up double digits. Measured live 2026-09-15: VNCE (stock-only) +10-12% on the underlying,
+    // the day's only play — the tile read "+0%" pre-fix. Only rows with a REAL premium result
+    // participate in the blended average; a day with zero such rows still reports 0 (same as
+    // today, unchanged) rather than fabricating a number, matching this function's existing
+    // never-fabricate-a-result discipline for the pulled-play case above.
+    const withPremium = resolved.filter((r) => r.premiumPct != null);
+    const net = withPremium.reduce((s, r) => s + (r.premiumPct ?? 0), 0);
+    const winners = resolved.filter((r) => (r.premiumPct ?? 0) >= 50).length;
     const closed = day.filter((r) => r.kind === "closed").length;
     const tone = net > 2 ? "up" : net < -2 ? "down" : "flat";
     return {
       session_date,
       tone,
-      net_premium_pct: day.length ? net / day.length : 0,
+      // Matches vector-board-table-utils.ts's own Math.round(avg) — the tile's render layer
+      // (VectorBoardCalendar.tsx's fmtSigned) interpolates the number as-is with no rounding, so
+      // an un-rounded average here prints raw floating-point noise (e.g. "-28.2700000000...4").
+      net_premium_pct: withPremium.length ? Math.round(net / withPremium.length) : 0,
       n: day.length,
       winners,
       closed,
     };
   });
+}
+
+/** Quote a CSV field per RFC 4180: wrap in double quotes, doubling any embedded quote.
+ *  `JSON.stringify` was used here before (bug fixed 2026-09-16) — its `\"` escape is not
+ *  valid CSV, so a field containing a literal quote (risk_note and thesis-adjacent text are
+ *  LLM-authored prose that routinely quotes a catalyst headline verbatim, e.g. `Catalyst:
+ *  "The company secured..."`) corrupted the row: a CSV reader treats the character right
+ *  after `\` as the field's closing quote, splitting the quoted phrase's remainder into the
+ *  next column. `vectorBoardExportCsv` (vector-board-row-utils.ts) already escapes its own
+ *  `reason` field correctly this way — this brings the Legacy export in line with it. */
+function csvField(value: string | number | null | undefined): string {
+  const s = String(value ?? "");
+  return `"${s.replace(/"/g, '""')}"`;
 }
 
 export function legacyBoardExportCsv(rows: LegacyBoardTableRow[]): string {
@@ -189,7 +244,7 @@ export function legacyBoardExportCsv(rows: LegacyBoardTableRow[]): string {
     const factors = p.factors.map((f) => `${f.label}:${f.points}`).join("|");
     return [
       r.ticker,
-      JSON.stringify(r.contractLabel),
+      csvField(r.contractLabel),
       r.statusLabel,
       r.premiumPct ?? "",
       p.execPnlPct ?? "",
@@ -198,13 +253,13 @@ export function legacyBoardExportCsv(rows: LegacyBoardTableRow[]): string {
       p.tierLabel ?? "",
       p.rank ?? "",
       p.direction ?? "",
-      JSON.stringify(p.stopLevel ?? ""),
-      JSON.stringify(p.targetLevel ?? ""),
-      JSON.stringify(p.entryRange ?? ""),
+      csvField(p.stopLevel ?? ""),
+      csvField(p.targetLevel ?? ""),
+      csvField(p.entryRange ?? ""),
       p.morningStatus ?? "",
       p.gatePromoted ? "yes" : "",
-      JSON.stringify(p.riskNote ?? ""),
-      JSON.stringify(factors),
+      csvField(p.riskNote ?? ""),
+      csvField(factors),
       r.timestamp,
     ].join(",");
   });

@@ -1,6 +1,10 @@
 import type { IChartApi, UTCTimestamp } from "lightweight-charts";
 import { lastSessionBars } from "@/features/vector/lib/vector-key-levels";
 import {
+  aggregateVectorBars,
+  type VectorTimeframeMinutes,
+} from "@/features/vector/lib/vector-bar-timeframes";
+import {
   centeredLiveVisibleLogicalRange,
   normalizeLogicalRange,
 } from "@/features/vector/lib/vector-candle-render";
@@ -109,4 +113,19 @@ export function wantsSessionOverviewViewport(
   liveFollowEnabled: boolean
 ): boolean {
   return viewport === "session" && !liveFollowEnabled;
+}
+
+/**
+ * Bar times the bead rail projects against — always the NEWEST ET session only.
+ *
+ * Seed bars carry multiple sessions while `trimHistoryToSession` cuts wall history to one; feeding
+ * the full multi-day grid makes every bucket land on the right sliver of the chart (beads look like
+ * sparse dots clustered on the right ~10%). Session-scoped times restore the Sep-3 full-width ribbons.
+ */
+export function sessionBarTimesFromMinuteBars(
+  minuteBars: readonly { time: number }[],
+  intervalMinutes: VectorTimeframeMinutes
+): number[] {
+  const session = lastSessionBars(minuteBars) as import("@/features/vector/lib/vector-bar-timeframes").VectorOhlcBar[];
+  return aggregateVectorBars(session, intervalMinutes).map((b) => b.time);
 }

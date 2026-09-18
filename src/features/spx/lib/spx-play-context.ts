@@ -11,11 +11,11 @@ import { suggestPlayStrike } from "@/features/spx/lib/spx-play-intel";
 import {
   CASH_OPEN_ET_MINS,
   getEarlyCloseMinutes,
-  isEtWeekday,
   isPastForceExitCutoff,
   isPastNoEntryCutoff,
 } from "@/features/spx/lib/spx-play-session-guards";
 import { etClock, etMinutes } from "@/features/spx/lib/spx-play-session-time";
+import { formatEtDate, isTradingDayEt } from "@/features/nighthawk/lib/session";
 
 export type SpxPlayDeskContext = {
   weighted_conflicts: number;
@@ -34,8 +34,18 @@ export type SpxPlayDeskContext = {
   suggested_option_type: "call" | "put" | null;
 };
 
+// isTradingDayEt (weekday AND not an NYSE holiday) gates all three countdowns below.
+// The prior gate was isEtWeekday (weekday only) — on a NYSE holiday that falls on a
+// weekday (e.g. Labor Day), that let these render live-looking countdowns
+// ("minutes_to_close": 97, "minutes_to_no_entry": 67, "minutes_to_force_exit": 82)
+// off a Date object with no session behind it at all, on a day the rest of the SPX
+// Slayer payload already reports "Session closed" / gates.blocks: ["Session closed"].
+// Confirmed live 2026-09-07 (Labor Day) via GET /api/market/spx/play. Same class of
+// bug already fixed elsewhere in this file's own isSpxRthActive comment (2026-07-03)
+// and in this cycle's other isTradingDayEt cron-gate fixes — this is the desk_context
+// display path, which none of those touched.
 function minutesToCashClose(now = new Date()): number | null {
-  if (!isEtWeekday(now)) return null;
+  if (!isTradingDayEt(formatEtDate(now))) return null;
   const etMins = etMinutes(now);
   const closeMins = getEarlyCloseMinutes(now) ?? etClock(16, 0);
   if (etMins < CASH_OPEN_ET_MINS) return null;
@@ -43,7 +53,7 @@ function minutesToCashClose(now = new Date()): number | null {
 }
 
 function minutesUntilNoEntry(now = new Date()): number | null {
-  if (!isEtWeekday(now) || isPastNoEntryCutoff(now)) return null;
+  if (!isTradingDayEt(formatEtDate(now)) || isPastNoEntryCutoff(now)) return null;
   const etMins = etMinutes(now);
   const earlyClose = getEarlyCloseMinutes(now);
   const cutoffMins =
@@ -53,7 +63,7 @@ function minutesUntilNoEntry(now = new Date()): number | null {
 }
 
 function minutesUntilForceExit(now = new Date()): number | null {
-  if (!isEtWeekday(now) || isPastForceExitCutoff(now)) return null;
+  if (!isTradingDayEt(formatEtDate(now)) || isPastForceExitCutoff(now)) return null;
   const etMins = etMinutes(now);
   const earlyClose = getEarlyCloseMinutes(now);
   const cutoffMins = earlyClose != null ? earlyClose - 10 : etClock(15, 45);

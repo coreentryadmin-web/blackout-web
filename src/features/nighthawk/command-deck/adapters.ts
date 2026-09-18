@@ -23,8 +23,8 @@ import {
 } from "@/lib/swing/entry-enterability";
 import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
-import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
-import type { SwingManageAction } from "@/lib/swing/manage";
+import { deriveSetupState } from "@/lib/swing/setup-state";
+import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
@@ -40,6 +40,7 @@ import type {
   TerminalPlay,
   ThesisLevel,
 } from "./types";
+import { readCortexView } from "@/lib/zerodte/pane";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
 import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
@@ -674,6 +675,18 @@ export interface HorizonDeckSource {
   //    reproduce the old literals exactly (see the honest-fallback comments in the adapter body). ──
   /** The dossier's actual pillar contributions (label + points), biggest lever first. */
   factors?: DeckFactor[];
+  /** Present-pillar count at commit, ONLY when the entry read was degraded — see TerminalPlay's
+   *  own field / live-plays.ts's `entryPresentPillarsFromFeatureVector` for the full history. */
+  entryPresentPillars?: number | null;
+  /** ONLY when the entry-time archetype classification was a near-tie — see TerminalPlay's own
+   *  field / live-plays.ts's `archetypeNearTieFromFeatureVector` for the full gap this closes. */
+  archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /** Entry-time contract-pick provenance against the flow magnet strike — see TerminalPlay's own
+   *  field / live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
+  /** The underlying's own signed favorable/adverse excursion since entry — see TerminalPlay's own
+   *  field / manage-sync.ts's `signedExcursionPct` for the full gap this closes. */
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
   /** Regime read (archetype label ± normalized regime pillar), or null when absent. */
   regime?: string | null;
   /** Thesis-health read from the swing thesis; when omitted it is DERIVED from `setupState` below. */
@@ -699,7 +712,11 @@ export interface HorizonDeckSource {
   liveStatus?: "OPEN" | "HOLD" | "TRIM" | null;
   /** Underlying price when the thesis was first flagged — WATCH track anchor. */
   flagUnderlyingPx?: number | null;
-  /** Optional live underlying for WATCH track (stock quote overlay). */
+  /** The live entry-trigger level — distinct from flagUnderlyingPx above, see horizon-plays.ts. */
+  entryTriggerUnderlyingPx?: number | null;
+  /** Structural invalidation level — the other leg deriveSetupState needs, see horizon-plays.ts. */
+  invalidationUnderlyingPx?: number | null;
+  /** Optional live underlying for WATCH track (stock quote overlay) — also the third deriveSetupState leg. */
   liveSpot?: number | null;
   /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
   entryPremium?: number | null;
@@ -712,11 +729,38 @@ export interface HorizonDeckSource {
   markAsOf?: string | null;
   /** Management engine action for live rows (manage.ts). */
   manageAction?: SwingManageAction | null;
+  /** The rung that decided manageAction (manage.ts) — see TerminalPlay's field for why this matters. */
+  manageReason?: SwingManageRung | null;
+  /** The full, specific prose reason behind `manageReason` (manage.ts's `verdict.reason`) — see
+   *  TerminalPlay.manageReasonDetail for the full history of why this exists. */
+  manageReasonDetail?: string | null;
+  /** Whether that rung is currently enforced (gate) vs advisory-only (un-graduated edge rung) — see
+   *  TerminalPlay's own field for the full history of why this exists. */
+  manageEnforced?: boolean | null;
+  /** Roll-candidate advisory (manage.ts's dte_migration/roll_intent) — see TerminalPlay's own field
+   *  for the full history of why this exists. */
+  rollCandidate?: { reason: string } | null;
   /** Ledger position id — disambiguates multiple closed rows on the same ticker. */
   positionId?: number | null;
   exitAt?: string | null;
   exitPnlPct?: number | null;
   closedReason?: string | null;
+  /** Raw entry_context.cortex JSONB (swing commit.ts:583 `cortexEntryContextFor`) — parsed
+   *  structurally via `readCortexView` below, never trusted raw. Undefined/null on a
+   *  pre-commit WATCH/lane candidate (Cortex only runs on committed rows), a pre-wire-in row,
+   *  or a non-SWING caller — honest absence, never fabricated (Largo contract §3 absence). */
+  cortex?: unknown;
+  /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal, echoed off the
+   *  dossier (`HorizonPlay.sectorLeadershipFacts`) — see `whyThisSetupSection`. Null/absent when no
+   *  benchmark resolved or not enough history. */
+  sectorLeadershipFacts?: {
+    benchmarkEtf: string;
+    benchmarkLabel: string;
+    kind: "industry" | "sector";
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct: number;
+  } | null;
 }
 
 /**
@@ -801,6 +845,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     (swingEnterability.action === "buy" || swingEnterability.action === "still_buy")
       ? swingEnterability.action
       : null;
+  // Same `swingEnterability` computation above already resolves whether the entry-validity
+  // deadline has passed (evaluateSwingEntryEnterability's `expired` flag) — it was previously
+  // discarded along with every other `dont_buy` reason when narrowing to `swingEntryAction`
+  // above. Carried through separately so swingActionDisplay can render EXPIRED instead of a
+  // generic WAIT pill (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past their own 2-5 day
+  // entry window with no member-facing distinction from a freshly-forming setup).
+  const watchEntryExpired = swingEnterability?.expired === true;
   const swingPreEntry =
     src.horizon === "SWING" &&
     !src.liveStatus &&
@@ -839,17 +890,50 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const occPrefixed = occ ? (occ.startsWith("O:") ? occ : `O:${occ}`) : null;
   const working = status === "OPEN" || status === "HOLD" || status === "TRIM";
   const mgmt = managementFor("SCALE_OUT", status, status === "WATCH" || status === "SKIP" ? null : livePnl);
-  const exitPolicy = buildTerminalExitLadder(
+  const rawExitPolicy = buildTerminalExitLadder(
     SWING_SCALE_OUT_POLICY,
     entry,
     fin(src.peakPremium) ?? (entry != null && markMid != null ? Math.max(entry, markMid) : null),
   );
+  // `fired` on buildTerminalExitLadder's ladder is a MECHANICAL peak-vs-level check, and for
+  // 0DTE that's fine because derivePlayStatus (marks-math.ts) makes the mechanical rule the
+  // status itself. Swing is different: manage-sync.ts gates a real scale-out behind an
+  // `enforced` flag (the PR-16 calibration ladder) specifically so a bare peak crossing can't
+  // "fabricate a scale-out that never happened" — a row can sit at HOLD long after its peak
+  // cleared the trim trigger. Reusing the raw mechanical ladder here made the Command Deck
+  // panel AND Ask Largo's play-brief both claim "Trim ladder ✓" / "all trims banked" for rows
+  // still fully exposed at HOLD (live repro 2026-09-10: NRG, peak +132.7%, still HOLD). Once
+  // `status` actually reaches TRIM the mechanical read is real again, so only gate the
+  // not-yet-enforced case.
+  const exitPolicy =
+    status === "TRIM"
+      ? rawExitPolicy
+      : { ...rawExitPolicy, trim_levels: rawExitPolicy.trim_levels.map((t) => ({ ...t, fired: false })) };
   const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
+  // Ask Largo standing mandate (#4076): a committed row's WATCH-lane dossier state (setupState)
+  // never survives the WATCH→COMMIT transition — src.setupState is structurally null for every
+  // live SWING position, permanently withholding computeSwingThesisHealth's persistence pillar.
+  // Once committed, entryTriggerUnderlyingPx/invalidationUnderlyingPx/liveSpot (live-plays.ts) give
+  // the same three legs deriveSetupState needs, so derive it fresh here instead of trusting a value
+  // that can never be populated for this row shape. WATCH rows are untouched (src.setupState already
+  // carries a real dossier read there; liveSpot/entryTriggerUnderlyingPx are only wired for committed
+  // rows today, so this branch is a no-op fallback to the existing behavior for them).
+  const liveSetupState =
+    working && src.liveSpot != null && src.entryTriggerUnderlyingPx != null
+      ? deriveSetupState(
+          { direction: src.direction },
+          {
+            price: src.liveSpot,
+            triggerPx: src.entryTriggerUnderlyingPx,
+            invalidationPx: src.invalidationUnderlyingPx ?? null,
+          },
+        )
+      : src.setupState;
   const thesisHealth = working
     ? computeSwingThesisHealth({
         direction: src.direction,
         status,
-        setupState: src.setupState,
+        setupState: liveSetupState,
         entryStatus: src.entryStatus,
         factors: src.factors,
         regime: src.regime,
@@ -907,10 +991,18 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     exitPolicy,
     thesisHealth,
     manageAction: src.manageAction ?? null,
+    manageReason: src.manageReason ?? null,
+    manageReasonDetail: src.manageReasonDetail ?? null,
+    manageEnforced: src.manageEnforced ?? null,
+    rollCandidate: src.rollCandidate ?? null,
+    underlyingExcursion: src.underlyingExcursion ?? null,
     // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to
     // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.
     factors: src.factors ?? [],
+    entryPresentPillars: src.entryPresentPillars ?? null,
+    archetypeNearTie: src.archetypeNearTie ?? null,
+    topFlowProvenance: src.topFlowProvenance ?? null,
     gates: [],
     regime: src.regime ?? null,
     thesisBreak: thesisBreakResolved,
@@ -933,6 +1025,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     markIsSync: src.markAsOf == null,
     trackPct,
     flagUnderlyingPx: flagPx,
+    entryTriggerUnderlyingPx: fin(src.entryTriggerUnderlyingPx),
     peak: peakDisplay,
     trough: troughDisplay,
     // FINDINGS 2026-08-06 (SEV-3, greeks never reached the desk): this was a hardcoded `null`, so the
@@ -948,6 +1041,8 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     entryStatus: src.entryStatus ?? null,
     servingSection: src.servingSection ?? null,
     swingEntryAction,
+    watchEntryExpired,
+    entryDeadline: swingEnterability?.deadlineIso ?? null,
     detectedAt: src.firstSeenAt ?? null,
     firstFlaggedAt: src.committedAt ?? null,
     committedAt: src.committedAt ?? null,
@@ -956,7 +1051,30 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     closedReason: src.closedReason ?? null,
     exitAt: src.exitAt ?? null,
     exitPnlPct: fin(src.exitPnlPct),
-    tierLabel: convictionFromScore(Math.round(src.score)),
+    // Honestly omitted, not computed: `HorizonDeckSource` (SWING/LEAPS) carries no pinned
+    // tier/conviction field, unlike the 0DTE (line ~542, `src.tier?.tier`) and Legacy (line
+    // ~1228, `src.tier?.tier ?? src.conviction`) adapters in this same file, which both source
+    // `tierLabel` from a real pinned tier. This call site used to fall back to
+    // `convictionFromScore` — the exact score->letter mapping `nighthawk-tiers.ts`'s own header
+    // comment documents as an empirically INVERTED ranking for the overnight product it was
+    // built for (A+ >=70 scored 0 wins/1 loss; B 40-54 scored +2.99% avg, the best performer).
+    // Borrowing Legacy's calibration onto swing's own, differently-shaped score distribution
+    // was never validated — and swing's own `swing-score-calibration.mjs` (PR #4716, first live
+    // run, 31-chain population) independently found swing's score is ALSO "SPREAD WITHOUT
+    // ORDER" against real outcomes (middle band 49-57 outperformed every high band 60-86).
+    // Displaying a confident A+/A/B/C letter grade computed from a score this lane's own tooling
+    // has already shown doesn't reliably rank outcomes is fabricated certainty, not signal —
+    // the same Largo product contract principle (`docs/audit/LARGO-PRODUCT-CONTRACT.md`, C6:
+    // "confidence must be omitted when a product cannot calibrate it") already governs the Ask
+    // Largo brief. `tierLabel: null` is an existing, already-tested state (see the Legacy
+    // adapter's own "missing conviction -> tierLabel null" test) — no UI change needed, this
+    // just stops asserting a real quality signal the SWING/LEAPS lane has no calibrated tier
+    // engine to back.
+    tierLabel: null,
+    sectorLeadershipFacts: src.sectorLeadershipFacts ?? null,
+    // Pinned Cortex evidence from entry_context.cortex — parsed structurally, honestly null
+    // when absent (pre-commit candidate, pre-wire-in row, or a malformed/foreign blob).
+    cortex: readCortexView(src.cortex ?? null),
   };
 }
 
@@ -1027,6 +1145,14 @@ function parseEntryMid(range: string | null | undefined): number | null {
   if (nums.length === 0) return null;
   if (nums.length === 1) return nums[0];
   return (nums[0] + nums[nums.length - 1]) / 2;
+}
+
+/** Parse `published_at` into a Date for resolveLegacyPlayOcc's year-inference anchor, or undefined
+ *  (falls back to real now) when absent/unparseable — never hands a NaN Date downstream. */
+function publishedAtRef(publishedAt: string | null | undefined): Date | undefined {
+  if (typeof publishedAt !== "string" || publishedAt.length === 0) return undefined;
+  const d = new Date(publishedAt);
+  return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
@@ -1153,7 +1279,11 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: contractLabel,
-    occ: resolveLegacyPlayOcc(src.ticker, src.options_play ?? null),
+    // Anchor OCC year-inference on the edition's own publish instant, not real wall-clock now —
+    // the Legacy calendar strip lets a member reopen an edition up to 14 trading days old, and
+    // re-resolving an already-expired play's bare "Mon DD" label against real "now" rolls it a
+    // full year forward (see resolveLegacyPlayOcc's own doc comment + option-contract-parse.ts).
+    occ: resolveLegacyPlayOcc(src.ticker, src.options_play ?? null, publishedAtRef(src.published_at)),
     rank: src.rank ?? null,
     score: rawScore != null ? Math.round(rawScore) : 0,
     status,
@@ -1218,6 +1348,13 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     contract: src.contract,
     archetype: src.archetype ?? null,
     subLane: src.subLane ?? null,
+    entryPresentPillars: src.entryPresentPillars ?? null,
+    archetypeNearTie: src.archetypeNearTie ?? null,
+    topFlowProvenance: src.topFlowProvenance ?? null,
+    // underlyingExcursion (manage-sync.ts's signedExcursionPct) is a LIVE per-tick management read
+    // (swing_position_snapshots.running_mfe/mae) — a CLOSED chain has no ongoing management tick,
+    // so SwingClosedDeckSource deliberately carries no such field; TerminalPlay's own field stays
+    // honestly null here rather than pretending a closed position still has one.
     firstSeenAt: src.firstSeenAt ?? null,
     committedAt: src.committedAt ?? null,
     entryPremium: src.entryPremium ?? null,
@@ -1228,5 +1365,6 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     exitAt: src.exitAt ?? null,
     exitPnlPct: src.exitPnlPct ?? null,
     closedReason: src.closedReason ?? null,
+    cortex: src.cortex ?? null,
   });
 }

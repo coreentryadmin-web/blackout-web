@@ -41,3 +41,24 @@ test("uw-cache-refresh's background dispatch is wrapped in runWithBackgroundUwSw
     "the old untagged call must be gone, not left alongside the new one"
   );
 });
+
+// Regression for the 2026-09-07 audit-sweep finding: EventBridge's own schedule
+// (cron(*/2 11-21 ? * MON-FRI *)) is a fixed-UTC weekday/hour window with NO holiday awareness, so
+// it fires unchanged on a market holiday that falls on a weekday — measured live on Labor Day
+// 2026-09-07: 44 runs in 90 minutes while the market was closed all day, each doing the full
+// UW/Polygon fan-out. cron-registry.ts already declares this job `market_hours_only: true`, but
+// nothing in the route actually enforced that — the registry's stated intent and the route's real
+// execution had quietly diverged.
+test("uw-cache-refresh gates on isEtCashRth (holiday-aware) before the redis/UW fan-out", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtCashRth \} from "@\/lib\/et-market-hours"/,
+    "must import the holiday-aware RTH gate, not reimplement a weekday-only check"
+  );
+  const authAt = routeSrc.indexOf("isCronAuthorized(req)");
+  const gateAt = routeSrc.indexOf("isEtCashRth()");
+  const redisAt = routeSrc.indexOf("getUwCacheRedis()", routeSrc.indexOf("export async function GET"));
+  assert.ok(authAt >= 0 && gateAt >= 0 && redisAt >= 0, "auth check, RTH gate, and redis fetch must all exist");
+  assert.ok(gateAt > authAt, "the RTH gate must run after the auth check");
+  assert.ok(gateAt < redisAt, "the RTH gate must run BEFORE the redis/UW fan-out — gating late still burns the fetch");
+});

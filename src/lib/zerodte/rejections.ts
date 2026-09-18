@@ -41,10 +41,16 @@ const ZERODTE_REJECTION_CURSOR_KEY = "zerodte_scan_rejection_cursor";
 
 type CursorEntry = { date: string; key: string };
 
-/** State-transition key for the per-ticker throttle — gate_failed + direction only
- *  (see module doc above for why the jittery numeric fields are excluded). */
-function rejectionStateKey(r: Pick<ZeroDteGateRejection, "gate_failed" | "direction">): string {
-  return JSON.stringify({ gate: r.gate_failed, direction: r.direction });
+/** State-transition key for the per-ticker throttle — gate_failed + direction + the FULL
+ *  set of failing gates (sorted, so order never matters), still excluding the jittery
+ *  numeric fields (see module doc above). The full-set inclusion (added 2026-09-09,
+ *  alongside blocks_json) is a real state change, not jitter — a candidate that starts
+ *  failing a second gate underneath its existing primary one is exactly the transition
+ *  the ablation/marginal-value analysis needs to see logged, not silently suppressed by
+ *  an unchanged primary code. */
+function rejectionStateKey(r: Pick<ZeroDteGateRejection, "gate_failed" | "direction" | "blocks">): string {
+  const blocks = Array.isArray(r.blocks) ? [...r.blocks].sort() : null;
+  return JSON.stringify({ gate: r.gate_failed, direction: r.direction, blocks });
 }
 
 async function loadRejectionCursor(today: string): Promise<Map<string, string>> {
@@ -117,6 +123,7 @@ export async function persistZeroDteRejections(rejections: ZeroDteGateRejection[
       first_seen: r.first_seen,
       last_seen: r.last_seen,
       reason: r.reason ?? null,
+      blocks: r.blocks ?? null,
     });
   }
   await saveRejectionCursor(today, cursor);
@@ -139,6 +146,8 @@ export type ZeroDteRejectionRow = {
   first_seen: string | null;
   last_seen: string | null;
   reason: string | null;
+  /** Every gate code that failed this evaluation — null on pre-2026-09-09 rows. */
+  blocks: string[] | null;
 };
 
 /** Read path shared by the Largo tool below (and any future admin surface):
@@ -184,6 +193,7 @@ export async function zeroDteRejectionsForLargo(ticker?: string, limit = 20): Pr
       ticker: r.ticker,
       observed_at: r.observed_at,
       gate_failed: r.gate_failed,
+      blocks: r.blocks,
       reason: r.reason,
       threshold: r.threshold,
       gross_premium: r.gross_premium,

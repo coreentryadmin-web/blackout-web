@@ -14,6 +14,11 @@ type MacroReportInput = {
   impact: "high" | "medium" | "low";
   estimate: string | null;
   days_until: number | null;
+  /** Minutes since ET midnight, "now" — lets buildWarnings tell an upcoming release from an
+   *  already-printed one on the SAME day (days_until alone is day-granularity only). Optional
+   *  so this stays a pure function testable without a clock: null falls back to the old
+   *  day-only behavior. */
+  now_et_minutes: number | null;
   correlation_rail: MeridianCorrelationRail;
   surprise: MeridianMacroSurprise | null;
   related_headlines: MeridianCatalystHeadline[];
@@ -147,12 +152,31 @@ function buildWatchList(input: MacroReportInput): string[] {
   return watch.slice(0, 7);
 }
 
+/** How long after the release's own clock time the "live or imminent" warning still applies —
+ *  matches meridian-event-brief.ts's own macroEventWindow() "+3h" convention for the same event,
+ *  so the warning and the displayed release window agree on what "still live" means. */
+const RELEASE_WARNING_POST_RELEASE_MIN = 180;
+
+/** days_until alone is day-granularity — "today" stays true from 00:00 to 23:59 ET, so a print
+ *  that released hours ago kept reading as "live or imminent" all evening. Once now_et_minutes
+ *  is available, gate on the release's own clock time too; missing time/clock data falls back to
+ *  the original day-only check rather than guessing. */
+function releaseIsStillLiveOrImminent(input: MacroReportInput): boolean {
+  if (input.days_until == null || input.days_until > 0) return false;
+  if (input.days_until < 0) return true; // unreachable from the real caller (clamped), kept for safety
+  if (!input.time || input.now_et_minutes == null) return true;
+  const [hh, mm] = input.time.split(":").map(Number);
+  if (!Number.isFinite(hh)) return true;
+  const releaseMinutes = hh * 60 + (Number.isFinite(mm) ? mm : 0);
+  return input.now_et_minutes <= releaseMinutes + RELEASE_WARNING_POST_RELEASE_MIN;
+}
+
 function buildWarnings(input: MacroReportInput): string[] {
   const warnings: string[] = [];
   if (input.impact === "high") {
     warnings.push("High-impact print — spreads widen and liquidity thins into the release");
   }
-  if (input.days_until != null && input.days_until <= 0) {
+  if (releaseIsStillLiveOrImminent(input)) {
     warnings.push("Release window is live or imminent — first print dominates, fades are dangerous");
   }
   const regime = (input.spx_positioning.gamma_regime ?? "").toLowerCase();

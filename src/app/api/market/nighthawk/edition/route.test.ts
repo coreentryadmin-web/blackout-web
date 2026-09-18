@@ -7,14 +7,20 @@ import { join } from "node:path";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
+// 2026-09-18: carry_until_close/stale resolution moved out of the route into
+// resolve-edition.ts (a DB-only shared core Largo's get_nighthawk_edition tool now uses too — see
+// resolve-edition.ts's own header comment). These two tests follow the logic to its new home; the
+// route itself now only passes `explicitDate` through to `resolveNighthawkEdition`.
+
 test("edition route: carry_until_close only when date param is omitted (not historical ?date=)", () => {
-  const src = read("src/app/api/market/nighthawk/edition/route.ts");
-  assert.match(src, /const explicitDate = req\.nextUrl\.searchParams\.get\("date"\)/);
-  assert.match(src, /!explicitDate &&[\s\S]*carry_until_close = true/);
+  const routeSrc = read("src/app/api/market/nighthawk/edition/route.ts");
+  assert.match(routeSrc, /const explicitDate = req\.nextUrl\.searchParams\.get\("date"\)/);
+  const resolverSrc = read("src/features/nighthawk/lib/resolve-edition.ts");
+  assert.match(resolverSrc, /!explicitDate &&[\s\S]*carry_until_close = true/);
 });
 
 test("edition route: latest fallback marks stale when served edition_for !== requested", () => {
-  const src = read("src/app/api/market/nighthawk/edition/route.ts");
+  const src = read("src/features/nighthawk/lib/resolve-edition.ts");
   assert.match(
     src,
     /if \(edition\.edition_for && edition\.edition_for !== editionFor\) \{\s*edition\.stale = true;/,
@@ -57,19 +63,102 @@ test("a non-finite edition age fails CLOSED", () => {
   // serve the latest edition as merely "stale". Verified: NaN comparisons are false either way.
   assert.equal(Number.NaN > 4, false);
   assert.equal(Number.NaN <= 4, false);
-  assert.match(read(ROUTE), /!Number\.isFinite\(edAge\) \|\| edAge > MAX_EDITION_AGE_DAYS/);
+  // 2026-09-18: moved into resolve-edition.ts along with the rest of resolveNighthawkEdition.
+  assert.match(
+    read("src/features/nighthawk/lib/resolve-edition.ts"),
+    /!Number\.isFinite\(edAge\) \|\| edAge > MAX_EDITION_AGE_DAYS/
+  );
 });
 
 test("a published edition with zero plays is flagged, and stays available", () => {
   // available MUST stay true — flipping it would show "publishes after the close" over a session
   // that already published, a worse lie than the one being fixed. The recap is real content.
-  assert.match(read(ROUTE), /function markNoPlays/);
-  assert.match(read(ROUTE), /edition\.available && edition\.plays\.length === 0/);
-  assert.match(read(ROUTE), /no_plays: true/);
+  // 2026-09-18: markNoPlays moved into resolve-edition.ts.
+  const resolverSrc = read("src/features/nighthawk/lib/resolve-edition.ts");
+  assert.match(resolverSrc, /function markNoPlays/);
+  assert.match(resolverSrc, /edition\.available && edition\.plays\.length === 0/);
+  assert.match(resolverSrc, /no_plays: true/);
   // Applied on BOTH published-row paths (exact-date hit and latest-fallback), not just one.
-  assert.equal((read(ROUTE).match(/markNoPlays\(/g) ?? []).length, 3, "definition + both return paths");
+  assert.equal((resolverSrc.match(/markNoPlays\(/g) ?? []).length, 3, "definition + both return paths");
 });
 
 test("pre-publish empty shells are not cached (ops-collect false-positive guard)", () => {
   assert.match(read(ROUTE), /shouldCache:.*available !== false/s);
+});
+
+// ── 2026-09-08 live incident: a maxBlockMs timeout fallback was indistinguishable from a
+// genuinely quiet day ──────────────────────────────────────────────────────────────────────
+//
+// Observed live: one request mid-session (well before close, with a real published edition
+// confirmed live moments before and after) returned `available:false, edition_for:<tomorrow>,
+// plays:[]` — the bare `emptyEdition()` shape. `resolveNighthawkEdition` never got a chance to
+// return its own honest "nothing published" result; the SWR cache's `maxBlockMs` raced the real
+// computation and lost, so the caller only ever saw the FALLBACK. A bare `emptyEdition()` fallback
+// is indistinguishable from a confirmed empty day — the exact "absence read as fact" class this
+// route otherwise guards against (see the `?date=` and `no_plays` tests above).
+
+test("a maxBlockMs timeout fallback is a distinct function, not a bare lastGoodEdition ?? emptyEdition() inline", () => {
+  const src = read(ROUTE);
+  assert.match(src, /function timeoutFallbackEdition/, "the timeout fallback must be its own named function, not duplicated inline");
+  assert.equal(
+    (src.match(/fallback: async \(\) => timeoutFallbackEdition\(editionFor\)/g) ?? []).length,
+    2,
+    "both withServerCache calls (fire-and-forget + blocking) must use the same timeout fallback"
+  );
+  // The bug-shape regex it replaces must be gone, not just aliased.
+  assert.doesNotMatch(src, /fallback: async \(\) => lastGoodEdition \?\? emptyEdition\(editionFor\)/);
+});
+
+test("timeoutFallbackEdition: no prior good read in this process → degraded, not a bare empty shell", () => {
+  const src = read(ROUTE);
+  assert.match(
+    src,
+    /return \{ \.\.\.emptyEdition\(editionFor\), degraded: true \};/,
+    "no lastGoodEdition to fall back on must stamp degraded:true — PlaybookBoard.tsx already has a dedicated notice for it"
+  );
+});
+
+// ── 2026-09-14: a lastGoodEdition captured for an earlier trading day was replayed on a timeout
+// as if it were today's board, unflagged ─────────────────────────────────────────────────────
+//
+// lastGoodEdition is a single process-wide var, not keyed by editionFor. A read captured just
+// before the midnight-ET day rollover (or from an unrelated ?date= lookup) had no reason to set
+// its own `stale` flag when it was originally resolved — its edition_for matched the date being
+// requested AT THAT TIME. Replaying it later, on a maxBlockMs timeout for a DIFFERENT editionFor,
+// without restamping staleness at serve time would present a prior session's plays as tonight's
+// live board — exactly the failure resolveNighthawkEdition's own `edition.edition_for !== editionFor`
+// check (a few lines up in this same file) exists to prevent on its normal path.
+
+test("timeoutFallbackEdition: a lastGoodEdition for a DIFFERENT editionFor is restamped stale at serve time", () => {
+  const src = read(ROUTE);
+  assert.match(
+    src,
+    /if \(lastGoodEdition\.edition_for && lastGoodEdition\.edition_for !== editionFor\) \{\s*return \{ \.\.\.lastGoodEdition, stale: true, served_for: lastGoodEdition\.edition_for \};\s*\}/,
+    "a cached last-good read for an earlier trading day must not replay unflagged as tonight's board"
+  );
+});
+
+// ── 2026-09-16: lastGoodEdition froze at this process's FIRST successful resolve, not its LATEST
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// lastGoodEdition is documented (see its own comment block above) as "this process's own last
+// successful read". But it was only ever assigned inside the `else` of `if (instant)` — the
+// cold-cache-miss branch. Once the cache is warm (normal operation, TTL 60s, SWR staleness ceiling
+// 10min), essentially every request takes the `if (instant)` fast path instead, which fired its
+// background refresh but discarded the resolved value with a bare `.catch(() => undefined)`. So in
+// a long-lived replica under continuous traffic, lastGoodEdition never advanced past whatever this
+// process's very first successful resolve was — meaning a maxBlockMs timeout hours into the
+// process's life would replay a snapshot missing every pull/outcome overlay applied since boot.
+
+test("the peekServerCache-hit fast path also refreshes lastGoodEdition, not only the cold-miss branch", () => {
+  const src = read(ROUTE);
+  const instantStart = src.indexOf("const instant = await peekServerCache");
+  const instantEnd = src.indexOf("return NextResponse.json(roundFloats(instant)");
+  assert.ok(instantStart >= 0 && instantEnd > instantStart, "could not locate the peekServerCache fast-path block");
+  const instantBlock = src.slice(instantStart, instantEnd);
+  assert.match(
+    instantBlock,
+    /\.then\(\s*\(edition\)\s*=>\s*\{\s*if\s*\(edition\.available !== false\)\s*lastGoodEdition\s*=\s*edition;\s*\}\s*\)/,
+    "the fast-path background refresh must keep lastGoodEdition current the same way the cold-miss branch does"
+  );
 });

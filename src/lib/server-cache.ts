@@ -231,7 +231,31 @@ export async function withServerCache<T>(
           return redisHit.value;
         }
       }
-      if (opts.fallback) return opts.fallback() as Promise<T>;
+      if (opts.fallback) {
+        // BUG (found live 2026-09-16): this branch is reached when a build for `key` is
+        // already inflight (from a concurrent caller) AND there's no hit/Redis copy to
+        // serve — a fully cold key under concurrent load, e.g. right after a deploy cycles
+        // tasks or a session-date rollover. Unlike the cold-start path below (which races
+        // its own refreshCache() against maxBlockMs), this call to opts.fallback() was
+        // awaited with NO timeout at all. When the fallback itself does real work that can
+        // block (spx-desk-loader.ts's desk fallback calls loadSpxDeskPulse(), itself a
+        // withServerCache-wrapped builder that can hit a slow upstream), a caller landing
+        // here has no bound on how long it waits — measured live: /api/market/spx/desk
+        // returned in 42.8s against a documented 3s maxBlockMs cap (deskBootstrapMaxBlockMs()),
+        // a ~14x overshoot, while ALB TargetResponseTime showed a sustained sitewide avg
+        // climb to ~11-13s for several minutes. Race it the same way the path below does,
+        // so a slow fallback can never block longer than the caller's own configured cap.
+        const maxBlock = opts.maxBlockMs;
+        if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+          const racedFallback = await Promise.race([
+            opts.fallback() as Promise<T>,
+            new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+          ]);
+          if (racedFallback !== "timeout") return racedFallback;
+          throw new Error(`[server-cache] ${key}: cold miss (inflight, fallback) exceeded maxBlockMs`);
+        }
+        return opts.fallback() as Promise<T>;
+      }
     }
     return pending;
   }
@@ -244,7 +268,26 @@ export async function withServerCache<T>(
       new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
     ]);
     if (raced !== "timeout") return raced;
-    if (opts.fallback) return opts.fallback() as Promise<T>;
+    if (opts.fallback) {
+      // BUG, part 2 (found live 2026-09-16, same shape as the "already inflight" branch
+      // above): this is the COLD-START path — no build was already inflight, so `refresh`
+      // itself just raced against maxBlockMs and lost. Falling through to opts.fallback()
+      // here was ALSO awaited with no timeout, so a slow fallback (spx-desk-loader.ts's
+      // deskCacheOpts.fallback calls loadSpxDeskPulse(), itself a withServerCache-wrapped
+      // builder that can hit a slow Polygon fetch) could still block the caller far past
+      // maxBlockMs even after the fix above landed — confirmed live post-deploy: PR #5061
+      // shipped the "already inflight" fix, but /api/market/spx/desk still measured a 42.2s
+      // response afterward, because on a genuinely cold key (the far more common case — no
+      // concurrent request racing the same build) execution lands HERE, not in the inflight
+      // branch. Race it the same way.
+      const racedFallback = await Promise.race([
+        opts.fallback() as Promise<T>,
+        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+      ]);
+      if (racedFallback !== "timeout") return racedFallback;
+      // Fallback also blew the cap — fall through to stale/background-refresh below rather
+      // than waiting on it further.
+    }
     if (hit) return hit.value;
     // Never await the slow cold build after the cap — keep refreshing in background.
     refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
@@ -293,8 +336,36 @@ export async function serverCache<T>(
   return withServerCache(key, ttlMs, fn);
 }
 
-/** Read a cached value without invoking the loader (in-memory + Redis, capped read). */
-export async function peekServerCache<T>(key: string): Promise<T | null> {
+/**
+ * Read a cached value without invoking the loader (in-memory + Redis, capped read).
+ *
+ * BUG (found 2026-09-11, live on `/api/market/spx/play`): unlike `withServerCache`, this had NO
+ * staleness ceiling on the final fallback (`if (hit) return hit.value;`). Every "instant read, fire
+ * a background refresh" route (spx/play via `peekSpxPlayState`, nighthawk/edition, spx-desk-loader,
+ * flows-member-cache, flow-brief) calls this FIRST and returns whatever it gets immediately, with no
+ * freshness check of its own — the staleness bound was assumed to live here.
+ *
+ * `store` is a per-PROCESS in-memory Map (one per ECS replica), and `writeRedisCache` sets the Redis
+ * copy's TTL to the SAME short `ttlMs` as the in-memory entry (5s for spx-play-read) — so once ~5s
+ * pass with no fresh write anywhere, the Redis backstop expires too. A replica that only occasionally
+ * serves traffic then has nothing to refresh its own local entry, and this function's old fallback
+ * happily returned that entry's `.value` no matter how old — measured live: `as_of` timestamps 20+
+ * minutes stale, and three consecutive polls from the SAME client landing on different replicas
+ * returned three DIFFERENT scores (24, 10, then a correctly-fresh 0), because each replica's local
+ * cache lagged independently with no shared floor.
+ *
+ * Fix: apply the identical `MAX_STALE_AGE_MS` ceiling `withServerCache` already enforces (see the
+ * "FIX 5a" comment above) to the LOCAL-fallback path here too — measured from the entry's own
+ * `refreshedAt`, not `expiresAt` (an entry can be long past its TTL while still well under the
+ * staleness ceiling; those two are deliberately different budgets). Once a locally-cached entry is
+ * older than the ceiling AND Redis has nothing newer, this now returns `null` instead of the stale
+ * value, so every caller's existing "peek → null → do a real blocking compute" fallback path (already
+ * the design in every route listed above) kicks in rather than silently handing out ancient data.
+ * `maxStaleMs` is overridable (default `MAX_STALE_AGE_MS`) purely so a regression test can exercise
+ * the ceiling without a real 10-minute wait; no caller currently overrides it.
+ */
+export async function peekServerCache<T>(key: string, opts?: { maxStaleMs?: number }): Promise<T | null> {
+  const maxStaleMs = opts?.maxStaleMs ?? MAX_STALE_AGE_MS;
   const now = Date.now();
   const hit = store.get(key) as CacheEntry<T> | undefined;
   if (hit && hit.expiresAt > now) return hit.value;
@@ -307,7 +378,7 @@ export async function peekServerCache<T>(key: string): Promise<T | null> {
     });
     return redisHit.value;
   }
-  if (hit) return hit.value;
+  if (hit && now - hit.refreshedAt <= maxStaleMs) return hit.value;
   return null;
 }
 

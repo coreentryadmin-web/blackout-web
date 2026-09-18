@@ -18,6 +18,8 @@ import {
   seedUwClusterHeartbeat,
 } from "@/lib/ws/socket-cluster-health";
 import { shouldBootDataSockets } from "@/lib/process-role";
+import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +35,19 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // EventBridge is weekday-only — on NYSE holidays this probe would boot WS managers and run health
+  // checks against a closed tape. force=1 bypasses for ops recovery (same pattern as swing-discovery).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("socket-health", started, payload).catch((err) => {
+      console.error("[cron/socket-health] logCronRun failed:", err instanceof Error ? err.message : err);
+    });
+    return NextResponse.json(payload);
   }
 
   let payload: {

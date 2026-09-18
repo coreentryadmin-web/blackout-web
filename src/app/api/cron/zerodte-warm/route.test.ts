@@ -32,10 +32,33 @@ test("zerodte-warm acquires a cross-replica overlap lock before dispatching", ()
 
 test("a lost overlap-lock race returns a skip response instead of dispatching a second scan", () => {
   assert.match(routeSrc, /skipped: true,\s*\n\s*reason: "previous zerodte warm still in flight/);
-  // The skip branch must return before reaching the dispatchWarm/after() call, not alongside it.
+  // The skip branch must return before reaching the dispatchWarm call, not alongside it.
   const skipIdx = routeSrc.indexOf('reason: "previous zerodte warm still in flight');
-  const dispatchIdx = routeSrc.indexOf("after(dispatchWarm)");
+  const dispatchIdx = routeSrc.indexOf("void dispatchWarm();");
   assert.ok(skipIdx > 0 && dispatchIdx > 0 && skipIdx < dispatchIdx);
+});
+
+// Regression (2026-09-08 live incident): `after()` was the ORIGINAL dispatch mechanism for the
+// background scan+persist work — and it silently, repeatedly failed to run to completion for
+// 3+ hours of live RTH, spanning a full production redeploy. `zerodte_scan_rejections` (this
+// work's own persisted output) took its last write at 14:23:33 UTC and never wrote again; only
+// 2 of ~36 recorded "ok" route responses that day had a matching `[cron/zerodte-warm] background
+// done` completion log. This ECS Fargate deployment is a long-lived standalone Next.js server —
+// `after()`'s reason to exist (keep a request's context alive past the response on a platform
+// that would otherwise tear it down) does not apply, so the fix drops the dependency entirely:
+// dispatch is now an unconditional, bare fire-and-forget call, not routed through `after()`.
+test("the background scan+persist dispatch does not depend on after() to run", () => {
+  assert.doesNotMatch(
+    routeSrc,
+    /import \{[^}]*\bafter\b[^}]*\} from "next\/server"/,
+    "after() must not be imported — it was the mechanism that silently failed to complete for 3+ hours live"
+  );
+  assert.doesNotMatch(routeSrc, /after\(dispatchWarm\)/, "dispatch must not be routed through after()");
+  assert.match(
+    routeSrc,
+    /\n  void dispatchWarm\(\);\n/,
+    "dispatch must be an unconditional, bare fire-and-forget call — always executed, never deferred"
+  );
 });
 
 test("the overlap lock fails OPEN on a Redis error rather than wedging the cron shut", () => {
@@ -107,7 +130,7 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
 
   const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
   const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
-  const dispatchIdx = routeSrc.indexOf("after(dispatchWarm)");
+  const dispatchIdx = routeSrc.indexOf("void dispatchWarm();");
   assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
   assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
   assert.ok(overlapClaimIdx < dispatchIdx, "overlap lock must still be checked before dispatch");
@@ -125,6 +148,29 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
     routeSrc,
     /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/,
     "the cooldown must expire on its own TTL, not be released early like the overlap lock"
+  );
+});
+
+test("a force=1 call OUTSIDE the extended warm window is throttled at a much wider floor than one made inside it", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
+    "must check the SAME holiday-aware window the in-app dispatchers already gate on"
+  );
+  assert.match(
+    routeSrc,
+    /OFF_WINDOW_FORCE_COOLDOWN_SEC = 300/,
+    "the off-window floor must be materially wider than the in-window 60s floor"
+  );
+  assert.match(
+    routeSrc,
+    /const effectiveCooldownSec = isEtExtendedWarmHours\(\)\s*\n\s*\? RERUN_COOLDOWN_SEC\s*\n\s*: OFF_WINDOW_FORCE_COOLDOWN_SEC;/,
+    "the floor actually used must depend on the window, not just exist as an unused constant"
+  );
+  assert.match(
+    routeSrc,
+    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,\s*\{ startedAt: started \},\s*effectiveCooldownSec\s*\)/,
+    "the cooldown claim must use effectiveCooldownSec, not the flat RERUN_COOLDOWN_SEC"
   );
 });
 

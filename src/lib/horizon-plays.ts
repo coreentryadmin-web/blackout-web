@@ -29,7 +29,7 @@ import {
 // as a type). These enrich a play with the OBSERVABLE swing state the serving router keys on.
 import type { SwingArchetype, SwingSubLane, SwingSetupState, SwingEntryState } from "./swing/taxonomy";
 import type { SwingServingSection } from "./swing/serving";
-import type { SwingManageAction } from "./swing/manage";
+import type { SwingManageAction, SwingManageRung } from "./swing/manage";
 
 /**
  * A whole-market candidate from discovery, with its full option chain attached.
@@ -99,6 +99,30 @@ export interface HorizonPlay {
   firstSeenAt?: string;
   /** Underlying price when the thesis was first flagged — WATCH track anchor (stock-level proxy). */
   flagUnderlyingPx?: number | null;
+  /**
+   * The actual entry-trigger level (setup-state.ts's `triggerPx` / entry-model.ts's `triggerPx` —
+   * both read `dossier.plan.entryUnderlyingPx`), distinct from `flagUnderlyingPx` above: the flag
+   * anchor is PINNED to the price when the thesis was first flagged and never moves, while this is
+   * the CURRENT live level a break/reclaim of would flip PRE_TRIGGER/FORMING to AT_TRIGGER/TRIGGERED
+   * — the two can diverge once a dossier refreshes its plan on a later scan pass. Neither was ever
+   * surfaced to the member as "the price that actually matters for entry" before this field existed
+   * (found live 2026-09-12: a member read "Flag anchor" as the entry level, which it is not).
+   */
+  entryTriggerUnderlyingPx?: number | null;
+  /**
+   * Structural invalidation level in underlying terms (setup-state.ts's `invalidationPx`) — the
+   * counterpart to `entryTriggerUnderlyingPx` above, needed to live-derive `setupState` for a
+   * COMMITTED position the same way the WATCH lane already does (a committed row's dossier state
+   * doesn't survive the WATCH→COMMIT transition, so this + `entryTriggerUnderlyingPx` + `liveSpot`
+   * let `deriveSetupState` be called fresh on every read instead of leaving `setupState` permanently
+   * null for live capital — Ask Largo standing mandate, #4076).
+   */
+  invalidationUnderlyingPx?: number | null;
+  /**
+   * Live underlying spot (the third leg `deriveSetupState` needs alongside the two levels above).
+   * Also read by the WATCH track overlay (`HorizonDeckSource.liveSpot`, adapters.ts).
+   */
+  liveSpot?: number | null;
   /** Live swing book — option entry/mark/P&L when this row is an OPEN ledger position. */
   entryPremium?: number | null;
   livePnlPct?: number | null;
@@ -118,8 +142,23 @@ export interface HorizonPlay {
   bucketGraduated?: boolean;
   /** Pillar contributions for the desk (label + points) — optional SWING enrichment. */
   factors?: Array<{ label: string; points: number }>;
+  /** SWING only, committed positions: present-pillar count at commit, ONLY when the entry read was
+   *  degraded (dossier.ts's dataQuality.degraded) — see live-plays.ts's
+   *  `entryPresentPillarsFromFeatureVector` for the full gap this closes. Null on a healthy entry. */
+  entryPresentPillars?: number | null;
   /** Regime / archetype label blend for the desk, or null when absent. */
   regime?: string | null;
+  /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark ETF/
+   *  label, name/group %-returns, delta) — echoed off the dossier. Null/absent when no benchmark
+   *  resolved or not enough history (honest absence, never fabricated). */
+  sectorLeadershipFacts?: {
+    benchmarkEtf: string;
+    benchmarkLabel: string;
+    kind: "industry" | "sector";
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct: number;
+  } | null;
   /** Thesis-health level for the desk — "unknown" when no setup read (never a fabricated intact). */
   thesisLevel?: "intact" | "warn" | "break" | "unknown";
   thesisNote?: string | null;
@@ -129,12 +168,121 @@ export interface HorizonPlay {
   liveStatus?: "OPEN" | "HOLD" | "TRIM";
   /** Management action for a live position (manage.ts) — drives MANAGING/SCALING_OUT/EXITING. */
   manageAction?: SwingManageAction;
+  /** The manage-sync rung that decided manageAction (manage.ts) — e.g. "expiry_risk" (thesis still
+   *  intact, time-based force-manage) vs "structural_stop"/"thesis_stop" (thesis actually broke).
+   *  Null when no manage-sync snapshot has fired yet. Lets narrative text state the REAL reason
+   *  instead of a generic "thesis or ladder fired" that is wrong whenever the real cause is a
+   *  theta-cliff/time-based exit with the thesis fully intact. */
+  manageReason?: SwingManageRung | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+   * computes a full, specific prose `reason` for every verdict alongside the bare rung name — e.g.
+   * the exact structural-stop breach ("underlying 145.20 ≤ structural stop 148.00 — LONG thesis
+   * broken in underlying terms") rather than just "structural_stop" — and `manage-sync.ts` persists
+   * it verbatim onto every snapshot's `event_json.reason`. `live-plays.ts`'s
+   * `manageObservablesFromEvent`, the sole reader of that event_json, only ever extracted the rung
+   * (`manageReason` above) — never this specific sentence — so play-brief-narrative.ts's
+   * sellReasonClause/trimReasonClause have always had to fall back to a generic canned phrase per
+   * rung (e.g. "— thesis broke", with no level/price) even though the real, specific reason was
+   * computed and persisted on the exact same tick. Null whenever no manage-sync snapshot has fired
+   * yet, or the field is absent/malformed (an older snapshot shape) — never a guessed reason.
+   */
+  manageReasonDetail?: string | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+   * always computes `dteMigration`/`rollIntent` — theta-vs-thesis-progress disproportion at low
+   * DTE, the SAME signal `roll.ts`'s executor actually acts on to auto-roll a still-valid thesis
+   * — and `manage-sync.ts` persists BOTH into every snapshot's `event_json` (`dte_migration`/
+   * `roll_intent`). But `live-plays.ts`'s `manageObservablesFromEvent`, the sole reader of that
+   * event_json, only ever extracted `action`/`rung`/`thesis_state` — never these two — so a
+   * position already flagged as a roll candidate (DTE inside the lane's migration horizon,
+   * premium decaying faster than thesis progress) gave a member ZERO warning before the roll
+   * executes. Command Deck has no UI for it either (grepped `src/features/nighthawk`: no hit).
+   * Same wiring-gap shape as the FINDINGS 2026-08-06 SEV-3 greeks bug and its Ask-Largo sibling
+   * fix (#5161, `play.greeks`) — data computed and persisted every tick, never read back out.
+   *
+   * `reason` is `rollIntent.roll === true` gating `dteMigration.reason`'s prose (the
+   * post-veto-authoritative "yes" — vetoed by a broken thesis or a hit structural stop, exactly
+   * as `roll.ts`'s own executor vetoes) — never `rollIntent.reason` verbatim, which still reads
+   * "(INTENT ONLY; execution deferred to PR-15)", a stale internal note from before PR-15 wired
+   * up live execution (`manage-sync.ts`'s own header: "PR-15 ROLL WIRING... executes a roll").
+   * Null whenever no snapshot has fired yet or the position isn't currently a roll candidate —
+   * never fabricated, and never shown as a false "not a candidate" line (absence is silence,
+   * matching this file's own null-honesty convention throughout).
+   */
+  rollCandidate?: { reason: string } | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): whether the rung that decided
+   * `manageAction` is currently ENFORCED — true always for the four capital-preservation gates
+   * (structural_stop/thesis_stop/expiry_risk/premium_stop), but for an EDGE rung (catalyst_shift,
+   * regime_shift, flow_decay, rel_strength_loss, vol_collapse, time_stop, add_eligible) only once
+   * that specific rung has graduated in the calibration ladder (manage.ts's `isEnforced`). Until
+   * graduation the ledger itself takes NO action on that rung (`latchSwingLiveStatus`, manage-
+   * sync.ts — only an enforced `profit_ladder` latches TRIM), so a member-facing recommendation
+   * built from an un-graduated edge rung is advisory only, not something the system will act on.
+   * `manageAction`/the "SELL"/"TRIM"/"BUY" recommendation badge previously carried no signal of
+   * this distinction — an un-graduated advisory rung read with identical weight to a hard gate.
+   * Null when no manage-sync snapshot has fired yet (never a fabricated true/false).
+   */
+  manageEnforced?: boolean | null;
   /** True when the thesis was observed this scan but has NOT cleared cross-session persistence. */
   persistenceObserved?: boolean;
   /** Honest reason the persistence gate has not promoted this name to WATCH yet. */
   persistenceGapReason?: string | null;
   /** V2 commit gates (G-S6/G-S14) that would block an open — stamped at discovery for honest BUY/WAIT UI. */
   commitGateBlockedBy?: string[];
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `archetype.ts`'s `classifyArchetype` always
+   * computes a decisiveness `margin` (topFit − secondFit) alongside the winning label, and
+   * `classificationMetaFromVerdict` pins that margin plus the ranked runner-up archetypes onto
+   * `entry_context`/`feature_vector.classification_margin`/`.secondary` at commit (commit.ts,
+   * discovery.ts) — captured specifically, per feature-vector.ts's own comment, "for later
+   * mis/secondary-classification analysis." Every play-brief consumer read the pinned `score`
+   * number and the `archetype_scores` blob's *primary* label off the same feature_vector
+   * (live-plays.ts/closed-plays.ts) but never the margin or the runner-up sitting right next to it
+   * — a member sees ONLY "Archetype: Breakout" with no signal that the classifier's own tie-break
+   * logic (MARGIN_EPS=0.05) treats this as a near-coin-flip against, say, Pullback continuation.
+   * That matters because scoring/gating/calibration all partition on this single label (feature-
+   * vector.ts's own header: "Calibration keys off `archetype`/`primary` ONLY"), so a razor-thin
+   * classification is a real, disclosed uncertainty the member has a right to see, not an internal
+   * scoring detail. Same shape as `entryPresentPillars` a few lines up: pinned every tick, never
+   * read back out until now.
+   * Deliberately null unless the margin actually clears the classifier's own near-tie bar
+   * (`ARCHETYPE_NEAR_TIE_MARGIN` in live-plays.ts, mirroring archetype.ts's own MARGIN_EPS) — a
+   * decisive classification renders nothing extra, matching this file's honest-absence discipline.
+   */
+  archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `dossier.ts`'s `SwingDossier.topFlowStrike`
+   * (the multi-day accumulation flow's magnet strike) is pinned onto every committed position's
+   * `top_flow_strike` column at commit (commit.ts) as "provenance for the contract pick" —
+   * `contract-ranker.ts`'s `rankSwingContracts` independently chooses the best contract by
+   * tradability×thesisFit (never influenced by the flow strike) and separately notes whether that
+   * pick happens to equal the flow strike, but neither the raw number nor the match fact was ever
+   * read back out anywhere in the serving/brief layer. See live-plays.ts's
+   * `topFlowProvenanceFromRow` for the full gap this closes. Null whenever either strike is
+   * unavailable — never a guessed provenance. `matchedPick` is recomputed from the two pinned
+   * strikes, not a second persisted boolean (there isn't one).
+   */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `manage-sync.ts`'s `signedExcursionPct`
+   * computes the UNDERLYING's own signed favorable/adverse excursion (%, direction-aware) since
+   * entry on EVERY management tick and persists it as `running_mfe`/`running_mae` — dedicated
+   * columns on `swing_position_snapshots`, also echoed into that tick's `feature_vector` blob
+   * (feature-vector.ts) for the trajectory studies (`studyTwoStagnantSessions`,
+   * `studyIvKillsGoodSetups`) to read. It answers a question distinct from anything already shown:
+   * "how far has the underlying itself moved in my favor / against me since I entered" — separate
+   * from the OPTION premium peak/P&L this brief already surfaces (a position can show modest
+   * premium P&L while the underlying quietly ran hard favorable and gave most of it back, or vice
+   * versa under IV effects). `fetchLatestSwingSnapshotEvents` (db.ts) selects only `event_json`/
+   * `thesis_state` off the latest snapshot row — `running_mfe`/`running_mae` sit right next to
+   * those on the same row and were never selected, so this real per-tick read never reached the
+   * serving/brief layer for a single open position. Null whenever the latest snapshot hasn't
+   * computed a usable excursion yet (fresh position, missing entry/spot) — never a fabricated 0%
+   * (signedExcursionPct's own honest-null convention, mirrored here).
+   */
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
 }
 
 /** The three lanes a candidate pool fans out into. */

@@ -691,7 +691,24 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       headline = `${label} · momentum long on ${trigger} → target ${tgt}`;
       thesis = `${input.regime?.posture === "short" ? "Short gamma amplifies the move" : "Trend is up"}: go WITH strength, not against it. ${brokeWall != null ? `A break of ${fmt(brokeWall)} runs — ` : ""}target the next wall, wider stop.`;
       entryZone = brokeWall != null ? `long on ${tf} close > ${fmt(brokeWall)}` : `long on strength / pullback hold`;
-      invalidation = brokeWall != null ? `${tf} close back < ${fmt(brokeWall)}` : flip != null ? `${tf} close < ${fmt(flip)}` : undefined;
+      // The flip-based fallback (no wall break in range) is only a real, not-yet-true invalidation
+      // level when the flip actually sits BELOW spot — a genuine downside line the long has to hold.
+      //
+      // "momentum-long" is reached two ways: the posture==="short" branch (spot is below the flip
+      // BY CONSTRUCTION — see vector-regime.ts — so flip > spot there), and the style==="position"
+      // EMA-stack override above, which fires on trend alone and does NOT require spot to be above
+      // the flip. When the override fires while the underlying regime is still genuinely "short"
+      // (flip > spot), naively reusing "close < flip" produced an already-breached invalidation —
+      // e.g. live GOOG 2026-09-11: spot 332.50, flip 363.47, invalidation printed "5m close < 363.47"
+      // while spot already sat ~30pts below that level. A trader reading that has no real stop, just
+      // a condition that was already true the moment the play was generated. Omit rather than
+      // fabricate when the flip is on the wrong side of spot for a downside line.
+      invalidation =
+        brokeWall != null
+          ? `${tf} close back < ${fmt(brokeWall)}`
+          : flip != null && flip < spot
+            ? `${tf} close < ${fmt(flip)}`
+            : undefined;
       break;
     }
     case "momentum-short": {
@@ -704,7 +721,16 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       headline = `${label} · momentum short on ${trigger} → target ${tgt}`;
       thesis = `${input.regime?.posture === "short" ? "Short gamma amplifies the move" : "Trend is down"}: go WITH weakness. ${brokeWall != null ? `A break of ${fmt(brokeWall)} accelerates — ` : ""}target the next wall, wider stop.`;
       entryZone = brokeWall != null ? `short on ${tf} close < ${fmt(brokeWall)}` : `short on weakness / lower-high`;
-      invalidation = brokeWall != null ? `${tf} close back > ${fmt(brokeWall)}` : flip != null ? `${tf} close > ${fmt(flip)}` : undefined;
+      // Mirror of the momentum-long fix above: "close > flip" is only a real, not-yet-true
+      // invalidation line when the flip sits ABOVE spot — the same style==="position" override can
+      // fire momentum-short off the EMA stack alone while the underlying regime is still "long"
+      // (flip < spot), which would otherwise print an already-breached upside invalidation.
+      invalidation =
+        brokeWall != null
+          ? `${tf} close back > ${fmt(brokeWall)}`
+          : flip != null && flip > spot
+            ? `${tf} close > ${fmt(flip)}`
+            : undefined;
       break;
     }
     case "pivot": {
@@ -747,7 +773,20 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   if (prox && prox.side === "flip" && prox.nearness !== "near") {
     starred.push(`Flip cross imminent — ${prox.callout}`);
   } else if (prox && prox.nearness !== "near" && (prox.side === "call" || prox.side === "put")) {
-    starred.push(`${prox.strike ? fmt(prox.strike) : ""} ${prox.side} wall ${prox.nearness} — ${prox.callout}`.trim());
+    // BUG FIX (2026-09-12): this used to PREPEND "{strike} {side} wall {nearness} —" ahead of
+    // `prox.callout` — but `deriveWallProximity` (vector-wall-proximity.ts) already builds callout
+    // as a complete sentence that names the same strike/side/"wall" itself (e.g. "Testing 332.50
+    // put wall (0.02% below) — dealers buy weakness; support unless it breaks on volume."). The
+    // prepended prefix duplicated that verbatim, producing an ungrammatical, doubled line — live
+    // repro: AAPL swing brief 2026-09-12 (Ask Largo's `vectorPlayCoaching`, which renders this
+    // exact starred entry unmodified) read "332.5 put wall at — Testing 332.5 put wall (0.02%
+    // below) — dealers buy weakness...". The unit tests below never caught this because their own
+    // `proximity()` test helper fabricates a short synthetic callout that never restates the wall
+    // — the real `deriveWallProximity` output was never exercised through this exact template.
+    // Fix: push the callout as-is. Nothing is lost — callout already states strike, side, "wall",
+    // and a precise distance %, which is strictly more informative than the coarse nearness label
+    // ("testing" vs "at") this used to prepend.
+    starred.push(prox.callout);
   }
   const topZone = nearestConfluenceZone(input.confluenceZones ?? [], spot);
   if (topZone && Math.abs(topZone.center - spot) / spot <= 0.005) {

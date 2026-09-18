@@ -1,39 +1,33 @@
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
-import type { VectorBoardCalendarBucket } from "@/features/nighthawk/lib/vector-board-table-utils";
+import { isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 
-/** Recent NY session dates (weekdays only) for the Legacy edition calendar strip. */
+/**
+ * Recent NY session dates (weekdays only) for the Legacy edition calendar strip.
+ *
+ * Anchored on the NEXT trading day, not literal wall-clock "now" — matching the edition API's own
+ * `editionFor = nextTradingDayEt(todayEt())` (edition/route.ts). Legacy publishes a next-day digest
+ * each evening: tonight's fresh edition is tagged with TOMORROW's date for the entire
+ * evening-to-midnight-ET window. Anchoring the walk-back on "now" meant that window's freshest
+ * edition (whose rows carry `sessionDate: editionFor`, one day ahead) never matched any date this
+ * function returned — silently dropping it from the whole calendar strip, though the pick table
+ * above it rendered those rows correctly, until the real calendar rolled over past midnight ET.
+ *
+ * Filters on `isTradingDayEt` (weekends AND NYSE market holidays), not a bare weekend check — a
+ * market holiday never has a real edition, so including it as a tile understated the "14 trading
+ * days back" this strip promises by one slot per holiday in the window (found 2026-09-14: the
+ * existing test fixture asserted 2026-09-07, Labor Day, as a valid session tile).
+ */
 export function legacyEditionSessionDates(count = 14, nowMs = Date.now()): string[] {
   const out: string[] = [];
-  let cursor = nowMs;
+  let cursor = new Date(`${nextTradingDayEt(todayEt(new Date(nowMs)))}T12:00:00`).getTime();
   let guard = 0;
   while (out.length < count && guard < count * 4) {
     guard += 1;
     const session = etSessionDate(cursor);
-    if (session) {
-      const dow = new Date(`${session}T12:00:00Z`).getUTCDay();
-      if (dow !== 0 && dow !== 6 && !out.includes(session)) {
-        out.push(session);
-      }
+    if (session && isTradingDayEt(session) && !out.includes(session)) {
+      out.push(session);
     }
     cursor -= 24 * 60 * 60 * 1000;
   }
   return out.reverse();
-}
-
-/** Calendar buckets for edition browsing — PnL fields are placeholders until record overlay lands. */
-export function legacyEditionCalendarBuckets(
-  dates: string[],
-  playCountByDate?: Map<string, number>
-): VectorBoardCalendarBucket[] {
-  return dates.map((session_date) => {
-    const n = playCountByDate?.get(session_date) ?? 0;
-    return {
-      session_date,
-      tone: "flat",
-      net_premium_pct: 0,
-      n,
-      winners: 0,
-      closed: 0,
-    };
-  });
 }

@@ -161,12 +161,16 @@ export function tideBias(tide: Record<string, unknown> | null): TideBias {
   return callPct > 55 ? "BULLISH" : callPct < 45 ? "BEARISH" : "NEUTRAL";
 }
 
+// No trailing period on any branch — callers own sentence-ending punctuation. buildMarketRecap's
+// `summary` template appends its own period (`${tide}. ${spx}.`); a period baked in here doubled
+// up into "Market tide unavailable.." whenever ctx.tide was null (recap_summary served that to
+// every member/Largo caller of GET /api/market/nighthawk/edition until this fix).
 function tideSummary(tide: Record<string, unknown> | null): string {
-  if (!tide) return "Market tide unavailable.";
+  if (!tide) return "Market tide unavailable";
   const call = Number(tide.call_premium ?? tide.total_call_premium ?? 0);
   const put = Number(tide.put_premium ?? tide.total_put_premium ?? 0);
   const total = call + put;
-  if (total <= 0) return "Market tide flat / no premium.";
+  if (total <= 0) return "Market tide flat / no premium";
   const callPct = (call / total) * 100;
   const bias = tideBias(tide);
   return `${bias} — calls ${callPct.toFixed(0)}% (${fmtPremium(call)}) vs puts ${fmtPremium(put)}`;
@@ -222,7 +226,7 @@ function formatEtfTides(ctx: MarketWideContext): string {
   const entries = Object.entries(ctx.etf_tides);
   if (!entries.length) return "ETF tides unavailable.";
   return entries
-    .map(([sym, tide]) => (tide ? `${sym}: ${tideSummary(tide)}` : `${sym}: n/a`))
+    .map(([sym, tide]) => (tide ? `${sym}: ${tideSummary(tide)}.` : `${sym}: n/a`))
     .join("\n");
 }
 
@@ -309,11 +313,16 @@ export function buildMarketRecap(ctx: MarketWideContext): {
           .join("; ")
       : "";
   const mag7Line = ctx.mag7_greek_flow?.headline ?? "";
+  // Round the same way formatMacroIndicators() above already does for this identical
+  // UwMacroIndicatorSnapshot field — this line went straight through with no rounding at all and
+  // printed raw provider floats ("GDP 23850.442 · CPI 333.918") in the member/Largo-facing
+  // recap_summary. Same "round at the data layer" class of bug CLAUDE.md already documents
+  // elsewhere (`7499.360000000001`), just a second, previously-unrounded call site.
   const macroLine =
     ctx.macro_indicators.length > 0
       ? ctx.macro_indicators
           .slice(0, 2)
-          .map((m) => `${m.label} ${m.latest_value ?? "—"}`)
+          .map((m) => `${m.label} ${m.latest_value != null ? m.latest_value.toFixed(2) : "—"}`)
           .join(" · ")
       : "";
   const summary = `${tide}. ${spx}.${ctx.spx_gap ? ` ${formatSpxGapContext(ctx.spx_gap)}.` : ""}${breadthLine ? ` Breadth: ${breadthLine}.` : ""}${mag7Line ? ` ${mag7Line}.` : ""}${macroLine ? ` Macro: ${macroLine}.` : ""} Leaders: ${leaders.map((s) => `${s.name} ${s.change_pct >= 0 ? "+" : ""}${s.change_pct.toFixed(2)}%`).join(", ") || "n/a"}.${netImpact ? ` Net impact: ${netImpact}.` : ""}${predictionsLine ? ` Predictions: ${predictionsLine}.` : ""}`;
@@ -327,6 +336,18 @@ export function buildMarketRecap(ctx: MarketWideContext): {
     sector_weakness: laggards.map((s) => `${s.name} ${s.change_pct.toFixed(2)}%`).join(" · ") || "n/a",
     catalysts: catalysts || "No major macro/earnings flagged.",
   };
+}
+
+// Real UW `/api/stock/{ticker}/flow-per-expiry` rows carry `call_premium`/`put_premium`
+// (separate string fields) — there is no single `premium`/`total_premium` field on this shape
+// (live-verified 2026-09-12). The old guess always evaluated to 0, so every "Flow by expiry"
+// line in the dossier text below (fed straight into the Legacy edition's Claude prompt via
+// buildClaudePrompt) silently read "$0" for every expiry regardless of real flow.
+export function flowByExpiryPremium(row: Record<string, unknown>): number {
+  return (
+    Number(row.call_premium ?? 0) + Number(row.put_premium ?? 0) ||
+    Number(row.premium ?? row.total_premium ?? 0)
+  );
 }
 
 export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCandidate): string {
@@ -389,8 +410,7 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
   if (dossier.flow_by_expiry.length) {
     const expLines = dossier.flow_by_expiry.slice(0, 4).map((r) => {
       const exp = String(r.expiry ?? r.expiration ?? "").slice(0, 10);
-      const prem = Number(r.premium ?? r.total_premium ?? 0);
-      return `${exp}: ${fmtPremium(prem)}`;
+      return `${exp}: ${fmtPremium(flowByExpiryPremium(r))}`;
     });
     if (expLines.length) lines.push(`Flow by expiry: ${expLines.join(" · ")}`);
   }

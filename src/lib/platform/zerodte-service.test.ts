@@ -216,11 +216,11 @@ test("livePnlPct: board ledger and Largo plays use identical rounding", async ()
   // never a client-side copy). The mocked ledger has one HOLD row → one open plan.
   assert.equal(board.ledger[0]!.expiry, null);
   assert.ok(board.governor, "payload carries the governor summary");
-  assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long" }]);
+  assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long", is_condor: false }]);
   assert.equal(board.governor!.halted, false);
   const { GOVERNOR_MAX_CONCURRENT_PLANS } = await import("../zerodte/governor");
   assert.equal(board.governor!.max_concurrent, GOVERNOR_MAX_CONCURRENT_PLANS);
-  assert.equal(board.governor!.max_session_stops, 3);
+  assert.equal(board.governor!.max_session_stops, 4); // GOVERNOR_MAX_SESSION_STOPS raised 3→4 on 2026-09-08
 });
 
 // ── P0 one-way commit door (fix/zerodte-status-latch) ─────────────────────────────
@@ -422,6 +422,57 @@ test("exit visibility: a stopped play with no trim tranches armed still pins P&L
   assert.equal(board.ledger[0]!.closed_reason, "stopped");
   assert.equal(board.ledger[0]!.live_pnl_pct, -50, "peak +10% never armed trim tranches");
   assert.equal(board.ledger[0]!.peak_pnl_pct, 10);
+});
+
+// FINDINGS: mfeCapturePct() divided a negative exit by a small positive peak with no guard,
+// producing nonsensical magnitudes like "captured -3200% of peak" for a play that round-tripped
+// past breakeven into a loss — a fabricated ratio, not a real "capture" fraction. Mirrors the
+// round-trip guard already shipped for swing plays (mfe-capture.ts's mfeCaptureOutcome).
+test("mfe capture: a round-trip to a loss withholds mfe_capture_pct rather than a blown-up ratio", async () => {
+  // entry 4.0, peak 4.05 (+1.25%), exit stamped -40% — a real round-trip past breakeven.
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 2.4,
+        peak_premium: 4.05,
+        trough_premium: 2.4,
+        status: "CLOSED",
+        entry_context: { exit: { pnl_pct: -40, peak_pnl_pct: 1.25, reason: "plan_stop", at: "2026-07-07T15:00:00.000Z" } },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.peak_pnl_pct, 1.25);
+  assert.equal(
+    board.ledger[0]!.mfe_capture_pct,
+    null,
+    "a negative exit against a tiny peak must never surface as a fabricated capture ratio",
+  );
+});
+
+test("mfe capture: a genuine gain-on-gain exit still computes a real capture ratio", async () => {
+  // entry 4.0, peak 6.0 (+50%), exit stamped +25% — a real partial capture of the peak move.
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 4.0,
+        last_mark: 5.0,
+        peak_premium: 6.0,
+        trough_premium: 4.0,
+        status: "CLOSED",
+        entry_context: { exit: { pnl_pct: 25, peak_pnl_pct: 50, reason: "plan_target_final", at: "2026-07-07T15:00:00.000Z" } },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.mfe_capture_pct, 50, "unchanged behavior for a real capture: 25/50 * 100");
 });
 
 /** The META-class row: peaked +87% (arming both trim tranches), then stopped at −50%. */

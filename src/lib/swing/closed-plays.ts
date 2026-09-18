@@ -7,8 +7,14 @@ import type { SwingPositionRow } from "../db";
 import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { buildSwingRecord } from "./record";
+import {
+  archetypeNearTieFromFeatureVector,
+  entryPresentPillarsFromFeatureVector,
+  topFlowProvenanceFromRow,
+} from "./live-plays";
 
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 function etYmd(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
@@ -37,6 +43,16 @@ export type SwingClosedDeckSource = {
   };
   archetype?: string | null;
   subLane?: string | null;
+  /** Present-pillar count at commit, ONLY when the entry read was degraded — see
+   *  live-plays.ts's `entryPresentPillarsFromFeatureVector` for the full gap this closes. */
+  entryPresentPillars?: number | null;
+  /** ONLY when the entry-time archetype classification was a near-tie — see
+   *  live-plays.ts's `archetypeNearTieFromFeatureVector` / horizon-plays.ts's
+   *  `HorizonPlay.archetypeNearTie` for the full gap this closes. */
+  archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /** Entry-time contract-pick provenance against the flow magnet strike, when both strikes are
+   *  known — see live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
   firstSeenAt?: string | null;
   committedAt?: string | null;
   entryPremium?: number | null;
@@ -46,6 +62,9 @@ export type SwingClosedDeckSource = {
   exitAt?: string | null;
   exitPnlPct?: number | null;
   closedReason?: string | null;
+  /** Raw entry_context.cortex JSONB — parsed structurally by the adapter (readCortexView),
+   *  never trusted here. Carries the Cortex evidence pinned at commit, when one exists. */
+  cortex?: unknown;
 };
 
 function closedReasonFromRow(row: SwingPositionRow): string | null {
@@ -79,6 +98,13 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
       : 0;
+  const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
+  const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
+  // Gated to the root leg only (roll_seq === 0) — see live-plays.ts's topFlowProvenanceFromRow call
+  // site for why a rolled leg's contract_strike (freshly re-picked) can't be honestly compared
+  // against top_flow_strike (carried forward unchanged from the original commit).
+  const topFlowProvenance =
+    (row.roll_seq ?? 0) === 0 ? topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike) : null;
   const exitPnl = fin(row.realized_pnl_pct);
   return {
     positionId: row.id,
@@ -102,6 +128,9 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     },
     archetype: row.archetype,
     subLane: row.sub_lane,
+    entryPresentPillars,
+    archetypeNearTie,
+    topFlowProvenance,
     firstSeenAt: row.first_seen_at,
     committedAt: row.committed_at,
     entryPremium: row.entry_premium,
@@ -111,6 +140,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     exitAt,
     exitPnlPct: exitPnl,
     closedReason: closedReasonFromRow(row),
+    cortex: row.entry_context?.cortex ?? null,
   };
 }
 
@@ -131,15 +161,57 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     if (!src || seen.has(src.positionId)) continue;
     seen.add(src.positionId);
     const compositePnl = record.composite.worstLegPnlPct;
+    // BUG FIX (2026-09-13, Ask Largo standing mandate, live repro NFLX#12/WULF#13/IGV#16/WULF#17/
+    // PYPL#24): `record.composite.outcome` is deliberately conservative — `isSwingWin` requires
+    // `pnl > 0`, so a leg that closed at EXACTLY its entry price (pnl === 0, a true flat/breakeven
+    // close, not a rounding artifact) makes `allLegsWon` false, which the composite unconditionally
+    // reports as `"loss"` (record.ts's own "preserved-loss invariant" — a leg that didn't WIN is
+    // treated as not-won for win-rate purposes, a defensible, intentionally strict scoring choice
+    // this fix does NOT change). But this function then mapped `"loss"` straight to the closedReason
+    // LABEL `"stopped"` — which is not conservative, it's factually wrong: "stopped" means a
+    // stop-loss actually fired, and a position that closed unchanged from entry never triggered one.
+    // All five live examples confirmed `entryPremium === peakPremium === troughPremium` (the premium
+    // never moved even a cent across the whole holding period) yet displayed "stopped" — misleading
+    // members reading trade history, and silently corrupting win-rate/track-record math that reads
+    // `closedReason` as a stop-vs-target signal. The sibling single-leg mapper (`closedReasonFromRow`
+    // just above) already gets this right with a real three-way split (target/stopped/flat) — this
+    // brings the chain-composite path in line with it, changing ONLY the label text for the exact-0
+    // case, not the win/loss scoring semantics `record.ts` documents as intentional.
     const compositeReason =
       record.composite.outcome === "win"
         ? "target"
         : record.composite.outcome === "loss"
-          ? "stopped"
+          ? compositePnl === 0
+            ? "flat"
+            : "stopped"
           : src.closedReason;
+    // BUG FIX (2026-09-15, Ask Largo standing mandate, forensic batch 31, live repro INTC:30/35):
+    // `exitPnlPct` above is the chain-COMPOSITE worst-leg P&L (by design — the preserved-loss
+    // invariant, record.ts's own file header), but `entryPremium`/`peakPremium`/`troughPremium`
+    // come from `src`, which is the TERMINAL leg only (`closedDeckSourceFromRow(terminal)` above).
+    // Whenever the worst leg is an EARLIER leg (a rolled chain where the parent lost more than the
+    // child), those two halves describe different legs entirely — live: INTC's served row paired
+    // leg 1's own price bounds (entry 2.26 -> peak 2.84, i.e. "+25.7% at peak") with leg 0's -40.83%
+    // realized loss, so peak-vs-entry computed a POSITIVE 25.7% next to a reported -40.83% exit, and
+    // that "peak" chronologically postdates the loss it's shown beside (leg 1 didn't exist until
+    // leg 0's roll). Downstream, `primaryReturnPct` (play-card-display.ts) prefers `peak` as the
+    // CLOSED-tab headline number, so this fabricated a green "+25.7%" card for a chain whose real
+    // worst outcome was a loss. The single-leg play-brief path (`play-brief-resolve.ts`) already
+    // avoids this by construction (it never applies the chain-composite override) — this brings the
+    // list-view/Closed-tab path in line: when the worst leg isn't the terminal leg, the terminal's
+    // own price bounds don't correspond to the P&L being reported, so omit them (honest omission,
+    // per this codebase's own absence principle) rather than pair a real number with the wrong leg's
+    // journey. `primaryReturnPct` already has a clean fallback to the actual exit P&L when peak is
+    // null (play-card-display.ts:72-73), so this is a safe no-crash path, not just a null-check.
+    const terminalPnl = fin(terminal.realized_pnl_pct);
+    const worstLegIsTerminal =
+      compositePnl != null && terminalPnl != null && round2(terminalPnl) === compositePnl;
     out.push({
       ...src,
       exitPnlPct: compositePnl ?? src.exitPnlPct,
+      entryPremium: worstLegIsTerminal ? src.entryPremium : null,
+      peakPremium: worstLegIsTerminal ? src.peakPremium : null,
+      troughPremium: worstLegIsTerminal ? src.troughPremium : null,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
     });

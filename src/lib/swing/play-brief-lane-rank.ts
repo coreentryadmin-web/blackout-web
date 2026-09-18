@@ -14,9 +14,44 @@ export type LaneRankSnapshot = {
   topTicker: string | null;
   topScore: number | null;
   deltaFromMedian: number;
+  /** True when THIS play's own setupState is INVALIDATED — a rank-1/top-tier self-claim must not
+   *  be rendered as praise when the same brief elsewhere says the thesis already broke. */
+  selfInvalidated: boolean;
+  /** True when THIS play's own manageAction already calls for reducing (TAKE_PARTIAL/EXIT_RUNNER/
+   *  STOP_OUT/EXIT) rather than holding/adding — gates BOTH a below-median "confirm before adding
+   *  size" caution (backwards on a position the desk says to bank/exit) AND a rank-1/top-tier
+   *  self-praise claim (found live 2026-09-12: CRWD sat #1 of 90 on OPEN by raw score with its own
+   *  manage engine EXIT_RUNNER — "Lane leader ... Desk attention follows the top row" directly
+   *  contradicted the same brief's "Desk says TRIM ... protect what's left" three lines above it). */
+  selfReducing: boolean;
 };
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
+
+/** manageAction values whose own trade-manager verdict is "get out" — never a place to "add size".
+ *  Excluded from the named leader/comparison pointer below (found live 2026-09-12: CRWD sat #1 by
+ *  score at 86.5 while its own manage engine said EXIT_RUNNER, round-tripped from +129.7% peak to
+ *  -9.5%; NN's brief still named it "Leader: CRWD @ 86.5 — confirm before adding size", which reads
+ *  as "put money here" about a position the desk is actively telling members to exit). */
+const EXITING_MANAGE_ACTIONS = new Set(["EXIT", "EXIT_RUNNER"]);
+
+/** A WATCH-bucket peer whose own setup already broke is excluded from the named leader pointer for
+ *  the same reason as EXITING_MANAGE_ACTIONS above (found live 2026-09-12: SKHY sat #1 of 8 on WATCH
+ *  by raw score while its OWN brief's Entry section already read "Serving section: RESEARCH" /
+ *  "Setup: INVALIDATED" / "Thesis BREAK — structure invalidated... don't add size" — three sections
+ *  later the SAME brief's folded narrative still said "Lane leader — #1 of 8 on WATCH — Desk
+ *  attention follows the top row", directly contradicting its own disclosure). */
+const INVALIDATED_SETUP_STATES = new Set(["INVALIDATED"]);
+
+/** manageAction values that already mean "reduce/exit this position" rather than "hold or add" —
+ *  used to gate the below-median "confirm before adding size" caution (found live 2026-09-12: CG
+ *  sat #90/90 by raw entry-time score — a real +169.2%/+134.6% exec winner already on TRIM — and
+ *  its own brief still said "confirm before adding size" three lines after "Desk says TRIM ...
+ *  Bank partial into strength", backwards advice about a position the desk is telling the member to
+ *  bank profit on, not size into). Distinct from EXITING_MANAGE_ACTIONS (which gates the NAMED-peer
+ *  pointer, not this play's own caution) — TAKE_PARTIAL/STOP_OUT are included here because "trim" and
+ *  "stopped out" are just as much a not-adding-size signal as a full exit. */
+const REDUCE_MANAGE_ACTIONS = new Set(["TAKE_PARTIAL", "EXIT_RUNNER", "STOP_OUT", "EXIT"]);
 
 /** Parse strike/right from deck contract label, e.g. "110C · 13DTE". */
 export function parseDeckContractLabel(contract: string | null | undefined): {
@@ -48,10 +83,31 @@ function bucketFor(play: TerminalPlay): "open" | "watch" | "closed" {
 
 function rowInBucket(row: HorizonPlay, bucket: "open" | "watch" | "closed"): boolean {
   if (bucket === "closed") return false;
-  // HorizonPlay.status is PlayStatus ("COMMIT" | "WATCH") — DeckStatus OPEN/HOLD/TRIM
-  // only exist on the adapted TerminalPlay. Live committed rows are always "COMMIT".
-  if (bucket === "open") return row.status === "COMMIT";
-  return row.status === "WATCH";
+  // BUG FIX (2026-09-17, Ask Largo standing mandate): `row.status` ("COMMIT" | "WATCH") is NOT a
+  // lifecycle/section field — serving.ts's own `observablesFromHorizonPlay` documents it as
+  // `aboveFloor: play.status === "COMMIT"`, the MECHANICAL FLOOR-GATE result (has this candidate's
+  // score cleared `scoreFloor`?), orthogonal to whether it is an actually-open position. A
+  // pre-entry WATCH candidate whose score clears the floor (e.g. a name briefly AT_TRIGGER, then
+  // un-triggering back to WATCH) legitimately keeps `status: "COMMIT"` while its serving SECTION
+  // correctly reads "WATCH" — this is by design (`sectionForSwingPlay`'s own doc comment: "a real
+  // contract that hasn't cleared the commit floor" vs one that HAS, both still pre-entry). The old
+  // check here assumed `status === "COMMIT"` uniquely meant "a genuinely open/live position" (its
+  // own comment: "Live committed rows are always 'COMMIT'" — true, but not an iff), so it silently
+  // dropped every floor-cleared WATCH candidate from BOTH peer buckets at once: excluded from
+  // "watch" (status isn't literally "WATCH"), and never actually IN "open" either since it has no
+  // `liveStatus`. Live repro 2026-09-17: LITE (score 71, the WATCH lane's real leader) was invisible
+  // to XOM/TSM/AAPL's own "#1 of 3"/"#3/3" rank lines (all computed a 3-peer pool with no LITE),
+  // and LITE's OWN brief then read "Top-tier setup — #3/3" — its own row excluded from `sorted`
+  // (idx=-1) fell back to `rank = sorted.length + 1` (4), silently clamped to `total` (3) by this
+  // function's own `Math.min(rank, sorted.length)`, so a play whose row couldn't even be FOUND in
+  // its peer set rendered as confidently ranked dead-last, satisfying the "Top-tier" template's
+  // `rank <= 3` condition despite the pool never having actually included it. Fixed to use
+  // `liveStatus` (`HorizonPlay.liveStatus?: "OPEN" | "HOLD" | "TRIM"`, `serving.ts`'s own
+  // authoritative live-vs-pre-entry signal, first-checked by `sectionForSwingPlay` itself) instead
+  // of the floor-gate field: a row is "open" only when it actually IS a live position, "watch"
+  // whenever it is a pre-entry candidate regardless of floor state.
+  if (bucket === "open") return row.liveStatus != null;
+  return row.liveStatus == null;
 }
 
 /** Pure rank math — testable without DB. */
@@ -63,17 +119,68 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   if (peers.length < 2) return null;
 
   const sorted = [...peers].sort((a, b) => b.score - a.score);
-  const playScore = play.score ?? 0;
   const contractMatches = sorted.filter((r) => laneRowMatchesPlay(r, play));
   const idx =
     contractMatches.length === 1
       ? sorted.findIndex((r) => r === contractMatches[0])
       : sorted.findIndex((r) => r.ticker.toUpperCase() === play.ticker.toUpperCase());
   const rank = idx >= 0 ? idx + 1 : sorted.length + 1;
+  // BUG FIX (2026-09-17, Ask Largo standing mandate): `play.score` is TerminalPlay's own field,
+  // which every adapter that builds a play-brief's `play` (terminalPlayFromHorizon, adapters.ts)
+  // rounds to the nearest INTEGER for board display (`score: Math.round(src.score)`) — but
+  // `medianScore`/`topScore` below are computed from `laneRows: HorizonPlay[]`, which retain the
+  // raw score to one decimal. Live repro, AAPL WATCH brief, 2026-09-17: TerminalPlay.score read
+  // 26 (Math.round(25.5)) while the SAME brief's own "Why this setup" pillar breakdown (Catalyst
+  // 19.4 + Regime 4.2 + Flow 1.9) sums to the true 25.5 three sections earlier — "Below lane
+  // median — score 26 (-23.6 vs median)" used the rounded 26, landing the delta 0.5pt off the
+  // true -24.1 and silently contradicting the brief's own pillar sum a few sections up. `sorted`
+  // (built from the SAME laneRows array feeding medianScore/topScore) already contains the play's
+  // own row at `idx` whenever it's found — reuse ITS raw score instead of re-deriving one from a
+  // differently-rounded type, so playScore and medianScore are always compared at the same
+  // precision. Falls back to play.score only when the play's own row isn't present in laneRows
+  // (shouldn't happen in production — laneRows is expected to include every open/WATCH row — but
+  // keeps the function total for a caller that passes a partial list, e.g. tests).
+  const playScore = idx >= 0 ? (sorted[idx]?.score ?? play.score ?? 0) : (play.score ?? 0);
 
   const scores = sorted.map((r) => r.score);
-  const medianScore = scores[Math.floor(scores.length / 2)] ?? playScore;
-  const top = sorted[0];
+  // Standard even/odd median, not just "the middle sorted element" — for an EVEN peer count,
+  // `scores[floor(n/2)]` picks the lower of the two middle values instead of averaging them, which
+  // systematically UNDERSTATES the median (and correspondingly overstates every play's
+  // deltaFromMedian) whenever a lane happens to have an even number of live rows. Live repro
+  // 2026-09-14: TSM's WATCH lane had exactly 2 peers (TSM 59.2, ORCL 51.8) — the old
+  // `scores[floor(2/2)] = scores[1]` read 51.8 (the lower score) as "Lane median: 51.8", when the
+  // real median of a 2-element set is their average, 55.5. Rounded for the same reason
+  // deltaFromMedian is rounded below — averaging two floats can produce an IEEE754 artifact.
+  const n = scores.length;
+  const rawMedian =
+    n % 2 === 1
+      ? (scores[Math.floor(n / 2)] ?? playScore)
+      : ((scores[n / 2 - 1] ?? playScore) + (scores[n / 2] ?? playScore)) / 2;
+  const medianScore = Math.round(rawMedian * 10) / 10;
+  // Rank/median above stay computed against the FULL peer set — "where does this score fall" is
+  // honest regardless of exit state. The NAMED leader is different: it reads as "look at this one",
+  // so a peer whose own manage engine already says EXIT/EXIT_RUNNER is skipped in favor of the next
+  // best peer still actually held open. Falls back to the raw #1 if every peer is exiting (still
+  // shows something rather than nothing) — WATCH-bucket rows never carry manageAction, so this is a
+  // no-op there.
+  //
+  // BUG FIXED 2026-09-12 (Ask Largo standing mandate, live repro COIN, WATCH lane): `sorted`
+  // includes the play's OWN row (that's how `idx`/`rank` above are found at all), so a naive
+  // exiting/invalidated filter over the FULL sorted list can select the play's own row as the
+  // "leader" whenever it is the best real candidate but does not itself rank #1 by raw score —
+  // which happens exactly when the actual #1 is excluded (invalidated/exiting) and this play is
+  // the next-best. Live: SKHY sat #1 by raw score (59) but INVALIDATED; COIN (55.4) was next best
+  // and genuinely eligible, so COIN's own brief rendered "**#2 of 8** on WATCH lane... Desk leader:
+  // **COIN** @ **55.4**" — naming itself as the comparison peer to watch, which is meaningless (a
+  // "leader" pointer exists to point at something ELSE). `others` excludes the play's own matching
+  // row(s) up front so neither the eligible-candidate list nor its fallback can ever select self.
+  const others = sorted.filter((r) => !laneRowMatchesPlay(r, play));
+  const leaderCandidates = others.filter(
+    (r) =>
+      !EXITING_MANAGE_ACTIONS.has(r.manageAction ?? "") &&
+      !INVALIDATED_SETUP_STATES.has(r.setupState ?? ""),
+  );
+  const top = leaderCandidates[0] ?? others[0] ?? null;
 
   return {
     rank: Math.min(rank, sorted.length),
@@ -83,7 +190,12 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
     medianScore,
     topTicker: top?.ticker ?? null,
     topScore: top?.score ?? null,
-    deltaFromMedian: playScore - medianScore,
+    // Rounded here, not at each narrative call site — a raw float subtraction (e.g. 57.2 - 45.4)
+    // produces IEEE754 artifacts like 11.800000000000004 that read straight into the "vs median"
+    // narrative line unrounded (live repro: AMZN brief showed "+11.799999999999997 vs median").
+    deltaFromMedian: Math.round((playScore - medianScore) * 10) / 10,
+    selfInvalidated: play.setupState === "INVALIDATED",
+    selfReducing: REDUCE_MANAGE_ACTIONS.has(play.manageAction ?? ""),
   };
 }
 
@@ -103,15 +215,21 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
     lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**`);
   }
-  if (snap.rank === 1 && snap.total > 1) {
+  if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated && !snap.selfReducing) {
     lines.push("Top-ranked play in this bucket — size and attention follow score.");
+  } else if (snap.deltaFromMedian < -15 && snap.selfReducing) {
+    lines.push("Below median on entry-time score — not a sizing signal here; this position's own plan already calls for reducing, not adding.");
   } else if (snap.deltaFromMedian < -15) {
     lines.push("Below median — confirm thesis before adding size; leader may be absorbing flow.");
   }
 
+  // Largo C5 (2026-09-15, Ask Largo standing mandate): same bug class as thesisHealthSection
+  // (play-brief.ts) — `deltaFromMedian` is a direction-agnostic entry-score rank, not a market
+  // call, so mapping it to bullish/bearish meant a top-ranked SHORT badged the section green
+  // "Bullish," contradicting the envelope's own biasFromDirection(play.direction). No
+  // section-level bias for a non-directional quality signal.
   return {
     title: "Lane rank",
     body: lines.join("\n\n"),
-    bias: snap.deltaFromMedian >= 10 ? "bullish" : snap.deltaFromMedian <= -10 ? "bearish" : "neutral",
   };
 }

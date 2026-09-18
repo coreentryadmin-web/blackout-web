@@ -68,6 +68,51 @@ export type ScoredCandidate = {
   regime_adjustment?: number;
 };
 
+/**
+ * Frozen, point-in-time capture of a ScoredCandidate's full breakdown for
+ * nighthawk_candidate_snapshot (Night Hawk Legacy Signal Intelligence, Phase 1). Pure and
+ * additive -- reads every field ScoredCandidate carries, fabricates nothing, and is reused
+ * identically at every STAGE-4/5 capture point (scored / rank_governor / rank_final) so the
+ * same candidate's payload shape stays comparable across stages. Optional fields are omitted
+ * (undefined) rather than coerced to null/0 when ScoredCandidate itself never set them --
+ * JSON.stringify drops undefined keys, which is the correct "this dimension didn't fire"
+ * signal, distinct from a component that fired and scored exactly 0.
+ */
+export function scoredCandidateSnapshotPayload(c: ScoredCandidate): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    score: c.score,
+    direction: c.direction,
+    components: {
+      flow_score: c.flow_score,
+      tech_score: c.tech_score,
+      pos_score: c.pos_score,
+      news_score: c.news_score,
+      smart_money_score: c.smart_money_score,
+      fundamental_score: c.fundamental_score,
+      catalyst_score: c.catalyst_score,
+      catalyst_flags: c.catalyst_flags,
+      short_interest_score: c.short_interest_score,
+      wall_proximity_score: c.wall_proximity_score,
+      vex_alignment_score: c.vex_alignment_score,
+      skew_score: c.skew_score,
+      iv_adjustment: c.iv_adjustment,
+      anomaly_penalty: c.anomaly_penalty,
+      flow_conviction_bonus: c.flow_conviction_bonus,
+      regime_adjustment: c.regime_adjustment,
+    },
+    earnings_risk: c.earnings_risk,
+    confirming_signals: c.confirming_signals,
+    conviction: c.conviction,
+    regime_multiplier: c.regime_multiplier,
+    fundamental_block: c.fundamental_block,
+    fundamental_flags: c.fundamental_flags,
+    trading_halt: c.trading_halt,
+    sector: c.sector,
+    gov_penalty: c.govPenalty,
+  };
+}
+
 export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegimeContext {
   return {
     vix_iv_rank: ctx.vix_iv_rank,
@@ -237,17 +282,42 @@ export function scoreFundamentalTailwind(
  */
 export const CATALYST_CAP = 5;
 
+/** "today" / "yesterday" / "Nd ago" relative to `now`, or "" when `published` doesn't parse.
+ *  Benzinga catalyst flags ("guidance update", "insider transaction", ...) carried no freshness —
+ *  a member reading "Watch: guidance update" in tomorrow's thesis had no way to tell a headline
+ *  from last night apart from one already priced in three weeks ago, even though the dossier
+ *  already carries the real `published` timestamp (see CLAUDE.md's Largo product contract,
+ *  "freshness" is one of the ten required points for any surface exposed to Largo, and this same
+ *  thesis text is fed straight into the edition's Claude prompt). */
+export function catalystRecencySuffix(published: string, now: Date = new Date()): string {
+  const ts = Date.parse(published);
+  if (!Number.isFinite(ts)) return "";
+  const days = Math.floor((now.getTime() - ts) / 86_400_000);
+  if (days < 0) return "";
+  if (days === 0) return " (today)";
+  if (days === 1) return " (yesterday)";
+  return ` (${days}d ago)`;
+}
+
 export function scoreCatalystAwareness(
   catalysts: BenzingaCatalyst[] | null | undefined,
-  direction: "long" | "short"
+  direction: "long" | "short",
+  now: Date = new Date()
 ): { score: number; flags: string[] } {
   if (!catalysts || !catalysts.length) return { score: 0, flags: [] };
   let raw = 0;
   const flags: string[] = [];
 
+  // Catalysts arrive newest-first (fetchBenzingaCatalysts sorts by `published` desc), so the
+  // FIRST occurrence of a type is already the freshest one — flag it once, not once per headline.
   let binaryFlagged = false;
   let positiveFlagged = false;
+  let guidanceFlagged = false;
+  let insiderFlagged = false;
+  let offeringFlagged = false;
+  let shortFlagged = false;
   for (const c of catalysts) {
+    const recency = catalystRecencySuffix(c.published, now);
     switch (c.type) {
       case "binary":
         // FDA-type binary ahead — penalize a directional premium play regardless of side. Only
@@ -255,38 +325,50 @@ export function scoreCatalystAwareness(
         if (!binaryFlagged) {
           raw -= 3;
           binaryFlagged = true;
-          flags.push("binary event ahead (FDA) — directional premium is a coin-flip");
+          flags.push(`binary event ahead (FDA) — directional premium is a coin-flip${recency}`);
         }
         break;
       case "buyback":
         if (!positiveFlagged) {
           raw += direction === "long" ? 2 : -1;
           positiveFlagged = true;
-          flags.push("buyback authorization");
+          flags.push(`buyback authorization${recency}`);
         }
         break;
       case "m&a":
         if (!positiveFlagged) {
           raw += direction === "long" ? 2 : -1;
           positiveFlagged = true;
-          flags.push("M&A involvement");
+          flags.push(`M&A involvement${recency}`);
         }
         break;
       case "guidance":
         // Guidance is a known catalyst but direction-ambiguous from the channel alone — a tiny,
         // side-neutral awareness note only (no scoring weight), so we don't guess raise vs cut.
-        flags.push("guidance update");
+        if (!guidanceFlagged) {
+          guidanceFlagged = true;
+          flags.push(`guidance update${recency}`);
+        }
         break;
       case "insider":
-        flags.push("insider transaction");
+        if (!insiderFlagged) {
+          insiderFlagged = true;
+          flags.push(`insider transaction${recency}`);
+        }
         break;
       case "offering":
         // A dilutive offering is a headwind for a long; mild tailwind for a short.
-        raw += direction === "long" ? -2 : 1;
-        flags.push("offering (potential dilution)");
+        if (!offeringFlagged) {
+          raw += direction === "long" ? -2 : 1;
+          offeringFlagged = true;
+          flags.push(`offering (potential dilution)${recency}`);
+        }
         break;
       case "short":
-        flags.push("short-seller activity");
+        if (!shortFlagged) {
+          shortFlagged = true;
+          flags.push(`short-seller activity${recency}`);
+        }
         break;
       default:
         break;
@@ -650,7 +732,7 @@ export function scoreVexAlignment(
 export function scoreOptionsPositioning(
   dossier: {
     dark_pool?: { total_premium?: number; bias?: string } | null;
-    oi_change?: Array<{ oi_change?: number; option_type?: string }>;
+    oi_change?: Array<{ oi_change?: number; kind?: string }>;
     positioning?: PositioningSummary | null;
     strike_stacks?: FlowStrikeStack[];
     greek_flow?: TickerGreekFlowSummary | null;
@@ -692,11 +774,20 @@ export function scoreOptionsPositioning(
   // OI change only counts when it agrees with the thesis: rising call OI backs a
   // long, rising put OI backs a short. Row count alone (the old `length >= 3`) was
   // another presence-as-signal freebie.
+  //
+  // BUG FIX (2026-09-12): this used to read `r.option_type`, a field that does not exist
+  // on the real data. `fetchUwOiChange` (unusual-whales.ts) returns `OiChangeItem[]` shaped
+  // `{strike, oi_change, kind}` -- the option side lives in `kind`, never `option_type`. So
+  // `t` was always "" against real dossiers, `t.startsWith("c"/"p")` was always false, and
+  // this +2 bonus could never fire in production regardless of real OI-change direction --
+  // pure dead code. It went unnoticed because the unit tests below hand-built fixtures using
+  // `option_type` (matching the scorer's wrong assumption) instead of `kind` (matching the
+  // real API shape), so they validated internal consistency, not reality.
   const oi = dossier.oi_change ?? [];
   const alignedOi = oi.filter((r) => {
     const grew = (r.oi_change ?? 0) > 0;
     if (!grew) return false;
-    const t = (r.option_type ?? "").toLowerCase();
+    const t = (r.kind ?? "").toLowerCase();
     return direction === "long" ? t.startsWith("c") : t.startsWith("p");
   });
   if (alignedOi.length >= 2) score += 2;
@@ -724,13 +815,31 @@ function predictionAlignsWithDirection(
   return direction === "long" ? signal.direction === "bullish" : signal.direction === "bearish";
 }
 
-/** Net institutional direction: +1 net buying, -1 net selling, 0 unknown/flat. */
+/**
+ * Net institutional direction: +1 net buying, -1 net selling, 0 unknown/flat.
+ *
+ * BUG FIX (2026-09-12): the real UW `/api/institution/{ticker}/ownership` row (confirmed live --
+ * fetchUwInstitutionOwnership) carries the per-filing share delta as `units_changed` (trailing
+ * "d"), which this fallback chain never checked -- only the unaccented `units_change` was
+ * guessed. Real rows also never carry `action`/`transaction_type`/`type` (they're 13F ownership
+ * snapshots: name/units/units_changed/filing_date/report_date, no transaction-verb field at
+ * all), so the string-fallback branch below was equally dead. Together this made the ENTIRE
+ * institutional leg of scoreSmartMoney's +3/-2 bonus permanent dead code -- every real
+ * institutional_activity row scored net=0 regardless of how much real accumulation or
+ * distribution it actually reported.
+ */
 function institutionalNetSignal(rows: Record<string, unknown>[]): -1 | 0 | 1 {
   if (!rows.length) return 0;
   let net = 0;
   for (const row of rows) {
     const change = Number(
-      row.change ?? row.shares_change ?? row.units_change ?? row.change_in_shares ?? row.net_change ?? NaN
+      row.units_changed ??
+        row.change ??
+        row.shares_change ??
+        row.units_change ??
+        row.change_in_shares ??
+        row.net_change ??
+        NaN
     );
     if (Number.isFinite(change) && change !== 0) {
       net += change;
@@ -766,9 +875,22 @@ function congressSideWeight(row: Record<string, unknown>, direction: "long" | "s
 /**
  * Recency decay for congressional trades — more recent disclosures carry more signal.
  * 0-7 days: 1.0x, 8-14 days: 0.7x, 15-30 days: 0.4x.
+ *
+ * BUG FIX (2026-09-12): the real UW `/api/congress/recent-trades` row (confirmed live --
+ * fetchUwCongressTrades/fetchUwCongressUnusualTrades both read this endpoint) carries the
+ * filing/disclosure date as `filed_at_date`, which this fallback chain never checked. Congress
+ * members can legally disclose up to 45 days after a trade (STOCK Act), and often file close to
+ * that deadline, so `transaction_date` and `filed_at_date` routinely differ by weeks on a real
+ * row. Without `filed_at_date` in the chain, every real row fell through to `transaction_date`
+ * (still present as a later fallback) -- silently measuring staleness of the TRADE instead of
+ * the DISCLOSURE, the opposite of what this function's own docstring says it does. Live example
+ * (DASH, Gilbert Cisneros, pulled today): transaction_date 15 days old (0.4x) vs filed_at_date 1
+ * day old (1.0x) -- a 2.5x scoring difference on a disclosure that was, in the sense this
+ * function is supposed to measure, brand new.
  */
 function congressTradeDecayMultiplier(row: Record<string, unknown>, nowMs: number): number {
   const raw =
+    row.filed_at_date ??
     row.filed_at ??
     row.filed_date ??
     row.transaction_date ??
@@ -930,7 +1052,7 @@ export function scoreCandidate(
   tech: TechnicalCard | null,
   dossierExtras: {
     dark_pool?: { total_premium?: number; bias?: string } | null;
-    oi_change?: Array<{ oi_change?: number; option_type?: string }>;
+    oi_change?: Array<{ oi_change?: number; kind?: string }>;
     positioning?: PositioningSummary | null;
     strike_stacks?: FlowStrikeStack[];
     news_headlines?: string[];

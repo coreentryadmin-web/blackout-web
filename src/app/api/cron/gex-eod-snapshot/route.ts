@@ -18,6 +18,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
+import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { appendGexEodSnapshot } from "@/lib/providers/polygon-options-gex";
 
 export const runtime = "nodejs";
@@ -40,6 +42,17 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // Holiday guard: schedule is weekday-only; on NYSE holidays the ~4:10 PM ET fire would snapshot
+  // stale matrices as if they were a session close, corrupting day-over-day history_context.
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("gex-eod-snapshot", started, payload);
+    return NextResponse.json(payload);
   }
 
   const snapshotted: string[] = [];

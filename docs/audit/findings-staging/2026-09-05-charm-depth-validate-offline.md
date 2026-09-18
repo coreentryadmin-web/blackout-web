@@ -8,14 +8,14 @@
 | **Severity** | P2 observability |
 | **CLQ** | CLQ-017 |
 
-## Root cause
+### Root cause
 
 `polygon-options-gex.ts` computes dollar-CHARM via closed-form `charmPerShare()` but had no audit script mirroring `scripts/audit/gex-depth-validate.mjs`.
 
-## Fix
+### Fix
 
 Added `scripts/audit/charm-depth-validate.mjs` — offline grid validating `charmPerShare()` against independent Black-Scholes call-delta finite-difference (−∂Δ/∂T convention). Regression: `scripts/audit/charm-depth-validate.test.mjs` (2/2).
 
-## Deferred
+### Deferred
 
 Live Polygon chain cross-check (provider `charm.total` vs recomputed sum) — follow-up when RTH validation bandwidth allows; mirrors gex-depth live mode.

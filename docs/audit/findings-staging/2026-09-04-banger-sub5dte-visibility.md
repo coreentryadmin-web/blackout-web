@@ -1,4 +1,4 @@
-# Open Banger positions vanish once they age under 5 DTE
+## Open Banger positions vanish once they age under 5 DTE
 
 > **kind:** FINDING
 
@@ -8,13 +8,13 @@
 | **Area** | Swing Command / Bangers (Engine B) |
 | **Severity** | P1 |
 
-## Symptom
+### Symptom
 
 An OPEN/PARTIAL `banger_positions` row with real member capital in it disappeared from every
 view — Swing Command and (unchanged) the 0DTE board — once its contract aged down to 0–4 calendar
 DTE, days before it actually expired or was closed.
 
-## Root cause
+### Root cause
 
 `horizonPlayFromBangerPosition()` (`src/lib/swing/banger-lane-merge.ts`) gated an OPEN ledger row's
 visibility with the same window as pre-entry discovery admission: `HORIZONS.SWING.dteMin (5) <= dte
@@ -27,7 +27,7 @@ by Cursor's peer review on PR #3761 (`SWING-COMMAND-UNIFICATION.md` item 8 names
 behavior — "4-DTE weeklies stay on 0DTE unless spine changes" — but no code implemented it), and
 confirmed still present on `main` after PR #3761 and its Bugbot-fix follow-up (#3773) both merged.
 
-## Fix
+### Fix
 
 `horizonPlayFromBangerPosition()` now floors at `dte >= 0` (contract not yet expired) instead of
 `HORIZONS.SWING.dteMin`, keeping the `dte <= HORIZONS.SWING.dteMax` sanity ceiling. A row inside
@@ -38,7 +38,7 @@ unchanged and still floors at `HORIZONS.SWING.dteMin`, so the 0DTE/Swing dual-ad
 this file's neighbor-boundary is guarding stays intact; only continuity of an existing open
 position's *display* changed, not any admission gate.
 
-## Blast radius
+### Blast radius
 
 Only `horizonPlayFromBangerPosition()` — the pre-entry `horizonPlayFromBangerWatch()` path and
 `mergeBangerPositionsIntoSwingPlays()`'s merge/collision logic are untouched. Considered but
@@ -47,14 +47,14 @@ target, but the 0DTE board has no `banger_positions` read path today, and wiring
 architectural change (out of scope for a single-issue fix); left as a documented follow-up
 (`SWING-COMMAND-UNIFICATION.md` item 8).
 
-## Evidence
+### Evidence
 
 `src/lib/swing/banger-lane-merge.test.ts` — 4 new tests: an OPEN row at dte=2 stays visible and is
 tagged "closing soon"; an expired contract (dte<0) is still excluded; a contract beyond
 `HORIZONS.SWING.dteMax` is still excluded; a normal-window row (dte=8) is NOT tagged "closing soon".
 Confirmed RED pre-fix (git-stash) / GREEN post-fix. Full suite + `tsc --noEmit` clean on Node 20.
 
-## RTH validation
+### RTH validation
 
 See `docs/audit/MARKET-OPEN-VALIDATION.md` §29 — confirm a live OPEN banger position inside its
 final week before expiry still renders on Swing Command with a "closing soon" cue, rather than

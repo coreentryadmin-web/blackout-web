@@ -105,6 +105,35 @@ test("buildTierExportRow: replay fields surface frozen runner + executable grade
   assert.equal(out.peak_premium, 8.4);
 });
 
+test("buildTierExportRow: forwards discovery_origin from entry_context (BREAKOUT-origin A/B needs this to filter the population)", () => {
+  const out = buildTierExportRow(
+    row({ entry_context: { ...A_TIER_CTX, discovery_origin: ["BREAKOUT"] } })
+  );
+  assert.deepEqual(out.discovery_origin, ["BREAKOUT"]);
+});
+
+test("buildTierExportRow: discovery_origin unions (FLOW+BREAKOUT) forward as both entries, never collapsed", () => {
+  const out = buildTierExportRow(
+    row({ entry_context: { ...A_TIER_CTX, discovery_origin: ["FLOW", "BREAKOUT"] } })
+  );
+  assert.deepEqual(out.discovery_origin, ["FLOW", "BREAKOUT"]);
+});
+
+test("buildTierExportRow: discovery_origin is null (not []) for a pre-context row or a malformed field, never fabricated", () => {
+  assert.equal(buildTierExportRow(row({ entry_context: null })).discovery_origin, null);
+  assert.equal(
+    buildTierExportRow(row({ entry_context: { ...A_TIER_CTX, discovery_origin: "BREAKOUT" } }))
+      .discovery_origin,
+    null
+  );
+  // A non-string entry inside the array is dropped, not stringified or fabricated.
+  assert.deepEqual(
+    buildTierExportRow(row({ entry_context: { ...A_TIER_CTX, discovery_origin: ["BREAKOUT", 7] } }))
+      .discovery_origin,
+    ["BREAKOUT"]
+  );
+});
+
 test("buildTierExportRow: condor geometry + frozen policy for session replay", () => {
   const out = buildTierExportRow(
     row({

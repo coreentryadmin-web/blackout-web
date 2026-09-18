@@ -1,4 +1,4 @@
-# 2026-09-06 — G-6 calibration verdict ignored the CONDOR exemption the live gate enforces — FIXED
+## 2026-09-06 — G-6 calibration verdict ignored the CONDOR exemption the live gate enforces — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | 0DTE / SPX Slayer — gate calibration |
 | **PR** | (this branch) |
 
-## Root cause
+### Root cause
 
 `src/lib/zerodte/gates.ts`'s live G-6 enforcement (`evaluateZeroDteGates`, ~line 1095) is scoped
 `if (!isCondor)` — a delta-neutral condor has no directional side, so it structurally cannot
@@ -34,7 +34,7 @@ This is the same "population/cohort mismatch" bug class found repeatedly this se
 (Thermal, Helix, Vector, Meridian, Night Hawk scorer): two related computations reading the same
 underlying input under two different scopes.
 
-## Fix
+### Fix
 
 - Added `isCondor = input.play_type === "CONDOR"` inside `computeGateCalibration`, mirroring the
   live gate's own scoping, and short-circuit the G-6 verdict to `conflict: false, against: [],
@@ -48,7 +48,7 @@ underlying input under two different scopes.
   "unknown"` handling — so a condor row neither dilutes the would-block bucket (old bug) nor the
   would-pass bucket (the bug a naive `would_block: false` fix alone would have introduced).
 
-## Evidence
+### Evidence
 
 - New tests, RED before / GREEN after (`git stash` on `gates.ts` + `calibration.ts`, tests kept):
   - `gates.test.ts`: "G-6 calibration: a CONDOR correlated-and-opposed at a low score is NOT
@@ -59,7 +59,7 @@ underlying input under two different scopes.
 - `tsc --noEmit`: clean.
 - Full `npm test` (Node 20): pending in this PR's evidence trail (see push).
 
-## Blast radius
+### Blast radius
 
 - `ZeroDteConflictCalibration` gained one required field (`applicable`). Only one construction
   site in the codebase (`computeGateCalibration` itself) — checked via repo-wide grep. Existing
@@ -71,7 +71,7 @@ underlying input under two different scopes.
 - No change to the live gate's own enforcement (`evaluateZeroDteGates`'s G-6 block) — this fix is
   entirely in the calibration/diagnostic path, which never blocks a real commit.
 
-## Fix rationale
+### Fix rationale
 
 Fixing only at the `gateVerdictOf` consumption layer (e.g. by inferring condor from
 `entry_context.play_type` there) would have left the persisted `gate_calibration_json` blob itself
@@ -81,7 +81,7 @@ the live gate never blocked). Fixing at the source (`computeGateCalibration`) an
 change as the belt-and-suspenders non-observation handling that the existing G-4 pattern already
 established as the house convention.
 
-## Market-open validation
+### Market-open validation
 
 Next commit-time cycle: spot-check a fresh PIN-sourced condor's `gate_calibration_json.g6_conflict`
 via `GET /api/market/zerodte/record` (or an admin export) — it should read

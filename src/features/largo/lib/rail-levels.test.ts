@@ -78,6 +78,8 @@ test("read age: unknown stays unknown, never 0", () => {
   assert.equal(readAgeSeconds("2026-08-10T13:59:18.000Z", now), 42);
   assert.equal(readAgeSeconds(null, now), null);
   assert.equal(readAgeSeconds("not a date", now), null);
-  // Server clock slightly ahead is skew, not a read from the future.
+  // Small clock skew within tolerance clamps to 0.
   assert.equal(readAgeSeconds("2026-08-10T14:00:03.000Z", now), 0);
+  // Far-future stamp is unusable, not "0s fresh" (Largo C2).
+  assert.equal(readAgeSeconds("2026-08-10T14:10:00.000Z", now), null);
 });

@@ -1,4 +1,4 @@
-# 2026-09-04 — `stock-candle-store` REST session-open seed could stamp the new ET session with yesterday's `prev_close` — FIXED
+## 2026-09-04 — `stock-candle-store` REST session-open seed could stamp the new ET session with yesterday's `prev_close` — FIXED
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Surface** | `src/lib/ws/stock-candle-store.ts` — `seedSessionOpenIfNeeded()` |
 | **Status** | FIXED |
 
-## Root cause
+### Root cause
 
 `seedSessionOpenIfNeeded()` lazily fires a REST snapshot fetch to seed the authoritative
 `session_open` anchor (`prev_close`) for a demanded ticker, then applies it in a `.then()`
@@ -44,7 +44,7 @@ field comment, and the comment directly above `if (s.openSource === "") { ... "w
 the new session's `change_pct` — every subsequent `computeChangePct(close, sessionOpen)` for that
 ticker is computed against the wrong denominator until the *next* rollover.
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 Added a regression test that fakes `Date` (`t.mock.timers.enable({ apis: ["Date"], ... })` —
 `recordStockTick`'s rollover check reads the real ET wall clock via `todayEtYmd()`, with no
@@ -66,7 +66,7 @@ faking `Date` itself) to reproduce the exact race:
   equals `computeChangePct(70, 70)` — day 2's own ws-bar anchor stayed authoritative and the stale
   `999` was discarded.
 
-## Fix
+### Fix
 
 Capture the session identity at the moment the seed is **fired** (a local closure variable,
 `firedForSessionDate = s.sessionDate`), and additionally require it to still match `s.sessionDate`
@@ -102,7 +102,7 @@ already claimed existed.
   (not `"rest"`) on a new day is correct (the new session genuinely has no REST anchor yet); the
   gap was entirely in the seed callback's staleness check, not in the rollover logic.
 
-## Blast radius
+### Blast radius
 
 Single call site (`seedSessionOpenIfNeeded` has exactly one `.then()` callback and one caller,
 `getStockLiveCandle`). No sibling copy of this pattern exists in `stock-candle-store.ts`.
@@ -111,7 +111,7 @@ identical) FIX-A day-anchor pattern per this file's own header comment ("mirrors
 FIX-A pattern in polygon-socket.ts") — worth a follow-up read to confirm they don't share the same
 gap, but that is out of scope for this single-issue PR; not touched here.
 
-## Regression guard
+### Regression guard
 
 `src/lib/ws/stock-candle-store.test.ts` — new test:
 `seedSessionOpenIfNeeded: a REST seed that resolves AFTER a day rollover must not stamp the new

@@ -131,7 +131,7 @@ function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs, mo
   for (const b of seq) {
     lastClose = b.c;
     const age = (b.t - flaggedMs) / 60000;
-    const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: trimmed ? "TRIM" : "OPEN", trimmed, entryCortexScore: null });
+    const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: trimmed ? "TRIM" : "OPEN", trimmed, entryCortexScore: null, exitMode: "ratchet" });
     const dLow = evaluateExitState(mk(b.l, peak)); // pessimistic: bar-low both triggers AND fills
     if (dLow.action === "EXIT" && (dLow.reason === "plan_stop" || /ratchet|runner/.test(dLow.reason))) {
       const exitPnl = dLow.reason === "plan_stop" ? pnlAt(planStop) : pnlAt(b.l);

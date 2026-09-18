@@ -368,6 +368,13 @@ describe("compare card — the stamp anchoring (continued)", () => {
     assert.equal(gamma.age_seconds, null);
     assert.equal(gamma.freshness, null);
   });
+
+  it("future-skewed matrix asof yields null age_seconds, not 0 (Largo C2)", () => {
+    const futurePos = { ...LIVE_SPY_POS, asof: "2026-08-21T01:00:00.000Z" };
+    const now = Date.parse("2026-08-21T00:29:56.192Z");
+    const { gamma } = compareSidesFrom(futurePos, NO_FLOW, now);
+    assert.equal(gamma.age_seconds, null);
+  });
 });
 
 /**

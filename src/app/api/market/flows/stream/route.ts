@@ -8,6 +8,7 @@ import { registerVectorUniverseView } from "@/features/vector/lib/vector-univers
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 import { enforceFlowsSseRateLimit } from "@/lib/market-user-rate-limit";
 import { recheckSseUserEntitlement } from "@/lib/sse-stream-entitlement";
+import { runSseTickSafely } from "@/lib/sse-safe-tick";
 import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = async (payload: unknown) => {
+      const sendTick = async (payload: unknown) => {
         if (closed) return;
         if (streamUserId) {
           const verdict = await recheckSseUserEntitlement(streamUserId, "premium");
@@ -96,6 +97,7 @@ export async function GET(req: NextRequest) {
           cleanup();
         }
       };
+      const send = (payload: unknown) => runSseTickSafely(() => sendTick(payload), "flows-stream");
 
       activeStreams++;
       counted = true;
@@ -103,11 +105,11 @@ export async function GET(req: NextRequest) {
 
       unsubscribe = subscribeFlowEvents((flow) => {
         if (tickerFilter && flow.ticker?.toUpperCase() !== tickerFilter) return;
-        void (async () => {
+        void runSseTickSafely(async () => {
           const gex = await getGexLevelsForTicker(flow.ticker);
           const enriched = gex ? enrichFlowWithGex(flow, gex) : flow;
           void send({ type: "flow", ...enriched });
-        })();
+        }, "flows-stream");
       });
 
       heartbeat = setInterval(() => {

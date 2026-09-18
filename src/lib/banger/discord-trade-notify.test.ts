@@ -24,6 +24,7 @@ function sampleRow(overrides: Partial<BangerPositionRow> = {}): BangerPositionRo
     contract_occ: "NVDA260912C00140000",
     entry_premium: 0.85,
     last_mark: 1.7,
+    last_mark_at: "2026-09-05T20:20:00.000Z",
     peak_premium: 1.9,
     scaled_already: false,
     scale_out_action: null,

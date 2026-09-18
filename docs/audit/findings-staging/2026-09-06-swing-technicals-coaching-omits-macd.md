@@ -1,11 +1,11 @@
-# Swing `technicalsCoaching` narrative omits MACD, the dissenting vote in its own bias score
+## Swing `technicalsCoaching` narrative omits MACD, the dissenting vote in its own bias score
 
 > **kind:** FINDING
 
-## Status
+### Status
 FIXED — PR pending (`fix/swing-technicals-coaching-omits-macd`).
 
-## Root cause
+### Root cause
 `technicalsBias()` (`src/lib/swing/play-brief-technicals.ts`) computes the "chart reads
 bullish/bearish/neutral" verdict from FOUR independent votes: `emaStack`, `macd`, spot-vs-`vwap`,
 and `structure.direction`. But `technicalsCoaching()` (`src/lib/swing/play-brief-narrative-coaching.ts`,
@@ -20,7 +20,7 @@ This is the same defect class already fixed 8x this session for Largo C2 (a valu
 directional claim without the claim showing its work / staleness) — here it's not staleness but
 **incompleteness**: the verdict's own inputs aren't all surfaced, so the reader can't audit it.
 
-## Evidence
+### Evidence
 Live production repro, 2026-09-06 (`SWING:NRG:34`, `GET /api/market/swing/play-brief?playId=SWING:NRG&ticker=NRG`):
 - `technicals` fixture matching the live NRG read: `emaStack: "up"`, `macd: "bear"`, spot 118.95
   above VWAP 117.08, `structure.direction: "up"` → 3 bull vs 1 bear → `technicalsBias` correctly
@@ -35,13 +35,13 @@ Live production repro, 2026-09-06 (`SWING:NRG:34`, `GET /api/market/swing/play-b
   alongside the existing VWAP/RSI/emaStack/structure). Full `src/lib/swing/*.test.ts` suite:
   767/767 pass (was 766/766 pre-fix). `npx tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 Single function, `technicalsCoaching()`. No other call site renders this line independently
 (`vector-desk-intel.ts`'s own `MACD bullish/bearish` print is a separate, unrelated Vector-desk
 narrative path that already surfaced MACD correctly — confirms the omission was local to the
 swing brief's coaching function, not a systemic MACD-hiding bug).
 
-## Fix rationale
+### Fix rationale
 Added the MACD line to `technicalsCoaching`'s `parts` array using the same
 `t.macd === "bull" ? "bullish" : "bearish"` phrasing `vector-desk-intel.ts` already uses elsewhere,
 so the fix is consistent with the existing convention rather than inventing new wording. Left

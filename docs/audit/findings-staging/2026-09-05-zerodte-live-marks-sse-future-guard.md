@@ -1,4 +1,4 @@
-# 2026-09-05 — 0DTE live marks SSE quiet gate future-at guard
+## 2026-09-05 — 0DTE live marks SSE quiet gate future-at guard
 
 > **kind:** FINDING
 
@@ -10,22 +10,22 @@
 | **Status** | FIXED (pending merge) |
 | **PR** | fix/zerodte-live-marks-sse-future-guard |
 
-## Symptom
+### Symptom
 
 `useZeroDteLiveMarks` poll fallback used `Date.now() - lastSseAtRef.current < SSE_QUIET_MS`. A clock-skewed future `lastSseAtRef` yields negative age → poll suppressed indefinitely while SSE is dead → stale marks presented as live on the Night Hawk board.
 
-## Root cause
+### Root cause
 
 Raw subtraction freshness gate without `isWsUpdatedAtFresh` future-timestamp guard (Class-2 pattern scan 2026-09-05).
 
-## Fix
+### Fix
 
 Route the SSE quiet gate through `isWsUpdatedAtFresh(lastSseAtRef.current, SSE_QUIET_MS)` so far-future stamps fail closed and REST fallback wakes.
 
-## Evidence
+### Evidence
 
 - Source scan regression: `src/features/nighthawk/hooks/useZeroDteLiveMarks-freshness.test.ts` (RED pre-fix via `assert.doesNotMatch` on raw subtraction)
 
-## Blast radius
+### Blast radius
 
 Night Hawk 0DTE board live mark transport only — no server/API change.

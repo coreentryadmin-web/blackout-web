@@ -101,3 +101,39 @@ export function applyCortexCommitRelief(
 
   return assessment;
 }
+
+/**
+ * Did commit relief strip a `gex-walls` veto from this (already-relieved) assessment?
+ * Live-monitor finding, 2026-09-09 (SHOP/MSTR): `applyCortexCommitRelief` above can let a
+ * play commit by removing its ONLY veto from `verdict.vetoes`, but that veto is a real,
+ * still-standing wall fact — nothing about the underlying GEX geometry changed, only
+ * whether the desk treats it as blocking. The exit-time live thesis check (`exit-sync.ts`
+ * → `detectThesisBreak`) recomposes Cortex evidence fresh and has no memory of this relief,
+ * so it sees the same wall and fires `thesis_break:gex-walls` almost immediately — both
+ * SHOP and MSTR closed within 1 second of entry, net ~0%.
+ *
+ * Detected from the FINAL assessment alone, no "before" snapshot needed: `narrative` is
+ * built once at compose time from the PRE-relief vetoes array (compose.ts) and relief never
+ * rewrites it, so a assessment whose narrative still says `VETO [gex-walls] ...` but whose
+ * `vetoes` array no longer carries a gex-walls entry can only have gotten that way via
+ * relief stripping it after narrative was composed — this exact inconsistency is what a
+ * live SHOP/MSTR read surfaced. This flag is threaded into `entry_context.cortex` at commit
+ * (`cortexEntryContextFor`) so the exit engine can give a relieved play the same grace
+ * period `gexQualityDegraded` already gets, instead of re-vetoing on the exact fact relief
+ * overrode.
+ */
+export function gexWallsVetoWasRelieved(assessment: ZeroDteCortexAssessment): boolean {
+  if (assessment.abstained) return false;
+  const vetoes = assessment.verdict.vetoes;
+  const narrative = assessment.verdict.narrative;
+  // Defensive, not merely defensive-in-spirit: a hand-built fixture (scan.test.ts's
+  // "A-tier + Vector winner" case, found live when this crashed it) can construct a
+  // partial CortexVerdict that omits `narrative` — real compose.ts output always sets
+  // it, but nothing enforces that at this call site. Missing/malformed narrative means
+  // "no positive evidence a veto was relieved", so this returns false (the same
+  // fail-safe default as every other read in this feature), never throws.
+  if (!Array.isArray(vetoes) || !Array.isArray(narrative)) return false;
+  const stillVetoed = vetoes.some((v) => v.source === GEX_WALLS_SOURCE);
+  if (stillVetoed) return false;
+  return narrative.some((line) => line.startsWith(`VETO [${GEX_WALLS_SOURCE}]`));
+}

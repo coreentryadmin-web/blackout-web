@@ -7,12 +7,13 @@
  */
 
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
-import type { SwingManageAction } from "@/lib/swing/manage";
+import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { WhyNow } from "@/lib/zerodte/why-now";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
+import type { PaneCortexView } from "@/lib/zerodte/pane";
 
 export type DeckDirection = "LONG" | "SHORT";
 export type DeckStatus = "OPEN" | "HOLD" | "TRIM" | "CLOSED" | "WATCH" | "SKIP";
@@ -124,6 +125,14 @@ export interface TerminalPlay {
   trackReferencePremium?: number | null;
   /** Underlying price when the swing thesis was first flagged — WATCH track anchor. */
   flagUnderlyingPx?: number | null;
+  /**
+   * The live entry-trigger level a break/reclaim of would flip the setup from PRE_TRIGGER/FORMING
+   * to AT_TRIGGER/TRIGGERED (setup-state.ts / entry-model.ts's `triggerPx`) — distinct from
+   * `flagUnderlyingPx` above, which is PINNED to the price when the thesis was first flagged and
+   * never moves. Found live 2026-09-12: a member read "Flag anchor" as the actionable entry level,
+   * which it is not — this field is the one that actually is.
+   */
+  entryTriggerUnderlyingPx?: number | null;
   peak?: number | null;
   trough?: number | null;
   /** Closed: % of peak MFE captured at exit. */
@@ -173,6 +182,27 @@ export interface TerminalPlay {
   detectedAt?: string | null;
   /** ISO instant capital was committed (swing ledger committed_at). Null when unknown. */
   committedAt?: string | null;
+
+  /** Cortex evidence-layer read pinned at commit (`entry_context.cortex`), parsed structurally
+   *  via the same `readCortexView` the 0DTE ledger's own Cortex read uses (`bie/cortex-read.ts`)
+   *  — never trusts the raw JSONB blob. Present ONLY on a SWING row that actually carried a
+   *  Cortex assessment at commit (the swing engine wires Cortex in as G-S14); absent/null on a
+   *  pre-wire-in row, a WATCH/lane-only candidate that hasn't committed yet, or any non-SWING
+   *  horizon — never fabricated. Largo product-contract absence principle: omitted, not guessed. */
+  cortex?: PaneCortexView | null;
+
+  /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal (benchmark
+   *  ETF/label, the name's and the group's own %-returns, and the delta) — echoed off the live/
+   *  persisted dossier (`swing-ingest.ts`'s `industryGroupRsFacts`). Null/absent when no benchmark
+   *  resolved or not enough history (honest absence, never fabricated). Powers "Why this setup". */
+  sectorLeadershipFacts?: {
+    benchmarkEtf: string;
+    benchmarkLabel: string;
+    kind: "industry" | "sector";
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct: number;
+  } | null;
 
   /** Hard-gate blocks for SKIP rows — rendered in the command panel (never fabricated). */
   gateBlocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
@@ -243,8 +273,83 @@ export interface TerminalPlay {
   servingSection?: SwingServingSection | null;
   /** Live manage engine action (manage.ts) — drives EXITING / scale-out advisory on refresh. */
   manageAction?: SwingManageAction | null;
+  /** The rung that decided manageAction (manage.ts) — e.g. "expiry_risk" (time-based, thesis still
+   *  intact) vs "structural_stop"/"thesis_stop" (thesis actually broke). Lets narrative text state
+   *  the real reason for a SELL/EXIT recommendation instead of a generic guess. */
+  manageReason?: SwingManageRung | null;
+  /** The full, specific prose reason behind `manageReason` (manage.ts's `verdict.reason`, e.g. the
+   *  exact structural-stop breach level) rather than just the rung name — lets narrative text state
+   *  the REAL detail instead of a generic canned phrase. Null when no manage-sync snapshot has
+   *  fired yet, or the underlying event carries no usable reason string. See
+   *  HorizonPlay.manageReasonDetail for the full history of why this was computed and persisted
+   *  every tick but never surfaced. */
+  manageReasonDetail?: string | null;
+  /** Whether `manageReason`'s rung is currently ENFORCED — true always for the four capital-
+   *  preservation gates (structural_stop/thesis_stop/expiry_risk/premium_stop), false for an EDGE
+   *  rung (catalyst_shift/regime_shift/flow_decay/rel_strength_loss/vol_collapse/time_stop/
+   *  add_eligible) until it graduates in the calibration ladder (manage.ts's `isEnforced`) — until
+   *  then the ledger takes NO action on it (only an enforced `profit_ladder` latches TRIM). Lets
+   *  the brief distinguish a hard, acted-on recommendation from an unproven advisory one instead
+   *  of showing both with identical weight. Null when no manage-sync snapshot has fired yet. */
+  manageEnforced?: boolean | null;
+  /** SWING only: an active roll-candidate advisory (manage.ts's dte_migration/roll_intent — theta
+   *  decaying faster than thesis progress inside the lane's migration DTE window, vetoed by a
+   *  broken thesis or a hit structural stop, the same veto `roll.ts`'s live executor applies).
+   *  Present ONLY when the position is genuinely an active candidate right now; null otherwise
+   *  (never a fabricated "not a candidate" line — see HorizonPlay.rollCandidate for the full
+   *  history of why this was previously computed every tick and never surfaced). */
+  rollCandidate?: { reason: string } | null;
   /** Member entry label when geometry still allows entry (buy / still_buy) — decoupled from desk OPEN. */
   swingEntryAction?: "buy" | "still_buy" | null;
+  /** True when this WATCH row's entry-validity deadline (entry-model.ts's `ENTRY_VALIDITY_DAYS`)
+   *  has already passed — lets the headline show EXPIRED instead of a generic WAIT pill that reads
+   *  identically to a setup that simply hasn't triggered yet. */
+  watchEntryExpired?: boolean | null;
+  /** ISO timestamp of the resolved entry-validity deadline (entry-enterability.ts's `deadlineIso`),
+   *  whenever computable — present whether or not the window has expired, so a WATCH brief can show
+   *  the forward-looking "entry window closes on X" fact, not only the EXPIRED badge in hindsight. */
+  entryDeadline?: string | null;
+  /** SWING only, committed (OPEN/HOLD/TRIM/CLOSED) positions: how many of the 7 evidence pillars
+   *  (dossier.ts's SwingDossier.dataQuality) were grounded AT COMMIT — pinned into the position's
+   *  `feature_vector.present_pillars`/`dq_degraded` (feature-vector.ts) and, until now, never read
+   *  back out of it anywhere in the serving/brief layer. A pre-entry WATCH candidate's identical
+   *  read (dossier.dataQuality) already surfaces as a "thin read — N/7 pillars grounded" thesis-
+   *  health note (serving-ingest.ts's swingServingMetaFromDossier) the moment it degrades — but that
+   *  note is computed from the LIVE dossier, which the WATCH→COMMIT transition does not carry
+   *  forward (a structural absence, not a staleness gap — same shape as the entryTriggerUnderlyingPx/
+   *  committedAt/firstSeenAt fields live-plays.ts's own comment names as "already-pinned DB columns,
+   *  just not threaded through before now"). Null when the row predates the feature-vector column
+   *  (dq_degraded is honest-null there, per feature-vector.ts's NULL-not-zero law) or the pillar
+   *  count was never degraded enough to be worth surfacing. */
+  entryPresentPillars?: number | null;
+  /** SWING only, committed (OPEN/HOLD/TRIM/CLOSED) positions: the runner-up archetype label + the
+   *  classifier's decisiveness margin (points, 0-100 scale), ONLY when the entry-time classification
+   *  was a near-tie (archetype.ts's own MARGIN_EPS) — pinned into the position's
+   *  `feature_vector.classification_margin`/`.secondary` (feature-vector.ts, commit.ts/discovery.ts's
+   *  `classificationMetaFromVerdict`) and, until now, never read back out of it. Scoring, gating and
+   *  calibration all partition on the single pinned `archetype` label (feature-vector.ts's own
+   *  header), so a razor-thin call between two archetypes is a real, disclosed classification
+   *  uncertainty a member has a right to see next to the "Archetype: X" line, not an internal
+   *  scoring detail. Null on a decisive classification (the overwhelming common case) — never a
+   *  fabricated "clear winner" line. See live-plays.ts's `archetypeNearTieFromFeatureVector`. */
+  archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /** SWING only, committed (OPEN/HOLD/TRIM/CLOSED) positions: whether the entry-time contract pick
+   *  (chosen independently by tradability×thesisFit — see `rankSwingContracts`, contract-ranker.ts)
+   *  matches the multi-day accumulation flow's own magnet strike, pinned into the position's
+   *  `top_flow_strike` column at commit (commit.ts) and, until now, never read back out of it
+   *  anywhere in the serving/brief layer. Null when either strike is unknown — never a guessed
+   *  provenance. See live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
+  /** SWING only, live (OPEN/HOLD/TRIM) positions: the UNDERLYING's own signed favorable/adverse
+   *  excursion (%) since entry (manage-sync.ts's `signedExcursionPct`, dedicated
+   *  `running_mfe`/`running_mae` snapshot columns, written every management tick) — distinct from
+   *  the OPTION premium peak/P&L this brief already surfaces: a position can carry modest premium
+   *  P&L while the underlying quietly ran hard favorable and gave most of it back, or the reverse
+   *  under IV effects. Was pinned to the DB every tick and, until now, never read back out of it
+   *  anywhere in the serving/brief layer — see HorizonPlay.underlyingExcursion for the full gap
+   *  this closes. Null whenever the latest snapshot hasn't computed a usable excursion yet — never
+   *  a fabricated 0%. */
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

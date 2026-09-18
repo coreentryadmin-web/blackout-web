@@ -18,10 +18,10 @@ describe("spx-desk-stale", () => {
     assert.equal(isDeskStale(age, STALE_MAX_SEC), true);
   });
 
-  test("deskAgeSec: slight future skew within tolerance still reads live", () => {
+  test("deskAgeSec: slight future skew within tolerance clamps to zero age", () => {
     const polledAt = new Date(NOW + 30_000).toISOString();
     const age = deskAgeSec(polledAt, null, NOW, STALE_MAX_SEC);
-    assert.ok(age != null && age < 0);
+    assert.equal(age, 0);
     assert.equal(isDeskStale(age, STALE_MAX_SEC), false);
   });
 

@@ -27,6 +27,9 @@ export async function meridianTimelineForLargo(daysAhead = 14) {
       upcoming_7d: upcoming,
     });
   } catch {
-    return { available: false, upcoming_7d: [], stats: null };
+    // A failed read is not a quiet calendar — upcoming_7d must stay null, not [], so a model
+    // never reads "no upcoming events" from a read that never happened. Same class as the
+    // absence-scan's other fixed sites (see docs/audit/FINDINGS.md 2026-08-21).
+    return { available: false, upcoming_7d: null, stats: null };
   }
 }

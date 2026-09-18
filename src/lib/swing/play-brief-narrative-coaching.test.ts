@@ -1,20 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import {
   catalystCoaching,
   closedCoaching,
   collectCoachingBullets,
+  confluenceCoaching,
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
   flowPrintsCoaching,
   ivRankCoaching,
+  laneRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
+  shortInterestCoaching,
   thesisBreakCoaching,
   thesisPillarCoaching,
+  troughResilienceCoaching,
   vectorPlayCoaching,
   vexCoaching,
   wallDynamicsCoaching,
@@ -162,6 +167,34 @@ test("thesisPillarCoaching: silent when thesis health is uncalibrated (extends #
   assert.equal(thesisPillarCoaching(play({ thesisHealth: uncalibratedThesisHealth() })), null);
 });
 
+// ENHANCEMENT (2026-09-15, Ask Largo standing mandate, forensic batch 33): play.trough was
+// rendered once in the Position section but never interpreted anywhere in the narrative. Live
+// repro shape: CRWD swung from -57.2% at its worst to +161.3% at its best while OPEN.
+test("troughResilienceCoaching: names a real trough-to-peak swing on an OPEN position (live CRWD shape)", () => {
+  const line = troughResilienceCoaching(play({ trough: -57.2, peak: 161.3 }), "open");
+  assert.match(line!, /Volatility note/i);
+  assert.match(line!, /-57\.2%/);
+  assert.match(line!, /\+161\.3%/);
+});
+
+test("troughResilienceCoaching: silent on a shallow swing (< 40 pts)", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: -10, peak: 20 }), "open"), null);
+});
+
+test("troughResilienceCoaching: silent when the trough never went negative (large swing but never a real drawdown)", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: 5, peak: 60 }), "open"), null);
+});
+
+test("troughResilienceCoaching: silent when trough/peak are missing", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: null, peak: 161.3 }), "open"), null);
+  assert.equal(troughResilienceCoaching(play({ trough: -57.2, peak: null }), "open"), null);
+});
+
+test("troughResilienceCoaching: WATCH/CLOSED-only — never fires outside the open bucket", () => {
+  assert.equal(troughResilienceCoaching(play({ trough: -57.2, peak: 161.3 }), "watch"), null);
+  assert.equal(troughResilienceCoaching(play({ trough: -57.2, peak: 161.3 }), "closed"), null);
+});
+
 test("manageLifecycleCoaching: trim ladder + time stop", () => {
   const line = manageLifecycleCoaching(
     play({
@@ -184,6 +217,301 @@ test("manageLifecycleCoaching: trim ladder + time stop", () => {
   assert.match(line!, /25% runner/i);
 });
 
+// Live repro (CRWD:19 brief, 2026-09-09): collapseRedundantIntelSections drops the whole
+// "Hold plan" section whenever this narrative renders, claiming its content is folded in here —
+// but the DTE-runway fact only appeared in this function's own line for dte<=7, so a 9DTE
+// position lost the fact entirely (not just deduped, actually deleted with nothing folded in).
+// Live repro (NRG:34, 2026-09-14): manage engine EXIT (time_stop, a full flatten) rendered right
+// next to "next trim at +100% ... 50% runner after trims" -- two contradictory plans in one
+// bullet, since a full exit closes the whole position and supersedes any pending trim/runner.
+test("manageLifecycleCoaching: full-flatten EXIT drops the moot trim-ladder/runner framing", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "EXIT",
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /manage engine \*\*EXIT\*\*/);
+  assert.doesNotMatch(line!, /next trim/i);
+  assert.doesNotMatch(line!, /runner\*\* after trims/i);
+  assert.match(line!, /16:00 ET/i);
+});
+
+test("manageLifecycleCoaching: STOP_OUT (hard capital-preservation stop) also drops the moot framing", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "STOP_OUT",
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /manage engine \*\*STOP OUT\*\*/);
+  assert.doesNotMatch(line!, /next trim/i);
+  assert.doesNotMatch(line!, /runner\*\* after trims/i);
+});
+
+// EXIT_RUNNER is NOT a full flatten in the misleading sense -- it means the trims already fired
+// and only the runner remains, so "all trims banked -- runner only" is exactly the state that
+// led to this recommendation, not a contradiction of it. Must not be suppressed.
+test("manageLifecycleCoaching: EXIT_RUNNER keeps the 'all trims banked' framing (it's consistent, not contradictory)", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "EXIT_RUNNER",
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: true }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /all trims banked/i);
+});
+
+// Live repro (CG SWING:CG:25, 2026-09-14): pnlPct +169.2%, unfired trim_levels[0].trigger_pct
+// 100 -- "next trim at +100%" reads as forward-looking when the rail is 69 points BEHIND
+// current price, already cleared and simply not yet banked. Same root cause as actionNarrative's
+// sibling bullet in play-brief-narrative.ts, fixed there the same way.
+test("manageLifecycleCoaching: 'next trim' becomes 'already cleared, not yet banked' once price has passed the unfired trigger", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "TAKE_PARTIAL",
+      pnlPct: 169.2,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /\*\*\+100%\*\* rail already cleared, not yet banked/);
+  assert.doesNotMatch(line!, /next trim at/);
+});
+
+// Sibling: a plain HOLD genuinely still building toward its first rail (pnlPct below the
+// trigger) must keep the honest, forward-looking "next trim at" framing -- the fix must not
+// assume every unfired trigger has already been crossed, only check the live data.
+test("manageLifecycleCoaching: keeps 'next trim at' when price genuinely has NOT reached the trigger yet", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+        time_stop_et: "16:00",
+        runner_fraction: 0.5,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  assert.doesNotMatch(line!, /already cleared/);
+});
+
+// Live repro (forensic batch 10, 2026-09-14: AMLX/NEO/HACK/MSTX/PZZA, all single-rung ladders):
+// "next trim at **+100%** (+100%)" -- the parenthetical ladder recap is byte-identical to the
+// trigger_pct already stated in the clause, pure filler for the common single-rung case.
+test("manageLifecycleCoaching: single-rung ladder omits the redundant parenthetical recap", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  assert.doesNotMatch(line!, /\(\+100%\)/, "a single-rung ladder must not restate the same number in parens");
+});
+
+// Sibling: the "already cleared" branch must ALSO drop the redundant parenthetical for a
+// single-rung ladder, not just the "next trim at" branch above.
+test("manageLifecycleCoaching: single-rung ladder omits the redundant parenthetical recap on the 'already cleared' branch too", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "TAKE_PARTIAL",
+      pnlPct: 169.2,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fired: false }],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /rail already cleared, not yet banked/);
+  assert.doesNotMatch(line!, /\(\+100%\)/, "a single-rung ladder must not restate the same number in parens");
+});
+
+// A REAL multi-rung ladder still earns the parenthetical recap -- it carries new information
+// (the second, unfired rail) the "next trim at" clause alone doesn't state.
+test("manageLifecycleCoaching: multi-rung ladder keeps the parenthetical recap (it shows a REAL second rail)", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 20,
+      exitPolicy: {
+        trim_levels: [
+          { trigger_pct: 50, fired: false },
+          { trigger_pct: 100, fired: false },
+        ],
+        stop_premium: 1.96,
+        target_premium: 9.8,
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+50%\*\* \(\+50% · \+100%\)/);
+});
+
+// GAP FOUND (2026-09-18, Ask Largo standing mandate): `next.premium` (the ABSOLUTE dollar level
+// `buildTerminalExitLadder` prices the unfired rung at) and `play.mark` (the live option mark)
+// were both already available here, but only the percent-from-ENTRY `trigger_pct` was rendered --
+// a member had no way to tell how close the position's LIVE mark actually is to the next rung.
+test("manageLifecycleCoaching: 'next trim' discloses the live dollar level and % still needed from the current mark", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      mark: 1.7,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.0, fired: false }],
+        stop_premium: 0.8,
+        target_premium: 3.0,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  // premium 2.0 vs mark 1.7 -> (2.0-1.7)/1.7*100 = 17.6% -> rounds to 18%.
+  assert.match(line!, /mark \*\*\$1\.70\*\*, needs \*\*\$2\.00\*\* \(\+18% from here\)/);
+});
+
+// BASIS MISMATCH regression (2026-09-18, Ask Largo standing mandate, live repro AAPL
+// SWING:AAPL:38 OPEN brief): once `execMark` (the live tradable bid) is known, this bullet must
+// price its distance off it -- the SAME basis the sibling "Premium target rail" room% line
+// (play-brief-intel.ts) already prefers -- rather than always using the mid `mark`. Before this
+// fix, this bullet quoted "$5.83, needs $11.30 (+94% from here)" from mark while the brief's own
+// "What to watch" section quoted "102% move still needed" from the bid for the IDENTICAL $11.30
+// target -- two different room% for one dollar level, live in the same brief.
+test("manageLifecycleCoaching: 'next trim' distance prefers execMark (the live bid) over mark when both are known", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 3,
+      mark: 5.825,
+      execMark: 5.6,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 11.3, fired: false }],
+        stop_premium: 2.26,
+        target_premium: 11.3,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  // premium 11.3 vs execMark 5.6 -> (11.3-5.6)/5.6*100 = 101.79% -> rounds to 102%, matching the
+  // "Premium target rail" line's own room% for the same dollar target — not the mark-basis 94%.
+  assert.match(line!, /bid \*\*\$5\.60\*\*, needs \*\*\$11\.30\*\* \(\+102% from here\)/);
+  assert.doesNotMatch(line!, /mark \*\*\$5\.83\*\*/);
+});
+
+// Sibling: once the trigger is already crossed (mark math aside), the "already cleared" framing
+// stays -- the live distance-to-rung disclosure is moot there and must not appear.
+test("manageLifecycleCoaching: 'already cleared' branch does not render the (now-moot) distance disclosure", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "TAKE_PARTIAL",
+      pnlPct: 169.2,
+      mark: 5.4,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.0, fired: false }],
+        stop_premium: 0.8,
+        target_premium: 3.0,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /rail already cleared, not yet banked/);
+  assert.doesNotMatch(line!, /needs \*\*\$/);
+});
+
+// A missing/unusable `mark` (genuinely unsynced quote) must never fabricate a distance figure --
+// same null-honesty discipline as every other absence in this lane.
+test("manageLifecycleCoaching: omits the distance disclosure when mark is unusable, never fabricates one", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 42,
+      mark: null,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.0, fired: false }],
+        stop_premium: 0.8,
+        target_premium: 3.0,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  assert.doesNotMatch(line!, /needs \*\*\$/);
+});
+
+test("manageLifecycleCoaching: DTE > 7 still carries runway context, not just the <=7 urgency line", () => {
+  const line = manageLifecycleCoaching(play({ contract: "110C · 9DTE" }), "open");
+  assert.match(line!, /9 DTE.*remaining/i);
+  assert.doesNotMatch(line!, /theta accelerating/i, "9 DTE is not yet the urgency threshold");
+});
+
+test("manageLifecycleCoaching: DTE <= 7 keeps the urgency framing, not the plain 'remaining' line", () => {
+  const line = manageLifecycleCoaching(play({ contract: "110C · 5DTE" }), "open");
+  assert.match(line!, /5 DTE.*theta accelerating/i);
+  assert.doesNotMatch(line!, /5 DTE\*\* remaining/i);
+});
+
 test("watchGateCoaching: includes reasons", () => {
   const line = watchGateCoaching(
     play({
@@ -192,6 +520,59 @@ test("watchGateCoaching: includes reasons", () => {
     }),
   );
   assert.match(line!, /wait for trigger/i);
+});
+
+// BUG FIX (2026-09-12): every real gate `reason` string (entry-verdict.ts's gate-block map)
+// already ends with its own period, but `watchGateCoaching` unconditionally appended a second
+// "." after joining them — producing a doubled ".." whenever the LAST rendered gate has no
+// `unlock_et` (the common case). Live repro: ORCL WATCH brief 2026-09-12 — "...desk will not
+// open..". This fixture uses a reason ending in "." (unlike the fixture above, which doesn't) to
+// actually exercise the doubling.
+test("watchGateCoaching: does not double the period when the reason already ends in one (live ORCL repro)", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+        { code: "g_s14_cortex", reason: "Cortex preflight vetoed this setup — desk will not open." },
+      ],
+    }),
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line!, /\.\./, "must never render a doubled period");
+  assert.match(line!, /desk will not open\.$/, "must still end with exactly one closing period");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-09-14): "Gates blocking entry" implies clearing the
+// gate opens entry — false once the play is already past its entry deadline or invalidated, since
+// entry-enterability.ts's own if-chain checks those BEFORE gate-blocked and independently blocks
+// entry either way (entry-verdict.ts keeps the gate evidence attached anyway, per its own comment,
+// rather than dropping real evidence). Live repro: ORCL WATCH brief, "Entry stance: EXPIRED" and
+// "Gates blocking entry: g_s4_regime..." sat in the same section with nothing marking the gate as
+// moot.
+test("watchGateCoaching: reframes as moot when the entry-validity window already expired", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      watchEntryExpired: true,
+      gateBlocks: [{ code: "g_s4_regime", reason: "Broad-market regime degraded." }],
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\)/);
+  assert.doesNotMatch(line!, /^\*\*Gates blocking entry\*\*/, "must not read as an active/clearable blocker");
+});
+
+test("watchGateCoaching: reframes as moot when the thesis is already invalidated", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      setupState: "INVALIDATED",
+      gateBlocks: [{ code: "g_s6_confluence", reason: "Confluence below commit threshold." }],
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /\*\*Also gate-blocked\*\* \(moot — thesis already invalidated\)/);
 });
 
 test("crossDeskCoaching: friction when NH conflicts", () => {
@@ -247,6 +628,39 @@ test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk frict
     play({ direction: "LONG" }),
   );
   assert.equal(line, null, "stale Vector must not coach cross-desk Vector friction");
+});
+
+test("shortInterestCoaching: renders for a fresh DTC read", () => {
+  const line = shortInterestCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          fundamentals: { days_to_cover: 6.1, short_volume_ratio: 0.4, price_target: null, as_of: "2026-09-15" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.match(line!, /Short interest/i);
+});
+
+test("shortInterestCoaching: ancient DTC read is withheld, not presented as current (Largo C3)", () => {
+  // Same guard as catalystsSection (play-brief-intel.ts) and play-brief.ts's evidenceFromContext
+  // short-interest evidence entry (Largo C7 fix, PR #5042) — this call site read the identical
+  // arsenal.fundamentals field with no freshness check at all before this fix.
+  const line = shortInterestCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          fundamentals: { days_to_cover: 6.1, short_volume_ratio: 0.4, price_target: null, as_of: "2025-12-31" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null);
 });
 
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
@@ -354,6 +768,198 @@ test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0
   assert.equal(line, null, "thin aligned desks must not emit Desk alignment with undefined tokens");
 });
 
+// crossDeskCoaching used to render every conflict as a flat `conflicts.join(" · ")` behind one
+// fixed generic closing line ("Size down until desks agree.") — it never said WHY the desks
+// disagree (different timeframe/evidence base?), which disagreement is more load-bearing for THIS
+// setup, or what would actually resolve it. The tests below prove the rewritten narrative reasons
+// about the SOURCE of the disagreement (evidence kind + archetype fit), not just its existence —
+// and that two different conflict sources produce two genuinely different readings, not the same
+// template with names swapped in. (docs/audit/LARGO-PRODUCT-CONTRACT.md / CLAUDE.md's standing Ask
+// Largo mandate names this exact gap as a scoped-but-not-yet-built item.)
+
+test("crossDeskCoaching: Vector conflict on a structure-led archetype names the archetype and gives a structure-specific resolution, with the old generic instruction gone", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: { bias: "short", headline: "Fade the rip", grade: "B" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", archetype: "BREAKOUT" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /Vector bearish \(Fade the rip\)/);
+  assert.match(line!, /live price structure/i);
+  assert.match(line!, /\*\*Breakout continuation\*\* setup leans on/i, "must name the archetype, not just the desk");
+  assert.match(line!, /trim rail/i, "structure conflicts resolve on the next trim rail, not a flow/digest timeline");
+  assert.doesNotMatch(
+    line!,
+    /Size down until desks agree\./,
+    "the old flat generic closer must be gone — replaced by a reasoned, kind-specific resolution",
+  );
+});
+
+test("crossDeskCoaching: HELIX flow conflict on a flow-led archetype (FLOW_ACCUMULATION) reasons about order flow persistence, not price structure", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "XYZ",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 40,
+          call_premium: 400_000,
+          put_premium: 1_600_000,
+          unknown_premium: 0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG", archetype: "FLOW_ACCUMULATION" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /HELIX put-led/);
+  assert.match(line!, /same-session options order flow, not price structure/i);
+  assert.match(line!, /\*\*Multi-day flow accumulation\*\* setup leans on/i);
+  assert.match(line!, /give it another session/i, "flow conflicts resolve on persistence across sessions, not a trim rail");
+  assert.doesNotMatch(line!, /trim rail/i, "must not reuse Vector's structure-specific resolution for a flow conflict");
+});
+
+test("crossDeskCoaching: two different conflict sources produce two differently reasoned readings, not the same template with names swapped in", () => {
+  const structureLine = crossDeskCoaching(
+    ctx({
+      vector: { play: { bias: "short", headline: "Fade the rip", grade: "B" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", archetype: "BREAKOUT" }),
+  )!;
+  const flowLine = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "XYZ",
+        recent_flow: { window_hours: 24, print_count: 40, call_premium: 400_000, put_premium: 1_600_000, unknown_premium: 0 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG", archetype: "FLOW_ACCUMULATION" }),
+  )!;
+  assert.notEqual(structureLine, flowLine);
+  assert.match(structureLine, /trim rail/i);
+  assert.doesNotMatch(structureLine, /give it another session/i);
+  assert.match(flowLine, /give it another session/i);
+  assert.doesNotMatch(flowLine, /trim rail/i);
+});
+
+test("crossDeskCoaching: 0DTE-only conflict reasons about its mismatched hours-long clock, never claims to be 'the most direct read'", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    // Archetype set to a structure-led one on purpose — 0DTE's evidenceKind never matches
+    // ARCHETYPE_LEAD_EVIDENCE, so this proves the fallback reasoning (not an archetype bonus).
+    play({ direction: "LONG", archetype: "BREAKOUT" }),
+  );
+  assert.match(line!, /0DTE short \(score 78\)/);
+  assert.match(line!, /hours-long 0DTE clock, not this swing's multi-day one/i);
+  assert.match(line!, /tape noise/i);
+  assert.doesNotMatch(line!, /most direct read of the four/i, "an hours-long 0DTE clock is the LEAST direct read here, never the most");
+});
+
+// FINDINGS 2026-09-11 (Ask Largo standing mandate): #4788 fixed the identical condor-direction
+// mislabel in flowIntelSection's "0DTE desk: aligned/conflict" line (play-brief-intel.ts) but
+// crossDeskCoaching reads the SAME zerodte_today.direction field through the SAME
+// zerodteLiveForSession() helper and was never touched by that fix — a committed iron CONDOR's
+// `direction` column is nominal provenance only (the fade side of the pin it came from; the
+// structure itself is delta-neutral, per board.ts's own comment), so comparing it against swing
+// direction here fabricates a directional 0DTE call the desk never actually took, exactly the bug
+// #4788's own write-up already diagnosed for the sibling call site.
+test("crossDeskCoaching: a committed CONDOR's nominal direction must not be read as a directional 0DTE conflict", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short", // nominal fade side of the pin, not a directional call
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+          is_condor: true,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "a structure-neutral condor must never fabricate a directional 0DTE conflict");
+});
+
+test("crossDeskCoaching: Night-Hawk-only conflict (digest) reasons about the overnight cadence, not a live override", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: 80,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play(),
+  );
+  assert.match(line!, /Night Hawk bearish/i);
+  assert.match(line!, /overnight next-day digest, not a live read/i);
+  assert.match(line!, /secondary sanity check, not a live override/i);
+});
+
+// Live repro (MSFT WATCH brief, 2026-09-09/10): the desk read carried BOTH a Night Hawk (digest)
+// and a Vector (structure) conflict for the same SHORT swing, and the OLD code rendered them as a
+// flat "Night Hawk bullish · Vector bullish (...)" list in PUSH order (Night Hawk first, since it's
+// checked first in the function body) with one generic closer. The new code must rank by
+// load-bearing WEIGHT, not push order — Vector (live structure) outranks Night Hawk (an overnight
+// digest) regardless of which was detected first.
+test("crossDeskCoaching: multiple conflicting desks — ranks by load-bearing weight, not detection order, and demotes the rest to a lighter-weight mention", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "MSFT",
+        nighthawk_recent: {
+          edition_for: "2026-09-09",
+          direction: "long",
+          conviction: "B",
+          outcome: "open",
+          score: null,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      sessionDate: "2026-09-09",
+      vector: {
+        spot: 492.6,
+        play: {
+          bias: "long",
+          headline: "POSITION · momentum long on continuation → target call wall 500",
+          invalidation: "5m close < 448.49",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "SHORT", archetype: "EVENT_DRIVEN" }),
+  );
+  assert.ok(line);
+  // Vector — the higher-weight, live structural read — must lead the sentence even though Night
+  // Hawk is checked first in the function body (push order != rank order).
+  assert.match(line!, /^\*\*Cross-desk friction\*\* — Vector bullish \(POSITION/);
+  assert.match(line!, /so weight it heaviest/i, "a real multi-conflict comparison, not a solo reading");
+  assert.match(line!, /Night Hawk also reads bullish \(B\)/);
+  assert.match(line!, /lighter weight here/i);
+});
+
 test("catalystCoaching: earnings within 14d", () => {
   const line = catalystCoaching(
     ctx({
@@ -366,6 +972,238 @@ test("catalystCoaching: earnings within 14d", () => {
     }),
   );
   assert.match(line!, /Earnings in 5d/i);
+});
+
+// Adversarial follow-up to #4764's sibling-position disclosure (Ask Largo standing mandate,
+// 2026-09-11): this brief's own contract can expire BEFORE the earnings print even when the
+// ticker-level "earnings within 14d" fact fires, and a concurrent same-ticker sibling can carry a
+// later expiry that IS exposed. Before this fix both briefs got the identical "size down or exit
+// before report" instruction regardless of which contract each was actually about.
+function laneRow(overrides: Partial<HorizonPlay> = {}): HorizonPlay {
+  // liveStatus defaults off the effective status (matching real production shape and the sibling
+  // fixture in play-brief-lane-rank.test.ts): a genuinely open position (status "COMMIT") defaults
+  // to liveStatus "OPEN"; a pre-entry WATCH row defaults to no liveStatus. rowInBucket keys off
+  // liveStatus, not status (status "COMMIT" is the floor-gate flag, not a lifecycle field — see its
+  // own doc comment) — a hardcoded "OPEN" default regardless of status used to make every WATCH-
+  // status fixture row here silently mismatch the WATCH bucket once that fix landed.
+  const status = overrides.status ?? "COMMIT";
+  return {
+    ticker: "NRG",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 64,
+    status,
+    contract: {
+      ticker: "O:NRG260910C00050000",
+      strike: 50,
+      expiry: "2026-09-08",
+      right: "C",
+      dte: 3,
+      mid: 2.1,
+      bid: null,
+      ask: null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: 0,
+    },
+    scoreFloor: 60,
+    reason: "flow",
+    entryPremium: 2.1,
+    liveStatus: status === "COMMIT" ? "OPEN" : undefined,
+    ...overrides,
+  };
+}
+
+test("catalystCoaching: contract expires BEFORE the print — no gap-exposure instruction, not the generic warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-08" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /expires 2026-09-08/);
+  assert.match(line!, /no earnings-gap exposure/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: contract expires AFTER the print — original warning still fires unchanged", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-19" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /no earnings-gap exposure/i);
+});
+
+test("catalystCoaching: SAME-DAY expiry + PREMARKET print is NOT safe — the gap already hit before the bell", () => {
+  // A premarket print gaps the stock before the open; a contract expiring that same day was
+  // alive through the open and experienced the gap despite expiring "on or before" the print.
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-10" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10", report_time: "premarket" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i, "premarket same-day expiry must NOT be called safe");
+  assert.doesNotMatch(line!, /no earnings-gap exposure/i);
+});
+
+test("catalystCoaching: SAME-DAY expiry + confirmed AFTERHOURS print IS safe — option settles before the print lands", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-10" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /no earnings-gap exposure/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: SAME-DAY expiry + UNKNOWN/unconfirmed timing defaults to NOT safe", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      laneRows: [laneRow({ contract: { ...laneRow().contract, expiry: "2026-09-10" } })],
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          earnings: { days_until: 5, earnings_date: "2026-09-10", report_time: "unknown" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i, "unconfirmed timing must not be assumed safe");
+});
+
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro PLAY): a same-day AFTERHOURS print
+// already having landed (past 16:00 ET) must stop reading as a still-ahead risk event.
+//
+// BUG FIX #2 (2026-09-15, live re-verification of the fix above): `ctx.asOf` here MUST use the
+// real production shape -- `"YYYY-MM-DD HH:mm ET"` (what `etStamp()` actually emits,
+// play-brief-context.ts:181), never an ISO-8601 literal. The first version of these 5 tests used
+// ISO asOf values (`"2026-09-14T23:07:00.000Z"`), which `Date.parse` parses fine -- so they stayed
+// green while the real code (`Date.parse(ctx.asOf)` on the real ET-stamp format) silently returned
+// NaN and made `alreadyPrinted` permanently false in production. Live repro confirmed the bug
+// shipped: PLAY's real brief, read ~4h05m after its print landed, still showed the OLD "size down
+// or exit before report" text. Fixed by parsing with `parseEtStamp` (falls back to `Date.parse`
+// for the rare ISO-fallback case) -- these fixtures now use the real ET-stamp shape specifically
+// so a future regression in the parse call, not just the branching logic, fails a test again.
+test("catalystCoaching: same-day AFTERHOURS print already landed (past 16:00 ET) reads as already-printed, not still-ahead", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14 19:07 ET", // real production asOf shape (etStamp), well past the 16:00 close
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /already printed/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i, "must not still frame an already-landed print as forward-looking");
+});
+
+// Sibling: the SAME afterhours print, read BEFORE the 16:00 close, must keep the forward-looking
+// warning -- the fix must not assume "today" always means "already happened".
+test("catalystCoaching: same-day AFTERHOURS print NOT yet landed (before 16:00 ET) keeps the forward-looking warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14 14:00 ET", // real production asOf shape, still mid-session, print hasn't landed
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /already printed/i);
+});
+
+test("catalystCoaching: same-day PREMARKET print already landed (past 09:30 ET) reads as already-printed", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14 11:00 ET", // real production asOf shape, well past the 09:30 open
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "premarket" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /already printed/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: same-day PREMARKET print NOT yet landed (before 09:30 ET) keeps the forward-looking warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14 08:00 ET", // real production asOf shape, still before the open
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "premarket" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /already printed/i);
+});
+
+// UNKNOWN timing never claims already-printed, regardless of how late the read is -- same
+// honest-absence discipline as the sibling noGapExposure branch above (never guess it landed).
+test("catalystCoaching: same-day UNKNOWN timing never claims already-printed", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ entry: 2.1 }),
+      asOf: "2026-09-14 19:07 ET", // real production asOf shape, late enough that a known bucket WOULD say already-printed
+      ecosystem: {
+        ticker: "PLAY",
+        arsenal: {
+          earnings: { days_until: 0, earnings_date: "2026-09-14", report_time: "unknown" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /already printed/i);
 });
 
 test("closedCoaching: MFE capture lesson", () => {
@@ -397,6 +1235,147 @@ test("closedCoaching: a round-trip past breakeven never renders a nonsensical ne
   assert.ok(line);
   assert.doesNotMatch(line!, /-158\.9%|MFE capture \*\*-/i);
   assert.match(line!, /round-tripped past breakeven/i);
+});
+
+test("closedCoaching: a round-trip with a real peak (>20%) gets trim-discipline advice", () => {
+  // A meaningful favorable excursion existed (well past any plausible trim rail) before the
+  // round-trip — the miss really was a trim-timing/discipline problem, so that advice fits.
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 129.7,
+      exitPnlPct: -10,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /\*\*Round-tripped past breakeven\*\* — was up \*\*\+129\.7%\*\* at peak, closed at \*\*-10\.0%\*\*; tighten at first trim rail next time\./);
+});
+
+test("closedCoaching: a round-trip with a near-zero peak (<=20%) gets entry/thesis advice instead of trim-rail advice", () => {
+  // Live repro AAPL:36 (2026-09-13, Ask Largo standing mandate): peak only +1.3% -- nowhere near
+  // any real trim rail (SWING_SCALE_OUT_POLICY fires at +100%) -- yet the generic "tighten at
+  // first trim rail next time" advice fired anyway, implying a trim decision was missed when
+  // there was never enough room to make one. The sibling MFE-capture branch two lines below
+  // already gates similar advice on `play.peak > 20` (`else if (capture < 35 && play.peak > 20)`)
+  // -- this reuses that exact same threshold for round_trip instead of inventing a new one, and
+  // swaps the trailing clause only; the leading "**Round-tripped past breakeven**" phrase and the
+  // peak/exit figures are unchanged, so this stays compatible with the existing prefix-matching
+  // tests above.
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 1.3,
+      exitPnlPct: -56.2,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(line);
+  assert.match(
+    line!,
+    /\*\*Round-tripped past breakeven\*\* — was up \*\*\+1\.3%\*\* at peak, closed at \*\*-56\.2%\*\*; barely cleared breakeven before reversing — a trim rail wouldn't have helped here; review entry timing or thesis strength instead\./,
+  );
+  assert.doesNotMatch(line!, /tighten at first trim rail next time/);
+});
+
+// Regression for the run-on "Trade manager read" bullet (live repro AAPL:36, 2026-09-10, found
+// during the standing Ask Largo deep-dive): closedCoaching joined its 2-3 distinct post-mortem
+// points (outcome, MFE-capture/round-trip verdict, exit-reason lesson) with a bare space, and
+// collectCoachingBullets wraps whatever closedCoaching returns as ONE "• " bullet — so a closed
+// play with both an MFE-capture note and a closedReason rendered as one illegible run-on sentence
+// instead of separate bullets, unlike every OPEN/WATCH coaching point (each gets its own push()).
+test("closedCoaching: outcome + exit-reason are separate bullet points, not one run-on sentence", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 1.3,
+      exitPnlPct: -56.2,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(line);
+  const points = line!.split("\n• ");
+  assert.equal(points.length, 3, `expected 3 separate bullet points, got: ${JSON.stringify(line)}`);
+  assert.match(points[0], /^Exited \*\*-56\.2%\*\* vs peak \*\*\+1\.3%\*\*$/);
+  assert.match(points[1], /^\*\*Round-tripped past breakeven\*\*/);
+  assert.match(points[2], /^\*\*Stop fired\*\* \(stopped\)/);
+});
+
+test("closedCoaching: discloses a real drawdown before outcome (gap fix 2026-09-18)", () => {
+  // Live repro shape: CRWD-style position that dipped hard before eventually closing — the raw
+  // trough was computed (adapters.ts) but never reached any CLOSED-bucket narrative section.
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 161.3,
+      trough: -57.2,
+      exitPnlPct: 40.0,
+      mfeCapturePct: 25,
+      closedReason: null,
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /Drawdown before outcome/i);
+  assert.match(line!, /-57\.2%/);
+  assert.match(line!, /\+40\.0%/);
+});
+
+test("closedCoaching: no trough line when trough is near-identical to the exit (stop fired at the low, no separate swing to note — live repro NN:32, gap fix 2026-09-18)", () => {
+  // A stopped exit routinely fires AT (or within noise of) the worst mark recorded — trough and
+  // exitPnlPct end up fmtPct'd to the same displayed number. The old unconditional gate rendered
+  // "dipped to -60.3% at its worst before closing at -60.3%", falsely implying a distinct
+  // intra-trade low worth learning from when the trough *was* the outcome.
+  const stoppedAtTrough = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 24.4,
+      trough: -60.26,
+      exitPnlPct: -60.26,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(stoppedAtTrough);
+  assert.doesNotMatch(stoppedAtTrough!, /Drawdown before outcome/i);
+
+  // A genuine gap between trough and exit (position recovered off its low before finally closing)
+  // still fires — the fix narrows the gate, it does not remove the feature.
+  const recoveredOffTrough = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 24.4,
+      trough: -60.26,
+      exitPnlPct: -30.0,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(recoveredOffTrough);
+  assert.match(recoveredOffTrough!, /Drawdown before outcome/i);
+  assert.match(recoveredOffTrough!, /-60\.3%/);
+  assert.match(recoveredOffTrough!, /-30\.0%/);
+});
+
+test("closedCoaching: no trough line when the swing is shallow (<40pt) or trough never went negative", () => {
+  const shallow = closedCoaching(
+    play({ status: "CLOSED", peak: 30, trough: -5, exitPnlPct: 20, closedReason: null }),
+  );
+  assert.doesNotMatch(shallow ?? "", /Drawdown before outcome/i);
+
+  const neverNegative = closedCoaching(
+    play({ status: "CLOSED", peak: 80, trough: 10, exitPnlPct: 20, closedReason: null }),
+  );
+  assert.doesNotMatch(neverNegative ?? "", /Drawdown before outcome/i);
+});
+
+test("closedCoaching: no trough line when trough is missing (honest absence, never fabricated)", () => {
+  const line = closedCoaching(
+    play({ status: "CLOSED", peak: 80, trough: null, exitPnlPct: 20, closedReason: null }),
+  );
+  assert.doesNotMatch(line ?? "", /Drawdown before outcome/i);
 });
 
 // ─── vectorPlayCoaching ─────────────────────────────────────────────────────
@@ -478,6 +1457,60 @@ test("collectCoachingBullets: stale Vector suppresses VEX/magnet/flow coaching l
   assert.doesNotMatch(joined, /VEX lens|Gamma magnet|Large print|Vector desk:/i);
 });
 
+// FINDINGS 2026-09-09, CORRECTED 2026-09-13 (live AAPL repro): crossDeskCoaching's "Cross-desk
+// friction" bullet and vectorPlayCoaching's own bullet both fired for the same Vector-vs-swing
+// misalignment, each citing the identical headline as a separate fact — a bullet-dump duplicate,
+// not two independent reads. The 2026-09-09 fix only dropped the "cross-check" framing clause and
+// left the headline itself duplicated; this test used to assert the headline was KEPT in the
+// Vector desk bullet, which was the bug, live-reproduced again on a real brief 2026-09-13.
+test("collectCoachingBullets: crossDeskCoaching's Vector-conflict bullet suppresses vectorPlayCoaching's redundant headline AND cross-check clause", () => {
+  const bullets = collectCoachingBullets(
+    ctx({
+      vector: {
+        spot: 100,
+        play: { bias: "short", headline: "Fade the rip", invalidation: "102.00", thesis: "mean reversion" },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+    100,
+  );
+  const joined = bullets.join("\n");
+  const friction = bullets.filter((b) => /Cross-desk friction/i.test(b));
+  const vectorDesk = bullets.filter((b) => /^• Vector desk:/i.test(b));
+  assert.equal(friction.length, 1, `expected exactly one Cross-desk friction bullet, got: ${joined}`);
+  assert.match(friction[0]!, /Fade the rip/);
+  assert.equal(vectorDesk.length, 1, `expected exactly one Vector desk bullet, got: ${joined}`);
+  // The Vector desk bullet keeps its own non-duplicative content (invalidation) but must NOT
+  // repeat the headline already quoted by the Cross-desk friction bullet above, nor the
+  // "cross-check" framing already delivered by that same bullet.
+  assert.doesNotMatch(vectorDesk[0]!, /Fade the rip/);
+  assert.doesNotMatch(vectorDesk[0]!, /cross-check/i);
+  assert.match(vectorDesk[0]!, /102\.00/);
+});
+
+// FINDINGS 2026-09-11 (live GOOG WATCH-bucket repro): "Flag anchor 329.87" and "Entry geometry
+// AT TRIGGER" appeared near-verbatim in BOTH "Trade manager read" (this module's watch-bucket
+// bullets) and "Watch levels" (watchForSection, play-brief-intel.ts) — the same play.flagUnderlyingPx
+// / play.entryStatus facts, rendered as near-identical sentences in two sections that both render
+// together for every WATCH play. Same duplication class as recNote/rails (#4261) and the
+// earnings-warning fix (#4757): a section added later (#4104) re-derived facts the original section
+// (#4056) already carried.
+test("collectCoachingBullets: does not repeat Flag anchor / Entry geometry — watchForSection already carries them", () => {
+  const bullets = collectCoachingBullets(
+    ctx({
+      play: play({
+        flagUnderlyingPx: 329.87,
+        entryStatus: "at_trigger",
+      }),
+    }),
+    "watch",
+    100,
+  );
+  const joined = bullets.join("\n");
+  assert.doesNotMatch(joined, /Flag anchor/i);
+  assert.doesNotMatch(joined, /Entry geometry/i);
+});
+
 test("vectorPlayCoaching: null when Vector has no play headline or invalidation", () => {
   assert.equal(vectorPlayCoaching(null, play()), null);
   assert.equal(
@@ -501,6 +1534,92 @@ test("vectorPlayCoaching: uses play.bias not thesis substring (long-gamma thesis
   assert.doesNotMatch(line!, /aligned with swing lane/i);
 });
 
+// FINDINGS 2026-09-09, CORRECTED 2026-09-13 (live AAPL repro): crossDeskCoaching and
+// vectorPlayCoaching independently derive the SAME misalignment (vp.bias vs play.direction) from
+// the SAME vec.play input — when crossDeskCoaching already fires, its "Cross-desk friction"
+// bullet quotes `vp.headline` verbatim. The 2026-09-09 fix only dropped the redundant
+// "cross-check" framing clause and left the headline itself duplicated — live-reproduced on a
+// real AAPL brief 2026-09-13 with "Cross-desk friction — Vector bearish (POSITION · momentum
+// short...)" immediately followed by "Vector desk: **POSITION · momentum short...**", the
+// identical text twice. This test used to assert the headline was KEPT (codifying the bug); it
+// now asserts the headline is dropped while invalidation (non-duplicative content) still renders.
+test("vectorPlayCoaching: omits BOTH the cross-check clause AND the already-quoted headline when the conflict was noted elsewhere, but keeps invalidation", () => {
+  const vec = {
+    play: {
+      bias: "short",
+      headline: "Fade into wall",
+      thesis: "Long gamma (spot pinned)",
+      invalidation: "102.00",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }), undefined, true);
+  assert.ok(line);
+  assert.doesNotMatch(line!, /cross-check/i);
+  assert.doesNotMatch(line!, /Fade into wall/);
+  assert.match(line!, /102\.00/);
+});
+
+// BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TDOC/ASAN): `vp.bias` is a
+// four-value enum ("long"/"short"/"range"/"neutral"), not just the two directional values the old
+// `aligned` check recognized — a non-directional bias (Vector explicitly declining to take a
+// position, e.g. "stand aside — no clean edge") used to fall into the same `!aligned` branch as a
+// genuine directional conflict, appending "cross-check Vector thesis vs swing direction" right
+// after a headline that already said Vector has no opinion.
+test("vectorPlayCoaching: a non-directional Vector bias ('range'/'neutral') gets neither 'aligned' nor 'cross-check' framing (live TDOC/ASAN repro)", () => {
+  const vec = {
+    play: {
+      bias: "neutral",
+      headline: "POSITION · stand aside — no clean edge",
+      thesis: "No clean directional setup on this read",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  assert.match(line!, /stand aside/);
+  assert.doesNotMatch(line!, /cross-check/i, "a 'no opinion' bias must not read as a directional conflict");
+  assert.doesNotMatch(line!, /aligned with swing lane/i, "a 'no opinion' bias must not claim alignment either");
+});
+
+test("vectorPlayCoaching: a 'range' bias behaves the same as 'neutral' — neither framing fires", () => {
+  const vec = {
+    play: {
+      bias: "range",
+      headline: "POSITION · range-bound, no directional edge",
+      thesis: "Chop between walls",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "SHORT" }));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /cross-check/i);
+  assert.doesNotMatch(line!, /aligned with swing lane/i);
+});
+
+test("vectorPlayCoaching: returns null when the ONLY content is the headline and it was already noted elsewhere", () => {
+  const vec = {
+    play: {
+      bias: "short",
+      headline: "Fade into wall",
+      thesis: "Long gamma (spot pinned)",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  assert.equal(vectorPlayCoaching(vec, play({ direction: "LONG" }), undefined, true), null);
+});
+
+test("vectorPlayCoaching: keeps the headline when the conflict was NOT already noted elsewhere", () => {
+  const vec = {
+    play: {
+      bias: "short",
+      headline: "Fade into wall",
+      thesis: "Long gamma (spot pinned)",
+      invalidation: "102.00",
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }), undefined, false);
+  assert.ok(line);
+  assert.match(line!, /Fade into wall/);
+  assert.match(line!, /cross-check/i);
+});
+
 test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no unpaired marker corrupting markdown)", () => {
   const vec = {
     play: {
@@ -519,6 +1638,43 @@ test("vectorPlayCoaching: returned line has an EVEN count of ** bold markers (no
   assert.doesNotMatch(line!, /^\*\*Vector desk: \*\*/);
 });
 
+// FINDINGS 2026-09-09 (live NRG repro): VectorPlayEmit.starred is documented (vector-play-engine.ts)
+// to ALWAYS have the headline as its first element. This coaching bullet rendered the headline once
+// via `vp.headline`, then rendered `vp.starred[0]` a second time under a separate "starred level"
+// label — duplicating the exact same text verbatim in one bullet.
+test("vectorPlayCoaching: does not duplicate the headline as a 'starred level' (starred[0] IS the headline)", () => {
+  const vec = {
+    play: {
+      headline: "POSITION · pivot at the 119.71 gamma flip — long above / short below",
+      invalidation: "5m close back through 119.71",
+      starred: [
+        "POSITION · pivot at the 119.71 gamma flip — long above / short below",
+        "Flip cross imminent — watch 119.71",
+      ],
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  const headlineOccurrences = (
+    line!.match(/POSITION · pivot at the 119\.71 gamma flip — long above \/ short below/g) ?? []
+  ).length;
+  assert.equal(headlineOccurrences, 1, `headline must appear once, not duplicated as "starred level": ${line}`);
+  assert.match(line!, /starred level \*\*Flip cross imminent — watch 119\.71\*\*/);
+});
+
+test("vectorPlayCoaching: omits the 'starred level' clause when there is no starred item beyond the headline", () => {
+  const vec = {
+    play: {
+      headline: "Ride momentum",
+      invalidation: "below 100",
+      starred: ["Ride momentum"],
+    },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const line = vectorPlayCoaching(vec, play({ direction: "LONG" }));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /starred level/);
+});
+
 test("vexCoaching: narrates vanna flip", () => {
   const line = vexCoaching(
     {
@@ -532,17 +1688,150 @@ test("vexCoaching: narrates vanna flip", () => {
   assert.match(line!, /diverge/i);
 });
 
+// FINDING 2026-09-08 (Ask Largo monitor cycle): confluence-zone scores are half-point weighted
+// sums (call-wall 3, gamma-flip 2.5, ...), so a real score can land on e.g. 7.5. This line used to
+// interpolate `top.score` raw (no rounding) while chartLevelsSection's "Levels on chart" section
+// rounded the SAME zone's SAME score to a whole number — a member reading both saw two different
+// numbers for one figure. Both sites now render `.toFixed(1)` so they agree.
+test("confluenceCoaching: score renders at one-decimal precision, matching Levels-on-chart", () => {
+  const line = confluenceCoaching(
+    {
+      confluenceZones: [{ center: 101, kinds: ["gamma-flip", "call-wall"], score: 7.5 }],
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.match(line!, /score 7\.5/, "must show the real half-point score");
+  assert.doesNotMatch(line!, /score 8\b/, "must not display a different rounding than Levels-on-chart");
+});
+
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro IONX): this line used to join
+// `top.kinds` bare, sharing the exact "call-wall" name with the single top-ranked wall the same
+// brief's "Levels on chart" section shows elsewhere, even when the confluence engine picked a
+// LOWER-ranked wall at a materially different price -- live repro showed "Confluence 22.00
+// (call-wall + max-pain, score 5.0)" here while "Call wall (GEX): 24.00" sat elsewhere in the SAME
+// brief. Same root cause/fix as chartLevelsSection's "Confluence nodes" bullet.
+test("confluenceCoaching: discloses the zone's own wall price when it differs from the primary wall (live IONX repro)", () => {
+  const line = confluenceCoaching(
+    {
+      spot: 22,
+      gexWalls: { callWalls: [{ strike: 24 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 22,
+          low: 21.5,
+          high: 22.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 22, kind: "call-wall" },
+            { price: 22, kind: "max-pain" },
+          ],
+        },
+      ],
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    play({ direction: "LONG" }),
+    22,
+  );
+  assert.match(
+    line!,
+    /\*\*Confluence 22\.00\*\* \(call-wall@22 \+ max-pain, score 5\.0\)/,
+    "must disclose the zone's own wall price (22), not silently share the primary wall's name (24)",
+  );
+});
+
+// Sibling: a zone whose wall genuinely agrees with the primary wall keeps the plain kind name.
+test("confluenceCoaching: keeps the plain kind name when the zone's wall matches the primary wall", () => {
+  const line = confluenceCoaching(
+    {
+      spot: 22,
+      gexWalls: { callWalls: [{ strike: 24 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 24,
+          low: 23.5,
+          high: 24.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 24, kind: "call-wall" },
+            { price: 24, kind: "max-pain" },
+          ],
+        },
+      ],
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    play({ direction: "LONG" }),
+    22,
+  );
+  assert.match(line!, /\*\*Confluence 24\.00\*\* \(call-wall \+ max-pain, score 5\.0\)/);
+  assert.doesNotMatch(line!, /call-wall@/);
+});
+
+test("dataHonestyCoaching: aged markAsOf warns not-live-synced (Largo C2/C3)", () => {
+  const line = dataHonestyCoaching(
+    ctx(),
+    play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z", status: "OPEN" }),
+  );
+  assert.match(line!, /option mark from \*\*2026-09-04/i);
+  assert.match(line!, /not live-synced/i);
+});
+
 test("dataHonestyCoaching: markIsSync true (no timestamp) warns; fresh markAsOf does not", () => {
   const stale = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "OPEN" }));
   assert.match(stale!, /mark not synced to live tape/i);
 
-  const fresh = dataHonestyCoaching(ctx(), play({ markIsSync: false, markAsOf: "2026-09-04T21:45:18.731Z" }));
+  const fresh = dataHonestyCoaching(
+    ctx(),
+    play({ markIsSync: false, markAsOf: new Date().toISOString(), status: "OPEN" }),
+  );
   assert.equal(fresh, null);
+});
+
+// Live repro 2026-09-11 (Ask Largo standing mandate, TWST): the Position section (play-brief.ts)
+// already distinguishes two cases behind the SAME `markIsSync` flag — a real, live mark that just
+// lacks a stored freshness timestamp (pnlPct is a real number: prints "Mark: $X _(live quote, no
+// freshness timestamp)_") versus a genuinely unknown mark (pnlPct is null: prints "Mark: unknown").
+// This coaching bullet never made that distinction — it fires the identical "mark not synced to
+// live tape" wording for BOTH. For the live-quote-just-untimestamped case, that directly
+// contradicts the Position section printed two blocks above it in the SAME brief: one line says
+// "live quote", the very next section says "not synced to live tape" about the exact same mark.
+// A member reading top-to-bottom sees the brief disagree with itself over one fact. The genuinely-
+// unknown case (pnlPct null) is unaffected — "not synced to live tape" is the correct, honest
+// wording there, and the test above still covers it.
+test("dataHonestyCoaching: markIsSync true WITH a real pnlPct (live quote, no timestamp) does not contradict Position's own wording", () => {
+  const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, pnlPct: 7.0, status: "OPEN" }));
+  assert.doesNotMatch(
+    line!,
+    /mark not synced to live tape/i,
+    "must not claim the mark isn't synced when a real pnlPct proves a real live mark exists",
+  );
+  assert.match(line!, /freshness timestamp/i, "must still honestly flag the missing timestamp");
 });
 
 test("dataHonestyCoaching: closed play with markIsSync does not warn mark staleness", () => {
   const line = dataHonestyCoaching(ctx(), play({ markIsSync: true, status: "CLOSED" }));
   assert.equal(line, null);
+});
+
+test("dataHonestyCoaching: future-skewed Vector dataAgeMs (Infinity) warns 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: { dataAgeMs: Number.POSITIVE_INFINITY } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*clock-skewed\*\* stale/i);
+  assert.doesNotMatch(line!, /Infinitys/i);
+});
+
+test("dataHonestyCoaching: null Vector dataAgeMs with freshness stale still warns (Largo C2, 2026-09-16)", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: { dataAgeMs: undefined, freshness: "stale" } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*clock-skewed\*\* stale/i);
 });
 
 test("dataHonestyCoaching: WATCH play with markIsSync does not warn mark staleness", () => {
@@ -676,6 +1965,45 @@ test("technicalsCoaching: aligned LONG + bullish tape notes alignment without ec
   assert.match(line!, /aligns with swing direction/i);
 });
 
+test("technicalsCoaching: VWAP-vs-spot wording is not inverted (2026-09-09 live POET repro)", () => {
+  // Root cause: `const above = vec.spot >= t.vwap` computes whether SPOT is at/above VWAP, but the
+  // label it fed — `VWAP (${above ? "above" : "below"} spot)` — describes where VWAP sits relative
+  // to spot, which is the OPPOSITE fact. "spot at/above vwap" means VWAP is BELOW spot, not above.
+  // Live repro (POET, 2026-09-09 00:26 ET): spot 8.38 < vwap 8.44, so VWAP is genuinely ABOVE spot —
+  // the shipped narrative printed "VWAP 8.44 (below spot)", stating the reverse of the real
+  // relationship, directly contradicting the correct "Chart technicals" section's own "price below
+  // session VWAP" line two blocks away in the same brief.
+  const spotBelowVwap = {
+    spot: 8.38,
+    technicals: {
+      vwap: 8.44,
+      emaStack: "down",
+      rsi: 52,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "down", level: 8.35 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line1 = technicalsCoaching(spotBelowVwap, play({ direction: "LONG", ticker: "POET" }));
+  // spot (8.38) is below vwap (8.44) => VWAP sits ABOVE spot.
+  assert.match(line1!, /VWAP \*\*8\.44\*\* \(above spot\)/i);
+
+  const spotAboveVwap = {
+    spot: 95,
+    technicals: {
+      vwap: 90,
+      emaStack: "up",
+      rsi: 60,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "BOS", direction: "up", level: 92 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const line2 = technicalsCoaching(spotAboveVwap, play({ direction: "LONG", ticker: "NVDA" }));
+  // spot (95) is above vwap (90) => VWAP sits BELOW spot.
+  assert.match(line2!, /VWAP \*\*90\.00\*\* \(below spot\)/i);
+});
+
 test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => {
   const vec = {
     spot: 95,
@@ -711,4 +2039,84 @@ test("technicalsCoaching: prior-session Vector returns null even when age is fre
     technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" }), "2026-09-06"),
     null,
   );
+});
+
+// Live repro 2026-09-12: SKHY's own Entry section already read "Serving section: RESEARCH" /
+// "Setup: INVALIDATED" (thesis broke pre-entry, gates blocking entry), yet this exact function
+// still rendered "Lane leader — #1 of 8 on WATCH ... Desk attention follows the top row" three
+// sections later in the same folded "Trade manager read" narrative — directly contradicting the
+// brief's own disclosure two sections above it.
+test("laneRankCoaching: suppresses the rank-1 leader line when the play's own thesis is invalidated", () => {
+  const lanes = [
+    laneRow({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }),
+    laneRow({ ticker: "COIN", score: 55.4, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }),
+    lanes,
+  );
+  assert.equal(line, null, "a broken thesis must never get 'leader'/'top-tier' praise text");
+});
+
+// Live repro 2026-09-12 (found in the same cycle #4849 was opened): CRWD sat #1 of 90 on OPEN by
+// raw score (87) while its own manage engine was EXIT_RUNNER (round-tripped +130% peak -> -10%,
+// all trims banked, runner only) — the same brief's first bullet said "Desk says TRIM ... consider
+// protecting what's left," yet this function still said "Lane leader ... Desk attention follows
+// the top row" three lines later. #4842's selfInvalidated guard (setupState-based) didn't cover a
+// rank-1 play whose own manageAction says reduce — selfReducing (added for the below-median branch
+// earlier this same PR) closes that gap here too.
+test("laneRankCoaching: suppresses the rank-1 leader line when the play's own manage engine calls for reducing", () => {
+  const lanes = [
+    laneRow({ ticker: "CRWD", score: 87, status: "COMMIT", manageAction: "EXIT_RUNNER" }),
+    laneRow({ ticker: "AAPL", score: 60, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "CRWD", score: 87, status: "HOLD", manageAction: "EXIT_RUNNER" }),
+    lanes,
+  );
+  assert.equal(line, null, "an exiting rank-1 position must never get 'leader'/'top-tier' praise text");
+});
+
+test("laneRankCoaching: still names the real leader for a healthy rank-1 WATCH setup", () => {
+  const lanes = [
+    laneRow({ ticker: "COIN", score: 59, status: "WATCH", setupState: "TRIGGERED" }),
+    laneRow({ ticker: "GOOGL", score: 51, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "COIN", score: 59, status: "WATCH", setupState: "TRIGGERED" }),
+    lanes,
+  );
+  assert.match(line!, /Lane leader/);
+  assert.match(line!, /#1 of 2/);
+});
+
+// Live repro 2026-09-12: CG sat #90/90 by raw entry-time score (3) — a real +169.2%/+134.6% exec
+// winner already on TRIM (manageAction TAKE_PARTIAL) — and this exact function still said "confirm
+// before adding size" three lines after the brief's own "Desk says TRIM ... Bank partial into
+// strength" — backwards advice about a position the desk is telling the member to bank profit on,
+// not size into.
+test("laneRankCoaching: below-median wording drops 'adding size' when the play's own plan is to reduce", () => {
+  const lanes = [
+    laneRow({ ticker: "AAPL", score: 84.4, status: "COMMIT" }),
+    laneRow({ ticker: "NN", score: 23, status: "COMMIT" }),
+    laneRow({ ticker: "CG", score: 3, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(
+    play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }),
+    lanes,
+  );
+  assert.ok(line);
+  assert.doesNotMatch(line, /confirm before adding size/, "backwards advice on a position already being trimmed");
+  assert.match(line, /reducing, not adding/);
+});
+
+test("laneRankCoaching: below-median wording keeps 'confirm before adding size' for a play that's just HOLDing", () => {
+  const lanes = [
+    laneRow({ ticker: "AAPL", score: 84.4, status: "COMMIT" }),
+    laneRow({ ticker: "CG", score: 23, status: "COMMIT" }),
+    laneRow({ ticker: "NN", score: 3, status: "COMMIT" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "NN", score: 3, status: "HOLD", manageAction: "HOLD" }), lanes);
+  assert.ok(line);
+  assert.match(line, /confirm before adding size/, "a plain HOLD is still a legitimate add-size caution");
 });

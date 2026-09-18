@@ -337,6 +337,12 @@ export async function runVectorPickUniverseSweep(): Promise<VectorPickSweepSumma
       })
     );
     results.push(...batchResults);
+
+    // Yield event loop between batches to prevent blocking incoming requests with CPU-bound work.
+    // This allows the Node.js event loop to handle other requests before processing the next batch.
+    if (i + SWEEP_CONCURRENCY < tickers.length) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
   }
 
   return {

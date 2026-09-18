@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { openSessionYmd } from "./meridian-open-session";
 import {
@@ -21,6 +22,21 @@ describe("openSessionYmd: is there a session running right now", () => {
     assert.equal(openSessionYmd(et("16:00")), null, "at the close the bar is FINAL, not moving");
     assert.equal(openSessionYmd(et("18:30")), null, "after hours");
     assert.equal(openSessionYmd(et("04:00")), null, "premarket is not the session");
+  });
+
+  test("ICU midnight-as-24 quirk (#4703/#4714) — hour is folded before the arithmetic", () => {
+    // `hour12: false` renders ET midnight as hour "24" in this Node/ICU build, not "00". The RTH
+    // window (09:30-16:00) never overlaps the resulting 1440-1499 vs. correct 0-59 minute range
+    // either way, so this cannot be caught black-box through `openSessionYmd`'s return value —
+    // confirmed by direct trace, not assumed. Source-text guard instead, same discipline as the
+    // #3384-era "5-8s" stale-comment fix (`spx-desk-poll-ms.test.ts`) for an otherwise-unobservable
+    // correctness fix.
+    const src = readFileSync(new URL("./meridian-open-session.ts", import.meta.url), "utf8");
+    assert.match(
+      src,
+      /\(h\s*%\s*24\)\s*\*\s*60/,
+      "the hour must be folded (% 24) before minutes-of-day arithmetic — see nighthawk/session.ts's identical fix"
+    );
   });
 
   test("a non-trading day has no open session, whatever the clock says", () => {

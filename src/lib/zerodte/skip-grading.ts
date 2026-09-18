@@ -293,9 +293,30 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
     rows = res.rows.map((r) => ({
       id: Number(r.id),
       observed_at: String(r.observed_at),
-      // session_date arrives as a Date object from pg — normalize to ET YYYY-MM-DD.
+      // BUG FIX (2026-09-12, see docs/audit/findings-staging — the "no bar data" skip-grading
+      // gap): session_date is a plain DATE column (no time-of-day, no timezone — it already IS
+      // the ET trading day, stamped that way at INSERT time by the scanner). node-postgres hands
+      // a DATE column back as a JS Date at UTC MIDNIGHT for that calendar day (db.ts's own
+      // isoDateString doc comment: "DATE has no timezone, midnight-UTC is the day"). The OLD code
+      // here ran that midnight-UTC instant through `etYmd()` — which is for converting a REAL
+      // epoch instant to its ET calendar day, not for round-tripping a DATE column — and ET being
+      // behind UTC means midnight UTC always reads as the PREVIOUS evening in America/New_York,
+      // so `etYmd()` returned the day BEFORE the actual stored session_date on every single row
+      // (e.g. DATE '2026-07-10' round-tripped to "2026-07-09" every time, deterministically, not
+      // occasionally). That wrong date then drove the underlying-bar fetch below (`barsFor`) to
+      // pull the WRONG session's minute bars, so `entryBarOf`'s `bar.t >= blockedAtMs` check never
+      // found a match (every fetched bar was ~a day earlier than the real, correctly-computed
+      // `blockedAtMs`) — this is what produced the "no underlying bar at/after the block time" /
+      // "no bar data available for the session" ungradeable reasons on effectively every row
+      // (docs/audit/0DTE-RESEARCH.md's "Gate-overlap ablation" 2026-09-10 run: all 18 gate codes,
+      // n=0 graded). The doc's own hypothesis blamed `observed_at`/`Date.parse` instead — verified
+      // and REFUTED separately (Date.prototype.toString()'s embedded GMT offset round-trips
+      // exactly through Date.parse in the SAME V8 process regardless of TZ; the real bug was this
+      // adjacent field). Fix: read the UTC Y-M-D directly via db.ts's own `isoDateString` helper
+      // (the same idiom already used for every other DATE column in this codebase), never through
+      // an ET conversion.
       session_date:
-        r.session_date instanceof Date ? etYmd(r.session_date.getTime()) : String(r.session_date).slice(0, 10),
+        r.session_date instanceof Date ? db.isoDateString(r.session_date) : String(r.session_date).slice(0, 10),
       ticker: String(r.ticker),
       gate_failed: String(r.gate_failed),
       direction: r.direction != null ? String(r.direction) : null,
@@ -398,6 +419,18 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
   return summary;
 }
 
+// Absolute safety ceiling on fetchGradedSkips's row fetch. Raised from a flat 2000 (2026-09-17,
+// docs/audit/findings-staging/2026-09-17-zerodte-calibration-graded-skips-window-truncation.md):
+// observed live volume was already ~2000 graded+ungradeable rows inside 14 days alone, so the old
+// `Math.min(2000, ...)` silently re-clamped EVERY caller-requested limit back down to 2000 no
+// matter what was asked for — a days=14/30/60/90 calibration read all returned the IDENTICAL
+// most-recent-2000-rows slice (`ORDER BY observed_at DESC LIMIT 2000`), so any "days" wider than
+// ~14 was reading the same window it claimed to widen, never the older data it implied. Raised
+// with real headroom above that observed density so a genuine days=90 window (calibration.ts
+// scales its own request to the window — see GRADED_SKIPS_PER_DAY_BUDGET there) can actually be
+// read in full at current volume, while still bounding a pathological blowup.
+export const MAX_GRADED_SKIPS_LIMIT = 30_000;
+
 /** Read the already-graded skips for the calibration report's blocked-value lines.
  *  Fail-soft: any failure (missing column included — pre-first-run deployments)
  *  returns [], never a throw into the report builder. */
@@ -425,7 +458,7 @@ export async function fetchGradedSkips(opts: {
           AND session_date <= $2
         ORDER BY observed_at DESC
         LIMIT $3`,
-      [opts.sinceYmd, opts.throughYmd, Math.min(2000, Math.max(1, opts.limit ?? 2000))]
+      [opts.sinceYmd, opts.throughYmd, Math.min(MAX_GRADED_SKIPS_LIMIT, Math.max(1, opts.limit ?? 2000))]
     );
     return res.rows.map((r) => ({
       gate_failed: String(r.gate_failed),

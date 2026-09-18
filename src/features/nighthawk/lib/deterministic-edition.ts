@@ -372,6 +372,136 @@ function resolveLevels(
  * risk/reward context, and flags catalysts. Members should read this and immediately understand
  * the trade idea — not decode a score breakdown.
  */
+/**
+ * Pick one real, direction-relevant piece of news text to quote in the thesis. `news_score`
+ * (scoreNewsCatalyst) already reads both `dossier.news_headlines` (plain titles) and
+ * `dossier.polygon_sentiment` (Polygon's own per-article sentiment + reasoning, sliced to 120
+ * chars at fetch time in dossier.ts) to compute the score that can make "news" a top driver in
+ * key_signal — but until now nothing surfaced WHICH headline or WHY to the member, so a card
+ * could read "BULLISH — news + flow" with no stated reason. Prefers a sentiment entry whose
+ * polarity matches the play's own direction (real reasoning, not just a title); falls back to
+ * any sentiment entry, then to a plain headline. Returns null when there's nothing to show —
+ * this is additive only, never fabricates a catalyst.
+ */
+function pickCatalystHeadline(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const wantSentiment = isLong ? "positive" : "negative";
+  const sentiment = dossier?.polygon_sentiment ?? [];
+  const headlines = dossier?.news_headlines ?? [];
+  const matching = sentiment.find((s) => s.toLowerCase().startsWith(`${wantSentiment}:`));
+  // This section only renders when news is a top scoring driver (topDrivers gate below), but
+  // scoreNewsCatalyst can reach that threshold from plain-text keyword hits (upgrade/beat/etc.)
+  // in `news_headlines` alone, independent of what's actually tagged in `polygon_sentiment` --
+  // the two arrays are fed from the same fetch but scored differently. Falling back to
+  // `sentiment[0]` regardless of its own tag reproduced a real case: a LONG pick (bullish via a
+  // "beat" keyword in a plain headline) quoted a "negative: guidance disappoints analysts"
+  // sentiment entry as its "Catalyst:" line -- a bearish-toned quote presented as supporting
+  // evidence for a bullish thesis. Never fall back to a sentiment entry of the OPPOSITE
+  // direction; prefer a plain (untagged) headline instead, or omit the line entirely.
+  const raw = matching ?? headlines[0];
+  if (!raw) return null;
+  // Strip a leading "positive:"/"negative:"/"neutral:" sentiment tag -- the thesis already
+  // states direction via dirWord, so repeating it as a label would be redundant.
+  const text = raw.replace(/^(positive|negative|neutral)\s*:\s*/i, "").trim();
+  if (!text) return null;
+  return text.length > 110 ? `${text.slice(0, 107)}...` : text;
+}
+
+/**
+ * Names WHICH of scoreSmartMoney's three sub-signals (scorer.ts) actually has direction-aligned
+ * evidence, when smart-money is a top scoring driver: congressional trades (unusual + regular
+ * disclosures), institutional net flow, or prediction-market consensus. Without this, a card
+ * could read "BULLISH -- smart-money + flow" and a member has no way to tell whether that means
+ * a senator bought calls, an institution accumulated, or a prediction market moved -- the exact
+ * same "signal exists but isn't surfaced" gap pickCatalystHeadline fixed for news.
+ *
+ * Mirrors the field/side conventions scoreSmartMoney's own helpers read (txn_type/
+ * transaction_type for congress rows, action/change for institutional rows) but checks for
+ * PRESENCE of aligned evidence rather than re-deriving its recency-decay weighting -- this is
+ * prose naming a real signal, not a second scorer, so it doesn't need bit-identical math.
+ * Checked in the same priority order scoreSmartMoney sums them (congress, then institutional,
+ * then predictions) so the note names whichever source is likeliest to be doing the real work.
+ */
+function smartMoneyDriverNote(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const congressRows = [...(dossier?.congress_unusual ?? []), ...(dossier?.congress_trades ?? [])];
+  const congressHit = congressRows.some((row) => {
+    const side = String(
+      row.txn_type ?? row.transaction_type ?? row.transaction ?? row.type ?? row.trade_type ?? ""
+    ).toLowerCase();
+    return isLong ? /buy|purchase/.test(side) : /sell|sale/.test(side);
+  });
+  if (congressHit) return `recent congressional ${isLong ? "buying" : "selling"} disclosed`;
+
+  const instHit = (dossier?.institutional_activity ?? []).some((row) => {
+    // BUG FIX (2026-09-12): the real UW ownership row's field is `units_changed` (trailing "d"),
+    // not `units_change` -- mirrors the identical fallback-chain fix in scorer.ts's
+    // institutionalNetSignal, which this note's presence check should agree with.
+    const change = Number(
+      row.units_changed ??
+        row.change ??
+        row.shares_change ??
+        row.units_change ??
+        row.change_in_shares ??
+        row.net_change ??
+        NaN
+    );
+    if (Number.isFinite(change) && change !== 0) return isLong ? change > 0 : change < 0;
+    const action = String(row.action ?? row.transaction_type ?? row.type ?? "").toLowerCase();
+    return isLong ? /buy|added|increase|new|accumul/.test(action) : /sell|reduced|decrease|trim|liquidat/.test(action);
+  });
+  if (instHit) return `institutional ${isLong ? "accumulation" : "distribution"} flagged`;
+
+  const pred = dossier?.predictions_signal;
+  const predAligns = pred != null && (isLong ? pred.direction === "bullish" : pred.direction === "bearish");
+  if (predAligns) return pred.headline || "prediction-market consensus aligned";
+
+  return null;
+}
+
+/**
+ * Names WHICH positioning sub-signal is driving pos_score when positioning is a top scoring
+ * driver: dark-pool prints, repeated/stacked strike accumulation, or aligned OI growth --
+ * scoreOptionsPositioning (scorer.ts) already blends all of these into pos_score, but until now
+ * the thesis only ever surfaced dealer greek-flow bias (a separate, narrower data source, always
+ * printed below regardless of whether "positioning" is even a top-2 driver) -- a card could read
+ * "BULLISH -- positioning + flow" while a member has no way to tell whether that means dark-pool
+ * buying, stacked call accumulation, rising call OI, or nothing narratable was actually behind it.
+ * Checked in the same priority order scoreOptionsPositioning weighs them (dark-pool up to 6pts,
+ * strike stacks up to 7pts, OI-change 2pts) so the note names whichever source is likeliest to be
+ * doing the real work. Additive only -- never fabricates, and coexists with the separate dealer
+ * greek-flow line since they're independent data sources, not a duplicate of the same one.
+ */
+function positioningDriverNote(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const dp = dossier?.dark_pool;
+  const dpBias = (dp?.bias ?? "").toLowerCase();
+  const dpAligns = dpBias === (isLong ? "bullish" : "bearish");
+  if (dpAligns && (dp?.total_premium ?? 0) >= 5_000_000) {
+    return `dark-pool prints leaning ${isLong ? "bullish" : "bearish"}`;
+  }
+
+  const alignedStacks = (dossier?.strike_stacks ?? []).filter((s) => {
+    const t = (s.option_type ?? "").toLowerCase();
+    if (!t) return false;
+    return isLong ? t.startsWith("c") : t.startsWith("p");
+  });
+  if (alignedStacks.some((s) => s.same_strike_accumulation)) {
+    return "repeated same-strike accumulation on the aligned side";
+  }
+  if (alignedStacks.some((s) => s.repeated_hits)) {
+    return "repeated strike hits on the aligned side";
+  }
+
+  const alignedOi = (dossier?.oi_change ?? []).filter((r) => {
+    if (!((r.oi_change ?? 0) > 0)) return false;
+    const t = (r.kind ?? "").toLowerCase();
+    return isLong ? t.startsWith("c") : t.startsWith("p");
+  });
+  if (alignedOi.length >= 2) {
+    return "rising aligned open interest";
+  }
+
+  return null;
+}
+
 export function buildDeterministicThesis(
   scored: ScoredCandidate,
   dossier: TickerDossier | undefined,
@@ -402,7 +532,22 @@ export function buildDeterministicThesis(
 
   const trendConflicts = trend && ((isLong && trend === "bearish") || (!isLong && trend === "bullish"));
   if (setupTags.length) {
-    const tagText = setupTags.slice(0, 2).join(", ");
+    let selectedTags = setupTags.slice(0, 2);
+    // classifySetup() (technicals.ts) always pushes "gap-fill risk below"/"gap-fill bounce
+    // zone above" immediately after its own "gap up/down X" tag — it's the one setup_tag
+    // that argues a DIRECTION (a gap up creates downside gap-fill risk, a gap down creates
+    // upside bounce potential), unlike the purely descriptive RSI/volume/EMA tags. A blind
+    // slice(0, 2) can select the gap tag while dropping its own explanation to 3rd place,
+    // which reads as an unexplained contradiction on a SHORT after a "gap up"/"HOD break"
+    // (live example, FICO 2026-09-10) — the bullish-sounding break is shown with no stated
+    // reason the trade fades it, even though the reason was already computed. Keep the pair
+    // together whenever the gap tag itself made the cut.
+    const gapTag = setupTags.find((t) => t.startsWith("gap up") || t.startsWith("gap down"));
+    const gapFillTag = setupTags.find((t) => t.startsWith("gap-fill"));
+    if (gapTag && gapFillTag && selectedTags.includes(gapTag) && !selectedTags.includes(gapFillTag)) {
+      selectedTags = [...selectedTags, gapFillTag];
+    }
+    const tagText = selectedTags.join(", ");
     parts.push(`${scored.ticker} showing ${tagText}${trend ? ` in ${trend} trend` : ""}.`);
   } else if (trend) {
     parts.push(`${scored.ticker} in ${trend} trend.`);
@@ -410,7 +555,37 @@ export function buildDeterministicThesis(
     parts.push(`${scored.ticker} ${dirWord} setup.`);
   }
   if (trendConflicts) {
-    parts.push(`Flow conviction overrides ${trend} technicals — institutional money is ${dirWord}.`);
+    // This sentence used to hard-code "Flow conviction... institutional money is {dirWord}"
+    // whenever the technical trend disagreed with the play's final direction — regardless of
+    // whether flow had anything to do with the pick. Reproduced: a candidate driven entirely by
+    // news_score(20) + smart_money_score(15) with flow_score(0) still printed "Flow conviction
+    // overrides bearish technicals — institutional money is bullish", inventing a flow signal
+    // that never existed. Name whichever dimension is ACTUALLY the top scoring driver instead —
+    // same `topDrivers` computation the catalyst/smart-money sections below already gate on.
+    const overrideDriver = topDrivers[0]?.label;
+    const overridePhrase =
+      overrideDriver === "flow"
+        ? `Flow conviction overrides ${trend} technicals — institutional money is ${dirWord}.`
+        : overrideDriver === "smart-money"
+          ? `Smart-money conviction overrides ${trend} technicals.`
+          : overrideDriver === "news"
+            ? `News conviction overrides ${trend} technicals.`
+            : overrideDriver === "positioning"
+              ? `Options-positioning conviction overrides ${trend} technicals.`
+              : null;
+    if (overridePhrase) parts.push(overridePhrase);
+  }
+
+  // --- Catalyst headline (surfaces WHY when news is a top scoring driver, not just THAT it is) ---
+  if (topDrivers.some((d) => d.label === "news")) {
+    const catalyst = pickCatalystHeadline(dossier, isLong);
+    if (catalyst) parts.push(`Catalyst: "${catalyst}".`);
+  }
+
+  // --- Smart-money driver note (surfaces WHICH sub-signal when smart-money is a top driver) ---
+  if (topDrivers.some((d) => d.label === "smart-money")) {
+    const note = smartMoneyDriverNote(dossier, isLong);
+    if (note) parts.push(`Smart money: ${note}.`);
   }
 
   // --- Key S/R levels + R:R ---
@@ -418,7 +593,15 @@ export function buildDeterministicThesis(
     const rr = computeRiskReward({ direction: isLong ? "LONG" : "SHORT", ...levels });
     if (rr != null) {
       const rrLabel = rr >= 2 ? "strong" : rr >= 1 ? "favorable" : rr >= 0.5 ? "acceptable" : "tight";
-      parts.push(`R:R ${rr.toFixed(1)}:1 (${rrLabel}).`);
+      // Round DOWN to 1 decimal for display, never to-nearest: `rr.toFixed(1)` rounds 0.49 up to
+      // "0.5", printing "R:R 0.5:1 (tight)" — a member reads 0.5 against the very threshold ladder
+      // this label uses and sees an apparent contradiction (0.5 is the "acceptable" cutoff above).
+      // Flooring means the displayed number can only ever read AT OR BELOW the true ratio, so it
+      // can never cross into a higher label's territory than the label actually reflects. The
+      // epsilon guards a `rr` that is a clean multiple of 0.1 (e.g. exactly 0.50) from landing on
+      // the wrong side of `Math.floor` due to binary floating-point representation.
+      const rrDisplay = Math.floor(rr * 10 + 1e-9) / 10;
+      parts.push(`R:R ${rrDisplay.toFixed(1)}:1 (${rrLabel}).`);
     }
   }
 
@@ -426,7 +609,21 @@ export function buildDeterministicThesis(
   if (scored.flow_score >= 20) {
     const flowParts: string[] = [];
     if (dossier?.flow_streak?.streak_days && dossier.flow_streak.streak_days >= 2) {
-      flowParts.push(`${dossier.flow_streak.streak_days}-day ${dirWord} flow streak`);
+      // The streak is a TICKER-level measurement (net premium direction over the last N trading
+      // days, from a DB rollup independent of tonight's live flow) — it can legitimately disagree
+      // with the play's own chosen direction (scorer.ts's scoreFlowQuality already guards its own
+      // scoring bonus on this exact agreement check). Labeling the streak with the PLAY's dirWord
+      // regardless of what the streak itself measured fabricated corroboration: a real 4-day
+      // PUT-dominated (bearish) streak on a LONG play rendered as "4-day bullish flow streak" —
+      // the opposite of what the streak data showed. Use the streak's own measured direction; only
+      // fall back to the play's dirWord when a dossier carries no streak direction at all.
+      const streakDirWord =
+        dossier.flow_streak.direction === "short"
+          ? "bearish"
+          : dossier.flow_streak.direction === "long"
+            ? "bullish"
+            : dirWord;
+      flowParts.push(`${dossier.flow_streak.streak_days}-day ${streakDirWord} flow streak`);
     }
     if (scored.flow_score >= 30) {
       flowParts.push("aggressive options activity");
@@ -442,6 +639,11 @@ export function buildDeterministicThesis(
   if (scored.pos_score >= 8 && dossier?.greek_flow) {
     const gf = dossier.greek_flow;
     parts.push(`Dealer positioning ${gf.bias}.`);
+  }
+  // --- Positioning driver note (surfaces WHICH sub-signal when positioning is a top driver) ---
+  if (topDrivers.some((d) => d.label === "positioning")) {
+    const posNote = positioningDriverNote(dossier, isLong);
+    if (posNote) parts.push(`Positioning: ${posNote}.`);
   }
   if (scored.wall_proximity_score != null && scored.wall_proximity_score >= 4) {
     parts.push(`GEX wall alignment supports ${isLong ? "upside" : "downside"}.`);

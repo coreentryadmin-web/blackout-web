@@ -31,8 +31,8 @@ test("productionScreenPool mirrors max(ceiling*4, BREAKOUT_SCREEN_POOL)", () => 
   assert.equal(productionScreenPool(100, 200), 400);
   assert.equal(productionScreenPool(10, 200), 200);
   // Sanity: pinned against the live constants so a constant change surfaces here.
-  // BREAKOUT_MAX_CANDIDATES_CEILING=150, so 150*4=600 > SCREEN_POOL=200 → 600.
-  assert.equal(productionScreenPool(BREAKOUT_MAX_CANDIDATES_CEILING, BREAKOUT_SCREEN_POOL), 600);
+  // BREAKOUT_MAX_CANDIDATES_CEILING=220 (raised 2026-09-08), so 220*4=880 > SCREEN_POOL=280 → 880.
+  assert.equal(productionScreenPool(BREAKOUT_MAX_CANDIDATES_CEILING, BREAKOUT_SCREEN_POOL), 880);
 });
 
 test("the split is by gain-over-range rank, not by $-volume — the exact defect being corrected", () => {

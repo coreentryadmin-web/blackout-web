@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import type { ReactNode } from "react";
+import { deltaArrowText } from "@/features/thermal/lib/thermal-regime-strip";
 import type { RegimeStripSegment, ThermalRegimeStripModel } from "@/features/thermal/lib/thermal-regime-strip";
 
 const SEGMENT_TONE: Record<NonNullable<RegimeStripSegment["tone"]>, string> = {
@@ -61,7 +62,7 @@ function RegimeSegment({
             seg.tone === "bear" ? "text-rose-300" : "text-emerald-300"
           )}
         >
-          ↑{seg.delta.replace(/^\+/, "")}
+          {deltaArrowText(seg.delta)}
         </span>
       ) : null}
     </>

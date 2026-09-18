@@ -17,6 +17,8 @@ import {
   insertWeightReport,
   type SignalWeightReport,
 } from "@/features/spx/lib/spx-signal-db";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { todayEt } from "@/lib/et-date";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +35,18 @@ export async function GET(req: NextRequest) {
 
   const dbDenied = requireDatabaseInProduction();
   if (dbDenied) return dbDenied;
+
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
+
+  // Holiday guard: EventBridge is weekday-only (Mon–Fri). On NYSE holidays the 6 PM ET
+  // post-close fire still runs and would write a weight report from a closed tape.
+  // force=1 bypasses for ops recovery (same pattern as nighthawk-outcomes / zerodte-grade).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("spx-signal-weight-optimize", started, payload);
+    return NextResponse.json(payload);
+  }
 
   await initSpxSignalTables();
 

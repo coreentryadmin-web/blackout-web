@@ -26,6 +26,7 @@ import {
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_MAX_SINCE_HOURS,
 } from "@/features/helix/lib/helix-flow-limits";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 // Shapes and guards live in the CLIENT-SAFE module — see compare-card-types.ts for why a client
 // component importing them from HERE breaks the webpack build. Re-exported so existing server
@@ -193,14 +194,6 @@ export function regimeInteractionFor(
   return { flow_bias: flowBias, volatility_regime: vol, read };
 }
 
-/** Whole seconds between an ISO stamp and `now`, or null when the stamp is unusable. */
-function ageSecondsFromIso(iso: string | null | undefined, now: number): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
-}
-
 /**
  * The window phrase the flow one-liner appends — and the window it names must be the ANALYSED span
  * of the prints, not the requested lookback.
@@ -365,7 +358,7 @@ export function compareSidesFrom(
     freshness: (pos != null ? "cached" : null) as CompareFreshness,
     // Age of the matrix COMPUTATION, not of the price it models — read with `freshness` and
     // `market_session`, never on its own.
-    age_seconds: pos?.asof ? ageSecondsFromIso(pos.asof, nowMs) : null,
+    age_seconds: pos?.asof ? ageSecFromIso(pos.asof, nowMs) : null,
   };
 
   const { conflict, conflict_note } = describeConflict("Flow", flowSide, "gamma", gamma);

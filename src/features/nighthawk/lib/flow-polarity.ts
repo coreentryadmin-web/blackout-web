@@ -121,9 +121,14 @@ export function compareFlowPolarity(flows: Record<string, unknown>[]): FlowPolar
     const side = tradeSide(r);
     if (side === "B") bidPutPrem += prem;
     else if (side == null || side === "M") {
+      // Proportional credit for the WHOLE ask_side_pct range, not just <=40 — a 45%-ask/55%-bid
+      // put previously fell between this branch's old <=40 cutoff and tradeSide's own >=60 "A"
+      // classification, silently contributing 0 instead of its real 0.55 share. bid_put_share_of_puts
+      // is documented as a SHARE (continuous), matching signedAggressionDirection's own continuous
+      // askShare usage above — there was never a reason for a discrete cutoff here.
       const askPct = Number(r.ask_side_pct);
-      if (Number.isFinite(askPct) && askPct <= 40) bidPutPrem += prem * ((100 - askPct) / 100);
-      else if (!Number.isFinite(askPct)) bidPutPrem += prem * 0.5;
+      if (Number.isFinite(askPct) && askPct >= 0 && askPct <= 100) bidPutPrem += prem * ((100 - askPct) / 100);
+      else bidPutPrem += prem * 0.5;
     }
   }
 

@@ -30,7 +30,7 @@ export function deskAgeSec(
   if (ageMs < -DESK_FUTURE_TOLERANCE_MS) {
     return staleMaxSec != null ? staleMaxSec + 1 : Number.POSITIVE_INFINITY;
   }
-  return ageMs / 1000;
+  return Math.max(0, ageMs / 1000);
 }
 
 /**

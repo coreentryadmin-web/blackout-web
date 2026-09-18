@@ -1,4 +1,4 @@
-# Ask Largo swing "Trade manager read" — `vectorPlayCoaching` corrupts its own markdown
+## Ask Largo swing "Trade manager read" — `vectorPlayCoaching` corrupts its own markdown
 
 > **kind:** FINDING
 
@@ -9,14 +9,14 @@
 | **Area** | Swing / Ask Largo trade-manager narrative coaching layer |
 | **Files** | `src/lib/swing/play-brief-narrative-coaching.ts`, `src/lib/swing/play-brief-narrative-coaching.test.ts` |
 
-## Context
+### Context
 
 Flagged during peer review of PR #4104 ("deep trade-manager coaching — pillars, catalysts,
 cross-desk, confluence"), part of the standing Ask Largo × Night Hawk Swings ownership mandate.
 The review posted a ⏳ WAIT verdict with the exact repro before the PR merged; it merged anyway
 without the fix, so this closes the gap directly on `main`.
 
-## Root cause
+### Root cause
 
 `vectorPlayCoaching()`'s final line:
 ```ts
@@ -45,13 +45,13 @@ the final clause showed raw `**asterisks**`. Live-reachable: `vectorPlayCoaching
 `vec.play.headline` or `.invalidation` is present. Zero test coverage existed for this function
 before this fix (confirmed via grep before writing the fix).
 
-## Fix
+### Fix
 
 Deleted the stray ternary; the function now returns `line` directly. The individual `parts` each
 already carry their own correctly-paired `**bold**` spans (`` `Vector desk: **${vp.headline}**` ``,
 `` `invalidation **${vp.invalidation}**` ``, etc.) — nothing needed re-wrapping.
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 New tests in `play-brief-narrative-coaching.test.ts`:
 - null-safety for absent Vector play data.
@@ -64,7 +64,7 @@ New tests in `play-brief-narrative-coaching.test.ts`:
 of 1 extra `**`). Restored → **9/9 pass** in the file. `tsc --noEmit` clean. Full `npm test` run in
 progress at write time (Node 20).
 
-## Blast radius
+### Blast radius
 
 - Only `vectorPlayCoaching` changed — every other coaching function in the file (`crossDeskCoaching`,
   `catalystCoaching`, `laneRankCoaching`, etc.) was read and confirmed to have no equivalent
@@ -72,7 +72,7 @@ progress at write time (Node 20).
 - No caller passes options/config that this fix would affect — the function's signature is
   unchanged.
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 - Did not add a markdown-balance lint rule or shared "assert balanced bold" helper across the
   whole coaching file — this bug was localized to one function with an obviously-wrong extra

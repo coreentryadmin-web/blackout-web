@@ -60,6 +60,37 @@ test("regime blends the archetype label with the normalized regime pillar", () =
   assert.ok(meta.regime && meta.regime.includes("regime 0.60"));
 });
 
+// Live repro 2026-09-13 (BE, WATCH, real production play-brief): classifyArchetype's honest
+// null-when-thin design (EVIDENCE_FLOOR) means a name with no grounded archetype-fit inputs gets
+// `archetypeLabel: null` even when `regime01` IS present. Before this fix, `swingServingMetaFromDossier`
+// fell all the way through to the bare `regimePart` string in that case, and play-brief-intel.ts's
+// `whyThisSetupSection` pushes `play.regime` verbatim under "**Discovery read:**" — so a real member's
+// live brief rendered "Discovery read: regime 0.33", a raw pillar score with no archetype context,
+// reading as leaked debug output rather than a trader-facing label. This is the same bug class
+// live-plays.ts's `regime` field (the committed-row twin of this one) was already corrected for on
+// 2026-09-07 (see its own long comment) — honest omission (null), never a synthesized/bare value.
+test("regime is OMITTED (never a bare numeric fallback) when no archetype label is available", () => {
+  // A genuinely neutral SwingReads: no accumulation, no EMA stack, no rel-strength/flow/catalyst
+  // clusters supplied — every archetype fit input stays null, so classifyArchetype honestly
+  // returns null (EVIDENCE_FLOOR), exactly the live BE/MU/AMD WATCH-row shape.
+  const neutralReads: SwingReads = {
+    accumulation: null,
+    flowWindowDays: 0,
+    returnPct10d: null,
+    spyReturnPct10d: null,
+  };
+  const thinInput: SwingDossierInput = {
+    ticker: "be",
+    asOf: "2026-09-13T14:00:00.000Z",
+    reads: neutralReads,
+    regime01: 0.33,
+    dataQuality01: 0.9,
+  };
+  const meta = swingServingMetaFromDossier(buildSwingDossier(thinInput));
+  assert.equal(meta.archetypeLabel, null); // no archetype-fit inputs supplied ⇒ honestly unclassifiable
+  assert.equal(meta.regime, null); // must NOT fall back to the bare "regime 0.33" string
+});
+
 test("calibrated probability + EV are LITERAL null (nothing has graduated) — desk shows —", () => {
   const meta = swingServingMetaFromDossier(buildSwingDossier(fullInput));
   assert.equal(meta.calibratedProbability, null);

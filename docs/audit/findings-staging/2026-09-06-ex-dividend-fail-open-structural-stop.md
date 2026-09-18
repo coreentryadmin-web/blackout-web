@@ -1,4 +1,4 @@
-# 2026-09-06 — Ex-dividend read failure silently re-enabled the Q39 fail-open structural-stop bug
+## 2026-09-06 — Ex-dividend read failure silently re-enabled the Q39 fail-open structural-stop bug
 
 > **kind:** FINDING
 
@@ -8,14 +8,14 @@
 | **Area** | Swing management — `resolveSwingExDividendContext` (`ex-dividend-reads.ts`), `structuralStopBroken` (`manage.ts`), Q39 |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 `SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` finding #24: `resolveSwingExDividendContext`'s catch-all
 returned `{ exDividendSession: false, exDividendCash: null }` on ANY `fetchPolygonDividends`
 failure (rate limit, timeout, network blip) — a return value byte-identical to "confirmed: today
 is not an ex-dividend day for this ticker."
 
-## Root cause
+### Root cause
 
 Q39 (`ex-dividend-adjustment.ts`, shipped in #3909/#3929) exists specifically so a legitimate
 ex-dividend mechanical price drop on a LONG position is not misread as a structural-stop breach —
@@ -34,7 +34,7 @@ hold in the current code: the `catch` branch returns without ever calling `CACHE
 the success path caches. So the live risk is per-call fail-open, not cache-poisoning; the fix
 targets the real mechanism.
 
-## Blast radius
+### Blast radius
 
 Two call sites carried the identical fail-open shape and both needed the fix:
 1. `resolveSwingExDividendContext`'s own `catch` (`ex-dividend-reads.ts`).
@@ -49,7 +49,7 @@ source and regex-asserts substrings (e.g. that `isWsUpdatedAtFresh` is imported)
 or calls `resolveSwingExDividendContext`, so it would pass unchanged even with this bug present.
 `grep -rln resolveSwingExDividendContext src --include=*.test.ts` returned nothing before this fix.
 
-## Fix
+### Fix
 
 Distinguish "unknown" from "confirmed no ex-div" instead of collapsing both into `false`:
 - `ex-dividend-reads.ts`: `resolveSwingExDividendContext` now returns a third field,
@@ -73,7 +73,7 @@ the compare is ABOUT to declare a breach. A SHORT structural-stop breach with
 that side) — verified by a dedicated test. When the ex-div read succeeds (the common case),
 behavior is byte-identical to before this fix.
 
-## Fix rationale
+### Fix rationale
 
 Considered shortening/removing the failure-path cache TTL instead, per the audit's alternative —
 rejected because the current code never caches a failure at all (verified by reading the `catch`
@@ -87,7 +87,7 @@ for no behavioral gain over an additive sibling flag. The additive flag keeps ev
 `exDividendSession`/`exDividendCash` consumer and test unchanged while giving `manage.ts` exactly
 the one bit of information it actually needs (was this cycle's read trustworthy?).
 
-## Evidence
+### Evidence
 
 RED→GREEN (git-stash proof, Node 20):
 - Pre-fix (`ex-dividend-reads.ts`/`manage.ts`/`manage-sync.ts`/`route.ts` stashed back to `main`,
@@ -104,7 +104,7 @@ RED→GREEN (git-stash proof, Node 20):
   site).
 - `npx tsc --noEmit` → clean.
 
-## New tests
+### New tests
 
 - `src/lib/swing/ex-dividend-reads.test.ts` (new file) — real behavior tests that actually import
   and call `resolveSwingExDividendContext`, mocking `fetchPolygonDividends` (via

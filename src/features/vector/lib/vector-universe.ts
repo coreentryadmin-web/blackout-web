@@ -43,6 +43,11 @@ export type VectorUniverseRow = {
   ticker: string;
   spot: number | null;
   gammaFlip: number | null;
+  /** Why gammaFlip is null (e.g. 'net_short_everywhere') — omitted/null when a flip was found or
+   *  the upstream heatmap didn't report a reason. Same field the canonical GEX heatmap route and
+   *  Thermal's regime strip already forward; the universe row previously discarded it, so a null
+   *  flip here read as unexplained where the equivalent Thermal/Largo reads already explain it. */
+  flipReason: string | null;
   vexFlip: number | null;
   topCallWall: number | null;
   topPutWall: number | null;
@@ -115,7 +120,12 @@ async function buildVectorUniverseRow(
   } = opts;
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
-  const spot = hm?.spot ?? null;
+  // `hm.spot` can come back literally 0 (a halted/delisted ticker, or a provider placeholder for
+  // "no price") rather than nullish, so a plain `?? null` lets a real zero leak into the row as
+  // `spot: 0` while every downstream computation already treats <= 0 the same as absent (the
+  // `spot != null && spot > 0` guard immediately below, gexWalls, etc.) — a member-visible field
+  // saying "0" when every other consumer of the same value already reads it as "no real spot".
+  const spot = hm?.spot != null && hm.spot > 0 ? hm.spot : null;
   // Self-heal: a dead dynamic entry (dead before touchDynamicUniverse's spot>0 write-guard
   // existed, or one whose chain stopped resolving later) never gets removed by age-based pruning
   // alone. Fire-and-forget, never blocks the row — see removeDynamicUniverseTicker's own comment.
@@ -238,6 +248,7 @@ async function buildVectorUniverseRow(
       ticker,
       spot,
       gammaFlip: hm?.gex?.flip ?? null,
+      flipReason: hm?.gex?.flip_reason ?? null,
       vexFlip: hm?.vex?.flip ?? null,
       topCallWall: gexWalls.callWalls[0]?.strike ?? null,
       topPutWall: gexWalls.putWalls[0]?.strike ?? null,
@@ -329,6 +340,28 @@ export async function buildVectorUniverseSnapshot(
     if (r.status === "fulfilled" && r.value) rows.push(r.value.row);
   }
 
+  // Retry pass for rows whose spot didn't resolve on the first attempt (2026-09-12 audit
+  // finding). `isCompleteBuild`'s own bar only asks whether every ticker produced A row
+  // (attempted === produced) — it says nothing about whether that row's PRICE resolved, and a
+  // "complete" build can still be a majority-null one. Live-measured off-hours (cold caches):
+  // GET /api/market/vector/universe served spot:null for 35 of 64 rows — every one of them a
+  // STATIC allowlist name (`HEATMAP_EXTRA_LIQUID_TICKERS`: GOOG, BAC, GS, INTC, ORCL, TSM, UNH, V,
+  // COIN, ...) that is not one of the ~11 UI preset chips, so none of them get direct member-view
+  // traffic to keep their `fetchGexHeatmap` cache warm between cron ticks — while every preset
+  // chip (SPY/QQQ/NVDA/TSLA/AAPL/...) resolved fine. A solo `GET /api/market/gex-heatmap` for
+  // several of the null names (GOOG/BAC/COIN) reproduced the same `available:false` on a first,
+  // uncontended call, then resolved with a real, current spot on a retry ~2-4s later — the build
+  // that missed `fetchGexHeatmap`'s own live-request-tuned 3s block cap (`gexHeatmapMaxBlockMs`)
+  // keeps running in the background (`heatmapInflight` is a shared, not-cancelled promise) and
+  // finishes shortly after. This build has no such latency constraint (fire-and-forget cron with
+  // a 180s route budget, or an inline scanner-poll rebuild nobody is holding a request open for),
+  // so re-attempting just the null rows costs nothing on the common path (by the time the WHOLE
+  // first pass across the universe has run, the earlier ticker's own background build has very
+  // likely already finished and warmed the cache — this retry is then a cheap cache read, not a
+  // second cold build) and self-heals the majority of these without touching the shared,
+  // widely-used `fetchGexHeatmap`/`gexHeatmapMaxBlockMs` block-cap tuning at all.
+  await retryNullSpotRows(rows, nowSec);
+
   rows.sort((a, b) => a.ticker.localeCompare(b.ticker));
   // Carry the COMPLETENESS of the fan-out, not just its survivors. Without this the caller cannot
   // tell "the universe is 4 tickers" from "17 of 21 lookups failed" — and it used to persist the
@@ -338,6 +371,37 @@ export async function buildVectorUniverseSnapshot(
     attempted: tickers.length,
     produced: rows.length,
   };
+}
+
+/**
+ * Re-attempt, bounded and in place, every row whose spot came back null on the first pass — see
+ * the call site's comment for the full incident this exists to fix. Deliberately does NOT pass
+ * `recordWallHistory` (never re-records a bead-rail sample here): this only refreshes the row's
+ * displayed price fields, and re-recording risks a duplicate/out-of-bucket wall-history write for
+ * a tick already attempted once. A ticker that is genuinely, permanently unresolvable (no real
+ * chain — the `NOSPOT`-shaped case) simply retries to another null and is left as first-built;
+ * only a row that ACTUALLY resolves this time replaces the original.
+ */
+async function retryNullSpotRows(rows: VectorUniverseRow[], nowSec: number): Promise<void> {
+  const pending = rows
+    .map((row, index) => ({ ticker: row.ticker, index }))
+    .filter(({ index }) => rows[index].spot == null);
+  if (pending.length === 0) return;
+
+  const retried = await runPolygonPool(
+    pending.map(({ ticker }) => async () => {
+      try {
+        const built = await buildVectorUniverseRow(ticker, { recordWallHistory: false, nowSec });
+        return built?.row ?? null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  retried.forEach((row, i) => {
+    if (row && row.spot != null) rows[pending[i].index] = row;
+  });
 }
 
 const appendInFlight = new Map<string, Promise<void>>();
@@ -363,8 +427,36 @@ export async function ensureTickerInUniverseSnapshot(rawTicker: string): Promise
     // dedups within ONE process; with several ECS tasks appending concurrently the old
     // load -> append -> store lost whichever write landed first. Re-reading narrows the window, and
     // merging means the loser contributes its row instead of erasing everyone else's.
+    //
+    // BUG FIX (2026-09-12 audit finding): this used to call mergeUniverseSnapshot with its DEFAULT
+    // maxAgeMs (UNIVERSE_ROW_MAX_AGE_MS, 15 minutes) — a threshold tuned for the RTH cron's own
+    // 5-minute rebuild cadence (three missed cron ticks = genuinely stale). But THIS call site fires
+    // on a completely different, member-view-driven cadence that has no relationship to the cron at
+    // all — a member (or Largo's get_gex_heatmap tool) can open any ticker at any hour, including
+    // every evening after the cron's RTH gate stops firing and all weekend when it does not run at
+    // all. Passing the cron's 15-minute threshold here meant a SINGLE ticker view, any time more than
+    // 15 minutes had passed since the last full cron rebuild, expired the ENTIRE stored roster (every
+    // row older than 15 minutes) and replaced it with just the one freshly-touched ticker.
+    //
+    // Reproduced live 2026-09-12 (Saturday, cron correctly RTH-gated off since Friday 20:00 UTC):
+    // GET /api/market/vector/universe served only 5 rows (O, OR, ORC, ORCL, SPX — evidently a
+    // handful of names opened piecemeal over the weekend) where the last complete cron build had
+    // persisted 84. Every desk sharing this snapshot (Vector's own scanner table, Thermal's
+    // heatmap-warm, Largo's Vector tool) was reading a near-empty universe any time it happened to
+    // load between cron cycles. This is NOT the already-fixed "incomplete fan-out replaces a healthy
+    // roster" bug (that one was about buildVectorUniverseSnapshot's OWN completeness gate, guarded by
+    // isCompleteBuild) — it is the single-ticker append path silently applying the SAME pruning rule
+    // outside the cadence it was calibrated for.
+    //
+    // Fix: this call's only job is to ADD one missing ticker, never to police the rest of the
+    // roster's freshness — that pruning is already done correctly, on the right cadence, by the
+    // cron's own refreshVectorUniverseSnapshot() merge (line ~538, unchanged). So this call passes an
+    // effectively-unbounded maxAgeMs: no previously-stored row is ever expired here purely for being
+    // "old" — the FUTURE_STAMP_TOLERANCE_MS clock-skew guard inside mergeUniverseSnapshot still
+    // applies unchanged (it does not depend on maxAgeMs), so a bad future-dated row still gets
+    // dropped, only genuine staleness-based pruning is deferred to the cron.
     const latest = (await loadVectorUniverseSnapshot()) ?? snap;
-    const merged = mergeUniverseSnapshot(latest, [built.row], Date.now());
+    const merged = mergeUniverseSnapshot(latest, [built.row], Date.now(), Number.POSITIVE_INFINITY);
     await persistVectorUniverseSnapshot(roundFloats({ updatedAt: Date.now(), rows: merged.rows }));
   })().finally(() => {
     appendInFlight.delete(ticker);

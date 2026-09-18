@@ -8,8 +8,33 @@
  * reproduced without that test surface.
  */
 
-/** A `## ` heading that is NOT at line start -- the damage signature described on `repairGlued`. */
+/**
+ * A `## ` heading that is NOT at line start -- the damage signature described on `repairGlued`.
+ *
+ * Excludes a heading inside an OPEN inline code span: that shape is a LEGITIMATE mid-line quote of
+ * a prior entry's exact heading text as evidence (e.g. "The stale entry | `## 2026-09-02 — [FINDING,
+ * ...] ... — OPEN`."), not gluing. A genuinely glued heading is raw adjacent markdown left by a
+ * dropped newline -- it is never inside a code span. Without this exclusion, `repairGlued` would
+ * splice a blank line + new heading into the middle of the quoting entry's own markdown table cell,
+ * silently fragmenting it into a headless orphan -- the exact failure mode this function exists to
+ * fix, self-inflicted on healthy input (found 2026-09-17 folding a real staged-findings backlog).
+ *
+ * "Open code span" is checked with backtick PARITY since the start of the line, not merely "is the
+ * immediately preceding character a backtick" (a narrower first attempt at this same fix, same day,
+ * missed a second real case: a finding's own prose quoting this file's illustrative fixture text
+ * inside a code span whose FIRST character is not the heading itself -- e.g. `` `"FIXED. |## 2026-
+ * 08-21 — [FINDING, ..."` `` -- where the character immediately before "##" is "|", not a backtick,
+ * even though the whole thing sits inside one open span). An odd number of backticks between the
+ * line start and the match means we are inside an unclosed span; even (including zero) means we are
+ * not -- the standard technique for this, robust to any well-formed markdown line.
+ */
 const GLUED_HEADING = /(?<!^)(?<!\n)(## \d{4}-\d{2}-\d{2} — \[)/g;
+
+function backtickParityBeforeInLine(text, idx) {
+  const lineStart = text.lastIndexOf("\n", idx - 1) + 1;
+  const before = text.slice(lineStart, idx);
+  return (before.match(/`/g) || []).length % 2;
+}
 
 /**
  * Put a glued heading back at line start.
@@ -26,12 +51,20 @@ const GLUED_HEADING = /(?<!^)(?<!\n)(## \d{4}-\d{2}-\d{2} — \[)/g;
  * which the resolver flagged.
  */
 export function repairGlued(text) {
-  return text.replace(GLUED_HEADING, "\n\n$1");
+  return text.replace(GLUED_HEADING, (match, _p1, offset, whole) =>
+    backtickParityBeforeInLine(whole, offset) === 1 ? match : `\n\n${match}`
+  );
 }
 
 /** Count headings fused onto a preceding line. Zero on a healthy file. */
 export function countGlued(text) {
-  return (text.match(GLUED_HEADING) || []).length;
+  let count = 0;
+  let m;
+  GLUED_HEADING.lastIndex = 0;
+  while ((m = GLUED_HEADING.exec(text))) {
+    if (backtickParityBeforeInLine(text, m.index) === 0) count++;
+  }
+  return count;
 }
 
 /**

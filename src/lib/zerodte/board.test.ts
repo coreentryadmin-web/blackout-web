@@ -340,7 +340,7 @@ test("setups: put-dominant tape produces a short setup", () => {
 test("setups: far-dated and thin tickers are excluded", () => {
   const rows = [
     row({ dte: 14 }), // not 0-1 DTE
-    row({ ticker: "TINY", premium: 150_000 }), // below gross floor
+    row({ ticker: "TINY", premium: 100_000 }), // below gross floor (SETUP_MIN_GROSS = 150k)
   ];
   assert.equal(deriveZeroDteSetups(rows).length, 0);
 });
@@ -370,7 +370,7 @@ test("setups: sudden flow spike flagged when ≥half the tape lands in the last 
 test("setups: prints for contracts that expired a prior session are dropped", () => {
   const rows = [
     row({ premium: 2_000_000, expiry: "2026-07-02", dte: 0 }), // expired yesterday
-    row({ premium: 150_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone
+    row({ premium: 100_000, expiry: "2026-07-06", dte: 0 }), // today — below gross floor alone (SETUP_MIN_GROSS = 150k)
   ];
   assert.equal(deriveZeroDteSetups(rows, { todayYmd: "2026-07-06" }).length, 0);
   // Without the session guard the expired tape would have qualified.
@@ -996,21 +996,37 @@ test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark w
 // same instant — plan_stop fired 1.2s after commit at -53%. Both losses were fake: the
 // underlying barely moved in either case (verified against real 1-min Polygon bars), so a
 // hard stop breaching within ~1 second of a fresh commit is a mispriced entry, not real
-// decay. The threshold reuses CHASE_PCT (55) — the SAME magnitude this file already
-// treats as "too extreme to trust" for the opposite (MOVED) direction.
+// decay.
+//
+// Threshold fix (2026-09-11): the ceiling originally reused CHASE_PCT (55%) — the wrong
+// threshold, borrowed from the UP/MOVED case where 55% was tuned for gamma-swing chase
+// logic, not achievability. That left a dead zone: a dislocation of 50-54.99% stayed
+// UNCORRECTED, yet the live mark was already AT OR PAST the play's own -50% hard stop —
+// an "instant stop" grade off a fill nobody could get, the exact failure this ceiling
+// exists to close. Now triggers at STOP_TRIGGER_PCT (|PLAN_RULES.stop_pct| = 50) instead.
 test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mark when the mark is FAR BELOW the flow fill (outlier fill, achievability ceiling)", () => {
   // The live QQQ shape: flow fill 3.27, live mark 0.88 (~73% below) — outlier, cap to mark.
   assert.equal(resolveLedgerEntryPremium(3.27, 3.27, 0.88), 0.88);
-  // A comparable outlier shape well past the CHASE_PCT magnitude (5.86 -> 2.0, ~66% below).
+  // A comparable outlier shape well past the threshold (5.86 -> 2.0, ~66% below).
   assert.equal(resolveLedgerEntryPremium(5.86, 5.86, 2.0), 2.0);
   // Ordinary CHEAPER (real front-running): mark modestly below the fill, well inside the
-  // CHASE_PCT band — untouched, matches the existing CHEAPER test above.
+  // band — untouched, matches the existing CHEAPER test above.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
-  // Exactly at the CHASE_PCT boundary (45% of the fill remains, i.e. 55% below) — the
-  // ceiling fires (>=), consistent with the existing >= comparison at the MOVED boundary.
-  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.5), 4.5);
-  // Just inside the boundary (45.01% remains, i.e. 54.99% below) — no ceiling.
-  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 10.0);
+  // Exactly at the stop-trigger boundary (50% of the fill remains, i.e. 50% below) — the
+  // ceiling fires (>=): this is precisely the dead-zone case that used to slip through at
+  // 55%'s old boundary (10.0, 10.0, 5.0) — a mark this far below the fill already breaches
+  // the play's own -50% stop, so it must correct here, not stay uncorrected.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 5.0), 5.0);
+  // Just inside the boundary (50.01% of the fill remains, i.e. 49.99% below) — no ceiling;
+  // this dislocation alone would NOT already breach the -50% stop, so it's still ordinary
+  // (if unusually large) front-running, not an unachievable fill.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 5.001), 10.0);
+  // The OLD 55%-threshold boundary (54.99% below) now correctly corrects too — this was
+  // the live dead-zone shape (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%, etc.): a
+  // mark this far below the fill was already an instant, unachievable stop under the old
+  // CHASE_PCT-based threshold, and now gets capped to the achievable mark instead
+  // (round2(4.501) = 4.5 — the cap rounds like every other premium here).
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 4.5);
   // A malformed non-positive mark never drags the basis down via this path either.
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 0), 4.0);
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, -1), 4.0);
@@ -1279,10 +1295,11 @@ test("gates: deep-ITM top strike (stock replacement) is excluded", () => {
 });
 
 test("gates: far-OTM lotto stack is excluded by the RUNNER_SETUP_MAX_OTM_PCT cap at discovery", () => {
-  // A big CALL stack whose strike sits ~24% OTM (235 vs stock 190): clears premium +
+  // A big CALL stack whose strike sits ~31.6% OTM (250 vs stock 190): clears premium +
   // dominance on size alone but is an egregious 0DTE lottery ticket, not a momentum play.
+  // (RUNNER_SETUP_MAX_OTM_PCT = 26 as of 2026-09-08.)
   const rejections: ZeroDteGateRejection[] = [];
-  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 235, underlying_price: 190 })];
+  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 250, underlying_price: 190 })];
   const out = deriveZeroDteSetups(lotto, { rejections });
   assert.equal(out.length, 0, "a far-OTM lotto stack must not reach the board");
   assert.equal(rejections.length, 1);
@@ -1293,8 +1310,8 @@ test("gates: far-OTM lotto stack is excluded by the RUNNER_SETUP_MAX_OTM_PCT cap
     `otm_pct ${rejections[0]!.otm_pct} should exceed the discovery cap`
   );
 
-  // 13–20% OTM can reach commit gates (tighter SETUP_MAX_OTM_PCT applies unless Vector runner relax).
-  const runnerZone = [row({ premium: 3_000_000, option_type: "call", strike: 215, underlying_price: 190 })];
+  // ~18% OTM can reach commit gates (tighter SETUP_MAX_OTM_PCT=16 applies unless Vector runner relax).
+  const runnerZone = [row({ premium: 3_000_000, option_type: "call", strike: 225, underlying_price: 190 })];
   const runnerOut = deriveZeroDteSetups(runnerZone);
   assert.equal(runnerOut.length, 1);
   assert.ok(runnerOut[0]!.otm_pct! > SETUP_MAX_OTM_PCT);
@@ -1361,13 +1378,13 @@ test("rejections: omitted opts.rejections — deriveZeroDteSetups behaves identi
   // Every OTHER test in this file calls deriveZeroDteSetups without opts.rejections
   // at all and already proves the return value is unaffected; this test just makes
   // the "no rejections array supplied" no-op explicit for a rejecting candidate.
-  const rows = [row({ ticker: "TINY", premium: 150_000 })];
+  const rows = [row({ ticker: "TINY", premium: 100_000 })];
   assert.equal(deriveZeroDteSetups(rows).length, 0);
 });
 
 test("rejections: gross-premium gate failure — only gross_premium/prints known, everything gate-B-onward is null", () => {
   const rejections: ZeroDteGateRejection[] = [];
-  const rows = [row({ ticker: "TINY", premium: 150_000, alerted_at: "2026-07-06T14:00:00Z" })];
+  const rows = [row({ ticker: "TINY", premium: 100_000, alerted_at: "2026-07-06T14:00:00Z" })];
   const out = deriveZeroDteSetups(rows, { rejections });
 
   assert.equal(out.length, 0, "TINY must not appear in setups");
@@ -1376,7 +1393,7 @@ test("rejections: gross-premium gate failure — only gross_premium/prints known
   assert.equal(r.ticker, "TINY");
   assert.equal(r.gate_failed, "min_gross");
   assert.equal(r.threshold, SETUP_MIN_GROSS);
-  assert.equal(r.gross_premium, 150_000);
+  assert.equal(r.gross_premium, 100_000);
   assert.equal(r.prints, 1);
   // The scan never reaches the aggression/dominance/otm gates for this candidate —
   // the real code never computes these values either, so they must be null, not 0
@@ -1469,7 +1486,7 @@ test("rejections: a mixed batch only logs the ticker that actually failed a gate
     row({ ticker: "NVDA", premium: 900_000, strike: 190 }),
     row({ ticker: "NVDA", premium: 700_000, strike: 190, alert_rule: "SweepsFollowedByFloor" }),
     // TINY fails the gross-premium floor.
-    row({ ticker: "TINY", premium: 150_000 }),
+    row({ ticker: "TINY", premium: 100_000 }),
   ];
   const out = deriveZeroDteSetups(rows, { rejections });
 

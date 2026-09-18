@@ -3,7 +3,23 @@ import { describe, test } from "node:test";
 import {
   buildGexRegimeInterpretation,
   buildThermalRegimeStrip,
+  deltaArrowText,
 } from "./thermal-regime-strip";
+
+// FINDINGS: the regime strip's delta chip hardcoded an "up" arrow regardless of the delta's own
+// sign, so a negative delta (e.g. "-$3.7B") rendered as "↑-$3.7B" — an up arrow glued to a
+// decrease. The arrow must reflect the sign, not be fixed.
+describe("deltaArrowText", () => {
+  test("negative delta gets a down arrow and drops the sign", () => {
+    assert.equal(deltaArrowText("-$3.7B"), "↓$3.7B");
+  });
+  test("positive (explicit +) delta gets an up arrow and drops the sign", () => {
+    assert.equal(deltaArrowText("+$1.2M"), "↑$1.2M");
+  });
+  test("unsigned delta defaults to an up arrow, text unchanged", () => {
+    assert.equal(deltaArrowText("held"), "↑held");
+  });
+});
 
 describe("buildGexRegimeInterpretation", () => {
   test("long gamma above flip — stabilizing + pin + regime loss", () => {

@@ -101,6 +101,42 @@ export function scoreSwingPillars(
   };
 }
 
+/** Human labels for the 7 pillars — the factor rows the desk/Ask Largo render (biggest lever first).
+ *  SHARED (not duplicated) between `serving-ingest.ts` (fresh pre-entry dossiers) and `live-plays.ts`
+ *  (pinned commit-time reconstruction) so the two factor-building call sites can never drift apart. */
+export const SWING_PILLAR_LABELS: Record<SwingPillar, string> = {
+  STRUCTURE: "Structure",
+  REL_STRENGTH: "Rel. strength",
+  FLOW: "Flow",
+  VOLATILITY: "Volatility",
+  CATALYST: "Catalyst",
+  REGIME: "Regime",
+  DATA_QUALITY: "Data quality",
+};
+
+/** A signed, point-weighted factor row — the command-deck's DeckFactor shape, kept lib-local so this
+ *  pure module never imports the features layer. */
+export interface SwingScoreFactor {
+  label: string;
+  points: number;
+}
+
+/**
+ * Present, positive-point contributions → labeled factor rows, biggest lever first. By construction
+ * (points sums to `score` — see `scoreSwingPillars` above) `contributionsToFactors(...).reduce((n,f) =>
+ * n+f.points, 0)` ALWAYS equals the score `contributions` came from, whatever those raw pillar inputs
+ * were — present-but-zero/absent pillars contribute 0 either way, so filtering them out of the display
+ * never creates a gap. Callers that want that invariant to hold against a position's SHOWN score must
+ * feed this the SAME contributions (or the same raw signals re-scored) that produced that score — never
+ * a freshly re-run dossier's contributions paired with a frozen/pinned score from a different run.
+ */
+export function contributionsToFactors(contributions: readonly SwingPillarContribution[]): SwingScoreFactor[] {
+  return contributions
+    .filter((c) => c.present && c.points > 0)
+    .map((c) => ({ label: SWING_PILLAR_LABELS[c.pillar], points: round1(c.points) }))
+    .sort((a, b) => b.points - a.points);
+}
+
 // ── grounded pillar sub-score helpers (reuse the shared horizon normalizers) ───────────
 // PR-3's dossier builder calls these so the raw→0–1 mappings live in ONE place. Each returns null when its
 // primary signal is absent, so the pillar drops from the scorer's denominator rather than reading as 0.

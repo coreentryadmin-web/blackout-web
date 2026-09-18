@@ -17,6 +17,7 @@
  *   node scripts/audit/findings-reconcile.mjs --apply    # rewrites FINDINGS.md + RUN-LOG.md
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { splitAtHeadingBoundaries } from "./lib/findings-entry-set.mjs";
 
 // Overridable so the idempotency test can drive the real script over a throwaway UNTAGGED fixture.
 // Pointing it at the live FINDINGS.md instead would prove nothing: that file is already tagged, so
@@ -147,7 +148,13 @@ const STALE_STATUS = new RegExp(
 );
 
 const src = readFileSync(FINDINGS, "utf8");
-const parts = src.split(/\n(?=## )/);
+// Fence-aware split (2026-09-17, Ask Largo standing mandate) — a naive text.split(/\n(?=## )/)
+// treats a `## ` line quoted inside a ``` evidence fence (e.g. a finding quoting a live product's
+// own markdown output) as a real entry boundary, fragmenting one finding into several headless
+// sub-"blocks". See findings-entry-set.mjs's splitAtHeadingBoundaries doc comment for the full
+// live repro (broke findings-hygiene.test.ts when a swing finding quoting an Ask Largo brief was
+// folded in).
+const parts = splitAtHeadingBoundaries(src);
 const preamble = parts[0].startsWith("## ") ? "" : parts.shift();
 // Skip the file's own legend. It quotes the pass-log phrasing while explaining that pass logs
 // belong elsewhere, so a naive pass would classify the documentation as the thing it documents and
@@ -193,14 +200,30 @@ const keep = rows.filter((r) => r.kind !== "PASS-LOG");
 const moved = rows.filter((r) => r.kind === "PASS-LOG");
 
 const tagged = keep.map((r) => {
-  if (/\n> \*\*kind:\*\*/.test(r.block)) return r.block.replace(/\s+$/, ""); // already tagged
-  const lines = r.block.split("\n");
   const needsStatus = r.status == null;
   const note = needsStatus
     ? "> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED."
     : r.stale
       ? "> **status:** `UNRECONCILED` — recorded mid-flight (\"PR pending\"/\"auto-merge\") and never revisited. Confirm the merge and restamp."
       : null;
+  const hasKindLine = /\n> \*\*kind:\*\*/.test(r.block);
+  const hasUnreconciledNote = /\n> \*\*status:\*\* `UNRECONCILED`/.test(r.block);
+  // A kind line can already be present without this script ever having reconciled the entry —
+  // findings-fold-staging.mjs stamps `> **kind:** FINDING` on every staged file it folds in,
+  // independently of whatever status (or lack of one) that file's own author wrote. The old
+  // unconditional "already tagged, return unchanged" shortcut here treated the kind line alone as
+  // proof the status had ALSO already been checked, so a freshly-folded entry with no status line
+  // (or a stale "PR pending"/"auto-merge" one) sailed through --apply forever with neither its
+  // missing status nor an UNRECONCILED flag ever added — found live 2026-09-13 when a fold brought
+  // in exactly such an entry and a from-scratch regeneration (this file's own idempotency test)
+  // disagreed with the committed file's UNRECONCILED count.
+  if (hasKindLine && (note == null || hasUnreconciledNote)) {
+    return r.block.replace(/\s+$/, ""); // truly nothing left to add
+  }
+  // Strip any existing kind line (and the blank line immediately around it) so a block that already
+  // carries one is rebuilt through the exact same insertion path as a fresh block below — this is
+  // what lets a kind-tagged-but-status-incomplete entry still pick up its missing/stale-status note.
+  const lines = r.block.replace(/\n\n> \*\*kind:\*\* `[A-Z-]+`\n/, "\n").split("\n");
   // Only the OPTIONAL annotations may be dropped. The body lines are passed through as-is: an
   // earlier version ran .filter(Boolean) over the whole array, which also ate the trailing empty
   // line every block carries — so each --apply erased one blank separator and, after enough runs,
@@ -242,7 +265,7 @@ try {
   existing = runlogHeader;
 }
 const alreadyLogged = new Set(
-  existing.split(/\n(?=## )/).filter((b) => b.startsWith("## ")).map((b) => b.split("\n")[0])
+  splitAtHeadingBoundaries(existing).filter((b) => b.startsWith("## ")).map((b) => b.split("\n")[0])
 );
 const fresh = moved.filter((r) => !alreadyLogged.has(r.head));
 writeFileSync(RUNLOG, existing.replace(/\s+$/, "") + (fresh.length ? "\n\n" + fresh.map((r) => r.block).join("\n") : "") + "\n");

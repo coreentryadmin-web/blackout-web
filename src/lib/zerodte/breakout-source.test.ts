@@ -79,6 +79,37 @@ test("buildBreakoutSetup builds a scored setup carrying discovery_origin [\"BREA
   assert.equal(setup.grading_policy, "same_day_1530_close");
 });
 
+// ── E6 momentum_abs_floor false-reject fix (docs/audit/0DTE-RESEARCH.md) ──────────────
+// buildBreakoutSetup previously left change_pct entirely unset (the field didn't exist), so
+// railHitsFromLegacySetup's MOMENTUM rail had no real day-change input for this origin — the
+// root cause of the E6-measured REJECT-population-beats-PASS-population gap on
+// momentum_abs_floor. This proves the field carries the REAL day % change from the SAME
+// grouped-daily bar already fetched for the whole-market screen (mover.gain) — no new fetch,
+// no fabrication.
+test("buildBreakoutSetup populates change_pct from the mover's real day gain (E6 momentum fix)", () => {
+  const setup = buildBreakoutSetup({
+    mover: { ticker: "asts", gain: 0.082, close_strength: 0.9, volume: 20_000_000, dollar: 900_000_000 },
+    spot: 42.5,
+    contract: { strike: 44, expiry: TODAY, dte: 0 },
+    dollarNorm: 1,
+  });
+  // 0.082 * 100 = 8.2 — rounded to 2dp, matching mover.gain exactly (no sign flip for longs).
+  assert.equal(setup.change_pct, 8.2);
+});
+
+test("buildBreakoutSetup: change_pct is the ABS magnitude for a short/breakdown mover too", () => {
+  // screenBreakdownMovers stores `gain` as an absolute value already (see its own doc) — this
+  // asserts buildBreakoutSetup never re-applies a sign that would double-flip it.
+  const setup = buildBreakoutSetup({
+    mover: { ticker: "asts", gain: 0.064, close_strength: 0.1, volume: 20_000_000, dollar: 900_000_000 },
+    spot: 42.5,
+    contract: { strike: 41, expiry: TODAY, dte: 0 },
+    dollarNorm: 1,
+    direction: "short",
+  });
+  assert.equal(setup.change_pct, 6.4);
+});
+
 // ── HORIZON integrity: build-site tag reflects the REAL selected-contract dte ─────────
 test("buildBreakoutSetup stamps contract_horizon/actual_dte_at_commit/grading_policy from the contract dte", () => {
   const base = { ticker: "asts", gain: 0.15, close_strength: 0.9, volume: 20_000_000, dollar: 900_000_000 };

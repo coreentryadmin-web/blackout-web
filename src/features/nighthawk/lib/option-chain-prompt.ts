@@ -8,7 +8,11 @@ import {
 import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { fetchUwOptionChains } from "@/lib/providers/unusual-whales";
-import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
+import {
+  fetchOptionsUnifiedSnapshot,
+  ZERO_BID_MID_DIVERGENCE_MULTIPLE,
+  type OptionSnapshot,
+} from "@/lib/providers/options-snapshot";
 import { polygonSpotTicker } from "@/lib/zerodte/board";
 import type { PlaybookPlay } from "./types";
 import { parseOptionsContract, type ParsedOptionsContract } from "./option-contract-parse";
@@ -61,7 +65,33 @@ function buildOcc(ticker: string, expiryYmd: string, side: "call" | "put", strik
   return `O:${root}${m[1].slice(2)}${m[2]}${m[3]}${side === "call" ? "C" : "P"}${String(strikeInt).padStart(8, "0")}`;
 }
 
-function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
+/**
+ * Guard against a backstop-quote ask entering the grounded chain data. `options-snapshot.ts`'s
+ * `reliableMarkFromSnapshot` already documents (and fixed, 2026-09-14, PR #4969 for the swing/
+ * banger lane) the shape: when `bid` is exactly 0, a market maker's placeholder ask can sit an
+ * order of magnitude above the contract's real last-traded/session-close price (live case: CRSR
+ * 260918C00015000, `bid:0, ask:15` vs `last`/`dayClose` BOTH $0.07 — a 107x-vs-mid, 214x-vs-ask
+ * divergence). That fix guarded `snap.mark` (a display/exit-management value); it did NOT guard
+ * the RAW `ask` this mapper stores into `ChainStrikeRow.call_ask`/`put_ask` — and that raw ask is
+ * exactly what `groundPlay`'s premium-reconciliation check (`grounding.ts`) reads to OVERWRITE a
+ * play's published `entry_premium` with "the live contract mark" (`sideAsk` → `chainAsk`). So the
+ * same backstop artifact that corrupted a displayed mark in the sibling lane would, here, corrupt
+ * the actual entry premium Legacy publishes to members for the exact contract Claude selected —
+ * `augmentChainsWithExactContracts` (below) exists specifically to fetch that per-contract
+ * snapshot for grounding, so this is not a theoretical path. Only engages when bid is EXACTLY 0
+ * (the shape backstop quotes take) and only when a last/dayClose reference actually exists — a
+ * real two-sided market, or a snapshot with no reference to check against, is never second-guessed.
+ */
+function reliableAskFromSnapshot(snap: OptionSnapshot): number | null {
+  if (snap.ask == null) return snap.ask;
+  if (snap.bid !== 0) return snap.ask;
+  const reference = snap.last ?? snap.dayClose;
+  if (reference == null || reference <= 0) return snap.ask;
+  if (snap.ask <= reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) return snap.ask;
+  return reference;
+}
+
+export function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
   if (!snap.expiry || snap.strike == null || snap.optionType == null) return null;
   const base: ChainStrikeRow = {
     expiry: snap.expiry,
@@ -77,9 +107,10 @@ function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
     put_oi: 0,
     put_iv: null,
   };
+  const guardedAsk = reliableAskFromSnapshot(snap);
   if (snap.optionType === "call") {
     base.call_bid = snap.bid;
-    base.call_ask = snap.ask;
+    base.call_ask = guardedAsk;
     base.call_delta = snap.delta;
     base.call_oi = Math.max(0, Math.round(snap.openInterest ?? 0));
     base.call_iv = snap.iv;
@@ -90,7 +121,7 @@ function rowFromOptionSnapshot(snap: OptionSnapshot): ChainStrikeRow | null {
     base.call_vega = snap.vega;
   } else {
     base.put_bid = snap.bid;
-    base.put_ask = snap.ask;
+    base.put_ask = guardedAsk;
     base.put_delta = snap.delta;
     base.put_oi = Math.max(0, Math.round(snap.openInterest ?? 0));
     base.put_iv = snap.iv;
@@ -137,7 +168,7 @@ function withinAtmBand(strike: number, spot: number): boolean {
   return Math.abs(strike - spot) / spot <= ATM_BAND_PCT;
 }
 
-function pivotPolygonContracts(
+export function pivotPolygonContracts(
   contracts: Awaited<ReturnType<typeof fetchPolygonAtmOptionsChain>>,
   spot: number
 ): ChainStrikeRow[] {
@@ -170,16 +201,28 @@ function pivotPolygonContracts(
     const quote = (c as { last_quote?: { bid?: number; ask?: number } }).last_quote;
     let bid = num(quote?.bid);
     let ask = num(quote?.ask);
+    const lastTrade = num((c as { last_trade?: { price?: number } }).last_trade?.price);
+    const dayClose = num((c as { day?: { close?: number } }).day?.close);
+    const reference = lastTrade > 0 ? lastTrade : dayClose;
     // After-hours fallback: when bid/ask are 0 (market closed, no live quotes),
     // use last_trade.price or day.close so the contract premium can still be estimated.
     if (ask <= 0) {
-      const lastTrade = num((c as { last_trade?: { price?: number } }).last_trade?.price);
-      const dayClose = num((c as { day?: { close?: number } }).day?.close);
-      const fallback = lastTrade > 0 ? lastTrade : dayClose;
-      if (fallback > 0) {
-        ask = fallback;
-        if (bid <= 0) bid = fallback * 0.95;
+      if (reference > 0) {
+        ask = reference;
+        if (bid <= 0) bid = reference * 0.95;
       }
+    } else if (bid <= 0 && reference > 0 && ask > reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) {
+      // Backstop-quote guard (2026-09-14, follow-up to #4986's rowFromOptionSnapshot fix): this
+      // is the SAME shape guarded there, reached through the narrow-ATM-window path instead of
+      // the exact-contract one — a bid<=0 ask can be a market-maker placeholder an order of
+      // magnitude above the real last-traded/session-close price (live CRSR repro: bid:0, ask:15
+      // vs last/dayClose both $0.07). This is actually the MORE common path: most of a play's
+      // selected contracts land inside this narrow ATM±12% window and never reach
+      // augmentChainsWithExactContracts at all, so this row is what groundPlay's `sideAsk`
+      // premium-reconciliation check (grounding.ts) usually reads. Only engages when bid<=0 (this
+      // function's own established "no real bid" convention, matching the ask<=0 branch above) —
+      // a real two-sided market is never second-guessed.
+      ask = reference;
     }
     const greeks = (c as { greeks?: { delta?: number; gamma?: number; theta?: number; vega?: number } }).greeks;
     const delta = num(greeks?.delta) ?? null;

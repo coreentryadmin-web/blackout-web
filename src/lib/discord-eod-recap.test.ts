@@ -29,6 +29,10 @@ test("isDiscordEodRecapWindow is true ~4:05 PM ET", () => {
   assert.equal(isDiscordEodRecapWindow(new Date("2026-08-04T15:00:00.000Z")), false);
 });
 
+test("isDiscordEodRecapWindow — false on NYSE holiday even in 4:04-4:14 ET band", () => {
+  assert.equal(isDiscordEodRecapWindow(new Date("2026-09-07T20:06:00.000Z")), false); // Labor Day 4:06 PM ET
+});
+
 test("buildHelixEodRecapEmbed summarizes session leaders", () => {
   const emb = buildHelixEodRecapEmbed({
     sessionDate: "2026-08-04",

@@ -280,6 +280,12 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     if (play.swingEntryAction === "still_buy") return { label: "STILL BUY", tone: "watch" };
     if (play.swingEntryAction === "buy") return { label: "BUY", tone: "watch" };
     if (play.recommendation === "BUY") return { label: "BUY", tone: "watch" };
+    // A row past its own entry-validity deadline (entry-model.ts's ENTRY_VALIDITY_DAYS) is dead
+    // for entry purposes — distinct from a setup that simply hasn't triggered yet, which also
+    // falls through to this branch. Both previously rendered the identical generic "WAIT" pill,
+    // so a scanning member couldn't tell a live setup from one that's been stale for weeks
+    // (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window, PR #4076#issuecomment-5646063107).
+    if (play.watchEntryExpired) return { label: "EXPIRED", tone: "watch" };
     return { label: "WAIT", tone: "watch" };
   }
   if (play.status === "SKIP") return null;
@@ -296,7 +302,19 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     // Exit-management labels win over entryability pills (same order as zeroDteActionDisplay).
     // STILL BUY is for members still working a limit — it must not mask an active TRIM ladder.
     if (play.recommendation === "TRIM") {
-      const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
+      // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro CRWD #39): manage.ts's
+      // TAKE_PARTIAL/EXIT_RUNNER actions come from MULTIPLE independent rungs — only
+      // "profit_ladder" actually fires off exitPolicy.trim_levels; catalyst_shift/regime_shift/
+      // flow_decay/rel_strength_loss/vol_collapse are evidence-only advisories with a generic
+      // "consider trimming" reason completely unrelated to the ladder's own trigger_pct. Live:
+      // CRWD's recommendation was TRIM via catalyst_shift (advisory-only, manageEnforced:false,
+      // position genuinely unchanged), yet this label borrowed the ladder's next-unfired rung and
+      // showed "TRIM 100%" — read by a trader as "the +100% trigger just fired," when nothing had.
+      // Only cite the ladder trigger_pct when manageReason positively confirms it's the SOURCE
+      // (or is absent — most swing rows have no live manage tick yet, so absence must keep the
+      // pre-existing behavior rather than silently downgrading every untouched row's label).
+      const ladderDriven = play.manageReason == null || play.manageReason === "profit_ladder";
+      const next = ladderDriven ? play.exitPolicy?.trim_levels?.find((t) => !t.fired) : null;
       if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
       return { label: "TRIM", tone: "active" };
     }
@@ -474,6 +492,14 @@ export function closedRealizedPct(play: TerminalPlay): number | null {
  * metric — omitted (null) whenever either side is unusable, rather than showing a misleading
  * number: `peak` must be a genuine positive excursion (a trade that never went positive has no
  * "available P&L" to have captured a % of), and the realized figure must be finite.
+ *
+ * `realized` must also be non-negative. Once a trade round-trips past breakeven into a realized
+ * loss, "captured X% of peak" stops being a meaningful sentence — dividing a negative realized
+ * return by a small positive peak blows up to an arbitrarily large, sign-flipped number (e.g.
+ * peak +1.4%, realized -56.2% → "captured -4014% of peak", reproduced live on a real closed AAPL
+ * swing position). `mfe-capture.ts`'s `mfeCaptureOutcome` and `zerodte-service.ts`'s
+ * `mfeCapturePct` both already withhold (null) in exactly this case — this third, independent
+ * copy of the same math never got that guard.
  */
 export function closedCapturePct(play: TerminalPlay): number | null {
   if (play.status !== "CLOSED") return null;
@@ -481,7 +507,7 @@ export function closedCapturePct(play: TerminalPlay): number | null {
     return play.mfeCapturePct;
   }
   const realized = closedRealizedPct(play);
-  if (realized == null || !Number.isFinite(realized)) return null;
+  if (realized == null || !Number.isFinite(realized) || realized < 0) return null;
   if (play.peak == null || !Number.isFinite(play.peak) || play.peak <= 0) return null;
   const pct = (realized / play.peak) * 100;
   return Number.isFinite(pct) ? pct : null;

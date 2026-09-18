@@ -81,4 +81,17 @@ describe("2-hour post cadence", () => {
     const estPost7 = selectPostType(mkET(7, 0, 0, 5)); // January EST
     assert.equal(estPost7, "desk_open");
   });
+
+  it("NYSE holiday weekday: no desk-cycle posts even at a normal post hour", () => {
+    // Labor Day 2026-09-07 (Monday) at 10:30 ET — would be desk_flow on a trading Monday
+    const laborDay = new Date("2026-09-07T10:30:00-04:00");
+    assert.equal(isPostWindow(laborDay), false);
+    assert.equal(selectPostType(laborDay), null);
+  });
+
+  it("weekend posts still allowed on non-trading Saturdays", () => {
+    const saturday = new Date("2026-09-05T10:30:00-04:00");
+    assert.equal(isPostWindow(saturday), true);
+    assert.equal(selectPostType(saturday), "weekend_desk");
+  });
 });

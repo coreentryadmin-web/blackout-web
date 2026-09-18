@@ -1,4 +1,4 @@
-# 2026-09-05 — Swing Q7 P4: wire quote_stale + daily_bar_incomplete into V2 commit path
+## 2026-09-05 — Swing Q7 P4: wire quote_stale + daily_bar_incomplete into V2 commit path
 
 > **kind:** FINDING
 
@@ -8,11 +8,11 @@
 | **Area** | Swing Engine V2 commit gates (`v2/gates.ts`, `commit.ts`, `discovery.ts`) |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Deep-dive Q7: legacy `evaluateSwingGates` implemented `quote_stale` and `daily_bar_incomplete` as WATCH-level structural blocks, but the module had zero production callers. V2 commit (`commit.ts` + `v2/gates.ts`) wired G-S3/G-S6/G-S12/G-S14 but not these two checks — stale quotes or open-session reference bars could COMMIT.
 
-## Fix
+### Fix
 
 - `v2/gates.ts` — `evaluateQuoteStaleGate` + `evaluateDailyBarGate` with tokens `gate:quote_stale` / `gate:daily_bar_incomplete`.
 - `v2/config.ts` — `isSwingQuoteStaleGateEnforced` / `isSwingDailyBarGateEnforced` (LIVE when V2 on, opt-out via env).
@@ -23,11 +23,11 @@ Deep-dive Q7: legacy `evaluateSwingGates` implemented `quote_stale` and `daily_b
 
 Unknown quote age fails open (matches legacy null handling).
 
-## Evidence
+### Evidence
 
 - `v2/gates.test.ts`, `v2/config.test.ts`, `commit.test.ts`
 
-## RTH validation
+### RTH validation
 
 - POST_CLOSE discovery: commits should proceed when quotes fresh and grouped-daily feed populated.
 - Midday scan: `quote_stale` should block on stale contract quotes; daily-bar gate is OFF unless `SWING_ENGINE_V2_ENFORCE_DAILY_BAR=1`.

@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { logCronRun } from "@/lib/cron-run";
 import {
   fetchLegacyDiscordLiveRows,
@@ -42,6 +43,15 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Registered `market_hours_only: true` but EventBridge has no holiday calendar — same ET-INTENT
+  // gap as banger-live-sync (#4484). Legacy marks simply stop refreshing off-hours; no need to
+  // burn Polygon option-snapshot quota on a closed market.
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun(CRON_KEY, started, payload);
+    return NextResponse.json(payload);
   }
 
   try {

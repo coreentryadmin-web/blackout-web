@@ -144,6 +144,83 @@ test("known-orphaned modules stay removed", () => {
   );
 });
 
+/**
+ * Guards against a raw NUL byte (U+0000) silently landing in a tracked source file.
+ *
+ * Found live 2026-09-11 in `src/lib/swing/play-brief-intel.ts` (introduced by #4799): a dedup-key
+ * template literal — intended as `` `${a.anomaly_type} ${a.detail}` `` with a plain space
+ * separator — instead carried a literal `\x00` byte in that exact position. It renders as
+ * invisible whitespace in an editor/terminal (this file's own diff and `git blame` both showed
+ * what looked like an ordinary space), so nothing about reading the code would ever catch it —
+ * the only way to see it was a byte-level scan, which is exactly what this test does. Concretely
+ * it broke line-oriented tooling on the file: plain `grep` (no `-a`) reported it as a binary file
+ * and silently skipped every future search inside it, and `file` classified it as "data" instead
+ * of source. The DEDUP LOGIC itself did not break (V8 strings tolerate an embedded NUL as any
+ * other code unit, so Set-based dedup still worked) — the damage was entirely to the file's
+ * byte-level cleanliness and to every text tool that assumes source files don't contain control
+ * bytes. The exact same pattern (a NUL used as a template-literal join separator) was found
+ * independently in `src/lib/zerodte/calibration.ts` in the same sweep — not fixed here (0DTE is a
+ * different lane's surface), flagged separately.
+ */
+test("no tracked source file contains a raw NUL byte", () => {
+  const files = tracked().filter((p) => /\.(ts|tsx|mjs|cjs|js|jsx)$/.test(p));
+  const bad: string[] = [];
+  for (const file of files) {
+    let buf: Buffer;
+    try {
+      buf = readFileSync(file);
+    } catch {
+      continue; // deleted-but-still-listed in a stale git ls-files cache — not this test's concern
+    }
+    const idx = buf.indexOf(0);
+    if (idx >= 0) bad.push(`${file} (offset ${idx})`);
+  }
+  assert.deepEqual(
+    bad,
+    [],
+    `these tracked files contain a raw NUL byte — almost certainly an accidental control-character ` +
+      `paste where a plain space/character was intended (see this test's doc comment):\n  ${bad.join("\n  ")}`
+  );
+});
+
+/**
+ * Guards against TypeScript-only syntax landing in a `.mjs` file.
+ *
+ * Found live 2026-09-13: `scripts/audit/thesis-rank-calibration.mjs` (added #2903, 2026-08-25) was
+ * written with TypeScript parameter/return type annotations (`row: Record<string, unknown>`),
+ * a generic type argument (`new Map<string, {...}>()`), and a type assertion
+ * (`{} as Record<string, unknown>`) — none of which are valid in a plain `.mjs` ES module. Its own
+ * `package.json` script (`calibration:thesis-rank`) invokes it with bare `node`, which cannot parse
+ * any of that; even `node --import tsx` fails identically, because tsx's loader hook transforms by
+ * FILE EXTENSION (`.ts`/`.tsx`), not by content, so a `.mjs` file gets no TypeScript transform
+ * regardless of what's inside it. The script had been completely unrunnable since the day it was
+ * added — nothing in `npm test`/`tsc` covers `scripts/` `.mjs` files, so this went unnoticed for 19
+ * days until GitHub's CodeQL scan (which parses every tracked JS/TS file for its own reasons) choked
+ * on the same parse error and failed the `main`-branch CodeQL workflow run.
+ *
+ * `node --check` parses (but does not execute or resolve imports for) a file and exits non-zero on
+ * a syntax error — exactly the class of defect this guards, without the flakiness of trying to run
+ * each script's real logic (network calls, auth, env vars).
+ */
+test("every tracked scripts/**/*.mjs file parses as valid plain JavaScript (no leaked TS syntax)", () => {
+  const files = tracked().filter((p) => p.startsWith("scripts/") && p.endsWith(".mjs"));
+  const bad: string[] = [];
+  for (const file of files) {
+    try {
+      execFileSync("node", ["--check", file], { stdio: "pipe" });
+    } catch (err) {
+      const stderr = err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : String(err);
+      bad.push(`${file}:\n${stderr.split("\n").slice(0, 4).join("\n")}`);
+    }
+  }
+  assert.deepEqual(
+    bad,
+    [],
+    `these scripts/**/*.mjs files fail to parse as plain JavaScript — likely TypeScript syntax ` +
+      `leaked into a .mjs file (see this test's doc comment):\n\n${bad.join("\n\n")}`
+  );
+});
+
 test("gitignore entries for node_modules have no trailing slash", () => {
   // A trailing slash restricts the pattern to directories, leaving a same-named symlink or file
   // un-ignored. Every node_modules rule must match regardless of file type.

@@ -1,4 +1,6 @@
 import type { PostType } from "./x-content-types";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { todayEt } from "@/lib/et-date";
 
 /** Even ET hours 8–20 = one post every 2 hours.
  * NOTE: The EventBridge cron schedule fires at UTC times [12,14,16,18,20,22,0] daily.
@@ -83,6 +85,8 @@ export function isPostWindow(nowEt: Date): boolean {
   if (dow === 0 || dow === 6) {
     return (WEEKEND_POST_HOURS as readonly number[]).includes(h);
   }
+  // Weekday EventBridge fires on NYSE holidays too — no desk-cycle posts on a closed tape.
+  if (!isTradingDayEt(todayEt(nowEt))) return false;
   // Under EDT, fire at ET [8,10,12,14,16,18,20]
   // Under EST, fire at ET [7,9,11,13,15,17,19] (same UTC times, different ET hours)
   const postHours = isDST(nowEt)

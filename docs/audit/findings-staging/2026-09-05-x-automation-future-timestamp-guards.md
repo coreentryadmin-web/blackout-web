@@ -1,4 +1,4 @@
-# X automation future tweet timestamps bypass spacing / age filters
+## X automation future tweet timestamps bypass spacing / age filters
 
 > **kind:** FINDING
 
@@ -9,22 +9,22 @@
 | **Status** | FIXED |
 | **Area** | `x-engage-engine.ts`, `x-api.ts`, `x-post-guard.ts` |
 
-## Symptom
+### Symptom
 
 Clock-skewed future `created_at` on tweets produced negative ages. Engage engine treated them as fresh; post guard false-blocked with negative minute spacing.
 
-## Root cause
+### Root cause
 
 Raw `Date.now() - new Date(iso)` without `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` guard (pattern used elsewhere via `timestamp-freshness.ts`).
 
-## Fix
+### Fix
 
 Added `minutesSinceIso` / `ageHoursFromIso` helpers; wired X automation paths to shared guards.
 
-## Evidence
+### Evidence
 
 `src/lib/ws/timestamp-freshness-x-guards.test.ts`
 
-## Market-open check
+### Market-open check
 
 N/A — cron-only social automation; verify via unit tests.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   resolveGroupBenchmark,
   industryGroupRs01,
+  industryGroupRsFacts,
   INDUSTRY_ETF_BY_SIC,
   SECTOR_ETF_BY_LABEL,
 } from "./industry-group-rs.ts";
@@ -84,6 +85,50 @@ test("industryGroupRs01: honest null on no direction / no benchmark / thin histo
   assert.equal(industryGroupRs01({ nameCloses: up, benchmarkCloses: [], direction: "LONG" }), null);
   // Too few benchmark closes for a 10-session return → null (never a fabricated 0).
   assert.equal(industryGroupRs01({ nameCloses: up, benchmarkCloses: [100, 101, 102], direction: "LONG" }), null);
+});
+
+test("industryGroupRsFacts: recovers the raw benchmark/return facts industryGroupRs01 throws away", () => {
+  const nameUp5 = mk(100, 105); // +5% over 10 sessions
+  const groupUp2 = mk(100, 102); // +2%
+  const benchmark = { etf: "SMH", label: "Semiconductors", kind: "industry" as const };
+  const facts = industryGroupRsFacts({ benchmark, nameCloses: nameUp5, benchmarkCloses: groupUp2 });
+  assert.deepEqual(facts, {
+    benchmarkEtf: "SMH",
+    benchmarkLabel: "Semiconductors",
+    kind: "industry",
+    nameReturnPct: 5,
+    groupReturnPct: 2,
+    deltaPct: 3,
+  });
+});
+
+test("industryGroupRsFacts: negative delta reads LAGGING (not direction-signed like the 0-1 score)", () => {
+  const nameDown = mk(100, 98); // -2%
+  const groupUp = mk(100, 102); // +2%
+  const benchmark = { etf: "XLK", label: "Technology", kind: "sector" as const };
+  const facts = industryGroupRsFacts({ benchmark, nameCloses: nameDown, benchmarkCloses: groupUp });
+  assert.equal(facts?.deltaPct, -4);
+});
+
+test("industryGroupRsFacts: honest null on no benchmark / thin history — mirrors industryGroupRs01", () => {
+  const up = mk(100, 105);
+  assert.equal(industryGroupRsFacts({ benchmark: null, nameCloses: up, benchmarkCloses: mk(100, 102) }), null);
+  assert.equal(
+    industryGroupRsFacts({
+      benchmark: { etf: "SMH", label: "Semiconductors", kind: "industry" },
+      nameCloses: up,
+      benchmarkCloses: null,
+    }),
+    null,
+  );
+  assert.equal(
+    industryGroupRsFacts({
+      benchmark: { etf: "SMH", label: "Semiconductors", kind: "industry" },
+      nameCloses: up,
+      benchmarkCloses: [100, 101, 102], // too few for a 10-session return
+    }),
+    null,
+  );
 });
 
 test("map integrity: every INDUSTRY_ETF_BY_SIC key is a 3–4 digit SIC; sector labels are the 11 SPDRs", () => {

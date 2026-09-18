@@ -18,13 +18,14 @@
 // the in-process ET gate (so the cron can fire on a wide UTC band and the route decides) and logs
 // every run via logCronRun, so the cron-staleness-watchdog catches a silent never-fired warmer.
 
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
@@ -66,6 +67,8 @@ const OVERLAP_LOCK_TTL_SEC = 900;
  */
 const RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown";
 const RERUN_COOLDOWN_SEC = 60;
+/** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558 fixed on desk-warm. */
+const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -85,16 +88,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  const effectiveCooldownSec = isEtExtendedWarmHours()
+    ? RERUN_COOLDOWN_SEC
+    : OFF_WINDOW_FORCE_COOLDOWN_SEC;
   const withinCooldown = !(await sharedCacheSetNx(
     RERUN_COOLDOWN_KEY,
     { startedAt: started },
-    RERUN_COOLDOWN_SEC
+    effectiveCooldownSec
   ).catch(() => true));
   if (withinCooldown) {
     const payload = {
       ok: true,
       skipped: true,
-      reason: `rate-limited — zerodte-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+      reason: `rate-limited — zerodte-warm already ran within the last ${effectiveCooldownSec}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
@@ -163,11 +169,22 @@ export async function GET(req: NextRequest) {
       });
   };
 
-  try {
-    after(dispatchWarm);
-  } catch {
-    dispatchWarm();
-  }
+  // `after()` was the original mechanism here (see the block comment above) but is NOT trusted
+  // as the sole dispatch path any more. Live-observed 2026-09-08: `zerodte_scan_rejections` (the
+  // persisted output of exactly this background work) took its LAST write at 14:23:33 UTC and
+  // never wrote again for 3+ hours, spanning a full production redeploy at 16:26 UTC — ruling out
+  // "one unlucky replica recycled mid-task" (a fresh deploy gives brand-new replicas ~80 minutes
+  // and dozens of cooldown-gated chances to succeed once). CloudWatch showed only 2 real
+  // `[cron/zerodte-warm] background done` completions in an 8-hour window against ~36 route
+  // "ok" responses recorded by cron-health — i.e. the FAST synchronous handshake kept succeeding
+  // while the DEFERRED work silently, repeatedly failed to run to completion. This ECS Fargate
+  // deployment is a long-lived standalone Next.js server, not an ephemeral serverless function —
+  // `after()`'s entire reason to exist (keep a request's execution context alive past the
+  // response on a platform that would otherwise tear it down) does not apply here; the process
+  // itself stays up regardless. A bare fire-and-forget call needs nothing from `after()` to keep
+  // running on this architecture, so it is now the PRIMARY path (this is the exact fallback the
+  // code already trusted when `after()` threw synchronously — now unconditional, not catch-only).
+  void dispatchWarm();
 
   const accepted = {
     ok: true,

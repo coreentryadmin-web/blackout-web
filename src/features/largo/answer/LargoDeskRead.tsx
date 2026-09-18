@@ -4,6 +4,7 @@ import { FRESHNESS_LABEL } from "@/features/largo/answer/answer-format";
 import React from "react";
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
+import { parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 import { extractLargoSegments } from "@/features/largo/blocks/extract";
 import { LargoBlockView } from "@/features/largo/blocks/LargoBlocks";
@@ -41,10 +42,16 @@ function sectionIcon(title: string): string {
   return SECTION_ICON[String(title ?? "").trim().toLowerCase()] ?? "";
 }
 
+// Accepts an ISO instant OR a Largo C1 ET stamp ("YYYY-MM-DD HH:mm ET" — e.g. swing play-briefs'
+// `envelope.asOf`). `new Date(iso)` returns Invalid Date on the ET-stamp shape, which silently
+// dropped this "as of" label on every swing brief (found live 2026-09-14) — same fallback
+// `@/lib/et-clock`'s internal `toMs` already uses for the same reason.
 function formatEt(iso: string | null | undefined): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const parsed = Date.parse(iso);
+  const ms = Number.isNaN(parsed) ? parseEtStamp(iso) : parsed;
+  if (ms == null || Number.isNaN(ms)) return "";
+  const d = new Date(ms);
   return `${new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     hour: "2-digit",

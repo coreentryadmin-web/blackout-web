@@ -1,4 +1,4 @@
-# 2026-09-06 — Dead code: 9 Vector desk exports (zero real callers) — FIXED
+## 2026-09-06 — Dead code: 9 Vector desk exports (zero real callers) — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Vector desk |
 | **PR** | (this branch) |
 
-## Symptom
+### Symptom
 
 Found during a Vector-desk sweep for the same bug class as today's other fixes (population/
 scope-mismatch correctness bugs) — Vector turned out to already be clean on that front (dense,
@@ -45,13 +45,13 @@ own definition, checked before and after removal):
    `vector-shared-universe-cache.ts`'s `getSharedUniverseSetForTest` (its siblings
    `_setSharedUniverseForTest`/`_resetSharedUniverseCacheForTest` are real and untouched).
 
-## Fix
+### Fix
 
 Deleted each dead export; deleted the two whole files (`use-vector-live-poll.ts`,
 `vector-gex-heatmap-client.ts` + its test) that had no surviving export at all. Every type
 definition, doc comment, and still-used sibling function is untouched.
 
-## Evidence
+### Evidence
 
 - `grep -rln "\b<symbol>\b"` for all 9 symbols before the fix: 1 file each (the definition).
 - Same grep after the fix: 0 files, for all 9.
@@ -60,7 +60,7 @@ definition, doc comment, and still-used sibling function is untouched.
   `vector-dte-walls-server`, `vector-wall-persist`, `vector-shared-universe-cache`): 47/47 pass.
 - Full `npm test` (Node 20): pending in this PR's evidence trail (see push).
 
-## Blast radius
+### Blast radius
 
 7 files, all Vector-desk-local: `use-vector-live-poll.ts` (deleted), `vector-gex-heatmap-client.ts`
 + `.test.ts` (deleted), `vector-contract-picks.ts`, `vector-indicators-config.ts`,

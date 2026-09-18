@@ -93,8 +93,10 @@ export const CONTRACT_SELECTOR_VERSION = "v2";
  *  the SAME entry to a different outcome); this constant is only the fallback. */
 export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
 /** Exit-rule VERSION within the active policy (the numeric thresholds — arm/lock/trim
- *  levels, time-stop). Bump when those move even if the POLICY name is unchanged. */
-export const EXIT_VERSION = "v4";
+ *  levels, time-stop). Bump when those move even if the POLICY name is unchanged.
+ *  v5 (2026-09-14): the ratchet/trim_scale "locked" floor (peak >= +50%) now SCALES
+ *  with the peak (peak * 0.4) instead of a flat +20% — see EXIT_RULES.ratchet_lock_floor_fraction. */
+export const EXIT_VERSION = "v5";
 /** Grader — how a committed play is turned into a WIN/LOSS + PnL (−50/+100 directional,
  *  condor breach, time-stop rules). Bump when the grading rule changes (it re-labels
  *  the very outcomes calibration counts). */
@@ -297,7 +299,7 @@ export function buildResolvedExitPolicy(
     trailing_rule =
       `ratchet:early@+${EXIT_RULES.ratchet_early_arm_pnl_pct}%->floor+${EXIT_RULES.ratchet_early_arm_floor_pct}%,` +
       `arm@+${EXIT_RULES.ratchet_arm_pnl_pct}%->floor+${EXIT_RULES.ratchet_arm_floor_pct}%,` +
-      `lock@+${EXIT_RULES.ratchet_lock_pnl_pct}%->floor+${EXIT_RULES.ratchet_lock_floor_pct}%,` +
+      `lock@+${EXIT_RULES.ratchet_lock_pnl_pct}%->floor=peak*${EXIT_RULES.ratchet_lock_floor_fraction},` +
       `runner_floor+${EXIT_RULES.runner_floor_pct}%;` +
       `flat_timeout=${EXIT_RULES.flat_timeout_min}min@±${EXIT_RULES.flat_band_pct}%`;
   }

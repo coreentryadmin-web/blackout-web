@@ -41,6 +41,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 // Shared, pure, Intl-based ET window check — deliberately reused rather than reimplemented. It lives in
 // an alias-free file precisely so non-nighthawk callers can use it without dragging in that feature's
 // import chain, and it takes an injectable `now` so the guard is testable at fixed EST/EDT instants.
@@ -83,6 +84,15 @@ export async function GET(req: NextRequest) {
   const sessionDate = todayEt(new Date(started));
   const force = req.nextUrl.searchParams.get("force") === "1";
   const claimKey = `banger:discovery:${sessionDate}`;
+
+  // Holiday guard: EventBridge is weekday-only (no NYSE calendar). On holidays the post-close ET window
+  // still resolves and the route would screen grouped-daily + commit positions against a closed tape.
+  // force=1 bypasses for ops recovery (same pattern as swing-discovery / nighthawk-morning-confirm).
+  if (!force && !isTradingDayEt(sessionDate)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDate})` };
+    await logCronRun("banger-discovery", started, payload);
+    return NextResponse.json(payload);
+  }
 
   // DST GUARD — BEFORE the claim, deliberately. The schedule fires on two fixed UTC hours so that one of
   // them lands post-close in either offset; this skips the one that does not. Claiming here instead would

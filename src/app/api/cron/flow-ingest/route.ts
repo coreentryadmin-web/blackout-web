@@ -4,12 +4,22 @@ import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { warmFlowsMemberCaches } from "@/lib/flows-member-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
 
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // flow-ingest is registered `market_hours_only: true` but EventBridge's schedule is a fixed-UTC
+  // weekday window with no holiday calendar — same ET-INTENT gap fixed on uw-cache-refresh (#4482).
+  // Without this gate, Labor Day 2026-09-07 still polled UW flow_alerts every ~2 min while closed.
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun("flow-ingest", started, payload);
+    return NextResponse.json(payload);
   }
 
   if (ingestInFlight) {

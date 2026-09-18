@@ -1,0 +1,109 @@
+// Regression for the recap_summary double-period bug (2026-09-10 5-engine live monitor sweep):
+// GET /api/market/nighthawk/edition served "Market tide unavailable.. SPX ..." to every member
+// and Largo caller whenever ctx.tide was null, because tideSummary() baked its own trailing
+// period into two of its three branches while buildMarketRecap's summary template also appended
+// one (`${tide}. ${spx}.`). The third branch (a real computed tide) never had a trailing period,
+// so the bug was branch-specific, not a universal template issue.
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildMarketRecap, flowByExpiryPremium } from "./format";
+import type { MarketWideContext } from "./market-wide";
+
+function baseCtx(overrides: Partial<MarketWideContext> = {}): MarketWideContext {
+  return {
+    today: "2026-09-09",
+    tomorrow: "2026-09-10",
+    tide: null,
+    stock_flows: [],
+    hot_chains: [],
+    index_flows: {},
+    spx_bars: [{ o: 7670, h: 7680, l: 7620, c: 7636.36, t: 1 }],
+    spx_intraday_5m: [],
+    spx_gap: null,
+    vix_bars: [{ o: 15.7, h: 16.6, l: 15.6, c: 16.46, t: 1 }],
+    market_news: [],
+    macro_events: [],
+    tomorrow_earnings: [],
+    sector_tides: [],
+    etf_tides: {},
+    sector_performance: [],
+    top_net_impact: [],
+    vix_term: [],
+    vix_iv_rank: null,
+    market_breadth: null,
+    predictions_consensus: [],
+    mag7_greek_flow: null,
+    macro_indicators: [],
+    after_hours_catalysts: [],
+    total_options_volume: null,
+    market_oi_change: [],
+    platform_intel: null,
+    unusual_trades: [],
+    market_movers: [],
+    breakout_movers: [],
+    ...overrides,
+  };
+}
+
+test("recap summary never double-periods when tide is unavailable", () => {
+  const { summary, tide } = buildMarketRecap(baseCtx({ tide: null }));
+  assert.equal(tide, "Market tide unavailable");
+  assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
+  assert.ok(summary.startsWith("Market tide unavailable. SPX"));
+});
+
+test("recap summary never double-periods when tide is flat/zero", () => {
+  const { summary, tide } = buildMarketRecap(baseCtx({ tide: { call_premium: 0, put_premium: 0 } }));
+  assert.equal(tide, "Market tide flat / no premium");
+  assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
+});
+
+test("recap summary still reads correctly for a real computed tide", () => {
+  const { summary, tide } = buildMarketRecap(
+    baseCtx({ tide: { call_premium: 6_000_000, put_premium: 4_000_000 } })
+  );
+  assert.equal(tide, "BULLISH — calls 60% ($6.0M) vs puts $4.0M");
+  assert.ok(!summary.includes(".."), `expected no double period, got: ${summary}`);
+  assert.ok(summary.startsWith("BULLISH — calls 60% ($6.0M) vs puts $4.0M. SPX"));
+});
+
+// Regression (Ask Largo standing mandate, 5-engine live monitor, 2026-09-11): live repro on
+// GET /api/market/nighthawk/edition printed "Macro: GDP 23850.442 · CPI 333.918" straight in the
+// member-facing recap_summary — buildMarketRecap's own macroLine read `m.latest_value` raw with no
+// rounding, while the sibling formatMacroIndicators() two functions above (used elsewhere in this
+// same file) already does `.toFixed(2)` on the identical UwMacroIndicatorSnapshot field. Same data,
+// two renderers in one file, only one rounds — exactly CLAUDE.md's documented "round at the data
+// layer" class of bug (`7499.360000000001`), just in a new spot. Members and Largo both read
+// recap_summary verbatim, so the raw float reached both. Fixed by rounding macroLine the same way.
+test("recap summary rounds macro indicator values instead of printing raw floats", () => {
+  const { summary } = buildMarketRecap(
+    baseCtx({
+      macro_indicators: [
+        { label: "GDP", latest_value: 23850.442, change_pct: null } as never,
+        { label: "CPI", latest_value: 333.918, change_pct: null } as never,
+      ],
+    })
+  );
+  assert.ok(summary.includes("Macro: GDP 23850.44 · CPI 333.92."), `expected rounded macro values, got: ${summary}`);
+  assert.ok(!summary.includes("23850.442"), `expected no raw unrounded float, got: ${summary}`);
+  assert.ok(!summary.includes("333.918"), `expected no raw unrounded float, got: ${summary}`);
+});
+
+// Live-verified 2026-09-12: real UW `/api/stock/{ticker}/flow-per-expiry` rows carry
+// `call_premium`/`put_premium` (separate string fields), never a single `premium`/
+// `total_premium` field. flowByExpiryPremium's old guessed field names always evaluated to 0,
+// so every "Flow by expiry" line in the Legacy dossier text (fed into the edition's Claude
+// prompt) silently read "$0" for every expiry regardless of real flow.
+test("flowByExpiryPremium: real flow-per-expiry shape sums call_premium + put_premium", () => {
+  const row = { expiry: "2026-09-14", call_premium: "47977407.00", put_premium: "23757826.00" };
+  assert.equal(flowByExpiryPremium(row), 47977407 + 23757826);
+});
+
+test("flowByExpiryPremium: falls back to premium/total_premium when call/put premium absent", () => {
+  assert.equal(flowByExpiryPremium({ premium: 500 }), 500);
+  assert.equal(flowByExpiryPremium({ total_premium: 700 }), 700);
+});
+
+test("flowByExpiryPremium: no matching field at all returns 0, not NaN", () => {
+  assert.equal(flowByExpiryPremium({ expiry: "2026-09-14" }), 0);
+});

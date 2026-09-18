@@ -91,20 +91,39 @@ export const CHASE_PCT = (() => {
  *  Distinct, additive to the plan_illiquid/plan_no_quote taxonomy. Back-compat:
  *  the field is optional on ContractPlan so historical/hand-built plans that omit
  *  it read as "no explicit invalidity" (the legacy illiquid/no_quote checks still
- *  govern them). */
+ *  govern them).
+ *
+ * SCOPE (G-9/G-21 split, 2026-09-09 — operator-approved CTO gate-architecture review):
+ * this type owns ONLY quote-INTEGRITY defects — is the book itself a real, sane,
+ * fresh two-sided market. `thin_size` (a resting-size/depth concern, not an integrity
+ * one) moved OUT to {@link ContractLiquidityInvalidReason} / {@link evaluateContractLiquidity}
+ * (G-21) — a book can be perfectly well-formed (real bid, real ask, in-band mark) and
+ * still be too THIN to fill without moving the market, which is a distinct failure
+ * mode from a crossed/locked/malformed book. Conflating the two under one reason type
+ * made it impossible for gates.ts to surface genuinely distinct gate codes for "this
+ * quote is broken" vs "this quote is real but too shallow". */
 export type QuoteInvalidReason =
   | "zero_bid" // bid ≤ 0 / null, or a missing/zero ask (a one-sided, non-committable book)
   | "crossed" // bid > ask — an impossible/erroneous book
   | "locked" // bid == ask — a zero-width book (no real two-sided market)
   | "mark_out_of_band" // mark sits outside [bid, ask] — malformed/stale print
   | "wide_dollars" // absolute ask−bid spread over the dollar cap (backstop to the % check)
-  | "thin_size" // resting quote size below the floor (only when the provider reports size)
   | "stale" // quote age beyond the freshness bound (only when a timestamp is available)
   | null;
 
-/** Fail-closed quote-validity bounds. Numeric bounds are NEW (the % check had none).
+/** Ticker-class bucket for the per-class liquidity floor (G-21 recalibration, 2026-09-09).
+ *  Deliberately just two buckets, computed by the CALLER (scan.ts already has gates.ts's
+ *  `INDEX_ETF_TICKERS` in scope) rather than re-imported here: plan.ts is the pure/dependency-
+ *  free leaf module (see file header) and gates.ts already imports FROM plan.ts, so plan.ts
+ *  importing gates.ts back would be circular. `"index_etf"` = SPX/SPXW + INDEX_ETF_TICKERS
+ *  (SPY/QQQ/IWM/DIA) — the deepest, most continuously-quoted options markets that exist;
+ *  `"single"` = everything else. Omitted → the legacy uniform floor (back-compat). */
+export type LiquidityTickerClass = "index_etf" | "single";
+
+/** Fail-closed quote-INTEGRITY bounds (G-9). Numeric bounds are NEW (the % check had none).
  *  Tunable — a TRADES change, so conservative defaults that reject only the clearly
- *  malformed / untradeable, never a legitimate 0DTE book. */
+ *  malformed / untradeable, never a legitimate 0DTE book. See {@link CONTRACT_LIQUIDITY}
+ *  for the separate depth/liquidity bounds (G-21). */
 export const QUOTE_VALIDITY = {
   /** Absolute bid/ask spread cap ($). Backstop to spread_pct>15: a proportionally
    *  OK but absolutely huge spread (e.g. $14 on a $100 premium = 14% < 15% → passes
@@ -116,29 +135,25 @@ export const QUOTE_VALIDITY = {
    *  last_quote.last_updated, which often stamps prior close on an otherwise live NBBO).
    *  Absence of age leaves the bound dormant (absence is not staleness). */
   max_quote_age_ms: 60_000,
-  /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
-   *  provider actually reports size (bidSize/askSize non-null) — absent size is not
-   *  proof of illiquidity, so it does not fail closed here (the one conditional-on-
-   *  availability predicate, same rule as quote age). */
-  min_quote_size: 1,
 } as const;
 
 /**
- * WS-04 quote-validity verdict — a pure predicate over a contract's live quote.
+ * WS-04 quote-INTEGRITY verdict (G-9) — a pure predicate over a contract's live quote.
  * Returns the FIRST failing reason (checked most-degenerate-first) or null when the
  * quote is valid. Fail-closed: a null/zero/degenerate input yields a reason (BLOCK),
- * never null (pass). `bidSize`/`askSize`/`quoteAgeMs` are conditional — only enforced
- * when actually supplied by the provider (see the field docs on QUOTE_VALIDITY).
+ * never null (pass). `quoteAgeMs` is conditional — only enforced when actually supplied
+ * by the provider (see the field doc on QUOTE_VALIDITY). Depth/size checks (thin_size,
+ * no_volume_or_oi) live in {@link evaluateContractLiquidity} (G-21) — this function no
+ * longer takes bidSize/askSize; a caller that still passes them is a compile error, not
+ * a silent no-op, so the split can't regress unnoticed.
  */
 export function evaluateQuoteValidity(input: {
   bid: number | null;
   ask: number | null;
   mark: number | null;
-  bidSize?: number | null;
-  askSize?: number | null;
   quoteAgeMs?: number | null;
 }): QuoteInvalidReason {
-  const { bid, ask, mark, bidSize, askSize, quoteAgeMs } = input;
+  const { bid, ask, mark, quoteAgeMs } = input;
   // A committable book needs a real two-sided quote. A null/≤0 side is where the
   // percent-spread check silently computed null and read null as "liquid" — the
   // core loophole. Here it BLOCKS.
@@ -152,16 +167,112 @@ export function evaluateQuoteValidity(input: {
   if (mark == null || mark < bid || mark > ask) return "mark_out_of_band";
   // Absolute-dollar backstop (the % check alone can pass an absolutely huge spread).
   if (ask - bid > QUOTE_VALIDITY.max_spread_dollars) return "wide_dollars";
-  // Conditional: min resting size, only when the provider reported both sides.
+  // Conditional: quote age, only when a timestamp/age is available.
+  if (quoteAgeMs != null && quoteAgeMs > QUOTE_VALIDITY.max_quote_age_ms) return "stale";
+  return null;
+}
+
+/** G-21 — why a contract's DEPTH is not committable, distinct from quote integrity (G-9,
+ *  above). `null` = liquidity is adequate (or the inputs needed to judge it were never
+ *  supplied — this predicate is conditional-on-availability throughout, same discipline
+ *  as G-9's quoteAgeMs: absence is not proof of illiquidity). */
+export type ContractLiquidityInvalidReason =
+  | "thin_size" // resting bid/ask size below the floor (only when the provider reports size)
+  | "no_volume_or_oi" // BOTH day volume and open interest read zero/absent (only when both were actually supplied)
+  | null;
+
+/** Fail-closed contract-LIQUIDITY/depth bounds (G-21). Distinct constant from
+ *  QUOTE_VALIDITY (G-9) — these gate DEPTH, not book integrity. */
+export const CONTRACT_LIQUIDITY = {
+  /** Minimum resting quote size (contracts) on BOTH sides. ONLY enforced when the
+   *  provider actually reports size (bidSize/askSize non-null) — absent size is not
+   *  proof of illiquidity, so it does not fail closed here (the one conditional-on-
+   *  availability predicate, same rule as quote age). LEGACY/back-compat default (used
+   *  only when the caller omits `tickerClass`) — see `min_quote_size_by_class` below for
+   *  the recalibrated, class-differentiated floors this gate now actually enforces. */
+  min_quote_size: 1,
+  /**
+   * Per-class recalibration (2026-09-09) — MEASURED, not guessed. `min_quote_size: 1` above
+   * accepted a SINGLE resting contract on each side as "liquid enough" for every ticker
+   * alike — SPX and an obscure single name held to the identical bar. Measured real
+   * near-the-money (±5% of spot) 0DTE/nearest-expiry option-chain snapshots via
+   * `scripts/audit/zerodte-contract-liquidity-measure.mjs` on 2026-09-09 (session closed,
+   * ~10pm ET — see caveat below), SPX/SPY/QQQ + NVDA/TSLA/AAPL:
+   *   ask_size  INDEX(SPX)  p10=1  p25=6   median=15.5   (n=294)
+   *   ask_size  ETF(SPY/QQQ) p10=2 p25=3-3.75 median=85-98.5 (n=154,144)
+   *   ask_size  SINGLE(NVDA/TSLA/AAPL) p10=2.7-6.3 min=1(NVDA) median=9.5-39 (n=18,28,24)
+   *   bid_size  SINGLE min=1 (zero NEVER observed) vs INDEX/ETF ~49% zero-bid-size even ATM
+   * The bid_size split above is why INDEX/ETF get a floor CLOSE to (not far past) 1 rather
+   * than a floor tuned off their own bid_size percentiles: that ~49% zero-bid-size figure was
+   * measured ~2 hours after the 4pm ET close (last-quote-of-session artifact — market makers
+   * routinely pull resting bid size after the bell while ask often still shows a stale
+   * quote), NOT during RTH, so it is very likely a post-close artifact rather than a true
+   * RTH liquidity signal — tuning a floor off it risks blocking real RTH commits, a
+   * correctness regression strictly worse than the toothless floor this replaces. The chosen
+   * floors below are therefore a MODEST, evidence-anchored tightening (median depth for
+   * INDEX/ETF is 15.5-98.5, so asking for 3 is trivial relative to normal depth) rather than
+   * an aggressive one tuned to this snapshot's contaminated tail — re-run the same script
+   * during RTH to sharpen further (see the staged finding for the exact command).
+   *   index_etf: SPX/SPXW + SPY/QQQ/IWM/DIA — the deepest, most liquid options markets that
+   *     exist; a resting size of 1-2 there is anomalous, not merely thin.
+   *   single: every other ticker — measured naturally thinner (ask p10 as low as 1.4), so
+   *     held to a smaller floor to avoid over-rejecting genuinely thin-but-real single-name
+   *     books the way a shared index-grade floor would.
+   */
+  min_quote_size_by_class: {
+    index_etf: 3,
+    single: 2,
+  } as const,
+  /** Minimum of (day volume, open interest) — a contract with real depth has SOME
+   *  trading history or standing interest; a strike with BOTH at zero on the same
+   *  snapshot is a listed-but-dead contract (no real market to fill against), even
+   *  if its quote happens to look well-formed. ONLY enforced when BOTH fields were
+   *  actually supplied (non-null) — a provider that doesn't report one of them is not
+   *  proof of illiquidity either. The 2026-09-09 measurement (see min_quote_size_by_class's
+   *  comment) found ZERO real near-the-money contracts hitting both-zero across 447 measured
+   *  rows, so a floor of 1 (i.e. "both literally zero") is a rare, unambiguous dead-contract
+   *  catch, not a lever that trims a meaningful slice of real plays. */
+  min_volume_or_oi: 1,
+} as const;
+
+/** Resolve the enforced min-quote-size floor for `evaluateContractLiquidity` (G-21).
+ *  `tickerClass` omitted (back-compat) → the legacy uniform `CONTRACT_LIQUIDITY.min_quote_size`. */
+export function minQuoteSizeForClass(tickerClass?: LiquidityTickerClass): number {
+  if (tickerClass == null) return CONTRACT_LIQUIDITY.min_quote_size;
+  return CONTRACT_LIQUIDITY.min_quote_size_by_class[tickerClass];
+}
+
+/**
+ * G-21 contract-liquidity verdict — a pure predicate, SIBLING to evaluateQuoteValidity
+ * (G-9), not a branch of it. Checks resting size and day-volume/open-interest depth —
+ * concerns a well-formed, in-band quote can still fail. Conditional-on-availability
+ * throughout: a field the provider didn't report is never treated as proof of thinness.
+ */
+export function evaluateContractLiquidity(input: {
+  bidSize?: number | null;
+  askSize?: number | null;
+  openInterest?: number | null;
+  dayVolume?: number | null;
+  /** Bucket for the per-class min-quote-size floor. Omitted → legacy uniform floor. */
+  tickerClass?: LiquidityTickerClass;
+}): ContractLiquidityInvalidReason {
+  const { bidSize, askSize, openInterest, dayVolume } = input;
+  const minQuoteSize = minQuoteSizeForClass(input.tickerClass);
   if (
     bidSize != null &&
     askSize != null &&
-    (bidSize < QUOTE_VALIDITY.min_quote_size || askSize < QUOTE_VALIDITY.min_quote_size)
+    (bidSize < minQuoteSize || askSize < minQuoteSize)
   ) {
     return "thin_size";
   }
-  // Conditional: quote age, only when a timestamp/age is available (none today).
-  if (quoteAgeMs != null && quoteAgeMs > QUOTE_VALIDITY.max_quote_age_ms) return "stale";
+  if (
+    openInterest != null &&
+    dayVolume != null &&
+    openInterest < CONTRACT_LIQUIDITY.min_volume_or_oi &&
+    dayVolume < CONTRACT_LIQUIDITY.min_volume_or_oi
+  ) {
+    return "no_volume_or_oi";
+  }
   return null;
 }
 
@@ -190,12 +301,20 @@ export type ContractPlan = {
   illiquid: boolean;
   /** Spread cap (%) used when `illiquid` was judged — for G-9 block copy. */
   illiquid_spread_cap?: number;
-  /** WS-04: fail-closed malformed-quote verdict. null = quote valid; a non-null reason
-   *  is translated to a distinct plan_quote_invalid / plan_quote_stale block in
+  /** WS-04: fail-closed malformed-quote verdict (G-9, quote INTEGRITY only — see the
+   *  type doc for the 2026-09-09 split). null = quote valid; a non-null reason is
+   *  translated to a distinct plan_quote_invalid / plan_quote_stale block in
    *  planQualityGateBlocks (gates.ts). OPTIONAL for back-compat — a historical/hand-built
    *  plan that omits it is read as "no explicit invalidity" (the legacy illiquid /
    *  no_quote checks still govern it). */
   quote_invalid_reason?: QuoteInvalidReason;
+  /** G-21: fail-closed contract-LIQUIDITY/depth verdict (2026-09-09 split OUT of
+   *  quote_invalid_reason — see ContractLiquidityInvalidReason's doc). null = liquidity
+   *  adequate or unmeasured. A non-null reason is translated to a distinct
+   *  plan_thin_size / plan_no_volume_or_oi block in contractLiquidityGateBlocks
+   *  (gates.ts), a SIBLING check to G-9's plan-quality blocks, not a branch of it.
+   *  OPTIONAL for back-compat, same discipline as quote_invalid_reason. */
+  liquidity_invalid_reason?: ContractLiquidityInvalidReason;
   /** Premium exits from PLAN_RULES applied to entry_max. */
   stop_premium: number | null;
   target_premium: number | null;
@@ -203,6 +322,14 @@ export type ContractPlan = {
   /** Underlying anchors from real chart structure (nearest levels), null when unknown. */
   underlying_target: number | null;
   underlying_invalid: number | null;
+  /** G-20: age (ms) of the live quote AT PLAN-BUILD TIME (same input this function used to
+   *  evaluate `quote_invalid_reason`'s "stale" branch above) — carried through on the returned
+   *  plan (previously computed-then-discarded) so a caller can reconstruct the quote's absolute
+   *  observation instant as `nowMs − quoteAgeMs` (nowMs is the SAME wall-clock passed into both
+   *  buildContractPlan and evaluateZeroDteGates in the live scan — see scan.ts's shared `nowMs`).
+   *  Optional/back-compat, same "absence is not staleness" convention as every other conditional
+   *  field here: undefined when the provider supplied no quote timestamp. */
+  quoteAgeMs?: number | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -220,15 +347,27 @@ export function buildContractPlan(input: {
   bid: number | null;
   ask: number | null;
   mark: number | null;
-  /** Top-of-book resting sizes (contracts), when the provider reports them — feeds the
-   *  WS-04 min-size predicate (conditional-on-availability). Absent → not enforced. */
+  /** Top-of-book resting sizes (contracts), when the provider reports them — feeds G-21's
+   *  min-size predicate (evaluateContractLiquidity, conditional-on-availability). Absent
+   *  → not enforced. */
   bidSize?: number | null;
   askSize?: number | null;
+  /** G-21 depth inputs — open interest and today's traded volume on this contract, when
+   *  the provider reports them (OptionSnapshot.openInterest/dayVolume). Conditional-on-
+   *  availability like bidSize/askSize: absence of either is never treated as proof of
+   *  illiquidity, only BOTH present and both below the floor blocks. */
+  openInterest?: number | null;
+  dayVolume?: number | null;
   /** Age (ms) of the quote at plan time, when a quote timestamp is available. WS-04
    *  quote_age is only enforced when this is supplied. As of D3 the 0DTE scan threads it
    *  through (OptionSnapshot.quoteUpdatedMs → scan.ts computeQuoteAgeMs → here), so the
    *  stale predicate is LIVE; undefined (no timestamp on the snapshot) leaves it dormant. */
   quoteAgeMs?: number | null;
+  /** G-21 (2026-09-09): index/ETF vs single-name bucket for the per-class min-quote-size
+   *  floor — the caller (scan.ts) already has gates.ts's INDEX_ETF_TICKERS in scope, so it
+   *  is computed there and passed in rather than re-imported here (plan.ts stays the
+   *  dependency-free leaf; gates.ts already imports FROM plan.ts). Omitted → legacy floor. */
+  tickerClass?: LiquidityTickerClass;
   keySupports: number[];
   keyResistances: number[];
   vwap: number | null;
@@ -260,18 +399,25 @@ export function buildContractPlan(input: {
       : PLAN_ILLIQUID_SPREAD_PCT;
   const illiquid = spreadPct != null && spreadPct > illiquidSpreadCap;
 
-  // WS-04: explicit fail-closed malformed-quote verdict, computed BESIDE the legacy
-  // percent-spread check (which is kept untouched). This catches the books the % test
-  // waved through — zero/null bid (null %), crossed (negative %), locked (0 %), mark
-  // out of band, and an absolutely-huge dollar spread — plus the two conditional bounds
-  // (size, age) when the provider supplies them.
+  // WS-04: explicit fail-closed malformed-quote verdict (G-9, INTEGRITY only), computed
+  // BESIDE the legacy percent-spread check (which is kept untouched). This catches the
+  // books the % test waved through — zero/null bid (null %), crossed (negative %),
+  // locked (0 %), mark out of band, and an absolutely-huge dollar spread — plus the
+  // conditional age bound when the provider supplies it.
   const quoteInvalidReason = evaluateQuoteValidity({
     bid,
     ask,
     mark,
+    quoteAgeMs: input.quoteAgeMs ?? null,
+  });
+  // G-21 (2026-09-09 split): DEPTH/liquidity verdict, a SIBLING check to the above, not a
+  // branch of it — a well-formed, in-band quote can still be too thin to fill.
+  const liquidityInvalidReason = evaluateContractLiquidity({
     bidSize: input.bidSize ?? null,
     askSize: input.askSize ?? null,
-    quoteAgeMs: input.quoteAgeMs ?? null,
+    openInterest: input.openInterest ?? null,
+    dayVolume: input.dayVolume ?? null,
+    tickerClass: input.tickerClass,
   });
 
   const chasePct =
@@ -314,11 +460,13 @@ export function buildContractPlan(input: {
     illiquid,
     illiquid_spread_cap: illiquidSpreadCap,
     quote_invalid_reason: quoteInvalidReason,
+    liquidity_invalid_reason: liquidityInvalidReason,
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,
     time_stop_et: zerodteTimeStopEtLabel(),
     underlying_target: target,
     underlying_invalid: invalid,
+    quoteAgeMs: input.quoteAgeMs ?? null,
   };
 }
 
@@ -353,13 +501,30 @@ export function buildContractPlan(input: {
  * flag time and paying the live mark could never have experienced, because the flow
  * print itself (stale, or matched to the wrong strike/expiry upstream) was never a
  * tradeable price. A member can't be graded against a fill they couldn't get in EITHER
- * direction, so when the mark sits FAR below the fill (the QQQ case above was ~73%
- * below) — by the same CHASE_PCT magnitude this file already treats as "too extreme to
- * trust" for the opposite (MOVED) case — the ledger basis is capped DOWN to the mark
- * instead of trusting the outlier fill.
+ * direction, so when the mark sits far enough below the fill, the ledger basis is capped
+ * DOWN to the mark instead of trusting the outlier fill.
  * Ordinary CHEAPER prints (mark a few/some percent below the fill — real front-running)
  * are far inside this band and are completely unaffected.
+ *
+ * THE CEILING TRIGGER IS `STOP_TRIGGER_PCT` (= |PLAN_RULES.stop_pct|), NOT `CHASE_PCT`
+ * (2026-09-11, live finding). The ceiling originally reused CHASE_PCT (55%) — the wrong
+ * threshold borrowed from the UP/MOVED case, where 55% was tuned for a DIFFERENT question
+ * ("is this much gamma-driven premium runup normal, or already-happened") and has nothing
+ * to do with achievability. That left a dead zone: a stale/dislocated fill 50-54.99% above
+ * the live mark stayed UNCORRECTED (pctBelow < 55), yet the live mark was ALREADY at or
+ * past the play's own -50% hard stop the instant a real quote was checked — a "stopped"
+ * grade fired before a member could have owned the position for even one tick, off a fill
+ * nobody could ever get, exactly the failure this ceiling exists to prevent. Confirmed
+ * live: a 90-day backtest found 7 near-instant (<5s) catastrophic "stopped" exits, several
+ * landing in this exact 50-54.99% band (QQQ 2026-09-09 -51.42%, SPXW 2026-08-12 -52.96%,
+ * NVDA 2026-08-27 -52.90%, MSFT 2026-08-28 -52.07%); reproduced mechanically with the
+ * shipped function (see plan.test.ts). Triggering at the stop threshold instead closes the
+ * dead zone precisely: any dislocation large enough to ALREADY be an unavoidable stop is
+ * now corrected to the achievable mark before grading, while ordinary front-running
+ * (well under 50%) is untouched, same as before.
  */
+const STOP_TRIGGER_PCT = Math.abs(PLAN_RULES.stop_pct);
+
 export function resolveLedgerEntryPremium(
   planEntryMax: number | null | undefined,
   flowAvgFill: number | null,
@@ -370,7 +535,7 @@ export function resolveLedgerEntryPremium(
   if (markAtFlag != null && markAtFlag > 0) {
     if (markAtFlag > base) return round2(markAtFlag);
     const pctBelow = ((base - markAtFlag) / base) * 100;
-    if (pctBelow >= CHASE_PCT) return round2(markAtFlag);
+    if (pctBelow >= STOP_TRIGGER_PCT) return round2(markAtFlag);
   }
   return base;
 }
@@ -728,8 +893,10 @@ export type LivePlayState = {
 /**
  * Derive the play's lifecycle state. `peak`/`trough` are the latched extremes of
  * the mark SINCE the flag (persisted by the scanner each tick), so transitions
- * are sticky: trough ≤ stop → CLOSED forever; peak ≥ target → TRIM until close.
- * OPEN means "still enterable": mark within 10% of entry and before the cutoff.
+ * are sticky: trough ≤ stop → CLOSED forever; peak ≥ target → TRIM until close
+ * (or, for a trim_scale row, peak ≥ its OWN first-tranche trigger — see
+ * `trimScaleFirstTranchePct`). OPEN means "still enterable": mark within 10% of
+ * entry and before the cutoff.
  */
 export function derivePlayStatus(input: {
   entryPremium: number | null;
@@ -741,6 +908,22 @@ export function derivePlayStatus(input: {
   targetPct?: number | null;
   /** Frozen plan stop %. Defaults to PLAN_RULES.stop_pct (−50%). */
   stopPct?: number | null;
+  /** trim_scale rows bank their FIRST real tranche far below the ratchet's +100%
+   *  `targetPct` literal (TRIM_SCALE_RULES.tranches_by_regime — e.g. +20% neutral,
+   *  +15% range, +40% trend). When the caller identifies this row as trim_scale
+   *  (exit-sync.ts's playRailsFromRow, resolved the SAME way the live exit engine
+   *  resolves its own threshold table) and supplies that regime-conditioned trigger
+   *  here, TRIM fires at THIS peak level instead of `targetPct` — fixing the
+   *  2026-09-09 finding where a trim_scale row that had already genuinely banked a
+   *  real tranche via the exit engine still showed OPEN/HOLD on the member-facing
+   *  badge, because this function only ever knew the ratchet's own +100% literal.
+   *  Omitted (ratchet rows, and any legacy/untiered caller with no identifiable
+   *  exit-policy pin) → falls back to `targetPct`, byte-identical to the prior
+   *  behavior. Does NOT change the floor-forcing exit-engine logic (ratchetFloorPct's
+   *  `trimmed` arg) — that is now derived independently, from trims_taken/regime, so
+   *  it can never mis-fire off this earlier badge flip; see exit-engine.ts's
+   *  trimScaleAllTranchesBanked. */
+  trimScaleFirstTranchePct?: number | null;
   /** When true, skip the latched plan-stop close so the exit engine can honor a
    *  protective floor first (scan.ts / live-marks.ts run the engine on this pass). */
   deferPlanStop?: boolean;
@@ -769,17 +952,26 @@ export function derivePlayStatus(input: {
   }
   const stop = entryPremium * (1 + stopPct / 100);
   const target = entryPremium * (1 + targetPct / 100);
+  // The peak level that flips the badge to TRIM: the ratchet's own `target` UNLESS the
+  // caller identifies this row as trim_scale, in which case its OWN, much lower,
+  // regime-conditioned first-tranche trigger applies instead — see
+  // `trimScaleFirstTranchePct`'s doc above.
+  const trimTrigger =
+    input.trimScaleFirstTranchePct != null
+      ? entryPremium * (1 + input.trimScaleFirstTranchePct / 100)
+      : target;
 
-  // Target checked BEFORE stop. peak/trough are latched extremes with no timestamp,
-  // so a naive stop-first check can't tell "hit stop, never recovered" apart from
-  // "hit target first, THEN craters" — both eventually show trough <= stop. But peak
-  // only ever grows once set, so checking peak first makes a target hit STICKY: once
-  // any tick pushes peak >= target, every future tick (this function is re-evaluated
-  // every scan cycle against the still-open row) keeps returning TRIM regardless of
-  // what trough does afterward — matching gradePlanFromBars' chronological "first
-  // touch wins" grading and this file's own "peak >= target -> TRIM until close" doc
-  // comment. A genuine stop-first case is unaffected: peak can't have reached target
-  // yet when the row closes, so it still falls through to the stop check below.
+  // Trim trigger checked BEFORE stop. peak/trough are latched extremes with no
+  // timestamp, so a naive stop-first check can't tell "hit stop, never recovered"
+  // apart from "hit target first, THEN craters" — both eventually show trough <= stop.
+  // But peak only ever grows once set, so checking peak first makes a trim-trigger hit
+  // STICKY: once any tick pushes peak >= trimTrigger, every future tick (this function
+  // is re-evaluated every scan cycle against the still-open row) keeps returning TRIM
+  // regardless of what trough does afterward — matching gradePlanFromBars' chronological
+  // "first touch wins" grading and this file's own "peak >= target -> TRIM until close"
+  // doc comment (trimTrigger === target for every ratchet row, unchanged). A genuine
+  // stop-first case is unaffected: peak can't have reached trimTrigger yet when the row
+  // closes, so it still falls through to the stop check below.
   //
   // INTENTIONAL, GUARDED divergence from gradePlanFromBars' same-bar tie-break (see
   // that function's doc + the "already-doubled stays TRIM" P0 test): the live card is
@@ -790,7 +982,7 @@ export function derivePlayStatus(input: {
   // exit — the trim/ratchet that this TRIM card actually guides), so what the member is
   // shown and what is booked to their record agree; the mechanical grade is kept beside
   // it only as a labeled hold-to-stop/target comparison.
-  if (!isCondor && peak != null && peak >= target) {
+  if (!isCondor && peak != null && peak >= trimTrigger) {
     return { status: "TRIM", live_pnl_pct: pnl, closed_reason: null };
   }
   if (!isCondor && !deferPlanStop && trough != null && trough <= stop) {

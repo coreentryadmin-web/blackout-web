@@ -82,6 +82,12 @@ async function runVectorFullStateSnapshot(started: number): Promise<void> {
           }
         })
       );
+
+      // Yield event loop between batches to prevent blocking incoming requests with CPU-bound work.
+      // This allows the Node.js event loop to handle other requests before processing the next batch.
+      if (i + TICKER_CONCURRENCY < tickers.length) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
     }
 
     console.info(

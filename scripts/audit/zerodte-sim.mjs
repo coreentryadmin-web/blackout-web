@@ -184,7 +184,7 @@ function gradeThroughExitEngine(bars, entry, planStop, planTarget, flaggedMs, mo
   for (const b of seq) {
     lastClose = b.c;
     const age = (b.t - flaggedMs) / 60000;
-    const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: trimmed ? "TRIM" : "OPEN", trimmed, entryCortexScore: null });
+    const mk = (m, pk) => ({ entryPremium: entry, currentMark: m, peakPremium: pk, ageMinutes: age, cortexEvidence: null, planStop, planTarget, status: trimmed ? "TRIM" : "OPEN", trimmed, entryCortexScore: null, exitMode: "ratchet" });
     // 1) PROTECTIVE exit only (plan-stop or ratchet/runner floor). Flat-timeout is a time-based scratch
     // at the mark, handled at the close below. RATCHET_PROTECT_AT brackets BOTH axes of the live exit's
     // fidelity (audit 2026-07-23 fix #1) — trigger AND fill, not just trigger:

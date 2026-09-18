@@ -299,6 +299,263 @@ test("thesis is grounded in the score breakdown and cites the leading driver", (
   assert.match(key_signal, /flow/);
 });
 
+test("R:R display never rounds up across the label's own threshold (live 2026-09-11 HPE/DELL: 0.49/0.45 both printed as \"0.5:1\")", () => {
+  // computeRiskReward's LONG formula: fillEdge = entry_range_high (100), stopDist = fillEdge-stop (10),
+  // targetDist = target-fillEdge (4.9) -> rr = 4.9/10 = 0.49, which the label ladder buckets "tight"
+  // (< 0.5). `rr.toFixed(1)` rounds that to "0.5", printing "R:R 0.5:1 (tight)" -- a member reading
+  // 0.5 against the label's own >=0.5 "acceptable" cutoff sees an apparent self-contradiction.
+  const s = scored("XYZ", "long", 50);
+  const d = dossier("XYZ", 100);
+  const levels = { entry_range: "$95.00-$100.00", target: "$104.90", stop: "$90.00" };
+  const { thesis } = buildDeterministicThesis(s, d, levels);
+  const match = thesis.match(/R:R (\d+\.\d):1 \((\w+)\)/);
+  assert.ok(match, `thesis should contain an R:R clause: ${thesis}`);
+  const [, displayed, label] = match!;
+  assert.equal(label, "tight", "0.49 is below the 0.5 'acceptable' cutoff");
+  // The displayed number must never sit AT OR ABOVE a threshold the true ratio didn't clear --
+  // that is exactly what would read as self-contradictory ("0.5:1 (tight)" beside a ladder that
+  // labels 0.5 "acceptable"). Flooring must keep the printed number under the label's own cutoff.
+  assert.ok(Number(displayed) < 0.5, `displayed "${displayed}" must stay below the 'acceptable' cutoff of 0.5`);
+  assert.equal(displayed, "0.4", "0.49 floors to 0.4, not rounds to 0.5");
+});
+
+test("R:R display: a ratio safely inside a label band still prints its true rounded value", () => {
+  // fillEdge=100, stop=80 -> stopDist=20; target=130 -> targetDist=30 -> rr=1.5, comfortably
+  // inside the "favorable" band ([1,2)) with no boundary-rounding risk either direction.
+  const s = scored("XYZ", "long", 50);
+  const d = dossier("XYZ", 100);
+  const levels = { entry_range: "$95.00-$100.00", target: "$130.00", stop: "$80.00" };
+  const { thesis } = buildDeterministicThesis(s, d, levels);
+  assert.match(thesis, /R:R 1\.5:1 \(favorable\)/);
+});
+
+test("thesis quotes the actual catalyst when news is a top scoring driver (2026-09-12: news_score could make key_signal but the thesis text never said why)", () => {
+  // flow(18) > news(20)? no -- set news above tech/pos/smart so it lands in the top-2 by
+  // |value| alongside flow, without needing to also touch flow itself.
+  const s = { ...scored("NEWS", "long", 66), news_score: 15 };
+  const d = dossier("NEWS", 100, {
+    polygon_sentiment: ["positive: strong iPhone pre-order checks from supply chain", "negative: unrelated bearish note"],
+    news_headlines: ["Some plain headline"],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /news/, "news must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Catalyst: "strong iPhone pre-order checks from supply chain"\./,
+    "must quote the DIRECTION-MATCHING (positive, for a long) sentiment entry, sentiment tag stripped");
+});
+
+test("thesis catalyst falls back to a plain headline when no polygon_sentiment exists", () => {
+  const s = { ...scored("HDLN", "short", 66), news_score: 15 };
+  const d = dossier("HDLN", 100, {
+    direction: "short",
+    polygon_sentiment: [],
+    news_headlines: ["Analyst downgrades HDLN on weak guidance"],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Catalyst: "Analyst downgrades HDLN on weak guidance"\./);
+});
+
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13):
+// pickCatalystHeadline fell back to `sentiment[0]` regardless of ITS OWN tag when no
+// direction-matching entry existed. scoreNewsCatalyst can make news a top driver purely from a
+// plain-text keyword hit (upgrade/beat/etc.) in `news_headlines`, entirely independent of what's
+// tagged in `polygon_sentiment` -- so a LONG pick could quote a "negative:"-tagged sentiment
+// entry as its "Catalyst:" line, presenting bearish-toned evidence as support for a bullish
+// thesis.
+test("thesis catalyst never quotes a sentiment entry of the OPPOSITE direction (fabricated-catalyst-agreement bug)", () => {
+  const s = { ...scored("OPPOSITE", "long", 45), news_score: 3, flow_score: 2, tech_score: 2, pos_score: 1, smart_money_score: 0 };
+  const d = dossier("OPPOSITE", 100, {
+    // No positive-tagged entry exists at all -- only negative ones.
+    polygon_sentiment: ["negative: guidance disappoints analysts", "negative: margin compression continues"],
+    news_headlines: ["Company reports strong beat on quarterly earnings"],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /news/, "news must actually be the top driver for this fixture to test anything");
+  assert.match(thesis, /Catalyst: "Company reports strong beat on quarterly earnings"\./,
+    "must fall back to the plain headline that actually drove the score, not an opposite-direction sentiment tag");
+  assert.doesNotMatch(thesis, /disappoints|margin compression/, `must never quote bearish sentiment as a bullish catalyst, got: ${thesis}`);
+});
+
+test("thesis catalyst is omitted (never fabricated) when news is a top driver but no headline/sentiment data exists", () => {
+  const s = { ...scored("EMPTY", "long", 66), news_score: 15 };
+  const d = dossier("EMPTY", 100, { polygon_sentiment: [], news_headlines: [] } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Catalyst:/);
+});
+
+test("thesis catalyst stays quiet when news is NOT a top driver, even with real headlines present (keeps thesis scoped to what actually drove the score)", () => {
+  const s = scored("QUIET", "long", 66); // default news_score: 2, well below the top-2 cut
+  const d = dossier("QUIET", 100, {
+    polygon_sentiment: ["positive: this should not appear -- news wasn't a driver here"],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Catalyst:/);
+});
+
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13): the thesis's
+// flow-streak sentence used the PLAY's own direction word (dirWord) to label a TICKER-level flow
+// streak that is measured independently (a 10-day DB rollup of net daily premium, per
+// flow-streak.ts) and can legitimately disagree with the play's chosen direction -- exactly the
+// same disagreement scorer.ts's scoreFlowQuality already guards its own scoring bonus against
+// (`flowStreak.direction === direction`). A real 4-day PUT-dominated (bearish) streak on a LONG
+// play rendered as "4-day bullish flow streak" -- fabricated corroboration, the opposite of what
+// the streak data showed.
+test("thesis flow-streak sentence uses the STREAK's own measured direction, not the play's direction (fabricated-corroboration bug)", () => {
+  const s = { ...scored("MISMATCH", "long", 55), flow_score: 30 };
+  const d = dossier("MISMATCH", 100, {
+    flow_streak: { streak_days: 4, direction: "short", net_3d: -1_000_000, net_5d: -2_000_000 },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /4-day bearish flow streak/, `expected the streak's true (bearish) direction, got: ${thesis}`);
+  assert.doesNotMatch(thesis, /4-day bullish flow streak/, `must not fabricate agreement with the LONG play's direction, got: ${thesis}`);
+});
+
+test("thesis flow-streak sentence still reads correctly when the streak direction genuinely agrees with the play", () => {
+  const s = { ...scored("AGREE", "long", 55), flow_score: 30 };
+  const d = dossier("AGREE", 100, {
+    flow_streak: { streak_days: 3, direction: "long", net_3d: 1_000_000, net_5d: 2_000_000 },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /3-day bullish flow streak/);
+});
+
+test("thesis flow-streak sentence falls back to the play's direction when a dossier carries no streak direction at all (defensive default, unchanged from before)", () => {
+  const s = { ...scored("NODIR", "long", 55), flow_score: 30 };
+  const d = dossier("NODIR", 100); // default fixture's flow_streak has no `direction` field
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /3-day bullish flow streak/);
+});
+
+test("thesis names congressional buying when smart-money is a top scoring driver", () => {
+  const s = { ...scored("CONG", "long", 66), smart_money_score: 15 };
+  const d = dossier("CONG", 100, {
+    congress_unusual: [{ txn_type: "purchase", filed_at: "2026-09-01" }],
+    congress_trades: [],
+    institutional_activity: [],
+    predictions_signal: null,
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /smart-money/, "smart-money must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Smart money: recent congressional buying disclosed\./);
+});
+
+test("thesis falls back to institutional flow when no congressional data exists", () => {
+  const s = { ...scored("INST", "short", 66), smart_money_score: 15 };
+  const d = dossier("INST", 100, {
+    direction: "short",
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [{ action: "reduced position" }],
+    predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: institutional distribution flagged\./);
+});
+
+test("thesis falls back to institutional flow using the real UW `units_changed` field (BUG FIX 2026-09-12)", () => {
+  // Regression: real UW /api/institution/{ticker}/ownership rows carry the share delta as
+  // `units_changed` (trailing "d"), never `units_change`/`change`/etc, and carry no action/
+  // transaction_type field at all. A fixture using only the guessed field names would pass
+  // even on the old, broken fallback chain -- this uses the REAL shape to prove the fix.
+  const s = { ...scored("INSTREAL", "long", 66), smart_money_score: 15 };
+  const d = dossier("INSTREAL", 100, {
+    direction: "long",
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [{ name: "BLACKROCK, INC.", units: "1162996939", units_changed: "18301514" }],
+    predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: institutional accumulation flagged\./);
+});
+
+test("thesis falls back to the prediction-market's own headline when no congress/institutional data exists", () => {
+  const s = { ...scored("PRED", "long", 66), smart_money_score: 15 };
+  const d = dossier("PRED", 100, {
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [],
+    predictions_signal: { ticker: "PRED", direction: "bullish", confidence_pct: 68, sources: ["polymarket"], headline: "Polymarket: 68% odds PRED beats on guidance" },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: Polymarket: 68% odds PRED beats on guidance\./);
+});
+
+test("thesis smart-money note is omitted (never fabricated) when smart-money is a top driver but no aligned evidence exists", () => {
+  const s = { ...scored("NOEV", "long", 66), smart_money_score: 15 };
+  const d = dossier("NOEV", 100, {
+    congress_unusual: [], congress_trades: [], institutional_activity: [], predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Smart money:/);
+});
+
+test("thesis smart-money note stays quiet when smart-money is NOT a top driver, even with real congressional data present", () => {
+  const s = scored("QUIETSM", "long", 66); // default smart_money_score: 3, below tech(12)/pos(6) -- not top-2
+  const d = dossier("QUIETSM", 100, {
+    congress_unusual: [{ txn_type: "purchase", filed_at: "2026-09-01" }],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Smart money:/);
+});
+
+test("thesis names dark-pool prints when positioning is a top scoring driver", () => {
+  const s = { ...scored("DPPOS", "long", 66), pos_score: 15 };
+  const d = dossier("DPPOS", 100, {
+    dark_pool: { prints: [], total_premium: 8_000_000, call_premium: 8_000_000, put_premium: 0, bias: "bullish", pcr: null, detail: "" },
+    strike_stacks: [],
+    oi_change: [],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /positioning/, "positioning must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Positioning: dark-pool prints leaning bullish\./);
+});
+
+test("thesis falls back to strike-stack accumulation when no aligned dark-pool bias exists", () => {
+  const s = { ...scored("STACKPOS", "short", 66), pos_score: 15 };
+  const d = dossier("STACKPOS", 100, {
+    direction: "short",
+    dark_pool: null,
+    strike_stacks: [
+      { ticker: "STACKPOS", strike: 95, option_type: "put", expiry: "2026-12-18", alert_count: 4, total_premium: 2_000_000, premiums: [500_000], trade_count: 4, repeated_hits: true, same_strike_accumulation: true, alert_rules: [], kind: "repeated_and_stacked" },
+    ],
+    oi_change: [],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Positioning: repeated same-strike accumulation on the aligned side\./);
+});
+
+test("thesis falls back to rising aligned OI using the real UW `kind` field (not `option_type`)", () => {
+  const s = { ...scored("OIPOS", "long", 66), pos_score: 15 };
+  const d = dossier("OIPOS", 100, {
+    dark_pool: null,
+    strike_stacks: [],
+    oi_change: [
+      { strike: 100, oi_change: 1200, kind: "call" },
+      { strike: 105, oi_change: 800, kind: "call" },
+    ],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Positioning: rising aligned open interest\./);
+});
+
+test("thesis positioning note is omitted (never fabricated) when positioning is a top driver but no aligned evidence exists", () => {
+  const s = { ...scored("NOEVPOS", "long", 66), pos_score: 15 };
+  const d = dossier("NOEVPOS", 100, {
+    dark_pool: null, strike_stacks: [], oi_change: [],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Positioning:/);
+});
+
+test("thesis positioning note stays quiet when positioning is NOT a top driver, even with real dark-pool data present", () => {
+  const s = scored("QUIETPOS", "long", 66); // default pos_score: 6, below flow(18)/tech(12) -- not top-2
+  const d = dossier("QUIETPOS", 100, {
+    dark_pool: { prints: [], total_premium: 8_000_000, call_premium: 8_000_000, put_premium: 0, bias: "bullish", pcr: null, detail: "" },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Positioning:/);
+});
+
 test("score floor: candidates below MIN_PUBLISH_SCORE (38) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),
@@ -325,6 +582,76 @@ test("thesis explains flow/tech divergence when direction opposes trend (PR-N28)
   const d = dossier("COIN", 160, { tech: { ...dossier("COIN", 160).tech!, trend: "bearish" } } as any);
   const { thesis } = buildDeterministicThesis(s, d);
   assert.match(thesis, /Flow conviction overrides bearish technicals/);
+});
+
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13): the
+// trend-conflict sentence hard-coded "Flow conviction overrides... institutional money is
+// {dirWord}" whenever the technical trend disagreed with the play's final direction, REGARDLESS
+// of whether flow had anything to do with the pick. A candidate driven entirely by news+smart-
+// money with flow_score:0 still claimed a flow signal that never existed.
+test("trend-conflict sentence names the ACTUAL top driver, not a hard-coded 'flow' claim (fabricated-attribution bug)", () => {
+  const s = {
+    ...scored("NEWSDRIVEN", "long", 45),
+    flow_score: 0,
+    tech_score: 5,
+    pos_score: 3,
+    news_score: 20,
+    smart_money_score: 15,
+  };
+  const d = dossier("NEWSDRIVEN", 100, { tech: { ...dossier("NEWSDRIVEN", 100).tech!, trend: "bearish" } } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /News conviction overrides bearish technicals/, `expected the real top driver named, got: ${thesis}`);
+  assert.doesNotMatch(thesis, /Flow conviction|institutional money/, `must not invent a flow signal that never existed, got: ${thesis}`);
+});
+
+test("trend-conflict sentence still uses the original flow wording when flow genuinely IS the top driver", () => {
+  const s = {
+    ...scored("FLOWDRIVEN", "long", 45),
+    flow_score: 30,
+    tech_score: 2,
+    pos_score: 1,
+    news_score: 1,
+    smart_money_score: 0,
+  };
+  const d = dossier("FLOWDRIVEN", 100, { tech: { ...dossier("FLOWDRIVEN", 100).tech!, trend: "bearish" } } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Flow conviction overrides bearish technicals — institutional money is bullish/);
+});
+
+test("thesis keeps a gap tag paired with its own gap-fill explanation instead of truncating it away", () => {
+  // Mirrors a real live thesis (FICO, 2026-09-10): "prior day HOD break, gap up 49.89 in
+  // bearish trend" for a SHORT play — a bullish-sounding break+gap-up pair with no stated
+  // reason why the trade fades it. technicals.ts's classifySetup() always pushes a
+  // "gap-fill risk below" / "gap-fill bounce zone above" tag immediately after the gap tag
+  // for exactly this reason (it's the one setup_tag that argues a DIRECTION, unlike RSI/
+  // volume/EMA tags), but buildDeterministicThesis's blind `slice(0, 2)` drops it whenever
+  // two other tags sort ahead of it — here "prior day HOD break" and "gap up X" fill both
+  // slots and "gap-fill risk below" (3rd) never reaches the member-facing sentence.
+  const s = scored("FICO", "short", 42);
+  const d = dossier("FICO", 106.75, {
+    tech: {
+      ...dossier("FICO", 106.75).tech!,
+      trend: "bearish",
+      setup_tags: ["prior day HOD break", "gap up 49.89", "gap-fill risk below"],
+    },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /gap-fill risk below/, "the gap's own directional explanation must survive truncation");
+});
+
+test("thesis does not force in a gap-fill tag when the gap tag itself was never selected", () => {
+  // The pairing fix must not spuriously append gap-fill commentary onto a thesis whose
+  // opener never mentioned the gap in the first place (e.g. two stronger tags precede it).
+  const s = scored("ZZZ", "long", 53);
+  const d = dossier("ZZZ", 100, {
+    tech: {
+      ...dossier("ZZZ", 100).tech!,
+      trend: "bullish",
+      setup_tags: ["20d range breakout", "weekly breakout zone", "gap up 5.00", "gap-fill risk below"],
+    },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /gap-fill/, "no gap tag in the opener means no orphaned gap-fill commentary either");
 });
 
 test("LONG target is pushed above call strike + 2×premium when stock target < strike (PR-N29)", () => {

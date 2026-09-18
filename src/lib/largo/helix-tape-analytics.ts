@@ -6,6 +6,7 @@ import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 import { DIRECTION_BASIS } from "@/features/helix/lib/helix-flow-aggression";
 import { readDirection, type DirectionRead } from "@/features/helix/lib/helix-direction-read";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 /** The member panel's horizon buckets, in CHRONOLOGICAL order (ExpiryConcentration.tsx). */
 export const EXPIRY_HORIZONS = ["0DTE", "This week", "Monthly", "LEAPS"] as const;
@@ -385,7 +386,10 @@ export function tapeWindowCoverage(
     oldest_print: etStamp(oldest),
     newest_print: etStamp(newest),
     /** How stale the freshest print is — an off-hours read can be current AND hours old. */
-    newest_age_minutes: Math.max(0, Math.round((now.getTime() - newest) / 60_000)),
+    newest_age_minutes:
+      now.getTime() - newest < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS
+        ? null
+        : Math.round(Math.max(0, now.getTime() - newest) / 60_000),
     prints: alerts.length,
     /** Prints carrying a real UW print time — the only ones the span above is measured from. */
     timed_prints: ts.length,

@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
+import { isEtCashRth } from "@/lib/et-market-hours";
 import { logCronRun } from "@/lib/cron-run";
 import { runSwingActiveRefresh } from "@/lib/swing/active-refresh";
 import type { ManageSyncReads } from "@/lib/swing/manage-sync";
@@ -38,7 +39,7 @@ import {
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
-import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
+import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
@@ -50,6 +51,10 @@ import {
   graduatedEdgeRungsFromReport,
   swingCalibrationRowFromLedger,
 } from "@/lib/swing/calibration";
+import {
+  distillSwingCalibrationReport,
+  persistSwingArchetypeTrackRecord,
+} from "@/lib/swing/calibration-cache";
 import type { SwingManageRung } from "@/lib/swing/manage";
 import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
@@ -104,8 +109,9 @@ async function loadShadowReads(row: SwingShadowPositionRow, nowMs: number): Prom
     try {
       const snaps = await fetchOptionsUnifiedSnapshot([occ]);
       const snap = snaps.get(occ);
+      const resolved = snap ? reliableMarkFromSnapshot(snap) : null;
       const live =
-        typeof snap?.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0 ? snap.mark : null;
+        typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0 ? resolved : null;
       if (live != null) mark = live;
     } catch {
       // fail-soft — underlying path still records
@@ -139,7 +145,8 @@ async function loadOptionQuote(
     const snaps = await fetchOptionsUnifiedSnapshot([occ]);
     const snap = snaps.get(occ);
     if (!snap) return none;
-    const mark = typeof snap.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0 ? snap.mark : null;
+    const resolved = reliableMarkFromSnapshot(snap);
+    const mark = typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0 ? resolved : null;
     // Every field passes through as-is — the provider mapper already normalised each to a finite
     // number or null, so nothing here can invent a greek the provider did not send.
     const quote: SwingLiveQuote = {
@@ -238,6 +245,26 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
       const graded = await fetchGradedSwingFeatureRows(5000);
       const report = analyzeSwingCalibration(graded.map(swingCalibrationRowFromLedger));
       graduatedRungs = graduatedEdgeRungsFromReport(report);
+
+      // Ask Largo / Largo product-contract C10 (historical context): the SAME report also carries
+      // the per-archetype/sub-lane graduation verdicts — persist a DISTILLED copy so the swing
+      // play-brief's request path (play-brief-context.ts, which cannot reach the DB flow window
+      // this report is computed from) can cite a ticker's own historical track record. Distilling
+      // from the report already in hand here (rather than a second analyzeArchetypeRecord/
+      // analyzeSubLaneRecord pass) avoids recomputing work analyzeSwingCalibration just did. This
+      // write is best-effort and independent of the graduated-rungs read above: a persistence
+      // failure here must never regress live rung enforcement, so it gets its own try/catch rather
+      // than sharing the one above.
+      try {
+        const wrote = await persistSwingArchetypeTrackRecord(distillSwingCalibrationReport(report));
+        if (!wrote) {
+          console.warn(
+            "[cron/swing-active-refresh] archetype track-record cache write FAILED — brief citation stays absent this cycle",
+          );
+        }
+      } catch (err) {
+        console.error("[cron/swing-active-refresh] archetype track-record distill/persist FAILED (non-fatal)", err);
+      }
     } catch (err) {
       console.error("[cron/swing-active-refresh] graduated-rungs load FAILED — edge rungs stay advisory", err);
       graduatedRungs = [];
@@ -484,6 +511,15 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Registered `market_hours_only: true` but EventBridge fires on weekday holidays — same ET-INTENT
+  // gap fixed on uw-cache-refresh (#4482) and flow-ingest (#4483). Without this gate, Labor Day
+  // still polled Polygon/UW for every open swing position on the 15-min cadence.
+  if (!isEtCashRth()) {
+    const payload = { ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" };
+    await logCronRun("swing-active-refresh", started, payload);
+    return NextResponse.json(payload);
   }
 
   // Per-position Polygon/UW reads + serving-spot refresh + beta warm can exceed Cloudflare's ~100s

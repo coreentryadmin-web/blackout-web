@@ -16,7 +16,9 @@ import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 // so the record route and the full admin debrief report can never disagree on a count.
 import {
   summarizeDebriefPins,
+  summarizePulledByRule,
   type NighthawkDebriefRecordSummary,
+  type PullRuleBreakdown,
 } from "@/features/nighthawk/lib/debrief-aggregate";
 
 // Task #145: funnel/rejection-rate stats. Reverse-indexes REJECTION_TRIGGER_REASON (the single
@@ -230,6 +232,11 @@ export type NighthawkMetrics = {
   /** PR-N10: failure-mode counts from the pinned per-play debriefs (current-methodology
    *  rows only, mirroring the headline's anti-blend rule; low_n-flagged). */
   debrief: NighthawkDebriefRecordSummary;
+  /** Signal Intelligence Phase 2B: pulled_wrongly/pulled_correctly broken down by WHICH
+   *  morning-confirm rule caused the pull (pull-rule-taxonomy.ts) — answers "which
+   *  cancellation rule is destroying positive expectancy", not just "how many pulls were
+   *  wrong". Same current-methodology filter + low_n discipline as `debrief` above. */
+  pulled_rule_breakdown: PullRuleBreakdown;
   by_conviction: Array<{ conviction: string } & NighthawkRecordCut>;
   by_direction: Array<{ direction: "LONG" | "SHORT" } & NighthawkRecordCut>;
   by_sector: Array<{ sector: string } & NighthawkRecordCut>;
@@ -435,6 +442,14 @@ export function buildRecordSegment(
   // is the exclusion-accounting/return-averaging population and still carries opens +
   // ambiguous. Both numbers ship so no consumer has to guess which one a rate came from.
   const decided = wins + losses;
+  // Same false-zero trap winRate/profitableRate above are already guarded against: a
+  // non-empty `scoreable` set can still have ZERO rows with a computable return (e.g. every
+  // row missing next_day_close) if `avgOf`'s empty-array-defaults-to-0 fallback is reached
+  // through avgReturn — reporting a fabricated "+0.00%" instead of the honest "no evidence
+  // yet" null. Gate on rows that actually resolved a return, not on scoreable.length.
+  const scoreableReturns = scoreable
+    .map(realizedReturnPct)
+    .filter((v): v is number => v != null);
   return {
     methodology,
     label: gradeMethodologyLabel(methodology),
@@ -451,7 +466,7 @@ export function buildRecordSegment(
     unfilled_not_pulled: unfilled.filter((r) => r.pulled !== true).length,
     decided,
     win_rate: decided > 0 ? wins / decided : null,
-    avg_return_pct: scoreable.length > 0 ? avgReturn(scoreable) : null,
+    avg_return_pct: scoreableReturns.length > 0 ? avgOf(scoreableReturns) : null,
     low_n: decided < LOW_N_THRESHOLD,
   };
 }
@@ -514,6 +529,7 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
       legacy: buildRecordSegment(GRADE_METHODOLOGY_LEGACY, []),
     },
     debrief: summarizeDebriefPins([]),
+    pulled_rule_breakdown: summarizePulledByRule([]),
     funnel: buildNighthawkFunnel(windowDays, 0, []),
   };
 }
@@ -522,9 +538,22 @@ function emptyMetrics(windowDays: number): NighthawkMetrics {
  * Returns true for plays where a stop is defined but intraday data is missing.
  * These plays cannot have stop outcomes reliably determined and must be excluded
  * from win/loss tallies to avoid silently inflating the win rate.
+ *
+ * BUG FIX (2026-09-17): this required BOTH session_high AND session_low to be null
+ * (AND), but play-outcomes.ts's resolveOutcome — the canonical grader this predicate
+ * mirrors — computes `hasIntraday = high != null && low != null`, so its own
+ * stop_data_unavailable is `stop != null && (high == null || low == null)` (OR):
+ * a LONG's target-hit check needs `high` and its stop-hit check needs `low`, so
+ * EITHER field missing already makes the row's intraday-based verdict untrustworthy.
+ * The two predicates only diverge on a partial bar (one field present, one missing),
+ * which the sole writer (a Polygon daily OHLC bar, always complete-or-absent) doesn't
+ * currently produce — but a re-derivation of "the same" check drifting from its
+ * canonical definition is exactly the class of bug this codebase's outcome-grading
+ * cross-check discipline exists to catch (see OUTCOME-GRADING-SPEC.md), so fixed here
+ * defensively rather than left to depend on the writer never changing.
  */
 function isStopDataUnavailable(r: NighthawkPlayOutcomeRow): boolean {
-  return r.stop != null && r.session_high == null && r.session_low == null;
+  return r.stop != null && (r.session_high == null || r.session_low == null);
 }
 
 export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMetrics> {
@@ -632,6 +661,9 @@ export async function getNighthawkMetrics(windowDays = 30): Promise<NighthawkMet
     // PR-N10: all resolved rows in — summarizeDebriefPins applies the same current-
     // methodology filter internally AND reports the legacy quarantine count honestly.
     debrief: summarizeDebriefPins(rows),
+    // Signal Intelligence Phase 2B: same all-resolved-rows-in contract as debrief above —
+    // summarizePulledByRule applies its own current-methodology filter internally.
+    pulled_rule_breakdown: summarizePulledByRule(rows),
     // WIN RATE = wins / DECIDED (wins + losses), NOT wins / scoreable. `scoreable` still
     // carries every 'open' row — a play whose one-session horizon expired without touching
     // target or stop. Those plays were never decided, so counting them as non-wins made a

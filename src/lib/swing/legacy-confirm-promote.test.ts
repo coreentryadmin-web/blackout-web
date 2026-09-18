@@ -104,6 +104,51 @@ test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only grad
   );
 });
 
+// ─── score/factors reconciliation (FINDINGS 2026-09-12) ───────────────────────────────────────
+// Live commits showed the SHOWN score (Legacy's edition conviction score) diverge sharply from
+// `factors`' sum (the dossier's own independently-computed synthetic pillar score) — e.g. real
+// MRVL 81 vs 74.7, IREN 61 vs 75.8, SKHY(WATCH) 59 vs 26.6. `contributionsToFactors`'s own doc
+// comment names this exact failure mode: pairing one run's factors with a different run's score.
+
+test("buildLegacySwingArtifacts: factors sum to the play's own SHOWN score, not the dossier's synthetic one", () => {
+  // A conviction score high enough that the dossier's synthetic pillar score (built from
+  // structure/regime/data-quality heuristics, NOT from play.score) is very unlikely to coincide.
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ score: 97 }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  const { play } = artifact!;
+  assert.equal(play.score, 97, "score must stay Legacy's own published edition conviction score");
+  const factorSum = (play.factors ?? []).reduce((n, f) => n + f.points, 0);
+  assert.equal(
+    factorSum,
+    play.score,
+    "the 'Why this play was picked' factor breakdown must sum to the score shown next to it",
+  );
+  assert.deepEqual(play.factors, [{ label: "Night Hawk edition score", points: 97 }]);
+});
+
+test("buildLegacySwingArtifacts: score/factor reconciliation holds even when it falls back to the default 70", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ score: undefined }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  const { play } = artifact!;
+  assert.equal(play.score, 70);
+  const factorSum = (play.factors ?? []).reduce((n, f) => n + f.points, 0);
+  assert.equal(factorSum, play.score);
+});
+
 test("filterChainRowsForSwingPromotion drops sub-floor expiries", () => {
   const rows = [
     { ...chainRows[0]!, expiry: "2026-08-07" },

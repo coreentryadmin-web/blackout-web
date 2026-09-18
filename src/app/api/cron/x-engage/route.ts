@@ -4,6 +4,8 @@ import { logCronRun } from "@/lib/cron-run";
 import { xApiEnabled } from "@/lib/x-api";
 import { runEngagementSweep } from "@/lib/x-engage-engine";
 import { xMarketingSilentOnly } from "@/lib/x-marketing-env";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
+import { todayEt } from "@/lib/et-date";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,8 +32,24 @@ export async function GET(req: NextRequest) {
 
   const dryRun = req.nextUrl.searchParams.get("dry") === "1";
   const cronMode = req.nextUrl.searchParams.get("manual") !== "1";
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  const sessionDay = todayEt(new Date(started));
   const silentOnly =
     req.nextUrl.searchParams.get("silent") === "1" || xMarketingSilentOnly();
+
+  // No engagement sweeps on NYSE holidays (weekday schedule only).
+  if (!force && !isTradingDayEt(sessionDay)) {
+    await logCronRun("x-engage", started, {
+      ok: true,
+      skipped: true,
+      reason: `non-trading day (${sessionDay})`,
+    });
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: `non-trading day (${sessionDay})`,
+    });
+  }
 
   try {
     const stats = await runEngagementSweep({ dryRun, cronMode, silentOnly });

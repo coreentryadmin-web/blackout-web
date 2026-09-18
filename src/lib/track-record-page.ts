@@ -105,8 +105,14 @@ function spxFromStats(stats: PlayOutcomeStats | null): TrackRecordPagePayload["s
   };
 }
 
+// BUG FIX (2026-09-17): matches the same AND-vs-OR correction in
+// features/nighthawk/lib/analytics.ts's isStopDataUnavailable — see that function's
+// doc for the full derivation. play-outcomes.ts's resolveOutcome (the canonical
+// grader) treats EITHER session_high OR session_low missing as making the row's
+// intraday-based verdict untrustworthy (a LONG needs `high` for its target check and
+// `low` for its stop check), so this mirror must use the same OR, not AND.
 function nhStopDataUnavailable(r: NighthawkPlayOutcomeRow): boolean {
-  return r.stop != null && r.session_high == null && r.session_low == null;
+  return r.stop != null && (r.session_high == null || r.session_low == null);
 }
 
 /** Same filter as aggregate Night Hawk stats on the track-record page. */

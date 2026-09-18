@@ -4,10 +4,21 @@
 import { buildOccContractId } from "@/lib/helix/occ-contract-id";
 import { parseOptionsContract } from "./option-contract-parse";
 
-/** Build OCC from ticker + options_play (formatOptionsPlay output). Returns null when unparseable. */
-export function resolveLegacyPlayOcc(ticker: string, optionsPlay: string | null | undefined): string | null {
+/**
+ * Build OCC from ticker + options_play (formatOptionsPlay output). Returns null when unparseable.
+ *
+ * `referenceDate` (default real now) anchors year-inference for a bare "Mon DD" expiry label —
+ * pass the edition's own publish instant when resolving OCC for a possibly-old edition (the
+ * Legacy calendar strip lets a member reopen editions up to 14 trading days back), otherwise an
+ * already-expired play's label rolls a full year forward. See option-contract-parse.ts.
+ */
+export function resolveLegacyPlayOcc(
+  ticker: string,
+  optionsPlay: string | null | undefined,
+  referenceDate?: Date,
+): string | null {
   if (!optionsPlay || optionsPlay === "—") return null;
-  const parsed = parseOptionsContract(optionsPlay);
+  const parsed = parseOptionsContract(optionsPlay, referenceDate);
   if (!parsed?.side || !parsed.expiryYmd) return null;
   const optionType = parsed.side === "put" ? "PUT" : "CALL";
   return buildOccContractId(ticker, parsed.expiryYmd, optionType, parsed.strike);

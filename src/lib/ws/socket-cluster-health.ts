@@ -264,6 +264,22 @@ export type OptionsClusterHealth = {
   detail: string;
 };
 
+/** Youngest age among option marks that pass the shared WS freshness gate — null when none qualify. */
+export function youngestFreshOptionMarkAgeMs(
+  markTimestamps: number[],
+  freshMs: number = OPTION_MARK_FRESH_MS,
+  now = Date.now()
+): number | null {
+  let youngest: number | null = null;
+  for (const ts of markTimestamps) {
+    if (typeof ts !== "number" || ts <= 0) continue;
+    if (!isWsUpdatedAtFresh(ts, freshMs, now)) continue;
+    const age = wsUpdatedAtAgeMs(ts, now);
+    if (youngest == null || age < youngest) youngest = age;
+  }
+  return youngest;
+}
+
 /** Web-tier probe: ingest worker owns the options WS; followers check Redis marks / leader lock. */
 export async function readOptionsClusterHealth(now = Date.now()): Promise<OptionsClusterHealth> {
   let leader_present = false;
@@ -289,21 +305,20 @@ export async function readOptionsClusterHealth(now = Date.now()): Promise<Option
         .scan;
       if (typeof scan === "function") {
         const [, keys] = await scan(0, "MATCH", `${OPTIONS_MARK_PREFIX}*`, "COUNT", "20");
+        const markTimestamps: number[] = [];
         for (const key of keys ?? []) {
           const raw = await redis.get(key);
           if (!raw) continue;
           try {
             const mark = JSON.parse(raw) as OptionMark;
             if (typeof mark.ts === "number" && mark.ts > 0) {
-              const age = Math.max(0, now - mark.ts);
-              if (newest_mark_age_ms == null || age < newest_mark_age_ms) {
-                newest_mark_age_ms = age;
-              }
+              markTimestamps.push(mark.ts);
             }
           } catch {
             /* skip malformed */
           }
         }
+        newest_mark_age_ms = youngestFreshOptionMarkAgeMs(markTimestamps, OPTION_MARK_FRESH_MS, now);
       }
     } catch {
       /* mark scan optional — leader lock is the primary web-tier signal */

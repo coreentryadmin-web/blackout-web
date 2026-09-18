@@ -3,6 +3,12 @@ import { relAlphaT, relStrengthT, beadRadiusForPctShare } from "./vector-wall-vi
 /**
  * Pure colour / size / identity helpers for the Vector bead rail.
  *
+ * ── DO NOT CHANGE BEAD PROMINENCE WITHOUT MEMBER SIGN-OFF (2026-09-07) ────────────────────────
+ * The Sep-3 SPX Slayer reference is dense full-width yellow/magenta session ribbons. Tweaking
+ * BEAD_ROW_FILL / row ladder / halo here is the LAST resort — viewport + x-domain alignment
+ * (`sessionBarTimesFromMinuteBars`, session-overview framing) fixes the common "sparse dots on
+ * the right" regression. See AGENTS.md § "Vector bead rails — DO NOT CHANGE".
+ *
  * Split out of `vector-wall-rail-primitive.ts` for the reason the repo already uses `-core` files:
  * the primitive implements lightweight-charts' `ISeriesPrimitive` and only runs with a live chart
  * and a canvas context, so none of it can be exercised under `tsx --test`. These four functions
@@ -36,10 +42,14 @@ export const HALF_PX_MAX = 7.5;
  * equally bold whether that wall was heavy or thin at the time, so a row showed only THAT A WALL
  * EXISTED and never WHEN IT MATTERED — which is the whole point of drawing it as a time series.
  *
- * 0.25 leaves a faint-but-present weak bead (the rail still shows structure that is there) while
- * giving the strong end somewhere to stand out from.
+ * FLOOR RAISED 0.25 -> 0.35 (2026-09-08, member-requested legibility pass). 0.25 swung the fix
+ * above too far the other way: the weakest bead on a busy rail became hard to see at all against
+ * the dark chart background, especially on the smaller Compare-pane radius. 0.35 is the highest
+ * floor that still clears every existing differentiation invariant with margin (spread 0.63 vs
+ * the >=0.6 floor; king-mid gap 0.39 vs >=0.3; mid-weak gap 0.20 vs >=0.15) — a weak wall is still
+ * clearly dimmer than a strong one, it is just no longer barely-there.
  */
-export const FILL_ALPHA_MIN = 0.25;
+export const FILL_ALPHA_MIN = 0.35;
 export const FILL_ALPHA_MAX = 0.98;
 
 /** Render profile — Compare panes are ~¼ height; default bead sizing paints over candles. */
@@ -307,7 +317,7 @@ export const ROW_HALO_BAR_SPACING_FILL = 0.55;
  * dominant wall READS as dominant, and squeezing the peak toward the floor trades this complaint
  * for the opposite one — which is the exact oscillation #2310 and #2244 already went through once.
  */
-export const ROW_HALO_ROW_GAP_FILL = 0.7;
+export const ROW_HALO_ROW_GAP_FILL = 0.45;
 
 /**
  * Strength halo radius beyond core bead — grows with row swell, fades to a trace.
@@ -569,6 +579,34 @@ export function maxPctByTime(
   return out;
 }
 
+/**
+ * Per-side book-peak denominators for the bead rail's size/colour channels.
+ *
+ * `maxPct` (the combined max across both sides) used to be the ONLY denominator fed to
+ * `targetHalfPx`/`fillAlpha` for every bead, call or put — deliberate, so a call and a put of
+ * equal book share rendered equally fat. That collapses one side's whole distribution to the
+ * size/alpha floor whenever the OTHER side's book share dominates it (member report + live SPX
+ * repro, 2026-09-10: put walls 16.3/6.3/6.2/5.7%..., call walls 0.89/0.45/0.4/0.35%... — every
+ * call bead sat far enough below the combined max that the entire call side rendered as one
+ * indistinguishable size/shade, even though its own strikes span a real ~6x range).
+ *
+ * `callMaxPct`/`putMaxPct` keep exactly the same "shared, not self-referential" property that
+ * made the combined denominator work in the first place (see the size-channel comment in
+ * vector-wall-rail-primitive.ts for the full A/B history) — they are just scoped to one side
+ * instead of both, so a side's own cross-strike ordering is unaffected and its own real spread
+ * gets the floor-to-ceiling range to itself instead of ceding most of it to the stronger side.
+ */
+export function sidePctMaxima(
+  callTrails: ReadonlyArray<{ points: ReadonlyArray<{ pct: number }> }>,
+  putTrails: ReadonlyArray<{ points: ReadonlyArray<{ pct: number }> }>
+): { callMaxPct: number; putMaxPct: number; maxPct: number } {
+  let callMaxPct = 0;
+  for (const t of callTrails) for (const p of t.points) if (p.pct > callMaxPct) callMaxPct = p.pct;
+  let putMaxPct = 0;
+  for (const t of putTrails) for (const p of t.points) if (p.pct > putMaxPct) putMaxPct = p.pct;
+  return { callMaxPct, putMaxPct, maxPct: Math.max(callMaxPct, putMaxPct) };
+}
+
 // ── SPACING BUDGET (2026-08-18) ───────────────────────────────────────────────────────────────
 //
 // THE DEFECT, seen rather than computed. A live screenshot of /vector at 3m showed the rail as
@@ -608,7 +646,7 @@ const BEAD_BAR_FILL = 2.4;
 /** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's diameter
  *  may occupy. Deliberately about half: this is what keeps rows visibly SEPARATE — the property the
  *  reference product has and the slab render did not — and what stops beads burying the candles. */
-const BEAD_ROW_FILL = 0.55;
+const BEAD_ROW_FILL = 0.34;
 
 /** The core budget, exported for the sum invariant in the tests. It must never exceed
  *  {@link ROW_HALO_ROW_GAP_FILL}; exporting it is what lets a test assert that ordering. */

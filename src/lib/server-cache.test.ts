@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serverCache, isDegraded } from "./server-cache";
+import { serverCache, isDegraded, withServerCache, peekServerCache } from "./server-cache";
 
 // Covers the load-bearing guarantee behind null-commentary-cache: when the loader
 // THROWS, serverCache stores nothing and clears the in-flight entry, so the next
@@ -188,6 +188,38 @@ test("maxBlockMs on expired fast lane serves stale instead of blocking refresh",
   assert.ok(invoked <= 1, `expected at most one background refresh, got ${invoked}`);
 });
 
+// Regression for the live 2026-09-11 spx/play staleness bug: peekServerCache's final fallback
+// (`if (hit) return hit.value`) had NO staleness ceiling, unlike withServerCache's own
+// MAX_STALE_AGE_MS guard — so a replica that stopped refreshing served an arbitrarily old cached
+// entry forever via the "instant read" path every peek-first route (spx/play, nighthawk/edition,
+// spx-desk-loader, flows-member-cache, flow-brief) relies on. `maxStaleMs` is test-only surface
+// area so this doesn't need a real 10-minute wait to exercise the real MAX_STALE_AGE_MS ceiling.
+test("peekServerCache refuses to serve a locally-cached entry past its staleness ceiling", async () => {
+  const key = `test:peek-stale-ceiling:${Math.random()}`;
+  const ttl = 5;
+
+  // Populate the local store (short TTL, so it's already logically "expired" almost immediately).
+  await withServerCache(key, ttl, async () => ({ n: 1 }));
+  await new Promise((r) => setTimeout(r, ttl + 5));
+
+  // Redis is a no-op in this test env (REDIS_URL unset), so the entry now lives ONLY in the local
+  // store, past its TTL. Before the fix: peekServerCache still returned { n: 1 } here regardless of
+  // age. After the fix: a tiny maxStaleMs (well under the real age of this entry) makes it refuse.
+  const stale = await peekServerCache(key, { maxStaleMs: 1 });
+  assert.equal(stale, null, "an entry older than the staleness ceiling must not be served via peek");
+
+  // Sanity: the SAME entry, read with a generous ceiling, still comes back — this proves the miss
+  // above is the new ceiling doing its job, not some unrelated store/key bug.
+  const withinCeiling = await peekServerCache(key, { maxStaleMs: 60_000 });
+  assert.deepEqual(withinCeiling, { n: 1 });
+
+  // Default (no opts) uses the real MAX_STALE_AGE_MS (10 minutes) — this entry is only
+  // milliseconds old, so the default path must still serve it (no behavior change for the
+  // overwhelming majority of real callers, which never approach that ceiling).
+  const defaultPeek = await peekServerCache(key);
+  assert.deepEqual(defaultPeek, { n: 1 });
+});
+
 test("maxBlockMs serves fallback instead of blocking on a slow cold loader", async () => {
   const { withServerCache } = await import("./server-cache");
   const key = `test:max-block:${Math.random()}`;
@@ -205,4 +237,77 @@ test("maxBlockMs serves fallback instead of blocking on a slow cold loader", asy
   );
 
   assert.deepEqual(value, { ok: false });
+});
+
+test("maxBlockMs bounds a slow fallback when a build is already inflight (live 2026-09-16: /api/market/spx/desk 42.8s vs a 3s cap)", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:max-block-inflight-fallback:${Math.random()}`;
+  const ttl = 60_000;
+
+  // First caller: no maxBlockMs/fallback of its own, so it takes the plain cold-start path
+  // (`refreshCache`) and registers the key as inflight for the duration of its slow loader.
+  // Never awaited directly — its only job is to occupy `inflight.get(key)` for caller two.
+  const firstCallerLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 2_000));
+  const firstCaller = withServerCache(key, ttl, firstCallerLoader, {});
+  firstCaller.catch(() => {}); // swallow unhandled-rejection noise if the test exits first
+
+  // Give the first caller's refreshCache a tick to register the inflight promise.
+  await new Promise((r) => setTimeout(r, 5));
+
+  // Second caller lands in the "pending" branch (server-cache.ts ~line 218): no hit, no Redis
+  // copy, a build already inflight, and its own maxBlockMs+fallback configured — exactly the
+  // shape spx-desk-loader.ts's deskCacheOpts uses. Before the fix, opts.fallback() here was
+  // awaited with no timeout at all; a slow fallback (here: 500ms) blocked the caller for its
+  // full duration regardless of the 30ms cap. After the fix, it must be bounded near maxBlockMs.
+  const slowFallback = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: false }), 500));
+
+  const start = Date.now();
+  await assert.rejects(
+    withServerCache(key, ttl, firstCallerLoader, {
+      staleOnInflight: true,
+      maxBlockMs: 30,
+      fallback: slowFallback,
+    }),
+    /exceeded maxBlockMs/
+  );
+  const elapsed = Date.now() - start;
+  assert.ok(
+    elapsed < 200,
+    `second caller must be bounded near maxBlockMs (30ms), not the fallback's own 500ms duration — took ${elapsed}ms`
+  );
+});
+
+test("maxBlockMs bounds a slow fallback on the COLD-START path too, when the primary refresh itself times out (found live post-deploy: PR #5061's inflight-branch fix alone did NOT stop the 42s /api/market/spx/desk block)", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:max-block-cold-start-fallback:${Math.random()}`;
+  const ttl = 60_000;
+
+  // No prior caller, no hit, no Redis, nothing inflight — a genuinely cold key. This lands in
+  // the "no pending" branch (server-cache.ts ~line 263), which correctly races its own
+  // `refreshCache()` against maxBlockMs. Before this fix, once THAT race timed out, falling
+  // through to `opts.fallback()` was awaited with no timeout of its own — the exact same
+  // unguarded shape as the "already inflight" branch fixed by PR #5061, just one branch over.
+  // This is the branch a genuinely cold key actually takes in production (no concurrent
+  // request racing the same build), which is why the live bug survived that first fix.
+  const slowLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 2_000));
+  const slowFallback = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: false }), 500));
+
+  const start = Date.now();
+  await assert.rejects(
+    withServerCache(key, ttl, slowLoader, {
+      staleWhileRevalidate: true,
+      maxBlockMs: 30,
+      fallback: slowFallback,
+    }),
+    /exceeded maxBlockMs/
+  );
+  const elapsed = Date.now() - start;
+  assert.ok(
+    elapsed < 300,
+    `cold-start caller must be bounded near a small multiple of maxBlockMs (30ms), not the fallback's own 500ms duration — took ${elapsed}ms`
+  );
 });

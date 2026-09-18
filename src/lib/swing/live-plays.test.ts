@@ -1,11 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  archetypeNearTieFromFeatureVector,
+  entryPresentPillarsFromFeatureVector,
   livePlayFromSwingPosition,
   livePlaysFromOpenPositions,
   liveQuoteFromEvent,
+  pinnedFactorsFromFeatureVector,
   structuralBreakFromSpot,
+  topFlowProvenanceFromRow,
 } from "./live-plays.ts";
+import { scoreSwingPillars, type SwingPillarSignals } from "./swing-pillars.ts";
 import type { SwingPositionRow } from "../db.ts";
 
 /**
@@ -108,6 +113,32 @@ test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", (
   assert.equal(play.thesisLevel, "break");
 });
 
+test("livePlayFromSwingPosition: reason verb tracks manageAction, not the stale ledger status (live 2026-09-12 NRG/CG repro)", () => {
+  // Live-verified defect: the ledger `status` column stays "HOLD" until a position is actually
+  // executed/rolled, but `manageAction` is recomputed fresh from spot/thesis-break on every read.
+  // Before the fix, `reason` was built from `row.status` alone, so a HOLD-status row whose
+  // manageAction had already flipped to EXIT (a structural break, exactly like this fixture) still
+  // read "live hold — ... thesis" right next to a Management section showing "Manage engine: EXIT"
+  // — a real, member-visible contradiction (docs/audit/findings-staging,
+  // 2026-09-12-largo-stale-recnote-manage-mismatch.md).
+  const exitPlay = livePlayFromSwingPosition(row({ status: "HOLD" }), 160)!; // below 165 invalidation -> EXIT
+  assert.equal(exitPlay.manageAction, "EXIT");
+  assert.equal(exitPlay.reason, "live exit — BREAKOUT thesis");
+  assert.ok(!exitPlay.reason.includes("hold"), `reason must not say "hold" while manageAction is EXIT, got: ${exitPlay.reason}`);
+
+  const trimPlay = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    action: "TAKE_PARTIAL",
+    rung: "tranche_1",
+  })!;
+  assert.equal(trimPlay.manageAction, "TAKE_PARTIAL");
+  assert.equal(trimPlay.reason, "live trim — BREAKOUT thesis");
+
+  // No active manageAction (plain HOLD) -> falls back to the ledger status as before, unchanged.
+  const holdPlay = livePlayFromSwingPosition(row({ status: "HOLD" }), 178)!;
+  assert.equal(holdPlay.manageAction, undefined);
+  assert.equal(holdPlay.reason, "live hold — BREAKOUT thesis");
+});
+
 test("livePlayFromSwingPosition: latest manage snapshot overrides spot-only intact read", () => {
   const play = livePlayFromSwingPosition(
     row(),
@@ -125,6 +156,49 @@ test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledge
   assert.equal(play.entryPremium, 5.1);
   assert.equal(play.livePnlPct, 7.8); // (5.5/5.1 - 1)*100 ≈ 7.8
   assert.equal(play.peakPremium, 5.5);
+});
+
+test("livePlayFromSwingPosition: reads signal_kinds pinned at commit (entry_context) so thesis-health can calibrate on it", () => {
+  const withKinds = livePlayFromSwingPosition(
+    row({ entry_context: { signal_kinds: ["FLOW", "CATALYST"] } }),
+    178,
+  )!;
+  assert.deepEqual(withKinds.signalKinds, ["FLOW", "CATALYST"]);
+
+  // Honest absence: no entry_context.signal_kinds (older rows committed before this fix, or a row
+  // whose commit-time discovery paths genuinely resolved to none) -> undefined, never a fabricated [].
+  const withoutKinds = livePlayFromSwingPosition(row(), 178)!;
+  assert.equal(withoutKinds.signalKinds, undefined);
+
+  // Malformed/unexpected JSONB shape (e.g. a stray string instead of an array) must never crash the
+  // mapper or leak non-string entries through.
+  const malformed = livePlayFromSwingPosition(
+    row({ entry_context: { signal_kinds: "FLOW" } }),
+    178,
+  )!;
+  assert.equal(malformed.signalKinds, undefined);
+});
+
+// CORRECTED 2026-09-07: an earlier version of this fix (see #4481 finding doc) fell back to
+// `row.archetype ?? "regime read"` when the dossier's REGIME pillar was scored — that shipped the
+// literal placeholder string "regime read" into the live Ask Largo narrative (play-brief.ts pushes
+// `play.regime` verbatim, unlabeled, into the Verdict section) and would have duplicated the
+// archetype text when archetype WAS present (already shown on its own "Archetype: X" line). `regime`
+// is a genuine market-regime descriptor (Vector posture / SPX desk regime), a different concept from
+// the swing setup archetype — no such value exists on the committed position row today, so it must
+// stay honestly null in every case, never synthesized from archetype or a placeholder string.
+test("livePlayFromSwingPosition: regime is always null — no genuine market-regime descriptor exists on the committed position row", () => {
+  const play = livePlayFromSwingPosition(row())!;
+  assert.equal(play.regime, null);
+
+  const withDossierRegime = livePlayFromSwingPosition(
+    row({ archetype: "BREAKOUT", feature_vector: { evidence_score: 82, pil_regime: 0.71 } })
+  )!;
+  assert.equal(
+    withDossierRegime.regime,
+    null,
+    "must not synthesize regime from archetype — that duplicates the separate 'Archetype: X' verdict line and is a different concept from market regime"
+  );
 });
 
 test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
@@ -240,6 +314,187 @@ test("liveQuoteFromEvent: malformed / empty / absent quote blobs all degrade to 
   });
 });
 
+// ─── Roll-candidate advisory (Ask Largo standing mandate, 2026-09-18): manage-sync.ts stamps
+// `dte_migration`/`roll_intent` into every snapshot's event_json (manage.ts's `evaluateSwingManagement`
+// always computes both), but `manageObservablesFromEvent` never read either out — see
+// HorizonPlay.rollCandidate's own doc comment (horizon-plays.ts) for the full RED->GREEN history.
+
+test("livePlayFromSwingPosition: roll_intent.roll=true + dte_migration.reason -> rollCandidate surfaces the clean reason", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "hold",
+    action: "HOLD",
+    dte_migration: {
+      migrate: true,
+      reason: "DTE 3 ≤ 4 and premium at 0.72× entry decaying faster than thesis progress 0.20 — roll to preserve time-in-thesis",
+    },
+    roll_intent: {
+      roll: true,
+      reason: "roll intent — DTE 3 ≤ 4 ... (INTENT ONLY; execution deferred to PR-15)",
+    },
+  });
+  assert.ok(p);
+  assert.deepEqual(p!.rollCandidate, {
+    reason: "DTE 3 ≤ 4 and premium at 0.72× entry decaying faster than thesis progress 0.20 — roll to preserve time-in-thesis",
+  });
+  // The stale "(INTENT ONLY; execution deferred to PR-15)" internal note must never reach the
+  // surfaced field — only dte_migration's clean prose does.
+  assert.ok(!String(p!.rollCandidate?.reason).includes("PR-15"));
+});
+
+test("livePlayFromSwingPosition: roll_intent.roll=false (vetoed by a broken thesis/structural stop) -> no rollCandidate even when dte_migration.migrate=true", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "structural_stop",
+    action: "EXIT",
+    thesis_state: "BROKEN",
+    dte_migration: { migrate: true, reason: "DTE 2 ≤ 4 — would migrate but for the break" },
+    roll_intent: { roll: false, reason: "underlying structural stop hit — close, do not roll" },
+  });
+  assert.ok(p);
+  assert.equal(p!.rollCandidate, null, "structural break vetoes the roll candidate, exactly as roll.ts's own executor vetoes it");
+});
+
+test("livePlayFromSwingPosition: no manage snapshot yet, or dte_migration/roll_intent absent/malformed -> rollCandidate stays honestly null", () => {
+  assert.equal(livePlayFromSwingPosition(row())!.rollCandidate, null, "no snapshot at all");
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, { rung: "hold", action: "HOLD" })!.rollCandidate,
+    null,
+    "snapshot present but carries neither field (older snapshot shape)",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      dte_migration: { migrate: true, reason: "..." },
+      roll_intent: "not an object",
+    })!.rollCandidate,
+    null,
+    "malformed roll_intent never fabricates a candidate",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      dte_migration: { migrate: true, reason: 42 },
+      roll_intent: { roll: true },
+    })!.rollCandidate,
+    null,
+    "roll_intent.roll=true but dte_migration.reason isn't a real string -> honest null, never a fabricated reason",
+  );
+});
+
+// ─── Underlying excursion (Ask Largo standing mandate, 2026-09-18): manage-sync.ts's
+// `signedExcursionPct` computes the UNDERLYING's own signed favorable/adverse excursion since
+// entry on every management tick and persists it as `running_mfe`/`running_mae` — dedicated
+// `swing_position_snapshots` columns db.ts's `fetchLatestSwingSnapshotEvents` now selects and
+// merges into the same event blob `manageObservablesFromEvent` reads. See
+// HorizonPlay.underlyingExcursion's own doc comment for the full gap this closes.
+
+test("livePlayFromSwingPosition: running_mfe/running_mae on the snapshot -> underlyingExcursion surfaces both", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "hold",
+    action: "HOLD",
+    running_mfe: 8.24,
+    running_mae: -3.11,
+  });
+  assert.ok(p);
+  assert.deepEqual(p!.underlyingExcursion, { mfePct: 8.24, maePct: -3.11 });
+});
+
+test("livePlayFromSwingPosition: no manage snapshot, or running_mfe/running_mae absent/non-finite -> underlyingExcursion stays honestly null", () => {
+  assert.equal(livePlayFromSwingPosition(row())!.underlyingExcursion, null, "no snapshot at all");
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, { rung: "hold", action: "HOLD" })!
+      .underlyingExcursion,
+    null,
+    "snapshot present but carries neither field (older snapshot shape)",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      running_mfe: "not a number",
+      running_mae: -3.11,
+    })!.underlyingExcursion,
+    null,
+    "malformed running_mfe never fabricates a half-populated excursion",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      running_mfe: 8.24,
+      running_mae: Number.NaN,
+    })!.underlyingExcursion,
+    null,
+    "non-finite running_mae never fabricates a half-populated excursion",
+  );
+});
+
+// ─── Manage-enforced advisory-vs-gate distinction (Ask Largo standing mandate, 2026-09-18):
+// manage.ts's `evaluateSwingManagement` stamps `enforced:true` always for its four capital-
+// preservation gates, `false` for an edge rung until it graduates in the calibration ladder, and
+// manage-sync.ts persists that flag on every snapshot's `event_json.enforced` — but
+// `manageObservablesFromEvent` never read it back out, so `manageAction` (and the recommendation
+// badge derived from it) carried no signal of whether the system itself was acting on the rung.
+
+test("livePlayFromSwingPosition: un-graduated edge rung (enforced:false) -> manageEnforced surfaces false", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "rel_strength_loss",
+    action: "TAKE_PARTIAL",
+    enforced: false,
+  });
+  assert.ok(p);
+  assert.equal(p!.manageAction, "TAKE_PARTIAL");
+  assert.equal(p!.manageEnforced, false, "an un-graduated edge rung must surface enforced:false, not be silently dropped");
+});
+
+test("livePlayFromSwingPosition: graduated edge rung (enforced:true) -> manageEnforced surfaces true", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "flow_decay",
+    action: "TAKE_PARTIAL",
+    enforced: true,
+  });
+  assert.ok(p);
+  assert.equal(p!.manageEnforced, true);
+});
+
+test("livePlayFromSwingPosition: capital-preservation gate rungs force manageEnforced:true regardless of the raw stored value", () => {
+  const structural = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "structural_stop",
+    action: "EXIT",
+    thesis_state: "BROKEN",
+    enforced: false, // deliberately wrong/stale — the gate override must win anyway
+  });
+  assert.ok(structural);
+  assert.equal(structural!.manageEnforced, true, "structural_stop is a GATE — always enforced, never advisory");
+
+  const expiry = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "expiry_risk",
+    action: "EXIT",
+    thesis_state: "EXPIRY_RISK",
+  });
+  assert.ok(expiry);
+  assert.equal(expiry!.manageEnforced, true, "expiry_risk is a GATE — always enforced");
+});
+
+test("livePlayFromSwingPosition: no manage snapshot, or enforced absent/malformed -> manageEnforced stays honestly null", () => {
+  assert.equal(livePlayFromSwingPosition(row())!.manageEnforced, null, "no snapshot at all");
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, { rung: "hold", action: "HOLD" })!.manageEnforced,
+    null,
+    "snapshot present but carries no enforced field (older snapshot shape)",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "add_eligible",
+      action: "ADD",
+      enforced: "yes",
+    })!.manageEnforced,
+    null,
+    "a non-boolean enforced value never fabricates a true/false",
+  );
+});
+
 test("Q40: markAsOf prefers ledger last_mark_at over manage snapshot quote.asOf", () => {
   const play = livePlayFromSwingPosition(
     row({ last_mark_at: "2026-09-05T14:00:00.000Z" }),
@@ -256,4 +511,286 @@ test("Q40: markAsOf falls back to manage snapshot quote.asOf when last_mark_at i
     { quote: { bid: 5.4, ask: 5.6, asOf: "2026-09-05T13:00:00.000Z" } },
   )!;
   assert.equal(play.markAsOf, "2026-09-05T13:00:00.000Z");
+});
+
+// FINDINGS 2026-09-12 (live 0DTE/swing monitor sweep): a committed live position's `score` is
+// `feature_vector.evidence_score`, PINNED at commit (commit.ts) so trajectory studies can echo it
+// on every later snapshot. Before this fix, `serving-lane.ts`'s `attachThesisExplanation` overwrote
+// `factors` with a dossier RE-RUN TODAY — whose pillar reads legitimately drift from commit day — so
+// the two numbers silently diverged the longer a position aged. Live repro: AAPL position 37
+// (SECTOR_ROTATION, committed 2026-09-11) showed "score 84.4" beside factor rows summing to only
+// 75.0 (a 9.4pt/11% unexplained gap) once today's dossier had moved on from commit-day conditions.
+// `pinnedFactorsFromFeatureVector` closes this by reconstructing factors from the SAME frozen raw
+// pillar signals that produced `evidence_score`, so the sum-to-score invariant holds by construction
+// (re-running the same pure `scoreSwingPillars` on the same inputs cannot produce a different total)
+// rather than by two independently-computed numbers happening to agree.
+test("pinnedFactorsFromFeatureVector: reconstructed factors ALWAYS sum to the pinned evidence_score, for a live position's own frozen pillar signals", () => {
+  // The live AAPL SECTOR_ROTATION read that exposed the bug: 6/7 pillars pinned, DATA_QUALITY absent.
+  const pillars: SwingPillarSignals = {
+    STRUCTURE: 1,
+    REL_STRENGTH: 1,
+    REGIME: 0.665,
+    VOLATILITY: 0.598,
+    CATALYST: 0.532,
+    FLOW: 0.103,
+    // DATA_QUALITY intentionally absent
+  };
+  // commit.ts pins `evidence_score: cand.score` and `pillars: cand.pillars` from the SAME
+  // scoreSwingPillars call, so a real row's evidence_score and pil_* are ALWAYS mutually consistent
+  // this way in production — deriving it here (never a hand-picked literal) mirrors that guarantee.
+  const evidenceScore = scoreSwingPillars(pillars, "SECTOR_ROTATION").score;
+  const fv = {
+    evidence_score: evidenceScore,
+    archetype: "SECTOR_ROTATION",
+    pil_structure: pillars.STRUCTURE,
+    pil_rel_strength: pillars.REL_STRENGTH,
+    pil_regime: pillars.REGIME,
+    pil_volatility: pillars.VOLATILITY,
+    pil_catalyst: pillars.CATALYST,
+    pil_flow: pillars.FLOW,
+  };
+  const factors = pinnedFactorsFromFeatureVector(fv);
+  assert.ok(factors.length > 0, "a fully-pinned feature vector must reconstruct real factors, not []");
+  const sum = Math.round(factors.reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(sum, evidenceScore);
+
+  // The live symptom, directly: a full committed play's score and its own factors must never disagree.
+  const play = livePlayFromSwingPosition(
+    row({ archetype: "SECTOR_ROTATION", feature_vector: fv as unknown as SwingPositionRow["feature_vector"] }),
+    null,
+  )!;
+  const playFactorSum = Math.round((play.factors ?? []).reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(playFactorSum, play.score, "a live play's factors must sum to exactly its own score");
+});
+
+test("pinnedFactorsFromFeatureVector: no pinned pillars (older/pre-fix row) → honest empty, never fabricated", () => {
+  assert.deepEqual(pinnedFactorsFromFeatureVector({ evidence_score: 82 }), []);
+  assert.deepEqual(pinnedFactorsFromFeatureVector(null), []);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): `dossier.ts`'s commit-time
+// dataQuality.presentPillars/degraded is pinned into feature_vector.present_pillars/dq_degraded
+// (feature-vector.ts) but was never read back out for a committed position anywhere. This is the
+// pure read-back helper, wired into livePlayFromSwingPosition (OPEN) and closedDeckSourceFromRow
+// (CLOSED); see play-brief-intel.test.ts's whyThisSetupSection tests for the rendered line.
+test("entryPresentPillarsFromFeatureVector: surfaces the present-pillar count when the entry read was degraded", () => {
+  assert.equal(entryPresentPillarsFromFeatureVector({ dq_degraded: 1, present_pillars: 2 }), 2);
+});
+
+test("entryPresentPillarsFromFeatureVector: omits (null) when the entry read was healthy — never surfaced unless it mattered", () => {
+  assert.equal(entryPresentPillarsFromFeatureVector({ dq_degraded: 0, present_pillars: 6 }), null);
+});
+
+test("entryPresentPillarsFromFeatureVector: honest null on a missing/pre-fix feature vector, never fabricated", () => {
+  assert.equal(entryPresentPillarsFromFeatureVector(null), null);
+  assert.equal(entryPresentPillarsFromFeatureVector({ evidence_score: 82 }), null);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): archetype.ts's classification decisiveness
+// (ArchetypeVerdict.margin + the ranked runner-up) is pinned into feature_vector.classification_margin/
+// .secondary (feature-vector.ts, classificationMetaFromVerdict) at commit but was never read back out
+// for a committed position anywhere — scoring/gating/calibration all partition on the single pinned
+// `archetype` label, so a razor-thin classification call is a real, disclosed uncertainty a member
+// never saw. Wired into livePlayFromSwingPosition (OPEN) and closedDeckSourceFromRow (CLOSED); see
+// play-brief-intel.test.ts's whyThisSetupSection tests for the rendered line.
+test("archetypeNearTieFromFeatureVector: surfaces the runner-up + margin when the entry classification was a near-tie", () => {
+  assert.deepEqual(
+    archetypeNearTieFromFeatureVector({
+      archetype: "BREAKOUT",
+      classification_margin: 0.02,
+      secondary: ["PULLBACK_CONTINUATION", "MEAN_REVERSION"],
+    }),
+    { secondaryLabel: "Pullback continuation", marginPct: 2 },
+  );
+});
+
+test("archetypeNearTieFromFeatureVector: omits (null) when the classification was decisive — never surfaced unless it mattered", () => {
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      archetype: "BREAKOUT",
+      classification_margin: 0.31,
+      secondary: ["PULLBACK_CONTINUATION"],
+    }),
+    null,
+  );
+});
+
+test("archetypeNearTieFromFeatureVector: honest null on a missing/pre-fix feature vector or an unresolvable runner-up label, never fabricated", () => {
+  assert.equal(archetypeNearTieFromFeatureVector(null), null);
+  assert.equal(archetypeNearTieFromFeatureVector({ evidence_score: 82 }), null);
+  // margin is a near-tie but the secondary array is empty/unparseable — nothing to name, so no line.
+  assert.equal(
+    archetypeNearTieFromFeatureVector({ archetype: "BREAKOUT", classification_margin: 0.01, secondary: [] }),
+    null,
+  );
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      archetype: "BREAKOUT",
+      classification_margin: 0.01,
+      secondary: ["NOT_A_REAL_ARCHETYPE"],
+    }),
+    null,
+  );
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro NN:32 CLOSED brief — a real
+// thin-evidence position whose row carries `archetype: null`): classifyArchetype's thin-evidence
+// branch (inputCount/winnerFit below floor) still returns a real `margin`, and
+// classificationMetaFromVerdict's `secondary = ranked.filter(a => a !== v.archetype)` is a no-op
+// when `v.archetype` is null — every grounded archetype, including the would-be top-fit one,
+// survives into `secondary`. Without the `featureVector.archetype` guard, a thin-evidence commit
+// whose margin fell inside the near-tie band would surface a runner-up here with nothing to pair
+// it against — whyThisSetupSection's fallback text ("**the winning archetype** beat **X**...")
+// then fabricates a decisive-winner claim for a position the classifier explicitly never
+// classified, the exact absence-over-fabrication violation this whole feature's own doc comment
+// says it avoids.
+test("archetypeNearTieFromFeatureVector: never surfaces a runner-up when the entry was itself unclassified (archetype: null) — no antecedent to pair it against", () => {
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      archetype: null,
+      classification_margin: 0.01,
+      secondary: ["BREAKOUT", "PULLBACK_CONTINUATION"],
+    }),
+    null,
+  );
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      classification_margin: 0.01,
+      secondary: ["BREAKOUT", "PULLBACK_CONTINUATION"],
+    }),
+    null,
+  );
+});
+
+test("livePlayFromSwingPosition: threads the entry-time thin-read count end to end from the row's own pinned feature_vector", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      feature_vector: {
+        evidence_score: 41,
+        dq_degraded: 1,
+        present_pillars: 2,
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.equal(play.entryPresentPillars, 2);
+});
+
+test("livePlayFromSwingPosition: threads the entry-time archetype near-tie end to end from the row's own pinned feature_vector", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      feature_vector: {
+        archetype: "BREAKOUT",
+        evidence_score: 61,
+        classification_margin: 0.02,
+        secondary: ["MEAN_REVERSION"],
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(play.archetypeNearTie, { secondaryLabel: "Mean-reversion recovery", marginPct: 2 });
+});
+
+test("livePlayFromSwingPosition: never threads a near-tie when the entry was itself unclassified (real NN:32-shaped row, archetype: null)", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      archetype: null,
+      feature_vector: {
+        archetype: null,
+        evidence_score: 23,
+        classification_margin: 0.01,
+        secondary: ["BREAKOUT", "PULLBACK_CONTINUATION"],
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.equal(play.archetypeNearTie, null);
+});
+
+test("livePlayFromSwingPosition: a healthy entry read never carries the thin-read count", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      feature_vector: {
+        evidence_score: 88,
+        dq_degraded: 0,
+        present_pillars: 7,
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.equal(play.entryPresentPillars, null);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): `dossier.ts`'s SwingDossier.topFlowStrike (the
+// multi-day accumulation flow's magnet strike) is pinned onto every committed position's
+// `top_flow_strike` column at commit (commit.ts) as "provenance for the contract pick"
+// (contract-ranker.ts's rankSwingContracts independently picks the best contract by tradability×fit,
+// never influenced by the flow strike, and separately notes whether the pick happens to match) — but
+// neither the raw flow strike nor the match fact was ever read back out anywhere in the serving/brief
+// layer. This is the pure read-back helper, wired into livePlayFromSwingPosition (OPEN) and
+// closedDeckSourceFromRow (CLOSED); see play-brief-intel.test.ts's whyThisSetupSection tests for the
+// rendered line.
+test("topFlowProvenanceFromRow: surfaces a match when the independently-chosen pick equals the flow strike", () => {
+  assert.deepEqual(topFlowProvenanceFromRow(180, 180), { topFlowStrike: 180, matchedPick: true });
+});
+
+test("topFlowProvenanceFromRow: surfaces a real divergence when the pick landed on a different strike", () => {
+  assert.deepEqual(topFlowProvenanceFromRow(175, 180), { topFlowStrike: 175, matchedPick: false });
+});
+
+test("topFlowProvenanceFromRow: honest null when either strike is unavailable, never a guessed provenance", () => {
+  assert.equal(topFlowProvenanceFromRow(null, 180), null);
+  assert.equal(topFlowProvenanceFromRow(180, null), null);
+  assert.equal(topFlowProvenanceFromRow(undefined, undefined), null);
+  assert.equal(topFlowProvenanceFromRow(Number.NaN, 180), null);
+});
+
+test("livePlayFromSwingPosition: threads the entry-time flow-strike provenance end to end from the row's own pinned columns", () => {
+  const matched = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180 }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(matched.topFlowProvenance, { topFlowStrike: 180, matchedPick: true });
+
+  const diverged = livePlayFromSwingPosition(
+    row({ top_flow_strike: 175, contract_strike: 180 }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(diverged.topFlowProvenance, { topFlowStrike: 175, matchedPick: false });
+
+  const unknown = livePlayFromSwingPosition(row({ top_flow_strike: null, contract_strike: 180 }), null, null)!;
+  assert.equal(unknown.topFlowProvenance, null);
+});
+
+test("livePlayFromSwingPosition: suppresses flow-strike provenance on a rolled leg — contract_strike was freshly re-picked, top_flow_strike is stale from the original commit", () => {
+  const rolledEvenIfItWouldMatch = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 1 }),
+    null,
+    null,
+  )!;
+  assert.equal(
+    rolledEvenIfItWouldMatch.topFlowProvenance,
+    null,
+    "a coincidental strike match on a rolled leg must not render as entry-time provenance",
+  );
+
+  const rolledDiverged = livePlayFromSwingPosition(
+    row({ top_flow_strike: 175, contract_strike: 180, roll_seq: 2 }),
+    null,
+    null,
+  )!;
+  assert.equal(rolledDiverged.topFlowProvenance, null);
+
+  const rootLegStillWorks = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 0 }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(rootLegStillWorks.topFlowProvenance, { topFlowStrike: 180, matchedPick: true });
 });

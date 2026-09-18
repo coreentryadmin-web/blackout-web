@@ -458,7 +458,22 @@ export function formatComputedEt(nowMs: number): string {
 
 /**
  * Compute thesis health for one working ledger row. Returns null when the row has no
- * entry_context (pre-wire-in legacy) or is not a working position.
+ * entry_context (pre-wire-in legacy), is not a working position, or is a committed CONDOR.
+ *
+ * NEUTRAL-STRUCTURE FIX: every pillar below (flow/tape/VWAP/market-align/confluence) scores
+ * against `live.direction` — for a directional play that IS the play's real stance, but a
+ * committed 0DTE iron condor's `direction` is only the pin's nominal fade side, stated as
+ * provenance-only by condor.ts's own doc ("carries the pin's nominal fade side for provenance
+ * but is UNUSED by the neutral structure's gates/grader"). Before this fix, every pillar here
+ * silently scored a condor's nominal side as if it were a real directional thesis, producing a
+ * fabricated "Thesis Health" percentage that reached the LIVE production ThesisHealthPanel
+ * (command-deck) and Largo (zerodte-service.ts) for a delta-neutral, credit-sold structure with
+ * no real directional thesis to score. `null` is already this function's established "not
+ * applicable" return (used above for a non-working status or a missing entry_context) and every
+ * consumer already renders it correctly — CommandDeck/PlayTerminal/ZeroDteCommandPanel all
+ * already gate on `thesisHealth != null` and fall back to an honest "no thesis health wired"
+ * state, exactly the same path a WATCH/Legacy row already takes — so this degrades safely rather
+ * than needing new UI plumbing.
  */
 export function computeThesisHealth(
   entryContext: CommitBlob,
@@ -469,6 +484,8 @@ export function computeThesisHealth(
   const st = String(opts?.status ?? "").toUpperCase();
   if (!["OPEN", "HOLD", "TRIM"].includes(st)) return null;
   if (!entryContext || typeof entryContext !== "object") return null;
+  const ec = entryContext as Record<string, unknown>;
+  if (ec.play_type === "CONDOR" || Boolean(ec.condor)) return null;
 
   const direction = live.direction;
   const commitConf = entryContext.confluence as ZeroDteConfluence | undefined;

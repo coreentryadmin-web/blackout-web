@@ -18,6 +18,7 @@ const baseInput = {
   impact: "high" as const,
   estimate: "3.2%",
   days_until: 3,
+  now_et_minutes: null,
   correlation_rail: baseRail,
   surprise: {
     actual: null,
@@ -69,4 +70,60 @@ test("buildMeridianMacroReport: news context from headlines", () => {
   const report = buildMeridianMacroReport(baseInput);
   assert.equal(report.news_context.length, 1);
   assert.match(report.news_context[0], /CPI preview/);
+});
+
+// FINDINGS: days_until alone is day-granularity ("today" from 00:00 to 23:59 ET), so a print
+// released hours ago kept warning "live or imminent" all evening. now_et_minutes lets the check
+// compare against the release's own clock time instead.
+test("buildMeridianMacroReport: 'live or imminent' warning shows before the release today", () => {
+  const report = buildMeridianMacroReport({
+    ...baseInput,
+    time: "08:30",
+    days_until: 0,
+    now_et_minutes: 8 * 60, // 08:00 ET — before the 08:30 release
+  });
+  assert.ok(report.warnings.some((w) => /live or imminent/.test(w)));
+});
+
+test("buildMeridianMacroReport: 'live or imminent' warning still shows shortly after the release today", () => {
+  const report = buildMeridianMacroReport({
+    ...baseInput,
+    time: "08:30",
+    days_until: 0,
+    now_et_minutes: 9 * 60, // 09:00 ET — 30min after release, well inside the +3h window
+  });
+  assert.ok(report.warnings.some((w) => /live or imminent/.test(w)));
+});
+
+test("buildMeridianMacroReport: 'live or imminent' warning is withheld hours after the release today", () => {
+  const report = buildMeridianMacroReport({
+    ...baseInput,
+    time: "08:30",
+    days_until: 0,
+    now_et_minutes: 19 * 60 + 53, // 19:53 ET — 11+ hours after an 08:30 release
+  });
+  assert.ok(
+    !report.warnings.some((w) => /live or imminent/.test(w)),
+    "a member checking hours after close should not see 'live or imminent'"
+  );
+});
+
+test("buildMeridianMacroReport: 'live or imminent' falls back to day-only check when the clock is unavailable", () => {
+  const report = buildMeridianMacroReport({
+    ...baseInput,
+    time: "08:30",
+    days_until: 0,
+    now_et_minutes: null,
+  });
+  assert.ok(report.warnings.some((w) => /live or imminent/.test(w)));
+});
+
+test("buildMeridianMacroReport: 'live or imminent' warning does not show for a future day", () => {
+  const report = buildMeridianMacroReport({
+    ...baseInput,
+    time: "08:30",
+    days_until: 3,
+    now_et_minutes: 8 * 60,
+  });
+  assert.ok(!report.warnings.some((w) => /live or imminent/.test(w)));
 });

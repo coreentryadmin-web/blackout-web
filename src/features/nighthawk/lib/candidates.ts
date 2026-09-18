@@ -7,10 +7,11 @@ import {
   INDEX_SET,
   LEVERAGED_ETP_SET,
 } from "./constants";
-import { dbConfigured, fetchTickersAvgDailyPremium } from "@/lib/db";
+import { dbConfigured, fetchTickersAvgDailyPremium, insertNighthawkCandidateSnapshots } from "@/lib/db";
 import { fetchTickersFlowStreaks } from "./flow-streak";
 import type { MarketWideContext } from "./market-wide";
 import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
+import { classifyMarketRegime, type MarketRegimeTag } from "./market-regime";
 
 function safeFloat(v: unknown): number {
   const n = Number(String(v ?? 0).replace(/[$,]/g, ""));
@@ -306,8 +307,17 @@ function normalizeToMax(entries: LaneEntry[], maxPts: number): Map<string, numbe
   return out;
 }
 
-function laneFlow(ctx: MarketWideContext): Map<string, number> {
-  const entries: LaneEntry[] = [];
+/**
+ * Raw dollar flow premium per ticker (sweep/opening-trade bonus multipliers folded in, no cap) --
+ * extracted out of laneFlow() (pure "extract method" refactor, zero behavior change to laneFlow's
+ * own return value) so the raw dollars are available to a caller that needs them, instead of only
+ * the normalized 0-LANE_MAX_FLOW point value laneFlow() itself returns. Exported for the STAGE-2
+ * candidate-snapshot capture (Night Hawk Legacy Signal Intelligence, Phase 1): the unusualness-
+ * multiplier bug (candidates.ts:680-688 below) exists because this exact map used to be discarded
+ * the moment laneFlow() returned -- capturing it is what lets a later corrected-ratio computation
+ * (signal-intelligence-corrections.ts) be run against real historical data instead of guessed.
+ */
+export function laneFlowRawPremiums(ctx: MarketWideContext): Map<string, number> {
   const seen = new Map<string, number>();
 
   for (const r of ctx.stock_flows) {
@@ -338,6 +348,12 @@ function laneFlow(ctx: MarketWideContext): Map<string, number> {
     seen.set(ticker, (seen.get(ticker) ?? 0) + prem * 0.75);
   }
 
+  return seen;
+}
+
+function laneFlow(ctx: MarketWideContext): Map<string, number> {
+  const seen = laneFlowRawPremiums(ctx);
+  const entries: LaneEntry[] = [];
   for (const [ticker, score] of seen) entries.push({ ticker, rawScore: score });
   return normalizeToMax(entries, LANE_MAX_FLOW);
 }
@@ -439,9 +455,9 @@ export const BREAKOUT_MIN_PRICE = 5;
  * is still gated by MIN_PRICE + MIN_VOLUME.
  */
 export const BREAKOUT_MAX_PRICE = 2_500;
-export const BREAKOUT_MIN_VOLUME = 1_000_000;
-export const BREAKOUT_MIN_GAIN = 0.03; // lowered from 5% — 3% captures more momentum names while close-strength filter keeps quality
-export const BREAKOUT_MIN_CLOSE_STRENGTH = 0.5; // (c−l)/(h−l) — closed in the upper half of the range
+export const BREAKOUT_MIN_VOLUME = 750_000; // 2026-09-08: lowered from 1M (operator directive, volume complaint) — close-strength + gain filters still carry the quality signal
+export const BREAKOUT_MIN_GAIN = 0.02; // 2026-09-08: lowered from 3% (was 5%) — same reasoning; close-strength filter is the quality gate, not the gain floor
+export const BREAKOUT_MIN_CLOSE_STRENGTH = 0.5; // (c−l)/(h−l) — closed in the upper half of the range — UNCHANGED: this is the core confluence signal the banger backtest measured (91% vs 75% at 2x), not a scarcity knob
 
 /** One whole-market breakout candidate screened from a grouped-daily bar. */
 export type BreakoutMover = {
@@ -615,14 +631,146 @@ export function applyConfluenceGate(
 }
 
 /**
+ * Fire-and-forget capture of every STAGE-2 candidate into nighthawk_candidate_snapshot (Night
+ * Hawk Legacy Signal Intelligence, Phase 1) -- one 'discovery' row per candidate that reached
+ * composite scoring (the full pre-confluence-gate pool, `rows`), plus one additional 'rejected'
+ * row for every candidate the confluence gate then dropped. Never awaited by the caller and never
+ * throws -- a write failure is logged and swallowed, same contract as
+ * recordNighthawkStageRejectedAuditTrail (play-outcomes.ts), so this capture can never affect
+ * which tickers get selected or delay/break the edition build. Zero read of its own output
+ * anywhere in the live pipeline today -- this is write-only instrumentation.
+ *
+ * Before this existed, the confluence gate (applyConfluenceGate above) was the single most
+ * invisible rejection point in the whole funnel: a ticker that failed it left no persisted
+ * record at all, only a console.info summary of aggregate counts.
+ */
+export type DiscoveryStageSnapshotRow = {
+  edition_for: string;
+  ticker: string;
+  stage: string;
+  rank: number | null;
+  score: number | null;
+  gov_penalty: number | null;
+  rejection_reason: string | null;
+  selected_for_publish: boolean | null;
+  snapshot_json: Record<string, unknown>;
+};
+
+export type DiscoveryStageExtras = Map<
+  string,
+  { raw_composite_score: number; streak_days: number; streak_multiplier: number; unusualness: Record<string, unknown> | null }
+>;
+
+/**
+ * Pure row-builder for the STAGE-2 discovery capture — deliberately separated from the DB write
+ * below (and exported) so it's directly unit-testable without importing @/lib/db at all. Testing
+ * this through the full extractMultiSourceCandidates integration with a mocked db module is NOT
+ * viable in this repo's test environment: candidates.ts's dependency graph transitively pulls in
+ * flow-streak.ts, which imports "@/lib/db" via the alias form, and once ANY mock.module() call is
+ * active in a test process, tsx stops resolving the "@/" alias across the WHOLE loaded graph, not
+ * just the mocked specifier (documented in FINDINGS.md's thermalCompareForLargo entry, same tsx
+ * resolver-hook class as #2073 — "anything that needs testing behind an aliased dynamic import
+ * has to extract the pure part"). Extracting this builder is that same fix, applied here.
+ *
+ * One 'discovery' row per candidate that reached composite scoring (every entry in `rows`, the
+ * full pre-confluence-gate pool), plus one additional 'rejected' row (reason: 'confluence_gate')
+ * for every candidate NOT in `selectedRows`. `rank` is the candidate's 1-based position in `rows`
+ * (which callers must have already sorted by composite_score descending).
+ */
+export function buildDiscoveryStageSnapshotRows(
+  editionFor: string,
+  rows: MultiSourceCandidateRow[],
+  selectedRows: MultiSourceCandidateRow[],
+  extras: DiscoveryStageExtras,
+  marketRegime: MarketRegimeTag | null = null
+): DiscoveryStageSnapshotRow[] {
+  const selectedTickers = new Set(selectedRows.map((r) => r.ticker));
+  const snapshotRows: DiscoveryStageSnapshotRow[] = [];
+
+  rows.forEach((row, i) => {
+    const extra = extras.get(row.ticker);
+    const rank = i + 1;
+    const basePayload = {
+      schema_version: 1,
+      composite_score: row.composite_score,
+      raw_composite_score: extra?.raw_composite_score ?? null,
+      source_count: row.source_count,
+      sources: row.sources,
+      lane_scores: row.lane_scores,
+      streak_days: extra?.streak_days ?? null,
+      streak_multiplier: extra?.streak_multiplier ?? null,
+      unusualness: extra?.unusualness ?? null,
+      confluence_admitted: selectedTickers.has(row.ticker),
+      // Phase 2A part 2: one market-regime read shared by every candidate this edition build
+      // (a fact about the WHOLE market that session, not a per-ticker one) -- see market-regime.ts.
+      market_regime: marketRegime,
+    };
+    snapshotRows.push({
+      edition_for: editionFor,
+      ticker: row.ticker,
+      stage: "discovery",
+      rank,
+      score: row.composite_score,
+      gov_penalty: null,
+      rejection_reason: null,
+      selected_for_publish: null,
+      snapshot_json: basePayload,
+    });
+    if (!selectedTickers.has(row.ticker)) {
+      snapshotRows.push({
+        edition_for: editionFor,
+        ticker: row.ticker,
+        stage: "rejected",
+        rank,
+        score: row.composite_score,
+        gov_penalty: null,
+        rejection_reason: "confluence_gate",
+        selected_for_publish: false,
+        snapshot_json: basePayload,
+      });
+    }
+  });
+
+  return snapshotRows;
+}
+
+/**
+ * Fire-and-forget capture of every STAGE-2 candidate into nighthawk_candidate_snapshot (Night
+ * Hawk Legacy Signal Intelligence, Phase 1). Thin wrapper over the pure
+ * buildDiscoveryStageSnapshotRows above — this is the only part that touches the DB. Never
+ * awaited by the caller and never throws — a write failure is logged and swallowed, same
+ * contract as recordNighthawkStageRejectedAuditTrail (play-outcomes.ts), so this capture can
+ * never affect which tickers get selected or delay/break the edition build.
+ */
+function recordDiscoveryStageSnapshots(
+  editionFor: string,
+  rows: MultiSourceCandidateRow[],
+  selectedRows: MultiSourceCandidateRow[],
+  extras: DiscoveryStageExtras,
+  marketRegime: MarketRegimeTag | null
+): void {
+  const snapshotRows = buildDiscoveryStageSnapshotRows(editionFor, rows, selectedRows, extras, marketRegime);
+  if (!snapshotRows.length) return;
+  void insertNighthawkCandidateSnapshots(snapshotRows).catch((err) => {
+    console.warn(`[nighthawk/candidates] failed to write discovery-stage candidate snapshots:`, err);
+  });
+}
+
+/**
  * Multi-source candidate discovery — replaces the flow-only extractCandidateTickers
  * for the edition pipeline. Runs 6 independent scoring lanes over MarketWideContext,
  * applies corroboration bonuses for tickers seen in multiple lanes, enriches with DB
  * streak/unusualness data when available, and returns top-N tickers by composite score.
+ *
+ * `editionFor` (Night Hawk Legacy Signal Intelligence, Phase 1) is used ONLY to tag the
+ * fire-and-forget nighthawk_candidate_snapshot capture below — it changes nothing about which
+ * tickers are selected or how they're scored/ranked. See recordDiscoveryStageSnapshots' own doc
+ * comment for exactly what's captured and why.
  */
 export async function extractMultiSourceCandidates(
   ctx: MarketWideContext,
-  maxTickers: number
+  maxTickers: number,
+  editionFor: string
 ): Promise<string[]> {
   const lanes: [string, Map<string, number>][] = [
     ["flow", laneFlow(ctx)],
@@ -669,21 +817,47 @@ export async function extractMultiSourceCandidates(
     ]);
   }
 
+  // Real raw dollar flow premium per ticker — NOT the normalized 0-LANE_MAX_FLOW value the
+  // "flow" lane above carries. Fetched once here purely for the discovery-stage capture below;
+  // the existing (buggy) unusualness computation a few lines down is left byte-for-byte
+  // unchanged and does NOT read from this map.
+  const flowRawPremiums = laneFlowRawPremiums(ctx);
+
   const rows: MultiSourceCandidateRow[] = [];
+  const captureExtras = new Map<
+    string,
+    { raw_composite_score: number; streak_days: number; streak_multiplier: number; unusualness: Record<string, unknown> | null }
+  >();
   for (const [ticker, entry] of composite) {
     let score = entry.score;
+    const rawCompositeScore = entry.score;
 
     // Streak bonus (flow lane already captured the premium; this adds temporal conviction).
     const streakDays = streaks[ticker]?.streak_days ?? 0;
-    score *= streakMultiplier(streakDays);
+    const streakMult = streakMultiplier(streakDays);
+    score *= streakMult;
 
     // Unusualness ratio from flow lane raw premium vs 30-day avg.
+    let unusualnessCapture: Record<string, unknown> | null = null;
     const flowLane = lanes.find(([n]) => n === "flow");
     if (flowLane) {
       const flowRaw = flowLane[1].get(ticker);
       if (flowRaw && flowRaw > 0) {
         const baseline = Math.max(avgPremiums[ticker] ?? 0, CANDIDATE_MIN_BASELINE_PREMIUM);
-        score *= unusualnessMultiplier(flowRaw / baseline);
+        const productionRatio = flowRaw / baseline;
+        const productionMultiplier = unusualnessMultiplier(productionRatio);
+        score *= productionMultiplier;
+        // Captured for Phase 3's shadow_bugfix variant (signal-intelligence-corrections.ts) --
+        // raw_flow_premium_dollars is the REAL dollar figure (flowRawPremiums), never the
+        // normalized lane-point value (flowRaw) production's own buggy ratio actually divides.
+        unusualnessCapture = {
+          normalized_flow_lane_points: flowRaw,
+          raw_flow_premium_dollars: flowRawPremiums.get(ticker) ?? null,
+          baseline_avg_daily_premium_dollars: avgPremiums[ticker] ?? null,
+          baseline_floored_dollars: baseline,
+          production_ratio_lane_points_over_dollars: productionRatio,
+          production_multiplier_applied: productionMultiplier,
+        };
       }
     }
 
@@ -694,12 +868,26 @@ export async function extractMultiSourceCandidates(
       sources: entry.sources,
       lane_scores: entry.laneScores,
     });
+    captureExtras.set(ticker, {
+      raw_composite_score: rawCompositeScore,
+      streak_days: streakDays,
+      streak_multiplier: streakMult,
+      unusualness: unusualnessCapture,
+    });
   }
 
   rows.sort((a, b) => b.composite_score - a.composite_score);
 
   const selectedRows = applyConfluenceGate(rows, maxTickers);
   const selected = selectedRows.map((r) => r.ticker);
+  // Phase 2A part 2: classify once per edition build from data ctx already fetched -- zero new I/O.
+  const marketRegime = classifyMarketRegime({
+    spx_bars: ctx.spx_bars,
+    vix_bars: ctx.vix_bars,
+    spx_gap: ctx.spx_gap,
+    macro_events: ctx.macro_events,
+  });
+  recordDiscoveryStageSnapshots(editionFor, rows, selectedRows, captureExtras, marketRegime);
   const multiSourceCount = rows.filter((r) => r.source_count >= 2).length;
   const singleLaneSelected = selectedRows.filter((r) => r.source_count < CONFLUENCE_MIN_SOURCES).length;
   console.info(

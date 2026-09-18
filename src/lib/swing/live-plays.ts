@@ -12,11 +12,35 @@ import type { ChainContract, PlayDirection } from "../horizon-fanout";
 import { calendarDte } from "../horizon-fanout";
 import type { SwingPositionRow } from "../db";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
+import { archetypeLabelFromRaw } from "./taxonomy";
 import type { SwingLiveStatus, SwingThesisLevel } from "./serving";
 import type { SwingManageAction, SwingManageRung } from "./manage";
 import { HORIZONS } from "../horizons";
+import {
+  contributionsToFactors,
+  scoreSwingPillars,
+  type SwingPillarSignals,
+  type SwingScoreFactor,
+} from "./swing-pillars";
 
 const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
+
+// The persisted ledger `status` (HOLD/TRIM/OPEN) only changes when a position is actually
+// executed/rolled — it can lag several ticks behind `manageAction`, which is recomputed fresh on
+// every read from the live spot/thesis-break/manage-event above. Live-verified 2026-09-12 (NRG,
+// CG): `row.status` still read "HOLD" while `manageAction` had already flipped to EXIT/
+// TAKE_PARTIAL, so a `reason` string built from `row.status` alone said "live hold — ... thesis"
+// right next to a Management section showing "Manage engine: EXIT" — a live, member-visible
+// contradiction (see docs/audit/FINDINGS.md, same date). `manageAction` is the freshest read of
+// the two, so the reason's verb must come from it whenever it names an active reduce/exit, not
+// from the stale ledger status.
+const REASON_VERB_BY_MANAGE_ACTION: Partial<Record<SwingManageAction, string>> = {
+  EXIT: "exit",
+  STOP_OUT: "stop out",
+  TAKE_PARTIAL: "trim",
+  EXIT_RUNNER: "trim",
+  ADD: "add to",
+};
 
 function liveStatusOf(status: string): SwingLiveStatus | null {
   if (status === "TRIM") return "TRIM";
@@ -163,7 +187,27 @@ export function structuralBreakFromSpot(
 export function manageObservablesFromEvent(
   manageEvent: Record<string, unknown> | null | undefined,
   spotFallback: { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel },
-): { manageAction?: SwingManageAction; thesisLevel?: SwingThesisLevel } {
+): {
+  manageAction?: SwingManageAction;
+  thesisLevel?: SwingThesisLevel;
+  manageReason?: SwingManageRung | null;
+  /** GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+   *  computes a full, specific prose `reason` for every verdict — e.g. the exact structural-stop
+   *  breach ("underlying 145.20 ≤ structural stop 148.00 — LONG thesis broken in underlying
+   *  terms") rather than just the rung name — and `manage-sync.ts` persists it verbatim onto every
+   *  snapshot's `event_json.reason` (manage-sync.ts:399). But this function, the sole reader of
+   *  that event_json (per this function's own doc comment above), only ever extracted `rung` from
+   *  it — never `reason` — so the narrative layer (play-brief-narrative.ts's sellReasonClause/
+   *  trimReasonClause) has always had to fall back to a generic canned phrase per rung
+   *  ("— thesis broke", with no level/price) even though the real, specific sentence was computed
+   *  and persisted on the exact same tick. Same wiring-gap shape as `dte_migration`/`roll_intent`
+   *  a few lines below in this same function. Honest-null whenever the field is absent/malformed
+   *  (an older snapshot shape) — never a guessed reason. */
+  manageReasonDetail?: string | null;
+  manageEnforced?: boolean | null;
+  rollCandidate?: { reason: string } | null;
+  underlyingExcursion?: { mfePct: number; maePct: number } | null;
+} {
   if (!manageEvent || typeof manageEvent !== "object") return spotFallback;
 
   let manageAction = spotFallback.manageAction;
@@ -179,7 +223,32 @@ export function manageObservablesFromEvent(
   }
 
   const rung = manageEvent.rung as SwingManageRung | undefined;
+  const manageReasonDetail = typeof manageEvent.reason === "string" ? manageEvent.reason : null;
   const thesisState = typeof manageEvent.thesis_state === "string" ? manageEvent.thesis_state : null;
+
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+  // stamps `enforced` on every verdict — true always for the four capital-preservation GATE rungs
+  // (structural_stop/thesis_stop/expiry_risk/premium_stop), but for every EDGE rung (catalyst_shift,
+  // regime_shift, flow_decay, rel_strength_loss, vol_collapse, time_stop, add_eligible) it is
+  // `false` UNTIL that specific rung graduates in the PR-16 calibration ladder (n≥10, delta≥15pt —
+  // see calibration.ts and manage.ts's own header doc). `manage-sync.ts` persists this flag onto
+  // every snapshot's `event_json.enforced` (and only actually LATCHES the ledger to TRIM when
+  // `verdict.enforced && rung === "profit_ladder"` — `latchSwingLiveStatus`, manage-sync.ts:91-96 —
+  // so an un-graduated edge rung's action never moves the ledger at all). But this function, the
+  // SOLE reader of that event_json, never read `enforced` back out — so `manageAction` (and the
+  // "SELL"/"TRIM"/"BUY" badge `recommendationFromManageAction`, adapters.ts, derives from it 1:1)
+  // was shown with IDENTICAL visual weight whether the deciding rung was a hard capital-
+  // preservation gate the ledger actually acts on, or an unproven advisory signal the system
+  // itself treats as evidence-only and takes no action on. That is exactly the severity-
+  // conflation calibration-first is meant to prevent (manage.ts's own header: "the desk can SHOW
+  // 'flow decayed → consider trimming' long before that recommendation is allowed to act") — the
+  // desk showed it, but with no visible difference from a recommendation that IS allowed to act.
+  // GATE rungs force `true` below regardless of the raw event value (defensive — they are already
+  // always true per `isEnforced()`, but the override branches beneath re-derive `manageAction` from
+  // `thesisState`/`rung` independent of the raw snapshot, so `enforced` is re-derived alongside it
+  // for the same reason). Absent/malformed `enforced` (older snapshot shape) degrades to null —
+  // never a fabricated true/false.
+  let manageEnforced: boolean | null = typeof manageEvent.enforced === "boolean" ? manageEvent.enforced : null;
 
   if (
     thesisState === "BROKEN" ||
@@ -188,13 +257,238 @@ export function manageObservablesFromEvent(
   ) {
     manageAction = manageAction === "STOP_OUT" ? "STOP_OUT" : "EXIT";
     thesisLevel = "break";
+    manageEnforced = true;
   } else if (thesisState === "STOPPED" || rung === "premium_stop") {
     manageAction = "STOP_OUT";
+    manageEnforced = true;
   } else if (thesisState === "EXPIRY_RISK" || rung === "expiry_risk") {
     manageAction = manageAction ?? "EXIT";
+    manageEnforced = true;
   }
 
-  return { manageAction, thesisLevel };
+  // Carry the deciding rung forward so narrative text (play-brief-narrative.ts) can state the REAL
+  // reason for a SELL/EXIT recommendation instead of a generic guess — "expiry_risk" in particular
+  // is a time-based force-manage with the thesis still intact (manage.ts's own docs on the rung),
+  // which a generic "thesis or ladder fired" line would misrepresent as a broken thesis.
+  //
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `dte_migration`/`roll_intent` sit right in
+  // this same `manageEvent` blob (manage-sync.ts stamps both every tick) but were never read out —
+  // see HorizonPlay.rollCandidate's own doc comment (horizon-plays.ts) for the full history. Gate
+  // on `roll_intent.roll` (the post-veto authoritative signal `roll.ts`'s executor itself acts on —
+  // vetoed once a thesis actually breaks or hits its structural stop) but SURFACE
+  // `dte_migration.reason`'s prose, which is member-clean; `roll_intent.reason` still carries a
+  // stale "(INTENT ONLY; execution deferred to PR-15)" note from before PR-15 wired up live
+  // execution. Malformed/partial shapes (an older snapshot, a manual DB edit) degrade to null —
+  // never a guessed roll candidate.
+  const dteMigration = manageEvent.dte_migration;
+  const rollIntent = manageEvent.roll_intent;
+  const rollCandidate =
+    rollIntent &&
+    typeof rollIntent === "object" &&
+    (rollIntent as { roll?: unknown }).roll === true &&
+    dteMigration &&
+    typeof dteMigration === "object" &&
+    typeof (dteMigration as { reason?: unknown }).reason === "string"
+      ? { reason: (dteMigration as { reason: string }).reason }
+      : null;
+
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `running_mfe`/`running_mae` (the
+  // UNDERLYING's own signed favorable/adverse excursion since entry, distinct from the OPTION
+  // premium peak/P&L this brief already shows — see HorizonPlay.underlyingExcursion's own doc
+  // comment) are dedicated `swing_position_snapshots` columns manage-sync.ts writes every tick,
+  // now selected/merged by db.ts's `fetchLatestSwingSnapshotEvents` into this same event blob.
+  // Honest-null whenever the latest snapshot hasn't computed a usable excursion yet (fresh
+  // position, missing entry/spot) — never a fabricated 0%.
+  const rawMfe = manageEvent.running_mfe;
+  const rawMae = manageEvent.running_mae;
+  const underlyingExcursion =
+    typeof rawMfe === "number" && Number.isFinite(rawMfe) && typeof rawMae === "number" && Number.isFinite(rawMae)
+      ? { mfePct: rawMfe, maePct: rawMae }
+      : null;
+
+  return {
+    manageAction,
+    thesisLevel,
+    manageReason: rung ?? null,
+    manageReasonDetail,
+    manageEnforced,
+    rollCandidate,
+    underlyingExcursion,
+  };
+}
+
+const finiteOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/**
+ * Reconstruct a live committed position's "why this score" factor breakdown from its own PINNED
+ * feature_vector (the 7 raw pillar sub-scores + archetype, frozen at commit — see commit.ts's
+ * buildCommitInsert / buildSwingFeatureVector) instead of a freshly re-run dossier.
+ *
+ * THE BUG THIS AVOIDS (found live 2026-09-12, `?view=swings`, AAPL position 37 SECTOR_ROTATION):
+ * `score` on a live row is `row.feature_vector.evidence_score` — PINNED at commit on purpose (commit.ts:
+ * "so trajectory studies can echo pillars/score on every later snapshot"). But `attachThesisExplanation`
+ * (serving-lane.ts) used to borrow `factors` from a FRESH same-ticker dossier re-run TODAY against
+ * CURRENT market conditions (rel-strength/regime/structure all legitimately drift day to day). The two
+ * numbers then silently diverge the longer a position ages: AAPL showed "score 84.4" beside factor rows
+ * that only summed to 75.0 — 9.4 points (11%) unexplained, on a real open position, not a stale/off-hours
+ * artifact. Same failure MODE as the Banger/Vector-bump fixes in #4826 ("score bumped, factors never
+ * touched" / "factors measure a different quantity than score") but a THIRD, distinct occurrence: here
+ * neither side is bumped or wrong in isolation, they are just two INDEPENDENT computations (one frozen,
+ * one live) of what is supposed to read as one explained number.
+ *
+ * THE FIX: re-run `scoreSwingPillars` on the SAME frozen raw signals that produced `evidence_score`
+ * (pinned alongside it in the same feature_vector), instead of a fresh dossier's. Because
+ * `scoreSwingPillars` is pure and deterministic, calling it again on identical inputs reproduces the
+ * IDENTICAL score AND the contributions that sum to it — the sum-to-score invariant holds by
+ * construction, not by keeping two independently-computed numbers in sync by hand. Live regime/structure
+ * drift no longer matters because the frozen inputs never change.
+ *
+ * Returns [] (never fabricated) when the row predates this feature-vector shape (no `pil_*`/archetype
+ * pinned) — `attachThesisExplanation` falls back to the dossier borrow for those older rows.
+ */
+export function pinnedFactorsFromFeatureVector(
+  featureVector: Record<string, unknown> | null | undefined,
+): SwingScoreFactor[] {
+  if (!featureVector) return [];
+  const archetype =
+    typeof featureVector.archetype === "string" ? (featureVector.archetype as SwingArchetype) : null;
+  const signals: SwingPillarSignals = {
+    STRUCTURE: finiteOrNull(featureVector.pil_structure),
+    REL_STRENGTH: finiteOrNull(featureVector.pil_rel_strength),
+    FLOW: finiteOrNull(featureVector.pil_flow),
+    VOLATILITY: finiteOrNull(featureVector.pil_volatility),
+    CATALYST: finiteOrNull(featureVector.pil_catalyst),
+    REGIME: finiteOrNull(featureVector.pil_regime),
+    DATA_QUALITY: finiteOrNull(featureVector.pil_data_quality),
+  };
+  const hasAnyPillar = Object.values(signals).some((v) => v != null);
+  if (!hasAnyPillar) return [];
+  const { contributions } = scoreSwingPillars(signals, archetype);
+  return contributionsToFactors(contributions);
+}
+
+/**
+ * Read back the ENTRY-TIME evidence-completeness read (dossier.ts's `dataQuality.presentPillars`/
+ * `.degraded`) from a committed position's own pinned `feature_vector.present_pillars`/`dq_degraded`
+ * (feature-vector.ts) — pinned at commit (commit.ts) and echoed on every later manage-sync snapshot,
+ * but never read back out anywhere in the serving/brief layer until now.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-09-18): a pre-entry WATCH candidate's identical
+ * `dataQuality.degraded` read already surfaces as a "thin read — N/7 pillars grounded" thesis-health
+ * note the moment it degrades (serving-ingest.ts's `swingServingMetaFromDossier`) — a member sees it
+ * BEFORE committing. Once committed, that same fact — how thin the evidence actually was when real
+ * capital went in — silently disappears: `livePlayFromSwingPosition`/`closedDeckSourceFromRow` both
+ * already read `row.feature_vector.evidence_score` for the score number, but neither ever read the two
+ * sibling columns sitting right next to it. A member reviewing an open or closed position never learns
+ * it was entered off a thin read (e.g. 2/7 pillars grounded) unless they happen to remember the WATCH
+ * brief from days earlier — the exact same "structural absence, not staleness gap" this file's own
+ * `entryTriggerUnderlyingPx`/`committedAt`/`firstSeenAt` fields were wired in to fix (see their comment
+ * a few lines up).
+ *
+ * Deliberately returns null (never surfaced) unless the read was ACTUALLY thin at commit — same
+ * threshold the WATCH-lane note itself gates on (`dataQuality.degraded`, dossier.ts: <3 present
+ * pillars OR the STRUCTURE pillar missing) — so a normal, well-grounded entry renders nothing extra,
+ * exactly mirroring the pre-entry note's own "only when it matters" discipline rather than cluttering
+ * every brief with a number that is unremarkable 95%+ of the time.
+ */
+export function entryPresentPillarsFromFeatureVector(
+  featureVector: Record<string, unknown> | null | undefined,
+): number | null {
+  if (!featureVector) return null;
+  const degraded = featureVector.dq_degraded === 1;
+  if (!degraded) return null;
+  const present = featureVector.present_pillars;
+  return typeof present === "number" && Number.isFinite(present) ? present : null;
+}
+
+/** Mirrors archetype.ts's own MARGIN_EPS (0.05, 0-1 scale) — the SAME bar the classifier's own
+ *  tie-break logic uses to decide "this is a near-tie, priority order broke it" vs "clear winner".
+ *  Kept as a local constant (not imported) because archetype.ts's MARGIN_EPS is module-private and
+ *  taxonomy.ts (the shared, cycle-free import surface every swing module uses) intentionally carries
+ *  no scoring logic — see its own header. A drift between the two would only ever make this note
+ *  render MORE conservatively (fewer near-ties flagged) or less, never wrong-directioned, since both
+ *  values gate the identical "was this call close" question. */
+const ARCHETYPE_NEAR_TIE_MARGIN = 0.05;
+
+/**
+ * Read back the ENTRY-TIME classification decisiveness (archetype.ts's `ArchetypeVerdict.margin` /
+ * the ranked runner-up) from a committed position's own pinned `feature_vector.classification_margin`/
+ * `.secondary` (feature-vector.ts) — pinned at commit (commit.ts/discovery.ts's
+ * `classificationMetaFromVerdict`) but, like `entryPresentPillarsFromFeatureVector` above, never read
+ * back out anywhere in the serving/brief layer until now. See `HorizonPlay.archetypeNearTie`'s own
+ * doc comment (horizon-plays.ts) for the full gap this closes.
+ *
+ * Deliberately returns null (never surfaced) unless the winning archetype was ACTUALLY a near-tie at
+ * commit — margin <= ARCHETYPE_NEAR_TIE_MARGIN — so a normal, decisive classification (the
+ * overwhelming common case) renders nothing extra, exactly mirroring `entryPresentPillarsFromFeatureVector`'s
+ * "only when it matters" discipline.
+ */
+export function archetypeNearTieFromFeatureVector(
+  featureVector: Record<string, unknown> | null | undefined,
+): { secondaryLabel: string; marginPct: number } | null {
+  if (!featureVector) return null;
+  // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro NN:32 CLOSED brief): a thin-evidence
+  // commit (`classifyArchetype` returns `archetype: null` — inputCount/winnerFit below the classifier's
+  // own floor, a real, reachable case: NN's own row carries `archetype: null`) still pins a real
+  // `classification_margin`/`secondary` onto the feature vector (commit.ts writes both unconditionally
+  // from `cand.*`), and `classificationMetaFromVerdict`'s `secondary = ranked.filter(a => a !== v.archetype)`
+  // is a no-op when `v.archetype` is null — every grounded archetype, including the would-be top-fit one,
+  // survives into `secondary`. Without this guard, a thin-evidence position whose margin happened to fall
+  // inside the near-tie band rendered `whyThisSetupSection`'s fallback text ("**the winning archetype**
+  // beat **X** by only N pts") with no preceding "Archetype:" line to anchor it (that line only renders
+  // when `play.archetype` is non-null) — a fabricated "there was a decisive winner" claim for a position
+  // the classifier explicitly never classified, the exact absence-over-fabrication violation this whole
+  // fix's own doc comment says it avoids. `feature_vector.archetype` mirrors the same row-level `archetype`
+  // DB column `play.archetype` is read from (both written from the identical `cand.archetype` in the same
+  // commit insert, feature-vector.ts/commit.ts), so this is a sound proxy without threading `play.archetype`
+  // through this featureVector-only function's signature.
+  if (typeof featureVector.archetype !== "string" || !featureVector.archetype) return null;
+  const margin = featureVector.classification_margin;
+  if (typeof margin !== "number" || !Number.isFinite(margin) || margin > ARCHETYPE_NEAR_TIE_MARGIN) {
+    return null;
+  }
+  const secondary = featureVector.secondary;
+  const runnerUpRaw = Array.isArray(secondary) ? secondary[0] : null;
+  const secondaryLabel = typeof runnerUpRaw === "string" ? archetypeLabelFromRaw(runnerUpRaw) : null;
+  if (!secondaryLabel) return null;
+  return { secondaryLabel, marginPct: Math.round(margin * 100) };
+}
+
+/**
+ * Read back the ENTRY-TIME contract-pick provenance against the flow magnet strike
+ * (contract-ranker.ts's `topFlowStrike`/`topFlowWasPicked`) from a committed position's own
+ * pinned `top_flow_strike` column (db.ts) — set at commit (commit.ts's `buildCommitInsert`,
+ * discovery.ts) from `SwingDossier.topFlowStrike` (dossier.ts: "provenance for the contract
+ * pick"), but never read back out anywhere in the serving/brief layer until now.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-09-18): `rankSwingContracts` (contract-ranker.ts)
+ * computes `topFlowWasPicked` — whether the INDEPENDENTLY-chosen best contract (by
+ * tradability×thesisFit, never influenced by the flow strike) happens to equal the multi-day
+ * accumulation flow's own magnet strike — and folds it into a `reason` string ("flow strike X =
+ * pick" / "≠ pick") that the commit-time engine logs internally. The position row keeps
+ * `top_flow_strike` (the raw number) permanently, but `topFlowWasPicked` itself is never
+ * persisted or recomputed downstream, so no play-brief consumer (live-plays.ts, closed-plays.ts,
+ * the adapters, play-brief-intel.ts) ever reads `row.top_flow_strike` at all — a real, member-
+ * relevant fact ("the contract you're holding is the exact strike flow was piling into" vs "flow
+ * was piling into a different strike than the one this ranked pick chose") sits on every
+ * committed row and is silently dropped. Recomputes `matchedPick` here (comparing the pinned
+ * `top_flow_strike` to the pinned `contract_strike`) rather than trusting a second persisted
+ * boolean that doesn't exist — same "derive, don't duplicate" discipline as
+ * `structuralBreakFromSpot` a few lines up.
+ *
+ * Null whenever either strike is absent — never a guessed provenance. Deliberately does NOT gate
+ * on "only when interesting" (unlike `entryPresentPillarsFromFeatureVector`'s degraded-only
+ * discipline): both agreement AND disagreement are genuinely informative here (confirmation vs a
+ * real divergence worth flagging), so the caller decides what to render, not this helper.
+ */
+export function topFlowProvenanceFromRow(
+  topFlowStrike: number | null | undefined,
+  contractStrike: number | null | undefined,
+): { topFlowStrike: number; matchedPick: boolean } | null {
+  if (topFlowStrike == null || !Number.isFinite(topFlowStrike)) return null;
+  if (contractStrike == null || !Number.isFinite(contractStrike)) return null;
+  return { topFlowStrike, matchedPick: contractStrike === topFlowStrike };
 }
 
 /**
@@ -220,16 +514,57 @@ export function livePlayFromSwingPosition(
     manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
     thesisLevel: broken ? "break" : "intact",
   });
-  const { manageAction, thesisLevel } = manageObservablesFromEvent(manageEvent, spotObs);
+  const { manageAction, thesisLevel, manageReason, manageReasonDetail, manageEnforced, rollCandidate, underlyingExcursion } =
+    manageObservablesFromEvent(manageEvent, spotObs);
 
   const score =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
       : 0;
 
+  // Reconstructed from the SAME pinned feature_vector `score` came from (see the function's own doc for
+  // the live bug this closes) — guaranteed to sum to `score` exactly, never a freshly re-run dossier's.
+  const factors = pinnedFactorsFromFeatureVector(row.feature_vector);
+  const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
+  const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
+  // Gated to the root leg only (roll_seq === 0): a roll re-runs rankSwingContracts fresh against the
+  // CURRENT chain (roll-plan.ts:291) while carrying top_flow_strike forward UNCHANGED from the
+  // original commit (roll-plan.ts:339) — so on a rolled leg, contract_strike and top_flow_strike are
+  // facts from two different points in time, and comparing them would misleadingly read as an
+  // entry-time provenance disagreement when it's actually just a later roll's independent pick.
+  const topFlowProvenance =
+    (row.roll_seq ?? 0) === 0 ? topFlowProvenanceFromRow(row.top_flow_strike, row.contract_strike) : null;
+
+  // CORRECTED (live regression found 2026-09-07, prior fix in #4481): `regime` is a DISPLAY string —
+  // play-brief.ts's Verdict section pushes `play.regime` verbatim with no label
+  // (`if (play.regime) verdictLines.push(play.regime)`), and thesis-health.ts's `regimeScore()` uses
+  // it as the pillar's shown `label` too. It means a genuine market-regime descriptor (e.g. Vector's
+  // `regime.posture`, SPX's `desk.regime` — "short gamma", "trending", etc.), NOT the swing setup
+  // archetype (BREAKOUT/PULLBACK/...), which is a different concept already shown on its own labeled
+  // "Archetype: X" line. The prior fix fell back to `row.archetype ?? "regime read"` when the
+  // dossier's REGIME pillar was scored but archetype was null — that shipped the literal placeholder
+  // string "regime read" into the live Ask Largo Verdict/"Why this setup" narrative for real members
+  // (confirmed live on NRG SWING:NRG:34), and would have duplicated the archetype text on the "regime"
+  // line when archetype WAS present. No genuine swing-specific market-regime label exists on the
+  // committed position row today — wiring one in (e.g. from Vector's regime.posture, which play-brief
+  // already reads elsewhere in this same envelope) needs a layer change beyond live-plays.ts's scope,
+  // so honest omission (null) is correct here, not a synthesized value. See the corrected finding.
+  const regime: string | null = null;
+
   const entry = row.entry_premium;
   const mark = row.last_mark;
   const markAsOf = row.last_mark_at ?? quote?.asOf ?? null;
+
+  // Pinned at commit (commit.ts's buildCommitInsert) as `entry_context.signal_kinds` — the same
+  // discovery-provenance kinds the G-S6 confluence gate graduated on. Read back here so
+  // computeSwingThesisHealth's `flow_corroboration` pillar has a real value instead of the
+  // "not wired for committed positions" degrade every committed row showed before this (see
+  // thesis-health.ts's thesisHealthUncalibrated). Array-shape guarded — never trust an unknown
+  // JSONB blob's shape blindly.
+  const signalKindsRaw = (row.entry_context as { signal_kinds?: unknown } | null)?.signal_kinds;
+  const signalKinds = Array.isArray(signalKindsRaw)
+    ? signalKindsRaw.filter((k): k is string => typeof k === "string")
+    : undefined;
 
   return {
     ticker: row.ticker.toUpperCase(),
@@ -240,19 +575,39 @@ export function livePlayFromSwingPosition(
     status: "COMMIT", // live capital is committed — back-compat committed[] view
     contract,
     scoreFloor: HORIZONS.SWING.scoreFloor,
-    reason: `live ${row.status.toLowerCase()} — ${row.archetype ?? "swing"} thesis`,
+    reason: `live ${(manageAction && REASON_VERB_BY_MANAGE_ACTION[manageAction]) ?? row.status.toLowerCase()} — ${row.archetype ?? "swing"} thesis`,
     archetype: (row.archetype as SwingArchetype | null) ?? undefined,
     subLane: (row.sub_lane as SwingSubLane | null) ?? undefined,
+    regime,
+    factors,
+    entryPresentPillars,
+    archetypeNearTie,
+    topFlowProvenance,
     liveStatus,
     manageAction,
+    manageReason: manageReason ?? null,
+    manageReasonDetail: manageReasonDetail ?? null,
+    manageEnforced: manageEnforced ?? null,
+    rollCandidate: rollCandidate ?? null,
+    underlyingExcursion: underlyingExcursion ?? null,
     thesisLevel,
     firstSeenAt: row.first_seen_at ?? undefined,
     committedAt: row.committed_at ?? undefined,
+    // Ask Largo standing mandate (#4076): these three let computeSwingThesisHealth's persistence
+    // pillar call deriveSetupState LIVE for committed positions instead of leaving setupState
+    // permanently null (the WATCH-lane dossier state that would calibrate it never survives the
+    // WATCH→COMMIT transition — a structural absence, not a staleness gap). All three are already-
+    // pinned DB columns / an already-available parameter on this row, just not threaded through
+    // before now.
+    entryTriggerUnderlyingPx: row.entry_underlying_px,
+    invalidationUnderlyingPx: row.thesis_invalidation_px,
+    liveSpot: spot ?? null,
     entryPremium: entry,
     livePnlPct: livePnlPct(entry, mark),
     peakPremium: row.peak_premium,
     troughPremium: row.trough_premium,
     markAsOf,
+    signalKinds,
   };
 }
 

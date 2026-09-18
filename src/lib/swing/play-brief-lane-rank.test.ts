@@ -25,6 +25,14 @@ function row(
   score: number,
   status: HorizonPlay["status"],
   contract?: { strike: number; right: "C" | "P" },
+  manageAction?: HorizonPlay["manageAction"],
+  setupState?: HorizonPlay["setupState"],
+  // Defaults to "OPEN" when status is "COMMIT", matching every pre-existing call site's real
+  // intent ("this is a live open position") — rowInBucket now keys off liveStatus, not status
+  // (status is the floor-gate flag, not a lifecycle field; see rowInBucket's own doc comment).
+  // Pass `null` explicitly to build a floor-cleared-but-still-pre-entry WATCH row (status COMMIT,
+  // no liveStatus) — the live LITE repro this fix addresses.
+  liveStatus: HorizonPlay["liveStatus"] | null = status === "COMMIT" ? "OPEN" : undefined,
 ): HorizonPlay {
   const c = contract ?? { strike: 100, right: "C" as const };
   return {
@@ -35,6 +43,9 @@ function row(
     reason: "",
     contract: { strike: c.strike, right: c.right, expiry: "2026-09-20", dte: 14, mid: 1, delta: 0.5, gamma: 0, theta: 0, vega: 0, iv: 0.3 },
     factors: [],
+    manageAction,
+    setupState,
+    liveStatus: liveStatus ?? undefined,
   };
 }
 
@@ -63,6 +74,24 @@ test("laneRankSection: renders rank line for committed peers", () => {
   assert.match(sec!.body, /#1 of 2/);
 });
 
+test("laneRankSection: carries no bias for a top-ranked SHORT (Largo C5 — deltaFromMedian is a score-rank signal, not a market call)", () => {
+  // Same bug class as play-brief.ts's thesisHealthSection (2026-09-15, Ask Largo standing
+  // mandate): mapping deltaFromMedian straight to bullish/bearish meant a top-ranked SHORT
+  // badged the section green "Bullish" via BieSectionCard's BiasPill — contradicting the
+  // envelope's own biasFromDirection(play.direction) = "bearish" for this same play.
+  const sec = laneRankSection(
+    play({ ticker: "NRG", direction: "SHORT", score: 70 }),
+    [row("NRG", 70, "COMMIT"), row("X", 40, "COMMIT")],
+  );
+  assert.ok(sec);
+  assert.match(sec!.body, /#1 of 2/);
+  assert.equal(
+    sec!.bias,
+    undefined,
+    `Lane rank must carry no directional bias (rank is not a market call) — got: ${sec!.bias}`,
+  );
+});
+
 test("parseDeckContractLabel: extracts strike and right from deck label", () => {
   assert.deepEqual(parseDeckContractLabel("110C · 13DTE"), { strike: 110, right: "C" });
   assert.deepEqual(parseDeckContractLabel("192.5P · 0DTE"), { strike: 192.5, right: "P" });
@@ -78,4 +107,268 @@ test("computeLaneRank: disambiguates same-ticker WATCH rows by contract", () => 
   assert.ok(snap);
   assert.equal(snap!.rank, 2, "110C ranks second behind 115C — ticker-only match would wrongly rank #1");
   assert.equal(snap!.playScore, 40);
+});
+
+test("computeLaneRank: named leader skips a peer whose own manage engine says EXIT/EXIT_RUNNER", () => {
+  // Live repro 2026-09-12: CRWD sat #1 by score (86.5) among real OPEN positions while its own
+  // manage engine had already fired EXIT_RUNNER (round-tripped from +129.7% peak to -9.5%). NN's
+  // brief still named "Leader: CRWD @ 86.5 — confirm before adding size" — reads as "put money
+  // here" about a position the desk is telling members to exit.
+  const lanes = [
+    row("CRWD", 86.5, "COMMIT", undefined, "EXIT_RUNNER"),
+    row("AAPL", 84.4, "COMMIT", undefined, "HOLD"),
+    row("NN", 23, "COMMIT", undefined, "HOLD"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "NN", score: 23 }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "AAPL", "the raw #1 (CRWD) is exiting — the named leader must skip it");
+  assert.equal(snap!.topScore, 84.4);
+  assert.equal(snap!.rank, 3, "rank still reflects the FULL peer set, exit state doesn't change standing");
+  assert.equal(snap!.total, 3);
+});
+
+test("computeLaneRank: named leader falls back to the raw #1 when every peer is exiting", () => {
+  const lanes = [
+    row("CRWD", 86.5, "COMMIT", undefined, "EXIT_RUNNER"),
+    row("NRG", 27.2, "COMMIT", undefined, "EXIT"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "NRG", score: 27.2 }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "CRWD", "no non-exiting peer exists — fall back rather than show nothing");
+});
+
+test("computeLaneRank: WATCH-bucket rows never carry manageAction — leader pick unaffected", () => {
+  const lanes = [row("NRG", 70, "WATCH"), row("FSLR", 40, "WATCH")];
+  const snap = computeLaneRank(play({ ticker: "FSLR", score: 40, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "NRG");
+});
+
+test("computeLaneRank: named leader skips a WATCH peer whose own setupState is INVALIDATED", () => {
+  // Live repro 2026-09-12: SKHY sat #1 of 8 on WATCH by raw score (59) while its own Entry section
+  // already read "Serving section: RESEARCH" / "Setup: INVALIDATED" (thesis broke pre-entry). A
+  // different WATCH ticker's brief naming SKHY as "Desk leader: SKHY @ 59" would read as "look at
+  // this one" about a setup the desk has already downgraded out of WATCH.
+  const lanes = [
+    row("SKHY", 59, "WATCH", undefined, undefined, "INVALIDATED"),
+    row("COIN", 55.4, "WATCH", undefined, undefined, "TRIGGERED"),
+    row("GOOGL", 51, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 51, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "COIN", "the raw #1 (SKHY) is invalidated — the named leader must skip it");
+  assert.equal(snap!.topScore, 55.4);
+  assert.equal(snap!.rank, 3, "rank still reflects the FULL peer set (raw score order) — invalidation doesn't change standing");
+});
+
+test("computeLaneRank: named leader never points at the play's OWN ticker, even when it is the best eligible peer", () => {
+  // Live repro 2026-09-12: COIN's OWN brief, same board as the test above (SKHY #1 by raw score,
+  // INVALIDATED; COIN next-best and genuinely eligible). Naively skipping only invalidated/exiting
+  // peers over the FULL sorted list (which includes the play's own row) picks COIN's own row as
+  // "the leader" once SKHY is excluded — COIN's real brief rendered "**#2 of 8** on WATCH lane...
+  // Desk leader: **COIN** @ **55.4**", naming itself as the comparison peer to watch.
+  const lanes = [
+    row("SKHY", 59, "WATCH", undefined, undefined, "INVALIDATED"),
+    row("COIN", 55.4, "WATCH", undefined, undefined, "TRIGGERED"),
+    row("GOOGL", 51, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "COIN", score: 55.4, status: "WATCH", contract: undefined }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.rank, 2, "SKHY still occupies raw rank #1 despite being invalidated");
+  assert.notEqual(snap!.topTicker, "COIN", "the named leader must never be the play describing itself");
+  assert.equal(snap!.topTicker, "GOOGL", "next-best eligible peer excluding self and the invalidated #1");
+});
+
+test("computeLaneRank: named leader falls back to a real OTHER peer, never self, when every other peer is exiting/invalidated", () => {
+  const lanes = [
+    row("SKHY", 59, "WATCH", undefined, undefined, "INVALIDATED"),
+    row("COIN", 55.4, "WATCH", undefined, undefined, "INVALIDATED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "COIN", score: 55.4, status: "WATCH", contract: undefined }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "SKHY", "no eligible peer besides self exists -- fall back to the best real OTHER peer, not self");
+});
+
+test("computeLaneRank: selfInvalidated is true only when THIS play's own setupState is INVALIDATED", () => {
+  const lanes = [row("SKHY", 59, "WATCH"), row("COIN", 55.4, "WATCH")];
+  const invalidated = computeLaneRank(play({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }), lanes);
+  assert.ok(invalidated);
+  assert.equal(invalidated!.selfInvalidated, true);
+
+  const healthy = computeLaneRank(play({ ticker: "COIN", score: 55.4, status: "WATCH", setupState: "TRIGGERED" }), lanes);
+  assert.ok(healthy);
+  assert.equal(healthy!.selfInvalidated, false);
+});
+
+test("laneRankSection: suppresses the rank-1 praise line when the play's own thesis is invalidated", () => {
+  // Same live repro as above — the rank-1 self-claim ("Top-ranked play... size and attention follow
+  // score") must not render when this exact response's Entry section already says the thesis broke.
+  const lanes = [row("SKHY", 59, "WATCH"), row("COIN", 55.4, "WATCH")];
+  const sec = laneRankSection(play({ ticker: "SKHY", score: 59, status: "WATCH", setupState: "INVALIDATED" }), lanes);
+  assert.ok(sec);
+  assert.match(sec!.body, /#1 of 2/, "rank stats stay honest regardless of invalidation");
+  assert.doesNotMatch(sec!.body, /Top-ranked play in this bucket/);
+});
+
+test("laneRankSection: suppresses the rank-1 praise line when the play's own manageAction calls for reducing", () => {
+  // Live repro 2026-09-12: CRWD sat #1 of 90 on OPEN by raw score (87) with its own manage engine
+  // EXIT_RUNNER (round-tripped +130% peak -> -10%, all trims banked, runner only) — "Top-ranked
+  // play in this bucket — size and attention follow score" would directly contradict the same
+  // brief's own "Desk says TRIM ... consider protecting what's left."
+  const lanes = [row("CRWD", 87, "COMMIT", undefined, "EXIT_RUNNER"), row("AAPL", 60, "COMMIT")];
+  const sec = laneRankSection(
+    play({ ticker: "CRWD", score: 87, status: "HOLD", manageAction: "EXIT_RUNNER" }),
+    lanes,
+  );
+  assert.ok(sec);
+  assert.match(sec!.body, /#1 of 2/, "rank stats stay honest regardless of exit state");
+  assert.doesNotMatch(sec!.body, /Top-ranked play in this bucket/);
+});
+
+test("computeLaneRank: selfReducing is true only when THIS play's own manageAction calls for reducing", () => {
+  const lanes = [row("AAPL", 84.4, "COMMIT"), row("NN", 23, "COMMIT"), row("CG", 3, "COMMIT")];
+  const reducing = computeLaneRank(play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }), lanes);
+  assert.ok(reducing);
+  assert.equal(reducing!.selfReducing, true);
+
+  const holding = computeLaneRank(play({ ticker: "AAPL", score: 84.4, status: "HOLD", manageAction: "HOLD" }), lanes);
+  assert.ok(holding);
+  assert.equal(holding!.selfReducing, false);
+});
+
+test("laneRankSection: below-median wording drops 'adding size' when the play's own plan is to reduce", () => {
+  // Live repro 2026-09-12: CG sat #90/90 by raw entry-time score (3) — a real +169.2%/+134.6% exec
+  // winner already on TRIM (manageAction TAKE_PARTIAL) — and this exact line said "confirm before
+  // adding size" right after the brief's own "Desk says TRIM ... Bank partial into strength."
+  const lanes = [row("AAPL", 84.4, "COMMIT"), row("NN", 23, "COMMIT"), row("CG", 3, "COMMIT")];
+  const sec = laneRankSection(
+    play({ ticker: "CG", score: 3, status: "HOLD", manageAction: "TAKE_PARTIAL" }),
+    lanes,
+  );
+  assert.ok(sec);
+  assert.doesNotMatch(sec!.body, /confirm before adding size/, "backwards advice on a position already being trimmed");
+  assert.match(sec!.body, /reducing, not adding/);
+});
+
+test("laneRankSection: below-median wording keeps 'confirm before adding size' for a play that's just HOLDing", () => {
+  const lanes = [row("AAPL", 84.4, "COMMIT"), row("CG", 23, "COMMIT"), row("NN", 3, "COMMIT")];
+  const sec = laneRankSection(play({ ticker: "NN", score: 3, status: "HOLD", manageAction: "HOLD" }), lanes);
+  assert.ok(sec);
+  assert.match(sec!.body, /confirm thesis before adding size/, "a plain HOLD is still a legitimate add-size caution");
+});
+
+test("computeLaneRank: deltaFromMedian is rounded, not a raw float subtraction artifact", () => {
+  const snap = computeLaneRank(play({ ticker: "AMZN", score: 57.2, status: "WATCH" }), [
+    row("AMZN", 57.2, "WATCH"),
+    row("FSLR", 45.4, "WATCH"),
+    row("GOOGL", 45.4, "WATCH"),
+  ]);
+  assert.ok(snap);
+  // Odd peer count (3) so the median is a single element (45.4), isolating the rounding behavior
+  // under test from the even-n averaging behavior covered separately below.
+  // Live repro (AMZN brief, 2026-09-09): 57.2 - 45.4 === 11.800000000000004 in raw IEEE754 math.
+  assert.equal(snap!.medianScore, 45.4);
+  assert.equal(snap!.deltaFromMedian, 11.8, "must round to 1dp, not leak 11.800000000000004 into the narrative");
+});
+
+test("computeLaneRank: median for an EVEN peer count averages the two middle scores, not just the lower one", () => {
+  // Live repro 2026-09-14 (TSM brief, WATCH lane, exactly 2 peers): pre-fix code read
+  // scores[floor(2/2)] = scores[1] off the descending-sorted array, which is the LOWER of the two
+  // scores (51.8), not the statistical median of a 2-element set (their average, 55.5).
+  const snap = computeLaneRank(play({ ticker: "TSM", score: 59.2, status: "WATCH" }), [
+    row("TSM", 59.2, "WATCH"),
+    row("ORCL", 51.8, "WATCH"),
+  ]);
+  assert.ok(snap);
+  assert.equal(snap!.medianScore, 55.5, "median of {59.2, 51.8} is their average, not the lower value 51.8");
+  assert.equal(snap!.deltaFromMedian, 3.7);
+});
+
+test("computeLaneRank: median for a 4-peer (even) lane averages the two middle scores", () => {
+  const snap = computeLaneRank(play({ ticker: "B", score: 60, status: "HOLD" }), [
+    row("A", 80, "COMMIT"),
+    row("B", 60, "COMMIT"),
+    row("C", 40, "COMMIT"),
+    row("D", 20, "COMMIT"),
+  ]);
+  assert.ok(snap);
+  // Sorted desc: 80, 60, 40, 20 — middle two are 60 and 40, average 50 (not scores[2]=40).
+  assert.equal(snap!.medianScore, 50);
+});
+
+test("computeLaneRank: playScore uses the raw laneRows precision, not a pre-rounded TerminalPlay.score", () => {
+  // Live repro (AAPL WATCH brief, 2026-09-17): terminalPlayFromHorizon (adapters.ts) rounds
+  // TerminalPlay.score to the nearest integer for board display (Math.round(25.5) === 26), but
+  // laneRows (HorizonPlay[]) retains the raw 25.5. Passing the rounded `play.score` straight
+  // through made "score 26 (-23.6 vs median)" disagree with the SAME brief's own "Why this
+  // setup" pillar sum (19.4 + 4.2 + 1.9 = 25.5) three sections earlier — same fact, two
+  // different numbers, in one document. `play.score` is deliberately set to the ROUNDED 26 here
+  // (what the real adapter produces) while the matching laneRows row carries the raw 25.5, so a
+  // regression back to reading play.score directly fails this test.
+  const snap = computeLaneRank(play({ ticker: "AAPL", score: 26, status: "WATCH" }), [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+    row("AAPL", 25.5, "WATCH"),
+  ]);
+  assert.ok(snap);
+  assert.equal(snap!.playScore, 25.5, "must read the raw laneRows score (25.5), not the rounded TerminalPlay.score (26)");
+  assert.equal(snap!.medianScore, 49.6);
+  assert.equal(snap!.deltaFromMedian, -24.1, "delta must be computed from the raw score (25.5 - 49.6), not the rounded one (26 - 49.6 = -23.6)");
+});
+
+test("computeLaneRank: playScore falls back to TerminalPlay.score when the play's own row is absent from laneRows", () => {
+  // Defensive fallback only — production laneRows is expected to always include the play's own
+  // row, but a caller passing a partial list (or a test) must still get a sane playScore rather
+  // than undefined/NaN.
+  const snap = computeLaneRank(play({ ticker: "AAPL", score: 26, status: "WATCH" }), [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+  ]);
+  assert.ok(snap);
+  assert.equal(snap!.playScore, 26, "no matching laneRows row for AAPL — falls back to play.score");
+});
+
+test("computeLaneRank: a WATCH peer whose score cleared the floor (status COMMIT, no liveStatus) still counts as a WATCH peer", () => {
+  // Live repro (LITE, 2026-09-17): status "COMMIT" on a HorizonPlay row is the FLOOR-GATE flag
+  // (serving.ts's observablesFromHorizonPlay: `aboveFloor: play.status === "COMMIT"`), not a
+  // lifecycle/section field — a pre-entry candidate whose score clears scoreFloor legitimately
+  // keeps status "COMMIT" while its serving section is still "WATCH" (sectionForSwingPlay: FORMING
+  // or below-floor-trigger both serve WATCH regardless of the floor flag). The old rowInBucket
+  // checked `row.status === "WATCH"` literally, so a floor-cleared WATCH candidate was invisible
+  // to every OTHER WATCH peer's rank computation — live: XOM (score 52.7) and AAPL (score 25.5)
+  // both computed themselves against a 3-peer pool that excluded LITE (score 71, the real leader),
+  // so XOM's own brief read "Lane leader — #1 of 3" despite not actually being the highest score
+  // among real WATCH candidates. `row("LITE", 71, "COMMIT", ..., null)` reproduces the exact shape:
+  // status COMMIT, no liveStatus (the `null` 7th arg overrides the helper's OPEN default).
+  const lanes = [
+    row("XOM", 52.7, "WATCH"),
+    row("TSM", 49.6, "WATCH"),
+    row("AAPL", 25.5, "WATCH"),
+    row("LITE", 71, "COMMIT", undefined, undefined, undefined, null),
+  ];
+  const xomSnap = computeLaneRank(play({ ticker: "XOM", score: 52.7, status: "WATCH" }), lanes);
+  assert.ok(xomSnap);
+  assert.equal(xomSnap!.total, 4, "LITE must be counted as a real WATCH peer");
+  assert.equal(xomSnap!.rank, 2, "XOM ranks #2 once LITE (71) is correctly included, not #1");
+
+  const liteSnap = computeLaneRank(play({ ticker: "LITE", score: 71, status: "WATCH" }), lanes);
+  assert.ok(liteSnap);
+  assert.equal(liteSnap!.total, 4);
+  assert.equal(liteSnap!.rank, 1, "LITE (the real highest score) must rank #1, not fall through to a clamped last-place");
+  assert.equal(liteSnap!.playScore, 71);
+});
+
+test("computeLaneRank: a genuinely open position (status COMMIT + liveStatus) is never counted as a WATCH peer", () => {
+  // Companion to the test above — proves the fix didn't also let a REAL open position leak into a
+  // WATCH-bucket comparison just because it too carries status "COMMIT". Only 1 real WATCH peer
+  // (NRG itself) remains once BYND (a real open position) is correctly excluded, and
+  // computeLaneRank requires >= 2 peers to return a snapshot at all — so this must read null, not
+  // silently include BYND to reach the 2-peer minimum.
+  const play1 = play({ ticker: "NRG", score: 45, status: "WATCH" });
+  const lanes = [
+    row("NRG", 45, "WATCH"),
+    row("BYND", 90, "COMMIT"), // real open position (liveStatus defaults to "OPEN" for status COMMIT)
+  ];
+  const snap = computeLaneRank(play1, lanes);
+  assert.equal(snap, null, "BYND must not count as a WATCH peer, leaving only 1 real peer (< 2 minimum)");
 });

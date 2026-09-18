@@ -63,6 +63,33 @@ describe("priorDayFromDailyBars", () => {
     });
   });
 
+  it("post-close same day: anchorSessionComplete returns TODAY's own settled bar, not yesterday's (2026-09-12 live bug)", () => {
+    // Reproduces the live 2026-09-12 SPX cold-replica bug: a cold replica booting AFTER
+    // Friday's own 4pm ET close (still "today" in ET calendar terms until midnight) served
+    // Thursday's close as the current SPX price because the default (anchorSessionComplete
+    // omitted/false) always treats "today"'s own bar as in-progress and skips it — correct
+    // pre-market/RTH, wrong once the session has genuinely ended. Numbers match the live
+    // incident: Thu 2026-09-10 close 7591.7, Fri 2026-09-11 close 7656.98.
+    const bars = [
+      bar("2026-09-10", 7620.11, 7580.02, 7591.7), // Thu
+      bar("2026-09-11", 7677.02, 7636.75, 7656.98), // Fri — today's own now-COMPLETE session
+    ];
+    // RED (pre-fix behavior, still correct default): without the flag, today's own bar is
+    // skipped and the stale prior day is returned.
+    assert.deepEqual(priorDayFromDailyBars(bars, "2026-09-11"), {
+      pdh: 7620.11,
+      pdl: 7580.02,
+      pdc: 7591.7,
+    });
+    // GREEN (the fix): a caller that knows today's own session has already closed passes
+    // `anchorSessionComplete: true` and gets today's own settled close instead.
+    assert.deepEqual(priorDayFromDailyBars(bars, "2026-09-11", true), {
+      pdh: 7677.02,
+      pdl: 7636.75,
+      pdc: 7656.98,
+    });
+  });
+
   it("handles weekend gaps (Monday 06-29 -> prior Friday 06-26)", () => {
     const bars = [
       bar("2026-06-25", 7419.08, 7323.5, 7357.49),

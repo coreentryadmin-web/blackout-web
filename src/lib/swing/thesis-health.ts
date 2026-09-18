@@ -48,6 +48,17 @@ const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string>> =
   flow_corroboration: "no signals",
 };
 
+/**
+ * Regime label written ONLY by horizonPlayFromBangerPosition/horizonPlayFromBangerWatch
+ * (src/lib/swing/banger-lane-merge.ts) — a fixed constant stamped on every banger_positions ledger
+ * row regardless of ticker, contract, or price action, never produced by the real regime-fit calc a
+ * native swing position uses. Unlike signalKinds=["BANGER"] alone (which a NATIVE swing position can
+ * also legitimately carry, as just one of several real Tier-0 discovery paths — see
+ * SwingDiscoveryPath in discovery.ts — while still running the real scoring/setupState/entryStatus
+ * engine), this exact string is a safe, unambiguous fingerprint of the stamped-constant merge path.
+ */
+const BANGER_LEDGER_REGIME_LABEL = "BREAKOUT · BANGER";
+
 /** True when the aggregate health % is built from generic defaults — not a calibrated read. */
 export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefined): boolean {
   if (!h?.pillars?.length) return false;
@@ -58,6 +69,17 @@ export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefin
     const pillar = h.pillars.find((p) => p.id === mappedId);
     if (pillar?.currentLabel === defaultLabel) return true;
   }
+  // Banger-origin ledger rows stamp setupState/entryStatus/signalKinds/regime as fixed constants on
+  // EVERY row — there is no real per-position 7-pillar dossier for this lane, just one mechanical
+  // price trigger (see horizonPlayFromBangerPosition's header comment). None of the sentinel labels
+  // above match (the stamped values are concrete, not "unknown"/"n/a"/"no signals"), so every
+  // Banger-origin row previously rendered a fabricated-precision pillar breakdown identical across
+  // every ticker at the same DTE (live repro 2026-09-15: ALLT/CGEM/DRIP all scored exactly 70% with
+  // byte-identical pillar text and deltas, despite different tickers/prices/contracts) — the exact
+  // C6 violation LARGO-PRODUCT-CONTRACT.md names: "If a product cannot produce a calibrated score,
+  // OMIT the field... An invented score is worse than nothing."
+  const regimePillar = h.pillars.find((p) => p.id === PILLAR_ID_MAP.regime);
+  if (regimePillar?.currentLabel === BANGER_LEDGER_REGIME_LABEL) return true;
   return false;
 }
 
@@ -127,24 +149,39 @@ function regimeScore(regime: string | null | undefined, factors: DeckFactor[] | 
   return { commit: score, current: score, label: regime ?? (top ? top.label : "unread") };
 }
 
-function thetaBudgetScore(dte: number | null | undefined, subLane: string | null | undefined): { commit: number; current: number; label: string } {
+// Unlike the other score functions in this file, theta budget's commit and current SCORES
+// genuinely diverge from a single `dte` input — time decay is the whole point of the pillar, so
+// "at commit" (full runway assumed) and "now" (however close to the cliff/migration DTE) are
+// different facts even though nothing else about the setup changed. `commitLabel` must diverge
+// from the current-state `label` to match: leaving them identical produced a live, real "drifted
+// DTE 4 migrate → DTE 4 migrate" narrative line (CLSK, 2026-09-14) that read as a no-op transition
+// despite the underlying score genuinely fading (0.75→0.55, crossing into "faded" status) — see
+// FINDINGS for the full repro.
+function thetaBudgetScore(
+  dte: number | null | undefined,
+  subLane: string | null | undefined,
+): { commit: number; current: number; label: string; commitLabel: string } {
   if (dte == null || !Number.isFinite(dte)) {
-    return { commit: 0.5, current: 0.4, label: "DTE n/a" };
+    return { commit: 0.5, current: 0.4, label: "DTE n/a", commitLabel: "DTE n/a" };
   }
   const lane = (subLane as SwingSubLane | null) ?? null;
   const spec = lane ? SWING_SUBLANE_MANAGE[lane] : null;
   const cliff = spec?.expiryRiskDte ?? 2;
-  if (dte <= cliff) return { commit: 0.7, current: 0.15, label: `DTE ${dte} cliff` };
-  if (dte <= (spec?.migrationDte ?? 4)) return { commit: 0.75, current: 0.55, label: `DTE ${dte} migrate` };
-  return { commit: 0.85, current: 0.85, label: `${dte}DTE runway` };
+  if (dte <= cliff) {
+    return { commit: 0.7, current: 0.15, label: `DTE ${dte} cliff`, commitLabel: "full runway assumed" };
+  }
+  if (dte <= (spec?.migrationDte ?? 4)) {
+    return { commit: 0.75, current: 0.55, label: `DTE ${dte} migrate`, commitLabel: "full runway assumed" };
+  }
+  return { commit: 0.85, current: 0.85, label: `${dte}DTE runway`, commitLabel: `${dte}DTE runway` };
 }
 
-function toPillarPair(row: { commit: number; current: number; label: string }): {
+function toPillarPair(row: { commit: number; current: number; label: string; commitLabel?: string }): {
   commit: { score: number; label: string };
   current: { score: number; label: string };
 } {
   return {
-    commit: { score: row.commit, label: row.label },
+    commit: { score: row.commit, label: row.commitLabel ?? row.label },
     current: { score: row.current, label: row.label },
   };
 }
@@ -264,8 +301,6 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
   const pillars: ThesisPillarState[] = defs.map((d) => {
     const weight = DEFAULT_WEIGHTS[d.id];
     const status = pillarStatus(d.commit.score, d.current.score);
-    const contributionPts = Math.round(weight * d.current.score * 100);
-    const deltaPts = Math.round(weight * (d.current.score - d.commit.score) * 100);
     return {
       id: PILLAR_ID_MAP[d.id],
       label: PILLAR_LABELS[d.id],
@@ -275,12 +310,27 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
       commitLabel: d.commit.label,
       currentLabel: d.current.label,
       status,
-      contributionPts,
-      deltaPts,
+      // Placeholder — degradeFromManage below can still mutate currentScore, so the real
+      // contributionPts/deltaPts are computed AFTER it runs, not here. See that recompute pass.
+      contributionPts: 0,
+      deltaPts: 0,
     };
   });
 
   degradeFromManage(input.manageAction, pillars);
+
+  // Bug fixed 2026-09-13 (live audit): contributionPts/deltaPts used to be computed BEFORE
+  // degradeFromManage ran, so a pillar it mutated (persistence, on EXIT/STOP_OUT/TAKE_PARTIAL/
+  // EXIT_RUNNER) showed its OLD, pre-degrade point values alongside its NEW, post-degrade
+  // currentScore/status/currentLabel — e.g. a pillar labeled "lost"/"exit signal" could still
+  // display a positive contributionPts as if nothing had changed. The aggregate `health` below
+  // was never affected (it always read the post-mutation currentScore straight off `pillars`),
+  // only each pillar's OWN displayed point values were stale. Recomputed here, after the mutation,
+  // from each pillar's own (possibly-updated) currentScore/commitScore/weight.
+  for (const p of pillars) {
+    p.contributionPts = Math.round(p.weight * p.currentScore * 100);
+    p.deltaPts = Math.round(p.weight * (p.currentScore - p.commitScore) * 100);
+  }
 
   const health = Math.round(
     pillars.reduce((sum, p) => sum + p.weight * p.currentScore, 0) * 100,

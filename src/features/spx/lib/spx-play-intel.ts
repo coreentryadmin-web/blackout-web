@@ -23,6 +23,15 @@ function resolveLeanDirection(
   if (confluence.bias === "bearish") return "short";
   if (confluence.score >= 12) return "long";
   if (confluence.score <= -12) return "short";
+  // Neutral bias, |score| < 12: still no "explicit lean" per the thresholds above, but the
+  // caller already computed and displays this score, so a fallback that CONTRADICTS its sign is
+  // actively misleading rather than merely uncertain. Live case that shipped this bug (2026-09-09
+  // audit cycle): score = +8 (net weakly bullish) with above_vwap = false (price below VWAP that
+  // snapshot) — the two disagree, and the old code used above_vwap unconditionally, producing a
+  // "Puts lean" line under a net-positive score. Prefer the score's own sign; only fall through to
+  // the VWAP-position proxy when the score carries no lean information at all (exactly zero).
+  if (confluence.score > 0) return "long";
+  if (confluence.score < 0) return "short";
   return desk.above_vwap ? "long" : "short";
 }
 

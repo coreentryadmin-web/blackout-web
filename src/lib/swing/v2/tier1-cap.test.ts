@@ -19,7 +19,8 @@ test("resolveSwingTier1Cap: V2 dynamic sizes to pool with floor/ceiling (live de
   assert.equal(wide.cap, 200); // ceiling binds: ceil(600*0.35)=210 → 200
 
   const mid = resolveSwingTier1Cap(200, 40, env);
-  assert.equal(mid.cap, 80); // ceil(200*0.35)=70 → floor 80
+  // POOL_PCT raised 0.35→0.45 (2026-09-08): ceil(200*0.45)=90, above the floor.
+  assert.equal(mid.cap, 90);
 });
 
 test("resolveSwingTier1Cap: kill-switch disables dynamic", () => {

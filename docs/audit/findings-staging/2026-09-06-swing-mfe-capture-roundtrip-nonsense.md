@@ -1,4 +1,4 @@
-# Ask Largo swing closed-play post-mortem — MFE capture renders a nonsensical negative percentage on a round-trip loss
+## Ask Largo swing closed-play post-mortem — MFE capture renders a nonsensical negative percentage on a round-trip loss
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Swing / Ask Largo closed-play "post-mortem" coaching (both the intel section and the narrative coaching layer) |
 | **Files** | `src/lib/swing/mfe-capture.ts` (new), `src/lib/swing/mfe-capture.test.ts` (new), `src/lib/swing/play-brief-intel.ts`, `src/lib/swing/play-brief-narrative-coaching.ts`, plus their test files |
 
-## Context
+### Context
 
 Found live during the standing Ask Largo × Night Hawk Swings ownership mandate's 5-engine
 monitor cycle. Hit `GET /api/market/swing/play-brief` for two real CLOSED positions
@@ -24,7 +24,7 @@ excursion) capture is meant to answer "what fraction of the peak favorable move 
 keep," a number that only makes sense in roughly the 0–100%+ range when the exit itself is still
 a gain.
 
-## Root cause
+### Root cause
 
 Both `lessonsSection` (`play-brief-intel.ts`) and `closedCoaching` (`play-brief-narrative-coaching.ts`)
 independently computed the same fallback:
@@ -45,7 +45,7 @@ entire gain and then lost more on top. This is a categorically different outcome
 not a worse point on the same capture scale, so forcing it through the capture language/formula
 was always going to produce nonsense for any sufficiently large loss after a real peak.
 
-## Fix
+### Fix
 
 Extracted the shared math into a new pure helper, `mfeCaptureOutcome()` (`mfe-capture.ts`), used by
 both call sites (this bug was duplicated verbatim in two files — the same class of duplication
@@ -60,7 +60,7 @@ union:
   the ratio through the "MFE capture: N%" phrasing.
 - `null` when there isn't enough data to say anything (no peak, or peak <= 0).
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 New `mfe-capture.test.ts` (5 tests) unit-tests the helper in isolation, including the exact
 reproduced production numbers (peak 25.7, exit -40.8).
@@ -73,7 +73,7 @@ than passing vacuously. Restored → **24/24 pass** across
 `play-brief-intel.test.ts`/`play-brief-narrative-coaching.test.ts`/`mfe-capture.test.ts`.
 `tsc --noEmit` clean. Full `npm test` (Node 20): **12903/12903 pass, 0 fail, 3 skipped**.
 
-## Blast radius
+### Blast radius
 
 - Both call sites that computed this ratio (`lessonsSection` in `play-brief-intel.ts`,
   `closedCoaching` in `play-brief-narrative-coaching.ts`) — confirmed via grep these are the only
@@ -83,7 +83,7 @@ than passing vacuously. Restored → **24/24 pass** across
 - No schema/API shape change — `TerminalPlay.mfeCapturePct` is untouched; this only changes how the
   two coaching functions interpret it when absent.
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 - Did not attempt to wire up a real `mfe_capture_pct` producer (DB column + write path) in this PR —
   that is a separate, larger change (schema migration, a write-time computation, a backfill

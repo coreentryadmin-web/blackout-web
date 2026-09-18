@@ -155,6 +155,10 @@ confirmed structurally: no condor outcome string appears in `labelFromPlanOutcom
 
 ## 6. Swing — the multi-truth grader (a different METHODOLOGY, not a variant view)
 
+> **NOT CURRENTLY LIVE (verified 2026-09-15, forensic batch 36) — this whole section describes an
+> architecturally-intended EOD reconciliation pass that was never wired in, not what production
+> actually serves.** See the correction after the table before reading this as current behavior.
+
 Documented in full in `docs/audit/SWING-ENGINE.md` (search "Multi-truth grader" / `grade.ts`).
 `gradeSwingPosition` (`src/lib/swing/grade.ts`) grades FIVE independent truth families over a
 multi-session position, because a −50%/+100%/15:30-same-day outcome literally does not apply to a
@@ -174,6 +178,36 @@ be CONFIRMED while the financial truth is still a scratch on a bad fill, and tha
 information, not a bug). `ZERODTE_RECORD_METHODOLOGY`'s "never blend the three methodologies"
 rule (0DTE premium %, Slayer points, Night Hawk stock-move %) already establishes this precedent;
 Swing extends it to five truths instead of blending into one.
+
+**CORRECTION (2026-09-15, forensic batch 36) — this grader is pure/tested code with zero
+production call sites.** Repo-wide grep confirms `swing/grade.ts`'s `gradeSwingPosition` is
+imported ONLY by its own `grade.test.ts` — no cron, no API route, no other production file ever
+calls it. Live confirmation: `GET /api/market/swing/record?days=90` (90-day window, 33 graded
+legs) shows `grade.methodology` as `"swing.roll.markfreeze.v1"` on **33/33 rows, zero exceptions**
+— never the 5-truth shape this section describes.
+
+What's actually live: the ONLY function that ever transitions a swing position to CLOSED/ROLLED is
+`closeAndRollSwingPosition` (`roll.ts`), which freezes the parent leg via `gradeParentFromMark`
+(`roll-plan.ts`) — a single point-in-time `(mark − entry) / entry × 100` calc, written through a
+DIFFERENT, same-named `gradeSwingPosition` (a DB write wrapper, `db.ts:7734` — do not confuse the
+two functions sharing one name across `swing/grade.ts` and `db.ts`). `gradeParentFromMark`'s own
+`grade_json.note` field is explicit about the intended design: *"parent leg frozen at roll time
+from the live mark; the EOD multi-truth grader never re-litigates a frozen leg"* — i.e. the
+architecture always intended the hot-path freeze above to be provisional, superseded by a separate
+EOD reconciliation pass using the real 5-truth grader. **That EOD pass does not exist** — no cron
+job, no scheduled task, nothing in `cron-registry.ts` calls `swing/grade.ts`'s grader. So every
+closed swing position a member ever sees is graded ONLY by the cheap markfreeze number; EXECUTION,
+PATH (underlying MFE/MAE), THESIS (CONFIRMED/INVALIDATED/OPEN), and MANAGEMENT are never computed
+for any live position. What members/Largo see for "why did this close" (`closedReasonFromRow`,
+`closed-plays.ts`) is a cruder sign-of-P&L heuristic inferred from the financial result, not an
+independent structural-level THESIS walk.
+
+**Not fixed here** — building the missing EOD reconciliation pass (or deciding it should stay
+unbuilt and this section should describe an intentionally-deferred design instead) is a real
+product/scope decision with live-trading-path surface (what changes for members, where do the
+5 truths get exposed, does it replace or supplement the markfreeze number), raised for a second
+opinion on PR #4076 rather than built solo. This correction only fixes the SPEC DOC to describe
+what actually ships today; no application code changed.
 
 ---
 
@@ -205,9 +239,10 @@ drift.
 | 0DTE Command record's labeled `mechanical` comparison | `record.ts` MECHANICAL (§2, executable-preferred, same population as headline minus the engine-exit override) | `record.ts` |
 | 0DTE feature store / intelligence base rates | `labelFromPlanOutcome` — **raw MID DB columns** | `feature-store.ts` → `db.ts` |
 | Iron condor ledger rows | `gradeCondorFromBars` | `condor.ts` |
-| Swing position record | `gradeSwingPosition` (5 truths) | `swing/grade.ts` |
+| Swing position record (LIVE — what members actually see) | `gradeParentFromMark` (single markfreeze P&L, NOT the 5 truths) | `roll-plan.ts` → written via `db.ts`'s `gradeSwingPosition` |
+| Swing position record (NOT wired — pure/tested only, §6 correction) | `gradeSwingPosition` (5 truths) | `swing/grade.ts` |
 | Banger scan backtest (`--grade`) | `gradeScaleOut` | `scale-out.ts` |
-| Swing FINANCIAL truth | `gradeBangerScaleOut` (same function as Banger) | `banger-scale-out-grade.ts` |
+| Swing FINANCIAL truth (not wired — see §6 correction) | `gradeBangerScaleOut` (same function as Banger) | `banger-scale-out-grade.ts` |
 
 ---
 

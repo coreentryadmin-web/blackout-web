@@ -25,7 +25,7 @@ import type { SwingPositionInsert, SwingSnapshotInsert } from "../db";
 
 type GradeCall = { id: number; g: ParentGradeFreeze & { status: "CLOSED" | "ROLLED" } };
 
-function fakeLedger(opts?: { failChildInsert?: boolean; failGrade?: boolean }) {
+function fakeLedger(opts?: { failChildInsert?: boolean; failGrade?: boolean; failSnapshot?: boolean }) {
   const gradeCalls: GradeCall[] = [];
   const childInserts: SwingPositionInsert[] = [];
   const snapshots: SwingSnapshotInsert[] = [];
@@ -42,6 +42,7 @@ function fakeLedger(opts?: { failChildInsert?: boolean; failGrade?: boolean }) {
       return (nextChildId += 1);
     },
     async insertSnapshot(s) {
+      if (opts?.failSnapshot) throw new Error("snapshot insert boom");
       snapshots.push(s);
       return (nextSnapId += 1);
     },
@@ -191,6 +192,50 @@ test("ROLL: a later child write cannot mutate the frozen parent grade (separate 
   assert.equal(gradeCalls.length, 1);
   assert.equal(childInserts.length, 1);
   assert.equal("realized_pnl_pct" in childInserts[0]!, false);
+});
+
+test("ROLL: a snapshot-append failure AFTER the terminal write succeeds must NOT be reported as parentGraded:false/childId:null", async () => {
+  // The snapshot append is evidence, appended OUTSIDE the all-or-nothing tx (see roll.ts's own comment on
+  // this ordering) — by the time it runs, the parent is already frozen ROLLED and the child is already
+  // inserted. A failure here is a real, separate fact (the tick's evidence write hiccuped) and must not be
+  // conflated with the terminal write itself failing: swing-active-refresh/route.ts gates its member-facing
+  // terminal Discord notification on `roll.parentGraded`, so reporting parentGraded:false here would silently
+  // drop that notification for a roll that genuinely completed.
+  const { deps, gradeCalls, childInserts } = fakeLedger({ failSnapshot: true });
+  const out = await closeAndRollSwingPosition(deps, {
+    parent: parent({ id: 42, root_position_id: null, roll_seq: 0 }),
+    verdict: verdict({ rollIntent: { roll: true, reason: "roll" } }),
+    parentGrade: grade,
+    childSpec,
+    snapshot: snap,
+  });
+
+  // The terminal write actually happened — outcome must say so.
+  assert.equal(out.action, "ROLL");
+  assert.equal(out.parentGraded, true);
+  assert.equal(out.childId != null, true);
+  assert.equal(gradeCalls.length, 1);
+  assert.equal(childInserts.length, 1);
+
+  // The snapshot failure still surfaces, just without poisoning the completed-write fields.
+  assert.equal(out.snapshotId, null);
+  assert.match(out.error ?? "", /snapshot insert boom/);
+});
+
+test("CLOSE: a snapshot-append failure AFTER the terminal grade succeeds must NOT be reported as parentGraded:false", async () => {
+  const { deps, gradeCalls } = fakeLedger({ failSnapshot: true });
+  const out = await closeAndRollSwingPosition(deps, {
+    parent: parent(),
+    verdict: verdict({ rung: "structural_stop", rollIntent: { roll: false, reason: "thesis broken" } }),
+    parentGrade: grade,
+    snapshot: snap,
+  });
+
+  assert.equal(out.action, "CLOSE");
+  assert.equal(out.parentGraded, true);
+  assert.equal(gradeCalls.length, 1);
+  assert.equal(out.snapshotId, null);
+  assert.match(out.error ?? "", /snapshot insert boom/);
 });
 
 // ─── CLOSE: broken-thesis veto is a close, not a roll ──────────────────────────

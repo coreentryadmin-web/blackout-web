@@ -33,10 +33,18 @@
 //   · win rate does not decay with momentum rank (ranks 1-40: 43.1%, 41-100: 44.9%, 101+: 50.0%),
 //     i.e. the RANKING, not the cap size, is the component without demonstrated signal.
 // Full write-up + re-run commands: `docs/audit/INTENTIONAL-DESIGN.md` §4.
+// 2026-09-08 (operator directive, whole-market volume complaint — "only 1 play on 0DTE all
+// session"): ceiling raised 150→220 and POOL_PCT 0.30→0.40. This is the one knob in the whole
+// gate stack with DIRECT evidence FOR raising it rather than merely an absence of evidence
+// against: the corrected 13-session re-run above found win rate does NOT decay with momentum
+// rank (43.1% top-40, 44.9% ranks 41-100, 50.0% ranks 101+) and the ceiling already binds on
+// 10/13 measured sessions — i.e. real candidates are being cut off on a majority of days with
+// no quality justification for cutting them. Floor (40) is unchanged — it only matters on thin
+// days where the pool itself is small.
 const DEFAULT_FLOOR = 40;
-const DEFAULT_CEILING = 150;
+const DEFAULT_CEILING = 220;
 /** Fraction of the qualifying pool kept before the floor/ceiling clamp. */
-const POOL_PCT = 0.3;
+const POOL_PCT = 0.4;
 
 const TRUTHY = new Set(["1", "true", "on", "yes"]);
 const FALSEY = new Set(["0", "false", "off", "no"]);

@@ -273,6 +273,18 @@ export interface SwingStagedVerdict {
   /** The one true graduation flag: LIMITED/BROAD tier AND Wilson-LB gate passes AND point-Δ >= 15pt.
    *  FALSE at PROVISIONAL_SHADOW even when the raw verdict is "enforce" — n=10 shadows, never enforces. */
   graduated: boolean;
+  /**
+   * The SIGNAL-ON bucket — `wilsonLb`/`tier` are computed from THIS bucket's wins/n, not the wider
+   * `bucket` every wrapper also returns (signal-ON ∪ signal-OFF combined). A consumer that wants to
+   * cite `wilsonLb` alongside a sample size MUST quote `onBucket.n`/`onBucket.wins`, never the
+   * combined `bucket.n` — pairing wilsonLb with the larger combined count would cite a confidence
+   * interval next to a sample size it was not actually computed over (Largo C6/C9: a cited stat's
+   * sample size must be the population that produced it). Added for the swing play-brief's "Track
+   * record" citation (docs/audit/LARGO-PRODUCT-CONTRACT.md C10, calibration-cache.ts's distillation) —
+   * every existing consumer (commit.ts's `isCommitGraduated`) reads only `graduated`/`floorGraduated`
+   * and is unaffected by this additive field.
+   */
+  onBucket: CalibrationBucket;
 }
 
 /**
@@ -316,6 +328,7 @@ function gradeBucket(
   return {
     recommendation,
     bucket,
+    onBucket,
     tier,
     wilsonLb,
     pointDelta: recommendation.evidence.delta_win_rate_pts,

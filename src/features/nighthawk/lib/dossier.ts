@@ -168,8 +168,18 @@ let _defaultBuildCache: DossierBuildCache = createDossierBuildCache();
 
 const RECENT_SIGNAL_DAYS = 30;
 
-function parseTradeDate(row: Record<string, unknown>): Date | null {
+// `filed_at_date` (real UW congress field) and `filing_date` (real UW insider/institutional
+// field) are checked FIRST, ahead of `transaction_date` — a congress member or corporate
+// insider can legally disclose a trade up to 45/2+ days after the trade itself (STOCK Act /
+// Form 4 windows), so the DISCLOSURE date, not the trade date, is when this recency window
+// should measure from. Same root cause already fixed once this session in
+// `congressTradeDecayMultiplier` (scorer.ts, #4844) — this is the blast-radius instance that
+// governs whether a row is even considered "recent" at all (getEditionCongressTrades's window,
+// isRecentInsiderBuy's window), not just how it's decayed/weighted.
+export function parseTradeDate(row: Record<string, unknown>): Date | null {
   const raw =
+    row.filed_at_date ??
+    row.filing_date ??
     row.filed_at ??
     row.filed_date ??
     row.transaction_date ??
@@ -183,7 +193,7 @@ function parseTradeDate(row: Record<string, unknown>): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function isWithinRecentSignalWindow(row: Record<string, unknown>, days = RECENT_SIGNAL_DAYS): boolean {
+export function isWithinRecentSignalWindow(row: Record<string, unknown>, days = RECENT_SIGNAL_DAYS): boolean {
   const tradeDate = parseTradeDate(row);
   if (!tradeDate) return false;
   const cutoff = new Date();
@@ -213,12 +223,13 @@ export function resetEditionCongressCache() {
 
 async function getEditionCongressTrades(
   ticker: string,
-  cache: DossierBuildCache
+  cache: DossierBuildCache,
+  signal?: AbortSignal
 ): Promise<Record<string, unknown>[]> {
   if (!uwConfigured()) return [];
   if (!cache.congress) {
     const { fetchUwCongressTrades } = await import("@/lib/providers/unusual-whales");
-    cache.congress = (await fetchUwCongressTrades(undefined).catch(() => [])) as Record<string, unknown>[];
+    cache.congress = (await fetchUwCongressTrades(undefined, 25, signal).catch(() => [])) as Record<string, unknown>[];
   }
   const sym = ticker.toUpperCase();
   return cache.congress
@@ -229,7 +240,12 @@ async function getEditionCongressTrades(
 
 async function getEditionPredictionsSignal(
   ticker: string,
-  cache: DossierBuildCache
+  cache: DossierBuildCache,
+  // Accepted for signature consistency with the other two cache-amortized helpers above,
+  // but NOT yet forwarded into fetchUwPredictionsConsensus — that function fans out to 4
+  // further UW calls internally (insiders/smart-money/unusual/whales) and wiring real
+  // cancellation through all 4 is a separate, disclosed follow-up, not part of this patch.
+  _signal?: AbortSignal
 ): Promise<PredictionConsensusSignal | null> {
   if (!uwConfigured()) return null;
   if (!cache.predictions) {
@@ -239,10 +255,10 @@ async function getEditionPredictionsSignal(
   return cache.predictions?.top_signals?.find((s) => s.ticker === sym) ?? null;
 }
 
-async function isScreenerConfirmed(ticker: string, cache: DossierBuildCache): Promise<boolean> {
+async function isScreenerConfirmed(ticker: string, cache: DossierBuildCache, signal?: AbortSignal): Promise<boolean> {
   if (!uwConfigured()) return false;
   if (!cache.screener) {
-    cache.screener = (await fetchUwScreenerStocks(30).catch(() => [])) as Record<string, unknown>[];
+    cache.screener = (await fetchUwScreenerStocks(30, signal).catch(() => [])) as Record<string, unknown>[];
   }
   const sym = ticker.toUpperCase();
   return cache.screener.some((r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym);
@@ -251,13 +267,13 @@ async function isScreenerConfirmed(ticker: string, cache: DossierBuildCache): Pr
 const INDEX_IV_PROXY = new Set(["SPX", "SPY", "QQQ", "VIX", "IWM"]);
 
 /** Polygon VIX IV rank for index proxies; UW only as fallback for single names. */
-async function resolveIvRank(sym: string): Promise<number | null> {
+async function resolveIvRank(sym: string, signal?: AbortSignal): Promise<number | null> {
   if (INDEX_IV_PROXY.has(sym)) {
     const rank = await fetchVixIvRankPercentile().catch(() => null);
     if (rank != null) return rank;
   }
   if (!uwConfigured()) return null;
-  const raw = await fetchUwIvRank(sym).catch(() => null);
+  const raw = await fetchUwIvRank(sym, signal).catch(() => null);
   return raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
 }
 
@@ -274,10 +290,40 @@ async function resolveTickerNews(
   ].filter(Boolean);
 }
 
+/**
+ * Session-date context for earnings-proximity scoring — the same shape hunt-builder.ts's
+ * rescoreDossier already takes. Optional and additive: when omitted, scoreCandidate's
+ * earnings_date/today_ymd/tomorrow_ymd stay unset here exactly as they always have (this
+ * function's own pre-existing behavior), same as before this type/param existed.
+ */
+export type DossierSessionContext = {
+  today: string;
+  tomorrow: string;
+  tomorrow_earnings: Record<string, unknown>[];
+};
+
+/** Returns tomorrow's date (YYYY-MM-DD) if the ticker appears in tomorrow_earnings, else null.
+ *  Deliberately duplicated from hunt-builder.ts's own private helper of the same name/logic
+ *  (not imported) — hunt-builder.ts imports fetchAllDossiers FROM this file, so importing back
+ *  from hunt-builder.ts here would create a circular import. */
+export function earningsDateForTicker(
+  ticker: string,
+  tomorrowEarnings: Record<string, unknown>[],
+  tomorrow: string
+): string | null {
+  const sym = ticker.toUpperCase();
+  const hit = tomorrowEarnings.some(
+    (r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym
+  );
+  return hit ? tomorrow : null;
+}
+
 export async function fetchTickerDossier(
   ticker: string,
   regime?: NightHawkRegimeContext | null,
-  buildCache?: DossierBuildCache
+  buildCache?: DossierBuildCache,
+  signal?: AbortSignal,
+  sessionCtx?: DossierSessionContext
 ): Promise<TickerDossier> {
   // Fall back to the module-level default cache for legacy callers that do not
   // supply an explicit build cache. Concurrent edition builds must pass their
@@ -303,14 +349,20 @@ export async function fetchTickerDossier(
     financials,
     catalysts,
   ] = await Promise.all([
-    dossierFetch(() => fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }), [], t),
-    dossierFetch(() => resolveIvRank(sym), null, t),
-    // Fallback is null (not a fabricated flat book): on timeout/error we have no
-    // positioning data, so say so honestly rather than inventing net_gex:0 /
-    // negative_gamma:false. Downstream scorers null-guard `positioning`.
-    dossierFetch(() => fetchPositioningSummary(sym), null, t),
-    dossierFetch(() => buildTechnicalCard(sym), null, t),
-    dossierFetch(() => fetchPolygonNews(sym, 8), [], t),
+    // UW-touching (real cancellation wired below): fn receives dossierFetch's combined
+    // signal (this call's own 8s local timeout, OR'd with the ticker-level wall passed
+    // as `signal` here) and threads it into the real fetchMarketFlowAlertRows call.
+    dossierFetch((s) => fetchMarketFlowAlertRows({ ticker: sym, limit: 80, min_premium: 50_000 }, s), [], t, signal),
+    dossierFetch((s) => resolveIvRank(sym, s), null, t, signal),
+    // Polygon-only (not UW, not the contended shared budget) — outer signal still
+    // aborts THIS dossierFetch's own controller immediately on wall-timeout, but
+    // fetchPositioningSummary itself does not yet accept a signal to cancel its own
+    // underlying request. Fallback is null (not a fabricated flat book): on
+    // timeout/error we have no positioning data, so say so honestly rather than
+    // inventing net_gex:0 / negative_gamma:false. Downstream scorers null-guard it.
+    dossierFetch(() => fetchPositioningSummary(sym), null, t, signal),
+    dossierFetch(() => buildTechnicalCard(sym), null, t, signal),
+    dossierFetch(() => fetchPolygonNews(sym, 8), [], t, signal),
     // Merge Benzinga general news + earnings articles so the dossier scoring pass
     // sees earnings-channel items (guidance beats/misses, reaction pieces) that the
     // plain fetchBenzingaNews call omits. Bounded: 5 general + 5 earnings = 10 max.
@@ -330,26 +382,30 @@ export async function fetchTickerDossier(
         }
       }
       return merged;
-    }, [], t),
-    dossierFetch(() => fetchPolygonTickerDetails(sym), null, t),
-    dossierFetch(() => fetchShortInterest(sym), null, t),
+    }, [], t, signal),
+    dossierFetch(() => fetchPolygonTickerDetails(sym), null, t, signal),
+    dossierFetch(() => fetchShortInterest(sym), null, t, signal),
     dossierFetch(
       () => fetchTickerFlowStreak(sym),
       { streak_days: 0, net_3d: 0, net_5d: 0, direction: "mixed" as const },
-      t
+      t,
+      signal
     ),
-    dossierFetch(() => getEditionCongressTrades(sym, cache), [], t),
-    dossierFetch(() => getEditionPredictionsSignal(sym, cache), null, t),
-    dossierFetch(() => isScreenerConfirmed(sym, cache), false, t),
+    // UW-touching, but cache-amortized ONCE per whole build (DossierBuildCache), not
+    // per ticker — still threaded for correctness on the one ticker that triggers it.
+    dossierFetch((s) => getEditionCongressTrades(sym, cache, s), [], t, signal),
+    dossierFetch((s) => getEditionPredictionsSignal(sym, cache, s), null, t, signal),
+    dossierFetch((s) => isScreenerConfirmed(sym, cache, s), false, t, signal),
     dossierFetch(
       () => fetchFinancialsBundle(sym),
       { ratios: null, signals: null, priceTarget: null },
-      t
+      t,
+      signal
     ),
     // Free Benzinga catalysts — folded into the existing bounded Promise.all (NO new uncapped
     // fan-out). fetchBenzingaCatalysts is itself per-ticker cache-read, so concurrent builds share
     // one upstream pull per ticker per window (cache-reader rule).
-    dossierFetch(() => fetchBenzingaCatalysts(sym), [] as BenzingaCatalyst[], t),
+    dossierFetch(() => fetchBenzingaCatalysts(sym), [] as BenzingaCatalyst[], t, signal),
   ]);
   const fundamentalRatios = financials.ratios;
   const fundamentalSignals = financials.signals;
@@ -363,7 +419,7 @@ export async function fetchTickerDossier(
     return type === "binary" || title.includes("fda") || title.includes("pdufa") || title.includes("nda");
   });
   const fdaEvents: Record<string, unknown>[] = hasFdaCatalyst && uw
-    ? await dossierFetch(() => fetchUwFdaCalendar(sym, 5), [], t).then(
+    ? await dossierFetch((s) => fetchUwFdaCalendar(sym, 5, s), [], t, signal).then(
         (rows) => (rows as Record<string, unknown>[]).filter(
           (r) => String(r.ticker ?? r.symbol ?? "").toUpperCase() === sym
         )
@@ -383,20 +439,20 @@ export async function fetchTickerDossier(
     greekFlowRaw,
   ] = uw
     ? await runUwPooled([
-        () => dossierFetch(() => fetchUwDarkPool(sym), null, t),
-        () => dossierFetch(() => fetchUwOiChange(sym), [], t),
-        () => dossierFetch(() => fetchUwIvTermStructure(sym), [], t),
-        () => dossierFetch(async () => {
+        () => dossierFetch((s) => fetchUwDarkPool(sym, undefined, s), null, t, signal),
+        () => dossierFetch((s) => fetchUwOiChange(sym, s), [], t, signal),
+        () => dossierFetch((s) => fetchUwIvTermStructure(sym, s), [], t, signal),
+        () => dossierFetch(async (s) => {
           const poly = await fetchPolygonRealizedVol(sym);
           if (poly && poly.realized_vol_30d > 0) return [poly];
-          return fetchUwRealizedVol(sym);
-        }, [], t),
-        () => dossierFetch(() => fetchUwRiskReversalSkew(sym), [], t),
-        () => dossierFetch(() => fetchUwFlowPerExpiry(sym, 12), [], t),
-        () => dossierFetch(() => fetchUwInsiderTransactions(sym, 20), [], t),
-        () => dossierFetch(() => fetchUwCongressUnusualTrades(sym, 5), [], t),
-        () => dossierFetch(() => fetchUwInstitutionOwnership(sym, 8), [], t),
-        () => dossierFetch(() => fetchUwGreekFlow(sym), [], t),
+          return fetchUwRealizedVol(sym, 15, s);
+        }, [], t, signal),
+        () => dossierFetch((s) => fetchUwRiskReversalSkew(sym, 15, s), [], t, signal),
+        () => dossierFetch((s) => fetchUwFlowPerExpiry(sym, 12, s), [], t, signal),
+        () => dossierFetch((s) => fetchUwInsiderTransactions(sym, 20, s), [], t, signal),
+        () => dossierFetch((s) => fetchUwCongressUnusualTrades(sym, 5, s), [], t, signal),
+        () => dossierFetch((s) => fetchUwInstitutionOwnership(sym, 8, s), [], t, signal),
+        () => dossierFetch((s) => fetchUwGreekFlow(sym, undefined, 500, s), [], t, signal),
       ], 2)
     : [null, [], [], [], [], [], [], [], [], []];
 
@@ -466,6 +522,18 @@ export async function fetchTickerDossier(
     greek_flow: greekFlow,
   };
 
+  // Earnings-proximity scoring (audit gap fix, Night Hawk Legacy Signal Intelligence Phase 1):
+  // this was the FIRST scoring pass's own missing earnings_date/today_ymd/tomorrow_ymd -- the
+  // edition pipeline already patches it via a downstream rescoreDossier() re-score
+  // (edition-builder.ts), which still runs unconditionally and produces an IDENTICAL final
+  // dossier.scored, so this fix does not change the edition path's published output. It DOES fix
+  // the two real callers that read dossier.scored straight from this function with no subsequent
+  // rescore: zerodte/scan.ts's own dossier borrow, and (when sessionCtx is threaded through by a
+  // future caller) play-explainer.ts's fallback narrative path.
+  const earningsDate = sessionCtx
+    ? earningsDateForTicker(sym, sessionCtx.tomorrow_earnings, sessionCtx.tomorrow)
+    : null;
+
   dossier.scored = scoreCandidate(
     sym,
     flows,
@@ -491,6 +559,9 @@ export async function fetchTickerDossier(
       greek_flow: greekFlow,
       iv_rank: ivRank,
       fda_events: fdaEvents,
+      earnings_date: earningsDate,
+      today_ymd: sessionCtx?.today ?? null,
+      tomorrow_ymd: sessionCtx?.tomorrow ?? null,
     },
     flowStreak,
     regime
@@ -502,17 +573,27 @@ export async function fetchTickerDossier(
 async function fetchTickerDossierWithWall(
   ticker: string,
   regime?: NightHawkRegimeContext | null,
-  buildCache?: DossierBuildCache
+  buildCache?: DossierBuildCache,
+  sessionCtx?: DossierSessionContext
 ): Promise<TickerDossier | null> {
+  // PHASE 2 CANCELLATION (2026-09-17): same 45s wall, same timing, same resolve-to-null
+  // behavior on timeout as before — the ONLY change is that the wall timer now ALSO
+  // aborts every outstanding fetch for this ticker at the moment it fires, instead of
+  // merely giving up on waiting for them. `wallController.signal` threads down through
+  // fetchTickerDossier -> dossierFetch -> the UW provider functions -> trackedFetch's
+  // real fetch() call, so a timed-out ticker's requests are actually terminated rather
+  // than continuing to run in the background and hold a shared UW rate-limiter slot.
+  const wallController = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      fetchTickerDossier(ticker, regime, buildCache),
+      fetchTickerDossier(ticker, regime, buildCache, wallController.signal, sessionCtx),
       new Promise<null>((resolve) => {
         timer = setTimeout(() => {
           console.warn(
             `[nighthawk/dossier] ${ticker.toUpperCase()} wall timeout (${DOSSIER_TICKER_WALL_MS}ms) — skipping`
           );
+          wallController.abort(new DOMException(`ticker wall timeout (${DOSSIER_TICKER_WALL_MS}ms)`, "AbortError"));
           resolve(null);
         }, DOSSIER_TICKER_WALL_MS);
       }),
@@ -529,7 +610,8 @@ export async function fetchAllDossiers(
   tickers: string[],
   batchSize = DOSSIER_BATCH_SIZE,
   regime?: NightHawkRegimeContext | null,
-  onComplete?: (d: TickerDossier) => Promise<void>
+  onComplete?: (d: TickerDossier) => Promise<void>,
+  sessionCtx?: DossierSessionContext
 ): Promise<Record<string, TickerDossier>> {
   // Create a single build cache scoped to this fetchAllDossiers invocation so
   // concurrent calls (e.g. two edition builds running simultaneously) each get
@@ -540,7 +622,7 @@ export async function fetchAllDossiers(
   for (let i = 0; i < tickers.length; i += batchSize) {
     const batch = tickers.slice(i, i + batchSize);
     const results = await Promise.all(
-      batch.map((ticker) => fetchTickerDossierWithWall(ticker, regime, buildCache))
+      batch.map((ticker) => fetchTickerDossierWithWall(ticker, regime, buildCache, sessionCtx))
     );
 
     for (const d of results) {

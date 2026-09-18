@@ -6,6 +6,9 @@ import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import type { SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
 import type { PortfolioPosition } from "./portfolio";
+import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import type { SwingChainComposite } from "./record";
+import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 
 /** Inputs gathered server-side for deterministic swing play brief composition. */
 export type SwingPlayBriefContext = {
@@ -39,6 +42,64 @@ export type SwingPlayBriefContext = {
    */
   ecosystemFetchFailed?: boolean;
   vectorFetchFailed?: boolean;
+  /**
+   * The distilled per-archetype/sub-lane graduation snapshot (calibration-cache.ts) — feeds the
+   * "Track record" section's ONLY-WHEN-GRADUATED citation (Largo C10 historical context). `null`
+   * on a cold cache, a timed-out read, or a persistence failure on the writer side; `undefined`
+   * only in fixtures that predate this field (treated identically to `null` — "no citation this
+   * cycle", never an error). Optional/best-effort by design: the brief must compose the same
+   * whether this landed or not.
+   */
+  archetypeTrackRecord?: SwingArchetypeTrackRecordSnapshot | null;
+  /**
+   * Roll history for the chain backing this play (record.ts's `roll_seq` thread) — feeds the
+   * narrative's "rolled N times" disclosure. `null` when the position has never been rolled, the
+   * ledger read failed, or the play carries no `positionId` (a WATCH/lane-only candidate has no
+   * ledger row at all). `undefined` only in fixtures predating this field (treated as "unknown",
+   * never fabricated as "never rolled").
+   */
+  rollHistory?: SwingRollHistory | null;
+  /**
+   * Ticker-scoped historical context (Largo C10) — "has the desk traded THIS ticker before, and
+   * how did it go" — distinct from `archetypeTrackRecord` above, which is scoped to the
+   * ARCHETYPE dimension, not the ticker (see play-brief-ticker-history.ts's file header for the
+   * exact gap this closes). `null` on a cold/failed read or when there is no resolved prior trade
+   * to cite; `undefined` only in fixtures predating this field (treated identically to `null`).
+   */
+  tickerTrackRecord?: SwingTickerTrackRecord | null;
+};
+
+/** One leg's identity for the roll-history narrative — deliberately minimal (no P&L; the
+ *  narrative discloses WHAT was rolled, not how it graded — the chain composite already owns
+ *  P&L semantics per record.ts). */
+export type SwingRollHistoryLeg = {
+  rollSeq: number;
+  strike: number | null;
+  right: string | null;
+  expiry: string | null;
+  /** ISO timestamp this leg was committed — the roll date for every leg after the first. */
+  committedAt: string | null;
+};
+
+export type SwingRollHistory = {
+  /** Number of rolls in the chain — `chain.length - 1`. Only present (and only ever cited) when > 0. */
+  rollCount: number;
+  /** Full chain oldest→newest by roll_seq, mirroring fetchSwingPositionChain's own order. */
+  legs: SwingRollHistoryLeg[];
+  /**
+   * The chain's real composite outcome (record.ts's `buildSwingRecord(chain).composite` — the SAME
+   * function/call the Closed-tab list view and /api/market/swing/record use, never recomputed here).
+   * Present only once the chain has actually closed (`chainResolved`); a still-rolling chain has this
+   * `null` rather than a premature composite. Found 2026-09-15 (Ask Largo mandate, live repro
+   * INTC:35): the play-brief's own headline P&L is deliberately the TERMINAL LEG's own exit P&L, not
+   * this composite (play-brief-resolve.ts's `loadClosedPlay` — protects against the exact
+   * peak/composite-mismatch bug closed-plays.ts's own header documents), so a rolled chain's REAL
+   * result (which can be materially worse — INTC: terminal leg -33.2% vs composite -60.47%
+   * compounded) was otherwise never visible anywhere in the brief. This field feeds ONE additional
+   * reference line (`rollHistoryLine`) — deliberately never blended with the terminal leg's own
+   * price/peak/trough fields, which is exactly what caused the original bug.
+   */
+  chainComposite: SwingChainComposite | null;
 };
 
 export type SwingPlayBriefResult = {

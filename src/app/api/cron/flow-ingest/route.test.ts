@@ -32,3 +32,19 @@ test("flow-ingest wraps runFlowIngest in runWithBackgroundUwSweep, not called ba
     "the old untagged call must be gone"
   );
 });
+
+// Regression for the 2026-09-07 audit sweep (same class as uw-cache-refresh #4482): registry
+// declares `market_hours_only: true` but the route had no holiday-aware execution gate.
+test("flow-ingest gates on isEtCashRth before UW REST polling", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtCashRth \} from "@\/lib\/et-market-hours"/,
+    "must import the holiday-aware RTH gate"
+  );
+  const authAt = routeSrc.indexOf("isCronAuthorized(req)");
+  const gateAt = routeSrc.indexOf("isEtCashRth()");
+  const ingestAt = routeSrc.indexOf("if (ingestInFlight)");
+  assert.ok(authAt >= 0 && gateAt >= 0 && ingestAt >= 0);
+  assert.ok(gateAt > authAt, "RTH gate must run after auth");
+  assert.ok(gateAt < ingestAt, "RTH gate must run before ingest work starts");
+});

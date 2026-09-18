@@ -56,7 +56,23 @@ export function morningStatusFromDb(opts: {
   for (const ep of opts.editionPlays) {
     const tk = ep.ticker.toUpperCase();
     const verdict = verdictByTicker.get(tk);
-    if (!verdict) continue;
+    if (!verdict) {
+      // Same honest-absence convention the live cron uses (morning-confirm-verdict.ts's
+      // "zero checks ran" branch): a play whose morning_verdict never got pinned (a
+      // per-ticker Cortex/data error during the live run) must still appear in the
+      // reconstructed status list as UNVERIFIED — dropping it silently would make a
+      // member polling this DB fallback (any time after the 24h Redis TTL expires) see
+      // FEWER plays than the edition actually publishes, reading as "never existed"
+      // rather than "checked, but the desk couldn't verify it."
+      plays.push({
+        rank: ep.rank,
+        ticker: tk,
+        direction: ep.direction,
+        status: "UNVERIFIED",
+        reason: "Morning confirm data unavailable for this play — verdict withheld, treat as unvetted",
+      });
+      continue;
+    }
 
     if (verdict.checked_at) {
       if (!checkedAt || verdict.checked_at < checkedAt) checkedAt = verdict.checked_at;

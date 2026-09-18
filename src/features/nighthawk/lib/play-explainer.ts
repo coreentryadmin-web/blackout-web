@@ -2,7 +2,11 @@ import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
 import { fetchTickerDossier } from "./dossier";
 import { formatTickerDossierText } from "./format";
 import type { PlaybookPlay } from "./types";
-import { buildGroundedPlayExplanationFallback } from "./play-explainer-fallback";
+import {
+  buildGroundedPlayExplanationFallback,
+  factorBreakdownLines,
+  playRiskLines,
+} from "./play-explainer-fallback";
 import { checkNumbersGrounded, extractNumbersFromText } from "@/lib/grounding-guard";
 
 const SYSTEM = `You are Night Hawk — the evening playbook analyst for BlackOut Trading. A member clicked a ranked play and wants a thorough institutional-grade briefing on WHY it made tonight's top 5.
@@ -56,6 +60,21 @@ function formatMarketRecapBlock(recap: Record<string, unknown> | null | undefine
 }
 
 function formatPlayBlock(play: PlaybookPlay): string {
+  // Risk/invalidation facts (risk_note + earnings_risk + gate_promoted/gate_warnings) come from
+  // the same helper the deterministic fallback uses, so the LLM briefing and the no-LLM fallback
+  // never disagree about which real risk signals exist on this play — see 2026-09-13 finding
+  // docs/audit/findings-staging/2026-09-13-play-explainer-risk-signals-not-surfaced.md. These are
+  // genuinely computed facts (not invented), so adding them to the data block only strengthens
+  // the grounding-guard check downstream, it never weakens it.
+  const riskLines = playRiskLines(play);
+  // Real per-component composite-score contributions (flow/tech/positioning/etc.) — the same
+  // numbers PlaybookBriefingPanel.tsx already shows members as "Score components" chips.
+  // factor_breakdown exists specifically "so the terminal can show real factor bars" (types.ts's
+  // own comment) but was never given to the LLM, so the required "Why ranked #N" section could
+  // only be answered from qualitative dossier prose, never the actual quantified score drivers
+  // already computed for this play. Found 2026-09-16, same defect class as the 2026-09-13
+  // earnings_risk/gate_promoted fix (a real, already-computed signal silently unsurfaced).
+  const factorLines = factorBreakdownLines(play);
   return [
     `Rank: #${play.rank}`,
     `Ticker: ${play.ticker}`,
@@ -63,8 +82,18 @@ function formatPlayBlock(play: PlaybookPlay): string {
     `Conviction: ${play.conviction}`,
     `Play type: ${play.play_type}`,
     `Score: ${play.score}`,
+    factorLines.length ? `Score components (largest impact first):\n${factorLines.join("\n")}` : null,
+    play.sector ? `Sector: ${play.sector}` : null,
     play.flow_streak_days != null ? `Flow streak: ${play.flow_streak_days}d` : null,
     play.iv_rank != null ? `IV rank: ${play.iv_rank}` : null,
+    play.rr_ratio != null ? `Risk/reward ratio: ${play.rr_ratio}` : null,
+    play.target_atr_multiple != null
+      ? `Target distance: ${play.target_atr_multiple}x ATR14`
+      : null,
+    play.confirming_signals != null ? `Confirming signals: ${play.confirming_signals}` : null,
+    play.exit_style === "scale_out"
+      ? "Exit style: scale-out (partial at 2x, trail the runner, hard stop)"
+      : null,
     play.entry_premium != null ? `Entry premium: $${play.entry_premium}/share` : null,
     play.entry_cost_per_contract != null
       ? `Cost per 1-lot: $${play.entry_cost_per_contract}`
@@ -75,7 +104,7 @@ function formatPlayBlock(play: PlaybookPlay): string {
     `Target: ${play.target}`,
     `Stop: ${play.stop}`,
     `Contract: ${play.options_play}`,
-    play.risk_note ? `Risk note: ${play.risk_note}` : null,
+    riskLines.length ? `Risk notes:\n${riskLines.join("\n")}` : null,
   ]
     .filter(Boolean)
     .join("\n");

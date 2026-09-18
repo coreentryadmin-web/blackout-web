@@ -68,21 +68,24 @@ const RTH_CUTOFF_ET_MINUTES = 15 * 60 + 30;
  *  `discovery-recall-probe.mjs` run: real qualifying pools of 100-390/day, cap stuck at 40). */
 export const BREAKOUT_MAX_CANDIDATES = 40; // dynamic-N floor — raised 6→15→25→40, now a floor not a ceiling
 
-/** Dynamic-N ceiling (2026-08-04, raised to 150 on 2026-08-24) — bounds worst-case chain-fetch
- *  growth on a huge-breadth day. See `resolveBreakoutCandidateCap` for the sizing formula and
- *  `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that justified the original 100.
- *  Raised from 100→150 because evidence shows the ceiling is hit on 10/13 sessions, and momentum-rank
- *  cohorts (41-100 vs top-40) show 44.9% WR vs 43.1% — indistinguishable, no quality loss from wider
- *  pools, only more shots at the same hit rate. Chain-fetch budget is bounded, Polygon concurrency tuned. */
-export const BREAKOUT_MAX_CANDIDATES_CEILING = 150;
+/** Dynamic-N ceiling (2026-08-04, raised to 150 on 2026-08-24, 220 on 2026-09-08). Bounds
+ *  worst-case chain-fetch growth on a huge-breadth day. See `resolveBreakoutCandidateCap` for
+ *  the sizing formula and `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that
+ *  justified the original 100. Raised 100→150→220 because evidence shows the ceiling is hit on
+ *  10/13 sessions, and momentum-rank cohorts (41-100 vs top-40) show 44.9% WR vs 43.1% —
+ *  indistinguishable, no quality loss from wider pools, only more shots at the same hit rate.
+ *  MUST stay in lockstep with breakout-cap.ts's DEFAULT_CEILING — this constant only documents
+ *  the same number for audit-trail citation; the live ceiling used by resolveBreakoutCandidateCap
+ *  is DEFAULT_CEILING in that file. Chain-fetch budget is bounded, Polygon concurrency tuned. */
+export const BREAKOUT_MAX_CANDIDATES_CEILING = 220;
 
 /** Wider $-volume pool fed into the momentum re-rank before the chain-fetch cap. Liquidity filter
  *  stays in `screenBreakoutMovers` / `screenBreakdownMovers`; quality ranking is separate. Raised
- *  100→200 (2026-08-04) alongside the dynamic-N ceiling so the upstream screen itself never
- *  truncates the qualifying pool that `resolveBreakoutCandidateCap` sizes the cap from — a screen
- *  pool smaller than the ceiling would silently cap "qualifying" at the pool size, defeating the
- *  breadth-driven formula on exactly the huge-breadth days it's meant to help. */
-export const BREAKOUT_SCREEN_POOL = 200;
+ *  100→200 (2026-08-04) →280 (2026-09-08) alongside the dynamic-N ceiling so the upstream screen
+ *  itself never truncates the qualifying pool that `resolveBreakoutCandidateCap` sizes the cap
+ *  from — a screen pool smaller than the ceiling would silently cap "qualifying" at the pool
+ *  size, defeating the breadth-driven formula on exactly the huge-breadth days it's meant to help. */
+export const BREAKOUT_SCREEN_POOL = 280;
 
 /**
  * Rank screened movers for the chain-fetch budget. Liquidity already gated the pool; this orders

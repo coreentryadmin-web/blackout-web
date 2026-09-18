@@ -23,6 +23,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { decideSwingScan, phaseRunKey } from "@/lib/swing/scan-cadence";
 import {
   runSwingDiscoveryScan,
@@ -165,12 +166,12 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
     fetchSpyCloses: async () => closesFor("SPY"),
     // V2 POSITIONING origin — GEX/walls screen on Vector leader tickers (fail-soft).
     fetchPositioningTickers: async () => {
-      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const rows = await fetchVectorPickLeaderRows({ limit: 110 }).catch(() => []);
       const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
       return positioningTickersFromVectorLeaders(tickers);
     },
     fetchPositioningHits: async () => {
-      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const rows = await fetchVectorPickLeaderRows({ limit: 110 }).catch(() => []);
       const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
       return positioningHitsFromVectorLeaders(tickers);
     },
@@ -190,7 +191,7 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         })),
       );
     },
-    fetchVectorTickers: async () => vectorTickersFromPickLeaders({ sessionDate: sessionDay, limit: 80 }),
+    fetchVectorTickers: async () => vectorTickersFromPickLeaders({ sessionDate: sessionDay, limit: 110 }),
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
         {
@@ -300,6 +301,15 @@ export async function GET(req: NextRequest) {
   // Outside a phase window, force still runs as POST_CLOSE so we can revive the serving snapshot
   // without waiting for the next EventBridge window.
   const force = req.nextUrl.searchParams.get("force") === "1";
+
+  // Holiday guard: EventBridge is weekday-only (no NYSE calendar). On holidays (e.g. Labor Day),
+  // phase windows like PRE_OPEN/POST_CLOSE still resolve and the route would fan out Polygon+UW
+  // whole-market discovery against a closed tape. force=1 bypasses for ops recovery.
+  if (!force && !isTradingDayEt(sessionDay)) {
+    const payload = { ok: true, skipped: true, reason: `non-trading day (${sessionDay})` };
+    await logCronRun("swing-discovery", started, payload);
+    return NextResponse.json(payload);
+  }
 
   // Resolve the active phase (pure). The idempotency dedup is now the ATOMIC claim below, so the
   // decision runs with an empty ranKeys — it only tells us whether the ET clock is inside a phase window.

@@ -315,14 +315,16 @@ test("promoted candidates drop off the WATCH-eligible rail (thesis-scoped)", asy
   assert.equal(left[0].archetype, "MEAN_REVERSION");
 });
 
-test("persistenceGapReason — cross-session thesis needs more days", () => {
+test("persistenceGapReason — a single-kind sighting needs a 2nd independent signal (2026-09-08 loosening)", () => {
+  // BREAKOUT now clears at 1 session + corroboration (docs/audit/INTENTIONAL-DESIGN.md item #7) —
+  // a lone FLOW-only sighting is below bar on signal-kind count, not session count.
   const gap = persistenceGapReason({
     archetype: "BREAKOUT",
     distinctSessionDays: 1,
     sessionSignalKinds: ["FLOW"],
     observationCount: 1,
   });
-  assert.ok(gap?.includes("1/2"));
+  assert.ok(gap?.includes("2nd independent signal"));
 });
 
 test("fetchObservedCandidates — seen but below bar, not in watch eligible", async () => {

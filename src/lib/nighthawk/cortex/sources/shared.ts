@@ -19,6 +19,20 @@ export function fmtNum(v: number): string {
   return Number(v.toFixed(2)).toString();
 }
 
+/**
+ * Same rounding as fmtNum, but always shows the sign ("+2.94" / "-1.9" / "0") — for
+ * a directional change-percent that appears WITHOUT accompanying words stating its
+ * sign (e.g. a per-ticker aside inside a sentence that's really about something
+ * else's sign). fmtNum's bare `.toString()` already surfaces a leading "-" from
+ * JS's own negative-number formatting but never a "+", so two directional numbers
+ * rendered side by side with fmtNum alone can read as same-signed when they aren't.
+ */
+export function fmtSigned(v: number): string {
+  if (!Number.isFinite(v)) throw new TypeError(`fmtSigned: non-finite value ${v}`);
+  const rounded = Number(v.toFixed(2));
+  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+}
+
 /** Format a dollar premium as $X.XM (1 decimal) — the flow/dark-pool convention. */
 export function fmtMillions(v: number): string {
   if (!Number.isFinite(v)) throw new TypeError(`fmtMillions: non-finite value ${v}`);

@@ -278,8 +278,11 @@ test("runSwingDiscoveryScan: two-tier, both paths surface dossiers, nothing comm
   assert.equal(calls.markAccumPromoted, 0, "WATCH-only rail: the position-linking (commit) accessor never ran");
   assert.deepEqual(res.playSet, { ZERO_DTE: [], SWING: [], LEAPS: [] }, "no chains injected → empty play set");
 
-  // First scan (1 distinct session day) → nothing has persisted yet.
-  assert.equal(res.watchCount, 0, "a first-sighting candidate is below the persistence bar");
+  // First scan (1 distinct session day). Pre-2026-09-08 this stayed below the persistence bar
+  // regardless of corroboration; the loosening (docs/audit/INTENTIONAL-DESIGN.md item #7) means a
+  // multi-signal-kind first sighting (FLOW + POSITIONING + CATALYST + VECTOR, per `makeDeps`) now
+  // clears on session 1 via corroboration — only ASTS (flow-less, no direction to persist) can't.
+  assert.deepEqual(res.watchCandidates.map((c) => c.ticker), ["NVDA"], "multi-signal corroboration fast-tracks even a first sighting under the loosened rule");
 });
 
 test("runSwingDiscoveryScan: WATCH rail clears only after cross-session persistence", async () => {
@@ -610,14 +613,21 @@ test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track 
   assert.deepEqual([...res.watchCandidates[0].sessionSignalKinds].sort(), ["CATALYST", "FLOW"], "corroboration = FLOW screen + grounded catalyst");
 });
 
-test("runSwingDiscoveryScan: WITHOUT a dominant catalyst, a cross-session name still needs 2 sessions (no false fast-track)", async () => {
-  // The same flow name, but enriched as a plain cross-session thesis (no catalyst) → its archetype is NOT an
-  // event archetype, so the resolver leaves it on the 2-session gate. A single session must NOT promote it.
+test("runSwingDiscoveryScan: WITHOUT a dominant catalyst, a cross-session name with multi-signal corroboration ALSO fast-tracks (2026-09-08 loosening)", async () => {
+  // The same flow name, enriched as a plain cross-session thesis (no catalyst) → its archetype is NOT an
+  // event archetype. Before 2026-09-08 this stayed gated to 2 distinct sessions; the loosening
+  // (docs/audit/INTENTIONAL-DESIGN.md item #7 — the extra calendar-day wait showed no forward-outcome
+  // benefit in a 90-day recall measurement) puts EVERY classified archetype except FAILED_BREAKDOWN on
+  // the same 1-session+corroboration bar as EVENT_DRIVEN. `makeDeps` wires FLOW + POSITIONING + CATALYST
+  // + VECTOR origins (unlike the isolated EVENT_DRIVEN test above), so corroboration (2+ distinct signal
+  // kinds) is satisfied on a SINGLE session even without an event-archetype classification.
   const { accessors } = makeFakeAccum();
   const res = await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
   const nvda = res.dossiers.find((d) => d.ticker === "NVDA");
   assert.ok(nvda && nvda.archetype.archetype !== "EVENT_DRIVEN" && nvda.archetype.archetype !== "POST_EARNINGS_DRIFT", "no catalyst → a cross-session archetype");
-  assert.equal(res.watchCount, 0, "a cross-session archetype is still gated to 2 distinct sessions (fast-track is event-only)");
+  assert.deepEqual(res.watchCandidates.map((c) => c.ticker), ["NVDA"], "multi-signal corroboration fast-tracks a cross-session archetype too, not just event archetypes");
+  assert.equal(res.watchCandidates[0].distinctSessionDays, 1, "cleared on a SINGLE session under the loosened rule");
+  assert.ok(new Set(res.watchCandidates[0].sessionSignalKinds).size >= 2, "corroboration requires 2+ distinct signal kinds");
 });
 
 // ── RECALL instrumentation (evidence-only; operator critique #7) ──────────────────

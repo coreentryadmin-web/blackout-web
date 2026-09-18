@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { splitAtHeadingBoundaries } from "../scripts/audit/lib/findings-entry-set.mjs";
 
 /**
  * Keeps FINDINGS.md answerable.
@@ -21,8 +22,11 @@ const KINDS = ["FINDING", "NEGATIVE-RESULT", "OPS-NOTE"];
 
 function entries(): { head: string; body: string }[] {
   const src = readFileSync(FINDINGS, "utf8");
-  return src
-    .split(/\n(?=## )/)
+  // Fence-aware split (2026-09-17, Ask Largo standing mandate) — see findings-entry-set.mjs's
+  // splitAtHeadingBoundaries doc comment: a naive split fragments a finding whose Evidence section
+  // quotes a `## `-heading inside a ``` fence (a normal evidence pattern — findings quote a live
+  // product's own markdown output as proof).
+  return splitAtHeadingBoundaries(src)
     .filter((b) => b.startsWith("## ") && !/^## How to read this file/.test(b))
     .map((b) => ({ head: b.split("\n")[0], body: b }));
 }
@@ -154,7 +158,15 @@ test("the reconciler is idempotent — a second --apply is a no-op", () => {
   rmSync(dir, { recursive: true, force: true });
 
   // Guard against a vacuous pass: the input must really have been untagged and really got tagged.
-  assert.ok(!/> \*\*kind:\*\*/.test(untagged), "stripping failed — the fixture was already tagged, so nothing was exercised");
+  // Anchored to a LINE START, matching the exact stripping regex above — an unanchored substring
+  // check false-fails the moment any entry's own prose quotes the tag syntax as an example (e.g. an
+  // entry documenting this very reconciler's skip criteria, which legitimately contains the literal
+  // text "`> **kind:**` line found" mid-sentence). That prose is not a real tag line and stripping it
+  // would be wrong; the guard must ask the same question the stripping regex answers, not a looser one.
+  assert.ok(
+    !/^> \*\*(kind|status):\*\*/m.test(untagged),
+    "stripping failed — the fixture was already tagged, so nothing was exercised"
+  );
   assert.match(pass1, /> \*\*kind:\*\* `FINDING`/, "the reconciler did not tag the fixture");
   assert.match(pass1, /## How to read this file/, "the legend was dropped from the output");
   // Regenerating from scratch must reproduce the committed file's count. This is what covers the
@@ -231,11 +243,27 @@ test("entry headings are never glued onto the end of another line", () => {
   // Matching on the full `## <date> — [` entry-heading shape rather than a bare "## " keeps
   // the prose in "How to read this file" out of it — that section legitimately quotes
   // `## … — FIXED` inside code spans, mid-line, and is not a heading.
+  //
+  // A SECOND legitimate mid-line shape (found 2026-09-17, folding a staged-findings backlog):
+  // a later entry citing an EARLIER one's exact stale heading as evidence — e.g. "The stale
+  // entry | `## 2026-09-02 — [FINDING, ...] ... — OPEN`." — is a real, full date-shaped
+  // heading, backtick-quoted, mid-line, and is likewise not a glued heading. A genuinely glued
+  // heading (this test's own example above: "FIXED. |## 2026-08-21 — [FINDING, ...") is never
+  // inside a code span — a dropped newline produces raw adjacent markdown, not a code span.
+  //
+  // "Inside a code span" is checked with backtick PARITY on the line up to the match, not merely
+  // "is the immediately preceding character a backtick" (a narrower first attempt at this same
+  // fix, same day, missed a THIRD case: a finding's own prose quoting this test's illustrative
+  // fixture text inside a span whose first character is not the heading itself -- e.g. `` `"FIXED.
+  // |## 2026-08-21 — [FINDING, ..."` `` -- where the character immediately before "##" is "|", not
+  // a backtick, even though the whole thing sits inside one open span). An odd backtick count
+  // before the match means we are inside an unclosed span on this line; even means we are not.
   const src = readFileSync(FINDINGS, "utf8");
   const glued: string[] = [];
   src.split("\n").forEach((line, i) => {
     const idx = line.indexOf("## 2");
-    if (idx > 0 && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
+    const insideCodeSpan = idx > 0 && (line.slice(0, idx).match(/`/g) || []).length % 2 === 1;
+    if (idx > 0 && !insideCodeSpan && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
       glued.push(`line ${i + 1}: …${line.slice(Math.max(0, idx - 30), idx + 80)}`);
     }
   });

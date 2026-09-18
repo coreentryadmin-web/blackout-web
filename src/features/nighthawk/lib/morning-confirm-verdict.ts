@@ -136,6 +136,16 @@ export function computePlayVerdict(
 
   // 1. Gap against the play's direction — SPX is a weak proxy for single names when
   // the stock's own premarket is available and still within plan levels.
+  //
+  // gapReasonAdded tracks whether THIS check already described the current gap event, so
+  // check 4 below (the generic large-gap catch-all, which re-tests the identical
+  // Math.abs(gapPts) > GAP_PTS_THRESHOLD condition) doesn't append a second, redundant
+  // sentence about the same SPX gap when the softer "stockConfirms" path already covered it —
+  // found live 2026-09-13: a single-name LONG with SPX gapped against it but its own premarket
+  // still within plan produced "SPX gapped -25.0 pts against LONG direction — ... treat as
+  // caution; SPX gapped -25.0 pts — verify entry levels, stop may be unsafe", quoting the same
+  // number twice back to back in the member-facing DEGRADED reason.
+  let gapReasonAdded = false;
   if (gapPts !== null) checksEvaluated++;
   if (gapPts !== null && Math.abs(gapPts) > GAP_PTS_THRESHOLD) {
     const gapAgainst = isLong ? gapPts < -GAP_PTS_THRESHOLD : gapPts > GAP_PTS_THRESHOLD;
@@ -152,6 +162,7 @@ export function computePlayVerdict(
         reasons.push(
           `SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction — ${play.ticker} pre-market still within plan, treat as caution`,
         );
+        gapReasonAdded = true;
       } else {
         status = "INVALIDATED";
         reasons.push(`SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction`);
@@ -206,7 +217,10 @@ export function computePlayVerdict(
 
   if (status !== "INVALIDATED") {
     // 4. Gap in same direction — may run stops / change R:R
-    if (gapPts !== null && Math.abs(gapPts) > GAP_PTS_THRESHOLD) {
+    // Skip when check 1 already described this exact gap event (gapReasonAdded) — this is a
+    // generic catch-all for gaps check 1 didn't already cover (favorable/against-but-index gaps),
+    // not a second opinion on the one check 1 already rendered a verdict on.
+    if (gapPts !== null && Math.abs(gapPts) > GAP_PTS_THRESHOLD && !gapReasonAdded) {
       if (status === "CONFIRMED") status = "DEGRADED";
       reasons.push(`SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts — verify entry levels, stop may be unsafe`);
     }

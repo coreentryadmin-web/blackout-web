@@ -1780,6 +1780,36 @@ async function fetchPriorDayCached(): Promise<{
   return { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc };
 }
 
+/**
+ * Off-hours cold-replica anchor for AFTER today's own regular session has closed (same ET
+ * calendar day — `market_label === "EXTENDED"`, post-4pm-ET, pre-midnight).
+ *
+ * `fetchPriorDayCached()`/`cachedPriorDay` above is shared with RTH callers that need the
+ * ordinary, exclusive-of-today "prior day" (pivots, gap%), so it always walks back to the
+ * session strictly BEFORE today — correct pre-market (today has no bar yet) but wrong here:
+ * once RTH ends, Polygon's daily-bars endpoint already carries today's own settled bar, and
+ * the shared cache's exclusive walk-back skips straight past it to yesterday's (or, on a cold
+ * cache with a stale write, an even older) close. That stale close was then served AS today's
+ * live off-hours "price", not merely as a "prior_close" reference — confirmed live 2026-09-12:
+ * a cold `blackout-production-web` replica served Thursday's close as the current SPX price for
+ * roughly 50 minutes after Friday's real 4pm ET close, tripping the day-range invariant and both
+ * cross-provider correctness alerts against Friday's real (correct) intraday range/quote.
+ *
+ * Deliberately bypasses `cachedPriorDay` (a fresh Polygon read, not reused/written back into it)
+ * so this doesn't change the exclusive-of-today semantics the RTH/pivot callers above depend on.
+ * Cold-replica off-hours already has no fast-lane latency budget to protect (see the comment on
+ * the caller), so the extra read is safe.
+ */
+async function fetchTodaysOwnCloseIfSessionComplete(): Promise<{
+  pdh: number | null;
+  pdl: number | null;
+  pdc: number | null;
+}> {
+  const today = todayEtYmd();
+  const bars = await fetchIndexDailyBars(SPX, priorEtYmd(10), today).catch(() => []);
+  return priorDayFromDailyBars(bars, today, true);
+}
+
 /** EMAs / VWAP / HOD/LOD — refreshed on a slower cadence so 1s pulse stays light. */
 let pulseStructureInflight: Promise<PulseStructureCache> | null = null;
 
@@ -1961,6 +1991,17 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     let prior = await priorDayForPulseLane();
     if (!(prior.pdc != null && prior.pdc > 0)) {
       prior = await fetchPriorDayCached().catch(() => prior);
+    }
+    // Once today's OWN regular session has already closed (still the same ET calendar day,
+    // "EXTENDED"), that settled bar — not the exclusive-of-today `prior` above — is the most
+    // recent completed session, and it now exists in Polygon's daily-bars endpoint. Prefer it
+    // so the off-hours cold path doesn't serve yesterday's (or a colder cache's even older)
+    // close as "today's" price. See `fetchTodaysOwnCloseIfSessionComplete`'s own header.
+    if (label === "EXTENDED") {
+      const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete().catch(() => null);
+      if (todaysOwnClose?.pdc != null && todaysOwnClose.pdc > 0) {
+        prior = todaysOwnClose;
+      }
     }
     if (prior.pdc != null && prior.pdc > 0) {
       return {

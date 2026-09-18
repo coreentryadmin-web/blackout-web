@@ -1,4 +1,5 @@
 import { dbQuery, dbConfigured, fetchClosedPlayOutcomes, fetchOpenSpxPlay, isoDateString, type FlowRow } from "@/lib/db";
+import { isCondorRow } from "@/lib/zerodte/condor-record";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isFlowFrameFreshAnywhere } from "@/lib/flow-liveness";
 import { getSpxPlayState } from "@/features/spx/lib/spx-service";
@@ -43,6 +44,17 @@ export type EcosystemZeroDteTake = {
   conviction: string | null;
   status: string | null;
   first_flagged_at: string;
+  /** True when this row is a CONDOR (`entry_context.play_type === "CONDOR"`, `isCondorRow()`).
+   *  A condor's `direction` column is NOMINAL provenance only (the fade side of the pin it came
+   *  from) — the structure itself is delta-neutral, so a directional-alignment claim built off it
+   *  is meaningless (condor-record.ts's own header explains why the directional record separates
+   *  these rows out for the identical reason). Consumers that compare `direction` against another
+   *  desk's directional call — e.g. `flowIntelSection`'s 0DTE cross-desk-alignment line — must gate
+   *  on this before doing so. Optional (not `is_condor: false`) so the many existing fixtures/
+   *  test constructions of this type that predate the condor case need no update — an absent
+   *  field reads as "unknown/non-condor", the same safe default the field's few real callers
+   *  already treat it as. */
+  is_condor?: boolean;
 };
 
 export type EcosystemNightHawkTake = {
@@ -207,8 +219,40 @@ export type EcosystemArsenalMacro = {
   as_of: string | null;
 };
 export type EcosystemArsenalBreadth = { tone: string; summary: string; as_of: string };
-export type EcosystemArsenalNews = { count: number; newest: string | null; headlines: string[] };
-export type EcosystemArsenalUnavailable = { source: string; reason: string };
+export type EcosystemArsenalNews = {
+  count: number;
+  newest: string | null;
+  headlines: string[];
+  /**
+   * When this news read was actually performed (ISO) — `NewsResult.asOf`, stamped ONCE inside
+   * `serverCache`'s cached builder (polygon-news.ts) at the moment the upstream Benzinga fetch
+   * completed, not at read time. Largo C2 (2026-09-18, Ask Largo standing mandate): under that
+   * cache's stale-while-revalidate path a degraded Benzinga upstream can keep serving the same
+   * stored payload (and this same, un-bumped `asOf`) for up to `MAX_STALE_AGE_MS` (10 minutes,
+   * server-cache.ts) — the identical risk `meridianCatalystSection`'s own `slice.as_of` fix
+   * already documents and discloses for the sibling Meridian catalyst read. `NewsResult` already
+   * computed this field; it was silently dropped one layer up, here, when the raw reader output
+   * was folded into the arsenal summary — so `catalystsSection` (play-brief-intel.ts), the one
+   * consumer of `headlines`, had no way to ever disclose staleness, unlike every sibling
+   * freshness-aware section in this file (GEX/Vector/Meridian). Optional/null on an older or
+   * hand-built fixture that predates this field — `newsCatalystStale` (play-brief-absence.ts)
+   * already treats a missing `as_of` as "unknown, not stale" rather than requiring it.
+   */
+  as_of?: string | null;
+};
+// Mirrors BieUnavailableSource (answer-envelope.ts) — kept as its own type rather than importing
+// that one directly so this reader layer stays decoupled from the BIE envelope shape, but the
+// FIELDS must match: every composer that spreads unavailable_sources into a BieUnavailableSource[]
+// (play-brief-absence.ts's collectBriefUnavailableSources, ticker-verdict.ts) relies on structural
+// typing to accept these entries as-is. Optional so existing callers/tests are unaffected; every
+// push site below now populates both (Largo C3 absence principle — say what's missing and whether
+// a retry would help, never leave the consumer to guess).
+export type EcosystemArsenalUnavailable = {
+  source: string;
+  reason: string;
+  what_is_missing?: string;
+  retryable?: boolean;
+};
 
 export type EcosystemArsenal = {
   /** Which relevance branch ran — index/ETF market weather vs single-name color. */
@@ -260,7 +304,14 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           report_time: reads.earnings.report_time,
           is_confirmed: reads.earnings.is_confirmed,
         }
-      : (unavailable.push({ source: "earnings", reason: "no upcoming date" }), null)
+      : (unavailable.push({
+          source: "earnings",
+          reason: "no upcoming date",
+          what_is_missing: "a scheduled earnings date for this ticker",
+          // Structural: the earnings calendar simply has no confirmed print on file for this
+          // name right now — retrying the same read a moment later returns the same nothing.
+          retryable: false,
+        }), null)
     : null;
 
   const fundamentals: EcosystemArsenalFundamentals | null = single
@@ -275,13 +326,27 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           price_target: null,
           as_of: reads.fundamentals.as_of ?? null,
         }
-      : (unavailable.push({ source: "fundamentals/short-interest", reason: "no data for ticker" }), null)
+      : (unavailable.push({
+          source: "fundamentals/short-interest",
+          reason: "no data for ticker",
+          what_is_missing: "a short-interest days-to-cover or short-volume-ratio record",
+          // Structural: this provider simply carries no short-interest series for the name
+          // (common for thinly-shorted or newly-listed tickers) — a retry won't manufacture one.
+          retryable: false,
+        }), null)
     : null;
 
   const related: string[] | null = single
     ? reads.related && reads.related.related.length > 0
       ? reads.related.related.slice(0, 8)
-      : (unavailable.push({ source: "peers", reason: "none found" }), null)
+      : (unavailable.push({
+          source: "peers",
+          reason: "none found",
+          what_is_missing: "a resolvable peer/related-company list for this ticker",
+          // Structural: the provider's related-companies graph has no entries for this name —
+          // that graph doesn't change moment-to-moment, so retrying returns the same empty list.
+          retryable: false,
+        }), null)
     : null;
 
   // Macro/breadth legs (index/ETF only).
@@ -293,13 +358,27 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           cpi: reads.macro.inflation.cpi,
           as_of: reads.macro.as_of,
         }
-      : (unavailable.push({ source: "macro backdrop", reason: "unavailable" }), null)
+      : (unavailable.push({
+          source: "macro backdrop",
+          reason: "unavailable",
+          what_is_missing: "a current 10-year treasury yield or CPI reading",
+          // Transient: this is a live upstream fetch (Polygon macro backdrop) — a null/failed
+          // read here is a fetch-time miss, not a permanent absence of the underlying data series.
+          retryable: true,
+        }), null)
     : null;
 
   const breadth: EcosystemArsenalBreadth | null = !single
     ? reads.breadth && reads.breadth.tone !== "unknown"
       ? { tone: reads.breadth.tone, summary: reads.breadth.summary, as_of: reads.breadth.as_of }
-      : (unavailable.push({ source: "breadth", reason: "unavailable (thin/empty sample)" }), null)
+      : (unavailable.push({
+          source: "breadth",
+          reason: "unavailable (thin/empty sample)",
+          what_is_missing: "a market-breadth read with a large enough advancing/declining sample",
+          // Transient: a thin sample can widen later in the same session as more names print —
+          // this is a live breadth read, not a structurally missing dataset.
+          retryable: true,
+        }), null)
     : null;
 
   // News runs for BOTH scopes (ticker news for a single name, market catalysts for an index). An
@@ -307,7 +386,14 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
   // sets `.unavailable` on the NewsResult → surfaced here.
   const news: EcosystemArsenalNews | null = reads.news
     ? reads.news.unavailable
-      ? (unavailable.push({ source: "news", reason: reads.news.unavailable }), null)
+      ? (unavailable.push({
+          source: "news",
+          reason: reads.news.unavailable,
+          what_is_missing: "a successful news/headlines fetch for this ticker",
+          // Transient: this is a live news-provider fetch that errored/timed out this pass —
+          // a retry on the next composer read can succeed.
+          retryable: true,
+        }), null)
       : {
           count: reads.news.items.length,
           newest: reads.news.newest,
@@ -317,8 +403,16 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           // fix as meridian-feed-text.ts's 2026-08-21 correction; this call site was missed then
           // because it feeds the swing play-brief, not the Meridian desk.
           headlines: reads.news.items.slice(0, 4).map((i) => sanitizeFeedText(i.headline)),
+          as_of: reads.news.asOf ?? null,
         }
-    : (unavailable.push({ source: "news", reason: "read failed" }), null);
+    : (unavailable.push({
+        source: "news",
+        reason: "read failed",
+        what_is_missing: "a completed news/catalysts fetch for this ticker or market",
+        // Transient: the read itself never came back (as opposed to succeeding with zero items) —
+        // a retry can succeed.
+        retryable: true,
+      }), null);
 
   return { scope: reads.scope, earnings, fundamentals, related, news, macro, breadth, unavailable_sources: unavailable };
 }
@@ -748,8 +842,9 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
         conviction: string | null;
         status: string | null;
         first_flagged_at: string;
+        entry_context: Record<string, unknown> | null;
       }>(
-        `SELECT session_date, direction, score, conviction, status, first_flagged_at
+        `SELECT session_date, direction, score, conviction, status, first_flagged_at, entry_context
          FROM zerodte_setup_log
          WHERE ticker = $1 AND session_date = $2`,
         [upper, todayEtYmd()]
@@ -846,6 +941,7 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
             conviction: z.conviction,
             status: z.status,
             first_flagged_at: String(z.first_flagged_at),
+            is_condor: isCondorRow(z.entry_context),
           }
         : null,
       nighthawk_recent: n

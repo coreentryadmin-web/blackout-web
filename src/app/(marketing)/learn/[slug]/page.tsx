@@ -9,6 +9,7 @@ import { publicPageMetadata, buildOgImageUrl } from "@/lib/page-metadata";
 import { LEARN_ARTICLES, getArticle } from "@/lib/learn/articles";
 import { getLearnGuide } from "@/lib/learn/guides";
 import { glossaryTermsFlat } from "@/lib/learn/guides/glossary";
+import { parseGlossaryTerms } from "@/lib/learn/article-glossary-terms";
 import { GUIDE_SEO, isLearnGuideSlug } from "@/lib/learn/guide-seo";
 import { guideFaqs } from "@/lib/learn/types";
 import { LEARN_NAV } from "@/lib/learn/nav";
@@ -117,6 +118,13 @@ export default async function LearnSlugPage({ params }: Props) {
         dateModified={articleDates.dateModified}
       />
       <FAQPageJsonLd items={getArticleFaqs(article.slug)} />
+      {article.type === "glossary" && (
+        <DefinedTermSetJsonLd
+          path={article.path}
+          name={article.title}
+          terms={parseGlossaryTerms(article.body)}
+        />
+      )}
       <Breadcrumbs
         items={[
           { name: "Home", href: "/" },

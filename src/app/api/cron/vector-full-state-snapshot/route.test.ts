@@ -65,3 +65,16 @@ test("the lock is released in a finally block so a thrown sweep still frees the 
 test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
 });
+
+test("event loop yields are added between ticker batches to prevent blocking incoming requests", () => {
+  assert.match(
+    routeSrc,
+    /await new Promise\(\(resolve\) => setImmediate\(resolve\)\)/,
+    "must yield the event loop between batches using setImmediate to prevent blocking"
+  );
+  assert.match(
+    routeSrc,
+    /if \(i \+ TICKER_CONCURRENCY < tickers\.length\)/,
+    "yields must only occur between batches, not after the final batch"
+  );
+});

@@ -68,3 +68,22 @@ test("the lock TTL has real margin above the worst measured sweep runtime (694s 
     `TTL (${ttlSec}s) must exceed the worst measured runtime (${worstObservedSec}s) or the lock expires mid-sweep`
   );
 });
+
+test("event loop yields are added between ticker batches to prevent blocking incoming requests", () => {
+  // Read the actual sweep implementation file
+  const sweepSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../../../../lib", "vector", "vector-pick-sweep.ts"),
+    "utf8"
+  );
+
+  assert.match(
+    sweepSrc,
+    /await new Promise\(\(resolve\) => setImmediate\(resolve\)\)/,
+    "must yield the event loop between batches using setImmediate to prevent blocking"
+  );
+  assert.match(
+    sweepSrc,
+    /if \(i \+ SWEEP_CONCURRENCY < tickers\.length\)/,
+    "yields must only occur between batches, not after the final batch"
+  );
+});

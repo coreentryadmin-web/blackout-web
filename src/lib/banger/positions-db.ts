@@ -10,7 +10,7 @@
  */
 
 import type { QueryResultRow } from "pg";
-import { dbQuery, toJsonbParam } from "@/lib/db";
+import { dbQuery, isoDateString, isoTimestampString, toJsonbParam } from "@/lib/db";
 
 export type BangerStatus = "OPEN" | "PARTIAL" | "CLOSED_RUNNER" | "STOPPED";
 
@@ -44,6 +44,10 @@ export type BangerPositionRow = {
   contract_occ: string;
   entry_premium: number;
   last_mark: number | null;
+  /** When a real quote last landed on this row. NULL = a mark was never observed at all — mirrors
+   *  swing_positions.last_mark_at (see FINDINGS 2026-09-11: this column didn't exist before that fix,
+   *  so every banger-origin position served markAsOf=null forever regardless of true freshness). */
+  last_mark_at: string | null;
   peak_premium: number | null;
   scaled_already: boolean;
   scale_out_action: string | null;
@@ -79,17 +83,18 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
   return {
     id: Number(r.id),
     commit_key: String(r.commit_key),
-    session_date: String(r.session_date).slice(0, 10),
+    session_date: isoDateString(r.session_date),
     ticker: String(r.ticker).toUpperCase(),
     discovery_gain: num(r.discovery_gain),
     discovery_vol: num(r.discovery_vol),
     discovery_dollar_vol: num(r.discovery_dollar_vol),
     discovery_close_strength: num(r.discovery_close_strength),
     contract_strike: Number(r.contract_strike),
-    contract_expiry: String(r.contract_expiry).slice(0, 10),
+    contract_expiry: isoDateString(r.contract_expiry),
     contract_occ: String(r.contract_occ),
     entry_premium: Number(r.entry_premium),
     last_mark: num(r.last_mark),
+    last_mark_at: isoTimestampString(r.last_mark_at),
     peak_premium: num(r.peak_premium),
     scaled_already: Boolean(r.scaled_already),
     scale_out_action: r.scale_out_action != null ? String(r.scale_out_action) : null,
@@ -99,10 +104,10 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
     realized_pnl_usd: num(r.realized_pnl_usd),
     entry_context: jsonbToObject(r.entry_context),
     status: (r.status as BangerStatus) ?? "OPEN",
-    first_seen_at: String(r.first_seen_at),
-    committed_at: r.committed_at != null ? String(r.committed_at) : null,
-    closed_at: r.closed_at != null ? String(r.closed_at) : null,
-    updated_at: String(r.updated_at),
+    first_seen_at: isoTimestampString(r.first_seen_at) ?? "",
+    committed_at: isoTimestampString(r.committed_at),
+    closed_at: isoTimestampString(r.closed_at),
+    updated_at: isoTimestampString(r.updated_at) ?? "",
   };
 }
 
@@ -186,6 +191,10 @@ export async function updateBangerLiveState(id: number, s: BangerLiveStateUpdate
          ELSE $2
        END,
        last_mark = COALESCE($3, last_mark),
+       -- Same stamp discipline as updateSwingLiveState's last_mark_at: only advance it on a tick
+       -- that actually delivered a fresh mark ($3 IS NOT NULL), never on a status-only/scale-out-only
+       -- write — otherwise "last touched" would masquerade as "last quoted" (FINDINGS 2026-09-11).
+       last_mark_at = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE last_mark_at END,
        peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
        scaled_already = scaled_already OR COALESCE($4, FALSE),
        scale_out_action = COALESCE($5, scale_out_action),
@@ -255,6 +264,24 @@ export async function fetchBangerOpenBookRows(limit = 80): Promise<BangerPositio
   const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM banger_positions
      WHERE status IN ('OPEN','PARTIAL')
+     ORDER BY session_date DESC, id DESC
+     LIMIT $1`,
+    [limit],
+  );
+  return res.rows.map(mapBangerPositionRow);
+}
+
+/**
+ * Closed rows only, newest first — the member board's "recently closed" section. Unlike open
+ * positions (unbounded lifetime, must never be paged out from under a live holding), the closed
+ * history genuinely grows without bound and paging it is correct — this is the SAME truncation
+ * `fetchBangerBoardRows` used to apply to BOTH statuses at once, kept here for the side where it's
+ * actually the right call.
+ */
+export async function fetchBangerClosedBoardRows(limit = 60): Promise<BangerPositionRow[]> {
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM banger_positions
+     WHERE status IN ('CLOSED_RUNNER','STOPPED')
      ORDER BY session_date DESC, id DESC
      LIMIT $1`,
     [limit],

@@ -281,6 +281,16 @@ test("newest_age_minutes exposes an off-hours tape that is complete but stale", 
   assert.equal(w.newest_age_minutes, 240);
 });
 
+test("newest_age_minutes is null when freshest print is clock-skewed future (Largo C2)", () => {
+  const w = tapeWindowCoverage(
+    [atPrint("2026-08-21T01:00:00Z")],
+    168,
+    500,
+    new Date("2026-08-21T00:00:00Z")
+  );
+  assert.equal(w.newest_age_minutes, null);
+});
+
 test("timestampless prints are counted out, never silently widening the span", () => {
   // UW sends some prints with no time; the REST read surfaces '' rather than fabricating one.
   const w = tapeWindowCoverage(

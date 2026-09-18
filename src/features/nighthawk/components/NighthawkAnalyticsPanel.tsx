@@ -2,10 +2,10 @@
 
 // Session Analytics panel for the 0DTE Command deck (/nighthawk, ZERO_DTE view).
 //
-// WHY: the deck's left column is a play-by-play ledger table (ZeroDteBoard/CommandDeck) —
-// real-time and correct, but it never answers "how is the SESSION/TRACK RECORD doing" at a
-// glance. This panel sits above the deck and answers exactly that from the SAME data source
-// members already partially see in HawkRecordStrip (`/api/market/zerodte/record`), with real
+// WHY: the deck itself is a play-by-play ledger table (PlayTerminal/CommandDeck, rendered by
+// ZeroDteDeck) — real-time and correct, but it never answers "how is the SESSION/TRACK RECORD
+// doing" at a glance. This panel sits above the deck and answers exactly that from the SAME
+// data source (`/api/market/zerodte/record`) the now-dead HawkRecordStrip used to read, with real
 // chart primitives (recharts, code-split like DarkPoolSpark) instead of plain text.
 //
 // Every number here is either served directly by ZeroDteRecord (win_rate_pct, avg_pnl_pct,
@@ -30,9 +30,10 @@ import { PlayHistoryTable, type HistoryWindowDays } from "./PlayHistoryTable";
 
 // Humanizes the raw `by_outcome` bucket labels (record.ts stamps the literal engine exit
 // reason — thesis_break:gex-walls, ratchet_breakeven_floor, flat_theta_bleed, etc). Distinct
-// from ZeroDteBoard.tsx's NIGHTHAWK_OUTCOME_LABEL, which covers a different vocabulary (the
-// BIE echo note's target/stop/open/ambiguous/pending/unfilled) — not reusable here (Cursor
-// review, PR #2989: the two label sets don't overlap despite the "outcome" name in both).
+// from the dead ZeroDteBoard.tsx's own NIGHTHAWK_OUTCOME_LABEL (that component is unreachable
+// from any live route, but the constant's vocabulary point still holds: the BIE echo note's
+// target/stop/open/ambiguous/pending/unfilled) — not reusable here (Cursor review, PR #2989:
+// the two label sets don't overlap despite the "outcome" name in both).
 const OUTCOME_BUCKET_LABEL: Record<string, string> = {
   doubled: "doubled",
   stopped: "stopped",

@@ -34,8 +34,14 @@ import {
 // (PLAN_RULES stop/target/time-stop, EXIT_RULES arm/lock/runner floors, TRIM_SCALE tranches)
 // changes config_hash; if that edit is NOT accompanied by an EXIT_VERSION bump, THIS test
 // fails, forcing the deliberate version bump the calibration cohort relies on.
-const GOLDEN_RATCHET_HASH = "exitcfg-26da6211";
-const GOLDEN_TRIM_SCALE_HASH = "exitcfg-1ace50c7";
+// Bumped 2026-09-14 (EXIT_VERSION v4->v5): the ratchet "locked" floor (peak >= +50%) now
+// scales with the peak instead of a flat +20% — see EXIT_RULES.ratchet_lock_floor_fraction
+// in exit-engine.ts. Only the RATCHET hash moved (its trailing_rule text encodes the lock
+// tier); TRIM_SCALE's trailing_rule doesn't mention the lock tier's constants at all, so its
+// hash is unchanged except for the version-string bump baked into `version` itself — verified
+// by hand-deriving both hashes from the real stableStringify/fnv1a32 source.
+const GOLDEN_RATCHET_HASH = "exitcfg-2f3ca196";
+const GOLDEN_TRIM_SCALE_HASH = "exitcfg-87be46d8";
 
 test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from the sources of truth", () => {
   const r = buildResolvedExitPolicy("ratchet");

@@ -36,20 +36,28 @@ export function swingTier1CapFloor(env: Record<string, string | undefined> = pro
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 80;
 }
 
+// 2026-09-08 (operator directive, whole-market volume complaint — "feels like gates/architecture
+// itself is fucked up, we should be getting more plays"): ceiling raised 200→300 and pool pct
+// 0.35→0.45. This is the single biggest lever in the swing pipeline — it directly controls how
+// many merged Tier-0 names ever reach Tier-1 scoring/dossier-building, upstream of every other
+// floor (persistence, confluence, Cortex). No specific negative-EV evidence is tied to raising
+// it (unlike the 0DTE score bands in zerodte/gates.ts) — it is pure candidate-pool breadth, not
+// a quality bar being bypassed.
 export function swingTier1CapCeiling(env: Record<string, string | undefined> = process.env): number {
-  const n = Number(env.SWING_TIER1_CAP_MAX ?? env.SWING_TIER1_CAP_CEILING ?? 200);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 200;
+  const n = Number(env.SWING_TIER1_CAP_MAX ?? env.SWING_TIER1_CAP_CEILING ?? 300);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 300;
 }
 
 export function swingTier1CapPoolPct(env: Record<string, string | undefined> = process.env): number {
-  const n = Number(env.SWING_TIER1_CAP_POOL_PCT ?? 0.35);
-  return Number.isFinite(n) && n > 0 && n <= 1 ? n : 0.35;
+  const n = Number(env.SWING_TIER1_CAP_POOL_PCT ?? 0.45);
+  return Number.isFinite(n) && n > 0 && n <= 1 ? n : 0.45;
 }
 
-/** FLOW premium floor when corroborated (FLOW+STRUCTURE). Default $150k vs legacy $250k. */
+/** FLOW premium floor when corroborated (FLOW+STRUCTURE). Default $100k (lowered from $150k on
+ *  2026-09-08, operator directive) vs legacy $250k (also lowered, see below). */
 export function swingCorroboratedFlowMinPremium(env: Record<string, string | undefined> = process.env): number {
-  const n = Number(env.SWING_CORROBORATED_FLOW_MIN_PREMIUM ?? 150_000);
-  return Number.isFinite(n) && n > 0 ? n : 150_000;
+  const n = Number(env.SWING_CORROBORATED_FLOW_MIN_PREMIUM ?? 100_000);
+  return Number.isFinite(n) && n > 0 ? n : 100_000;
 }
 
 /** P3 — G-S6 confluence at COMMIT. LIVE when V2 is on; opt out with SWING_ENGINE_V2_ENFORCE_CONFLUENCE=0. */
@@ -96,13 +104,17 @@ export function isSwingDailyBarGateEnforced(env: Record<string, string | undefin
   return envTriState(env, "SWING_ENGINE_V2_ENFORCE_DAILY_BAR", false);
 }
 
-/** Max watch candidates to Cortex-preflight per scan (provider budget). */
+/** Max watch candidates to Cortex-preflight per scan (provider budget). Raised 12→20 (still
+ *  hard-capped at 25) on 2026-09-08 — more candidates get a Cortex-informed commit read instead
+ *  of going without one. */
 export function swingCortexPreflightCap(env: Record<string, string | undefined> = process.env): number {
-  const n = Number(env.SWING_CORTEX_PREFLIGHT_CAP ?? 12);
-  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 25) : 12;
+  const n = Number(env.SWING_CORTEX_PREFLIGHT_CAP ?? 20);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 25) : 20;
 }
 
+/** 2026-09-08: lowered $250k→$175k (operator directive) — same reasoning as the corroborated
+ *  floor above. */
 export function swingLegacyFlowMinPremium(env: Record<string, string | undefined> = process.env): number {
-  const n = Number(env.SWING_FLOW_MIN_PREMIUM ?? 250_000);
-  return Number.isFinite(n) && n > 0 ? n : 250_000;
+  const n = Number(env.SWING_FLOW_MIN_PREMIUM ?? 175_000);
+  return Number.isFinite(n) && n > 0 ? n : 175_000;
 }

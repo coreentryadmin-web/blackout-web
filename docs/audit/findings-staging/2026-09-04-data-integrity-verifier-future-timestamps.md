@@ -1,4 +1,4 @@
-# `data-integrity-verifier.ts`'s own `ageMin()` read a future-dated timestamp as trustworthy — FIXED
+## `data-integrity-verifier.ts`'s own `ageMin()` read a future-dated timestamp as trustworthy — FIXED
 
 > **kind:** `FINDING`
 
@@ -9,7 +9,7 @@
 | **Severity** | P3 — correctness of an audit surface, not a member-facing defect. No live occurrence confirmed (this is a structural gap, found by code sweep, not a CloudWatch incident) — but a real blind spot in the tool whose entire purpose is to catch data corruption |
 | **Found by** | DISCOVERY 24/7 audit sweep, 2026-09-04, sweeping for the "future-dated data not rejected" bug shape named in the standing mandate (angle 2) |
 
-## Root cause
+### Root cause
 
 `data-integrity-verifier.ts` is the "is the data LAYER healthy end-to-end?" surface of the
 `data-correctness` cron — its own file header states the discipline explicitly: *"HONESTY: ...
@@ -49,7 +49,7 @@ timestamp — it is the tool built to independently verify that the platform's d
 or stale, so being blind to exactly this corruption shape is a gap in the auditor itself, not just
 in a display or a trading gate.
 
-## Evidence
+### Evidence
 
 - `src/lib/correctness/data-integrity-verifier.test.ts` (new file — no test file existed for this
   module before this fix), RED before / GREEN after (`git stash push -- src/lib/correctness/data-integrity-verifier.ts`,
@@ -70,7 +70,7 @@ in a display or a trading gate.
   `admin-cron-health.test.ts` green on Node 20 after the change — no regression to any sibling
   verifier.
 
-## Blast radius
+### Blast radius
 
 All 4 `ageMin()` call sites in the file share the identical root cause and are fixed by the single
 guard in the shared helper. The writer-freshness call site additionally had its own duplicated
@@ -78,7 +78,7 @@ inline reimplementation of the same unguarded formula, which was replaced with a
 now-guarded `ageMin()` — deduplicating the logic so all 4 sites behave identically rather than
 fixing 3 of 4 and leaving a 4th, slightly different copy of the same bug behind.
 
-## Fix rationale
+### Fix rationale
 
 Mirrors the exact convention already established for this bug shape elsewhere in the codebase:
 `ZERODTE_MARK_FUTURE_TOLERANCE_MS` (60s, `src/lib/zerodte/marks-math.ts`) is the SAME constant

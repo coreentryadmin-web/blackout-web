@@ -196,6 +196,7 @@ function openRow(ticker: string, id: number): SwingPositionRow {
 }
 
 let mockOpenRows: SwingPositionRow[] = [];
+let mockClosedRows: SwingPositionRow[] = [];
 let mockDiscovered: {
   dossiers: ReturnType<typeof buildSwingDossier>[];
   plays: never[];
@@ -207,7 +208,7 @@ mock.module("../db", {
   namedExports: {
     fetchOpenSwingPositions: async () => mockOpenRows,
     fetchLatestSwingSnapshotEvents: async () => new Map(),
-    fetchSwingPositionsRange: async () => [],
+    fetchSwingPositionsRange: async () => mockClosedRows,
     fetchSwingPositionChain: async () => [],
   },
 });
@@ -273,6 +274,35 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
       "no dossier means no regime read — the honest default must stand, never an invented one",
     );
   });
+
+  test("C4 IDENTITY: a committed row's real ledger contract_occ is preferred over a reconstructed guess (LARGO-PRODUCT-CONTRACT.md)", async () => {
+    // commit.ts stamps contract_occ at insert via occFromChainContract, and roll-plan.ts
+    // re-stamps it on a roll — it is the ledger's own authoritative record of exactly which
+    // contract is held. play-brief-resolve.ts's horizonRowToDeckSource() used to discard it
+    // unconditionally (occ: null) even though the row carrying it was already in scope at this
+    // exact call site, silently falling back on terminalPlayFromHorizon's strike/expiry/right
+    // RECONSTRUCTION (adapters.ts's own occFromChainContract fallback) instead of the ledger's
+    // stored value. The two agree in the common case (this test uses a strike/expiry/right that
+    // reconstructs to the SAME symbol) — the fix's value is preferring the authoritative source
+    // when they could diverge (e.g. mid-roll), and unblocking the SSE live-marks overlay
+    // (use-live-marks.ts's overlayLiveMarks gates its lookup on `p.occ`) from depending on that
+    // reconstruction path at all for a position the ledger already identifies unambiguously.
+    const row = openRow("NRG", 34);
+    // Deliberately mismatched vs strike/expiry/right (110/2026-09-18/C, which reconstruction
+    // would use) — proves the ledger's stored occ WINS over reconstruction, not merely that the
+    // two happen to agree. A real divergence like this can occur transiently around a roll.
+    row.contract_occ = "NRG261016C00115000";
+    mockOpenRows = [row];
+    mockDiscovered = { dossiers: [buildSwingDossier(dossierInput("NRG"))], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("NRG", { positionId: 34 });
+    assert.ok(play, "the committed play must resolve");
+    assert.equal(
+      play!.occ,
+      "O:NRG261016C00115000",
+      "a committed row's stored contract_occ must win over a strike/expiry/right reconstruction, normalized O:-prefixed",
+    );
+  });
 });
 
 describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity with open path)", () => {
@@ -302,5 +332,99 @@ describe("resolveSwingPlayForBrief: WATCH lane restores factors/regime (parity w
     assert.ok(resolved, "the WATCH lane play must resolve");
     assert.ok((resolved!.play.factors?.length ?? 0) > 0, "factors must be restored from dossier");
     assert.ok(resolved!.play.regime != null, "regime must be restored from dossier for WATCH rows");
+  });
+});
+
+// A caller supplying `positionId` as a SEPARATE query param (the route's own documented shape —
+// `?playId=SWING:NRG&ticker=NRG&positionId=34` — and Largo's tool-call convention, distinct from
+// the frontend hook's playId-embedded `SWING:TICKER:ID` form) must resolve a CLOSED position just
+// as reliably as one that embeds the id in playId. Live repro (2026-09-11, SWING:INTC): a caller
+// asking for a specific closed/graded position by separate positionId got back an unrelated LIVE
+// WATCH-lane row for the same ticker instead, because the two closed-play lookups in
+// resolveSwingPlayForBrief guarded on `parsed.positionId` (parsed ONLY from the playId string) —
+// always null for this call shape — rather than the fully-resolved `positionId` variable that
+// already merges the separate query param.
+describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolve the CLOSED position, not an unrelated live WATCH row for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("positionId as a query param (playId has no embedded id) still finds the closed position over a same-ticker WATCH row", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("INTC", 30),
+        status: "CLOSED",
+        graded_at: "2026-09-08T20:00:00.000Z",
+        closed_at: "2026-09-08T20:00:00.000Z",
+        realized_pnl_pct: 12.3,
+      },
+    ];
+    // A DIFFERENT, currently-live WATCH candidate for the same ticker — exactly the shape that
+    // silently won before this fix, because the closed-play guard never fired.
+    mockLaneRows = [laneRow({ ticker: "INTC", status: "WATCH" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:INTC", // no embedded position id — parsed.positionId is null
+      ticker: "INTC",
+      positionId: 30, // supplied separately, as the route's own docstring example shows
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(
+      resolved!.play.status,
+      "CLOSED",
+      `must resolve the CLOSED position (id 30), not the live WATCH row — got status "${resolved!.play.status}"`,
+    );
+  });
+});
+
+// BUG FOUND 2026-09-11 (Ask Largo standing mandate — roll-narrative trace, follow-up to #4794's
+// OCC-identity fix). root_position_id is STICKY to the very first leg (roll.ts), never to an
+// immediate parent, so a chain rolled TWICE — root(id=1)→rolled child(id=2, root_position_id=1)→
+// currently-open grandchild(id=3, root_position_id=1) — cannot be found via id=2: no open row has
+// id=2 or root_position_id=2, and the graded row that IS id=2 is ROLLED (not CLOSED), which
+// closedDeckSourceFromRow correctly refuses. Before the fix this silently fell through to an
+// unrelated ticker-only fallback instead of the live continuation.
+describe("resolveSwingPlayForBrief: a chain rolled TWICE still resolves via an INTERMEDIATE leg's id", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("positionId pointing at the first (already-rolled-again) child resolves to the currently-OPEN grandchild leg", async () => {
+    const root = { ...openRow("NRG", 1), status: "ROLLED", graded_at: "2026-09-05T20:00:00.000Z", root_position_id: null, roll_seq: 0 };
+    const child = { ...openRow("NRG", 2), status: "ROLLED", graded_at: "2026-09-08T20:00:00.000Z", root_position_id: 1, roll_seq: 1, contract_strike: 115 };
+    const grandchild = { ...openRow("NRG", 3), status: "OPEN", graded_at: null, root_position_id: 1, roll_seq: 2, contract_strike: 120 };
+    // An UNRELATED second open NRG position (a totally different chain) — without this, a single
+    // open row for the ticker would trivially "win" via loadOpenTerminalPlay's own `matches.length
+    // === 1` fallback regardless of id matching, masking whether the chain-root resolution is
+    // actually doing any work. With two open candidates, only correct id/root/chain-root matching
+    // can pick the right one.
+    const unrelated = { ...openRow("NRG", 99), status: "OPEN", graded_at: null, root_position_id: null, roll_seq: 0, contract_strike: 200 };
+
+    mockOpenRows = [grandchild, unrelated];
+    mockClosedRows = [root, child, grandchild, unrelated];
+    mockLaneRows = []; // no unrelated WATCH candidate should be needed or picked
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:NRG",
+      ticker: "NRG",
+      positionId: 2, // the INTERMEDIATE leg's id — not the root (1), not the live leg (3)
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    // TerminalPlay.contract is a formatted label string (types.ts), e.g. "120C · 14DTE" — not an
+    // object; the strike is embedded in it, which is enough to prove which leg actually resolved.
+    assert.ok(
+      resolved!.play.contract.includes("120"),
+      `must resolve the currently-OPEN grandchild leg (strike 120), not fall through to an unrelated fallback — got contract "${resolved!.play.contract}"`,
+    );
+    assert.equal(resolved!.play.status, "OPEN", "the resolved play must be the live OPEN leg, not a terminal one");
   });
 });

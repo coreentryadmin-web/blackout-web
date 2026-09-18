@@ -38,3 +38,17 @@ test("member /api/market/spx/play catch returns degradedPlayPayload shape", () =
   const route = readFileSync(join(ROOT, "src/app/api/market/spx/play/route.ts"), "utf8");
   assert.match(route, /degradedPlayPayload/);
 });
+
+test("peekSpxPlayState checks isSpxPlaySnapshotFreshEnough on BOTH the in-process and Redis-backed peek paths (2026-09-13 fix)", () => {
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const fn = service.match(/export async function peekSpxPlayState\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, "peekSpxPlayState function present");
+  const body = fn![0];
+  assert.match(body, /playMemberPeekMaxAgeSec/);
+  // one call guarding `mem`, one guarding `hit.value` — a regression that drops the check from
+  // either path re-opens the live bug (up to ~234s-stale snapshots served as fresh).
+  const guardCalls = body.match(/isSpxPlaySnapshotFreshEnough\(/g) ?? [];
+  assert.equal(guardCalls.length, 2, "expected exactly two freshness-guarded peek paths (mem + hit.value)");
+  assert.match(body, /if \(mem && isSpxPlaySnapshotFreshEnough\(mem\.as_of/);
+  assert.match(body, /if \(hit\?\.value && isSpxPlaySnapshotFreshEnough\(hit\.value\.as_of/);
+});
