@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T17:52:00Z",
+  "lastUpdated": "2026-09-18T18:16:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3988,6 +3988,17 @@
       "why": "This is a stronger, more definitive version of the 16:10Z/16:22Z finding: it's not just 'LONG:SHORT ratio is 47:1 during a down month' anymore, it's 'the dedicated anti-all-LONG safety mechanism read NEUTRAL literally every single session for over a month, including sessions inside a 17-of-22-red-days stretch.' Two very different explanations remain open and this measurement alone can't distinguish them: (a) the tape genuinely never cleared 2-of-3 bearish signals by tide_bias/breadth/composite_regime's specific definitions this whole window (gate correctly conservative), or (b) one or more of those 3 inputs is itself silently never populated as bearish in the pinned publish_context (a data-capture gap upstream of the gate, not a threshold-strictness question). The posture-backtest route as shipped reports the gate's VERDICT per session but not the raw tide_bias/advance_pct/composite_regime values that produced it -- so (a) vs (b) is not yet distinguishable from this tool's current output.",
       "result": "Real, high-confidence measurement obtained and recorded -- the exact question this tool was built to answer. Still correctly held at REPORT, not acted on (no gate/threshold change). The natural, small, low-risk follow-up: add the raw per-session regime values (tide_bias/advance_pct/composite_regime) to buildPostureBacktestReport's session output (same pure module, same route, no new capture) so (a) vs (b) above becomes distinguishable -- not built this cycle, flagged for the next one.",
       "evidence": "Full API response: 21/21 sessions_with_regime, gate_fired_short_n=0, gate_fired_short_pct=0, all_long_sessions_n=20/21, gate_short_but_book_all_long_n=0. Route: GET https://blackouttrades.com/api/admin/nighthawk/posture-backtest?days=30."
+    },
+    {
+      "at": "2026-09-18T18:16:00Z",
+      "trigger": ":06 cycle continued -- opened PR #5222 (posture-backtest raw regime values)",
+      "healthcheck": "Board was already steady this cycle (same explained stale-mark pattern); no re-run needed before building.",
+      "whatChanged": "Opened PR #5222 (draft): adds a `regime` field ({tide_bias, advance_pct, composite_regime} | null) to each posture-backtest session -- exactly what the tool already computed internally to run detectBookPosture, now also returned instead of discarded. Directly answers the open question from the 17:52Z measurement: can't yet tell whether the gate's 0/21 SHORT fire rate means the tape genuinely never cleared 2-of-3 bearish signals, or whether one of the 3 inputs is silently never populated as bearish in the pinned data.",
+      "why": "Minimal, additive, read-only follow-up to PR #5217 -- no new capture, no gate logic touched. Flagged as task #29 last cycle specifically to make the (a)-vs-(b) question answerable from the tool's own next call rather than needing a fresh investigation.",
+      "evidence": "2 new unit tests (13/13 total passing in posture-backtest.test.ts). tsc --noEmit clean. Full npm test: 14840/14840 passing, 0 regressions.",
+      "result": "Instrument extended (pending merge/CI). The actual raw-regime read (data-gap vs gate-conservatism) still not done -- that's the check-in's job once deployed.",
+      "prStatus": "PR #5222 opened as draft, subscribed to PR activity, 15-min check-in scheduled (~18:30Z, budgeted for today's slower ~25-30min deploy times).",
+      "nextAction": "At check-in: verify merge, then once deployed call GET /api/admin/nighthawk/posture-backtest?days=30 and read the per-session regime values to resolve the open question."
     }
   ],
   "knownOpenItems": {
