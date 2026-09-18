@@ -229,6 +229,40 @@ test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
   assert.match(src, /export async function readGexHeatmapCacheOnly/);
 });
 
+// 2026-09-18 UW/Polygon rate-limiter queue-timeout-surge incident: a root with 0 Polygon
+// contracts AND an empty UW strike-exposure fallback (structurally chain-less, not a blip) was
+// re-fetching BOTH upstreams on every Redis matrix TTL expiry (~90s) forever, confirmed live via
+// ACEEU/RWTN retrying every ~75-90s for 90+ minutes straight. Fix: a long negative cache that
+// short-circuits future rebuilds for a confirmed chain-less root before either upstream call.
+test("chain-less root (0 Polygon contracts + empty UW fallback) is negative-cached and short-circuits the NEXT build before any upstream call", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(
+    src,
+    /const NO_CHAIN_NEGATIVE_TTL_SEC = 600;/,
+    "expected a long (10min) negative-cache TTL for confirmed chain-less roots"
+  );
+  // The short-circuit must run BEFORE resolveSpotSnapshot — otherwise a confirmed chain-less
+  // root still pays for a wasted spot fetch on every rebuild cycle.
+  const shortCircuitIdx = src.indexOf("if (await isKnownNoChainTicker(root))");
+  const spotFetchIdx = src.indexOf("const snap = await resolveSpotSnapshot(optionsRoot);");
+  assert.ok(shortCircuitIdx > 0, "expected the no-chain short-circuit check in buildGexHeatmapUncached");
+  assert.ok(spotFetchIdx > 0, "expected the spot fetch this check must precede");
+  assert.ok(
+    shortCircuitIdx < spotFetchIdx,
+    "no-chain short-circuit must run before the spot fetch, not after — else the spot call still leaks every cycle"
+  );
+  // The negative cache must only be SET once BOTH upstreams (Polygon chain + UW fallback) have
+  // actually come up empty for this build — never marked speculatively before the UW attempt.
+  assert.match(
+    src,
+    /if \(uwMatrix\) return uwMatrix;[\s\S]{0,600}markNoChainTicker\(root, now\);/,
+    "markNoChainTicker must run only after the UW fallback also returned null"
+  );
+});
+
 // ── task #136: computeGexEvents — the pure diff durable persistence (gex-regime-
 // events.ts) and /api/cron/gex-alerts both consume without re-deriving. ──
 
