@@ -176,6 +176,40 @@ export function meridianCatalystStale(
   return ageMs > MERIDIAN_CATALYST_STALE_MS;
 }
 
+/**
+ * Ticker news / catalyst headlines staleness (Largo C2, 2026-09-18, Ask Largo standing mandate).
+ * `arsenal.news.as_of` is `NewsResult.asOf` (polygon-news.ts), stamped ONCE inside `serverCache`'s
+ * cached builder at the moment the upstream Benzinga fetch actually completed — the exact same
+ * stale-while-revalidate exposure `meridianCatalystStale` above already documents and guards for
+ * the sibling Meridian catalyst read (a degraded upstream can keep serving the same stored payload,
+ * and its true un-bumped `as_of`, for up to `MAX_STALE_AGE_MS` = 10 minutes, server-cache.ts). Same
+ * threshold as GEX/Vector/Meridian so `catalystsSection`'s headlines can't read as current when the
+ * fetch behind them is actually minutes old. See `EcosystemArsenalNews.as_of`'s own doc comment for
+ * why this field previously never reached this file at all (dropped one layer up, at the arsenal
+ * assembler) rather than merely being read incorrectly.
+ */
+const NEWS_CATALYST_STALE_MS = GEX_MATRIX_STALE_MS;
+
+export function newsCatalystAgeMs(
+  asOf: string | null | undefined,
+  readMs: number = Date.now(),
+): number | null {
+  if (!asOf) return null;
+  const observedMs = Date.parse(asOf);
+  if (!Number.isFinite(observedMs)) return null;
+  return readMs - observedMs;
+}
+
+export function newsCatalystStale(
+  asOf: string | null | undefined,
+  readMs: number = Date.now(),
+): boolean {
+  const ageMs = newsCatalystAgeMs(asOf, readMs);
+  if (ageMs == null) return false;
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
+  return ageMs > NEWS_CATALYST_STALE_MS;
+}
+
 /** ET session the Vector snapshot was measured in — freshness block wins over persisted sessionDate. */
 export function vectorObservedSessionDate(vec: VectorWithReadContext): string | null {
   if (typeof vec.observed_session_date === "string" && vec.observed_session_date.length > 0) {

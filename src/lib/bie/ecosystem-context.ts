@@ -219,7 +219,27 @@ export type EcosystemArsenalMacro = {
   as_of: string | null;
 };
 export type EcosystemArsenalBreadth = { tone: string; summary: string; as_of: string };
-export type EcosystemArsenalNews = { count: number; newest: string | null; headlines: string[] };
+export type EcosystemArsenalNews = {
+  count: number;
+  newest: string | null;
+  headlines: string[];
+  /**
+   * When this news read was actually performed (ISO) — `NewsResult.asOf`, stamped ONCE inside
+   * `serverCache`'s cached builder (polygon-news.ts) at the moment the upstream Benzinga fetch
+   * completed, not at read time. Largo C2 (2026-09-18, Ask Largo standing mandate): under that
+   * cache's stale-while-revalidate path a degraded Benzinga upstream can keep serving the same
+   * stored payload (and this same, un-bumped `asOf`) for up to `MAX_STALE_AGE_MS` (10 minutes,
+   * server-cache.ts) — the identical risk `meridianCatalystSection`'s own `slice.as_of` fix
+   * already documents and discloses for the sibling Meridian catalyst read. `NewsResult` already
+   * computed this field; it was silently dropped one layer up, here, when the raw reader output
+   * was folded into the arsenal summary — so `catalystsSection` (play-brief-intel.ts), the one
+   * consumer of `headlines`, had no way to ever disclose staleness, unlike every sibling
+   * freshness-aware section in this file (GEX/Vector/Meridian). Optional/null on an older or
+   * hand-built fixture that predates this field — `newsCatalystStale` (play-brief-absence.ts)
+   * already treats a missing `as_of` as "unknown, not stale" rather than requiring it.
+   */
+  as_of?: string | null;
+};
 // Mirrors BieUnavailableSource (answer-envelope.ts) — kept as its own type rather than importing
 // that one directly so this reader layer stays decoupled from the BIE envelope shape, but the
 // FIELDS must match: every composer that spreads unavailable_sources into a BieUnavailableSource[]
@@ -383,6 +403,7 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           // fix as meridian-feed-text.ts's 2026-08-21 correction; this call site was missed then
           // because it feeds the swing play-brief, not the Meridian desk.
           headlines: reads.news.items.slice(0, 4).map((i) => sanitizeFeedText(i.headline)),
+          as_of: reads.news.asOf ?? null,
         }
     : (unavailable.push({
         source: "news",
