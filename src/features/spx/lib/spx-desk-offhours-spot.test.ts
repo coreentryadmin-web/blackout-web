@@ -84,3 +84,52 @@ test("buildSpxDeskPulseMinimal: price chain includes prior.pdc", () => {
   );
   assert.ok(priceLine, "minimal pulse must fall back to prior.pdc on cold cache");
 });
+
+test("stickyDeskGexFallback: preserves gex_net, gex_king, max_pain from last good state", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /lastGoodGexNet: number \| null = null;/,
+    "must declare sticky variable for gex_net"
+  );
+  assert.match(
+    src,
+    /lastGoodGexKing: number \| null = null;/,
+    "must declare sticky variable for gex_king"
+  );
+  assert.match(
+    src,
+    /lastGoodMaxPain: number \| null = null;/,
+    "must declare sticky variable for max_pain"
+  );
+  assert.match(
+    src,
+    /function stickyDeskGexFallback[\s\S]*gex_net: lastGoodGexNet,/,
+    "stickyDeskGexFallback must return lastGoodGexNet instead of null"
+  );
+  assert.match(
+    src,
+    /function stickyDeskGexFallback[\s\S]*gex_king: lastGoodGexKing,/,
+    "stickyDeskGexFallback must return lastGoodGexKing instead of null"
+  );
+  assert.match(
+    src,
+    /function stickyDeskGexFallback[\s\S]*max_pain: lastGoodMaxPain,/,
+    "stickyDeskGexFallback must return lastGoodMaxPain instead of null"
+  );
+  assert.match(
+    src,
+    /lastGoodGexNet = pos\.net_gex;/,
+    "resolveCanonicalDeskGex must capture net_gex from fresh fetch"
+  );
+  assert.match(
+    src,
+    /lastGoodGexKing = king;/,
+    "resolveCanonicalDeskGex must capture king from fresh fetch"
+  );
+  assert.match(
+    src,
+    /lastGoodMaxPain = pos\.max_pain;/,
+    "resolveCanonicalDeskGex must capture max_pain from fresh fetch"
+  );
+});
