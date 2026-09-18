@@ -164,3 +164,16 @@ test("buildDiscoveryStageSnapshotRows: edition_for is stamped identically on eve
   assert.ok(out.length >= 2);
   for (const r of out) assert.equal(r.edition_for, "2026-09-17");
 });
+
+test("buildDiscoveryStageSnapshotRows (Phase 2A part 2): market_regime defaults to null when omitted, never a silent crash", () => {
+  const rows = [row({ ticker: "NVDA" })];
+  const out = buildDiscoveryStageSnapshotRows("2026-09-17", rows, rows, extrasFor(rows));
+  assert.equal(out[0]!.snapshot_json.market_regime, null);
+});
+
+test("buildDiscoveryStageSnapshotRows (Phase 2A part 2): the SAME market_regime object is stamped on every row this edition build produces -- one fact about the whole market, not per-ticker", () => {
+  const rows = [row({ ticker: "NVDA" }), row({ ticker: "AXTI", composite_score: 1 })];
+  const regime = { schema_version: 1 as const, trend: "up" as const, spx_close: 100, spx_sma20: 95, volatility: "normal" as const, vix_close: 18, gap_pattern: null, gap_pct: null, event_day: false };
+  const out = buildDiscoveryStageSnapshotRows("2026-09-17", rows, [rows[0]!], extrasFor(rows), regime);
+  for (const r of out) assert.deepEqual(r.snapshot_json.market_regime, regime);
+});
