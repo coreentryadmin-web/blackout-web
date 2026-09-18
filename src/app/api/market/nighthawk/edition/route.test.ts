@@ -138,6 +138,23 @@ test("timeoutFallbackEdition: a lastGoodEdition for a DIFFERENT editionFor is re
   );
 });
 
+// ── 2026-09-18: a lastGoodEdition captured WHILE stale (dates mismatched then) was replayed with
+// its baked-in stale:true still set, even after editionFor naturally caught up to match it ─────
+//
+// `stale`'s only assignment site (resolveNighthawkEdition's own `edition.edition_for !== editionFor`
+// check) means it is EXACTLY "date mismatch at resolve time" — nothing else. But once dates match
+// on THIS call, that flag from an earlier capture is stale information, not current truth. Live
+// repro (2026-09-18): a real, on-time, correctly-published edition was served with `stale:true`,
+// showing members a false "tonight's not published yet" banner over the correct current edition.
+test("timeoutFallbackEdition: a lastGoodEdition captured stale is re-stamped fresh once editionFor now matches", () => {
+  const src = read(ROUTE);
+  assert.match(
+    src,
+    /if \(lastGoodEdition\.stale\) \{\s*return \{ \.\.\.lastGoodEdition, stale: false, served_for: undefined \};\s*\}/,
+    "a matching-date lastGoodEdition must never replay a baked-in stale:true from an earlier, genuinely mismatched capture",
+  );
+});
+
 // ── 2026-09-16: lastGoodEdition froze at this process's FIRST successful resolve, not its LATEST
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 //
