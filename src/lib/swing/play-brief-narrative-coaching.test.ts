@@ -1289,6 +1289,42 @@ test("closedCoaching: discloses a real drawdown before outcome (gap fix 2026-09-
   assert.match(line!, /\+40\.0%/);
 });
 
+test("closedCoaching: no trough line when trough is near-identical to the exit (stop fired at the low, no separate swing to note — live repro NN:32, gap fix 2026-09-18)", () => {
+  // A stopped exit routinely fires AT (or within noise of) the worst mark recorded — trough and
+  // exitPnlPct end up fmtPct'd to the same displayed number. The old unconditional gate rendered
+  // "dipped to -60.3% at its worst before closing at -60.3%", falsely implying a distinct
+  // intra-trade low worth learning from when the trough *was* the outcome.
+  const stoppedAtTrough = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 24.4,
+      trough: -60.26,
+      exitPnlPct: -60.26,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(stoppedAtTrough);
+  assert.doesNotMatch(stoppedAtTrough!, /Drawdown before outcome/i);
+
+  // A genuine gap between trough and exit (position recovered off its low before finally closing)
+  // still fires — the fix narrows the gate, it does not remove the feature.
+  const recoveredOffTrough = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 24.4,
+      trough: -60.26,
+      exitPnlPct: -30.0,
+      mfeCapturePct: null,
+      closedReason: "stopped",
+    }),
+  );
+  assert.ok(recoveredOffTrough);
+  assert.match(recoveredOffTrough!, /Drawdown before outcome/i);
+  assert.match(recoveredOffTrough!, /-60\.3%/);
+  assert.match(recoveredOffTrough!, /-30\.0%/);
+});
+
 test("closedCoaching: no trough line when the swing is shallow (<40pt) or trough never went negative", () => {
   const shallow = closedCoaching(
     play({ status: "CLOSED", peak: 30, trough: -5, exitPnlPct: 20, closedReason: null }),

@@ -1097,16 +1097,29 @@ export function closedCoaching(play: TerminalPlay): string | null {
   // whose whole job is teaching that lesson. Same >=40pt meaningful-swing threshold as
   // `troughResilienceCoaching` for consistency; only fires on a real negative excursion (a
   // position that never went negative has nothing to note here).
+  // BUG FOUND (2026-09-18, Ask Largo standing mandate, live repro NN:32 CLOSED/stopped): the
+  // `peak - trough >= 40` gate above proves the SWING from peak to trough was large, but says
+  // nothing about whether trough itself differs from the exit — and for a STOPPED close, the stop
+  // fires at (or within noise of) the worst mark recorded, so `trough` and `exitPnlPct` are
+  // routinely near-identical. Live output was "dipped to -60.3% at its worst before closing at
+  // -60.3%" — both fmtPct'd to the SAME displayed number, so the line's entire claim ("note the
+  // real intra-trade swing") is false in the one case a reader would trust it most: it reads as
+  // "there was a separate low point worth learning from" when the trough *was* the outcome, no
+  // recovery-then-relapse ever happened. Require trough to sit meaningfully below the exit
+  // (>=5pt) before claiming a swing "before" the outcome exists to report.
   if (
     typeof play.trough === "number" &&
     Number.isFinite(play.trough) &&
     play.trough < 0 &&
     typeof play.peak === "number" &&
     Number.isFinite(play.peak) &&
-    play.peak - play.trough >= 40
+    play.peak - play.trough >= 40 &&
+    typeof play.exitPnlPct === "number" &&
+    Number.isFinite(play.exitPnlPct) &&
+    play.exitPnlPct - play.trough >= 5
   ) {
     lines.push(
-      `**Drawdown before outcome** — this position dipped to **${fmtPct(play.trough)}** at its worst before closing at **${play.exitPnlPct != null ? fmtPct(play.exitPnlPct) : "—"}**; note the real intra-trade swing when sizing or setting stops on similar setups.`,
+      `**Drawdown before outcome** — this position dipped to **${fmtPct(play.trough)}** at its worst before closing at **${fmtPct(play.exitPnlPct)}**; note the real intra-trade swing when sizing or setting stops on similar setups.`,
     );
   }
 
