@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T07:13:00Z",
+  "lastUpdated": "2026-09-18T07:26:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3633,6 +3633,13 @@
       "healthcheck": "Re-ran scripts/audit/legacy-e2e-healthcheck.mjs fresh at 07:07:38Z: steady, unchanged (4 plays, marks correctly stale pre-market, record GREEN resolved=24). No new findings.",
       "codeReview": "Shipped Phase 2B part 1: pull-rule-taxonomy.ts (classifyPullRules, 12 rule tags pattern-matched from computePlayVerdict's exact reason templates) + debrief-aggregate.ts's summarizePulledByRule (per-rule wrongly/correctly tally, LOW_N discipline, honest 'unattributed' bucket for reason text that doesn't match any known template) + wired into analytics.ts's getNighthawkMetrics as pulled_rule_breakdown -- reachable from GET /api/market/nighthawk/record immediately, not dead instrumentation. This directly answers the operator's item #8 ('which cancellation rule is destroying positive expectancy'). Measures only, changes no gate/threshold. Opened as PR #5181 (draft, CI running, subscribed, 12-min self-check-in scheduled). Evidence: 19 new tests + all 28 pre-existing debrief-aggregate tests + all 26 analytics tests + record route test all pass; full nighthawk/lib suite 1145/1145; tsc clean.",
       "action": "Opened PR #5181 (Phase 2B part 1). Task list updated (#19 completed). Phase 2B part 2 (WHY-classification for wrong_direction, using Phase 2A market_regime) not yet started."
+    },
+    {
+      "at": "2026-09-18T07:26:00Z",
+      "trigger": "PR #5181 CI check-in",
+      "healthcheck": "Not re-run this check-in (already confirmed steady at 07:21:41Z, this cycle).",
+      "codeReview": "PR #5181 (Phase 2B part 1, pull-rule attribution) went green (verify+CodeQL+Analyze all success) and was undrafted + merged (squash, sha 358780eb7) -- re-verified live against origin/main directly (classifyPullRules present in the merged file). Phase 2B part 1 is now FULLY shipped and reachable via GET /api/market/nighthawk/record's pulled_rule_breakdown field.",
+      "action": "Merged PR #5181 (Phase 2B part 1). Task list updated (#19 completed). Next: Phase 2B part 2 (WHY-classification for wrong_direction plays using Phase 2A market_regime) or Phase 2C (feature attribution/winner-DNA), not yet started."
     }
   ],
   "knownOpenItems": {
