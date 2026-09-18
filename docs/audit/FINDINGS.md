@@ -4,6 +4,201 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Ask Largo Swing — top-level "Invalidation" line showed a moot gate reason for a dead WATCH play — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — member-facing narrative accuracy, not a live-trading-path change (read-only text) |
+| **Component** | `src/lib/swing/play-brief.ts` — `composeSwingPlayBrief`'s `envelope.invalidation` fallback chain |
+| **Found by** | NIGHT HAWK SWINGS standing audit lane, live MU WATCH brief repro, 2026-09-17/18 |
+
+### Root cause
+
+`composeSwingPlayBrief`'s `invalidation` computation (the string that feeds the play-brief's
+top-level `**Invalidation:**` evidence-block line, distinct from any section body) is a fallback
+chain: `thesisBreak.level === "break"` note, else `resolveBreakInvalidation(ctx)` (a real per-
+ticker technical level), else `play.gateBlocks?.[0]?.reason` (a raw commit-gate string), else an
+OPEN-only premium-stop line. None of those checked whether the play's entry is already **dead** —
+`deadPlayReason(play)` (`entry-enterability.ts`): `setupState === "INVALIDATED"` or
+`watchEntryExpired === true`.
+
+This is the exact same root cause already fixed twice elsewhere in the same module for the same
+class of bug:
+- `watchEntrySection`'s "Gates blocking entry" header (this file, 2026-09-14 fix) — reframes the
+  header to `**Also gate-blocked** (moot — ${dead})` once the entry window is dead, so the gate
+  list doesn't read as an active/clearable blocker.
+- `entryTriggerDeadReason` (`play-brief-intel.ts`, 2026-09-17 fix) — appends the same "moot"
+  qualifier to the "Entry trigger" level line.
+
+Both of those already import and call `deadPlayReason` for precisely this reason. The top-level
+`invalidation` assignment never got the same treatment, so it kept falling straight through to
+`play.gateBlocks?.[0]?.reason` — the raw, now-moot gate text, presented as if it were the live
+condition standing between the member and entry.
+
+### Evidence
+
+Live MU WATCH brief, 2026-09-17/18 (`GET /api/market/swing/play-brief?playId=SWING:MU&ticker=MU`):
+- Headline: `**EXPIRED — MU 970C 8DTE**`, correct.
+- Entry section: `**Also gate-blocked** (moot — entry-validity window expired): g_s12_halt_feed_stale: ...`, correct — the "moot" fix already applied here.
+- Watch levels section, entry trigger line: `... but entry-validity window expired — this level no longer fires the setup`, correct — the other existing "moot" fix.
+- **Top-level `**Invalidation:**` line (pre-fix): `Trading-halt feed unavailable — desk will not open until halt/LULD data recovers.`** — the same moot G-S12 gate text, presented with no qualifier, directly contradicting the three correctly-worded call-outs elsewhere in the same brief. A member reading only the Invalidation callout (a summary block many members would scan first) would believe entry reopens once the halt feed recovers, when in fact the entry-validity window has already expired regardless of gate state — `evaluateSwingEntryEnterability`'s own if-chain checks the deadline/invalidation BEFORE gate-blocked, so clearing the gate was never going to reopen entry.
+
+### Blast radius
+
+Single call site — `composeSwingPlayBrief`'s `invalidation` assignment is the sole producer of
+`envelope.invalidation` for the swing play-brief. No other consumer of this field exists outside
+the envelope markdown renderer (`answer-envelope.ts:323`, `**Invalidation:** ${env.invalidation}`)
+and the structured `envelope.invalidation` field itself (read by the UI/Largo tool-call surface
+directly). Fix is scoped to `bucket === "watch"` only, matching the two existing sibling fixes
+exactly — OPEN/CLOSED invalidation logic (premium-stop fallback, thesis-break note, CLOSED's
+`null`) is untouched.
+
+### Fix
+
+Added a `dead = bucket === "watch" ? deadPlayReason(play) : null` check, inserted between the
+existing `thesisBreak.level === "break"` branch and the `resolveBreakInvalidation(ctx)` fallback.
+When `dead` is non-null, the invalidation line now reads `"${dead, capitalized} — this setup is no
+longer live."` (e.g. `"Entry-validity window expired — this setup is no longer live."`) instead of
+falling through to a real technical level or the moot gate reason — a dead play has no live
+invalidation condition to speak of, whether technical or gate-based, so both later fallbacks are
+correctly skipped once `dead` fires. Considered reusing `play.recNote` directly (already carries
+the correctly-worded reason via `entry-verdict.ts`'s `enter.reason`) instead of `deadPlayReason`,
+but rejected: `recNote` is populated for every WATCH verdict branch (BUY/WAIT/dont_buy alike, not
+just the dead-play case), so using it unconditionally would have required re-deriving the same
+dead/alive distinction `deadPlayReason` already encodes — reusing the purpose-built, already-
+imported-in-this-file helper (used by its two sibling fixes) is the more precise, minimal choice.
+
+### Test
+
+`src/lib/swing/play-brief.test.ts`:
+- `"top-level Invalidation line reflects a dead entry window, not a moot gate reason"` — RED
+  pre-fix (`brief.envelope.invalidation === "Bucket not graduated"`, the fixture's moot gate
+  reason), GREEN post-fix (`"Entry-validity window expired — this setup is no longer live."`).
+- `"top-level Invalidation line still uses the real gate reason when entry is genuinely still
+  open"` — companion negative case (no `watchEntryExpired`/`INVALIDATED` override), asserts the
+  gate reason still surfaces unchanged when entry genuinely is still open — proves the fix is
+  scoped to the dead-play case only, not a blanket behavior change.
+
+Deliberate-break RED→GREEN proof done via `git stash`/`git stash pop` on `play-brief.ts` alone
+(test file kept in place): pre-fix run showed the new test failing with `actual: 'Bucket not
+graduated'` / `expected: 'Entry-validity window expired — this setup is no longer live.'`; post-fix
+(`git stash pop`, diff-verified byte-identical to the intended fix) showed both new tests passing.
+Full suite: `npx tsc --noEmit -p .` clean (Node 20); `npm test` 14600/14603 pass, 0 fail, 3
+pre-existing skips (Node 20).
+
+## Ask Largo Swing — two real Banger-engine siblings on the same ticker rendered as identical, indistinguishable "cross-engine position" text — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — member-facing narrative clarity, not a live-trading-path change (display-only) |
+| **Component** | `src/lib/swing/play-brief-intel.ts` (`formatOverlapPosition`), `src/lib/swing/portfolio.ts` (`PortfolioPosition`), `src/lib/swing/play-brief-context.ts` (`loadOpenBook`) |
+| **Found by** | NIGHT HAWK SWINGS standing audit lane, live CRWD:39 play-brief repro, 2026-09-18 |
+
+### Root cause
+
+`formatOverlapPosition` (added 2026-09-15 for Largo Contract C4, "identity") disambiguates a
+same-ticker book-overlap sibling from the reviewed play itself: a swing-native sibling gets
+`(separate position #<positionId>)`, and a cross-engine (Banger) sibling — which deliberately never
+carries `positionId` (see `loadOpenBook`'s own comment on the `banger_positions`/`swing_positions`
+id-collision risk) — got the generic `(separate, cross-engine position)` tag instead.
+
+That 2026-09-15 fix only ever considered ONE cross-engine sibling existing at a time. It never
+handled the case of TWO (or more) distinct cross-engine siblings on the same ticker: both would
+render the exact same bare tag, with nothing to tell them apart — reading precisely like the
+duplicate-counting defect the fix was written to prevent, even though the underlying count was
+completely honest (two real, independently-committed positions).
+
+### Evidence
+
+Live CRWD:39 WATCH/OPEN brief, 2026-09-18 (`GET /api/market/swing/play-brief?playId=SWING:CRWD&ticker=CRWD&positionId=39`):
+
+```
+**Concentration** — already holding 5 same-direction positions in theme "software": MDB LONG,
+NET LONG, CRWD LONG (separate, cross-engine position), SNOW LONG, CRWD LONG (separate,
+cross-engine position). CRWD stacks the same wager rather than diversifying risk.
+```
+
+Traced: `/api/market/nighthawk/horizons?view=swings` (the DTE-windowed board DISPLAY, which merges
+Banger positions via `banger-lane-merge.ts`'s `horizonPlayFromBangerPosition`) shows ZERO other
+CRWD rows right now — only the swing-native CRWD:39 itself. But `loadOpenBook()`'s banger merge
+(`fetchBangerOpenBookRows()`, `status IN ('OPEN','PARTIAL')`, no DTE filter) is a DIFFERENT read
+path with no display-window filtering, and genuinely returned 2 CRWD rows. This is not a
+contradiction: `horizonPlayFromBangerPosition` deliberately floors/ceils on DTE for board display
+continuity (its own header comment), while book-context correctly needs the FULL open-risk picture
+regardless of display eligibility. Confirmed both CRWD entries are real, distinct rows — not a
+double-count — but the rendered text gave a member (and this auditor, initially) no way to tell.
+
+### Blast radius
+
+Single formatting function (`formatOverlapPosition`) plus its two upstream data-plumbing sites
+(`loadOpenBook` in `play-brief-context.ts`, `PortfolioPosition` type in `portfolio.ts`). Only
+affects the rendered LABEL for a cross-engine sibling — `checkPortfolioOverlap`'s own
+concentration/conflict DETECTION and COUNT were already correct and are untouched; this is purely
+a display-clarity fix. Every WATCH/OPEN swing play whose book overlap includes 2+ Banger positions
+on its own ticker was affected (rare — requires the member to hold multiple independent Banger
+positions on the SAME name at once — but live and real today, not hypothetical).
+
+### Fix rationale
+
+Added `bangerId?: number` to `PortfolioPosition` (portfolio.ts) — deliberately a NEW, separate
+field from `positionId`, not a reuse of it: `positionId` intentionally stays unset on a banger row
+specifically because `banger_positions` and `swing_positions` are separate DB sequences that can
+collide on numeric id, and `checkPortfolioOverlap`'s `excludePositionId` trusts `positionId` as an
+exact identity match for self-exclusion. `bangerId` is never read by that matching/exclusion logic
+(verified — only `formatOverlapPosition` reads it), so it carries zero risk of the exact collision
+the `positionId`-stays-unset convention exists to avoid. `loadOpenBook` now threads the real
+`banger_positions.id` into `bangerId` when mapping banger rows. `formatOverlapPosition` renders
+`(separate, cross-engine position #<bangerId>)` when known, falling back to the original bare tag
+only when `bangerId` is unavailable (never fabricated).
+
+### Test
+
+`src/lib/swing/play-brief-intel.test.ts`, two new tests:
+- `"two distinct cross-engine siblings on the same ticker are told apart via bangerId, not
+  rendered identically"` — RED pre-fix (both siblings render the identical bare tag), GREEN
+  post-fix (each cites its own `#<bangerId>`).
+- `"a cross-engine sibling with no bangerId still falls back to the bare label (never
+  fabricated)"` — companion negative case, proves the original 2026-09-15 behavior is preserved
+  when no id is known.
+
+Deliberate-break RED→GREEN proof via `git stash`/`git stash pop` on the three source files (test
+file kept in place, diff-verified byte-identical restore for all three). `npx tsc --noEmit -p .`
+clean (Node 20). `npm test`: 14615/14618 pass, 0 fail, 3 pre-existing skips (Node 20).
+
+## 2026-09-17 — [FINDING, P3 audit-tooling] Same-day follow-up: the backtick-heading fix in the entry above was itself too narrow — generalized to a code-span-parity check
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Folding this exact fix's own write-up (the entry immediately above, PR #5154) back into `FINDINGS.md` on a later DISCOVERY cycle re-ran `findings-hygiene.test.ts` and it failed again — on the newly-folded text itself. |
+| **Root cause** | The first fix excluded a heading-shaped match only when the character immediately before it was a backtick. That covers a quote where the heading text is the very first thing inside a code span, but not a quote where other text comes first inside the same open span — for example, quoting this project's own illustrative "glued" fixture text inside one span, prefixed by other words. There the character immediately before the heading-shaped text is not a backtick, even though the whole thing sits inside one open code span. Two real instances of exactly this shape existed in the entry above's own prose, folded into `FINDINGS.md` moments earlier by this same session. |
+| **Fix** | Replaced the single-character lookbehind in both `GLUED_HEADING` (`scripts/audit/lib/findings-merge-core.mjs`) and its mirrored check in `findings-hygiene.test.ts` with a backtick-PARITY check: count the backtick characters between the start of the line and the candidate match; an odd count means the match sits inside an unclosed code span (not glued), an even count means it does not (a real candidate). This is the standard technique for detecting "inside inline code" on a line and is robust to any well-formed single-backtick span regardless of what precedes the heading text within it. |
+| **Also fixed** | Two lines in the entry directly above this one used a malformed construction — a literal backtick character placed inside an already-open single-backtick span, apparently intended as an escape. Markdown has no such escape for single-backtick spans (the span simply closes at the next backtick), so the source was ambiguous about its own intended rendering. Reworded both lines to use a single, unbroken backtick pair around just the illustrative heading fragment (matching the style already used successfully elsewhere in this file), removing the ambiguity rather than teaching the checker to tolerate it. |
+| **Evidence** | RED→GREEN proven directly against the production function: a new test asserting a mid-span (not span-initial) quoted heading is not flagged failed against the first fix, passed after the parity rewrite. Full `findings-hygiene.test.ts` + `findings-no-loss.test.ts` + `findings-fold-staging.test.ts` + `findings-merge-resolve.test.ts` (33 tests): 33/33 pass post-fix, including against the real, current `FINDINGS.md` content (not just synthetic fixtures). |
+| **What this does NOT do** | Does not attempt to handle triple-backtick fenced code blocks here — that is a separate, already-fixed concern in `findings-fold-staging.mjs` (counting `## `-level sub-headings inside a staged file's own Evidence section, 2026-09-17, same session). This fix is scoped to single-backtick inline spans on one line, which the parity check fully covers. |
+| **Status** | FIXED. |
+
+## 2026-09-17 — [FINDING, P3 observability, cron infrastructure] `logCronRun`'s DB-write failure is silently swallowed — no alert, used by all 54 cron routes
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Investigating issue #5038 (`[ops-auto] P1: Cron health problem: swing-discovery`, open since 2026-09-15) to check whether an earlier DISCOVERY-lane comment's hypothesis held up. It didn't (posted a correction on the issue) — but re-reading `src/lib/cron-run.ts` while doing so surfaced a separate, real gap worth its own record. |
+| **What's there** | `logCronRun()` (`src/lib/cron-run.ts`) is the single, shared function every cron route calls to record its own run into the `cron_job_runs` Postgres table — `cron-staleness-watchdog`'s entire staleness detection (`buildCronHealthSnapshot` → `fetchCronJobLastRuns`) depends on these rows existing. The write is wrapped: `try { await recordCronJobRun(...) } catch (err) { console.warn(...) }` — a failure to write the row is caught and only logged to console, never surfaced as an alert. By contrast, a cron reporting `status: "failed"` in its own payload (e.g. an upstream API error) DOES trigger `notifyOpsDiscord` — but a failure of the OBSERVABILITY WRITE ITSELF, for an otherwise-successful or successfully-skipped run, is invisible. |
+| **Why this matters** | The watchdog's whole staleness signal is "no row in `cron_job_runs` for this job within `stale_after_min`." A transient Postgres blip at exactly the moment `recordCronJobRun` fires would silently drop that one row — the cron itself may have run (or correctly self-skipped) completely fine, but the ONE piece of evidence the watchdog can see is missing. Enough consecutive misses (e.g. during a sustained DB connectivity issue, a pattern this repo's own FINDINGS.md documents happening — see the 2026-09-16 entries on `zerodte-warm`'s stall and the correlated ECS DB-connectivity timeouts, e.g. "Fresh ECS replicas failing DB connectivity on boot, correlated with the same Polygon-congestion window as the zerodte-warm stall") could produce exactly the kind of unexplained multi-hour "stale cron" P1 that #5038 reported, without the cron itself ever having actually failed. This is speculative for #5038 specifically (no live DB access this pass to confirm), but the gap itself is real and independently worth fixing regardless of whether it explains that particular incident. |
+| **Blast radius** | `logCronRun` is called by all 54 cron routes under `src/app/api/cron/*` (confirmed via `grep -rl "logCronRun(" src/app/api/cron --include=route.ts \| wc -l`) — every job in `cron-registry.ts`'s `CRON_JOBS` shares this exact observability blind spot. |
+| **Why not fixed directly this cycle** | Touching `src/lib/cron-run.ts` affects every cron in the fleet at once — genuinely shared infrastructure, not a single desk's file, and the right fix shape needs a design call: alert on every write failure (risks Discord noise on any transient blip, the same "false-alarm" failure mode this file's own `db_snapshot_error` guard elsewhere in the codebase was built to prevent), alert only after N consecutive failures for the same job, or add a lighter-weight secondary signal (e.g. a Redis counter) that doesn't depend on the same Postgres write path being probed. That's a real design decision, not a mechanical one-line fix — belongs to whoever owns cron/ops infrastructure. |
+| **Suggested next step** | Whoever picks this up should first check whether `recordCronJobRun` failures are already visible anywhere else (a metric, a separate log-based alert) before assuming this is a true blind spot; if not, the lightest fix consistent with the rest of this file's alerting posture is probably a rate-limited/counted Discord alert (mirroring the existing `status === "failed"` path) once a job's write-failure count crosses a small threshold, not on every single miss. |
+| **Status** | Flagged, not fixed — shared cron infrastructure, real design decision needed. |
+
 ## 2026-09-17 — [FINDING, P2 audit-tooling] `GLUED_HEADING`'s glued-heading detector had a false-positive that would have let `repairGlued` corrupt a legitimate backtick-quoted heading reference — found while folding a 330+ file findings-staging backlog
 
 > **kind:** `FINDING`
