@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T08:27:00Z",
+  "lastUpdated": "2026-09-18T08:34:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3694,6 +3694,17 @@
       "productionOrShadow": "SHADOW -- reads nighthawk_candidate_snapshot rows (never member-facing) and is not called from any production path yet.",
       "result": "Priority #7 is now PARTIALLY shipped: overnight rank trajectory is real and queryable (once wired to a reader). Premarket/RTH live tracking remains explicitly held pending the cost/architecture confirmation flagged at 08:24Z.",
       "nextAction": "Check PR #5187 CI at 08:40Z check-in, merge if green. After that, priority items 1,2,3,4 fully shipped; item 7's safe half shipped (needs a reader wired next -- natural candidates: an admin export route mirroring tier-export's shape, or folding into get_nighthawk_dossier for Largo). Items 5 (rejection/pull rule attribution) already substantially covered via detail.stage (rejections) + pull-rule-taxonomy.ts (pulls, PR #5181) -- no further action needed unless a gap is found. Item 6 (winner/loser feature attribution, Phase 2C) and item 8 (regime WHY-classification, Phase 2B part 2) remain correctly blocked on trading-day sample accumulation, not re-checked every 15 min."
+    },
+    {
+      "at": "2026-09-18T08:34:00Z",
+      "trigger": "capacity available while PR #5187 CI runs -- picked up task #24 (own follow-up, logged 2026-09-18 during PR #5184's build)",
+      "whatChanged": "Opened PR #5188 (draft): fixes the 'final geometry gate' safety net (task #146/ops #519) that had ZERO durable record anywhere -- new buildFinalGeometryGateRejections() reshapes partitionPlaysByGeometry's {play,drops} output into the common rejection shape and calls BOTH recordNighthawkRejectedAuditTrail (alert_audit_log) and recordStageRejectionSnapshots (nighthawk_candidate_snapshot, shadow-gradeable), same treatment every other rejection stage already gets since PR #5184.",
+      "why": "This was explicitly logged as a real, smaller, separate finding during PR #5184's build (kept out of that PR deliberately to stay single-issue) -- picking it up now while PR #5187 CI runs rather than idling, per the standing NEVER SIT IDLE discipline.",
+      "evidence": "4 new tests (the reshape logic itself, that its output feeds buildStageRejectionSnapshotRows without further shaping, empty-input). Full nighthawk/lib suite 1195/1195 pass, tsc clean. PR #5188 opened draft, CI running -- will piggyback on the existing 08:40Z check-in (trig_01ADob6yKAtB9frejGMkRR2s) alongside PR #5187 rather than scheduling a duplicate.",
+      "sampleSize": "N/A -- code fix, not a statistical finding. This gate rarely fires (only thin-edition backfill/checkpoint-resume introduces a bypass-eligible play), so real production instances of this new capture path may be rare/none for a while -- that's expected, not a bug.",
+      "productionOrShadow": "PRODUCTION plumbing fix (the gate itself runs unconditionally in the real edition-build pipeline); the DATA it now captures is SHADOW (candidate_snapshot rows are never member-facing).",
+      "result": "Once merged, EVERY rejection reason in the funnel (all 8: confluence_gate, geometry x2 call sites now, premium_cap, illiquid_strike, ungrounded, sector_concentration, publish_gate, cross_edition_governor) has a durable record in both alert_audit_log and nighthawk_candidate_snapshot -- closes the shadow-tracking coverage gap completely, not just the 6-of-7 PR #5184 closed.",
+      "nextAction": "Check both PR #5187 and PR #5188 at the 08:40Z check-in, merge whichever are green. Continue holding the full-RTH-continuous-tracking half of priority #7 pending confirmation."
     }
   ],
   "knownOpenItems": {
