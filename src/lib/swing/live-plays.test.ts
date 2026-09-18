@@ -531,6 +531,7 @@ test("entryPresentPillarsFromFeatureVector: honest null on a missing/pre-fix fea
 test("archetypeNearTieFromFeatureVector: surfaces the runner-up + margin when the entry classification was a near-tie", () => {
   assert.deepEqual(
     archetypeNearTieFromFeatureVector({
+      archetype: "BREAKOUT",
       classification_margin: 0.02,
       secondary: ["PULLBACK_CONTINUATION", "MEAN_REVERSION"],
     }),
@@ -541,6 +542,7 @@ test("archetypeNearTieFromFeatureVector: surfaces the runner-up + margin when th
 test("archetypeNearTieFromFeatureVector: omits (null) when the classification was decisive — never surfaced unless it mattered", () => {
   assert.equal(
     archetypeNearTieFromFeatureVector({
+      archetype: "BREAKOUT",
       classification_margin: 0.31,
       secondary: ["PULLBACK_CONTINUATION"],
     }),
@@ -552,9 +554,45 @@ test("archetypeNearTieFromFeatureVector: honest null on a missing/pre-fix featur
   assert.equal(archetypeNearTieFromFeatureVector(null), null);
   assert.equal(archetypeNearTieFromFeatureVector({ evidence_score: 82 }), null);
   // margin is a near-tie but the secondary array is empty/unparseable — nothing to name, so no line.
-  assert.equal(archetypeNearTieFromFeatureVector({ classification_margin: 0.01, secondary: [] }), null);
   assert.equal(
-    archetypeNearTieFromFeatureVector({ classification_margin: 0.01, secondary: ["NOT_A_REAL_ARCHETYPE"] }),
+    archetypeNearTieFromFeatureVector({ archetype: "BREAKOUT", classification_margin: 0.01, secondary: [] }),
+    null,
+  );
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      archetype: "BREAKOUT",
+      classification_margin: 0.01,
+      secondary: ["NOT_A_REAL_ARCHETYPE"],
+    }),
+    null,
+  );
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro NN:32 CLOSED brief — a real
+// thin-evidence position whose row carries `archetype: null`): classifyArchetype's thin-evidence
+// branch (inputCount/winnerFit below floor) still returns a real `margin`, and
+// classificationMetaFromVerdict's `secondary = ranked.filter(a => a !== v.archetype)` is a no-op
+// when `v.archetype` is null — every grounded archetype, including the would-be top-fit one,
+// survives into `secondary`. Without the `featureVector.archetype` guard, a thin-evidence commit
+// whose margin fell inside the near-tie band would surface a runner-up here with nothing to pair
+// it against — whyThisSetupSection's fallback text ("**the winning archetype** beat **X**...")
+// then fabricates a decisive-winner claim for a position the classifier explicitly never
+// classified, the exact absence-over-fabrication violation this whole feature's own doc comment
+// says it avoids.
+test("archetypeNearTieFromFeatureVector: never surfaces a runner-up when the entry was itself unclassified (archetype: null) — no antecedent to pair it against", () => {
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      archetype: null,
+      classification_margin: 0.01,
+      secondary: ["BREAKOUT", "PULLBACK_CONTINUATION"],
+    }),
+    null,
+  );
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      classification_margin: 0.01,
+      secondary: ["BREAKOUT", "PULLBACK_CONTINUATION"],
+    }),
     null,
   );
 });
@@ -578,6 +616,7 @@ test("livePlayFromSwingPosition: threads the entry-time archetype near-tie end t
   const play = livePlayFromSwingPosition(
     row({
       feature_vector: {
+        archetype: "BREAKOUT",
         evidence_score: 61,
         classification_margin: 0.02,
         secondary: ["MEAN_REVERSION"],
@@ -587,6 +626,23 @@ test("livePlayFromSwingPosition: threads the entry-time archetype near-tie end t
     null,
   )!;
   assert.deepEqual(play.archetypeNearTie, { secondaryLabel: "Mean-reversion recovery", marginPct: 2 });
+});
+
+test("livePlayFromSwingPosition: never threads a near-tie when the entry was itself unclassified (real NN:32-shaped row, archetype: null)", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      archetype: null,
+      feature_vector: {
+        archetype: null,
+        evidence_score: 23,
+        classification_margin: 0.01,
+        secondary: ["BREAKOUT", "PULLBACK_CONTINUATION"],
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.equal(play.archetypeNearTie, null);
 });
 
 test("livePlayFromSwingPosition: a healthy entry read never carries the thin-read count", () => {

@@ -378,6 +378,22 @@ export function archetypeNearTieFromFeatureVector(
   featureVector: Record<string, unknown> | null | undefined,
 ): { secondaryLabel: string; marginPct: number } | null {
   if (!featureVector) return null;
+  // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro NN:32 CLOSED brief): a thin-evidence
+  // commit (`classifyArchetype` returns `archetype: null` — inputCount/winnerFit below the classifier's
+  // own floor, a real, reachable case: NN's own row carries `archetype: null`) still pins a real
+  // `classification_margin`/`secondary` onto the feature vector (commit.ts writes both unconditionally
+  // from `cand.*`), and `classificationMetaFromVerdict`'s `secondary = ranked.filter(a => a !== v.archetype)`
+  // is a no-op when `v.archetype` is null — every grounded archetype, including the would-be top-fit one,
+  // survives into `secondary`. Without this guard, a thin-evidence position whose margin happened to fall
+  // inside the near-tie band rendered `whyThisSetupSection`'s fallback text ("**the winning archetype**
+  // beat **X** by only N pts") with no preceding "Archetype:" line to anchor it (that line only renders
+  // when `play.archetype` is non-null) — a fabricated "there was a decisive winner" claim for a position
+  // the classifier explicitly never classified, the exact absence-over-fabrication violation this whole
+  // fix's own doc comment says it avoids. `feature_vector.archetype` mirrors the same row-level `archetype`
+  // DB column `play.archetype` is read from (both written from the identical `cand.archetype` in the same
+  // commit insert, feature-vector.ts/commit.ts), so this is a sound proxy without threading `play.archetype`
+  // through this featureVector-only function's signature.
+  if (typeof featureVector.archetype !== "string" || !featureVector.archetype) return null;
   const margin = featureVector.classification_margin;
   if (typeof margin !== "number" || !Number.isFinite(margin) || margin > ARCHETYPE_NEAR_TIE_MARGIN) {
     return null;
