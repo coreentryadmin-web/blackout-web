@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T13:25:00Z",
+  "lastUpdated": "2026-09-18T13:38:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3836,6 +3836,13 @@
       "healthcheck": "Re-ran fresh at 13:24:32Z: A_edition GREEN (4 plays, fresh), B_marks AMBER (same benign pre-open bid=0/ask=0 pattern, expected before 9:30 ET), C_record GREEN (resolved=24, buckets consistent), D_pull_status now GREEN for all 4 tickers (SMTC/SMCI/SWKS/HPE) -- CONFIRMED<->pulled=false agree on every one. This is the first cycle today where morning-confirm's 13:15-14:15 UTC window was open, so it's the first real (non-SKIPPED) read of this stage today.",
       "result": "Clean, no action needed -- morning-confirm is doing its job correctly, all 4 plays confirmed and not pulled. No new pattern, no 3rd instance of anything, nothing to escalate.",
       "nextAction": "Continue 15-min cadence; watch for any pull-status disagreement on a future cycle (that would be the actual bug shape to catch), and keep monitoring B_marks' AMBER as the RTH open approaches (should clear to GREEN with live two-sided quotes once market opens)."
+    },
+    {
+      "at": "2026-09-18T13:38:00Z",
+      "trigger": ":36 cycle -- healthcheck: full board now GREEN (B_marks cleared to live two-sided quotes)",
+      "healthcheck": "Re-ran fresh at 13:37:12Z: overall GREEN across all 4 stages for the first time today. B_marks flipped AMBER->GREEN -- all 4 plays (SMTC/SMCI/SWKS/HPE) now have live two-sided quotes and marks within [bid,ask] (market open, ~9:37 ET). A_edition/C_record/D_pull_status steady GREEN.",
+      "result": "Clean, no action needed. Moving to aggressive-mode scoping of item #14 (member-facing morning command-center table format) -- the one remaining unstarted item of the 15-point continuous-learning mandate; items 6/8 (Phase 2C, Phase 2B pt.2) stay correctly blocked on trading-day sample accumulation (still 2026-09-18, no new edition_for yet), items 7-full/11-NO-TRADE stay correctly held pending explicit operator confirmation.",
+      "nextAction": "Investigate item #14's actual scope (what data already exists to surface, where member-facing Legacy output currently renders) before sizing a build, same discipline used for Phase 2F at 11:09Z."
     }
   ],
   "knownOpenItems": {
