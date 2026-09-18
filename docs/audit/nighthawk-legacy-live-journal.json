@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T23:19:07Z",
+  "lastUpdated": "2026-09-18T23:37:55Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4067,6 +4067,12 @@
       "summary": "Task #32 built and opened as PR #5237: wired deriveComposite()'s desk-playbook regime sentence into the ACTUAL live Legacy macro strip (LegacyPickLogBoard.tsx -> LegacyMacroStrip.tsx), completing the work PR #5235 correctly deferred. Traced the real pipeline end to end: /api/platform/intel already returned regime.playbook correctly (no change needed); nighthawk-morning-confirm cron's fetchPlatformIntel() only read regime.composite, dropping playbook before it reached Redis -> /api/nighthawk/play-status -> containers.tsx -> LegacyMacroStrip. Threaded playbook through all 3 MorningConfirmResult construction sites, LegacyMacroContext, containers.tsx, and a new bullet in LegacyMacroStrip.tsx. DB-fallback path (morning-status-from-db.ts) honestly nulls it, consistent with that path's pre-existing gex_bias/call_wall/put_wall nulls.",
       "assessment": "5 new unit tests, npx tsc --noEmit clean, full npm test 14865/14865 passing. Staged finding + MARKET-OPEN-VALIDATION.md #297 entry (verify live on the next 9:15 ET cron fire). This closes Task #32 and the full desk-playbook idea arc (Task #31 -> #32) with the actual live surface fixed, not just the data layer.",
       "action": "PR #5237 opened (draft), subscribed to PR activity. Watching for CI."
+    },
+    {
+      "at": "2026-09-18T23:37:55Z",
+      "summary": "PR #5237 merged to main at 23:32:58Z (sha 5991fa48f) -- CI + CodeQL both green, undrafted and auto-merged cleanly. Confirmed on origin/main. Task #32 closed, cancelled the now-unneeded check-in trigger. This completes the full desk-playbook idea arc from Task #31: the regime strategy sentence now reaches the ACTUAL live Legacy board (LegacyMacroStrip), not just the API payload.",
+      "assessment": "Healthcheck this cycle (23:36:59Z) repeat-clean, identical to prior cycles -- no separate entry. The next live validation point is the 9:15 ET nighthawk-morning-confirm cron fire on the next trading session (Monday 2026-09-21), logged as MARKET-OPEN-VALIDATION.md #297.",
+      "action": "none further this cycle -- holding for next trigger."
     }
   ],
   "knownOpenItems": {
