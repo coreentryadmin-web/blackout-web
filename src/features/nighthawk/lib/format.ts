@@ -251,6 +251,13 @@ export function buildMarketRecap(ctx: MarketWideContext): {
   sector_strength: string;
   sector_weakness: string;
   catalysts: string;
+  /** The GEX/trend composite regime's own authored strategy line (deriveComposite's `playbook`,
+   *  market-regime-detector cron, pinned onto ctx.platform_intel). Already computed and already fed
+   *  into the Claude edition prompt as advisory context (formatPlatformIntelForPrompt) so the LLM
+   *  MAY mention it — but nothing guaranteed it reached the member-facing recap deterministically.
+   *  Empty string (never null) so callers can use the same "only non-empty strings render"
+   *  convention as every other field here. */
+  desk_playbook: string;
 } {
   const sectorsWithChange = ctx.sector_performance.filter(
     (s): s is typeof s & { change_pct: number } => s.change_pct != null
@@ -335,6 +342,7 @@ export function buildMarketRecap(ctx: MarketWideContext): {
     sector_strength: leaders.map((s) => `${s.name} ${s.change_pct.toFixed(2)}%`).join(" · ") || "n/a",
     sector_weakness: laggards.map((s) => `${s.name} ${s.change_pct.toFixed(2)}%`).join(" · ") || "n/a",
     catalysts: catalysts || "No major macro/earnings flagged.",
+    desk_playbook: ctx.platform_intel?.playbook ?? "",
   };
 }
 
