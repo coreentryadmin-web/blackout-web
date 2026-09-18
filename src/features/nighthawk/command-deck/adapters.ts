@@ -34,6 +34,7 @@ import type {
   DeckDirection,
   DeckFactor,
   DeckGreeks,
+  DeckLiquidity,
   DeckStatus,
   ExitModel,
   Recommendation,
@@ -822,6 +823,23 @@ export function greeksFromContract(contract: HorizonDeckSource["contract"]): Dec
   return Object.values(greeks).some((v) => v != null) ? greeks : null;
 }
 
+/**
+ * Build the deck's current-quote execution-quality read from a horizon play's contract (bid/ask +
+ * the spread they imply — same `(ask - bid) / mid` convention as contract-ranker.ts's own
+ * `spreadPctOf`, the entry-time tradability score). Returns null when there's no bid or ask at all
+ * (nothing to show), so "we have no live quote" and "we have a quote but can't price a spread"
+ * (one-sided book, or mid missing/non-positive) stay distinguishable — the latter still returns
+ * bid/ask with `spreadPct: null` rather than dropping the whole object.
+ */
+export function liquidityFromContract(contract: HorizonDeckSource["contract"]): DeckLiquidity | null {
+  const bid = fin(contract.bid);
+  const ask = fin(contract.ask);
+  if (bid == null && ask == null) return null;
+  const mid = fin(contract.mid);
+  const spreadPct = bid != null && ask != null && mid != null && mid > 0 ? (ask - bid) / mid : null;
+  return { bid, ask, spreadPct };
+}
+
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const baseStatus = horizonDeckStatus(src);
   const deskCommitted = Boolean(src.liveStatus || src.committedAt);
@@ -1035,6 +1053,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     // NOTE: PlayTerminal additionally blanks the strip when the row has no live mark (`greeksOff`), so a
     // pre-entry candidate still shows nothing — this only lights up rows with a real live quote.
     greeks: greeksFromContract(src.contract),
+    liquidity: liquidityFromContract(src.contract),
     archetype: src.archetype ?? null,
     subLane: src.subLane ?? null,
     setupState: src.setupState ?? null,

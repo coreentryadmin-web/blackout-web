@@ -17,7 +17,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { archetypeLabelFromRaw } from "./taxonomy";
+import { archetypeLabelFromRaw, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
 import {
   collectBriefUnavailableSources,
   confluenceZoneKindsLabel,
@@ -356,6 +356,31 @@ function pnlSection(play: TerminalPlay): RichSection {
     if (g.vega != null) parts.push(`ν ${sign(g.vega)}${g.vega.toFixed(2)}`);
     if (g.iv != null) parts.push(`IV ${Math.round(g.iv * 100)}%`);
     if (parts.length) lines.push(`Greeks: ${parts.join(" · ")}`);
+  }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): the deck's own greek strip (fixed above) and
+  // contract-ranker.ts's tradability score both already read live bid/ask on the held contract, but
+  // no consumer ever told a member what the CURRENT spread costs to trim into — the brief showed P&L
+  // and greeks but nothing about execution quality, even though `SWING_SUB_LANES[subLane].liquidity.
+  // maxSpreadPct` (taxonomy.ts) is the exact same calibrated entry-time liquidity bar contract-ranker
+  // enforced when this contract was PICKED. `liquidityFromContract` (adapters.ts, mirrors
+  // `greeksFromContract` above) only returns non-null when a live bid or ask exists; `spreadPct` is
+  // additionally null on a one-sided book, so this renders nothing when there's truly no live quote,
+  // just bid/ask with no comparison line when spreadPct can't be priced, and the full comparison only
+  // when both the live spread AND the sub-lane's own gate are known.
+  if (play.liquidity && (play.liquidity.bid != null || play.liquidity.ask != null)) {
+    const { bid, ask, spreadPct } = play.liquidity;
+    const quote = bid != null && ask != null ? `${fmtUsd(bid)}/${fmtUsd(ask)}` : fmtUsd(bid ?? ask);
+    if (spreadPct != null) {
+      const gate = SWING_SUB_LANES[play.subLane as SwingSubLane]?.liquidity.maxSpreadPct ?? null;
+      const spreadLine = `Spread: **${(spreadPct * 100).toFixed(1)}%** (${quote})`;
+      lines.push(
+        gate != null
+          ? `${spreadLine} — this sub-lane's own entry liquidity bar was **${(gate * 100).toFixed(0)}%**, so current execution is ${spreadPct <= gate ? "still inside" : "now wider than"} it.`
+          : spreadLine,
+      );
+    } else {
+      lines.push(`Quote: **${quote}** _(one-sided book — spread not priceable)_`);
+    }
   }
   if (blended != null) {
     lines.push(`Blended P&L (realized trim + open runner): **${fmtPct(blended)}**`);
