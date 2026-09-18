@@ -78,6 +78,22 @@ function timeoutFallbackEdition(editionFor: string): NightHawkEdition {
     if (lastGoodEdition.edition_for && lastGoodEdition.edition_for !== editionFor) {
       return { ...lastGoodEdition, stale: true, served_for: lastGoodEdition.edition_for };
     }
+    // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro 2026-09-18 edition): `stale`'s
+    // ONLY assignment site is resolveNighthawkEdition's own `edition.edition_for !== editionFor`
+    // check (resolve-edition.ts) — so by construction it means EXACTLY "this is a carried-forward
+    // date-mismatched edition", nothing else. But `lastGoodEdition` can itself have been CAPTURED
+    // with `stale:true` already baked in (from an earlier resolve, when the date being requested
+    // THEN genuinely didn't match) — that flag is a fact about the moment it was captured, not
+    // about now. Once the requested `editionFor` naturally catches up to match
+    // `lastGoodEdition.edition_for` (the branch below), the dates DO match, so `stale` must be
+    // false by the flag's own definition — but returning `lastGoodEdition` unmodified served the
+    // old baked-in `true` unchanged, showing members a false "tonight's not published yet" banner
+    // over a correct, current, on-time edition. Explicitly clear both fields here rather than
+    // trusting whatever was captured, for the same reason the doc comment above already gives for
+    // the mismatched-date branch: capture-time flags are not enough, only serve-time truth is.
+    if (lastGoodEdition.stale) {
+      return { ...lastGoodEdition, stale: false, served_for: undefined };
+    }
     return lastGoodEdition;
   }
   return { ...emptyEdition(editionFor), degraded: true };
