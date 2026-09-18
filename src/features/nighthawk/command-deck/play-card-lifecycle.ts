@@ -302,7 +302,19 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     // Exit-management labels win over entryability pills (same order as zeroDteActionDisplay).
     // STILL BUY is for members still working a limit — it must not mask an active TRIM ladder.
     if (play.recommendation === "TRIM") {
-      const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
+      // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro CRWD #39): manage.ts's
+      // TAKE_PARTIAL/EXIT_RUNNER actions come from MULTIPLE independent rungs — only
+      // "profit_ladder" actually fires off exitPolicy.trim_levels; catalyst_shift/regime_shift/
+      // flow_decay/rel_strength_loss/vol_collapse are evidence-only advisories with a generic
+      // "consider trimming" reason completely unrelated to the ladder's own trigger_pct. Live:
+      // CRWD's recommendation was TRIM via catalyst_shift (advisory-only, manageEnforced:false,
+      // position genuinely unchanged), yet this label borrowed the ladder's next-unfired rung and
+      // showed "TRIM 100%" — read by a trader as "the +100% trigger just fired," when nothing had.
+      // Only cite the ladder trigger_pct when manageReason positively confirms it's the SOURCE
+      // (or is absent — most swing rows have no live manage tick yet, so absence must keep the
+      // pre-existing behavior rather than silently downgrading every untouched row's label).
+      const ladderDriven = play.manageReason == null || play.manageReason === "profit_ladder";
+      const next = ladderDriven ? play.exitPolicy?.trim_levels?.find((t) => !t.fired) : null;
       if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
       return { label: "TRIM", tone: "active" };
     }
