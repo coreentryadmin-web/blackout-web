@@ -7,6 +7,8 @@ import {
   gexMatrixStale,
   meridianCatalystAgeMs,
   meridianCatalystStale,
+  newsCatalystAgeMs,
+  newsCatalystStale,
   optionMarkIsStale,
   resolveGammaPosture,
   trustedHelixFlow,
@@ -55,6 +57,30 @@ test("meridianCatalystStale: unparseable as_of (e.g. an ET wall-clock test fixtu
 
 test("meridianCatalystStale: null slice is not stale (absence is a separate signal)", () => {
   assert.equal(meridianCatalystStale(null), false);
+});
+
+test("newsCatalystStale: fresh as_of (Largo C2, 2026-09-18) — mirrors meridianCatalystStale for arsenal.news", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const asOf = new Date(readMs - 30_000).toISOString();
+  assert.equal(newsCatalystAgeMs(asOf, readMs), 30_000);
+  assert.equal(newsCatalystStale(asOf, readMs), false);
+});
+
+test("newsCatalystStale: as_of past the 120s bound is stale — same stale-while-revalidate exposure `NewsResult.asOf` (polygon-news.ts) carries as meridianCatalystSection's slice.as_of (Largo C2)", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const asOf = new Date(readMs - 300_000).toISOString();
+  assert.equal(newsCatalystStale(asOf, readMs), true);
+});
+
+test("newsCatalystStale: unparseable as_of reads as unknown age, not stale", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  assert.equal(newsCatalystAgeMs("not-a-date", readMs), null);
+  assert.equal(newsCatalystStale("not-a-date", readMs), false);
+});
+
+test("newsCatalystStale: null/undefined as_of is not stale (absence is a separate signal, e.g. an older fixture that predates this field)", () => {
+  assert.equal(newsCatalystStale(null), false);
+  assert.equal(newsCatalystStale(undefined), false);
 });
 
 test("collectBriefUnavailableSources: stale Meridian catalyst read surfaces in unavailableSources (Largo C2/C3)", () => {

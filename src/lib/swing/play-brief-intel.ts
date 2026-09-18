@@ -14,6 +14,8 @@ import {
   gexMatrixStale,
   meridianCatalystAgeMs,
   meridianCatalystStale,
+  newsCatalystAgeMs,
+  newsCatalystStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
   resolveGammaPosture,
@@ -659,8 +661,21 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
   }
 
   if (arsenal.news?.headlines?.length) {
+    // Largo C2 (2026-09-18, Ask Largo standing mandate): `arsenal.news.as_of` is the real fetch-
+    // time `NewsResult.asOf` (see that field's own doc comment on ecosystem-context.ts for the
+    // full history — it existed upstream and was silently dropped one layer up before this fix).
+    // A degraded Benzinga upstream can keep serving the SAME stored headline list, unbumped, for
+    // up to 10 minutes under `serverCache`'s stale-while-revalidate path — the identical exposure
+    // `meridianCatalystSection` two functions down already discloses for its own catalyst read;
+    // this section was the one sibling that read a freshness-bearing field with zero disclosure.
+    const stale = newsCatalystStale(arsenal.news.as_of, Date.now());
+    const ageLabel = stale ? ageSecondsLabel(newsCatalystAgeMs(arsenal.news.as_of, Date.now())) : null;
+    const staleLead = stale
+      ? `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — headlines may lag.\n\n`
+      : "";
     lines.push(
-      "**Headlines:**\n" +
+      staleLead +
+        "**Headlines:**\n" +
         arsenal.news.headlines
           .slice(0, 4)
           .map((h) => `• ${h}`)
