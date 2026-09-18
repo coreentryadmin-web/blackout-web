@@ -169,14 +169,31 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
         // per terminal-ladder.ts's own doc comment, and `play.mark` can be genuinely unsynced).
         // Only rendered on the not-yet-crossed branch — once `alreadyCrossed` is true the "distance"
         // is negative/moot and the existing "already cleared" framing already covers it.
+        //
+        // BASIS MISMATCH (2026-09-18, Ask Largo standing mandate, live repro AAPL SWING:AAPL:38
+        // OPEN brief): this distance was computed from `play.mark` (the mid) unconditionally, while
+        // the sibling "Premium target rail" room% — play-brief-intel.ts's own live-room% line,
+        // shipped the day before this one (#5173) — prefers `play.execMark` (the live tradable bid)
+        // whenever it's known, the same conservative-basis discipline the premium-stop cushion also
+        // follows. Both lines describe distance to the SAME dollar level: for the common single-rung
+        // ladder, `next.premium` (this rung's absolute trigger) IS `exitPolicy.target_premium` (they
+        // are both "the level where the position doubles"). Live repro, same brief, same instant:
+        // this bullet read "mark **$5.83**, needs **$11.30** (+94% from here)" while "What to watch"
+        // read "**102%** move still needed from current bid" for the identical $11.30 target — an
+        // 8pp gap with no basis label to explain it, because this bullet always said "mark" even
+        // when a cheaper, more conservative bid was available. Mirrors play-brief-intel.ts's
+        // `targetBasis`/`targetBasisIsExec` pattern exactly rather than reinventing it, so the two
+        // "how far to the next dollar level" numbers in one brief can no longer disagree.
+        const distanceBasis = play.execMark != null && play.execMark > 0 ? play.execMark : play.mark;
+        const distanceBasisIsExec = play.execMark != null && play.execMark > 0;
         const distanceSuffix =
           !alreadyCrossed &&
           next.premium != null &&
-          typeof play.mark === "number" &&
-          Number.isFinite(play.mark) &&
-          play.mark > 0
-            ? ` — mark **${fmtOptionUsd(play.mark)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
-                ((next.premium - play.mark) / play.mark) *
+          typeof distanceBasis === "number" &&
+          Number.isFinite(distanceBasis) &&
+          distanceBasis > 0
+            ? ` — ${distanceBasisIsExec ? "bid" : "mark"} **${fmtOptionUsd(distanceBasis)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
+                ((next.premium - distanceBasis) / distanceBasis) *
                 100
               ).toFixed(0)}% from here)`
             : "";
