@@ -25,6 +25,20 @@
  * NO LOOK-AHEAD: `nearestBarClose` only matches a bar within a bounded tolerance of the target
  * timestamp — a horizon whose bar genuinely isn't available (grading ran before that time
  * existed, or the tape has a real gap) returns `null`, never the nearest bar at any distance.
+ *
+ * SCHEMA v2 (Signal Intelligence Phase 2A) — adds `session_high_pct`/`session_high_at` and
+ * `session_low_pct`/`session_low_at`: the raw high-water and low-water % move from entry across
+ * the WHOLE session's bars (using each bar's `h`/`l`, not just close prices), with the timestamp
+ * each extreme actually occurred. Still direction-agnostic, same reason as the horizons above —
+ * a LONG's max-favorable-excursion is `session_high_pct` and max-adverse is `session_low_pct`; a
+ * SHORT's are the other way around. This is the shadow-play outcome primitive the operator's
+ * standing "upgrade Legacy" mandate needs: a REJECTED or PULLED candidate's `nighthawk_candidate_
+ * snapshot` row gets forward-graded exactly like a published one (this module never reads
+ * selected_for_publish), so "did the filter that rejected/pulled this ticker throw away a real
+ * winner" is answerable from the high-water mark alone, without needing point-in-time horizons to
+ * happen to land near the peak. Old (schema_version 1) rows in the DB simply lack these two
+ * fields — every downstream reader must treat a missing/undefined session_high/low the same as an
+ * explicit null (honest "not graded under this schema yet"), never as zero.
  */
 
 // `t` is optional to match `@/lib/providers/polygon-largo`'s real `AggBar` shape (its own
@@ -39,12 +53,23 @@ export const FORWARD_HORIZON_MINUTES = { m5: 5, m15: 15, m30: 30, h1: 60 } as co
 export type ForwardHorizonKey = keyof typeof FORWARD_HORIZON_MINUTES | "eod";
 
 export type CandidateForwardReturns = {
-  schema_version: 1;
+  schema_version: 2;
   /** The session's own opening print — the entry anchor every horizon below is measured from. */
   entry_price: number | null;
   /** ISO timestamp of the actual bar entry_price came from (traceability — never assumed). */
   entry_at: string | null;
   horizons: Record<ForwardHorizonKey, number | null>;
+  /** Raw % move from entry to the session's HIGHEST bar high (not close) — the LONG-favorable/
+   *  SHORT-adverse extreme. Null only when entry_price itself is null (a session with real bars
+   *  but a flat/single-bar tape still has a defined high == entry). */
+  session_high_pct: number | null;
+  /** ISO timestamp of the bar that produced session_high_pct — first such bar if tied. */
+  session_high_at: string | null;
+  /** Raw % move from entry to the session's LOWEST bar low (not close) — the SHORT-favorable/
+   *  LONG-adverse extreme. Same null convention as session_high_pct. */
+  session_low_pct: number | null;
+  /** ISO timestamp of the bar that produced session_low_pct — first such bar if tied. */
+  session_low_at: string | null;
   graded_at: string;
 };
 
@@ -101,10 +126,14 @@ export function computeCandidateForwardReturns(
   gradedAtIso: string
 ): CandidateForwardReturns {
   const empty: CandidateForwardReturns = {
-    schema_version: 1,
+    schema_version: 2,
     entry_price: null,
     entry_at: null,
     horizons: { m5: null, m15: null, m30: null, h1: null, eod: null },
+    session_high_pct: null,
+    session_high_at: null,
+    session_low_pct: null,
+    session_low_at: null,
     graded_at: gradedAtIso,
   };
   if (!bars.length) return empty;
@@ -131,11 +160,33 @@ export function computeCandidateForwardReturns(
   horizons.eod =
     Number.isFinite(lastBar.c) && lastBar.c > 0 ? rawForwardReturnPct(entryPrice, lastBar.c) : null;
 
+  // Session high/low water marks: scan every bar's h/l (not just closes) from entry onward —
+  // the true intraday extreme, not whatever the nearest-to-a-fixed-horizon close happened to be.
+  let highPrice = -Infinity;
+  let highTimeMs: number | null = null;
+  let lowPrice = Infinity;
+  let lowTimeMs: number | null = null;
+  for (const b of bars) {
+    if (b.t == null || !Number.isFinite(b.t)) continue;
+    if (Number.isFinite(b.h) && b.h > 0 && b.h > highPrice) {
+      highPrice = b.h;
+      highTimeMs = b.t;
+    }
+    if (Number.isFinite(b.l) && b.l > 0 && b.l < lowPrice) {
+      lowPrice = b.l;
+      lowTimeMs = b.t;
+    }
+  }
+
   return {
-    schema_version: 1,
+    schema_version: 2,
     entry_price: entryPrice,
     entry_at: new Date(entryTimeMs).toISOString(),
     horizons,
+    session_high_pct: highTimeMs != null ? rawForwardReturnPct(entryPrice, highPrice) : null,
+    session_high_at: highTimeMs != null ? new Date(highTimeMs).toISOString() : null,
+    session_low_pct: lowTimeMs != null ? rawForwardReturnPct(entryPrice, lowPrice) : null,
+    session_low_at: lowTimeMs != null ? new Date(lowTimeMs).toISOString() : null,
     graded_at: gradedAtIso,
   };
 }
