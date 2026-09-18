@@ -36,6 +36,16 @@ export interface DeckGreeks {
   iv: number | null;
 }
 
+/** Live current-quote execution quality for the held contract — bid/ask + the spread they imply.
+ *  `spreadPct` is spread-over-mid (same convention as contract-ranker.ts's own `spreadPctOf`), only
+ *  computed when BOTH sides of the book are present and priced (mid > 0) — a one-sided quote can't
+ *  imply a spread. */
+export interface DeckLiquidity {
+  bid: number | null;
+  ask: number | null;
+  spreadPct: number | null;
+}
+
 /** Resolved iron-condor render geometry (Wave 2) — the "price-inside-the-tent" gauge inputs for a
  *  CREDIT condor row. Emitted server-side from the row's frozen CondorPlan (entry_context.condor) and
  *  mapped to camelCase by the adapter; `spot` is resolved to the LIVE underlying when the board carries
@@ -225,6 +235,9 @@ export interface TerminalPlay {
 
   // ── greeks (live) ──
   greeks?: DeckGreeks | null;
+  /** Live current-quote execution quality for the held contract (bid/ask/spreadPct) — see
+   *  `DeckLiquidity`'s own doc comment. SWING/LEAPS only today (mirrors `greeks`' own source). */
+  liquidity?: DeckLiquidity | null;
 
   /** Sector classification (lower-cased), when known. */
   sector?: string | null;

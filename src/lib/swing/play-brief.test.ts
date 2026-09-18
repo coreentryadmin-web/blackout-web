@@ -2181,6 +2181,145 @@ test("composeSwingPlayBrief: OPEN position with no live greeks omits the Greeks 
   assert.doesNotMatch(position!.body, /Greeks:/, "must not fabricate a Greeks line with no live quote");
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): `play.liquidity` (DeckLiquidity: bid/ask/
+// spreadPct) mirrors `play.greeks` above — a real, live per-contract read `liquidityFromContract`
+// (adapters.ts) already builds onto every open TerminalPlay, wired the same way greeks was, but
+// nothing in play-brief*.ts surfaced it: a member trimming into a wide book had no way to know
+// current execution quality, even though contract-ranker.ts already enforces a calibrated
+// `maxSpreadPct` liquidity gate per sub-lane AT ENTRY — the same bar the position was picked
+// against, just never checked again once open.
+test("composeSwingPlayBrief: OPEN position's live spread reaches the Position section, compared against the sub-lane's own entry liquidity gate", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      subLane: "TACTICAL",
+      liquidity: { bid: 5.9, ask: 6.3, spreadPct: 0.0656 }, // (6.3-5.9)/6.1
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(
+    position!.body,
+    /Spread: \*\*6\.6%\*\* \(\$5\.90\/\$6\.30\) — this sub-lane's own entry liquidity bar was \*\*18%\*\*, so current execution is still inside it\./,
+    `got: ${position!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: live spread wider than the sub-lane's entry gate reads 'now wider than', not 'still inside'", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      subLane: "TACTICAL", // gate = 18%
+      liquidity: { bid: 5.5, ask: 6.7, spreadPct: 0.1967 }, // (6.7-5.5)/6.1 ~ 19.7% > 18%
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(position!.body, /now wider than it\./, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /still inside it/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: one-sided live quote (bid only) shows Quote without a fabricated spread comparison", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      subLane: "TACTICAL",
+      liquidity: { bid: 5.9, ask: null, spreadPct: null },
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(position!.body, /Quote: \*\*\$5\.90\*\* _\(one-sided book — spread not priceable\)_/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Spread:/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: no live liquidity quote at all omits both Spread and Quote lines (honest absence)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      subLane: "TACTICAL",
+      liquidity: null,
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.doesNotMatch(position!.body, /Spread:|Quote:/, `must not fabricate a liquidity line with no live quote, got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: live spread with no resolvable sub-lane still shows the bare Spread line (no fabricated gate comparison)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      subLane: null,
+      liquidity: { bid: 5.9, ask: 6.3, spreadPct: 0.0656 },
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(position!.body, /Spread: \*\*6\.6%\*\* \(\$5\.90\/\$6\.30\)$/m, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /entry liquidity bar/, `got: ${position!.body}`);
+});
+
 test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) never carry a '+' sign (live NN repro 2026-09-09)", () => {
   // Live repro: GET /api/market/swing/play-brief?ticker=NN&positionId=32&... rendered
   // "Entry: **+$1.95**" / "Mark: **+$1.35**" / "Rails: stop +$0.78 · target +$3.90" even
