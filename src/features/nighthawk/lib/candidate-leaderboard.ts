@@ -51,6 +51,19 @@ export type CandidateLeaderboardStagePoint = {
 
 export type CandidateLeaderboardOutcome = "published" | "rejected" | "in_progress";
 
+/**
+ * Operator priority #10 ("promotion/demotion ladder WATCH->READY->TRIGGERED->ACTIVE with
+ * explicit 'what changed' reasons") — the safe half of Phase 2D. Item #11 of the same mandate
+ * (a real NO-TRADE state) is a genuine product trade-off against the shipped backfill-floor
+ * behavior (play-backfill.ts's backfillThinEditionPlays/effectiveMinPublishPlays) and stays
+ * explicitly BLOCKED pending operator confirmation (see the 2026-09-18 06:21Z journal entry).
+ * This status label is unrelated to that blocker: it changes NOTHING about which candidates get
+ * published or how many — it only names where a candidate ALREADY in the funnel currently sits,
+ * the same way `outcome` below already does, just with the three in-progress funnel depths
+ * distinguished instead of collapsed into one "in_progress" bucket.
+ */
+export type CandidatePromotionStatus = "WATCH" | "READY" | "TRIGGERED" | "ACTIVE" | "REJECTED";
+
 export type CandidateLeaderboardEntry = {
   ticker: string;
   /** Ordered by the funnel's own stage depth (STAGE_ORDER), not raw observed_at — same-batch
@@ -58,6 +71,10 @@ export type CandidateLeaderboardEntry = {
    *  so the funnel's own known topology is the more reliable ordering signal. */
   trajectory: CandidateLeaderboardStagePoint[];
   outcome: CandidateLeaderboardOutcome;
+  /** WATCH (seen only at discovery) -> READY (survived to scored) -> TRIGGERED (survived to
+   *  rank_governor) -> ACTIVE (published) -> REJECTED (terminal, regardless of how far it got
+   *  first). See the type's own doc above for the Phase 2D scope boundary this respects. */
+  promotion_status: CandidatePromotionStatus;
   /** rank at the FIRST ranked stage this ticker reached minus rank at the LAST ranked stage it
    *  reached (both taken from `trajectory`, i.e. respecting STAGE_ORDER, not observed_at). Ranks
    *  are 1-based and lower is better, so a POSITIVE delta means the ticker improved (climbed) and
@@ -79,6 +96,21 @@ function rankDeltaFor(trajectory: CandidateLeaderboardStagePoint[]): number | nu
   const first = ranked[0]!.rank!;
   const last = ranked[ranked.length - 1]!.rank!;
   return first - last;
+}
+
+/** `outcome` already decides ACTIVE/REJECTED; for "in_progress" this reads the DEEPEST stage the
+ *  trajectory (already sorted by STAGE_ORDER) actually reached — an unrecognized/future stage
+ *  degrades to WATCH rather than guessing a deeper status it hasn't earned. */
+function promotionStatusFor(
+  trajectory: CandidateLeaderboardStagePoint[],
+  outcome: CandidateLeaderboardOutcome
+): CandidatePromotionStatus {
+  if (outcome === "published") return "ACTIVE";
+  if (outcome === "rejected") return "REJECTED";
+  const deepest = trajectory[trajectory.length - 1];
+  if (deepest?.stage === "scored") return "READY";
+  if (deepest?.stage === "rank_governor") return "TRIGGERED";
+  return "WATCH";
 }
 
 /**
@@ -107,10 +139,12 @@ export function buildCandidateLeaderboard(rows: readonly NighthawkCandidateSnaps
   const entries: CandidateLeaderboardEntry[] = [];
   for (const [ticker, points] of byTicker) {
     const trajectory = [...points].sort((a, b) => stageDepth(a.stage) - stageDepth(b.stage));
+    const outcome = outcomeFor(trajectory);
     entries.push({
       ticker,
       trajectory,
-      outcome: outcomeFor(trajectory),
+      outcome,
+      promotion_status: promotionStatusFor(trajectory, outcome),
       rank_delta: rankDeltaFor(trajectory),
     });
   }

@@ -112,3 +112,46 @@ test("buildCandidateLeaderboard: multiple tickers stay independently grouped, ne
 test("buildCandidateLeaderboard: an empty row list produces an empty leaderboard", () => {
   assert.deepEqual(buildCandidateLeaderboard([]), []);
 });
+
+// ── promotion_status (operator priority #10, WATCH->READY->TRIGGERED->ACTIVE/REJECTED) ──
+
+test("buildCandidateLeaderboard: promotion_status ACTIVE for a published ticker, REJECTED for a rejected one", () => {
+  const entries = buildCandidateLeaderboard([
+    row({ ticker: "NVDA", stage: "discovery", rank: 1 }),
+    row({ ticker: "NVDA", stage: "rank_final", rank: 1, selected_for_publish: true }),
+    row({ ticker: "AMD", stage: "discovery", rank: 2 }),
+    row({ ticker: "AMD", stage: "rejected", rank: 2, rejection_reason: "confluence_gate" }),
+  ]);
+  assert.equal(entries.find((e) => e.ticker === "NVDA")!.promotion_status, "ACTIVE");
+  assert.equal(entries.find((e) => e.ticker === "AMD")!.promotion_status, "REJECTED");
+});
+
+test("buildCandidateLeaderboard: promotion_status WATCH when only discovery has been seen", () => {
+  const [entry] = buildCandidateLeaderboard([row({ ticker: "TSLA", stage: "discovery", rank: 3 })]);
+  assert.equal(entry!.promotion_status, "WATCH");
+});
+
+test("buildCandidateLeaderboard: promotion_status READY once scored is the deepest stage reached", () => {
+  const [entry] = buildCandidateLeaderboard([
+    row({ ticker: "TSLA", stage: "discovery", rank: 3 }),
+    row({ ticker: "TSLA", stage: "scored", rank: 2 }),
+  ]);
+  assert.equal(entry!.promotion_status, "READY");
+});
+
+test("buildCandidateLeaderboard: promotion_status TRIGGERED once rank_governor is the deepest stage reached", () => {
+  const [entry] = buildCandidateLeaderboard([
+    row({ ticker: "TSLA", stage: "discovery", rank: 3 }),
+    row({ ticker: "TSLA", stage: "scored", rank: 2 }),
+    row({ ticker: "TSLA", stage: "rank_governor", rank: 2 }),
+  ]);
+  assert.equal(entry!.promotion_status, "TRIGGERED");
+});
+
+test("buildCandidateLeaderboard: an unrecognized deepest stage degrades to WATCH, never a guessed deeper status", () => {
+  const [entry] = buildCandidateLeaderboard([
+    row({ ticker: "NVDA", stage: "discovery", rank: 1 }),
+    row({ ticker: "NVDA", stage: "some_future_stage", rank: 1 }),
+  ]);
+  assert.equal(entry!.promotion_status, "WATCH");
+});
