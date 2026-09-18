@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T16:10:00Z",
+  "lastUpdated": "2026-09-18T16:22:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3920,6 +3920,14 @@
       "why": "This is squarely 'ambiguous/live-picks-logic' per the standing escalation policy -- REPORT AND HOLD, not build. Confirmed src/features/nighthawk/lib/bearish-posture.ts exists (a dedicated bearish/SHORT-posture mechanism), so this is not obviously a missing-code-path gap -- it reads as an emergent discovery/selection-mix question (why is the pipeline producing near-all-LONG output regardless of broad-market regime?), which is a real architectural/strategy question deserving deliberate operator attention, not a unilateral gate/bias change on a hunch.",
       "result": "Real, well-evidenced finding surfaced, explicitly NOT acted on. Flagging for operator visibility: Legacy's LONG:SHORT ratio (47:1) over the last 30 sessions during a net-down SPY window is worth a deliberate look at whether the discovery/scoring pipeline structurally under-weights bearish setups, before concluding the dominant wrong_direction failure mode is purely a signal-quality problem rather than partly a directional-mix problem.",
       "nextAction": "Hold pending operator input. If asked to investigate further: trace bearish-posture.ts's actual call sites/weight in the scoring pipeline to see whether it's structurally capped or just rarely winning the ranking this window."
+    },
+    {
+      "at": "2026-09-18T16:22:30Z",
+      "trigger": ":21 cycle -- healthcheck steady (skip), continued LONG-only-bias investigation from last cycle",
+      "healthcheck": "Re-ran fresh at 16:21:51Z: same steady rotating thin-strike pattern, no journal entry warranted on its own.",
+      "whatChanged": "Followed up last cycle's LONG:SHORT (47:1) finding per its own noted next action. Read bearish-posture.ts in full: this is a DELIBERATE, already-shipped mechanism (PR-N9), not a missing code path -- its own docstring names the exact problem found last cycle almost verbatim ('The machine can only say long or say nothing... on 7/02, 7/13, 7/14 the funnel zeroed on a bearish tape -- exactly when a short book would have been the play'). detectBookPosture() requires >=2 of 3 independent bearish signals (tide put-dominated >55%, breadth <35% advancing, composite regime bearish) before re-ranking toward SHORT -- a deliberately conservative gate (2-of-3, not 1-of-3) to avoid over-triggering on noise.",
+      "why": "This narrows, rather than closes, last cycle's open question. It rules out 'no SHORT code path exists' -- confirmed one does, with real design rationale. It does NOT rule out 'the 2-of-3 gate is too strict and rarely fires even on genuinely bearish evenings' -- checking that needs the actual per-session regime context (tide_bias/advance_pct/composite_regime) against the dates when the book stayed all-LONG despite SPY closing red, and Phase 2A part 2's regime tag (captured at candidate-snapshot time, task #18) is the right data source but isn't yet exposed on any admin-readable route -- would need a small new read, not built this cycle.",
+      "result": "Investigation narrowed, not concluded -- still REPORT/HOLD, not actionable without operator confirmation on priority. The precise next step (if this is worth pursuing): a small admin export or ad-hoc query joining candidate_snapshot's regime tag against session outcomes to measure detectBookPosture's actual historical fire rate vs. how often SPY/breadth was genuinely bearish -- distinct from and more precise than last cycle's SPY-only proxy."
     }
   ],
   "knownOpenItems": {
