@@ -147,6 +147,25 @@ test("marketContextItems only emits non-empty string fields — nothing invented
   );
 });
 
+// Task #31: desk_playbook (deriveComposite's authored regime strategy line, format.ts
+// buildMarketRecap) is deterministic member-facing context that previously only reached the LLM
+// prompt, never a guaranteed part of the member-visible recap.
+test("marketContextItems surfaces desk_playbook as a wide Market context row when present", async () => {
+  const { marketContextItems } = await loadBoard();
+  const items = marketContextItems({
+    desk_playbook: "Dealers short gamma — moves amplify. Trend up with breakout risk.",
+  });
+  assert.deepEqual(items, [
+    { label: "Desk Playbook", value: "Dealers short gamma — moves amplify. Trend up with breakout risk.", wide: true },
+  ]);
+});
+
+test("marketContextItems omits Desk Playbook when the field is empty/absent (never fabricated)", async () => {
+  const { marketContextItems } = await loadBoard();
+  assert.deepEqual(marketContextItems({ desk_playbook: "" }), []);
+  assert.deepEqual(marketContextItems({}), []);
+});
+
 // ── plays: numbered evidence-first cards, only for actual plays ────────────────────
 
 test("plays render as cards at their published ranks; carry-until-close notice intact", async () => {
