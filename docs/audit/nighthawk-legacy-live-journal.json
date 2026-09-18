@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T20:07:30Z",
+  "lastUpdated": "2026-09-18T20:38:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4023,6 +4023,14 @@
       "trigger": ":06 cycle -- post-RTH-close transition: A_edition stale + all 4 marks stale simultaneously",
       "healthcheck": "Re-ran fresh at 20:07:02Z, just past 4pm ET close: A_edition flipped GREEN->AMBER ('edition is stale -- served an older date than requested'), all 4 marks (SMTC/SMCI/SWKS/HPE) flagged stale simultaneously. C_record/D_pull_status steady GREEN.",
       "result": "Not re-investigated in depth -- matches the already-confirmed-benign post-close pattern first verified 2026-09-16T20:08:02Z (quotes stop live-updating after close, edition self-reports stale until tomorrow evening's rebuild). Same shape today, expected end-of-session state, not a bug."
+    },
+    {
+      "at": "2026-09-18T20:38:00Z",
+      "trigger": ":36 cycle -- outcomes cron fired (resolved 24->28), first live daily-learning-digest window",
+      "healthcheck": "Re-ran fresh at 20:36:53Z: C_record resolved jumped 24->28 (4 new plays graded) -- the 16:30 ET nighthawk-outcomes cron fired. A_edition/B_marks steady in the known post-close stale state, D_pull_status GREEN.",
+      "whatChanged": "Checked the debrief pipeline's real output: debrief_report.summary went from 63 graded/21 sessions (last checked ~18:53Z) to 67 graded/22 sessions -- the 4 new plays' failure-mode tags: wrong_direction +3, target_unreachable +1, no new clean_win/gap_win. Consistent with (not a new instance of) the already-reported wrong_direction-dominant pattern from earlier today -- today's session's own resolved plays add to, not contradict, that finding.",
+      "why": "This is also the FIRST live firing of PR #5200's daily-learning-digest (days:1, wired into this exact cron window) since it shipped earlier today. Its actual Discord delivery cannot be independently verified from this sandbox (no ops-Discord-read tool available) -- confirmed only that the underlying grading/debrief data it reads from is correct and populated as of this cron run.",
+      "result": "No new bug. Outcome-honesty check on today's 4 new resolved plays found nothing surprising -- they extend the already-reported direction-bias finding, not a new one. Digest delivery itself unverifiable from here, noted honestly rather than assumed."
     }
   ],
   "knownOpenItems": {
