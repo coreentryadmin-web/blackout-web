@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T08:42:00Z",
+  "lastUpdated": "2026-09-18T08:44:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3713,6 +3713,16 @@
       "healthcheck": "Re-confirmed steady at 08:37:05Z this cycle (AMBER, same pre-market pattern, no new issue) -- not re-running again this check-in, nothing would have changed in 5 minutes.",
       "result": "Priority order status: items 1,2,3,4 fully shipped/verified; item 7's safe half (overnight rank trajectory) shipped; item 5 (rejection/pull rule attribution) substantially covered. Once #5188 merges, EVERY rejection reason in the funnel gets a durable shadow-gradeable record -- closes the shadow-tracking coverage gap completely.",
       "nextAction": "Check PR #5188 at 08:50Z check-in, merge if green. Continue holding the full-RTH-continuous half of priority #7 pending confirmation. Items 6/8 (Phase 2C winner-DNA, Phase 2B-part-2 regime WHY-classification) remain correctly blocked on trading-day sample accumulation -- both capture paths only started today, 2026-09-18."
+    },
+    {
+      "at": "2026-09-18T08:44:00Z",
+      "trigger": "PR #5188 check-in fired -- merged, closes shadow-tracking coverage completely",
+      "whatChanged": "PR #5188 (final geometry gate durable record, task #24) merged clean, sha 83516fca2, verified live on origin/main. Unsubscribed. Cleaned up local merged branches.",
+      "why": "Completes the operator's priority #2 ('verify shadow tracking captures every rejected, pulled, expired, unfilled, and accepted candidate') fully, not just the 6-of-7 PR #5184 originally closed.",
+      "result": "Session tally so far today (2026-09-18): 6 PRs merged (#5176/#5177 Phase 2A, #5181 Phase 2B pt.1, #5183 Phase 2E, #5184 STAGE-6 rejection capture, #5185 R-multiple, #5187 leaderboard safe half, #5188 final-geometry-gate record -- 7 total, listed 6 distinct feature slices as #5176/#5177 were one slice). Priority order status: items 1,2,3,4,5(substantially),7(safe half) all shipped/verified. Items 6 (Phase 2C winner-DNA) and part of 8 (Phase 2B-part-2 regime WHY-classification) remain correctly blocked on trading-day sample accumulation -- both capture paths (market_regime tagging, full rejection-stage capture) only went fully live TODAY, so meaningful accumulation needs at least one more trading day/session to even begin evaluating.",
+      "sampleSize": "N/A -- this entry is a session tally, not a statistical finding.",
+      "productionOrShadow": "All 7 PRs today are PRODUCTION plumbing/compute-primitive additions; every byte of DATA they capture is SHADOW (never member-facing) by design, per the operator's own explicit 'every play must become training/calibration data' mandate.",
+      "nextAction": "No PRs currently open -- next 15-min cycle should: (1) re-run healthcheck fresh (not yet due for re-check since 08:37:05Z), (2) check whether candidate leaderboard / R-multiple primitives need a reader wired (natural candidates: admin export route, or fold into get_nighthawk_dossier for Largo) -- these are real follow-on work, not urgent, (3) continue NOT re-checking Phase 2C/2B-part-2 blocked-on-sample items every cycle (checked once this session, correctly still blocked, will re-check when a new trading day's data exists), (4) if nothing new found, this is a legitimately clean/quiet cycle after a productive session -- stay quiet per noise discipline rather than manufacturing work."
     }
   ],
   "knownOpenItems": {
