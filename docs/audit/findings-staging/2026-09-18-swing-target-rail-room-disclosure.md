@@ -87,5 +87,5 @@ kept in place): reverting the source dropped exactly 2/151 tests (the two positi
 tests; the two "omit" tests trivially still pass against reverted source), diff-verified
 byte-identical restore. `npx tsc --noEmit -p .` clean (Node 20). Full relevant scope
 (`play-brief-intel.test.ts` + `play-brief.test.ts` + `play-brief-narrative.test.ts` +
-`play-brief-narrative-coaching.test.ts`): 422/422 pass. Full `npm test` (Node 20): run in
-background; PR carries the final count once complete.
+`play-brief-narrative-coaching.test.ts`): 422/422 pass. Full `npm test` (Node 20): 14631/14634
+pass, 0 fail, 3 pre-existing skips.
