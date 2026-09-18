@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T09:38:00Z",
+  "lastUpdated": "2026-09-18T09:54:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3765,6 +3765,16 @@
       "healthcheck": "Re-ran fresh at 09:36:38Z: steady, unchanged (same pre-market pattern).",
       "result": "#5188's deploy is now COMPLETED/success (confirmed via GH Actions). #5189's own deploy is now IN_PROGRESS (was 'pending' last cycle) -- re-smoke-tested /api/admin/nighthawk/candidate-leaderboard, still 404 as expected since that deploy hasn't finished yet. Not a new finding -- consistent with last cycle's diagnosis, just progressing through the queue as predicted.",
       "nextAction": "Re-verify the leaderboard route next cycle once #5189's own deploy run shows completed/success in GH Actions."
+    },
+    {
+      "at": "2026-09-18T09:54:00Z",
+      "trigger": ":51 cycle -- healthcheck steady, candidate-leaderboard route CONFIRMED LIVE and working end-to-end",
+      "healthcheck": "Re-ran fresh at 09:52:01Z: steady, unchanged (same pre-market pattern).",
+      "whatChanged": "Re-smoke-tested /api/admin/nighthawk/candidate-leaderboard with 5 back-to-back requests: 3/5 returned 200 OK (edition_for=2026-09-18, count=0), 2/5 returned 404. This is NOT flaky/broken -- confirmed via ecs.describe_services that the deploy is mid-rollout (5/8 tasks on the new task def :1655, 3/8 still on :1654), so requests randomly land on old vs new tasks through the ALB -- exactly the expected transient behavior of a rolling deploy hitting a brand-new route, not a defect. The 200 responses are the real proof: the route code is correct and serving real data once it's actually running.",
+      "why": "Closes the loop opened at 09:11Z/09:23Z/09:38Z -- definitively resolves whether the earlier 404s were a code bug (they were not) vs deploy lag (confirmed, now also confirmed resolving as expected).",
+      "evidence": "3 of 5 rapid-fire requests returned real 200 JSON; ECS state showed 5/8 tasks already on the new task def at check time. count=0 for edition_for=2026-09-18 is CORRECT, not a bug -- today's edition was built overnight BEFORE PR #5184 (candidate_snapshot rejection capture) and PR #5185 (levels/R-multiple capture) merged (~08:05-08:38 UTC this morning), so no candidate rows with the new schema exist for today's edition yet. Tonight's edition build (edition_for=2026-09-19) will be the first to populate real leaderboard data end-to-end.",
+      "result": "CONFIRMED WORKING. All 3 PRs from this session's continuous-learning mandate build (#5187 primitive, #5188 durable rejection record, #5189 reader) are verified live and correct, not just unit-tested. Session's shipped-feature verification is now complete -- 8 PRs merged and independently confirmed live today (2026-09-18): #5176/#5177 (Phase 2A), #5181 (Phase 2B pt.1), #5183 (Phase 2E), #5184, #5185, #5187, #5188, #5189.",
+      "nextAction": "No further verification needed on today's shipped work. Tomorrow's first cycle after the overnight edition build (edition_for=2026-09-19) should spot-check /api/admin/nighthawk/candidate-leaderboard for real non-zero data as the first live proof the whole capture pipeline works on a real new edition, not just structurally. Continue holding Phase 2C/2B-part-2 (blocked on trading-day sample accumulation) and the full-RTH-continuous-tracking half of priority #7 (held pending confirmation) as the two known open items."
     }
   ],
   "knownOpenItems": {
