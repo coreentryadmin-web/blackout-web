@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T10:41:00Z",
+  "lastUpdated": "2026-09-18T10:53:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3793,6 +3793,14 @@
       "productionOrShadow": "SHADOW data (candidate_snapshot rows), additive field on an already-shipped primitive -- the admin export route automatically starts returning it once this merges, no route change needed.",
       "result": "Phase 2D now has ONE of its two sub-items shipped (promotion/demotion status labeling); the genuinely blocked half (NO-TRADE state vs backfill floor) remains correctly held.",
       "nextAction": "Check PR #5197 CI at 10:53Z check-in, merge if green. Continue holding item #11/Phase 2D's NO-TRADE half and priority #7's full-RTH-continuous half pending operator confirmation on both. Items 6/2B-part-2 (Phase 2C, regime WHY-classification) remain correctly blocked on trading-day sample accumulation."
+    },
+    {
+      "at": "2026-09-18T10:53:00Z",
+      "trigger": ":51 cycle -- healthcheck steady, PR #5197 merged (Phase 2D safe half)",
+      "healthcheck": "Re-ran fresh at 10:52:12Z: steady, unchanged (same pre-market pattern).",
+      "prStatus": "PR #5197 (promotion/demotion status ladder) merged clean, sha d599190f6, verified live on origin/main. Unsubscribed. Task #21/Phase 2D now half-shipped: promotion_status labeling done, NO-TRADE state vs backfill-floor conflict remains correctly BLOCKED pending operator confirmation.",
+      "result": "9 PRs merged today (2026-09-18) across the continuous-learning mandate: #5176/#5177 (Phase 2A), #5181 (Phase 2B pt.1), #5183 (Phase 2E), #5184 (rejection capture), #5185 (R-multiple), #5187 (leaderboard), #5188 (final-geometry-gate record), #5189 (leaderboard reader), #5197 (promotion status). Priority items 1-5, 7 (safe half), 10 all shipped/verified live. Remaining open: item 6/Phase 2C (winner-DNA, blocked on sample accumulation), item 8/Phase 2B part 2 (regime WHY-classification, blocked on sample accumulation), item 11/Phase 2D remainder (NO-TRADE state, blocked on operator confirmation), priority #7's full-RTH-continuous-tracking half (blocked on operator confirmation), Phase 2F (morning command-center + post-market report, not started).",
+      "nextAction": "No open PRs. Continue standard 15-min healthcheck cadence. Auto-revisit Phase 2C/2B-part-2 sample-accumulation status once a new trading day's edition build has run (tonight, edition_for=2026-09-19) rather than re-checking every 15 min. If capacity remains and no new bugs/gaps surface, consider scoping Phase 2F (the two output surfaces the operator will actually see) as the next unblocked, unstarted item -- it doesn't depend on either held blocker."
     }
   ],
   "knownOpenItems": {
