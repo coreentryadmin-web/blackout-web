@@ -2023,6 +2023,36 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma p
   assert.doesNotMatch(section!.body, /Net GEX/i, "stale matrix numeric fields must not render as live");
 });
 
+// BUG FIX (2026-09-18, Ask Largo standing mandate): the same false-zero precision defect fixed
+// in play-brief.ts's tradeManagerNarrativeSection (PR #5227, live ABTC $10.15 repro) also existed
+// here — gexPostureSection independently computes net_gex/1e6 and rendered it via a bare
+// toFixed(1), so a real, signed net GEX under ~$50k (common on lower-priced/small-cap tickers)
+// collapsed to "0.0M", reading as "no dealer exposure" when a real signed value exists.
+test("gexPostureSection: a small nonzero net GEX never renders as a false '0.0M' zero", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 10.15,
+        gamma_posture: "long",
+        net_gex: 40_000,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Net GEX: \*\*0\.04M\*\*/, "a real $40k net GEX must widen precision, never collapse to a false 0.0M");
+  assert.doesNotMatch(section!.body, /Net GEX: \*\*-?0\.0M\*\*/, "must never render the false-zero '0.0M'/'-0.0M' shape");
+});
+
 test("gexPostureSection: future-skewed GEX matrix age renders 'clock-skewed', not a negative number (Largo C2, 2026-09-16)", () => {
   const section = gexPostureSection({
     play: fixturePlay(),
