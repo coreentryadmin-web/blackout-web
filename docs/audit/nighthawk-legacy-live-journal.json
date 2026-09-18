@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T14:53:00Z",
+  "lastUpdated": "2026-09-18T15:08:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3891,6 +3891,12 @@
       "why": "This is a live re-confirmation of the already-diagnosed pattern class (thin-liquidity name's own quote tick lags the freshness window intermittently even during RTH, root-caused once already via PR #5073's threshold fix) -- NOT the systemic-bug shape that WOULD warrant a new fix (that shape is ALL contracts, including the most liquid one, flagged simultaneously across the whole session -- that's what PR #5073 and PR the WS-freshness-gate fix actually addressed). Here it's 1-2 contracts, self-healing within ~20 seconds, rotating between different OCCs cycle to cycle (SWKS now, HPE now, DELL/RIG in past weeks) -- consistent with genuine per-tick quote lag on thinner names, not a config/threshold bug.",
       "result": "No fix needed -- investigated and confirmed transient/self-healing, not a new or recurring systemic issue. Resetting the SWKS watch counter; this satisfies the 3-instance investigation requirement without finding a new bug to escalate.",
       "evidence": "Independent fetchAuditJson call to legacy-marks at 14:52:29Z: SWKS asof=14:52:15.180Z stale=false, HPE asof=14:52:27.309Z stale=false -- both fresh well within any reasonable staleness window by the time of re-check."
+    },
+    {
+      "at": "2026-09-18T15:08:00Z",
+      "trigger": ":06 cycle -- SWKS stale again (4th instance), already-diagnosed pattern, not re-investigated",
+      "healthcheck": "Re-ran fresh at 15:07:52Z: SWKS260925C00090000 stale again this cycle (14:21/14:36/14:51/15:07). HPE back to GREEN. SMTC/SMCI GREEN. A_edition/C_record/D_pull_status steady GREEN.",
+      "result": "Not re-investigated -- already confirmed transient/self-healing last cycle (14:53Z entry) via an independent raw-payload re-fetch that showed the exact same OCC fresh ~20s later. SWKS appears to simply be this cohort's thinnest-liquidity name today (the RIG/DELL role from past weeks). Consistent with the known pattern class, no new evidence of a systemic issue."
     }
   ],
   "knownOpenItems": {

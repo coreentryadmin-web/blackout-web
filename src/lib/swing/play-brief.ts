@@ -32,6 +32,7 @@ import {
 } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
+import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { deadPlayReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
@@ -786,7 +787,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       const parts: string[] = [];
       if (overlap.sameThemeSameDirection.length) {
         parts.push(
-          `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in theme "${overlap.theme}"`,
+          `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
         );
       }
       if (overlap.sameThemeOpposedDirection.length) {

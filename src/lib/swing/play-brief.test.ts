@@ -165,6 +165,31 @@ test("composeSwingPlayBrief: Book context concentration carries a matching evide
   assert.match(overlapEvidence!.text, /2 same-direction position/);
 });
 
+// Live repro (2026-09-18): envelope.evidence's "Book overlap:" line hand-builds
+// `theme "${overlap.theme}"` the same way bookContextSection used to, so an unmapped ticker
+// (resolveTheme's own-cluster "NAME:<TICKER>" sentinel — theme-cluster.ts) leaked into this
+// evidence entry too. Confirmed live: GET /api/market/swing/play-brief for BYND returned
+// envelope.evidence text `Book overlap: 1 same-direction position in theme "NAME:BYND".`.
+test("composeSwingPlayBrief: Book overlap evidence for an own-cluster (unmapped-ticker) overlap never leaks the NAME: sentinel", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ id: "SWING:BYND:9999", ticker: "BYND", direction: "LONG", status: "OPEN", recommendation: "HOLD" }),
+    asOf: "2026-09-18T15:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    openBook: [{ ticker: "BYND", direction: "LONG", positionId: 1148 }],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const overlapEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Book overlap:"));
+  assert.ok(overlapEvidence, "sanity: the same-ticker overlap must still fire evidence");
+  assert.match(overlapEvidence!.text, /the same name \(BYND\)/);
+  assert.doesNotMatch(overlapEvidence!.text, /NAME:/, "must never leak the internal own-cluster sentinel");
+});
+
 test("composeSwingPlayBrief: CLOSED play never surfaces a Book overlap evidence entry (matches the section's own gating)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" }),
