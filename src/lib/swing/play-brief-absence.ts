@@ -586,6 +586,32 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
+  // Largo C2/C3 (2026-09-18, Ask Largo standing mandate): #5166 disclosed ticker-news staleness
+  // INLINE in the narrative (play-brief-intel.ts's `staleLead` prefix on the Headlines section,
+  // reading `newsCatalystStale(arsenal.news.as_of, ...)`) but never wired the identical signal
+  // into `unavailableSources` — the one place `UnavailableChip` (the UI's dedicated absence
+  // surface) reads from. That is the exact split this file already treats as a bug for every
+  // sibling freshness signal: Meridian catalyst staleness (two lines above), option-mark
+  // staleness, GEX/Vector staleness all reach BOTH the narrative prose AND unavailableSources;
+  // news catalysts reached only the former. A member skimming the chip row (rather than reading
+  // the full narrative) had no way to know the headlines they're seeing could be up to
+  // `NEWS_CATALYST_STALE_MS` (2min) old. Live-verified 2026-09-18: `arsenal.news.headlines`
+  // renders on real committed plays right now, so this omission fires whenever the shared
+  // Benzinga read (server-cache.ts stale-while-revalidate) is aged, not a theoretical gap. Same
+  // `!isClosed` gate as every other live-desk-state check above (a closed play's citation of
+  // headlines-at-the-time is historical, not "may lag").
+  if (
+    !isClosed &&
+    ctx.ecosystem?.arsenal?.news?.headlines?.length &&
+    newsCatalystStale(ctx.ecosystem.arsenal.news.as_of, Date.now())
+  ) {
+    out.push({
+      source: "Ticker news",
+      reason: "stale — headlines may lag",
+      what_is_missing: "a fresh ticker-news/headlines read for this ticker",
+      retryable: true,
+    });
+  }
   // FINDINGS 2026-09-06 (#11): `ecosystem`/`vector` being null is otherwise ambiguous between a
   // legitimately empty read and a total fetch failure — the arsenal-level unavailable_sources
   // above only covers a failure WITHIN a successful ecosystem read, not the whole call throwing.
