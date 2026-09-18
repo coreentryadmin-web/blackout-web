@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T15:37:30Z",
+  "lastUpdated": "2026-09-18T16:10:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3911,6 +3911,15 @@
       "trigger": ":36 cycle -- same 3-of-4 stale-mark shape repeats, quick re-check confirms ticks still progressing (not frozen)",
       "healthcheck": "Re-ran fresh at 15:36:48Z: SMTC/SMCI/SWKS stale again (2nd consecutive cycle, same shape as 15:21). Not re-investigated in depth -- already root-caused last cycle via Polygon ground-truth cross-check (genuine thin-strike quote staleness, LEGACY_QUOTE_STALE_MS=30s correctly applied). Did a quick supplementary check: re-fetched legacy-marks at 15:37:02Z and confirmed each OCC's asof HAS advanced since the 15:21 check (SWKS 15:18:44->15:35:12, SMCI ->15:36:06, SMTC ->15:32:25) -- ticks are still arriving, just not frequently enough to stay under the 30s window on these specific thin names. Rules out a frozen/dead feed.",
       "result": "No action needed. Same already-diagnosed benign pattern continuing as expected for this cohort's thinner names during a quiet RTH stretch."
+    },
+    {
+      "at": "2026-09-18T16:10:00Z",
+      "trigger": ":06 cycle -- outcome-honesty forensics dig, real finding surfaced (REPORT/HOLD, not built)",
+      "healthcheck": "Re-ran fresh at 16:07:38Z: same rotating thin-strike stale-mark pattern (already diagnosed), A_edition/C_record/D_pull_status steady GREEN. No new correctness issue.",
+      "whatChanged": "Spent this cycle on the standing mission's 'outcome honesty' pillar (under-exercised this session vs. the infra-building work) -- pulled GET /api/admin/nighthawk/analytics?days=30 (63 graded, 21 sessions) and found: (1) improvement_queue's own #1 item is 'failure_mode:wrong_direction:dominant' (n=30/63=47.6%), with the queue's OWN suggested next step ('measure gate_validation.blocked_value before widening G-N4 on a hunch') already answered in the SAME payload -- both active gates (target_unreachable, book_tape_conflict) show 0% would-have-won on blocked plays, i.e. they're correctly blocking pure losers, so tightening a gate is not the fix. (2) Went one level deeper than the queue itself checks: by_direction shows LONG n=47 vs SHORT n=1 -- Legacy's book over this window is essentially all-LONG. (3) Cross-referenced against real SPY daily bars for the identical window (2026-08-19..2026-09-18): SPY closed -1.31% net, 17 of 22 sessions red. An almost-entirely-LONG book during a net-negative, majority-red-day window is a strong, evidence-based candidate explanation for the dominant wrong_direction failure mode -- independent of any single pick's individual signal quality.",
+      "why": "This is squarely 'ambiguous/live-picks-logic' per the standing escalation policy -- REPORT AND HOLD, not build. Confirmed src/features/nighthawk/lib/bearish-posture.ts exists (a dedicated bearish/SHORT-posture mechanism), so this is not obviously a missing-code-path gap -- it reads as an emergent discovery/selection-mix question (why is the pipeline producing near-all-LONG output regardless of broad-market regime?), which is a real architectural/strategy question deserving deliberate operator attention, not a unilateral gate/bias change on a hunch.",
+      "result": "Real, well-evidenced finding surfaced, explicitly NOT acted on. Flagging for operator visibility: Legacy's LONG:SHORT ratio (47:1) over the last 30 sessions during a net-down SPY window is worth a deliberate look at whether the discovery/scoring pipeline structurally under-weights bearish setups, before concluding the dominant wrong_direction failure mode is purely a signal-quality problem rather than partly a directional-mix problem.",
+      "nextAction": "Hold pending operator input. If asked to investigate further: trace bearish-posture.ts's actual call sites/weight in the scoring pipeline to see whether it's structurally capped or just rarely winning the ranking this window."
     }
   ],
   "knownOpenItems": {
