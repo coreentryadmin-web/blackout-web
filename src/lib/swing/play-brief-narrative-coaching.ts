@@ -17,7 +17,7 @@ import {
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPremium } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -155,10 +155,35 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
         // then differs from the single "next" figure, e.g. two-rung "+50% · +100%" beside "next
         // trim at +50%".
         const ladderSuffix = total > 1 ? ` (${ladder})` : "";
+        // GAP FOUND (2026-09-18, Ask Largo standing mandate): `next.premium` — the ABSOLUTE
+        // per-contract dollar level this rung fires at — is computed by `buildTerminalExitLadder`
+        // (terminal-ladder.ts) for EVERY trim_levels entry, fired or not, and is already read for
+        // the FIRED rungs (play-brief.ts's "Banked" line cites it). The unfired NEXT rung's own
+        // dollar level was discarded here — only the percent-from-entry `trigger_pct` was shown,
+        // never how close the position's LIVE mark actually is to that level right now. A member
+        // sitting on a partial gain (mark already above entry) sees "next trim at +100%" with no
+        // way to tell whether that's 60 points away or 3 — the trigger_pct alone answers "how far
+        // from entry", not "how far from here". `distanceSuffix` closes that gap: prints the dollar
+        // trigger plus the live % move still needed FROM THE CURRENT MARK (never fabricated when
+        // either input is unusable — `next.premium` is null with no entry basis to price it off,
+        // per terminal-ladder.ts's own doc comment, and `play.mark` can be genuinely unsynced).
+        // Only rendered on the not-yet-crossed branch — once `alreadyCrossed` is true the "distance"
+        // is negative/moot and the existing "already cleared" framing already covers it.
+        const distanceSuffix =
+          !alreadyCrossed &&
+          next.premium != null &&
+          typeof play.mark === "number" &&
+          Number.isFinite(play.mark) &&
+          play.mark > 0
+            ? ` — mark **${fmtOptionUsd(play.mark)}**, needs **${fmtOptionUsd(next.premium)}** (+${(
+                ((next.premium - play.mark) / play.mark) *
+                100
+              ).toFixed(0)}% from here)`
+            : "";
         parts.push(
           alreadyCrossed
             ? `**+${next.trigger_pct}%** rail already cleared, not yet banked${ladderSuffix}`
-            : `next trim at **+${next.trigger_pct}%**${ladderSuffix}`,
+            : `next trim at **+${next.trigger_pct}%**${ladderSuffix}${distanceSuffix}`,
         );
       }
     }
