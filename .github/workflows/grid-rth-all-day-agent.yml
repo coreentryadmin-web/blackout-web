@@ -91,7 +91,10 @@ jobs:
           resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
             -u "${CURSOR_API_KEY}:" \
             -H 'Content-Type: application/json' \
-            -d "$payload")
+            -d "$payload") || {
+            echo "::warning::Grid RTH agent launch failed (Cursor API) — scheduled verify/fix not started"
+            exit 0
+          }
           echo "$resp" | node -e "
             const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
             console.log('Grid agent (' + process.env.AGENT_MODE + '):', r.agent?.url ?? r.url);
