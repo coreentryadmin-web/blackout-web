@@ -416,6 +416,40 @@ test("manageLifecycleCoaching: 'next trim' discloses the live dollar level and %
   assert.match(line!, /mark \*\*\$1\.70\*\*, needs \*\*\$2\.00\*\* \(\+18% from here\)/);
 });
 
+// BASIS MISMATCH regression (2026-09-18, Ask Largo standing mandate, live repro AAPL
+// SWING:AAPL:38 OPEN brief): once `execMark` (the live tradable bid) is known, this bullet must
+// price its distance off it -- the SAME basis the sibling "Premium target rail" room% line
+// (play-brief-intel.ts) already prefers -- rather than always using the mid `mark`. Before this
+// fix, this bullet quoted "$5.83, needs $11.30 (+94% from here)" from mark while the brief's own
+// "What to watch" section quoted "102% move still needed" from the bid for the IDENTICAL $11.30
+// target -- two different room% for one dollar level, live in the same brief.
+test("manageLifecycleCoaching: 'next trim' distance prefers execMark (the live bid) over mark when both are known", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      pnlPct: 3,
+      mark: 5.825,
+      execMark: 5.6,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 11.3, fired: false }],
+        stop_premium: 2.26,
+        target_premium: 11.3,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  // premium 11.3 vs execMark 5.6 -> (11.3-5.6)/5.6*100 = 101.79% -> rounds to 102%, matching the
+  // "Premium target rail" line's own room% for the same dollar target — not the mark-basis 94%.
+  assert.match(line!, /bid \*\*\$5\.60\*\*, needs \*\*\$11\.30\*\* \(\+102% from here\)/);
+  assert.doesNotMatch(line!, /mark \*\*\$5\.83\*\*/);
+});
+
 // Sibling: once the trigger is already crossed (mark math aside), the "already cleared" framing
 // stays -- the live distance-to-rung disclosure is moot there and must not appear.
 test("manageLifecycleCoaching: 'already cleared' branch does not render the (now-moot) distance disclosure", () => {
