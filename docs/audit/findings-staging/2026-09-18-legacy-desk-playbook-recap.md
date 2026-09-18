@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-## Night Hawk Legacy — desk playbook (regime strategy line) computed but never guaranteed to reach members — FIXED
+## Night Hawk Legacy — desk playbook (regime strategy line) computed but never exposed on the wire — FIXED (data layer only; live-UI wiring is a separate follow-up)
 
 | **Status** | FIXED |
 |---|---|
@@ -13,40 +13,54 @@ it as `PlatformIntelSnapshot.playbook`. That value was already read in two place
 context, so the LLM *may* choose to paraphrase or mention it in the freeform recap/play prose, and
 (2) `publish_context.regime.composite_regime` (the raw enum, not the sentence) is pinned per play
 for internal tooling (Discord trade notify, this session's own `posture-backtest.ts`). Neither path
-guarantees the playbook sentence reaches the member-facing edition deterministically — it depends
-entirely on LLM discretion, and there was no structured field carrying it at all.
+guaranteed the playbook sentence reached the API response deterministically, and there was no
+structured field carrying it at all.
 
-**Evidence.** Traced `GET /api/market/nighthawk/edition`'s full response shape
-(`NightHawkEdition`/`market_recap`) and `buildMarketRecap()` (`format.ts`): `tide`/`spx_vix` are
-already deterministic member-facing prose fields (confirmed via `format.test.ts`'s existing
-double-period regression tests), rendered by `PlaybookBoard.tsx`'s `MarketContextGrid` via
-`marketContextItems()`. `composite_regime`/`playbook` were absent from both `buildMarketRecap`'s
-return type and `marketContextItems`'s field list — confirmed by reading every call site
-(`grep -rn "composite_regime\|platform_intel"` across `format.ts`/`edition-builder.ts`).
+**Self-correction made during this same PR (recorded rather than silently fixed) — read before
+trusting the "member-facing" framing of the first commit on this branch.** The first commit here
+also added a "Desk Playbook" row to `PlaybookBoard.tsx`'s `MarketContextGrid`, believing that was
+the live Legacy board. It is not: `PlaybookBoard.tsx`'s own header comment says so explicitly
+("this component ... is DEAD CODE as of the tab-based NightHawkFeed rewrite — the live Legacy tab
+(view=LEGACY) renders `LegacyPickLogBoard`, not `PlaybookBoard`") and a repo-wide grep for
+`PlaybookBoard` usage confirms it: only re-exported from `features/nighthawk/index.ts`, never
+rendered from any route. Worse, further tracing showed the REAL live component
+(`LegacyPickLogBoard.tsx` → `LegacyMacroStrip.tsx`) doesn't read `market_recap` **at all** — its
+`regime`/`gexBias` fields come from a completely different, morning-only pipeline
+(`nighthawk-morning-confirm` cron → `GET /api/platform/intel` → `LegacyMacroContext`), populated
+only after the next session's pre-market confirm job runs, not from the evening edition publish
+this fix touches. Correctly wiring `desk_playbook` into the ACTUAL live board would mean adding
+`playbook` to `/api/platform/intel`'s response and threading it through
+`nighthawk-morning-confirm/route.ts` → `LegacyMacroContext` → `LegacyMacroStrip.tsx` — a materially
+different, larger, cross-pipeline change than this PR, and one that touches the live board's
+render path (the kind of change the standing escalation policy says needs its own careful scoping,
+not a same-cycle addition on top of an already-wrong premise). The `PlaybookBoard.tsx` UI change
+and its 2 tests were reverted in this PR's second commit rather than left in place — shipping a UI
+change to confirmed-dead code would be actively misleading in the diff.
 
-**Blast radius.** Three files, all additive: `format.ts` (`buildMarketRecap` gains a
-`desk_playbook: string` field, `""` when `platform_intel`/`playbook` is unavailable — same
-"only non-empty strings render" convention as every other field here), `edition-builder.ts` (both
-`market_recap` construction sites — the normal-publish path and the recap-only/zero-plays path —
-now forward `recap.desk_playbook`), `PlaybookBoard.tsx` (`marketContextItems` renders it as a new
-"Desk Playbook" wide row in the existing Market Context grid, right after Tide/SPX·VIX). No gate,
-scoring, ranking, or live-picks logic touched — pure recap enrichment.
+**What actually shipped.** Only the data-layer piece: `buildMarketRecap()` (`format.ts`) now
+returns `desk_playbook: string` (empty string, never null, when `platform_intel`/`playbook` is
+unavailable), forwarded through both `market_recap` construction sites in `edition-builder.ts`
+(normal-publish path and recap-only/zero-plays path). This makes the sentence available on
+`GET /api/market/nighthawk/edition`'s `market_recap.desk_playbook` for any consumer of that
+endpoint (Largo, admin tooling, a future correctly-scoped frontend change) — genuinely useful,
+zero new capture, zero behavior change — but it is **not**, by itself, visible to a Legacy member
+in the live product yet.
 
-**Fix rationale.** Minimal and additive: reuses an existing, already-computed, already-authored
-string (no new capture, no new LLM call, no new DB read) and slots into the exact
-label:value grid pattern `MarketContextGrid` already uses for `tide`/`spx_vix`/`sector_strength`/
-`catalysts`. Chose NOT to touch `composite_regime`'s raw enum (`AMPLIFY_BREAKOUT` etc.) — that's
-an internal code, not member-facing prose; `playbook` is the field specifically authored to be
-read by a human. Left `formatPlatformIntelForPrompt`'s existing LLM-context path unchanged (still
-useful advisory context for the narrative-generation prompt) — this fix makes the sentence
-*additionally* guaranteed-visible, not a replacement for that path.
+**Blast radius.** Two files: `format.ts`, `edition-builder.ts`. No gate, scoring, ranking, or
+live-picks logic touched.
 
-**Sample size / evidence.** 4 new unit tests: 2 in `format.test.ts` (desk_playbook sourced from
-`platform_intel.playbook`; empty string, never null, when platform_intel is unavailable), 2 in
-`PlaybookBoard.test.ts` (renders as a wide "Desk Playbook" row when present; omitted when
-empty/absent — never fabricated). `npx tsc --noEmit` clean. Full `npm test`: 14862/14862 passing,
-0 regressions.
+**Fix rationale.** Ship the honest, correctly-scoped, low-risk half now (the data field — safe,
+tested, additive) rather than block it on the larger cross-pipeline UI change, which is logged
+separately below as the real remaining work.
 
-**Next action.** None required — purely additive UI/data enrichment, safe to ship without a
-follow-up measurement. Originated from Task #31 (Ask Largo × Night Hawk Legacy standing mandate,
-"bring in your ideas" directive) during a quiet Friday-post-close/weekend audit window.
+**Sample size / evidence.** 2 unit tests in `format.test.ts` (desk_playbook sourced from
+`platform_intel.playbook`; empty string, never null, when platform_intel is unavailable).
+`npx tsc --noEmit` clean. Full `npm test`: 14860/14860 passing, 0 regressions (2 fewer than the
+first commit's 14862, from reverting the dead-code UI tests).
+
+**Next action.** Task #32 opened: correctly wire `playbook` into the LIVE Legacy macro strip via
+`/api/platform/intel` → `nighthawk-morning-confirm` → `LegacyMacroContext` → `LegacyMacroStrip.tsx`
+— a separate, properly-scoped PR, not rushed into this one. Originated from Task #31 (Ask Largo ×
+Night Hawk Legacy standing mandate, "bring in your ideas" directive) during a quiet Friday-post-
+close/weekend audit window; corrected same-session before merge once the dead-code premise was
+caught.

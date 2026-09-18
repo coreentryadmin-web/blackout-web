@@ -100,8 +100,8 @@ export function decodeMarketContextText(value: string): string {
 }
 
 /** Pure: pick the compact context strings the edition builder actually publishes
- *  (format.ts buildMarketRecap → tide / spx_vix / desk_playbook / sector_strength /
- *  sector_weakness / catalysts). Only non-empty strings render; nothing is synthesized. */
+ *  (format.ts buildMarketRecap → tide / spx_vix / sector_strength / sector_weakness /
+ *  catalysts). Only non-empty strings render; nothing is synthesized. */
 export function marketContextItems(recap: Record<string, unknown>): MarketContextItem[] {
   const items: MarketContextItem[] = [];
   const push = (label: string, v: unknown, wide?: boolean) => {
@@ -111,7 +111,6 @@ export function marketContextItems(recap: Record<string, unknown>): MarketContex
   };
   push("Tide", recap.tide, true);
   push("SPX · VIX", recap.spx_vix, true);
-  push("Desk Playbook", recap.desk_playbook, true);
   push("Leaders", recap.sector_strength);
   push("Laggards", recap.sector_weakness);
   push("Catalysts", recap.catalysts, true);
