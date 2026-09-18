@@ -973,6 +973,35 @@ test("lessonsSection: omits the round-trip sentence when the Trade manager read 
   assert.match(suppressed!.body, /pullback continuation/i);
 });
 
+test("lessonsSection: omits the trim-rail advice and stop-loss advice when Trade manager read already stated them, but keeps everything independent", () => {
+  // Live repro 2026-09-18 (NN:32, CLOSED, real production play-brief): "Trade manager read"
+  // (closedCoaching) rendered "...tighten at first trim rail next time." and "...check if entry
+  // was extended past invalidation." — "Lessons" then independently restated near-identical
+  // advice for BOTH facts one section later in the same response. The prior roundTripAlreadyNoted
+  // fix only deduped the round-trip FACT sentence, not these two advice clauses.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 24.4,
+    exitPnlPct: -60.3,
+    mfeCapturePct: null,
+    closedReason: "stopped",
+    archetype: "PULLBACK_CONTINUATION",
+  });
+
+  const withoutSuppression = lessonsSection(play, false, false, false);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /gave back the move/i);
+  assert.match(withoutSuppression!.body, /stop loss/i);
+
+  const suppressed = lessonsSection(play, false, true, true);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /gave back the move/i);
+  assert.doesNotMatch(suppressed!.body, /stop loss/i);
+  // Independent evidence must survive: peak/exit line, archetype tag.
+  assert.match(suppressed!.body, /Peak was/i);
+  assert.match(suppressed!.body, /pullback continuation/i);
+});
+
 // Live repro 2026-09-13 (EWZ:29, CLOSED, real production play-brief): lessonsSection's own archetype
 // tag used the same underscore-replace-only transform already fixed in play-brief.ts's Verdict line
 // and play-brief-intel.ts's whyThisSetupSection (PR #4896) -- a third, missed call site. The SAME

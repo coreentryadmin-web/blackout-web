@@ -978,8 +978,30 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
  *  manager read" section built earlier in buildIntelSections) independently derives the identical
  *  round-trip-past-breakeven fact from the same peak/exitPnlPct inputs via the same
  *  mfeCaptureOutcome() call, and states it first. Same restatement class as the "thesis health"
- *  advisory two sections up in this file — see that comment. */
-export function lessonsSection(play: TerminalPlay, roundTripAlreadyNoted?: boolean): RichSection | null {
+ *  advisory two sections up in this file — see that comment.
+ *
+ *  BUG FOUND (2026-09-18, Ask Largo standing mandate): the fix above only deduped the round-trip
+ *  FACT sentence — the ADVICE clause attached to it was never covered, and neither was the sibling
+ *  stop-loss advice. Live repro (NN:32, CLOSED, real production play-brief): "Trade manager read"
+ *  rendered "**Round-tripped past breakeven** — was up 24% at peak, closed at -60%; tighten at
+ *  first trim rail next time." AND "**Stop fired** (stopped) — check if entry was extended past
+ *  invalidation.", then "Lessons" — right below it in the same response — independently rendered
+ *  "**Gave back the move** — next time tighten at first trim rail or thesis fade." and "Stop loss
+ *  — check if invalidation level was respected or entry was extended." Same trim-rail advice and
+ *  same invalidation-check advice, restated near-verbatim in two different sections a member reads
+ *  one after another — exactly the "disconnected bullet-dump" pattern the standing mandate flags,
+ *  not the "independent evidence" the original roundTripAlreadyNoted fix's own test intended to
+ *  preserve (that test never exercised this dedup path, since it never passed the new flags).
+ *  `adviceAlreadyNoted`/`stopAdviceAlreadyNoted` close the same gap the same way: the call site
+ *  checks whether "Trade manager read" already carries the identical advice text and, only then,
+ *  skips restating it here — every OTHER independent lesson (MFE capture number, archetype tag,
+ *  exec-vs-mid slippage, "strong exit discipline"/"partial capture" verdicts) is untouched. */
+export function lessonsSection(
+  play: TerminalPlay,
+  roundTripAlreadyNoted?: boolean,
+  adviceAlreadyNoted?: boolean,
+  stopAdviceAlreadyNoted?: boolean,
+): RichSection | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
   if (play.peak != null && play.exitPnlPct != null) {
@@ -989,14 +1011,18 @@ export function lessonsSection(play: TerminalPlay, roundTripAlreadyNoted?: boole
       if (!roundTripAlreadyNoted) {
         lines.push(`**Round-tripped past breakeven** — up **${fmtPct(outcome.peakPct)}** at peak, closed at **${fmtPct(outcome.exitPnlPct)}**.`);
       }
-      lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+      if (!adviceAlreadyNoted) {
+        lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+      }
     } else if (outcome?.kind === "capture") {
       const capture = outcome.capturePct;
       lines.push(`MFE capture: **${fmtPct(capture)}** of peak move`);
       if (capture >= 75) {
         lines.push("**Strong exit discipline** — banked most of the move; replicate trim ladder timing.");
       } else if (capture < 35 && play.peak > 20) {
-        lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+        if (!adviceAlreadyNoted) {
+          lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+        }
       } else if (capture >= 35 && capture < 75) {
         lines.push("**Partial capture** — review whether runner policy matched the setup volatility.");
       }
@@ -1008,7 +1034,9 @@ export function lessonsSection(play: TerminalPlay, roundTripAlreadyNoted?: boole
     if (play.closedReason === "target" || play.closedReason === "ratchet") {
       lines.push("Mechanical exit fired as designed — thesis or ladder did its job.");
     } else if (play.closedReason === "stopped" || play.closedReason === "stop") {
-      lines.push("Stop loss — check if invalidation level was respected or entry was extended.");
+      if (!stopAdviceAlreadyNoted) {
+        lines.push("Stop loss — check if invalidation level was respected or entry was extended.");
+      }
     } else if (play.closedReason === "thesis") {
       lines.push("Thesis break exit — pillar degradation was the signal; review which pillar failed first.");
     }
@@ -1511,7 +1539,12 @@ export function buildIntelSections(
 
   if (bucket === "closed") {
     const roundTripAlreadyNoted = narrative?.body?.includes("Round-tripped past breakeven") ?? false;
-    const lessons = lessonsSection(play, roundTripAlreadyNoted);
+    // Same restatement class as roundTripAlreadyNoted above, closing the gap that fix left open —
+    // see lessonsSection's own doc comment (2026-09-18) for the live repro.
+    const adviceAlreadyNoted = narrative?.body?.includes("tighten at first trim rail next time") ?? false;
+    const stopAdviceAlreadyNoted =
+      narrative?.body?.includes("check if entry was extended past invalidation") ?? false;
+    const lessons = lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted);
     if (lessons) out.push(lessons);
   }
 
