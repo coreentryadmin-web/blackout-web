@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T22:09:18Z",
+  "lastUpdated": "2026-09-18T22:41:31Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4049,6 +4049,12 @@
       "summary": "22:08Z healthcheck: repeat-clean, identical to the 21:52Z cycle (edition_for=2026-09-21, same MU/BMNR/ETHA/MARA book, A_edition GREEN, B_marks AMBER transitional, C_record resolved=28 steady, D_pull_status SKIPPED). No new journal-worthy healthcheck state -- per AGGRESSIVE MODE used the quiet window (Friday post-close, weekend ahead, no new RTH data until Monday) to hunt enhancement ideas instead.",
       "assessment": "New enhancement idea found (Task #31, not yet built): publish_context.market (tide_bias/composite_regime/breadth) is already pinned per edition and already exposed to internal tooling (posture-backtest.ts this session, legacy-discord-trade-notify.ts) and already DRIVES scoring via computeRegimeMultiplier -- but is not surfaced anywhere in the member-facing Legacy edition UI. Members see the picks with no visible 'why does tonight's book lean this way' context. Proposed: a small additive one-line regime/tide banner on the edition view, sourced from data already on the wire, no new capture. Deliberately NOT started this cycle -- it touches the member-facing UI render path, which needs fresh research (edition API response shape, Legacy board frontend component) before a correctly-scoped small PR, not a rushed one late in a long session.",
       "action": "logged as Task #31 for a future cycle to research + build as a normal scoped PR"
+    },
+    {
+      "at": "2026-09-18T22:41:31Z",
+      "summary": "Task #31 (desk-playbook regime line) built, then self-corrected before shipping: the enhancement was first wired into PlaybookBoard.tsx's MarketContextGrid, believing it was the live Legacy board. It is not -- PlaybookBoard.tsx's own header comment says it's DEAD CODE since the tab-based NightHawkFeed rewrite (the live Legacy tab renders LegacyPickLogBoard), confirmed by grep (never rendered from any route). Further tracing showed the REAL live component (LegacyPickLogBoard -> LegacyMacroStrip) doesn't read market_recap at all -- its regime/gexBias fields come from a completely different, morning-only pipeline (nighthawk-morning-confirm cron -> GET /api/platform/intel -> LegacyMacroContext), decoupled from the evening edition publish this fix touches.",
+      "assessment": "Self-caught the mistake before merge (still a draft, no review yet) rather than shipping a misleading diff. Corrected in a second commit on the same branch: reverted the PlaybookBoard.tsx UI change + its 2 tests, kept the genuinely valid data-layer piece (buildMarketRecap's desk_playbook field on market_recap, tested, additive, zero behavior change), rewrote both the staged finding and PR #5235's title/description to be honest about scope (data-layer only, live-UI wiring is separate follow-up work). Opened Task #32 to correctly wire it into the real live surface (a materially larger cross-pipeline change: /api/platform/intel -> nighthawk-morning-confirm -> LegacyMacroContext -> LegacyMacroStrip.tsx) rather than rush it into this PR.",
+      "action": "PR #5235 updated and re-pushed with corrected scope (14860/14860 tests passing). Task #32 opened for the real live-UI follow-up. Lesson for future cycles: verify a component is actually reachable from a live route (grep for its render call site, not just its existence) before claiming a UI change is member-facing -- this repo has at least one confirmed-dead legacy component (PlaybookBoard.tsx) sitting right next to the real one with a similar name and shape, an easy trap."
     }
   ],
   "knownOpenItems": {
