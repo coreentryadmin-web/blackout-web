@@ -731,6 +731,9 @@ export interface HorizonDeckSource {
   manageAction?: SwingManageAction | null;
   /** The rung that decided manageAction (manage.ts) — see TerminalPlay's field for why this matters. */
   manageReason?: SwingManageRung | null;
+  /** The full, specific prose reason behind `manageReason` (manage.ts's `verdict.reason`) — see
+   *  TerminalPlay.manageReasonDetail for the full history of why this exists. */
+  manageReasonDetail?: string | null;
   /** Whether that rung is currently enforced (gate) vs advisory-only (un-graduated edge rung) — see
    *  TerminalPlay's own field for the full history of why this exists. */
   manageEnforced?: boolean | null;
@@ -989,6 +992,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     thesisHealth,
     manageAction: src.manageAction ?? null,
     manageReason: src.manageReason ?? null,
+    manageReasonDetail: src.manageReasonDetail ?? null,
     manageEnforced: src.manageEnforced ?? null,
     rollCandidate: src.rollCandidate ?? null,
     underlyingExcursion: src.underlyingExcursion ?? null,

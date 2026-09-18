@@ -107,6 +107,7 @@ export function horizonRowToDeckSource(
     markAsOf: p.markAsOf ?? null,
     manageAction: p.manageAction ?? null,
     manageReason: p.manageReason ?? null,
+    manageReasonDetail: p.manageReasonDetail ?? null,
     manageEnforced: p.manageEnforced ?? null,
     rollCandidate: p.rollCandidate ?? null,
     underlyingExcursion: p.underlyingExcursion ?? null,

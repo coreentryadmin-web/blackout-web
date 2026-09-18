@@ -176,6 +176,20 @@ export interface HorizonPlay {
   manageReason?: SwingManageRung | null;
   /**
    * GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+   * computes a full, specific prose `reason` for every verdict alongside the bare rung name — e.g.
+   * the exact structural-stop breach ("underlying 145.20 ≤ structural stop 148.00 — LONG thesis
+   * broken in underlying terms") rather than just "structural_stop" — and `manage-sync.ts` persists
+   * it verbatim onto every snapshot's `event_json.reason`. `live-plays.ts`'s
+   * `manageObservablesFromEvent`, the sole reader of that event_json, only ever extracted the rung
+   * (`manageReason` above) — never this specific sentence — so play-brief-narrative.ts's
+   * sellReasonClause/trimReasonClause have always had to fall back to a generic canned phrase per
+   * rung (e.g. "— thesis broke", with no level/price) even though the real, specific reason was
+   * computed and persisted on the exact same tick. Null whenever no manage-sync snapshot has fired
+   * yet, or the field is absent/malformed (an older snapshot shape) — never a guessed reason.
+   */
+  manageReasonDetail?: string | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
    * always computes `dteMigration`/`rollIntent` — theta-vs-thesis-progress disproportion at low
    * DTE, the SAME signal `roll.ts`'s executor actually acts on to auto-roll a still-valid thesis
    * — and `manage-sync.ts` persists BOTH into every snapshot's `event_json` (`dte_migration`/

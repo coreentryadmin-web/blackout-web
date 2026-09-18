@@ -191,6 +191,19 @@ export function manageObservablesFromEvent(
   manageAction?: SwingManageAction;
   thesisLevel?: SwingThesisLevel;
   manageReason?: SwingManageRung | null;
+  /** GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+   *  computes a full, specific prose `reason` for every verdict — e.g. the exact structural-stop
+   *  breach ("underlying 145.20 ≤ structural stop 148.00 — LONG thesis broken in underlying
+   *  terms") rather than just the rung name — and `manage-sync.ts` persists it verbatim onto every
+   *  snapshot's `event_json.reason` (manage-sync.ts:399). But this function, the sole reader of
+   *  that event_json (per this function's own doc comment above), only ever extracted `rung` from
+   *  it — never `reason` — so the narrative layer (play-brief-narrative.ts's sellReasonClause/
+   *  trimReasonClause) has always had to fall back to a generic canned phrase per rung
+   *  ("— thesis broke", with no level/price) even though the real, specific sentence was computed
+   *  and persisted on the exact same tick. Same wiring-gap shape as `dte_migration`/`roll_intent`
+   *  a few lines below in this same function. Honest-null whenever the field is absent/malformed
+   *  (an older snapshot shape) — never a guessed reason. */
+  manageReasonDetail?: string | null;
   manageEnforced?: boolean | null;
   rollCandidate?: { reason: string } | null;
   underlyingExcursion?: { mfePct: number; maePct: number } | null;
@@ -210,6 +223,7 @@ export function manageObservablesFromEvent(
   }
 
   const rung = manageEvent.rung as SwingManageRung | undefined;
+  const manageReasonDetail = typeof manageEvent.reason === "string" ? manageEvent.reason : null;
   const thesisState = typeof manageEvent.thesis_state === "string" ? manageEvent.thesis_state : null;
 
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
@@ -292,7 +306,15 @@ export function manageObservablesFromEvent(
       ? { mfePct: rawMfe, maePct: rawMae }
       : null;
 
-  return { manageAction, thesisLevel, manageReason: rung ?? null, manageEnforced, rollCandidate, underlyingExcursion };
+  return {
+    manageAction,
+    thesisLevel,
+    manageReason: rung ?? null,
+    manageReasonDetail,
+    manageEnforced,
+    rollCandidate,
+    underlyingExcursion,
+  };
 }
 
 const finiteOrNull = (v: unknown): number | null =>
@@ -492,7 +514,7 @@ export function livePlayFromSwingPosition(
     manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
     thesisLevel: broken ? "break" : "intact",
   });
-  const { manageAction, thesisLevel, manageReason, manageEnforced, rollCandidate, underlyingExcursion } =
+  const { manageAction, thesisLevel, manageReason, manageReasonDetail, manageEnforced, rollCandidate, underlyingExcursion } =
     manageObservablesFromEvent(manageEvent, spotObs);
 
   const score =
@@ -564,6 +586,7 @@ export function livePlayFromSwingPosition(
     liveStatus,
     manageAction,
     manageReason: manageReason ?? null,
+    manageReasonDetail: manageReasonDetail ?? null,
     manageEnforced: manageEnforced ?? null,
     rollCandidate: rollCandidate ?? null,
     underlyingExcursion: underlyingExcursion ?? null,

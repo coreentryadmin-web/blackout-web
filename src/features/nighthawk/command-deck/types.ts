@@ -277,6 +277,13 @@ export interface TerminalPlay {
    *  intact) vs "structural_stop"/"thesis_stop" (thesis actually broke). Lets narrative text state
    *  the real reason for a SELL/EXIT recommendation instead of a generic guess. */
   manageReason?: SwingManageRung | null;
+  /** The full, specific prose reason behind `manageReason` (manage.ts's `verdict.reason`, e.g. the
+   *  exact structural-stop breach level) rather than just the rung name — lets narrative text state
+   *  the REAL detail instead of a generic canned phrase. Null when no manage-sync snapshot has
+   *  fired yet, or the underlying event carries no usable reason string. See
+   *  HorizonPlay.manageReasonDetail for the full history of why this was computed and persisted
+   *  every tick but never surfaced. */
+  manageReasonDetail?: string | null;
   /** Whether `manageReason`'s rung is currently ENFORCED — true always for the four capital-
    *  preservation gates (structural_stop/thesis_stop/expiry_risk/premium_stop), false for an EDGE
    *  rung (catalyst_shift/regime_shift/flow_decay/rel_strength_loss/vol_collapse/time_stop/
