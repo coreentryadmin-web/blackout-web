@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-18T21:07:31.835Z",
+  "updated_at": "2026-09-18T22:19:32.337Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "e7cabdbc429ab47bb50efb47d6d5d739d67cdc74",
+    "last_main_sha": "2802196e2697707f00b23aabbfa1de17dbe54774",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-09T04:29:05.826Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 30
-    },
-    {
-      "at": "2026-09-09T04:29:06.177Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 30
-    },
-    {
-      "at": "2026-09-09T04:50:13.044Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-09T04:50:14.049Z",
       "type": "context_sync",
@@ -1271,19 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-18T22:19:31.395Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-18T22:19:31.925Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-18T22:19:32.337Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 5225,
-      "title": "Fix: SPX desk GEX sticky fallback preserves numeric values",
-      "branch": "claude/spx-slayer-rl2u2c",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-18T19:49:13Z"
-    },
     {
       "number": 4967,
       "title": "chore(deps): Bump @whop/sdk from 0.0.42 to 1.1.3",
