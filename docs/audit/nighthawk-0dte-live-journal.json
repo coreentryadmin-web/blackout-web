@@ -363,6 +363,16 @@
       "session_state": "OPENING_DRIVE, commit unlock imminent",
       "activity": "PR #5207 hit a merge conflict against main (docs/audit/MARKET-OPEN-VALIDATION.md -- another lane's PR #5204 landed the same '### 283' entry number at the same append point between when I branched and pushed). Resolved per CLAUDE.md's CROSS-PR ORDERING/merge-conflict guidance: merged main into my branch, kept both entries, renumbered mine to #284 since #5204's #283 was already on main. Re-validated: tsc clean, 195/195 across the affected test files (mine + the merged-in Legacy edition files), pushed the merge commit. PR now mergeable:true, CI re-running.",
       "findings_this_cycle": "0 new -- merge-conflict resolution on PR #5207"
+    },
+    "2026-09-18T14:02:00Z": {
+      "session_state": "OPENING_DRIVE, commit unlock imminent",
+      "activity": "PR #5207 hit a SECOND merge conflict against main (same append-point collision on MARKET-OPEN-VALIDATION.md -- this repo is extremely high-velocity right now, multiple lanes merging every few minutes to the same file). Resolved the same way: merged main, renumbered my entry to #285 (Swings lane had already taken #284 in the interim). tsc clean, session-board-stats.test.ts 4/4, pushed. mergeable:true, CI re-running. Noting for future cycles: this append-point-collision pattern on MARKET-OPEN-VALIDATION.md is now a recurring, expected cost of this file's shared-tail-append convention during a busy multi-lane session -- not a sign of anything wrong, just needs re-checking after every push before trusting mergeable:true.",
+      "findings_this_cycle": "0 new -- second merge-conflict resolution on PR #5207"
+    },
+    "2026-09-18T14:11:00Z": {
+      "session_state": "OPENING_DRIVE -> post-10:00-ET unlock",
+      "activity": "14:08 UTC (:00-offset) trigger. Confirmed live at 10:09 ET: opening_window (G-2) has genuinely lifted -- 0/116 setups now blocked by it, vs 100% blocked by it at the last check (13:37-13:40 UTC). Real-time corroboration of the PR #5207 fix already in flight: the live setups[] show ZERO opening_window blocks this pass, yet session_stats.top_block_code still reads 'opening_window' -- exactly the stale-cumulative-tally bug being fixed, caught live in the act. 3 setups now genuinely commit_ready (QBTS short 86, RGTI short 79, LUNR short 83) but ledger still empty -- watch next cycle for whether they land as real commits (discovery COMMIT verdict vs the separate commit-cron pass can lag by design; not calling this anomalous on n=1). Live block-code mix post-unlock: score_floor(91) and a new-to-me code early_window_prime_score(100) now dominant, plan_illiquid(85) -- consistent with the standing score_floor-dominant-chokepoint research finding, not new. PR #5207 CI still running (2nd merge-conflict resolution pushed last cycle); will merge once green.",
+      "findings_this_cycle": "0 new -- watching QBTS/RGTI/LUNR for next-cycle commit confirmation"
     }
   },
   "sessions": {

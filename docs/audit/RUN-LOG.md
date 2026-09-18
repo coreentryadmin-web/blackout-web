@@ -4,7 +4,25 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-18 (13:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good
+## 2026-09-18 (14:10 UTC) — [SEO] Daily growth cycle: trend resumed improving, no new opportunities
+
+**Severity.** — (no defect found; real positive movement noted)
+
+1. Opportunity scan: same window as the last cycle (GSC reporting lag), same 3 striking-distance
+   queries, CTR-gap 0 — nothing new.
+2. Live re-verify: skipped — CLS confirmed live this morning's RTH wake (13:35 UTC), robots.txt/
+   entity JSON-LD confirmed live within the last 3 days.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-19→09-15): clicks=17,
+   impressions=1495, CTR=1.14%, avgpos=**27.7** — vs the last recorded pull (window 2026-08-18→09-14:
+   clicks=16, impressions=1520, CTR=1.05%, avgpos=29.5): clicks/CTR both up, **avgpos improved
+   another 1.8 positions**, resuming the clear positive trend after the prior cycle's minor dip
+   (36.5→...→29.5→27.7 across ~9 pulls). New top page entrant: `/learn/spx-slayer` (1cl, 9imp,
+   pos6.0) — small volume, not yet worth separate action.
+4. Housekeeping: PR sweep shows 2 open agent PRs (`#5208`, `#5207`, both non-SEO lanes,
+   CI-RUNNING, not stuck) — no SEO-lane PRs conflicted on `FINDINGS.md`.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
 
 **Severity.** — (no defect found)
 
