@@ -103,9 +103,17 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   // no real `archetype`, this line still can't fabricate a "the winning archetype beat X" claim with
   // no preceding "Archetype:" line to anchor it.
   if (play.archetypeNearTie && whyArchetypeLabel) {
+    // BUG FOUND (Ask Largo standing mandate, 2026-09-18): `marginPct` is `Math.round(margin * 100)`
+    // (live-plays.ts) and can legitimately round to exactly 0 — an exact classifier tie, still inside
+    // ARCHETYPE_NEAR_TIE_MARGIN. "beat X by only 0 pts" is self-contradictory at that value: a 0-point
+    // margin means no beat occurred, priority order broke the tie some other way. Special-cased so the
+    // prose never claims a "beat" with zero evidence of one.
     lines.push(
-      `**Classification:** near-tie at entry — **${whyArchetypeLabel}** beat ` +
-        `**${play.archetypeNearTie.secondaryLabel}** by only ${play.archetypeNearTie.marginPct} pts.`,
+      play.archetypeNearTie.marginPct === 0
+        ? `**Classification:** near-tie at entry — **${whyArchetypeLabel}** tied with ` +
+            `**${play.archetypeNearTie.secondaryLabel}**; priority order broke the tie.`
+        : `**Classification:** near-tie at entry — **${whyArchetypeLabel}** beat ` +
+            `**${play.archetypeNearTie.secondaryLabel}** by only ${play.archetypeNearTie.marginPct} pts.`,
     );
   }
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);

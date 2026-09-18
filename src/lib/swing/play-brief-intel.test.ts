@@ -3373,6 +3373,24 @@ test("whyThisSetupSection: omits the archetype-near-tie line when the entry clas
   assert.doesNotMatch(section.body, /Classification:/);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro CRWD OPEN brief): marginPct is
+// Math.round(margin * 100) (live-plays.ts) and can legitimately round to exactly 0 — an exact
+// classifier tie, still inside ARCHETYPE_NEAR_TIE_MARGIN. The old wording ("beat X by only 0 pts")
+// is self-contradictory at that value: a 0-point margin means no beat occurred.
+test("whyThisSetupSection: an exact classifier tie (marginPct 0) reads as 'tied with', never 'beat by only 0 pts'", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      archetype: "BREAKOUT",
+      archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 0 },
+    }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Classification:\*\* near-tie at entry — \*\*Breakout continuation\*\* tied with \*\*Pullback continuation\*\*; priority order broke the tie\./,
+  );
+  assert.doesNotMatch(section.body, /by only 0 pts/);
+});
+
 // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro NN:32 CLOSED brief — a real
 // thin-evidence position whose row carries `archetype: null`): the render used to fall back to
 // "**the winning archetype**" when `play.archetype` was null, fabricating a decisive-winner claim
