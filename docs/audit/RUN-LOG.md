@@ -4,7 +4,23 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-09-18 (14:10 UTC) — [SEO] Daily growth cycle: trend resumed improving, no new opportunities
+## 2026-09-18 (15:35 UTC) — [SEO] RTH wake: live gamma-snapshot + homepage CLS both confirmed good, one noisy CLS read resolved on re-check
+
+**Severity.** — (no defect found)
+
+Second RTH fire today (11:34 ET, market confirmed open/trading day). Live gamma-snapshot API:
+one poll returned an older `calculation_id` (age 83s, still under the 90s stale-tolerance) — the
+documented, benign multi-replica cache-skew pattern already investigated this session, not a new
+issue; `degraded` stayed false throughout, cross-checked against Massive `I:SPX` ground truth
+(7628.27) — matches closely. Purged Cloudflare edge (HTML only) and measured homepage CLS live:
+first desktop read **0.0892 GOOD** — notably elevated vs the usual near-zero baseline, close to
+(but under) the 0.1 threshold. Re-ran 3x immediately after: **0.0003, 0, 0.0001**, all back to
+baseline — a one-off noisy measurement, not a regression (consistent with the rare intermittent-
+shift pattern documented earlier this session for the gamma-snapshot tool page; this is the
+homepage, a different page, but the same "occasional single noisy read, resolves on re-check"
+shape). Mobile: **0.0324 GOOD**. PR sweep: **0 open agent PRs fleet-wide.**
+
+No defects found.
 
 **Severity.** — (no defect found; real positive movement noted)
 
