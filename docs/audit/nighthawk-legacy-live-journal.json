@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T17:08:00Z",
+  "lastUpdated": "2026-09-18T17:23:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3963,6 +3963,14 @@
       "whatChanged": "Investigated whether #5216's still-in-progress ECS deploy (blocking #5217's own deploy queue) was genuinely stuck vs. just slow, per direct boto3 ECS inspection (AWS creds live): blackout-production-web service, 0 failedTasks, 6 of 8 tasks already cycled to the new task def (:1666), events flowing steadily every 1-2 min (start -> register -> drain old -> stop old, repeat) -- a healthy sequential rolling deploy, not stuck. Market-worker roll + Cloudflare purge + static-asset validation steps haven't started yet (still queued after the web roll finishes), and #5217's own ECR-push workflow run is still 'pending' behind this entire workflow completing.",
       "result": "Confirmed no action needed -- this is normal (if slower than typical today) deploy behavior, not a bug to fix. The posture-backtest route measurement is still not readable yet.",
       "nextAction": "Next cycle: re-check whether #5216's deploy has finished and #5217's own build-and-push has started/completed, then call GET /api/admin/nighthawk/posture-backtest?days=30 once live."
+    },
+    {
+      "at": "2026-09-18T17:23:00Z",
+      "trigger": ":21 cycle -- healthcheck steady, deploy queue progressing (web roll DONE, market-worker roll in flight)",
+      "healthcheck": "Re-ran fresh at 17:22:18Z: same rotating benign mark-staleness pattern (HPE this time), all else steady GREEN. No journal entry warranted on the board alone.",
+      "whatChanged": "Re-checked #5216's blocking deploy: web roll actually COMPLETED at 17:18:06Z (8/8 tasks, steady state) -- the GH Actions workflow-run-level status field was just stale/lagging, job-level step data showed real progress the whole time. Cloudflare purge + static-asset validation also completed by 17:19:48Z. Market-worker roll now in progress (2/2 new tasks started ~17:20-17:21Z, not yet steady-state-confirmed). Once that finishes, #5216's whole workflow completes and #5217's own build-and-push queues next.",
+      "result": "No action needed -- confirmed the deploy pipeline is healthy and progressing normally, just genuinely slower this cycle (web's 8-task rolling deploy took ~29min vs typical faster completions earlier today). Still not yet able to read the real posture-backtest measurement.",
+      "nextAction": "Next cycle: check whether market-worker roll finished, #5217's build-and-push ran, and if so call GET /api/admin/nighthawk/posture-backtest?days=30 and record the actual result."
     }
   ],
   "knownOpenItems": {
