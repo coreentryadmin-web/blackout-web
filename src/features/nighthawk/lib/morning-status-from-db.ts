@@ -111,6 +111,10 @@ export function morningStatusFromDb(opts: {
     prior_close: priorClose,
     overnight_gap_pts: gapPts,
     regime,
+    // Not persisted on morning_verdict.metrics (only regime/spx_premarket/spx_prior_close/
+    // overnight_gap_pts are) — same honest-null convention as gex_bias/call_wall/put_wall below,
+    // which this DB-fallback path has never been able to reconstruct either.
+    playbook: null,
     gex_bias: null,
     call_wall: null,
     put_wall: null,

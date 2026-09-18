@@ -487,6 +487,7 @@ export function LegacyDeck() {
       priorClose: confirmData.prior_close ?? null,
       overnightGapPts: confirmData.overnight_gap_pts ?? null,
       regime: confirmData.regime ?? null,
+      playbook: confirmData.playbook ?? null,
       gexBias: confirmData.gex_bias ?? null,
       callWall: confirmData.call_wall ?? null,
       putWall: confirmData.put_wall ?? null,
