@@ -38,6 +38,7 @@ import { trustedHelixFlow, zerodteLiveForSession, relativeAgeLabel } from "./pla
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { formatFixedNonZero } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason } from "./entry-enterability";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -1487,7 +1488,13 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
         : "dealers **short gamma** — moves can accelerate, respect walls";
     lines.push(`Gamma posture: ${posture}`);
   }
-  if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${(gex.net_gex / 1_000_000).toFixed(1)}M**`);
+  // BUG FIX (2026-09-18, Ask Largo standing mandate): same false-zero precision defect fixed
+  // in play-brief.ts's tradeManagerNarrativeSection (PR #5227, live ABTC $10.15 repro) — a raw
+  // net_gex/1e6 .toFixed(1) collapses any real, signed net GEX under ~$50k to "0.0M", which reads
+  // as "no dealer exposure" when a real signed value exists. That fix only touched the narrative
+  // call site; this GEX-posture evidence block computes the identical ratio from the identical
+  // gex.net_gex field independently and had the same defect.
+  if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${formatFixedNonZero(gex.net_gex / 1_000_000, 1)}M**`);
   // Recompute "nearest wall" from the SAME preferred (Vector-ladder-first) call/put walls
   // "Levels on chart" renders, instead of the raw `gex.nearest_wall` (GEX-matrix-only call_wall/
   // put_wall) — see preferredGexWalls' header for the live MSTR:33 evidence this fixes.
