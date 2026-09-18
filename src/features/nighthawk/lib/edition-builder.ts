@@ -24,6 +24,7 @@ import {
   confluenceSnapshot,
   type NighthawkRejectionDetail,
 } from "./play-outcomes";
+import { parsePlayLevels } from "./play-levels";
 import { extractMultiSourceCandidates } from "./candidates";
 import { fetchAllDossiers, resetEditionCongressCache, type TickerDossier } from "./dossier";
 import { generateEditionPlays } from "./claude-edition";
@@ -281,6 +282,14 @@ function recordScoringStageSnapshots(editionFor: string, stage: string, candidat
  * Pure row-builder for the rank_final capture (the PR-N26-sorted order members actually see).
  * Same "extract for testability without mocking @/lib/db" rationale as buildScoringStageSnapshotRows
  * above. `plays` must already carry the rank the caller's own sort stamped — never re-derived here.
+ *
+ * SCHEMA v2 (Night Hawk Legacy Signal Intelligence, operator priority #4 — "realized R and
+ * hypothetical R for every candidate"): adds the play's own parsed trade-geometry levels
+ * (entry_range_low/high, target, stop — parsePlayLevels, the same parser publish-time gating and
+ * grading already use) so a downstream reader can combine them with the ticker's already-pinned
+ * forward_returns (candidate-forward-grade.ts) to compute R-multiples without a second DB write —
+ * see candidate-r-multiple.ts. v1 rows (direction/conviction only) simply predate this and read as
+ * "no levels captured", never a fabricated risk distance.
  */
 export function buildRankFinalSnapshotRows(
   editionFor: string,
@@ -296,7 +305,12 @@ export function buildRankFinalSnapshotRows(
     gov_penalty: govPenaltyByTicker.get(p.ticker) ?? null,
     rejection_reason: null,
     selected_for_publish: true,
-    snapshot_json: { schema_version: 1, direction: p.direction, conviction: p.conviction },
+    snapshot_json: {
+      schema_version: 2,
+      direction: p.direction,
+      conviction: p.conviction,
+      levels: parsePlayLevels(p),
+    },
   }));
 }
 
@@ -350,10 +364,27 @@ export function buildGovernorCutSnapshotRows(
  * that exact treatment, generalized to the other 6 reasons, at the SAME two call sites that
  * already build the richer alert_audit_log row (so no new rejection-collection logic, just an
  * additional write of the same already-computed data to the newer table).
+ *
+ * SCHEMA v2 (Night Hawk Legacy Signal Intelligence, operator priority #4): `play`, when the
+ * caller has one, is parsed the same way buildRankFinalSnapshotRows now does (parsePlayLevels)
+ * and stamped into `snapshot_json.levels` — every one of the 3 real call sites (geometryRejected,
+ * stageRejected, publishGateRejections in edition-builder.ts) already carries a full PlaybookPlay
+ * for this exact rejection, so this is free: no new candidate-geometry computation, just threading
+ * data the caller already has. `play` is optional because a future rejection stage might not
+ * carry one; a v1 row (pre-#25) or an omitted `play` simply has `levels: null`, read the same way
+ * candidate-r-multiple.ts already treats any other missing-geometry row — never a fabricated risk
+ * distance. Geometry-stage rejections in particular can still carry a partially-parseable stop/
+ * target even though the OVERALL plan failed validation (e.g. a target that cleared but an
+ * unreachable stop) — parsePlayLevels is null-safe per-field, so this stays honest either way.
  */
 export function buildStageRejectionSnapshotRows(
   editionFor: string,
-  rejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored?: ScoredCandidate | null }>
+  rejected: Array<{
+    ticker: string;
+    detail: NighthawkRejectionDetail;
+    scored?: ScoredCandidate | null;
+    play?: PlaybookPlay | null;
+  }>
 ): ScoringStageSnapshotRow[] {
   return rejected.map((r) => ({
     edition_for: editionFor,
@@ -365,16 +396,23 @@ export function buildStageRejectionSnapshotRows(
     rejection_reason: r.detail.stage,
     selected_for_publish: false,
     snapshot_json: {
-      schema_version: 1,
+      schema_version: 2,
       detail: r.detail,
       confluence: confluenceSnapshot(r.scored ?? null),
+      levels: r.play ? parsePlayLevels(r.play) : null,
+      direction: r.play ? r.play.direction : null,
     },
   }));
 }
 
 function recordStageRejectionSnapshots(
   editionFor: string,
-  rejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored?: ScoredCandidate | null }>
+  rejected: Array<{
+    ticker: string;
+    detail: NighthawkRejectionDetail;
+    scored?: ScoredCandidate | null;
+    play?: PlaybookPlay | null;
+  }>
 ): void {
   if (!rejected.length) return;
   const rows = buildStageRejectionSnapshotRows(editionFor, rejected);
@@ -1109,6 +1147,7 @@ export async function buildEveningEdition(opts?: {
           ticker: r.ticker,
           detail: { stage: "geometry" as const, drops: r.drops },
           scored: r.scored ?? null,
+          play: r.play ?? null,
         })),
         ...(stageRejected ?? []),
       ]);
