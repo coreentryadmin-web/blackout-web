@@ -224,6 +224,19 @@ export interface HorizonPlay {
    * decisive classification renders nothing extra, matching this file's honest-absence discipline.
    */
   archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `dossier.ts`'s `SwingDossier.topFlowStrike`
+   * (the multi-day accumulation flow's magnet strike) is pinned onto every committed position's
+   * `top_flow_strike` column at commit (commit.ts) as "provenance for the contract pick" —
+   * `contract-ranker.ts`'s `rankSwingContracts` independently chooses the best contract by
+   * tradability×thesisFit (never influenced by the flow strike) and separately notes whether that
+   * pick happens to equal the flow strike, but neither the raw number nor the match fact was ever
+   * read back out anywhere in the serving/brief layer. See live-plays.ts's
+   * `topFlowProvenanceFromRow` for the full gap this closes. Null whenever either strike is
+   * unavailable — never a guessed provenance. `matchedPick` is recomputed from the two pinned
+   * strikes, not a second persisted boolean (there isn't one).
+   */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
 }
 
 /** The three lanes a candidate pool fans out into. */

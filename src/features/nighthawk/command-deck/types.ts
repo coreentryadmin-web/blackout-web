@@ -318,6 +318,13 @@ export interface TerminalPlay {
    *  scoring detail. Null on a decisive classification (the overwhelming common case) — never a
    *  fabricated "clear winner" line. See live-plays.ts's `archetypeNearTieFromFeatureVector`. */
   archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
+  /** SWING only, committed (OPEN/HOLD/TRIM/CLOSED) positions: whether the entry-time contract pick
+   *  (chosen independently by tradability×thesisFit — see `rankSwingContracts`, contract-ranker.ts)
+   *  matches the multi-day accumulation flow's own magnet strike, pinned into the position's
+   *  `top_flow_strike` column at commit (commit.ts) and, until now, never read back out of it
+   *  anywhere in the serving/brief layer. Null when either strike is unknown — never a guessed
+   *  provenance. See live-plays.ts's `topFlowProvenanceFromRow` for the full gap this closes. */
+  topFlowProvenance?: { topFlowStrike: number; matchedPick: boolean } | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

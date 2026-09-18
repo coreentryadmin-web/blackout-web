@@ -8,6 +8,7 @@ import {
   liveQuoteFromEvent,
   pinnedFactorsFromFeatureVector,
   structuralBreakFromSpot,
+  topFlowProvenanceFromRow,
 } from "./live-plays.ts";
 import { scoreSwingPillars, type SwingPillarSignals } from "./swing-pillars.ts";
 import type { SwingPositionRow } from "../db.ts";
@@ -553,4 +554,74 @@ test("livePlayFromSwingPosition: a healthy entry read never carries the thin-rea
     null,
   )!;
   assert.equal(play.entryPresentPillars, null);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): `dossier.ts`'s SwingDossier.topFlowStrike (the
+// multi-day accumulation flow's magnet strike) is pinned onto every committed position's
+// `top_flow_strike` column at commit (commit.ts) as "provenance for the contract pick"
+// (contract-ranker.ts's rankSwingContracts independently picks the best contract by tradability×fit,
+// never influenced by the flow strike, and separately notes whether the pick happens to match) — but
+// neither the raw flow strike nor the match fact was ever read back out anywhere in the serving/brief
+// layer. This is the pure read-back helper, wired into livePlayFromSwingPosition (OPEN) and
+// closedDeckSourceFromRow (CLOSED); see play-brief-intel.test.ts's whyThisSetupSection tests for the
+// rendered line.
+test("topFlowProvenanceFromRow: surfaces a match when the independently-chosen pick equals the flow strike", () => {
+  assert.deepEqual(topFlowProvenanceFromRow(180, 180), { topFlowStrike: 180, matchedPick: true });
+});
+
+test("topFlowProvenanceFromRow: surfaces a real divergence when the pick landed on a different strike", () => {
+  assert.deepEqual(topFlowProvenanceFromRow(175, 180), { topFlowStrike: 175, matchedPick: false });
+});
+
+test("topFlowProvenanceFromRow: honest null when either strike is unavailable, never a guessed provenance", () => {
+  assert.equal(topFlowProvenanceFromRow(null, 180), null);
+  assert.equal(topFlowProvenanceFromRow(180, null), null);
+  assert.equal(topFlowProvenanceFromRow(undefined, undefined), null);
+  assert.equal(topFlowProvenanceFromRow(Number.NaN, 180), null);
+});
+
+test("livePlayFromSwingPosition: threads the entry-time flow-strike provenance end to end from the row's own pinned columns", () => {
+  const matched = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180 }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(matched.topFlowProvenance, { topFlowStrike: 180, matchedPick: true });
+
+  const diverged = livePlayFromSwingPosition(
+    row({ top_flow_strike: 175, contract_strike: 180 }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(diverged.topFlowProvenance, { topFlowStrike: 175, matchedPick: false });
+
+  const unknown = livePlayFromSwingPosition(row({ top_flow_strike: null, contract_strike: 180 }), null, null)!;
+  assert.equal(unknown.topFlowProvenance, null);
+});
+
+test("livePlayFromSwingPosition: suppresses flow-strike provenance on a rolled leg — contract_strike was freshly re-picked, top_flow_strike is stale from the original commit", () => {
+  const rolledEvenIfItWouldMatch = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 1 }),
+    null,
+    null,
+  )!;
+  assert.equal(
+    rolledEvenIfItWouldMatch.topFlowProvenance,
+    null,
+    "a coincidental strike match on a rolled leg must not render as entry-time provenance",
+  );
+
+  const rolledDiverged = livePlayFromSwingPosition(
+    row({ top_flow_strike: 175, contract_strike: 180, roll_seq: 2 }),
+    null,
+    null,
+  )!;
+  assert.equal(rolledDiverged.topFlowProvenance, null);
+
+  const rootLegStillWorks = livePlayFromSwingPosition(
+    row({ top_flow_strike: 180, contract_strike: 180, roll_seq: 0 }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(rootLegStillWorks.topFlowProvenance, { topFlowStrike: 180, matchedPick: true });
 });

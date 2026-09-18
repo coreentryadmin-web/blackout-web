@@ -3160,6 +3160,37 @@ test("whyThisSetupSection: omits the archetype-near-tie line when the entry clas
   assert.doesNotMatch(section.body, /Classification:/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): the entry-time contract pick's provenance
+// against the multi-day accumulation flow's own magnet strike (top_flow_strike, pinned at commit)
+// was computed by contract-ranker.ts's rankSwingContracts but never read back out for an
+// already-committed OPEN/CLOSED position. Wired via `topFlowProvenanceFromRow` (live-plays.ts)
+// through `livePlayFromSwingPosition` (OPEN) and `closedDeckSourceFromRow` (CLOSED) into
+// TerminalPlay.topFlowProvenance. Both directions are informative, so both render.
+test("whyThisSetupSection: surfaces corroboration when the pick matches the flow's magnet strike", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ topFlowProvenance: { topFlowStrike: 180, matchedPick: true } }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Strike vs flow:\*\* this contract's strike \(\*\*\$180\*\*\) matches the accumulation flow's own magnet strike — corroborating\./,
+  );
+});
+
+test("whyThisSetupSection: surfaces a real divergence when the pick landed on a different strike than the flow magnet", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ topFlowProvenance: { topFlowStrike: 175, matchedPick: false } }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Strike vs flow:\*\* the accumulation flow's magnet strike was \*\*\$175\*\*; this pick landed at a different strike/,
+  );
+});
+
+test("whyThisSetupSection: omits the strike-vs-flow line when no flow strike was ever resolved (never fabricated)", () => {
+  const section = whyThisSetupSection(fixturePlay({ topFlowProvenance: null }));
+  assert.doesNotMatch(section.body, /Strike vs flow/);
+});
+
 // Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the SAME archetype value
 // rendered THREE differently-styled ways within one brief -- Verdict's raw enum ("Archetype:
 // PULLBACK_CONTINUATION"), this section's own underscore-replace-only line ("Archetype: PULLBACK
