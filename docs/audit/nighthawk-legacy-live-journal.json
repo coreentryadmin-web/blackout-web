@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T16:47:00Z",
+  "lastUpdated": "2026-09-18T16:54:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3939,6 +3939,14 @@
       "result": "Measurement instrument shipped (pending merge/CI). The actual measurement (gate fire rate vs real bearish-tape frequency over the last 30 sessions) has NOT been read yet -- that's the check-in's job once merged and deployed.",
       "prStatus": "PR #5217 opened as draft, subscribed to PR activity, 12-min check-in scheduled.",
       "nextAction": "At check-in (~16:59Z): verify merge, then actually CALL the new route and record the real measurement result in the journal -- that's the point of building it, not just shipping the code."
+    },
+    {
+      "at": "2026-09-18T16:54:00Z",
+      "trigger": ":51 cycle -- transient edition-date anomaly (edition_for served as 2026-09-21 instead of today), self-healed, 1st instance of this shape",
+      "healthcheck": "First run at 16:51:52Z: A_edition AMBER, edition_for served as 2026-09-21 (next Monday, NOT today's 2026-09-18) with evidence 'edition served from degraded fallback source'; B_marks read GREEN only because no open plays resolved for that wrong date; D_pull_status correctly SKIPPED. Investigated immediately: 5 direct re-fetches of GET /api/market/nighthawk/edition over the next ~10s all returned edition_for=2026-09-18 (today, correct, published 2026-09-17T21:35:52Z) -- no flapping observed after the initial read. Re-ran the full healthcheck script itself ~2min later: back to GREEN, 4 plays, fresh, not degraded, the familiar SMTC/SMCI/SWKS/HPE cohort.",
+      "why": "This is a DIFFERENT failure shape than anything logged before this session -- prior A_edition AMBER instances were 'stale' (same date, old data) or 'degraded' with the SAME edition_for; this one served a genuinely WRONG FUTURE date (2026-09-21, the coming Monday) from what its own evidence called a 'degraded fallback source', then self-healed within under 2 minutes without any code change. If a member had loaded /nighthawk during that exact window, they may have seen Monday's board (or an empty one) instead of today's -- worth taking seriously even though it self-resolved, since it's a materially different member-facing symptom than simple staleness.",
+      "result": "Single instance, self-healed, not yet reproducible (5 immediate re-fetches all clean) -- does not meet the 3-instance escalation threshold and there's nothing to CARVE-OUT-fix without a reproducible root cause. Logging in full detail specifically so a 2nd occurrence is recognized as the same pattern rather than investigated from scratch.",
+      "nextAction": "Watch specifically for 'edition served from degraded fallback source' recurring with an edition_for that does NOT match today's ET date -- that exact signature is the thing to pattern-match on, not just any A_edition AMBER."
     }
   ],
   "knownOpenItems": {
