@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T13:38:00Z",
+  "lastUpdated": "2026-09-18T13:50:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3843,6 +3843,17 @@
       "healthcheck": "Re-ran fresh at 13:37:12Z: overall GREEN across all 4 stages for the first time today. B_marks flipped AMBER->GREEN -- all 4 plays (SMTC/SMCI/SWKS/HPE) now have live two-sided quotes and marks within [bid,ask] (market open, ~9:37 ET). A_edition/C_record/D_pull_status steady GREEN.",
       "result": "Clean, no action needed. Moving to aggressive-mode scoping of item #14 (member-facing morning command-center table format) -- the one remaining unstarted item of the 15-point continuous-learning mandate; items 6/8 (Phase 2C, Phase 2B pt.2) stay correctly blocked on trading-day sample accumulation (still 2026-09-18, no new edition_for yet), items 7-full/11-NO-TRADE stay correctly held pending explicit operator confirmation.",
       "nextAction": "Investigate item #14's actual scope (what data already exists to surface, where member-facing Legacy output currently renders) before sizing a build, same discipline used for Phase 2F at 11:09Z."
+    },
+    {
+      "at": "2026-09-18T13:50:00Z",
+      "trigger": ":36 cycle continued -- opened PR #5206 (item #14 first slice)",
+      "healthcheck": "Board was already GREEN this cycle (13:37Z run); no re-run needed before building.",
+      "whatChanged": "Opened PR #5206 (draft): legacyScorecardBadge() (legacy-board-detail-copy.ts) -- compact win-rate/n form of the existing legacyScorecardLine -- rendered inline in LegacyPickLogBoard's Pick cell (legacy-board-columns.tsx). Closes the real gap found while scoping item #14: the table already exists and is rich, but per-tier historical win-rate/n was only ever shown in the click-through detail rail, never at-a-glance in the table itself. Pure render/wiring change on data already flowing to the client (TerminalPlay.scorecard, already fetched by containers.tsx) -- no new API, no schema change.",
+      "why": "Investigated item #14 before building blind, per aggressive-mode discipline (same as Phase 2F at 11:09Z). FOUND: unlike Phase 2F, item #14's core ask (a member-facing command-center table) is NOT missing -- LegacyPickLogBoard already is one. The real, narrow gap was inline calibration visibility. Also found the existing tier/direction/rank line is hidden via .nh-v2-page .vector-board-pick-id{display:none} on the live page -- used a fresh CSS class for the new badge rather than reusing that invisible element.",
+      "evidence": "New legacy-board-detail-copy.test.ts: 6/6 passing (covers the previously-untested legacyScorecardLine too). tsc --noEmit clean. Full npm test: 14808/14808 passing, 0 regressions.",
+      "result": "Item #14's first, minimal slice shipped (pending merge/CI). A second, separable idea (desk-level win_rate_pct/decided_count in the session scorecard header) was raised but NOT built -- kept this PR single-issue.",
+      "prStatus": "PR #5206 opened as draft, subscribed to PR activity, 12-min check-in scheduled.",
+      "nextAction": "Check in on #5206's CI/merge at ~14:02Z."
     }
   ],
   "knownOpenItems": {
