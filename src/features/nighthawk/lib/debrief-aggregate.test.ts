@@ -19,6 +19,7 @@ import {
   readRejectionCounterfactual,
   retroWouldBlock,
   summarizeDebriefPins,
+  summarizePulledByRule,
   targetAtrDistribution,
   type DebriefAggregateRow,
   type NighthawkGateRejectionInput,
@@ -165,6 +166,80 @@ test("summarizeDebriefPins: low_n clears at the shared threshold", () => {
     row({ edition_for: `2026-07-0${(i % 5) + 1}`, debrief: pin("stopped_normal") })
   );
   assert.equal(summarizeDebriefPins(rows).low_n, false);
+});
+
+// ── summarizePulledByRule (Phase 2B) ─────────────────────────────────────────────────
+
+function pulledRow(tag: "pulled_wrongly" | "pulled_correctly", reason: string, over: Partial<DebriefAggregateRow> = {}): DebriefAggregateRow {
+  return row({ pulled: true, pulled_reason: reason, debrief: pin(tag), ...over });
+}
+
+test("summarizePulledByRule: attributes wrongly/correctly counts to the specific rule that fired", () => {
+  const rows = [
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_correctly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules.length, 1);
+  assert.equal(s.rules[0]!.rule, "regime_mismatch_hard");
+  assert.equal(s.rules[0]!.wrongly, 2);
+  assert.equal(s.rules[0]!.correctly, 1);
+  assert.equal(s.rules[0]!.n, 3);
+  assert.equal(s.rules[0]!.wrongly_rate_pct, 66.7);
+  assert.equal(s.total_pulled, 3);
+});
+
+test("summarizePulledByRule: a multi-reason severe pull attributes to EVERY contributing rule, so per-rule n can exceed total_pulled", () => {
+  const rows = [
+    pulledRow(
+      "pulled_wrongly",
+      "Pulled pre-open (severe degradation): Regime is CHOPPY — choppy/neutral reduces conviction for directional plays; Put wall drifted 12 pts (5800 → 5788) — tighten stop"
+    ),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 1);
+  const byRule = new Map(s.rules.map((r) => [r.rule, r]));
+  assert.equal(byRule.get("regime_choppy")?.wrongly, 1);
+  assert.equal(byRule.get("gex_wall_drift_soft")?.wrongly, 1);
+  // Both rules co-fired on the SAME single pull -- their n's sum (2) exceeds total_pulled (1).
+  assert.ok(s.rules.reduce((sum, r) => sum + r.n, 0) > s.total_pulled);
+});
+
+test("summarizePulledByRule: an unrecognized pulled_reason counts as unattributed, never silently dropped or mis-bucketed", () => {
+  const rows = [pulledRow("pulled_wrongly", "some future reason wording this taxonomy has never seen")];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules.length, 0);
+  assert.equal(s.unattributed, 1);
+  assert.equal(s.total_pulled, 1);
+});
+
+test("summarizePulledByRule: only pulled_wrongly/pulled_correctly tagged rows enter -- a non-pulled row is ignored even if it happens to carry a pulled_reason value", () => {
+  const rows = [
+    row({ pulled: false, pulled_reason: "irrelevant leftover value", debrief: pin("clean_win") }),
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 1);
+  assert.equal(s.rules.length, 1);
+  assert.equal(s.rules[0]!.rule, "contrary_anomalies_hard");
+});
+
+test("summarizePulledByRule: legacy-methodology rows are excluded (anti-blend, same discipline as summarizeDebriefPins)", () => {
+  const rows = [
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected", { grade_methodology: GRADE_METHODOLOGY_LEGACY }),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 0);
+  assert.equal(s.rules.length, 0);
+});
+
+test("summarizePulledByRule: low_n reflects total_pulled against the shared threshold", () => {
+  const rows = Array.from({ length: LOW_N_THRESHOLD }, () =>
+    pulledRow("pulled_correctly", "Pulled pre-open: 2 contrary flow anomalies detected")
+  );
+  assert.equal(summarizePulledByRule(rows).low_n, false);
+  assert.equal(summarizePulledByRule(rows.slice(0, -1)).low_n, true);
 });
 
 // ── Blocked value ────────────────────────────────────────────────────────────────────
