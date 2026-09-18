@@ -371,6 +371,25 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
       `First flagged **${days} day${days === 1 ? "" : "s"} ago**${play.detectedAt ? ` (${etStampFromIso(play.detectedAt)})` : ""} — still on WATCH, not yet graduated to a real position.`,
     );
   }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): entry-enterability.ts already computes the
+  // real entry-validity deadline (entry-model.ts's sub-lane windows, real-NYSE-trading-day aware)
+  // to decide the boolean `watchEntryExpired` — but that concrete date was discarded the moment the
+  // boolean was derived, so a member watching a still-live setup had no forward-looking runway
+  // ("how much longer is this good for") to weigh against `First flagged` above; the first they'd
+  // hear about the deadline was the EXPIRED badge itself, after it had already passed. Mirrors the
+  // days-on-watch fix directly above it (same section, same "a real computed fact was silently
+  // dropped before reaching the model" shape) — forward-looking instead of backward-looking. Only
+  // shown while NOT already expired (the EXPIRED badge + `deadPlayReason` below already own that
+  // case) and only when a real deadline was resolvable (never fabricated).
+  if (!play.watchEntryExpired && play.entryDeadline) {
+    const deadlineMs = Date.parse(play.entryDeadline);
+    if (Number.isFinite(deadlineMs)) {
+      const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
+      lines.push(
+        `Entry window closes **${etStampFromIso(play.entryDeadline)}** (**${daysLeft} day${daysLeft === 1 ? "" : "s"}** left) — stale after that, wait for a fresh setup.`,
+      );
+    }
+  }
   if (play.gateBlocks?.length) {
     // BUG FIX (Ask Largo standing mandate, 2026-09-14): this used to always header the list
     // "Gates blocking entry:", implying clearing them would open entry — false whenever the play
