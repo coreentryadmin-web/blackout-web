@@ -423,6 +423,11 @@
       "session_state": "RTH, degradation resolved",
       "activity": "16:15 UTC (:15-offset) trigger. Container restart detected (OS build changed) -- verified branch=main, journal current, node20 present, node_modules intact, scratchpad survived. Board-upstream degradation from last cycle self-resolved: upstream_ok back to true by 16:16:28Z (started ~16:09:32Z, ~7min total, well within the established range). PL closed flat_theta_bleed at -1.04% (genuinely flat the whole hold, narrative accurate). All 4 of today's plays now closed: QBTS flat, RKLB trim_scale_dead_zone_floor +6.82%, TSLA thesis_break -36.39%, PL flat -1.04%. Nothing new to escalate.",
       "findings_this_cycle": "0 -- degradation self-resolved as expected, PL closed cleanly"
+    },
+    "2026-09-18T16:39:00Z": {
+      "session_state": "RTH, lunch chop (sizing factor 0.75)",
+      "activity": "16:38 UTC (:30-offset) trigger. 5th play of the day: IONQ (short, score 84) committed 16:24:58Z, exited thesis_break:gex-walls at -20% just 3.3min later (16:28:19Z) -- fast hold but coherent: real structural veto (short target crosses dominant put wall inside 0.5x expected move), not a bug. Governor now shows time_of_day_label 'lunch chop -- fade-prone, size down' (0.75 sizing factor) -- correct calibration for this time window. Session pnl -49.57% (2 realized losers: TSLA, IONQ). 5 plays deep-read today across 5 different exit mechanisms (flat_theta_bleed x2, trim_scale_dead_zone_floor, thesis_break x2) -- all coherent, no bugs found. Clean cycle.",
+      "findings_this_cycle": "0 -- IONQ fast thesis-break exit is legitimate, not anomalous"
     }
   },
   "sessions": {
