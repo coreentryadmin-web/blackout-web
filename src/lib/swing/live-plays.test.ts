@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  archetypeNearTieFromFeatureVector,
   entryPresentPillarsFromFeatureVector,
   livePlayFromSwingPosition,
   livePlaysFromOpenPositions,
@@ -471,6 +472,44 @@ test("entryPresentPillarsFromFeatureVector: honest null on a missing/pre-fix fea
   assert.equal(entryPresentPillarsFromFeatureVector({ evidence_score: 82 }), null);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): archetype.ts's classification decisiveness
+// (ArchetypeVerdict.margin + the ranked runner-up) is pinned into feature_vector.classification_margin/
+// .secondary (feature-vector.ts, classificationMetaFromVerdict) at commit but was never read back out
+// for a committed position anywhere — scoring/gating/calibration all partition on the single pinned
+// `archetype` label, so a razor-thin classification call is a real, disclosed uncertainty a member
+// never saw. Wired into livePlayFromSwingPosition (OPEN) and closedDeckSourceFromRow (CLOSED); see
+// play-brief-intel.test.ts's whyThisSetupSection tests for the rendered line.
+test("archetypeNearTieFromFeatureVector: surfaces the runner-up + margin when the entry classification was a near-tie", () => {
+  assert.deepEqual(
+    archetypeNearTieFromFeatureVector({
+      classification_margin: 0.02,
+      secondary: ["PULLBACK_CONTINUATION", "MEAN_REVERSION"],
+    }),
+    { secondaryLabel: "Pullback continuation", marginPct: 2 },
+  );
+});
+
+test("archetypeNearTieFromFeatureVector: omits (null) when the classification was decisive — never surfaced unless it mattered", () => {
+  assert.equal(
+    archetypeNearTieFromFeatureVector({
+      classification_margin: 0.31,
+      secondary: ["PULLBACK_CONTINUATION"],
+    }),
+    null,
+  );
+});
+
+test("archetypeNearTieFromFeatureVector: honest null on a missing/pre-fix feature vector or an unresolvable runner-up label, never fabricated", () => {
+  assert.equal(archetypeNearTieFromFeatureVector(null), null);
+  assert.equal(archetypeNearTieFromFeatureVector({ evidence_score: 82 }), null);
+  // margin is a near-tie but the secondary array is empty/unparseable — nothing to name, so no line.
+  assert.equal(archetypeNearTieFromFeatureVector({ classification_margin: 0.01, secondary: [] }), null);
+  assert.equal(
+    archetypeNearTieFromFeatureVector({ classification_margin: 0.01, secondary: ["NOT_A_REAL_ARCHETYPE"] }),
+    null,
+  );
+});
+
 test("livePlayFromSwingPosition: threads the entry-time thin-read count end to end from the row's own pinned feature_vector", () => {
   const play = livePlayFromSwingPosition(
     row({
@@ -484,6 +523,21 @@ test("livePlayFromSwingPosition: threads the entry-time thin-read count end to e
     null,
   )!;
   assert.equal(play.entryPresentPillars, 2);
+});
+
+test("livePlayFromSwingPosition: threads the entry-time archetype near-tie end to end from the row's own pinned feature_vector", () => {
+  const play = livePlayFromSwingPosition(
+    row({
+      feature_vector: {
+        evidence_score: 61,
+        classification_margin: 0.02,
+        secondary: ["MEAN_REVERSION"],
+      } as unknown as SwingPositionRow["feature_vector"],
+    }),
+    null,
+    null,
+  )!;
+  assert.deepEqual(play.archetypeNearTie, { secondaryLabel: "Mean-reversion recovery", marginPct: 2 });
 });
 
 test("livePlayFromSwingPosition: a healthy entry read never carries the thin-read count", () => {

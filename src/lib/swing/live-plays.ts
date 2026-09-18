@@ -12,6 +12,7 @@ import type { ChainContract, PlayDirection } from "../horizon-fanout";
 import { calendarDte } from "../horizon-fanout";
 import type { SwingPositionRow } from "../db";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
+import { archetypeLabelFromRaw } from "./taxonomy";
 import type { SwingLiveStatus, SwingThesisLevel } from "./serving";
 import type { SwingManageAction, SwingManageRung } from "./manage";
 import { HORIZONS } from "../horizons";
@@ -336,6 +337,43 @@ export function entryPresentPillarsFromFeatureVector(
   return typeof present === "number" && Number.isFinite(present) ? present : null;
 }
 
+/** Mirrors archetype.ts's own MARGIN_EPS (0.05, 0-1 scale) — the SAME bar the classifier's own
+ *  tie-break logic uses to decide "this is a near-tie, priority order broke it" vs "clear winner".
+ *  Kept as a local constant (not imported) because archetype.ts's MARGIN_EPS is module-private and
+ *  taxonomy.ts (the shared, cycle-free import surface every swing module uses) intentionally carries
+ *  no scoring logic — see its own header. A drift between the two would only ever make this note
+ *  render MORE conservatively (fewer near-ties flagged) or less, never wrong-directioned, since both
+ *  values gate the identical "was this call close" question. */
+const ARCHETYPE_NEAR_TIE_MARGIN = 0.05;
+
+/**
+ * Read back the ENTRY-TIME classification decisiveness (archetype.ts's `ArchetypeVerdict.margin` /
+ * the ranked runner-up) from a committed position's own pinned `feature_vector.classification_margin`/
+ * `.secondary` (feature-vector.ts) — pinned at commit (commit.ts/discovery.ts's
+ * `classificationMetaFromVerdict`) but, like `entryPresentPillarsFromFeatureVector` above, never read
+ * back out anywhere in the serving/brief layer until now. See `HorizonPlay.archetypeNearTie`'s own
+ * doc comment (horizon-plays.ts) for the full gap this closes.
+ *
+ * Deliberately returns null (never surfaced) unless the winning archetype was ACTUALLY a near-tie at
+ * commit — margin <= ARCHETYPE_NEAR_TIE_MARGIN — so a normal, decisive classification (the
+ * overwhelming common case) renders nothing extra, exactly mirroring `entryPresentPillarsFromFeatureVector`'s
+ * "only when it matters" discipline.
+ */
+export function archetypeNearTieFromFeatureVector(
+  featureVector: Record<string, unknown> | null | undefined,
+): { secondaryLabel: string; marginPct: number } | null {
+  if (!featureVector) return null;
+  const margin = featureVector.classification_margin;
+  if (typeof margin !== "number" || !Number.isFinite(margin) || margin > ARCHETYPE_NEAR_TIE_MARGIN) {
+    return null;
+  }
+  const secondary = featureVector.secondary;
+  const runnerUpRaw = Array.isArray(secondary) ? secondary[0] : null;
+  const secondaryLabel = typeof runnerUpRaw === "string" ? archetypeLabelFromRaw(runnerUpRaw) : null;
+  if (!secondaryLabel) return null;
+  return { secondaryLabel, marginPct: Math.round(margin * 100) };
+}
+
 /**
  * Map one open ledger row (+ optional spot + latest manage snapshot) to a HorizonPlay for the live sections. Returns null when the
  * row is not a live status or lacks a reconstructible contract.
@@ -373,6 +411,7 @@ export function livePlayFromSwingPosition(
   // the live bug this closes) — guaranteed to sum to `score` exactly, never a freshly re-run dossier's.
   const factors = pinnedFactorsFromFeatureVector(row.feature_vector);
   const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
+  const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
 
   // CORRECTED (live regression found 2026-09-07, prior fix in #4481): `regime` is a DISPLAY string —
   // play-brief.ts's Verdict section pushes `play.regime` verbatim with no label
@@ -420,6 +459,7 @@ export function livePlayFromSwingPosition(
     regime,
     factors,
     entryPresentPillars,
+    archetypeNearTie,
     liveStatus,
     manageAction,
     manageReason: manageReason ?? null,

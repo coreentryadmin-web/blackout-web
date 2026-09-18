@@ -203,6 +203,27 @@ export interface HorizonPlay {
   persistenceGapReason?: string | null;
   /** V2 commit gates (G-S6/G-S14) that would block an open — stamped at discovery for honest BUY/WAIT UI. */
   commitGateBlockedBy?: string[];
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): `archetype.ts`'s `classifyArchetype` always
+   * computes a decisiveness `margin` (topFit − secondFit) alongside the winning label, and
+   * `classificationMetaFromVerdict` pins that margin plus the ranked runner-up archetypes onto
+   * `entry_context`/`feature_vector.classification_margin`/`.secondary` at commit (commit.ts,
+   * discovery.ts) — captured specifically, per feature-vector.ts's own comment, "for later
+   * mis/secondary-classification analysis." Every play-brief consumer read the pinned `score`
+   * number and the `archetype_scores` blob's *primary* label off the same feature_vector
+   * (live-plays.ts/closed-plays.ts) but never the margin or the runner-up sitting right next to it
+   * — a member sees ONLY "Archetype: Breakout" with no signal that the classifier's own tie-break
+   * logic (MARGIN_EPS=0.05) treats this as a near-coin-flip against, say, Pullback continuation.
+   * That matters because scoring/gating/calibration all partition on this single label (feature-
+   * vector.ts's own header: "Calibration keys off `archetype`/`primary` ONLY"), so a razor-thin
+   * classification is a real, disclosed uncertainty the member has a right to see, not an internal
+   * scoring detail. Same shape as `entryPresentPillars` a few lines up: pinned every tick, never
+   * read back out until now.
+   * Deliberately null unless the margin actually clears the classifier's own near-tie bar
+   * (`ARCHETYPE_NEAR_TIE_MARGIN` in live-plays.ts, mirroring archetype.ts's own MARGIN_EPS) — a
+   * decisive classification renders nothing extra, matching this file's honest-absence discipline.
+   */
+  archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
 }
 
 /** The three lanes a candidate pool fans out into. */

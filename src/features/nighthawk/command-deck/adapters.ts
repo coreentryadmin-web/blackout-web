@@ -678,6 +678,9 @@ export interface HorizonDeckSource {
   /** Present-pillar count at commit, ONLY when the entry read was degraded — see TerminalPlay's
    *  own field / live-plays.ts's `entryPresentPillarsFromFeatureVector` for the full history. */
   entryPresentPillars?: number | null;
+  /** ONLY when the entry-time archetype classification was a near-tie — see TerminalPlay's own
+   *  field / live-plays.ts's `archetypeNearTieFromFeatureVector` for the full gap this closes. */
+  archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
   /** Regime read (archetype label ± normalized regime pillar), or null when absent. */
   regime?: string | null;
   /** Thesis-health read from the swing thesis; when omitted it is DERIVED from `setupState` below. */
@@ -983,6 +986,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.
     factors: src.factors ?? [],
     entryPresentPillars: src.entryPresentPillars ?? null,
+    archetypeNearTie: src.archetypeNearTie ?? null,
     gates: [],
     regime: src.regime ?? null,
     thesisBreak: thesisBreakResolved,
@@ -1329,6 +1333,7 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     archetype: src.archetype ?? null,
     subLane: src.subLane ?? null,
     entryPresentPillars: src.entryPresentPillars ?? null,
+    archetypeNearTie: src.archetypeNearTie ?? null,
     firstSeenAt: src.firstSeenAt ?? null,
     committedAt: src.committedAt ?? null,
     entryPremium: src.entryPremium ?? null,
