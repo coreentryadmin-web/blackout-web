@@ -197,6 +197,20 @@ export interface HorizonPlay {
    * matching this file's own null-honesty convention throughout).
    */
   rollCandidate?: { reason: string } | null;
+  /**
+   * GAP FOUND (2026-09-18, Ask Largo standing mandate): whether the rung that decided
+   * `manageAction` is currently ENFORCED — true always for the four capital-preservation gates
+   * (structural_stop/thesis_stop/expiry_risk/premium_stop), but for an EDGE rung (catalyst_shift,
+   * regime_shift, flow_decay, rel_strength_loss, vol_collapse, time_stop, add_eligible) only once
+   * that specific rung has graduated in the calibration ladder (manage.ts's `isEnforced`). Until
+   * graduation the ledger itself takes NO action on that rung (`latchSwingLiveStatus`, manage-
+   * sync.ts — only an enforced `profit_ladder` latches TRIM), so a member-facing recommendation
+   * built from an un-graduated edge rung is advisory only, not something the system will act on.
+   * `manageAction`/the "SELL"/"TRIM"/"BUY" recommendation badge previously carried no signal of
+   * this distinction — an un-graduated advisory rung read with identical weight to a hard gate.
+   * Null when no manage-sync snapshot has fired yet (never a fabricated true/false).
+   */
+  manageEnforced?: boolean | null;
   /** True when the thesis was observed this scan but has NOT cleared cross-session persistence. */
   persistenceObserved?: boolean;
   /** Honest reason the persistence gate has not promoted this name to WATCH yet. */

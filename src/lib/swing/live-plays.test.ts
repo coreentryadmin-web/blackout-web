@@ -430,6 +430,71 @@ test("livePlayFromSwingPosition: no manage snapshot, or running_mfe/running_mae 
   );
 });
 
+// ─── Manage-enforced advisory-vs-gate distinction (Ask Largo standing mandate, 2026-09-18):
+// manage.ts's `evaluateSwingManagement` stamps `enforced:true` always for its four capital-
+// preservation gates, `false` for an edge rung until it graduates in the calibration ladder, and
+// manage-sync.ts persists that flag on every snapshot's `event_json.enforced` — but
+// `manageObservablesFromEvent` never read it back out, so `manageAction` (and the recommendation
+// badge derived from it) carried no signal of whether the system itself was acting on the rung.
+
+test("livePlayFromSwingPosition: un-graduated edge rung (enforced:false) -> manageEnforced surfaces false", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "rel_strength_loss",
+    action: "TAKE_PARTIAL",
+    enforced: false,
+  });
+  assert.ok(p);
+  assert.equal(p!.manageAction, "TAKE_PARTIAL");
+  assert.equal(p!.manageEnforced, false, "an un-graduated edge rung must surface enforced:false, not be silently dropped");
+});
+
+test("livePlayFromSwingPosition: graduated edge rung (enforced:true) -> manageEnforced surfaces true", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "flow_decay",
+    action: "TAKE_PARTIAL",
+    enforced: true,
+  });
+  assert.ok(p);
+  assert.equal(p!.manageEnforced, true);
+});
+
+test("livePlayFromSwingPosition: capital-preservation gate rungs force manageEnforced:true regardless of the raw stored value", () => {
+  const structural = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "structural_stop",
+    action: "EXIT",
+    thesis_state: "BROKEN",
+    enforced: false, // deliberately wrong/stale — the gate override must win anyway
+  });
+  assert.ok(structural);
+  assert.equal(structural!.manageEnforced, true, "structural_stop is a GATE — always enforced, never advisory");
+
+  const expiry = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "expiry_risk",
+    action: "EXIT",
+    thesis_state: "EXPIRY_RISK",
+  });
+  assert.ok(expiry);
+  assert.equal(expiry!.manageEnforced, true, "expiry_risk is a GATE — always enforced");
+});
+
+test("livePlayFromSwingPosition: no manage snapshot, or enforced absent/malformed -> manageEnforced stays honestly null", () => {
+  assert.equal(livePlayFromSwingPosition(row())!.manageEnforced, null, "no snapshot at all");
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, { rung: "hold", action: "HOLD" })!.manageEnforced,
+    null,
+    "snapshot present but carries no enforced field (older snapshot shape)",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "add_eligible",
+      action: "ADD",
+      enforced: "yes",
+    })!.manageEnforced,
+    null,
+    "a non-boolean enforced value never fabricates a true/false",
+  );
+});
+
 test("Q40: markAsOf prefers ledger last_mark_at over manage snapshot quote.asOf", () => {
   const play = livePlayFromSwingPosition(
     row({ last_mark_at: "2026-09-05T14:00:00.000Z" }),

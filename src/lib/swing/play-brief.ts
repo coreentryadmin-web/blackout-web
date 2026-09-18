@@ -96,6 +96,29 @@ function managementSection(play: TerminalPlay): RichSection {
   if (play.recNote) lines.push(play.recNote);
   if (play.manageAction) {
     lines.push(`Manage engine: **${play.manageAction}**`);
+    // GAP FOUND (2026-09-18, Ask Largo standing mandate): `manage.ts`'s `evaluateSwingManagement`
+    // stamps `enforced:true` always for its four capital-preservation GATE rungs, but `false` for
+    // an EDGE rung (catalyst_shift/regime_shift/flow_decay/rel_strength_loss/vol_collapse/
+    // time_stop/add_eligible) until that specific rung graduates in the calibration ladder
+    // (n≥10, delta≥15pt) — and until graduation the ledger itself takes NO action on it
+    // (`latchSwingLiveStatus`, manage-sync.ts: only an enforced `profit_ladder` latches TRIM).
+    // `manage-sync.ts` persists that flag on every snapshot (`event_json.enforced`) but nothing
+    // read it back out — so this exact line above (and the "SELL"/"TRIM"/"BUY" recommendation
+    // badge, which `recommendationFromManageAction` derives from the same `manageAction` 1:1)
+    // showed an un-graduated advisory signal with IDENTICAL weight to a hard, acted-on gate. A
+    // member reading "Manage engine: TAKE_PARTIAL" (or "Recommended: SELL") had no way to tell
+    // whether the system itself was about to act on that or was merely tracking unproven
+    // evidence — the exact conflation the calibration-first "evidence, not gating, until
+    // graduated" law (manage.ts's own header) exists to prevent at the DECISION layer; it was
+    // leaking back in at the DISPLAY layer. `manageAction === "HOLD"` is excluded — a HOLD is
+    // never a recommendation to act on, so there is nothing to qualify. `manageEnforced` is
+    // tri-state (true/false/null) and this only fires on an explicit `false`, never on null
+    // (no snapshot yet — honest silence, not a fabricated advisory label).
+    if (play.manageAction !== "HOLD" && play.manageEnforced === false) {
+      lines.push(
+        "_Advisory only — this signal hasn't graduated to an enforced recommendation yet; the system itself is not acting on it, the position stays as-is until it does._",
+      );
+    }
   }
   if (play.exitPolicy) {
     const ep = play.exitPolicy;
