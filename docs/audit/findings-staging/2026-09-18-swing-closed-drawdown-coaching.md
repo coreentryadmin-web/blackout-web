@@ -53,4 +53,4 @@ the position never traded meaningfully negative.
   — 1/106 failed with source reverted, exactly the new assertion. Reapplied — 106/106 pass.
 - `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` — 591/591 pass.
 - `npx tsc --noEmit` — clean.
-- Full `npm test` (Node 20) — pending in background at time of PR open; see PR for final count.
+- Full `npm test` (Node 20) — 14623/14626 pass, 0 fail, 3 pre-existing skips (a first run showed 1 unrelated flake with no reproducing detail captured; an immediate full re-run on the same commit came back 100% clean, matching CI's own green `verify` check on the same SHA).
