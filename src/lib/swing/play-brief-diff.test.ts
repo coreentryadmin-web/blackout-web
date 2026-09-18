@@ -262,6 +262,30 @@ test("diffBriefSnapshots: detects a roll watch clearing", () => {
   assert.ok(lines.some((l) => l.includes("Roll watch cleared")));
 });
 
+// BUG FIX (2026-09-18, peer review on PR #5191): detectRollCandidate() (manage.ts) returns
+// roll:false for THREE distinct causes -- back in range, thesis broken, or the structural stop
+// hit. The latter two are the capital-preservation gates, where a roll clears because the
+// position is being CLOSED, not because anything improved. Must never assert a specific "back in
+// range" cause -- that would contradict the separate "Desk action shifted" line narrating the
+// same exit in the same pulse.
+test("diffBriefSnapshots: a roll watch clearing alongside a shift to SELL never asserts 'back in range'", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({ rollCandidate: { reason: "DTE 6 inside migration window" }, recommendation: "HOLD" }),
+  );
+  const next = snapshotFromBrief(env(), play({ rollCandidate: null, recommendation: "SELL" }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Roll watch cleared")));
+  assert.ok(
+    !lines.some((l) => l.includes("back in range")),
+    "must never assert an improving cause when the clear coincides with an exit recommendation",
+  );
+  assert.ok(
+    lines.some((l) => l.includes("Desk action shifted") && l.includes("SELL")),
+    "the real story (exit) is carried by the existing recommendation-shift line",
+  );
+});
+
 test("diffBriefSnapshots: a roll watch reason restating tick-to-tick (still weighed) does not double-narrate", () => {
   const prev = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 6 inside migration window" } }));
   const next = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 5 inside migration window" } }));

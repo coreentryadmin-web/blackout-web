@@ -349,7 +349,13 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   if (!prev.rollCandidateReason && next.rollCandidateReason) {
     lines.push(`**Roll watch triggered** — theta outpacing thesis — ${next.rollCandidateReason}.`);
   } else if (prev.rollCandidateReason && !next.rollCandidateReason) {
-    lines.push(`**Roll watch cleared** — theta/thesis balance back in range.`);
+    // Deliberately does NOT assert "theta/thesis balance back in range" — detectRollCandidate()
+    // (manage.ts) returns roll:false for THREE distinct causes: back in range, thesis broken, or
+    // the structural stop hit. The latter two are the capital-preservation gates, where a roll
+    // clears because the position is being CLOSED, not because anything improved — and the
+    // separate "Desk action shifted" rule above already narrates that exit accurately in the same
+    // pulse. Asserting a specific cause here would contradict it. Peer review, PR #5191.
+    lines.push(`**Roll watch cleared** — no longer being weighed.`);
   }
   if (prev.headline !== next.headline) {
     lines.push(`Verdict headline updated`);
