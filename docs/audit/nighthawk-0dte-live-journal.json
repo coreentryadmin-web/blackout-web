@@ -383,6 +383,16 @@
       "session_state": "post-unlock RTH",
       "activity": "PR #5207 finally green + mergeable:true (clean, no new conflict this pass), undrafted and merged (commit 8ad6d4679). Verified directly against origin/main: session-board-stats.ts carries the fix. Took 3 merge-conflict resolutions total this session due to a very high-velocity afternoon on the shared MARKET-OPEN-VALIDATION.md append point (multiple lanes shipping every few minutes) -- worth noting for future sessions as an expected cost during busy periods, not a sign of anything wrong.",
       "findings_this_cycle": "1 merged -- PR #5207 (top_block_code precedence fix)"
+    },
+    "2026-09-18T14:41:00Z": {
+      "session_state": "RTH, 'prime continuation window'",
+      "activity": "14:37 UTC (:30-offset) trigger. Correcting last cycle's own over-hasty framing: the QBTS/RGTI/LUNR->0 transition wasn't evidence of a 'flicker' bug -- verified this cycle by polling the board 3x, 3s apart: as_of stayed byte-identical across all 3 calls (cached snapshot), and RKLB/TSLA (today's current commit_ready pair) held stable across all 3 reads. So gate verdicts ARE stable within one scan pass; what changed between my checks was simply the scanner producing a NEW pass with different candidates -- ordinary continuous-discovery turnover, not instability. Retracting the 'watch for a flicker pattern' note. session_stats.top_block_code now correctly reads score_floor and agrees with the live setups' own dominant blocker (discovery_funnel.top_gate also score_floor) -- PR #5207's fix confirmed working correctly on real live data, not just in tests. Genuinely zero commits 70+ min into RTH (13:30-14:41 UTC) -- consistent with the standing, already-measured score_floor-dominant-chokepoint research (zerodte-gate-compound-funnel.mjs), not new evidence of anything broken.",
+      "findings_this_cycle": "0 -- corrected an earlier over-hasty note, nothing anomalous found"
+    },
+    "2026-09-18T14:48:00Z": {
+      "session_state": "RTH",
+      "activity": "14:45 UTC (:45-offset) trigger. Board unchanged: ledger still empty, 0 commits ~75min into RTH, score_floor still the consistent dominant blocker (matches standing research, not new). Swept the open-PR queue for anything needing attention (team-capacity check) -- 3 non-dependabot open PRs, all Swings-lane, all actively updated in the last ~15min, nothing stuck/abandoned. No Cursor PRs open. Nothing actionable in my own lane or elsewhere this cycle.",
+      "findings_this_cycle": "0 -- clean cycle"
     }
   },
   "sessions": {
