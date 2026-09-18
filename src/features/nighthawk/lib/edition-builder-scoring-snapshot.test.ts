@@ -247,3 +247,34 @@ test("buildStageRejectionSnapshotRows: a rejection with NO play (a future stage 
   assert.equal(payload.levels, null);
   assert.equal(payload.direction, null);
 });
+
+// ── buildFinalGeometryGateRejections (task #24 -- the "final geometry gate" safety net
+// previously had ZERO durable record anywhere, not even the older alert_audit_log) ──
+
+test("buildFinalGeometryGateRejections: reshapes partitionPlaysByGeometry's {play,drops} into the common rejection shape both writers expect", async () => {
+  const { buildFinalGeometryGateRejections } = await import("./edition-builder");
+  const backfilledPlay = play({ ticker: "AMD", direction: "SHORT" });
+  const result = buildFinalGeometryGateRejections([{ play: backfilledPlay, drops: ["stop<=entry"] }]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0]!.ticker, "AMD", "ticker pulled from play.ticker -- partitionPlaysByGeometry's own output has none at the top level");
+  assert.deepEqual(result[0]!.drops, ["stop<=entry"]);
+  assert.deepEqual(result[0]!.detail, { stage: "geometry", drops: ["stop<=entry"] });
+  assert.equal(result[0]!.scored, null, "no scored breakdown is reachable this far downstream -- honestly null, never guessed");
+  assert.equal(result[0]!.play, backfilledPlay);
+});
+
+test("buildFinalGeometryGateRejections: its output feeds BOTH writers without further shaping -- audit trail (drops) and candidate_snapshot (detail) both read correctly off the same row", async () => {
+  const { buildFinalGeometryGateRejections, buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const result = buildFinalGeometryGateRejections([{ play: play({ ticker: "TSLA" }), drops: ["target<=entry"] }]);
+  const snapshotRows = buildStageRejectionSnapshotRows("2026-09-17", result);
+  assert.equal(snapshotRows[0]!.rejection_reason, "geometry");
+  assert.equal(snapshotRows[0]!.selected_for_publish, false);
+  const payload = snapshotRows[0]!.snapshot_json as any;
+  assert.deepEqual(payload.detail.drops, ["target<=entry"]);
+  assert.equal(payload.levels.entry_range_low, 100, "the play's own parsed levels are captured via the threaded-through play, same as any other rejection stage");
+});
+
+test("buildFinalGeometryGateRejections: an empty failing list produces an empty result", async () => {
+  const { buildFinalGeometryGateRejections } = await import("./edition-builder");
+  assert.deepEqual(buildFinalGeometryGateRejections([]), []);
+});
