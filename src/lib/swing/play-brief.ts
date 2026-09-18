@@ -7,6 +7,7 @@ import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-en
 import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
+import { formatFixedNonZero } from "@/lib/swing/format-nonzero";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
@@ -684,7 +685,12 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     const parts: string[] = [`γ ${gammaPosture}`];
     if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
       const netM = gex.net_gex / 1e6;
-      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
+      // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real,
+      // signed net GEX under ~$50k (common on lower-priced/small-cap tickers) rounded to "0.0M" via
+      // a plain toFixed(1) — reading as "no dealer exposure" when the sign and magnitude are both
+      // real and meaningful for the posture read. formatFixedNonZero widens precision only when
+      // the fixed rounding would otherwise collapse a real nonzero value to a false zero.
+      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${formatFixedNonZero(netM, 1)}M`);
     }
     if (gex && !gexStale) {
       // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative

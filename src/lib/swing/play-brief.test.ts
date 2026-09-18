@@ -1109,6 +1109,66 @@ test("composeSwingPlayBrief: GEX dealer posture grounds in envelope evidence (La
   assert.equal(postureEvidence?.provenance?.asOf, "2026-09-05 16:00 ET");
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real,
+// signed net GEX under ~$50k (common on lower-priced/small-cap tickers) rounded to "0.0M" via a
+// plain toFixed(1) — reading as "no dealer exposure" when the sign and magnitude are both real.
+test("composeSwingPlayBrief: a real small-cap net GEX never renders as a false '0.0M' zero (Largo C7)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "ABTC",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      gex_positioning: {
+        ticker: "ABTC",
+        spot: 10.15,
+        change_pct: 1.2,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date: "2026-09-05",
+        market_session: "CLOSED",
+        flip: 10,
+        call_wall: 11,
+        put_wall: 9,
+        max_pain: null,
+        gex_king_strike: 10,
+        net_gex: 40_000,
+        gamma_posture: "long",
+        gamma_regime_read: "long gamma",
+        net_vex: 0,
+        vanna_posture: null,
+        vanna_regime_read: "",
+        net_dex: null,
+        dex_posture: null,
+        dex_regime_read: null,
+        net_charm: null,
+        charm_posture: null,
+        charm_regime_read: null,
+        nearest_wall: { strike: 11, kind: "resistance", distance_pts: 0.85 },
+        freshness: "cached",
+        matrix_age_sec: 30,
+      },
+      arsenal: null,
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const postureEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Dealer posture:"));
+  assert.ok(postureEvidence, "expected dealer posture evidence");
+  assert.doesNotMatch(
+    postureEvidence!.text,
+    /net GEX \+0\.0M/,
+    "a real $40k net GEX must never render as a false-zero '+0.0M'",
+  );
+  assert.match(postureEvidence!.text, /net GEX \+0\.04M/);
+});
+
 // FINDING 2026-09-08 (Ask Largo monitor cycle, live NN SWING_NN_32): "Dealer posture" evidence's
 // nearest-wall computation read raw `gex.nearest_wall` (GEX-matrix call/put wall only), while the
 // envelope's `levels` array and narrative both show the live Vector wall when Vector is fresh
