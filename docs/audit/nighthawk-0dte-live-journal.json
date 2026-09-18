@@ -393,6 +393,11 @@
       "session_state": "RTH",
       "activity": "14:45 UTC (:45-offset) trigger. Board unchanged: ledger still empty, 0 commits ~75min into RTH, score_floor still the consistent dominant blocker (matches standing research, not new). Swept the open-PR queue for anything needing attention (team-capacity check) -- 3 non-dependabot open PRs, all Swings-lane, all actively updated in the last ~15min, nothing stuck/abandoned. No Cursor PRs open. Nothing actionable in my own lane or elsewhere this cycle.",
       "findings_this_cycle": "0 -- clean cycle"
+    },
+    "2026-09-18T15:12:00Z": {
+      "session_state": "RTH, first real commits of the session",
+      "activity": "15:07 UTC (:00-offset) trigger. First real commits of the session finally landed: QBTS (short, score 92), RKLB (short, score 78), TSLA (short, score 78). Deep-read: RKLB exited via trim_scale_dead_zone_floor at +6.82% (peak +27.27%, floor armed at half-peak +13.64%) -- correct, designed behavior, locks in green. TSLA exited thesis_break:vex-charm at -36.39% -- legitimate Cortex-opposition risk exit, narrative coherent. QBTS: entry_context.exit shows flat_theta_bleed fired at 15:08:21Z (mark 0.33, pnl 0%, peak +3.03% never breached -10% band -- 'never left the band' narrative is genuinely accurate here, PR #5139's trough-fix working correctly), managed_outcome=flat_scratch at top level. BUT board ledger still shows QBTS status:OPEN, live_pnl_pct:3.03 (stale pre-exit value) -- POSSIBLE 5th instance of the standing board/record propagation-lag finding (2026-09-17-board-ledger-record-propagation-lag-mislabels-closed-reason). NOT YET CONFIRMED: the board response is served from a cache that hasn't refreshed at all across 3 polls ~3min apart (as_of pinned at 15:08:07Z throughout, ~14s BEFORE the exit fired) -- this could be ordinary cache latency rather than the specific propagation-lag bug (which needs a genuinely FRESH poll still showing stale data well after the exit). Deferring the PR #4076 escalation until next cycle's fresh poll either confirms (cache has refreshed to a post-15:08:21Z as_of but still shows OPEN -> real 5th instance) or refutes (refreshed and now correctly shows CLOSED -> just cache latency, not the bug).",
+      "findings_this_cycle": "0 confirmed -- monitoring a possible 5th propagation-lag instance, checking next cycle"
     }
   },
   "sessions": {
