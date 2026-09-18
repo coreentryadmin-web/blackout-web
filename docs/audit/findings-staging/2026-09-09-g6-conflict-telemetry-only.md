@@ -1,8 +1,8 @@
-# G-6 cross-system conflict downgraded from hard gate to informational telemetry
+## G-6 cross-system conflict downgraded from hard gate to informational telemetry
 
 > **kind:** FINDING
 
-## Root cause
+### Root cause
 
 `CONFLICT_SCORE_FLOOR` (55) sits strictly **below** `ZERODTE_SCORE_FLOOR` (65, G-3's own hard
 floor). Every gate in `evaluateZeroDteGates` evaluates independently and the overall verdict is
@@ -13,7 +13,7 @@ floor below G-3's: it never independently blocks anything G-3 doesn't already bl
 independently admits anything G-3 already blocks. A hard gate that cannot change the verdict is
 dead code with a plausible-looking reason string attached.
 
-## Fix
+### Fix
 
 `evaluateZeroDteGates` no longer pushes a `cross_system_conflict` block. The conflict
 determination itself is real and useful cross-desk-disagreement information (a 0DTE entry
@@ -27,7 +27,7 @@ record's existing `applicable: false`).
 gate WOULD have done (would_block at score < 55), preserved as ongoing evidence in case a future
 gate redesign wants that history.
 
-## Blast radius
+### Blast radius
 
 - `ZeroDteGateVerdict` type gained the new `crossSystemConflict` field (always populated by
   `evaluateZeroDteGates`; the four `refresh*` helper functions in the same file spread `...gate`
@@ -41,7 +41,7 @@ gate redesign wants that history.
   field (conflict still flagged, never blocks, at any score including well below the old 55
   floor), plus a new CONDOR-inapplicable (`null`) test and a no-conflict-clears-clean test.
 
-## Evidence
+### Evidence
 
 Full `src/lib/zerodte/*.test.ts` suite: 1305 pass / 0 fail on Node 20 (1 pre-existing skip,
 unrelated). `npx tsc --noEmit` clean. Before the fix, the rewritten tests failed (RED) asserting

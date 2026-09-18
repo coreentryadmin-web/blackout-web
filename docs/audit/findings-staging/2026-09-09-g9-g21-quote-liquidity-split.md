@@ -1,8 +1,8 @@
-# G-9/G-21 clean separation: quote integrity vs contract liquidity/depth
+## G-9/G-21 clean separation: quote integrity vs contract liquidity/depth
 
 > **kind:** FINDING
 
-## Root cause
+### Root cause
 
 `evaluateQuoteValidity` (plan.ts, G-9) conflated two distinct failure modes under one
 `QuoteInvalidReason` type: **quote INTEGRITY** (is the book real, sane, in-band, fresh —
@@ -12,7 +12,7 @@ thin, or vice versa (a crossed book with plenty of size is still not committable
 independent axes, but the single reason type meant gates.ts could only ever surface ONE gate
 code (`plan_quote_invalid`) for either failure, hiding which concern actually fired.
 
-## Fix
+### Fix
 
 Split into two SIBLING checks, neither a branch of the other:
 - **G-9** (`evaluateQuoteValidity`) now owns ONLY zero_bid/crossed/locked/mark_out_of_band/
@@ -31,7 +31,7 @@ Split into two SIBLING checks, neither a branch of the other:
 BOTH quote-invalid and thin at once and gates.ts surfaces BOTH distinct codes
 (`plan_quote_invalid` and `plan_thin_size`/`plan_no_volume_or_oi`) rather than picking one.
 
-## Blast radius
+### Blast radius
 
 - `plan.ts`: `buildContractPlan` now accepts `openInterest`/`dayVolume` (in addition to the
   existing `bidSize`/`askSize`) and computes both reasons independently.
@@ -56,7 +56,7 @@ Note: G-9's live-commit-path timestamp hardening (a missing quote timestamp shou
 UNKNOWN/BLOCK rather than silently pass) is item 10 of this review's plan and is addressed
 together with the live-commit-path precondition work (item 9), not here.
 
-## Evidence
+### Evidence
 
 Full `src/lib/zerodte/*.test.ts` suite: 1312 pass / 0 fail on Node 20 (1 pre-existing unrelated
 skip). Before the fix, `plan.test.ts`'s thin_size test failed (RED, `null !== 'thin_size'`,

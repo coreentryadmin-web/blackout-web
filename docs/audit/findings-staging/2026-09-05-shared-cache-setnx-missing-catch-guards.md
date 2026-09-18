@@ -8,7 +8,7 @@
 | **Severity** | P2 (undocumented behavior change on transient Redis error, not an outage/crash risk) |
 | **Area** | Discord dedup guards (Thermal, HELIX, Dark Pool) |
 
-## Root cause
+### Root cause
 
 PR #3960 (CLQ-037/044) correctly stopped `sharedCacheSetNx` from silently swallowing a Redis
 `SET NX` error and falling back to an in-memory acquire — before that fix, a Redis error meant
@@ -32,7 +32,7 @@ change nobody decided on purpose:
 - `src/lib/darkpool-discord-notify.ts:33` (`claimDarkpoolDiscordPrint`)
 - `src/lib/discord-eod-recap.ts:39` (`claimDiscordEodRecap`)
 
-## Why this matters (blast radius)
+### Why this matters (blast radius)
 
 None of the 6 crash — each route has its own outer `try/catch` (confirmed for `thermal-discord`,
 returns a proper 500 + `logCronRun` failure) or is caught by Next.js's own route-handler error
@@ -44,7 +44,7 @@ as merged, a Redis blip during the dedup check now fails the **entire** cron run
 scheduled Thermal/HELIX/Dark-Pool post is silently skipped for that cycle, which is a worse outcome
 for a scheduled digest than an occasional duplicate.
 
-## Fix
+### Fix
 
 Added `.catch(() => true)` to all 6 call sites, matching the exact pattern already used by
 `desk-warm`/`vector-pick-sweep`'s overlap locks and the 13 other already-guarded
@@ -53,7 +53,7 @@ duplicate-tolerant guards without touching `shared-cache.ts` itself (that fix st
 this file's own history — #3960 was itself a real fix for a real latent bug in
 `helix-alert-notify.ts`, just incomplete).
 
-## Tests
+### Tests
 
 Added regression tests for all 6 call sites (RED→GREEN proven via `git stash` on just the 6 source
 files, keeping the new tests): 6/13 targeted tests failed pre-fix, 13/13 pass post-fix. Following
@@ -64,7 +64,7 @@ of "Redis connected but the command throws" isn't available; the source-text ass
 `.catch(() => true)` guard is present and hasn't regressed, which is exactly what #3960's own test
 proves for the removed fallback. `npx tsc --noEmit` clean.
 
-## Fix rationale — what was deliberately NOT done
+### Fix rationale — what was deliberately NOT done
 
 Did not touch `zerodte-service.ts:986` (`refreshSharedBoardInBackground`) or
 `helix-alert-notify.ts:62` — both already have their own explicit `try/catch` with the right

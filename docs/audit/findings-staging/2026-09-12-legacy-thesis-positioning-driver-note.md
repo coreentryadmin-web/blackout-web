@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk Legacy thesis: "positioning" scoring driver never named WHICH evidence drove it
+## Night Hawk Legacy thesis: "positioning" scoring driver never named WHICH evidence drove it
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | Legacy overnight-digest thesis text (`buildDeterministicThesis`, `deterministic-edition.ts`) |
 | **Severity** | P3 — narrative completeness gap, not a correctness bug |
 
-## What was missing
+### What was missing
 
 `buildDeterministicThesis` can publish a card with `key_signal` reading e.g. `"BULLISH —
 positioning + flow · score 78 (A)"`, but until this fix the thesis prose only ever surfaced ONE
@@ -25,7 +25,7 @@ exists but isn't surfaced" gap class this session already fixed for "news" (#482
 This is the same fix pattern applied to a third `key_signal` driver: `pickCatalystHeadline` for
 news, `smartMoneyDriverNote` for smart-money, and now `positioningDriverNote` for positioning.
 
-## Fix
+### Fix
 
 Added `positioningDriverNote(dossier, isLong)`, checked in the same priority order
 `scoreOptionsPositioning` weighs its inputs (dark-pool up to 6pts, strike stacks up to 7pts,
@@ -43,7 +43,7 @@ Wired in as `Positioning: <note>.` in the thesis, gated on `topDrivers.some(d =>
 not replace) the existing unconditional dealer-greek-flow line, since dealer flow is a genuinely
 different, independent data source.
 
-## Evidence
+### Evidence
 
 - RED: stashed the `deterministic-edition.ts` change, ran `deterministic-edition.test.ts` — 3
   failures (the dark-pool, strike-stack, and OI-change positive-evidence tests; the two
@@ -52,7 +52,7 @@ different, independent data source.
 - `npx tsc --noEmit`: clean.
 - Full suite (`npm test`, Node 20): 13868 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 The existing dealer-greek-flow line (`Dealer positioning <bias>.`, gated on `pos_score >= 8` alone,
 not on `topDrivers`) is untouched — it is a separate, already-shipped piece of evidence from a

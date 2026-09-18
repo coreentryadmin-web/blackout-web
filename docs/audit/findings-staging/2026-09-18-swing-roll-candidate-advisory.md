@@ -1,4 +1,4 @@
-# Ask Largo swing play-brief never warned before an automatic roll executes, despite the exact signal being computed every tick
+## Ask Largo swing play-brief never warned before an automatic roll executes, despite the exact signal being computed every tick
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P3 (member-facing narrative gap — a real, live signal a member would want advance warning of was silently absent, not incorrect) |
 | **Status** | FIXED — `fix/swing-roll-candidate-advisory` |
 
-## Root cause
+### Root cause
 
 `manage.ts`'s `evaluateSwingManagement` always computes `dteMigration`/`rollIntent` — theta decaying
 faster than thesis progress inside the lane's migration-DTE window, the exact pre-roll signal
@@ -24,7 +24,7 @@ Command Deck has no UI for the live signal either (no reference anywhere in
 underlying FINDINGS 2026-08-06 SEV-3 pattern: data computed and persisted every tick, never read
 back out.
 
-## Evidence
+### Evidence
 
 Verified in source, not speculation:
 - `src/lib/swing/manage-sync.ts:400-401`: `dte_migration: verdict.dteMigration` /
@@ -39,7 +39,7 @@ Verified in source, not speculation:
   clean, which is why the fix surfaces `dte_migration.reason`'s prose instead, gated on
   `roll_intent.roll === true` (the post-veto authoritative "yes").
 
-## Blast radius
+### Blast radius
 
 Single extraction site (`manageObservablesFromEvent` in `live-plays.ts`) threaded through the
 existing `HorizonPlay` → `TerminalPlay` → play-brief pipeline (`horizon-plays.ts` →
@@ -47,7 +47,7 @@ existing `HorizonPlay` → `TerminalPlay` → play-brief pipeline (`horizon-play
 `play-brief.ts`). No other call site reads this event data. Every OPEN swing position currently
 inside its migration-DTE window with a genuine roll candidate was affected.
 
-## Fix rationale
+### Fix rationale
 
 Threaded a new optional `rollCandidate: { reason: string } | null` field end-to-end, gated on
 `roll_intent.roll === true` AND a real string `dte_migration.reason` — malformed/partial shapes
@@ -60,7 +60,7 @@ Deliberately reused `dte_migration.reason`'s prose rather than `roll_intent.reas
 still carries the stale pre-PR-15 internal note, which would have read as broken/confusing copy to
 a member.
 
-## Verification
+### Verification
 
 - `npx tsx --experimental-test-module-mocks --test src/lib/swing/live-plays.test.ts src/lib/swing/play-brief.test.ts`
   — 94/94 pass. RED→GREEN independently confirmed: reverted only the source fix (kept the 4 new

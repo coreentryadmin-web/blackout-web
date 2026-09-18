@@ -1,4 +1,4 @@
-# Night Hawk Legacy overnight-edition recap_summary double-periods whenever market tide is unavailable
+## Night Hawk Legacy overnight-edition recap_summary double-periods whenever market tide is unavailable
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Legacy overnight edition (`GET /api/market/nighthawk/edition`), `recap_summary` field |
 | **Files** | `src/features/nighthawk/lib/format.ts` (`tideSummary`, `formatEtfTides`), `src/features/nighthawk/lib/format.test.ts` (new) |
 
-## Context
+### Context
 
 Live capture from `GET /api/market/nighthawk/edition` (2026-09-10, ~13:52 UTC, pre-open) during
 the standing 5-engine live monitor cycle:
@@ -20,7 +20,7 @@ the standing 5-engine live monitor cycle:
 
 Note the double period right after "unavailable" — `"unavailable.."`.
 
-## Root cause
+### Root cause
 
 `tideSummary()` (`format.ts:164`) returns a full sentence including its own trailing period on
 two of its three branches:
@@ -42,7 +42,7 @@ concatenate into `".."`. The third (real-tide) branch never had this problem bec
 included a trailing period of its own, which is exactly why the bug was branch-specific and easy
 to miss in earlier live captures that happened to run during a session with real tide data.
 
-## Evidence
+### Evidence
 
 RED→GREEN via `src/features/nighthawk/lib/format.test.ts` (new): pre-fix, `buildMarketRecap()`
 with `tide: null` produced `tide === "Market tide unavailable."` and
@@ -53,7 +53,7 @@ only (RED), then `git stash pop` (GREEN) — both runs on Node 20.
 Full `npm test` (Node 20): pending in the same PR wave, see PR body.
 `npx tsc --noEmit`: clean.
 
-## Blast radius
+### Blast radius
 
 `grep -rn "tideSummary" src/` confirms exactly two call sites, both now handled:
 - `buildMarketRecap()`'s `summary` template — already appended its own period; now correctly
@@ -67,7 +67,7 @@ No other formatter reads `tideSummary()`'s return value, and no schema/API shape
 the text of `recap_summary` (and the per-ETF tide lines, cosmetically identical either way since
 that call site was patched to preserve its own period).
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 Considered stripping the period only inside `buildMarketRecap()`'s consumption of `tide` (e.g.
 `tide.replace(/\.$/, "")`) instead of changing `tideSummary()` itself — rejected because that

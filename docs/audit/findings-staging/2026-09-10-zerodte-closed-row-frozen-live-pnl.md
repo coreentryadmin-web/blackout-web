@@ -1,4 +1,4 @@
-# 0DTE board — CLOSED rows disclose a rounding-distorted live_pnl_pct instead of the true exit_pnl_pct — FIXED
+## 0DTE board — CLOSED rows disclose a rounding-distorted live_pnl_pct instead of the true exit_pnl_pct — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk 0DTE board — `ZeroDteBoard.tsx` / `marks-math.ts` (`closedPnlDisplay`) |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Found during the standing 5-engine live monitor cycle (2026-09-10), cross-checking
 `GET /api/market/zerodte/board`'s ledger row against `GET /api/market/zerodte/record` for the
@@ -27,7 +27,7 @@ floor armed by a +47.73% peak — the protective floor exits so the green trade 
 identical row (`live_pnl_pct`) reads 0%, and that is the field the live `/nighthawk` UI's peak-tranche
 disclosure tooltip actually renders.
 
-## Root cause
+### Root cause
 
 **Corrected mid-investigation** (see the note at the end) — the first-pass diagnosis of "the
 live-marks poller stops re-quoting a dead contract, so `live_pnl_pct` freezes stale" was WRONG.
@@ -76,7 +76,7 @@ entry). That conclusion is correct and does not conflict with this fix — they 
 (no — a field designed for display self-consistency is the wrong source for a realized-outcome
 disclosure, regardless of how correctly that field computes what it's designed to compute).
 
-## Evidence
+### Evidence
 
 Live capture (one temp Clerk premium session, deleted after), `GET /api/market/zerodte/board`
 ledger row for QQQ vs `GET /api/market/zerodte/record?days=1`'s matching play — both routes carry
@@ -90,7 +90,7 @@ push -- src/lib/zerodte/marks-math.ts` → 65/67 pass, 2 fail (the two new asser
 `-2.27`/`-10` got `0`/`5`); `git stash pop` restores 67/67 pass. `ZeroDteBoard.test.ts` (unaffected
 by this change) 28/28 pass. `npx tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 
 Single shared function, single call site: `closedPnlDisplay` is called from exactly one place in
 the whole repo — `ZeroDteBoard.tsx`'s `StatsCell` (verified via repo-wide grep) — so both the
@@ -100,7 +100,7 @@ independent field and does NOT go through `closedPnlDisplay` at all — confirme
 double-fix risk there. `overlayLiveMark` (the B-9 SSE-overlay function) returns early for CLOSED
 rows (`{...row, mark_stale: false}`), so it never touches `exit_pnl_pct` and needed no change.
 
-## Fix rationale
+### Fix rationale
 
 Added `exit_pnl_pct` as an optional field on `closedPnlDisplay`'s row type and derived
 `realized = row.exit_pnl_pct ?? row.live_pnl_pct ?? null`, using `realized` for BOTH `pct` (the

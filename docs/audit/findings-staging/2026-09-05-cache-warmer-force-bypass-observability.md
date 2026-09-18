@@ -1,13 +1,13 @@
 > **kind:** FINDING
 
-# Cache-warmer `force=1` off-hours bypasses were invisible — FIXED
+## Cache-warmer `force=1` off-hours bypasses were invisible — FIXED
 
 | **Status** | FIXED |
 |------------|-------|
 | **Pri** | P2 |
 | **Area** | performance / observability — `desk-warm`, `heatmap-warm`, `meridian-warm`, `zerodte-warm` |
 
-## Symptom
+### Symptom
 
 Standing performance-mandate CloudWatch sweep (2026-09-05, ~02:00-02:25 UTC / Fri 22:00-22:25 ET,
 a weekday evening well outside the 4am-8pm ET extended-warm window) found real, non-skipped
@@ -16,7 +16,7 @@ the exact 24/7-warming shape the already-fixed `CACHE_WARM_ALWAYS` leftover-secr
 2026-09-03) produced, reproduced here even though that fix is confirmed live and complete (verified
 `CACHE_WARM_ALWAYS` has zero remaining functional readers in the repo).
 
-## Root cause
+### Root cause
 
 `shouldRunCacheWarmer(force, now)` correctly lets `force=1` bypass `isEtExtendedWarmHours` — that
 override is intentional (legitimate on-demand/debug warms) and not itself a bug. But nothing logged
@@ -30,7 +30,7 @@ debug habit, or an undiscovered third dispatcher could all produce the identical
 would stay undiagnosable the same way `CACHE_WARM_ALWAYS` was until someone hand-checked Secrets
 Manager.
 
-## Fix
+### Fix
 
 `shouldRunCacheWarmer` now takes an optional `key` and logs
 `[cache-warmer-gate] force=1 bypassed the hours gate for '<key>' at <iso>` via `console.info`
@@ -40,7 +40,7 @@ during legitimate hours, and never logs a plain unforced skip). All four call si
 change any gating behavior — force still always runs — it makes the next off-hours saturation
 incident attributable from a CloudWatch Logs grep instead of requiring a manual secrets/code audit.
 
-## Evidence
+### Evidence
 
 - `src/lib/cache-warmer-gate.test.ts` — new test proves the log fires exactly once for an
   off-hours force bypass, zero times for an in-hours force call, and zero times for a plain
@@ -50,7 +50,7 @@ incident attributable from a CloudWatch Logs grep instead of requiring a manual 
   (consistent with something re-triggering near a ~90s heal-style cadence) — the measured baseline
   this fix makes attributable going forward.
 
-## Follow-up (not this PR)
+### Follow-up (not this PR)
 
 Once this ships and the next off-hours episode logs a `key`, cross-reference against
 `RTH_WRITER_HEAL_AFTER_MIN` / the actual caller to find the real trigger — candidates not yet ruled

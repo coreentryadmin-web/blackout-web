@@ -1,4 +1,4 @@
-# Ask Largo "Book context" rendered a pending-entry-decision framing on an already-CLOSED trade
+## Ask Largo "Book context" rendered a pending-entry-decision framing on an already-CLOSED trade
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo — Swing play-brief (`src/lib/swing/play-brief-intel.ts::bookContextSection`) |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — 2026-09-12 live coordinator cycle, spot-checking a live CLOSED play-brief for gaps beyond what CLAUDE.md's Ask Largo section already lists |
 
-## Root cause
+### Root cause
 
 `bookContextSection` compares the play's ticker/direction against `ctx.openBook` (the
 member's CURRENT live book) and, on overlap, renders copy written for a PENDING entry
@@ -27,7 +27,7 @@ guidance about an action the member is about to take — when in fact nothing ab
 brief is actionable, and the overlap being reported has nothing to do with the trade
 under review.
 
-## Evidence
+### Evidence
 
 Live `GET /api/market/swing/play-brief?playId=SWING:AAPL:36&ticker=AAPL&positionId=36&status=CLOSED`
 (2026-09-12) — a real closed AAPL position (entered 2026-09-03, stopped out -56.19% on
@@ -45,7 +45,7 @@ unrelated re-entry, not anything about the closed trade. A member reading this c
 brief would reasonably read it as "you're about to add AAPL risk, don't" — a decision
 that isn't on the table anywhere in a CLOSED-bucket brief.
 
-## Blast radius
+### Blast radius
 
 - `bookContextSection` is the only call site rendering this copy (checked: no other
   consumer of `checkPortfolioOverlap`'s output uses this present-tense framing).
@@ -55,7 +55,7 @@ that isn't on the table anywhere in a CLOSED-bucket brief.
   retrospective; it just doesn't need a second, differently-framed "book overlap"
   section that implies a live decision.
 
-## Fix
+### Fix
 
 `bookContextSection` now returns `null` immediately for `play.status === "CLOSED"`,
 before even checking the book for overlap — gated out entirely rather than reworded
@@ -63,7 +63,7 @@ past-tense, because "book overlap at review time" is a fact about the CURRENT bo
 about the closed trade being reviewed, so it doesn't belong on this bucket's brief at
 all regardless of phrasing.
 
-## Evidence (before/after)
+### Evidence (before/after)
 
 - RED before fix (git-stashed the source fix, kept only the new test):
   `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts`
@@ -74,7 +74,7 @@ all regardless of phrasing.
   unrelated).
 - `npx tsc --noEmit`: clean.
 
-## Market-open validation
+### Market-open validation
 
 Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` — during the next RTH session, pull
 `GET /api/market/swing/play-brief` for any CLOSED position whose ticker/theme overlaps

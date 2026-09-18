@@ -1,4 +1,4 @@
-# Largo swing brief — stale GEX-only flip in dealerPostureLine — FIXED
+## Largo swing brief — stale GEX-only flip in dealerPostureLine — FIXED
 
 > **kind:** `FINDING`
 
@@ -9,15 +9,15 @@
 | **Area** | Night Hawk Swings / Ask Largo |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 `dealerPostureLine()` resolved `flip` as `vec?.gammaFlip ?? gex?.flip` with no staleness gate. When live Vector supplied `regime.posture` but no `gammaFlip`, a stale GEX-only flip still appeared in the `γ-flip` suffix under a **"Right now"** lead — same Largo C2 class fixed in sibling paths (#4360/#4364/#4367/#4372/#4374/#4375).
 
-## Fix
+### Fix
 
 Per-value stale GEX gating on flip (mirrors `collectFocalLevels`, `counterThesisLine`, break-watch): suppress flip when sourced from stale GEX-only fallback; live Vector `gammaFlip` still wins.
 
-## Evidence
+### Evidence
 
 `npx tsx --test src/lib/swing/play-brief-narrative.test.ts` — two new stale-parity cases pass.
 

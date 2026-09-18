@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk thesis's flow-streak sentence fabricated agreement with the play's direction
+## Night Hawk thesis's flow-streak sentence fabricated agreement with the play's direction
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | `buildDeterministicThesis` (`src/features/nighthawk/lib/deterministic-edition.ts`) — the flow-conviction sentence in the member-facing thesis text |
 | **Severity** | P2 — a real narrative-correctness defect: a disagreeing flow signal was presented as corroborating evidence for the trade. No crash, no data loss, but a member reading the thesis was told the opposite of what the ticker's own flow history actually showed. |
 
-## Root cause
+### Root cause
 
 `dossier.flow_streak` is a **ticker-level** measurement — a 10-day DB rollup of net daily
 call/put premium (`flow-streak.ts`'s `computeFlowStreakFromBuckets`), computed independently of
@@ -56,21 +56,21 @@ buildDeterministicThesis(scored, dossier).thesis
 // (before the fix — the streak was actually a 4-day BEARISH/PUT-dominated streak)
 ```
 
-## Blast radius
+### Blast radius
 
 Only this one sentence in `buildDeterministicThesis` was affected — the sibling low-flow-score
 branch two lines below (`"{streak_days}-day flow streak building."`) already used
 direction-neutral wording (no `dirWord`) and needed no change. No other consumer of
 `dossier.flow_streak` was found to make the same mistake.
 
-## Fix
+### Fix
 
 The streak clause now derives its direction word from the streak's own `direction` field
 (`"short"` → `"bearish"`, `"long"` → `"bullish"`), falling back to the play's `dirWord` only when
 a dossier carries no streak direction at all (a defensive default — every existing test fixture
 in this file omits the field, so this preserves their behavior unchanged).
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered instead omitting the streak clause entirely when it disagrees with the play's
 direction — rejected because silently dropping a real, measured signal loses information a
@@ -79,7 +79,7 @@ turned bullish after 4 bearish days"). Stating the streak's true direction is th
 removes the fabrication without discarding real data; a richer "despite a 4-day bearish streak"
 framing is a narrative enhancement beyond the scope of this correctness fix, not attempted here.
 
-## Evidence
+### Evidence
 
 - Reproduced directly via `buildDeterministicThesis` with a synthetic LONG-scored candidate and a
   bearish `flow_streak`: printed `"4-day bullish flow streak"` before the fix, `"4-day bearish
@@ -92,7 +92,7 @@ framing is a narrative enhancement beyond the scope of this correctness fix, not
 - `npx tsc --noEmit`: clean.
 - Full suite (Node 20): 14023 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 `scorer.ts`'s own scoring-bonus guard (already correct — this fix only closes the parallel gap in
 the narrative text) and the direction-neutral low-flow-score branch (never claimed a direction,

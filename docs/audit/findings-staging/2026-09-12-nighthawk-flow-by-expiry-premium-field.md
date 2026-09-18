@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk dossier's "Flow by expiry" narrative line always printed $0
+## Night Hawk dossier's "Flow by expiry" narrative line always printed $0
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | `formatTickerDossierText` (`src/features/nighthawk/lib/format.ts`) — the per-ticker dossier text fed into the Legacy edition's Claude prompt (`buildClaudePrompt`) |
 | **Severity** | P2 — a narrative line always showed $0 regardless of real flow; no crash, no visible symptom outside the AI-facing prompt text |
 
-## Root cause
+### Root cause
 
 The "Flow by expiry" line computed premium as:
 
@@ -35,7 +35,7 @@ combined). This text is not member-facing UI, but it IS fed directly into the Le
 edition's Claude prompt — a false "$0 flow" signal in the prompt is worse than omitting the line
 entirely, since it reads as a measured absence rather than a broken field.
 
-## Blast radius
+### Blast radius
 
 Checked every other consumer of `flow_by_expiry`/`fetchUwFlowPerExpiry` for the same guess:
 `dossier.ts` just stores the raw rows (no field extraction), the SPX desk (`spx-desk.ts`) and
@@ -46,7 +46,7 @@ those are the real field names and this `format.ts` call site was the outlier. `
 has a second, unrelated `r.total_premium ?? r.premium` read for `dossier.flows` (a different data
 source, UW flow-alerts, already audited/correct in a prior session) — left untouched.
 
-## Fix
+### Fix
 
 Extracted the computation into an exported, directly-testable `flowByExpiryPremium(row)` helper:
 sums the real `call_premium`/`put_premium` fields first, falling back to the old guessed
@@ -54,7 +54,7 @@ sums the real `call_premium`/`put_premium` fields first, falling back to the old
 defense against a future upstream shape that might use the singular field). Added 3 regression
 tests in `format.test.ts` using the real row shape.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered fixing this inline without extracting a helper, but `formatTickerDossierText` takes a
 full `TickerDossier` + `ScoredCandidate` (dozens of required fields) as input — testing the fix
@@ -63,7 +63,7 @@ calculation into its own exported function is the smallest change that makes the
 isolation, consistent with the "test the pure logic" pattern already used elsewhere in this
 session's fixes.
 
-## Evidence
+### Evidence
 
 - Live UW pull of `/api/stock/AAPL/flow-per-expiry` confirming the real row shape (no `premium`/
   `total_premium` field; `call_premium`/`put_premium` present).
@@ -76,7 +76,7 @@ session's fixes.
 - `npx tsc --noEmit`: clean.
 - Full suite (`npm test`, Node 20): 13925 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 `dossier.flows.reduce((s, f) => s + Number(f.total_premium ?? f.premium ?? 0), 0)` a few lines
 above this fix (the "Flow today" line, a different data source — UW flow-alerts, not

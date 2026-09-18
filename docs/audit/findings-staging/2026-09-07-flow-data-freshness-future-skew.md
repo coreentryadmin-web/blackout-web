@@ -1,4 +1,4 @@
-# SPX desk flow freshness — future-skewed print reads as 0ms live (Largo/desk age-0 trap) — FIXED
+## SPX desk flow freshness — future-skewed print reads as 0ms live (Largo/desk age-0 trap) — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | SPX Slayer desk / flow staleness gate |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Found while sweeping for other instances of the age-0 future-skew trap after #4471 (options
 cluster marks), #4472 (Largo `matrix_age_sec`/tape coverage), and #4473 (Largo rail-level ladder)
@@ -27,14 +27,14 @@ payload, with no equivalent guard. `resolveFlowDataAgeMs()` (the function SPX Sl
 report the WHOLE desk's flow data as freshly live, potentially unblocking entries on a stale/bad
 read.
 
-## Root cause
+### Root cause
 
 `Math.max(0, now - t)` silently clamps any negative age (t in the future) to 0 — "unknown/bad"
 renders as "current," the single most dangerous rounding on a trading desk. Same root cause as
 #4471/#4472/#4473, just a fourth, previously-undiscovered call site found by grepping the repo
 for the pattern after those three merged.
 
-## Fix
+### Fix
 
 `newestFlowAgeMsFromBriefs()` now applies the same `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` (5s)
 fail-closed check used everywhere else in the WS-freshness family: a timestamp more than the
@@ -42,13 +42,13 @@ tolerance ahead of `now` returns `null` (unusable) rather than a clamped age. `f
 itself needed no change — it was already protected upstream via `markFlowDataFresh()`'s existing
 60s future-rejection guard.
 
-## Blast radius
+### Blast radius
 
 Single call site chain: `newestFlowAgeMsFromBriefs` → `resolveFlowDataAgeMs` → SPX Slayer's
 `deskFlowDataAgeMs` (`src/features/spx/lib/spx-desk.ts`) — the flow-staleness signal feeding the
 SPX Slayer play system's desk state. No other consumer of `newestFlowAgeMsFromBriefs` exists.
 
-## Evidence
+### Evidence
 
 RED→GREEN: pre-fix, a future `alerted_at` (`"2026-06-29T16:10:00.000Z"` vs `now`
 `"2026-06-29T16:00:00.000Z"`) returned `0`; post-fix returns `null` — new regression test

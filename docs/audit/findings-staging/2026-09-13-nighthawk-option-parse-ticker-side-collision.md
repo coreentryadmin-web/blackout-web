@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk options-contract side parser could misread a PUT as a CALL for ticker "C"
+## Night Hawk options-contract side parser could misread a PUT as a CALL for ticker "C"
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | `parseOptionsContract` (`src/features/nighthawk/lib/option-contract-parse.ts`) — the shared pure parser reused by `grounding.ts`, `legacy-discord-trade-notify.ts`, `play-outcomes.ts`, `deterministic-edition.ts`, `legacy-play-contract.ts`, and `nighthawk-verifier.ts` |
 | **Severity** | P2 — a real (if narrow) live-correctness risk: a misparsed side would ground/publish the wrong side's premium/OI, and could post the wrong long/short direction to the live Discord trade bot. Not observed to have shipped a wrong number yet — caught proactively, no live incident. |
 
-## Root cause
+### Root cause
 
 The side-detection regex was a single combined alternation:
 
@@ -32,7 +32,7 @@ A CALL play on ticker C happened to parse correctly by coincidence (bare `C` alr
 "call"), which is exactly why this went unnoticed — only a PUT play on a same-letter ticker was
 affected.
 
-## Blast radius
+### Blast radius
 
 Checked every consumer of `parseOptionsContract` (`grep -rl` across `src/`):
 
@@ -48,7 +48,7 @@ Checked every consumer of `parseOptionsContract` (`grep -rl` across `src/`):
   `nighthawk-verifier.ts` all consume the same parser; none needed changes since the fix is
   internal to the parser and the return shape is unchanged.
 
-## Fix
+### Fix
 
 Try an unambiguous full-word match before ever falling back to the bare single-letter
 abbreviation:
@@ -62,7 +62,7 @@ symbol. The bare-abbreviation fallback (needed for Claude-generated freeform tex
 `"$12 C"`/`"$12 P"` shorthand) is unchanged for every ticker that isn't itself literally `C` or
 `P`.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered making the parser ticker-aware (skip the leading ticker token entirely before
 searching for a side match) — rejected as more invasive for no extra benefit: the two-step
@@ -72,7 +72,7 @@ actually ships (see Evidence). A residual edge case (ticker literally "C"/"P" co
 *abbreviated* `"C $62 P @ ..."` shorthand) is not solved by either approach without hard-coding
 ticker awareness, and is far rarer than the full-word case this fix closes.
 
-## Evidence
+### Evidence
 
 - Live-verified production always uses full `"CALL"`/`"PUT"` words in the deterministic template
   (`deterministic-edition.ts`'s own docstring: `"AAPL $120 CALL @ $4.00 — Jul 18"`), confirming
@@ -87,7 +87,7 @@ ticker awareness, and is far rarer than the full-word case this fix closes.
 - `npx tsc --noEmit`: clean.
 - Full suite (Node 20): 14020 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 The strike/expiry parsing branches (not implicated — ticker collisions only affect the C/P side
 alternation) and every call site (all consume the parser's return value unchanged; no signature

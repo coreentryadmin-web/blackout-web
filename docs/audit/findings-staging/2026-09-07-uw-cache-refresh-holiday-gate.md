@@ -1,4 +1,4 @@
-# uw-cache-refresh runs unconditionally on market holidays despite `market_hours_only: true` — FIXED
+## uw-cache-refresh runs unconditionally on market holidays despite `market_hours_only: true` — FIXED
 
 > **kind:** FINDING
 
@@ -9,14 +9,14 @@
 | **Area** | Cron infra / UW rate-limit budget |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Found during the standing performance/latency audit mandate, live on Labor Day 2026-09-07 (a
 market holiday falling on a weekday). CloudWatch `elapsed=` logs showed `[cron/uw-cache-refresh]`
 firing **44 times in a 90-minute window** while the 0DTE board reported `trading_day: false` /
 `heat.state: "CLOSED"` — the market was closed the entire time.
 
-## Root cause
+### Root cause
 
 `uw-cache-refresh` is registered in `cron-registry.ts` with `market_hours_only: true`, and its
 description says it exists "to stay under 120/min plan cap" — a rate-sensitive job that should only
@@ -39,7 +39,7 @@ documented in this repo (a job that still RUNS on the wrong side of the event it
 around, emitting output that looks valid) — except here the mismatch is a full trading-calendar
 holiday, not a DST offset.
 
-## Fix
+### Fix
 
 Added the same holiday-aware, RTH-scoped gate other market-hours crons already use —
 `isEtCashRth()` (`et-market-hours.ts`, already checks weekday + `isTradingDayEt` + 9:30-16:00 ET /
@@ -48,7 +48,7 @@ non-RTH request now returns `{ ok: true, skipped: true, reason: "outside RTH (we
 instead of running the fan-out, matching the skip-payload shape `desk-warm`/`platform-warm` already
 use.
 
-## Blast radius
+### Blast radius
 
 Single route: `src/app/api/cron/uw-cache-refresh/route.ts`. No consumer of the Redis keys this cron
 warms is affected during RTH (the only window it now still runs in, unchanged from before) — the
@@ -57,7 +57,7 @@ window. Off-hours/holiday reads of these same Redis keys were already served fro
 last real RTH warm left behind (TTL-bounded), same as before this fix — this only stops the
 WASTED re-fetch, it doesn't change what members see.
 
-## Evidence
+### Evidence
 
 RED→GREEN: new test `uw-cache-refresh gates on isEtCashRth (holiday-aware) before the redis/UW
 fan-out` in `route.test.ts` (static-source-inspection style, matching this file's existing test

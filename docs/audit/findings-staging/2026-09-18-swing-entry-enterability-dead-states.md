@@ -1,4 +1,4 @@
-# Ask Largo swing brief's shared "is this gate text moot?" check missed 2 of 4 dead-entry states, letting a WATCH brief imply clearing a gate would reopen entry when it wouldn't
+## Ask Largo swing brief's shared "is this gate text moot?" check missed 2 of 4 dead-entry states, letting a WATCH brief imply clearing a gate would reopen entry when it wouldn't
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P3 (member-facing narrative correctness — a false-implication bug, same class already fixed 3 times for other dead-entry states) |
 | **Status** | FIXED — `fix/swing-entry-enterability-dead-states` |
 
-## Root cause
+### Root cause
 
 `deadPlayReason` is the shared check four Largo-facing renderers gate on to know when a WATCH
 play's entry mechanics are already moot, independent of gate state — so they can avoid implying
@@ -24,7 +24,7 @@ contract-expired, extended-chase)" — the engine itself knew all 3 non-invalida
 could coexist with live gate evidence. The shared moot-check consumers were only ever updated for
 2 of them.
 
-## Evidence
+### Evidence
 
 Confirmed `SwingEntryState` (`taxonomy.ts`) is a real union type including `"EXTENDED_CHASE"` and
 `"EXPIRED"`, and `SwingSetupState` includes `"EXTENDED"`. Confirmed 4 real call sites of
@@ -37,13 +37,13 @@ labels alongside an un-qualified "**Gates blocking entry:**" header — the same
 already fixed for INVALIDATED (2026-09-14) and deadline-expired (2026-09-17), just never extended
 to these two.
 
-## Blast radius
+### Blast radius
 
 Single function fix (`deadPlayReason`) propagates correctly to all 4 call sites without touching
 any of them — each already treats a non-null `deadPlayReason` result as "entry is moot", so
 recognizing the 2 additional states there fixes all 4 renderers at once.
 
-## Fix rationale
+### Fix rationale
 
 Extended `deadPlayReason`'s existing if-chain with two more checks, mirroring the exact pattern
 already used for INVALIDATED/deadline-expired: `entryStatus === "EXPIRED"` → "contract expired";
@@ -52,7 +52,7 @@ window". Added `entryStatus` to the function's narrow structural parameter type 
 minimal, not the full `TerminalPlay`, per the function's own existing dependency-cycle-avoidance
 convention).
 
-## Verification
+### Verification
 
 - Independent RED→GREEN (reverted only the source file, kept the tests):
   `npx tsx --experimental-test-module-mocks --test src/lib/swing/entry-enterability.test.ts` —

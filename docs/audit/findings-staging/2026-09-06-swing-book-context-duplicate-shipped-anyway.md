@@ -1,4 +1,4 @@
-# Ask Largo swing brief — book concentration duplicated across "Trade manager read" and "Book context" (shipped despite a flagged blocker)
+## Ask Largo swing brief — book concentration duplicated across "Trade manager read" and "Book context" (shipped despite a flagged blocker)
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Swing / Ask Largo trade-manager narrative coaching layer |
 | **Files** | `src/lib/swing/play-brief-narrative-coaching.ts`, `src/lib/swing/play-brief-narrative-coaching.test.ts`, `src/lib/swing/play-brief.test.ts` |
 
-## Context
+### Context
 
 PR #4110 ("coaching v3") added `bookContextCoaching()` to `play-brief-narrative-coaching.ts`,
 wired into the "Trade manager read" bullets. It calls the exact same `checkPortfolioOverlap()`
@@ -27,14 +27,14 @@ This is a process gap in the merge pipeline (a Cursor-authored PR self-merged pa
 outstanding blocking review), not just a code bug — worth the operator/coordinator's attention
 separately from this fix; this finding only covers the code-level duplication.
 
-## Fix
+### Fix
 
 Removed `bookContextCoaching()` and its `collectCoachingBullets` call site entirely —
 `bookContextSection()` already owns this concern as a dedicated, prominent "Book context" section
 that reuses the SEV-9 theme partition directly. Removed the now-unused `checkPortfolioOverlap`
 import and the now-broken unit test that imported the deleted function.
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 New integration test in `play-brief.test.ts` composes a full envelope for an NVDA play against an
 `openBook` holding AMD/SMH (both theme "semis", per `theme-cluster.ts`'s ETF-proxy override) and
@@ -45,13 +45,13 @@ read, Book context` (2 !== 1) — the exact live duplication. After removing `bo
 `play-brief-intel.test.ts`/`play-brief-diff.test.ts`. `tsc --noEmit` clean. Full `npm test`
 (Node 20): **12900/12900 pass, 0 fail, 3 skipped**.
 
-## Blast radius
+### Blast radius
 
 Only `play-brief-narrative-coaching.ts`'s coaching-bullet list changes — one fewer bullet in
 "Trade manager read" when the book overlaps; "Book context" (unchanged) still carries the same
 information. No API/schema change.
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 - Did not touch any of the other genuinely new coaching functions #4110 shipped (`vexCoaching`,
   `flowPrintsCoaching`, `macroTapeCoaching`, `execSlippageCoaching`, `shortInterestCoaching`,

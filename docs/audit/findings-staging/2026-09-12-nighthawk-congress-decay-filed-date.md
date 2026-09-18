@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk (Legacy/overnight scorer): congressional-trade decay measures the wrong date
+## Night Hawk (Legacy/overnight scorer): congressional-trade decay measures the wrong date
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | Night Hawk overnight-digest scorer (`scoreSmartMoney`/`congressTradeDecayMultiplier`, shared by Legacy's `edition-builder.ts`/`hunt-builder.ts` pipeline) |
 | **Severity** | P2 — silent, real weighting error on live smart-money scoring; no crash, no visible symptom |
 
-## Root cause
+### Root cause
 
 `congressTradeDecayMultiplier` (`src/features/nighthawk/lib/scorer.ts`) decays a congressional
 trade's scoring weight by how recent it is, with its own docstring stating the intent plainly:
@@ -57,7 +57,7 @@ self-consistency, never reality. This is the same failure shape as the OI-change
 this session (#4839): the scorer's assumption about an upstream field name was never checked
 against the live API, and the tests inherited the same wrong assumption instead of catching it.
 
-## Blast radius
+### Blast radius
 
 `congressTradeDecayMultiplier` has exactly one caller, `scoreSmartMoney` (`scorer.ts`), Night
 Hawk's shared smart-money scoring function used by both Legacy's overnight digest and
@@ -65,7 +65,7 @@ Hawk's shared smart-money scoring function used by both Legacy's overnight diges
 part of #4827) reads the same congress rows for narrative purposes but only checks `txn_type`
 presence/side, not recency, so it is unaffected by this specific bug. Single-surface fix.
 
-## Fix
+### Fix
 
 - `scorer.ts`: added `row.filed_at_date` as the first-checked field in
   `congressTradeDecayMultiplier`'s fallback chain (kept every existing fallback name afterward,
@@ -75,7 +75,7 @@ presence/side, not recency, so it is unaffected by this specific bug. Single-sur
   assertion that a row with only `transaction_date` (no `filed_at_date` at all) still falls back
   correctly rather than silently scoring 0.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered replacing `transaction_date` entirely with `filed_at_date` semantics throughout, but
 `transaction_date` genuinely IS the correct field for `congressSideWeight`'s buy/sell direction
@@ -83,7 +83,7 @@ read (transaction side, not filing side) — unaffected by this bug, since that 
 `txn_type`, not a date. Only the decay function's date choice was wrong, so only its fallback
 chain changed.
 
-## Evidence
+### Evidence
 
 - Live-pulled real UW congress data confirming `filed_at_date` is the actual field name and
   differs materially from `transaction_date` on the same row.
@@ -92,7 +92,7 @@ chain changed.
 - `npx tsc --noEmit`: clean.
 - Full suite (`npm test`, Node 20): 13830 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 `congressSideWeight` (buy/sell direction) is untouched — it reads `txn_type`, which already
 matches the real UW field exactly, confirmed against the same live pull. Only the decay-by-date

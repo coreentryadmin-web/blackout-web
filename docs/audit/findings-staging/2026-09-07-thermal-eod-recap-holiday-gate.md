@@ -1,4 +1,4 @@
-# thermal-discord EOD recap fired on Labor Day — FIXED
+## thermal-discord EOD recap fired on Labor Day — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Cron infra / Thermal Discord digest |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Post-#4490–#4492 holiday-gate sweep: `thermal-discord` EOD recap still had a real side effect on
 Labor Day 2026-09-07 — `isThermalEodRecapDue` is time-only (16:00–16:30 ET) with no
@@ -22,22 +22,22 @@ before `inMorningWindow()` to match the established pattern in `nighthawk-mornin
 #4490-#4494, avoiding a scope overlap and gate-ordering inconsistency flagged by Cursor on this
 PR. See #4499 for that fix's evidence.)
 
-## Root cause
+### Root cause
 
 Same ET-INTENT class as other holiday gaps: weekday EventBridge schedule + time window without
 NYSE calendar awareness.
 
-## Fix
+### Fix
 
 `thermal-discord-eod.ts`: `isThermalEodRecapDue` now checks `isTradingDayEt(todayEt(now))` before
 the 16:00–16:30 ET band check, returning `false` on a NYSE holiday even inside that band.
 
-## Blast radius
+### Blast radius
 
 One route only (`isThermalEodRecapDue` in `src/lib/thermal-discord-eod.ts`). Trading-day EOD
 recap behavior unchanged.
 
-## Evidence
+### Evidence
 
 RED→GREEN: `src/lib/thermal-discord-breach-state.test.ts` — new test
 `isThermalEodRecapDue — false on NYSE holiday even in 4:00-4:30 ET band` asserts

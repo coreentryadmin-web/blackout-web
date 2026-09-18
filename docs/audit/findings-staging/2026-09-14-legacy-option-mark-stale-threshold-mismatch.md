@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Legacy option-mark staleness uses 0DTE's 5s threshold; a Legacy-specific 30s constant exists but is fully unused
+## Legacy option-mark staleness uses 0DTE's 5s threshold; a Legacy-specific 30s constant exists but is fully unused
 
 | | |
 |---|---|
@@ -9,7 +9,7 @@
 | **Severity** | P3 — live, member-facing, but cosmetic (a freshness label only; price/mark values themselves are unaffected) |
 | **Found by** | NIGHT HAWK LEGACY audit lane, 2026-09-14, via 3 consecutive ~15-min healthcheck cycles (13:37/13:51/14:08 UTC) |
 
-## What's wrong
+### What's wrong
 
 `GET /api/market/nighthawk/legacy-marks` (Legacy's live option-mark feed, polled by the member
 UI every 2.5s via `useLegacyOptionMarks`) computes its `stale` flag with
@@ -50,7 +50,7 @@ intent, and never wired into any consumer — not the option-mark row builder ab
 does run on exactly the 5s cadence the comment describes, confirmed via its own
 `const POLL_MS = 5_000`) either. That hook computes no staleness flag at all client-side.
 
-## Live evidence
+### Live evidence
 
 Three consecutive ~15-minute-apart runs of `npm run healthcheck:legacy -- --json` (this session,
 2026-09-14, 13:37 / 13:51 / 14:08 UTC) all showed the same evidence for DELL's live 2026-09-14
@@ -83,7 +83,7 @@ time of read, which — given Legacy's own 5s REST poll cadence (`use-legacy-quo
 `POLL_MS`) and typical network/render latency on top of it — is a bar a perfectly healthy,
 liquid Legacy contract can trip routinely, not just during genuine provider outages.
 
-## User-facing impact
+### User-facing impact
 
 `row.stale` is not just an audit-script artifact — it flows directly into the live member UI:
 
@@ -99,7 +99,7 @@ freshness badge on real, correctly-priced positions more often than the underlyi
 actually warrants, not a wrong price or a blocked action. But it is a real, live, reproducible
 member-facing signal that this finding shows is being computed against the wrong lane's tuning.
 
-## Why this is a HELD finding, not a direct fix
+### Why this is a HELD finding, not a direct fix
 
 The root cause is unambiguous (traced to one line, one default parameter, one dead constant).
 The **right fix is not**, for two reasons this lane shouldn't decide alone:
@@ -119,7 +119,7 @@ The **right fix is not**, for two reasons this lane shouldn't decide alone:
    Legacy rather than overlooking it — this finding cannot rule that out from the code alone, and
    changing shared `marks-math.ts` defaults touches 0DTE's own tuning if done carelessly.
 
-## Suggested resolution (for whoever picks this up — not prescriptive)
+### Suggested resolution (for whoever picks this up — not prescriptive)
 
 - Decide, with real Legacy quote-cadence data (a longer live sample than this finding's 3
   cycles), what an appropriate Legacy option-mark staleness bar actually is — likely wider than
@@ -140,7 +140,7 @@ The **right fix is not**, for two reasons this lane shouldn't decide alone:
   is corrected — it is accurately reporting the live API's own self-declared staleness, not
   miscomputing anything itself.
 
-## Files involved
+### Files involved
 
 - `src/features/nighthawk/lib/legacy-option-mark-row.ts` — the call site defaulting to 5s.
 - `src/lib/zerodte/marks-math.ts` — `ZERODTE_MARK_STALE_MS` (used), `LEGACY_QUOTE_STALE_MS` (dead).

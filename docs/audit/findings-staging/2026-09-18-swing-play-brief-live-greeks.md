@@ -1,4 +1,4 @@
-# Ask Largo swing play-brief never surfaced live per-position greeks, despite the identical data already rendering on the Command Deck
+## Ask Largo swing play-brief never surfaced live per-position greeks, despite the identical data already rendering on the Command Deck
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P3 (member-facing narrative gap — a real, live data field a member would naturally ask Largo about was silently absent, not incorrect) |
 | **Status** | FIXED — `fix/swing-play-brief-live-greeks` |
 
-## Root cause
+### Root cause
 
 `TerminalPlay.greeks` (delta/gamma/theta/vega/iv) is a real, live per-contract greek read for every
 open swing position: `swing-active-refresh`'s cron fetches it on every tick via
@@ -26,7 +26,7 @@ one click away on the deck's own greek strip. Same wiring-gap shape as the alrea
 `unavailableSources` fix: data computed, even already surfaced on a sibling UI surface, never
 reached the Largo envelope.
 
-## Evidence
+### Evidence
 
 Verified in source, not speculation:
 - `src/lib/swing/live-plays.ts` (`SwingLiveQuote`): live per-contract greeks fetched on every
@@ -38,7 +38,7 @@ Verified in source, not speculation:
   same honesty gate the deck's own `greeksLive` check applies.
 - `git grep -n "play.greeks\|\.greeks\b" src/lib/swing/play-brief*.ts` (pre-fix): zero matches.
 
-## Blast radius
+### Blast radius
 
 Single call site — `pnlSection` in `play-brief.ts` is the only place the Position section's P&L/
 rail text is composed. No other section duplicates this logic. Every OPEN swing play-brief for a
@@ -51,7 +51,7 @@ beta-weighted delta) — has zero call sites anywhere in the codebase. Wiring it
 new plumbing (it's not a live per-contract read the way `play.greeks` is), not a small fix, so it's
 left as a follow-up idea rather than implemented in this PR.
 
-## Fix rationale
+### Fix rationale
 
 Added a "Greeks" line to `pnlSection`'s Position section (OPEN bucket only, where `play.greeks` can
 be populated), formatted to match `PlayTerminal.tsx`'s exact `fmtGreek` convention (signed
@@ -65,7 +65,7 @@ Deliberately did NOT wire up `computeSwingRisk` in the same PR — it's a separa
 (new call site, new data shape) and mixing it into this narrow wiring fix would violate the
 single-issue-per-PR policy.
 
-## Verification
+### Verification
 
 - `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief.test.ts` — 70/70 pass.
   RED→GREEN independently confirmed: reverted only the source fix (kept the 2 new tests), ran the

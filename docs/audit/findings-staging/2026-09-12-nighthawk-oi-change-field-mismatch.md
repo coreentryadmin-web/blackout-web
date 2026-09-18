@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk (Legacy/overnight scorer): OI-change alignment bonus dead-coded by a field-name mismatch
+## Night Hawk (Legacy/overnight scorer): OI-change alignment bonus dead-coded by a field-name mismatch
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | Night Hawk overnight-digest scorer (`scoreOptionsPositioning`, shared by Legacy's `edition-builder.ts`/`hunt-builder.ts` pipeline) |
 | **Severity** | P2 — silent, permanent loss of one real scoring signal; no crash, no visible symptom |
 
-## Root cause
+### Root cause
 
 `scoreOptionsPositioning` (`src/features/nighthawk/lib/scorer.ts`) computes a +2 bonus when a
 ticker's open-interest change is aligned with the candidate's direction (rising call OI backs a
@@ -64,7 +64,7 @@ $ node script feeding {strike, oi_change, kind} rows into scoreOptionsPositionin
 Score with REAL oi_change shape (kind field): 0 -- expected 2 if OI alignment bonus works
 ```
 
-## Blast radius
+### Blast radius
 
 `scoreOptionsPositioning` is called from exactly one place, `scoreCandidate` (`scorer.ts:1003`),
 which is Night Hawk's single shared scoring entrypoint used by both `hunt-builder.ts` (Legacy's
@@ -74,7 +74,7 @@ differently-shaped market-wide rollup, not this per-ticker positioning input. So
 single-surface: it only changes Legacy/overnight scoring, and only adds signal it was always
 supposed to have — no other consumer depends on the OI bonus staying silent.
 
-## Fix
+### Fix
 
 - `src/features/nighthawk/lib/scorer.ts`: changed both inline `oi_change` parameter type
   declarations (`scoreOptionsPositioning`'s own param, and `scoreCandidate`'s `dossierExtras`) from
@@ -87,14 +87,14 @@ supposed to have — no other consumer depends on the OI bonus staying silent.
   caught the original bug: a fixture matching the real upstream API shape, not the scorer's own
   (mistaken) assumption about it.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 The alternative — leaving `scoreOptionsPositioning` accept either field name (`r.kind ?? r.option_type`)
 — was considered and rejected: `option_type` never appears on real `OiChangeItem` rows, so
 supporting it would just be dead code left in place for a shape nothing produces, obscuring that
 `kind` is the only real field. Renaming cleanly matches the type to reality.
 
-## Evidence
+### Evidence
 
 - RED: stashed the `scorer.ts` fix, ran `scorer-direction.test.ts` — 2 failures (the new
   kind-vs-option_type regression test, and the updated capped-at-18 fixture which now correctly
@@ -103,7 +103,7 @@ supporting it would just be dead code left in place for a shape nothing produces
 - `npx tsc --noEmit`: clean.
 - Full suite (`npm test`, Node 20): 13829 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 Did not touch `stack()`'s `option_type` field in the same test file (used for `FlowStrikeStack`
 fixtures) — that type genuinely carries `option_type` (confirmed against `stackAlignsWithDirection`

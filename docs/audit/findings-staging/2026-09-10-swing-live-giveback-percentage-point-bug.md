@@ -1,4 +1,4 @@
-# Ask Largo swing LIVE-play "Gave back X% from peak" bullets are a percentage-POINT subtraction, not a relative retracement
+## Ask Largo swing LIVE-play "Gave back X% from peak" bullets are a percentage-POINT subtraction, not a relative retracement
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Swing / Ask Largo LIVE-play "Trade manager read" + "Hold plan" trade-manager coaching (four independent call sites, all in the live/open path — the analogous CLOSED-play bug was already fixed 2026-09-06, see `2026-09-06-swing-mfe-capture-roundtrip-nonsense.md`) |
 | **Files** | `src/lib/swing/mfe-capture.ts` (doc-comment widening only, no logic change), `src/lib/swing/play-brief-narrative.ts` (2 call sites), `src/lib/swing/play-brief-narrative-coaching.ts` (1 call site), `src/lib/swing/play-brief-intel.ts` (1 call site), plus their four test files |
 
-## Context
+### Context
 
 Live capture from `GET /api/market/swing/play-brief?playId=SWING:NRG&ticker=NRG&positionId=34` (a
 real committed, still-open swing position) rendered this bullet in the "Trade manager read"
@@ -22,7 +22,7 @@ The position's real numbers (`board.lanes.SWING.committed[]` for NRG, positionId
 `entryPremium: 4.9`, `peakPremium: 11.4`, current mark P&L `livePnlPct: 39.8` (`play.pnlPct`), peak
 P&L `play.peak` ≈ 132.7 — both already-computed percentage-RETURN numbers, not raw premiums.
 
-## Root cause
+### Root cause
 
 Four independent call sites computed `play.peak - play.pnlPct` (a subtraction of two
 already-percentage numbers) and labeled the result "Gave back X% from peak":
@@ -71,7 +71,7 @@ That fix was applied to the two CLOSED-play post-mortem call sites in 2026-09-06
 never extended to the LIVE/open-play path — this finding is that extension, plus the 4th call
 site the earlier pass didn't need to look at (it only existed in the closed-play story).
 
-## Fix
+### Fix
 
 `mfeCaptureOutcome`'s `exitPnlPct` parameter is really just "the pnl to compare against peak" —
 nothing about its logic is exit-specific. Reused it verbatim at all four live call sites, passing
@@ -102,7 +102,7 @@ flag for a still-open, still-decidable position than for a closed one, so each s
 present-tense wording: `"**Round-tripped past breakeven** — was up **X%** at peak, now **Y%**"`
 (vs. the closed-play phrasing's past tense "closed at").
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 Extended all four call sites' nearest test files with the live NRG numbers as the concrete ground-
 truth case, plus a capture-floor boundary case (no bullet) and a round-trip case, for a total of 13
@@ -122,7 +122,7 @@ nothing should. Restored → **GREEN, 167/167** across all four test files.
 Full `npm test` (Node 20, `/opt/node20/bin/node` v20.20.2): **13441 pass, 0 fail, 3 skipped**.
 `npx tsc --noEmit`: clean.
 
-## Blast radius
+### Blast radius
 
 - All four call sites that computed `peak - pnlPct` for a live/open play were found and fixed (see
   Root cause above) — confirmed via `grep -rn "peak - .*pnlPct\|pnlPct.*- .*peak"` across
@@ -131,7 +131,7 @@ Full `npm test` (Node 20, `/opt/node20/bin/node` v20.20.2): **13441 pass, 0 fail
 - No schema/API shape change. `TerminalPlay.peak`/`pnlPct` are untouched; this only changes how
   four coaching functions phrase the comparison between them.
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 - Did **not** touch `play-brief-narrative-coaching.ts`'s `closedCoaching`, `play-brief-intel.ts`'s
   `lessonsSection`, or `mfe-capture.ts`'s core `mfeCaptureOutcome` logic — all three were already

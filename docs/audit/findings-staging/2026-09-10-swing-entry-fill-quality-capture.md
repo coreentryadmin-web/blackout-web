@@ -1,4 +1,4 @@
-# Swing commit never persisted real bid/ask alongside the mid-only entry_premium
+## Swing commit never persisted real bid/ask alongside the mid-only entry_premium
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Severity** | P3 (data-capture gap, not a live-trading bug) |
 | **Found by** | Night Hawk Swings audit lane, v6 mandate item 4 ("does the 5-truth grader's entry premium reflect a realistic bid/ask fill or an idealized mid on illiquid names?") |
 
-## Root cause
+### Root cause
 
 `buildCommitInsert`/`buildShadowInsert` (`src/lib/swing/commit.ts:541,621` pre-fix) persist
 `entry_premium: isFin(c.mid) ? c.mid : null` — the raw chain mid, never a realistic bid/ask-respecting
@@ -23,7 +23,7 @@ real bid/ask at commit time was never captured anywhere past that instant."
 contract-ranking feature at selection time — the data exists at commit time, it just evaporated the
 moment the ledger row was written, because nothing wrote it down.
 
-## Evidence
+### Evidence
 
 A live spread-width check against the currently OPEN/HOLD/TRIM swing book (`GET
 /api/market/nighthawk/horizons?view=swings`, 2026-09-10) found real `contract.bid`/`ask`/`mid` on
@@ -42,13 +42,13 @@ merely theoretical on the current book. n=4 is too thin to build a proper reusab
 around (the same population-size blocker already logged against v6 item 2 in the durable journal),
 so this cycle ships the capture fix rather than a premature statistic.
 
-## Blast radius
+### Blast radius
 
 Two call sites, both in `commit.ts`: `buildCommitInsert` (real committed positions) and
 `buildShadowInsert` (budget/cap-blocked shadow rows — a shadowed thesis is still real signal worth
 measuring the same way). Both now call a shared `fillQualityAtCommit(c)` helper.
 
-## Fix
+### Fix
 
 Added `fillQualityAtCommit(c: ChainContract)` to `commit.ts`, returning
 `{ entry_bid, entry_ask, entry_mid, entry_spread_fraction }` when all three are finite and priceable,
@@ -58,7 +58,7 @@ else `null` (never fabricated). Wired into `entry_context.fill_quality` on both 
 this key, so the change is purely additive: `entry_premium` is completely unchanged, no existing
 consumer of `entry_context` is affected.
 
-## Fix rationale
+### Fix rationale
 
 The alternative — building a full audit tool today — would either measure only the 4 real positions
 (meaningless at that n) or require resolving the Banger-merge question (#4700) first, which is
@@ -68,7 +68,7 @@ future commit now carries its own real bid/ask forward, so a FUTURE tick (once t
 without needing to have been polling live at the exact moment of each commit. This is infrastructure
 for the measurement, not the measurement itself — no calibration, gate, or grading behavior changed.
 
-## Tests
+### Tests
 
 `src/lib/swing/commit.test.ts`: two new tests (fill_quality computed correctly on a priceable
 contract; null, never fabricated, when bid/ask are absent) + one existing shadow-row test extended to

@@ -1,4 +1,4 @@
-# Ask Largo swing WATCH brief never disclosed the entry-validity deadline while the setup was still live
+## Ask Largo swing WATCH brief never disclosed the entry-validity deadline while the setup was still live
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P3 (member-facing narrative gap — Largo Contract C1 "time" violation: a real, already-computed deadline was implicit rather than disclosed) |
 | **Status** | FIXED — `fix/swing-watch-entry-deadline` |
 
-## Root cause
+### Root cause
 
 `entry-enterability.ts`'s `evaluateSwingEntryEnterability` always computes the real entry-validity
 deadline (`entryDeadlineMs`, via `entry-model.ts`'s sub-lane windows — real-NYSE-trading-day aware,
@@ -21,7 +21,7 @@ deadline was the EXPIRED badge itself, after it had already passed. This is a di
 left implicit rather than disclosed. It mirrors the section's own existing "First flagged N days
 ago" backward-looking line — this adds the missing forward-looking counterpart.
 
-## Evidence
+### Evidence
 
 Verified in source, not speculation:
 - `src/lib/swing/entry-enterability.ts`: `entryDeadlineMs(input)` (a pre-existing function) computed
@@ -33,7 +33,7 @@ Verified in source, not speculation:
 - Pre-fix, no field carried the resolved deadline anywhere in `TerminalPlay` or the play-brief
   pipeline.
 
-## Blast radius
+### Blast radius
 
 Single extraction site (`evaluateSwingEntryEnterability` in `entry-enterability.ts`), threaded
 through the existing pipeline (`command-deck/adapters.ts`/`types.ts` → `play-brief.ts`'s
@@ -41,7 +41,7 @@ through the existing pipeline (`command-deck/adapters.ts`/`types.ts` → `play-b
 resolvable entry deadline that has NOT yet expired was affected (the EXPIRED case already had its
 own badge + `deadPlayReason` disclosure, unaffected).
 
-## Fix rationale
+### Fix rationale
 
 Added `deadlineIso?: string | null` to `SwingEntryEnterability`, computed once and attached to
 every return branch (not just the expired one) — honest null whenever neither `entryDeadline` nor a
@@ -52,7 +52,7 @@ when a real deadline resolved (never fabricated). Format: `"Entry window closes 
 (**N days** left) — stale after that, wait for a fresh setup."`, days-left computed from the same
 `readMs` clock the rest of the section already uses.
 
-## Verification
+### Verification
 
 - `npx tsx --experimental-test-module-mocks --test src/lib/swing/entry-enterability.test.ts src/lib/swing/play-brief.test.ts`
   — 92/92 pass. RED→GREEN independently confirmed: reverted only the source fix (kept the 6 new

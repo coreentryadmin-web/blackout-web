@@ -1,4 +1,4 @@
-# Tier-cache eviction sweep future-timestamp guard — FIXED
+## Tier-cache eviction sweep future-timestamp guard — FIXED
 
 > **kind:** FINDING
 
@@ -9,14 +9,14 @@
 | **Status** | FIXED |
 | **Area** | Freshness guards |
 
-## Symptom
+### Symptom
 
 #3912 fixed tier-cache read paths but `setTierCache`'s `MAX_TIER_CACHE` eviction sweep still used `now - v.at >= TIER_CACHE_TTL_MS` — same gap as #3920 in clerk-user-cache.
 
-## Fix
+### Fix
 
 Route eviction sweep through `isWsUpdatedAtFresh(v.at, TIER_CACHE_TTL_MS, now)`.
 
-## Evidence
+### Evidence
 
 - `src/lib/tier-cache-freshness.test.ts`

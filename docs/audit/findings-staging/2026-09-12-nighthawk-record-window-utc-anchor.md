@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk record/funnel window drifts by a day near UTC midnight (~8pm–midnight ET) — FIXED
+## Night Hawk record/funnel window drifts by a day near UTC midnight (~8pm–midnight ET) — FIXED
 
 | Field | Detail |
 |---|---|
@@ -10,7 +10,7 @@
 | **Files** | `src/lib/db.ts` — `fetchNighthawkOutcomeAnalytics`, `fetchNighthawkFunnelStats` |
 | **PR** | (opened same session as this finding) |
 
-## Root cause
+### Root cause
 
 `fetchNighthawkOutcomeAnalytics` (backing `GET /api/market/nighthawk/record`) and
 `fetchNighthawkFunnelStats` (backing the admin Night Hawk funnel dashboard) both windowed their
@@ -33,7 +33,7 @@ date (not UTC CURRENT_DATE) so labels match the rest of the app and don't go off
 the 8pm–midnight ET window."* That fix (`(NOW() AT TIME ZONE 'America/New_York')::date`) was never
 applied to these two Night Hawk functions.
 
-## Evidence
+### Evidence
 
 Live-observed during the standing 15-minute Legacy audit cadence, 2026-09-11/12:
 - 23:51 UTC cycle (`?days=14`): `segments.current.resolved` = **30**.
@@ -45,7 +45,7 @@ reads. `CURRENT_DATE` ticked from 2026-09-11 to 2026-09-12 (UTC), shifting the 1
 `2026-08-28` to `2026-08-29` and dropping every `edition_for = 2026-08-28` row from the window,
 although in ET (~7:51pm and ~8:07pm EDT respectively) it was the same trading evening throughout.
 
-## Fix
+### Fix
 
 Anchor both functions' cutoff to the ET calendar date, matching the existing pattern:
 
@@ -60,7 +60,7 @@ comment states it "windows the same way `fetchNighthawkOutcomeAnalytics` windows
 query, so both sides of the funnel line up over the identical date range," so all three needed the
 identical fix to keep that invariant.
 
-## Blast radius
+### Blast radius
 
 - `GET /api/market/nighthawk/record` — member-visible win rate, resolved count, segments (current +
   legacy), avg return — all computed from `fetchNighthawkOutcomeAnalytics`'s row set.
@@ -68,14 +68,14 @@ identical fix to keep that invariant.
 - No other caller of either function exists (both are Legacy/Night-Hawk-record-specific; 0DTE and
   Swings use their own separate ledger/commit tables and functions).
 
-## Fix rationale
+### Fix rationale
 
 Chose the exact fix pattern already established and proven correct elsewhere in the same file
 (`(NOW() AT TIME ZONE 'America/New_York')::date`) rather than inventing a new approach, so the
 codebase has one consistent idiom for "today, in ET" at the SQL layer. Left the `$1::int` safe-int
 coercion and the interval arithmetic shape untouched — only the anchor changed.
 
-## Regression test
+### Regression test
 
 `src/lib/db.test.ts` — two new source-inspection tests (DB-integration testing isn't available in
 this sandbox; raw Postgres TCP is blocked). Each extracts the target function's body from `db.ts`

@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# `findings-reconcile.mjs --apply` never checked status on an entry that already had a kind line
+## `findings-reconcile.mjs --apply` never checked status on an entry that already had a kind line
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | `scripts/audit/findings-reconcile.mjs` — the `--apply` tagging pass that flags entries missing a real outcome |
 | **Severity** | P3 — audit-tooling correctness. The bug hides exactly the class of entry (a real finding with no status, or a stale mid-flight one) this script exists to surface for next-session review. |
 
-## Root cause
+### Root cause
 
 ```js
 const tagged = keep.map((r) => {
@@ -41,7 +41,7 @@ own idempotency test caught the resulting inconsistency — a from-scratch regen
 all kind/status lines first, so the buggy shortcut never fires there) produced 2 `UNRECONCILED`
 tags while the just-applied committed file had 0.
 
-## Blast radius
+### Blast radius
 
 Only `findings-reconcile.mjs`'s `--apply` tagging pass. No effect on classification counts (the
 dry-run summary already correctly counted these 2 entries as needing a decision) — only the
@@ -51,7 +51,7 @@ false-failed the moment any folded entry's own prose quoted the tag syntax as a 
 example (`` "no `> **kind:**` line found" ``) — anchored it to match the actual stripping regex
 exactly (`^> \*\*(kind|status):\*\*`, `m` flag).
 
-## Fix
+### Fix
 
 Compute `needsStatus`/`note` unconditionally (not gated behind "no kind line yet"), and only truly
 skip a block when it has BOTH a kind line already AND (no note is needed, or the UNRECONCILED note
@@ -60,7 +60,7 @@ line back out and re-run the exact same insertion logic used for a from-scratch 
 guarantees byte-identical formatting whether the kind line came from this script or from
 `findings-fold-staging.mjs`, rather than maintaining a second insertion path.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered inserting the note directly after the existing kind line via a splice, without
 normalizing back through the from-scratch path first — rejected because it would require
@@ -68,7 +68,7 @@ duplicating the exact spacing/ordering rules the from-scratch path already encod
 risking the two paths drifting apart over time. Stripping-then-reusing keeps one formatting
 implementation.
 
-## Evidence
+### Evidence
 
 - Reproduced directly: `--apply` on the real (pre-fix) `FINDINGS.md` left the "Ask Largo
   `ticker-verdict.ts`..." entry (status `Fixed, PR pending`, stale) and the "`tsx` >=4.23.10..."
@@ -88,7 +88,7 @@ implementation.
 - `npx tsc --noEmit`: clean.
 - Full suite (Node 20): 14040/14043 pass, 0 fail, 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 The classification logic (`classify`, `statusOf`, `HEADING_OUTCOME`, `STALE_STATUS`, etc.) and the
 PASS-LOG move-to-RUN-LOG.md path are untouched — this only changes which blocks the tagging pass

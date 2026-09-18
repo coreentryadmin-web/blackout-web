@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk catalyst headline could quote a sentiment entry of the opposite direction
+## Night Hawk catalyst headline could quote a sentiment entry of the opposite direction
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | `pickCatalystHeadline` (`src/features/nighthawk/lib/deterministic-edition.ts`) — the "Catalyst:" line in the member-facing thesis text |
 | **Severity** | P2 — a real narrative-correctness defect: a bearish-toned headline was quoted as supporting evidence for a bullish thesis (or vice versa). No crash, no data loss, but a member reading the thesis was shown a direct contradiction between the stated direction and the quoted "catalyst". |
 
-## Root cause
+### Root cause
 
 ```ts
 const matching = sentiment.find((s) => s.toLowerCase().startsWith(`${wantSentiment}:`));
@@ -39,12 +39,12 @@ A LONG pick scored bullish via the "beat" keyword in a plain headline still quot
 `"negative:"`-tagged sentiment entry as its "Catalyst:" line — presenting evidence that
 contradicts the stated direction as if it supported it.
 
-## Blast radius
+### Blast radius
 
 Only this one function/sentence was affected. The direction-matching path itself (`matching`) was
 already correct and untouched.
 
-## Fix
+### Fix
 
 When no direction-matching sentiment entry exists, fall back to a plain (untagged) headline from
 `news_headlines` instead of an opposite-direction sentiment entry:
@@ -56,14 +56,14 @@ const raw = matching ?? headlines[0];
 Never falls back to `sentiment[0]` regardless of its tag anymore; omits the Catalyst line
 entirely (as before) when neither a matching sentiment entry nor any plain headline exists.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered scanning `sentiment` for a *neutral*-tagged entry as an intermediate fallback before
 giving up — rejected as unnecessary complexity: a plain, untagged headline from `news_headlines`
 already serves the same purpose (real news content, no sentiment claim attached) and is simpler
 to reason about.
 
-## Evidence
+### Evidence
 
 - Reproduced directly via `buildDeterministicThesis` + `scoreNewsCatalyst`: printed
   `Catalyst: "guidance disappoints analysts"` (bearish) for a BULLISH pick before the fix;
@@ -75,7 +75,7 @@ to reason about.
 - `npx tsc --noEmit`: clean.
 - Full suite (Node 20): 14033 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 The direction-matching path itself (still prefers a real, tagged, agreeing sentiment entry first)
 and the "no headline/sentiment data at all" omission case (already correct).

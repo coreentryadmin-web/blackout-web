@@ -1,4 +1,4 @@
-# HELIX/dark-pool Discord EOD recap fired on Labor Day — FIXED
+## HELIX/dark-pool Discord EOD recap fired on Labor Day — FIXED
 
 > **kind:** FINDING
 
@@ -9,26 +9,26 @@
 | **Area** | Cron infra / Discord EOD recap |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Post-#4498 thermal EOD fix: `darkpool-discord` and `helix-discord-digest` still post session-close
 recaps on NYSE holidays when `*_RTH_ONLY=0` — `isDiscordEodRecapWindow()` is time-only
 (4:04–4:14 PM ET) with no `isTradingDayEt` check.
 
-## Root cause
+### Root cause
 
 Same ET-INTENT class as thermal EOD pre-#4498: weekday schedule + time window without NYSE calendar.
 
-## Fix
+### Fix
 
 `discord-eod-recap.ts`: `isDiscordEodRecapWindow` now checks `isTradingDayEt(todayEt(now))` before
 the 4:04–4:14 ET band check. Fixes both `darkpool-discord` and `helix-discord-digest` EOD paths.
 
-## Blast radius
+### Blast radius
 
 Shared helper only. Trading-day EOD recap behavior unchanged.
 
-## Evidence
+### Evidence
 
 RED→GREEN: `src/lib/discord-eod-recap.test.ts` — new test
 `isDiscordEodRecapWindow — false on NYSE holiday even in 4:04-4:14 ET band` asserts

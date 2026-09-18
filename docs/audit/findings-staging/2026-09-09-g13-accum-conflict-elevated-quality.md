@@ -1,8 +1,8 @@
-# G-13 flow-accumulation conflict: hard block → elevated quality requirement
+## G-13 flow-accumulation conflict: hard block → elevated quality requirement
 
 > **kind:** FINDING
 
-## Root cause
+### Root cause
 
 `ZERODTE_BLOCK_ACCUM_MISALIGN` (default true) hard-blocked ANY setup where
 `flowAccumulationAligned === false` — the multi-day options flow accumulation opposes the
@@ -10,7 +10,7 @@ setup's own direction. This was an unconditional veto: even a strong, well-confi
 (high score, multiple independent confluence confirmations) could never override a stacked-
 positioning disagreement, no matter how much OTHER evidence supported the trade.
 
-## Fix
+### Fix
 
 Operator-approved CTO gate-architecture review (2026-09-09): instead of an unconditional
 block, a conflicted setup may now proceed if it clears an ELEVATED quality bar — score >= 75
@@ -25,14 +25,14 @@ bar being asked to override a REAL, measured conflict signal, not G-12's own ord
 fail-open (which never manufactures a block from an unmeasured factor elsewhere in this
 file). Absence of measurement here is not evidence of agreement, so it stays conservative.
 
-## Blast radius
+### Blast radius
 
 Single call site in `evaluateZeroDteGates` (gates.ts) — no other consumer computes G-13's
 verdict independently. The block `reason` string now also reports the actual score/confluence
 count that failed to clear the bar, so a SKIP card explains WHY the elevated quality wasn't
 met, not just that a conflict exists.
 
-## Evidence
+### Evidence
 
 `gates.test.ts`: rewrote the "blocks when aligned === false" test (the default fixture's
 score 80 + confluence(2) now CLEARS the elevated bar, so the old unconditional-block

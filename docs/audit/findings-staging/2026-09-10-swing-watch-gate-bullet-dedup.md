@@ -1,4 +1,4 @@
-# Ask Largo swing WATCH brief — gate-block text duplicated back-to-back in "Trade manager read" — FIXED
+## Ask Largo swing WATCH brief — gate-block text duplicated back-to-back in "Trade manager read" — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo / Night Hawk Swings — `GET /api/market/swing/play-brief` |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Found during the standing Ask Largo deep-dive mandate (5-engine live monitor cycle, 2026-09-10),
 by pulling a live WATCH-lane swing brief (`EWY`, `SWING:EWY`, COMMIT_NOW/AT_TRIGGER, two blocking
@@ -29,7 +29,7 @@ This is exactly the "narrative section reading like a bullet dump instead of con
 trade-manager voice" defect class the standing Ask Largo mandate calls out — a member reading the
 brief sees the identical fact stated twice in a row with no new information in the second bullet.
 
-## Root cause
+### Root cause
 
 `tradeManagerNarrativeSection` (`src/lib/swing/play-brief-narrative.ts`) composes the section by
 calling `actionNarrative(play, bucket)` first, then folding in every bullet from
@@ -50,7 +50,7 @@ WAIT. Clear gates: g_s12_halt_fee…" vs "Gates blocking entry — g_s12_halt_fe
 the guard never recognizes them as the same fact. It only catches duplicates that are
 character-identical at the front, not ones that restate the same content with a different lead-in.
 
-## Evidence
+### Evidence
 
 Live capture, `GET /api/market/swing/play-brief?playId=SWING:EWY&ticker=EWY&status=WATCH&...` (one
 temp Clerk premium session, `scripts/audit/lib/prod-clerk-session.mjs`, deleted after): the
@@ -70,7 +70,7 @@ src/lib/swing/play-brief-narrative-coaching.test.ts src/lib/swing/play-brief.tes
 src/lib/swing/play-brief-intel.test.ts` — 192/192 pass. Full `npm test` (Node 20) — 13432 pass, 0
 fail, 3 skipped (pre-existing, unrelated). `npx tsc --noEmit` — clean.
 
-## Blast radius
+### Blast radius
 
 Single call site: `actionNarrative`'s WATCH branch in `play-brief-narrative.ts`, which is only
 reached from `tradeManagerNarrativeSection` for `bucket === "watch"` — i.e. every swing WATCH-lane
@@ -79,7 +79,7 @@ confluence-floor, cortex-thin-evidence, etc.). `watchGateCoaching` itself, its t
 other bucket (`open`/`closed`) are untouched — this only removes the redundant restatement, it
 does not change what `watchGateCoaching` renders.
 
-## Fix rationale
+### Fix rationale
 
 Kept `watchGateCoaching`'s bullet as the single source of truth for gate reasons (it is strictly
 more complete: 3 gates vs. 2, plus the `unlock_et` clearing-time hint `actionNarrative` never had).
@@ -97,7 +97,7 @@ start, and broadening it into fuzzy/substring matching risks false-positive supp
 that legitimately share a few words; the surgical fix is not building two bullets with the same
 payload in the first place.
 
-## Existing structural note (not this bug)
+### Existing structural note (not this bug)
 
 This same live read also confirmed several ALREADY-FIXED/already-scoped gaps behave correctly and
 were NOT re-flagged: `unavailableSources` correctly disclosed `GEX positioning`/`Vector desk state`

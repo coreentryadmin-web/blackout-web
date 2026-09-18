@@ -1,4 +1,4 @@
-# Vector bead rail: remove per-bead outline stroke (member-directed)
+## Vector bead rail: remove per-bead outline stroke (member-directed)
 
 > **kind:** FINDING
 
@@ -8,7 +8,7 @@
 | **Area** | Vector chart bead rail (`WallRailPrimitive`) |
 | **Authorization** | Explicit, repeated member request (2026-09-07 session) — see below |
 
-## Symptom
+### Symptom
 
 Member reported (screenshots, Sep-3 ~8-11am ET reference vs. current live render): "no outer rings"
 on the reference, current beads show visible individual circle outlines. Repeated across several
@@ -16,7 +16,7 @@ messages with increasing specificity: "we dont have any fucking outer rings .. a
 not same sized .. I want it like this" — i.e. plain filled circles, size varies by wall magnitude,
 no separate ring/border layer.
 
-## Root cause
+### Root cause
 
 `WallRailPrimitive.draw()` (`vector-wall-rail-primitive.ts`) stroked a crisp outline
 (`ctx.stroke()`, 1-1.25px) around every bead with radius >= 2.2px — this has been in the code since
@@ -36,7 +36,7 @@ concentration on the two sessions — which is why the outline was invisible on 
 visible today, without any code difference. The member's ask is to make the "no ring" look
 unconditional rather than incidental to how concentrated a given session's book happens to be.
 
-## Fix
+### Fix
 
 Removed the per-bead stroke entirely (both the `r >= 2.2` branch and the compare-pane
 `strokeAlphaBoost` branch) from the core paint path in `WallRailPrimitive.draw()`. Beads are now a
@@ -56,7 +56,7 @@ single filled circle, radius still driven purely by `beadRadiusForPctShare` (mag
   `vector-wall-rail-core.ts`'s tuning defaults; a natural small follow-up, not required for the
   visual fix.
 
-## Verify
+### Verify
 
 ```
 npx tsx --test src/features/vector/lib/vector-wall-rail-primitive-no-outline.test.ts
@@ -69,7 +69,7 @@ for this exact reason). RED before the fix (`git stash` on the primitive alone),
 
 Full Vector suite: 1374/1374 pass. `npx tsc --noEmit`: clean.
 
-## Note
+### Note
 
 This is a render-prominence change to the AGENTS.md-locked Vector bead rail, which explicitly
 requires "an explicit member request that names the change" before touching anything past

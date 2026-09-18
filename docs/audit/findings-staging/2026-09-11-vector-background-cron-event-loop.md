@@ -1,8 +1,8 @@
-# Vector Background Cron Event Loop Blocking
+## Vector Background Cron Event Loop Blocking
 
 > **kind:** FINDING
 
-## Status
+### Status
 
 | Component | Result |
 |-----------|--------|
@@ -10,13 +10,13 @@
 | vector-full-state-snapshot | FIXED |
 | Testing | ✓ VERIFIED |
 
-## Root Cause
+### Root Cause
 
 Vector background crons (`vector-pick-sweep`, `vector-dark-pool-warm`, `vector-full-state-snapshot`) were executing CPU-bound work (ranking picks, computing technicals, deriving confluence zones) synchronously within the main Node.js event loop. Although the work was dispatched asynchronously using Next.js's `after()` API, it still ran on the same event loop that handled incoming web requests. This caused the event loop to be blocked for extended periods during CPU-intensive operations, which contributed to tail latency (p99) spikes on the ALB during RTH.
 
 Measured evidence (2026-09-01/09-02): sweeps running 5-10 minutes with ALB TargetResponseTime p99 40-111s and max up to 119s during the same window when these crons ran.
 
-## Fix Rationale
+### Fix Rationale
 
 Added event loop yields between ticker batch processing using `setImmediate()` to break up CPU-bound work into smaller chunks. This allows the Node.js event loop to handle incoming requests and other tasks between batches rather than being completely blocked by the sweep work.
 
@@ -26,7 +26,7 @@ The fix:
 3. Only yields if there are more batches to process (not after the final batch)
 4. Prevents blocking by allowing the event loop to service other work
 
-## Implementation Details
+### Implementation Details
 
 ### Changes to `src/lib/vector/vector-pick-sweep.ts`
 - Added `await new Promise((resolve) => setImmediate(resolve))` between batch iterations
@@ -41,7 +41,7 @@ The fix:
 - Fires immediately after I/O events are processed but before setTimeout timers
 - More predictable than `setTimeout(0)` for CPU work
 
-## Complementary Measures
+### Complementary Measures
 
 This fix complements existing measures:
 1. **Overlap locks** (`sharedCacheSetNx` with 900s TTL) — prevent overlapping sweeps across replicas
@@ -50,7 +50,7 @@ This fix complements existing measures:
 
 The event loop yields reduce blocking within a single sweep run, allowing better interleaving with incoming member requests.
 
-## Blast Radius
+### Blast Radius
 
 - Only affects background cron processing
 - Does not change cron scheduling, authorization, or result logging
@@ -58,7 +58,7 @@ The event loop yields reduce blocking within a single sweep run, allowing better
 - No public API changes
 - No database schema changes
 
-## Testing
+### Testing
 
 Added regression tests to verify:
 1. `vector-pick-sweep/route.test.ts`: Verifies yields are added between batches

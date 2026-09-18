@@ -1,4 +1,4 @@
-# Ask Largo swing brief — Benzinga headlines leak raw HTML entities into "Catalysts & news" — FIXED
+## Ask Largo swing brief — Benzinga headlines leak raw HTML entities into "Catalysts & news" — FIXED
 
 > **kind:** FINDING
 
@@ -8,7 +8,7 @@
 | **Area** | Night Hawk Swings / Ask Largo — Catalysts & news section |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 **Live reproduction (2026-09-06, `SWING:NN`):** the "Catalysts & news" section of the live swing
 play-brief rendered:
@@ -22,7 +22,7 @@ play-brief rendered:
 `/benzinga/v2/news` feed) returns HTML-entity-encoded titles, and nothing between the provider
 read and the swing brief's section body decoded them.
 
-## Root cause
+### Root cause
 
 `assembleEcosystemArsenal()` (`src/lib/bie/ecosystem-context.ts`) mapped
 `reads.news.items[].headline` directly into `arsenal.news.headlines` with no decoding step.
@@ -37,14 +37,14 @@ on 2026-08-21 (its own doc comment: *"The repo already had the fix and Meridian 
 Meridian's six fields but never touched this `ecosystem-context.ts` call site, which feeds the
 swing brief instead.
 
-## Fix
+### Fix
 
 `assembleEcosystemArsenal()` now runs each headline through the already-vetted
 `sanitizeFeedText()` (`src/lib/largo/sanitize-feed-text.ts` — the same decoder Largo tool
 responses and the Meridian desk use) before it reaches `arsenal.news.headlines`. One decoder, one
 place to fix, consistent with the existing pattern — no new sanitizer written.
 
-## Evidence
+### Evidence
 
 - RED→GREEN: new test `assembleEcosystemArsenal: Benzinga headline HTML entities are decoded for
   display (live prod repro, NN 2026-09-06)` in `src/lib/bie/ecosystem-context.test.ts` — confirmed
@@ -54,7 +54,7 @@ place to fix, consistent with the existing pattern — no new sanitizer written.
 - `src/lib/bie/ecosystem-context.test.ts`: 32/32 pass.
 - `src/lib/swing/*.test.ts` + `src/lib/bie/*.test.ts`: 1463/1463 pass.
 
-## Blast radius
+### Blast radius
 
 Single field (`arsenal.news.headlines`), single consumer (`catalystsAndNewsSection()`). Verified
 via `grep -rn "arsenal?.news\|arsenal\.news"` that no other call site reads this field.

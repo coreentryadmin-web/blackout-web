@@ -1,4 +1,4 @@
-# Swing/Banger "score pillars" never summed to the score shown next to them
+## Swing/Banger "score pillars" never summed to the score shown next to them
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Swings — `src/lib/swing/banger-lane-merge.ts` (Engine B/Banger lane merge), `src/lib/swing/vector-lane-enrich.ts` (Vector-corroboration score bump); consumed by `PlayTerminal.tsx`'s "Why this play was picked" panel and Ask Largo's `play-brief-intel.ts::whyThisSetupSection` ("**Score pillars:**") |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — 2026-09-12 5-engine + Largo deep-dive cycle |
 
-## Root cause
+### Root cause
 
 Two independent code paths add to a SWING `HorizonPlay.score` without updating `factors`
 (`{label, points}[]`) to match — even though every consumer treats `factors` as an
@@ -35,7 +35,7 @@ Both surfaces that render `factors` assume the sum equals `score`:
 - `play-brief-intel.ts::whyThisSetupSection` — the Ask Largo play-brief's "Why this
   setup" section — literally headers this list `**Score pillars:**`.
 
-## Evidence
+### Evidence
 
 Live `GET /api/market/nighthawk/horizons?view=swings` (2026-09-12, off-hours,
 authenticated via `scripts/audit/lib/audit-auth-fetch.mjs`) — SWING lane, 90 committed
@@ -55,7 +55,7 @@ rows. Comparing `score` to `sum(factors[].points)` for every row:
   reconciled exactly (e.g. `META` 76/76, `EWY` 72.9/72.9, `PLTR` 61.7/61.7) — confirming
   the invariant holds everywhere EXCEPT the two paths fixed here.
 
-## Blast radius
+### Blast radius
 
 - `horizonPlayFromBangerPosition` and `horizonPlayFromBangerWatch` (both in
   `banger-lane-merge.ts`) — same root cause, same fix shape, fixed in both.
@@ -68,7 +68,7 @@ rows. Comparing `score` to `sum(factors[].points)` for every row:
   system, out of scope here — SPX Slayer/0DTE checks this same cycle found no analogous
   mismatch there).
 
-## Fix
+### Fix
 
 - `banger-lane-merge.ts`: compute `score` once per function, then set
   `factors: [{label: "Discovery gain", points: score}]` instead of the raw gain%. This is
@@ -81,7 +81,7 @@ rows. Comparing `score` to `sum(factors[].points)` for every row:
   (never a zero-point factor). Using the applied delta rather than the raw bump avoids
   overstating the factor when the ceiling clamp already reduced the real increase.
 
-## Evidence (before/after)
+### Evidence (before/after)
 
 - RED before fix (git-stashed the two source files, kept only the new/extended tests):
   `npx tsx --experimental-test-module-mocks --test src/lib/swing/banger-lane-merge.test.ts src/lib/swing/vector-lane-enrich.test.ts`
@@ -92,7 +92,7 @@ rows. Comparing `score` to `sum(factors[].points)` for every row:
   unrelated).
 - `npx tsc --noEmit`: clean.
 
-## Market-open validation
+### Market-open validation
 
 Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` — during the next RTH session, open a
 live BREAKOUT/Banger-origin SWING position's "Why this play was picked" panel (command

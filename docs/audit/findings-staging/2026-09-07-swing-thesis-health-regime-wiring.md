@@ -1,4 +1,4 @@
-# Swing "Thesis health" — committed positions never received a real REGIME read — FIXED (partial)
+## Swing "Thesis health" — committed positions never received a real REGIME read — FIXED (partial)
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo / Night Hawk Swings — thesis health |
 | **Status** | FIXED (one of three uncalibrated pillars; two remain deferred) |
 
-## Symptom
+### Symptom
 
 Root-caused during the standing Ask Largo deep-dive mandate (raised on PR #4076 comments
 5556702365, 5570100676, 5570557... — this session's own comments 5569898647/5570100676):
@@ -23,7 +23,7 @@ ONE function that builds the `HorizonPlay` carrying a live/committed position in
 never populated any of them — confirmed by grep: zero hits for `setupState:`/`entryStatus:`/
 `regime:`/`signalKinds:` in that file's return object before this fix.
 
-## Root cause
+### Root cause
 
 `HorizonPlay` (`horizon-plays.ts`) already declares `regime?: string | null` and `signalKinds?:
 string[]` as optional fields — the type was never the blocker (an earlier comment on this thread
@@ -38,7 +38,7 @@ object for a live ledger row, so every committed position's `HorizonDeckSource.r
 `pil_regime` — a 0-1 score, `null` when that pillar wasn't grounded, never a fabricated 0. That
 value was sitting unused.
 
-## Fix
+### Fix
 
 `livePlayFromSwingPosition()` now derives `regime` honestly: the archetype label when
 `row.feature_vector.pil_regime` is a real number (the dossier actually scored REGIME at commit),
@@ -46,13 +46,13 @@ value was sitting unused.
 (`HorizonPlay.regime` → `HorizonDeckSource.regime` → `computeSwingThesisHealth`'s `regime` input →
 `regimeScore()`), so no other file needed a change.
 
-## Blast radius
+### Blast radius
 
 Single call site: `livePlayFromSwingPosition` (`src/lib/swing/live-plays.ts`) → every consumer of
 `livePlaysFromOpenPositions`'s output (the swing command deck's live sections, Ask Largo's swing
 play-brief). No schema change, no new DB read, no new IO — the value was already on the row.
 
-## Scope explicitly NOT covered by this fix (tracked, deferred — see PR #4076 comments)
+### Scope explicitly NOT covered by this fix (tracked, deferred — see PR #4076 comments)
 
 `thesisHealthUncalibrated()` gates on THREE pillar labels (persistence/entry_geometry/
 flow_corroboration), not `regime` — so this fix alone does **not** flip a committed position's
@@ -72,7 +72,7 @@ Thesis Health section off the generic scaffold; that requires `setupState`/`entr
 This is a genuine partial fix, not a full resolution — flagged as such in the PR and on the
 collaboration thread so a future session doesn't read "Thesis health" as solved.
 
-## Evidence
+### Evidence
 
 RED→GREEN: two new tests in `live-plays.test.ts` — `regime is honestly null when the dossier's
 REGIME pillar wasn't grounded` (fails pre-fix: old code always returns `undefined`, test expects

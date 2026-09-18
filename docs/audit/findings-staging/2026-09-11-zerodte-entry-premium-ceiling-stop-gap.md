@@ -1,4 +1,4 @@
-# 0DTE ledger achievability ceiling used the wrong threshold — dead zone let already-doomed fills grade as instant stops — FIXED
+## 0DTE ledger achievability ceiling used the wrong threshold — dead zone let already-doomed fills grade as instant stops — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | 0DTE entry-premium sourcing — `resolveLedgerEntryPremium` (`src/lib/zerodte/plan.ts`) |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Live forensic audit (2026-09-10/11, Night Hawk 0DTE lane), upgraded from a single QQQ instance to a
 confirmed 7-instance systemic pattern via a 90-day record backtest: near-instant (<5s of commit)
@@ -20,7 +20,7 @@ committed 2026-09-09T16:14:39.000Z, `plan_stop` fired 2026-09-09T16:14:39.910Z (
 -77.06% (Δ0.36s), MSFT 2026-08-28 -52.07% (Δ3.20s), QQQ 2026-09-09 -51.42% (Δ0.91s). No member could
 have owned any of these positions for even one real tick before the stop fired.
 
-## Root cause
+### Root cause
 
 `resolveLedgerEntryPremium` (`plan.ts:511-524`) already has an "achievability ceiling" (shipped
 2026-08-27, a prior live finding) that caps the ledger's graded entry basis DOWN to the flag-time
@@ -45,7 +45,7 @@ the fix): `resolveLedgerEntryPremium(10.0, 10.0, 5.0)` — a mark exactly 50% be
 the stale `10.0` (uncorrected) instead of capping to the achievable `5.0`, because `50 < CHASE_PCT
 (55)`. At `pctBelow = 54.99`, same story. Only at `pctBelow >= 55` did the existing ceiling kick in.
 
-## Evidence
+### Evidence
 
 RED→GREEN, `src/lib/zerodte/board.test.ts`:
 - Updated `"resolveLedgerEntryPremium: caps the graded basis DOWN..."` to assert the new
@@ -62,7 +62,7 @@ RED→GREEN, `src/lib/zerodte/board.test.ts`:
 - Full `npm test` (Node 20) — **13720 pass / 0 fail** (3 skipped, unrelated).
 - `npx tsc --noEmit` — clean.
 
-## Blast radius
+### Blast radius
 
 `resolveLedgerEntryPremium` has three call sites, all in `scan.ts`, all at the live-commit write
 path (the one place this repo persists `entry_premium` to the ledger). No other consumer computes
@@ -89,7 +89,7 @@ and is left open for a follow-up measurement (the historical `plan`/`quoteAgeMs`
 time is not persisted to `entry_context`, so it cannot be reconstructed retroactively from the DB;
 it would need either a fresh live reproduction or production log access this sandbox cannot reach).
 
-## Fix rationale
+### Fix rationale
 
 Introduced a dedicated `STOP_TRIGGER_PCT = Math.abs(PLAN_RULES.stop_pct)` constant and switched the
 ceiling branch's comparison from `CHASE_PCT` to it, rather than just lowering `CHASE_PCT` itself —

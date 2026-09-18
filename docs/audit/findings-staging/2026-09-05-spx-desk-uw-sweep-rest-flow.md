@@ -1,4 +1,4 @@
-# SPX desk UW REST supplemental + flow lane missing background sweep tag
+## SPX desk UW REST supplemental + flow lane missing background sweep tag
 
 > **kind:** FINDING
 
@@ -10,7 +10,7 @@
 | **Area** | SPX desk / UW rate limiter |
 | **PR** | (this branch) |
 
-## Symptom
+### Symptom
 
 Hourly pattern scan (#3) found two SPX desk cold paths still calling `runUwPooled` without
 `runWithBackgroundUwSweep`:
@@ -20,7 +20,7 @@ Hourly pattern scan (#3) found two SPX desk cold paths still calling `runUwPoole
 
 `fetchDeskEnrichmentFields` was already wrapped (2026-09-05 earlier fix); these siblings were not.
 
-## Reachability
+### Reachability
 
 Both run from cron-triggered desk rebuilds:
 
@@ -29,12 +29,12 @@ Both run from cron-triggered desk rebuilds:
 Unlike `desk-warm` (route-level sweep tag), these crons could consume UW concurrency reserved for
 live member traffic (~2 RPS cluster-wide).
 
-## Fix
+### Fix
 
 Wrap both UW blocks in `runWithBackgroundUwSweep`. Extend `spx-desk-enrichment-uw-sweep.test.ts`
 with static assertions for all three paths.
 
-## Evidence
+### Evidence
 
 - Pattern scan 2026-09-05 Autopilot hourly wake
 - Tests: `npx tsx --test src/features/spx/lib/spx-desk-enrichment-uw-sweep.test.ts`

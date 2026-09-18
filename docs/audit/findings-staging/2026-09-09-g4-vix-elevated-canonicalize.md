@@ -1,8 +1,8 @@
-# G-4 VIX-elevated tier canonicalized — no tape/instrument-type bypass
+## G-4 VIX-elevated tier canonicalized — no tape/instrument-type bypass
 
 > **kind:** FINDING
 
-## Root cause
+### Root cause
 
 `evaluateZeroDteGates`'s G-4 elevated-VIX branch (VIX in `[17, 20)`) previously computed a
 per-ticker/per-tape-alignment score floor instead of applying the F-1 evidence uniformly:
@@ -22,7 +22,7 @@ now requires score >= 75 for **every** ticker and instrument type, no exceptions
 extreme-VIX single-name block (index/ETF-only survival, at reduced size) is unchanged — this fix
 touches only the elevated (17-20) tier's score-floor branch.
 
-## Blast radius
+### Blast radius
 
 Three call sites shared the same `tapeAlignedOrFlat` logic and all three are fixed together:
 1. The live enforcement branch in `evaluateZeroDteGates` (the `vix >= VIX_ELEVATED_THRESHOLD`
@@ -38,7 +38,7 @@ Three call sites shared the same `tapeAlignedOrFlat` logic and all three are fix
 Condor G-4 (which blocks only at extreme VIX, `>= 20` — elevated VIX is a condor's *best* regime,
 unrelated evidence) is untouched.
 
-## Fix rationale
+### Fix rationale
 
 Simplify to the canonical rule rather than patch the exemption further — the exemption was
 introduced 2026-08-26 to fix a narrower bug (single names being judged against SPY tape they have
@@ -47,7 +47,7 @@ regime floor entirely. The operator-approved fix removes both the single-name by
 index-ETF tape-alignment relief in one pass, since both trace to the same
 `tapeAlignedOrFlat`-shaped logic.
 
-## Evidence
+### Evidence
 
 `gates.test.ts` — updated 8 existing tests that asserted the old exempted behavior (single names
 clearing the elevated floor at scores well below 75, index ETFs keeping the standard 65 floor when

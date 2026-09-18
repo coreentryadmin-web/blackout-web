@@ -1,4 +1,4 @@
-# Ask Largo CLOSED-play "Trade manager read" collapses 2-3 separate post-mortem points into one illegible run-on bullet
+## Ask Largo CLOSED-play "Trade manager read" collapses 2-3 separate post-mortem points into one illegible run-on bullet
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Swing / Ask Largo CLOSED-play "Trade manager read" section, `closedCoaching()` |
 | **Files** | `src/lib/swing/play-brief-narrative-coaching.ts` (`closedCoaching`), `src/lib/swing/play-brief-narrative-coaching.test.ts` (1 new test) |
 
-## Context
+### Context
 
 Live capture from `GET /api/market/swing/play-brief?playId=SWING:AAPL&ticker=AAPL&positionId=36`
 (a real closed swing position) during the standing Ask Largo deep-dive mandate, 2026-09-10:
@@ -27,7 +27,7 @@ between them, reading as one confusing run-on sentence. Every OTHER coaching poi
 narrative system (OPEN/WATCH buckets, and every other closed-play section like "Lessons") renders
 each distinct point as its own bullet.
 
-## Root cause
+### Root cause
 
 `closedCoaching()` (`play-brief-narrative-coaching.ts`) accumulates up to three lines — the raw
 outcome, an MFE-capture/round-trip verdict, and a `closedReason` lesson — into a local `lines:
@@ -38,7 +38,7 @@ whole string) — so every other coaching function in this file gets one `push()
 (one bullet each), but `closedCoaching` pre-joins its own multiple points before ever reaching
 `push()`, defeating the one-bullet-per-point convention the rest of the system follows.
 
-## Evidence
+### Evidence
 
 New test in `play-brief-narrative-coaching.test.ts`, RED→GREEN verified via `git stash` on
 `play-brief-narrative-coaching.ts` only:
@@ -55,7 +55,7 @@ separator change doesn't affect.
 Full swing test suite (`play-brief-narrative-coaching.test.ts` + 3 related files, 224 tests):
 clean. `npx tsc --noEmit`: clean.
 
-## Blast radius
+### Blast radius
 
 `grep -rn "closedCoaching"` confirms exactly one real call site
 (`collectCoachingBullets`'s closed-bucket branch); a second reference
@@ -66,7 +66,7 @@ call needed no edit: it already treats the returned string as opaque, and the em
 separators are exactly what `tradeManagerNarrativeSection`'s final `bullets.join("\n")` expects
 to render as separate lines.
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 Considered changing `closedCoaching`'s return type to `string[]` and updating
 `collectCoachingBullets` to push each line individually (the "textbook" fix, matching how every
