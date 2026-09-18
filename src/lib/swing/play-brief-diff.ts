@@ -58,6 +58,17 @@ function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Strip the trailing "<N>DTE" token `playContractHeadline` bakes into every non-WATCH headline
+ * (e.g. "TRIM — CRWD 235C 7DTE" -> "TRIM — CRWD 235C") so a headline comparison can tell "the
+ * setup actually changed" from "one calendar day passed and the DTE counter ticked down" — the
+ * one component of the headline that changes on its own, every session day, with nothing else
+ * moving. See the "Verdict headline updated" call site's own comment for the bug this fixes.
+ */
+function stripDteFromHeadline(headline: string): string {
+  return headline.replace(/\s+\d+DTE\b/, "").trim();
+}
+
 function fmtDelta(prev: number, next: number, suffix = ""): string {
   const d = next - prev;
   const sign = d > 0 ? "+" : "";
@@ -380,7 +391,25 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     // pulse. Asserting a specific cause here would contradict it. Peer review, PR #5191.
     lines.push(`**Roll watch cleared** — no longer being weighed.`);
   }
-  if (prev.headline !== next.headline) {
+  // BUG FIX (Ask Largo standing mandate, 2026-09-18): the raw headline is
+  // `${action?.label ?? play.recommendation ?? play.status} — ${playContractHeadline(play)}`
+  // (play-brief.ts), and `playContractHeadline` bakes in the contract's own DTE, e.g.
+  // "TRIM — CRWD 235C 7DTE" (adapters.ts stamps `${strike}${right} ${dte}DTE` straight into
+  // `play.contract`). DTE decrements every session day on its own, with no other field moving —
+  // so on a quiet refresh across a day rollover this bare `prev.headline !== next.headline`
+  // check fired unconditionally, and the ONLY thing "What changed"/the narrative pulse had to
+  // show was the content-free line "Verdict headline updated": no old value, no new value, no
+  // reason. That is the exact same shape as the restatement-without-substance bugs already fixed
+  // today elsewhere in this lane (a line that fires but tells the reader nothing they didn't
+  // already know) — worse here, because unlike those it can be the ONLY line in the whole pulse,
+  // i.e. the member sees "something changed" with zero information on what. Every other rule in
+  // this function names the concrete before/after; this was the one exception. Fixed by
+  // normalizing away the DTE segment before comparing — a pure day-rollover no longer fires this
+  // line at all (the "Hold plan" section already surfaces live DTE continuously, so restating
+  // "the DTE changed" here would itself be a second restatement, not new information); a headline
+  // change from any OTHER cause (a roll changing strike, an action-label shift not already
+  // captured by `recommendationChanged` above) still fires, since those genuinely are new facts.
+  if (stripDteFromHeadline(prev.headline) !== stripDteFromHeadline(next.headline)) {
     lines.push(`Verdict headline updated`);
   }
 

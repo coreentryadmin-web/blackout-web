@@ -490,6 +490,27 @@ test("loadPersistedBriefSnapshot: rejects a stored snapshot missing sectionTitle
   }
 });
 
+test("diffBriefSnapshots: a DTE-only headline change (day rollover) produces no lines", () => {
+  // BUG FIX (Ask Largo standing mandate, 2026-09-18): `playContractHeadline` bakes the contract's
+  // own DTE into the headline (e.g. "HOLD — TEST 100C 13DTE"), and DTE decrements every session
+  // day on its own with nothing else about the position changing. Before this fix, the bare
+  // `prev.headline !== next.headline` check fired "Verdict headline updated" on every such
+  // rollover — the one line in this whole diff engine that named no before/after value, so on a
+  // quiet day it could be the ONLY thing "What changed" showed: "something changed", with zero
+  // information on what. Nothing else moved here (same recommendation/thesis/pnl/mark/spot), so a
+  // fixed engine reports no material change at all.
+  const prev = snapshotFromBrief(env("HOLD — TEST 100C 13DTE"), play({ pnlPct: 20 }));
+  const next = snapshotFromBrief(env("HOLD — TEST 100C 12DTE"), play({ pnlPct: 20 }));
+  assert.deepEqual(diffBriefSnapshots(prev, next), []);
+});
+
+test("diffBriefSnapshots: a real headline change (not just DTE) still fires the bullet", () => {
+  const prev = snapshotFromBrief(env("HOLD — TEST 100C 13DTE"), play({ pnlPct: 20 }));
+  const next = snapshotFromBrief(env("TRIM — TEST 100C 13DTE"), play({ pnlPct: 20 }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.includes("Verdict headline updated"));
+});
+
 test("loadPersistedBriefSnapshot: still accepts a well-formed stored snapshot", () => {
   const store = new Map<string, string>();
   const originalWindow = globalThis.window;
