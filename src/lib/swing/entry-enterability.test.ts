@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  deadPlayReason,
   evaluateSwingEntryEnterability,
   swingEntryActionLabel,
 } from "./entry-enterability";
@@ -250,5 +251,52 @@ describe("evaluateSwingEntryEnterability", () => {
     });
     assert.equal(expired.expired, true);
     assert.equal(expired.action, "dont_buy");
+  });
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): deadPlayReason only recognized 2 of the 4
+// `dont_buy` dead-entry states evaluateSwingEntryEnterability can return — INVALIDATED and
+// deadline-expired — leaving contract-expired and extended-chase uncovered even though
+// entry-verdict.ts's `dont_buy` branch keeps `gateBlocks` populated for exactly those two cases
+// too (its own comment: "regardless of which dont_buy reason fired (deadline-expired,
+// contract-expired, extended-chase)"). Every renderer gated on `deadPlayReason` (watchEntrySection
+// in play-brief.ts, entryTriggerDeadReason in play-brief-intel.ts, the invalidation callout in
+// play-brief.ts, and gateBlockCoaching in play-brief-narrative-coaching.ts) would render an
+// un-qualified "Gates blocking entry" header for a contract-expired or extended-chase WATCH play
+// that also happened to carry gate evidence — implying clearing the gate would reopen entry, which
+// is false because the entry/setup state already blocks it first regardless of gates.
+describe("deadPlayReason", () => {
+  it("INVALIDATED thesis is dead", () => {
+    assert.equal(deadPlayReason({ setupState: "INVALIDATED" }), "thesis already invalidated");
+  });
+
+  it("watchEntryExpired (deadline past) is dead", () => {
+    assert.equal(
+      deadPlayReason({ setupState: "TRIGGERED", watchEntryExpired: true }),
+      "entry-validity window expired",
+    );
+  });
+
+  it("entryStatus EXPIRED (contract expired) is dead — was previously NOT recognized", () => {
+    assert.equal(deadPlayReason({ setupState: "TRIGGERED", entryStatus: "EXPIRED" }), "contract expired");
+  });
+
+  it("setupState EXTENDED is dead — was previously NOT recognized", () => {
+    assert.equal(
+      deadPlayReason({ setupState: "EXTENDED", entryStatus: "PRE_TRIGGER" }),
+      "extended past the valid entry window",
+    );
+  });
+
+  it("entryStatus EXTENDED_CHASE is dead — was previously NOT recognized", () => {
+    assert.equal(
+      deadPlayReason({ setupState: "TRIGGERED", entryStatus: "EXTENDED_CHASE" }),
+      "extended past the valid entry window",
+    );
+  });
+
+  it("a genuinely still-enterable play is not dead", () => {
+    assert.equal(deadPlayReason({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER" }), null);
+    assert.equal(deadPlayReason({ setupState: "FORMING", entryStatus: "PRE_TRIGGER" }), null);
   });
 });
