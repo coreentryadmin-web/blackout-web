@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T21:23:24Z",
+  "lastUpdated": "2026-09-18T21:52:40Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4037,6 +4037,12 @@
       "summary": "posture-backtest LIVE call (?days=30, 22 sessions, PR #5222 raw-regime field confirmed deployed) answers the (a)-vs-(b) question the finding left open: composite_regime NEVER once took the value NEUTRAL,AMPLIFY_BREAKOUT,AMPLIFY_MIXED,MEAN_REVERT_MIXED are the ONLY 4 values seen across all 22 sessions -- MEAN_REVERT_TRENDING_DOWN and AMPLIFY_BREAKDOWN (the 2 genuinely bearish composites) never appeared even once, independent of Task #30's dead substring-match bug. tide_bias also NEVER read BEARISH in any of the 22 sessions (only NEUTRAL/BULLISH), despite this being the same window independently confirmed -1.31% SPY / 17-of-22 red days. Only breadth (advance_pct, low as 21.2/21.4/25.1) ever showed a bearish-looking read -- capping the gate at 1-of-3 signals structurally, every session, regardless of the substring bug. gate_fired_short_n=0/22, all_long_sessions_n=21/22 confirmed again.",
       "assessment": "This strengthens (does not newly open) Task #30's hold: composite_regime's real values never even reached the down-trend states this window, so fixing the substring match alone would still leave the gate 1-of-3-capped by tide_bias's own non-firing. NEW observation (instance 1, below noise threshold): tide_bias never crossing BEARISH through a whole down-tape window is itself worth a future look (is 45% call-premium threshold too strict, or a capture-timing issue vs EOD price action) -- logged for pattern-matching, not escalated yet at n=1. No code changed this cycle -- pure measurement, per the standing HOLD on Task #30 pending operator confirmation.",
       "action": "none -- read-only measurement via live admin API call, no journal-worthy anomaly beyond what's already logged as Task #30"
+    },
+    {
+      "at": "2026-09-18T21:52:40Z",
+      "summary": "Edition rolled forward: 21:52Z healthcheck now serves edition_for=2026-09-21 (Monday -- correct next trading day, since 2026-09-18 is a Friday, no Sat/Sun sessions), A_edition GREEN 'fresh, not degraded', 4 new plays (MU/BMNR/ETHA/MARA -- distinct from the outgoing SMTC/SMCI/SWKS/HPE book). B_marks AMBER (expected transitional staleness right after a fresh edition build). D_pull_status SKIPPED 'morning confirmation not yet run for this date' (correct -- that cron only runs at next market open). C_record steady resolved=28.",
+      "assessment": "This is the legitimate weekly day-rollover, NOT a repeat of the transient wrong-future-date anomaly logged earlier today (~16:51Z, mid-session on the 18th, marked degraded, self-healed back to same-day 09-18). Distinguishing the two: today's earlier instance served a future date WHILE the 18th's own session was still the live/current edition and flagged itself degraded; this one is post-close on a Friday with no weekend sessions, so 09-21 is the only valid next edition and it reports fresh/not-degraded. Confirms the 16:51Z anomaly should stay at n=1 (self-resolved, different mechanism) rather than being folded into this normal transition.",
+      "action": "none -- normal weekly rollover, expected transitional AMBER/SKIPPED on marks and pull-status, correctly distinguished from the earlier same-day anomaly"
     }
   ],
   "knownOpenItems": {
