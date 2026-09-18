@@ -108,6 +108,50 @@ test("structural_stop fires at ANY premium P&L — even +30% green — because t
   assert.equal(v.enforced, true, "structural stop is capital preservation — always enforced");
 });
 
+// BUG FIX (2026-09-18, peer-review finding on PR #5190): structuralStopBroken() interpolated
+// comparePx/stop into verdict.reason with no rounding. On an ex-dividend session,
+// underlyingPriceForStructuralStop() computes `price + cash` via raw floating-point addition, so a
+// real (price, cash) pair can produce a visible artifact like 10.790000000000001. Was write-only
+// (never displayed) until PR #5190 wired verdict.reason into the member-facing narrative via
+// manageReasonDetail — must render as a clean 2dp string, never a raw float.
+test("structural_stop reason: ex-div LONG adjustment (price+cash) renders a clean 2dp string, no floating-point artifact", () => {
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 10.74,
+    structuralStopLevel: 148,
+    exDividendSession: true,
+    exDividendCash: 0.05, // 10.74 + 0.05 = 10.790000000000001 raw
+  });
+  assert.equal(v.rung, "structural_stop");
+  assert.match(v.reason, /underlying 10\.79 ≤ structural stop 148\.00/);
+  assert.doesNotMatch(v.reason, /\d\.\d{3,}/, "no more than 2 decimal digits anywhere in the reason string");
+});
+
+test("structural_stop reason: plain (non-ex-div) LONG/SHORT breach also renders a clean 2dp string", () => {
+  const longV = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94,
+    structuralStopLevel: 95,
+  });
+  assert.match(longV.reason, /underlying 94\.00 ≤ structural stop 95\.00/);
+
+  const shortV = evaluateSwingManagement({
+    dossier: SHORT_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 101,
+    structuralStopLevel: 100,
+  });
+  assert.match(shortV.reason, /underlying 101\.00 ≥ structural stop 100\.00/);
+});
+
 test("structural_stop: ex-div LONG adjustment prevents false breach on mechanical gap (Q39)", () => {
   const breached = evaluateSwingManagement({
     dossier: LONG_STD,

@@ -196,21 +196,21 @@ function structuralStopBroken(input: SwingManageInput): { broken: boolean; reaso
       return {
         broken: false,
         reason:
-          `ex-dividend data unavailable this cycle — cannot confirm underlying ${comparePx} ≤ ` +
-          `structural stop ${stop} isn't a mechanical ex-div gap; skipping structural stop for LONG ` +
+          `ex-dividend data unavailable this cycle — cannot confirm underlying ${comparePx.toFixed(2)} ≤ ` +
+          `structural stop ${stop.toFixed(2)} isn't a mechanical ex-div gap; skipping structural stop for LONG ` +
           `this cycle (fail-safe, Q39)`,
       };
     }
-    const adj = adjusted.adjusted ? ` (ex-div adjusted from ${price})` : "";
+    const adj = adjusted.adjusted ? ` (ex-div adjusted from ${price.toFixed(2)})` : "";
     return {
       broken: true,
-      reason: `underlying ${comparePx} ≤ structural stop ${stop} — LONG thesis broken in underlying terms${adj}`,
+      reason: `underlying ${comparePx.toFixed(2)} ≤ structural stop ${stop.toFixed(2)} — LONG thesis broken in underlying terms${adj}`,
     };
   }
   if (dir === "SHORT" && comparePx >= stop) {
     return {
       broken: true,
-      reason: `underlying ${comparePx} ≥ structural stop ${stop} — SHORT thesis broken in underlying terms`,
+      reason: `underlying ${comparePx.toFixed(2)} ≥ structural stop ${stop.toFixed(2)} — SHORT thesis broken in underlying terms`,
     };
   }
   if (adjusted.adjusted) {
