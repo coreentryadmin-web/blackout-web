@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T11:09:00Z",
+  "lastUpdated": "2026-09-18T11:27:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3810,6 +3810,18 @@
       "why": "Distinguishing 'blocked' from 'unfinished' precisely, per the operator's own standing instruction, before sizing new work -- this is genuinely UNFINISHED (the word 'automatic' in item #15 is the real gap, not the analysis itself, which is done), not blocked on anything.",
       "result": "Real, precisely-scoped gap found, NOT built this cycle -- making it automatic needs a new cron (or piggybacking on nighthawk-outcomes' own post-close window) plus a delivery decision (Discord post via the existing notifyOpsDiscord/LEGACY_DISCORD_ALERTS pattern vs. a persisted daily snapshot row vs. both) that deserves a deliberate design pass rather than a rushed same-cycle build, same caution applied to the RTH-continuous-leaderboard scope decision earlier today. Item #14 (member-facing morning command-center TABLE FORMAT) is a separate, larger, actual UI/output-format change to what members see and was not investigated this cycle.",
       "nextAction": "Next cycle with capacity: scope Phase 2F part 1 properly -- decide cadence (piggyback on nighthawk-outcomes' post-close pass vs. a new cron) and delivery surface (Discord/persisted-snapshot/both) for making analyzeNighthawkDebriefs' existing output automatic, then build it as a small, focused PR (wiring only -- the analysis itself needs no new code). Item #14 (command-center table) is larger scope, unexamined -- look at it separately once 2F-part-1 ships."
+    },
+    {
+      "at": "2026-09-18T11:27:00Z",
+      "trigger": ":21 cycle -- healthcheck steady, built Phase 2F part 1 (automatic daily learning digest)",
+      "healthcheck": "Re-ran fresh at 11:22:02Z: steady, unchanged (same pre-market pattern).",
+      "whatChanged": "Opened PR #5200 (draft): daily-learning-digest.ts (pure buildDailyLearningDigestMessage) + wired into nighthawk-outcomes cron's existing post-close 16:30 ET window, posting a compact digest to ops Discord via the already-used notifyOpsDiscord. Closes the exact gap scoped last cycle (11:09Z): the underlying analysis (debrief-aggregate.ts's analyzeNighthawkDebriefs) already existed, 'automatic' delivery was the only missing piece.",
+      "why": "Direct build-out of the design decided at 11:09Z: piggyback on an already-firing cron (no new schedule), reuse the existing ops-Discord notify path (no new integration), scope to days:1 (today's session, distinct from the admin route's own 30-day default). Same low-risk-reuse discipline as the candidate-leaderboard/R-multiple work.",
+      "evidence": "10 new tests for buildDailyLearningDigestMessage (null-on-unavailable, LOW-N badge, failure-mode ordering, improvement-queue capping, gate-blocked-value verbatim-summary quoting, clean-window-still-returns-a-message). 1 new source-text test on the route (matches this route's own existing convention -- can't mock-DB-test a route handler in this repo). Full nighthawk/lib + route suite: 1222/1222 pass, tsc clean. PR #5200 opened draft, CI running, 12-min check-in armed (trig_01JEiB8q7PuBYoUgEsBrWQev, fires 11:39Z).",
+      "sampleSize": "N/A -- wiring/formatting, not a statistical finding.",
+      "productionOrShadow": "PRODUCTION plumbing (runs inside the real, already-firing cron); posts to the OPS Discord channel only (never member-facing) -- an internal ops artifact, same visibility class as the existing INVALIDATED-play alert.",
+      "result": "Phase 2F now has its item #15 half shipped (pending merge). Item #14 (member-facing morning command-center table format) remains separate, larger scope, not started -- it changes actual member UI/output format, deserving its own deliberate look rather than folding into this PR.",
+      "nextAction": "Check PR #5200 CI at 11:39Z check-in, merge if green. Once merged, the operator's 15-point mandate has EVERY item either shipped, or explicitly held pending confirmation (items 11/full-2D, priority #7's RTH-continuous half), or correctly blocked on trading-day sample accumulation (items 6/8, Phase 2C/2B-part-2) -- only item #14 (command-center table) remains genuinely not-yet-started with no blocker. Consider scoping that next once capacity allows, or continue the standing healthcheck/aggressive-mode cadence and let it surface naturally."
     }
   ],
   "knownOpenItems": {
