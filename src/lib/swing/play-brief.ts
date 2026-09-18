@@ -272,6 +272,38 @@ function pnlSection(play: TerminalPlay): RichSection {
     // entry/premium data is missing).
     `Trough: **${fmtPct(play.trough)}**`,
   ];
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.greeks` (DeckGreeks: delta/gamma/
+  // theta/vega/iv) is a real, live per-contract read for every open swing position — the active-
+  // refresh cron fetches it on every tick (`SwingLiveQuote`, live-plays.ts) and carries it onto the
+  // held contract (`contractFromRow`), and `terminalPlayFromHorizon` (adapters.ts) already builds
+  // `play.greeks` from it via `greeksFromContract` — that call site's own comment traces this back
+  // to FINDINGS 2026-08-06 SEV-3 ("greeks never reached the desk... SWING/LEAPS greek strip could
+  // never render anything"), fixed there for the Command Deck's own greek strip (PlayTerminal.tsx).
+  // But the play-brief — Ask Largo's own consumer of the exact same TerminalPlay object — never
+  // read `play.greeks` anywhere in play-brief*.ts: a member asking Largo "what's my theta decay /
+  // delta exposure on this position" got nothing, even though the identical live numbers already
+  // render one click away on the deck's own greek strip. Same wiring-gap shape as the #4101
+  // `unavailableSources` fix — data computed, even already surfaced on a sibling UI surface, never
+  // reached the Largo envelope.
+  //
+  // `greeksFromContract` already only returns a non-null object when at least one field is real
+  // (Object.values(...).some(v => v != null)), the same honesty gate the deck's own `greeksLive`
+  // check applies — so `if (play.greeks)` alone is sufficient here; no extra staleness/absence
+  // plumbing to duplicate. Formatting matches PlayTerminal.tsx's `fmtGreek` exactly (signed
+  // delta/gamma/vega, unsigned theta since a real theta value already carries its own minus sign,
+  // iv as a rounded whole-number percent) so a member cross-referencing the deck and Largo never
+  // sees the same number rendered two different ways.
+  if (play.greeks) {
+    const g = play.greeks;
+    const sign = (v: number) => (v >= 0 ? "+" : "");
+    const parts: string[] = [];
+    if (g.delta != null) parts.push(`Δ ${sign(g.delta)}${g.delta.toFixed(2)}`);
+    if (g.gamma != null) parts.push(`Γ ${sign(g.gamma)}${g.gamma.toFixed(2)}`);
+    if (g.theta != null) parts.push(`θ ${g.theta.toFixed(2)}/day`);
+    if (g.vega != null) parts.push(`ν ${sign(g.vega)}${g.vega.toFixed(2)}`);
+    if (g.iv != null) parts.push(`IV ${Math.round(g.iv * 100)}%`);
+    if (parts.length) lines.push(`Greeks: ${parts.join(" · ")}`);
+  }
   if (blended != null) {
     lines.push(`Blended P&L (realized trim + open runner): **${fmtPct(blended)}**`);
     // The blended composite above is otherwise opaque arithmetic a member has to trust —

@@ -1981,6 +1981,75 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   );
 });
 
+// FINDINGS (Ask Largo standing mandate): `play.greeks` (DeckGreeks: delta/gamma/theta/vega/iv) is a
+// real, live per-contract read for every open swing position — the active-refresh cron fetches it
+// on every tick (SwingLiveQuote, live-plays.ts), carries it onto the ChainContract
+// (contractFromRow), and adapters.ts's terminalPlayFromHorizon already builds `play.greeks` from it
+// via `greeksFromContract` (see that call site's own FINDINGS 2026-08-06 SEV-3 comment: "greeks
+// never reached the desk... SWING/LEAPS greek strip could never render anything" — fixed for the
+// Command Deck UI's greek strip, PlayTerminal.tsx). But the play-brief (Ask Largo's own consumer of
+// the exact same TerminalPlay object) never reads `play.greeks` anywhere in play-brief*.ts — a member
+// asking Largo "what's my theta decay / delta exposure on this position" gets nothing, even though
+// the same live numbers are already rendering one click away on the deck's own greek strip. Same
+// wiring-gap shape as the #4101 `unavailableSources` fix (data computed, even already surfaced on a
+// sibling UI surface, never reaches the Largo envelope) — the Position section is the natural home
+// since Greeks are position-level, per-contract facts alongside Entry/Mark/P&L.
+test("composeSwingPlayBrief: OPEN position's live greeks (delta/gamma/theta/vega/iv) reach the Position section (Ask Largo wiring gap)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 0.485 },
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(position!.body, /Greeks:.*Δ \+0\.62/, `expected delta in Position body, got: ${position!.body}`);
+  assert.match(position!.body, /Γ \+0\.03/);
+  // theta stays unsigned-by-toFixed (matches the deck's own `fmtGreek` convention — a negative
+  // theta value already carries its own minus sign, never a spurious "+").
+  assert.match(position!.body, /θ -0\.08\/day/);
+  assert.match(position!.body, /ν \+0\.11/);
+  assert.match(position!.body, /IV 49%/);
+});
+
+test("composeSwingPlayBrief: OPEN position with no live greeks omits the Greeks line entirely (honest absence, never fabricated)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      greeks: null,
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.doesNotMatch(position!.body, /Greeks:/, "must not fabricate a Greeks line with no live quote");
+});
+
 test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) never carry a '+' sign (live NN repro 2026-09-09)", () => {
   // Live repro: GET /api/market/swing/play-brief?ticker=NN&positionId=32&... rendered
   // "Entry: **+$1.95**" / "Mark: **+$1.35**" / "Rails: stop +$0.78 · target +$3.90" even
