@@ -353,6 +353,11 @@
       "session_state": "OPENING_DRIVE (heat_pct 70)",
       "activity": "13:37 UTC offset trigger. Market open, 41 setups scanned, 0 commit-ready, 0 ledger rows -- entirely explained by G-2 opening_window (blocks all new 0DTE commits before 10:00 ET, unlocks 14:00Z), confirmed on the top setups' own gate.blocks (LITZ/LITE/LITX all show opening_window plus their own independent secondary blocks -- score_floor, plan_moved, plan_illiquid, conditional_band_unmet -- so even post-10:00 several would likely stay blocked on their own merits, not purely the window). This is correct, intentional gating, not a bug. Nothing to escalate.",
       "findings_this_cycle": "0 -- opening drive behaving as designed"
+    },
+    "2026-09-18T13:52:00Z": {
+      "session_state": "OPENING_DRIVE, ~8min from 10:00 ET commit unlock",
+      "activity": "13:46 UTC offset trigger. Still 0 commits (opening_window unlock at 14:00Z, ~8min out). Aggressive-mode upside-hunt this cycle: shipped PR #5207 -- the top_block_code stale-cumulative-tally finding from yesterday's journal (ruled out as a bug then, flagged as a product-clarity enhancement, never actually fixed) turned out to be a small, well-scoped, single-call-site fix once traced to session-board-stats.ts's precedence logic -- shipped it now rather than leaving it as a stale 'someday' idea. RED->GREEN proven, 161/161 related suite green, tsc clean, PR opened as draft, subscribed.",
+      "findings_this_cycle": "1 fixed -- PR #5207 open (top_block_code precedence)"
     }
   },
   "sessions": {
