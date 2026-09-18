@@ -8219,6 +8219,25 @@ export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000):
   return res.rows.map(mapSwingPositionRow);
 }
 
+/**
+ * Every row (any status/leg) on ONE ticker, most recent first — the ticker-scoped historical-
+ * context read (Largo product contract C10; play-brief-ticker-history.ts). Deliberately unfiltered
+ * on status: `record.ts`'s `selectSwingRecordRootIds` needs OPEN rows too (to know which roots to
+ * SKIP as still-live, not just which to count), and rolled-leg children carry `root_position_id`
+ * rather than a status of their own that would make a status filter safe here. `ticker` is indexed
+ * implicitly via the existing `(ticker, ...)` access patterns elsewhere in this file (e.g. the
+ * cross-session persistence query at line ~8484) — this is a small, ticker-scoped read, not a
+ * table scan of the whole ledger.
+ */
+export async function fetchSwingPositionsByTicker(ticker: string, limit = 200): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_positions WHERE ticker = $1 ORDER BY session_date DESC, id DESC LIMIT $2`,
+    [ticker.toUpperCase(), limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
 /** Terminal-but-ungraded positions the lazy grader picks up (a leg is graded once it is
  *  CLOSED/ROLLED and its forward bars exist). Capped — grading is incremental. */
 export async function fetchUngradedSwingPositions(limit = 25): Promise<SwingPositionRow[]> {
