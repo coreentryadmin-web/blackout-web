@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T22:53:02Z",
+  "lastUpdated": "2026-09-18T23:19:07Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4061,6 +4061,12 @@
       "summary": "PR #5235 (desk_playbook data-layer field, corrected scope) merged to main at 22:52:11Z (sha 2e644144c) -- CI and CodeQL both green on the final head. Confirmed on origin/main via git log. Cleaned up: deleted local branch, cancelled the scheduled ~1hr check-in trigger (no longer needed).",
       "assessment": "Task #31 fully closed with an honest outcome: shipped only what was real (the market_recap.desk_playbook field), corrected the misleading dead-code UI claim before merge, and opened Task #32 for the actual live-UI wiring as separate, properly-scoped work. Healthcheck this cycle (22:51Z) was repeat-clean, identical to the prior 3 cycles (edition_for=2026-09-21 steady, resolved=28 steady) -- no separate entry needed for that.",
       "action": "none further -- PR done, journal updated. Holding for next trigger."
+    },
+    {
+      "at": "2026-09-18T23:19:07Z",
+      "summary": "Task #32 built and opened as PR #5237: wired deriveComposite()'s desk-playbook regime sentence into the ACTUAL live Legacy macro strip (LegacyPickLogBoard.tsx -> LegacyMacroStrip.tsx), completing the work PR #5235 correctly deferred. Traced the real pipeline end to end: /api/platform/intel already returned regime.playbook correctly (no change needed); nighthawk-morning-confirm cron's fetchPlatformIntel() only read regime.composite, dropping playbook before it reached Redis -> /api/nighthawk/play-status -> containers.tsx -> LegacyMacroStrip. Threaded playbook through all 3 MorningConfirmResult construction sites, LegacyMacroContext, containers.tsx, and a new bullet in LegacyMacroStrip.tsx. DB-fallback path (morning-status-from-db.ts) honestly nulls it, consistent with that path's pre-existing gex_bias/call_wall/put_wall nulls.",
+      "assessment": "5 new unit tests, npx tsc --noEmit clean, full npm test 14865/14865 passing. Staged finding + MARKET-OPEN-VALIDATION.md #297 entry (verify live on the next 9:15 ET cron fire). This closes Task #32 and the full desk-playbook idea arc (Task #31 -> #32) with the actual live surface fixed, not just the data layer.",
+      "action": "PR #5237 opened (draft), subscribed to PR activity. Watching for CI."
     }
   ],
   "knownOpenItems": {
