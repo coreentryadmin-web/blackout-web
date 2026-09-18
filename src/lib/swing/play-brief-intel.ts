@@ -922,6 +922,38 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     );
   }
 
+  // Symmetric to the stop-cushion block above (Ask Largo standing mandate, 2026-09-18, live repro
+  // CRWD:39 OPEN brief): the stop rail gets a fully-gated room% — mark/execMark-preferring,
+  // staleness-aware, never fabricated when the mark itself is genuinely unknown — with three
+  // separate historical fixes (2026-09-12 x2, 2026-09-14) making that computation increasingly
+  // correct. `exitPolicy.target_premium` (the upside rail) is real and already computed, but was
+  // NEVER given the equivalent treatment anywhere in the narrative layer — confirmed by exhaustive
+  // grep across play-brief.ts/play-brief-narrative.ts/play-brief-narrative-coaching.ts/this file:
+  // it only ever appears as a bare dollar figure in "Rails: stop X · target Y" (Management section)
+  // and "Manage rails" (tradeManagerNarrativeSection). A member reading the stop side gets "60%
+  // cushion from current mark" — no mental math required — while the target side forces them to do
+  // exactly the subtraction the stop-cushion fix's own comment names as the reason it was added.
+  // Deliberately mirrors the stop block's basis/gating logic (execMark preferred over mid, gated on
+  // !optionMarkGenuinelyUnknown) rather than reinventing it, so this can't independently drift into
+  // any of the three defect shapes already fixed on the stop side. Omitted (never a negative/zero
+  // fabrication) once the basis has already reached or passed the target — a real, if less common,
+  // state for a position still open pending its own trim/exit management.
+  if (bucket === "open" && play.exitPolicy?.target_premium != null) {
+    const target = play.exitPolicy.target_premium;
+    const execMarkForTarget = play.execMark;
+    const targetBasis = execMarkForTarget != null && execMarkForTarget > 0 ? execMarkForTarget : play.mark;
+    const targetBasisIsExec = execMarkForTarget != null && execMarkForTarget > 0;
+    const targetRoomPct =
+      targetBasis != null && targetBasis > 0 && target > targetBasis && !optionMarkGenuinelyUnknown(play)
+        ? ((target - targetBasis) / targetBasis) * 100
+        : null;
+    if (targetRoomPct != null) {
+      lines.push(
+        `Premium target rail: **${fmtUsd(target)}** — **${targetRoomPct.toFixed(0)}%** move still needed from current ${targetBasisIsExec ? "bid" : "mark"} to reach target`,
+      );
+    }
+  }
+
   if (!lines.length) {
     lines.push(
       bucket === "closed"

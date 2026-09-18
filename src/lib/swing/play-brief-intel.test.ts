@@ -3677,6 +3677,145 @@ test("watchForSection: Premium stop rail falls back to the mid-based cushion whe
   assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 29% cushion from current mark/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18, live repro CRWD:39 OPEN brief): the stop rail
+// above gets a fully-gated room% (mark/execMark-preferring, staleness-aware, never fabricated) —
+// `exitPolicy.target_premium` never got the symmetric treatment anywhere in the narrative layer,
+// only ever appearing as a bare dollar figure elsewhere ("Rails: stop X · target Y"). Mirrors the
+// stop-cushion tests immediately above.
+test("watchForSection: Premium target rail shows the live room percentage to the target, not just the dollar level", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 14.65,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (25.40 - 14.65) / 14.65 * 100 = 73.38% -> 73%
+  assert.match(
+    section.body,
+    /Premium target rail: \*\*\$25\.40\*\* — \*\*73%\*\* move still needed from current mark to reach target/,
+  );
+});
+
+test("watchForSection: Premium target rail omits the room note when mark is unavailable (never fabricated)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Premium target rail/);
+});
+
+test("watchForSection: Premium target rail uses the executable (bid) basis, not the more optimistic mid, when they diverge", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 14.65,
+        execMark: 13.0,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (25.40 - 13.00) / 13.00 * 100 = 95.38% -> 95%, using execMark (bid), not the more optimistic mid.
+  assert.match(
+    section.body,
+    /Premium target rail: \*\*\$25\.40\*\* — \*\*95%\*\* move still needed from current bid to reach target/,
+  );
+});
+
+test("watchForSection: Premium target rail omits the room note once the basis has already reached or passed the target (never a negative/zero fabrication)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 26.0,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Premium target rail/);
+});
+
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
 // duplication class as #4261 (recNote/rails) and the thesis-health advisory fix above:
 // catalystCoaching (play-brief-narrative-coaching.ts) already renders "Earnings in Nd (DATE) —
