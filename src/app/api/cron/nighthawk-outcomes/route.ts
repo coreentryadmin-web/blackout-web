@@ -7,6 +7,7 @@ import {
   resolveBangerScaleOutGrades,
 } from "@/features/nighthawk/lib/play-outcomes";
 import { regradeStuckNighthawkOutcomes } from "@/features/nighthawk/lib/regrade-stuck";
+import { gradeNighthawkCandidateForwardReturns } from "@/features/nighthawk/lib/candidate-forward-grade";
 import {
   runNighthawkDebriefPass,
   runNighthawkRejectionCounterfactuals,
@@ -127,6 +128,18 @@ export async function GET(req: NextRequest) {
       errors: [err instanceof Error ? err.message : String(err)],
     }));
 
+    // Phase 1.8 (Night Hawk Legacy Signal Intelligence): multi-horizon (5m/15m/30m/1h/EOD)
+    // forward-return grading for every candidate_snapshot row (Phase 1.3-1.5's per-stage
+    // capture), not just published plays. FAIL-SOFT BY CONTRACT, identical shape to the
+    // debrief/rejection/regrade/banger passes above — never fails the headline grading run.
+    const candidateForwardGrade = await gradeNighthawkCandidateForwardReturns({ lookbackDays }).catch(
+      (err) => ({
+        graded: 0,
+        skipped: 0,
+        errors: [err instanceof Error ? err.message : String(err)],
+      })
+    );
+
     const payload = {
       ok: health.ok,
       ...result,
@@ -134,6 +147,7 @@ export async function GET(req: NextRequest) {
       rejection_counterfactuals: rejectionCf,
       regrade_stuck: regradeStuck,
       banger_scale_out: bangerScaleOut,
+      candidate_forward_grade: candidateForwardGrade,
     };
     await logCronRun("nighthawk-outcomes", started, {
       ok: health.ok,
@@ -145,6 +159,7 @@ export async function GET(req: NextRequest) {
       rejection_counterfactuals: rejectionCf,
       regrade_stuck: regradeStuck,
       banger_scale_out: bangerScaleOut,
+      candidate_forward_grade: candidateForwardGrade,
     });
     return NextResponse.json(payload, health.ok ? undefined : { status: 500 });
   } catch (error) {
