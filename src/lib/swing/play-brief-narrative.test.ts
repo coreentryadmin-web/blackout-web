@@ -2013,6 +2013,37 @@ test("tradeManagerNarrativeSection: SELL from a real thesis break still says the
   assert.ok(section!.body.includes("**Exit now** — thesis broke. Flatten per manage engine."));
 });
 
+// GAP FOUND (2026-09-18, Ask Largo standing mandate): manage.ts's `evaluateSwingManagement`
+// computes a full, specific prose reason for every verdict (the exact breached level) and
+// manage-sync.ts persists it verbatim every tick (event_json.reason) — but until this fix nothing
+// between that write and sellReasonClause ever read it back out, so a real structural-stop breach
+// always rendered as the generic "thesis broke" above with no level/price, even when the specific
+// sentence was sitting right there on the same snapshot. See TerminalPlay.manageReasonDetail.
+test("tradeManagerNarrativeSection: SELL from a structural break with a persisted reason detail surfaces the SPECIFIC level, not just 'thesis broke'", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        recommendation: "SELL",
+        manageReason: "structural_stop",
+        manageReasonDetail: "underlying 145.20 ≤ structural stop 148.00 — LONG thesis broken in underlying terms",
+        pnlPct: -12,
+        peak: 5,
+      }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.equal(
+    section!.body.includes(
+      "**Exit now** — underlying 145.20 ≤ structural stop 148.00 — LONG thesis broken in underlying terms. Flatten per manage engine.",
+    ),
+    true,
+  );
+  // The generic fallback must NOT also appear — the specific reason replaces it, not appends to it.
+  assert.equal(/\*\*Exit now\*\* — thesis broke\./.test(section!.body), false);
+});
+
 test("tradeManagerNarrativeSection: SELL with unknown reason and no detected thesis break states no mechanism", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
