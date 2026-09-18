@@ -91,8 +91,9 @@ export function thesisPillarCoaching(play: TerminalPlay): string | null {
  * current), but trough-vs-peak never received the same treatment. Only fires for a real, meaningful
  * swing (peak-minus-trough >= 40 pts AND the position actually traded negative at some point) — a
  * shallow trough is not conviction-relevant, and firing on every position would just be noise.
- * OPEN-only: a CLOSED play's own "Lessons" section already covers post-mortem framing for that
- * bucket, and this isn't meant to duplicate it.
+ * OPEN-only: a CLOSED play's own "Lessons" section (`closedCoaching`, below) carries the
+ * equivalent post-mortem trough disclosure so this doesn't duplicate it — see that function's
+ * own 2026-09-18 fix comment for why this claim previously did NOT hold in practice.
  */
 export function troughResilienceCoaching(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket !== "open") return null;
@@ -1052,6 +1053,36 @@ export function closedCoaching(play: TerminalPlay): string | null {
     if (play.closedReason === "thesis") lines.push(`Exit on **thesis break** — note which pillar failed first in playbook review.`);
     else if (play.closedReason === "stopped" || play.closedReason === "stop") lines.push(`**Stop fired** (${r}) — check if entry was extended past invalidation.`);
     else lines.push(`Exit reason: **${r}**`);
+  }
+
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.trough` (the position's own worst
+  // intra-trade excursion, `troughDisplay` — adapters.ts, computed unconditionally alongside
+  // `peakDisplay` for every row with an entry+trough premium, CLOSED rows included) never reached
+  // ANY section of a CLOSED brief. `troughResilienceCoaching`'s own doc comment (this same file,
+  // a few lines above) explicitly claims this is a non-issue — "a CLOSED play's own 'Lessons'
+  // section already covers post-mortem framing for that bucket, and this isn't meant to duplicate
+  // it" — but that claim was never actually true: this function (the CLOSED bucket's real
+  // "Lessons" content, via `collectCoachingBullets`) only ever cited `play.peak` (the "Exited X vs
+  // peak Y" line above) and never `play.trough` anywhere. Live-verified: `pnlSection`'s own
+  // 2026-09-15 comment (play-brief.ts) built the exact same trough-narration reasoning for OPEN
+  // positions — "this one tested you early, don't flinch on the next drawdown scare" — reasoning
+  // that applies with EVEN MORE force in a post-mortem review (did this position round-trip
+  // through a real drawdown before it worked, or before it failed for good — a pattern worth
+  // noting for the next similar setup) yet the data was silently dropped for exactly the bucket
+  // whose whole job is teaching that lesson. Same >=40pt meaningful-swing threshold as
+  // `troughResilienceCoaching` for consistency; only fires on a real negative excursion (a
+  // position that never went negative has nothing to note here).
+  if (
+    typeof play.trough === "number" &&
+    Number.isFinite(play.trough) &&
+    play.trough < 0 &&
+    typeof play.peak === "number" &&
+    Number.isFinite(play.peak) &&
+    play.peak - play.trough >= 40
+  ) {
+    lines.push(
+      `**Drawdown before outcome** — this position dipped to **${fmtPct(play.trough)}** at its worst before closing at **${play.exitPnlPct != null ? fmtPct(play.exitPnlPct) : "—"}**; note the real intra-trade swing when sizing or setting stops on similar setups.`,
+    );
   }
 
   if (!lines.length) return null;

@@ -1192,6 +1192,44 @@ test("closedCoaching: outcome + exit-reason are separate bullet points, not one 
   assert.match(points[2], /^\*\*Stop fired\*\* \(stopped\)/);
 });
 
+test("closedCoaching: discloses a real drawdown before outcome (gap fix 2026-09-18)", () => {
+  // Live repro shape: CRWD-style position that dipped hard before eventually closing — the raw
+  // trough was computed (adapters.ts) but never reached any CLOSED-bucket narrative section.
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 161.3,
+      trough: -57.2,
+      exitPnlPct: 40.0,
+      mfeCapturePct: 25,
+      closedReason: null,
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /Drawdown before outcome/i);
+  assert.match(line!, /-57\.2%/);
+  assert.match(line!, /\+40\.0%/);
+});
+
+test("closedCoaching: no trough line when the swing is shallow (<40pt) or trough never went negative", () => {
+  const shallow = closedCoaching(
+    play({ status: "CLOSED", peak: 30, trough: -5, exitPnlPct: 20, closedReason: null }),
+  );
+  assert.doesNotMatch(shallow ?? "", /Drawdown before outcome/i);
+
+  const neverNegative = closedCoaching(
+    play({ status: "CLOSED", peak: 80, trough: 10, exitPnlPct: 20, closedReason: null }),
+  );
+  assert.doesNotMatch(neverNegative ?? "", /Drawdown before outcome/i);
+});
+
+test("closedCoaching: no trough line when trough is missing (honest absence, never fabricated)", () => {
+  const line = closedCoaching(
+    play({ status: "CLOSED", peak: 80, trough: null, exitPnlPct: 20, closedReason: null }),
+  );
+  assert.doesNotMatch(line ?? "", /Drawdown before outcome/i);
+});
+
 // ─── vectorPlayCoaching ─────────────────────────────────────────────────────
 
 test("vectorPlayCoaching: stale Vector returns null (Largo C2)", () => {
