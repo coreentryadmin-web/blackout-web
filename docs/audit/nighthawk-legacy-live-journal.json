@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T10:09:00Z",
+  "lastUpdated": "2026-09-18T10:41:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3781,6 +3781,18 @@
       "trigger": ":06 cycle -- full v3 brief refresh",
       "healthcheck": "First check at 10:07:43Z hit the already-known transient degraded-fallback pattern (A_edition AMBER 'served from degraded fallback source', editionFor jumped to 2026-09-21) -- this is the SAME timeoutFallbackEdition scenario already investigated/fixed in this lane's own eval ordering (PR #5078, 2026-09-16) and observed 6 times total in this journal's history; self-resolved within 21 seconds (re-ran at 10:08:04Z: back to editionFor=2026-09-18, A_edition GREEN 4 plays). Not a new finding, not re-escalating -- well past the 3-instance threshold and already understood/documented as an inherent transient fail-safe, not a bug to chase further.",
       "result": "Clean cycle otherwise -- no new bugs or gaps found. All 8 PRs from today's continuous-learning mandate build remain verified live (confirmed last cycle). No open PRs, no pending follow-ups beyond the two already-tracked open items (Phase 2C/2B-part-2 sample accumulation, full-RTH-continuous half of priority #7)."
+    },
+    {
+      "at": "2026-09-18T10:41:00Z",
+      "trigger": ":36 cycle -- healthcheck steady, picked up Phase 2D's safe half (promotion/demotion status ladder)",
+      "healthcheck": "Re-ran fresh at 10:36:52Z: steady, unchanged (same pre-market pattern).",
+      "whatChanged": "Opened PR #5197 (draft): promotion_status (WATCH/READY/TRIGGERED/ACTIVE/REJECTED) added to candidate-leaderboard.ts's CandidateLeaderboardEntry -- operator priority #10. Item #11 (NO-TRADE state) of the SAME priority-order item, and Phase 2D generally, stays correctly BLOCKED on the backfill-floor product trade-off (06:21Z journal entry) -- this PR does not touch that, it only labels where a candidate already in the funnel currently sits.",
+      "why": "Re-examined the Phase 2D blocker before assuming the whole item stays frozen -- found item #10 (the status ladder itself) is a pure relabeling of data candidate-leaderboard.ts already assembles (trajectory/outcome), unrelated to the NO-TRADE/backfill-floor conflict that blocks item #11. Same safe/held split discipline already used for priority #7 (leaderboard primitive shipped, full-RTH-continuous tracking held).",
+      "evidence": "5 new tests (ACTIVE/REJECTED mirror outcome; WATCH/READY/TRIGGERED at each in-progress depth; unrecognized-stage graceful degradation). Full nighthawk/lib suite 1210/1210 pass, tsc clean. PR #5197 opened draft, CI running, 12-min check-in armed (trig_01EAVJsfe1BgGmqbKaKBfP3W, fires 10:53Z).",
+      "sampleSize": "N/A -- pure derivation, no new data collection.",
+      "productionOrShadow": "SHADOW data (candidate_snapshot rows), additive field on an already-shipped primitive -- the admin export route automatically starts returning it once this merges, no route change needed.",
+      "result": "Phase 2D now has ONE of its two sub-items shipped (promotion/demotion status labeling); the genuinely blocked half (NO-TRADE state vs backfill floor) remains correctly held.",
+      "nextAction": "Check PR #5197 CI at 10:53Z check-in, merge if green. Continue holding item #11/Phase 2D's NO-TRADE half and priority #7's full-RTH-continuous half pending operator confirmation on both. Items 6/2B-part-2 (Phase 2C, regime WHY-classification) remain correctly blocked on trading-day sample accumulation."
     }
   ],
   "knownOpenItems": {

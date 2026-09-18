@@ -515,6 +515,65 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     );
   });
 
+  // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro CRWD #39): manage.ts's
+  // TAKE_PARTIAL/EXIT_RUNNER actions come from MULTIPLE independent rungs, but only
+  // "profit_ladder" actually fires off exitPolicy.trim_levels. catalyst_shift/regime_shift/
+  // flow_decay/rel_strength_loss/vol_collapse are evidence-only advisories unrelated to the
+  // ladder's own trigger_pct — citing it in the label falsely implies the ladder itself fired.
+  it("TRIM recommendation driven by an unrelated advisory rung (catalyst_shift) does NOT borrow the ladder's trigger_pct", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "catalyst_shift",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM", tone: "active" },
+      "must never show a ladder trigger_pct that has nothing to do with why TRIM was recommended",
+    );
+  });
+
+  it("TRIM recommendation genuinely driven by the profit ladder still cites its trigger_pct", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          manageReason: "profit_ladder",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
+    );
+  });
+
+  it("TRIM recommendation with no manageReason (row has no live manage tick yet) keeps the pre-existing ladder-citing behavior", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 100%", tone: "active" },
+    );
+  });
+
   it("live OPEN swing uses HOLD when not enterable", () => {
     assert.deepEqual(
       swingActionDisplay(base({ horizon: "SWING", status: "OPEN", recommendation: "HOLD" })),
