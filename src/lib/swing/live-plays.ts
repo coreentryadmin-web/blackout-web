@@ -191,6 +191,7 @@ export function manageObservablesFromEvent(
   manageAction?: SwingManageAction;
   thesisLevel?: SwingThesisLevel;
   manageReason?: SwingManageRung | null;
+  manageEnforced?: boolean | null;
   rollCandidate?: { reason: string } | null;
   underlyingExcursion?: { mfePct: number; maePct: number } | null;
 } {
@@ -211,6 +212,30 @@ export function manageObservablesFromEvent(
   const rung = manageEvent.rung as SwingManageRung | undefined;
   const thesisState = typeof manageEvent.thesis_state === "string" ? manageEvent.thesis_state : null;
 
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `evaluateSwingManagement` (manage.ts)
+  // stamps `enforced` on every verdict — true always for the four capital-preservation GATE rungs
+  // (structural_stop/thesis_stop/expiry_risk/premium_stop), but for every EDGE rung (catalyst_shift,
+  // regime_shift, flow_decay, rel_strength_loss, vol_collapse, time_stop, add_eligible) it is
+  // `false` UNTIL that specific rung graduates in the PR-16 calibration ladder (n≥10, delta≥15pt —
+  // see calibration.ts and manage.ts's own header doc). `manage-sync.ts` persists this flag onto
+  // every snapshot's `event_json.enforced` (and only actually LATCHES the ledger to TRIM when
+  // `verdict.enforced && rung === "profit_ladder"` — `latchSwingLiveStatus`, manage-sync.ts:91-96 —
+  // so an un-graduated edge rung's action never moves the ledger at all). But this function, the
+  // SOLE reader of that event_json, never read `enforced` back out — so `manageAction` (and the
+  // "SELL"/"TRIM"/"BUY" badge `recommendationFromManageAction`, adapters.ts, derives from it 1:1)
+  // was shown with IDENTICAL visual weight whether the deciding rung was a hard capital-
+  // preservation gate the ledger actually acts on, or an unproven advisory signal the system
+  // itself treats as evidence-only and takes no action on. That is exactly the severity-
+  // conflation calibration-first is meant to prevent (manage.ts's own header: "the desk can SHOW
+  // 'flow decayed → consider trimming' long before that recommendation is allowed to act") — the
+  // desk showed it, but with no visible difference from a recommendation that IS allowed to act.
+  // GATE rungs force `true` below regardless of the raw event value (defensive — they are already
+  // always true per `isEnforced()`, but the override branches beneath re-derive `manageAction` from
+  // `thesisState`/`rung` independent of the raw snapshot, so `enforced` is re-derived alongside it
+  // for the same reason). Absent/malformed `enforced` (older snapshot shape) degrades to null —
+  // never a fabricated true/false.
+  let manageEnforced: boolean | null = typeof manageEvent.enforced === "boolean" ? manageEvent.enforced : null;
+
   if (
     thesisState === "BROKEN" ||
     rung === "structural_stop" ||
@@ -218,10 +243,13 @@ export function manageObservablesFromEvent(
   ) {
     manageAction = manageAction === "STOP_OUT" ? "STOP_OUT" : "EXIT";
     thesisLevel = "break";
+    manageEnforced = true;
   } else if (thesisState === "STOPPED" || rung === "premium_stop") {
     manageAction = "STOP_OUT";
+    manageEnforced = true;
   } else if (thesisState === "EXPIRY_RISK" || rung === "expiry_risk") {
     manageAction = manageAction ?? "EXIT";
+    manageEnforced = true;
   }
 
   // Carry the deciding rung forward so narrative text (play-brief-narrative.ts) can state the REAL
@@ -264,7 +292,7 @@ export function manageObservablesFromEvent(
       ? { mfePct: rawMfe, maePct: rawMae }
       : null;
 
-  return { manageAction, thesisLevel, manageReason: rung ?? null, rollCandidate, underlyingExcursion };
+  return { manageAction, thesisLevel, manageReason: rung ?? null, manageEnforced, rollCandidate, underlyingExcursion };
 }
 
 const finiteOrNull = (v: unknown): number | null =>
@@ -464,10 +492,8 @@ export function livePlayFromSwingPosition(
     manageAction: broken ? "EXIT" : liveStatus === "TRIM" ? "TAKE_PARTIAL" : undefined,
     thesisLevel: broken ? "break" : "intact",
   });
-  const { manageAction, thesisLevel, manageReason, rollCandidate, underlyingExcursion } = manageObservablesFromEvent(
-    manageEvent,
-    spotObs,
-  );
+  const { manageAction, thesisLevel, manageReason, manageEnforced, rollCandidate, underlyingExcursion } =
+    manageObservablesFromEvent(manageEvent, spotObs);
 
   const score =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
@@ -538,6 +564,7 @@ export function livePlayFromSwingPosition(
     liveStatus,
     manageAction,
     manageReason: manageReason ?? null,
+    manageEnforced: manageEnforced ?? null,
     rollCandidate: rollCandidate ?? null,
     underlyingExcursion: underlyingExcursion ?? null,
     thesisLevel,

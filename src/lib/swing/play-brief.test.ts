@@ -2309,6 +2309,96 @@ test("composeSwingPlayBrief: play.underlyingExcursion absent -> no Underlying ex
   assert.doesNotMatch(management!.body, /Underlying excursion/, `got: ${management!.body}`);
 });
 
+// ─── Manage-enforced advisory-vs-gate distinction (Ask Largo standing mandate, 2026-09-18):
+// manage.ts's `evaluateSwingManagement` stamps `enforced:true` always for its four capital-
+// preservation gates, `false` for an edge rung until it graduates in the calibration ladder — and
+// the ledger itself takes NO action on an un-graduated edge rung. The brief previously showed
+// "Manage engine: TAKE_PARTIAL" (and the SELL/TRIM/BUY recommendation badge derived from the same
+// manageAction) with identical weight whether the deciding rung was a hard gate or an unproven
+// advisory signal, which is exactly the conflation the calibration-first "evidence, not gating,
+// until graduated" law is meant to prevent.
+
+test("composeSwingPlayBrief: manageAction from an un-graduated edge rung (manageEnforced:false) -> Management section flags it as advisory-only", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "TRIM",
+      manageAction: "TAKE_PARTIAL",
+      manageEnforced: false,
+    }),
+    asOf: "2026-09-18T20:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(management!.body, /Manage engine: \*\*TAKE_PARTIAL\*\*/, `got: ${management!.body}`);
+  assert.match(
+    management!.body,
+    /Advisory only — this signal hasn't graduated to an enforced recommendation yet/,
+    `got: ${management!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: manageAction from a graduated/enforced rung (manageEnforced:true) -> no advisory qualifier", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "SELL",
+      manageAction: "EXIT",
+      manageEnforced: true,
+    }),
+    asOf: "2026-09-18T20:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.doesNotMatch(management!.body, /Advisory only/, `got: ${management!.body}`);
+});
+
+test("composeSwingPlayBrief: manageEnforced null/absent (no snapshot yet, or a HOLD action) -> no advisory qualifier (honest silence, not a fabricated advisory label)", () => {
+  const briefNoSnapshot = composeSwingPlayBrief({
+    play: fixturePlay({ status: "HOLD", recommendation: "TRIM", manageAction: "TAKE_PARTIAL" }),
+    asOf: "2026-09-18T20:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const mgmt1 = briefNoSnapshot.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(mgmt1);
+  assert.doesNotMatch(mgmt1!.body, /Advisory only/, `got: ${mgmt1!.body}`);
+
+  const briefHold = composeSwingPlayBrief({
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD", manageAction: "HOLD", manageEnforced: false }),
+    asOf: "2026-09-18T20:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const mgmt2 = briefHold.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(mgmt2);
+  assert.doesNotMatch(mgmt2!.body, /Advisory only/, `got: ${mgmt2!.body} — a HOLD is never a recommendation to qualify`);
+});
+
 test("composeSwingPlayBrief: OPEN with vector emits trade manager narrative", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD", direction: "LONG" }),

@@ -731,6 +731,9 @@ export interface HorizonDeckSource {
   manageAction?: SwingManageAction | null;
   /** The rung that decided manageAction (manage.ts) — see TerminalPlay's field for why this matters. */
   manageReason?: SwingManageRung | null;
+  /** Whether that rung is currently enforced (gate) vs advisory-only (un-graduated edge rung) — see
+   *  TerminalPlay's own field for the full history of why this exists. */
+  manageEnforced?: boolean | null;
   /** Roll-candidate advisory (manage.ts's dte_migration/roll_intent) — see TerminalPlay's own field
    *  for the full history of why this exists. */
   rollCandidate?: { reason: string } | null;
@@ -986,6 +989,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     thesisHealth,
     manageAction: src.manageAction ?? null,
     manageReason: src.manageReason ?? null,
+    manageEnforced: src.manageEnforced ?? null,
     rollCandidate: src.rollCandidate ?? null,
     underlyingExcursion: src.underlyingExcursion ?? null,
     // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to

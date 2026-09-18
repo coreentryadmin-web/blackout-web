@@ -277,6 +277,14 @@ export interface TerminalPlay {
    *  intact) vs "structural_stop"/"thesis_stop" (thesis actually broke). Lets narrative text state
    *  the real reason for a SELL/EXIT recommendation instead of a generic guess. */
   manageReason?: SwingManageRung | null;
+  /** Whether `manageReason`'s rung is currently ENFORCED — true always for the four capital-
+   *  preservation gates (structural_stop/thesis_stop/expiry_risk/premium_stop), false for an EDGE
+   *  rung (catalyst_shift/regime_shift/flow_decay/rel_strength_loss/vol_collapse/time_stop/
+   *  add_eligible) until it graduates in the calibration ladder (manage.ts's `isEnforced`) — until
+   *  then the ledger takes NO action on it (only an enforced `profit_ladder` latches TRIM). Lets
+   *  the brief distinguish a hard, acted-on recommendation from an unproven advisory one instead
+   *  of showing both with identical weight. Null when no manage-sync snapshot has fired yet. */
+  manageEnforced?: boolean | null;
   /** SWING only: an active roll-candidate advisory (manage.ts's dte_migration/roll_intent — theta
    *  decaying faster than thesis progress inside the lane's migration DTE window, vetoed by a
    *  broken thesis or a hit structural stop, the same veto `roll.ts`'s live executor applies).
