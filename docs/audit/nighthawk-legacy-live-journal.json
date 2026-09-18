@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T13:50:00Z",
+  "lastUpdated": "2026-09-18T14:00:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3854,6 +3854,13 @@
       "result": "Item #14's first, minimal slice shipped (pending merge/CI). A second, separable idea (desk-level win_rate_pct/decided_count in the session scorecard header) was raised but NOT built -- kept this PR single-issue.",
       "prStatus": "PR #5206 opened as draft, subscribed to PR activity, 12-min check-in scheduled.",
       "nextAction": "Check in on #5206's CI/merge at ~14:02Z."
+    },
+    {
+      "at": "2026-09-18T14:00:00Z",
+      "trigger": "PR #5206 check-in fired early (CI-completed webhook) -- merged, check-in trigger cancelled",
+      "prStatus": "PR #5206 (item #14 slice 1: inline tier win-rate/n badge in Legacy's pick-log table) -- verify/CodeQL/Analyze/dispatch/triage all green, undrafted, merged clean (squash) sha c85f63a2a, verified live on origin/main. Unsubscribed. No open PRs.",
+      "result": "Item #14 now has its first real slice shipped: members scanning the Legacy table can see a pick's historical conviction-tier win rate/n at a glance, not just after clicking into the detail rail. Full 15-point continuous-learning mandate tally: 11 PRs merged today (2026-09-18) -- adding #5206 to the prior #5176/#5177/#5181/#5183/#5184/#5185/#5187/#5188/#5189/#5197/#5200. Remaining: item #6/Phase 2C and item #8/Phase 2B pt.2 correctly BLOCKED on trading-day sample accumulation (still 2026-09-18); item #7's full-RTH-continuous half and item #11's NO-TRADE state correctly HELD pending explicit operator confirmation; a second, separable item #14 idea (desk-level win_rate_pct/decided_count in the session scorecard header) noted but not built -- optional follow-up only.",
+      "nextAction": "Continue 15-min cadence. Re-check items #6/#8 once edition_for rolls to 2026-09-19 (tonight's build) -- that's the actual unblock condition, not a time-based guess."
     }
   ],
   "knownOpenItems": {
