@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T08:54:00Z",
+  "lastUpdated": "2026-09-18T09:11:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3735,6 +3735,19 @@
       "productionOrShadow": "PRODUCTION plumbing (a real, admin-gated route); reads SHADOW data (candidate_snapshot, never member-facing).",
       "result": "Priority #7's safe half is now genuinely end-to-end: compute primitive (#5187) + a reader that actually surfaces it (#5189), not just an unused function.",
       "nextAction": "Check PR #5189 at 09:07Z check-in, merge if green. After that, no more known open follow-ups from today's work -- next cycles should default to fresh healthcheck + genuine new-issue hunting per aggressive mode, not manufacturing work when a cycle is legitimately clean. Items 6/8 (Phase 2C, Phase 2B part 2) remain correctly blocked on trading-day sample accumulation, re-check when a new session's data exists rather than every 15 min."
+    },
+    {
+      "at": "2026-09-18T09:11:00Z",
+      "trigger": ":06 cycle -- PR #5189 CI check-in fired same-time as this trigger; merged, then live-smoke-tested the new route",
+      "prStatus": "PR #5189 (candidate leaderboard admin export route) merged clean, sha 551d543f6, verified live on origin/main. Unsubscribed. Priority #7's safe half is now fully end-to-end (primitive + reader).",
+      "healthcheck": "Re-ran fresh at 09:07:45Z: overall AMBER, unchanged (same pre-market pattern, no new issue).",
+      "whatChanged": "Live-smoke-tested the freshly-merged /api/admin/nighthawk/candidate-leaderboard route (fetchAuditJson helper, cron-bearer + Clerk-admin fallback) -- got a hard 404. Before flagging this as a bug, cross-checked a KNOWN-GOOD sibling admin route (tier-export) with the same script/auth path: that one returned 200 clean, ruling out an auth-mechanism-wide outage. Then checked GH Actions directly (actions_list list_workflow_runs on ecr-push-production.yml): the deploy run for #5189's own commit (551d543f6) was status='pending' (just created, hadn't even started) at check time, AND the PRIOR merge #5188's deploy run was STILL status='in_progress' 17+ minutes after that merge -- so TWO deploys are queued/running, and my new route's build genuinely has not reached production yet. This is the exact 'a check run seconds after a deploy proves nothing' trap CLAUDE.md's own environment notes document (the depth-live-check.mjs precedent) -- correctly diagnosed as deploy lag, not a code defect, before writing any 'fix'.",
+      "why": "CLAUDE.md's own discipline: 'a merge is not a verification... re-run the affected check against origin/main rather than trusting the merge did what you expected.' Applied that here for a live route smoke-check rather than just trusting tsc+unit tests, and caught the deploy-lag trap before misdiagnosing it as a real bug.",
+      "evidence": "tier-export (known-good sibling route) returned 200 via the identical script/auth path, ruling out an auth-wide issue. GH Actions confirmed the deploy queue backlog directly (run 35327891501 pending, run 35326431480 in_progress 17+ min).",
+      "sampleSize": "N/A -- deploy-timing observation, not a statistical finding.",
+      "productionOrShadow": "N/A -- this was a deploy-pipeline observation, not a data-collection change.",
+      "result": "No bug found. Route code is correct (tsc clean, 1205 tests pass, sibling-route auth path proven working) -- production just hasn't caught up to the merge yet, consistent with two production deploys queued back-to-back in the last ~20 minutes.",
+      "nextAction": "Re-verify /api/admin/nighthawk/candidate-leaderboard live next cycle once the deploy queue drains (~5-10 more min is a reasonable ECS deploy+drain estimate). No code action needed unless that re-check ALSO 404s once the deploy is confirmed complete -- that would be a real finding, this isn't yet."
     }
   ],
   "knownOpenItems": {
