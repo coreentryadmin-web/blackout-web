@@ -245,6 +245,30 @@ test("diffBriefSnapshots: detects trim rail fires", () => {
   assert.ok(lines.some((l) => l.includes("Trim rail")));
 });
 
+test("diffBriefSnapshots: detects a roll watch triggering (theta outpacing thesis, newly weighed)", () => {
+  const prev = snapshotFromBrief(env(), play({ rollCandidate: null }));
+  const next = snapshotFromBrief(
+    env(),
+    play({ rollCandidate: { reason: "DTE 6 inside migration window, thesis progress lagging theta decay" } }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Roll watch triggered") && l.includes("DTE 6 inside migration window")));
+});
+
+test("diffBriefSnapshots: detects a roll watch clearing", () => {
+  const prev = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 6 inside migration window" } }));
+  const next = snapshotFromBrief(env(), play({ rollCandidate: null }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Roll watch cleared")));
+});
+
+test("diffBriefSnapshots: a roll watch reason restating tick-to-tick (still weighed) does not double-narrate", () => {
+  const prev = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 6 inside migration window" } }));
+  const next = snapshotFromBrief(env(), play({ rollCandidate: { reason: "DTE 5 inside migration window" } }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(!lines.some((l) => l.includes("Roll watch")));
+});
+
 test("diffBriefSnapshots: option mark shift narrates built/slipped, not a bare delta", () => {
   const up = diffBriefSnapshots(
     snapshotFromBrief(env(), play({ mark: 5.9 })),
