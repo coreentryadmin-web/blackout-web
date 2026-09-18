@@ -1876,6 +1876,58 @@ async function awaitHeatmapBuildWithBlockCap(
 const EMPTY_SPOT_NEGATIVE_TTL_MS = 10_000;
 
 /**
+ * Negative-cache window for a NO-CHAIN ticker (Polygon returns 0 contracts AND the UW
+ * strike-exposure fallback also comes up empty — i.e. this root structurally has no live
+ * options market, not a transient outage). UNLIKE the no-spot negative cache above, this one is
+ * intentionally LONG: a name with no options chain right now is overwhelmingly likely to still
+ * have no options chain in 10 minutes, so there is no "recovers momentarily" case to protect —
+ * only wasted upstream calls to avoid.
+ *
+ * Root cause this fixes (2026-09-18 UW/Polygon rate-limiter queue-timeout-surge incident):
+ * without this, EVERY time the normal Redis matrix cache entry expires (`gexHeatmapRedisTtlSec()`,
+ * default 90s — fixed, NOT parameterized by the in-memory `ttlMs` this function otherwise varies),
+ * `buildGexHeatmapUncached` re-attempts the FULL Polygon chain fetch + UW strike-exposure fallback
+ * for a ticker that has already failed both on every prior attempt, forever, for as long as that
+ * ticker stays in the shared warm universe (`listSharedUniverseTickers`, up to 100 tickers,
+ * swept by `heatmap-warm` roughly every 30-45s). Confirmed live: two dead names (ACEEU, RWTN)
+ * logged "[gex-heatmap] 0 contracts ... trying UW strike-exposure fallback" on a steady ~75-90s
+ * cadence for 90+ minutes straight in CloudWatch, each cycle spending a full Polygon-chain round
+ * trip plus a UW spot-exposures/strike admission slot for a result already known to be empty —
+ * pure waste against the UW rate limiter's tight GLOBAL_MAX_RPS=2 shared ceiling. This is one
+ * measured, fixable contributor to that incident's aggregate UW/Polygon demand; it does not by
+ * itself explain the full surge (dominant volume was legitimate cross-cron SPX/mag7/equity-universe
+ * warm traffic sharing the same ceiling — a known, previously-flagged capacity question, see
+ * FINDINGS.md, not something this fix attempts to resolve).
+ */
+const NO_CHAIN_NEGATIVE_TTL_SEC = 600;
+const NO_CHAIN_CACHE_PREFIX = "gex-heatmap:no-chain";
+
+function noChainCacheKey(root: string): string {
+  return `${NO_CHAIN_CACHE_PREFIX}:${root}`;
+}
+
+/** True when `root` was confirmed chain-less (Polygon 0 contracts + UW fallback empty) within
+ *  the last `NO_CHAIN_NEGATIVE_TTL_SEC`. Fails open (false) on any Redis error — a missed
+ *  negative-cache hit just re-runs the normal, already-safe fetch path, never a correctness risk. */
+async function isKnownNoChainTicker(root: string): Promise<boolean> {
+  try {
+    const { sharedCacheGet } = await import("../shared-cache");
+    const hit = await sharedCacheGet<{ at: number }>(noChainCacheKey(root));
+    return hit != null;
+  } catch {
+    return false;
+  }
+}
+
+/** Mark `root` as confirmed chain-less for `NO_CHAIN_NEGATIVE_TTL_SEC`. Best-effort — a failed
+ *  write just means the next cycle re-probes upstream, same as before this fix existed. */
+function markNoChainTicker(root: string, now: number): void {
+  void import("../shared-cache")
+    .then(({ sharedCacheSet }) => sharedCacheSet(noChainCacheKey(root), { at: now }, NO_CHAIN_NEGATIVE_TTL_SEC))
+    .catch(() => undefined);
+}
+
+/**
  * Shortened accept-age for a SERVED heatmap entry during a preset fast move (>0.5% in-window).
  * Mirrors the desk's fast-move intent: re-sync the matrix to the new price level quickly without
  * abandoning caching entirely. Overridable via env; defaults to 5s.
@@ -3286,6 +3338,13 @@ async function buildGexHeatmapUncached(
   now: number,
   ttlMs: number
 ): Promise<GexHeatmap | null> {
+  // Short-circuit BEFORE any upstream call for a root already confirmed chain-less (Polygon 0
+  // contracts + UW fallback also empty) within the last NO_CHAIN_NEGATIVE_TTL_SEC — see that
+  // constant's doc comment for the incident this closes. Skips the spot fetch too (not just the
+  // chain/UW fallback) since a chain-less name's matrix is all-empty regardless of spot.
+  if (await isKnownNoChainTicker(root)) {
+    return emptyHeatmap(root, { spot: 0, changePct: null, now, cacheKey, ttlMs, spotSource: undefined });
+  }
   // Resolve spot + day change% from the same root. INDEX roots (I:SPX/NDX/RUT/VIX) must use
   // the indices snapshot — the stocks snapshot returns no row for I:* and yields spot 0.
   const snap = await resolveSpotSnapshot(optionsRoot);
@@ -3340,6 +3399,11 @@ async function buildGexHeatmapUncached(
       ttlMs
     );
     if (uwMatrix) return uwMatrix;
+    // Both Polygon AND UW came up empty for this root — confirmed chain-less, not a one-off
+    // blip. Mark the negative cache so the NEXT several rebuild cycles (Redis matrix TTL,
+    // ~90s each by default) skip straight past both upstream fetches instead of re-proving the
+    // same empty result over and over. See NO_CHAIN_NEGATIVE_TTL_SEC's doc comment.
+    markNoChainTicker(root, now);
     return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs, spotSource });
   }
 
