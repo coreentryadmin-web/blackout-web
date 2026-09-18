@@ -7,14 +7,20 @@ import { join } from "node:path";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
+// 2026-09-18: carry_until_close/stale resolution moved out of the route into
+// resolve-edition.ts (a DB-only shared core Largo's get_nighthawk_edition tool now uses too — see
+// resolve-edition.ts's own header comment). These two tests follow the logic to its new home; the
+// route itself now only passes `explicitDate` through to `resolveNighthawkEdition`.
+
 test("edition route: carry_until_close only when date param is omitted (not historical ?date=)", () => {
-  const src = read("src/app/api/market/nighthawk/edition/route.ts");
-  assert.match(src, /const explicitDate = req\.nextUrl\.searchParams\.get\("date"\)/);
-  assert.match(src, /!explicitDate &&[\s\S]*carry_until_close = true/);
+  const routeSrc = read("src/app/api/market/nighthawk/edition/route.ts");
+  assert.match(routeSrc, /const explicitDate = req\.nextUrl\.searchParams\.get\("date"\)/);
+  const resolverSrc = read("src/features/nighthawk/lib/resolve-edition.ts");
+  assert.match(resolverSrc, /!explicitDate &&[\s\S]*carry_until_close = true/);
 });
 
 test("edition route: latest fallback marks stale when served edition_for !== requested", () => {
-  const src = read("src/app/api/market/nighthawk/edition/route.ts");
+  const src = read("src/features/nighthawk/lib/resolve-edition.ts");
   assert.match(
     src,
     /if \(edition\.edition_for && edition\.edition_for !== editionFor\) \{\s*edition\.stale = true;/,
@@ -57,17 +63,23 @@ test("a non-finite edition age fails CLOSED", () => {
   // serve the latest edition as merely "stale". Verified: NaN comparisons are false either way.
   assert.equal(Number.NaN > 4, false);
   assert.equal(Number.NaN <= 4, false);
-  assert.match(read(ROUTE), /!Number\.isFinite\(edAge\) \|\| edAge > MAX_EDITION_AGE_DAYS/);
+  // 2026-09-18: moved into resolve-edition.ts along with the rest of resolveNighthawkEdition.
+  assert.match(
+    read("src/features/nighthawk/lib/resolve-edition.ts"),
+    /!Number\.isFinite\(edAge\) \|\| edAge > MAX_EDITION_AGE_DAYS/
+  );
 });
 
 test("a published edition with zero plays is flagged, and stays available", () => {
   // available MUST stay true — flipping it would show "publishes after the close" over a session
   // that already published, a worse lie than the one being fixed. The recap is real content.
-  assert.match(read(ROUTE), /function markNoPlays/);
-  assert.match(read(ROUTE), /edition\.available && edition\.plays\.length === 0/);
-  assert.match(read(ROUTE), /no_plays: true/);
+  // 2026-09-18: markNoPlays moved into resolve-edition.ts.
+  const resolverSrc = read("src/features/nighthawk/lib/resolve-edition.ts");
+  assert.match(resolverSrc, /function markNoPlays/);
+  assert.match(resolverSrc, /edition\.available && edition\.plays\.length === 0/);
+  assert.match(resolverSrc, /no_plays: true/);
   // Applied on BOTH published-row paths (exact-date hit and latest-fallback), not just one.
-  assert.equal((read(ROUTE).match(/markNoPlays\(/g) ?? []).length, 3, "definition + both return paths");
+  assert.equal((resolverSrc.match(/markNoPlays\(/g) ?? []).length, 3, "definition + both return paths");
 });
 
 test("pre-publish empty shells are not cached (ops-collect false-positive guard)", () => {
