@@ -16,6 +16,7 @@ import {
   lessonsSection,
   meridianCatalystSection,
   meridianPeerSection,
+  tickerTrackRecordSection,
   wallDynamicsSection,
   watchForSection,
   whyThisSetupSection,
@@ -292,6 +293,50 @@ test("archetypeTrackRecordSection: omits the point-Δ line when pointDeltaPts is
   const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ pointDeltaPts: null }) });
   const body = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap)?.body ?? "";
   assert.doesNotMatch(body, /pts.*edge/);
+});
+
+// ── tickerTrackRecordSection (Largo C10 historical context, TICKER-scoped — Ask Largo mandate
+// round 19, 2026-09-18) — sibling of archetypeTrackRecordSection above, scoped to the ticker
+// instead of the archetype. Unlike the archetype section this has no graduation gate: it's a
+// plain factual count, not a calibrated score. ───────────────────────────────────────────────
+
+test("tickerTrackRecordSection: null on a cold/missing read (undefined or null) — never throws", () => {
+  const play = fixturePlay();
+  assert.equal(tickerTrackRecordSection(play, undefined), null);
+  assert.equal(tickerTrackRecordSection(play, null), null);
+});
+
+test("tickerTrackRecordSection: null when there are zero prior resolved trades on this ticker", () => {
+  const play = fixturePlay();
+  assert.equal(
+    tickerTrackRecordSection(play, { ticker: "NVDA", priorClosedTrades: 0, wins: 0, losses: 0 }),
+    null,
+  );
+});
+
+test("tickerTrackRecordSection: renders a 'Ticker track record' section citing the ticker, N, and W/L", () => {
+  const play = fixturePlay();
+  const section = tickerTrackRecordSection(play, {
+    ticker: "NVDA",
+    priorClosedTrades: 3,
+    wins: 2,
+    losses: 1,
+  });
+  assert.ok(section);
+  assert.equal(section?.title, "Ticker track record");
+  assert.match(section?.body ?? "", /NVDA/);
+  assert.match(section?.body ?? "", /\*\*3\*\* times/);
+  assert.match(section?.body ?? "", /2W \/ 1L/);
+  assert.match(section?.body ?? "", /67% win rate/, "win rate rounded and cited");
+});
+
+test("tickerTrackRecordSection: singular 'time' when exactly one prior trade", () => {
+  const play = fixturePlay();
+  const body =
+    tickerTrackRecordSection(play, { ticker: "NVDA", priorClosedTrades: 1, wins: 0, losses: 1 })
+      ?.body ?? "";
+  assert.match(body, /\*\*1\*\* time before/);
+  assert.doesNotMatch(body, /1 times/);
 });
 
 // ── cortexReadSection (swing Cortex-visibility fix — the entry_context.cortex pinned at commit,

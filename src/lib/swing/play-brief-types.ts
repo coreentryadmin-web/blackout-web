@@ -8,6 +8,7 @@ import type { SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
 import type { PortfolioPosition } from "./portfolio";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 import type { SwingChainComposite } from "./record";
+import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 
 /** Inputs gathered server-side for deterministic swing play brief composition. */
 export type SwingPlayBriefContext = {
@@ -58,6 +59,14 @@ export type SwingPlayBriefContext = {
    * never fabricated as "never rolled").
    */
   rollHistory?: SwingRollHistory | null;
+  /**
+   * Ticker-scoped historical context (Largo C10) — "has the desk traded THIS ticker before, and
+   * how did it go" — distinct from `archetypeTrackRecord` above, which is scoped to the
+   * ARCHETYPE dimension, not the ticker (see play-brief-ticker-history.ts's file header for the
+   * exact gap this closes). `null` on a cold/failed read or when there is no resolved prior trade
+   * to cite; `undefined` only in fixtures predating this field (treated identically to `null`).
+   */
+  tickerTrackRecord?: SwingTickerTrackRecord | null;
 };
 
 /** One leg's identity for the roll-history narrative — deliberately minimal (no P&L; the

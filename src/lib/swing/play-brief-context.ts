@@ -18,6 +18,7 @@ import type { PortfolioPosition } from "./portfolio";
 import { readSwingArchetypeTrackRecord } from "./calibration-cache";
 import { withBriefSourceTimeout } from "./brief-source-timeout";
 import { swingRollHistoryLegFromRow } from "./play-brief-roll-history";
+import { loadTickerTrackRecord } from "./play-brief-ticker-history";
 
 /**
  * The network-bound reads below (Meridian timeline/peer-cohort, ecosystem context, Vector
@@ -144,6 +145,24 @@ async function loadRollHistory(positionId: number | null | undefined): Promise<S
   }
 }
 
+/**
+ * Root position id for the chain backing `positionId`, when it has a ledger row — used to
+ * self-exclude the reviewed play's own chain from its ticker-scoped "prior trades" citation
+ * (play-brief-ticker-history.ts). A WATCH/lane-only candidate has no `positionId` at all (nothing
+ * to exclude — every closed chain on the ticker is genuinely "prior"). Best-effort like every
+ * other context read here: a DB hiccup returns `null` (no exclusion applied) rather than failing.
+ */
+async function resolveRootPositionId(positionId: number | null): Promise<number | null> {
+  if (positionId == null) return null;
+  try {
+    const row = await fetchSwingPositionById(positionId);
+    if (!row) return null;
+    return row.root_position_id ?? row.id;
+  } catch {
+    return null;
+  }
+}
+
 export type LoadSwingPlayBriefInput = SwingBriefResolveHints;
 
 /**
@@ -166,7 +185,8 @@ export async function loadSwingPlayBriefContext(
   // rejection is just another throw here, so it flows through the same failed-flag path.
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
-  const [ecosystem, vector, openBook, archetypeTrackRecord, rollHistory] = await Promise.all([
+  const positionId = positionIdFromPlayId(resolved.play.id);
+  const [ecosystem, vector, openBook, archetypeTrackRecord, rollHistory, tickerTrackRecord] = await Promise.all([
     withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch(() => {
       ecosystemFetchFailed = true;
       return null;
@@ -187,7 +207,17 @@ export async function loadSwingPlayBriefContext(
     withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch(() => null),
     // Best-effort like the read above — a DB hiccup degrades to "no roll history cited" rather
     // than failing the whole brief; loadRollHistory already wraps its own try/catch.
-    withBriefSourceTimeout(loadRollHistory(positionIdFromPlayId(resolved.play.id))).catch(() => null),
+    withBriefSourceTimeout(loadRollHistory(positionId)).catch(() => null),
+    // Ask Largo C10 (historical context, TICKER-scoped) — see play-brief-ticker-history.ts's
+    // header for why this is a plain, best-effort live read rather than a cron-distilled cache
+    // like archetypeTrackRecord above. Self-excludes the reviewed play's own chain (resolved via
+    // resolveRootPositionId, a second small best-effort DB read) so a CLOSED/OPEN position never
+    // cites itself as "prior" evidence.
+    withBriefSourceTimeout(
+      resolveRootPositionId(positionId).then((rootId) =>
+        loadTickerTrackRecord(resolved.play.ticker, rootId),
+      ),
+    ).catch(() => null),
   ]);
 
   const nowMs = Date.now();
@@ -209,5 +239,6 @@ export async function loadSwingPlayBriefContext(
     vectorFetchFailed,
     archetypeTrackRecord,
     rollHistory,
+    tickerTrackRecord,
   };
 }

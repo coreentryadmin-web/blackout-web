@@ -101,6 +101,11 @@ mock.module("../db", {
     fetchOpenSwingPositions: async () => mockOpenSwingRows,
     fetchSwingPositionById: async () => null,
     fetchSwingPositionChain: async () => [],
+    // Ask Largo mandate round 19 (2026-09-18): ticker-scoped historical context
+    // (play-brief-ticker-history.ts) — defaults to an empty ledger read so existing fixtures in
+    // this file (none of which exercise the new "Ticker track record" section) keep composing the
+    // same brief they always did (tickerTrackRecord resolves to null on an empty row set).
+    fetchSwingPositionsByTicker: async () => [],
   },
 });
 
