@@ -92,6 +92,33 @@ detail is the engine's own already-computed sentence, never a guessed or synthes
   working-tree state — diff applied cleanly, RED/GREEN reproduced independently, tsc clean.
 - Full suite result to be appended once the background run completes.
 
+### Post-open peer review — floating-point display artifact (fixed pre-merge)
+
+A peer review on this PR flagged a real, previously-invisible formatting defect this PR newly
+surfaces: `structuralStopBroken()` (`manage.ts:177-213`) interpolates `comparePx`/`stop` directly
+into `verdict.reason` with no rounding. On an ex-dividend session, `comparePx` comes from
+`underlyingPriceForStructuralStop()` (`ex-dividend-adjustment.ts:38-40`), which computes
+`price + cash` via raw floating-point addition — a real (price, cash) pair can produce a visible
+artifact like `10.790000000000001` (reviewer sampled ~18.5k realistic pairs: 17.3% produce one).
+`verdict.reason` was write-only before this PR (computed, persisted, never displayed) — CLAUDE.md's
+"round at the data layer" caution never applied because nothing rendered it; this PR's
+`manageReasonDetail`/`sellReasonClause` wiring is what makes it reach a member-facing sentence.
+
+Verified independently before fixing: reproduced the exact artifact (`10.74 + 0.05` in Node),
+confirmed all four interpolation sites in `structuralStopBroken()`, confirmed the underlying
+comparison logic (`comparePx <= stop`) is untouched by the review's own hypothesis. Fixed with
+`.toFixed(2)` at the four reason-string interpolation sites only (Q39 fail-safe line, LONG/SHORT
+breach lines, the ex-div-adjusted-from clause) — display-only, per the reviewer's own suggested
+root-cause location (rounding at the source in `manage.ts` fixes it for every reader of
+`verdict.reason`, not just this PR's new narrative path; string-parsing `reasonDetail` defensively
+in `sellReasonClause` would have been fragile).
+
+Regression coverage added: a test reproducing the exact `10.74`/`0.05` ex-div pair and asserting no
+run of 3+ decimal digits appears anywhere in `verdict.reason`, plus a plain non-ex-div LONG/SHORT
+symmetry test. RED→GREEN independently reproduced (revert `manage.ts`, keep tests: 2/18 fail with
+the exact expected shape; reapply: 18/18 pass). Broader sweep (manage + play-brief-narrative +
+live-plays + ex-dividend-adjustment): 155/155 pass. `tsc --noEmit` clean.
+
 ### Tooling note (not part of this fix, disclosed for future sessions)
 
 While independently reproducing RED, ran the new/modified test file with a 60s timeout as a
