@@ -86,6 +86,17 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   }
   const whyArchetypeLabel = archetypeLabelFromRaw(play.archetype);
   if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
+  // GAP FOUND (Ask Largo standing mandate, 2026-09-18): scoring/gating/calibration all partition on
+  // this single pinned archetype label, but nothing on this brief ever disclosed HOW decisive the
+  // classifier's own call was — see live-plays.ts's `archetypeNearTieFromFeatureVector` for the full
+  // trace. Only rendered when the entry-time classification was genuinely a near-tie (the classifier's
+  // own MARGIN_EPS bar); a decisive call (the overwhelming common case) adds nothing here.
+  if (play.archetypeNearTie) {
+    lines.push(
+      `**Classification:** near-tie at entry — **${whyArchetypeLabel ?? "the winning archetype"}** beat ` +
+        `**${play.archetypeNearTie.secondaryLabel}** by only ${play.archetypeNearTie.marginPct} pts.`,
+    );
+  }
   if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the pre-entry WATCH note for the identical
   // fact ("thin read — N/7 pillars grounded", serving-ingest.ts) never survives WATCH→COMMIT — see

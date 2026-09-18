@@ -307,6 +307,17 @@ export interface TerminalPlay {
    *  (dq_degraded is honest-null there, per feature-vector.ts's NULL-not-zero law) or the pillar
    *  count was never degraded enough to be worth surfacing. */
   entryPresentPillars?: number | null;
+  /** SWING only, committed (OPEN/HOLD/TRIM/CLOSED) positions: the runner-up archetype label + the
+   *  classifier's decisiveness margin (points, 0-100 scale), ONLY when the entry-time classification
+   *  was a near-tie (archetype.ts's own MARGIN_EPS) — pinned into the position's
+   *  `feature_vector.classification_margin`/`.secondary` (feature-vector.ts, commit.ts/discovery.ts's
+   *  `classificationMetaFromVerdict`) and, until now, never read back out of it. Scoring, gating and
+   *  calibration all partition on the single pinned `archetype` label (feature-vector.ts's own
+   *  header), so a razor-thin call between two archetypes is a real, disclosed classification
+   *  uncertainty a member has a right to see next to the "Archetype: X" line, not an internal
+   *  scoring detail. Null on a decisive classification (the overwhelming common case) — never a
+   *  fabricated "clear winner" line. See live-plays.ts's `archetypeNearTieFromFeatureVector`. */
+  archetypeNearTie?: { secondaryLabel: string; marginPct: number } | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

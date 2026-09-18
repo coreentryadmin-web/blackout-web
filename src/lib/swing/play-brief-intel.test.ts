@@ -3135,6 +3135,31 @@ test("whyThisSetupSection: omits the thin-entry-evidence line when the entry was
   assert.doesNotMatch(section.body, /Evidence at entry/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): archetype.ts's classification decisiveness
+// (topFit - secondFit) is pinned at commit (feature_vector.classification_margin/.secondary) but was
+// never read back out for an already-committed OPEN/CLOSED position — scoring/gating/calibration all
+// partition on the single pinned `archetype` label (feature-vector.ts's own header), so a razor-thin
+// classification call between two archetypes is a real, disclosed uncertainty a member never saw.
+// Wired via `archetypeNearTieFromFeatureVector` (live-plays.ts) through `livePlayFromSwingPosition`
+// (OPEN) and `closedDeckSourceFromRow` (CLOSED) into TerminalPlay.archetypeNearTie.
+test("whyThisSetupSection: surfaces the archetype near-tie when the entry classification was a razor-thin call", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      archetype: "BREAKOUT",
+      archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 2 },
+    }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Classification:\*\* near-tie at entry — \*\*Breakout continuation\*\* beat \*\*Pullback continuation\*\* by only 2 pts\./,
+  );
+});
+
+test("whyThisSetupSection: omits the archetype-near-tie line when the entry classification was decisive (never fabricated)", () => {
+  const section = whyThisSetupSection(fixturePlay({ archetype: "BREAKOUT", archetypeNearTie: null }));
+  assert.doesNotMatch(section.body, /Classification:/);
+});
+
 // Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the SAME archetype value
 // rendered THREE differently-styled ways within one brief -- Verdict's raw enum ("Archetype:
 // PULLBACK_CONTINUATION"), this section's own underscore-replace-only line ("Archetype: PULLBACK
