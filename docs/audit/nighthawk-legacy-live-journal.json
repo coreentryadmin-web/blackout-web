@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T18:53:00Z",
+  "lastUpdated": "2026-09-18T20:07:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4017,6 +4017,12 @@
       "result": "Definitive, high-confidence, root-caused finding -- correctly held at REPORT, not acted on. This closes the (a)-vs-(b) investigative thread with an actual answer: it's neither purely (a) 'tape wasn't bearish enough' nor purely (b) 'no bearish tape ever happened' -- it's a real, provable implementation bug in one of the gate's three signals, compounding with (separately, and not provably a bug) tide_bias's own threshold never being crossed this particular month.",
       "evidence": "Full 21-session regime dump inspected; derive-composite.ts read in full (30 lines, all 7 branches enumerated); format.ts's tideBias() read to confirm it's a genuinely live signal, not also dead.",
       "nextAction": "Flagged for explicit operator decision: should bearish-posture.ts's composite_regime check be corrected to match the real vocabulary (e.g. comp.includes('DOWN'))? This is a real bug fix, not a threshold-tuning judgment call, but it does change live discovery/ranking behavior, so it stays held pending confirmation rather than shipped via CARVE-OUT."
+    },
+    {
+      "at": "2026-09-18T20:07:30Z",
+      "trigger": ":06 cycle -- post-RTH-close transition: A_edition stale + all 4 marks stale simultaneously",
+      "healthcheck": "Re-ran fresh at 20:07:02Z, just past 4pm ET close: A_edition flipped GREEN->AMBER ('edition is stale -- served an older date than requested'), all 4 marks (SMTC/SMCI/SWKS/HPE) flagged stale simultaneously. C_record/D_pull_status steady GREEN.",
+      "result": "Not re-investigated in depth -- matches the already-confirmed-benign post-close pattern first verified 2026-09-16T20:08:02Z (quotes stop live-updating after close, edition self-reports stale until tomorrow evening's rebuild). Same shape today, expected end-of-session state, not a bug."
     }
   ],
   "knownOpenItems": {
