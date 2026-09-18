@@ -74,7 +74,16 @@ const REPO = flag("repo", "coreentryadmin-web/blackout-web");
 // committed by the person running it.
 //
 // A coordinator's own PRs are the ones NOBODY ELSE is watching. They belong in the sweep most of all.
-const PREFIXES = flag("prefix", "claude/,cursor/,fix/,batch/,docs/").split(",").filter(Boolean);
+//
+// `feat/` and `chore/` ADDED 2026-09-18: CLAUDE.md's own merge-authorization section explicitly
+// names "self-authored PRs (`fix/*`/`feat/*`/`docs/*` branches)" as the ones this sweep exists to
+// track, yet the default list here never carried `feat/` at all, and `chore/` (routinely used
+// alongside `docs/` for maintenance PRs, e.g. `chore/fold-findings-staging-backlog-2`) was missing
+// too. Found live: PR #5234 (`chore/...`) and #5235 (`feat/...`) were both open, real, agent-authored
+// PRs that a default-prefix sweep reported as "0 open agent PRs" — the exact "clean, confident,
+// entirely false all-clear" failure mode this file's own header (line ~100) already warns about,
+// just from an uncovered prefix instead of a swallowed HTTP error.
+const PREFIXES = flag("prefix", "claude/,cursor/,fix/,batch/,docs/,feat/,chore/").split(",").filter(Boolean);
 const JSON_OUT = has("json");
 const CHOKEPOINTS = has("chokepoints");
 const MARK_READY = has("mark-ready");
