@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk Legacy thesis never named WHICH smart-money signal drove a "smart-money" scoring tag — FIXED
+## Night Hawk Legacy thesis never named WHICH smart-money signal drove a "smart-money" scoring tag — FIXED
 
 | Field | Detail |
 |---|---|
@@ -10,7 +10,7 @@
 | **Files** | `src/features/nighthawk/lib/deterministic-edition.ts` — `buildDeterministicThesis`, new `smartMoneyDriverNote` |
 | **PR** | (opened same session as this finding) |
 
-## Root cause / gap
+### Root cause / gap
 
 `scoreSmartMoney` (`scorer.ts`) blends three real, distinct data sources into `smart_money_score`:
 congressional trading disclosures (`congress_unusual`/`congress_trades`, recency- and
@@ -27,7 +27,7 @@ identical gap class already fixed for "news" in this same function
 (`docs/audit/findings-staging/2026-09-12-legacy-thesis-catalyst-headline.md`, PR #4821, merged) —
 found while sweeping the rest of `topDrivers`' labels for the same defect shape.
 
-## Fix
+### Fix
 
 Added `smartMoneyDriverNote(dossier, isLong)`: when `smart-money` is present in
 `buildDeterministicThesis`'s already-computed `topDrivers`, check for direction-aligned evidence in
@@ -46,19 +46,19 @@ Returns `null` (renders nothing) when no aligned evidence exists in any of the t
 additive only, never fabricates a signal. Scoped strictly to when smart-money is an actual top-2
 driver.
 
-## Blast radius
+### Blast radius
 
 - `buildDeterministicThesis` is Legacy-exclusive (confirmed via grep, no other desk imports it).
 - Purely additive to the `parts` array — no existing sentence, ordering, or field changed.
 
-## Fix rationale
+### Fix rationale
 
 Sequenced after PR #4821 (the news-catalyst fix) merged rather than opening a third simultaneous PR
 touching the same function's `parts` array, to avoid a self-inflicted merge conflict between two of
 this lane's own unmerged branches (CLAUDE.md's cross-PR ordering guidance) — queued in the journal
 one cycle earlier, implemented this cycle once the dependency cleared.
 
-## Regression tests
+### Regression tests
 
 `src/features/nighthawk/lib/deterministic-edition.test.ts` — 5 new tests: names congressional
 buying when it's the aligned evidence; falls back to institutional flow when no congressional data

@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# `fetchUwInsiderTransactions` sent the wrong query-param name — every ticker's "insider activity" was really a random other ticker's
+## `fetchUwInsiderTransactions` sent the wrong query-param name — every ticker's "insider activity" was really a random other ticker's
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | `fetchUwInsiderTransactions` (`src/lib/providers/unusual-whales.ts`), consumed by Night Hawk's shared dossier builder (`dossier.ts`, feeds Legacy + edition scoring's `insider_buys`) and Largo's `get_insider_flow` tool (`run-tool.ts`) |
 | **Severity** | P1 — silently returned a DIFFERENT ticker's data for every single call; no error, no crash, no visible symptom |
 
-## Root cause
+### Root cause
 
 `fetchUwInsiderTransactions(ticker, limit)` called `/api/insider/transactions` with a `ticker`
 query param. Live-pulled the real endpoint before touching any code:
@@ -34,7 +34,7 @@ array of real insider-transaction rows, and nothing about the response shape sig
 feed regardless of which ticker it asked for — the exact opposite of what the function's name and
 every caller's usage promises.
 
-## Blast radius
+### Blast radius
 
 - **`dossier.ts`** (Night Hawk's shared dossier builder, feeds Legacy's overnight digest scoring
   AND `edition-builder.ts`): `insider_buys` was computed via
@@ -52,7 +52,7 @@ every caller's usage promises.
   direct Largo-answer-correctness defect (falls under the standing Ask Largo ownership mandate,
   not just the Legacy scoring path).
 
-## Fix
+### Fix
 
 Changed the query param from `ticker` to `ticker_symbol` in `fetchUwInsiderTransactions` — the
 minimal, single-line root-cause fix; every consumer (`dossier.ts`, `run-tool.ts`) needed no changes
@@ -64,7 +64,7 @@ request: asserts `ticker_symbol` is present and set correctly, and that the old,
 `ticker` param is NOT sent — so a future accidental revert back to the wrong name fails loudly in
 CI instead of silently re-mixing every ticker's insider read with a random other one's.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered switching the caller(s) to a different endpoint entirely
 (`fetchUwInsiderTicker` → `/api/insider/{ticker}`, or `fetchUwInsiderFlow` →
@@ -81,7 +81,7 @@ about "who bought/sold and how much" need. Fixing the one wrong query-param char
 smallest change that makes the existing, otherwise-correct function do what its name and every
 caller already assumed it did.
 
-## Evidence
+### Evidence
 
 - Live UW pulls (`UW_API_KEY` from env) proving: (a) `ticker`/`symbol`/`symbols`/`tickers`/
   `ticker_symbols` are all silently ignored on `/api/insider/transactions`, returning the same
@@ -94,7 +94,7 @@ caller already assumed it did.
 - `npx tsc --noEmit`: clean.
 - Full suite (`npm test`, Node 20): 13915 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 `isRecentInsiderBuy`'s own date-field fallback chain (`parseTradeDate` in `dossier.ts`, which also
 governs `getEditionCongressTrades`'s recency window) still doesn't check `filing_date`/

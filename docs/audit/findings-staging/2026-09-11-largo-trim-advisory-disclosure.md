@@ -1,4 +1,4 @@
-# Ask Largo TRIM narrative never disclosed it is advisory-only — NRG round-tripped +132.7%→+2% with zero protection banked
+## Ask Largo TRIM narrative never disclosed it is advisory-only — NRG round-tripped +132.7%→+2% with zero protection banked
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Swings — Ask Largo play-brief narrative (`src/lib/swing/play-brief-narrative.ts`) |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate, queued as `task_7363b41e` a prior cycle, investigated and fixed this cycle (2026-09-11) |
 
-## Root cause
+### Root cause
 
 `actionNarrative`'s TRIM branch renders `"**Desk says TRIM** — next rail at **+X%**. Bank
 partial into strength; don't give back peak."` whenever `play.recommendation === "TRIM"`. That
@@ -28,7 +28,7 @@ zero trim ever banked. The existing "Round-tripped past breakeven" bullet (added
 history in this same file) only fires *after* the round-trip has already happened — it is a
 post-mortem, not a warning a trader could have acted on beforehand.
 
-## Blast radius
+### Blast radius
 
 - Single call site: `actionNarrative` in `play-brief-narrative.ts`, feeding
   `tradeManagerNarrativeSection` (the "Trade manager read" section of every OPEN swing play's Ask
@@ -38,7 +38,7 @@ post-mortem, not a warning a trader could have acted on beforehand.
   status has not (yet) latched to `"TRIM"` with a real fired rung — i.e. exactly the population
   most at risk of a silent full round-trip.
 
-## Fix
+### Fix
 
 Compute `trimsFired = trimLevels.filter(t => t.fired).length` inside the TRIM branch. When it is
 `0`, append a plain, unambiguous disclosure: *"Nothing's banked yet — this is advisory only;
@@ -48,7 +48,7 @@ once at least one rung has actually fired, the position is no longer 100% expose
 costliest version of the gap (silent full exposure) no longer applies and the disclosure does not
 render, keeping the bullet from growing noisy on every TRIM line.
 
-## Alternative considered
+### Alternative considered
 
 Disclosing on every TRIM recommendation regardless of `trimsFired` was considered (the product is
 advisory-only in every case, not just this one) but rejected as broader than the smallest honest
@@ -56,7 +56,7 @@ fix the live evidence actually calls for — once a rung has fired, the "silent 
 failure mode this fix targets no longer exists, and the disclosure would start reading as
 boilerplate rather than a genuine warning.
 
-## Evidence (before/after)
+### Evidence (before/after)
 
 - RED before fix: `git stash push -- src/lib/swing/play-brief-narrative.ts` then
   `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts` →
@@ -65,7 +65,7 @@ boilerplate rather than a genuine warning.
 - Full `src/lib/swing/*.test.ts`: 956 pass / 0 fail.
 - `npx tsc --noEmit`: clean.
 
-## Market-open validation
+### Market-open validation
 
 Pull a live swing play whose peak has crossed +100% but has not yet banked a trim (`GET
 /api/market/swing/play-brief?ticker=<T>` during RTH) and confirm the "Trade manager read" section

@@ -1,4 +1,4 @@
-# 2026-09-06 — G-4 calibration also ignored the CONDOR-specific VIX regime the live gate enforces — FIXED
+## 2026-09-06 — G-4 calibration also ignored the CONDOR-specific VIX regime the live gate enforces — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | 0DTE / SPX Slayer — gate calibration |
 | **PR** | (this branch) |
 
-## Root cause
+### Root cause
 
 Same function, same bug class, as the G-6 fix earlier today (`2026-09-06-g6-condor-calibration-exemption.md`) — found while re-auditing `computeGateCalibration` for the same isCondor-awareness gap after fixing G-6.
 
@@ -36,7 +36,7 @@ verdict dilutes the would-block cohort with a row the live gate never would have
 score-floor rule the condor's own G-4 branch doesn't apply — corrupting the same graduation
 measurement the G-6 fix protected.
 
-## Fix
+### Fix
 
 Restructured both VIX-threshold branches in `computeGateCalibration` (extreme and elevated) to
 check the same `isCondor` flag the function now computes once at the top (moved up from the G-6
@@ -49,7 +49,7 @@ fix so both G-4 and G-6 can share it), mirroring the live gate's condor-specific
 - `tier` labeling is unchanged for both play types — it still communicates the factual VIX band;
   only `would_block`/`would_halve_size` now branch on play_type.
 
-## Evidence
+### Evidence
 
 - New tests, RED before / GREEN after (`git stash` on `gates.ts`, tests kept):
   - "G-4 calibration: a CONDOR at elevated VIX (18) with a low score is NOT flagged would_block" —
@@ -61,7 +61,7 @@ fix so both G-4 and G-6 can share it), mirroring the live gate's condor-specific
 - `tsc --noEmit`: clean.
 - Full `npm test` (Node 20): pending in this PR's evidence trail (see push).
 
-## Blast radius
+### Blast radius
 
 - `computeGateCalibration` only. No change to `ZeroDteVixCalibration`'s shape (no new field
   needed here — unlike G-6, a condor's G-4 verdict is a genuine, well-defined observation under
@@ -72,7 +72,7 @@ fix so both G-4 and G-6 can share it), mirroring the live gate's condor-specific
 - No change to the live gate's own enforcement — this fix is entirely in the calibration/
   diagnostic path.
 
-## Fix rationale
+### Fix rationale
 
 Mirrors the G-6 fix's rationale exactly: fixing at the source (`computeGateCalibration`) keeps the
 persisted `gate_calibration_json` blob honest for any reader, rather than papering over it at the
@@ -80,7 +80,7 @@ persisted `gate_calibration_json` blob honest for any reader, rather than paperi
 here — the condor's G-4 answer isn't "inapplicable," it's a real, different, well-defined verdict
 (block only at extreme), so the fix computes that verdict directly rather than suppressing it.
 
-## Market-open validation
+### Market-open validation
 
 Next commit-time cycle: spot-check a fresh PIN-sourced condor committed during an elevated-VIX
 (17-20) session via `GET /api/market/zerodte/record` (or an admin export) — its

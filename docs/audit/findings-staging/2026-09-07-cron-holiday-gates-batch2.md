@@ -1,4 +1,4 @@
-# Three market_hours_only crons still polled upstream on Labor Day — FIXED
+## Three market_hours_only crons still polled upstream on Labor Day — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Cron infra / UW+Polygon rate budget |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Post-#4482/#4483 audit sweep of remaining `market_hours_only: true` crons. On Labor Day
 2026-09-07, three routes still executed real upstream work on EventBridge's weekday schedule:
@@ -18,12 +18,12 @@ Post-#4482/#4483 audit sweep of remaining `market_hours_only: true` crons. On La
 - `banger-live-sync` — Polygon unified option snapshot marks for open banger positions
 - `helix-signal-outcomes` — DB record/grade churn with no live tape to grade against
 
-## Root cause
+### Root cause
 
 Same ET-INTENT class as `uw-cache-refresh` (#4482) and `flow-ingest` (#4483): registry declares
 `market_hours_only: true` but routes had no `isEtCashRth()` execution gate.
 
-## Fix
+### Fix
 
 Added holiday-aware RTH gate after auth (and after `requireDatabaseInProduction` where applicable),
 returning `{ ok: true, skipped: true, reason: "outside RTH (weekend/holiday/off-hours)" }`.
@@ -39,7 +39,7 @@ to the next trading day's first fire instead of the intended <=60min. Switched t
 `isEtExtendedWarmHours()` (4:00-20:00 ET, same holiday-awareness via `isTradingDayEt`) — closes the
 Labor Day gap this PR targets while preserving the post-close grading window.
 
-## Blast radius
+### Blast radius
 
 Three routes only. RTH behavior unchanged (aside from the `helix-signal-outcomes` gate correction
 above, which widens rather than narrows its execution window — still closed on weekends/holidays).
@@ -47,7 +47,7 @@ Remaining ungated `market_hours_only` crons documented for follow-up: `socket-he
 gate), `gex-alerts`/`vector-alerts` (push kill-switch). `legacy-live-sync` was fixed separately
 in #4485 (merged) — no longer on this follow-up list.
 
-## Evidence
+### Evidence
 
 RED→GREEN static tests in each route's `route.test.ts`, 12/12 pass:
 `node --import tsx --experimental-test-module-mocks --test src/app/api/cron/swing-active-refresh/route.test.ts src/app/api/cron/banger-live-sync/route.test.ts src/app/api/cron/helix-signal-outcomes/route.test.ts src/app/api/cron/flow-ingest/route.test.ts src/app/api/cron/uw-cache-refresh/route.test.ts`

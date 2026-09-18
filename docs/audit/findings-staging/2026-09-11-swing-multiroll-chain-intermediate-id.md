@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Ask Largo swing play-brief could not resolve a chain rolled TWICE via an intermediate leg's id
+## Ask Largo swing play-brief could not resolve a chain rolled TWICE via an intermediate leg's id
 
 | Field | Detail |
 | --- | --- |
@@ -9,7 +9,7 @@
 | **Component** | `src/lib/swing/play-brief-resolve.ts` (`resolveSwingPlayForBrief`, `loadOpenTerminalPlay`, `loadClosedPlay`) |
 | **Found via** | Ask Largo standing ownership mandate — roll-narrative end-to-end trace, the natural follow-up to #4794's OCC-identity fix, which explicitly flagged rolls as the one case reconstruction and ledger values could diverge |
 
-## What was broken
+### What was broken
 
 Every id-matching test in `play-brief-resolve.ts` assumes a caller-supplied `positionId` is either
 the live/terminal leg itself or the chain's ROOT id:
@@ -46,7 +46,7 @@ chain's current state, and the codebase's only chain-walk helper (`fetchSwingPos
 `db.ts`) requires the ROOT id as input, not an arbitrary leg id, so it could not be reused as-is
 either.
 
-## Evidence
+### Evidence
 
 Regression test `src/lib/swing/play-brief-resolve.test.ts` ("a chain rolled TWICE still resolves
 via an INTERMEDIATE leg's id") constructs exactly this three-leg chain plus an UNRELATED second
@@ -55,7 +55,7 @@ coincidence, which would otherwise mask the bug when there's only one open row t
 `git stash` proved RED before the fix (falls through, resolves the wrong/unrelated leg) and GREEN
 after (resolves the currently-OPEN grandchild leg, id=3, by strike and status).
 
-## Fix
+### Fix
 
 Added `resolveChainRootId(ticker, positionId)`: a single extra `fetchSwingPositionsRange` lookup
 (already returns every status, including intermediate ROLLED legs) that finds the referenced leg
@@ -69,7 +69,7 @@ because that helper requires the ROOT id as input (`id = root OR root_position_i
 has no reverse lookup from an arbitrary leg id to its root, which is exactly the missing piece
 here.
 
-## Blast radius
+### Blast radius
 
 Single call site (`resolveSwingPlayForBrief`); the fix does not touch `loadOpenTerminalPlay` or
 `loadClosedPlay`'s own matching logic (both stay as they are, correct for their existing single-hop

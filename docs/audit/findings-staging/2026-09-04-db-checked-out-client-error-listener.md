@@ -1,4 +1,4 @@
-# db.ts: checked-out pool clients had no 'error' listener — raw uncaughtException on connection drop — FIXED
+## db.ts: checked-out pool clients had no 'error' listener — raw uncaughtException on connection drop — FIXED
 
 > **kind:** `FINDING`
 
@@ -9,7 +9,7 @@
 | **Severity** | P3 — error-rate. One live occurrence in a 24h CloudWatch window, self-recovered (ECS restarted the task), not systemic — but a real gap in an otherwise deliberately-hardened surface |
 | **Found by** | DISCOVERY 24/7 audit sweep, 2026-09-04 |
 
-## Root cause
+### Root cause
 
 `src/lib/db.ts` already has a `livePool.on("error", (err) => ...)` handler on the shared `Pool`
 specifically to stop an **idle** pooled client's connection drop from becoming a fatal
@@ -49,7 +49,7 @@ not a rejected promise at all, so no `try`/`catch` — however completely applie
 it. It is a second, independent emission from the same underlying socket-drop event, on the one
 code surface (`pool.on('error')`) does not reach.
 
-## Evidence
+### Evidence
 
 - Confirmed via `node_modules/pg-pool/index.js` and `node_modules/pg/lib/client.js` source (both
   vendored at the exact version this repo runs) — see the specific line references above.
@@ -68,7 +68,7 @@ code surface (`pool.on('error')`) does not reach.
   livePnlPct/commit-latch/tier-passthrough on `POLYGON_API_BASE`/DB-unreachable sandbox artifacts,
   and one `resolveGithubRepo` env-leakage test) — no new failures introduced by this change.
 
-## Blast radius
+### Blast radius
 
 All 7 raw `pool.connect()` checked-out-client sites in `db.ts` share the identical root cause and
 were all missing the listener — fixed in the same pass since they share one new helper:
@@ -96,7 +96,7 @@ No other file needed changes: `dbClient()` being fixed here is what makes the th
 callers safe without touching them, and no second raw `new Pool()`/`new Client()` exists anywhere
 else in `src` (confirmed by the same grep the finding's own evidence section cites).
 
-## Fix rationale
+### Fix rationale
 
 Added one small exported helper, `guardCheckedOutClient<T extends PoolClient>(client: T): T`,
 placed immediately after `getPool()` (right before it's first needed by `runMigrations`) and
@@ -116,7 +116,7 @@ Deliberately **not** changed:
   (this sandbox run had no live AWS creds available to re-pull the original CloudWatch event; the
   fix and its evidence are entirely code/test-level, per the task's own allowance for that case).
 
-## Market-open validation
+### Market-open validation
 
 Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` — nothing to visually confirm on the live board
 (this is a backend crash-prevention fix with no UI surface), so the checklist item there is a

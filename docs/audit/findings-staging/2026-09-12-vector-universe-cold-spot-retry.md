@@ -1,4 +1,4 @@
-# Vector universe snapshot served `spot:null` for 35 of 64 rows — every one a static-allowlist name outside the UI preset chips
+## Vector universe snapshot served `spot:null` for 35 of 64 rows — every one a static-allowlist name outside the UI preset chips
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Vector — `src/features/vector/lib/vector-universe.ts` (`buildVectorUniverseSnapshot`) |
 | **Found by** | Standing performance/latency + 5-engine live monitor sweep (Vector health check) |
 
-## Symptom
+### Symptom
 
 Live `GET /api/market/vector/universe` (2026-09-12) served `spot: null` for **35 of 64 rows**, on
 a build that `isCompleteBuild` (`attempted === produced`) reports as COMPLETE. All 35 null names
@@ -19,7 +19,7 @@ LUNR, MARA, MRK, MS, OXY, PL, PLTR, RIOT, RKLB, SLB, SMH, VRT, XOM — none of t
 UI preset chips (`HEATMAP_PRESET_TICKERS`: SPY/SPX/QQQ/IWM/NVDA/TSLA/AAPL/AMD/META/AMZN/GOOGL),
 every one of which resolved fine.
 
-## Root cause
+### Root cause
 
 `fetchGexHeatmap`'s cold/inflight build is capped at `gexHeatmapMaxBlockMs` (default 3s) before
 handing off stale-or-null — correct for a LIVE member request (better to answer fast with stale
@@ -44,7 +44,7 @@ the build genuinely doesn't miss any ticker's *slot* — the merge-vs-replace lo
 `vector-universe-merge.ts` (built for the opposite failure, a build that drops rows outright) never
 engages to protect a previously-good row.
 
-## Evidence (live production, 2026-09-12, off-hours)
+### Evidence (live production, 2026-09-12, off-hours)
 
 ```
 GET /api/market/vector/universe  →  updatedAt staleness ~9-12min (last real RTH cron tick),
@@ -72,7 +72,7 @@ RTH (2026-09-11: `rows=79-84`, `elapsed=529ms-22342ms`, zero `[vector-universe] 
 warnings in the last 4 days) — the defect is entirely inside a "complete" build, not a missed or
 crashed cron run.
 
-## Fix
+### Fix
 
 Added `retryNullSpotRows` in `vector-universe.ts`: after the main bounded pooled fan-out
 (`runPolygonPool`, concurrency 8) completes, re-attempt — through the SAME bounded pool — only the
@@ -95,7 +95,7 @@ row's displayed price fields (`spot`/`gammaFlip`/`vexFlip`/wall levels), not the
 for that specific 5-min tick; a missed bead sample is a much smaller, self-healing gap (the next
 tick records again) and re-recording here risked a duplicate/out-of-bucket write.
 
-## Tests
+### Tests
 
 `src/features/vector/lib/vector-universe.test.ts`:
 - new `SLOWCOLD` fixture (call-counter mock: first `fetchGexHeatmap` call returns `null`, every
@@ -111,7 +111,7 @@ RED confirmed via `git stash` on `vector-universe.ts` only (keeping the two new 
 failing → 16/16 after restoring the fix. Full `npm test` (Node 20.20.2): **13964 pass / 0 fail / 3
 skipped.** `npx tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 
 Single file (`vector-universe.ts`), one new module-private helper (`retryNullSpotRows`), called
 from the one existing build path (`buildVectorUniverseSnapshot`) shared by both the RTH cron and

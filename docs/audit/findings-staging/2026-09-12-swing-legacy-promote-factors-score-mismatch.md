@@ -1,4 +1,4 @@
-# Legacy morning-confirm-promoted Swing plays showed "score pillars" that never summed to their own score
+## Legacy morning-confirm-promoted Swing plays showed "score pillars" that never summed to their own score
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Swings — `src/lib/swing/legacy-confirm-promote.ts` (`buildLegacySwingArtifacts`); consumed by the command deck's "Why this play was picked" panel and Ask Largo's `play-brief-intel.ts::whyThisSetupSection` for any Legacy-morning-confirm-promoted Swing row |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — 2026-09-12 deep-dive cycle |
 
-## Root cause
+### Root cause
 
 `buildLegacySwingArtifacts` promotes a Night Hawk **Legacy** edition play into a **Swing**
 `HorizonPlay` when Legacy's own morning-confirm step re-validates it intraday. The promoted
@@ -33,7 +33,7 @@ This is the fourth occurrence of the same bug class in this codebase (see #4826 
 beside them, each time because two independently-computed numbers were paired as if they were one
 connected explanation.
 
-## Evidence
+### Evidence
 
 Live `GET /api/market/nighthawk/horizons?view=swings` (2026-09-12), three Legacy-morning-confirm
 promoted rows (`reason` field carries `"Legacy morning confirm"`):
@@ -48,7 +48,7 @@ A member reading "Score pillars" next to any of these three scores would be look
 breakdown of a *different number* than the one shown — the IREN case is the most visibly wrong,
 where the itemized pillars overshoot the headline score entirely.
 
-## Fix
+### Fix
 
 Same shape as the Banger-lane fix in #4826: replace the borrowed dossier decomposition with a
 single honest factor equal to the actual displayed score —
@@ -64,7 +64,7 @@ number. Inventing a plausible-looking split would fabricate precision the promot
 have (violates the Largo product contract's "precision" point) — a single transparent factor is
 the honest representation of what is actually known here.
 
-## Tests
+### Tests
 
 Added to `src/lib/swing/legacy-confirm-promote.test.ts`:
 - `buildLegacySwingArtifacts: factors sum to the play's own SHOWN score, not the dossier's

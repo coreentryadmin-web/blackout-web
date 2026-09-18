@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk dossier's recency window measured congress/insider rows by TRADE date, not DISCLOSURE date
+## Night Hawk dossier's recency window measured congress/insider rows by TRADE date, not DISCLOSURE date
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | `parseTradeDate`/`isWithinRecentSignalWindow` (`src/features/nighthawk/lib/dossier.ts`) — governs `getEditionCongressTrades`'s recency filter and `isRecentInsiderBuy`'s window check |
 | **Severity** | P2 — a real congress trade or insider buy disclosed today could be wrongly dropped as "stale" (or a stale one wrongly kept), no crash, no visible symptom |
 
-## Root cause
+### Root cause
 
 `parseTradeDate`'s fallback chain read `filed_at`, `filed_date`, `transaction_date`,
 `transactionDate`, `disclosure_date`, `report_date`, `date`, `created_at` — none of which match
@@ -33,7 +33,7 @@ kept. This is the exact same root-cause class already fixed once this session in
 DECAYS; this one is the blast-radius instance governing whether the row is even KEPT in the window
 at all, in a different file.
 
-## Blast radius
+### Blast radius
 
 - **`getEditionCongressTrades`** (`dossier.ts`): filters `cache.congress` to the requested
   ticker's rows within the last `RECENT_SIGNAL_DAYS` (30) via `isWithinRecentSignalWindow` —
@@ -45,7 +45,7 @@ at all, in a different file.
   row counts toward `insider_buys`. A buy filed within 30 days but transacted slightly earlier
   could be dropped from the count.
 
-## Fix
+### Fix
 
 Added `row.filed_at_date` and `row.filing_date` as the first two checks in `parseTradeDate`'s
 fallback chain (every existing fallback kept afterward, unchanged) — the disclosure date, which is
@@ -62,7 +62,7 @@ both the direct `parseTradeDate` output and the derived `isWithinRecentSignalWin
 a test proving the existing `transaction_date`-only fallback still works when no disclosure-date
 field is present.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered giving congress and insider rows separate, source-specific date-parsing functions
 instead of one shared fallback chain, since they're conceptually different row shapes. Kept the
@@ -71,7 +71,7 @@ single shared `parseTradeDate` because both call sites already used it, both `fi
 fields, and splitting it would be unrelated scope creep on a fix that only needed two more field
 names added to an existing, working fallback pattern already used elsewhere in this file.
 
-## Evidence
+### Evidence
 
 - Live UW pulls (real `UW_API_KEY`, same session as #4844/#4860) confirming `filed_at_date` on
   congress rows and `filing_date` on insider-transaction rows.
@@ -81,7 +81,7 @@ names added to an existing, working fallback pattern already used elsewhere in t
 - `npx tsc --noEmit`: clean.
 - Full suite (`npm test`, Node 20): 13921 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 `isRecentInsiderBuy`'s buy/sell classification logic (`transaction_code`/`type`/`buy_sell` field
 checks) is untouched — those fields were already correct for the real per-ticker transaction rows

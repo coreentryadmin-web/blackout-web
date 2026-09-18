@@ -1,4 +1,4 @@
-# Ask Largo swing brief's "Catalysts & news" headlines carried no freshness disclosure, unlike every sibling freshness-aware section
+## Ask Largo swing brief's "Catalysts & news" headlines carried no freshness disclosure, unlike every sibling freshness-aware section
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P3 (member-facing narrative quality / Largo product-contract C2 — freshness) |
 | **Status** | FIXED — `fix/swing-catalysts-news-freshness` |
 
-## Root cause
+### Root cause
 
 `NewsResult.asOf` (`src/lib/providers/polygon-news.ts`) is stamped once, at true fetch time, inside
 `serverCache`'s cached builder. Under that cache's stale-while-revalidate path, a degraded Benzinga
@@ -23,7 +23,7 @@ That field was computed correctly upstream but silently dropped one layer up, in
 `catalystsSection`, the sole consumer of `arsenal.news.headlines`, had no way to ever disclose
 staleness — unlike every other freshness-aware section in the same file (GEX, Vector, Meridian).
 
-## Evidence
+### Evidence
 
 Read `ecosystem-context.ts`'s `EcosystemArsenalNews` type and `assembleEcosystemArsenal`'s news
 branch directly: `headlines: reads.news.items.slice(0, 4).map(...)` was present, `as_of` was not,
@@ -33,13 +33,13 @@ even though `reads.news` (`NewsResult`) carries a real `asOf: string` field
 `meridianCatalystSection` (same file) already reads `ctx.meridian`'s freshness via
 `meridianCatalystStale`/`meridianCatalystAgeMs` and prepends a "Last snapshot" disclosure line.
 
-## Blast radius
+### Blast radius
 
 Single call site (`catalystsSection`'s "Headlines" block) and its one upstream data path
 (`assembleEcosystemArsenal`'s news branch). `EcosystemArsenalNews.as_of` is additive/optional, so
 no other consumer of that type is affected.
 
-## Fix rationale
+### Fix rationale
 
 Mirrored the existing, already-shipped `meridianCatalystStale`/`meridianCatalystAgeMs` pattern
 exactly, at the same `GEX_MATRIX_STALE_MS` (120s) threshold used by every other freshness check in
@@ -56,7 +56,7 @@ exactly, at the same `GEX_MATRIX_STALE_MS` (120s) threshold used by every other 
 stale" rather than a false positive — `newsCatalystStale` treats a missing timestamp the same way
 `meridianCatalystStale` treats a missing slice.
 
-## Verification
+### Verification
 
 - Independent RED→GREEN (reverted only the 3 source files, kept the tests):
   `npx tsx --experimental-test-module-mocks --test src/lib/bie/ecosystem-context.test.ts

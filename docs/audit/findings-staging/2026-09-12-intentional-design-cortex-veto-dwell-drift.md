@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# `docs/audit/INTENTIONAL-DESIGN.md` item #2 described the Cortex veto as stateless for 20 days after a dwell/hysteresis latch shipped — DOC CORRECTED, no code change
+## `docs/audit/INTENTIONAL-DESIGN.md` item #2 described the Cortex veto as stateless for 20 days after a dwell/hysteresis latch shipped — DOC CORRECTED, no code change
 
 | Field | Detail |
 |---|---|
@@ -10,13 +10,13 @@
 | **Files** | `docs/audit/INTENTIONAL-DESIGN.md` (item #2), `scripts/audit/veto-flicker-rate.mjs` (header comment), `CLAUDE.md` (audit toolkit entry for `veto-flicker-rate.mjs`) |
 | **PR** | (opened same session as this finding, branch `fix/intentional-design-cortex-veto-dwell-drift`) |
 
-## Task context
+### Task context
 
 Investigated per a queued fix-wave task ("cortex-veto-dwell-doc-drift") that had never actually
 started (a sandbox worktree-creation error aborted it before any investigation) — this session
 started fresh and independently verified the hypothesis rather than assuming it was correct.
 
-## Root cause
+### Root cause
 
 `docs/audit/INTENTIONAL-DESIGN.md` item #2, "Cortex veto has no hysteresis / latching (recomputed
 each pass)," stated as current fact that `evaluateCortexForCommit`/`assessCortexVerdict`
@@ -52,7 +52,7 @@ decisions is revisited") was never touched to match, and neither was the measure
 header comment, which independently asserted the same now-stale "stateless" claim as established
 fact rather than history.
 
-## Why the dwell shipped without INTENTIONAL-DESIGN item #2's own evidence bar being cleared
+### Why the dwell shipped without INTENTIONAL-DESIGN item #2's own evidence bar being cleared
 
 `docs/audit/THESIS-FIRST-DESIGN-REVIEW.md`, a review draft git-logged ~1 hour before PR #2904's
 commit on the same day (2026-08-25), independently named this exact behavior as its own gap: **"G5 —
@@ -69,7 +69,7 @@ flicker rate is evidence for adding a dwell" bar INTENTIONAL-DESIGN.md item #2 i
 legitimate way to ship a change — but it is a different justification than "evidence-driven," and the
 doc should not have kept implying the latter applied by simply never mentioning the change happened.
 
-## Fix (documentation only)
+### Fix (documentation only)
 
 - `docs/audit/INTENTIONAL-DESIGN.md` item #2 rewritten in the file's own established
   "REVISITED"/correction pattern (matching items #1 and #4): keeps the original "Prior choice" and
@@ -84,7 +84,7 @@ doc should not have kept implying the latter applied by simply never mentioning 
 - `CLAUDE.md`'s one-line audit-toolkit entry for `veto-flicker-rate.mjs` updated to stop asserting
   "the stateless veto" as current fact and point to the corrected INTENTIONAL-DESIGN.md section.
 
-## Evidence
+### Evidence
 
 - `git log --follow --diff-filter=A -- src/lib/zerodte/cortex-veto-dwell.ts` → single commit
   `a3c231359` ("feat(zerodte): thesis follow-ups — G1 sync, G2 rank cal, G5 cortex dwell, Helix/DP
@@ -104,7 +104,7 @@ doc should not have kept implying the latter applied by simply never mentioning 
   overdue by 5+ weeks and, worse, no longer answers the question it was written to answer (see
   above), so it was corrected rather than just re-run as-is.
 
-## Blast radius
+### Blast radius
 
 Documentation and one code-comment only. No file under `src/` that affects runtime behavior was
 touched; `cortex-gate.ts`, `cortex-veto-dwell.ts`, and `scan.ts` are unchanged. Verified no other doc
@@ -113,7 +113,7 @@ touched; `cortex-gate.ts`, `cortex-veto-dwell.ts`, and `scan.ts` are unchanged. 
 needed the same correction — only `INTENTIONAL-DESIGN.md`, the measurement script's own header, and
 CLAUDE.md's one-line pointer to it did.
 
-## Fix rationale — why documentation-only, not a gate change
+### Fix rationale — why documentation-only, not a gate change
 
 The task framing offered three options: fix docs (pure drift), change the gate (if evidence
 justified it), or write up an open question. This is squarely the first: the code is already
@@ -128,7 +128,7 @@ measurement that isn't cheap just to close a finding" discipline — it needs a 
 `zerodte_scan_rejections`/`zerodte_discovery_events` export this sandbox does not have queued, not a
 doc edit.
 
-## Regression test
+### Regression test
 
 None added — no code or runtime behavior changed, per the repo's own established pattern for
 doc-only corrections (e.g. the 2026-08-06 `BREAKOUT_MAX_CANDIDATES` text correction in

@@ -1,4 +1,4 @@
-# zerodte-grade ran post-close grading on Labor Day — FIXED
+## zerodte-grade ran post-close grading on Labor Day — FIXED
 
 > **kind:** FINDING
 
@@ -9,25 +9,25 @@
 | **Area** | Cron infra / 0DTE ledger grading |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Post-#4490/#4491/#4492 holiday-gate sweep: `zerodte-grade` still runs post-close
 ledger grading + calibration rail refresh on NYSE holidays when EventBridge fires
 during the 16:30–20:00 ET window (e.g. Labor Day 2026-09-07).
 
-## Root cause
+### Root cause
 
 No `isTradingDayEt()` check — route runs whenever authorized. Weekday-only
 EventBridge schedule does not exclude NYSE holidays.
 
-## Fix
+### Fix
 
 Added `isTradingDayEt(sessionDay)` gate after auth; `force=1` bypasses for ops recovery.
 
-## Blast radius
+### Blast radius
 
 `zerodte-grade` route only.
 
-## Evidence
+### Evidence
 
 RED→GREEN static test: `npx tsx --test src/app/api/cron/zerodte-grade/route.test.ts`

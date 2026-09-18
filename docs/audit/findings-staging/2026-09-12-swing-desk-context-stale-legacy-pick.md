@@ -1,4 +1,4 @@
-# Swing "Desk context" narrated a weeks-old Legacy pick as live sizing context, contradicting its own unavailableSources chip
+## Swing "Desk context" narrated a weeks-old Legacy pick as live sizing context, contradicting its own unavailableSources chip
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo / Night Hawk Swings play-brief — `src/lib/swing/play-brief-intel.ts` (`deskConsensusSection`, the "Desk context" section) |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — live play-brief deep-dive (weekend health-check cycle) |
 
-## Root cause
+### Root cause
 
 `deskConsensusSection` reads `eco.nighthawk_recent` — "the last time this ticker appeared in a
 Night Hawk Legacy edition," queried with `ORDER BY edition_for DESC LIMIT 1` and **no date
@@ -37,7 +37,7 @@ worse than an obviously-missing one" failure mode the 2026-09-10 absence-chip fi
 was fixed at the chip layer but not at the narrative layer that actually renders the visible,
 Largo-quotable sentence.
 
-## Fix
+### Fix
 
 `deskConsensusSection` now takes an optional `sessionDate` parameter (defaults to `null`, so any
 existing caller that doesn't pass one keeps its current unconditional behavior — no regression).
@@ -48,7 +48,7 @@ within-week gap, incl. weekends), suppresses the section entirely once the gap e
 beyond that window the Legacy pick is a population fact about this ticker's feature history, not
 useful "before sizing" context, so it's dropped rather than asserted as current.
 
-## Why suppress rather than reword
+### Why suppress rather than reword
 
 The absence-chip fix already established the honest framing for "this ticker just hasn't come up
 in Legacy recently" (non-retryable, no actionable next step). Reusing that exact bound here keeps
@@ -58,7 +58,7 @@ value once it's outside a normal within-week window — dropping the section (sa
 other bucket-blind/absence section in this file) is simpler and safer than trying to reword a
 17-day-old fact into something honestly actionable.
 
-## Evidence / tests
+### Evidence / tests
 
 Added to `src/lib/swing/play-brief-intel.test.ts`:
 - a stale (17-day-gap) Legacy pick is suppressed (`null`) when `sessionDate` is supplied —
@@ -71,7 +71,7 @@ Added to `src/lib/swing/play-brief-intel.test.ts`:
 Verified RED before the fix (`git stash` on `play-brief-intel.ts` alone, keeping the new tests):
 1 fail. GREEN after: 102/102 `play-brief-intel.test.ts` pass. `tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 
 Single call site (`composeSwingPlayBrief`) and single function (`deskConsensusSection`) — no
 other consumer of `nighthawk_recent` narrates it into a member-facing sentence the same way (the

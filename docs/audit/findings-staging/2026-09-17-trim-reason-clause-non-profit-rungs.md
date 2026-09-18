@@ -1,4 +1,4 @@
-# Ask Largo "Desk says TRIM" bullet never disclosed the real trim reason for 5 of 6 manage.ts rungs
+## Ask Largo "Desk says TRIM" bullet never disclosed the real trim reason for 5 of 6 manage.ts rungs
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P2 (member-facing narrative correctness — the brief's own "why" disclosure was silently wrong, not just incomplete) |
 | **Status** | FIXED — `fix/trim-reason-clause-non-profit-rungs` |
 
-## Root cause
+### Root cause
 
 `manage.ts`'s `evaluateSwingManagement` has six rungs that all map to the same `TAKE_PARTIAL`
 action (`catalyst_shift`, `regime_shift`, `profit_ladder`, `flow_decay`, `rel_strength_loss`,
@@ -23,7 +23,7 @@ explain "why TRIM" never named the actual driver.
 This is the identical defect class already fixed on the SELL side of this exact file (FINDINGS
 2026-09-10, `sellReasonClause`, live NRG repro) — TRIM never got the equivalent fix.
 
-## Evidence
+### Evidence
 
 Live repro, 2026-09-17, three real open swing-native positions simultaneously:
 
@@ -39,7 +39,7 @@ been within 60+ points of the +100% rail the bullet named as the only context, a
 driver (a broken catalyst / lost relative strength vs benchmark) was disclosed nowhere in the
 section whose whole purpose is to state the desk's reasoning.
 
-## Blast radius
+### Blast radius
 
 Single call site — `tradeManagerNarrativeSection`'s TRIM branch is the only place this bullet is
 built (`laneRankCoaching`/other coaching bullets are separate, unaffected sections). Every WATCH/
@@ -47,7 +47,7 @@ OPEN swing play-brief whose recommendation is TRIM for a non-`profit_ladder` rea
 `profit_ladder` (the majority case in prior audits, e.g. the CG/NN/NRG repros already in this
 file's comments) already read correctly and is unchanged by this fix.
 
-## Fix rationale
+### Fix rationale
 
 Added `trimReasonClause(reason)`, mirroring the existing `sellReasonClause` in shape and, for the
 two shared rungs (`catalyst_shift`/`regime_shift`), exact wording — for `flow_decay`/
@@ -63,7 +63,7 @@ Deliberately did NOT touch the rail-clause logic itself (already correct per the
 CG repro fix in the same block) or the `sellReasonClause` SELL-side function — this is a narrow,
 single-branch fix mirroring an established, already-reviewed pattern in the same file.
 
-## Verification
+### Verification
 
 - `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts` —
   88/88 pass. RED→GREEN confirmed via `git stash` on the source fix alone: 2 of 4 new tests failed

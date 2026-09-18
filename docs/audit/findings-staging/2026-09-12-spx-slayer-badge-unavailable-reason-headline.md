@@ -1,4 +1,4 @@
-# SPX Slayer board badge's tooltip called a routine "market closed" state "SPX Slayer desk unavailable" on every single evening/weekend render
+## SPX Slayer board badge's tooltip called a routine "market closed" state "SPX Slayer desk unavailable" on every single evening/weekend render
 
 > **kind:** `FINDING`
 
@@ -9,7 +9,7 @@
 | **Area** | `src/features/spx/lib/spx-slayer-badge-map.ts` (`mapSpxPlayToBadge`) — read by `SpxSlayerBadgeStrip` in `src/features/nighthawk/components/zerodte-board-strips.tsx` |
 | **Found by** | Standing 5-engine live monitor sweep — 2026-09-12 cycle, SPX Slayer health check (`GET /api/market/zerodte/board`, off-hours/weekend) |
 
-## What was found
+### What was found
 
 Live `GET /api/market/zerodte/board` (Saturday, market closed) returned:
 
@@ -28,7 +28,7 @@ text visible for a non-live badge — the visible pill itself just says "IDLE") 
 **"SPX Slayer desk unavailable"** — wording that reads like an outage or a broken feed, not a
 scheduled market closure.
 
-## Root cause
+### Root cause
 
 `mapSpxPlayToBadge` derived `unavailable_reason` as:
 
@@ -55,7 +55,7 @@ terminal closed state with its own distinct headline), but the mapper's fallback
 real, already-computed `headline` sitting right next to it and fell straight to the generic
 `"SPX Slayer desk unavailable"` string instead.
 
-## Blast radius
+### Blast radius
 
 Single call site (`mapSpxPlayToBadge`), one consumer (`SpxSlayerBadgeStrip`'s `title`). This is
 the **only** `available:false` `SpxPlayPayload` shape in production where `idle_message` and
@@ -66,7 +66,7 @@ CLOSED-SESSION branch fires for most hours in a week (every evening + every week
 position needs force-settling), the wrong tooltip was the far more common of the two — not a rare
 edge case.
 
-## Fix
+### Fix
 
 `unavailable_reason` now prefers `idle_message`, then `headline`, then the generic string, in that
 order — `payload.idle_message || payload.headline || "SPX Slayer desk unavailable"`. `||` (not
@@ -74,7 +74,7 @@ order — `payload.idle_message || payload.headline || "SPX Slayer desk unavaila
 either; `SpxPlayPayload.headline` is typed as a required `string`, but nothing enforces non-empty
 at every call site, so the defensive generic floor is kept as the true last resort.
 
-## Tests
+### Tests
 
 `src/features/spx/lib/spx-slayer-badge.test.ts`:
 - Replaced the one test whose fixture combined a generic scanning-lane `headline` with

@@ -1,4 +1,4 @@
-# Clerk user-cache eviction sweep future-timestamp guard — FIXED
+## Clerk user-cache eviction sweep future-timestamp guard — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Status** | FIXED |
 | **Area** | Freshness guards |
 
-## Symptom
+### Symptom
 
 #3915 fixed the read path (`getClerkUserCached`'s `hit && isWsUpdatedAtFresh(hit.at, DEDUPE_TTL_MS)`)
 but left `setResolved`'s size-pressure eviction sweep on the same raw arithmetic:
@@ -22,18 +22,18 @@ Two independent parallel PRs (#3917, #3918) had already found and fixed this exa
 were closed in favor of #3915 (which merged without the eviction-sweep hunk) — this PR ports that
 already-reviewed fix back in as a small, focused follow-up.
 
-## Fix
+### Fix
 
 Route the eviction sweep through the same shared `isWsUpdatedAtFresh(v.at, DEDUPE_TTL_MS, now)`
 helper already used on the read path.
 
-## Evidence
+### Evidence
 
 - `src/lib/clerk-user-cache-freshness.test.ts` — extended with a second assertion; RED (1/2 fail)
   on the unfixed source, GREEN (2/2 pass) after the fix (git-stash verified).
 - `npx tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 
 `clerk-user-cache.ts` only, and only the `MAX_RESOLVED` size-pressure path (2,000-entry in-process
 Clerk `getUser` dedupe map) — no behavior change for normal-path lookups, already fixed in #3915.

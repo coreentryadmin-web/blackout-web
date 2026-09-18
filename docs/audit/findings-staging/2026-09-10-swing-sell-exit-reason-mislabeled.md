@@ -1,4 +1,4 @@
-# Ask Largo swing LIVE-play "Exit now" bullet claims "thesis or ladder fired" even when neither is true
+## Ask Largo swing LIVE-play "Exit now" bullet claims "thesis or ladder fired" even when neither is true
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Swing / Ask Largo LIVE-play "Trade manager read" section, `actionNarrative()`'s SELL branch |
 | **Files** | `src/lib/horizon-plays.ts` (`HorizonPlay.manageReason`), `src/lib/swing/live-plays.ts` (`manageObservablesFromEvent` now returns the deciding rung), `src/lib/swing/play-brief-resolve.ts` (threads `manageReason` into `HorizonDeckSource`), `src/features/nighthawk/command-deck/types.ts` + `adapters.ts` (`TerminalPlay.manageReason`), `src/lib/swing/play-brief-narrative.ts` (`sellReasonClause`), `src/lib/swing/play-brief-narrative.test.ts` (3 new tests) |
 
-## Context
+### Context
 
 Live capture from `GET /api/market/swing/play-brief?playId=SWING:NRG&ticker=NRG&positionId=34`
 (a real committed, still-open swing position) during the standing 5-engine live monitor cycle
@@ -31,7 +31,7 @@ remaining, `manage.ts`'s own doc comment on that rung: "too little time / theta 
 lane → force manage (**intact thesis**)"), a purely time-based force-manage with no thesis
 degradation at all.
 
-## Root cause
+### Root cause
 
 `actionNarrative()`'s SELL branch (`play-brief-narrative.ts`) always rendered the identical
 hardcoded line regardless of WHY `manageAction` resolved to `EXIT`/`STOP_OUT`:
@@ -53,7 +53,7 @@ branch at all — a fired trim rung produces `rec === "TRIM"` (a separate branch
 says TRIM"), never `rec === "SELL"` — so the clause was misleading by construction, not just for
 this one live case.
 
-## Evidence
+### Evidence
 
 New tests in `src/lib/swing/play-brief-narrative.test.ts` (RED→GREEN, verified via `git stash` on
 `play-brief-narrative.ts` only — pre-fix all three assert on the new `manageReason`-driven text
@@ -68,7 +68,7 @@ and fail against the old hardcoded line; post-fix all pass):
 
 Full `npm test` (Node 20) + `npx tsc --noEmit`: clean (see PR).
 
-## Blast radius
+### Blast radius
 
 `grep -rn "manageReason"` across the changed files confirms one clean chain:
 `manage.ts` (rung, unchanged) → `live-plays.ts`'s `manageObservablesFromEvent` (now returns it) →
@@ -82,7 +82,7 @@ additive field. `recommendationFromManageAction()` (adapters.ts, decides SELL vs
 read but not changed — this fix only changes what SELL's own coaching text says, not when SELL
 fires.
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 Considered inferring the reason purely from data already on `TerminalPlay` (e.g. DTE ≤ some
 threshold ⇒ assume expiry risk) instead of threading the real rung through — rejected because that

@@ -1,4 +1,4 @@
-# Largo C3 gap survived #4861 one layer up — `ecosystem-context.ts`'s own `unavailable_sources` push sites never got `what_is_missing`/`retryable`
+## Largo C3 gap survived #4861 one layer up — `ecosystem-context.ts`'s own `unavailable_sources` push sites never got `what_is_missing`/`retryable`
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | `src/lib/bie/ecosystem-context.ts` (`assembleEcosystemArsenal`'s 7 `unavailable.push(...)` sites); reached via `src/lib/swing/play-brief-absence.ts:313`'s `[...ctx.ecosystem?.arsenal?.unavailable_sources]` spread and `src/lib/bie/ticker-verdict.ts`'s equivalent read |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — live envelope-completeness check on a fresh swing play-brief (EWZ, positionId 29, closed) during the 5-engine live-monitor cycle |
 
-## Root cause
+### Root cause
 
 PR #4861 (merged earlier this same cycle window) added optional `what_is_missing`/`retryable`
 fields to `BieUnavailableSource` (`answer-envelope.ts`) and populated them at every one of
@@ -40,7 +40,7 @@ returned
 — both entries with neither field, on a live request served *after* #4861 was already on `main`,
 confirming the gap reaches production today, not just in theory.
 
-## Blast radius
+### Blast radius
 
 `ecosystem.arsenal.unavailable_sources` is read by **two** composers, not one:
 `src/lib/swing/play-brief-absence.ts` (swing play-brief, fixed here) and
@@ -50,7 +50,7 @@ same "fix at the shared layer, not the call site" shape the prior `buildRichEnve
 `unavailableSources`-forwarding fix (#4101, referenced in this repo's CLAUDE.md) already
 established as the right pattern for this exact kind of gap.
 
-## Fix
+### Fix
 
 Widened `EcosystemArsenalUnavailable` to carry the same two optional fields as
 `BieUnavailableSource`, then populated both at all 7 push sites, classifying `retryable` by
@@ -59,7 +59,7 @@ whether the absence is a live-fetch miss (retry can succeed: `macro backdrop`, `
 futile: `earnings`, `fundamentals/short-interest`, `peers`) — same retryable/structural split
 `play-brief-absence.ts` itself already uses (per its own #4861 commit message).
 
-## Evidence / tests
+### Evidence / tests
 
 New test in `ecosystem-context.test.ts` asserts every entry from a realistic single-name AND
 index-scope call carries both fields, and spot-checks the retryable/structural split lands where

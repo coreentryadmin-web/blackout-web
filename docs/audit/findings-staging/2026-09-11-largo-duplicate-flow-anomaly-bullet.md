@@ -1,4 +1,4 @@
-# Ask Largo swing brief renders the same HELIX flow anomaly bullet twice
+## Ask Largo swing brief renders the same HELIX flow anomaly bullet twice
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo — Swing play-brief (`src/lib/swing/play-brief-intel.ts::flowIntelSection`) |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — 2026-09-11 live coordinator cycle, auditing an as-yet-unaudited section (Flow & positioning) |
 
-## Root cause
+### Root cause
 
 `flowIntelSection` renders `eco.recent_anomalies` (top 4, no dedup) straight from the
 `flow_anomalies` DB query in `ecosystem-context.ts`. That query already dedups at write
@@ -34,7 +34,7 @@ Byte-identical, back to back, with no timestamp or count to explain why it appea
 twice — reads as a rendering bug even though the two DB rows are technically distinct
 writes.
 
-## Blast radius
+### Blast radius
 
 - `flowIntelSection` is the only consumer of `eco.recent_anomalies` in the swing brief
   (checked: no other call site renders this field), so the fix is fully scoped to this
@@ -48,7 +48,7 @@ writes.
   out of scope for this brief-rendering fix, and there's a real design question of
   whether it *should* re-fire every cycle for downstream consumers other than Largo).
 
-## Fix
+### Fix
 
 `flowIntelSection` now dedups `eco.recent_anomalies` on `(anomaly_type, detail)` before
 slicing to the top 4. The query is already `ORDER BY detected_at DESC`, so keeping the
@@ -56,7 +56,7 @@ first occurrence of each key naturally keeps the most recent write. Two anomalie
 different `anomaly_type` or `detail` (a genuinely different pattern) still both render —
 only exact repeats collapse.
 
-## Evidence (before/after)
+### Evidence (before/after)
 
 - RED before fix (git-stashed the source fix, kept only the new tests):
   `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts`
@@ -67,7 +67,7 @@ only exact repeats collapse.
 - Companion test confirms two *genuinely different* anomalies on the same ticker still
   both render (no over-collapsing).
 
-## Market-open validation
+### Market-open validation
 
 Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` — during the next RTH session, pull
 `GET /api/market/swing/play-brief` for a ticker with an active, persisting flow anomaly

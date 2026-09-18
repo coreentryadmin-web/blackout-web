@@ -1,4 +1,4 @@
-# Swing play-brief unavailableSources mislabels Night Hawk Legacy as "Night Hawk swings" — FIXED
+## Swing play-brief unavailableSources mislabels Night Hawk Legacy as "Night Hawk swings" — FIXED
 
 > **kind:** `FINDING`
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Swings / Ask Largo (standing ownership mandate deep-dive) |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 `collectBriefUnavailableSources()` (`src/lib/swing/play-brief-absence.ts`) emits a
 `{ source: "Night Hawk swings", reason: "prior session (…) — today's edition not yet run" }`
@@ -25,7 +25,7 @@ session). This is a false alarm about the wrong product, both to a member readin
 `UnavailableChip` and to Largo itself, which receives this string verbatim as a tool result and
 would reason about it as if the Swing product's own data were stale.
 
-## Root cause
+### Root cause
 
 `ctx.ecosystem.nighthawk_recent` is populated in `src/lib/bie/ecosystem-context.ts` from
 `nighthawk_play_outcomes` (`src/lib/db.ts`) — confirmed by that table's own schema/columns:
@@ -52,7 +52,7 @@ the board this brief serves. This is the C4 IDENTITY violation
 plausible wrong identity is worse than an obviously-missing one, because nothing downstream can
 tell it apart from the truth.
 
-## Blast radius
+### Blast radius
 
 Only this one `source` string (`play-brief-absence.ts`, one `out.push()` call). No other file in
 `src/` referenced the literal `"Night Hawk swings"` string (checked via repo-wide grep) — the
@@ -62,7 +62,7 @@ was left untouched. Affects every Swing play-brief where the referenced ticker's
 Legacy edition predates the brief's own session — i.e. any evening/pre-Legacy-publish window,
 which is most of the trading day before Legacy's post-close edition ships.
 
-## Fix
+### Fix
 
 Renamed the source label to `"Night Hawk Legacy"`, matching the product name `CLAUDE.md` and the
 rest of the codebase already use for this table, and added an in-code comment at the call site
@@ -70,7 +70,7 @@ documenting the DB/table provenance so a future reader does not have to re-deriv
 change beyond the string — the staleness check itself (`nh.edition_for !== ctx.sessionDate`,
 suppressed once `isClosed`) is correct and untouched.
 
-## Evidence
+### Evidence
 
 - Live envelope capture above (2026-09-09, temp Clerk admin session via
   `scripts/audit/lib/prod-clerk-session.mjs`), cross-checked against the same-session

@@ -1,4 +1,4 @@
-# Ask Largo swing play-brief's "Data freshness" section narrated live desk staleness on CLOSED (historical) positions
+## Ask Largo swing play-brief's "Data freshness" section narrated live desk staleness on CLOSED (historical) positions
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Swings / Ask Largo — `src/lib/swing/play-brief-intel.ts` (`dataFreshnessSection`); consumed by `GET /api/market/swing/play-brief`'s "Data freshness" section for CLOSED rows |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — 2026-09-12 5-engine + Largo deep-dive cycle |
 
-## Root cause
+### Root cause
 
 `play-brief-absence.ts`'s `collectBriefUnavailableSources` (the structured `unavailableSources`
 array that drives the UI's `UnavailableChip`) already gates HELIX-flow/GEX-matrix/Vector/
@@ -27,7 +27,7 @@ never received the matching `isClosed` gate. So the same "fires forever" failure
 `unavailableSources` fix specifically prevents was still reachable through this section's prose,
 just via a different code path nobody had gated the same way.
 
-## Evidence
+### Evidence
 
 Live `GET /api/market/swing/play-brief?playId=SWING:INTC&ticker=INTC&status=CLOSED` (2026-09-12,
 authenticated via `scripts/audit/lib/prod-clerk-session.mjs`) — INTC's real CLOSED position
@@ -46,13 +46,13 @@ manifesting in the narrative section instead of the structured `unavailableSourc
 `isClosed` gate correctly suppressed the equivalent chips for this same INTC row — confirmed
 `unavailableSources: []` on the same response).
 
-## Blast radius
+### Blast radius
 
 Only `dataFreshnessSection` was affected — `collectBriefUnavailableSources` (the structured array)
 was already correct. No other section in `play-brief-intel.ts` independently re-derives
 scan/Vector/GEX/HELIX staleness prose, so this was the single call site with the gap.
 
-## Fix
+### Fix
 
 Wrapped the scan-staleness, Vector-data-age, GEX-matrix-age, and HELIX-pipeline-stale lines in
 `dataFreshnessSection` behind the same `String(play.status ?? "").toUpperCase() === "CLOSED"` gate
@@ -67,7 +67,7 @@ genuine data-quality fact worth surfacing (e.g. a real fetch failure, handled el
 still be able to render one; the fix only removes the specific "today's state" claims that cannot
 be true/false about a historical record, not the whole section unconditionally.
 
-## Tests
+### Tests
 
 Added to `src/lib/swing/play-brief-intel.test.ts`:
 - `dataFreshnessSection: CLOSED play suppresses prior-session scan staleness narration`
@@ -80,7 +80,7 @@ Verified RED before the fix (git-stashed `play-brief-intel.ts` only, kept the ne
 3 of 96 tests in `play-brief-intel.test.ts` fail. GREEN after: 96/96 pass. Full `npm test` (Node
 20) and `npx tsc --noEmit` both clean.
 
-## Market-open validation
+### Market-open validation
 
 Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` (#136) — during the next RTH session, pull a real
 CLOSED Swing position's play-brief and confirm its "Data freshness" section no longer claims

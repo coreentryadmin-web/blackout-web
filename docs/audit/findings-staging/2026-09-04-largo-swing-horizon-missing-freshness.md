@@ -1,4 +1,4 @@
-# get_swing_horizon: Largo's SWING lane tool carried no freshness/time field at all — FIXED
+## get_swing_horizon: Largo's SWING lane tool carried no freshness/time field at all — FIXED
 
 > **kind:** `FINDING`
 
@@ -9,7 +9,7 @@
 | **Severity** | P3 — Largo-facing correctness/contract gap, no member-facing UI or trading-logic impact |
 | **Found by** | DISCOVERY 24/7 audit sweep, 2026-09-04 |
 
-## Root cause
+### Root cause
 
 `docs/audit/LARGO-PRODUCT-CONTRACT.md` names **time** and **freshness** as two of the ten points
 every Largo product read must carry — the whole point being that a model reading a desk's data can
@@ -50,7 +50,7 @@ member route's `HorizonBoard.asOf` is a different data shape (`assembleHorizonBo
 whose per-lane freshness would need a wider, separately-scoped change; noting it here as blast radius,
 not fixing it in this PR to keep the diff single-issue.
 
-## Evidence
+### Evidence
 
 - `git stash` on `src/lib/largo/product-reads.ts` alone (keeping the new test file) reproduces the
   pre-fix state: `node --experimental-test-module-mocks --import tsx --test
@@ -64,7 +64,7 @@ not fixing it in this PR to keep the diff single-issue.
   disturb any existing consumer.
 - `npx tsc --noEmit` clean.
 
-## Fix
+### Fix
 
 Added `as_of` / `as_of_et` / `session_date` (this read's own clock, matching every sibling tool's
 convention) and — separately, deliberately not conflated with the above — `scan_as_of` /
@@ -74,7 +74,7 @@ are `null`, never fabricated, when no scan has ever been persisted (`snap` is `n
 discovery-gated empty lane, the same failure mode `openPositionsRead` already handles for the open
 book).
 
-## Blast radius
+### Blast radius
 
 One function, `swingHorizonForLargo()`. `nighthawkHorizonsForLargo()` calls it and passes the result
 through under its own `swing` key unchanged, so it also gains the new fields automatically — no

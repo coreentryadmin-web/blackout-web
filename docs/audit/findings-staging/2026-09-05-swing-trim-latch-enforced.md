@@ -1,13 +1,13 @@
 > **kind:** FINDING
 
-# Swing TRIM latch ignored `verdict.enforced` — could silently disable the −60% premium_stop — FIXED
+## Swing TRIM latch ignored `verdict.enforced` — could silently disable the −60% premium_stop — FIXED
 
 | **Status** | FIXED |
 |------------|-------|
 | **Pri** | P1 |
 | **Area** | swing / active-refresh management engine |
 
-## Symptom
+### Symptom
 
 `latchSwingLiveStatus()` (`src/lib/swing/manage-sync.ts`) flipped a swing position's ledger `status`
 to `TRIM` whenever the management verdict's action was `TAKE_PARTIAL` or `EXIT_RUNNER` — with no
@@ -31,7 +31,7 @@ Found during a Swing V2 architecture-review pass
 (`docs/audit/SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`, question #18), independently confirmed as a
 real gap by Cursor's review of the same document.
 
-## Root cause
+### Root cause
 
 `latchSwingLiveStatus(current, verdict)` checked only `verdict.action`, never `verdict.enforced`:
 
@@ -44,7 +44,7 @@ capital-preservation GATE (always enforced) from an EDGE rung that is evidence-o
 — but the one caller responsible for actually *acting* on that distinction (the live-status latch)
 never read the field.
 
-## Fix
+### Fix
 
 `latchSwingLiveStatus` now requires `verdict.enforced` before latching TRIM:
 
@@ -57,14 +57,14 @@ An un-enforced TAKE_PARTIAL/EXIT_RUNNER now leaves `status` unchanged (stays `OP
 remains live. No other branch of the function changes — HOLD/ADD promotion and the EXIT/STOP_OUT
 current-status passthrough are untouched, and TRIM stays sticky once genuinely latched.
 
-## Blast radius
+### Blast radius
 
 Single call site (`manage-sync.ts`'s `planManageSync`) feeds the swing active-refresh cron
 (`swing-active-refresh/route.ts`) — every open swing position's live-status latch runs through this
 function each refresh tick. No other product (0DTE, Banger) shares this latch; `deriveScaleOutAction`
 itself is shared but unchanged here — only the caller-supplied `scaledAlready` input changes.
 
-## Evidence
+### Evidence
 
 - `src/lib/swing/active-refresh.test.ts`:
   - `planManageSync: GRADUATED TAKE_PARTIAL latches TRIM; TRIM row sets scaledAlready` — updated the

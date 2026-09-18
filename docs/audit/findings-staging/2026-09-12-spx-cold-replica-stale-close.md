@@ -1,4 +1,4 @@
-# A cold SPX desk replica served THURSDAY's close as "today's" price for ~50 minutes after Friday's own 4pm ET close
+## A cold SPX desk replica served THURSDAY's close as "today's" price for ~50 minutes after Friday's own 4pm ET close
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | SPX desk — `src/features/spx/lib/spx-desk.ts` (`buildSpxDeskPulse`'s off-hours cold-replica branch); root cause in `src/lib/providers/spx-session.ts` (`priorDayFromDailyBars`) |
 | **Found by** | Investigation of a production Discord alert burst (`[invariant/spot]`, `[cross-provider/spot]`, `[cross-provider/spx]`), 2026-09-12 |
 
-## Root cause
+### Root cause
 
 `buildSpxDeskPulse()`'s off-hours branch, when the in-process `lastPulseForSignals` cache is
 empty (a cold replica — ECS restarts/re-inits the web tier every 1-3 minutes in normal operation,
@@ -28,7 +28,7 @@ so the function skips it anyway and returns YESTERDAY's close as "the most recen
 session." A cold replica hitting this path between the close and midnight ET therefore serves a
 close that is one full session stale as the live off-hours price.
 
-## Live evidence (2026-09-12 investigation, reproduced here)
+### Live evidence (2026-09-12 investigation, reproduced here)
 
 Confirmed against the exact numbers from the alert burst (all times below are ET):
 - Thu 2026-09-10 SPX close: **7591.7**
@@ -45,7 +45,7 @@ original investigation could confirm it was NOT currently live at the time of th
 even though the root cause is still live and will recur every trading day between close and
 midnight ET.
 
-## Fix
+### Fix
 
 `priorDayFromDailyBars(bars, todayYmd, anchorSessionComplete = false)` gains a third,
 default-`false` parameter. When `true`, a bar dated exactly `todayYmd` is eligible (not skipped)
@@ -60,7 +60,7 @@ daily-bars read that calls `priorDayFromDailyBars(bars, today, true)`. The cold-
 specifically when `market_label === "EXTENDED"` (the existing `marketStatusLabel()` helper's
 signal for "past today's regular close, still the same ET calendar day, before midnight").
 
-## Fix rationale / what was deliberately left unchanged
+### Fix rationale / what was deliberately left unchanged
 
 - **Did not change `priorDayFromDailyBars`'s default behavior.** The shared `cachedPriorDay`/
   `fetchPriorDayCached()` cache backs RTH-only `prior_close`/gap%/pivot consumers (e.g. the
@@ -87,7 +87,7 @@ signal for "past today's regular close, still the same ET calendar day, before m
   early-close-day incident has been observed or reported; fixing it would require session-calendar
   awareness this module doesn't otherwise have.
 
-## Evidence / tests
+### Evidence / tests
 
 Added to `src/lib/providers/spx-session.test.ts`: a test reproducing the exact live numbers above
 — `priorDayFromDailyBars(bars, "2026-09-11")` (default) still correctly returns Thursday's bar

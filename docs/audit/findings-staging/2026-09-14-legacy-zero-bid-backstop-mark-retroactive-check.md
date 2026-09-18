@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Did Legacy's own zero-bid-backstop-mark exposure already corrupt real peak_premium / discord_live_state / closed-position data? Unknown — this sandbox cannot check
+## Did Legacy's own zero-bid-backstop-mark exposure already corrupt real peak_premium / discord_live_state / closed-position data? Unknown — this sandbox cannot check
 
 | | |
 |---|---|
@@ -9,7 +9,7 @@
 | **Severity** | Unknown — could be P1 (real corrupted financial/track-record data + false member notifications, mirroring the confirmed swing/banger incident) or could be zero live impact (if no Legacy contract ever actually hit the bid=0 backstop-quote shape) |
 | **Found by** | NIGHT HAWK LEGACY audit lane, 2026-09-14, while root-causing the B_marks staleness finding (PR #4970) led to discovering Legacy's mark-read path shares the swing/banger lane's zero-bid-backstop-mark defect |
 
-## Context — what's already confirmed and already fixed
+### Context — what's already confirmed and already fixed
 
 PR #4980 (this session, same lane) fixed `buildLegacyOptionMarkRow`'s REST-snapshot mark read
 going forward: it previously read `snap.mark` directly, the same field the swing/banger lane
@@ -26,7 +26,7 @@ PR #4972, for the full swing/banger-side incident).
 **PR #4980 stops the same class of bug from happening in Legacy going forward.** It does NOT
 determine whether it already has.
 
-## The open question this finding raises
+### The open question this finding raises
 
 `legacy-live-sync.ts`'s live-management loop carries the exact same monotonic-ratchet shape the
 banger incident exploited:
@@ -55,7 +55,7 @@ have been permanently latched into `peak_premium` via this ratchet, and could ha
    fabricated relative to the real market — not a NaN, not a sign flip, not out-of-band vs bid/ask,
    since the backstop mid VALIDLY sits inside its own [bid, ask] by construction).
 
-## Why this cannot be verified from this sandbox
+### Why this cannot be verified from this sandbox
 
 Per the standing environment notes (CLAUDE.md, "Access reality" §3), **raw Postgres is blocked
 here** — only HTTP(S) through the agent proxy works. Verifying this needs either:
@@ -75,7 +75,7 @@ Legacy has picked in the past (the banger incident's victims — CRSR/BW/EBS/CPR
 were smaller/thinner names than HPE/DELL, exactly the profile more likely to produce a zero-bid
 backstop quote).
 
-## What this finding is asking for
+### What this finding is asking for
 
 Not a code change — the forward-fix is already shipped (PR #4980). This is asking for the same
 thing the banger-side finding asked for and that this lane cannot do itself:
@@ -96,7 +96,7 @@ thing the banger-side finding asked for and that this lane cannot do itself:
    endpoint itself is unconditional and would still have shown a fabricated live P&L to any member
    viewing the board, independent of the alerts flag).
 
-## Files involved
+### Files involved
 
 - `src/features/nighthawk/lib/legacy-option-mark-row.ts` — fixed going forward, PR #4980.
 - `src/features/nighthawk/lib/legacy-live-sync.ts` — the `Math.max` peak-premium ratchet and the

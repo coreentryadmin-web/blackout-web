@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Legacy scorecard reported a fabricated "Hit rate 0%" on a day where every play was pulled pre-open
+## Legacy scorecard reported a fabricated "Hit rate 0%" on a day where every play was pulled pre-open
 
 | Field | Detail |
 | --- | --- |
@@ -9,7 +9,7 @@
 | **Component** | `src/features/nighthawk/lib/vector-board-row-utils.ts` (`vectorBoardScorecard`, shared by `LegacyPickLogBoard.tsx` and `VectorPickLogBoard.tsx`) |
 | **Found via** | Live UI screenshot (`proxy-browser.cjs` against `/nighthawk?view=legacy`), aggressive improvement-hunting pass, 2026-09-11 |
 
-## What was broken
+### What was broken
 
 Captured a live screenshot of today's Legacy board (both AAPL and SWKS pulled pre-open by the
 Cortex `gex-walls` veto documented in earlier findings this session). Both rows show strongly
@@ -36,7 +36,7 @@ rows, and `winners` (real rows with status `"winner"`) is 0 by construction sinc
 real rows at all. The result — "0%" — reads as "today's picks lost", when the honest state is
 "no capital was ever at risk today, and the counterfactual read is actually strongly positive."
 
-## What changed
+### What changed
 
 The fallback denominator now excludes never-entered pulls the same way `closedResolved` already
 does: `nonPulledTotal = rows.filter(r => !isNeverEnteredPull(r)).length`. When every row for the
@@ -45,7 +45,7 @@ guard (already present, unchanged) correctly returns `null` — "no resolved dat
 fabricated 0%. A mixed day (a pull alongside real open/closed rows) is unaffected, since the real
 rows already dominated `nonPulledTotal` under the old `rows.length` fallback too.
 
-## Evidence
+### Evidence
 
 - New regression test reproducing today's exact live population (2 rows, both `statusLabel:
   "PULLED"`, premiumPct +85/+162 matching AAPL/SWKS) — RED before the fix (`hitRate: 0`), GREEN
@@ -58,7 +58,7 @@ rows already dominated `nonPulledTotal` under the old `rows.length` fallback too
   scorecard from Legacy's own row-building path — unaffected.
 - `tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 
 `vectorBoardScorecard` is shared by both `LegacyPickLogBoard.tsx` and `VectorPickLogBoard.tsx`,
 but `isNeverEnteredPull` (`row.statusLabel === "PULLED"`) is stamped exclusively by Legacy's own
@@ -66,7 +66,7 @@ but `isNeverEnteredPull` (`row.statusLabel === "PULLED"`) is stamped exclusively
 call site in the whole codebase produces it). So this fix changes Vector desk's numbers in zero
 cases; it is scoped entirely to Legacy's pulled-play days.
 
-## Fix rationale
+### Fix rationale
 
 Chose to exclude pulled rows from the fallback denominator (matching the existing
 `closedResolved` exclusion) rather than, say, special-casing "all rows pulled" as its own branch,

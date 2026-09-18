@@ -1,4 +1,4 @@
-# Swing live-plays regime fix (#4481) leaked a placeholder string into the live Ask Largo narrative — FIXED
+## Swing live-plays regime fix (#4481) leaked a placeholder string into the live Ask Largo narrative — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo / Night Hawk Swings — swing play-brief narrative |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Found during the standing Ask Largo deep-dive mandate, live spot-check of a real committed swing
 position (`GET /api/market/swing/play-brief?playId=SWING:NRG:34`, member-facing prod response).
@@ -38,7 +38,7 @@ session's own earlier fix (#4481, `docs/audit/findings-staging/2026-09-07-swing-
 regime-wiring.md`) introduced as a fallback value, and it shipped to production reading as garbled
 copy in a paying member's trade brief.
 
-## Root cause
+### Root cause
 
 `livePlayFromSwingPosition()` (`src/lib/swing/live-plays.ts`) set:
 
@@ -67,7 +67,7 @@ Two compounding mistakes:
 
 No genuine swing-specific market-regime descriptor exists on the committed position row today.
 
-## Fix
+### Fix
 
 `regime` is now unconditionally `null` for every live/committed swing position — honest omission,
 matching the LARGO-PRODUCT-CONTRACT's `confidence`-omission principle applied to this field: an
@@ -76,13 +76,13 @@ substitute from a different concept. This reverts the display-facing synthesis f
 leaving the rest of that PR's audit trail intact (it correctly identified `thesisHealthUncalibrated`
 as gating on three OTHER pillars, unaffected by this reversion).
 
-## Blast radius
+### Blast radius
 
 Same single call site as #4481: `livePlayFromSwingPosition` → every consumer of
 `livePlaysFromOpenPositions`'s output (swing command deck live sections, Ask Largo swing brief).
 No schema change, no new IO.
 
-## Scope / follow-up not covered by this fix
+### Scope / follow-up not covered by this fix
 
 A genuine swing-specific market-regime label (e.g. sourced from Vector's `regime.posture`, which
 `play-brief.ts` already reads elsewhere in this same envelope for the dealer-posture narrative)
@@ -90,7 +90,7 @@ would need to flow through a different layer than `live-plays.ts` builds at — 
 already has `ctx` access to Vector data that `livePlayFromSwingPosition` does not. Deferred as a
 real architecture question, not resolved here; flagged on the #4076 collaboration thread.
 
-## Evidence
+### Evidence
 
 Live production repro: `GET /api/market/swing/play-brief?playId=SWING:NRG:34` returned the literal
 `"regime read"` string in both Verdict and "Why this setup" sections before this fix (captured

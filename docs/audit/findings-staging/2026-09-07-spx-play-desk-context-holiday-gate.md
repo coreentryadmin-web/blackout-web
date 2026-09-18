@@ -1,4 +1,4 @@
-# SPX Slayer desk_context countdowns ignored NYSE holidays — FIXED
+## SPX Slayer desk_context countdowns ignored NYSE holidays — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | SPX Slayer / `GET /api/market/spx/play` |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Live 5-engine monitor cycle, 2026-09-07 (Labor Day, NYSE holiday, market closed).
 `GET /api/market/spx/play` correctly reported the top-level session as closed
@@ -30,7 +30,7 @@ an ordinary trading day, computed on a day with no session running at all. A mem
 reading `desk_context` alone (it is the sub-object that answers "how long until X") would
 believe ~97 minutes remained in a session that never opened.
 
-## Root cause
+### Root cause
 
 `buildSpxPlayDeskContext()` (`src/features/spx/lib/spx-play-context.ts`) computes three
 countdown fields — `minutesToCashClose`, `minutesUntilNoEntry`, `minutesUntilForceExit` — each
@@ -46,7 +46,7 @@ today's cycle shipped several `isTradingDayEt` cron gates (`swing-discovery`,
 specific **desk_context display path**, which is a separate call site with its own local
 `isEtWeekday` gate.
 
-## Fix
+### Fix
 
 Swapped `isEtWeekday(now)` for `isTradingDayEt(formatEtDate(now))` (already imported and used
 elsewhere in the codebase, from `@/features/nighthawk/lib/session`) in all three countdown
@@ -54,7 +54,7 @@ helpers. `isTradingDayEt` checks weekday AND the `US_MARKET_HOLIDAYS` set, so a 
 nulls all three fields exactly like a weekend already did — consistent with the rest of the
 `/play` payload, which already reports the session as closed.
 
-## Blast radius
+### Blast radius
 
 `spx-play-context.ts` only — `buildSpxPlayDeskContext`/`enrichPlayPayload`, consumed solely by
 `GET /api/market/spx/play`. `isPastNoEntryCutoff`/`isPastForceExitCutoff` (time-of-day-only
@@ -64,7 +64,7 @@ holiday nulls the field even before those cutoffs would otherwise fire. No other
 (`isLottoWindow`, `isPremarketPlanningWindow`, etc.) are unrelated to this display path and are
 out of scope for this fix.
 
-## Fix rationale
+### Fix rationale
 
 Reused the same `isTradingDayEt` used by `isSpxEngineCronWindow` in the sibling file rather
 than inventing a second holiday-aware weekday check — one source of truth for "is there a
@@ -72,7 +72,7 @@ session today" across the SPX Slayer feature. Left `isPastNoEntryCutoff`/`isPast
 untouched since they're pure time-of-day cutoffs already invoked from inside a caller that (post-fix)
 short-circuits on non-trading days first.
 
-## Evidence
+### Evidence
 
 RED→GREEN via `git stash` on the source file only (test file kept):
 ```

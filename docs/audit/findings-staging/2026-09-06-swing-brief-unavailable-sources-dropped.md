@@ -1,4 +1,4 @@
-# Ask Largo swing brief silently drops `arsenal.unavailable_sources` — violates the BIE/Largo absence contract
+## Ask Largo swing brief silently drops `arsenal.unavailable_sources` — violates the BIE/Largo absence contract
 
 > **kind:** FINDING
 
@@ -9,14 +9,14 @@
 | **Area** | Swing / Ask Largo play brief, shared BIE rich-narrative envelope builder |
 | **Files** | `src/lib/bie/rich-narrative.ts`, `src/lib/swing/play-brief.ts`, `src/lib/swing/play-brief.test.ts` |
 
-## Context
+### Context
 
 Continuing the operator's standing "own this feature, dig hard into every aspect" mandate for Ask
 Largo's swing integration, this sweep audited the swing brief against
 `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s ten points — specifically **absence** ("a source that
 was requested but is unavailable must be surfaced, never silently dropped").
 
-## Root cause
+### Root cause
 
 `fetchEcosystemContext` (`src/lib/bie/ecosystem-context.ts`) already builds an honest
 `arsenal.unavailable_sources: EcosystemArsenalUnavailable[]` array (`{source, reason}`) for
@@ -38,7 +38,7 @@ absence as silence rather than an honest chip, which reads to the trader as "the
 data" rather than "we tried and it was unavailable this read" — exactly the failure mode the
 Largo Product Contract's absence principle exists to prevent.
 
-## Fix
+### Fix
 
 - `rich-narrative.ts`: `BuildRichEnvelopeInput` gains an optional `unavailableSources?:
   BieUnavailableSource[]`, forwarded straight into `makeEnvelope(...)`. Additive — every existing
@@ -50,7 +50,7 @@ Largo Product Contract's absence principle exists to prevent.
 No new UI, no new type — this closes an existing, fully-built pipe that was disconnected at one
 join.
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 New test in `play-brief.test.ts`: builds a context whose `arsenal.unavailable_sources` carries one
 entry (`{source: "short-interest", reason: "provider timeout"}`) and asserts
@@ -59,7 +59,7 @@ entry (`{source: "short-interest", reason: "provider timeout"}`) and asserts
 clean. Full `npm test` in progress at write time (Node 20), rebased against
 `main@b78270d99` (post #4084/#4093).
 
-## Blast radius
+### Blast radius
 
 - `concept-narrative.ts` — the only other `buildRichEnvelope` caller — is unaffected (new field is
   optional, not passed, defaults to `undefined` exactly as before this change).
@@ -71,7 +71,7 @@ clean. Full `npm test` in progress at write time (Node 20), rebased against
 - Independent of Cursor's #4084 narrative work — different files, different call sites within
   `play-brief.ts` (the `buildRichEnvelope` options object, not the sections array).
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 - Did not also wire `unavailableSources` into `concept-narrative.ts` — that composer has its own
   data-sourcing model and no `unavailable_sources`-shaped input on hand today; adding it

@@ -1,4 +1,4 @@
-# Ask Largo swing brief's CLOSED "Lessons" section never disclosed the position's own worst intra-trade drawdown, despite the identical trough data already used for the OPEN-bucket equivalent
+## Ask Largo swing brief's CLOSED "Lessons" section never disclosed the position's own worst intra-trade drawdown, despite the identical trough data already used for the OPEN-bucket equivalent
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P3 (member-facing narrative quality / Largo product-contract historical-context point) |
 | **Status** | FIXED — `fix/swing-closed-drawdown-coaching` |
 
-## Root cause
+### Root cause
 
 `play.trough` (`TerminalPlay.trough`, the position's own worst intra-trade excursion) is computed
 unconditionally in `adapters.ts` for every row with entry+trough premium — both the OPEN/WATCH path
@@ -24,7 +24,7 @@ already covers post-mortem framing for that bucket, and this isn't meant to dupl
 that was never actually true. Anyone reading that comment (including a prior audit pass) would
 reasonably conclude CLOSED was already handled.
 
-## Evidence
+### Evidence
 
 `pnlSection`'s own 2026-09-15 comment (`play-brief.ts`, OPEN bucket) already articulates the exact
 trader value of this data — "this one tested you early, don't flinch on the next drawdown scare" —
@@ -33,20 +33,20 @@ through a real drawdown before it worked, or before it failed for good — a pat
 the next similar setup). Confirmed by direct read of `closedCoaching`'s full body: every line
 pushed cites `play.peak`, `play.exitPnlPct`, or `play.closedReason` — `play.trough` never appears.
 
-## Blast radius
+### Blast radius
 
 Single call site (`closedCoaching`'s CLOSED-bucket "Lessons" content). Also corrected the false
 claim in `troughResilienceCoaching`'s own doc comment, which is documentation-only (no behavior
 change to the OPEN-bucket function itself).
 
-## Fix rationale
+### Fix rationale
 
 Added a `**Drawdown before outcome**` line to `closedCoaching`, gated identically to
 `troughResilienceCoaching`'s existing threshold (`trough < 0` AND `peak - trough >= 40` points) for
 consistency — never fires on a shallow or non-negative excursion, preserving honest absence when
 the position never traded meaningfully negative.
 
-## Verification
+### Verification
 
 - Independent RED→GREEN (reverted only the source file, kept the tests):
   `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative-coaching.test.ts`

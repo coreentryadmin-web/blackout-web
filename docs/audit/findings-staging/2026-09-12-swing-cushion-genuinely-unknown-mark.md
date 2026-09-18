@@ -1,4 +1,4 @@
-# Ask Largo swing play-brief's "Premium stop rail" cushion fabricated a percentage from the true entry-fallback mark
+## Ask Largo swing play-brief's "Premium stop rail" cushion fabricated a percentage from the true entry-fallback mark
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Swings / Ask Largo — `src/lib/swing/play-brief-intel.ts` (`watchForSection`'s "Premium stop rail" cushion line); consumed by `GET /api/market/swing/play-brief`'s "What to watch" / "Watch levels" section for OPEN/HOLD/TRIM rows |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — 2026-09-12 5-engine live monitor + Ask Largo deep-dive cycle |
 
-## Root cause
+### Root cause
 
 `play-brief.ts`'s `pnlSection` already knows that `play.markIsSync === true` does not by itself mean
 "no real mark" — it is set as bluntly as `markAsOf == null` (adapters.ts), true for every
@@ -31,7 +31,7 @@ unguarded call site for the identical fallback value the Position section alread
 trust — computed independently, so the two disagreed without either being individually "wrong" in
 isolation.
 
-## Evidence
+### Evidence
 
 Live `GET /api/market/swing/play-brief?playId=SWING:EBS&ticker=EBS&status=COMMIT&expandIntel=1`
 (2026-09-12, authenticated via `scripts/audit/lib/prod-clerk-session.mjs`) — EBS is a real live
@@ -54,7 +54,7 @@ fallback mark, confirming it used the exact value the Position section, a few li
 SAME envelope, says is not known. A member skimming only "What to watch" has no way to tell "60%
 real cushion" from "60% computed off a placeholder that happens to equal entry".
 
-## Blast radius
+### Blast radius
 
 Only one call site: `watchForSection`'s cushion computation (`bucket === "open"` branch, the
 "Premium stop rail" line). `pnlSection` (Position section, play-brief.ts) already had the correct
@@ -63,7 +63,7 @@ a percentage from `play.mark` without going through one of the two already-corre
 (`dataFreshnessSection`'s "Mark age unknown" text, and `pnlSection`'s "Mark: unknown"). Grepped for
 every other `play.mark` read in both files to confirm no third instance.
 
-## Fix
+### Fix
 
 Extracted the shared predicate as `optionMarkGenuinelyUnknown(play)` in `play-brief-absence.ts` —
 the natural shared home for this kind of absence/staleness logic, already imported by both
@@ -84,7 +84,7 @@ had no way to reuse it and quietly recomputed something weaker. Inlining a secon
 `play-brief-intel.ts` would fix this one instance while leaving the same drift risk for the next
 call site; exporting it once removes that risk going forward.
 
-## Tests
+### Tests
 
 Added to `src/lib/swing/play-brief-intel.test.ts`:
 - `watchForSection: Premium stop rail omits the cushion note when the mark is the true entry-fallback echo (never fabricated)` — `entry: 0.1, mark: 0.1, markIsSync: true, pnlPct: null, stop_premium: 0.04`; asserts the dollar rail is still shown and no `cushion` text appears.
@@ -95,7 +95,7 @@ mark" text. GREEN after: `play-brief-intel.test.ts` 99/99 pass, `play-brief.test
 (unchanged — `pnlSection`'s delegation to the extracted helper preserves its existing behavior).
 Full `npm test` (Node 20): 13876 pass / 0 fail / 3 skipped. `npx tsc --noEmit` clean.
 
-## Market-open validation
+### Market-open validation
 
 Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` (#141) — during the next RTH session, pull the
 play-brief for any live OPEN/HOLD/TRIM position whose option mark has not yet synced (Position

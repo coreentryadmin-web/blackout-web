@@ -1,4 +1,4 @@
-# /api/market/quote negative-cache test flakes on a real UW network call
+## /api/market/quote negative-cache test flakes on a real UW network call
 
 > **kind:** FINDING
 
@@ -8,14 +8,14 @@
 | **Area** | Test infra / `/api/market/quote` |
 | **Severity** | P2 |
 
-## Symptom
+### Symptom
 
 `src/app/api/market/quote/route.test.ts`'s "a second poll within the negative-cache window does
 NOT re-hit the upstream or re-warn" test failed intermittently — `warnCalls.length` was 1 where the
 test expected 0. Reproduced identically on a clean `origin/main` checkout (not something introduced
 by any in-flight branch), both in isolation and inside the full suite.
 
-## Root cause
+### Root cause
 
 The GET handler's fallback path (`resolveSpotFromUwStockState`, reached after `getRestQuote`
 returns `null`) was never mocked in this test file. On a failing ticker it makes a REAL call to
@@ -30,19 +30,19 @@ This is a test-isolation bug, not a defect in the Polygon REST negative-cache lo
 actually meant to verify — `getRestQuote`'s own negative cache (confirmed via targeted
 instrumentation) correctly skipped the second upstream call and did not re-warn.
 
-## Fix
+### Fix
 
 Mock `../../../../lib/providers/spot-fallback`'s `resolveSpotFromUwStockState` to `async () =>
 null`, same convention as the file's other `mock.module()` calls. Removes the real network call
 entirely, so the suite tests only what it documents testing.
 
-## Evidence
+### Evidence
 
 4/4 tests pass, deterministic across 3 consecutive runs (previously flaked). Test duration dropped
 from ~2.6s to ~50ms (confirms the real network round-trip was in the critical path).
 `tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 
 Test-only change — no production code touched. Left unfixed as a documented follow-up (separate
 from this PR, since `resolveSpotFromUwStockState` has other callers — `polygon-options-gex.ts`,

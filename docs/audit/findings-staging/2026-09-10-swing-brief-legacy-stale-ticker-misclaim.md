@@ -1,4 +1,4 @@
-# Swing play-brief's "Night Hawk Legacy" absence chip misreports a stale per-ticker gap as "today's edition not yet run" — FIXED
+## Swing play-brief's "Night Hawk Legacy" absence chip misreports a stale per-ticker gap as "today's edition not yet run" — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo — Night Hawk Swings play-brief (`src/lib/swing/play-brief-absence.ts`) |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Found during the standing Ask Largo deep-dive mandate (2026-09-10), checking a WATCH-bucket swing
 play-brief for GOOG (`GET /api/market/swing/play-brief?playId=SWING:GOOG&ticker=GOOG`). The
@@ -32,7 +32,7 @@ ET (same pattern already ruled out this session for the edition healthcheck, PR 
 play-brief's claim that "today's edition not yet run" was false and unverifiable from the data it
 was actually reasoning from.
 
-## Root cause
+### Root cause
 
 `ctx.ecosystem.nighthawk_recent` (`fetchEcosystemContext`, `src/lib/bie/ecosystem-context.ts`) is
 populated by:
@@ -64,7 +64,7 @@ as a gain" pattern) — just on the *freshness* axis instead of the *product-lab
 plausible-looking, precise-sounding claim ("today's edition not yet run") that is actually
 unsupported by the data behind it.
 
-## Evidence
+### Evidence
 
 Live capture (one temp Clerk premium session, deleted after), 2026-09-10 ~21:11 UTC:
 - `GET /api/market/swing/play-brief?playId=SWING:GOOG&ticker=GOOG` → `unavailableSources` includes
@@ -79,7 +79,7 @@ numbers): `git stash push -- src/lib/swing/play-brief-absence.ts` → 42/43 pass
 assertion expecting the reworded, non-claiming reason string got the old false claim instead);
 `git stash pop` restores 43/43 pass. `npx tsc --noEmit` clean.
 
-## Blast radius
+### Blast radius
 
 Single call site: `collectBriefUnavailableSources`'s Legacy chip is the only place
 `nighthawk_recent.edition_for` is compared against `ctx.sessionDate` for a "today's edition"
@@ -88,7 +88,7 @@ existing near-term case (a 1-day-old ticker record, still plausibly "today's edi
 yet this cycle") is preserved unchanged and still covered by its own pre-existing test. No other
 consumer reads this exact reason string, and no schema/query change was needed.
 
-## Fix rationale
+### Fix rationale
 
 Bounded the existing "today's edition not yet run" claim to a small gap window (1-4 calendar days,
 covering a normal weekend) where it remains a plausible same-cycle read. Beyond that window, the

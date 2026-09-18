@@ -1,4 +1,4 @@
-# 2026-09-04 — thermal-discord fontconfig cache dir — FIXED
+## 2026-09-04 — thermal-discord fontconfig cache dir — FIXED
 
 > **kind:** FINDING
 
@@ -8,7 +8,7 @@
 | **Surface** | `src/lib/thermal-discord-card.ts` (`renderThermalDiscordCardPng`), `deploy/Dockerfile` |
 | **Status** | FIXED in PR |
 
-## Evidence
+### Evidence
 
 CloudWatch Logs Insights, 24h window: 72 occurrences of the bare stderr line `Fontconfig error: No
 writable cache directories`, clustered in groups of exactly 4 per occurrence, exclusively during
@@ -18,7 +18,7 @@ entry (`schedule_label: "~Every 15 min (market hours)"`) — the only cron whose
 invocations report success right around these lines (fontconfig degrades gracefully rather than
 throwing), matching the finding's description that functionality is unaffected.
 
-## Root cause
+### Root cause
 
 `renderThermalDiscordCardPng` rasterises an SVG string through `sharp(svg).png()`
 (`src/lib/thermal-discord-card.ts`), whose SVG backend is librsvg — a real fontconfig client, unlike
@@ -40,7 +40,7 @@ directory it tried (matches the observed cluster-of-4), and falls back to resolv
 persistent cache — correct output, but a full font-cache rebuild paid on every single invocation
 instead of ever reusing a warm one.
 
-## Blast radius
+### Blast radius
 
 Exactly one call site in the whole repo invokes `sharp` on an SVG string:
 `renderThermalDiscordCardPng` in `src/lib/thermal-discord-card.ts` (confirmed via
@@ -48,7 +48,7 @@ Exactly one call site in the whole repo invokes `sharp` on an SVG string:
 `x-desk-card.tsx` does **not** use sharp). No other cron or product surface is affected by this
 root cause.
 
-## Fix
+### Fix
 
 Added `ensureFontconfigCacheDir()` (`src/lib/thermal-discord-card.ts`), called at the top of
 `renderThermalDiscordCardPng` before the `sharp()` call. It sets `process.env.XDG_CACHE_HOME` to a
@@ -70,7 +70,7 @@ gets the same practical outcome (a warm, persistent cache for the life of a task
 the image or task definition at all. Documented here as the infra-level follow-up rather than left
 silently undone, per this finding's own instructions.
 
-## Regression test
+### Regression test
 
 `src/lib/thermal-discord-card.test.ts` — three new tests: `ensureFontconfigCacheDir` sets an
 existing, writable `XDG_CACHE_HOME` when unset; it never overrides an operator-supplied one;
@@ -80,7 +80,7 @@ the fix actually runs on the real code path, not just in isolation). RED→GREEN
 `ensureFontconfigCacheDir`/`__resetFontconfigCacheDirForTest` don't exist and the new tests fail to
 even import; with it restored, all three pass alongside the file's existing 9 tests.
 
-## AWS/CloudWatch note
+### AWS/CloudWatch note
 
 This finding's evidence (the 72-line/24h CloudWatch count) was supplied by the audit sweep that
 produced it; this session did not have live AWS credentials to independently re-pull the

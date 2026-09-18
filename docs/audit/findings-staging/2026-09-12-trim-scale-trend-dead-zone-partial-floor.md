@@ -1,4 +1,4 @@
-# trim_scale's TREND-regime dead zone still dumped a double-digit peak to flat breakeven — the 2026-08-27 fix's own documented residual gap, now closed with a graduated floor — FIXED
+## trim_scale's TREND-regime dead zone still dumped a double-digit peak to flat breakeven — the 2026-08-27 fix's own documented residual gap, now closed with a graduated floor — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | `src/lib/zerodte/exit-engine.ts` — `decideTrimScale` (Night Hawk 0DTE, `trim_scale` exit mode) |
 | **Status** | FIXED |
 
-## Prior context (this is a fix of an already-documented, already-measured gap, not a new discovery)
+### Prior context (this is a fix of an already-documented, already-measured gap, not a new discovery)
 
 `FINDINGS.md`'s **"trim_scale's shared breakeven floor preempted its own trim tranche — SLS/TSM
 round-tripped +22% peaks to flat — FIXED"** (2026-08-27, `fix/trim-scale-floor-dead-zone`) closed
@@ -38,7 +38,7 @@ own `"trim_scale DEAD ZONE per regime — TREND: ..."` test still asserted the o
 "intentional (trend deliberately runs longer before its first trim)" — i.e. the gap was confirmed
 unfixed, not stale documentation.
 
-## Root cause (mechanism, restated precisely)
+### Root cause (mechanism, restated precisely)
 
 `ratchetFloorPct` and `TRIM_SCALE_RULES.tranches_by_regime` are two INDEPENDENT threshold tables.
 The shared floor's breakeven arm is a flat peak +20% regardless of regime; `trim_scale`'s own first
@@ -51,7 +51,7 @@ never engages, and the plain `ratchetFloorPct` (flat 0% once armed) was the ONLY
 the WHOLE position to breakeven and giving back 100% of a real double-digit peak, precisely in the
 window where `trend`'s own "let it run" schedule hadn't reached its first real trim.
 
-## Fix
+### Fix
 
 Added `trimScaleFloorPct(peakPnlPct, trimmed, regime)` (`exit-engine.ts`), used ONLY by
 `decideTrimScale` in place of `ratchetFloorPct` for its `sharedFloor` computation. Inside a regime's
@@ -76,7 +76,7 @@ really the same family as an ordinary ratchet floor exit. Added an explicit case
 check so `trim_scale_dead_zone_floor` → `"ratchet"`, with its own regression test (both a direct
 `categorizeExitReason` call and a round-trip through a real `evaluateExitState` EXIT decision).
 
-## Fix rationale — why this (FIX B), not the alternative (FIX A)
+### Fix rationale — why this (FIX B), not the alternative (FIX A)
 
 Two candidates existed (both already scaffolded in `scripts/audit/regime-dead-zone-ab.mjs` from the
 2026-09-04 measurement):
@@ -118,7 +118,7 @@ existing one unwidened. Making that display trend-aware would need `exitMode`/`r
 that call site (currently absent) and is out of scope for this single-issue PR; flagged here for a
 follow-up rather than silently expanding this PR's surface.
 
-## Evidence
+### Evidence
 
 RED→GREEN, `src/lib/zerodte/exit-engine.test.ts` (git-stash technique — `exit-engine.ts` alone
 stashed out, test file kept, both re-verified before/after):

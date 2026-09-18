@@ -1,4 +1,4 @@
-# Vector GEX bead rail — combined book denominator collapses the weaker side's beads into uniform size/color — FIXED
+## Vector GEX bead rail — combined book denominator collapses the weaker side's beads into uniform size/color — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Vector desk — `WallRailPrimitive` / `feedWallRail` (`src/features/vector/lib/vector-wall-rail-*.ts`, `src/features/vector/components/VectorChart.tsx`) |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Direct member report (live conversation, 2026-09-10), on production Vector, SPX, GEX·4S mode,
 0DTE tab: *"The current model all beads look same .. cant differentiate.. look at the reference
@@ -18,7 +18,7 @@ dense, connected bead "ropes" of clearly varying thickness/opacity on BOTH the g
 purple put-side rails. The live production render instead showed both sides' beads at
 near-uniform size and color — no legible strike-to-strike differentiation, on either side.
 
-## Root cause
+### Root cause
 
 `GexWallLevel.pct` (`computeGexWalls`, `src/lib/providers/gex-wall-levels.ts`) is each strike's
 share of gamma exposure as a percent of the WHOLE book — `totalAbsGamma` sums call AND put strikes
@@ -47,7 +47,7 @@ TSLA/IWM/AAPL" assuming BOTH sides of a ticker's book independently reach that r
 and even the put side's own internal spread compresses because its top few strikes cluster tightly
 relative to the book-wide 16.3 ceiling.
 
-## Evidence
+### Evidence
 
 `fillAlpha` (`vector-wall-rail-core.ts`), the channel with no absolute floor clamp, run against the
 exact live pcts above:
@@ -70,7 +70,7 @@ restores 71/71 pass.
 Full Vector suite (1393 tests) — 1393 pass, 0 fail. Full repo `npm test` (Node 20) — 13638 tests,
 13635 pass, 0 fail, 3 skipped (pre-existing, unrelated). `npx tsc --noEmit` — clean.
 
-## Blast radius
+### Blast radius
 
 Single producer: `VectorChart.tsx`'s `feedWallRail` is the only call site that builds
 `WallRailData` for `WallRailPrimitive`. A separate legacy/fallback marker path
@@ -83,7 +83,7 @@ No other consumer of `computeGexWalls`/`GexWallLevel.pct` was touched — the fi
 render-layer normalization step, not the underlying pct computation, which remains a legitimate
 whole-book share (used correctly elsewhere, e.g. GEX heatmap tooltips that want "% of total book").
 
-## Fix rationale
+### Fix rationale
 
 Added `sidePctMaxima(callTrails, putTrails)` (`vector-wall-rail-core.ts`) — a pure function
 returning `{ callMaxPct, putMaxPct, maxPct }`, each side's own peak alongside the existing combined

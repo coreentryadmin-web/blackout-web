@@ -1,4 +1,4 @@
-# `npm audit` critical: Next.js unauthenticated RCE (Image Optimization API), plus 8 more high/moderate transitive vulns — clean patch bump applied
+## `npm audit` critical: Next.js unauthenticated RCE (Image Optimization API), plus 8 more high/moderate transitive vulns — clean patch bump applied
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Dependencies — `next` (direct, production), `sharp` (direct + nested, production), plus 6 dev/transitive packages (`js-yaml`, `browserslist`, `fast-uri`, `nanoid`, `baseline-browser-mapping`, `colord`) |
 | **Found by** | Operator-authorized adversarial dependency/supply-chain audit, 2026-09-11 |
 
-## Root cause
+### Root cause
 
 `npm audit --json` (run on Node 20.20.2, per CLAUDE.md's Node-version guidance) reported 9 total
 vulnerabilities: **1 Critical, 6 High, 2 Moderate**. The Critical is the one that matters most:
@@ -34,7 +34,7 @@ vulnerabilities: **1 Critical, 6 High, 2 Moderate**. The Critical is the one tha
 vulnerability scan, so a security advisory landing after the last manual dependency bump had no
 automatic trigger to surface it.
 
-## Evidence
+### Evidence
 
 - `npm audit --json` (Node 20.20.2, clean `npm ci`'d tree): `{"info":0,"low":0,"moderate":2,"high":6,"critical":1,"total":9}`.
 - `npm audit fix --dry-run` confirmed every one of the 9 resolves within existing `package.json`
@@ -46,7 +46,7 @@ automatic trigger to surface it.
 - Full `npm test`: **13764 pass / 0 fail / 3 skipped** (pre-existing skips, unrelated to this
   change) — same suite, before and after, no regressions from the bump.
 
-## Blast radius
+### Blast radius
 
 - `next`'s Image Optimization API is used wherever the app renders `next/image` against any
   AVIF-capable source — worth a follow-up check (separate from this fix) on whether any
@@ -58,7 +58,7 @@ automatic trigger to surface it.
   end users, included here because they were clean, available, no-risk fixes bundled in the same
   `npm audit fix` invocation.
 
-## Fix rationale
+### Fix rationale
 
 `npm audit fix` (without `--force`) was the correct instrument here specifically because every one
 of the 9 findings had a semver-compatible patch/minor available — verified via `--dry-run` before
@@ -67,7 +67,7 @@ version pins were hand-edited; the lockfile absorbed the bump within the ranges 
 `package.json` (`next`'s `^15.5.19` already permits `15.5.25`). Nothing was deliberately left
 unfixed — all 9 advisories are resolved in this one PR since none required a breaking change.
 
-## Not done in this pass (deliberately out of scope)
+### Not done in this pass (deliberately out of scope)
 
 - **CI workflow supply-chain findings** (unpinned-by-SHA GitHub Actions tags, one workflow —
   `cron-audit-query.yml` — running live AWS credentials on a same-repo `pull_request` trigger
@@ -79,7 +79,7 @@ unfixed — all 9 advisories are resolved in this one PR since none required a b
   2026-04-30) is a separate, larger infrastructure lift (new base image, re-validate native deps)
   and is flagged for roadmap planning, not bundled into this dependency-patch PR.
 
-## Market-open validation
+### Market-open validation
 
 Not applicable in the usual RTH-data sense (this is a framework/library patch, not a
 data-correctness fix), but the natural post-merge check is: confirm the production ECS deploy picks

@@ -1,4 +1,4 @@
-# Future-at guard tail — VWAP proxy, macro predictions, live-marks active set, stock candles
+## Future-at guard tail — VWAP proxy, macro predictions, live-marks active set, stock candles
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | SPX VWAP proxy / signal log / 0DTE live marks / stock candle Redis fallback |
 | **PR** | (pending) |
 
-## What was broken
+### What was broken
 
 Four remaining in-process caches used raw `now - fetchedAt < ttl` (or `<=`). Future stamps from cross-replica clock skew read as age 0 → cache pinned indefinitely:
 
@@ -18,11 +18,11 @@ Four remaining in-process caches used raw `now - fetchedAt < ttl` (or `<=`). Fut
 - `live-marks.ts` — active open-play set (10s TTL)
 - `stock-candle-store.ts` — Redis cross-replica fallback refresh gate
 
-## What changed
+### What changed
 
 Route all four through shared `isWsUpdatedAtFresh` from `@/lib/ws/timestamp-freshness`.
 
-## RTH validation
+### RTH validation
 
 - SPX desk VWAP label should still flip between volume-weighted and typical-price fallback correctly.
 - SPX signal log macro shadow factor should refresh on TTL, not stick on skewed cache.

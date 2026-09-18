@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk (Legacy/overnight scorer): institutional-flow smart-money leg was entirely dead code
+## Night Hawk (Legacy/overnight scorer): institutional-flow smart-money leg was entirely dead code
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | **Surface** | Night Hawk overnight-digest scorer (`scoreSmartMoney`/`institutionalNetSignal` in `scorer.ts`, and `smartMoneyDriverNote` in `deterministic-edition.ts`) |
 | **Severity** | P2 — an entire scoring signal was permanently inert on real data; no crash, no visible symptom |
 
-## Root cause
+### Root cause
 
 `institutionalNetSignal` (`src/features/nighthawk/lib/scorer.ts`) is supposed to read a ticker's
 institutional-ownership rows and return net buying (+1), net selling (-1), or unknown/flat (0),
@@ -57,14 +57,14 @@ the scorer's own two independently-wrong guessed field names (`action` AND `chan
 by construction without ever exercising the real UW shape. Same failure pattern as the other two
 bugs fixed this session (#4839 OI-change, #4844 congress-decay).
 
-## Blast radius
+### Blast radius
 
 `institutionalNetSignal` has exactly one caller, `scoreSmartMoney` (`scorer.ts`) — Night Hawk's
 shared smart-money scoring used by both Legacy's overnight digest and `edition-builder.ts`.
 `smartMoneyDriverNote`'s `instHit` check (`deterministic-edition.ts`) is a second, independent
 instance of the same bug, fixed alongside it to keep the narrative's presence check honest.
 
-## Fix
+### Fix
 
 - `scorer.ts`: added `row.units_changed` as the first-checked field in `institutionalNetSignal`'s
   numeric fallback chain (every existing fallback kept afterward, unchanged).
@@ -74,7 +74,7 @@ instance of the same bug, fixed alongside it to keep the narrative's presence ch
 - `deterministic-edition.test.ts`: added a regression test proving the narrative note fires off
   the real `units_changed` field, not just a fixture-only `action` string.
 
-## Why this fix, not an alternative
+### Why this fix, not an alternative
 
 Considered normalizing `fetchUwInstitutionOwnership`'s return shape at the source instead of
 patching every consumer's fallback chain, but that function is a thin pass-through
@@ -83,7 +83,7 @@ the existing fallback-chain pattern is how every other scorer in this file alrea
 uncertain upstream shapes — adding the real field name to the chain is consistent with that
 convention and the smallest change that fixes both call sites.
 
-## Evidence
+### Evidence
 
 - Live-pulled real UW institution-ownership data confirming `units_changed` is the actual field
   and that no `action`/`transaction_type`/`type` field exists on real rows at all.
@@ -95,7 +95,7 @@ convention and the smallest change that fixes both call sites.
 - `npx tsc --noEmit`: clean.
 - Full suite (`npm test`, Node 20): 13845 pass / 0 fail / 3 skipped.
 
-## What was deliberately left unchanged
+### What was deliberately left unchanged
 
 The string-fallback branch (`action`/`transaction_type`/`type`) in both functions is kept as-is —
 it costs nothing to leave in place for a hypothetical future/alternate institutional-activity

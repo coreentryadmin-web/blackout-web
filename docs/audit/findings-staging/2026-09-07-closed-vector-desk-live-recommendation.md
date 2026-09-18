@@ -1,4 +1,4 @@
-# Ask Largo swing brief: "Vector desk" section renders a live, actionable trade call on CLOSED plays
+## Ask Largo swing brief: "Vector desk" section renders a live, actionable trade call on CLOSED plays
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo / Night Hawk Swings play-brief |
 | **PR** | (this branch) |
 
-## Symptom
+### Symptom
 
 Live production repro (2026-09-07, all four CLOSED swing chains — CCI positionId 31, AMZN
 positionId 27, GLW positionId 22, NOW positionId 21): `GET /api/market/swing/play-brief` for a
@@ -37,7 +37,7 @@ Ask Largo brief"): a section computed fresh from LIVE, present-tense data leakin
 a CLOSED play's retrospective brief, violating the Largo product contract's identity/direction
 point (whose call is this, and is it live?).
 
-## Root cause
+### Root cause
 
 `vectorDeskSection()` in `src/lib/swing/play-brief-intel.ts` took no `bucket` parameter at all —
 unlike its sibling `watchForSection()`, which already branches on `"watch" | "open" | "closed"`.
@@ -49,7 +49,7 @@ is correct for genuinely informational sections, but `vectorDeskSection`'s body 
 informational — it is Vector's live directive block (entry zone / targets / invalidation / starred
 "Watch now" calls), so nothing in the pipeline ever downgraded it for a closed play.
 
-## Blast radius
+### Blast radius
 
 Only `vectorDeskSection` renders this directive shape — `chartTechnicalsSection` and
 `wallDynamicsSection` also read from the same `VectorFullState.play`/`.technicals`/`.regime` but
@@ -57,7 +57,7 @@ only ever surface the grade or dealer-gamma-regime fact (already reviewed and le
 entry/target/invalidation phrasing there). No other call site of `vectorDeskSection` exists outside
 `buildIntelSections`.
 
-## Fix
+### Fix
 
 - `vectorDeskSection(vec, sessionDate, bucket)` gains a `bucket` parameter (default `"open"` to
   match every existing caller/test outside this brief). For `bucket === "closed"`, it renders only
@@ -68,7 +68,7 @@ entry/target/invalidation phrasing there). No other call site of `vectorDeskSect
 - `buildIntelSections` passes `bucket` through to `vectorDeskSection`.
 - Watch/open buckets are byte-identical to before (regression test below asserts both shapes).
 
-## Fix rationale
+### Fix rationale
 
 Deliberately did NOT touch `collapseRedundantIntelSections`'s closed-bucket "return sections
 unfiltered" behavior — that guard exists to PRESERVE frozen GEX/wall/macro/flow context for closed
@@ -77,7 +77,7 @@ other section. The bug was narrower: one specific section (`vectorDeskSection`) 
 aware in the first place, so it never had a chance to render the closed-appropriate framing that
 the collapse step assumes already exists upstream.
 
-## Evidence
+### Evidence
 
 - Live repro above (CCI/AMZN/GLW/NOW, 2026-09-07, `GET /api/market/swing/play-brief`).
 - Regression test `vectorDeskSection: CLOSED bucket suppresses the live entry/targets/
@@ -85,7 +85,7 @@ the collapse step assumes already exists upstream.
   this fix (`bias` came back `"bullish"` instead of `"neutral"` for a closed play with a live long
   bias), GREEN after; asserts watch/open buckets are unchanged.
 
-## Verify
+### Verify
 
 ```
 export PATH=/opt/node20/bin:$PATH

@@ -1,4 +1,4 @@
-# Ask Largo swing brief's "Lessons" section restated the same trim-rail/stop-loss advice the "Trade manager read" section already gave
+## Ask Largo swing brief's "Lessons" section restated the same trim-rail/stop-loss advice the "Trade manager read" section already gave
 
 > **kind:** `FINDING`
 
@@ -8,7 +8,7 @@
 | **Severity** | P3 (member-facing narrative quality — a real restatement-class bug, same shape as three prior fixes in this file) |
 | **Status** | FIXED — `fix/swing-lessons-advice-dedup` |
 
-## Root cause
+### Root cause
 
 On CLOSED positions, `lessonsSection` (feeds the "Lessons" section) and `closedCoaching`
 (`play-brief-narrative-coaching.ts`, feeds "Trade manager read" — rendered immediately above
@@ -20,7 +20,7 @@ trim rail next time") and the sibling stop-loss advice ("check if entry was exte
 invalidation") were never covered by that dedup, so they survived under the exact mechanism meant
 to prevent this class of bug.
 
-## Evidence
+### Evidence
 
 Live repro, NN position #32, real production play-brief (CLOSED, STOPPED, peak +24.4%, exit
 −60.3%):
@@ -35,13 +35,13 @@ brief. Confirmed the source strings are real: `play-brief-narrative-coaching.ts`
 carry "tighten at first trim rail next time."/"check if entry was extended past invalidation."
 verbatim.
 
-## Blast radius
+### Blast radius
 
 Single call site (`buildIntelSections`'s `bucket === "closed"` branch, where `lessonsSection` is
 invoked). Every CLOSED swing play-brief whose "Trade manager read" independently stated the
 trim-rail or stop-loss advice was affected (round-trip and stopped-exit cases specifically).
 
-## Fix rationale
+### Fix rationale
 
 Extended `lessonsSection`'s existing dedup pattern (same technique as `roundTripAlreadyNoted`) with
 two new optional flags, `adviceAlreadyNoted` and `stopAdviceAlreadyNoted`, computed at the
@@ -51,7 +51,7 @@ capture number, "strong exit discipline"/"partial capture" verdicts, archetype t
 slippage) is untouched, verified by the new test's explicit assertion that independent evidence
 survives suppression.
 
-## Verification
+### Verification
 
 - `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts` —
   143/143 pass. RED→GREEN independently confirmed: reverted only the source fix (kept the new

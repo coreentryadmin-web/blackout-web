@@ -1,4 +1,4 @@
-# SPX play-path in-process caches — future-at guard tail sweep — FIXED
+## SPX play-path in-process caches — future-at guard tail sweep — FIXED
 
 > **kind:** FINDING
 
@@ -9,11 +9,11 @@
 | **Area** | SPX play ticket / lotto / adaptive gates / technicals |
 | **PR** | (pending) |
 
-## What was broken
+### What was broken
 
 Four remaining SPX play-path in-process caches still used raw `now - entry.at < ttlMs`. Future `at` stamps (cross-replica clock skew) produce negative age → always pass TTL → stale option tickets, lotto picks, adaptive gate boosts, or technicals served indefinitely. Same class as #3849 / #3844 cache-freshness sweep.
 
-## What changed
+### What changed
 
 Route all four gates through shared `isWsUpdatedAtFresh(at, ttlMs, now)` from `@/lib/ws/timestamp-freshness` (5s future tolerance):
 
@@ -24,7 +24,7 @@ Route all four gates through shared `isWsUpdatedAtFresh(at, ttlMs, now)` from `@
 
 Source-scan regression tests lock each pattern.
 
-## RTH validation
+### RTH validation
 
 - SPX Open desk: play ticket premium/delta should refresh on TTL after deploy skew, not stick on a clock-skewed memo entry.
 - Lotto rail: lotto strike/premium should recompute when cache TTL expires.

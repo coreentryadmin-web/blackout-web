@@ -1,4 +1,4 @@
-# 0DTE ratchet floor "cannot finish red" guarantee silently breaks at a cent-rounding boundary — FIXED
+## 0DTE ratchet floor "cannot finish red" guarantee silently breaks at a cent-rounding boundary — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | 0DTE exit engine — `resolveExitMark`/`buildExitContext` (`src/lib/zerodte/exit-engine.ts`) |
 | **Status** | FIXED |
 
-## Symptom
+### Symptom
 
 Live forensic audit (2026-09-10, Night Hawk 0DTE lane), real committed play: QQQ short,
 entry_premium 0.22, peaked at +47.73%. The profit ratchet correctly armed its breakeven floor at
@@ -19,7 +19,7 @@ exits so the green trade cannot finish red."` — yet the ledger row persisted `
 and `exit_mark_honored: false`. A trade whose own exit narrative promises "cannot finish red"
 finished red, on a real live commit, not a synthetic scenario.
 
-## Root cause
+### Root cause
 
 `resolveExitMark` (the floor-vs-observed-print selector) correctly used `Math.max(observedMark,
 protectiveFloorMark(...))` on the RAW (unrounded) values — for QQQ, `Math.max(0.215, 0.22) =
@@ -44,7 +44,7 @@ comparing two rounded values, which is a distinct bug: the detection, not the pn
 misfires at this particular boundary (raw print within half a cent below the floor, such that both
 round to the same cent).
 
-## Evidence
+### Evidence
 
 RED→GREEN, `src/lib/zerodte/exit-engine.test.ts`:
 - Added `"buildExitContext: a floor mark that rounds to the same cent as the raw observed print is
@@ -62,7 +62,7 @@ RED→GREEN, `src/lib/zerodte/exit-engine.test.ts`:
   file and its own test).
 - Full `npm test` (Node 20) — pending in background at write time; will confirm before merge.
 
-## Blast radius
+### Blast radius
 
 `resolveExitMark` has exactly one production call site (`buildExitContext`, same file) — grepped
 repo-wide. No other consumer reads its return value directly. The bug only manifests for
@@ -72,7 +72,7 @@ by less than half a cent — a narrow but real boundary that a live, real-money 
 2026-09-10. `trim_scale` mode's own tranche/target exits are a separate code path
 (`decideTrimScale`) and were not touched or affected.
 
-## Fix rationale
+### Fix rationale
 
 Changed `resolveExitMark`'s return type from a bare `number` to `{ mark: number; honored: boolean
 }`, computing `honored` from the SAME raw (pre-rounding) comparison the `Math.max` selection

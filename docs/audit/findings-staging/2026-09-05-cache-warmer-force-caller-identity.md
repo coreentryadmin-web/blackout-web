@@ -1,13 +1,13 @@
 > **kind:** FINDING
 
-# Off-hours `?force=1` cache-warmer bypass logged WHICH cron but never WHO — FIXED
+## Off-hours `?force=1` cache-warmer bypass logged WHICH cron but never WHO — FIXED
 
 | **Status** | FIXED |
 |------------|-------|
 | **Pri** | P2 |
 | **Area** | performance/latency — cache-warmer gate observability |
 
-## Symptom
+### Symptom
 
 Live measurement tonight (2026-09-05, per the standing performance/latency audit mandate):
 `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app` held a healthy p50/p90
@@ -40,7 +40,7 @@ identical overnight-force-storm shape measured on 2026-09-04. The caller is real
 credentials, and remains unidentified 24+ hours and one prior investigation later — because
 nothing captured enough about the request to trace it further.
 
-## Root cause
+### Root cause
 
 `shouldRunCacheWarmer(force, now, key)` logs `key` (which of the four warm crons) on every
 off-hours bypass, but never captured anything about the calling request itself — no client IP, no
@@ -50,7 +50,7 @@ external monitor." The four warm-cron routes (`desk-warm`, `zerodte-warm`, `heat
 `meridian-warm`) that share this gate all receive the full `NextRequest` with headers, but none of
 that ever reached the log line.
 
-## Fix
+### Fix
 
 - `shouldRunCacheWarmer` gains an optional 4th param, `callerInfo?: string`, appended to the same
   log line: `` `[cache-warmer-gate] force=1 bypassed the hours gate for '<key>' (caller: <info>) at
@@ -67,14 +67,14 @@ the next off-hours force storm will carry an IP + user-agent in the same log lin
 appears in, which is one CloudWatch grep away from finally identifying the caller (rather than
 another investigation that, like the last two, can only prove who it *isn't*).
 
-## Blast radius
+### Blast radius
 
 `src/lib/cache-warmer-gate.ts` (shared by all 4 warm crons) + the 4 call sites
 (`desk-warm`, `zerodte-warm`, `heatmap-warm`, `meridian-warm` routes). No change to which requests
 are allowed through, how often, or what work they trigger — only what gets logged when an
 off-hours bypass fires.
 
-## Evidence
+### Evidence
 
 - Live measurement (this pass): ALB `TargetResponseTime` p50/p90 healthy, p99 3.1-8.2s / Max
   10.4-34.0s across 3+ hours off-hours; `desk-warm` `elapsed=` log lines: 81 completions/3h, avg
@@ -90,7 +90,7 @@ off-hours bypass fires.
   `meridian-warm`): 31/31 pass — no regressions from adding the new call argument.
 - Full `npm test`: 12546/12546 pass, 0 fail. `npx tsc --noEmit`: clean.
 
-## Follow-up (not this PR)
+### Follow-up (not this PR)
 
 The root-cause caller is still not identified — this fix only makes the NEXT occurrence
 traceable. ALB access logging is currently disabled (`access_logs.s3.enabled = false`), which

@@ -1,8 +1,8 @@
-# G-17 score-band restructuring + G-12 UNKNOWN-confluence fix
+## G-17 score-band restructuring + G-12 UNKNOWN-confluence fix
 
 > **kind:** FINDING
 
-## Decision (operator-approved CTO gate-architecture review, 2026-09-09)
+### Decision (operator-approved CTO gate-architecture review, 2026-09-09)
 
 The flat G-17 rule ("the 65-74 band needs score >= 75, regardless of rail corroboration")
 conflated two different questions: the 2026-08-28 measurement showed an UNCONFIRMED 65-74
@@ -28,7 +28,7 @@ different question from G-12's own ordinary floor, which fails OPEN on a missing
 treated as 0 confirmations for THIS check only — absence of measurement cannot answer "yes,
 confirmed". G-12's own fail-open behavior everywhere else in this file is unchanged.
 
-## Implementation note
+### Implementation note
 
 The 70-74 conditional-band check runs at the VERY END of `evaluateZeroDteGates`, after every
 other gate (G-1 tape, G-4 VIX, G-8/G-9/G-21 execution) has already evaluated and populated
@@ -38,7 +38,7 @@ VIX"/"clean execution" are checked by absence of the relevant codes already in `
 (`EXECUTION_SAFETY_GATE_CODES` names the execution/safety set explicitly, as a single place
 to extend when a future gate like G-23 is added).
 
-## Blast radius
+### Blast radius
 
 - `gates.ts`: removed the old flat G-17 block + its Vector-exemption predicate call (the
   `vectorExemptsG17PrimeBand` import is now unused and removed); the 65-69 reject stays at
@@ -56,7 +56,7 @@ Built stacked on top of #4636 (item 6, G-18) and #4638 (item 7, G-19) since this
 (item 1) and the G-19 telemetry downgrade (item 7) already being in place — merged locally
 into this branch for a working composition, per the cross-PR ordering-dependency discipline.
 
-## Evidence
+### Evidence
 
 Full `src/lib/zerodte/*.test.ts` suite: 1323 pass / 0 fail on Node 20 (1 pre-existing
 unrelated skip). Before the fix, the 7/13 replay's MU expectation failed (RED,

@@ -1,4 +1,4 @@
-# checkPortfolioOverlap's self-match exclusion silently swallowed genuine same-ticker/same-direction double positions
+## checkPortfolioOverlap's self-match exclusion silently swallowed genuine same-ticker/same-direction double positions
 
 > **kind:** FINDING
 
@@ -10,14 +10,14 @@
 | **Files** | `src/lib/swing/portfolio.ts`, `src/lib/swing/portfolio.test.ts` |
 | **Source** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` finding #10 |
 
-## Context
+### Context
 
 Independent verification of audit finding #10 ("checkPortfolioOverlap's self-match exclusion hides
 genuine same-ticker+same-direction double positions from Ask Largo's concentration report").
 Re-read `checkPortfolioOverlap` line-by-line against current `main` (post #4084/#4101/#4110/#4116)
 rather than trusting the audit's description — the bug is real and was still live.
 
-## Root cause
+### Root cause
 
 `checkPortfolioOverlap` (`portfolio.ts`) looped every row in `existing` and, for each row sharing
 the candidate's ticker+direction, `continue`d — i.e. it excluded **every** matching row, not just
@@ -46,14 +46,14 @@ shows EWZ with two SEPARATE root position chains (rootPositionId 29 & 26, both d
 and WULF likewise (rootPositionId 17 & 13, both `long`) — this book has genuinely re-entered the
 same name/side more than once, the exact shape the old exclusion logic could not see through.
 
-## Why this wasn't caught earlier
+### Why this wasn't caught earlier
 
 `portfolio.test.ts`'s only same-ticker test (pre-fix) checked a single-row book against itself
 (`checkPortfolioOverlap(long("NVDA"), [long("NVDA")])`) and never exercised the case of TWO
 independent rows sharing ticker+direction — the exact input shape where "skip the match" silently
 becomes "skip every match."
 
-## Fix
+### Fix
 
 Changed the self-match exclusion from "skip every row matching ticker+direction" to "skip only the
 FIRST such row" (`selfExcluded` flag, set once). Every ADDITIONAL row sharing ticker+direction now
@@ -65,7 +65,7 @@ behavior when there is truly only one matching row — that case is unchanged �
 of N matching rows as genuine concentration instead of 0). It requires no schema/identity field on
 `PortfolioPosition` and no changes to any caller.
 
-## Blast radius
+### Blast radius
 
 Two callers of `checkPortfolioOverlap`, both re-checked:
 - `src/lib/swing/play-brief-intel.ts`'s `bookContextSection` (the one finding #10 named) — the
@@ -85,7 +85,7 @@ Two callers of `checkPortfolioOverlap`, both re-checked:
   scoped. Flagging for a follow-up rather than expanding this PR's blast radius.
   `gates-pr5.test.ts` re-run clean.
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 New tests in `portfolio.test.ts`:
 - `"a second, independent same-ticker/same-direction position is NOT swallowed by self-match
@@ -101,7 +101,7 @@ src/lib/swing/**/*.test.ts`), `npx tsc --noEmit`, and the affected suites
 (`play-brief.test.ts`, `play-brief-intel.test.ts`, `gates-pr5.test.ts`) all clean on Node 20
 (v20.20.2). Full `npm test` run in progress at write time.
 
-## Fix rationale — what was deliberately left unchanged
+### Fix rationale — what was deliberately left unchanged
 
 - Did not add an identity field (`id`) to `PortfolioPosition` or thread a position id through
   `TerminalPlay`/`loadOpenBook`/the gate's `existingPositions` — the audit's own "at minimum" fix

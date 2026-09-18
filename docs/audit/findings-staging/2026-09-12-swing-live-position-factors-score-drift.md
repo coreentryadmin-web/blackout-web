@@ -1,4 +1,4 @@
-# A live committed Swing position's "score pillars" drift away from its own score over time
+## A live committed Swing position's "score pillars" drift away from its own score over time
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Night Hawk Swings — `src/lib/swing/live-plays.ts` (`livePlayFromSwingPosition`), `src/lib/swing/serving-lane.ts` (`attachThesisExplanation`); consumed by `PlayTerminal.tsx`'s "Why this play was picked" panel and Ask Largo's `play-brief-intel.ts::whyThisSetupSection` ("**Score pillars:**") |
 | **Found by** | Standing 5-engine live monitor + Ask Largo × Night Hawk Swings ownership mandate — 2026-09-12 deep-dive cycle |
 
-## Root cause
+### Root cause
 
 `GET /api/market/nighthawk/horizons?view=swings` serves a live committed Swing position's
 `score` as `row.feature_vector.evidence_score` — deliberately PINNED at commit
@@ -34,7 +34,7 @@ than score" for Banger positions) — but a third, distinct occurrence: here nei
 is individually wrong, they are just two independent computations of what the desk
 presents as one connected explanation.
 
-## Evidence
+### Evidence
 
 Live `GET /api/market/nighthawk/horizons?view=swings` (2026-09-12, ~05:13 UTC):
 
@@ -51,7 +51,7 @@ Live `GET /api/market/nighthawk/horizons?view=swings` (2026-09-12, ~05:13 UTC):
   mismatch beyond rounding noise — AAPL (+9.4), MRVL (+6.3), IREN (−14.8) — confirming
   this is a real, reproducible pattern on live positions, not a one-off.
 
-## Blast radius
+### Blast radius
 
 - `live-plays.ts`'s `livePlayFromSwingPosition` — the source of the frozen `score`; it
   never set `factors` at all before this fix (returned play had no `factors` field).
@@ -66,7 +66,7 @@ Live `GET /api/market/nighthawk/horizons?view=swings` (2026-09-12, ~05:13 UTC):
   a different pair of code paths); the 0DTE lane's `factor_breakdown` mapping (separate
   scoring system).
 
-## Fix
+### Fix
 
 - Added `SWING_PILLAR_LABELS` and `contributionsToFactors(contributions)` to
   `swing-pillars.ts` — the single shared place that turns a `scoreSwingPillars(...)`
@@ -105,7 +105,7 @@ score to check calibration). Un-pinning it to "fix" the display would break that
 the display side (`factors`) was made to match the number it sits next to, using data
 that was ALREADY pinned for exactly this purpose.
 
-## Evidence (RED → GREEN)
+### Evidence (RED → GREEN)
 
 - RED before fix (git-stashed the four source files, kept only the new/extended tests):
   `npx tsx --experimental-test-module-mocks --test src/lib/swing/live-plays.test.ts src/lib/swing/serving-lane.test.ts src/lib/swing/serving-ingest.test.ts src/lib/swing/swing-pillars.test.ts`
@@ -117,7 +117,7 @@ that was ALREADY pinned for exactly this purpose.
   unrelated).
 - `npx tsc --noEmit`: clean.
 
-## Market-open validation
+### Market-open validation
 
 Logged in `docs/audit/MARKET-OPEN-VALIDATION.md` — once this is deployed and a genuine
 swing-pillar-scored position (not Banger-origin) has been open across at least one full

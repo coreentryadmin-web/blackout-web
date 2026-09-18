@@ -1,4 +1,4 @@
-# Ask Largo swing brief: CLOSED plays render live thesis/invalidation language as if the position were still open — FIXED
+## Ask Largo swing brief: CLOSED plays render live thesis/invalidation language as if the position were still open — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo / Night Hawk Swings (`src/lib/swing/play-brief-intel.ts`) |
 | **Status** | FIXED in PR (fix/closed-watch-levels-thesis-framing) |
 
-## Symptom
+### Symptom
 
 Live spot-check during the standing 5-engine + Ask Largo monitor cycle (2026-09-07, three CLOSED
 swing plays not previously audited: INTC positionId 35, EWZ positionId 29, IGV positionId 28 — all
@@ -31,7 +31,7 @@ Reclaim gamma flip 99.31 — invalidates short thesis
 `Thesis **unknown**` and `Reclaim gamma flip ... invalidates short thesis` both read as live,
 actionable guidance on a position that closed three days prior.
 
-## Root cause
+### Root cause
 
 Two distinct bugs in `watchForSection()` (`play-brief-intel.ts`), both from `bucket` (watch/open/
 closed) only ever special-casing "open", never "closed":
@@ -52,7 +52,7 @@ Both were straightforward oversights: the function threads `bucket` through seve
 (`bucket === "watch"`, `bucket === "open"`) but never added the `"closed"` branch these two lines
 needed — the classic "handled the buckets I was thinking about, not the third one" gap.
 
-## Blast radius
+### Blast radius
 
 Single function, single call site — `watchForSection()` is invoked once per brief compose
 (`play-brief.ts`) and the "Watch levels"/"Since it closed" section it returns is the only consumer.
@@ -62,7 +62,7 @@ on bucket (`holdPlanSection` returns `null` outright for non-open; the narrative
 CLOSED path is retrospective by construction, see `## Trade manager read` / `## Lessons` in the same
 briefs, which read correctly).
 
-## Fix
+### Fix
 
 - Suppress the `Thesis **...**` line entirely when `bucket === "closed"` (in-code comment explains
   why: it's a different signal than the one a reader would assume from the position it's printed
@@ -76,7 +76,7 @@ briefs, which read correctly).
   on that exact title string outside this file.
 - watch/open bucket behavior is byte-for-byte unchanged (regression test asserts this explicitly).
 
-## Verify
+### Verify
 
 - `node --import tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts`
   — 3 new tests: CLOSED suppresses the live thesis note, CLOSED reframes gamma-flip as neutral

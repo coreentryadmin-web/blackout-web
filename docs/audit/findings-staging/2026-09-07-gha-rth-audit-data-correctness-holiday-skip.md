@@ -1,4 +1,4 @@
-# gha-rth-audit's data-correctness check has no holiday guard — FIXED
+## gha-rth-audit's data-correctness check has no holiday guard — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | ops / RTH deep-audit GHA workflow |
 | **PR** | fix/gha-rth-audit-data-correctness-holiday-skip |
 
-## Symptom
+### Symptom
 
 `scripts/gha-rth-audit.mjs` (run by `.github/workflows/rth-deep-audit.yml` on a fixed
 `0 14/15 * * 1-5` UTC schedule — Mon–Fri, no NYSE holiday awareness at the schedule level) checks
@@ -25,24 +25,24 @@ reviewing the parallel `fix/rth-open-holiday-early-exit` (#4549) and `fix/rth-op
 class of defect in the separate `gha-rth-audit.mjs` harness, which has no equivalent early exit and
 was not touched by any of today's other holiday-gate PRs.
 
-## Root cause
+### Root cause
 
 `gha-rth-audit.mjs`'s `data-correctness` status check (line ~106) runs unconditionally, unlike the
 `spx-evaluate`/`market_regime`/writer-cron checks a few lines above it which are correctly gated by
 `if (tradingDay)`. It was never updated to accept the legitimate `skipped` status.
 
-## Fix
+### Fix
 
 Added `isCronRunHealthyStatus(status)` to the shared `scripts/lib/rth-socket-probe.mjs` (`ok` or
 `skipped` both pass — mirrors the naming/location precedent from the parallel `rth-open-check.mjs`
 fix), and used it in `gha-rth-audit.mjs`'s `data-correctness` check.
 
-## Blast radius
+### Blast radius
 
 `scripts/gha-rth-audit.mjs` only (the `rth-deep-audit.yml` workflow's Postgres audit section). No
 production cron/route behavior changed — audit-tooling verdict only.
 
-## Evidence
+### Evidence
 
 RED: confirmed live against `origin/main` — `git show origin/main:scripts/gha-rth-audit.mjs | grep
 data-correctness` shows the unconditional `status === "ok"` check with no `tradingDay` guard, and

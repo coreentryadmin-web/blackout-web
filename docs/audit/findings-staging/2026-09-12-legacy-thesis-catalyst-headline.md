@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Night Hawk Legacy thesis never surfaced WHICH news drove a "news" scoring tag — FIXED
+## Night Hawk Legacy thesis never surfaced WHICH news drove a "news" scoring tag — FIXED
 
 | Field | Detail |
 |---|---|
@@ -10,7 +10,7 @@
 | **Files** | `src/features/nighthawk/lib/deterministic-edition.ts` — `buildDeterministicThesis`, new `pickCatalystHeadline` |
 | **PR** | (opened same session as this finding) |
 
-## Root cause / gap
+### Root cause / gap
 
 `scoreNewsCatalyst` (`scorer.ts`) already computes `news_score` from two real, already-fetched data
 sources on every dossier: `dossier.news_headlines` (plain article titles from Benzinga/Polygon) and
@@ -27,7 +27,7 @@ driver of their pick and have **no way to find out what the news actually was** 
 card. This is exactly the "a signal that exists but isn't surfaced" gap the standing
 aggressive-improvement-hunting mandate calls out by name.
 
-## Fix
+### Fix
 
 Added `pickCatalystHeadline(dossier, isLong)`: when `news` is present in `buildDeterministicThesis`'s
 already-computed `topDrivers` (i.e. it materially influenced this specific pick, not just any name
@@ -42,14 +42,14 @@ Returns `null` (renders nothing) when there is no real text to show — additive
 fabricates a catalyst. Scoped strictly to when news is an actual top-2 driver, so the thesis doesn't
 get noisier for picks where news coverage exists but wasn't influential.
 
-## Blast radius
+### Blast radius
 
 - `buildDeterministicThesis` is Legacy-exclusive (confirmed via grep earlier this session while
   fixing the R:R rounding bug in the same function — no other desk imports it).
 - Purely additive to the `parts` array the thesis renders from — no existing sentence, ordering, or
   field is removed or changed.
 
-## Fix rationale
+### Fix rationale
 
 Kept the same "top-2 driver" gate the `key_signal` line already uses (`topDrivers`) rather than a
 separate threshold, so the catalyst sentence appears exactly when — and only when — the member is
@@ -57,7 +57,7 @@ already being told "news" mattered for this pick. Preferring `polygon_sentiment`
 headlines surfaces the actual REASONING Polygon computed, not just a title the member would have to
 interpret themselves.
 
-## Regression tests
+### Regression tests
 
 `src/features/nighthawk/lib/deterministic-edition.test.ts` — 4 new tests: quotes the
 direction-matching sentiment entry when news is a top driver; falls back to a plain headline when no

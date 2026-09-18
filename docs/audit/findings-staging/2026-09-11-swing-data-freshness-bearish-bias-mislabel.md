@@ -1,4 +1,4 @@
-# Swing play-brief "Data freshness" section fabricated a directional "Bearish" pill — FIXED
+## Swing play-brief "Data freshness" section fabricated a directional "Bearish" pill — FIXED
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Status** | FIXED (this PR) |
 | **Found during** | Standing Ask Largo mandate, 2026-09-11 cycle — deep-dive on Catalysts / Meridian catalysts / Hold plan / Data freshness sections |
 
-## Root cause
+### Root cause
 
 `dataFreshnessSection` (`play-brief-intel.ts:951-991`) is a pure data-quality report: option-mark
 timestamp, swing-scan age, Vector staleness, GEX-matrix age, HELIX pipeline freshness. None of its
@@ -35,14 +35,14 @@ This is a direct violation of `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s **directi
 "something's off, flag it red" semaphore corrupts that signal for every consumer of `RichSection`
 (any future cross-section bias rollup, any UI that trusts the pill).
 
-## Why it wasn't caught earlier
+### Why it wasn't caught earlier
 
 Zero test coverage of `dataFreshnessSection`'s `bias` field existed — the 6 existing tests for this
 function (mark timestamp formatting, stale vector/GEX/scan/HELIX warnings, WATCH/CLOSED suppression)
 all assert on `section.body`, never on `section.bias`. The bug shipped invisibly because nothing
 ever checked what pill it would render as.
 
-## Evidence
+### Evidence
 
 - New regression test `dataFreshnessSection: bias is never directional — ...` in
   `src/lib/swing/play-brief-intel.test.ts`: constructs an OPEN, LONG play with `markIsSync: true,
@@ -52,14 +52,14 @@ ever checked what pill it would render as.
   - **After fix:** 83/83 pass.
 - Full suite: 13721 pass / 0 fail / 3 skipped (pre-existing, unrelated). `tsc --noEmit` clean.
 
-## Fix
+### Fix
 
 `dataFreshnessSection` now always returns `bias: "neutral"` — data-quality facts are never a
 directional call. The `play.markIsSync && playExpectsLiveOptionMark(play.status)` condition still
 gates the **body line** ("Mark age unknown — sync quote without timestamp; treat P&L as
 indicative"), which is correct and unchanged; only the pill mislabel is removed.
 
-## Blast radius
+### Blast radius
 
 Single function, single call site (`buildIntelSections` → `dataFreshnessSection`, wired
 unconditionally into every WATCH/OPEN/CLOSED swing brief). No other `RichSection` builder in
@@ -68,7 +68,7 @@ condition instead of an actual directional read — checked each `bias:` assignm
 files; every other one is either genuinely thesis/technicals/flow-direction-derived or omitted.
 `playExpectsLiveOptionMark` import stays in use (still gates the body line).
 
-## Fix rationale
+### Fix rationale
 
 Left the body-line condition untouched — it correctly explains the caveat in prose, which is the
 right way to surface a data-quality fact. The fix is narrowly scoped to the pill, the only place the

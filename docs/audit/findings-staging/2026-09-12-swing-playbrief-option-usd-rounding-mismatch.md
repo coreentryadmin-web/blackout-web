@@ -1,4 +1,4 @@
-# Ask Largo swing play-brief's per-contract `$` formatter disagreed with itself — same number, two different cents, same API response
+## Ask Largo swing play-brief's per-contract `$` formatter disagreed with itself — same number, two different cents, same API response
 
 > **kind:** FINDING
 
@@ -9,7 +9,7 @@
 | **Area** | Ask Largo / Night Hawk Swings — `src/lib/fmt-money.ts`, `src/lib/swing/play-brief.ts`, `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`, `play-brief-intel.ts` |
 | **Found by** | Standing Ask Largo × Night Hawk Swings ownership mandate — live `GET /api/market/swing/play-brief` deep-dive, 2026-09-12 |
 
-## Symptom
+### Symptom
 
 Live `GET /api/market/swing/play-brief?playId=SWING:AAPL:37&ticker=AAPL&status=COMMIT&positionId=37`
 (a real, open, committed AAPL swing position, 2026-09-12) rendered **`Mark: **$6.17**`** in both its
@@ -23,7 +23,7 @@ The same position's `entryPremium` showed the identical one-cent gap against a s
 while the play-brief's "Position" section printed `Entry: **$6.72**` for the same position, same
 moment, same underlying DB row.
 
-## Root cause
+### Root cause
 
 Four files each carry a byte-identical local copy of the same "absolute per-contract premium price"
 formatter (`play-brief.ts`'s `fmtUsd`, `play-brief-narrative.ts`'s `fmtOptionUsd`,
@@ -54,7 +54,7 @@ value happens to land near an `x.xx5` boundary — precisely CLAUDE.md's own "sy
 endpoints serve unrounded floats" note and the Largo product contract's C9 ("round exactly once, at
 the boundary"), one layer deeper than a raw unrounded float: a *consistently wrong* rounding.
 
-## Evidence (live production, 2026-09-12, off-hours/weekend — market closed, values are Friday's
+### Evidence (live production, 2026-09-12, off-hours/weekend — market closed, values are Friday's
 carried-forward close, but the DISCREPANCY itself is a pure formatting bug, unrelated to staleness)
 
 ```
@@ -81,7 +81,7 @@ comment explicitly calls out the previous file as "the same root cause, Nth file
 are one function pasted into four places rather than four independent designs. This is the same
 disease's second symptom, previously undiscovered.
 
-## Fix
+### Fix
 
 Added `fmtOptionUsd(n: number | null | undefined): string` to `src/lib/fmt-money.ts` (alongside the
 existing `fmtPremium` compact-magnitude formatter, the established "single source of truth" pattern
@@ -102,7 +102,7 @@ LEVELS (a different quantity class not implicated in this specific live repro) �
 the confirmed, reproduced bug rather than speculatively touching every `.toFixed(2)` call in the
 module.
 
-## Tests
+### Tests
 
 `src/lib/fmt-money.test.ts` gained a new `fmtOptionUsd` describe block:
 - null/undefined/NaN/Infinity → em-dash.
@@ -119,7 +119,7 @@ swing play-brief test suite (7 files, 443 tests) 443/443, full repo suite (Node 
 **14005 pass / 0 fail / 3 skipped**. `npx tsc --noEmit` clean; `next lint` clean on every touched
 file.
 
-## Blast radius
+### Blast radius
 
 Five files: one new shared function (`fmt-money.ts`), four call sites converted from a local
 duplicate definition to an import (`play-brief.ts`, `play-brief-narrative.ts`,

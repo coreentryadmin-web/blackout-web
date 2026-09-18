@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# SPX `computePlayOutcomeStats` win_rate divides by closed count, not decided count — breakeven rows silently dilute the desk's own track record
+## SPX `computePlayOutcomeStats` win_rate divides by closed count, not decided count — breakeven rows silently dilute the desk's own track record
 
 | | |
 |---|---|
@@ -9,7 +9,7 @@
 | **Found by** | Night Hawk Legacy audit lane, file sweep of Legacy's overnight-prompt dependencies (`format.ts`) |
 | **Severity** | P2 — silently wrong, public-facing statistic; not a live-picks/gating bug |
 
-## Root cause
+### Root cause
 
 `computePlayOutcomeStats` (spx-play-outcomes.ts:367-392) computes the overall win rate as:
 
@@ -33,11 +33,11 @@ This is exactly the defect class CLAUDE.md documents as a **standing, already-fi
 
 **Effect direction:** any breakeven-heavy population understates the real decided win rate. Concretely: 5 wins, 0 losses, 5 breakeven → `win_rate = 5/10 = 50%` today, when the true decided rate is `5/5 = 100%` (every trade that actually resolved directionally was a winner). The published number silently drifts *worse* than reality precisely when the desk's real edge is strongest and losses are rare — the mirror image of the 2026-08-06 incident, which drifted the other way (a false 0% from an all-open/breakeven bucket), but the same root defect: the wrong population in the denominator.
 
-## Evidence
+### Evidence
 
 The existing unit test for this function (`spx-play-outcomes-stats.test.ts`, `computePlayOutcomeStats overall win rate and path buckets`) asserts `stats.overall.win_rate === 2 / 3` for a population of `[win, loss, win]` (0 breakeven) — which is numerically identical whether you divide by `closed.length` or by `wins + losses`, because there are no breakeven rows in the fixture. **No test in this file exercises a breakeven row against `win_rate`**, so the gap between "decided" and "closed" denominators has never been caught by CI. Traced by hand against the live formula above; not yet re-run against a live breakeven-containing window (would need `fetchPlayOutcomeStats()` against production data with a real breakeven print in the sample).
 
-## Blast radius
+### Blast radius
 
 `PlayOutcomeStats`/`computePlayOutcomeStats`/`fetchPlayOutcomeStats(ForWindow)` are consumed well beyond Night Hawk Legacy:
 - **Night Hawk Legacy** (this lane's own scope): `src/features/nighthawk/lib/format.ts`'s `formatTrackRecord` renders `overall ${wins}-${losses}-${breakeven} (${pct(win_rate)} win-rate)` straight into the overnight `buildClaudePrompt` — Legacy's own play-generation model is anchored to this wrong number every night via the "DESK TRACK RECORD" line, and `edition-builder.ts`/`claude-edition.ts` both pull `fetchPlayOutcomeStats()` for the same purpose.
@@ -47,7 +47,7 @@ The existing unit test for this function (`spx-play-outcomes-stats.test.ts`, `co
 
 Every one of these renders or reasons about the SAME wrong `win_rate` field — this is one root cause with many call sites, not a Legacy-local bug, even though it was found while auditing a Legacy consumer.
 
-## Why held rather than fixed directly
+### Why held rather than fixed directly
 
 The mechanical piece of the fix is unambiguous (denominator should be `wins + losses`, matching the precedent in `analytics.ts`/`debrief-aggregate.ts` exactly). What is NOT unambiguous, and is why this is being reported rather than patched in this PR:
 

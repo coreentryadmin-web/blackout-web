@@ -1,6 +1,6 @@
 > **kind:** FINDING
 
-# Legacy healthcheck had no cross-check between the morning-confirm verdict and the edition's pulled overlay — new Stage D
+## Legacy healthcheck had no cross-check between the morning-confirm verdict and the edition's pulled overlay — new Stage D
 
 | Field | Detail |
 | --- | --- |
@@ -9,7 +9,7 @@
 | **Component** | `scripts/audit/legacy-e2e-healthcheck.mjs`, `scripts/audit/lib/legacy-healthcheck-eval.mjs` |
 | **Found via** | Aggressive improvement-hunting pass, 2026-09-11, after live-tracing today's AAPL/SWKS morning-confirm pull event |
 
-## What was missing
+### What was missing
 
 While tracing today's live morning-confirm outcome (both AAPL and SWKS pulled pre-open by a
 Cortex `gex-walls` veto), I found there are **two independently-read surfaces** describing the
@@ -31,7 +31,7 @@ morning-confirm INVALIDATED badge with no pulled styling on the same play — no
 standing per-cycle healthcheck would have caught it. That is exactly the kind of member-visible
 split-brain this lane's mandate exists to catch.
 
-## What changed
+### What changed
 
 Added Stage D (`verdictForPullConsistency` in `legacy-healthcheck-eval.mjs`, wired into the
 runner as `checkPullConsistency`): for every play in today's edition, look up the matching
@@ -43,7 +43,7 @@ date (overnight / pre-9:15am ET), `play-status` honestly returns `available: fal
 stage reads SKIPPED, matching this file's existing "never fabricate a verdict for a stage that
 hasn't run yet" convention (`rollupVerdict`'s own SKIPPED handling).
 
-## Evidence
+### Evidence
 
 - 13 new unit tests in `legacy-healthcheck-eval.test.mjs` covering: fetch failure (RED),
   not-yet-run (SKIPPED), agreement both directions (GREEN), both split-brain directions (RED),
@@ -56,14 +56,14 @@ hasn't run yet" convention (`rollupVerdict`'s own SKIPPED handling).
 - `tsc --noEmit` clean.
 - Full suite run alongside this change (see PR for pass count).
 
-## Blast radius
+### Blast radius
 
 New stage only — no existing stage's logic (A/B/C) touched. `verdictForPullConsistency` is a new
 pure function with no other callers. The new `checkPullConsistency` fetch is READ-ONLY, hits an
 already-existing member-facing route (`/api/nighthawk/play-status`, same auth/tier gate as
 `/edition`), and adds one HTTP call per healthcheck run — negligible.
 
-## Fix rationale
+### Fix rationale
 
 Chose a per-ticker cross-check over, say, only checking the `summary.invalidated` count against
 the edition's own pulled count, because a count-only check can't catch a mismatch that nets to

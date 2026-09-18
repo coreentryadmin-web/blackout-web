@@ -1,4 +1,4 @@
-# play-engine-heartbeat: negative `age_ms` on cross-replica clock skew — FIXED
+## play-engine-heartbeat: negative `age_ms` on cross-replica clock skew — FIXED
 
 > **kind:** `FINDING`
 
@@ -9,7 +9,7 @@
 | **Severity** | P3 — admin-facing display bug, no member-facing or trading-logic impact |
 | **Found by** | DISCOVERY 24/7 audit sweep, 2026-09-04 |
 
-## Root cause
+### Root cause
 
 `play-engine-heartbeat.ts` tracks two engine heartbeats (SPX play-engine, Night Hawk 0DTE scan)
 as `{ last_tick_at, tick_count, ... }` records. Each is written by `recordPlayEngineTick` /
@@ -48,7 +48,7 @@ problem this override exists to surface. (The `stale`/`critical_stale` booleans 
 in practice — a negative `ageMs` is always `< 5*60_000`, so it never flips those thresholds — but
 the raw `age_ms` and the interpolated minute count were wrong on display.)
 
-## Evidence
+### Evidence
 
 - `git stash` on `src/lib/play-engine-heartbeat.ts` alone (keeping the new test) reproduces the
   pre-fix state: `npx tsx --test src/lib/play-engine-heartbeat.test.ts` → 2 failures
@@ -58,7 +58,7 @@ the raw `age_ms` and the interpolated minute count were wrong on display.)
 - `src/lib/admin-cron-health.test.ts` (the direct consumer of `loadPlayEngineHeartbeat`'s output)
   still 7/7 green post-fix — the clamp is transparent to every existing caller.
 
-## Blast radius
+### Blast radius
 
 Two call sites shared the identical unclamped-subtraction shape in this one file:
 1. `buildHeartbeat()` — backs `getPlayEngineHeartbeat()` / `loadPlayEngineHeartbeat()`, the SPX
@@ -77,7 +77,7 @@ call sites elsewhere in the codebase (`polygon-options-gex.ts`'s `clampedCacheAg
 class, found by sweeping for the same "writer clock / reader clock, `now - writtenAt`, no clamp"
 pattern the earlier fixes named as their signature.
 
-## Fix rationale
+### Fix rationale
 
 Added one small exported pure helper, `clampedHeartbeatAgeMs(tickAtIso, nowMs)`, matching the
 exact shape and doc-comment convention of `polygon-options-gex.ts`'s `clampedCacheAgeSec` (same

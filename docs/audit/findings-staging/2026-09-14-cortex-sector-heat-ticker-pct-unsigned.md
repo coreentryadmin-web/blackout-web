@@ -1,8 +1,8 @@
-# Cortex sector-heat evidence — per-ticker change % rendered without a sign, reads as same-signed as the sector
+## Cortex sector-heat evidence — per-ticker change % rendered without a sign, reads as same-signed as the sector
 
 > **kind:** FINDING
 
-## Root cause
+### Root cause
 
 `deriveSectorHeatEvidence` (`src/lib/nighthawk/cortex/sources/sector-heat.ts`) builds its
 single-name evidence detail as:
@@ -30,7 +30,7 @@ The codebase already has the right helper for this: `compose.ts` defines a local
 `fmtSigned(v)` ("+1.85" / "-0.6" / "0") for exactly this need on the narrative header's score line
 — it was never shared or reused by `sector-heat.ts`.
 
-## Blast radius
+### Blast radius
 
 Only `sector-heat.ts`'s single-name branch reads a per-ticker change percent this way — no other
 Cortex source (`gex-walls`, `darkpool-confluence`, `vex-charm`, `wall-trend`, `opening-harvest`)
@@ -39,7 +39,7 @@ renders a signed directional value through `fmtNum` without accompanying disambi
 The sector's own `chg` value (3 call sites in the same file) is left as `fmtNum` deliberately — see
 Fix rationale.
 
-## Fix rationale
+### Fix rationale
 
 Added `fmtSigned` to `sources/shared.ts` (co-located with `fmtNum`, same `toFixed(2)` rounding —
 just always shows the sign) and switched only the `tickerChangePct` render in `sector-heat.ts` to
@@ -53,7 +53,7 @@ Did not touch `compose.ts`'s own local `fmtSigned` (a different call site, unrel
 finding, out of scope for a single-issue PR) — noted here as the existing precedent for this exact
 pattern, in case a future PR wants to consolidate the two into one shared implementation.
 
-## Evidence
+### Evidence
 
 `src/lib/nighthawk/cortex/sources/sector-heat.test.ts` — added two regression tests: a ticker
 diverging positively from a falling sector now asserts `/TEST \+2\.94%/` (RED before this fix: the
