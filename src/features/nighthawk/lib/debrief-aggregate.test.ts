@@ -242,6 +242,41 @@ test("summarizePulledByRule: low_n reflects total_pulled against the shared thre
   assert.equal(summarizePulledByRule(rows.slice(0, -1)).low_n, true);
 });
 
+test("summarizePulledByRule: wrongly_rate_shrunk_pct pulls a THIN rule's alarming 100% toward the pool of every OTHER rule -- the exact noise trap Phase 2E exists to prevent", () => {
+  const rows = [
+    // A thin rule: n=2, 100% wrongly -- reads as a damning verdict on its own.
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+    // A much larger, genuinely low-wrongly-rate rule providing real pool evidence.
+    ...Array.from({ length: 18 }, () => pulledRow("pulled_correctly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction")),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+  ];
+  const s = summarizePulledByRule(rows);
+  const thin = s.rules.find((r) => r.rule === "contrary_anomalies_hard")!;
+  assert.equal(thin.n, 2);
+  assert.equal(thin.wrongly_rate_pct, 100);
+  assert.ok(
+    thin.wrongly_rate_shrunk_pct! < 60,
+    `a 2-sample 100% rule must be pulled well below its raw rate toward the pool, got ${thin.wrongly_rate_shrunk_pct}`
+  );
+  const large = s.rules.find((r) => r.rule === "regime_mismatch_hard")!;
+  assert.equal(large.n, 20);
+  // The large, real sample should stay close to its own observed rate, not get yanked toward the thin outlier.
+  assert.ok(
+    Math.abs(large.wrongly_rate_shrunk_pct! - large.wrongly_rate_pct!) < 5,
+    `a 20-sample rule should barely move from its own raw rate`
+  );
+});
+
+test("summarizePulledByRule: wrongly_rate_shrunk_pct is null exactly when wrongly_rate_pct is null (n=0 never happens in the output map, but the null-pool edge case is covered)", () => {
+  // A single rule with real data -- pool == its own rate, so shrinkage should be a no-op (self-pool).
+  const rows = [pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected")];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules[0]!.wrongly_rate_pct, 100);
+  assert.equal(s.rules[0]!.wrongly_rate_shrunk_pct, 100, "the only rule IS the pool, so shrinking toward it is a no-op");
+});
+
 // ── Blocked value ────────────────────────────────────────────────────────────────────
 
 test("gateBlockedValue: per-gate n / graded / would-have-won rate; unfilled counterfactuals are separated", () => {

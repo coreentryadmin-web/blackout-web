@@ -28,6 +28,7 @@ import {
 import { GATE_BAND_MAX_DISTANCE_PCT, GATE_TARGET_MAX_ATR_MULTIPLE } from "./publish-gates";
 import { targetAtrHistogram, type TargetAtrHistogramBin } from "./target-reachability";
 import { classifyPullRules, type PullRuleTag } from "./pull-rule-taxonomy";
+import { pooledRatePct, shrinkRatePct } from "./rate-shrinkage";
 
 export const NIGHTHAWK_DEBRIEF_METHODOLOGY =
   "Night Hawk session debrief over graded outcome rows (v2 fillability grades only — legacy-" +
@@ -175,6 +176,12 @@ export function summarizeDebriefPins(rows: DebriefAggregateRow[]): NighthawkDebr
 
 // ── Pull-rule breakdown (Phase 2B — "which cancellation rule is destroying expectancy") ─────
 
+/** How many observations before a rule's OWN wrongly-rate is trusted over the pooled rate
+ *  across every rule — expressed in the same units as n (an effective prior sample size). Reuses
+ *  the platform's one shared LOW_N_THRESHOLD rather than inventing a second magic number: a rule
+ *  is exactly as thin as any other n<LOW_N_THRESHOLD bucket elsewhere in this file. */
+const PULL_RULE_SHRINKAGE_PRIOR_STRENGTH = LOW_N_THRESHOLD;
+
 export type PullRuleOutcome = {
   rule: PullRuleTag;
   /** Pulled plays whose counterfactual grade would have won — this rule cost a winner. */
@@ -182,8 +189,18 @@ export type PullRuleOutcome = {
   /** Pulled plays whose counterfactual grade would NOT have won — this rule avoided a loser. */
   correctly: number;
   n: number;
-  /** wrongly / n, as a %. Null when n is 0 (never divide by zero). */
+  /** wrongly / n, as a %. Null when n is 0 (never divide by zero). The RAW, unshrunk number —
+   *  kept alongside wrongly_rate_shrunk_pct so a reader can see both the literal count-based rate
+   *  and the small-sample-corrected one, never just one or the other. */
   wrongly_rate_pct: number | null;
+  /** Signal Intelligence Phase 2E (started early, see rate-shrinkage.ts's header): wrongly_rate_pct
+   *  pulled toward the POOLED wrongly-rate across every rule in this same breakdown, in proportion
+   *  to how thin this rule's own n is (rate-shrinkage.ts's shrinkRatePct). This is the number a
+   *  consumer should actually READ when deciding whether a rule looks bad — a rule seen 2-3 times
+   *  at 100% wrongly is noise, not a verdict, and this field says so instead of letting the raw
+   *  rate alone make that case. Null only when the whole breakdown has no pool to shrink toward
+   *  (every rule n=0, i.e. this rule itself also has n=0 and reports null wrongly_rate_pct too). */
+  wrongly_rate_shrunk_pct: number | null;
   low_n: boolean;
 };
 
@@ -235,18 +252,26 @@ export function summarizePulledByRule(rows: DebriefAggregateRow[]): PullRuleBrea
     }
   }
 
-  const rules: PullRuleOutcome[] = Array.from(tally.entries())
-    .map(([rule, c]) => {
-      const n = c.wrongly + c.correctly;
-      return {
-        rule,
-        wrongly: c.wrongly,
-        correctly: c.correctly,
-        n,
-        wrongly_rate_pct: n > 0 ? round1((c.wrongly / n) * 100) : null,
-        low_n: n < LOW_N_THRESHOLD,
-      };
-    })
+  const withRawRate = Array.from(tally.entries()).map(([rule, c]) => {
+    const n = c.wrongly + c.correctly;
+    return { rule, wrongly: c.wrongly, correctly: c.correctly, n, wrongly_rate_pct: n > 0 ? round1((c.wrongly / n) * 100) : null };
+  });
+  // Pool BEFORE shrinking each rule -- every rule's own rate contributes to the pool it is then
+  // shrunk toward, the standard empirical-Bayes ordering (never shrink a bucket toward a pool
+  // that already excludes it, which would bias the pool away from that bucket's own evidence).
+  const pool = pooledRatePct(
+    withRawRate.filter((r) => r.wrongly_rate_pct != null).map((r) => ({ n: r.n, ratePct: r.wrongly_rate_pct! }))
+  );
+
+  const rules: PullRuleOutcome[] = withRawRate
+    .map((r) => ({
+      ...r,
+      wrongly_rate_shrunk_pct:
+        r.wrongly_rate_pct == null || pool == null
+          ? null
+          : shrinkRatePct(r.n, r.wrongly_rate_pct, pool, PULL_RULE_SHRINKAGE_PRIOR_STRENGTH),
+      low_n: r.n < LOW_N_THRESHOLD,
+    }))
     .sort((a, b) => b.n - a.n || (b.wrongly_rate_pct ?? -1) - (a.wrongly_rate_pct ?? -1) || a.rule.localeCompare(b.rule));
 
   return { rules, unattributed, total_pulled: totalPulled, low_n: totalPulled < LOW_N_THRESHOLD };
