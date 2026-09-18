@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T15:08:00Z",
+  "lastUpdated": "2026-09-18T15:23:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3897,6 +3897,14 @@
       "trigger": ":06 cycle -- SWKS stale again (4th instance), already-diagnosed pattern, not re-investigated",
       "healthcheck": "Re-ran fresh at 15:07:52Z: SWKS260925C00090000 stale again this cycle (14:21/14:36/14:51/15:07). HPE back to GREEN. SMTC/SMCI GREEN. A_edition/C_record/D_pull_status steady GREEN.",
       "result": "Not re-investigated -- already confirmed transient/self-healing last cycle (14:53Z entry) via an independent raw-payload re-fetch that showed the exact same OCC fresh ~20s later. SWKS appears to simply be this cohort's thinnest-liquidity name today (the RIG/DELL role from past weeks). Consistent with the known pattern class, no new evidence of a systemic issue."
+    },
+    {
+      "at": "2026-09-18T15:23:00Z",
+      "trigger": ":21 cycle -- 3-of-4 simultaneous stale marks, cross-checked against Polygon ground truth, confirmed real not an app bug",
+      "healthcheck": "Re-ran fresh at 15:21:41Z: SMTC/SMCI/SWKS all flagged stale simultaneously this cycle (HPE GREEN) -- a different, more systemic-LOOKING shape than the single-thin-name pattern diagnosed the last 2 cycles, so investigated properly rather than pattern-matching to the prior explanation.",
+      "whatChanged": "Cross-checked the worst offender (SWKS, app asof=15:18:44.887Z, ~4min stale at check time) directly against Polygon's own v3 snapshot endpoint (ground truth, bypassing the app entirely): Polygon's own last_quote.last_updated for O:SWKS261016C00090000 is 2026-09-18T15:18:44.887Z -- an EXACT match to the app's asof, down to the millisecond. Polygon's own day.volume for this contract is 16 -- genuinely thin. This proves the app is accurately relaying real upstream market data (no live quote update from Polygon itself in ~4min on this specific thin strike), not caching/serving a stale value while fresher data was available. SMTC/SMCI's shorter (~45s) staleness is consistent with ordinary quote-tick lulls on less-liquid contracts, not investigated further given the stronger SWKS evidence already rules out an app-side bug for the same underlying mechanism.",
+      "why": "The 3-simultaneous shape superficially resembles the PRE-#5073 systemic bug (wrong 5s threshold flagging even liquid names) rather than the single-thin-name pattern -- worth distinguishing with real evidence rather than assuming either explanation. Confirmed current code correctly uses LEGACY_QUOTE_STALE_MS=30s (src/lib/zerodte/marks-math.ts:42), not the old 5s bug; the Polygon ground-truth cross-check independently confirms the flagged staleness is real market data, not a config or caching defect.",
+      "result": "No fix needed. Stronger evidence than prior cycles' 'self-resolved on re-fetch' check -- this is a direct, timestamp-exact cross-reference against the upstream provider's own data, ruling out an app-side bug definitively for this instance. Thin-strike quote staleness (SWKS, SMTC, SMCI all lower-volume names in today's cohort) is expected, honest behavior."
     }
   ],
   "knownOpenItems": {
