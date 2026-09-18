@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T21:52:40Z",
+  "lastUpdated": "2026-09-18T22:09:18Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4043,6 +4043,12 @@
       "summary": "Edition rolled forward: 21:52Z healthcheck now serves edition_for=2026-09-21 (Monday -- correct next trading day, since 2026-09-18 is a Friday, no Sat/Sun sessions), A_edition GREEN 'fresh, not degraded', 4 new plays (MU/BMNR/ETHA/MARA -- distinct from the outgoing SMTC/SMCI/SWKS/HPE book). B_marks AMBER (expected transitional staleness right after a fresh edition build). D_pull_status SKIPPED 'morning confirmation not yet run for this date' (correct -- that cron only runs at next market open). C_record steady resolved=28.",
       "assessment": "This is the legitimate weekly day-rollover, NOT a repeat of the transient wrong-future-date anomaly logged earlier today (~16:51Z, mid-session on the 18th, marked degraded, self-healed back to same-day 09-18). Distinguishing the two: today's earlier instance served a future date WHILE the 18th's own session was still the live/current edition and flagged itself degraded; this one is post-close on a Friday with no weekend sessions, so 09-21 is the only valid next edition and it reports fresh/not-degraded. Confirms the 16:51Z anomaly should stay at n=1 (self-resolved, different mechanism) rather than being folded into this normal transition.",
       "action": "none -- normal weekly rollover, expected transitional AMBER/SKIPPED on marks and pull-status, correctly distinguished from the earlier same-day anomaly"
+    },
+    {
+      "at": "2026-09-18T22:09:18Z",
+      "summary": "22:08Z healthcheck: repeat-clean, identical to the 21:52Z cycle (edition_for=2026-09-21, same MU/BMNR/ETHA/MARA book, A_edition GREEN, B_marks AMBER transitional, C_record resolved=28 steady, D_pull_status SKIPPED). No new journal-worthy healthcheck state -- per AGGRESSIVE MODE used the quiet window (Friday post-close, weekend ahead, no new RTH data until Monday) to hunt enhancement ideas instead.",
+      "assessment": "New enhancement idea found (Task #31, not yet built): publish_context.market (tide_bias/composite_regime/breadth) is already pinned per edition and already exposed to internal tooling (posture-backtest.ts this session, legacy-discord-trade-notify.ts) and already DRIVES scoring via computeRegimeMultiplier -- but is not surfaced anywhere in the member-facing Legacy edition UI. Members see the picks with no visible 'why does tonight's book lean this way' context. Proposed: a small additive one-line regime/tide banner on the edition view, sourced from data already on the wire, no new capture. Deliberately NOT started this cycle -- it touches the member-facing UI render path, which needs fresh research (edition API response shape, Legacy board frontend component) before a correctly-scoped small PR, not a rushed one late in a long session.",
+      "action": "logged as Task #31 for a future cycle to research + build as a normal scoped PR"
     }
   ],
   "knownOpenItems": {
