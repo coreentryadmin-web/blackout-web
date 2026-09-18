@@ -363,6 +363,11 @@
       "session_state": "OPENING_DRIVE, commit unlock imminent",
       "activity": "PR #5207 hit a merge conflict against main (docs/audit/MARKET-OPEN-VALIDATION.md -- another lane's PR #5204 landed the same '### 283' entry number at the same append point between when I branched and pushed). Resolved per CLAUDE.md's CROSS-PR ORDERING/merge-conflict guidance: merged main into my branch, kept both entries, renumbered mine to #284 since #5204's #283 was already on main. Re-validated: tsc clean, 195/195 across the affected test files (mine + the merged-in Legacy edition files), pushed the merge commit. PR now mergeable:true, CI re-running.",
       "findings_this_cycle": "0 new -- merge-conflict resolution on PR #5207"
+    },
+    "2026-09-18T14:02:00Z": {
+      "session_state": "OPENING_DRIVE, commit unlock imminent",
+      "activity": "PR #5207 hit a SECOND merge conflict against main (same append-point collision on MARKET-OPEN-VALIDATION.md -- this repo is extremely high-velocity right now, multiple lanes merging every few minutes to the same file). Resolved the same way: merged main, renumbered my entry to #285 (Swings lane had already taken #284 in the interim). tsc clean, session-board-stats.test.ts 4/4, pushed. mergeable:true, CI re-running. Noting for future cycles: this append-point-collision pattern on MARKET-OPEN-VALIDATION.md is now a recurring, expected cost of this file's shared-tail-append convention during a busy multi-lane session -- not a sign of anything wrong, just needs re-checking after every push before trusting mergeable:true.",
+      "findings_this_cycle": "0 new -- second merge-conflict resolution on PR #5207"
     }
   },
   "sessions": {
