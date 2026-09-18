@@ -831,16 +831,32 @@ export function composeSwingPlayBrief(
   // position that no longer exists — a CLOSED play has nothing left to invalidate. None of the
   // three fallbacks in this chain checked `bucket` (only the premium-stop fallback already did,
   // and only for `open`), so a resolvable technical level kept firing for closed rows too.
+  // BUG FIX (Ask Largo standing mandate, 2026-09-18): a WATCH play whose entry is already dead
+  // (`deadPlayReason` — `watchEntryExpired`/`setupState === "INVALIDATED"`) fell straight through
+  // to `play.gateBlocks?.[0]?.reason` below, the same MOOT gate text `watchEntrySection`'s own
+  // "Also gate-blocked (moot — ...)" header and `entryTriggerDeadReason`'s "Entry trigger" line
+  // (both this file/play-brief-intel.ts, already fixed for this exact root cause) explicitly warn
+  // is no longer what's actually stopping entry. Live repro: MU WATCH brief, 2026-09-17/18 —
+  // headline correctly read "EXPIRED — wait for a fresh setup" and the Entry section correctly
+  // labeled its one gate "(moot — entry-validity window expired)", but the SAME brief's top-level
+  // **Invalidation:** evidence-block line still read "Trading-halt feed unavailable — desk will
+  // not open until halt/LULD data recovers" — the moot gate, presented with no "moot" qualifier,
+  // as if clearing it would reopen entry. `deadPlayReason` is already imported in this file for
+  // `watchEntrySection`'s identical check; scoped to `bucket === "watch"` to match its two sibling
+  // call sites exactly and leave OPEN/CLOSED invalidation logic untouched.
+  const dead = bucket === "watch" ? deadPlayReason(play) : null;
   const invalidation =
     bucket === "closed"
       ? null
       : play.thesisBreak?.level === "break"
         ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
-        : resolveBreakInvalidation(ctx) ??
-          play.gateBlocks?.[0]?.reason ??
-          (bucket === "open" && play.exitPolicy?.stop_premium != null
-            ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
-            : null);
+        : dead
+          ? `${dead.charAt(0).toUpperCase()}${dead.slice(1)} — this setup is no longer live.`
+          : resolveBreakInvalidation(ctx) ??
+            play.gateBlocks?.[0]?.reason ??
+            (bucket === "open" && play.exitPolicy?.stop_premium != null
+              ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
+              : null);
 
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({

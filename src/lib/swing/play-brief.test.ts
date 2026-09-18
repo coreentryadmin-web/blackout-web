@@ -306,6 +306,54 @@ test("composeSwingPlayBrief: Entry section reframes gates as moot once the entry
   assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/, "must not read as an active/clearable blocker");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-18): the top-level `envelope.invalidation` line
+// (the "**Invalidation:**" evidence-block callout) had the same root cause as the "Entry section
+// reframes gates as moot" fix directly above, but was never itself fixed — it fell straight
+// through to `play.gateBlocks?.[0]?.reason` with no `deadPlayReason` check, so a dead WATCH play
+// showed the SAME moot gate text there, with no "moot" qualifier, reading as the live reason entry
+// hasn't opened. Live repro: MU WATCH brief, 2026-09-17/18 — headline and Entry section both
+// correctly said "EXPIRED"/"moot — entry-validity window expired", but Invalidation still read
+// "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers."
+test("composeSwingPlayBrief: top-level Invalidation line reflects a dead entry window, not a moot gate reason", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ watchEntryExpired: true }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "Entry-validity window expired — this setup is no longer live.",
+  );
+  assert.doesNotMatch(
+    brief.envelope.invalidation ?? "",
+    /Bucket not graduated/,
+    "a moot gate reason must not stand in for the real dead-entry explanation",
+  );
+});
+
+test("composeSwingPlayBrief: top-level Invalidation line still uses the real gate reason when entry is genuinely still open", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.invalidation, "Bucket not graduated");
+});
+
 test("composeSwingPlayBrief: Entry section still frames gates as the live blocker when the play is genuinely still enterable", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
