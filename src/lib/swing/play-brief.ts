@@ -110,6 +110,19 @@ function managementSection(play: TerminalPlay): RichSection {
   if (play.progress != null && Number.isFinite(play.progress)) {
     lines.push(`Trim progress: **${Math.round(play.progress * 100)}%**`);
   }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.rollCandidate` (manage.ts's
+  // dte_migration/roll_intent, threaded through live-plays.ts -> adapters.ts) is a real, live,
+  // per-tick signal — theta decaying faster than thesis progress inside the lane's migration DTE
+  // window, the SAME check `roll.ts`'s live executor uses before it actually rolls a position —
+  // but it never reached this brief. A member watching a position tick toward its migration
+  // window (still HOLD, hasn't hit the harder expiry_risk gate yet) got no warning that a roll was
+  // already being weighed on every refresh; the first they'd hear of it was after the fact, via
+  // the roll-history disclosure (play-brief-narrative.ts's rollLine, which only ever cites PAST
+  // rolls). Only ever shown when a real candidate exists right now (never a fabricated "no roll
+  // pending" line, matching this section's own honest-absence convention elsewhere).
+  if (play.rollCandidate) {
+    lines.push(`Roll watch: **theta outpacing thesis** — ${play.rollCandidate.reason}.`);
+  }
   return { title: "Management", body: lines.join("\n\n") };
 }
 

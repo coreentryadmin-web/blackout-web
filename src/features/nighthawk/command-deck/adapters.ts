@@ -719,6 +719,9 @@ export interface HorizonDeckSource {
   manageAction?: SwingManageAction | null;
   /** The rung that decided manageAction (manage.ts) — see TerminalPlay's field for why this matters. */
   manageReason?: SwingManageRung | null;
+  /** Roll-candidate advisory (manage.ts's dte_migration/roll_intent) — see TerminalPlay's own field
+   *  for the full history of why this exists. */
+  rollCandidate?: { reason: string } | null;
   /** Ledger position id — disambiguates multiple closed rows on the same ticker. */
   positionId?: number | null;
   exitAt?: string | null;
@@ -971,6 +974,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     thesisHealth,
     manageAction: src.manageAction ?? null,
     manageReason: src.manageReason ?? null,
+    rollCandidate: src.rollCandidate ?? null,
     // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to
     // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.

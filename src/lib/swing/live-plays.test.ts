@@ -311,6 +311,74 @@ test("liveQuoteFromEvent: malformed / empty / absent quote blobs all degrade to 
   });
 });
 
+// ─── Roll-candidate advisory (Ask Largo standing mandate, 2026-09-18): manage-sync.ts stamps
+// `dte_migration`/`roll_intent` into every snapshot's event_json (manage.ts's `evaluateSwingManagement`
+// always computes both), but `manageObservablesFromEvent` never read either out — see
+// HorizonPlay.rollCandidate's own doc comment (horizon-plays.ts) for the full RED->GREEN history.
+
+test("livePlayFromSwingPosition: roll_intent.roll=true + dte_migration.reason -> rollCandidate surfaces the clean reason", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "hold",
+    action: "HOLD",
+    dte_migration: {
+      migrate: true,
+      reason: "DTE 3 ≤ 4 and premium at 0.72× entry decaying faster than thesis progress 0.20 — roll to preserve time-in-thesis",
+    },
+    roll_intent: {
+      roll: true,
+      reason: "roll intent — DTE 3 ≤ 4 ... (INTENT ONLY; execution deferred to PR-15)",
+    },
+  });
+  assert.ok(p);
+  assert.deepEqual(p!.rollCandidate, {
+    reason: "DTE 3 ≤ 4 and premium at 0.72× entry decaying faster than thesis progress 0.20 — roll to preserve time-in-thesis",
+  });
+  // The stale "(INTENT ONLY; execution deferred to PR-15)" internal note must never reach the
+  // surfaced field — only dte_migration's clean prose does.
+  assert.ok(!String(p!.rollCandidate?.reason).includes("PR-15"));
+});
+
+test("livePlayFromSwingPosition: roll_intent.roll=false (vetoed by a broken thesis/structural stop) -> no rollCandidate even when dte_migration.migrate=true", () => {
+  const p = livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+    rung: "structural_stop",
+    action: "EXIT",
+    thesis_state: "BROKEN",
+    dte_migration: { migrate: true, reason: "DTE 2 ≤ 4 — would migrate but for the break" },
+    roll_intent: { roll: false, reason: "underlying structural stop hit — close, do not roll" },
+  });
+  assert.ok(p);
+  assert.equal(p!.rollCandidate, null, "structural break vetoes the roll candidate, exactly as roll.ts's own executor vetoes it");
+});
+
+test("livePlayFromSwingPosition: no manage snapshot yet, or dte_migration/roll_intent absent/malformed -> rollCandidate stays honestly null", () => {
+  assert.equal(livePlayFromSwingPosition(row())!.rollCandidate, null, "no snapshot at all");
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, { rung: "hold", action: "HOLD" })!.rollCandidate,
+    null,
+    "snapshot present but carries neither field (older snapshot shape)",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      dte_migration: { migrate: true, reason: "..." },
+      roll_intent: "not an object",
+    })!.rollCandidate,
+    null,
+    "malformed roll_intent never fabricates a candidate",
+  );
+  assert.equal(
+    livePlayFromSwingPosition(row({ status: "HOLD" }), 178, {
+      rung: "hold",
+      action: "HOLD",
+      dte_migration: { migrate: true, reason: 42 },
+      roll_intent: { roll: true },
+    })!.rollCandidate,
+    null,
+    "roll_intent.roll=true but dte_migration.reason isn't a real string -> honest null, never a fabricated reason",
+  );
+});
+
 test("Q40: markAsOf prefers ledger last_mark_at over manage snapshot quote.asOf", () => {
   const play = livePlayFromSwingPosition(
     row({ last_mark_at: "2026-09-05T14:00:00.000Z" }),
