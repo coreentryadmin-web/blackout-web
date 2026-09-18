@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-18T14:00:00Z",
+  "lastUpdated": "2026-09-18T14:09:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -3861,6 +3861,14 @@
       "prStatus": "PR #5206 (item #14 slice 1: inline tier win-rate/n badge in Legacy's pick-log table) -- verify/CodeQL/Analyze/dispatch/triage all green, undrafted, merged clean (squash) sha c85f63a2a, verified live on origin/main. Unsubscribed. No open PRs.",
       "result": "Item #14 now has its first real slice shipped: members scanning the Legacy table can see a pick's historical conviction-tier win rate/n at a glance, not just after clicking into the detail rail. Full 15-point continuous-learning mandate tally: 11 PRs merged today (2026-09-18) -- adding #5206 to the prior #5176/#5177/#5181/#5183/#5184/#5185/#5187/#5188/#5189/#5197/#5200. Remaining: item #6/Phase 2C and item #8/Phase 2B pt.2 correctly BLOCKED on trading-day sample accumulation (still 2026-09-18); item #7's full-RTH-continuous half and item #11's NO-TRADE state correctly HELD pending explicit operator confirmation; a second, separable item #14 idea (desk-level win_rate_pct/decided_count in the session scorecard header) noted but not built -- optional follow-up only.",
       "nextAction": "Continue 15-min cadence. Re-check items #6/#8 once edition_for rolls to 2026-09-19 (tonight's build) -- that's the actual unblock condition, not a time-based guess."
+    },
+    {
+      "at": "2026-09-18T14:09:00Z",
+      "trigger": ":06 cycle -- healthcheck steady GREEN; fixed stale :06-trigger prompt (v3->v4)",
+      "healthcheck": "Re-ran fresh at 14:08:14Z: overall GREEN, same steady pattern as the 13:51/13:37 cycles. No action needed on the board itself.",
+      "whatChanged": "The :06-offset trigger's own stored prompt (trig_013hBo7PnRYHLUpx2D1Yxcfm) was stale -- it asserted 'no dedicated legacy-e2e-healthcheck.mjs exists, build one' and flagged legacy-board-ui-audit.mjs's proxy-tunnel gap as a 'verified correction,' both true only before the healthcheck script shipped (2026-09-14, well before today). Updated the trigger's prompt (v3->v4) via update_trigger to state the script already exists and is the standard per-cycle check, corrected the UI-audit note to stay (it's still accurate), and pointed at the journal's tail for live status of the 15-point mandate rather than a stale item list.",
+      "why": "CLAUDE.md's own staleness-trap warning ('a fresh session must verify against main, never trust a snapshot list at face value') applies just as much to a trigger's own stored prompt as to this file's prose -- an out-of-date trigger would have every future :06 firing repeat the same wrong 'go build a healthcheck script' instruction indefinitely, which is exactly the kind of durable-but-wrong state this journal exists to catch and correct.",
+      "result": "Fixed a real, if low-severity, infra-staleness bug (not a Legacy-product bug) in the mandate's own delivery mechanism. Board itself unchanged/clean."
     }
   ],
   "knownOpenItems": {
