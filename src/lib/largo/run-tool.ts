@@ -7,6 +7,8 @@ import { fitSpxStructureForModel } from "@/lib/largo/spx-structure-fit";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import { fetchPositioningSummary } from "@/features/nighthawk/lib/positioning";
+import { resolveNighthawkEdition } from "@/features/nighthawk/lib/resolve-edition";
+import { nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchPlayOutcomeStatsForWindow } from "@/features/spx/lib/spx-play-outcomes";
 // PR-N2: the one headline-scoreable predicate (methodology/pulled/unfilled quarantine)
 // shared by every surface that quotes a Night Hawk win rate.
@@ -1174,10 +1176,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       );
 
     case "get_nighthawk_edition": {
-      const date = input.date ? String(input.date) : undefined;
-      const edition = date
-        ? await marketPlatform.nighthawk.getNightHawkEditionForDate(date)
-        : await marketPlatform.nighthawk.getLatestNightHawkEdition();
+      const date = input.date ? String(input.date) : null;
+      // FIXED (2026-09-18 Largo/Legacy composer audit): this used to call the bare
+      // marketPlatform "nighthawk" edition getters directly — a bare
+      // DB row through rowToNightHawkEdition with NONE of the member route's resolution ladder or
+      // read-time overlays applied. Two real consequences: (1) `pulled`/`pulled_reason` (morning-
+      // confirm INVALIDATED a play) and `tier`/`morning_checked_at` (pinned tier assignment) are
+      // read-time overlays per PlaybookPlay's own field comments — the raw row never carries them,
+      // so Largo could describe an already-pulled play as an ordinary live pick. (2) freshness/
+      // absence state (`carry_until_close`, `stale`+`served_for`, `no_plays`, `degraded`) was never
+      // computed at all on this path, so a carried-forward or stale answer read as an ordinary fresh
+      // one. `resolveNighthawkEdition` is the exact DB-only core of the route's own resolution logic
+      // (extracted to `resolve-edition.ts` so both paths share it and cannot diverge again) — same
+      // fallback ladder, same overlays, same `editionFor` default (`nextTradingDayEt(todayEt())`,
+      // matching what a member sees with no `?date=`) as `/api/market/nighthawk/edition`.
+      const editionFor = date ?? nextTradingDayEt(todayEt());
+      const edition = await resolveNighthawkEdition(editionFor, date);
       // The RAW edition puts market_recap (41KB on a live edition) ahead of plays
       // (5KB), and the answer loop tail-truncates at MAX_TOOL_RESULT_CHARS — so every
       // play was being cut off. compactNightHawkEditionForModel emits the plays first
