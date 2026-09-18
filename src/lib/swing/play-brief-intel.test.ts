@@ -123,6 +123,42 @@ test("bookContextSection: a genuine same-ticker swing-native sibling (known posi
   assert.match(section!.body, /CRWD LONG \(separate position #51\)/);
 });
 
+// BUG FIX (2026-09-18, Ask Largo standing mandate): live repro on CRWD:39's own brief today --
+// TWO real, independently-committed Banger CRWD LONG positions both rendered the IDENTICAL bare
+// "CRWD LONG (separate, cross-engine position)" text (no positionId on either, per loadOpenBook's
+// deliberate collision-avoidance), reading exactly like the duplicate-counting defect the
+// 2026-09-15 fix above was written to prevent, even though the underlying count was honest.
+// `bangerId` (display-only, never touching checkPortfolioOverlap's exclude/match logic) now
+// disambiguates multiple cross-engine siblings on the same ticker from each other.
+test("bookContextSection: two distinct cross-engine siblings on the same ticker are told apart via bangerId, not rendered identically (2026-09-18 gap fix)", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "CRWD", direction: "LONG", bangerId: 1123 },
+    { ticker: "CRWD", direction: "LONG", bangerId: 1187 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position #1123\)/);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position #1187\)/);
+  assert.doesNotMatch(
+    section!.body,
+    /cross-engine position\)/,
+    "must not fall back to the bare, indistinguishable label when a real bangerId is known",
+  );
+});
+
+test("bookContextSection: a cross-engine sibling with no bangerId still falls back to the bare label (never fabricated)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG" }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position\)\./);
+});
+
 // FINDINGS 2026-09-12 (live repro, closed AAPL positionId 36): this section's copy is written for a
 // PENDING entry decision ("Adding {ticker} stacks the same wager...") — wrong frame for a position
 // that has already closed and has no forward decision left, even when the CURRENT book happens to

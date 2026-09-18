@@ -78,7 +78,14 @@ async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
         // which is exact here: every banger position is a long call (banger-lane-merge.ts hardcodes
         // `direction: "LONG"` — `banger_positions` has no `direction` column at all), so there is no
         // per-row direction to get wrong.
-        bangerPositions = bangerRows.map((r) => ({ ticker: r.ticker, direction: "LONG" as const }));
+        //
+        // `bangerId` (distinct from `positionId` above, never read by the exclude/match logic) DOES
+        // carry the real banger_positions row id — display-only, so two genuinely separate Banger
+        // positions on the same ticker (a real, live case: two independently-committed CRWD LONGs)
+        // can be told apart in the rendered concentration list instead of both showing the identical
+        // bare "CRWD LONG (separate, cross-engine position)" text. See `PortfolioPosition.bangerId`'s
+        // own doc comment (portfolio.ts) for why this is a new field, not a reuse of `positionId`.
+        bangerPositions = bangerRows.map((r) => ({ ticker: r.ticker, direction: "LONG" as const, bangerId: r.id }));
       } catch {
         /* fail-soft — the swing-ledger book still renders without the banger merge */
       }

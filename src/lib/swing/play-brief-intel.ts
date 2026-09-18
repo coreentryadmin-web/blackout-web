@@ -166,11 +166,27 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
  * Banger CRWD LONG, id 1123, 255C, still renders as unlabeled "CRWD LONG" in its own overlap list).
  * Distinguishing detail (a positionId when known, else a "cross-engine" tag) removes the ambiguity
  * without widening `PortfolioPosition`'s intentionally minimal shape (ticker+direction+positionId?).
+ *
+ * BUG FOUND (2026-09-18, Ask Largo standing mandate): the "cross-engine" tag above has no way to
+ * distinguish MULTIPLE such siblings from each other, and that's not hypothetical — live repro,
+ * CRWD:39's own brief today: TWO real, independently-committed Banger CRWD LONG positions both
+ * rendered the IDENTICAL "CRWD LONG (separate, cross-engine position)" text in the same
+ * concentration list, reading exactly like a duplicate-counting defect (the same shape the
+ * 2026-09-15 fix above was written to prevent) even though the underlying count was honest — two
+ * genuinely different rows, confirmed via `fetchBangerOpenBookRows` (status IN OPEN/PARTIAL, no DTE
+ * filter) carrying both while the horizons board's own DTE-windowed display
+ * (`horizonPlayFromBangerPosition`) happened to show neither at the moment checked, which is why a
+ * board-only scan for "other CRWD rows" found none despite two real ones existing. `bangerId`
+ * (portfolio.ts, display-only, never touching the exclude/match logic) now carries the real
+ * banger_positions row id for exactly this case.
  */
 function formatOverlapPosition(p: PortfolioPosition, reviewedTicker: string): string {
   const base = `${p.ticker} ${p.direction}`;
   if (p.ticker.toUpperCase() !== reviewedTicker.toUpperCase()) return base;
-  return p.positionId != null ? `${base} (separate position #${p.positionId})` : `${base} (separate, cross-engine position)`;
+  if (p.positionId != null) return `${base} (separate position #${p.positionId})`;
+  return p.bangerId != null
+    ? `${base} (separate, cross-engine position #${p.bangerId})`
+    : `${base} (separate, cross-engine position)`;
 }
 
 export function bookContextSection(
