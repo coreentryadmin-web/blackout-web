@@ -137,6 +137,7 @@ const STOPWORD_TICKERS = new Set([
   // NET and AXON are live Night Hawk plays — but reach it only when the member wrote them in
   // capitals. Without this, "what is the net flow" pins the ticker NET, which is the same defect
   // as the NOW/ServiceNow collision one row down.
+  "NET", "TEAM", "SNOW", "OPEN", "ALL",
   //
   // SPOT added 2026-09-19 (Ask Largo standing mandate, live repro): asked Largo "What is NVDA's
   // current GEX positioning — gamma flip level, call wall, put wall, and current spot?" — the
@@ -155,7 +156,22 @@ const STOPWORD_TICKERS = new Set([
   // Adding it here (rather than to DOMAIN_UPPERCASE_WORDS, which the KNOWN_TICKERS branch skips
   // entirely) makes it behave exactly like NET/TEAM/SNOW/OPEN above: a lowercase "spot" in prose
   // is never a ticker, while `$SPOT` or a genuinely shouted "SPOT" still is.
-  "NET", "TEAM", "SNOW", "OPEN", "ALL", "SPOT",
+  "SPOT",
+  // SNAP/COIN/SHOP/PLUG/META added 2026-09-19 (Ask Largo standing mandate — the same collision
+  // class the SPOT/NOW guards above already fix, found while auditing this exact list for other
+  // instances). Every one of these is BOTH a real symbol in KNOWN_TICKERS AND an everyday trading
+  // word, and `extractTicker` uppercases the WHOLE question before matching (`qUpper`), so a
+  // lowercase mention reaches the KNOWN_TICKERS fast-path with no case check at all unless it is
+  // listed here first. Confirmed live via `analyzeLargoQuestion` (case-sensitive, no market hours
+  // needed to reproduce): "wait for a snap back rally here" -> tickerHint "SNAP" (Snap Inc, not the
+  // ordinary "snap back" trading idiom); "is this trade just a coin flip" -> "COIN" (Coinbase, not
+  // the ordinary idiom); "should I shop around for a better entry" -> "SHOP" (Shopify, not the verb
+  // "shop"); "let's plug in the numbers here" -> "PLUG" (Plug Power, not the verb "plug in"); "that
+  // seems pretty meta to me" -> "META" (the standalone adjective "meta", not the ticker). Every one
+  // of these would silently swap the member's actual question for an unrelated ticker's live feed,
+  // the identical failure mode the SPOT fix (one row above) and the NOW fix documented above it
+  // both already cover.
+  "SNAP", "COIN", "SHOP", "PLUG", "META",
   "NOW", "ARE", "OR", "BE", "GO", "SO", "AT", "ON", "IT", "IN", "OF", "TO",
   "THE", "AN", "AS", "IS", "IF", "BY", "WE", "US", "HE", "NO", "UP", "MY", "ME",
   "DO", "AND", "FOR", "BUT", "NOT", "YOU", "OUR", "OUT", "WHY", "HOW", "WHO", "ANY",
