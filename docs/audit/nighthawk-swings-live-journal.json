@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T17:48:06Z",
-  "notes": "17:46 UTC cycle -- covered the mission's exit-management item (manage-sync.ts/exit-policy.ts), not yet directly re-verified this stretch. Hand-checked exit-policy.ts's SWING_SCALE_OUT_POLICY against CRWD:39's live rails: stop $5.08 = entry $12.70 x (1-0.60) exact match to the coded -60% hard_stop_pct; target $25.40 = entry x 2.0 exact match to the +100% target_pct. Then investigated something that looked like a possible bug: CRWD:39 shows 'Recommended: TRIM' / manage engine TAKE_PARTIAL with rung reason 'catalyst shifted against the thesis' (catalyst_shift, an advisory rung), yet the position sits in the board's SCALING_OUT bucket -- and manage-sync.ts's own latchSwingLiveStatus only latches the DURABLE status to 'TRIM' when the firing rung is profit_ladder specifically (a documented 2026-09-15 fix preventing advisory rungs from silently disabling the hard stop). Traced the display-bucketing logic separately (serving.ts:124, sectionForSwingPlay): it buckets into SCALING_OUT off `manageAction === 'TAKE_PARTIAL'` directly, independent of the latched status -- confirming the section display and the durable status latch are two deliberately decoupled mechanisms (display reflects the live advisory action; the latch protects capital-preservation semantics), not a bug. No new finding. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
+  "last_updated": "2026-09-19T18:01:50Z",
+  "notes": "18:01 UTC cycle -- light re-check: git synced (no drift), no open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean, weekend quiet continues.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
