@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T19:16:32Z",
-  "notes": "19:16 UTC cycle -- PR #5253 (my own WATCH-invalidation-wording fix) still in CI: verify + CodeQL in_progress ~2.5min in, enable-automerge/auto-merge already skipped as expected (known token-scope gap, will merge manually once verify is green). No other open swing PRs. Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). A 60min self check-in is already scheduled (~20:16 UTC) for #5253; will also re-check at the next regular trigger.",
+  "last_updated": "2026-09-19T19:33:00Z",
+  "notes": "19:31 UTC cycle -- PR #5253 already merged (a5b6da0ba, by a parallel session on this account at 19:26:25Z, verify+CodeQL both green) -- confirmed reachable from origin/main. Cancelled the now-unneeded 60min self-check-in trigger. Spot-checked LITE's live brief post-merge: still shows the OLD 'exit or cut size' wording -- expected ECS deploy lag (merge-to-deploy pipeline documented in CLAUDE.md, not instant), not a regression or a bad merge. Will re-verify the corrected wording is actually live in a future cycle once the deploy rolls out. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
