@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T11:47:11Z",
-  "notes": "11:46 UTC cycle -- light re-check (deep dig already done last cycle at 11:31): git synced, no new commits on main, no open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean, weekend quiet continues.",
+  "last_updated": "2026-09-19T12:03:08Z",
+  "notes": "12:01 UTC cycle -- covered a mission area not yet checked this stretch: CLOSED plays vs the 5-truth grader. Pulled all 14 rows in GET /api/market/swing/record's closedDeck, checked closedReason/exitPnlPct against entry/peak/trough premiums for sanity. All consistent: 'stopped' rows reconstruct to an exit price near (not necessarily at) trough, 'target' rows near peak, PYPL#24 (entry=peak=trough=$3.90, closedReason:flat, exitPnlPct:0, 13min hold) is the one genuine outlier by shape but it's the already-fixed, already-documented case (FINDINGS.md -- closedDeckSourcesFromChains fix, 2026-09-13/14, confirmed this /record route reads the FIXED composite path and correctly shows 'flat'; the bug was in play-brief's separate unfixed code path, already patched). No new anomaly. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
