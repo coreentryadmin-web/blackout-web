@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T20:32:37Z",
-  "notes": "20:31 UTC cycle -- PR #5255 already merged (d1cbc007f, by its own author session, verify green) -- confirmed reachable from origin/main (squash-merge commit, not the branch head SHA). Both halves of the WATCH-invalidation-wording bug (top-level envelope.invalidation via #5253, the in-body 'Trade manager read' Break-watch bullet via #5255) are now fixed and merged. Coordinator already folded #5253's staged finding into FINDINGS.md (#5256). No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Will spot-check LITE's live Trade-manager-read bullet in a future cycle once #5255 deploys.",
+  "last_updated": "2026-09-19T20:47:21Z",
+  "notes": "20:46 UTC cycle -- tried to spot-check PR #5255's deploy on LITE's live 'Trade manager read' section, but no Break-watch bullet currently renders at all this read (breakTrigger returned null this instant -- inconclusive either way, not evidence of a problem). No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
