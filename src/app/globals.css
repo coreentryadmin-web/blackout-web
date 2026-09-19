@@ -23549,6 +23549,25 @@ html.product-shell .nav-mega {
    swings, NRG 110C 11DTE: "+$4.80" overlapping "Peak 98%"). */
 .nh-deck-trade-hero__metric .v{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--dk-text-primary);line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .nh-deck-trade-hero__metric.is-primary .v{font-size:22px}
+/* Mobile-width sibling of the #5257 fix above (found 2026-09-19, live phone-width repro via
+   proxy-browser.cjs at 430x932): #5257 widened the primary column's SHARE of the grid (1fr ->
+   1.5fr) and un-inflated its font-size on desktop, but never checked the absolute pixel result at
+   phone width, where the whole hero is only ~400px wide to begin with — 1.5fr of ~400px still
+   isn't enough room at 22px for even the SHORTEST realistic dollar string. Measured live: the
+   primary tile's rendered value span was 74px wide but needed 112px for the plain, non-extreme
+   "+$0.00" (not a long or negative value — the shortest possible dollar output), confirming this
+   is a structural width shortfall at this breakpoint, not a rare-value edge case. Gives the primary
+   column an even larger relative share (1.5fr -> 2.5fr) and drops its font back down to 18px only
+   below 480px, where the tile's absolute width is the actual constraint — desktop is untouched
+   (this block does nothing above 480px) and the #5257 fix above still governs there. Both the
+   plain and `.nh-deck--swing-largo`-scoped is-primary rules are overridden here since both apply
+   the oversized value at this breakpoint; matching source order (after both) plus equal-or-higher
+   selector specificity is what lets this win over the swing-largo rule two hundred lines up. */
+@media (max-width:480px){
+  .nh-deck-trade-hero__metrics{grid-template-columns:minmax(0,2.5fr) repeat(4,minmax(0,1fr));gap:6px}
+  .nh-deck-trade-hero__metric.is-primary .v,
+  .nh-deck--swing-largo .nh-deck-trade-hero__metric.is-primary .v{font-size:18px}
+}
 .nh-deck-trade-hero__rank-den{font-size:11px;font-weight:700;color:var(--dk-text-secondary)}
 .nh-deck-trade-hero__age .nh-deck-age-decay{padding:0;border:none;background:transparent;font-size:14px}
 .nh-deck-lifecycle-strip{display:flex;flex-wrap:wrap;gap:8px 14px;padding:8px 0 0;margin-top:8px;border-top:1px solid var(--dk-border-subtle)}

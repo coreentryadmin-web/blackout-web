@@ -1,3 +1,23 @@
+## WATCH LIST — 2026-09-19 Night Hawk Swings "Current" tile MOBILE overflow fix (PR pending, follow-up to #5257)
+
+**What was fixed:** #5257 (below) fixed the "Current" P&L tile's desktop truncation but explicitly
+flagged phone width (430px) as unverified. This cycle's retry of that exact check
+(`proxy-browser.cjs`, 430x932, real HOLD swing position) found it was NOT fine — a live click-through
+rendered "Current" as a visibly truncated `"+$..."`, and a direct DOM measurement confirmed it
+mechanically: `scrollWidth 112px` vs `clientWidth 74px` for the plain text `"+$0.00"` (the shortest,
+plainest dollar string this field ever produces — no negative sign, minimal digits). Fixed by adding
+a `@media (max-width:480px)` block that widens the primary grid column further (`1.5fr` → `2.5fr`,
+mobile-only) and drops the primary font-size to `18px` (from 22px) for both the plain and
+`.nh-deck--swing-largo`-scoped `is-primary .v` selectors. Desktop is untouched (media-gated). Full
+write-up: `docs/audit/findings-staging/2026-09-19-nh-swing-current-tile-mobile-overflow.md`.
+
+**Specific thing to check once this deploys and RTH is live:** open `/nighthawk?view=SWING` on an
+actual phone or a 430px-wide mobile UA, tap into any OPEN/HOLD/TRIM/CLOSED swing play, and confirm
+the "Current" tile shows the FULL dollar string (even a short one like `"+$0.00"` or `"-$0.85"`)
+with no ellipsis. Also re-confirm desktop (≥1024px) is still fine post-deploy — this fix is
+media-gated to not touch desktop, but a live re-check costs one screenshot and closes the loop the
+same way this cycle closed #5257's own open mobile question.
+
 ## WATCH LIST — 2026-09-19 Night Hawk Swings "Current" tile dollar-value truncation fix (PR pending)
 
 **What was fixed:** the Night Hawk Command Deck trade hero's "Current" P&L tile (the only

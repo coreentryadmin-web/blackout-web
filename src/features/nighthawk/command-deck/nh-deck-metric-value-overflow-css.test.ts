@@ -68,3 +68,42 @@ test("nh-deck-trade-hero__metrics gives the dollar-formatted primary tile more t
       `repro — got ${fontSizeMatch![1]}px, expected <=22px (matches the base is-primary size)`,
   );
 });
+
+/**
+ * Guards a THIRD live visual bug found on the SAME tile (2026-09-19, this time at PHONE width —
+ * the #5257 fix above was only verified at desktop widths). Live-measured via proxy-browser.cjs at
+ * 430x932: the primary "Current" value span rendered 74px wide but needed 112px for the plain,
+ * non-extreme "+$0.00" — the shortest realistic dollar string this field produces — confirming the
+ * desktop-verified 1.5fr/22px fix from #5257 is not enough ABSOLUTE room once the whole hero is
+ * only ~400px wide to begin with, regardless of its improved relative share.
+ */
+test("a narrow-viewport (<=480px) media rule gives the primary tile even more room than the desktop #5257 fix, for both the plain and swing-largo variants", () => {
+  const mobileBlockMatch = css.match(/@media \(max-width:480px\)\{([\s\S]*?)\n\}/);
+  assert.ok(mobileBlockMatch, "no @media (max-width:480px) block found guarding the trade-hero primary tile");
+  const block = mobileBlockMatch![1];
+
+  const colsMatch = block.match(/\.nh-deck-trade-hero__metrics\{[^}]*grid-template-columns:([^;]+);/);
+  assert.ok(colsMatch, "mobile block does not override nh-deck-trade-hero__metrics grid-template-columns");
+  const firstTrack = colsMatch![1].trim().split(/\s+/)[0];
+  const firstFrMatch = firstTrack.match(/([\d.]+)fr/);
+  assert.ok(firstFrMatch, `mobile primary track must be an fr unit, got "${firstTrack}"`);
+  assert.ok(
+    Number(firstFrMatch![1]) > 1.5,
+    `mobile primary column must get MORE relative share than the desktop #5257 fix's 1.5fr, since ` +
+      `1.5fr already proved insufficient in absolute pixels at phone width — got ${firstFrMatch![1]}fr`,
+  );
+
+  // Both the plain and swing-largo-scoped is-primary .v rules must be re-capped inside the mobile
+  // block — the swing-largo one is the selector that actually renders on /nighthawk?view=SWING, so
+  // missing it here would leave the exact production repro unfixed while looking fixed.
+  const plainFontMatch = block.match(/(?<!--swing-largo )\.nh-deck-trade-hero__metric\.is-primary \.v(?:,[\s\S]*?)?\{[^}]*font-size:(\d+)px/);
+  assert.ok(plainFontMatch, "mobile block does not cap the plain is-primary .v font-size");
+  assert.ok(Number(plainFontMatch![1]) < 22, `mobile primary font-size must be smaller than the desktop 22px, got ${plainFontMatch![1]}px`);
+
+  const swingLargoFontMatch = block.match(/\.nh-deck--swing-largo \.nh-deck-trade-hero__metric\.is-primary \.v\{[^}]*font-size:(\d+)px/);
+  assert.ok(swingLargoFontMatch, "mobile block does not cap the .nh-deck--swing-largo-scoped is-primary .v font-size");
+  assert.ok(
+    Number(swingLargoFontMatch![1]) < 22,
+    `mobile swing-largo primary font-size must be smaller than the desktop 22px, got ${swingLargoFontMatch![1]}px`,
+  );
+});
