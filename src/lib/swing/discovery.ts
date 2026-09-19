@@ -751,7 +751,14 @@ export async function runSwingDiscoveryScan(
       const hits = await deps.fetchPositioningHits();
       positioningTickers = hits.map((h) => h.ticker);
       for (const h of hits) positioningDirectionByTicker.set(h.ticker.toUpperCase(), h.direction);
-    } catch {
+    } catch (err) {
+      // Sibling parity: every other Tier-0 origin fetch (fetchPositioningTickers fallback below,
+      // CATALYST/BANGER/VECTOR) logs its throw via fetchTier0OriginTickers's own console.warn —
+      // this preferred fetchPositioningHits path previously swallowed the error silently, so a
+      // real POSITIONING origin outage (the corroborated-confluence origin, not a minor one) was
+      // invisible in CloudWatch and distinguishable from "the origin legitimately returned zero
+      // names" only by reading `recall.tier0OriginFetchErrors` off a scan result nobody was tailing.
+      console.warn("[swing-discovery] Tier-0 origin POSITIONING fetch failed:", err);
       originFetchErrors.push("POSITIONING");
     }
   } else if (engineV2 && deps.fetchPositioningTickers) {
