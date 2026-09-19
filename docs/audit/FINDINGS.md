@@ -38,6 +38,154 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## vector-dark-pool-warm needs overlap guard—measured 221s runtime with 10-min schedule
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+### Summary
+
+The `vector-dark-pool-warm` cron is scheduled every 10 minutes but measured elapsed times reach 221 seconds (3.68 minutes) and 144 seconds (2.4 minutes). With only 6.32 minutes of margin before the next scheduled run, and variance in UW response times (especially during the current dossierFetch timeout cascade), the cron is at risk of overlapping.
+
+### Root cause
+
+`vector-dark-pool-warm` makes UW REST calls to fetch dark-pool levels for all overlay-allowlist tickers (~55 universe tickers). The route is already optimized with `runUwPool()` (pools concurrent UW calls to 3) and fire-and-forget dispatch, but the UW timeout cascade (documented in parallel finding `2026-09-18-uw-dossier-fetch-timeout-cascade.md`) is adding latency to each ticker's fetch.
+
+Measured runtimes in last 2 hours:
+- 221,592ms (3.68 min) — 69% of the 10-min schedule window consumed
+- 144,994ms (2.41 min) — 24% of the 10-min schedule window consumed
+- Typical: 20–40 seconds
+
+When UW times out (8s × N retries), the pooled concurrency can't prevent the whole cron from backing up, and a slow run scheduled every 10 minutes risks the next run starting before the prior one finishes.
+
+### Evidence
+
+**CloudWatch Logs, 2026-09-18 19:40–21:10 UTC:**
+```
+[cron/vector-dark-pool-warm] background done — warmed=44 failed=11 levels=56 elapsed=144994ms
+[cron/vector-dark-pool-warm] background done — warmed=29 failed=26 levels=33 elapsed=221592ms
+[cron/vector-dark-pool-warm] background done — warmed=3 failed=0 levels=3 elapsed=25719ms
+```
+
+The 221-second run is a real outlier, but the 144-second one is repeatable. With typical variance, a 144s run leaves only 6m 16s before the next scheduled run at 10m. If that next run encounters the same UW timeout cascade, it could start before the prior one finishes.
+
+### Impact
+
+If overlap occurs:
+- Both instances try to write to the same Redis dark-pool cache keys simultaneously, causing write contention
+- One instance's writes may be silently overwritten by the other's
+- The Vector SSE clients would see inconsistent dark-pool levels between requests
+- No data loss, but correctness is violated
+
+### Fix
+
+Add an overlap guard using `sharedCacheSetNx()` (the pattern already used by `data-correctness` and `swing-active-refresh` crons):
+
+```typescript
+const acquired = await sharedCacheSetNx(
+  "cron:vector-dark-pool-warm:lock",
+  { startedAt: started },
+  610  // TTL = 10min + 10sec buffer for schedule variance
+).catch(() => true);
+
+if (!acquired) {
+  // Prior run still executing, skip this one
+  const payload = { ok: true, skipped: true, reason: "Prior run still executing" };
+  await logCronRun("vector-dark-pool-warm", started, payload);
+  return NextResponse.json(payload);
+}
+```
+
+Add this guard in `src/app/api/cron/vector-dark-pool-warm/route.ts` before dispatching the warm, following the data-correctness pattern at lines ~150–160.
+
+### Rationale
+
+Per CLAUDE.md's audit methodology:
+
+> "Check EVERY cron's own schedule against its own measured `elapsed=` runtime" before concluding it needs an overlap guard — `sharedCacheSetNx` is the fix ONLY when runtime can exceed the schedule interval with real margin lost."
+
+Measured runtimes of 220s (3.67min) against a 10-min schedule with UW timeout cascade in effect means margin is lost in the worst case. An overlap guard is justified.
+
+### Status
+
+**FIXED** — shipped in the same commit that staged this finding (PR #5232, `src/app/api/cron/vector-dark-pool-warm/route.ts`): the exact `sharedCacheSetNx` guard proposed above, verified live in the merged diff (610s TTL, `"cron:vector-dark-pool-warm:lock"`). This status line was never updated after the fix landed — corrected during a later DISCOVERY sweep (2026-09-19) that found the finding still staged and still marked "Not fixed" a day after its own fix shipped.
+
+### Related findings
+
+- `2026-09-18-uw-dossier-fetch-timeout-cascade.md` — the UW timeout cascade is exacerbating slow runtimes
+
+## UW dossierFetch timeout cascading to ALB tail-latency spikes
+> **kind:** `FINDING`
+> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+### Summary
+
+UW flow-alerts `dossierFetch` API calls are timing out at 8 seconds repeatedly, cascading into ALB response time spikes of 50-87 seconds. This violates the standing performance mandate ("website should not lag, it should be very fast and responsive").
+
+### Root cause
+
+The flow-alerts data provider calls UW's dossierFetch API and blocks on the result. When UW times out at 8 seconds (appears to be a configured/enforced limit), the request is retried, causing cascading delays. Multiple tickers' flow-alert requests queue up behind timeouts, creating a pile-on effect that blocks member requests.
+
+CloudWatch logs show repeated errors:
+```
+2026-09-18 21:10:21.322: [uw] flow-alerts failed: dossierFetch 8000ms local timeout
+2026-09-18 21:10:17.286: [uw] flow-alerts failed: dossierFetch 8000ms local timeout
+```
+
+These occur in clusters during market hours, suggesting a systematic upstream issue with the UW dossierFetch endpoint rather than a transient network glitch.
+
+### Evidence
+
+**CloudWatch ALB TargetResponseTime metrics (2026-09-18, 19:40–21:05 UTC):**
+- Window aggregate (3-hour span):
+  - Avg of averages: **917.8ms** (baseline ~100-200ms)
+  - Max of maximums: **87,212.5ms** (87 seconds!)
+  - Min of averages: 110.2ms
+
+- Recent measurements showing tail-latency spikes:
+  - 19:55 UTC: Max 37.9s
+  - 20:05 UTC: Max 67.6s
+  - 20:10 UTC: Max 69.4s
+  - 20:15 UTC: Max 75.2s
+  - 20:20 UTC: Max 71.5s
+  - 20:25 UTC: Max 72.2s
+  - 20:30 UTC: Max 75.9s
+
+**CloudWatch Logs errors:** 10+ instances of `dossierFetch 8000ms local timeout` in 2-hour window (21:00–21:10 UTC).
+
+### Impact
+
+- Member requests to any route that requires flow-alerts data are blocked for 8+ seconds per timeout
+- ALB records these as slow responses (max 87s), violating latency SLA
+- The timeout is systematic and repeatable, not a transient fluke
+
+### Affected routes/features
+
+Any route reading flow-alerts: 
+- `/api/market/spx/desk` (via `resolveCanonicalDeskGex` → UW flow)
+- `/api/market/spx/play`
+- Thermal heatmap (flow-driven)
+- Vector flow signals
+- Night Hawk play discovery
+
+### Next steps
+
+1. **Immediate (this session):** Verify the UW endpoint itself is healthy and not rate-limiting us. If the `dossierFetch` API is returning errors or timing out on its end, escalate to UW ops.
+
+2. **Mitigation (short-term):** Add a timeout budget/fallback in the flow-alerts provider so a single UW timeout doesn't block the entire request. Currently, the 8-second timeout is hard-blocked and retried, creating the cascade. Consider:
+   - Shorter initial timeout with fire-and-forget background fallback
+   - Fallback to stale cached flow-alerts if UW doesn't respond within 2-3 seconds
+   - Reduce queue wait time in `uw-rate-limiter.ts` during timeout storms
+
+3. **Investigation (parallel):** Check UW's rate limit headers and API health dashboard for 2026-09-18 19:40–21:10 UTC window. Are they throttling us, or is their endpoint genuinely slow?
+
+### Status
+
+**Not fixed** — this is a cross-service dependency issue requiring coordination with UW status/API team.
+
+### Contract relevance
+
+This violates the standing "continuously work on latency/performance" mandate from CLAUDE.md: "website should not lag, it should be very fast and responsive."
+
 ## `scanZeroDteBoard`'s primary FLOW-fetch catch block swallowed errors with no CloudWatch log line — FIXED
 
 > **kind:** `FINDING`
