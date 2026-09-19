@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T19:14:08Z",
-  "notes": "19:01 UTC cycle -- self-authored fix, opened PR #5253. Deep-audited LITE's raw WATCH envelope JSON (not just markdown) and found a genuine, real defect: the top-level 'Invalidation' callout unconditionally closed with live position-management language ('exit or cut size' for LONG, 'cover shorts' for SHORT) even for a WATCH play that was never entered -- LITE's live brief read 'lose 800.00 on a closing basis -> structural support failed; exit or cut size' despite zero position ever opened. Traced this to resolveBreakInvalidation/breakTrigger in play-brief-narrative.ts -- the already-shipped CLOSED-bucket fix for this exact bug class stopped one bucket short, and confirmed it was baked into the test suite: play-brief.test.ts's own 'invalidation prefers a real per-ticker technical break level' test used fixturePlay()'s default WATCH status yet asserted 'exit or cut size' as the CORRECT expected output. Fixed: breakTrigger takes an optional preEntry flag (byte-identical OPEN behavior when omitted), resolveBreakInvalidation derives it from play.status, swaps trailing wording to 'this setup is no longer live -- skip it' (matching deadPlayReason's existing phrasing) when true. RED->GREEN confirmed via git stash. Updated the WATCH-fixture test, added a new OPEN-fixture test proving no regression. Full suite 14871/0/3, tsc clean. Staged finding filed, PR #5253 opened and undrafted (self-authored, CARVE-OUT applies once CI green -- will check next cycle). Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-19-swing-watch-break-invalidation-position-language"
-  ],
+  "last_updated": "2026-09-19T19:16:32Z",
+  "notes": "19:16 UTC cycle -- PR #5253 (my own WATCH-invalidation-wording fix) still in CI: verify + CodeQL in_progress ~2.5min in, enable-automerge/auto-merge already skipped as expected (known token-scope gap, will merge manually once verify is green). No other open swing PRs. Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). A 60min self check-in is already scheduled (~20:16 UTC) for #5253; will also re-check at the next regular trigger.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
