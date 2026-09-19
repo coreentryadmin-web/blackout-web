@@ -38,6 +38,179 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Night Hawk Swings "Current" P&L tile still overflows at phone width — #5257's desktop fix was never verified below 1024px
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Night Hawk Command Deck trade hero — `.nh-deck-trade-hero__metrics` / `.nh-deck-trade-hero__metric.is-primary .v` / `.nh-deck--swing-largo` (`src/app/globals.css`), consumed by `TradeSummaryHero` (`src/features/nighthawk/command-deck/TerminalPremiumPanels.tsx`) on `/nighthawk?view=SWING` |
+| **Severity** | P2 (member-facing — the same defect class as #5257, at the viewport most members actually use for a quick position check) |
+| **Status** | FIXED — `fix/nh-swing-current-tile-mobile-overflow` |
+
+### Root cause
+
+PR #5257 (merged earlier this cycle) fixed the "Current" tile's desktop truncation by widening the
+primary grid column's *relative share* (`1fr` -> `1.5fr`) and dropping the swing-largo font-size
+override back to 22px. Both changes are unconditional (not media-gated), so they apply at every
+viewport — but the PR's own verification (local Playwright screenshots "at the real ~500px hero
+width", plus the live desktop repro) never checked the *absolute* pixel result once the whole hero
+shrinks to phone width. Its own write-up flagged this explicitly as unverified: "Also spot-check the
+same tile at phone width (430px, mobile UA) — this fix only touched the swing-largo desktop-scale
+override and the shared grid rule, so confirm mobile wasn't already fine and isn't now regressed."
+
+This cycle's retry of exactly that check (`proxy-browser.cjs`, 430x932, minted premium session)
+found it was NOT fine: a live click-through to a real HOLD swing position rendered "Current" as a
+visibly truncated `"+$..."`. A direct DOM measurement on the SAME rendered tile confirmed it
+mechanically, not just visually — `getBoundingClientRect`/`scrollWidth` vs `clientWidth` on
+`.nh-deck-trade-hero__metric.is-primary .v` showed **scrollWidth 112px vs clientWidth 74px** for the
+plain text `"+$0.00"` — the shortest, plainest dollar string this field ever produces (no negative
+sign, no thousands separator, minimal digits). If the shortest possible value already overflows,
+every realistic value overflows too: 1.5fr of a ~400px-wide phone hero still isn't enough absolute
+room at 22px, even though it comfortably fixed the desktop case where the hero is ~2-3x wider.
+
+### Evidence
+
+- **Live repro** (`proxy-browser.cjs`, minted premium Clerk session, phone viewport 430x932,
+  `https://blackouttrades.com/nighthawk?view=SWING`, clicked into a real HOLD swing position):
+  "Current" tile visibly rendered `"+$..."` (CSS ellipsis, not a placeholder string — confirmed no
+  such literal string exists anywhere in `TerminalPremiumPanels.tsx`, which only ever renders
+  `${dollarSign}${usd(dollar)}` or an em dash).
+- **Mechanical confirmation** (headless DOM measurement, same viewport, same live production page):
+  `{"text":"+$0.00","scrollWidth":112,"clientWidth":74,"overflowing":true}` on
+  `.nh-deck-trade-hero__metric.is-primary .v` post-hydration (8s initial wait + 8s post-click wait,
+  ruling out a transient pre-hydration render as the cause — an earlier, shorter-waited measurement
+  on a different play happened to catch a frame where the value fit, which is what necessitated this
+  more deliberate re-measurement rather than trusting the first (non-overflowing) sample).
+- CloudWatch (`/ecs/blackout-production`, 15 min then again ~10 min later,
+  `TypeError`/`Unhandled`/`"undefined is not"`) checked twice this cycle, both clean (0 events) —
+  unrelated to this finding, logged per the cycle's standing checklist.
+
+### Blast radius
+
+Same root cause hits every swing play with any dollar-formatted "Current" value viewed on a phone
+(<=480px), not just the one sampled — this is the majority of real traffic to a quick-glance P&L
+check. The 0DTE view shares the same base (non-swing-largo) `is-primary` rule, so it is exposed too,
+just slightly less (18px base vs the swing-largo 22-28px history), and gets the same mobile-width
+protection from this fix since the plain (non-swing-largo) selector is also covered.
+
+### Fix rationale
+
+Added a `@media (max-width:480px)` block, placed after both the base and `.nh-deck--swing-largo`
+`is-primary .v` rules so it wins on source-order for equal specificity:
+
+1. `.nh-deck-trade-hero__metrics` grid-template-columns: primary column widened further, `1.5fr` (the
+   desktop #5257 value) -> `2.5fr`, only below 480px — desktop is completely untouched since the
+   media query gates it.
+2. Both `.nh-deck-trade-hero__metric.is-primary .v` and its `.nh-deck--swing-largo`-scoped
+   counterpart get font-size dropped to `18px` (from 22px) only below 480px — re-capped both because
+   the swing-largo-scoped rule is the one that actually renders on `/nighthawk?view=SWING`, and
+   fixing only the plain selector would look fixed while leaving the real production repro broken.
+
+Chose "more relative share + smaller font, mobile-only" over shrinking the four sibling tiles
+(percentage/rank/age values are already short and don't need protecting) or removing the existing
+overflow/ellipsis clip guard (still needed as a backstop for a genuinely extreme value, e.g. a
+4-digit dollar P&L, which can still occur even at 18px). Verified with a headless DOM re-measurement
+of the same live tile post-fix (not included in this repo, run ad hoc via `proxy-browser.cjs`'s
+`createTunneledContext` helper) plus the new regression test below, which fails RED against the
+pre-fix CSS (git-stash-verified) and passes GREEN post-fix.
+
+Extended `nh-deck-metric-value-overflow-css.test.ts` with a third test asserting: the mobile media
+block exists, its primary column fraction is strictly greater than the desktop 1.5fr, and both the
+plain and swing-largo `is-primary .v` font-sizes inside it are strictly less than the desktop 22px.
+436/436 nighthawk command-deck tests pass, `tsc --noEmit` clean.
+
+## Night Hawk Swings "Current" P&L tile renders as unreadable "$-0…" — hides the trader's own number, found only by rendering the live UI (not the API)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Night Hawk Command Deck trade hero — `.nh-deck-trade-hero__metrics` / `.nh-deck--swing-largo` (`src/app/globals.css`), consumed by `TradeSummaryHero` (`src/features/nighthawk/command-deck/TerminalPremiumPanels.tsx`) on `/nighthawk?view=SWING` |
+| **Severity** | P2 (member-facing — the live/realized dollar P&L on a selected swing play is illegible; every prior swing/Largo audit this session checked the API envelope only, never the rendered pixels, so this class of bug was structurally invisible to them) |
+| **Status** | FIXED — `fix/nh-swing-current-tile-dollar-truncation` |
+
+### Root cause
+
+`TradeSummaryHero`'s "Current" tile is the only one of the 5 hero metrics (Current / Peak / Thesis
+Strength / Rank / Age) whose value is **dollar-formatted** (`usd(dollar)`, e.g. `"-$1.88"`) rather
+than a short percentage/rank/age string — the other four are always ≤~8 characters. Two rules
+compounded against it:
+
+1. `.nh-deck-trade-hero__metrics{grid-template-columns:repeat(5,minmax(0,1fr))}` gave the dollar tile
+   the exact same track width as its structurally-shorter siblings.
+2. `.nh-deck--swing-largo .nh-deck-trade-hero__metric.is-primary .v{font-size:28px}` — the Swings-view
+   override — rendered that one tile at the **largest** font in the row (28px vs 18px for the other
+   four), on the **narrowest available room**.
+
+A prior fix (`nh-deck-metric-value-overflow-css.test.ts`, 2026-09-07) already caught the first-order
+failure mode of this same tile ("+$4.80" bleeding into the next column's text) and added
+`overflow:hidden;text-overflow:ellipsis` as a clip guard. That guard does its job — nothing bleeds —
+but it also means a too-wide value degrades all the way down to **zero readable digits**: a real
+`-$0.85` P&L (closed AAPL 332.5C 3DTE, entry $5.65, live-quoted mid $4.80) rendered as literal
+`"$-0…"` on production. The member cannot recover their own P&L from that string; it isn't
+"somewhat truncated," it's gone.
+
+### Evidence
+
+- **Live repro** (`proxy-browser.cjs`, minted premium Clerk session, desktop 1440×900 + `--desktop`,
+  `https://blackouttrades.com/nighthawk?view=SWING`): the auto-selected play (AAPL 332.5C 3DTE,
+  positionId 38, `GET /api/market/swing/record` confirms `entryPremium:5.65`, `exitPnlPct:-33.19`,
+  `contract.mid:4.8`) rendered `CURRENT` as `$-0…` — cropped/zoomed confirms three literal ellipsis
+  dots, not a decimal point.
+- **Isolated local repro** (Playwright against a static HTML extract of the exact live CSS rules at
+  the real ~500px hero width, no network needed): reproduces the identical `$-0….` clip for a bare
+  `"$-0.85"` string in the pre-fix grid/font rules — confirms the CSS math, not just the one live
+  sample.
+- **Confirms this is a genuinely new class of finding**: every swing/Largo audit this session before
+  this one (API envelope completeness, `/api/market/swing/play-brief` field-by-field checks) reads
+  the same JSON `entryPremium`/`contract.mid` this tile derives from and would report it as
+  correct — because it *is* correct data; the defect is purely in how the rendered pixels present it.
+  CloudWatch (`/ecs/blackout-production`, 15 min, `TypeError`/`Unhandled`/`"undefined is not"`) was
+  also checked this cycle and came back clean (0 events) — unrelated to this finding, logged for
+  completeness per the cycle's standing checklist.
+
+### Blast radius
+
+Same root cause hits every play with a non-trivial dollar swing shown in the Swings view's trade
+hero, not just the one sampled — any OPEN, HOLD, TRIM, or CLOSED swing row whose `mark - entry`
+formats to more than a few characters (which `usd()`'s locale-grouped, up-to-3-decimal format
+readily produces, e.g. `"+$1,240.75"` at the larger end). The 0DTE view shares the same base
+`.nh-deck-trade-hero__metrics`/`.nh-deck-trade-hero__metric.is-primary` rules (22px, not the
+swing-largo 28px) so it was already less exposed, but the widened primary column benefits it too.
+
+### Fix rationale
+
+Two changes, both verified against the live-extracted repro before shipping:
+
+1. `.nh-deck-trade-hero__metrics` grid-template-columns: primary column widened from an even `1fr`
+   to `minmax(0,1.5fr)` (siblings unchanged at `1fr` each) — gives the one structurally-longer value
+   more room without touching the other four tiles' layout.
+2. `.nh-deck--swing-largo .nh-deck-trade-hero__metric.is-primary .v` font-size: `28px` → `22px`,
+   matching the base (non-swing-largo) is-primary size — still visually the emphasized tile against
+   the 18px siblings, just no longer the single biggest contributor to running out of room first.
+
+Deliberately did **not** remove the existing `overflow:hidden;text-overflow:ellipsis` clip guard
+from the 2026-09-07 fix — it stays as a safety net for genuinely extreme values (verified an
+unrealistic `+$1,240.75` case still clips gracefully post-fix, whereas the realistic `-$0.85`/
+`+$4.80` range that actually occurs for this per-share-premium field now renders in full). Did not
+change the dollar-formatting function (`usd()`) itself — it is shared with unrelated whole-dollar
+membership-pricing surfaces and reformatting it here would be a wider, riskier change than the
+layout fix this specific tile needed.
+
+### Verification
+
+- Independent RED→GREEN (`git stash` the CSS-only diff, keep the new test):
+  `npx tsx --experimental-test-module-mocks --test
+  src/features/nighthawk/command-deck/nh-deck-metric-value-overflow-css.test.ts` — 1/2 failed with
+  source reverted (the new assertion on the widened grid column), 0/2 reapplied.
+- Local Playwright before/after screenshots of the exact live CSS rules at the real hero width:
+  pre-fix reproduces `"$-0…."`; post-fix renders `"$-0.85"` in full.
+- `npx tsx --experimental-test-module-mocks --test
+  src/features/nighthawk/command-deck/*.test.ts` — 435/435 pass (12 suites, includes
+  `PlayTerminal.ssr.test.ts`, the other consumer of `nh-deck-trade-hero__metrics`).
+- `npx tsc --noEmit` — clean (CSS-only change, no TS surface touched).
+
 ## Swing WATCH play-brief "Trade manager read" narrative bullet still said "exit or cut size" for a play never entered — sibling of #5253 — FIXED
 
 > **kind:** `FINDING`
