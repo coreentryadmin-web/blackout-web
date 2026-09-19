@@ -591,9 +591,12 @@ function breakTrigger(
   // the identical OPEN-only wording — verified still true via play-brief.test.ts's own
   // "invalidation prefers a real per-ticker technical break level" test, whose fixture defaults to
   // `status: "WATCH"` yet asserted the literal "exit or cut size" string. `preEntry` (derived from
-  // the play's status in resolveBreakInvalidation, never passed by tradeManagerNarrativeSection's
-  // OPEN-only call) swaps the trailing clause to entry-appropriate language — the level-selection
-  // logic above is unchanged and still correct for both buckets.
+  // the play's status, same rule in both callers) swaps the trailing clause to entry-appropriate
+  // language — the level-selection logic above is unchanged and still correct for both buckets.
+  // Both call sites now pass it: resolveBreakInvalidation (fixed by #5253) and
+  // tradeManagerNarrativeSection's own "Break watch" bullet (fixed here, same day — that call site
+  // is NOT OPEN-only in production despite #5253's PR body assuming so; see its own call-site
+  // comment for the live repro that caught it).
   if (play.direction === "LONG") {
     const flipBelowSpot = flip != null && focal.some((l) => l.kind === "gamma_flip" && l.distancePct < 0);
     const stop = support ?? (flipBelowSpot ? flip : null);
@@ -1055,7 +1058,19 @@ export function tradeManagerNarrativeSection(
     vecFlipRaw == null && gexForFlip?.flip != null && gexMatrixStale(gexForFlip, readMs);
   const flip = flipFromStaleGex ? null : flipRaw;
   const focal = spot != null ? collectFocalLevels(ctx, spot) : [];
-  let breakLine = spot != null ? breakTrigger(play, focal, flip) : null;
+  // BUG FIX (2026-09-19, Ask Largo standing mandate, sibling of #5253): this call site was NOT
+  // updated by #5253's preEntry fix, and #5253's own PR body's claim that this function is
+  // "OPEN-only in production" does not hold structurally -- play-brief-intel.ts's real caller
+  // passes the live `bucket` straight through (`tradeManagerNarrativeSection(ctx, bucket)`), and
+  // only bucket==="closed" short-circuits before reaching this line; "watch" falls through to here
+  // exactly like "open" does. Confirmed live: GET /api/market/swing/play-brief for a WATCH play
+  // showed the top-level envelope.invalidation field (resolveBreakInvalidation, fixed by #5253)
+  // correctly saying "this setup is no longer live -- skip it", while this "Trade manager read"
+  // narrative bullet -- built from the exact same breakTrigger() -- still said "exit or cut size"
+  // for the same play. Mirrors resolveBreakInvalidation's own preEntry derivation: only
+  // OPEN/HOLD/TRIM hold a position to exit/cover; watch/committed-but-not-yet-open is pre-entry.
+  const breakPreEntry = play.status !== "OPEN" && play.status !== "HOLD" && play.status !== "TRIM";
+  let breakLine = spot != null ? breakTrigger(play, focal, flip, breakPreEntry) : null;
   // BUG FIX (2026-09-15, Ask Largo standing mandate, forensic batch 33, live repro NN#32): a
   // swing play is always LONG PREMIUM (a bought call for LONG, a bought put for SHORT — see
   // executableFill's own doc comment, terminal-ladder.ts), so it is always SOLD into the BID to
