@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T21:02:17Z",
-  "notes": "21:01 UTC cycle -- light re-check: git synced (no drift), no open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean, weekend quiet continues.",
+  "last_updated": "2026-09-19T21:17:19Z",
+  "notes": "21:16 UTC cycle -- new swing PR spotted: #5257 (sibling session, fix/nh-swing-current-tile-dollar-truncation) -- a genuinely different bug class from today's earlier invalidation-wording fixes: the Night Hawk Swings hero panel's 'Current' P&L tile CSS-truncates real dollar values to literal '$-0...' (28px font on the narrowest grid track of the 5-tile row) -- confirmed already correctly noted as a NEW finding class in the PR's own body (every earlier swing audit this session checked API envelope field-completeness, not rendered pixels). Live proxy-browser repro + isolated Playwright repro, RED->GREEN, 435/435 command-deck tests, tsc clean, market-open validation entry added. Just opened, CI pending -- too fresh to review/merge this cycle, will check next cycle. Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
