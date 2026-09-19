@@ -4,6 +4,30 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-18 (20:22 UTC) — [SEO] PR #5224 live re-verification: HomeGammaPromo CLS fix confirmed in production
+
+**Follow-up to the entry below.** PR #5224 merged cleanly at 19:06:15Z (squash commit `aeb674309`,
+`automerge.yml` worked, all checks green). Per "a merge is not a verification," did not stop at the
+merge — confirmed actual production rollout and live effect before closing this out:
+
+1. **Deploy rollout**: `ecs describe_services` on `blackout-production-cluster`/`blackout-production-web`
+   showed `desired:8 running:8 rolloutState:COMPLETED` on task def `:1675` — full cutover confirmed
+   (checked ~5h post-merge, well past any in-flight-deploy risk after an interrupted earlier attempt).
+2. **Cloudflare purge**: targeted `files` purge of `https://blackouttrades.com/` (never
+   `/_next/static/*`), confirmed `"success": true`.
+3. **Live CLS re-measurement** (`cls-measure.cjs`, post-purge): **desktop 1440×900 → CLS 0 (GOOD)**;
+   **mobile 430×932 → CLS 0.0326 (GOOD)** — both well under the 0.1 threshold and far below the
+   original 0.132 regression this fix targeted.
+4. **Live CSS bundle check** (extra confirmation layer): fetched the homepage's three CSS chunks
+   directly — `146c8792c0bee69c.css` now serves
+   `.rl .gamma-promo-warm{position:relative;padding:2rem 1rem;text-align:center;min-height:14rem;
+   display:flex;align-items:center;justify-content:center}`, i.e. the shipped `min-height:14rem`
+   rule is genuinely live at the edge, not just merged in source.
+
+**Verdict: fix confirmed working in production**, not just in the diff or the merge record. Finding
+closed out. No further action needed on this one — routine heartbeat/RTH/daily-cycle sweeping
+continues per the standing mandate.
+
 ## 2026-09-18 (18:20 UTC) — [SEO] Lane heartbeat: real homepage CLS regression found, root-caused, and fixed — PR #5224 (draft, CI running)
 
 **Severity.** P3 — real, evidence-backed finding, fixed this cycle. Full write-up:
