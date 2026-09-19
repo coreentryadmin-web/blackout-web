@@ -340,7 +340,13 @@ export async function scanZeroDteBoard(flags?: {
     // ingestion admits 0-1DTE prints down to MIN_PREMIUM_NEAR_DATED, this query must not
     // re-exclude them, or the lower ingestion floor accomplishes nothing for FLOW discovery).
     fetchRecentFlows({ since_hours: 7, min_premium: MIN_PREMIUM_NEAR_DATED, order: "premium", limit: 500, max_dte: 1 }).catch(
-      () => {
+      (err) => {
+        // upstream_ok surfaces this on the board payload (health check consumes it), but that
+        // alone leaves CloudWatch with no trace of WHY — unlike the sibling BREAKOUT/PIN
+        // discovery-source catches below (~L515-524, L565-568), which log a reason even though
+        // they too set a health flag. This is the primary FLOW fetch (feeds deriveZeroDteSetups
+        // directly), so a recurring failure here is at least as worth a log line as those.
+        console.warn("[zerodte-scan] primary flow fetch failed — board degrades to empty FLOW origin this cycle:", err);
         upstreamOk = false;
         return [];
       }
