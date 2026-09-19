@@ -38,6 +38,196 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## `scanZeroDteBoard`'s primary FLOW-fetch catch block swallowed errors with no CloudWatch log line — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR TBD) |
+| **File** | `src/lib/zerodte/scan.ts` (~L342-350) |
+| **Severity** | P3 — observability gap, not a functional bug |
+
+### What was wrong
+
+`scanZeroDteBoard`'s primary `fetchRecentFlows(...)` call (the FLOW discovery origin's
+input — feeds `deriveZeroDteSetups` directly) is wrapped in `.catch(() => { upstreamOk =
+false; return []; })`. On a real failure this degrades the board to an empty FLOW origin
+and flips `upstream_ok: false` on the board payload — a real, monitored health signal
+(`healthcheck:0dte` and the live-monitor triggers read it) — but the catch block itself
+never wrote anything to CloudWatch. A recurring failure here would be visible only as a
+board-level flag, with zero trace of *why* it failed, unlike its sibling discovery-origin
+catches in the same file: the BREAKOUT catch (~L515-524) and the PIN catch (~L565-568)
+both set an equivalent health flag (`discoveryHealth.BREAKOUT`/`.PIN = "failed"`) **and**
+log a `console.warn` with the caught error. The primary FLOW fetch — arguably the more
+load-bearing of the three origins — was the one missing the log line.
+
+### Why it wasn't caught earlier
+
+The failure mode is silent by construction (best-effort degrade, by design — many other
+`.catch(() => ...)` blocks in this same file are intentionally silent for genuinely
+low-stakes reads, e.g. the multi-day-memory flow fetch at L353-358, `fetchLatestNighthawkEdition`
+at L348). This one sits in that same silent-by-default company even though it feeds the
+board's primary discovery input, so nothing flagged it as an outlier until a direct
+line-by-line comparison against its logged siblings.
+
+### Fix
+
+Added one `console.warn` inside the existing catch, naming the failure and its effect
+("board degrades to empty FLOW origin this cycle"), with the caught error attached — no
+behavior change, `upstreamOk = false` and the `[]` fallback are untouched. Matches the
+exact logging shape already used by the BREAKOUT/PIN catches a few hundred lines below.
+
+### Evidence
+
+- `npx tsc --noEmit` on the file: clean.
+- `npx tsx --experimental-test-module-mocks --test src/lib/zerodte/scan.ts`: 42/42 pass
+  (no new tests added — this is a pure logging addition with no branch/behavior change to
+  assert against; existing tests already cover the `upstreamOk`/`[]` fallback behavior,
+  which is unchanged).
+- CloudWatch `/ecs/blackout-production` grepped for `TypeError|Unhandled|undefined` over
+  the last 15 min (2026-09-19, Saturday, market closed): 0 matches — no active incident,
+  this was a proactive consistency fix, not a response to an observed outage.
+
+### Blast radius
+
+None beyond this one catch block — no other call site reads `upstreamOk` besides the
+existing `upstream_ok` board-payload field (grep-confirmed, 2 call sites total: the
+assignment in the catch and the payload field itself).
+
+## Swing discovery: `fetchPositioningHits` origin-fetch failure was swallowed silently — FIXED
+
+> **kind:** `FINDING`
+
+**Date:** 2026-09-19
+**Component:** `src/lib/swing/discovery.ts` (`runSwingDiscoveryScan`, V2 Tier-0 POSITIONING origin)
+**Severity:** P3 (observability gap — no production behavior changed, but a real outage was
+invisible in CloudWatch)
+
+### Root cause
+
+`runSwingDiscoveryScan` fetches the V2 Tier-0 POSITIONING origin two ways, preferring
+`deps.fetchPositioningHits` (direction-aware) and falling back to `deps.fetchPositioningTickers`
+(tickers only) when the richer accessor is absent:
+
+```ts
+if (engineV2 && deps.fetchPositioningHits) {
+  try {
+    const hits = await deps.fetchPositioningHits();
+    ...
+  } catch {
+    originFetchErrors.push("POSITIONING");   // <-- no log
+  }
+} else if (engineV2 && deps.fetchPositioningTickers) {
+  const r = await fetchTier0OriginTickers("POSITIONING", deps.fetchPositioningTickers);
+  ...
+}
+```
+
+Every *other* Tier-0 V2 origin fetch (the `fetchPositioningTickers` fallback, plus CATALYST,
+BANGER, VECTOR) routes through the shared `fetchTier0OriginTickers` helper
+(`src/lib/swing/v2/tier0-origin-fetch.ts`), which logs `console.warn("[swing-discovery] Tier-0
+origin <kind> fetch failed:", err)` on every throw before returning the honest
+`{tickers: [], fetchError: true}` shape. The **preferred** `fetchPositioningHits` path — the one
+production actually wires (it carries `direction`, used for the Q5 direction-disagreement drop) —
+had its own bare `catch {}` that recorded the failure into `originFetchErrors` (so
+`recall.tier0OriginFetchErrors` was still correct) but never logged anything. A real POSITIONING
+origin outage would silently vanish from CloudWatch and be distinguishable from "the origin
+legitimately returned zero names this scan" only by someone reading the scan's own JSON result —
+nobody tails that per-scan.
+
+This is the same class of bug as the same-cycle `scan.ts` FLOW-fetch logging fix (PR #5249):
+a catch block sets a degraded/error flag but doesn't log, inconsistent with its own siblings in
+the same file.
+
+### Evidence
+
+RED→GREEN regression test added to `src/lib/swing/discovery.test.ts`
+(`runSwingDiscoveryScan: logs (not just records) when the preferred fetchPositioningHits origin
+throws`): spies on `console.warn`, forces `fetchPositioningHits` to throw, asserts a POSITIONING
+warning was logged. Confirmed RED (fails) on `discovery.ts` pre-fix via `git stash`, GREEN
+(passes) with the fix. Full `npx tsc --noEmit` clean; `discovery.test.ts` 28/28 (29/29 with the
+new test) pass on Node 20.
+
+### Fix
+
+Added `console.warn("[swing-discovery] Tier-0 origin POSITIONING fetch failed:", err)` to the
+`fetchPositioningHits` catch block, matching `fetchTier0OriginTickers`'s exact log shape/format so
+a future CloudWatch filter on `[swing-discovery] Tier-0 origin` catches this path too. No
+behavior change — `originFetchErrors`/`recall.tier0OriginFetchErrors` were already correct;
+this only adds the missing log line.
+
+### Blast radius
+
+Single call site — `fetchPositioningHits` is only read in `runSwingDiscoveryScan`. No other
+consumer duplicates this catch shape.
+
+| **Status** | FIXED |
+
+## `evaluateSwingCortexForCommit`'s fail-closed catch swallowed the thrown error with no CloudWatch log line — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (PR TBD) |
+| **File** | `src/lib/swing/v2/cortex-swing.ts` (~L84-97) |
+| **Severity** | P3 — observability gap, not a functional bug |
+
+### What was wrong
+
+`evaluateSwingCortexForCommit` (Swing G-S14 Cortex preflight, called once per Tier-1
+candidate from `discovery.ts`'s commit path) wraps its `evaluate(...)` call in a
+`try { ... } catch (err) { ... }` that fails closed correctly — it returns
+`swingCortexUnavailableResult(...)` carrying the caught error's message in `reason`, which
+blocks the commit via the `gate:G-S14:cortex_unavailable` token — but the catch block
+itself never wrote anything to CloudWatch. The caller (`discovery.ts`, line ~1073) only
+records `pre.blockedBy` into `c.preflightV2BlockedBy`; it never logs `pre.reason` either.
+So a real production throw here (a Vector/Cortex upstream timeout, a malformed response,
+etc.) was observable ONLY by reading the DB-pinned per-candidate block token after the
+fact — zero trace of *why* it threw at the moment it happened, unlike its sibling catch in
+the same `v2/` directory: `tier0-origin-fetch.ts`'s catch (L22-25) sets an equivalent
+`fetchError: true` flag **and** logs `console.warn(...)` with the caught error. The Cortex
+preflight catch was the one missing the log line.
+
+### Why it wasn't caught earlier
+
+Same shape as the two catches fixed earlier today in `zerodte/scan.ts` and
+`swing/discovery.ts` (#5249/#5250): a catch that correctly sets a fail-closed
+error/degraded flag reads as "handled" at a glance, because the return value is a
+well-formed result object with a descriptive `reason` string baked in. The bug is not in
+the return value — it's the missing side-channel trace that would let an operator
+distinguish "Cortex genuinely vetoed this ticker" from "Cortex preflight infrastructure is
+throwing" without correlating DB rows after the fact. Found by a direct sibling-comparison
+sweep of every `catch (` block across `src/lib/swing/v2/*.ts`.
+
+### Fix
+
+Added one `console.warn` inside the existing catch, naming the ticker/direction and the
+fail-closed effect, with the caught error attached — no behavior change: the fail-closed
+`swingCortexUnavailableResult(...)` return and its message text are untouched. Matches the
+exact logging shape already used by `tier0-origin-fetch.ts`'s sibling catch a few files
+over.
+
+### Evidence
+
+- New regression test `evaluateSwingCortexForCommit: thrown error is logged, not silently
+  swallowed` (`src/lib/swing/v2/cortex-swing.test.ts`) — stashed the fix and confirmed RED
+  (`0 !== 1`, no `console.warn` call recorded) before restoring it and confirming GREEN
+  (6/6 tests in the file pass).
+- `npx tsc --noEmit -p tsconfig.json`: clean.
+- Full suite: `npm test` — 14869 pass / 0 fail / 3 skipped (Node 20, `/opt/node20/bin`).
+- CloudWatch `/ecs/blackout-production` grepped for `TypeError|Unhandled|undefined` over
+  the last 15 min (2026-09-19, Saturday, market closed): 0 matches — no active incident,
+  this is a proactive consistency fix, not a response to an observed outage.
+
+### Blast radius
+
+None beyond this one catch block. `evaluateSwingCortexForCommit` has exactly one call
+site (`discovery.ts` L1072, read-only, not modified by this PR per this session's standing
+instruction not to touch `scan.ts`/`discovery.ts`/`question-intent.ts` again today) and
+`swingCortexUnavailableResult` is a pure helper reused only inside this same file.
+
 ## Largo ticker extractor: 5 more everyday trading words silently resolve to unrelated tickers
 
 > **kind:** `FINDING`
