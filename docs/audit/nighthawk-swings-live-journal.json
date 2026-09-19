@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T19:33:00Z",
-  "notes": "19:31 UTC cycle -- PR #5253 already merged (a5b6da0ba, by a parallel session on this account at 19:26:25Z, verify+CodeQL both green) -- confirmed reachable from origin/main. Cancelled the now-unneeded 60min self-check-in trigger. Spot-checked LITE's live brief post-merge: still shows the OLD 'exit or cut size' wording -- expected ECS deploy lag (merge-to-deploy pipeline documented in CLAUDE.md, not instant), not a regression or a bad merge. Will re-verify the corrected wording is actually live in a future cycle once the deploy rolls out. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
+  "last_updated": "2026-09-19T19:47:40Z",
+  "notes": "19:46 UTC cycle -- PR #5253's fix CONFIRMED LIVE: LITE's WATCH brief now reads '...structural support failed; this setup is no longer live -- skip it.' (was 'exit or cut size') -- full lifecycle closed (found live-only anomaly -> confirmed via test-suite fixture -> fixed with RED->GREEN proof -> PR opened/undrafted -> merged by parallel session -> deploy verified live), same cycle turnaround. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean going forward.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
