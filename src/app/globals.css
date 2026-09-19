@@ -23294,7 +23294,11 @@ html.product-shell .nav-mega {
 .nh-deck--swing-largo .nh-deck-trade-hero__dir{font-size:11px}
 .nh-deck--swing-largo .nh-deck-trade-hero__metric .k{font-size:11px;color:#B8BDC8;letter-spacing:.12em}
 .nh-deck--swing-largo .nh-deck-trade-hero__metric .v{font-size:18px;color:#F8FAFC}
-.nh-deck--swing-largo .nh-deck-trade-hero__metric.is-primary .v{font-size:28px}
+/* Was 28px — at that size even a short dollar value like "-$1.88" overflowed the (now-widened,
+   see the base rule above) grid column and got ellipsis-clipped to "$-0…", hiding the number
+   entirely. 22px matches the non-swing-largo is-primary size and still reads as the emphasized
+   tile against the 18px siblings. */
+.nh-deck--swing-largo .nh-deck-trade-hero__metric.is-primary .v{font-size:22px}
 .nh-deck--swing-largo .nh-deck-trade-hero__chip{font-size:11px;color:#D1D5DB;border-color:rgba(148,163,184,.35)}
 .nh-deck--swing-largo .nh-deck-lifecycle-strip__lab{font-size:10px;color:#7DD3FC}
 .nh-deck--swing-largo .nh-deck-lifecycle-strip__val{font-size:13px;font-weight:800;color:#F8FAFC}
@@ -23527,7 +23531,14 @@ html.product-shell .nav-mega {
 .nh-deck-trade-hero__headrow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .nh-deck-trade-hero__identity{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .nh-deck-trade-hero__conf-badge{align-self:flex-start}
-.nh-deck-trade-hero__metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;
+/* Current gets a wider track than its four siblings: it is the only tile whose value is
+   dollar-formatted (usd(), e.g. "-$1.88") rather than a short percentage/rank/age string, and it
+   renders at the largest (is-primary) font in the row — 1fr starved it identically to every other
+   tile even though its content is structurally longer, which is what produced the "$-0…" ellipsis
+   below (live repro, closed AAPL 332.5C 3DTE, /nighthawk?view=SWING: "Current" rendered "$-0…" for
+   a real -$0.85 P&L, silently hiding the trader's own number — see the swing-largo override two
+   rules down for the even-worse 28px case). */
+.nh-deck-trade-hero__metrics{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(4,minmax(0,1fr));gap:8px;
   margin-top:10px;padding-top:10px;border-top:1px solid var(--dk-border-subtle)}
 .nh-deck-trade-hero__metric{display:flex;flex-direction:column;gap:3px;min-width:0}
 .nh-deck-trade-hero__metric .k{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--dk-text-secondary)}

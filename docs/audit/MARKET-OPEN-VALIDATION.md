@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-09-19 Night Hawk Swings "Current" tile dollar-value truncation fix (PR pending)
+
+**What was fixed:** the Night Hawk Command Deck trade hero's "Current" P&L tile (the only
+dollar-formatted metric among the 5 hero tiles, and rendered at the largest font in the Swings
+view) shared an even 1/5 grid column with 4 structurally-shorter percentage/rank/age tiles —
+production live-repro'd a real `-$0.85` P&L rendering as literal `"$-0…"`, hiding the trader's own
+number entirely. Found this cycle's first live-UI pass on `/nighthawk?view=SWING`
+(`proxy-browser.cjs`, minted premium session) rather than an API-level check — every prior Ask
+Largo audit this session read the same underlying JSON and would have called it correct, since the
+data itself IS correct; the defect is purely in the rendered pixels. Fixed by widening the primary
+grid column (`1fr` → `1.5fr`) and un-inflating the swing-largo view's primary font-size
+(`28px` → `22px`, matching the base size). Full write-up:
+`docs/audit/findings-staging/2026-09-19-nh-swing-current-tile-dollar-truncation.md`.
+
+**Specific thing to check once this deploys and RTH is live:** open `/nighthawk?view=SWING` on
+desktop (≥1024px, so the swing-largo CSS variant is in effect) with any OPEN/HOLD/TRIM/CLOSED swing
+play selected whose entry premium and live/exit mark differ by a non-trivial dollar amount (most
+real rows — this isn't a rare-state fix like the one below), and confirm the "Current" tile shows
+the FULL dollar string (e.g. `"-$1.88"` or `"+$4.80"`) with no ellipsis, rather than a truncated
+`"$-0…"`/`"$1,2…"`-shaped clip. Also spot-check the same tile at phone width (430px, mobile UA) —
+this fix only touched the swing-largo desktop-scale override and the shared grid rule, so confirm
+mobile wasn't already fine and isn't now regressed.
+
 ## WATCH LIST — 2026-09-19 Ask Largo `crossDeskCoaching` 4th-conflict silent-drop fix (PR pending)
 
 **What was fixed:** `crossDeskCoaching`'s "Cross-desk friction" narrative line
