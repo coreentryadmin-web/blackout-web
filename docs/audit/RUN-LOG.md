@@ -4,6 +4,39 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-19 (12:16 UTC) — [SEO] Lane heartbeat: clean cycle, both prior fixes re-validated live, no new work forced
+
+Weekend/market-closed cycle. Full 3-step loop run:
+
+**Step 1 (validate shipped)**: purged Cloudflare edge, re-measured homepage desktop CLS live —
+**0.0298, GOOD** (still comfortably under 0.1; consistent with the recent HomeGammaPromo fix
+staying resolved). `/api/og` fetched unauthenticated — **HTTP 200, `content-type: image/png`,
+1200×630, `x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`** — a real crawlable OG
+image, not stale-cached. Both #2453 and #2448 confirmed still holding on production.
+
+**Step 2 (unblock)**: `agent-pr-sweep.mjs` → **0 open agent PRs**. Confirmed #5238/#5239/#5240 (the
+prior cycle's work, incl. the dividend-yield calendar-drift fix that superseded my closed duplicate
+#5241) all merged cleanly. Nothing stuck, nothing red.
+
+**Step 3 (new work)**: re-checked the heartbeat's named GA4→Google Ads conversion gap — confirmed
+still unconfigured live (`gtag('config','G-YLN4K37KYF')` fires on the homepage, no matching
+`gtag('config','AW-...')` follows it, meaning `googleAdsConversionId()` is still resolving null).
+This is not new information: RUN-LOG already has 7+ prior entries documenting this exact gap since
+it surfaced, and it needs an operator/ads-lane action (a real Google Ads account conversion ID +
+labels) that no code change here can supply — re-logging it again would be exactly the kind of
+busywork the swing lane's own journal explicitly calls out avoiding on a clean cycle. Did not
+re-add another duplicate entry for it.
+
+Checked one concrete GSC striking-distance candidate instead (`dealer gamma`, pos 18.6, 21
+impressions, 0 clicks) against `/learn/dealer-gamma-options-flow-guide` — the page already targets
+this exact phrase heavily (meta title, meta description, `targetKeyword`, multiple H2s, dense body
+usage). A short 2-word query sitting at position ~18 against a page already this saturated with the
+term reads as authority-limited (GSC's own DEEP DEMAND bucket shape), not an on-page gap — forcing a
+content change here would not plausibly move it and would just be edit-for-the-sake-of-edit. No PR.
+
+**Verdict: genuinely clean cycle.** Nothing broken, nothing stuck, no fabricated finding. Normal
+heartbeat/RTH/daily-cycle sweeping continues on the next scheduled trigger.
+
 ## 2026-09-19 (00:45 UTC) — [SEO] Correction: PR #5241 (below) was a duplicate — closed in favor of #5240
 
 **Correction to the entry directly below.** After opening #5241, syncing back to `main` surfaced a
