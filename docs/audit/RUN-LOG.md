@@ -4,6 +4,28 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-19 (14:05 UTC) — [SEO] Daily growth cycle: no new opportunities, real small positive movement in the 28d trend
+
+1. **Opportunity scan**: same 3 striking-distance queries as the last several cycles (`dealer
+   gamma` pos 18.6, `gamma three trading` pos 13.6, `is 0dte gambling` pos 11.5), CTR-gap 0, nothing
+   new entered striking distance. All three already registered in `SEO-GROWTH-STRATEGY.md` since
+   2026-09-15 as well-optimized in existing content — not churning on-page edits per the standing
+   rule against editing already-good pages.
+2. **Live re-verify**: skipped per rule 6 — robots.txt/entity JSON-LD confirmed live in the 09-18
+   18:20 UTC cycle (~20h ago), CLS/`/api/og` confirmed live this morning's 12:16 UTC cycle (~2h
+   ago), both within the 3-day window.
+3. **Trend**: `gsc-search-analytics.mjs --days=28` (window 2026-08-20→09-16): clicks=17,
+   impressions=1462, CTR=1.16%, **avgpos=26.8** — vs the last recorded pull (window
+   2026-08-16→09-12: clicks=17, impressions=1613, CTR=1.05%, avgpos=32.0). Real movement: average
+   position improved **32.0 → 26.8** (a meaningful ~5-position gain) and CTR ticked up 1.05%→1.16%,
+   while impressions dipped ~9% on the rolling window shift — clicks held flat at 17. No single
+   shipped change obviously explains the position gain (nothing new merged in this exact window
+   that targets these specific queries); most likely the ordinary accumulation of the several
+   pillar-guide/FAQ/entity-JSON-LD work shipped over the preceding weeks compounding, not one
+   isolated fix. Noting the movement rather than overclaiming a specific cause.
+4. **Housekeeping**: `agent-pr-sweep.mjs` → 0 open agent PRs, nothing stuck. No FINDINGS.md-conflict
+   PRs to leave alone.
+
 ## 2026-09-19 (12:16 UTC) — [SEO] Lane heartbeat: clean cycle, both prior fixes re-validated live, no new work forced
 
 Weekend/market-closed cycle. Full 3-step loop run:
