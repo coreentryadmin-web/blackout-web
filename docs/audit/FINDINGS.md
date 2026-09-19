@@ -38,6 +38,208 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing brief never disclosed how thin the evidence read was at commit, despite the identical fact already surfacing pre-entry on WATCH candidates
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo swing play-brief — `whyThisSetupSection` (`src/lib/swing/play-brief-intel.ts`), plumbing across `live-plays.ts`/`closed-plays.ts`/`horizon-plays.ts`/command-deck types+adapters/`play-brief-resolve.ts` |
+| **Severity** | P3 (member-facing narrative quality / Largo product-contract historical-context + evidence points) |
+| **Status** | FIXED — `fix/swing-entry-present-pillars` |
+
+### Root cause
+
+`dossier.ts`'s `SwingDossier.dataQuality` (`presentPillars`/`degraded`, computed honestly at commit
+from the 7 evidence pillars) gets pinned into every committed position's
+`feature_vector.present_pillars`/`dq_degraded` columns (`feature-vector.ts`, wired at commit time and
+echoed on every later `manage-sync.ts` snapshot) — but was never read back out anywhere in the
+serving/brief layer for an already-committed OPEN or CLOSED position.
+
+A pre-entry WATCH candidate's identical read already surfaces as a "thin read — N/7 pillars grounded"
+thesis-health note the instant it degrades (`serving-ingest.ts`'s `swingServingMetaFromDossier`) — a
+member sees it before committing. Once committed, that same fact — how thin the evidence actually was
+when real capital went in — silently disappears: `livePlayFromSwingPosition`/`closedDeckSourceFromRow`
+both already read `row.feature_vector.evidence_score` for the score number, but neither ever read the
+two sibling columns sitting right next to it.
+
+### Evidence
+
+Confirmed `present_pillars`/`dq_degraded` are real, already-pinned DB columns
+(`feature-vector.ts` lines 62-63, 131-132, 199-200, 234), `dossier.ts`'s `dataQuality.degraded`
+threshold (`presentPillars < MIN_PRESENT_PILLARS || missing.includes(CRITICAL_PILLAR)`, line 173),
+and `serving-ingest.ts`'s live "thin read — N/7 pillars grounded" note (line 204) — the exact same
+underlying fact, already disclosed pre-entry, silently dropped post-commit. Same "structural absence,
+not staleness gap" shape `live-plays.ts`'s own comment already names for the
+`entryTriggerUnderlyingPx`/`committedAt`/`firstSeenAt` fields it was wired in to fix.
+
+### Blast radius
+
+Additive field threaded through the full pipeline: `live-plays.ts` (new pure helper
+`entryPresentPillarsFromFeatureVector`, wired into `livePlayFromSwingPosition`), `closed-plays.ts`
+(same helper, `closedDeckSourceFromRow`), `horizon-plays.ts` / `command-deck/types.ts` /
+`command-deck/adapters.ts` / `play-brief-resolve.ts` (plumbing `entryPresentPillars` through
+`HorizonPlay` → `HorizonDeckSource` → `TerminalPlay`), `play-brief-intel.ts`'s `whyThisSetupSection`
+(the render line). No existing behavior changed — every new field is optional and additive.
+
+### Fix rationale
+
+Deliberately returns null (never surfaced) unless the read was actually thin at commit — same
+threshold the WATCH-lane note itself gates on — so a normal, well-grounded entry renders nothing
+extra, mirroring the pre-entry note's own "only when it matters" discipline rather than cluttering
+every brief with a number that is unremarkable the overwhelming majority of the time.
+
+### Verification
+
+- Independent RED→GREEN (reverted only the 7 source files, kept the tests):
+  `npx tsx --experimental-test-module-mocks --test src/lib/swing/live-plays.test.ts
+  src/lib/swing/play-brief-intel.test.ts` — 6/180 failed with source reverted, exactly the new
+  assertions. Reapplied — 180/180 pass.
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/live-plays.test.ts
+  src/lib/swing/play-brief-intel.test.ts src/lib/swing/play-brief.test.ts
+  src/lib/swing/play-brief-resolve.test.ts src/lib/swing/closed-plays.test.ts
+  src/features/nighthawk/command-deck/adapters.test.ts` — 429/429 pass.
+- `npx tsc --noEmit -p .` — clean.
+- Full `npm test` (Node 20) — 14614/14617 pass, 0 fail, 3 pre-existing skips (a first run showed 1 unrelated flake with no reproducing detail captured; an immediate full re-run on the same commit came back 100% clean, matching CI's own green `verify` check on the same SHA).
+
+## 2026-09-18 — SPX desk GEX sticky fallback discarded numeric values
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 |
+| **Area** | `spx-desk.ts` GEX fallback |
+| **Status** | FIXED |
+
+### Symptom
+
+When a live GEX heatmap fetch failed or timed out, `stickyDeskGexFallback()` returned `null` for `gex_net`, `gex_king`, and `max_pain` despite setting `gex_stale: true` and preserving walls/flip. The API contract (line 1039 comment) states that `gex_stale: true` means "walls are REAL but not live" — implied sticky numeric values — but the implementation contradicted the documentation by discarding them.
+
+Health-check on 2026-09-18 found `/api/market/spx/desk` returning `gex_king: null` while `/api/market/spx/play` (same cache key path) cited live values in the same moment, indicating one fetch succeeded while the other's fallback discarded its last-good state.
+
+### Root cause
+
+`stickyDeskGexFallback()` (lines 243-268) returned `gex_net: null, gex_king: null, max_pain: null` when the upstream fetch failed, instead of preserving the values from the prior successful fetch. The function already preserved `lastGoodGammaFlip`, `lastGoodGexWalls`, and `lastGoodStrikeLevels` — the missing preservation was the three numeric GEX fields only.
+
+### Fix
+
+- Added three sticky variables at module scope (lines 155-157): `lastGoodGexNet`, `lastGoodGexKing`, `lastGoodMaxPain`
+- Capture these values in `resolveCanonicalDeskGex()` (lines 439-441) when a successful fetch occurs, following the same pattern as `lastGoodGammaFlip` and `lastGoodGexWalls`
+- Modified `stickyDeskGexFallback()` to return these sticky values instead of `null` (lines 257-259)
+
+### Evidence
+
+- `spx-desk-offhours-spot.test.ts` — source-code assertions verifying:
+  1. Sticky variables are declared
+  2. `stickyDeskGexFallback()` returns the sticky values, not null
+  3. `resolveCanonicalDeskGex()` captures the values on successful fetch
+
+### Contract validation
+
+The fix aligns the implementation with the documented contract: when `gex_stale: true`, the returned `gex_net`/`gex_king`/`max_pain` are now "sticky last-good, not live" (preserved from prior successful fetch), consistent with how walls are already preserved.
+
+### RTH validation
+
+- `/api/market/spx/desk` and `/api/market/spx/play` now agree on GEX numeric values when the matrix fetch times out mid-session
+- GEX values persist as sticky across brief upstream outages, with the age badge signaling staleness to the UI
+
+## Shared tier cache re-hit Clerk's getUser every ~1s SSE tick for a userId Clerk permanently 404s on — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Area** | `src/lib/tier-cache.ts` (`resolveUserTier`), shared by every tier-gated page/API and all three long-lived SSE streams (`market/vector/stream`, `market/zerodte/marks/stream`, `market/flows/stream`) |
+
+### How found
+
+Live CloudWatch Logs sweep (`/ecs/blackout-production`, DISCOVERY-lane hourly cycle, off-hours/
+weekend), filtering the last hour for `ERROR`/`error`/`Error`: 30 matching lines, ~15 of them the
+repeating three-line tail of a pretty-printed Clerk SDK error object (`clerkError: true`, `code:
+'api_response_error'`, `errors: [Array]`). Pulling the full multi-line record (`get_log_events`
+around the timestamp) showed the real message:
+
+```
+[tier-cache] Clerk getUser failed and no cached tier: a: Not Found
+    ... at async f (.next/server/app/api/market/zerodte/marks/stream/route.js:1:7952)
+  status: 404,
+```
+
+Widening the CloudWatch query to the full incident window found **126 identical occurrences
+across 8 distinct ECS log streams (replicas) between 21:39:08 and 21:47:08 UTC** — an ~8-minute
+burst that self-resolved once the underlying SSE connection(s) closed, at a rate of roughly one
+failed Clerk `getUser` call per second, consistent with the 0DTE marks-stream route's `TICK_MS =
+1_000` tick interval.
+
+### Root cause
+
+`resolveUserTier` (`tier-cache.ts`) is a 60-second success cache in front of Clerk's
+`users.getUser` — its own doc comment explains it exists specifically because *"each [call site]
+used to make a fresh clerkClient.users.getUser() call — a storm that hit Clerk's Backend API rate
+limit."* That comment is correct for the **success** path (a valid, existing userId whose tier is
+looked up repeatedly) — one Clerk call collapses to ~one per minute.
+
+It does not hold for the **failure** path. On a Clerk `getUser` failure with no usable cached tier
+(the exact case a hard 404 for a deleted/invalid `userId` produces — this is not a transient
+"Clerk is down" blip, it will 404 identically on every subsequent call), `resolveUserTier` throws
+`TierUnavailableError` and caches **nothing** — the next call, one tick later, repeats the exact
+same doomed Clerk request. All three SSE stream routes call `recheckSseUserEntitlement` →
+`resolveUserTier` inside a per-tick `send()` on a `setInterval(..., 1000)` (marks/vector) or on
+every live flow event (flows route); when the verdict comes back `"unavailable"` the route just
+`return`s for that tick and lets the interval fire again — so for the entire lifetime of a stale
+SSE connection carrying such a `userId`, the app re-hits Clerk's Backend API roughly once per
+second, per open connection, per replica — precisely the "storm" scenario the 60s cache exists to
+prevent, just reached from the one code path that was never given a negative-result cache.
+
+### Fix
+
+Added a second, small, bounded Map (`tierFailCache`, same insertion-order LRU + capped-size
+pattern already used by `tierCache` itself) holding `userId → last-failure timestamp`, with a
+15-second backoff (`TIER_FAIL_BACKOFF_MS`, well under the 60s success TTL so a real Clerk recovery
+is still felt fast). `resolveUserTier` checks it right after the existing fresh-cache check: a
+recent failure short-circuits straight to the same stale-tier-or-throw decision a fresh Clerk
+attempt would make (`staleTierOrUnavailable`, extracted from the existing catch-block logic so
+both paths share one decision, not two copies), without ever calling Clerk again until the backoff
+expires. A successful call clears the entry; `invalidateTierCache` (and therefore
+`publishTierChanged`, called after a confirmed Whop/Clerk metadata update) also clears it, so an
+explicit invalidation is never held back by a backoff it just armed. The backoff-skip path does
+**not** log (the real attempt already logs once when the failure actually happens), so this also
+cuts the matching CloudWatch log volume from ~1/sec to ~1/15s during such a burst — a small but
+real side benefit given CloudWatch Logs ingestion cost scales with line count.
+
+### Blast radius
+
+One file changed (`src/lib/tier-cache.ts`). Every caller of `resolveUserTier` benefits uniformly
+and automatically — `market-api-auth.ts`'s API tier gate, `auth-access.ts`'s page-render gate, and
+`sse-stream-entitlement.ts`'s `recheckSseUserEntitlement` (and therefore all three SSE stream
+routes) — with zero change to any caller's code or to the happy-path/first-failure behavior
+(same return values, same first-failure log line, same `TierUnavailableError` type). Nothing else
+touches `tierCache`/`tierFailCache` internals.
+
+### Fix rationale
+
+A short negative-cache is the minimal fix that matches the existing success-cache's own design
+intent (bounded staleness, never silently over-grants access, degrades the same way to the
+caller). Considered and rejected: backing off inside the SSE routes themselves instead (would need
+duplicating the same logic three times, in three files, for a problem that is really about the
+shared tier resolver, not about SSE specifically — `resolveUserTier` is also called from plain
+page renders and REST API routes, which get the same benefit for free with a shared fix and would
+not with a route-local one); a longer backoff (weighed against how fast a real Clerk recovery
+should be felt — 15s keeps that fast while still cutting the per-second storm by ~15x).
+
+### Evidence
+
+**RED→GREEN**: new `src/lib/tier-cache-fail-backoff.test.ts` (3 tests, `node:test` +
+`mock.module`, same harness as the existing `tier-cache-jwt-downgrade.test.ts`). Stashed the fix
+and re-ran: the "repeated calls within the backoff window make exactly ONE Clerk call" test failed
+(`expected: 1, actual: 6` — 6 real Clerk calls for 6 ticks, reproducing the storm). Restored the
+fix: all 3 pass (1 Clerk call for 6 ticks; a fresh 60s cache hit still short-circuits before any
+backoff check; `invalidateTierCache` clears the backoff so an explicit invalidation isn't held
+back). Existing `tier-cache-freshness.test.ts` (3/3) and `tier-cache-jwt-downgrade.test.ts` (3/3)
+still pass unchanged. `npx tsc --noEmit`: clean.
+
 ## Night Hawk Swings "Current" P&L tile still overflows at phone width — #5257's desktop fix was never verified below 1024px
 
 > **kind:** `FINDING`
