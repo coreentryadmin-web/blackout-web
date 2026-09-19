@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T15:48:09Z",
-  "notes": "15:46 UTC cycle -- full LARGO-PRODUCT-CONTRACT.md C1-C10 pass against CRWD:39's raw envelope JSON (not just markdown) this time. C1 time: asOf + session_date present at envelope root AND per-evidence/per-level provenance.asOf. C2 freshness: every evidence/level item carries its own freshness+asOf, not one blanket flag. C3 absence: unavailableSources has 9 real entries, each with reason/what_is_missing/retryable, never a bare []. C6 confidence: correctly absent from the whole envelope (thesis health explicitly withheld with a stated reason for committed positions, never fabricated). Investigated one thing that looked suspicious at first: GEX/Vector levels show freshness:'live' asOf 'Sat 2026-09-19 11:47 ET' -- markets are closed (weekend), so 'live' at first read looks like it could misrepresent a stale Friday close as current. Traced the freshness computation (play-brief-absence.ts's age-bucket thresholds): it's correctly age-based, not market-hours-aware, and that's the RIGHT design, not a bug -- when the market is closed, a fresh query returning Friday's unchanged close IS the current/live answer (there's no newer data to be stale relative to); conflating 'market moved' with 'data freshness' would make every weekend read show false 'stale' warnings on genuinely current levels, training members to distrust accurate data. No new bug or enhancement found. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
+  "last_updated": "2026-09-19T16:02:24Z",
+  "notes": "16:01 UTC cycle -- light re-check: git synced (no drift), no open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean, weekend quiet continues.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
