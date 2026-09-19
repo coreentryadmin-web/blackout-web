@@ -60,6 +60,32 @@ test("evaluateSwingCortexForCommit: thrown error fails closed with cortex_unavai
   assert.match(r.reason, /vector timeout/);
 });
 
+test("evaluateSwingCortexForCommit: thrown error is logged, not silently swallowed", async () => {
+  // Regression: the catch block previously returned a fail-closed block with zero
+  // console trace. A production throw (upstream timeout, malformed response, etc.)
+  // must be observable in CloudWatch — matching the sibling catch in
+  // v2/tier0-origin-fetch.ts, which already console.warns on the same failure class.
+  const warnCalls: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnCalls.push(args);
+  };
+  try {
+    await evaluateSwingCortexForCommit("NVDA", "LONG", Date.parse("2026-09-05T12:00:00Z"), {
+      evaluate: async () => {
+        throw new Error("vector timeout");
+      },
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(warnCalls.length, 1, "expected exactly one console.warn on thrown preflight error");
+  const [message, loggedErr] = warnCalls[0]!;
+  assert.match(String(message), /swing-cortex/i);
+  assert.match(String(message), /NVDA/);
+  assert.ok(loggedErr instanceof Error && loggedErr.message === "vector timeout");
+});
+
 test("swingCortexUnavailableResult: maps to G-S14 unavailable token", () => {
   const r = swingCortexUnavailableResult("provider down");
   assert.equal(r.blocked, true);
