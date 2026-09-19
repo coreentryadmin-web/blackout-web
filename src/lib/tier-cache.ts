@@ -31,6 +31,38 @@ const TIER_STALE_MAX_MS = 24 * 60 * 60 * 1000;
 // grew unbounded. Same insertion-order LRU + sweep-on-cap pattern as server-cache.ts:setStoreEntry.
 const MAX_TIER_CACHE = 5_000;
 
+/**
+ * Negative-result cache for a userId with NO usable stale tier (fresh cache miss + Clerk
+ * getUser failure — e.g. a hard 404 for a deleted/invalid userId, not just a slow Clerk).
+ * Without this, a long-lived SSE connection (marks/vector/flows stream, ~1 tick/sec) that
+ * happens to hold such a userId re-hits Clerk's getUser EVERY tick for the life of the
+ * connection — this is the exact "storm that hit Clerk's Backend API rate limit" the shared
+ * cache above was built to prevent, just reached from a failure path instead of the success
+ * path. Live 2026-09-19: 126 identical `[tier-cache] Clerk getUser failed and no cached tier`
+ * 404s across 8 ECS replicas in one 8-minute connection. A short backoff (well under the 60s
+ * success TTL, so a real recovery is still felt fast) collapses that to ~1 Clerk call per
+ * window instead of ~1/sec, without changing the caller-visible "unavailable" verdict at all.
+ */
+const tierFailCache = new Map<string, number>();
+const TIER_FAIL_BACKOFF_MS = 15_000;
+const MAX_TIER_FAIL_CACHE = 5_000;
+
+function setTierFailCache(userId: string): void {
+  tierFailCache.delete(userId); // re-insert → most-recently-used position
+  if (tierFailCache.size >= MAX_TIER_FAIL_CACHE) {
+    const now = Date.now();
+    for (const [k, at] of Array.from(tierFailCache)) {
+      if (!isWsUpdatedAtFresh(at, TIER_FAIL_BACKOFF_MS, now)) tierFailCache.delete(k);
+    }
+    while (tierFailCache.size >= MAX_TIER_FAIL_CACHE) {
+      const oldest = tierFailCache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      tierFailCache.delete(oldest);
+    }
+  }
+  tierFailCache.set(userId, Date.now());
+}
+
 /** Redis pub/sub channel for cross-replica tier cache invalidation. */
 const TIER_CHANGED_CHANNEL = "blackout:tier:changed";
 
@@ -66,6 +98,10 @@ function setTierCache(userId: string, tier: Tier): void {
 /** Evict a single user from the local in-memory tier cache (no-op if not present). */
 export function invalidateTierCache(userId: string): void {
   tierCache.delete(userId);
+  // Also clear any failure backoff — an explicit invalidation (e.g. publishTierChanged after
+  // a Whop resync) means the caller has reason to believe the next Clerk read is worth trying
+  // immediately, not waiting out a stale 404's backoff window.
+  tierFailCache.delete(userId);
 }
 
 /**
@@ -112,9 +148,19 @@ export class TierUnavailableError extends Error {
   }
 }
 
+/** Return the last-known tier if it's still within the stale-grace window, else throw. */
+function staleTierOrUnavailable(cached: { tier: Tier; at: number } | undefined): Tier {
+  if (cached && isWsUpdatedAtFresh(cached.at, TIER_STALE_MAX_MS)) {
+    return cached.tier;
+  }
+  throw new TierUnavailableError();
+}
+
 /**
  * Resolve a user's tier, cache-first.
  * - Fresh cache (< TTL)         → return it (no Clerk call).
+ * - Recent failure (< backoff)  → skip the doomed re-attempt; same stale/throw outcome a
+ *                                 fresh failure would produce, without hitting Clerk again.
  * - Else fetch from Clerk       → cache + return (never grant premium/community from JWT
  *                                 claims alone — session claims lag Whop downgrades).
  * - Fetch fails, stale present  → return last-known tier (never kick out a paying user).
@@ -132,6 +178,14 @@ export async function resolveUserTier(
   if (cached && isWsUpdatedAtFresh(cached.at, TIER_CACHE_TTL_MS)) {
     return cached.tier;
   }
+  const recentFailure = tierFailCache.get(userId);
+  if (recentFailure !== undefined && isWsUpdatedAtFresh(recentFailure, TIER_FAIL_BACKOFF_MS)) {
+    // A Clerk getUser call already failed for this user within the backoff window (e.g. a hard
+    // 404 for a deleted/invalid userId, which will not resolve differently a second later) —
+    // skip the doomed re-attempt instead of hitting Clerk again on every ~1s SSE tick. No log
+    // here: the real attempt below already logged once when the failure actually happened.
+    return staleTierOrUnavailable(cached);
+  }
   try {
     // Always resolve paid tier from Clerk on cache miss — JWT session claims can lag Whop
     // downgrade webhooks by minutes (CQ-003 / CCQ-007). publishTierChanged evicts cache;
@@ -139,8 +193,10 @@ export async function resolveUserTier(
     const user = await getClerkUserCached(userId);
     const tier = parseTier(user.publicMetadata?.tier);
     setTierCache(userId, tier);
+    tierFailCache.delete(userId);
     return tier;
   } catch (err) {
+    setTierFailCache(userId);
     if (cached && isWsUpdatedAtFresh(cached.at, TIER_STALE_MAX_MS)) {
       console.warn("[tier-cache] Clerk getUser failed; using last-known tier:", err);
       return cached.tier;
