@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T12:03:08Z",
-  "notes": "12:01 UTC cycle -- covered a mission area not yet checked this stretch: CLOSED plays vs the 5-truth grader. Pulled all 14 rows in GET /api/market/swing/record's closedDeck, checked closedReason/exitPnlPct against entry/peak/trough premiums for sanity. All consistent: 'stopped' rows reconstruct to an exit price near (not necessarily at) trough, 'target' rows near peak, PYPL#24 (entry=peak=trough=$3.90, closedReason:flat, exitPnlPct:0, 13min hold) is the one genuine outlier by shape but it's the already-fixed, already-documented case (FINDINGS.md -- closedDeckSourcesFromChains fix, 2026-09-13/14, confirmed this /record route reads the FIXED composite path and correctly shows 'flat'; the bug was in play-brief's separate unfixed code path, already patched). No new anomaly. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean cycle.",
+  "last_updated": "2026-09-19T12:18:16Z",
+  "notes": "12:16 UTC cycle -- live-read LITE's WATCH brief (the sole WATCH ticker this stretch). Its top-level 'Invalidation' line surfaces the legacy_exempt gate verbatim ('Legacy morning-confirm promotion -- Swing V2 confluence/Cortex gates were not evaluated on this path') rather than the price entry-trigger ($950.47 break/reclaim) -- initially read as a possible mismatch (why would provenance metadata block entry rather than the stated price trigger), traced to entry-verdict.ts:74-84 (commitGateBlocksForVerdict) and its own Q22 regression test (entry-verdict.test.ts:159, 'COMMIT_NOW + legacy NIGHT HAWK only -> WAIT with legacy_exempt, not BUY') -- deliberate, tested design: a pick surfaced only via Legacy NIGHT HAWK promotion (no independent Swing V2 confluence) is intentionally held at WATCH regardless of price action until Swing V2 itself corroborates it. Correct, not a bug. No open swing PRs, board unchanged. Clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
