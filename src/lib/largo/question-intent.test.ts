@@ -486,6 +486,27 @@ test("the lowercase function-word guard still holds", () => {
   assert.equal(analyzeLargoQuestion("what about $NOW", []).tickerHint, "NOW");
 });
 
+test("SPOT/current-price collision does not steal the real ticker (live repro 2026-09-19)", () => {
+  // Live `/api/market/largo/query` repro: asked about NVDA's GEX positioning "...and current
+  // spot?" — the ordinary word "spot" (current price) uppercases to the real symbol SPOT
+  // (Spotify), which sits in KNOWN_TICKERS and is matched AFTER "NVDA" by extractTicker's
+  // backward scan, so it silently overrode the actually-asked ticker. The model's own answer
+  // still covered NVDA correctly, but `tickerHint`/the envelope `ticker` field and every
+  // downstream UI action link (Thermal/HELIX "open chart" hrefs) pointed at SPOT instead.
+  assert.equal(
+    analyzeLargoQuestion(
+      "What is NVDA's current GEX positioning — gamma flip level, call wall, put wall, and current spot?",
+      [],
+    ).tickerHint,
+    "NVDA",
+  );
+  assert.equal(analyzeLargoQuestion("what's the current spot on TSLA", []).tickerHint, "TSLA");
+  assert.equal(analyzeLargoQuestion("where's spot right now", []).tickerHint, null);
+  // A genuinely shouted SPOT, or an explicit $-symbol, still resolves to the real ticker.
+  assert.equal(analyzeLargoQuestion("SPOT earnings reaction thoughts", []).tickerHint, "SPOT");
+  assert.equal(analyzeLargoQuestion("how is $SPOT trading", []).tickerHint, "SPOT");
+});
+
 // 2026-09-19: found by auditing STOPWORD_TICKERS for the same collision class as the SPOT/NOW
 // guards above, after the SPOT fix shipped. Each of these is a real symbol in KNOWN_TICKERS that
 // is ALSO an everyday trading word, and `extractTicker` uppercases the whole question before

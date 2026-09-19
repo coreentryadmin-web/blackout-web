@@ -138,6 +138,25 @@ const STOPWORD_TICKERS = new Set([
   // capitals. Without this, "what is the net flow" pins the ticker NET, which is the same defect
   // as the NOW/ServiceNow collision one row down.
   "NET", "TEAM", "SNOW", "OPEN", "ALL",
+  //
+  // SPOT added 2026-09-19 (Ask Largo standing mandate, live repro): asked Largo "What is NVDA's
+  // current GEX positioning — gamma flip level, call wall, put wall, and current spot?" — the
+  // MODEL's own answer correctly covered NVDA (it has the live feed and the actual tool payloads
+  // to work from), but `tickerHint` came back "SPOT", not "NVDA", because extractTicker scans its
+  // uppercased match list BACKWARDS and "spot" — an ordinary trading word for "current price",
+  // appearing in this question only as that — sits AFTER "NVDA" in the sentence and is ALSO a
+  // real symbol (Spotify) already in KNOWN_TICKERS, so the KNOWN_TICKERS branch returns it
+  // immediately without ever reaching the DOMAIN_UPPERCASE_WORDS check ("SPOT" is already listed
+  // there, but that guard only fires on the LATER branch this candidate never reaches). Confirmed
+  // live via the actual `/api/market/largo/query` response: `"ticker":"SPOT"` and the UI action
+  // links read `"Thermal — SPOT" href="/heatmap?ticker=SPOT"` / `"HELIX — SPOT" href="/flows?ticker=SPOT"`
+  // — a member asking about NVDA would have every follow-up action route them to Spotify's chart
+  // instead. Exact same bug shape as the NOW/ServiceNow regression this guard set already fixes;
+  // SPOT simply wasn't in it because it is also a genuinely real symbol, unlike NOW/ON/AT/etc.
+  // Adding it here (rather than to DOMAIN_UPPERCASE_WORDS, which the KNOWN_TICKERS branch skips
+  // entirely) makes it behave exactly like NET/TEAM/SNOW/OPEN above: a lowercase "spot" in prose
+  // is never a ticker, while `$SPOT` or a genuinely shouted "SPOT" still is.
+  "SPOT",
   // SNAP/COIN/SHOP/PLUG/META added 2026-09-19 (Ask Largo standing mandate — the same collision
   // class the SPOT/NOW guards above already fix, found while auditing this exact list for other
   // instances). Every one of these is BOTH a real symbol in KNOWN_TICKERS AND an everyday trading
@@ -150,7 +169,7 @@ const STOPWORD_TICKERS = new Set([
   // "shop"); "let's plug in the numbers here" -> "PLUG" (Plug Power, not the verb "plug in"); "that
   // seems pretty meta to me" -> "META" (the standalone adjective "meta", not the ticker). Every one
   // of these would silently swap the member's actual question for an unrelated ticker's live feed,
-  // the identical failure mode the SPOT fix (one row below) and the NOW fix documented above it
+  // the identical failure mode the SPOT fix (one row above) and the NOW fix documented above it
   // both already cover.
   "SNAP", "COIN", "SHOP", "PLUG", "META",
   "NOW", "ARE", "OR", "BE", "GO", "SO", "AT", "ON", "IT", "IN", "OF", "TO",
