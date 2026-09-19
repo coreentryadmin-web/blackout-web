@@ -138,6 +138,66 @@ test("tradeManagerNarrativeSection: LONG Break watch considers the GEX king stri
   assert.doesNotMatch(section!.body, /Break watch.*80\.00/i);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-09-19, sibling of #5253): #5253 fixed breakTrigger's
+// position-management wording ("exit or cut size") for a WATCH play at the resolveBreakInvalidation
+// call site (envelope.invalidation), but left this "Trade manager read" narrative bullet -- built
+// from the SAME breakTrigger() -- calling it without `preEntry`, so it kept the OPEN-only wording
+// even for a play that has never been entered. Live repro (LITE, 2026-09-19, WATCH status): the
+// top-level invalidation field correctly said "this setup is no longer live -- skip it" while this
+// bullet still said "exit or cut size" for the identical play. #5253's PR body assumed this call
+// site was "OPEN-only in production" -- it is not: play-brief-intel.ts's real caller passes the
+// live bucket straight through, and only bucket==="closed" short-circuits before this line runs.
+test("tradeManagerNarrativeSection: WATCH-bucket Break watch uses entry-appropriate wording, not 'exit or cut size' (2026-09-19, live LITE shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG", status: "WATCH" }),
+      vector: {
+        spot: 100,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 90, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "watch",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*90\.00.*this setup is no longer live — skip it/i);
+  assert.doesNotMatch(section!.body, /exit or cut size/i);
+  assert.doesNotMatch(section!.body, /cover shorts/i);
+});
+
+test("tradeManagerNarrativeSection: SHORT WATCH-bucket Break watch also uses entry-appropriate wording, not 'cover shorts'", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT", status: "WATCH" }),
+      vector: {
+        spot: 100,
+        gexWalls: { callWalls: [{ strike: 110, gex: 1 }], putWalls: [] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "watch",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*110\.00.*this setup is no longer live — skip it/i);
+  assert.doesNotMatch(section!.body, /cover shorts/i);
+});
+
+test("tradeManagerNarrativeSection: OPEN-bucket Break watch still says 'exit or cut size' (no regression)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG", status: "OPEN" }),
+      vector: {
+        spot: 100,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 90, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*90\.00.*exit or cut size/i);
+});
+
 test("tradeManagerNarrativeSection: SHORT Break watch considers the GEX king strike, not just call wall", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
