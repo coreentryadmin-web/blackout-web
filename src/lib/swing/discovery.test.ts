@@ -69,6 +69,37 @@ test("runSwingDiscoveryScan: records tier0OriginFetchErrors when a V2 origin fet
   assert.deepEqual(res.recall.tier0OriginFetchErrors, ["VECTOR"]);
 });
 
+test("runSwingDiscoveryScan: logs (not just records) when the preferred fetchPositioningHits origin throws", async () => {
+  const { accessors } = makeFakeAccum();
+  const warnings: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  try {
+    const deps = { ...makeDeps("2026-07-23", accessors) };
+    delete (deps as Partial<SwingDiscoveryDeps>).fetchPositioningTickers;
+    const res = await runSwingDiscoveryScan({
+      ...deps,
+      fetchPositioningHits: async () => {
+        throw new Error("positioning origin unavailable");
+      },
+    });
+    assert.deepEqual(res.recall.tier0OriginFetchErrors, ["POSITIONING"], "still recorded on the result");
+    const positioningWarning = warnings.find((args) =>
+      args.some((a) => typeof a === "string" && a.includes("POSITIONING")),
+    );
+    assert.ok(
+      positioningWarning,
+      "a thrown fetchPositioningHits must log — sibling origins (CATALYST/BANGER/VECTOR, and the " +
+        "fetchPositioningTickers fallback) all log via fetchTier0OriginTickers's console.warn; this " +
+        "preferred path silently swallowed the error before the fix",
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 test("mergeTierZeroScreens: V2 POSITIONING, CATALYST, and BANGER origins union into provenance", () => {
   const merged = mergeTierZeroScreens(["NVDA"], ["ASTS"], {
     positioning: ["NVDA", "COIN"],
