@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T21:32:24Z",
-  "notes": "21:31 UTC cycle -- PR #5257 (Current P&L tile dollar-truncation CSS fix) already merged by its own author session, CI green. Coordinator already folded #5255's staged finding (#5258). No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean cycle.",
+  "last_updated": "2026-09-19T21:47:27Z",
+  "notes": "21:46 UTC cycle -- new swing PR #5259 spotted: a genuine mobile follow-up to #5257 from the same sibling session -- #5257 fixed desktop truncation (1fr->1.5fr, 28px->22px) but explicitly flagged phone-width unverified in its own write-up; this cycle's retest found the shortest possible dollar string ('+$0.00') still overflows at 430px (scrollWidth 112 vs clientWidth 74, mechanically measured via headless DOM on live prod). Fix is media-query-gated (@media max-width:480px, 2.5fr + 18px), desktop untouched, RED->GREEN, 436/436 command-deck tests, staged finding + market-open validation entry filed. Just opened, CI pending -- will check next cycle. No open non-#5259 swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
