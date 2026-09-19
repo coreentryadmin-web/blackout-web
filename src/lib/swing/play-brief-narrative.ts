@@ -552,7 +552,12 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
   return lines.join(" ");
 }
 
-function breakTrigger(play: TerminalPlay, focal: FocalLevel[], flip: number | null): string | null {
+function breakTrigger(
+  play: TerminalPlay,
+  focal: FocalLevel[],
+  flip: number | null,
+  preEntry = false,
+): string | null {
   // Candidate levels are pulled from `focal`, which is sorted by UNSIGNED distance from spot —
   // "nearest" does not mean "on the right side". A dark-pool print (any strike, any side — see
   // narrateDarkPool's own side detection off `level.price < spot`) or, in theory, a put wall can
@@ -578,14 +583,27 @@ function breakTrigger(play: TerminalPlay, focal: FocalLevel[], flip: number | nu
     (l) => (l.kind === "call_wall" || l.kind === "king") && l.distancePct > 0,
   )?.price;
 
+  // FINDING (Ask Largo standing mandate, 2026-09-19): both branches below always closed with
+  // POSITION-MANAGEMENT language ("exit or cut size" / "cover shorts") — correct for an OPEN play
+  // (there IS a position to exit/cover) but nonsensical for a WATCH play, which has never been
+  // entered. The already-shipped CLOSED-bucket fix (see resolveBreakInvalidation's own history)
+  // stopped one bucket short: it suppressed this callout entirely for CLOSED, but left WATCH using
+  // the identical OPEN-only wording — verified still true via play-brief.test.ts's own
+  // "invalidation prefers a real per-ticker technical break level" test, whose fixture defaults to
+  // `status: "WATCH"` yet asserted the literal "exit or cut size" string. `preEntry` (derived from
+  // the play's status in resolveBreakInvalidation, never passed by tradeManagerNarrativeSection's
+  // OPEN-only call) swaps the trailing clause to entry-appropriate language — the level-selection
+  // logic above is unchanged and still correct for both buckets.
   if (play.direction === "LONG") {
     const flipBelowSpot = flip != null && focal.some((l) => l.kind === "gamma_flip" && l.distancePct < 0);
     const stop = support ?? (flipBelowSpot ? flip : null);
     if (stop != null) {
-      return `**Break watch** — lose **${stop.toFixed(2)}** on a closing basis → structural support failed; exit or cut size.`;
+      const action = preEntry ? "this setup is no longer live — skip it" : "exit or cut size";
+      return `**Break watch** — lose **${stop.toFixed(2)}** on a closing basis → structural support failed; ${action}.`;
     }
   } else if (play.direction === "SHORT" && resist != null) {
-    return `**Break watch** — reclaim **${resist.toFixed(2)}** → resistance broken; cover shorts.`;
+    const action = preEntry ? "this setup is no longer live — skip it" : "cover shorts";
+    return `**Break watch** — reclaim **${resist.toFixed(2)}** → resistance broken; ${action}.`;
   }
   return null;
 }
@@ -629,7 +647,12 @@ export function resolveBreakInvalidation(ctx: SwingPlayBriefContext): string | n
   const flip = flipFromStaleGex ? null : flipRaw;
 
   const focal = collectFocalLevels(ctx, spot);
-  return breakTrigger(play, focal, flip);
+  // Only OPEN/HOLD/TRIM actually hold a position to exit/cover; every other status reaching here
+  // (WATCH, COMMIT, etc. — CLOSED is short-circuited by the caller before this function runs) is
+  // pre-entry. Mirrors play-brief.ts's own `statusBucket` open-set without importing it (duplicated
+  // deliberately — same pattern as this codebase's other small per-file status checks).
+  const preEntry = play.status !== "OPEN" && play.status !== "HOLD" && play.status !== "TRIM";
+  return breakTrigger(play, focal, flip, preEntry);
 }
 
 function railsFallback(play: TerminalPlay): string | null {

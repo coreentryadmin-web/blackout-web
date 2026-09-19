@@ -604,14 +604,88 @@ test("composeSwingPlayBrief: invalidation prefers a real per-ticker technical br
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
+  // Wording corrected 2026-09-19 (Ask Largo standing mandate): this fixture is a WATCH play
+  // (fixturePlay's default `status`) — "exit or cut size" is position-management language for a
+  // position that was never entered. See resolveBreakInvalidation's `preEntry` handling.
   assert.equal(
     brief.envelope.invalidation,
-    "**Break watch** — lose **22.00** on a closing basis → structural support failed; exit or cut size.",
+    "**Break watch** — lose **22.00** on a closing basis → structural support failed; this setup is no longer live — skip it.",
   );
   assert.doesNotMatch(
     brief.envelope.invalidation ?? "",
     /Trading-halt feed unavailable/,
     "a system-wide gate reason must not stand in for a real per-ticker invalidation level when one is computable",
+  );
+});
+
+test("composeSwingPlayBrief: OPEN play's invalidation callout keeps live position-management wording ('exit or cut size')", () => {
+  // Sibling of the WATCH-wording fix above — proves the fix is scoped correctly: an OPEN play
+  // (a real position exists) must still tell the member to actually manage it, not "skip it".
+  const recentIso = new Date(Date.now() - 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      direction: "LONG",
+      gateBlocks: [
+        { code: "G-S12", reason: "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers." },
+      ],
+      thesisBreak: { level: "intact", note: "Structure holding" },
+    }),
+    asOf: recentIso,
+    sessionDate: "2026-09-09",
+    scanAsOf: recentIso,
+    scanSessionDay: "2026-09-09",
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "INTC",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: null,
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      spx_desk_convergence: null,
+      flow_feed_fresh: true,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        change_pct: 1.2,
+        asof: recentIso,
+        as_of_et: "recent",
+        session_date_et: "2026-09-09",
+        market_phase: "open",
+        call_wall: 26,
+        put_wall: 22,
+        flip: 24,
+        gex_king_strike: 25,
+        net_gex: null,
+        nearest_wall: { strike: 26, kind: "resistance", distance_pts: 1.5 },
+        gamma_posture: "long",
+        vanna_posture: null,
+        delta_posture: null,
+        charm_posture: null,
+      },
+      vector_full_state: null,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: null,
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    },
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "**Break watch** — lose **22.00** on a closing basis → structural support failed; exit or cut size.",
   );
 });
 
