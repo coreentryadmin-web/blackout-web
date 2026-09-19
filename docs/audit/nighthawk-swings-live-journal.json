@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T13:32:01Z",
-  "notes": "13:31 UTC cycle -- light re-check: git synced (picked up coordinator-lane FINDINGS-fold commit eaae44c2f, not mine), no open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean, weekend quiet continues.",
+  "last_updated": "2026-09-19T13:47:39Z",
+  "notes": "13:46 UTC cycle -- covered the mission's MFE-capture-correctness item (mfeCaptureOutcome, relative retracement not raw pp delta), not yet directly re-verified this stretch. Read mfe-capture.ts in full and hand-checked its math against 5 real CLOSED positions from the record dump pulled at 12:01 UTC this cycle-stretch: CG (exit +221.15%, peak +221.15% -- capturePct 100%, exited exactly at peak), RKLB (79.37/81.6 peak -> 97.3% captured), EWZ:29 (438.79/448.3 peak -> 97.9% captured), CRWD:39 and AAPL:37 live OPEN round-trip cases both correctly hit the round_trip branch (exitPnlPct<0) and reproduce the exact 'was up X% at peak, now Y%' bullet text already seen live. mfeCapturePct itself is confirmed still always-null server-side (already documented/future-proofed in FINDINGS.md, not a new gap) -- the ratio fallback IS what production serves, and it's correct. No new bug or enhancement found. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
