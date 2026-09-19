@@ -1025,17 +1025,24 @@ test("dividend-yield resolve normalizes percent notation and caches a genuine no
 // ETFs, so a null ratios read now falls through to a trailing-12mo cash sum instead of a throw.
 test("dividend-yield resolve falls back to trailing dividends when ratios has no row (ETF)", async () => {
   ratiosStub = async () => null;
+  // Dates relative to the REAL Date.now() the resolver itself reads (it has no injectable clock —
+  // see the sibling pure-function test below for that). Previously these were hardcoded absolute
+  // dates commented as "outside the trailing-12mo window from a 2026-08-28 now" — that was true in
+  // August and became false as soon as the calendar caught up to the fixture's own 12-month window,
+  // turning a deterministic test into a ticking time bomb (failed live 2026-09-19: `expected ~0.01,
+  // got 0.0075`, one previously-excluded row had drifted back inside the window).
+  const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   dividendsStub = async () => [
-    { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
-    { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
-    // Outside the trailing-12mo window from a 2026-08-28 "now" — must be excluded.
-    { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
+    { cash_amount: 1.5, ex_dividend_date: daysAgo(90) },
+    { cash_amount: 1.5, ex_dividend_date: daysAgo(180) },
+    { cash_amount: 1.5, ex_dividend_date: daysAgo(270) },
+    { cash_amount: 1.5, ex_dividend_date: daysAgo(360) },
+    // Outside the trailing-12mo window no matter when this test runs.
+    { cash_amount: 1.5, ex_dividend_date: daysAgo(400) },
   ];
   const spot = 600;
   const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
-  // 4 of the 5 rows are within the trailing 12 months of the fixed "now" below: 4 × 1.5 / 600.
+  // 4 of the 5 rows are within the trailing 12 months of "now": 4 × 1.5 / 600.
   assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
 });
 
