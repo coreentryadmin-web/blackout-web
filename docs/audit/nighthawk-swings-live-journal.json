@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T16:47:07Z",
-  "notes": "16:46 UTC cycle -- git synced (picked up sibling PR #5249, non-swing 0DTE flow-fetch-logging fix, not mine). New OPEN swing-scoped PR spotted this cycle: #5250 (fix/swing-discovery-positioning-hits-log, self-authored by session_01Qtnftc16CuWyVLxR8LaMoC) -- fetchPositioningHits' catch block in discovery.ts was swallowing Tier-0 POSITIONING origin fetch failures silently (recorded into originFetchErrors correctly, but never console.warn'd, unlike its fetchTier0OriginTickers-routed siblings CATALYST/BANGER/VECTOR) -- same bug class as sibling PR #5249 just merged for the 0DTE FLOW-fetch path, found via a deliberate cross-origin sibling sweep. Read the diff description: single call site, no behavior change, just restores the missing log line, RED->GREEN test added, full suite 14869/0/3. Just opened, CI still pending (0 status checks reported yet) -- too fresh to merge this cycle, will check back next cycle per CARVE-OUT (self-authored, merges on green CI alone). Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
+  "last_updated": "2026-09-19T17:02:36Z",
+  "notes": "17:01 UTC cycle -- PR #5250 (POSITIONING origin log fix) already merged by its own author session (a862eafea) between cycles -- verified diff matches its description exactly, no concerns. Same sibling session opened a third PR in the same sweep: #5251 (fix/swing-cortex-preflight-error-logging) -- evaluateSwingCortexForCommit's (G-S14) catch block failed closed correctly but never console.warn'd the caught error, same observability-gap shape as #5249/#5250, found via a direct catch-block sweep of src/lib/swing/v2/*.ts. Small, single catch block, no behavior change, RED->GREEN test, full suite green, CloudWatch checked (0 real incidents -- proactive consistency fix). Just opened, CI pending -- too fresh to merge this cycle. Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
