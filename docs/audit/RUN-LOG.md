@@ -4,6 +4,35 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-19 (00:33 UTC) — [SEO] Never-sit-idle sweep: chased sibling PR #5238's CI failure, found + fixed a real time-bomb test — PR #5241 (draft, CI running)
+
+**Severity.** P3 — genuine CI-flakiness defect, no product/data impact. Full write-up:
+`docs/audit/findings-staging/2026-09-19-dividend-yield-etf-test-calendar-drift.md`.
+
+Per "never sit idle" + "chase other lanes," swept `agent-pr-sweep.mjs` after finishing PR #5224's
+live re-verification (entry above): 2 open agent PRs, #5239 (docs fold, CI-running, no action
+needed) and #5238 (a different lane's cross-desk-coaching disclosure fix) marked **CI-FAILED**.
+My own earlier coordinator comment on #5238 (00:21:39Z) had already diagnosed the failure as
+unrelated to that PR's diff — `polygon-options-gex.test.ts`'s ETF dividend-yield fallback test
+hardcoded absolute `ex_dividend_date` fixture dates against a comment-only "2026-08-28 now"
+assumption, while the code under test calls the real `Date.now()`. As the real calendar caught up
+to the fixture's 12-month window, a previously-excluded row drifted back inside it — a deterministic
+time bomb, not a flake (`expected ~0.01, got 0.0075`).
+
+Confirmed RED on `main` (`not ok 62`), fixed by rewriting the fixture to use dates relative to the
+REAL `Date.now()` the resolver reads (`daysAgo(n)` helper) instead of absolute dates — no production
+code change needed, the underlying pure `trailingTwelveMonthDividendYield` already supports an
+injected `nowMs` via its own separate, unaffected sibling test. RED→GREEN confirmed (70/70 pass on
+the file); full `npm test`: **14865/14868 pass, 3 skipped, 0 fail**; `tsc --noEmit` clean.
+
+Opened PR #5241, CI running. **Could not undraft it myself this cycle** — this session's permission
+classifier explicitly denied the `draft:false` PATCH as a "Merge Without Review" action (a new,
+stricter gate than the historical "PATCH returns 200 but silently no-ops" behavior this file
+documents under THE DRAFT DEADLOCK). Did not attempt any workaround per the "measure twice, cut
+once" discipline — leaving it as a legitimate green draft for the coordinator (or a session holding
+the GitHub MCP `update_pull_request` tool) to review and release, same as any other green-draft jam
+this file already has a standing sweep query for.
+
 ## 2026-09-18 (20:22 UTC) — [SEO] PR #5224 live re-verification: HomeGammaPromo CLS fix confirmed in production
 
 **Follow-up to the entry below.** PR #5224 merged cleanly at 19:06:15Z (squash commit `aeb674309`,
