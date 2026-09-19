@@ -485,3 +485,23 @@ test("the lowercase function-word guard still holds", () => {
   // An explicit $ still promotes anything.
   assert.equal(analyzeLargoQuestion("what about $NOW", []).tickerHint, "NOW");
 });
+
+// 2026-09-19: found by auditing STOPWORD_TICKERS for the same collision class as the SPOT/NOW
+// guards above, after the SPOT fix shipped. Each of these is a real symbol in KNOWN_TICKERS that
+// is ALSO an everyday trading word, and `extractTicker` uppercases the whole question before
+// matching, so — without the stopword entry — the lowercase idiom silently pins an unrelated
+// ticker's live feed instead of answering the member's actual (tickerless) question.
+test("ordinary trading idioms that collide with a real symbol are not tickers unless shouted", () => {
+  for (const q of [
+    "wait for a snap back rally here",
+    "is this trade just a coin flip at this point",
+    "should I shop around for a better entry",
+    "let's plug in the numbers here",
+    "that seems pretty meta to me",
+  ]) {
+    assert.equal(analyzeLargoQuestion(q, []).tickerHint, null, q);
+  }
+  // Shouted (or $-prefixed), each one is still a real ticker reference.
+  assert.equal(analyzeLargoQuestion("what's the setup on SNAP", []).tickerHint, "SNAP");
+  assert.equal(analyzeLargoQuestion("what's the setup on $COIN", []).tickerHint, "COIN");
+});
