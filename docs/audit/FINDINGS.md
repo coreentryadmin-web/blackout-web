@@ -38,6 +38,186 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Night Hawk Legacy — desk playbook regime line wired into the ACTUAL live macro strip — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause / prior gap.** PR #5235 (Task #31) added `desk_playbook` to `market_recap`
+(`format.ts`/`edition-builder.ts`) but — after a same-PR self-correction — shipped only the
+data-layer half: the live Legacy board (`LegacyPickLogBoard.tsx` → `LegacyMacroStrip.tsx`) does
+not read `market_recap` at all. Its `regime`/`gexBias` fields come from a completely separate,
+morning-only pipeline: `nighthawk-morning-confirm` cron → `GET /api/platform/intel` →
+`LegacyMacroContext` → `LegacyMacroStrip`. `deriveComposite()`'s authored strategy sentence
+(`market_regime.playbook`) was already present in `/api/platform/intel`'s `regime.playbook` field
+(confirmed by reading the route — no change needed there) but was dropped at the very next hop:
+`fetchPlatformIntel()` inside `nighthawk-morning-confirm/route.ts` only ever read
+`data.regime.composite`, never `data.regime.playbook`.
+
+**Evidence.** Traced the full pipeline end to end: `/api/platform/intel/route.ts` line
+`playbook: regimeRow.playbook` (already correct) → `nighthawk-morning-confirm/route.ts`'s
+`fetchPlatformIntel()` (dropped it) → `MorningConfirmResult` (missing the field entirely) →
+persisted verbatim to Redis (`nh:play-status:${date}`) → `GET /api/nighthawk/play-status` (spreads
+the Redis blob unchanged) → `containers.tsx`'s `confirmData`/`macroContext` useMemo (never read
+it) → `LegacyMacroStrip.tsx` (never rendered it). Confirmed `LegacyPickLogBoard`/`LegacyMacroStrip`
+are the actually-live components (`command-deck/containers.tsx` line 541,
+`nighthawk-boards-preview/NightHawkBoardsPreviewClient.tsx`) — not the dead `PlaybookBoard.tsx`
+PR #5235 mistakenly targeted first.
+
+**Blast radius.** Five files: `nighthawk-morning-confirm/route.ts` (`fetchPlatformIntel` return
+type + all 3 `MorningConfirmResult` construction sites — normal result, empty/skip result, and the
+`fetchPlatformIntel` catch-block fallback — gain `playbook: string | null`), `legacy-macro-types.ts`
+(`LegacyMacroContext` type), `command-deck/containers.tsx` (`macroContext` useMemo forwards it),
+`LegacyMacroStrip.tsx` (renders it as its own bullet), `morning-status-from-db.ts` (the 24h-Redis-
+TTL DB-fallback path honestly returns `playbook: null` — not recoverable from
+`morning_verdict.metrics`, which never persisted it, same as the pre-existing `gex_bias`/
+`call_wall`/`put_wall` nulls in that same fallback). `computePlayVerdict`'s gating logic (which
+reads `intel.regime`, the raw enum) is untouched — `playbook` is purely additive, read by nothing
+else.
+
+**Fix rationale.** Minimal, additive, three-line core change (read one more field off an already-
+fetched payload, thread it through four already-existing pass-through layers, render it). No new
+network call, no new DB read, no schema change. Left the DB-fallback path's `playbook: null` as an
+honest gap rather than plumbing a new persistence field through `persistNighthawkMorningVerdicts`
+just for this — that would touch the durable per-play verdict schema for a value that's naturally
+regenerated fresh every morning anyway (the Redis path is the common case; the DB fallback only
+matters after a 24h TTL miss).
+
+**Sample size / evidence.** 5 new unit tests: 1 in `morning-status-from-db.test.ts` (playbook +
+gex_bias/call_wall/put_wall all honestly null in the DB-fallback path), 4 in a new
+`LegacyMacroStrip.test.ts` (renders nothing when macro is null/empty; renders the playbook sentence
+verbatim when present; omits it when absent — never fabricated). No new test for
+`fetchPlatformIntel`'s one-line field extraction (unexported helper inside an already-untested
+route file — the addition matches the existing untested `gex_bias`/`call_wall`/`put_wall`
+extraction lines immediately beside it, not a new gap). `npx tsc --noEmit` clean. Full `npm test`:
+14865/14865 passing, 0 regressions.
+
+**Next action.** None required. Closes Task #32. The sentence will render live starting the next
+`nighthawk-morning-confirm` cron fire (9:15 ET on the next trading session) once this deploys —
+logged to `docs/audit/MARKET-OPEN-VALIDATION.md` as a market-open check.
+
+## Night Hawk Legacy — desk playbook (regime strategy line) computed but never exposed on the wire — FIXED (data layer only; live-UI wiring is a separate follow-up)
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `market-regime-detector`'s `deriveComposite()` (`derive-composite.ts`) already
+computes an authored, human-readable strategy sentence per regime (e.g. "Dealers short gamma —
+moves amplify. Trend up with breakout risk; calls favored; ride momentum, avoid fades.") and pins
+it as `PlatformIntelSnapshot.playbook`. That value was already read in two places: (1)
+`formatPlatformIntelForPrompt()` feeds it to the Claude edition-authoring prompt as advisory
+context, so the LLM *may* choose to paraphrase or mention it in the freeform recap/play prose, and
+(2) `publish_context.regime.composite_regime` (the raw enum, not the sentence) is pinned per play
+for internal tooling (Discord trade notify, this session's own `posture-backtest.ts`). Neither path
+guaranteed the playbook sentence reached the API response deterministically, and there was no
+structured field carrying it at all.
+
+**Self-correction made during this same PR (recorded rather than silently fixed) — read before
+trusting the "member-facing" framing of the first commit on this branch.** The first commit here
+also added a "Desk Playbook" row to `PlaybookBoard.tsx`'s `MarketContextGrid`, believing that was
+the live Legacy board. It is not: `PlaybookBoard.tsx`'s own header comment says so explicitly
+("this component ... is DEAD CODE as of the tab-based NightHawkFeed rewrite — the live Legacy tab
+(view=LEGACY) renders `LegacyPickLogBoard`, not `PlaybookBoard`") and a repo-wide grep for
+`PlaybookBoard` usage confirms it: only re-exported from `features/nighthawk/index.ts`, never
+rendered from any route. Worse, further tracing showed the REAL live component
+(`LegacyPickLogBoard.tsx` → `LegacyMacroStrip.tsx`) doesn't read `market_recap` **at all** — its
+`regime`/`gexBias` fields come from a completely different, morning-only pipeline
+(`nighthawk-morning-confirm` cron → `GET /api/platform/intel` → `LegacyMacroContext`), populated
+only after the next session's pre-market confirm job runs, not from the evening edition publish
+this fix touches. Correctly wiring `desk_playbook` into the ACTUAL live board would mean adding
+`playbook` to `/api/platform/intel`'s response and threading it through
+`nighthawk-morning-confirm/route.ts` → `LegacyMacroContext` → `LegacyMacroStrip.tsx` — a materially
+different, larger, cross-pipeline change than this PR, and one that touches the live board's
+render path (the kind of change the standing escalation policy says needs its own careful scoping,
+not a same-cycle addition on top of an already-wrong premise). The `PlaybookBoard.tsx` UI change
+and its 2 tests were reverted in this PR's second commit rather than left in place — shipping a UI
+change to confirmed-dead code would be actively misleading in the diff.
+
+**What actually shipped.** Only the data-layer piece: `buildMarketRecap()` (`format.ts`) now
+returns `desk_playbook: string` (empty string, never null, when `platform_intel`/`playbook` is
+unavailable), forwarded through both `market_recap` construction sites in `edition-builder.ts`
+(normal-publish path and recap-only/zero-plays path). This makes the sentence available on
+`GET /api/market/nighthawk/edition`'s `market_recap.desk_playbook` for any consumer of that
+endpoint (Largo, admin tooling, a future correctly-scoped frontend change) — genuinely useful,
+zero new capture, zero behavior change — but it is **not**, by itself, visible to a Legacy member
+in the live product yet.
+
+**Blast radius.** Two files: `format.ts`, `edition-builder.ts`. No gate, scoring, ranking, or
+live-picks logic touched.
+
+**Fix rationale.** Ship the honest, correctly-scoped, low-risk half now (the data field — safe,
+tested, additive) rather than block it on the larger cross-pipeline UI change, which is logged
+separately below as the real remaining work.
+
+**Sample size / evidence.** 2 unit tests in `format.test.ts` (desk_playbook sourced from
+`platform_intel.playbook`; empty string, never null, when platform_intel is unavailable).
+`npx tsc --noEmit` clean. Full `npm test`: 14860/14860 passing, 0 regressions (2 fewer than the
+first commit's 14862, from reverting the dead-code UI tests).
+
+**Next action.** Task #32 opened: correctly wire `playbook` into the LIVE Legacy macro strip via
+`/api/platform/intel` → `nighthawk-morning-confirm` → `LegacyMacroContext` → `LegacyMacroStrip.tsx`
+— a separate, properly-scoped PR, not rushed into this one. Originated from Task #31 (Ask Largo ×
+Night Hawk Legacy standing mandate, "bring in your ideas" directive) during a quiet Friday-post-
+close/weekend audit window; corrected same-session before merge once the dead-code premise was
+caught.
+
+## `agent-pr-sweep.mjs`'s default branch-prefix list silently missed `feat/` and `chore/` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Coordinator tooling (`scripts/audit/agent-pr-sweep.mjs`) — found during a routine coordinator cycle |
+| **Severity** | P2 (tooling correctness — the sweep is the one instrument built specifically to catch a jam with no other error signal) |
+| **PR** | fix/agent-pr-sweep-missing-feat-chore-prefixes |
+
+### Root cause
+
+`agent-pr-sweep.mjs`'s default `PREFIXES` constant was
+`"claude/,cursor/,fix/,batch/,docs/"` — it never included `feat/` at all, and `chore/` (used
+alongside `docs/` for maintenance/audit PRs) was also missing. CLAUDE.md's own merge-authorization
+section explicitly names `fix/*`/`feat/*`/`docs/*` as the self-authored branch conventions this
+sweep exists to track, so the default list had drifted out of sync with the very policy it
+implements.
+
+### Evidence
+
+- Live run this cycle: with two real, open, agent-authored PRs on the repo — #5234
+  (`chore/fold-findings-staging-backlog-2`) and #5235 (`feat/legacy-desk-playbook-recap`) — the
+  default-prefix sweep reported **`(0 open agent PRs)`**, a clean, confident, entirely false
+  all-clear.
+- Re-run with `--prefix=claude/,cursor/,fix/,batch/,docs/,feat/,chore/` immediately surfaced both:
+  `CI-RUNNING (2): #5235, #5234`.
+- `git log --oneline` confirms `feat(...)` is a routine, frequently merged PR-title/branch
+  convention in this repo (e.g. #5226, #5222, #5217, #5200), not an edge case.
+- Post-fix, a plain default-argument run correctly reports the real state (1 open agent PR after
+  #5234 merged, #5235 still CI-running) — no `--prefix` override needed anymore.
+
+### Blast radius
+
+Single constant, one file. No other script imports `agent-pr-sweep.mjs`'s `PREFIXES`.
+
+### Fix rationale
+
+Extended the default `PREFIXES` list to `claude/,cursor/,fix/,batch/,docs/,feat/,chore/`, matching
+CLAUDE.md's own stated branch conventions. Left `--prefix` overridable exactly as before — this
+only changes what a bare invocation defaults to, per this script's own comment block precedent for
+why `fix/` and `batch/` were added (2026-08-21, the coordinator's own PRs being invisible to the
+sweep it was running).
+
+### Verification
+
+Reproduced the false all-clear live (default-prefix run showed 0 PRs while 2 real ones were open),
+confirmed the fix live (default-prefix run now shows both, then correctly shows just the remaining
+one after #5234 merged). This is an audit CLI script with no existing test harness (consistent with
+the rest of the live-hitting audit toolkit, which is verified by live runs rather than unit tests)
+— no test file was added; `npx tsc --noEmit` is not applicable (plain `.mjs`, no TS).
+
 ## 2026-09-18 — [FINDING, P0 0DTE] `zerodte-warm`'s cooldown + overlap lock had no judgment about whether the background work they protect ever completes, letting a wedge persist for up to 15 minutes — FIXED (circuit breaker only, not the underlying deploy-churn cause)
 
 > **kind:** `FINDING`
