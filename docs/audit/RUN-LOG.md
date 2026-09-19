@@ -4,6 +4,15 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-19 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes still holding, no new work
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0398, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding on production. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs.
+Step 3: opportunity scan + trend already run twice today (12:16 UTC heartbeat, 14:05 UTC daily
+growth cycle) with nothing new and GSC data on a multi-day lag — re-running within 4 hours would
+not surface anything different, so not repeated this cycle. Quiet, clean cycle.
+
 ## 2026-09-19 (14:05 UTC) — [SEO] Daily growth cycle: no new opportunities, real small positive movement in the 28d trend
 
 1. **Opportunity scan**: same 3 striking-distance queries as the last several cycles (`dealer
