@@ -4,6 +4,82 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-19 (00:45 UTC) — [SEO] Correction: PR #5241 (below) was a duplicate — closed in favor of #5240
+
+**Correction to the entry directly below.** After opening #5241, syncing back to `main` surfaced a
+parallel swing-lane session's own journal entry (`docs/audit/nighthawk-swings-live-journal.json`,
+commit `dd1d11322`) recording the exact same collision from its own side: a DIFFERENT session had
+already opened **#5240** (`fix/dividend-yield-test-date-drift`) for this identical bug, **7 minutes
+before #5241**, non-draft, freeze-the-clock approach (`mock.timers.enable`) instead of #5241's
+relative-date fixture rewrite — same root cause, functionally equivalent fix, same file. Textbook
+instance of this file's own documented #4495/#4496 duplicate-fix-collision shape.
+
+Since #5240 landed first and is non-draft (eligible to auto-merge on its own, unlike #5241's stuck
+draft — see below), closed #5241 as a duplicate with a comment pointing to #5240 and deferring to
+it. Local branch cleaned up; remote branch delete was denied by the same permission gate as the
+undraft attempt (harmless — an orphaned closed-PR branch, not tracked work). No content was lost:
+the diagnosis, RED/GREEN evidence, and finding doc below remain accurate description of the bug and
+its fix, just landing via #5240 instead of #5241.
+
+**Lesson for future cycles**: after diagnosing a bug on someone else's blocked PR and deciding to
+fix it separately, check for a race — the diagnosis itself (posted as a public PR comment) is
+visible to every other session watching that PR, so more than one may act on it near-simultaneously.
+A quick pre-open search of open PRs touching the same file, or a brief pause after posting the
+diagnosis before opening a fix PR, would have avoided this one.
+
+## 2026-09-19 (00:33 UTC) — [SEO] Never-sit-idle sweep: chased sibling PR #5238's CI failure, found + fixed a real time-bomb test — PR #5241 (draft, CI running)
+
+**Severity.** P3 — genuine CI-flakiness defect, no product/data impact. Full write-up:
+`docs/audit/findings-staging/2026-09-19-dividend-yield-etf-test-calendar-drift.md`.
+
+Per "never sit idle" + "chase other lanes," swept `agent-pr-sweep.mjs` after finishing PR #5224's
+live re-verification (entry above): 2 open agent PRs, #5239 (docs fold, CI-running, no action
+needed) and #5238 (a different lane's cross-desk-coaching disclosure fix) marked **CI-FAILED**.
+My own earlier coordinator comment on #5238 (00:21:39Z) had already diagnosed the failure as
+unrelated to that PR's diff — `polygon-options-gex.test.ts`'s ETF dividend-yield fallback test
+hardcoded absolute `ex_dividend_date` fixture dates against a comment-only "2026-08-28 now"
+assumption, while the code under test calls the real `Date.now()`. As the real calendar caught up
+to the fixture's 12-month window, a previously-excluded row drifted back inside it — a deterministic
+time bomb, not a flake (`expected ~0.01, got 0.0075`).
+
+Confirmed RED on `main` (`not ok 62`), fixed by rewriting the fixture to use dates relative to the
+REAL `Date.now()` the resolver reads (`daysAgo(n)` helper) instead of absolute dates — no production
+code change needed, the underlying pure `trailingTwelveMonthDividendYield` already supports an
+injected `nowMs` via its own separate, unaffected sibling test. RED→GREEN confirmed (70/70 pass on
+the file); full `npm test`: **14865/14868 pass, 3 skipped, 0 fail**; `tsc --noEmit` clean.
+
+Opened PR #5241, CI running. **Could not undraft it myself this cycle** — this session's permission
+classifier explicitly denied the `draft:false` PATCH as a "Merge Without Review" action (a new,
+stricter gate than the historical "PATCH returns 200 but silently no-ops" behavior this file
+documents under THE DRAFT DEADLOCK). Did not attempt any workaround per the "measure twice, cut
+once" discipline — leaving it as a legitimate green draft for the coordinator (or a session holding
+the GitHub MCP `update_pull_request` tool) to review and release, same as any other green-draft jam
+this file already has a standing sweep query for.
+
+## 2026-09-18 (20:22 UTC) — [SEO] PR #5224 live re-verification: HomeGammaPromo CLS fix confirmed in production
+
+**Follow-up to the entry below.** PR #5224 merged cleanly at 19:06:15Z (squash commit `aeb674309`,
+`automerge.yml` worked, all checks green). Per "a merge is not a verification," did not stop at the
+merge — confirmed actual production rollout and live effect before closing this out:
+
+1. **Deploy rollout**: `ecs describe_services` on `blackout-production-cluster`/`blackout-production-web`
+   showed `desired:8 running:8 rolloutState:COMPLETED` on task def `:1675` — full cutover confirmed
+   (checked ~5h post-merge, well past any in-flight-deploy risk after an interrupted earlier attempt).
+2. **Cloudflare purge**: targeted `files` purge of `https://blackouttrades.com/` (never
+   `/_next/static/*`), confirmed `"success": true`.
+3. **Live CLS re-measurement** (`cls-measure.cjs`, post-purge): **desktop 1440×900 → CLS 0 (GOOD)**;
+   **mobile 430×932 → CLS 0.0326 (GOOD)** — both well under the 0.1 threshold and far below the
+   original 0.132 regression this fix targeted.
+4. **Live CSS bundle check** (extra confirmation layer): fetched the homepage's three CSS chunks
+   directly — `146c8792c0bee69c.css` now serves
+   `.rl .gamma-promo-warm{position:relative;padding:2rem 1rem;text-align:center;min-height:14rem;
+   display:flex;align-items:center;justify-content:center}`, i.e. the shipped `min-height:14rem`
+   rule is genuinely live at the edge, not just merged in source.
+
+**Verdict: fix confirmed working in production**, not just in the diff or the merge record. Finding
+closed out. No further action needed on this one — routine heartbeat/RTH/daily-cycle sweeping
+continues per the standing mandate.
+
 ## 2026-09-18 (18:20 UTC) — [SEO] Lane heartbeat: real homepage CLS regression found, root-caused, and fixed — PR #5224 (draft, CI running)
 
 **Severity.** P3 — real, evidence-backed finding, fixed this cycle. Full write-up:
