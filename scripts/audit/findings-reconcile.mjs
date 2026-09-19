@@ -217,13 +217,35 @@ const tagged = keep.map((r) => {
   // missing status nor an UNRECONCILED flag ever added — found live 2026-09-13 when a fold brought
   // in exactly such an entry and a from-scratch regeneration (this file's own idempotency test)
   // disagreed with the committed file's UNRECONCILED count.
-  if (hasKindLine && (note == null || hasUnreconciledNote)) {
-    return r.block.replace(/\s+$/, ""); // truly nothing left to add
+  //
+  // BUG FIX (2026-09-19): `note == null || hasUnreconciledNote` treated EITHER "nothing new to
+  // add" OR "an UNRECONCILED note already exists" as reason to return the block unchanged — but
+  // those are only the SAME case when note is ALSO non-null (an unreconciled note is still
+  // warranted). An entry whose author later resolves it by hand — appending `— FIXED` to the
+  // heading, or adding a `**Status.**` line — after a PRIOR --apply run already stamped it
+  // UNRECONCILED now computes `note == null` (nothing new needed) while `hasUnreconciledNote` is
+  // still true from that prior stamp, and the old condition short-circuited on `note == null`
+  // alone, leaving the stale UNRECONCILED annotation sitting next to a heading that now says
+  // FIXED. Found live: 7 entries folded via findings-fold-staging.mjs, each later hand-stamped
+  // FIXED, whose stale annotations survived two subsequent --apply runs and made this script's own
+  // idempotency test disagree with the committed file (regenerating from scratch resolved 7 more
+  // entries than the committed file showed). The fixed-point condition is symmetric: unchanged
+  // only when "no note is needed and none is present" or "a note is needed and is already present"
+  // — any other combination (note needed but missing/stale-worded, or no note needed but one
+  // lingers) must go through the rebuild path below, which now also strips a stale annotation.
+  if (hasKindLine && (note == null) === !hasUnreconciledNote) {
+    return r.block.replace(/\s+$/, ""); // truly nothing left to add or retract
   }
   // Strip any existing kind line (and the blank line immediately around it) so a block that already
   // carries one is rebuilt through the exact same insertion path as a fresh block below — this is
   // what lets a kind-tagged-but-status-incomplete entry still pick up its missing/stale-status note.
-  const lines = r.block.replace(/\n\n> \*\*kind:\*\* `[A-Z-]+`\n/, "\n").split("\n");
+  // Also strip a stale `> **status:** UNRECONCILED ...` annotation for the same reason: the rebuild
+  // below re-adds `note` (or omits it) from scratch, so a leftover old annotation line would
+  // otherwise either duplicate a freshly-added one or survive when the entry no longer needs one.
+  const lines = r.block
+    .replace(/\n\n> \*\*kind:\*\* `[A-Z-]+`\n/, "\n")
+    .replace(/\n> \*\*status:\*\* `UNRECONCILED` — [^\n]*\n/, "\n")
+    .split("\n");
   // Only the OPTIONAL annotations may be dropped. The body lines are passed through as-is: an
   // earlier version ran .filter(Boolean) over the whole array, which also ate the trailing empty
   // line every block carries — so each --apply erased one blank separator and, after enough runs,

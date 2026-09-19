@@ -38,6 +38,279 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Finding: 0DTE board shared snapshot false-fresh on future `as_of` — FIXED
+> **kind:** `FINDING`
+
+**Date:** 2026-09-05  
+**Severity:** P1  
+**Area:** `zerodte-service` board convergence / member serve path
+
+### Symptom
+
+`readSharedBoardSnapshot()` used `Math.max(0, Date.now() - asOfMs)` for `ageMs`. A clock-skewed future `as_of` produced age `0`, passing `BOARD_SNAPSHOT_SERVE_MAX_AGE_MS` and serving a stale snapshot as current.
+
+`localBoardIsServable()` used `nowMs - asOfMs <= maxAgeMs` — future timestamps always passed.
+
+### Fix
+
+- `zeroDteSnapshotAgeMs()` in `marks-math.ts` — future beyond `ZERODTE_MARK_FUTURE_TOLERANCE_MS` → `+Infinity`
+- `readSharedBoardSnapshot()` uses `zeroDteSnapshotAgeMs`
+- `localBoardIsServable()` delegates to `isZeroDteMarkStale(asOfMs, nowMs, maxAgeMs)`
+
+### Tests
+
+- `marks-math.test.ts` — `zeroDteSnapshotAgeMs` + board serve regression
+
+## 2026-09-05 — Swing shadow position refresh + gate evidence path (Q33–Q35) — FIXED
+> **kind:** `FINDING`
+
+### Problem
+
+`swing_shadow_positions` rows were insert-only: no mark updates, no terminal close/grade, and no
+consumption path. `commit.ts` claimed shadow evidence feeds the calibration ladder, but
+`fetchGradedSwingFeatureRows` reads only `swing_positions`.
+
+### Fix
+
+### Q33–Q34 — refresh loop
+- `src/lib/swing/shadow-refresh.ts` — mark latch + close on expiry / structural_stop / premium_stop
+- `updateSwingShadowMarks`, `closeSwingShadowPosition`, `fetchGradedSwingShadowRows` in `db.ts`
+- Wired into `swing-active-refresh` (bounded 25 shadows/pass, non-fatal)
+
+### Q35 — consumption path
+- `src/lib/swing/shadow-calibration.ts` — staged evidence tiers per blocked gate dimension:
+  - n≥10 → PROVISIONAL (log only)
+  - n≥30 → REVIEW_READY (recommend gate calibration review; does **not** auto-loosen budget/caps)
+
+### Verification
+
+```bash
+npx tsx --test src/lib/swing/shadow-refresh.test.ts src/lib/swing/shadow-calibration.test.ts
+npx tsc --noEmit
+```
+
+### RTH validation
+
+- After discovery blocks a candidate into shadow, confirm `last_mark` advances on subsequent active-refresh ticks
+- On expiry or stop hit, row should move to `CLOSED` with `graded_at` + `realized_pnl_pct`
+
+## 2026-09-05 — Swing legacy `gates.ts` deprecation marker (deep-dive Q7 partial)
+> **kind:** `FINDING`
+
+**Status.** FIXED — `@deprecated` notice added, `quote_stale`/`daily_bar_incomplete` ported to `v2/gates.ts` in PR #3934.
+
+### Problem
+
+`src/lib/swing/gates.ts` (`evaluateSwingGates`) is only called from its own unit tests. Production V2
+commit uses `src/lib/swing/v2/gates.ts` (G-S3/G-S6/G-S14). The legacy module still documents
+`quote_stale` and `daily_bar_incomplete` gates that never reach the live path — a footgun for future
+sessions reading commit.ts's calibration story.
+
+### Fix
+
+- File-header `@deprecated` notice pointing to `v2/gates.ts` and Q7 triage entry
+- No behavior change — explicit documentation only
+
+### Remaining (P4)
+
+**DONE** — `quote_stale` / `daily_bar_incomplete` ported to v2 commit path in PR #3934 (`src/lib/swing/v2/gates.ts`).
+
+Optional follow-up: delete legacy `gates.ts` after migrating its calibration-evidence unit tests.
+
+### Verification
+
+```bash
+npx tsx --test src/lib/swing/gates.test.ts
+npx tsc --noEmit
+```
+
+## 2026-09-05 — Swing ex-dividend structural stop adjustment (Q39) — FIXED
+> **kind:** `FINDING`
+
+### Problem
+
+`structuralStopBroken` compared raw underlying spot to `thesis_invalidation_px` with no
+ex-dividend adjustment. On ex-div day a LONG position can see a mechanical open gap (~cash dividend)
+that breaches the stop even when the thesis did not break.
+
+### Fix
+
+- `ex-dividend-adjustment.ts` — on ex-div session, add cash dividend to LONG spot before compare
+- `ex-dividend-reads.ts` — resolve ex-div context via Polygon dividends (6h in-memory cache)
+- `manage.ts` / `manage-sync.ts` — wire `exDividendSession` + `exDividendCash` through reads
+- `swing-active-refresh` — fetch per-ticker ex-div context each tick (fail-soft)
+
+### Verification
+
+```bash
+npx tsx --test src/lib/swing/ex-dividend-adjustment.test.ts src/lib/swing/manage.test.ts
+npx tsc --noEmit
+```
+
+### RTH validation
+
+- On ex-div day for a held dividend payer, confirm structural_stop does NOT fire when raw spot
+  is below stop only by ≤ declared cash dividend amount
+- Non-ex-div days unchanged
+
+## 2026-09-05 — Swing member Discord alerts (deep-dive Q31–Q32) — FIXED
+> **kind:** `FINDING`
+
+### Problem
+
+Swing's capital-preservation path (`closeAndRollSwingPosition` via `swing-active-refresh`) could
+terminate or roll real-money positions with zero member-visible signal. 0DTE and Legacy already
+post BTO/STC embeds through the Chief Trade Alert Bot; Swing had no equivalent subsystem.
+
+### Fix
+
+- `src/lib/swing/discord-trade-notify.ts` — env-gated (`SWING_DISCORD_ALERTS`) BTO/STC via shared
+  `postChiefTrade`, with optional `SWING_CHIEF_TRADE_CHANNEL_ID` routing.
+- `executeSwingCommits` — fire-and-forget BTO on fresh real-money open.
+- `swing-active-refresh` — fire-and-forget STC on CLOSE; STC parent + BTO child on ROLL.
+- `fetchSwingPositionById` — load roll child row for child-leg BTO payload.
+
+### Ops
+
+Set `SWING_DISCORD_ALERTS=1` and `SWING_CHIEF_TRADE_CHANNEL_ID` in production alongside existing
+`CHIEF_TRADE_BOT_URL` / `CHIEF_TRADE_API_SECRET`. Default off — opt-in parity with 0DTE/Legacy.
+
+### Verification
+
+```bash
+npx tsx --test src/lib/swing/discord-trade-notify.test.ts
+npx tsc --noEmit
+```
+
+## Finding: GEX peek stale + thermal cross-check future freshness gaps — FIXED
+> **kind:** `FINDING`
+
+**Date:** 2026-09-05  
+**Severity:** P2  
+**Area:** `polygon-options-gex.ts` admin peek + `thermal-desk-state.ts` cross-check layer
+
+### Symptom
+
+1. `peekGexHeatmapCache()` used raw `ageMs > gexHeatmapMaxStaleMs()` — future `entry.at` → negative age → always `stale: false` while `age_sec` displayed 0.
+2. `thermalLayerFreshness()` hardcoded cross-check `status: "live"` whenever `crossValUwAsof` parsed — no age/future guard unlike matrix/overlays.
+
+### Fix
+
+- `gexHeatmapCacheEntryStale()` — align with `GEX_WS_FUTURE_TOLERANCE_MS` + clamped age
+- Cross-check routes through `statusFromAge(age, OVERLAY_LIVE_MS, OVERLAY_STALE_MS)`
+
+### Tests
+
+- `thermal-desk-state.test.ts` — cross-check future → syncing, aged → stale
+- `polygon-options-gex.test.ts` — `gexHeatmapCacheEntryStale` regression
+
+## Finding: GEX heatmap fetch paths false-fresh on future cache `at` — FIXED
+> **kind:** `FINDING`
+
+**Date:** 2026-09-05  
+**Severity:** P2  
+**Follow-up:** #3833 (peek stale only)
+
+### Symptom
+
+`fetchGexHeatmap` / blocking heatmap serve used `now - entry.at < ttlMs` on L1/L2 cache hits. Future `at` from cross-replica clock skew read as age 0 → served within TTL while peek path (#3833) correctly marked stale.
+
+### Fix
+
+`gexHeatmapCacheEntryWithinTtl()` — same `GEX_WS_FUTURE_TOLERANCE_MS` guard, applied to all four heatmap cache hit sites.
+
+## 2026-09-05 — Banger live-sync missing railway TOML — FIXED
+
+> **kind:** `FINDING`
+
+### Problem
+
+`banger-live-sync` was registered in `cron-registry.ts` with `schedule_cron_utc` and
+`produces_member_alert: true`, but had no `railway.banger-live-sync.toml`. The deployed
+`cron-jobs.json` manifest is generated from TOMLs with no merge — a sync run would delete the
+hand-edited schedule silently while the route still reports healthy.
+
+### Fix
+
+- Added `railway.banger-live-sync.toml` with `cronSchedule = "*/5 11-21 * * 1-5"` (matches registry)
+- Removed `banger-live-sync` from `NO_BACKING_TOML` exemption list in `cron-registry-schedule.test.ts`
+
+### Verification
+
+```bash
+node --import tsx --test src/lib/cron-registry-schedule.test.ts
+```
+
+## 2026-09-05 — Banger member Discord alerts (deep-dive Q32 sibling) — FIXED
+> **kind:** `FINDING`
+
+### Problem
+
+Q32 flagged zero member-visible notification plumbing for both Swing and Banger while 0DTE and
+Legacy already post BTO/STC through the Chief Trade Alert Bot. Swing was addressed in #3903;
+Banger (Engine B) still had no Discord path on commit or scale-out exits.
+
+### Fix
+
+- `src/lib/banger/discord-trade-notify.ts` — env-gated (`BANGER_DISCORD_ALERTS`) BTO/STC via shared
+  `postChiefTrade`, with optional `BANGER_CHIEF_TRADE_CHANNEL_ID` routing.
+- `runBangerCommit` — fire-and-forget BTO on fresh real-money open.
+- `runBangerLiveSync` — fire-and-forget partial STC on `TAKE_PARTIAL`; terminal STC on
+  `EXIT_RUNNER` / `STOP_OUT`.
+
+### Ops
+
+Set `BANGER_DISCORD_ALERTS=1` and `BANGER_CHIEF_TRADE_CHANNEL_ID` in production alongside existing
+`CHIEF_TRADE_BOT_URL` / `CHIEF_TRADE_API_SECRET`. Default off — opt-in parity with other desks.
+
+### Verification
+
+```bash
+npx tsx --test src/lib/banger/discord-trade-notify.test.ts
+npx tsx --test src/lib/banger/live-sync.test.ts src/lib/banger/commit.test.ts
+npx tsc --noEmit
+```
+
+## 2026-09-04 — [CORRECTNESS/PERF, P2 platform-wide] Autonomous bug sweep batch 2 — desk-warm UW reservation, stale-age clamps, change_pct fabrication
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 (mix of perf + member-visible correctness) |
+| **Status** | FIXED on `cursor/platform-bug-sweep` |
+| **PR** | (pending) |
+
+### Findings fixed
+
+1. **`desk-warm` cron missing `runWithBackgroundUwSweep`** — same UW-concurrency starvation shape as #3479; `loadMergedSpxDesk` + flows warm ran bare against the 2-RPS ceiling.
+2. **VectorChart `dataAgeMs` unclamped** — future `dataReceivedAtMsRef` made play conviction read as fresh under clock skew.
+3. **`/api/market/quote` WS index age unclamped** — negative age passed stale gate; future timestamps served as live.
+4. **`/api/market/quote` stock WS `change_pct`** — session-open anchor before REST seed; now rebases off cached REST via `withFreshPrice` when available.
+5. **`toolQuote` WS path** — returned `change_pct: 0` (fabricated flat day); now uses `getStockLiveCandle().changePct` for equities.
+6. **`spx-desk` last-resort pulse fallback** — served `prev_close: null` with non-null `change_pct`, inviting inversion.
+7. **`SpxPulseRail` stale chip** — future `polled_at` never went stale; now uses `ZERODTE_MARK_FUTURE_TOLERANCE_MS`.
+8. **`/api/market/heatmap`** — sectors/movers served unrounded at API boundary.
+
+### Regression guards
+
+- `desk-warm/route.test.ts` — background sweep tag
+- `quote/route.test.ts` — WS age + withFreshPrice
+- `vector-chart-viewport.test.ts` — clamped dataAgeMs
+- `spx-pulse-change-basis.test.ts` — prior_close on fallback
+- `heatmap/route.test.ts` — roundFloats
+
+## 2026-09-04 — [TOOLING, P1 0DTE] G-18/G-19 counterfactual report script — BO-P1-0004 deliverable
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What** | `npm run counterfactual:0dte-g18-g19` — runs skip-grading backfill + calibration API, surfaces `early_window_prime_score` (G-18) and `score_top_band` (G-19) blocked-value lines with KEEP/HOLD/REVIEW verdicts, plus optional session replay. |
+| **Why** | BO-P1-0004 required measuring whether G-18/G-19 loss gates (#3425) are saving money post-deploy. Replay tool was blocked until #3441 fixed POLYGON_API_BASE placeholder. |
+| **Prereqs** | Prod Clerk admin session (same as `gate-calibration-live-report.mjs`). |
+| **Status** | SHIPPED (script + tests) — live prod run pending credentials in RTH window |
+
 ## Ask Largo swing brief's cross-desk friction coaching silently drops a 4th disagreeing desk with no trace or count
 
 > **kind:** `FINDING`
