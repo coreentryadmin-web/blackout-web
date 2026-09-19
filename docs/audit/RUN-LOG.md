@@ -4,6 +4,29 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-19 (00:45 UTC) — [SEO] Correction: PR #5241 (below) was a duplicate — closed in favor of #5240
+
+**Correction to the entry directly below.** After opening #5241, syncing back to `main` surfaced a
+parallel swing-lane session's own journal entry (`docs/audit/nighthawk-swings-live-journal.json`,
+commit `dd1d11322`) recording the exact same collision from its own side: a DIFFERENT session had
+already opened **#5240** (`fix/dividend-yield-test-date-drift`) for this identical bug, **7 minutes
+before #5241**, non-draft, freeze-the-clock approach (`mock.timers.enable`) instead of #5241's
+relative-date fixture rewrite — same root cause, functionally equivalent fix, same file. Textbook
+instance of this file's own documented #4495/#4496 duplicate-fix-collision shape.
+
+Since #5240 landed first and is non-draft (eligible to auto-merge on its own, unlike #5241's stuck
+draft — see below), closed #5241 as a duplicate with a comment pointing to #5240 and deferring to
+it. Local branch cleaned up; remote branch delete was denied by the same permission gate as the
+undraft attempt (harmless — an orphaned closed-PR branch, not tracked work). No content was lost:
+the diagnosis, RED/GREEN evidence, and finding doc below remain accurate description of the bug and
+its fix, just landing via #5240 instead of #5241.
+
+**Lesson for future cycles**: after diagnosing a bug on someone else's blocked PR and deciding to
+fix it separately, check for a race — the diagnosis itself (posted as a public PR comment) is
+visible to every other session watching that PR, so more than one may act on it near-simultaneously.
+A quick pre-open search of open PRs touching the same file, or a brief pause after posting the
+diagnosis before opening a fix PR, would have avoided this one.
+
 ## 2026-09-19 (00:33 UTC) — [SEO] Never-sit-idle sweep: chased sibling PR #5238's CI failure, found + fixed a real time-bomb test — PR #5241 (draft, CI running)
 
 **Severity.** P3 — genuine CI-flakiness defect, no product/data impact. Full write-up:
