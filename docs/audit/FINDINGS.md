@@ -38,6 +38,588 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing brief's cross-desk friction coaching silently drops a 4th disagreeing desk with no trace or count
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo swing play-brief — `crossDeskCoaching`/`renderCrossDeskConflict` (`src/lib/swing/play-brief-narrative-coaching.ts`), the "Cross-desk friction" narrative line |
+| **Severity** | P3 — member-facing narrative completeness (Largo product contract "absence" principle), not a live-trading-path change |
+| **Status** | FIXED — `fix/cross-desk-4th-conflict-silent-drop` |
+| **Found by** | ASK LARGO × NIGHT HAWK SWINGS standing ownership mandate, 5-engine live monitor cycle, 2026-09-19 (Saturday, market closed) |
+
+### Root cause
+
+`crossDeskCoaching` checks up to FOUR independent desks against the swing's own direction — Night
+Hawk (digest), 0DTE (intraday_scalp), Vector (structure), and HELIX flow — and pushes a `conflict`
+entry for each one that disagrees. `renderCrossDeskConflict` then ranks all conflicts by
+load-bearing weight, names the lead (highest-weight) conflict in full, and appends up to
+`rest.slice(0, 2)` more — i.e. at most 3 conflicting desks are EVER named in the rendered text,
+regardless of how many actually disagree.
+
+Since exactly 4 desks are ever checked, the only way to exceed "lead + 2" is all 4 disagreeing at
+once (1 lead + 3 in `rest`). Before this fix, that case silently dropped the 4th (lowest-weight)
+conflicting desk from the rendered text entirely — no name, no count, no "+1 more" disclosure, just
+gone. A member reading the brief in that state would see three desks disagreeing and have no way to
+know a fourth genuinely did too.
+
+This is exactly the failure mode `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s disagreement principle
+exists to prevent: *"Cross-product disagreement is represented, never reconciled by the lanes
+themselves... A lane that quietly adjusts its numbers to match a peer has destroyed the signal and
+left a false consensus."* Dropping the 4th conflict without disclosure isn't reconciliation in the
+technical sense, but the member-facing effect is identical — the disagreement silently vanishes
+from what they're told, producing a false read of how much of the desk actually disagrees (3-desk
+friction reads very differently from 4-desk unanimous-against friction).
+
+The 2- and 3-conflict cases were already covered by existing tests and both render correctly (3
+fits inside lead + `rest.slice(0,2)` exactly, with nothing dropped). Nothing exercised the genuine
+maximum — 4 simultaneous conflicts — until this cycle's edge-case sweep of the function per the
+standing mandate ("does `crossDeskCoaching` handle 3+ desks disagreeing without degrading to
+generic prose").
+
+### Evidence
+
+New regression test `crossDeskCoaching: FOUR conflicting desks at once must not silently drop the
+4th disagreement` (`src/lib/swing/play-brief-narrative-coaching.test.ts`) builds a fixture where
+Night Hawk (short), 0DTE (short), Vector (short), and HELIX flow (put-led) all disagree with a LONG
+swing simultaneously. Pre-fix (RED, confirmed via `git stash`):
+
+```
+**Cross-desk friction** — Vector bearish (Fade the rip). That's live price structure — the same
+tape this swing itself trades — exactly the evidence a **Breakout continuation** setup leans on, so
+weight it heaviest: watch for it to flip back before your next trim rail — until then, size down.
+HELIX also reads put-led (same-session options order flow, not price structure) — lighter weight
+here; Night Hawk also reads bearish (B) (last night's overnight next-day digest, not a live read) —
+lighter weight here.
+```
+
+0DTE's "short (score 78)" conflict — genuinely detected (it's in the `conflicts` array, ranked
+last by weight) — never appears anywhere in the output. Post-fix (GREEN): the same rendering now
+appends `(+1 more desk also disagree — not detailed here.)` after the two named "rest" desks, so
+the existence of the 4th disagreement is disclosed even though the lead+2 cap keeps the sentence
+from listing all four verbosely.
+
+### Fix rationale
+
+Added an omission-count disclosure clause to `renderCrossDeskConflict`, gated on `rest.length -
+shown.length > 0` (only ever fires on the true 4-conflict case given the fixed 4-desk universe this
+function checks). Deliberately did NOT change the lead+2 cap itself — the existing design rationale
+("the coaching ends on one concrete next-check instead of N") is sound for readability, and listing
+all 4 desks' full reasoning would re-introduce the flat, unweighted dump the original
+`renderCrossDeskConflict` rewrite (referenced in this file's own comments, #4104/#4110/#4116-era)
+was built to replace. Disclosing the omitted count is the minimal fix that keeps both properties:
+concise reasoning on the top 3, and honest acknowledgment that a 4th disagreement exists rather than
+erasing it.
+
+### Blast radius
+
+Single call site (`renderCrossDeskConflict` is only invoked from `crossDeskCoaching` in this file).
+No other narrative section reuses this rendering function. `collectCoachingBullets`'s consumption of
+`crossDeskCoaching`'s output is unaffected — it still receives one string, just with the extra
+clause appended when the 4-conflict case fires.
+
+## `session_stats.top_block_code` preferred a stale session-cumulative tally over the live pass — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/lib/zerodte/session-board-stats.ts` (`computeZeroDteSessionBoardStats`) |
+| **Severity** | P3 — member-visible product-clarity gap, no financial/data impact |
+
+### Root cause
+
+`computeZeroDteSessionBoardStats` computes TWO independent views of "what's blocking 0DTE commits":
+`fromSetups` (the honest tally of `gate.blocks[]` across THIS pass's live `setups[]`, via
+`tallySetupGateLanes`/`topBlockFromCounts`) and `funnelTopCode` (the caller-supplied
+`discovery_funnel.top_gate`, which `discovery-funnel-hint.ts` computes as a **session-cumulative**
+gate-rejection tally since market open). The old precedence used `funnelTopCode` whenever it was
+non-empty, falling back to the live `fromSetups` only when the cumulative figure was absent — but
+the cumulative figure is non-empty almost the entire session, so the live pass's own numbers were
+effectively dead code from shortly after market open onward.
+
+This surfaced live 2026-09-17 during a routine forensic cycle (journaled in
+`docs/audit/nighthawk-0dte-live-journal.json`): `session_stats.top_block_code` showed
+`thesis_rank_reject` for several consecutive cycles while the actual live `setups[].gate.blocks`
+distribution that same pass showed `plan_illiquid` (241) and `score_floor` (237) as the real
+dominant blockers — `thesis_rank_reject` was only 37. The cumulative figure had gotten "stuck" on
+an earlier-session dominant gate and no longer reflected what was actually happening. At the time
+this was investigated and correctly ruled out as a bug in the sense that both numbers were honestly
+computed (cumulative-session vs this-pass answer different questions) — but flagged as a genuine
+product-clarity gap worth fixing: a trader reading `top_block_code` to understand "why is nothing
+committing right now" gets a potentially stale answer.
+
+### Evidence
+
+`session_stats` is rendered in `zerodte-board-strips.tsx` (`stats.top_block_label`, gated on
+`stats.gate_blocked > 0` — i.e. specifically shown when there ARE live blocked setups this pass),
+so the UI's own gating condition already implies the label should describe the current pass, not a
+running total. Confirmed via `src/lib/platform/zerodte-service.ts:786-790`, the sole call site,
+that `funnelTopCode` is `discovery_funnel?.top_gate ?? null` — `discovery-funnel-hint.ts`'s own
+doc comment confirms this is a session accumulation, not a live snapshot.
+
+### Fix
+
+Swapped the precedence: `top_block_code` now prefers `fromSetups.code` (this pass's own live block
+distribution) whenever it has data, falling back to `funnelTopCode` only when this pass itself has
+no gate-blocked setups to report (e.g. every setup this cycle is COMMIT-ready, or `setups[]` is
+empty) — the only case where the live signal genuinely has nothing to say and the cumulative figure
+is the best available answer.
+
+### Fix rationale
+
+Considered removing `funnelTopCode` entirely, but it's a legitimate fallback for the edge case
+where this pass has zero blocked setups (no live data at all) — keeping it there, just demoted to
+fallback-only, preserves that behavior. `top_block_label` is now always derived fresh from
+`zeroDteGateLabel(top_block_code)` rather than carrying its own separate live/cumulative label
+value, removing a second, now-redundant code path that could have drifted from the corrected code
+precedence.
+
+### Blast radius
+
+Single function, single call site (`zerodte-service.ts`). `veto-shadow-summary.ts`'s own read of
+`funnel?.top_gate` is a **separate, direct** read of the raw funnel data (not through
+`session_stats`), so it is unaffected by this precedence change and still answers its own,
+correctly-scoped cumulative question (Cortex veto-shadow tracking is deliberately about the whole
+session, not a live snapshot).
+
+### Tests
+
+`src/lib/zerodte/session-board-stats.test.ts`: updated the existing "ledger + funnel top block"
+test (which had encoded the OLD, buggy precedence — funnel code winning over a live, different
+block code) to reflect the correct behavior, and added two new tests: the funnel-code fallback when
+this pass has no block data, and the never-fabricated-null case. RED→GREEN confirmed via `git
+stash` isolating `session-board-stats.ts` from the test file. Full
+`session-board-stats.test.ts` + `veto-shadow-summary.test.ts` + `zerodte-service.test.ts` +
+`board.test.ts` suite: 161/161 pass. `npx tsc --noEmit`: clean. All on Node 20.20.2.
+
+---
+_Generated by [Claude Code](https://claude.com/claude-code)_
+
+## Ask Largo swing brief's stop rail is quantified with a live room%, but the symmetric target/upside rail is only ever a bare dollar figure
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo swing play-brief — `watchForSection` (`src/lib/swing/play-brief-intel.ts`), the "What to watch" section on OPEN positions |
+| **Severity** | P3 — member-facing narrative enhancement (trade-manager-read quality), not a live-trading-path change |
+| **Status** | FIXED — `fix/swing-target-rail-room-disclosure` |
+| **Found by** | NIGHT HAWK SWINGS standing audit lane, live CRWD:39 OPEN brief, 2026-09-18, aggressive-mode improvement hunt |
+
+### Root cause
+
+`watchForSection`'s stop-cushion block (`bucket === "open" && play.exitPolicy?.stop_premium != null`)
+quantifies "how far the current mark could still fall before hitting the stop" as a percentage —
+mark/execMark-preferring, staleness-gated, never fabricated when the option mark is genuinely
+unknown. Its own in-code history documents THREE separate live-repro fixes (2026-09-12 x2,
+2026-09-14) making that computation increasingly correct: gating on the true entry-fallback echo,
+preferring the real executable (bid) price over the more optimistic mid, and flagging "no real
+cushion" outright once the bid has already reached the stop. The comment on the very first of
+those fixes states the reason plainly: "the dollar level alone forces a member to do that
+subtraction themselves."
+
+`exitPolicy.target_premium` — the symmetric upside/target rail, equally real and already computed
+— never received the equivalent treatment. Exhaustive grep across every narrative file in the
+lane (`play-brief.ts`, `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`,
+`play-brief-intel.ts`) confirms it is rendered in exactly two places, both bare dollar figures with
+zero distance/room context: `play-brief.ts`'s "Management" section ("Rails: stop X · target Y")
+and `play-brief-narrative.ts`'s `tradeManagerNarrativeSection` ("Manage rails — stop X · target
+Y"). A member reading the stop side is told "60% cushion from current mark"; reading the target
+side, they are handed two raw numbers and asked to do the exact subtraction the stop-cushion fix's
+own comment names as the reason it was added.
+
+### Evidence
+
+Live CRWD:39 OPEN brief, 2026-09-18 (`GET /api/market/swing/play-brief?playId=SWING:CRWD:39&ticker=CRWD`):
+
+```
+## Management
+**Recommended:** TRIM
+...
+Rails: stop $5.08 · target $25.40
+...
+## What to watch
+Thesis **intact**
+
+Premium stop rail: **$5.08** — 64% cushion from current bid — thesis breaks if mark closes below
+```
+
+Mark was $14.65, target $25.40 — a real, informative "73% move still needed" fact that the brief
+never states anywhere, despite quantifying the equivalent downside fact one line above it.
+
+### Blast radius
+
+Single new block inside `watchForSection`, additive only (a new line appended when the gate
+conditions are met) — does not touch the existing stop-cushion block, the "Management" section's
+bare `Rails: stop X · target Y` line (left as-is; still the correct place for the raw dollar
+figures), or any exit-management/execution logic. `target_premium` is read-only here; no gate,
+trim ladder, or manage-engine decision changes. Every OPEN swing brief with a known
+`exitPolicy.target_premium` and a resolvable mark/execMark is affected (a strict superset of the
+population that already sees the stop-cushion line, since both gate on the same `bucket === "open"`
+branch).
+
+### Fix rationale
+
+Deliberately mirrors the stop-cushion block's exact basis/gating logic — execMark preferred over
+mid when known and positive, gated on `!optionMarkGenuinelyUnknown(play)` — rather than reinventing
+it, so the new line cannot independently drift into any of the three defect shapes the stop side
+already had to be fixed for (true entry-fallback echo, mid-vs-exec divergence, stale/unknown mark).
+Omitted (never a negative/zero fabrication) once the basis has already reached or passed the
+target — a real, if less common, state for a position still open pending its own trim/exit
+management, not specially messaged (unlike the stop side's "no real cushion" case, which was a
+deliberate fix for a genuinely alarming state worth calling out explicitly; reaching a target early
+is not similarly urgent).
+
+### Test
+
+`src/lib/swing/play-brief-intel.test.ts`, four new tests immediately following the existing
+stop-cushion test block:
+- `"Premium target rail shows the live room percentage to the target, not just the dollar level"`
+- `"Premium target rail omits the room note when mark is unavailable (never fabricated)"`
+- `"Premium target rail uses the executable (bid) basis, not the more optimistic mid, when they diverge"`
+- `"Premium target rail omits the room note once the basis has already reached or passed the target (never a negative/zero fabrication)"`
+
+Deliberate-break RED→GREEN proof via `git stash`/`git stash pop` on the source file only (test file
+kept in place): reverting the source dropped exactly 2/151 tests (the two positive-assertion new
+tests; the two "omit" tests trivially still pass against reverted source), diff-verified
+byte-identical restore. `npx tsc --noEmit -p .` clean (Node 20). Full relevant scope
+(`play-brief-intel.test.ts` + `play-brief.test.ts` + `play-brief-narrative.test.ts` +
+`play-brief-narrative-coaching.test.ts`): 422/422 pass. Full `npm test` (Node 20): 14631/14634
+pass, 0 fail, 3 pre-existing skips.
+
+## RTH all-day agent workflows red on Cursor API HTTP errors — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED (pending merge) |
+| **Priority** | P2 |
+| **Area** | ops / GitHub Actions |
+| **Symptom** | `launch` job failed with curl exit 22 on `POST https://api.cursor.com/v1/agents` (SPX + Grid scheduled verify passes). |
+| **Root cause** | `spx-rth-all-day-agent.yml` and `grid-rth-all-day-agent.yml` used `set -euo pipefail` + bare `curl -sf` with no fallback; transient Cursor API 4xx/5xx (quota/rate limit) failed the workflow even though verify is best-effort dispatch. |
+| **Fix** | Match `blackout-autopilot-dispatch.yml` / `blackout-hourly-checklist.yml`: `::warning::` + `exit 0` when agent launch curl fails. |
+| **Evidence** | GH run `35376265724` (SPX), `35376180256` (Grid) — exit code 22 at agent POST step. |
+
+## Homepage gamma-promo panel's mount-fetch self-heal caused a real CLS regression — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/components/landing/HomeGammaPromo.tsx` / `src/app/marketing-redesign.css` (`.gamma-promo-warm`) |
+| **Severity** | P3 — SEO/UX Core Web Vitals, no data-correctness impact |
+
+### Root cause
+
+The homepage (`src/app/(marketing)/page.tsx`) is ISR (`revalidate = 3600`), seeded via
+`readPublicGexSnapshotSeed` — a deliberate **cache-only** read (never live-computing, per that
+page's own comment, to avoid poisoning the shared snapshot cache — see the 2026-09-03 incident
+trace it references). That seed can legitimately lack full levels at the moment a given ISR page
+was generated, and the page's own comment says the client "always self-heals with its own live
+fetch on mount" — confirmed as deliberate, tested behavior by the existing
+`HomeGammaPromo.test.ts` test asserting `loading` is seeded from `!hasLevels(initial)`.
+
+What nobody had covered was the **visual** consequence of that self-heal: `HomeGammaPromo.tsx`
+gates its render on `showLevels = hasLevels(snapshot)` with a hard structural branch —
+`!showLevels` renders a small, centered `.gamma-promo-warm` placeholder (one line of text,
+`padding: 2rem 1rem`), while `showLevels` renders a completely different, much taller subtree
+(spot headline + regime badge, a 3-tile call/flip/put matrix, an optional ladder, and the
+`snapshot.read` narrative). The `.gamma-promo-cta` "Open full snapshot" button sits immediately
+after this conditional. When the mount-fetch resolves (typically within ~300ms–1s) and flips
+`showLevels` from false to true, the panel visibly collapses-then-expands, pushing the CTA and
+everything below it down.
+
+### Evidence
+
+Caught live during a routine SEO lane heartbeat (2026-09-18, desktop, post-Cloudflare-edge-purge
+so the measurement reflects the real origin response, not a stale edge copy): `cls-measure.cjs`
+returned **CLS 0.132** on the homepage — over the 0.1 "needs improvement" threshold — where prior
+cycles had consistently measured ~0-0.03. Immediate re-runs (3x) returned to the usual near-zero
+baseline (0.0003, 0, 0.0001), consistent with an intermittent, seed-dependent defect rather than a
+constant regression.
+
+Instrumented the exact shift with a `PerformanceObserver` capturing `sources` (element + before/
+after rects) across 5 repeated purge+load rounds; 2/5 caught a real, non-trivial shift
+(0.0195 and 0.0547) with `.gamma-promo-cta` and `.gamma-promo-read` consistently among the moved
+elements — one capture showed the CTA link's own rect going from `height: 4` (effectively
+collapsed) to `height: 109` (its real size), directly matching a `showLevels` flip mid-load.
+Traced to the source: `showLevels` is computed once per render from `snapshot`, which starts as
+`initial` (the ISR seed) and is replaced by the mount-fetch's live result — exactly the
+"self-heals with its own live fetch on mount" behavior `page.tsx`'s own comment documents as
+deliberate.
+
+### Fix
+
+`.rl .gamma-promo-warm` now reserves `min-height: 14rem` (plus `display:flex;
+align-items:center; justify-content:center` so the short placeholder text sits centered in the
+taller box rather than pinned to the top) — sized from the live-measured ~105-140px delta between
+the compact and full states, generously rounded up. This does not touch the self-heal itself
+(still correct and necessary, per the incident trace `page.tsx` documents) — it only removes the
+visible layout consequence of the state it already needs to pass through.
+
+### Fix rationale
+
+Considered restructuring the component to always render the full DOM shape with `"—"` placeholder
+values (matching the pattern `GammaSnapshotWidget.tsx` already uses for individual fields like
+`WallRole`) instead of branching between two structurally different subtrees. Rejected for this PR
+as a larger, riskier diff than the evidence justifies — the CSS reservation directly fixes the
+measured defect with a small, additive, easily-reverted change. `GammaSnapshotWidget.tsx`
+(`/tools/gamma-snapshot`) has the same branch shape and was investigated separately this session
+for its own, still-inconclusive intermittent CLS anomaly (see `docs/audit/RUN-LOG.md`,
+2026-09-15 13:55 UTC entry) — that page uses `force-dynamic` (not ISR), so this exact root cause
+(a stale/level-less ISR seed) does not apply there; left untouched, not part of this fix.
+
+### Blast radius
+
+Single CSS rule (`.rl .gamma-promo-warm`), scoped to this one component's warm/loading state.
+`.gamma-promo-warm-scan` (the absolutely-positioned scan-line overlay, `inset: 0`) is unaffected —
+it still fills its positioned ancestor (`.gamma-promo-warm`, `position: relative`) regardless of
+the new `display: flex`. No other selector reads `.gamma-promo-warm`'s box model.
+
+### Tests
+
+`src/components/landing/HomeGammaPromo.test.ts`: added a source-scan regression test (matching
+this file's existing style) asserting the `min-height:14rem` rule is present on `.rl
+.gamma-promo-warm` in `marketing-redesign.css`. RED→GREEN confirmed via `git stash` isolating the
+CSS change from the test (1 fail → 3/3 pass). Full suite: 14839 pass / 0 fail / 3 skipped.
+`npx tsc --noEmit`: clean. All on Node 20.20.2.
+
+**Not independently re-verified live post-deploy in this cycle** — the fix has not merged/deployed
+yet. Flagging for a follow-up RTH/heartbeat cycle to purge the edge and re-measure
+`https://blackouttrades.com/` homepage CLS specifically watching for this panel once this PR is
+live, per the standing "a merge is not a verification" discipline.
+
+---
+_Generated by [Claude Code](https://claude.com/claude-code)_
+
+## R:R display rounds up across its own quality-label/color threshold — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/features/nighthawk/command-deck/{PlayTerminal.tsx, ZeroDteCommandPanel.tsx, LegacyPlayDetailPanel.tsx}` |
+| **Severity** | P3 — member-visible display self-contradiction, no financial/data impact |
+| **Found by** | Cross-lane handoff from the Night Hawk Legacy lane (logged 2026-09-11 in this file's `docs/audit/nighthawk-0dte-live-journal.json` `open_findings`, id `2026-09-11-0dte-rr-preentry-display-rounding-boundary`), picked up and applied by the 0DTE lane. |
+
+### Root cause
+
+Five places in the Night Hawk command-deck render a play's Risk:Reward ratio as
+`{rr.toFixed(1)}:1`, and four of them additionally derive a quality label or a color class from
+the SAME raw, unrounded `rr` against threshold ladders at 0.5 / 1 / 2. `toFixed(1)` rounds
+to-nearest, so a value just under a threshold (e.g. `rr = 0.96`) displays as the threshold itself
+("1.0") while the label/color still reads the lower bucket computed from the true `0.96` — e.g.
+"1.0:1 (acceptable)" printed beside a ladder where 1.0 is the "favorable" cutoff, or a neutral
+(non-green) color next to a displayed "2.0" that visually implies the ">= 2 strong" bucket. A
+member reading the printed number against the very ladder the label/color uses sees an apparent
+contradiction between the number and its own classification.
+
+The exact same shape was already fixed once, in a different file, for a different (but adjacent)
+purpose: `src/features/nighthawk/lib/deterministic-edition.ts`'s Legacy thesis-text R:R line
+(PR #4813, merged) replaced `rr.toFixed(1)` with a floor-based display value. The Legacy lane's
+2026-09-11 blast-radius grep (done immediately after shipping that fix, looking for other
+`toFixed(1)` + threshold-ladder pairs) found `PlayTerminal.tsx:876`'s `ZeroDtePreEntryContext` as
+an identical-shaped instance and logged it as a cross-lane handoff for the 0DTE lane, since it sits
+on 0DTE command-deck surface outside that session's mandate.
+
+**Root-causing the handoff surfaced a wider blast radius than the one call site named.** Grepping
+this repo for every `rrRatio` display call site (not just the one named in the handoff) found FIVE
+total occurrences of the same `toFixed(1)` + raw-`rr`-threshold pattern:
+
+1. `PlayTerminal.tsx:580` (`ThesisPanel`'s `commitSnapshot` — color only, no text label)
+2. `PlayTerminal.tsx:892` (`ZeroDtePreEntryContext` inside `PnlPanel` — the one named in the
+   handoff; has the full `(strong)/(favorable)/(acceptable)/(tight)` text ladder)
+3. `PlayTerminal.tsx:974` (Legacy `PnlPanel`'s "R:R" row — color only)
+4. `ZeroDteCommandPanel.tsx:368` (the actual live 0DTE render path — `commandSinglePanel` routes
+   every `horizon === "ZERO_DTE"` play here, bypassing `ThesisPanel`/`ZeroDtePreEntryContext`
+   entirely, so THIS is the one real members see on a 0DTE play's Risk:Reward row, not the one the
+   handoff named; color only, no text label)
+5. `LegacyPlayDetailPanel.tsx:170` (Legacy single-panel v2's "Risk : reward" row — has the
+   `(strong)/(favorable)/(tight)` text ladder, same contradiction shape as #2)
+
+All five share the identical root cause and are fixed identically here — this is a single
+mechanical class of bug, not five independent ones.
+
+### Why `ZeroDtePreEntryContext` (the handoff's named location) is currently unreachable for 0DTE
+
+Traced while writing the regression test: `PlayTerminal`'s top-level render computes
+`commandSinglePanel = play.horizon === "ZERO_DTE" || play.horizon === "SWING"` and, when true,
+renders `ZeroDteCommandPanel` directly — the tabbed `ThesisPanel`/`ManagePanel`/`PnlPanel` layout
+(and therefore `ZeroDtePreEntryContext`, which lives inside `PnlPanel`) is only reached for a
+horizon that is neither `ZERO_DTE`, `SWING`, nor `LEGACY` — i.e. only `LEAPS` today. The function's
+own name/comment ("Pre-entry context for 0DTE plays") is now stale relative to the current render
+tree; the fix applied there is still correct and shipped (harmless either way — it corrects the
+component for whichever horizon does reach it), but the actually-live 0DTE-member-facing instance
+of this bug was `ZeroDteCommandPanel.tsx:368` (#4 above), found only by grepping for every
+`rrRatio` call site rather than trusting the handoff's single named line. Not fixing the horizon
+routing itself here — out of scope for a display-rounding fix and not what was reported.
+
+### Fix
+
+All five sites now compute a floored display value before formatting instead of rounding
+to-nearest: `(Math.floor(rr * 10 + 1e-9) / 10).toFixed(1)}:1` — copied verbatim from the already-
+shipped `deterministic-edition.ts` pattern (same epsilon, same rationale: a floored display can
+never read at-or-above a threshold the true `rr` hasn't reached, and the epsilon guards a clean
+multiple of 0.1 from landing on the wrong side of `Math.floor` due to binary floating-point
+representation). The label/color logic itself is untouched everywhere — it already read the raw,
+correct `rr`; only the printed number was wrong.
+
+### Fix rationale
+
+Reused the exact proven pattern from PR #4813 rather than inventing a new one, per this repo's own
+existing precedent for the same bug shape in a sibling file. Considered fixing only the one named
+handoff location, but the repo's PR write-up policy explicitly requires finding and fixing every
+call site sharing the same root cause ("duplicated logic in a second file counts") — a targeted
+grep found four more, including the one location (`ZeroDteCommandPanel.tsx`) that is actually the
+live 0DTE path, so fixing only the handoff's named (but currently unreachable) location would have
+shipped a no-op for the population that matters.
+
+### Tests
+
+`src/features/nighthawk/command-deck/PlayTerminal.ssr.test.ts`: 3 new tests.
+- `"Thesis tab: R:R display floors instead of rounding — 1.96 must NOT display as the 2.0
+  threshold it hasn't reached"` — exercises `ZeroDteCommandPanel.tsx`'s live 0DTE render path
+  (confirmed via manual SSR trace during development, not by the pre-existing test's misleading
+  name).
+- `"pre-entry (not-yet-committed), PnL tab: ..."` ×2 (0.96/acceptable and 1.96/favorable boundary
+  cases) — exercise `ZeroDtePreEntryContext` via `horizon: "LEAPS"` + the `initialTab: "pnl"` SSR
+  test-only escape hatch (the only fixture shape that reaches this component under
+  `renderToStaticMarkup`, which has no click simulation).
+
+All three confirmed FAILING pre-fix (`git stash` isolating the three component files from the
+test file) and PASSING post-fix. Full `src/features/nighthawk/command-deck/*.test.ts` +
+`*.ssr.test.ts` suite: 431/431 pass. `npx tsc --noEmit`: clean. All on Node 20.20.2.
+
+### Blast radius
+
+No other consumer of `rrRatio` exists outside these five render call sites (confirmed via
+repo-wide grep). No data/grading logic touched — this is purely a display-formatting fix; the
+underlying `rrRatio` value, its color threshold, and its text-label threshold are all unchanged.
+
+---
+_Generated by [Claude Code](https://claude.com/claude-code)_
+
+## 2026-09-05 — vector-universe GEX walls: null spot must fail-closed, not run unconstrained
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | During cold-cache Polygon contention, `fetchGexHeatmap` can return `strike_totals` while `spot` is still `null`. The universe row then served wrong-side `topCallWall` / `topPutWall` (e.g. call wall below spot) and persisted the same into narrowed 0DTE/weekly/monthly wall-history rails. |
+| **Root cause** | `buildVectorUniverseRow` passed `spot: undefined` into `computeGexWalls` when spot was unknown. That restores the unconstrained peak scan — the exact bug PR #3495 fixed on the live rail — instead of mirroring `getVectorGexWalls()` which returns `null` walls when spot is unknown. |
+| **Fix** | Gate both blended and narrowed-horizon GAMMA `computeGexWalls` calls on `spot != null && spot > 0`; otherwise emit empty `{ callWalls: [], putWalls: [] }`. VEX walls stay unconstrained (no above/below-spot geometry). |
+| **Status** | FIXED |
+
+**Regression guard:** `src/features/vector/lib/vector-universe.test.ts` — `NOSPOT` fixture + source-scan for fail-closed gate.
+
+**RTH check:** Open Vector scanner during first 5 minutes after open; tickers that briefly show `spot:null` in `/api/market/vector/universe` must not carry a non-null `topCallWall` below a later-resolved spot.
+
+## 2026-09-04 — vector-universe GEX walls: zero spot passed to computeGexWalls
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | When `hm.spot` is `0` (transient chain miss), `spot ?? undefined` passed literal `0` into `computeGexWalls`, applying a bogus side-constraint and persisting wrong-side walls into narrowed-horizon history. |
+| **Root cause** | Main blended `gexWalls` path still used `spot ?? undefined` while narrowed-horizon path was partially fixed on `cursor/platform-bug-sweep` — inconsistent guards. |
+| **Fix** | Both `computeGexWalls` call sites use `spot != null && spot > 0 ? spot : undefined`. |
+| **Status** | FIXED |
+
+## Vector chart logical-range guard — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Sentry production sample (2026-09-03): `Error: Uncaught Error: Assertion failed: right should be >= left` from lightweight-charts when restoring or applying a visible logical range during background chart updates. |
+| **Root cause** | `getVisibleLogicalRange()` can briefly return an inverted `{from, to}` during bar-count transitions; callers passed it straight to `setVisibleLogicalRange()` with no validation. |
+| **Fix** | `normalizeLogicalRange()` rejects non-finite or inverted ranges; `applyVisibleLogicalRange()` centralizes the guard at every `setVisibleLogicalRange` call site in Vector chart surfaces. |
+| **Status** | FIXED |
+
+## 2026-09-04 — playbook-data-quality future timestamp false-fresh
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Future `polled_at`/`as_of` on SPX desk produced `ageSec = 0` via `Math.max(0, negative)`, so `desk_stale` stayed false and live playbook BUY gating treated a clock-skewed snapshot as fresh. |
+| **Root cause** | `playbookDataQualityFlags` lacked the future-timestamp guard already applied in `spx-play-gates.ts` via `ZERODTE_MARK_FUTURE_TOLERANCE_MS`. |
+| **Fix** | Reject future stamps as stale (`playGexStaleMaxSec() + 1`); unit test added. |
+| **Status** | FIXED |
+
+## 2026-09-04 — [FINDING, P3 Tooling] Three npm-wired latency-audit scripts hard-crashed on every run — two independent decommissioned-infra references — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `npm run validate:latency-compare`, `npm run validate:latency-burst`, and `npm run validate:largo-latency` — three scripts wired as normal, discoverable `npm run` commands, exactly the kind of tool the STANDING PERFORMANCE/LATENCY AUDIT MANDATE says to reach for ("pull real numbers first... never fix from a guess when the metric is one API call away") — crashed unconditionally, before probing a single endpoint. |
+| **Root cause** | Each script hard-coded a "staging vs prod" comparison against infrastructure that no longer exists, in two independent ways: (1) `loadStagingCron()`/`loadStagingSecret()` read Secrets Manager's `blackout-staging/app/env`, which was deleted along with the entire `blackout-staging-*` stack on 2026-07-25 (CLAUDE.md: *"Do NOT reference the deleted blackout-staging-* stack or staging.blackouttrades.com"*) — confirmed live via `secretsmanager.describe_secret('blackout-staging/app/env')` → `ResourceNotFoundException`. (2) `latency-burst-audit.mjs` and `largo-latency-compare.mjs` also shelled out to the `railway` CLI for the *production* Clerk/cron secret — a tool this project stopped using entirely when infra moved to AWS ECS (CLAUDE.md: *"All infrastructure runs on AWS ECS only — there is no Railway"*). `largo-latency-compare.mjs`'s `loadProdWebSecret()` threw unconditionally on any machine without a Railway install for this project (`spawnSync` on a missing binary never throws on its own — the code's own `if (res.status !== 0) throw ...` did). |
+| **Evidence** | Live 2026-09-04 via boto3: `secretsmanager.describe_secret(SecretId='blackout-staging/app/env')` → `ResourceNotFoundException: Secrets Manager can't find the specified secret`. Confirmed the same failure shape the STANDING PERFORMANCE MANDATE's step 1 ("pull real numbers first") would hit immediately on any of these three commands — a would-be measurement that could never produce a number. |
+| **Blast radius** | Three files, one root cause (stale references to infra removed in two separate migrations — Railway→ECS and the 2026-07-25 staging decommission). `compare-latency-envs.mjs` had only the staging half broken (prod already read `CRON_SECRET` from the environment correctly). `latency-burst-audit.mjs`'s Railway call already silently fell back to `process.env.CRON_SECRET` on failure, so only its staging half was fatal. `largo-latency-compare.mjs` was the worst case — both halves fatal, and neither had a working fallback. |
+| **Fix rationale** | Production is the only environment (per CLAUDE.md, standing since the 2026-07-25 decommission) — there is nothing left to compare *against*. Rather than leave a "compare-two-environments" script permanently broken or delete working prod-probing logic, each script now runs a single-target probe against production only, reading `CRON_SECRET` from the environment (matching every other current cron-authenticated audit script) and, for `largo-latency-compare.mjs`, calling `mintClerkPremiumSession` directly with no loader at all — the prod Clerk keys are already ambient env vars in this environment per CLAUDE.md's "Environment realities" section, and that's how 10+ other live-login audit scripts already do it (`data-validator.mjs`, `meridian-earnings-ui-audit.mjs`, etc.). No comparison methodology was invented; the working prod-probing half of each script is unchanged. |
+| **Deliberately left alone** | The much larger family of `railway-*`-prefixed legacy scripts (`railway-legacy-cron-cleanup.mjs`, `railway-audit-apply.mjs`, `railway-ops-provision.mjs`, `railway-apply-cron-config.mjs`, `railway-cron-schedule-audit.mjs`, `validate-railway-cron-manifest.mjs`, `railway-cron-services.mjs`) — self-evidently legacy by name, not wired to any `npm run` command a current audit cycle would reach for, and a much bigger cleanup (dozens of files) than this single-issue PR should carry. Flagged here as a follow-up worth a dedicated pass, not built unilaterally. |
+| **Regression guard** | `scripts/latency-audit-decommissioned-infra.test.mjs` (3 tests) greps each fixed script's own source for the exact *functional* dead-infra patterns (a quoted staging base URL, a quoted `blackout-staging/app/env` secret id, a `spawnSync("railway"...)` call) — not loose substrings, so the fix's own explanatory header comments (which correctly keep naming the decommissioned infra for future readers) don't trip the guard. Proven RED against the pre-fix scripts (git-stash) / GREEN post-fix. |
+| **Gates** | `npx tsc --noEmit` clean · `npm test` — see PR for the full run · Node 20.20.2. |
+| **Status** | FIXED. |
+
+## Helix desktop table expired DTE — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Follow-up to mobile print-card fix (#3558 area): `HelixFlowTable.tsx` shared the same root cause — negative UW `dte` rendered as a bare number in the muted DTE column. |
+| **Root cause** | `case "dte"` rendered `{dte}` raw for non-0DTE rows; negative feed values showed as `-1` with no expired treatment. |
+| **Fix** | Reuse exported `dtePrintLabel()` from `HelixMobileFlowTape.tsx`; expired rows render `EXPIRED` with ember/bold styling. |
+| **Status** | FIXED |
+
+## 2026-09-04 — [FINDING, P1 data-correctness] `GexPositioning.nearest_wall` went stale across the live-WS wall override — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Code-read audit of `src/lib/providers/gex-positioning.ts`, following up on the WS-scoping fix already documented for `getGexPositioning`'s live-WS wall override (see the `nearTermExpiries` comment block in that function). |
+| **Root cause** | `gexPositioningFromHeatmap()` computes `nearest_wall` **once**, inline, from the pre-override Polygon `call_wall`/`put_wall` (the `candidates`/`nearest` loop, formerly at lines ~330-343). `getGexPositioning()` then calls this mapper to build `base`, and — only during RTH when `hasLiveGexStrikeExpiry(root)` is true — **overwrites `base.call_wall`/`base.put_wall` in place** with fresher walls resolved from the live UW WS strike-total ladder (`wallsFromStrikeTotals`, scoped to the same near-term expiries). That override block touched `call_wall`/`put_wall` only; `base.nearest_wall` was never re-derived, so it kept naming whichever of the **pre-override** levels had been nearer spot, with the **pre-override** `distance_pts`. Because the entire reason the WS override exists is that the UW ladder can resolve a materially different near-term wall than the Polygon-only aggregate (documented in the override's own comment: "the call/put wall snapped to a far monthly/quarterly OpEx strike hundreds of points from the near-term flip" — the earlier, already-fixed scoping bug), the post-override `call_wall`/`put_wall` and the still-pre-override `nearest_wall` could genuinely diverge on the SAME response object: different strike, different side (support vs resistance), stale distance. |
+| **Failure scenario (constructed, mirrors real RTH conditions)** | Base Polygon matrix at spot 7750: call_wall 7900 (dist +150), put_wall 7700 (dist -50) → pre-override nearest_wall = `{strike:7700, kind:"support", distance_pts:-50}`. Live WS ladder (same near-term expiry set) resolves call_wall 7770 (dist +20) and put_wall 7600 (dist -150) — the override correctly updates `call_wall`/`put_wall` to these fresher values, but the wall that is now actually *nearer* spot has flipped from the put side to the call side. Pre-fix, the response still reported `nearest_wall: {strike:7700, kind:"support", distance_pts:-50}` alongside `call_wall:7770, put_wall:7600` — a payload where `nearest_wall` names a strike that isn't even `call_wall` or `put_wall` anymore. |
+| **Blast radius** | `nearest_wall` is read directly, with no cross-check against `call_wall`/`put_wall`, by: `src/lib/bie/spx-desk-intel.ts` (`knownIntelNumbers` — `p.nearest_wall?.strike`/`p.nearest_wall?.distance_pts`, grounding numbers for Live Desk briefs), `src/lib/largo/gex-heatmap-for-largo.ts` and `src/lib/largo/tool-defs.ts`/`product-knowledge.ts`/`largo-live-feed.ts` (Largo's positioning tool surface), `src/app/api/market/gex-positioning/route.ts` (the public positioning API), `src/app/api/mobile/ticker/[ticker]/route.ts` (mobile ticker), `src/features/meridian/components/MeridianEarningsPositioningPanel.tsx`, and `src/features/nighthawk/lib/positioning.ts`. Every one of these is RTH-only-affected (the override, and therefore the bug, only fires when `hasLiveGexStrikeExpiry` is true — off-hours the WS channel is idle and `nearest_wall` is correct by construction since no override runs). |
+| **Fix** | Extracted the "closer of call_wall/put_wall to spot" logic out of `gexPositioningFromHeatmap` into a shared pure helper, `nearestWallFromLevels(callWall, putWall, spot)`, in `gex-positioning.ts`. `gexPositioningFromHeatmap` now calls it instead of inlining the loop. In `getGexPositioning`'s WS-override block, after `base.call_wall`/`base.put_wall` are reassigned, the code tracks whether either value actually changed and, if so, recomputes `base.nearest_wall = nearestWallFromLevels(base.call_wall, base.put_wall, base.spot)` — using the exact same helper the base derivation used, so the two call sites cannot independently drift on what "nearest" means. When the override doesn't fire (off-hours, or a live channel with no ladder), `nearest_wall` is left exactly as the base mapper computed it — no behavior change for the unaffected path. |
+| **Fix rationale — what was deliberately left unchanged** | Considered recomputing `nearest_wall` unconditionally on every call regardless of whether the walls actually changed; instead guarded it behind a `wallsChanged` check (comparing old vs new `call_wall`/`put_wall`) so a WS ladder that resolves to the *same* levels the Polygon base already had does zero extra work and produces byte-identical output to before. Did not touch `flip`/`flip_nearest`/`distance_to_flip_pct` — those are computed independently from `gex.strike_totals` via `cumulativeGammaFlipDetail`, are never touched by the WS wall override, and are out of scope for this finding (they were never stale). Did not change `wallsFromStrikeTotals` or the near-term-expiry scoping itself — both already fixed and covered by the existing `getGexPositioning: live-WS wall override is scoped to near-term expiries...` test. |
+| **Evidence — RED→GREEN** | New test `getGexPositioning: nearest_wall is re-derived from the POST-override call/put wall, not left stale` in `src/lib/providers/gex-positioning.test.ts`. RED (pre-fix, via `git stash push -- src/lib/providers/gex-positioning.ts` with only the test change applied): `AssertionError [ERR_ASSERTION]: nearest_wall must name the POST-override call wall — 7700 !== 7770` (10/11 tests in the file passed; this one failed). GREEN (post-fix, `git stash pop`): 11/11 pass. Full command: `node --import tsx --experimental-test-module-mocks --test src/lib/providers/gex-positioning.test.ts` (Node 20.20.2). |
+| **Additional verification** | `npx tsc --noEmit` clean. Ran the full adjacent suite (236/236 pass, 0 fail): every `src/lib/providers/gex-*.test.ts` and `spx-odte-gex-uw-overlay.test.ts`, plus every direct consumer test file that touches `nearest_wall` — `src/lib/bie/spx-desk-intel.test.ts`, `src/lib/bie/ecosystem-context.test.ts`, `src/lib/meridian/meridian-play-suggestions.test.ts`, `src/features/nighthawk/lib/positioning.test.ts`. |
+| **Status** | FIXED |
+
+## 2026-09-04 — [FINDING, P0 audit-harness] `full-site-deep-audit.mjs` used unconstrained wall derivation — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What broke** | Scheduled RTH deep audit (`gha-rth-audit.mjs` → `full-site-deep-audit.mjs`) failed 2026-09-04 14:02 ET with six P0 `[heatmap]` wall mismatches (e.g. `SPX.put_wall: reported 7700 != 8000`). |
+| **Root cause** | `auditHeatmapMatrix()` derived expected walls via a local `deriveWalls(strike_totals)` that picked global argmax/argmin with **no spot side-constraint**. Production uses side-constrained `wallsFromStrikeTotals(totals, spot)` since #2417/#2521. |
+| **Why it false-failed** | SPX at ~7708: unconstrained max-negative strike is 8000 (below spot), but the served put wall is 7700 (largest negative **below** spot). Data was correct; the audit compared against the wrong definition. |
+| **Fix** | Import `wallsFromStrikeTotals` from `scripts/audit/lib/gex-wall-invariants.mjs` and pass `hm.spot` in the heatmap matrix check. Removed the stale local `deriveWalls`. |
+| **Evidence** | `scripts/full-site-deep-audit.test.mjs` — source guard. `gex-wall-invariants.test.mjs` already covers the shared helper. |
+| **Status** | FIXED |
+
+## 2026-09-04 — data-validator SPX HOD false FAIL during RTH
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | `data-validator.mjs` reported `spx-desk: hod vs Polygon day high` FAIL during live RTH (desk=7750.19, polygon daily h=7742.22). |
+| **Root cause** | Validator compared desk HOD to Polygon's **daily** aggregate bar, which lags intraday minute prints during an open session. Desk HOD matched Polygon **minute** max exactly (7750.19). |
+| **Fix** | `sessionExtremesFromMinuteBars()` derives ground-truth HOD/LOD from today's minute aggregates; daily bar is fallback only when minutes are empty. |
+| **Status** | FIXED |
+
 ## Dividend-yield ETF-fallback test used the real clock against calendar-fixed fixture dates — drifted false-red on 2026-09-19
 
 > **kind:** `FINDING`
