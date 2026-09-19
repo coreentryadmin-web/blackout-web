@@ -960,6 +960,68 @@ test("crossDeskCoaching: multiple conflicting desks — ranks by load-bearing we
   assert.match(line!, /lighter weight here/i);
 });
 
+// Ask Largo standing mandate — fresh edge case, 2026-09-19: the four checked desks (Night Hawk,
+// 0DTE, Vector, HELIX) can ALL disagree with the play at once — the max real conflict count this
+// function can ever produce. `renderCrossDeskConflict` only ever names the lead + `rest.slice(0,2)`
+// (2 more), so a 4-conflict case silently drops the 4th desk's disagreement from the rendered text
+// with no count/disclosure that a 4th conflicting read even exists — an absence-as-fact violation
+// of the Largo product contract's "disagreement is represented, never silently reconciled" rule
+// (a dropped desk is not "reconciled", it is just gone). 2- and 3-conflict cases were already
+// covered (2 above; 3 fits inside lead+rest.slice(0,2) exactly) but nothing exercised the real
+// maximum until now.
+test("crossDeskCoaching: FOUR conflicting desks at once must not silently drop the 4th disagreement", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "2026-09-19",
+          direction: "short",
+          conviction: "B",
+          outcome: "open",
+          score: null,
+        },
+        zerodte_today: {
+          session_date: "2026-09-19",
+          direction: "short",
+          score: 78,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-19T14:00:00Z",
+        },
+        flow_feed_fresh: true,
+        recent_flow: {
+          window_hours: 6,
+          print_count: 20,
+          call_premium: 200_000,
+          put_premium: 900_000,
+          unknown_premium: 0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      sessionDate: "2026-09-19",
+      vector: {
+        spot: 100,
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", archetype: "BREAKOUT" }),
+  );
+  assert.ok(line);
+  // All four conflicting desks named this run: Vector (structure, weight 3), HELIX (flow, weight
+  // 2), 0DTE (intraday_scalp, weight 1) and Night Hawk (digest, weight 1) — the lead plus BOTH
+  // "rest" slots exactly account for 3 of the 4 conflicts by name; the 4th must still be disclosed
+  // by count rather than vanishing with no trace.
+  const namedDesks = ["Vector", "HELIX", "0DTE", "Night Hawk"].filter((d) => line!.includes(d));
+  assert.ok(
+    namedDesks.length === 4 || /\+1 more desk/i.test(line!),
+    `expected all 4 desks named or an explicit "+1 more" disclosure, got: ${line}`,
+  );
+});
+
 test("catalystCoaching: earnings within 14d", () => {
   const line = catalystCoaching(
     ctx({
