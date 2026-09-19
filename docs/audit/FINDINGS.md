@@ -38,6 +38,138 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Largo ticker extractor: 5 more everyday trading words silently resolve to unrelated tickers
+
+> **kind:** `FINDING`
+
+### Summary
+
+Found while auditing `question-intent.ts`'s `STOPWORD_TICKERS` list for other instances of the same
+collision class the same-day `SPOT` fix (PR #5245, `fix/largo-spot-ticker-collision`) closed. Five
+more real symbols in `KNOWN_TICKERS` are also everyday trading words, and none of them were guarded:
+**SNAP, COIN, SHOP, PLUG, META**. Any member question using the ordinary idiom — "snap back rally,"
+"coin flip," "shop around for an entry," "plug in the numbers," "pretty meta" — silently pinned
+Largo's `tickerHint` to Snap Inc / Coinbase / Shopify / Plug Power / Meta Platforms instead of
+answering the tickerless question the member actually asked, routing tool calls and the reply to an
+unrelated instrument's live feed with no indication anything went wrong.
+
+### Root cause
+
+`extractTicker` (`src/lib/largo/question-intent.ts`) matches candidates off `question.toUpperCase()`
+(`qUpper`), so case information is discarded before matching — the ONLY thing that restores it is an
+explicit `STOPWORD_TICKERS` membership check (`!writtenUppercase(question, cand)`), which runs before
+the `KNOWN_TICKERS` fast-path. A `KNOWN_TICKERS` member that is NOT also in `STOPWORD_TICKERS` is
+therefore returned regardless of how the member actually wrote it — lowercase idiom or genuine shout,
+identically. This is the exact mechanism the file's own `NOW`/`SPOT` comments already document; it
+was simply never swept for other members of `KNOWN_TICKERS` that double as ordinary words.
+
+### Evidence
+
+Live `analyzeLargoQuestion()` calls, reproduced on `main` (pre-fix) via `npx tsx`:
+
+```
+"wait for a snap back rally here"                    -> tickerHint "SNAP"
+"is this trade just a coin flip at this point"        -> tickerHint "COIN"
+"should I shop around for a better entry"             -> tickerHint "SHOP"
+"let's plug in the numbers here"                      -> tickerHint "PLUG"
+"that seems pretty meta to me"                        -> tickerHint "META"
+```
+
+None of these five questions name a ticker. Each one would have driven Largo to answer using an
+unrelated stock's live feed (spot/walls/flow/etc.) instead of the member's actual, tickerless
+question — the same defect shape as the `NOW`/ServiceNow regression (2026-08-10) and the `SPOT`
+regression found the same day as this finding.
+
+### Blast radius
+
+Only `question-intent.ts`'s single `STOPWORD_TICKERS` set — there is exactly one extractor in the
+codebase per that file's own header comment ("EXPORTED so there is exactly ONE answer to this
+question in the codebase"), so no other call site needed touching.
+
+### Fix
+
+Added `"SNAP", "COIN", "SHOP", "PLUG", "META"` to `STOPWORD_TICKERS`, with an in-code comment
+documenting the exact repro strings so a future sweep doesn't have to re-derive them. Each symbol
+still resolves correctly when genuinely shouted or `$`-prefixed (added to the regression test):
+`"what's the setup on SNAP"` -> `SNAP`, `"what's the setup on $COIN"` -> `COIN`.
+
+**Deliberately did NOT add `SPOT`** — that entry belongs to the separately-tracked, already-open
+`fix/largo-spot-ticker-collision` (#5245), to avoid two PRs racing the same line for the same fix.
+
+### Test
+
+`src/lib/largo/question-intent.test.ts` — new test `"ordinary trading idioms that collide with a
+real symbol are not tickers unless shouted"`. RED confirmed pre-fix (`git stash` the source change,
+re-run): fails on the first case (`SNAP`) with `tickerHint === 'SNAP'` instead of `null`. GREEN
+post-fix, full file 36/36 passing. `npx tsc --noEmit -p .` clean.
+
+| **Status** | FIXED |
+|---|---|
+
+## 2026-09-19 — Largo ticker extraction: "spot" (current price) mis-pinned as SPOT (Spotify)
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 |
+| **Area** | `src/lib/largo/question-intent.ts` `extractTicker`/`STOPWORD_TICKERS` |
+| **Status** | FIXED |
+
+### Symptom
+
+Live-tested (Ask Largo × Night Hawk Swings standing mandate, off-hours Thermal/Vector Largo
+tool-wiring check): asked the real `/api/market/largo/query` endpoint (temp premium Clerk
+session) *"What is NVDA's current GEX positioning — gamma flip level, call wall, put wall, and
+current spot?"*. The model's own answer correctly read NVDA (spot 222.53, matching a direct
+`GET /api/market/gex-heatmap?ticker=NVDA` cross-check exactly), and `tools_used` correctly shows
+`get_positioning`/`get_gex_heatmap` fired — but the **response envelope's `ticker` field came back
+`"SPOT"`**, and every downstream UI action link followed it: `"Thermal — SPOT" href="/heatmap?ticker=SPOT"`,
+`"HELIX — SPOT" href="/flows?ticker=SPOT"`, `"Remember SPOT" href="#watchlist:SPOT"`, and a
+follow-up chip reading *"Show SPOT GEX positioning — is it mirroring NVDA's sandwich setup?"* A
+member who asked about NVDA and clicked "open in Thermal" would have landed on Spotify's chart
+instead.
+
+### Root cause
+
+`extractTicker()` uppercases the whole question, matches every 2-5 letter run, and scans the
+matches **backwards** (last mention wins) against `KNOWN_TICKERS` for a fast-path return. The
+ordinary trading phrase "current spot" (meaning "current price") uppercases to the token `SPOT`,
+which is *also* a real symbol (Spotify) already listed in `KNOWN_TICKERS` — so it hit the
+`KNOWN_TICKERS.has(cand)` fast path and returned immediately, before ever reaching the later
+`DOMAIN_UPPERCASE_WORDS` branch that already lists `"SPOT"` as non-ticker vocabulary (that guard
+never fires for a `KNOWN_TICKERS` hit — it's a different code branch entirely). Because "spot"
+appeared after "NVDA" in the sentence and the loop scans backward, `SPOT` beat the member's actual
+`NVDA` mention.
+
+This is the exact same bug shape the file's own `STOPWORD_TICKERS` set already documents fixing
+for `NOW`/`ServiceNow` (2026-08-10) and for `NET`/`TEAM`/`SNOW`/`OPEN` (function-word collisions
+with real Night Hawk tickers) — `SPOT` was simply never added to that set, likely because it reads
+as "more of a real ticker" than `NOW`/`ON`/`AT`, but "spot" (current price) is extremely common
+trading vocabulary and collides just as readily.
+
+### Fix
+
+Added `"SPOT"` to `STOPWORD_TICKERS` in `src/lib/largo/question-intent.ts`, alongside the existing
+`NET`/`TEAM`/`SNOW`/`OPEN`/`ALL` entries — same mechanism: a bare lowercase "spot" in prose is
+never treated as a ticker, while an explicit `$SPOT` or a genuinely shouted `SPOT` still resolves
+to the real symbol (both paths already bypass `STOPWORD_TICKERS` — `hadDollar` and
+`writtenUppercase()` respectively — so legitimate SPOT questions are unaffected).
+
+### Verification
+
+RED→GREEN: `src/lib/largo/question-intent.test.ts` — new test
+`"SPOT/current-price collision does not steal the real ticker (live repro 2026-09-19)"`
+reproduces the exact live question (asserts `tickerHint === "NVDA"`, was `"SPOT"` pre-fix), plus
+`"what's the current spot on TSLA"` → `TSLA`, `"where's spot right now"` → `null`, and confirms
+`"SPOT earnings reaction thoughts"` / `"how is $SPOT trading"` still correctly resolve to `SPOT`.
+
+```bash
+npx tsx --experimental-test-module-mocks --test src/lib/largo/question-intent.test.ts
+```
+36/36 pass post-fix (was 35/36, the new test failing pre-fix with `'SPOT' !== 'NVDA'`).
+`npx tsc --noEmit -p .` clean.
+
 ## `findings-reconcile.mjs --apply` never retracted a stale `UNRECONCILED` annotation once written — FIXED
 
 > **kind:** `FINDING`
