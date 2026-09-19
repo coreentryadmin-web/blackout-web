@@ -768,6 +768,84 @@ test("crossDeskCoaching: desk alignment omits undefined NH conviction and junk 0
   assert.equal(line, null, "thin aligned desks must not emit Desk alignment with undefined tokens");
 });
 
+// BUG FOUND 2026-09-19 (Ask Largo standing mandate): the conflict branch checks all four desks
+// (Night Hawk, 0DTE, Vector, HELIX) but the alignment branch only ever checked NH/0DTE -- HELIX
+// flow agreeing with the swing direction was silently dropped everywhere in the brief, while HELIX
+// flow disagreeing rendered a "Cross-desk friction" bullet. These two tests prove the fix: a fresh,
+// call-heavy HELIX read now counts toward "Desk alignment" alongside NH, and a HELIX read alone
+// (below the >=2 threshold, same as any single desk) still stays silent -- no new false positive.
+test("crossDeskCoaching: HELIX call-heavy flow now counts toward Desk alignment on a LONG swing", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "long",
+          conviction: "high",
+          outcome: "bullish",
+          score: 80,
+        },
+        recent_flow: {
+          window_hours: 6,
+          print_count: 9,
+          call_premium: 1_200_000,
+          put_premium: 300_000,
+          unknown_premium: 0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.match(line!, /Desk alignment/i);
+  assert.match(line!, /HELIX call-led/i);
+});
+
+test("crossDeskCoaching: HELIX put-heavy flow now counts toward Desk alignment on a SHORT swing", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 71,
+          ticker: "NRG",
+        },
+        recent_flow: {
+          window_hours: 6,
+          print_count: 9,
+          call_premium: 300_000,
+          put_premium: 1_200_000,
+          unknown_premium: 0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "SHORT" }),
+  );
+  assert.match(line!, /Desk alignment/i);
+  assert.match(line!, /HELIX put-led/i);
+});
+
+test("crossDeskCoaching: HELIX alignment alone (single desk) still stays below the two-desk threshold", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 6,
+          print_count: 9,
+          call_premium: 1_200_000,
+          put_premium: 300_000,
+          unknown_premium: 0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.equal(line, null, "a single aligned desk (HELIX alone) must not emit Desk alignment");
+});
+
 // crossDeskCoaching used to render every conflict as a flat `conflicts.join(" · ")` behind one
 // fixed generic closing line ("Size down until desks agree.") — it never said WHY the desks
 // disagree (different timeframe/evidence base?), which disagreement is more load-bearing for THIS

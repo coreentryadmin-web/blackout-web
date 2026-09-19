@@ -645,6 +645,19 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   if (z && ((play.direction === "LONG" && zLong) || (play.direction === "SHORT" && zShort))) {
     if (z.score != null && Number.isFinite(z.score)) aligned.push(`0DTE score ${z.score}`);
   }
+  // BUG FOUND 2026-09-19 (Ask Largo standing mandate): the conflict branch above checks all FOUR
+  // desks (Night Hawk, 0DTE, Vector, HELIX) via `conflict(...)`, but this alignment branch only
+  // ever pushed NH/0DTE into `aligned` -- HELIX (and Vector, though Vector's own agreement already
+  // gets its own dedicated line via vectorPlayCoaching's "aligned with swing lane" suffix) was
+  // never even checked here. So HELIX flow disagreeing with the swing renders a "Cross-desk
+  // friction" bullet (weight 2, the SECOND-highest of the four kinds this file's own
+  // CROSS_DESK_BASE_WEIGHT ranks), while HELIX flow agreeing was silently dropped everywhere in
+  // the brief -- a one-sided disclosure of exactly the shape the Largo product contract's
+  // disagreement principle exists to prevent, just on the corroborating side instead of the
+  // conflicting one. Fixed by mirroring the conflict branch's own callHeavy/putHeavy check here.
+  if (flow && ((play.direction === "LONG" && callHeavy) || (play.direction === "SHORT" && putHeavy))) {
+    aligned.push(`HELIX ${play.direction === "LONG" ? "call" : "put"}-led`);
+  }
   if (aligned.length >= 2) {
     return `**Desk alignment** — ${aligned.join(" + ")} **support** the ${play.direction} swing.`;
   }
