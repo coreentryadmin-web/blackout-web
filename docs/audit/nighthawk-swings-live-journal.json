@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T14:47:02Z",
-  "notes": "14:46 UTC cycle -- git synced, picked up merged PR #5245 (8aa49ff93, not mine -- adds SPOT to question-intent.ts's STOPWORD_TICKERS so 'current spot' stops stealing the ticker from a real symbol). Out of swing scope (it's the free-text Ask Largo query path's ticker extractor, not the deterministic play-brief, which resolves tickers from explicit params) but read it anyway since it touches shared Largo infra -- spot-checked whether LITE (this session's sole WATCH ticker) has a similar collision risk: no, 'lite' isn't ordinary trading vocabulary the way spot/now/net/open are, so it correctly stays out of the function-word-only stopword set per the code's own stated design philosophy. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean cycle.",
+  "last_updated": "2026-09-19T15:02:07Z",
+  "notes": "15:01 UTC cycle -- git synced, picked up sibling PR #5246 (bc75c9b04, not mine -- same STOPWORD_TICKERS class as #5245, sweeps SNAP/COIN/SHOP/PLUG/META). Not swing-scoped (free-text Largo query path), no swing-native ticker in this session's book collides with common trading vocabulary. No open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean, weekend quiet continues.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
