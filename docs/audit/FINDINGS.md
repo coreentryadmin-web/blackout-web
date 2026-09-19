@@ -38,6 +38,19 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## `findings-reconcile.mjs --apply` never retracted a stale `UNRECONCILED` annotation once written — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Found while folding 11 more `findings-staging` entries into `FINDINGS.md` and hand-fixing 7 of them (adding a missing `— FIXED` heading suffix or a prose `**Status.**` line to already-resolved entries that predated the kind-line convention). After a follow-up `findings-reconcile.mjs --apply`, `findings-hygiene.test.ts`'s idempotency test failed: regenerating `FINDINGS.md` from scratch resolved 7 MORE entries than the committed file showed — the 7 entries I had just hand-fixed still carried the stale `> **status:** \`UNRECONCILED\`` annotation from an earlier `--apply` run, sitting directly next to a heading that now said `— FIXED`. |
+| **Root cause** | `scripts/audit/findings-reconcile.mjs`'s per-entry apply logic computed `note` (the annotation text to add, or `null` if none is needed) and `hasUnreconciledNote` (whether one is already present), then short-circuited to "return unchanged" whenever `hasKindLine && (note == null \|\| hasUnreconciledNote)`. That condition conflates two different situations: "nothing NEW needs to be added" (`note == null`) is not the same as "the block is already correct" — an entry whose status was resolved by hand AFTER a prior `--apply` stamped it `UNRECONCILED` now computes `note == null` (correctly, nothing new to add) while `hasUnreconciledNote` is still `true` from the earlier stamp. The old condition read `note == null` alone as sufficient to skip the block, so it never checked whether an EXISTING stale annotation needed to be stripped. The script only ever knew how to ADD a note, never RETRACT one. |
+| **Fix** | Two changes in `scripts/audit/findings-reconcile.mjs`: (1) the short-circuit condition is now the symmetric `(note == null) === !hasUnreconciledNote` — true only when "no note needed and none present" or "a note is needed and one is already present" — any other combination now falls through to the rebuild path. (2) The rebuild path, which previously only stripped an existing `> **kind:**` line before re-adding kind/note from scratch, now also strips an existing stale `> **status:** \`UNRECONCILED\` — ...` line, so a resolved entry's old annotation is actually removed rather than surviving alongside (or duplicating next to) a fresh one. |
+| **Blast radius** | `scripts/audit/findings-reconcile.mjs` only — no change to `findings-fold-staging.mjs` or any other tooling. Any entry in `FINDINGS.md` that was hand-resolved after a prior `--apply` run (heading suffix or prose Status added later) and still carries a stale `UNRECONCILED` annotation will have it correctly stripped the next time `--apply` runs, not just the 7 found live here. |
+| **Evidence** | `findings-hygiene.test.ts`'s idempotency test failed twice while diagnosing this (`26 !== 33`, then `25 !== 32`) before the root cause was found — a `mkdtemp` untagged-fixture regen consistently resolved 7 more entries than the committed file after my hand-fixes, isolating the exact 7 entries via a diff of which headings carried `UNRECONCILED` in one version but not the other. Post-fix: `npx tsx --experimental-test-module-mocks --test src/findings-hygiene.test.ts src/findings-merge-resolve.test.ts` — 20/20 pass. `tsc --noEmit` clean. Full `npm test` on Node 20: 14866 pass / 0 fail / 3 skipped, exit 0. |
+| **Status** | FIXED. |
+
 ## Finding: 0DTE board shared snapshot false-fresh on future `as_of` — FIXED
 > **kind:** `FINDING`
 
