@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-19T13:02:35Z",
-  "notes": "13:01 UTC cycle -- covered the mission's 'known #4700 Banger-lane blindspot' item on checkPortfolioOverlap, not yet directly re-verified this stretch. Read portfolio.ts in full: already carries an extensively-documented, tested self-match-exclusion fix (SWING-SYSTEM-CTO-AUDIT finding #10, 2026-09-06) and a display-only bangerId field so two distinct cross-engine Banger siblings on the same ticker don't read as a duplicate-counting bug. Cross-checked FINDINGS.md's own history on this: #4700 itself is a separate, already-fixed data-capture gap (entry bid/ask not persisted for Banger-merged rows, fixed via fill_quality) -- distinct from the overlap-detection path itself, which a later finding (~L22209) confirms is MORE correct than the Banger board's own display (fetchBangerOpenBookRows filters status IN ('OPEN','PARTIAL') at the SQL level, not page-limited, so it correctly sees older OPEN Banger positions the Banger board's own paginated 'open' array was dropping). No new gap found -- this area is already well-hardened. No open swing PRs, board unchanged.",
+  "last_updated": "2026-09-19T13:17:11Z",
+  "notes": "13:16 UTC cycle -- light re-check: git synced (no drift), no open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Clean, weekend quiet continues.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
