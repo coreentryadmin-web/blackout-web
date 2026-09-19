@@ -563,10 +563,23 @@ function renderCrossDeskConflict(conflicts: CrossDeskConflict[], archetype: Swin
     `${leadReason}${weighClause}: ${crossDeskResolution(lead.evidenceKind)}.`;
 
   if (rest.length) {
-    const clauses = rest
-      .slice(0, 2)
-      .map((c) => `${c.desk} also reads ${c.claim} (${crossDeskBasis(c.evidenceKind)}) — lighter weight here`);
+    const shown = rest.slice(0, 2);
+    const clauses = shown.map(
+      (c) => `${c.desk} also reads ${c.claim} (${crossDeskBasis(c.evidenceKind)}) — lighter weight here`,
+    );
     text += ` ${clauses.join("; ")}.`;
+    // Only 4 desks are ever checked (Night Hawk, 0DTE, Vector, HELIX), so the ONLY way to exceed
+    // lead+2 shown is all 4 conflicting at once (1 lead + 3 rest) — the sole case this drops.
+    // BUG FOUND 2026-09-19 (Ask Largo standing mandate): before this fix, that 4th conflicting
+    // desk simply vanished from the rendered text with no trace at all — not "reconciled", just
+    // gone, which is exactly the absence-as-fact violation the Largo product contract's
+    // disagreement principle exists to prevent ("disagreement is represented, never reconciled by
+    // the lanes themselves"). A member reading the brief would see 3 desks disagreeing and have no
+    // way to know a 4th did too. Disclose the count rather than dropping it silently.
+    const omitted = rest.length - shown.length;
+    if (omitted > 0) {
+      text += ` (+${omitted} more desk${omitted > 1 ? "s" : ""} also disagree — not detailed here.)`;
+    }
   }
 
   return text;

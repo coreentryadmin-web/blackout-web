@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-09-19 Ask Largo `crossDeskCoaching` 4th-conflict silent-drop fix (PR pending)
+
+**What was fixed:** `crossDeskCoaching`'s "Cross-desk friction" narrative line
+(`src/lib/swing/play-brief-narrative-coaching.ts`) checks up to 4 desks (Night Hawk, 0DTE, Vector,
+HELIX flow) against a swing's own direction, but `renderCrossDeskConflict` only ever NAMES the
+lead conflict plus 2 more (`rest.slice(0, 2)`) — the genuine max-conflict case (all 4 disagreeing
+at once) silently dropped the 4th desk's disagreement from the rendered text with zero trace, no
+count, no disclosure. Found during this cycle's Ask Largo standing-mandate edge-case sweep
+("does `crossDeskCoaching` handle 3+ desks disagreeing without degrading to generic prose").
+Fixed by appending a `(+N more desk(s) also disagree — not detailed here.)` clause when the true
+conflict count exceeds what gets named in full. Full write-up:
+`docs/audit/findings-staging/2026-09-19-cross-desk-coaching-4th-conflict-silent-drop.md`.
+
+**Specific thing to check once this deploys and RTH is live:** this is a genuinely rare state (all
+4 checked desks disagreeing with one swing simultaneously) — a synthetic repro (RED→GREEN test) is
+the only proof available right now. Once deployed, watch live `GET /api/market/swing/play-brief`
+responses for any OPEN/COMMIT position during a session where Night Hawk, 0DTE, Vector, and HELIX
+flow readings are all live and directionally opposed to the swing at once; confirm the rendered
+"Cross-desk friction" text names 3 desks in full AND carries the "+1 more desk also disagree"
+clause rather than silently showing only 3 disagreeing desks. If the 4-conflict state never
+naturally occurs during a normal RTH sweep, that is expected (it is rare by construction, not a
+sign the fix didn't deploy) — the regression test is the primary proof for this one.
+
 ## WATCH LIST — 2026-09-17 gate-calibration `days=N` window-truncation fix (PR pending)
 
 **What was fixed:** `GET /api/market/zerodte/calibration?days=N`'s `blocked_value` (the per-gate
