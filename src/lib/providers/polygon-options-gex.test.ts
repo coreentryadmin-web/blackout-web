@@ -1024,19 +1024,33 @@ test("dividend-yield resolve normalizes percent notation and caches a genuine no
 // pinned to 0 through this path — this test locks down the fix: /v3/reference/dividends DOES cover
 // ETFs, so a null ratios read now falls through to a trailing-12mo cash sum instead of a throw.
 test("dividend-yield resolve falls back to trailing dividends when ratios has no row (ETF)", async () => {
-  ratiosStub = async () => null;
-  dividendsStub = async () => [
-    { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
-    { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
-    { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
-    // Outside the trailing-12mo window from a 2026-08-28 "now" — must be excluded.
-    { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
-  ];
-  const spot = 600;
-  const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
-  // 4 of the 5 rows are within the trailing 12 months of the fixed "now" below: 4 × 1.5 / 600.
-  assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
+  // BUG FIX (2026-09-19): this test's fixture dates were pinned to a comment-only "2026-08-28
+  // now" assumption, but `resolveHeatmapDividendYieldUncached` calls
+  // `trailingTwelveMonthDividendYield(dividends, spot, Date.now())` with the REAL current time —
+  // unlike its sibling test below, which already passes an explicit `nowMs`. As real time passed
+  // the 12mo window drifted, and the "2025-09-19" fixture row (deliberately placed just inside
+  // the window as of 2026-08-28) silently crossed back OUTSIDE it once today reached 2026-09-19,
+  // flipping the count from 4 qualifying rows to 3 with no code change — caught live in CI on
+  // that exact date. Freezing the clock to the date the fixture was authored for makes the
+  // assertion actually test what its own comments claim, on every future run.
+  mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-08-28T00:00:00Z") });
+  try {
+    ratiosStub = async () => null;
+    dividendsStub = async () => [
+      { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
+      { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
+      { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
+      { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
+      // Outside the trailing-12mo window from the frozen 2026-08-28 "now" — must be excluded.
+      { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
+    ];
+    const spot = 600;
+    const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
+    // 4 of the 5 rows are within the trailing 12 months of the frozen "now": 4 × 1.5 / 600.
+    assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test("trailingTwelveMonthDividendYield excludes rows outside the trailing 12mo window", () => {
