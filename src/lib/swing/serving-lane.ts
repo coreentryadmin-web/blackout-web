@@ -35,7 +35,7 @@ import type { ChainContract } from "../horizon-fanout";
 import { livePlaysFromOpenPositions } from "./live-plays";
 import type { SwingPositionRow } from "../db";
 import type { BangerPositionRow } from "../banger/positions-db";
-import { mergeBangerPositionsIntoSwingPlays } from "./banger-lane-merge";
+import { mergeBangerPositionsIntoSwingPlays, BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 import { enrichSwingPlaysWithVectorLeaders, type VectorLeaderHint } from "./vector-lane-enrich";
 
 /** Add pre-entry banger WATCH rows when the ticker is not already live capital. */
@@ -255,13 +255,36 @@ export function attachThesisExplanation(
   if (!dossier) return legacyExempt ? { ...play, factors: legacyPinnedFactors(play.score) } : play;
   const meta = swingServingMetaFromDossier(dossier, reads);
   const hasFactors = Array.isArray(meta.factors) && meta.factors.length > 0;
+  // BUG FIXED 2026-09-20 (live repro: PR #4076 comment 5751915312 — 18-19 of a 36-position
+  // Banger-promoted swing batch rendered a byte-identical fabricated "84% · Minor drift" Thesis
+  // Health score, reopening the identical 2026-09-15 C6 violation). ROOT CAUSE: this function is
+  // called TWICE on a banger-ledger play's road to a play-brief — once (correctly) never, inside
+  // getSwingServingLane, since banger rows are merged in AFTER the native-only
+  // livePlaysFromOpenPositions().map(attachThesisExplanation) pass — and once (the bug) from
+  // play-brief-resolve.ts's ticker-only lane fallback, which calls this on WHATEVER lane row it
+  // resolved, banger-origin or native, with no distinction. `horizonPlayFromBangerPosition`
+  // deliberately stamps `regime: BANGER_LEDGER_REGIME_LABEL` as an honest "no real per-position
+  // dossier exists for this play" sentinel that `thesisHealthUncalibrated()` matches on EXACTLY to
+  // withhold the aggregate score. The unconditional `regime: meta.regime ?? play.regime` below used
+  // to happily overwrite that sentinel with an UNRELATED same-ticker discovery dossier's fresh
+  // regime read whenever one happened to exist in the CURRENT scan (true for liquid, actively
+  // rescanned names like RIOT/MSTR/COIN; false for illiquid ones like BKKT/GEMI — exactly the split
+  // observed live) — destroying the fingerprint the omission gate relies on, so the position then
+  // computed a full aggregate score from the REMAINING hardcoded ledger constants (setupState
+  // TRIGGERED, entryStatus AT_TRIGGER, signalKinds=[BANGER], same dte/subLane for every position in
+  // one batch commit), which is why every affected row in the batch converged on the SAME 84%.
+  // FIX: a banger-ledger sentinel regime is never a real per-position read to begin with, so it must
+  // never be overwritten by an unrelated ticker-keyed dossier — the dossier's own regime read
+  // belongs to whatever thesis the discovery engine is CURRENTLY scoring for that ticker, not to
+  // this already-committed banger position, which has no live dossier of its own by construction.
+  const freshRegime = play.regime === BANGER_LEDGER_REGIME_LABEL ? null : meta.regime;
   if (factorsValid) {
     // Score-consistent factors already reconstructed from the row's own frozen feature_vector — only
     // regime/sectorLeadershipFacts (not score-summing fields) still benefit from the live dossier read.
-    if (meta.regime == null && meta.sectorLeadershipFacts == null) return play;
+    if (freshRegime == null && meta.sectorLeadershipFacts == null) return play;
     return {
       ...play,
-      regime: meta.regime ?? play.regime,
+      regime: freshRegime ?? play.regime,
       sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
     };
   }
@@ -269,15 +292,15 @@ export function attachThesisExplanation(
     return {
       ...play,
       factors: legacyPinnedFactors(play.score),
-      regime: meta.regime ?? play.regime,
+      regime: freshRegime ?? play.regime,
       sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
     };
   }
-  if (!hasFactors && meta.regime == null && meta.sectorLeadershipFacts == null) return play;
+  if (!hasFactors && freshRegime == null && meta.sectorLeadershipFacts == null) return play;
   return {
     ...play,
     factors: hasFactors ? meta.factors : play.factors,
-    regime: meta.regime ?? play.regime,
+    regime: freshRegime ?? play.regime,
     sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
   };
 }
