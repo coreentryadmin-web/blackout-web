@@ -236,13 +236,53 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
  * (portfolio.ts, display-only, never touching the exclude/match logic) now carries the real
  * banger_positions row id for exactly this case.
  */
-function formatOverlapPosition(p: PortfolioPosition, reviewedTicker: string): string {
+/**
+ * GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro RIOT's own book-context): the
+ * 2026-09-15/09-18 fixes above only ever disambiguate the REVIEWED play's own ticker appearing
+ * twice in its own overlap list — they never considered a DIFFERENT ticker appearing twice in
+ * SOMEONE ELSE's overlap list, which is exactly as reachable and reads exactly as suspicious. Live:
+ * RIOT's concentration line (11-position crypto-equity book) cited "...IREN LONG, COIN LONG, MSTR
+ * LONG, MSTX LONG" with MSTX ALSO appearing earlier in the same list ("...MSTX LONG, MSTU LONG...")
+ * — two genuinely separate MSTX positions (a swing-native promoted row plus a distinct banger-
+ * engine sibling, the same real cross-engine-duplication shape the 2026-09-18 fix already handles
+ * for the SELF-ticker case), rendered as two textually identical "MSTX LONG" strings with no
+ * distinguishing detail, because neither one is the ticker being reviewed (RIOT) so the existing
+ * `p.ticker !== reviewedTicker` early-return skipped disambiguation for both.
+ *
+ * Fix: disambiguate whenever a ticker appears MORE THAN ONCE within the SAME rendered list
+ * (`dupTickers`, computed per-list by the caller) — additive to, not a replacement for, the
+ * existing "this is the reviewed ticker" rule, which must keep disambiguating on its own even when
+ * count is exactly 1 (a single cross-engine sibling on the reviewed ticker still reads as
+ * self-citation-like, per the 2026-09-15 fix's own reasoning — unrelated to duplicate counting).
+ */
+function formatOverlapPosition(
+  p: PortfolioPosition,
+  reviewedTicker: string,
+  dupTickers: ReadonlySet<string>,
+): string {
   const base = `${p.ticker} ${p.direction}`;
-  if (p.ticker.toUpperCase() !== reviewedTicker.toUpperCase()) return base;
+  const isReviewedTicker = p.ticker.toUpperCase() === reviewedTicker.toUpperCase();
+  const isDuplicateOtherTicker = !isReviewedTicker && dupTickers.has(p.ticker.toUpperCase());
+  if (!isReviewedTicker && !isDuplicateOtherTicker) return base;
   if (p.positionId != null) return `${base} (separate position #${p.positionId})`;
   return p.bangerId != null
     ? `${base} (separate, cross-engine position #${p.bangerId})`
     : `${base} (separate, cross-engine position)`;
+}
+
+/** Tickers that appear more than once in `positions` — the set `formatOverlapPosition` needs to
+ *  disambiguate a genuine duplicate that is NOT the reviewed ticker (see that function's doc). */
+function tickersAppearingMoreThanOnce(positions: readonly PortfolioPosition[]): ReadonlySet<string> {
+  const counts = new Map<string, number>();
+  for (const p of positions) {
+    const key = p.ticker.toUpperCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const dup = new Set<string>();
+  for (const [ticker, count] of counts) {
+    if (count > 1) dup.add(ticker);
+  }
+  return dup;
 }
 
 export function bookContextSection(
@@ -263,8 +303,9 @@ export function bookContextSection(
 
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
+    const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeSameDirection);
     const names = overlap.sameThemeSameDirection
-      .map((p) => formatOverlapPosition(p, play.ticker))
+      .map((p) => formatOverlapPosition(p, play.ticker, dupTickers))
       .join(", ");
     const closer = isPendingEntryDecision
       ? `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`
@@ -276,8 +317,9 @@ export function bookContextSection(
     );
   }
   if (overlap.sameThemeOpposedDirection.length) {
+    const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeOpposedDirection);
     const names = overlap.sameThemeOpposedDirection
-      .map((p) => formatOverlapPosition(p, play.ticker))
+      .map((p) => formatOverlapPosition(p, play.ticker, dupTickers))
       .join(", ");
     lines.push(
       `**Internal conflict** — ${describeThemeOverlap(overlap.theme)} already has an OPPOSED position: ${names}. ` +
