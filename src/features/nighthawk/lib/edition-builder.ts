@@ -25,6 +25,7 @@ import {
   type NighthawkRejectionDetail,
 } from "./play-outcomes";
 import { parsePlayLevels } from "./play-levels";
+import { alertCandidateSnapshotWriteFailure } from "./candidate-snapshot-alert";
 import { extractMultiSourceCandidates } from "./candidates";
 import { fetchAllDossiers, resetEditionCongressCache, type TickerDossier } from "./dossier";
 import { generateEditionPlays } from "./claude-edition";
@@ -270,11 +271,12 @@ export function buildScoringStageSnapshotRows(
   }));
 }
 
-function recordScoringStageSnapshots(editionFor: string, stage: string, candidates: ScoredCandidate[]): void {
+export function recordScoringStageSnapshots(editionFor: string, stage: string, candidates: ScoredCandidate[]): void {
   if (!candidates.length) return;
   const rows = buildScoringStageSnapshotRows(editionFor, stage, candidates);
   void insertNighthawkCandidateSnapshots(rows).catch((err) => {
     console.warn(`[nighthawk/edition] failed to write ${stage}-stage candidate snapshots:`, err);
+    alertCandidateSnapshotWriteFailure(stage, editionFor, err);
   });
 }
 
@@ -405,7 +407,7 @@ export function buildStageRejectionSnapshotRows(
   }));
 }
 
-function recordStageRejectionSnapshots(
+export function recordStageRejectionSnapshots(
   editionFor: string,
   rejected: Array<{
     ticker: string;
@@ -418,6 +420,7 @@ function recordStageRejectionSnapshots(
   const rows = buildStageRejectionSnapshotRows(editionFor, rejected);
   void insertNighthawkCandidateSnapshots(rows).catch((err) => {
     console.warn(`[nighthawk/edition] failed to write rejected-stage candidate snapshots:`, err);
+    alertCandidateSnapshotWriteFailure("rejected", editionFor, err);
   });
 }
 
@@ -955,6 +958,7 @@ export async function buildEveningEdition(opts?: {
           void insertNighthawkCandidateSnapshots(buildGovernorCutSnapshotRows(editionFor, govResult.cut)).catch(
             (err) => {
               console.warn("[nighthawk/edition] governor-cut candidate snapshot write failed:", err);
+              alertCandidateSnapshotWriteFailure("rejected:cross_edition_governor", editionFor, err);
             }
           );
         }
@@ -1442,6 +1446,7 @@ export async function buildEveningEdition(opts?: {
     if (rankFinalRows.length) {
       void insertNighthawkCandidateSnapshots(rankFinalRows).catch((err) => {
         console.warn("[nighthawk/edition] failed to write rank_final candidate snapshots:", err);
+        alertCandidateSnapshotWriteFailure("rank_final", editionFor, err);
       });
     }
 
