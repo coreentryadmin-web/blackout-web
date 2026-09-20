@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T22:50:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, full close). ReadNotifications clean. git sync clean. Zero open swing PRs. #4076 quiet. **PR #5327 confirmed LIVE in production.** Web tier's ECS roll completed 22:44:09. Pulled BKKT's live play-brief: the previously-28-ticker unbroken comma wall now correctly reads capped at 8 names followed by '+ 20 more' -- exactly the designed behavior, lead count (28) unchanged and honest. Closes the full lifecycle on that fix (found -> shipped -> merged -> deployed -> live-verified). PR #5328's deploy (market-worker roll for #5327 still in progress, #5328's own build not yet started -- serialized queue) not yet reachable for live verification this cycle -- deferred to next cycle. Board unchanged. This closes out an extremely productive cycle-group: five real production fixes found via live forensic audit, independently adversarially verified (re-derived from scratch, RED->GREEN proven in isolated worktrees, never trusted at face value), shipped, merged, and now progressively confirmed live in production (#5320, #5321, #5327 all now live-verified; #5328 pending deploy).",
+  "last_updated": "2026-09-20T23:05:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. Zero open swing PRs. #4076 quiet. #5328's deploy is now in progress (ECS web roll started 22:53:40, typically ~25-30min) -- deferred live verification to next cycle. Board unchanged. Genuinely light/clean cycle, nothing new to chase -- fifth consecutive quiet check after a very productive several-hour stretch shipping and verifying five real production fixes this cycle-group.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
