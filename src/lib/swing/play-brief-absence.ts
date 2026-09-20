@@ -17,6 +17,7 @@ import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
+import { deadPlayReason } from "./entry-enterability";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
 
@@ -506,9 +507,34 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // and nothing else). Genuine fetch failures (ecosystemFetchFailed/vectorFetchFailed/meridian
   // unavailable) are NOT skipped below — those indicate the read itself broke, which is still
   // true after close.
-  const isClosed = String(ctx.play?.status ?? "").toUpperCase() === "CLOSED";
+  const status = String(ctx.play?.status ?? "").toUpperCase();
+  const isClosed = status === "CLOSED";
+  // GAP FOUND (Ask Largo standing mandate, 2026-09-19): a WATCH play whose entry is already dead
+  // (`deadPlayReason` — thesis invalidated, entry-validity deadline passed, contract expired, or
+  // extended past the valid entry window) is functionally identical to CLOSED for the purpose of
+  // this file's own "isClosed" reasoning above — "today's live desk state" has nothing left to
+  // say about a setup the brief itself narrates as "no longer live — skip it"
+  // (tradeManagerNarrativeSection's "Break watch" bullet, play-brief-narrative.ts). Every OTHER
+  // call site that reasons about "is this play actually actionable" already checks
+  // `deadPlayReason` (play-brief.ts's Invalidation callout, play-brief-intel.ts's Entry-trigger
+  // line, play-brief-narrative-coaching.ts's cross-desk coaching) — this file, whose entire job is
+  // deciding what counts as live-vs-absent for the SAME brief, never imported it, so it never
+  // suppressed the identical wall-of-stale-chips defect the CLOSED-play fix above was written for.
+  // A dead WATCH candidate is arguably the WORSE case: nothing re-scans a candidate nobody can act
+  // on anymore, so its Vector/GEX/HELIX reads keep aging with no refresh to ever clear them.
+  // Scoped to the WATCH bucket only (mirroring `deadPlayReason`'s two existing call sites, both
+  // gated on `bucket === "watch"`) — the same fields carry different meaning once a position is
+  // live, so applying this to OPEN/HOLD/TRIM would risk misreading leftover pre-entry values.
+  const isDeadWatch =
+    !isClosed &&
+    status !== "OPEN" &&
+    status !== "HOLD" &&
+    status !== "TRIM" &&
+    ctx.play != null &&
+    deadPlayReason(ctx.play) != null;
+  const isNotLive = isClosed || isDeadWatch;
 
-  if (!isClosed && ctx.ecosystem?.flow_feed_fresh === false) {
+  if (!isNotLive && ctx.ecosystem?.flow_feed_fresh === false) {
     out.push({
       source: "HELIX flow",
       reason: "pipeline stale",
@@ -522,7 +548,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (markAbsence) out.push(markAbsence);
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
   // matrix had no positioning for this ticker.
-  if (!isClosed && !ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
+  if (!isNotLive && !ctx.ecosystemFetchFailed && ctx.ecosystem && !ctx.ecosystem.gex_positioning) {
     out.push({
       source: "GEX positioning",
       reason: "cold matrix / no positioning read",
@@ -530,14 +556,14 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
-  if (!isClosed) {
+  if (!isNotLive) {
     const gex = ctx.ecosystem?.gex_positioning;
     const gexStale = collectGexStalenessAbsence(gex, Date.now());
     if (gexStale) out.push(gexStale);
   }
   // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
-  if (!isClosed && !ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
+  if (!isNotLive && !ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
     out.push({
       source: "Vector desk state",
       reason: "snapshot unavailable",
@@ -545,7 +571,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
-  if (!isClosed) {
+  if (!isNotLive) {
     const vec = vectorOf(ctx);
     if (vec && hasVectorDeskState(ctx)) {
       out.push(...collectVectorSectionAbsences(vec));
@@ -563,7 +589,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     }
   }
   // Book-context concentration only informs a live/pending decision — irrelevant once a play is closed.
-  if (!isClosed && ctx.openBook === null) {
+  if (!isNotLive && ctx.openBook === null) {
     out.push({
       source: "open book",
       reason: "ledger read failed",
@@ -578,7 +604,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       what_is_missing: "the Meridian catalyst timeline for this ticker",
       retryable: true,
     });
-  } else if (!isClosed && meridianCatalystStale(ctx.meridian, Date.now())) {
+  } else if (!isNotLive && meridianCatalystStale(ctx.meridian, Date.now())) {
     out.push({
       source: "Meridian catalysts",
       reason: "stale — calendar read may lag",
@@ -598,10 +624,10 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // `NEWS_CATALYST_STALE_MS` (2min) old. Live-verified 2026-09-18: `arsenal.news.headlines`
   // renders on real committed plays right now, so this omission fires whenever the shared
   // Benzinga read (server-cache.ts stale-while-revalidate) is aged, not a theoretical gap. Same
-  // `!isClosed` gate as every other live-desk-state check above (a closed play's citation of
+  // `!isNotLive` gate as every other live-desk-state check above (a closed play's citation of
   // headlines-at-the-time is historical, not "may lag").
   if (
-    !isClosed &&
+    !isNotLive &&
     ctx.ecosystem?.arsenal?.news?.headlines?.length &&
     newsCatalystStale(ctx.ecosystem.arsenal.news.as_of, Date.now())
   ) {
@@ -655,7 +681,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // brief stamps today's sessionDate — without this, scanAsOf prose looks current (C3 gap).
   // Not applicable once the play is CLOSED — there is no "today's scan" a historical record awaits.
   if (
-    !isClosed &&
+    !isNotLive &&
     ctx.scanSessionDay &&
     ctx.sessionDate &&
     ctx.scanSessionDay !== ctx.sessionDate
@@ -671,7 +697,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // but consumers reading unavailableSources alone still saw nothing wrong (C3 gap). Same
   // not-applicable-once-CLOSED reasoning as the discovery-scan check above.
   const z = ctx.ecosystem?.zerodte_today;
-  if (!isClosed && z && ctx.sessionDate && z.session_date !== ctx.sessionDate) {
+  if (!isNotLive && z && ctx.sessionDate && z.session_date !== ctx.sessionDate) {
     out.push({
       source: "0DTE Command",
       reason: `prior session (${z.session_date}) — today's board not yet run`,
@@ -713,7 +739,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // still a plausible same-cycle read; beyond that, report the per-ticker fact honestly instead of
   // asserting an unverified system-wide state.
   const nh = ctx.ecosystem?.nighthawk_recent;
-  if (!isClosed && nh && ctx.sessionDate) {
+  if (!isNotLive && nh && ctx.sessionDate) {
     const gapDays = daysBetweenYmd(nh.edition_for, ctx.sessionDate);
     if (gapDays !== null && gapDays > 0 && gapDays <= 4) {
       out.push({

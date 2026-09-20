@@ -118,6 +118,72 @@ test("collectBriefUnavailableSources: CLOSED play does not flag a stale Meridian
   }
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-09-19): a WATCH play whose entry is already dead
+// (deadPlayReason — invalidated / entry-deadline expired / contract expired / extended-chase) is
+// functionally identical to CLOSED for this file's own "today's live desk state doesn't matter"
+// reasoning, but nothing suppressed the wall-of-stale-chips for it until this fix. Mirrors the
+// CLOSED-play test immediately above, one bucket over.
+test("collectBriefUnavailableSources: dead WATCH play (entry-validity expired) does not flag a stale Meridian read (functionally identical to CLOSED)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "WATCH", watchEntryExpired: true },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: dead WATCH play (thesis invalidated) also suppresses prior-session swing-discovery-scan noise", () => {
+  const ctx = {
+    sessionDate: "2026-09-15",
+    scanSessionDay: "2026-09-10",
+    play: { status: "WATCH", setupState: "INVALIDATED" },
+  } as unknown as SwingPlayBriefContext;
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "swing discovery scan"));
+});
+
+test("collectBriefUnavailableSources: a still-live WATCH play (not dead) keeps surfacing staleness — the dead-WATCH suppression must not over-suppress ordinary candidates", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "WATCH", setupState: "FORMING", entryStatus: "PRE_TRIGGER", watchEntryExpired: false },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: an OPEN position sharing an EXPIRED-looking leftover entryStatus is NOT treated as dead (dead-reason check is WATCH-bucket-only)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "OPEN", entryStatus: "EXPIRED" },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
 // Largo C2/C3 (2026-09-18): #5166 disclosed ticker-news staleness INLINE in the narrative
 // (play-brief-intel.ts's `staleLead`) but never reached unavailableSources — the one signal the
 // UI's `UnavailableChip` reads from. Every sibling freshness check (Meridian catalysts above,
