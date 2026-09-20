@@ -418,6 +418,27 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     lines.push(`New sections: ${newSections.join(", ")}`);
   }
 
+  // GAP FOUND (Ask Largo standing mandate, 2026-09-20): `composeSwingPlayBrief` (play-brief.ts)
+  // conditionally `sections.push(...)`s many intel sections only when the underlying data is
+  // present — "Book context" only when `checkPortfolioOverlap` finds real theme/direction
+  // concentration, "Cortex read" only when a cortex blob is pinned, "Catalysts & news"/"Meridian
+  // catalysts" only when a catalyst read exists, "GEX posture"/"Wall dynamics" only when the
+  // matrix is fresh, etc. (`docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle — omitted
+  // when a product genuinely has nothing to show, never padded). That means a section can
+  // genuinely DISAPPEAR between two refreshes of the same play (the portfolio overlap clears, a
+  // Cortex source starts timing out, a catalyst read goes stale and gets dropped) — a materially
+  // informative fact for a member watching the "What changed" pulse. Until this fix, only ADDED
+  // sections were ever narrated (`newSections` above); a section vanishing was silently identical
+  // to a refresh where nothing changed at all, the exact same "misleading no-op" shape already
+  // fixed elsewhere in this file for the roll-candidate and headline-DTE cases. Symmetric with the
+  // addition case: a plain named list, no fabricated reason for WHY it left (the same reasons a
+  // wall's own drift is reported direction-neutral in `narrateStructuralLevelShift` — naming the
+  // fact honestly beats guessing a cause this diff engine cannot see).
+  const removedSections = prev.sectionTitles.filter((t) => !next.sectionTitles.includes(t));
+  if (removedSections.length) {
+    lines.push(`No longer showing: ${removedSections.join(", ")}`);
+  }
+
   return lines.slice(0, 8);
 }
 
