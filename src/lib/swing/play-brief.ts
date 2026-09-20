@@ -24,6 +24,7 @@ import {
   confluenceZoneKindsLabel,
   fundamentalsAncient,
   fundamentalsObservedMs,
+  gexMarketSessionNote,
   gexMatrixAgeMs,
   gexMatrixStale,
   optionMarkGenuinelyUnknown,
@@ -801,6 +802,26 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
         source: "Vector",
         asOf: vec.asOfEt ?? etStampFromIso(vec.asOf) ?? ctx.asOf,
         freshness: vectorFreshness(vec, readMs),
+      },
+    });
+  }
+  // GEX-matrix sibling of the Vector block above (#4076 comment 5750099882, "Mechanism 2" —
+  // #5306/#5307 shipped Vector's half; this is the GEX-matrix half, deliberately deferred to a
+  // separate PR since `polygon-options-gex.ts` is a broader cross-desk surface). Same misleading
+  // combination, different source: `gex.asof` is `polygon-options-gex.ts`'s own wall-clock
+  // `calculatedAt`, so a weekend/holiday self-warm can compute a genuinely fresh GEX matrix from
+  // Friday's closing chain while the market itself has been shut for hours. Gated `!gexStale` for
+  // the same reason the Vector block is gated `!vectorStale` — this can never surface a caveat
+  // about a GEX read the rest of this function has already excluded as untrustworthy.
+  const gexMarketSessionNoteText = gexMarketSessionNote(gex, readMs);
+  if (!gexStale && gexMarketSessionNoteText) {
+    out.push({
+      kind: "fact",
+      text: gexMarketSessionNoteText,
+      provenance: {
+        source: "GEX",
+        asOf: gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? ctx.asOf,
+        freshness: gexFreshness(gex, readMs),
       },
     });
   }

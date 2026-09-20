@@ -4,6 +4,7 @@ import {
   ageSecondsLabel,
   relativeAgeLabel,
   collectBriefUnavailableSources,
+  gexMarketSessionNote,
   gexMatrixStale,
   meridianCatalystAgeMs,
   meridianCatalystStale,
@@ -33,6 +34,35 @@ test("gexMatrixStale: within future tolerance is not treated as skew-stale", () 
   const nearFutureAsof = new Date(readMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS - 1_000).toISOString();
   const gex = { spot: 100, asof: nearFutureAsof, gamma_posture: "long" };
   assert.equal(gexMatrixStale(gex, readMs), false);
+});
+
+// GEX-matrix sibling of `describeVectorFreshness`'s `market_session_note` (#4076 comment
+// 5750099882, "Mechanism 2" -- Vector's half shipped as #5306, this is the GEX-matrix half).
+test("gexMarketSessionNote: fresh compute on a closed market (weekend self-warm) discloses it", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const gex = { spot: 100, asof: new Date(readMs).toISOString(), gamma_posture: "long" };
+  const note = gexMarketSessionNote(gex, readMs);
+  assert.ok(note, "expected a disclosure for a fresh compute against a closed market");
+  assert.match(note!, /market is CLOSED/);
+});
+
+test("gexMarketSessionNote: fresh compute during real RTH is null (market is open, nothing to disclose)", () => {
+  const readMs = Date.parse("2026-09-18T15:00:00.000Z"); // Fri 11:00 ET -- OPEN
+  const gex = { spot: 100, asof: new Date(readMs).toISOString(), gamma_posture: "long" };
+  assert.equal(gexMarketSessionNote(gex, readMs), null);
+});
+
+test("gexMarketSessionNote: an already-stale GEX matrix suppresses the note (its own staleness note already covers it)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const oldAsof = new Date(readMs - 60 * 60 * 1000).toISOString(); // 1h old -- well past GEX_MATRIX_STALE_MS
+  const gex = { spot: 100, asof: oldAsof, gamma_posture: "long" };
+  assert.equal(gexMatrixStale(gex, readMs), true, "sanity: fixture is actually stale");
+  assert.equal(gexMarketSessionNote(gex, readMs), null);
+});
+
+test("gexMarketSessionNote: null gex or unreadable age never throws or fabricates a note", () => {
+  assert.equal(gexMarketSessionNote(null, Date.now()), null);
+  assert.equal(gexMarketSessionNote({ spot: 100, asof: "not-a-date", gamma_posture: "long" }, Date.now()), null);
 });
 
 test("meridianCatalystStale: fresh as_of (Largo C2)", () => {
