@@ -1578,6 +1578,32 @@ test("vectorDeskSection: future-skewed Vector dataAgeMs (Infinity) renders 'cloc
   assert.doesNotMatch(section!.body, /Infinitys/i);
 });
 
+test("vectorDeskSection: stale Vector with no play.grade still renders the section, not null", () => {
+  // FINDINGS 2026-09-20: the stale branch used to end with `if (!lines.length) return null` --
+  // dead code, since the "Last snapshot ... may lag spot" line just above it is always pushed in
+  // this branch, so `lines.length` can never be 0 there. This is the one combination (stale +
+  // no grade) that would have exercised that dead check if it were ever reachable; asserting the
+  // section still renders here locks in the real (and only ever possible) behavior.
+  const vec = fixtureVec({
+    freshness: "stale",
+    play: {
+      bias: "long",
+      headline: "Ride momentum",
+      grade: null,
+      conviction: "high",
+      thesis: "Breakout continuation",
+      entryZone: "100-102",
+      targets: ["110"],
+      invalidation: "below 98",
+      starred: ["watch 105"],
+    },
+  } as Partial<VectorFullState>);
+  const section = vectorDeskSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.doesNotMatch(section!.body, /Vector desk grade/i);
+});
+
 test("vectorDeskSection: live Vector play.bias badges bullish/bearish", () => {
   const live = vectorDeskSection(
     fixtureVec({
