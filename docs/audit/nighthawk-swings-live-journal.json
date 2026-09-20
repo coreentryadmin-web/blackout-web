@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T23:20:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. Zero open swing PRs. #4076 quiet. #5328's deploy still rolling (ECS web roll started 22:53:40, ~25min elapsed at this check, within normal range) -- deferred verification again. Board unchanged. Light, clean cycle.",
+  "last_updated": "2026-09-20T23:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, full close). ReadNotifications clean. git sync clean (picked up sibling's docs-fold #5330 for #5328). Zero open swing PRs. #4076 quiet. **PR #5328 confirmed LIVE in production.** Deploy fully completed 23:23:27 (web + market-worker both rolled). Pulled WOLF's live play-brief: 'Trade manager read' now correctly shows just 'next trim at +100%' with NO fabricated distance clause, matching the Position section's honest 'Mark: unknown' a few lines above -- the self-contradiction is gone. **This closes out the entire cycle-group's live-verification arc**: all four real production fixes shipped this session (#5320 thesis-health regime-clobber, #5321 crypto-equity theme coverage, #5327 book-context namewall cap, #5328 fake-mark-basis suppression) are now confirmed working correctly in production, each independently adversarially re-verified before merge (own fixes RED->GREEN proven locally, sibling fixes re-derived from scratch in isolated worktrees) and each confirmed again post-deploy against real live data rather than assumed from the PR description alone. Board unchanged. A genuinely complete, well-evidenced sweep.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
