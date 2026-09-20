@@ -96,10 +96,31 @@ export function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDos
  * router (buildSwingSections) can place it in the right section. Only the observable fields the router keys
  * on (setupState / entryStatus) and the calibration-partition labels (archetype / subLane) are set — the
  * factors/regime/thesis reads ride the meta the command-deck adapter consumes, not the pure play.
+ *
+ * PINNED FACTORS ARE PRESERVED (FINDINGS 2026-09-20) — a FOURTH occurrence of the #4826/#4832/#4843
+ * bug class, found by this same instruction's own cycle. `legacy-confirm-promote.ts`'s
+ * `buildLegacySwingArtifacts` deliberately pins `play.factors` to a single
+ * `[{label:"Night Hawk edition score", points: swingPlay.score}]` entry (the #4843 fix, 2026-09-12)
+ * BECAUSE the play's `score` is Legacy's own published edition conviction score, not the dossier's
+ * independently-computed synthetic pillar score `meta.factors` decomposes — pairing them was exactly
+ * the bug #4843 fixed. But `attachThesisExplanation` (below, for LIVE committed rows) was the only
+ * call site that learned to respect a pinned `play.factors`; THIS function — the one that actually
+ * runs over Legacy-promoted PRE-ENTRY plays, since they never carry `liveStatus`/`manageAction` and
+ * so never take the `fetchOpenPositions`/`attachThesisExplanation` path — kept unconditionally
+ * overwriting `factors: meta.factors`, silently re-introducing the exact "score vs factors that
+ * don't sum to it" defect the pin was built to prevent. Live evidence (2026-09-20,
+ * GET /api/market/nighthawk/horizons?view=swings): LITE score 71 vs factors summing to 70.1, SMCI
+ * score 91 vs 84.5 (6.5pt/7% gap) — both Legacy-morning-confirm-promoted rows (`reason` carries
+ * "Legacy morning confirm"), both promoted well after the #4843 fix (firstSeenAt 2026-09-17/18),
+ * proving the regression is live and ongoing, not a one-time stale-snapshot artifact. Organic
+ * (non-Legacy) discovery plays never set `play.factors` at all (`horizon-plays.ts`'s `factors` field
+ * is optional/undefined until this function fills it), so preferring an existing non-empty array is
+ * a no-op for them and changes nothing about how they render.
  */
 function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?: SwingServingReads): HorizonPlay {
   if (!dossier) return play; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
   const meta = swingServingMetaFromDossier(dossier, reads);
+  const pinnedFactors = Array.isArray(play.factors) && play.factors.length > 0;
   // WATCH track anchor: pinned first-flag price only — never the live scan spot (reads.setup.price).
   const flagPx =
     play.flagUnderlyingPx ??
@@ -111,7 +132,7 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     entryStatus: meta.entryStatus ?? play.entryStatus,
     archetype: meta.archetype ?? play.archetype,
     subLane: meta.subLane ?? play.subLane,
-    factors: meta.factors,
+    factors: pinnedFactors ? play.factors : meta.factors,
     regime: meta.regime,
     thesisLevel: meta.thesisLevel,
     thesisNote: meta.thesisNote,

@@ -461,6 +461,45 @@ test("no dossier for the ticker → the row is left honest, never given an inven
   assert.equal((live.factors ?? []).length, 0, "no dossier means no factors — the placeholder is correct here");
 });
 
+// enrichPlay (the PRE-ENTRY discovery-lane sibling of attachThesisExplanation above) used to
+// unconditionally overwrite `factors: meta.factors` from a freshly re-run dossier, even when the
+// play already carried PINNED factors consistent with its own `score` (exactly what
+// `legacy-confirm-promote.ts`'s `buildLegacySwingArtifacts` sets for Legacy-morning-confirm-
+// promoted plays: a single `[{label:"Night Hawk edition score", points: swingPlay.score}]` entry,
+// the #4843 fix). Because a Legacy-promoted play never carries `liveStatus`/`manageAction` until it
+// is actually committed to a live position, it takes THIS path (enrichPlay), not
+// attachThesisExplanation's — so #4843's fix never covered it, and the same "factors don't sum to
+// score" defect reappeared here. Live evidence 2026-09-20: LITE score 71 vs factors summing to
+// 70.1, SMCI score 91 vs 84.5 — see serving-lane.ts's enrichPlay comment for the full trace.
+test("a PRE-ENTRY play's OWN pinned factors win over a fresh same-day dossier's — score/factors never disagree even before commit", async () => {
+  const d = buildSwingDossier(dossier("AAA")); // today's re-run — its OWN score/pillars, unrelated to the play's pin
+  const pinnedScore = 71; // Legacy's own published edition conviction score
+  const pinnedPlay = play({
+    ticker: "AAA",
+    status: "COMMIT",
+    score: pinnedScore,
+    signalKinds: ["NIGHT HAWK"],
+    factors: [{ label: "Night Hawk edition score", points: pinnedScore }],
+  });
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [pinnedPlay] }),
+    readsByTicker: new Map([
+      ["AAA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
+    ]),
+  });
+  const row = lane.sections.COMMIT_NOW[0];
+  assert.ok(row, "the pre-entry play must render in COMMIT_NOW");
+  assert.equal(row.score, pinnedScore, "score is the play's own pinned edition score");
+  const sum = Math.round((row.factors ?? []).reduce((n, f) => n + f.points, 0) * 10) / 10;
+  assert.equal(sum, pinnedScore, "factors must sum to the play's OWN pinned score");
+  assert.notEqual(
+    sum,
+    d.score.score,
+    "sanity: the fresh dossier's own score must differ from the pinned one in this fixture, or this " +
+      "test would pass even if the bug reappeared and the pinned factors were silently replaced",
+  );
+});
+
 test("getSwingServingLane stamps scanAsOf from persisted snapshot", async () => {
   await persistSwingServingSnapshot({
     asOf: "2026-07-24T20:00:00.000Z",
