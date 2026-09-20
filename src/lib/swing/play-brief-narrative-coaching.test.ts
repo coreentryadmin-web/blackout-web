@@ -416,6 +416,51 @@ test("manageLifecycleCoaching: 'next trim' discloses the live dollar level and %
   assert.match(line!, /mark \*\*\$1\.70\*\*, needs \*\*\$2\.00\*\* \(\+18% from here\)/);
 });
 
+// FAKE-MARK-AS-BASIS regression (2026-09-20, Ask Largo standing mandate, live repro WOLF
+// SWING:WOLF:1218 OPEN brief). `horizonPlayFromBangerPosition` sets `play.mark = last_mark ??
+// entry_premium` (see play-brief.ts's own `pnlSection` comment) — when no live sync has ever
+// happened, `play.mark` IS the entry premium replayed, not a real quote, and the brief's own
+// Position section already knows this: `optionMarkGenuinelyUnknown(play)` (markIsSync &&
+// pnlPct == null) is exactly the signature that makes it print "Mark: **unknown** _(sync quote,
+// no live price yet — do not read as flat)_". `manageLifecycleCoaching`'s "next trim" distance
+// disclosure never checked that signature — it fell through to `play.mark` (execMark absent)
+// and printed "mark **$0.77**, needs **$1.54** (+100% from here)" a few lines below "Mark:
+// unknown" in the SAME envelope, presenting the exact number the document says is not known as
+// if it were a live basis for a room% calculation. Same self-contradiction class as the EBS
+// "Premium stop rail" bug (play-brief-absence.ts's own `optionMarkGenuinelyUnknown` doc comment)
+// and the SWING:ALAB "Mark" line bug (play-brief.ts) — a fourth, previously-unchecked call site.
+// Fix: gate the whole distance disclosure on `!optionMarkGenuinelyUnknown(play)`, the same shared
+// helper every sibling call site already uses, rather than re-deriving a fourth ad-hoc check.
+test("manageLifecycleCoaching: 'next trim' distance disclosure is suppressed when mark is the true entry-fallback echo (not a real quote)", () => {
+  const line = manageLifecycleCoaching(
+    play({
+      manageAction: "HOLD",
+      status: "HOLD",
+      pnlPct: null, // the true entry-fallback signature — no real quote has ever synced
+      mark: 0.77, // == entry, exactly the fallback play-brief.ts's pnlSection comment describes
+      markIsSync: true,
+      execMark: null,
+      exitPolicy: {
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 1.54, fired: false }],
+        stop_premium: 0.31,
+        target_premium: 1.54,
+        runner_fraction: 0.5,
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        time_stop_et: "16:00",
+      },
+    }),
+    "open",
+  );
+  assert.match(line!, /next trim at \*\*\+100%\*\*/);
+  // The fabricated-basis distance clause must not appear at all — no "mark $0.77" and no
+  // "bid $0.77", since 0.77 is not a real quote in this scenario.
+  assert.doesNotMatch(line!, /mark \*\*\$0\.77\*\*/);
+  assert.doesNotMatch(line!, /bid \*\*\$0\.77\*\*/);
+  assert.doesNotMatch(line!, /from here/);
+});
+
 // BASIS MISMATCH regression (2026-09-18, Ask Largo standing mandate, live repro AAPL
 // SWING:AAPL:38 OPEN brief): once `execMark` (the live tradable bid) is known, this bullet must
 // price its distance off it -- the SAME basis the sibling "Premium target rail" room% line

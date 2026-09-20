@@ -10,6 +10,7 @@ import {
   fundamentalsAncient,
   gexMatrixAgeMs,
   gexMatrixStale,
+  optionMarkGenuinelyUnknown,
   resolveGammaPosture,
   vectorAgeStale,
   vectorSnapshotStale,
@@ -185,10 +186,26 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
         // when a cheaper, more conservative bid was available. Mirrors play-brief-intel.ts's
         // `targetBasis`/`targetBasisIsExec` pattern exactly rather than reinventing it, so the two
         // "how far to the next dollar level" numbers in one brief can no longer disagree.
+        //
+        // FAKE-MARK-AS-BASIS (2026-09-20, Ask Largo standing mandate, live repro WOLF
+        // SWING:WOLF:1218 OPEN brief): the BASIS MISMATCH fix above chose the more conservative
+        // of execMark/mark when BOTH represent real quotes — but when no live sync has EVER
+        // happened, `play.mark` isn't a cheaper-or-pricier real quote, it's the raw entry-premium
+        // fallback (`horizonPlayFromBangerPosition`: `mid = last_mark ?? entry_premium`) replayed
+        // verbatim. That's exactly the signature `optionMarkGenuinelyUnknown` (play-brief-absence.ts)
+        // already centralizes — the same one that makes this brief's own Position section print
+        // "Mark: unknown". Live repro: "mark **$0.77**, needs **$1.54** (+100% from here)" rendered
+        // here while "Mark: **unknown** _(sync quote, no live price yet — do not read as flat)_"
+        // sat a few lines above in the SAME envelope — a specific room% computed from the exact
+        // number the document says is not known. Gate the whole disclosure on the shared helper,
+        // the same guard every sibling call site (pnlSection, the Premium stop rail cushion, the
+        // Premium target rail room%) already uses, rather than re-deriving a fifth ad-hoc check.
+        const markBasisIsFabricated = optionMarkGenuinelyUnknown(play);
         const distanceBasis = play.execMark != null && play.execMark > 0 ? play.execMark : play.mark;
         const distanceBasisIsExec = play.execMark != null && play.execMark > 0;
         const distanceSuffix =
           !alreadyCrossed &&
+          !markBasisIsFabricated &&
           next.premium != null &&
           typeof distanceBasis === "number" &&
           Number.isFinite(distanceBasis) &&
