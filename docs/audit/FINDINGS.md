@@ -139,6 +139,20 @@ bug — `factorsValid` already prefers the position's own pinned factors, and ba
   `banger-lane-merge.test.ts` + `play-brief-resolve.test.ts` + `play-brief-narrative.test.ts` +
   `play-brief-pillar-guard.test.ts` all green (148 tests) after the fix.
 
+### Live validation (2026-09-20, post-deploy)
+
+ECS task-def revision 1714 (carrying this commit) reached `rolloutState: COMPLETED`, 8/8 tasks,
+old revision 1713 fully drained. Confirmed independently by two sessions: a sibling coordinator
+pulled fresh RIOT/MSTR/COIN play-briefs right after the roll and posted the live confirmation on
+PR #4076 (comment 5752559267); this session separately re-verified via a fresh temp Clerk premium
+session against `GET /api/market/nighthawk/horizons?horizon=SWING` (board still shows the honest
+`regime: "BREAKOUT · BANGER"` sentinel on all 70 committed Banger-origin rows) and
+`GET /api/market/swing/play-brief?playId=SWING:<TICKER>` for all 12 originally-reported tickers
+(RIOT, MSTR, COIN, HOOD, MARA, IREN, BMNR, LRCX, BKKT, GEMI, ABTC, BTDR) — every one now renders
+the honest omission ("Inputs not wired for committed positions — aggregate score withheld") with
+the sentinel intact in "Why this setup," matching the board. No fabricated score found on any
+sampled position; native (non-Banger) committed positions CRWD/AAPL unaffected. No regression.
+
 ### Corrective note for CLAUDE.md's Ask Largo mandate ledger
 
 The 2026-09-20 mandate-ledger correction that dismissed this as "walking back the severity...
