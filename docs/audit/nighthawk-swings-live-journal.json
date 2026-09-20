@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T00:16:19Z",
-  "notes": "00:16 UTC cycle -- PR #5263 confirmed merged (5d27d8a3e), sibling PR #5264 also confirmed merged (0e859a8d5), both unsubscribed/closed out. No open swing PRs at start of cycle, board unchanged. SELF-AUTHORED FIX #2: PR #5266 (fix/swing-data-honesty-dead-watch-noise) -- spotted this by reading #5264's own fix pattern and asking 'does any sibling function have the identical gap.' dataHonestyCoaching (play-brief-narrative-coaching.ts) reads the SAME 4 live-desk signals (Vector/GEX/HELIX/discovery-scan staleness) into one 'Data caveat' bullet that #5264's collectBriefUnavailableSources also reads -- but never imported deadPlayReason, so a dead WATCH play (invalidated thesis / expired entry window) kept getting live-data-staleness warnings about a setup already narrated as 'no longer live -- skip it', the exact bug class #5264 just fixed in a different file. watchGateCoaching (same file) and play-brief.ts's Invalidation callout both already gated on deadPlayReason; this sibling function in the identical WATCH-bucket call path did not. Fix mirrors #5264's own WATCH-only guard idiom exactly (status !== OPEN/HOLD/TRIM/CLOSED, not a bare deadPlayReason check) so OPEN/HOLD/TRIM's leftover pre-entry setupState/entryStatus fields are never misread as dead. 4 new tests (2 positive suppression + 2 regression controls: live WATCH still warns, OPEN with leftover setupState still warns). RED->GREEN via git stash (2 fail -> 119/119 pass in-file), tsc clean, full npm test 14890 pass/0 fail/3 skipped (pre-existing). PR #5266 opened, subscribed, undrafted.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "docs/audit/findings-staging/2026-09-20-swing-data-honesty-dead-watch-noise.md"
-  ],
+  "last_updated": "2026-09-20T00:31:11Z",
+  "notes": "00:31 UTC cycle -- coordinator's docs-fold PR #5265 (folding #5263/#5264 findings) confirmed merged (fa50e9b21), pulled to local main. My own PR #5266 (dataHonestyCoaching dead-WATCH fix) still CI in_progress (~7min, CodeQL green); nothing actionable, 1hr check-in already armed. Only #5266 remains open swing-scoped. Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Lighter-touch cycle by design -- shipped two fixes already this wave (#5263, #5266) and the v3 mandate's own cadence note says prioritize forensic depth over redundant mechanical re-checks when nothing's changed since the last look; genuinely nothing new surfaced this tick beyond the two items already being tracked.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
