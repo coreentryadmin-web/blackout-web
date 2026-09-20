@@ -500,6 +500,55 @@ test("a PRE-ENTRY play's OWN pinned factors win over a fresh same-day dossier's 
   );
 });
 
+// FINDINGS 2026-09-20 (5th occurrence of the #4826/#4832/#4843/#4837/#5298 bug class). Both prior
+// enrichPlay/attachThesisExplanation fixes treated "factors.length > 0" as proof of a trustworthy
+// pin — they can never REPAIR an already-bad persisted value, only preserve or replace one. Live
+// evidence: LITE (score 71) and SMCI (score 91) both carried a persisted `factors` array shaped
+// exactly like a dossier's OWN 5/3-pillar breakdown (Structure/Regime/Volatility/Flow/Data quality)
+// that summed to 70.1/84.5 — NOT the play's own score, and NOT the single
+// `[{label:"Night Hawk edition score", points: score}]` entry `buildLegacySwingArtifacts` has
+// written since #4843 (2026-09-12) — despite both plays' own `firstSeenAt` (2026-09-17/18) postdating
+// that fix on both ECS services that could have built them. Whatever wrote the bad value, the guard
+// must now REPAIR it at read time rather than trust "non-empty" — and for a Legacy-exempt play the
+// repair must be the single-factor shape, never a fresh dossier decomposition (which would just
+// re-commit the identical class of mismatch with different numbers).
+test("a Legacy-exempt play whose PERSISTED factors do NOT sum to its own score gets REPAIRED, not trusted or dossier-replaced (2026-09-20, 5th occurrence)", async () => {
+  const d = buildSwingDossier(dossier("LITE")); // today's re-run — an unrelated dossier-shaped decomposition
+  const shownScore = 71; // Legacy's own published edition conviction score (what the desk shows)
+  const staleBrokenPlay = play({
+    ticker: "LITE",
+    status: "COMMIT",
+    score: shownScore,
+    signalKinds: ["NIGHT HAWK"],
+    commitGateBlockedBy: ["legacy:exempt"],
+    reason: "C 950 exp 2026-09-25 (7DTE) · Legacy morning confirm (2026-09-17)",
+    // The exact bad shape observed live: a dossier-style pillar breakdown that does NOT sum to
+    // `shownScore` — simulating whatever wrote a bad value before this read-time fix existed.
+    factors: [
+      { label: "Structure", points: 42.1 },
+      { label: "Regime", points: 10.1 },
+      { label: "Volatility", points: 8.6 },
+      { label: "Flow", points: 5.7 },
+      { label: "Data quality", points: 3.6 },
+    ],
+  });
+  const lane = await getSwingServingLane({
+    discover: async () => ({ dossiers: [d], plays: [staleBrokenPlay] }),
+    readsByTicker: new Map([
+      ["LITE", { setup: { price: 950.5, triggerPx: 950, invalidationPx: 900, atr: 10 }, entry: { price: 950.5, triggerPx: 950, atr: 10, entryZoneFar: 940 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
+    ]),
+  });
+  const row = lane.sections.COMMIT_NOW[0];
+  assert.ok(row, "the pre-entry play must render in COMMIT_NOW");
+  assert.equal(row.score, shownScore, "score is untouched — still the play's own pinned edition score");
+  assert.deepEqual(
+    row.factors,
+    [{ label: "Night Hawk edition score", points: shownScore }],
+    "a bad persisted breakdown on a Legacy-exempt play is REPAIRED to the single pinned factor, " +
+      "never left broken and never replaced with a fresh (also-mismatched) dossier decomposition",
+  );
+});
+
 test("getSwingServingLane stamps scanAsOf from persisted snapshot", async () => {
   await persistSwingServingSnapshot({
     asOf: "2026-07-24T20:00:00.000Z",
