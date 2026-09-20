@@ -16,6 +16,7 @@ import type { DeckDirection, DeckStatus, ThesisLevel } from "@/features/nighthaw
 import type { DeckFactor } from "@/features/nighthawk/command-deck/types";
 import { SWING_SUBLANE_MANAGE } from "./manage";
 import type { SwingSubLane } from "./taxonomy";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 
 export type SwingThesisPillarId =
   | "persistence"
@@ -49,15 +50,26 @@ const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string>> =
 };
 
 /**
- * Regime label written ONLY by horizonPlayFromBangerPosition/horizonPlayFromBangerWatch
- * (src/lib/swing/banger-lane-merge.ts) — a fixed constant stamped on every banger_positions ledger
- * row regardless of ticker, contract, or price action, never produced by the real regime-fit calc a
+ * `BANGER_LEDGER_REGIME_LABEL` (imported from banger-lane-merge.ts, the single source of truth for
+ * this sentinel — see its own doc comment) is written ONLY by horizonPlayFromBangerPosition/
+ * horizonPlayFromBangerWatch — a fixed constant stamped on every banger_positions ledger row
+ * regardless of ticker, contract, or price action, never produced by the real regime-fit calc a
  * native swing position uses. Unlike signalKinds=["BANGER"] alone (which a NATIVE swing position can
  * also legitimately carry, as just one of several real Tier-0 discovery paths — see
  * SwingDiscoveryPath in discovery.ts — while still running the real scoring/setupState/entryStatus
  * engine), this exact string is a safe, unambiguous fingerprint of the stamped-constant merge path.
+ *
+ * CORRECTNESS DEPENDS ON THIS SENTINEL SURVIVING UNCHANGED FROM COMMIT TO HERE — see the live bug
+ * fixed 2026-09-20 (findings-staging/2026-09-20-swing-thesis-health-banger-regime-clobber.md):
+ * `serving-lane.ts`'s `attachThesisExplanation()` used to overwrite ANY play's `regime` field with a
+ * same-ticker discovery dossier's fresh read whenever one existed in the current scan, including a
+ * banger-ledger play whose `regime` was this exact sentinel — silently destroying the fingerprint
+ * this function matches on and reopening the identical byte-identical-fabricated-score bug the
+ * 2026-09-15 fix (this sentinel's original introduction) was written to close. Fixed at the source
+ * (`attachThesisExplanation` now refuses to overwrite this sentinel), not here — but this comment
+ * stays as a flag: if a future caller reads `regime` off a `HorizonPlay`/`TerminalPlay` without
+ * going through `attachThesisExplanation`'s guard, re-verify this sentinel still survives intact.
  */
-const BANGER_LEDGER_REGIME_LABEL = "BREAKOUT · BANGER";
 
 /** True when the aggregate health % is built from generic defaults — not a calibrated read. */
 export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefined): boolean {

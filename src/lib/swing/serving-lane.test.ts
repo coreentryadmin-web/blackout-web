@@ -5,8 +5,10 @@ import {
   discoverSwingFromPersisted,
   persistSwingServingSnapshot,
   SWING_SERVING_TTL_SEC,
+  attachThesisExplanation,
   type SwingDiscoveryLike,
 } from "./serving-lane.ts";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge.ts";
 import { SWING_SCAN_PHASES } from "./scan-cadence.ts";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier.ts";
 import type { SwingReads } from "../swing-signals.ts";
@@ -459,6 +461,69 @@ test("no dossier for the ticker → the row is left honest, never given an inven
   const live = lane.sections.MANAGING[0];
   assert.ok(live, "the position still renders");
   assert.equal((live.factors ?? []).length, 0, "no dossier means no factors — the placeholder is correct here");
+});
+
+// FINDINGS 2026-09-20 (live repro, PR #4076 comment 5751915312): `attachThesisExplanation` is called
+// TWICE on a banger-ledger position's road to a play-brief — once (correctly) never, inside
+// `getSwingServingLane` (banger rows are merged in AFTER the native-only enrichment pass, by design —
+// see `mergeBangerPositionsIntoSwingPlays` running after `livePlays.map(attachThesisExplanation)`
+// above), and once from `play-brief-resolve.ts`'s ticker-only lane fallback, which calls this on
+// WHATEVER lane row it resolved with no distinction for origin. Before this fix, that second call
+// silently overwrote `horizonPlayFromBangerPosition`'s deliberate `BANGER_LEDGER_REGIME_LABEL`
+// sentinel ("no real per-position dossier for this play") with an UNRELATED same-ticker discovery
+// dossier's regime read whenever one happened to exist in the current scan — destroying the
+// fingerprint `thesisHealthUncalibrated()` needs to correctly withhold an aggregate score, and live-
+// confirmed via the canonical board (`getSwingServingLane`, which never enriches banger rows) vs the
+// play-brief (which did): the SAME committed RIOT/MSTR/COIN/... positions showed the honest sentinel
+// on the board and a fabricated-looking "84% · Minor drift" on Ask Largo's play-brief for the same
+// position, on the same scan. A banger-ledger sentinel is never a real per-position read to begin
+// with, so it must never be overwritten by an unrelated ticker-keyed dossier.
+test("attachThesisExplanation never overwrites a banger-ledger sentinel regime, even when a same-ticker dossier exists (Largo C6)", () => {
+  const bangerPlay: HorizonPlay = {
+    ticker: "RIOT",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 65,
+    status: "COMMIT",
+    contract,
+    scoreFloor: 60,
+    reason: "Banger breakout +10% · 15C 2026-09-25",
+    archetype: "BREAKOUT",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    serving: "MANAGING",
+    signalKinds: ["BANGER"],
+    regime: BANGER_LEDGER_REGIME_LABEL,
+    factors: [{ label: "Discovery gain", points: 65 }],
+  };
+  // A REAL, unrelated dossier for the SAME ticker — exactly the shape that let RIOT/MSTR/COIN/HOOD/
+  // LRCX etc. pick up "Breakout continuation · regime 0.67" live on 2026-09-20 (their own current
+  // discovery scan, nothing to do with the already-committed banger position).
+  const d = buildSwingDossier(dossier("RIOT"));
+  const enriched = attachThesisExplanation(bangerPlay, d);
+  assert.equal(
+    enriched.regime,
+    BANGER_LEDGER_REGIME_LABEL,
+    "the banger-ledger sentinel must survive attachThesisExplanation untouched, not be replaced by an unrelated dossier's regime",
+  );
+});
+
+test("attachThesisExplanation still enriches a NATIVE (non-banger) play's regime from a same-ticker dossier — the guard is scoped to the sentinel only", () => {
+  const nativePlay: HorizonPlay = {
+    ticker: "AAA",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 65,
+    status: "COMMIT",
+    contract,
+    scoreFloor: 60,
+    reason: "r",
+    regime: null,
+  };
+  const d = buildSwingDossier(dossier("AAA"));
+  const enriched = attachThesisExplanation(nativePlay, d);
+  assert.ok(enriched.regime, "a native play with no prior regime must still get the dossier's enrichment");
+  assert.notEqual(enriched.regime, BANGER_LEDGER_REGIME_LABEL);
 });
 
 // enrichPlay (the PRE-ENTRY discovery-lane sibling of attachThesisExplanation above) used to

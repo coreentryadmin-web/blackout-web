@@ -1,3 +1,25 @@
+## WATCH LIST — 2026-09-20 Swing Ask Largo play-brief vs Command Deck board Thesis Health disagreement (Banger-origin regime clobber, PR pending)
+
+**What was fixed:** a Banger-origin (`signalKinds:["BANGER"]`) swing position resolved through
+`resolveSwingPlayForBrief`'s ticker-only lane fallback had its honest `regime:"BREAKOUT · BANGER"`
+sentinel silently overwritten by `attachThesisExplanation` with an unrelated same-ticker discovery
+dossier's fresh regime read whenever one existed in the current scan (true for liquid names like
+RIOT/MSTR/COIN, false for smaller ones like BKKT/GEMI). That destroyed the sentinel
+`thesisHealthUncalibrated()` needs to correctly withhold an aggregate Thesis Health score, so Ask
+Largo's play-brief showed a real (not hardcoded, but still largely batch-shared) computed score
+while the canonical Command Deck board — which never runs banger rows through that same enrichment
+by design — showed the honest omission for the SAME position. Full write-up:
+`docs/audit/findings-staging/2026-09-20-swing-thesis-health-banger-regime-clobber.md`.
+
+**Specific thing to check once this deploys:** pick 3-5 live Banger-origin MANAGING/SCALING_OUT
+swing positions (any ticker with `signalKinds:["BANGER"]`), then compare their Thesis Health text
+BOTH on the Command Deck `/nighthawk?view=swings` board AND on Ask Largo's play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:<TICKER>`) — the two must now AGREE (both showing
+either the omission text or a real per-position score), never disagree on the same position. Also
+re-check whether any Banger-origin position ever legitimately shows a real, differentiated Thesis
+Health score post-fix (expected: none should, since the sentinel can no longer be overwritten) — if
+one does, that would mean a NEW path around the guard exists and needs tracing.
+
 ## WATCH LIST — 2026-09-20 Vector universe null-spot completeness fix (PR pending)
 
 **What was fixed:** `GET /api/market/vector/universe` was found live serving `spot:null` for 18/55
