@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T16:19:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git fetch showed a sibling heartbeat commit -- ff-only merge clean. Confirmed PR #5312 (short-interest freshness tag fix, verified last cycle) is now merged into main -- content matches what I independently checked. A sibling opened PR #5313 (notable-print strikes now render to 2dp, matching every other level in the brief -- Largo C9 precision). Root cause: flowIntelSection's 'Notable prints' bullet list was the one strike-render site in play-brief-intel.ts that skipped .toFixed(2), so a real fractional-strike contract (weekly options routinely strike at .50) rendered inconsistently against every sibling level (GEX king, dark-pool, nearest wall, gamma magnet, confluence zones) in the same brief. Independently verified: read the full diff (small, single-site change, matches the guard style of every sibling render in the file); ran the PR's own play-brief-intel.test.ts myself -- 175/175 pass; reverted the source file to pre-fix (main) and re-ran -- confirmed RED, exact match to the claimed 2 failures (the updated 2026-09-18 test's regex + the new fractional-strike test); restored the fix, confirmed GREEN again (175/175), tsc --noEmit clean. Root cause, diff, and RED-to-GREEN all match the PR's own claims exactly -- no corrections needed. Still CI-pending at last check, nothing to merge yet. Board unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
+  "last_updated": "2026-09-20T16:36:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git fetch showed a routine docs-fold PR (#5314, folding #5311/#5312) -- ff-only merge clean. Confirmed PR #5313 (verified last cycle) is also now merged. Zero open swing PRs. AGGRESSIVE MODE: pivoted to a mission bullet not yet directly worked this session -- 'CLOSED plays: retrace vs the 5-truth grader (OUTCOME-GRADING-SPEC.md)'. Pulling real closed swing chains (36 resolved in the 90-day record window) to do this ran straight into the fact that OUTCOME-GRADING-SPEC.md \u00a76 (PR #5023, 2026-09-15) already documents there's nothing to retrace against: the rich 5-truth grader (swing/grade.ts's real gradeSwingPosition -- EXECUTION/PATH/THESIS/MANAGEMENT/FINANCIAL) has zero production call sites; every closed position is graded only by gradeParentFromMark's cheap single-point markfreeze P&L. Independently re-verified this is still true against current main (not trusted from the 5-day-old doc snapshot): grepped for gradeSwingPosition importers, confirmed swing-active-refresh/route.ts imports the DB-write wrapper from db.ts (the exact naming collision the spec doc warns about), NOT swing/grade.ts's real grader; a separate grep for importers of swing/grade.ts itself came back empty outside tests. Confirmed genuinely dormant -- the doc's own correction PR never actually raised this as a #4076 discussion item, just fixed the doc to describe reality. Posted a fresh, evidence-backed proposal comment on #4076 (this session's own comment) naming three shapes in order of scope (smallest: an additive cron writing the 5 truths to a new column/table for audit/research use, no member-facing surface touched; medium: surface THESIS/PATH in closed-plays.ts's play-brief sections; largest: make the 5-truth FINANCIAL truth the real member-facing number) and offered to take the smallest one myself absent objection, holding on the larger two pending a second opinion same as the original doc correction's own caution. Not starting the build this cycle -- giving it room for a sibling response first, same pattern as the market-session-note thread earlier this session. Board unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,18 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T16:19:00Z",
-    "swing_prs": [
-      {
-        "number": 5313,
-        "title": "fix(swing): notable-print strikes render to 2dp, matching every other level (C9 precision)",
-        "state": "open",
-        "author": "sibling session",
-        "independently_verified_by_this_session": true,
-        "verification_result": "root cause, diff, RED (173/175, 2 failures), GREEN (175/175), and tsc --noEmit all match the PR's own claims exactly",
-        "ci_status": "pending"
-      }
-    ]
+    "as_of": "2026-09-20T16:36:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
@@ -191,6 +181,13 @@
         "src/lib/swing/play-brief-absence.ts"
       ],
       "status": "OPEN -- posted, no response yet as of 09-20T09:31Z. Deliberately not shipped as a unilateral fix since it needs a real threshold decision (days? matching the ~biweekly reporting cycle?), not a guessed number."
+    },
+    {
+      "raised_at": "2026-09-20T16:34:00Z",
+      "topic": "Swing 5-truth grader (swing/grade.ts) still completely unwired -- re-surfaced dormant OUTCOME-GRADING-SPEC.md #6 gap",
+      "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5751117208",
+      "status": "awaiting_response",
+      "proposed_next_step_if_uncontested": "smallest option -- additive cron writing the 5 truths to a new column/table, no member-facing surface change"
     }
   ]
 }
