@@ -888,6 +888,38 @@ function followupsFor(play: TerminalPlay): string[] {
   return base;
 }
 
+/**
+ * BUG FOUND (Ask Largo standing mandate, 2026-09-20): mirrors the identical composition-level gap
+ * already found and fixed for `buildIntelSections`'s ~20 sections (PR #5288, play-brief-intel.ts)
+ * — THIS file's own top-level section builders (Management/Thesis health/Position/Entry/Outcome/
+ * sibling-position disclosure) plus the evidence/levels/structure-ladder builders below were called
+ * bare too, with the identical blast radius: one throw anywhere in `composeSwingPlayBrief` itself
+ * propagates through to the API route's top-level catch (`route.ts`), which returns
+ * `{available:false, degraded:true}` (503) — the ENTIRE brief disappears, Verdict included, even
+ * though every other top-level section would have built fine.
+ *
+ * Live repro (regression test below): `managementSection`'s `ep.trim_levels.map(...)` is
+ * unconditional whenever `play.exitPolicy` is set — `TerminalPolicyInput.trim_levels` is typed as
+ * a required array (exit-policy.ts), but nothing here defended against a degraded row carrying a
+ * different runtime shape — the exact same "typed non-optional, not actually guaranteed" gap #5288
+ * found in `TerminalPlay.factors`, just surfacing in a sibling function.
+ *
+ * `safeCompose` gives each of these top-level calls the same fail-soft behavior `buildIntelSections`
+ * already has (post-#5288): log server-side only, fall back to the caller-supplied value (`null` for
+ * an optional section, `[]` for an evidence/levels array) rather than crash the whole envelope.
+ * Deliberately scoped to THIS function's own top-level composition — `buildIntelSections`'s 20
+ * sections are independently protected by #5288 and not duplicated here (single-issue PRs, per this
+ * repo's standing policy).
+ */
+function safeCompose<T>(label: string, build: () => T, fallback: T): T {
+  try {
+    return build();
+  } catch (error) {
+    console.error(`[swing/play-brief] "${label}" threw — falling back, not failing the brief`, error);
+    return fallback;
+  }
+}
+
 export type ComposeSwingPlayBriefOptions = {
   /** When true, keep redundant intel sections (GEX, Flow, Hold plan, etc.) alongside narrative. */
   expandIntel?: boolean;
@@ -923,16 +955,20 @@ export function composeSwingPlayBrief(
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
 
   if (bucket === "watch") {
-    sections.push(watchEntrySection(play, readMs));
+    const watchSection = safeCompose("Entry", () => watchEntrySection(play, readMs), null);
+    if (watchSection) sections.push(watchSection);
   } else if (bucket === "open") {
-    sections.push(managementSection(play));
-    const th = thesisHealthSection(play);
+    const mgmt = safeCompose("Management", () => managementSection(play), null);
+    if (mgmt) sections.push(mgmt);
+    const th = safeCompose("Thesis health", () => thesisHealthSection(play), null);
     if (th) sections.push(th);
-    sections.push(pnlSection(play));
-    const siblings = siblingPositionsNote(ctx);
+    const pnl = safeCompose("Position", () => pnlSection(play), null);
+    if (pnl) sections.push(pnl);
+    const siblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null);
     if (siblings) sections.push(siblings);
   } else {
-    sections.push(closedSection(play));
+    const closed = safeCompose("Outcome", () => closedSection(play), null);
+    if (closed) sections.push(closed);
   }
 
   sections.push(...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel }));
@@ -985,8 +1021,8 @@ export function composeSwingPlayBrief(
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,
-      evidence: evidenceFromContext(ctx, readMs),
-      levels: levelsFromContext(ctx, readMs),
+      evidence: safeCompose("evidence", () => evidenceFromContext(ctx, readMs), []),
+      levels: safeCompose("levels", () => levelsFromContext(ctx, readMs), []),
       invalidation,
       followups: followupsFor(play),
       unavailableSources: collectBriefUnavailableSources(ctx),
@@ -995,7 +1031,7 @@ export function composeSwingPlayBrief(
     session_date: ctx.sessionDate,
     // Structure Ladder widget (Ask Largo standing mandate, 2026-09-12) — null on CLOSED plays and
     // on any read with no live spot/structural nodes to build from; never fabricated.
-    structureLadder: buildStructureLadder(ctx, play, bucket),
+    structureLadder: safeCompose("structureLadder", () => buildStructureLadder(ctx, play, bucket), null),
   };
 
   const flow = trustedHelixFlow(ctx.ecosystem);

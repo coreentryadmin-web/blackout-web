@@ -141,6 +141,71 @@ test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the di
   );
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
+// error boundary, in THIS file's own top-level composition instead. `managementSection`'s
+// `ep.trim_levels.map(...)` AND `blendedPnlPct`'s (called from `pnlSection`) `ep.trim_levels.
+// reduce(...)` (play-brief.ts) are both unconditional whenever `play.exitPolicy` is set —
+// `TerminalPolicyInput.trim_levels` is typed as a required array (exit-policy.ts), but nothing in
+// `composeSwingPlayBrief` defended against a degraded/malformed row carrying a different runtime
+// shape — the exact same "typed non-optional, not actually guaranteed" gap #5288 found in
+// TerminalPlay.factors, just in two sibling call sites here instead of one. Pre-fix, either throw
+// propagated straight out of composeSwingPlayBrief (and from there to the API route's top-level
+// catch, 503ing the ENTIRE brief — Verdict included — even though every other section would have
+// built fine). Post-fix, the two broken sections (Management, Position — both genuinely read the
+// same malformed field, so both are correctly independently omitted, not just one) are silently
+// omitted and every other section (Verdict, plus buildIntelSections's own independently-protected
+// sections) still renders.
+test("composeSwingPlayBrief: a throwing top-level section (Management/Position) does not take down the whole brief (error boundary)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.37,
+      mark: 0.475,
+      pnlPct: 28.4,
+      // Realistic malformed-upstream-row shape: trim_levels is typed as a required array, but this
+      // simulates a degraded read that didn't honor that contract at runtime.
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: 60,
+        target_pct: 100,
+        trim_levels: undefined,
+        runner_fraction: 0.5,
+      } as unknown as TerminalPlay["exitPolicy"],
+    }),
+    asOf: "2026-09-20T15:00:00.000Z",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  let brief: ReturnType<typeof composeSwingPlayBrief> | undefined;
+  assert.doesNotThrow(() => {
+    brief = composeSwingPlayBrief(ctx);
+  });
+  assert.ok(brief, "compose must return a brief, not throw");
+  assert.ok(
+    !brief!.envelope.sections.some((s) => s.title === "Management"),
+    "broken section omitted, not fabricated",
+  );
+  assert.ok(
+    !brief!.envelope.sections.some((s) => s.title === "Position"),
+    "broken section omitted, not fabricated (blendedPnlPct reads the same malformed field)",
+  );
+  assert.ok(
+    brief!.envelope.sections.some((s) => s.title === "Verdict"),
+    "other top-level sections still render",
+  );
+  assert.ok(
+    brief!.envelope.sections.some((s) => s.title === "Why this setup"),
+    "buildIntelSections's own sections (unaffected by this malformed field) still render",
+  );
+});
+
 test("composeSwingPlayBrief: Book context concentration carries a matching evidence entry (Largo C7)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "OPEN", recommendation: "HOLD" }),
