@@ -238,6 +238,36 @@ test("bookContextSection: reviewing the second of two independent same-ticker ro
   assert.equal((section?.body ?? "").split("EWZ LONG").length - 1, 1);
 });
 
+// GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro RIOT's own book-context): the
+// 2026-09-15/09-18 fixes above only disambiguate the REVIEWED play's own ticker duplicating in its
+// own overlap list. A DIFFERENT ticker duplicating in the SAME list -- reviewing RIOT and seeing
+// MSTX appear twice in RIOT's own concentration line, because two genuinely separate MSTX
+// positions (a swing-native row plus a distinct cross-engine sibling) both overlap RIOT's theme --
+// hit the same "reads like a duplicate-counting defect" symptom the earlier fixes were written to
+// prevent, but for a ticker other than the one being reviewed, so neither prior fix caught it.
+test("bookContextSection: a different ticker (not the reviewed one) appearing twice is disambiguated, not rendered identically", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "MSTX", direction: "LONG", positionId: 1209 },
+    { ticker: "MSTX", direction: "LONG", bangerId: 4471 },
+    { ticker: "MARA", direction: "LONG" },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:RIOT:1203", ticker: "RIOT", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /MSTX LONG \(separate position #1209\)/);
+  assert.match(section!.body, /MSTX LONG \(separate, cross-engine position #4471\)/);
+  assert.doesNotMatch(
+    section!.body,
+    /MSTX LONG,/,
+    "must never render the duplicated ticker as a bare, indistinguishable label",
+  );
+  // A ticker that appears only ONCE in the same list is unaffected -- disambiguation is scoped to
+  // the genuine duplicate, not applied blanket to every name in the list.
+  assert.match(section!.body, /MARA LONG(?!\s*\()/);
+});
+
 // ── archetypeTrackRecordSection (Largo C10 historical context; Ask Largo mandate) ─────────────────
 function trackRecordEntry(over: Partial<SwingTrackRecordEntry> = {}): SwingTrackRecordEntry {
   return {
