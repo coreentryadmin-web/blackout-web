@@ -3738,7 +3738,36 @@ test("flowIntelSection: the print list is labeled honestly (48h/premium-sorted) 
   assert.ok(section);
   assert.doesNotMatch(section!.body, /\*\*Recent prints:\*\*/, "must not claim these are 'recent' — they are premium-sorted over 48h");
   assert.match(section!.body, /\*\*Notable prints \(48h, largest premium first\):\*\*/);
-  assert.match(section!.body, /CALL 350 \$3430000\.00 \[40h ago\]/, "each print must disclose its own age so a reader can see it falls outside the 6h aggregate window");
+  assert.match(section!.body, /CALL 350\.00 \$3430000\.00 \[40h ago\]/, "each print must disclose its own age so a reader can see it falls outside the 6h aggregate window");
+});
+
+test("flowIntelSection: notable-print strikes render to 2dp like every other strike in the brief (C9 precision)", () => {
+  // FIX (2026-09-20): this was the ONE strike in the whole file rendered raw instead of
+  // `.toFixed(2)` — a fractional-strike contract (e.g. 232.5, a real weekly-options strike)
+  // rendered as "232.5" here while every sibling level (GEX king strike, dark-pool levels,
+  // nearest wall, gamma magnet) renders "232.50" two lines above/below it in the same brief.
+  const now = Date.now();
+  const recentIso = new Date(now - 3_600_000).toISOString();
+  const eco = {
+    ticker: "TEST",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: {
+      count: 1,
+      total_premium: 500_000,
+      top_tickers: [],
+      recent: [{ option_type: "PUT", strike: 232.5, premium: 500_000, alerted_at: recentIso }],
+    },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as unknown as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.ok(section);
+  assert.match(section!.body, /PUT 232\.50 \$500000\.00/, "strike must round to 2dp, not render the raw float");
 });
 
 test("watchForSection: CLOSED bucket suppresses the live ticker-level thesis note (not this trade's thesis)", () => {
