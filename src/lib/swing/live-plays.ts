@@ -276,10 +276,12 @@ export function manageObservablesFromEvent(
   // see HorizonPlay.rollCandidate's own doc comment (horizon-plays.ts) for the full history. Gate
   // on `roll_intent.roll` (the post-veto authoritative signal `roll.ts`'s executor itself acts on —
   // vetoed once a thesis actually breaks or hits its structural stop) but SURFACE
-  // `dte_migration.reason`'s prose, which is member-clean; `roll_intent.reason` still carries a
-  // stale "(INTENT ONLY; execution deferred to PR-15)" note from before PR-15 wired up live
-  // execution. Malformed/partial shapes (an older snapshot, a manual DB edit) degrade to null —
-  // never a guessed roll candidate.
+  // `dte_migration.reason`'s prose, which is member-clean, rather than `roll_intent.reason` — kept
+  // as the safer choice even after manage.ts's own stale "(INTENT ONLY; execution deferred to
+  // PR-15)" suffix was fixed at the source (2026-09-20), since any OLDER snapshot row persisted
+  // before that fix still carries the stale text verbatim in its stored `roll_intent.reason` JSON
+  // forever — a historical row is never rewritten. Malformed/partial shapes (an older snapshot, a
+  // manual DB edit) degrade to null — never a guessed roll candidate.
   const dteMigration = manageEvent.dte_migration;
   const rollIntent = manageEvent.roll_intent;
   const rollCandidate =

@@ -303,6 +303,33 @@ test("DTE migration + roll intent: 3 DTE Tactical with theta disproportion signa
   assert.equal(v.rollIntent.roll, true);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): detectRollCandidate's own reason string used
+// to end "(INTENT ONLY; execution deferred to PR-15)" -- accurate when this function predated the
+// roll executor, false now that roll.ts (PR-15) is shipped and live (it reads rollIntent.roll on
+// every management tick to decide ROLL vs CLOSE). No member ever saw the stale text directly
+// (live-plays.ts/horizon-plays.ts both route member-facing prose through dteMigration.reason
+// instead), but the string itself -- and roll.ts's own decideRollAction, which still embeds it
+// verbatim in its ROLL action's internal reason -- both asserted something false. Fixed at the
+// source.
+test("detectRollCandidate: reason string no longer claims execution is deferred (PR-15 shipped)", () => {
+  const input: SwingManageInput = {
+    dossier: dossier("bull", 5),
+    dte: 3,
+    entryPremium: 2,
+    lastMark: 1.4,
+    thesisProgress01: 0.1,
+    underlyingPrice: 110,
+    structuralStopLevel: 95,
+  };
+  const roll = detectRollCandidate(input);
+  assert.equal(roll.roll, true);
+  assert.doesNotMatch(
+    roll.reason,
+    /INTENT ONLY|deferred to PR-15/,
+    `roll.ts (PR-15) is shipped and live -- this reason string must not claim execution is still deferred, got: ${roll.reason}`,
+  );
+});
+
 test("roll intent is vetoed by a broken thesis (a broken thesis is a CLOSE, not a roll)", () => {
   const input: SwingManageInput = {
     dossier: dossier("bull", 5),
