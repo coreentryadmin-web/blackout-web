@@ -1,13 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T20:00:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, ran long -- PR merged + sibling review). ReadNotifications: PR #5321's own subscription echoes, nothing new. git sync clean. **PR #5321 (crypto-equity theme coverage) confirmed green and merged this cycle** (350051b7c) -- unsubscribed, cancelled the now-unneeded check-in. **Sibling collaboration this cycle**: found and independently, adversarially verified PR #5320 (session_01Qtnftc16CuWyVLxR8LaMoC) -- 'stop attachThesisExplanation from clobbering the banger-ledger regime sentinel'. This traces the REAL root cause of the thesis-health question I raised and walked back two cycles ago: the sibling compared the SAME positions via the canonical Command Deck board (getSwingServingLane, which deliberately never enriches banger rows) vs Ask Largo's play-brief (which does, through an unguarded second call site in play-brief-resolve.ts's ticker-only fallback) and found they DISAGREE -- the board correctly shows the honest BANGER_LEDGER_REGIME_LABEL sentinel for all 36, while play-brief's attachThesisExplanation silently clobbers that sentinel with an unrelated same-ticker discovery dossier's regime whenever one exists (true for liquid names like RIOT/MSTR/COIN, false for BKKT/GEMI -- exactly the 19/36 split I found). My walk-back was right that the ARITHMETIC was real (not a hardcoded literal), but wrong that it was 'working as intended' -- the underlying INPUT (whether the sentinel survives) was the actual bug, just one level deeper than either of us initially checked. Independently re-derived this myself rather than trusting the PR's claims: confirmed the unconditional regime:meta.regime??play.regime pattern still on main at 3 sites, confirmed play-brief-resolve.ts's unconditional attachThesisExplanation call, checked out the PR branch in an isolated worktree, ran serving-lane.test.ts clean (20/20), then fully reverted JUST the guard (not the whole diff) and got exactly 1 failure (19/20) -- matching the PR's own claimed RED->GREEN precisely. Posted a confirming adversarial-review comment on #5320 (comment 5752134976). PR #5320 not yet merged (verify still running at last check) -- left for its owning session or a future check-in to close out, per the standing collaboration protocol (offered to merge it myself once green if I check back first). This closes the #4076 thread's open question satisfyingly: original finding (fabrication, wrong) -> my walk-back (arithmetic is real, wrong that nothing needed fixing) -> sibling's cross-surface trace (the actual bug, one level deeper than either prior comment looked). Board unchanged.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "PR #5321 (merged this cycle -- crypto-equity theme coverage)",
-    "PR #5320 (sibling-authored, independently verified this cycle, not yet merged -- the real thesis-health regime-clobber fix)"
-  ],
+  "last_updated": "2026-09-20T20:10:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, arrived slightly late, condensed brief). ReadNotifications clean. git sync clean (picked up sibling lane's own journal + Phase 0 diagnostic commits). Zero open swing PRs. #4076 quiet -- no new activity since the #5320 verification exchange. Both this session's PR #5321 (crypto-equity theme coverage) and the sibling's PR #5320 (thesis-health banger-regime-clobber fix) are merged but BOTH still queued in the serialized ecr-push-production deploy pipeline (350051b7cc in_progress, e65014ce84 pending, checked via the Actions API) -- deliberately deferred live re-verification of either fix to a future cycle once the deploy completes, rather than pulling stale pre-deploy data and drawing a false conclusion. Board unchanged: COMMIT_NOW=1/WATCH=1 (banger, LITE), MANAGING=56/SCALING_OUT=12 (swing-native). Light, genuinely clean close to a long, substantive cycle-group (this session shipped one real fix, found-then-correctly-walked-back one false alarm, and independently verified a sibling's fix for the real underlying bug, all within the last ~90 minutes) -- next cycle should prioritize the deferred live verification of both #5320 and #5321 once deployed, per the MARKET-OPEN-VALIDATION #312 and the #5320 staged finding's own RTH check instructions.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -116,17 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T20:00:00Z",
-    "swing_prs": [
-      {
-        "pr": 5320,
-        "title": "fix(swing): stop attachThesisExplanation from clobbering the banger-ledger regime sentinel",
-        "state": "open",
-        "draft": false,
-        "mine": false,
-        "note": "sibling-authored (session_01Qtnftc16CuWyVLxR8LaMoC), independently verified, not yet merged"
-      }
-    ]
+    "as_of": "2026-09-20T20:10:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
