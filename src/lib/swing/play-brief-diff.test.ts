@@ -511,6 +511,36 @@ test("diffBriefSnapshots: a real headline change (not just DTE) still fires the 
   assert.ok(lines.includes("Verdict headline updated"));
 });
 
+function envWithSections(titles: string[]): BieAnswerEnvelope {
+  return { ...env(), sections: titles.map((title) => ({ title, body: "x" })) };
+}
+
+test("diffBriefSnapshots: detects a new section appearing", () => {
+  const prev = snapshotFromBrief(envWithSections(["Verdict"]), play());
+  const next = snapshotFromBrief(envWithSections(["Verdict", "Book context"]), play());
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l === "New sections: Book context"));
+});
+
+// GAP FIX (Ask Largo standing mandate, 2026-09-20): `composeSwingPlayBrief` conditionally
+// `sections.push(...)`s intel sections only when the underlying data is present (Book context
+// only while a real portfolio overlap exists, Cortex read only while a cortex blob is pinned,
+// etc. — the LARGO-PRODUCT-CONTRACT.md absence principle). A section can therefore genuinely
+// DISAPPEAR between two refreshes of the same play, and before this fix `diffBriefSnapshots`
+// only ever looked for ADDED titles (`next` minus `prev`) — a section vanishing produced ZERO
+// lines, silently identical to "nothing changed", even though the "Book context" concentration
+// warning was real information a member had been shown and then lost with no notice. Proves the
+// removal path fires symmetrically with the addition path already tested above.
+test("diffBriefSnapshots: detects a section disappearing (was silently unnarrated before this fix)", () => {
+  const prev = snapshotFromBrief(envWithSections(["Verdict", "Book context"]), play());
+  const next = snapshotFromBrief(envWithSections(["Verdict"]), play());
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(
+    lines.some((l) => l === "No longer showing: Book context"),
+    `expected a "No longer showing" line, got: ${JSON.stringify(lines)}`,
+  );
+});
+
 test("loadPersistedBriefSnapshot: still accepts a well-formed stored snapshot", () => {
   const store = new Map<string, string>();
   const originalWindow = globalThis.window;
