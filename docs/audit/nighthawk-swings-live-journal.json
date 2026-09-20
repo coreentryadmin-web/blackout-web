@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T15:50:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean (3 PR-activity echoes of my own subscribe/undraft on #5311, nothing new). Already up to date with origin/main, no divergence. Closed the loop on last cycle's open item: the first full npm test run (kicked off before opening PR #5311) came back 14944/1/3-skipped -- one real failure, but the original run was piped through `tail -20` so the actual failing test's identity was lost. Re-ran with output captured to a file this time; the SECOND run came back fully clean, 14944/0/3-skipped, on the exact same code -- confirms the single failure was a transient flake (consistent with this session's own established discipline: re-run once to confirm before calling anything a real failure), not a regression from my change. PR #5311's CI is now running on GitHub directly (CodeQL/webhooks/dispatch all green already; the main verify/CI workflow still in_progress as of this check, typical ~5min runtime) -- 60min check-in already scheduled from last cycle, no need to re-schedule. Committed the routine heartbeat/agent-state drift separately to main (no conflict). Board state unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
+  "last_updated": "2026-09-20T16:05:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git fetch showed origin/main had moved -- PR #5311 (my own book-context duplicate-ticker fix, last cycle) confirmed MERGED. ff-only merge clean. Unsubscribed from #5311 activity, deleted the now-unneeded 60min check-in trigger, deleted the local feature branch -- clean close-out. A sibling opened PR #5312 (short-interest freshness tag scaled to FINRA's biweekly settlement cadence, not the generic 10-min market-tick bucket) closing out an #4076 comment thread (5747893411) -- real bug: catalystsSection's evidence array tagged EVERY short-interest citation 'stale' regardless of actual age (a 2-hour-old read and a 59-day-old one got the identical tag) because it delegated to the generic cross-product freshnessFromObservedMs (10min recent-window) instead of a cadence-appropriate one. Independently verified end to end: read the full diff (new fundamentalsFreshnessTag() in play-brief-absence.ts, 15-day FINRA-cycle-scaled 'recent' ceiling, never 'live' since no sub-cycle cadence exists for this data type; play-brief.ts's fundamentalsFreshness() now delegates to it); ran the PR's own play-brief.test.ts myself -- 97/97 pass; reverted the two source files to pre-fix (main) and re-ran -- confirmed RED, exact match to the claimed count (1 failure, the new few-days-old-recent test); restored the fix, confirmed GREEN again (play-brief.test.ts + play-brief-absence.test.ts combined: 173/173), tsc --noEmit clean. Root cause, diff, and RED-to-GREEN all match the PR's own claims exactly -- no corrections needed. Still CI-pending at last check (PR only ~2min old), nothing to merge yet -- will pick up naturally on a future cycle's git sync once it lands. Zero open swing PRs of my own remaining. Board state unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,17 +113,16 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T15:50:00Z",
+    "as_of": "2026-09-20T16:05:00Z",
     "swing_prs": [
       {
-        "number": 5311,
-        "title": "fix(swing): book-context concentration line disambiguates a duplicated non-reviewed ticker",
+        "number": 5312,
+        "title": "fix(swing): short-interest freshness tag scaled to FINRA's biweekly cadence",
         "state": "open",
-        "draft": false,
-        "author": "this session",
-        "ci_status": "CodeQL/webhooks green, main verify workflow in_progress",
-        "local_full_suite_confirmed_clean": true,
-        "check_in_scheduled": "2026-09-20T16:41:00Z"
+        "author": "sibling session",
+        "independently_verified_by_this_session": true,
+        "verification_result": "root cause, diff, RED (1/97 fail), GREEN (173/173 combined), and tsc --noEmit all match the PR's own claims exactly",
+        "ci_status": "pending"
       }
     ]
   },
