@@ -7,6 +7,7 @@ import {
   meridianContribution,
   nighthawkContribution,
   spxContribution,
+  swingContribution,
   thermalContribution,
   vectorContribution,
 } from "./product-adapters";
@@ -230,10 +231,39 @@ test("spx votes from the play-engine direction on SPX/SPXW only", () => {
   assert.match(String(offScope.missingReason), /only tracks SPX\/SPXW/);
 });
 
+test("swing votes from the play-brief envelope's own bias, and reports a real absence reason when there is no position", () => {
+  const bullish = swingContribution(
+    {
+      available: true,
+      playId: 123,
+      ticker: "NVDA",
+      engine: "swing_play_intelligence",
+      envelope: { bias: "bullish", headline: "HOLD — NVDA 950C 2026-10-16" },
+    },
+    "NVDA"
+  );
+  assert.equal(bullish.signal?.direction, "bullish");
+  assert.equal(bullish.signal?.ticker_class, "equity");
+  assert.deepEqual(bullish.signal?.evidence, ["HOLD — NVDA 950C 2026-10-16"]);
+
+  const noPosition = swingContribution(
+    { available: false, error: "play_not_found", note: "No open, watch, or recently closed Swing position found for ZZZZ." },
+    "ZZZZ"
+  );
+  assert.equal(noPosition.signal, null);
+  assert.match(String(noPosition.missingReason), /No open, watch, or recently closed Swing position/);
+
+  // A payload that carries no `note` (e.g. a thrown-error shape) must still state a real reason —
+  // same C3 discipline every other adapter here follows, never a blank absence.
+  const noNote = swingContribution({ available: false, error: "swing_play_brief_failed" }, "AAPL");
+  assert.equal(noNote.signal, null);
+  assert.match(String(noNote.missingReason), /AAPL/);
+});
+
 test("every adapter survives a garbage payload rather than taking the read down", () => {
   // Five agents are rewriting these payloads concurrently. An adapter that throws would fail the
   // whole cross-product read instead of degrading one product.
-  for (const fn of [helixContribution, thermalContribution, vectorContribution, meridianContribution, nighthawkContribution, spxContribution]) {
+  for (const fn of [helixContribution, thermalContribution, vectorContribution, meridianContribution, nighthawkContribution, spxContribution, swingContribution]) {
     for (const junk of [null, undefined, 42, "nope", [], { unexpected: true }]) {
       const c = fn(junk);
       assert.equal(c.signal, null);

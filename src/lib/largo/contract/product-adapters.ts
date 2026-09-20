@@ -386,3 +386,55 @@ export function spxContribution(payload: unknown, queriedTicker = "SPX"): Produc
     },
   };
 }
+
+/**
+ * NIGHT HAWK SWINGS — the multi-day discovery/position lane, read via `get_swing_play_brief`
+ * (`swing-play-brief-read.ts` -> `composeSwingPlayBrief`).
+ *
+ * Direction comes from the SAME `envelope.bias` the member-facing brief panel renders
+ * (`biasFromDirection(play.direction)`, play-brief.ts) — never re-derived here, so this adapter
+ * can never disagree with the brief a member would read for the same ticker.
+ *
+ * Found 2026-09-20 (Ask Largo standing mandate): `get_cross_product_read` — the ONLY tool that
+ * answers "where do the desks disagree on <ticker>" — fanned out to Helix/Thermal/Vector/
+ * Meridian/Night Hawk 0DTE/SPX Slayer but never to Night Hawk SWINGS, despite Swing being a real
+ * directional, evidence-carrying product with its own tracked WATCH/OPEN positions and a Largo
+ * tool (`get_swing_play_brief`) that had already been wired for single-ticker chat answers since
+ * 2026-09-12 (see swing-play-brief-read.ts's own header). A member asking "what does the desk
+ * think about NVDA" got a cross-product read that silently could never surface Swing's own stance
+ * or disagree with it — an absence with no reason at all, the exact C3 violation the contract
+ * exists to prevent, just one layer up (missing from the FAN-OUT, not missing a reason once
+ * fanned out to). `swingPlayBriefForLargo` returning `available: false` (no open/watch/recently-
+ * closed position on this ticker) is itself an honest, correctly-reasoned absence — that path is
+ * unaffected; the bug was that Swing was never asked at all.
+ */
+export function swingContribution(payload: unknown, queriedTicker = ""): ProductContribution {
+  const p = obj(payload);
+  const ticker = canonicalTicker(queriedTicker);
+  if (!p || p.available !== true) {
+    const note = p && typeof p.note === "string" ? p.note : null;
+    return {
+      product: "swing",
+      signal: null,
+      missingReason: note ?? `no open, watch, or recently-closed swing position on ${ticker || "this ticker"}`,
+    };
+  }
+  const envelope = obj(p.envelope);
+  const bias = envelope && typeof envelope.bias === "string" ? envelope.bias : null;
+  const direction: Direction = bias === "bullish" || bias === "bearish" ? bias : "neutral";
+  const headline = envelope && typeof envelope.headline === "string" ? envelope.headline : null;
+  const resolvedTicker = canonicalTicker(typeof p.ticker === "string" ? p.ticker : queriedTicker) || ticker;
+  return {
+    product: "swing",
+    signal: {
+      ticker: resolvedTicker,
+      ticker_class: tickerClassFor(resolvedTicker),
+      direction,
+      evidence: headline ? [headline] : [`swing play-brief direction ${direction}`],
+      native: {
+        playId: p.playId ?? null,
+        engine: p.engine ?? null,
+      },
+    },
+  };
+}
