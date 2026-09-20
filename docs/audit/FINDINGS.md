@@ -4,6 +4,40 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
 ## Ask Largo swing play-brief — "Notable prints" strike rendered raw, inconsistent with every other level in the brief — FIXED
 
 > **kind:** `FINDING`
@@ -53,40 +87,6 @@ or any other consumer of `flow_full_state.recent` (e.g. the Largo tool-facing `g
 `get_ecosystem_context` JSON responses, which are machine-readable payloads for the LLM, not
 rendered prose — C9's "round once at the presentation boundary" principle argues those should stay
 raw for the model to reason over, and this fix does not touch them).
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Ask Largo swing play-brief — short-interest evidence unconditionally tagged "stale" — FIXED
 
@@ -3850,7 +3850,8 @@ clean.
 
 ## vector-dark-pool-warm needs overlap guard—measured 221s runtime with 10-min schedule
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #5232, verified live in `main` 2026-09-20.
 
 ### Summary
 
@@ -12520,7 +12521,8 @@ play's own stop," so it must always track whatever that stop actually is.
 
 ## Vector Background Cron Event Loop Blocking
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #4807, verified live in `main` 2026-09-20.
 
 ### Status
 
@@ -17003,7 +17005,8 @@ On a WATCH row in Night Hawk Swings, open Ask Largo — confirm no `UnavailableC
 
 ## Swing `technicalsCoaching` narrative omits MACD, the dissenting vote in its own bias score
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #4391, verified live in `main` 2026-09-20.
 
 ### Status
 FIXED — PR pending (`fix/swing-technicals-coaching-omits-macd`).
@@ -21546,7 +21549,8 @@ behavioral `sharedCacheSetNx` TTL test.
 
 ## 2026-09-04 — Vector volume-profile POC/VAH/VAL labels collide with price-line axis badges
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #3591, verified live in `main` 2026-09-20.
 
 ### Symptom
 
@@ -22236,7 +22240,8 @@ Only take the peek fast-path when `instant.price > 0`; otherwise fall through to
 
 ## 2026-09-04 — SPX dashboard E2E false flip divergence (stale matrix snapshot)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #3594, verified live in `main` 2026-09-20.
 
 ### Symptom
 
@@ -22326,7 +22331,8 @@ Poll `GET /api/market/quote?ticker=<equity>` when UW stock-state is the active f
 
 ## 2026-09-04 — site-latency OFF_HOURS browser ReferenceError
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #3502, verified live in `main` 2026-09-20.
 
 ### Symptom
 
@@ -22478,7 +22484,8 @@ Thermal GEX header polls `/api/market/quote?ticker=SPX` every ~1.5s. The index W
 
 ## 2026-09-04 — PR webhook workflow_run JSON parse SyntaxError
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #3523, verified live in `main` 2026-09-20.
 
 ### Symptom
 
@@ -22975,7 +22982,8 @@ Read-only audit script only; no product behavior change.
 
 ## 2026-09-04 — GEX heatmap Night Hawk context future-dated edition
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #3573, verified live in `main` 2026-09-20.
 
 ### Symptom
 
@@ -23053,7 +23061,8 @@ Admin → Operations → confirm flow WS tile does not show fresh when ingest is
 
 ## 2026-09-04 — FlowAnomalyBanner future-dated anomaly recency
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #3559, verified live in `main` 2026-09-20.
 
 ### Symptom
 
@@ -23367,7 +23376,8 @@ Wrapped the tick body in `runWithBackgroundUwSweep(() => runDarkpoolDiscordTick(
 
 ## 2026-09-04 — comprehensive-endpoint-audit false FAIL on optional TikTok OAuth routes
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — confirmed via PR #3584, verified live in `main` 2026-09-20.
 
 ### Symptom
 
