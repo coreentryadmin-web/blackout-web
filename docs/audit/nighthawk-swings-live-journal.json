@@ -1,11 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T19:55:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, ran long -- genuine shipped fix). ReadNotifications clean. git sync clean (picked up sibling's heartbeat commit). No response yet on #4076 to either the original finding (5751915312) or its self-correction (5751954861). **Shipped PR #5321** -- a real, well-scoped fix found while investigating last cycle's thesis-health question: RIOT's live 'Book overlap' evidence line read only '11 same-direction positions in theme crypto-equity' despite a real, live, ~25+-position crypto-correlated batch on the board right now. Traced to sector-map.ts's crypto-equity list never having been extended to cover crypto exchanges (GEMI, BKKT, ABTC, BLSH), bitcoin miners (BMNR, BTDR), or direct BTC/ETH trust/ETF wrappers (ETH, ETHE, ETHU, ETHA, IBIT, GBTC, BITO, BITX) -- 14 tickers, all live and committed on the board at the time. Purely additive data fix following the exact established pattern from the prior MSTU/MSTX/GLXY/SBET addition (same file, same precedent) -- deliberately left out ambiguous partial-correlation names (HOOD, CRCL, APLD, BULL) to keep the change unambiguous. RED->GREEN proven (1 failure without the fix, 0 with it, 12/12 in theme-cluster.test.ts), tsc clean, portfolio.test.ts re-run clean (11/11, no regression). Staged finding + MARKET-OPEN-VALIDATION #312 written. PR opened draft, subscribed, undrafted, confirmed draft:false, 60min check-in scheduled (trig_01VvNgC16LefQmWnRuaau4eb). A full npm test background run was still in progress at push time (committed on the strength of the scoped RED->GREEN + tsc evidence per this session's established stop-hook precedent) -- will confirm at the scheduled check-in. Minor housekeeping: resolved a 5-file merge conflict on the routine heartbeat/agent-state files when returning to main (a sibling lane had already pushed a fresher sync while I was mid-PR on the feature branch) by taking main's already-committed version rather than risk silently reverting AGENT_STATE.json's append-only event log with a stale stashed copy -- low-stakes data, safe resolution. Board unchanged.",
+  "last_updated": "2026-09-20T20:00:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, ran long -- PR merged + sibling review). ReadNotifications: PR #5321's own subscription echoes, nothing new. git sync clean. **PR #5321 (crypto-equity theme coverage) confirmed green and merged this cycle** (350051b7c) -- unsubscribed, cancelled the now-unneeded check-in. **Sibling collaboration this cycle**: found and independently, adversarially verified PR #5320 (session_01Qtnftc16CuWyVLxR8LaMoC) -- 'stop attachThesisExplanation from clobbering the banger-ledger regime sentinel'. This traces the REAL root cause of the thesis-health question I raised and walked back two cycles ago: the sibling compared the SAME positions via the canonical Command Deck board (getSwingServingLane, which deliberately never enriches banger rows) vs Ask Largo's play-brief (which does, through an unguarded second call site in play-brief-resolve.ts's ticker-only fallback) and found they DISAGREE -- the board correctly shows the honest BANGER_LEDGER_REGIME_LABEL sentinel for all 36, while play-brief's attachThesisExplanation silently clobbers that sentinel with an unrelated same-ticker discovery dossier's regime whenever one exists (true for liquid names like RIOT/MSTR/COIN, false for BKKT/GEMI -- exactly the 19/36 split I found). My walk-back was right that the ARITHMETIC was real (not a hardcoded literal), but wrong that it was 'working as intended' -- the underlying INPUT (whether the sentinel survives) was the actual bug, just one level deeper than either of us initially checked. Independently re-derived this myself rather than trusting the PR's claims: confirmed the unconditional regime:meta.regime??play.regime pattern still on main at 3 sites, confirmed play-brief-resolve.ts's unconditional attachThesisExplanation call, checked out the PR branch in an isolated worktree, ran serving-lane.test.ts clean (20/20), then fully reverted JUST the guard (not the whole diff) and got exactly 1 failure (19/20) -- matching the PR's own claimed RED->GREEN precisely. Posted a confirming adversarial-review comment on #5320 (comment 5752134976). PR #5320 not yet merged (verify still running at last check) -- left for its owning session or a future check-in to close out, per the standing collaboration protocol (offered to merge it myself once green if I check back first). This closes the #4076 thread's open question satisfyingly: original finding (fabrication, wrong) -> my walk-back (arithmetic is real, wrong that nothing needed fixing) -> sibling's cross-surface trace (the actual bug, one level deeper than either prior comment looked). Board unchanged.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [
-    "docs/audit/findings-staging/2026-09-20-crypto-equity-theme-coverage.md (PR #5321, open -- crypto-equity theme coverage gap, 14 tickers)"
+    "PR #5321 (merged this cycle -- crypto-equity theme coverage)",
+    "PR #5320 (sibling-authored, independently verified this cycle, not yet merged -- the real thesis-health regime-clobber fix)"
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -115,14 +116,15 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T19:55:00Z",
+    "as_of": "2026-09-20T20:00:00Z",
     "swing_prs": [
       {
-        "pr": 5321,
-        "title": "fix(portfolio): extend crypto-equity theme coverage to exchanges, miners, BTC/ETH wrappers",
+        "pr": 5320,
+        "title": "fix(swing): stop attachThesisExplanation from clobbering the banger-ledger regime sentinel",
         "state": "open",
         "draft": false,
-        "mine": true
+        "mine": false,
+        "note": "sibling-authored (session_01Qtnftc16CuWyVLxR8LaMoC), independently verified, not yet merged"
       }
     ]
   },
