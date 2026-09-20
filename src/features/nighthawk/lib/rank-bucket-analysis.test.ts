@@ -93,12 +93,7 @@ test("computeRankBucketStats: LONG row with a raw positive move reads as favorab
 
 test("computeRankBucketStats: SHORT row benefiting from a raw fall reads as favorable (positive) EOD", () => {
   // Raw underlying move is -5% (a fall); for a SHORT that's favorable, so sign-aligned = +5.
-  const raw = row({
-    rank: 1,
-    snapshot_json: { direction: "short" },
-    forward_returns: { horizons: { h1: -5, eod: -5 }, session_high_pct: 1, session_low_pct: -6 },
-  });
-  const stats = computeRankBucketStats([raw]);
+  const stats = computeRankBucketStats([shortRow(1, 5)]);
   const bucket = stats.find((b) => b.bucket === "rank_1_5")!;
   assert.equal(bucket.mean_eod_pct, 5);
 });
