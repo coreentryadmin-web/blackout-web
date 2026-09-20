@@ -1150,6 +1150,70 @@ test("composeSwingPlayBrief: Dealer posture evidence falls through to fresh GEX 
   );
 });
 
+// Fast-follow to PR #5306 (Ask Largo standing mandate, 2026-09-20): #5306 shipped
+// `market_session_note` on the shared VectorFreshnessBlock (describeVectorFreshness) — the
+// weekend/holiday self-warm disclosure ("computed moments ago, but the market is CLOSED") — but
+// deliberately did not wire it into any composer, scoping that as a swing-side fast-follow in its
+// own PR description. This proves evidenceFromContext actually surfaces it once populated.
+test("composeSwingPlayBrief: Vector market_session_note surfaces as evidence (Largo, PR #5306 fast-follow)", () => {
+  const nowIso = new Date().toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-20 14:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: nowIso,
+      asOfEt: "2026-09-20 14:00 ET",
+      sessionDate: "2026-09-20",
+      spot: 100,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      market_session: "CLOSED",
+      market_session_note:
+        "Computed 3s ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks.",
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
+  assert.ok(note, "expected market_session_note to surface as brief evidence");
+  assert.equal(note!.provenance?.source, "Vector", "must be attributed to Vector");
+});
+
+// A market_session_note must never surface for a Vector state the rest of the brief has already
+// excluded as untrustworthy (session-date mismatch) — surfacing it there would contradict the
+// gate every other vec-derived evidence line in this function already respects.
+test("composeSwingPlayBrief: Vector market_session_note is suppressed when the Vector snapshot is session-stale", () => {
+  const nowIso = new Date().toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-20 14:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: nowIso,
+      asOfEt: "2026-09-20 14:00 ET",
+      sessionDate: "2026-09-19", // mismatched vs ctx.sessionDate -> vectorSnapshotStale === true
+      spot: 100,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      market_session: "CLOSED",
+      market_session_note: "Computed 3s ago, but the market is CLOSED as of this read.",
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
+  assert.equal(note, undefined, "must not surface the note off a session-stale Vector snapshot");
+});
+
 test("composeSwingPlayBrief: future-skewed fundamentals as_of freshness is stale, not unknown (Largo C2)", () => {
   const futureAsOf = new Date(Date.now() + 30_000).toISOString(); // 30s ahead — beyond tolerance
   const ctx: SwingPlayBriefContext = {
