@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T07:01:58Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, hour rollover). ReadNotifications clean. Git sync: a SIBLING session pushed a journal entry (6b9f7f507, '06:52 UTC cycle') on an apparently faster ~10-min cadence in this exact lane -- ff-merged cleanly, no conflict. Read their notes to avoid duplicate work: they covered NN's full play-brief (11 sections, all clean, round-trip coaching correctly fired), EWZ's two opposite-outcome chains (#29 target vs #26 stopped), PYPL#24's 'flat' label (traced to closed-plays.ts's deliberate designed label, not a bug), and two new source files (play-brief-resolve.ts, play-brief-context.ts, both clean) -- also independently re-confirmed my own prior cycle's finding (the CLOSED-bucket 'current, not trade-time' disclosure). Given this overlap, picked a genuinely different area for combined-coverage value: manage-sync.ts (the core exit-management engine, explicitly named in the standing mission brief, not yet directly audited by either session this window). Read and verified latchSwingLiveStatus (the live-state status machine: TRIM is sticky once set, advisory/un-graduated TAKE_PARTIAL/EXIT_RUNNER verdicts correctly do NOT force a status transition -- consistent with the 'advisory only, system not acting on it yet' framing seen in every play-brief this session, EXIT/STOP_OUT correctly deferred to the roll executor's own terminal-write path) and signedExcursionPct (the MFE/MAE ratchet math explicitly named in the mission brief's 'relative retracement, not raw pp delta' correctness area) -- confirmed the entry-inclusive max/min ratchet correctly floors MFE at 0% and MAE at 0% when price has never moved favorably/adversely respectively, and the SHORT-direction mirror (negating pct(lo)/pct(hi)) is mathematically consistent with LONG's own formula. No bug found in either function. No open swing PRs, board unchanged. No self-authored fix this cycle.",
+  "last_updated": "2026-09-20T07:14:00Z",
+  "notes": "07:11 UTC cycle -- priority item from the prior cycle's carry-over: INTC#35's closedDeck row (entry/peak/trough premiums all null). Traced closed-plays.ts's closedDeckSourcesFromChains: INTC#35 is a 2-leg rolled chain (rolled 2026-09-03 from the $91 put to the $90 put) where the WORST leg is leg 0 (-40.83%), not the terminal leg (leg 1, -33.19%) -- exactly the case the shipped 2026-09-15 fix (commit ffeb81a1a/PR #5017, whose own code comment cites 'live repro INTC:30/35' as its motivating example) deliberately handles by nulling entryPremium/peakPremium/troughPremium rather than pairing the terminal leg's own price bounds with the composite worst-leg P&L (which would have shown a fabricated +25.7% 'peak' next to a -40.83% reported loss). Live-verified via GET /api/market/swing/record: positionId 35 today shows exactly this -- entryPremium/peakPremium/troughPremium all null, exitPnlPct -40.83 (the real composite worst-leg figure), closedReason 'stopped' (correct, not 'flat', since compositePnl != 0). Confirmed the downstream consumer handles it cleanly too: play-card-display.ts's primaryReturnPct() falls through from the now-null peak to the real pnlPct with no crash (the exact fallback path #5017's own comment names). Also pulled the actual play-brief (GET /api/market/swing/play-brief?playId=SWING:INTC&positionId=35): fully coherent, uses the TERMINAL leg's own self-consistent premium journey (entry->peak+25.7%->exit-33.2%, trough-43.1%) while explicitly narrating the chain composite separately ('Full chain result: -60.5% compounded (loss, worst leg -40.8%) -- this leg's own exit P&L above is only part of the story') -- exactly the by-design split described in play-brief-resolve.ts's own comments (terminal-leg view for the brief, composite-honest-omission view for the closedDeck list). VERDICT: legitimate, already-fixed edge case, same class of finding as PYPL#24's flat-close precedent -- NOT a new bug, no fix needed. CloudWatch: 0 crash-level events in the trailing 15min window (AWS creds live this cycle). Spot-checked one more unchecked closedDeck row per the mission brief (EWZ#29, +438.79% target win): entry 0.58->peak 3.18->exit ~3.13 all single-leg (1 leg), fully self-consistent, no anomaly. Remaining unchecked closedDeck rows: MSTR#33, CCI#31, IGV#28, EWZ#26 (checked by a prior/sibling cycle already per its own notes), AMZN#27 -- left for a future cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,6 +117,16 @@
     ]
   },
   "tickers_seen": {
+    "INTC": {
+      "last_status": "CLOSED",
+      "last_seen": "2026-09-20T07:11:00Z",
+      "note": "position #35 (2-leg rolled chain) null entry/peak/trough premiums confirmed LEGITIMATE per shipped fix #5017 (worst leg is leg 0, not terminal leg) -- not a bug, see cycle notes"
+    },
+    "EWZ": {
+      "last_status": "CLOSED",
+      "last_seen": "2026-09-20T07:11:00Z",
+      "note": "position #29 spot-checked, single-leg, fully self-consistent (+438.79% target win)"
+    },
     "NRG": {
       "last_status": "OPEN/HOLD",
       "last_seen": "2026-09-10T04:06:00Z",
