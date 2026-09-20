@@ -1236,9 +1236,32 @@ export function lessonsSection(
         if (!captureAlreadyNoted) {
           lines.push("**Strong exit discipline** — banked most of the move; replicate trim ladder timing.");
         }
-      } else if (capture < 35 && play.peak > 20) {
-        if (!adviceAlreadyNoted) {
-          lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+      } else if (capture < 35) {
+        if (play.peak > 20) {
+          if (!adviceAlreadyNoted) {
+            lines.push("**Gave back the move** — next time tighten at first trim rail or thesis fade.");
+          }
+        } else {
+          // FINDINGS 2026-09-20 (Ask Largo × Night Hawk Swings mandate): the sibling branch above
+          // ("Gave back the move ... tighten at first trim rail") only fires when `play.peak > 20`
+          // -- correctly so, since a peak that small never reaches a real trim rail, so "tighten at
+          // first trim rail" would be nonsensical advice. But the `else` was simply missing, so a
+          // closed play with a small peak (<=20%) that still captured less than 35% of it (e.g.
+          // peak +12%, exit +3%) rendered the bare "MFE capture: X% of peak move" fact with NO
+          // verdict line at all -- silently less informative than every other capture band. No live
+          // closed position has hit this exact combination yet (every low-peak trade to date either
+          // round-tripped to a loss, handled separately above, or nearly fully captured its small
+          // peak, landing in the >=75% band) -- caught by code-reading the if/else chain against its
+          // sibling `closedCoaching` (play-brief-narrative-coaching.ts), which IS exhaustive here via
+          // a plain catch-all `else`. Reuses the same "a trim rail wouldn't have fired" framing this
+          // file's round_trip branch already established for the identical peak<=20 constraint, so
+          // the reasoning stays consistent across both outcome kinds. Unconditional (no dedup flag,
+          // like the sibling "Partial capture" branch below) -- closedCoaching's own text for this
+          // exact bucket is the unrelated generic "review runner vs trim policy" phrase, so there is
+          // no restatement risk to gate against.
+          lines.push(
+            "**Small move, weakly captured** — the peak never reached a trim rail; review entry timing or thesis strength instead.",
+          );
         }
       } else if (capture >= 35 && capture < 75) {
         lines.push("**Partial capture** — review whether runner policy matched the setup volatility.");
