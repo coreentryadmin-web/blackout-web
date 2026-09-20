@@ -148,6 +148,11 @@ test("entryStatus derives when grounded entry reads + a contract are supplied", 
       ticker: "NVDA", right: "C", expiry: "2026-08-14", dte: 21, strike: 100,
       delta: 0.6, openInterest: 3000, bid: 1.2, ask: 1.3, mid: 1.25,
     },
+    // Pinned to before the fixture contract's expiry (2026-08-14) — matches the dossier's own asOf.
+    // Without an explicit clock this fell back to Date.now(), so the fixture silently went stale and
+    // started reporting EXPIRED once real time passed the hardcoded expiry (caught by the 2026-09-20
+    // contract-expiry fix in entry-model.ts, which made this test's implicit reliance on "now" visible).
+    asOf: "2026-07-24T14:00:00.000Z",
   });
   assert.equal(meta.entryStatus, "AT_TRIGGER");
 });
