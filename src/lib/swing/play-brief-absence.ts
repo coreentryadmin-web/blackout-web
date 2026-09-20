@@ -1,4 +1,4 @@
-import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
+import type { BieFreshness, BieUnavailableSource } from "@/lib/bie/answer-envelope";
 import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import { etSessionFacts } from "@/lib/et-session-facts";
 import { marketSessionDisclosure } from "@/lib/bie/market-session-disclosure";
@@ -73,6 +73,36 @@ export function fundamentalsAncient(
   if (!asOf) return false;
   const observedMs = fundamentalsObservedMs(asOf);
   return observedMs != null && readMs - observedMs > FUNDAMENTALS_ANCIENT_CEILING_MS;
+}
+
+// The generic cross-product `freshnessFromAgeMs`/`freshnessFromObservedMs` bucket (live <60s,
+// recent <10min, else stale) exists for market-tick-cadence data. FINRA short-interest settlement
+// reports publish roughly twice monthly, so on that generic scale EVERY short-interest read is
+// unconditionally "stale" — a 2-hour-old figure and a 59-day-old one (this field's honest
+// definition of current, vs. genuinely lagging) get the identical "STALE" tag, which is exactly
+// the misleading-label failure `FUNDAMENTALS_ANCIENT_CEILING_MS` above exists to prevent for the
+// omission decision — this is the same principle applied one layer up, to the freshness *tag*
+// itself. Live-repro'd (2026-09-20, comment 5747893411 on #4076): CRWD's `fundamentals.as_of` ~2
+// days old — well within a settlement cycle, i.e. current for this data type — still rendered
+// "stale" because 2 days vastly exceeds the generic 10-minute "recent" window.
+// One FINRA settlement cycle (~15 calendar days covers both twice-monthly windows with margin) is
+// the natural "recent" ceiling for this data type; beyond it but still under the ancient ceiling
+// above, "stale" is an honest label (a real, if imperfect, signal the read may be lagging the
+// current settlement). This data can never be "live" — there is no sub-cycle cadence for it.
+export const FUNDAMENTALS_RECENT_CEILING_MS = 15 * 24 * 60 * 60 * 1000;
+
+export function fundamentalsFreshnessTag(
+  asOf: string | null | undefined,
+  readMs: number,
+): BieFreshness {
+  if (!asOf) return "unknown";
+  const observedMs = fundamentalsObservedMs(asOf);
+  if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
+  const ageMs = readMs - observedMs;
+  // Fail-closed on future skew past tolerance (Largo C2), mirroring freshnessFromObservedMs.
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "stale";
+  if (ageMs < FUNDAMENTALS_RECENT_CEILING_MS) return "recent";
+  return "stale";
 }
 
 /** Age of the shared GEX matrix in ms — prefers matrix_age_sec, else asof vs read time. */

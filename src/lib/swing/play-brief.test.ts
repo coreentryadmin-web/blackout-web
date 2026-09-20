@@ -2149,6 +2149,52 @@ test("composeSwingPlayBrief: short interest evidence freshness is stale when fun
   );
 });
 
+test("composeSwingPlayBrief: short interest evidence freshness is recent (not stale) for a few-days-old read against FINRA's biweekly settlement cadence (found live 2026-09-20, CRWD ~2 days old mislabeled STALE, comment 5747893411 on #4076)", () => {
+  // readMs in composeSwingPlayBrief is real wall-clock time, not ctx.asOf — anchor relative to
+  // Date.now(), same pattern as the "grounds Catalysts claims" recent-freshness test above.
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-05 16:00 ET",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "CRWD",
+      recent_flow: null,
+      flow_feed_fresh: false,
+      arsenal: {
+        scope: "single_name",
+        earnings: null,
+        fundamentals: {
+          days_to_cover: 1.4,
+          short_volume_ratio: 0.22,
+          price_target: null,
+          // 2 days old — well within one FINRA settlement cycle (~biweekly), not "stale" for this
+          // data type, even though it's ~288x past the generic 10-minute market-tick threshold.
+          as_of: twoDaysAgo,
+        },
+        related: null,
+        news: null,
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const siEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Short interest:"));
+  assert.ok(siEvidence, "expected short interest evidence");
+  assert.equal(
+    siEvidence?.provenance?.freshness,
+    "recent",
+    "a few-days-old short-interest read must not carry the same STALE tag as a genuinely lagging one",
+  );
+});
+
 test("composeSwingPlayBrief: short interest evidence is OMITTED (not just tagged stale) when fund.as_of is ancient (found 2026-09-15, live: MSTX ~9yr, CRCG/ECO ~258d)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),

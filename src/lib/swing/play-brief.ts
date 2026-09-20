@@ -23,7 +23,7 @@ import {
   collectBriefUnavailableSources,
   confluenceZoneKindsLabel,
   fundamentalsAncient,
-  fundamentalsObservedMs,
+  fundamentalsFreshnessTag,
   gexMarketSessionNote,
   gexMatrixAgeMs,
   gexMatrixStale,
@@ -518,10 +518,9 @@ function fundamentalsFreshness(
   asOf: string | null | undefined,
   readMs: number,
 ): BieFreshness {
-  if (!asOf) return "unknown";
-  const observedMs = fundamentalsObservedMs(asOf);
-  if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
-  return freshnessFromObservedMs(observedMs, readMs);
+  // Cadence-scaled for short-interest's ~biweekly FINRA settlement cycle, not the generic
+  // market-tick 10-minute bucket (see fundamentalsFreshnessTag's doc comment, play-brief-absence.ts).
+  return fundamentalsFreshnessTag(asOf, readMs);
 }
 
 function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {
