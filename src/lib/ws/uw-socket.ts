@@ -29,6 +29,7 @@ import {
   UW_SOCKET_STALL_MS,
   UW_SOCKET_STALL_OFFHOURS_MS,
   UW_SOCKET_FIRST_MSG_GRACE_MS,
+  UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS,
   freshestMessageAt as freshestFromMap,
   isUwSocketStalled,
   mergeFreshestTimestamps,
@@ -1610,8 +1611,14 @@ async function runUwReconcileTick(): Promise<void> {
   uwSocket.heartbeat();
   // Off-hours: price channel still delivers but options channels go quiet —
   // use a wider stall window so expected AH silence doesn't trigger reconnects.
-  const stallMs = inOptionsMarketHours() ? UW_SOCKET_STALL_MS : UW_SOCKET_STALL_OFFHOURS_MS;
-  uwSocket.reconnectIfStalled(freshestUwMessageAt(), stallMs, Date.now(), UW_SOCKET_FIRST_MSG_GRACE_MS);
+  const rth = inOptionsMarketHours();
+  const stallMs = rth ? UW_SOCKET_STALL_MS : UW_SOCKET_STALL_OFFHOURS_MS;
+  // Same widening for the "never delivered ANY message yet" first-connect grace —
+  // without this, a freshly (re)connected socket that legitimately sees zero
+  // traffic off-hours (nights, weekends) gets torn down every ~30s forever. See
+  // UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS's own comment for the live incident.
+  const firstMsgGraceMs = rth ? UW_SOCKET_FIRST_MSG_GRACE_MS : UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS;
+  uwSocket.reconnectIfStalled(freshestUwMessageAt(), stallMs, Date.now(), firstMsgGraceMs);
   pruneIdleDynamicGexTickers();
 }
 

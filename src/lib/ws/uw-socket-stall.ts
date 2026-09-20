@@ -21,6 +21,25 @@ export const UW_SOCKET_STALL_OFFHOURS_MS = 5 * 60_000;
 export const UW_SOCKET_FIRST_MSG_GRACE_MS = 30_000;
 
 /**
+ * Off-hours first-message grace. During RTH, 30s of total silence right after
+ * connect is a real signal (a healthy multiplex should see SOMETHING that
+ * fast). Off-hours (evenings, weekends), flow/options traffic can legitimately
+ * be silent far longer than 30s while the price channel itself may also be
+ * quiet (e.g. a full weekend market closure) — using the RTH-tuned 30s grace
+ * here produced a genuine reconnect-storm bug: a socket that connects, gets
+ * zero messages within 30s (expected off-hours), tears down, reconnects, and
+ * repeats every ~44s indefinitely (measured live 2026-09-20: 6+ continuous
+ * hours of `[uw-socket] stall watchdog — OPEN 44s with ZERO messages` on a
+ * Sunday, hundreds of reconnect attempts against UW's own connection slot —
+ * the exact "API-key contention" the log line speculatively blames, self-
+ * inflicted by reconnecting too eagerly). Mirrors the already-existing
+ * RTH-vs-off-hours split on `UW_SOCKET_STALL_MS`/`UW_SOCKET_STALL_OFFHOURS_MS`
+ * for the "has delivered before" case — this constant closes the same gap for
+ * the "never delivered" case, which that split never covered.
+ */
+export const UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS = 5 * 60_000;
+
+/**
  * Newest last-delivery timestamp across the supplied channels, or null when
  * none of them has ever delivered. `activeChannels` should be the channels that
  * currently have handlers — channels nobody listens to must not keep the socket
