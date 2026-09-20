@@ -38,6 +38,163 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo — dead WATCH plays still show the "wall of stale chips" the CLOSED-play fix was written to prevent
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Swings — Ask Largo (`docs/audit/LARGO-PRODUCT-CONTRACT.md` C3 absence) |
+| **File** | `src/lib/swing/play-brief-absence.ts` |
+
+### Root cause
+
+`collectBriefUnavailableSources` (the function that decides which `unavailableSources`/
+`UnavailableChip` entries a swing play brief shows) already has an `isClosed` gate, added earlier
+this cycle with this exact reasoning in its own comment:
+
+> "CLOSED plays are a historical record, not a live position... Left ungated, these are
+> individually honest but collectively permanent once ANY time has passed since close — every one
+> of them fires forever, producing a wall of true-but-unhelpful negative chips with no positive
+> content (reported live: a screenshot of a CLOSED AAPL play showing six such chips and nothing
+> else)."
+
+That reasoning applies identically to a **dead WATCH play** — one where `deadPlayReason()`
+(`entry-enterability.ts`) resolves non-null because the thesis is already `INVALIDATED`, the
+entry-validity deadline has passed (`watchEntryExpired`), the contract has expired
+(`entryStatus === "EXPIRED"`), or the setup ran `EXTENDED` past its valid entry window. A dead WATCH
+play is exactly as "not live" as a CLOSED one: nothing is going to enter it, and the brief itself
+already says so elsewhere in the same envelope (`tradeManagerNarrativeSection`'s "Break watch"
+bullet: *"this setup is no longer live — skip it"*).
+
+But `play-brief-absence.ts` never imported `deadPlayReason` at all, while three sibling files that
+also reason about "is this play actually actionable" already do:
+- `play-brief.ts` — the top-level Invalidation callout and the Entry-trigger line
+- `play-brief-intel.ts` — `entryTriggerDeadReason`
+- `play-brief-narrative-coaching.ts` — the cross-desk coaching's "moot gate" qualifier
+
+So every live-desk-staleness check in this file (HELIX flow freshness, GEX/Vector staleness+desk
+state, prior-session discovery scan / 0DTE board / Night Hawk Legacy edition) kept firing forever
+on a dead WATCH play, producing the identical unhelpful-chip-wall defect the CLOSED-play fix
+targeted — arguably a worse instance of it, since nothing re-scans a candidate nobody can act on
+anymore, so its Vector/GEX/HELIX reads keep aging with no refresh ever clearing them.
+
+### Evidence
+
+- Read-through of `play-brief-absence.ts`'s `isClosed` gate against `deadPlayReason`'s three other
+  call sites confirmed the gap: `deadPlayReason` was never imported in this file.
+- Live check (2026-09-19, `GET /api/market/swing/play-brief?playId=SWING:LITE&ticker=LITE`, cron
+  auth): a live (not dead) WATCH play already carries 6 `unavailableSources` chips (HELIX flow
+  stale, 3× Vector-section-absent, swing-discovery-scan prior-session, Night Hawk Legacy
+  prior-session) — confirming this machinery is very actively firing on WATCH plays today, so a
+  dead WATCH play accumulating the same set with zero actionability left is a real, live-reachable
+  shape, not a hypothetical one.
+- RED→GREEN: added 4 regression tests to `play-brief-absence.test.ts` (a dead-WATCH play via
+  `watchEntryExpired`, a dead-WATCH play via `setupState: "INVALIDATED"`, a control proving a
+  still-live WATCH play keeps surfacing staleness, and a control proving an OPEN position with a
+  leftover `entryStatus: "EXPIRED"` value is NOT treated as dead — the check is WATCH-bucket-only).
+  Confirmed RED against the pre-fix source (`git stash` the source file only, tests fail 2/72),
+  GREEN after the fix (72/72).
+
+### Fix
+
+Added an `isDeadWatch` check alongside the existing `isClosed` one, scoped to the WATCH bucket only
+(mirroring `deadPlayReason`'s two existing call sites, both gated on `bucket === "watch"` — the
+same `setupState`/`entryStatus`/`watchEntryExpired` fields carry different meaning once a position
+is live, so this deliberately does NOT apply to OPEN/HOLD/TRIM). Replaced every `!isClosed` guard
+in the function with `!isNotLive` (`isClosed || isDeadWatch`), so a dead WATCH play now gets the
+exact same suppression a CLOSED play already got. Genuine fetch failures
+(`ecosystemFetchFailed`/`vectorFetchFailed`/Meridian-`unavailable`) are still NOT suppressed — those
+indicate the read itself broke, which stays true regardless of the play's status, exactly as the
+CLOSED-play gate already preserved.
+
+### Blast radius
+
+Single file, single function. No other call site reads `isClosed`/`isNotLive` from this file. No
+gate, scoring, or narrative-prose logic changed — only which absence chips reach
+`envelope.unavailableSources` for the dead-WATCH subset of plays.
+
+## Swing `crossDeskCoaching`'s "Desk alignment" bullet never counted HELIX flow agreeing with the swing — only disagreeing — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo swing play-brief — `crossDeskCoaching` (`src/lib/swing/play-brief-narrative-coaching.ts`) |
+| **Severity** | P3 (member-facing narrative quality / Largo product-contract disagreement-representation principle) |
+| **Status** | FIXED |
+
+### Root cause
+
+`crossDeskCoaching` checks all FOUR desks (Night Hawk, 0DTE, Vector, HELIX) for **conflict** with
+the swing's own direction — each desk that disagrees is pushed into a `conflicts` array via the
+`conflict(...)` helper and, when the array is non-empty, rendered as a ranked "Cross-desk friction"
+bullet (HELIX flow disagreement is weighted `2`, the second-highest of the four `CROSS_DESK_BASE_WEIGHT`
+kinds, behind only Vector's live price structure).
+
+But the function's **alignment** branch — which only runs once `conflicts.length === 0` — only ever
+pushed Night Hawk and 0DTE into the `aligned` array. HELIX's own `callHeavy`/`putHeavy` read (already
+computed a few lines above, and already used for the conflict check) was never checked against the
+swing's direction for the *agreeing* case at all. So:
+
+- HELIX flow **disagreeing** with the swing → surfaces as "Cross-desk friction" (weight 2 of 4).
+- HELIX flow **agreeing** with the swing → surfaced nowhere in the entire brief. `flowIntelSection`
+  (`play-brief-intel.ts`) renders the raw HELIX bias fact ("call-heavy"/"put-heavy"/"balanced") but
+  never connects it to the swing's own direction the way `vectorPlayCoaching`/`flowPrintsCoaching` do
+  for Vector's two signals — those two both have an explicit "**aligned** with swing lane." /
+  "**Aligns** with swing direction." suffix; HELIX's aggregate flow had no equivalent anywhere.
+
+This is a one-sided disclosure of exactly the shape the Largo product contract's disagreement
+principle exists to prevent ("disagreement is represented, never reconciled by the lanes
+themselves") — just manifesting on the corroborating side rather than the conflicting one: a member
+sees when HELIX disagrees with their thesis but never sees when it corroborates it, even though
+corroboration is the more actionable of the two for sizing confidence.
+
+### Evidence
+
+Live-read `crossDeskCoaching` (lines 589-653 pre-fix): `putHeavy`/`callHeavy` computed at
+lines 606-607 and used at lines 634-635 for `conflict(...)` calls, but the `aligned` array
+(lines 641-647) only ever pushed `nh`/`z` entries — no `flow`/`callHeavy`/`putHeavy` reference
+anywhere in that block. Confirmed via full-file read there is no other coaching function
+(`flowPrintsCoaching`, `confluenceCoaching`, `flowIntelSection`) that connects HELIX's aggregate
+call/put premium read to the swing's own direction as a positive/aligned fact — `flowPrintsCoaching`
+and `confluenceCoaching` both read Vector's OWN flow markers/confluence zones, a different data
+source from HELIX's `trustedHelixFlow`.
+
+### Blast radius
+
+Contained to `crossDeskCoaching`'s alignment branch alone — the conflict branch, `vectorPlayCoaching`,
+`flowPrintsCoaching`, and `flowIntelSection` are all untouched. No schema/type change: `aligned` was
+already `string[]`, one more conditional push into the same array.
+
+### Fix rationale
+
+Mirrors the conflict branch's own `callHeavy`/`putHeavy` check, one-for-one: `LONG` + `callHeavy` or
+`SHORT` + `putHeavy` now pushes `HELIX call-led`/`HELIX put-led` into `aligned`, using the identical
+`call-led`/`put-led` vocabulary the conflict branch already uses for HELIX (`conflict("HELIX",
+"put-led", "flow")` / `"call-led"`). The existing `aligned.length >= 2` threshold is left untouched —
+a single aligned desk (including HELIX alone) still stays silent, same noise-floor discipline the
+NH/0DTE-only version already had. Deliberately did NOT add Vector to this array: Vector's alignment
+already has its own dedicated, more detailed line via `vectorPlayCoaching`'s "— aligned with swing
+lane." suffix, so adding it here would either duplicate that fact or require the same de-dup
+machinery `vectorPlayCoaching`'s `conflictAlreadyNoted` flag already handles for the conflict case —
+out of scope for this fix, which only closes the HELIX gap (HELIX has no other home for this fact
+anywhere in the brief).
+
+### Tests
+
+Three new tests in `play-brief-narrative-coaching.test.ts`:
+- `crossDeskCoaching: HELIX call-heavy flow now counts toward Desk alignment on a LONG swing`
+- `crossDeskCoaching: HELIX put-heavy flow now counts toward Desk alignment on a SHORT swing`
+- `crossDeskCoaching: HELIX alignment alone (single desk) still stays below the two-desk threshold`
+  (proves no new false positive from a lone HELIX signal)
+
+RED→GREEN proven via `git stash` isolating the source fix from the tests: reverting only
+`play-brief-narrative-coaching.ts` reproduces exactly 2 failures (the two positive-alignment tests);
+restoring the fix returns to 115/115 pass in this file. `npx tsc --noEmit`: clean. Full `npm test`
+(Node 20): 14882 pass / 0 fail / 3 skipped (pre-existing, unrelated skips).
+
 ## Ask Largo swing brief never disclosed how thin the evidence read was at commit, despite the identical fact already surfacing pre-entry on WATCH candidates
 
 > **kind:** `FINDING`
