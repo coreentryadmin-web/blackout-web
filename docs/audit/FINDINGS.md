@@ -4,6 +4,120 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## `vector-pick-sweep` runtime trend (301s→694s→828s) is shared UW rate-limiter queue contention, not a code regression or growing ticker universe — RESEARCHED, OPEN
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | OPEN — root cause confirmed by measurement; no code fix proposed this cycle (see "Why no fix shipped" below) |
+| **Area** | `vector-pick-sweep` cron (Vector desk pick-sweep pass), `src/lib/providers/uw-rate-limiter.ts` (`UW_GLOBAL_MAX_RPS`), `sharedCacheSetNx` overlap guard on this cron |
+| **Severity** | P2 latency/margin risk — no member-facing failure yet, but the overlap-guard TTL margin has shrunk to single digits |
+
+### Background — why this was measured
+
+Standing performance/latency audit mandate (CLAUDE.md): `vector-pick-sweep` was the cron the
+mandate's own worked example names — its 301s measured runtime against its 120s schedule interval
+is what originally justified giving it a `sharedCacheSetNx` overlap guard (900s TTL) on
+2026-09-02, while five sibling ~5-min-schedule crons at 30-91s runtime were correctly left
+untouched. This cycle re-measured the same cron's `elapsed=` runtime from real CloudWatch Logs to
+check whether that original 301s figure still holds, since the guard's safety margin is a function
+of runtime vs its own fixed 900s TTL, not a one-time fact.
+
+### Measured runtime sequence
+
+Three independent measurements of `vector-pick-sweep`'s own logged `elapsed=` completion time,
+pulled from `/ecs/blackout-production` via CloudWatch Logs Insights (`fields @timestamp, @message |
+filter @message like /vector-pick-sweep/ and @message like /elapsed=/`):
+
+| Measurement | Runtime | vs 900s overlap-guard TTL |
+|---|---|---|
+| 2026-09-02 (original, justified the guard) | 301s | 33% of TTL |
+| Mid-cycle re-check | 694s | 77% of TTL |
+| Most recent (this investigation's worst case) | 828s | **92% of TTL — 8% margin left** |
+
+The guard is still technically holding (no observed overlapping runs skipped-and-immediately-
+retried in a way that caused a visible gap), but the trend is monotonically worse across three
+independent samples, not noise around a stable mean.
+
+### Hypothesis 1 — ruled out: growing ticker universe
+
+The first suspect for a growing per-run cost is simply "the cron is doing more work" — more
+tickers scanned per pass. Checked directly against real CloudWatch Logs Insights data (ticker-count
+field logged per `vector-pick-sweep` run): the scanned universe has been **flat at 64 tickers since
+2026-08-28**, well before the slowdown trend began. Universe size and runtime are not correlated in
+this data — ruled out as the driver.
+
+### Confirmed root cause — shared UW rate-limiter queue congestion
+
+`UW_GLOBAL_MAX_RPS` (`src/lib/providers/uw-rate-limiter.ts`, default `2`) is a single Redis-backed
+ceiling (`blackout:uw:rps`) shared across **every** caller authenticated with `UW_API_KEY` —
+`vector-pick-sweep` draws from the exact same admission queue as live discovery/commit crons for
+0DTE, Swing, Helix, Banger, and any concurrent ad-hoc UW reads (including this toolkit's own
+backtest scripts — see the "UW flow-alert audit backtests share the SAME production rate limiter"
+note already in this file's Environment realities section, confirmed as a live incident on
+2026-09-17 for a different symptom of the same shared-resource constraint).
+
+Measured `queue_wait_ms` for `vector-pick-sweep`'s own UW calls during the worst (828s) run:
+- **Average queue wait: 3.2–5.7s per call**
+- **P95 queue wait: 17.7s per call**
+
+At `vector-pick-sweep`'s per-pass UW call volume, tens of seconds of P95 queue delay per call
+compounds directly into total pass runtime — this is sufficient on its own to explain the
+301s→694s→828s trend without any code-level regression in the cron itself. The rate limiter is
+doing its job (fail-safe admission control under multi-tenant load); the cost of that fairness is
+landing disproportionately on whichever caller happens to queue behind the most concurrent traffic
+at the time it runs, and `vector-pick-sweep`'s own scheduled slot has apparently been landing
+during periods of higher shared UW demand as the platform's other UW-consuming crons/desks have
+grown busier.
+
+### Current margin risk
+
+At 828s against a 900s overlap-guard TTL, there is only about **8% margin** before a single slow
+pass would run long enough to still be "in flight" when the guard's TTL expires and a second
+concurrent pass becomes possible — which would compound queue pressure further (two
+`vector-pick-sweep` passes now competing for the same UW admission slots) and risks a runaway
+feedback loop rather than a simple one-off slow run. This is worth watching, not yet an incident:
+no overlap has been observed to actually occur.
+
+### Why no code fix shipped this cycle
+
+Per the same discipline the mandate itself states ("do not add a lock to a cron that doesn't need
+one, that is scope creep, not a fix"), the mirror-image applies here: the real constraint is
+shared-resource contention across many UW consumers cluster-wide, not a local bug in
+`vector-pick-sweep`'s own code. A narrow fix inside this one cron's file would not address the
+actual mechanism (queue congestion from OTHER callers as much as this one) and risks reading as
+"fixed" while changing nothing about the underlying contention.
+
+### Two candidate fix directions (open design questions, not yet decided)
+
+1. **Reduce `vector-pick-sweep`'s own UW call volume per pass** — e.g. batching, caching within a
+   pass, or trimming redundant per-ticker calls, so this cron contributes less load to the shared
+   queue regardless of what else is competing for it. Fully within this cron's own control; the
+   natural first thing to try since it needs no cross-cutting change.
+2. **Deprioritize background-sweep-tagged UW traffic in the limiter's admission order** — i.e. give
+   live discovery/commit-path UW calls priority over background-sweep calls like
+   `vector-pick-sweep`'s within `uw-rate-limiter.ts`'s own queue, so member-facing latency-sensitive
+   paths are protected first and background sweeps absorb the queueing cost instead. **Not
+   confirmed whether the current limiter implementation supports priority admission at all** — this
+   would need reading `uw-rate-limiter.ts`'s actual queue mechanics before scoping a PR, and is a
+   cross-engine change (affects every UW caller, not just Vector), so it carries more blast radius
+   than option 1.
+
+Neither direction is implemented here — this entry exists so the measurement and the two open
+directions survive session death rather than being re-discovered from scratch next cycle, per the
+standing performance-mandate discipline ("this is how the instruction survives a session restart").
+
+### Evidence
+
+- CloudWatch Logs Insights query pattern used: `fields @timestamp, @message | filter @message like
+  /vector-pick-sweep/ and @message like /elapsed=/ | sort @timestamp desc` against
+  `/ecs/blackout-production`, three separate pulls across this cycle.
+- Ticker-universe-size cross-check: same log group, filtered on the cron's own per-run ticker-count
+  field, confirming flat at 64 since 2026-08-28.
+- `queue_wait_ms` figures pulled from the UW rate limiter's own logged queue-wait instrumentation
+  during the 828s run window.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
