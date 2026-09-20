@@ -305,8 +305,22 @@ async function getPool(): Promise<Pool> {
  *
  * Exported for unit testing — real EventEmitter behavior (an 'error' event with zero listeners
  * throws), no DB/env/module-load-order dependence, same rationale as computeSafePgPoolMaxDefault.
+ *
+ * BUG FIX (2026-09-20, live CloudWatch: `MaxListenersExceededWarning: ... 11 error listeners
+ * added to [Client]`): pg-pool recycles idle Client OBJECTS across checkouts — `pool.connect()`
+ * does not construct a fresh Client each call, it hands back the same physical client from the
+ * idle set. Every call site above wraps its OWN `pool.connect()` in `guardCheckedOutClient`, so
+ * across the life of the process the SAME recycled client accumulates one MORE 'error' listener
+ * every time it happens to be the one checked out — unbounded growth, not a one-time cost. A
+ * marker on the client itself makes the guard idempotent per physical client: the first checkout
+ * installs the listener, every later checkout of that same object is a no-op.
  */
+const CHECKED_OUT_CLIENT_GUARD = Symbol.for("blackout.db.checkedOutClientGuard");
+
 export function guardCheckedOutClient<T extends PoolClient>(client: T): T {
+  const marked = client as T & { [CHECKED_OUT_CLIENT_GUARD]?: boolean };
+  if (marked[CHECKED_OUT_CLIENT_GUARD]) return client;
+  marked[CHECKED_OUT_CLIENT_GUARD] = true;
   client.on("error", (err) => {
     console.warn(
       "[db] checked-out client error (the in-flight query's own try/catch already handles the " +
