@@ -33,6 +33,7 @@
 import type { SwingPositionRow, SwingSnapshotInsert } from "../db";
 import type { SwingLiveQuote } from "./live-plays";
 import { structuralBreakFromSpot } from "./live-plays";
+import { underlyingPriceForStructuralStop } from "./ex-dividend-adjustment";
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { SWING_ARCHETYPES } from "./taxonomy";
@@ -458,7 +459,20 @@ function hasRollLedger(deps: ManageSyncDeps): deps is ManageSyncDeps & RollLedge
 
 /**
  * Q37: re-arbitrate at roll execution time. A concurrent pass or slow chain fetch can leave a ROLL plan
- * built while the structural stop has since broken — CLOSE must win over ROLL.
+ * built while the structural stop has since broken.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-09-20): this re-check used to compare `reads.underlyingPrice`
+ * against `row.thesis_invalidation_px` RAW, via `structuralBreakFromSpot` alone — bypassing the same
+ * ex-dividend adjustment (Q39, ex-dividend-adjustment.ts) that manage.ts's `structuralStopBroken` applies
+ * when building the ORIGINAL verdict this function re-arbitrates. A LONG position that is a genuine roll
+ * candidate (still-valid thesis, e.g. an `expiry_risk` gate with `rollIntent.roll === true`) could have its
+ * roll wrongly forced into a CLOSE here on an ordinary ex-dividend session: the mechanical open-gap moves
+ * raw spot below the stop even though the thesis never broke — exactly the false breach Q39 exists to
+ * prevent, reintroduced one layer up because this is a separate raw compare, not a call into that function.
+ * Fixed by applying the same `underlyingPriceForStructuralStop` adjustment (and the same Q39 fail-safe:
+ * skip the LONG re-check entirely when this cycle's ex-div read itself failed, rather than enforce a stop
+ * we can't verify isn't a mechanical gap) before the compare — this re-check now agrees with the primary
+ * path on every input, as a re-arbitration should.
  */
 export function executionVerdictForGating(
   row: SwingPositionRow,
@@ -466,13 +480,14 @@ export function executionVerdictForGating(
   verdict: SwingManageVerdict,
 ): SwingManageVerdict {
   const direction = row.direction === "short" ? "short" : "long";
-  if (
-    !structuralBreakFromSpot(
-      direction,
-      reads.underlyingPrice ?? null,
-      row.thesis_invalidation_px,
-    )
-  ) {
+  const spot = numOrNull(reads.underlyingPrice);
+  if (spot == null) return verdict;
+  if (direction === "long" && reads.exDividendDataUnavailable === true) return verdict;
+  const comparePx = underlyingPriceForStructuralStop(spot, direction === "long" ? "LONG" : "SHORT", {
+    exDividendSession: reads.exDividendSession === true,
+    exDividendCash: reads.exDividendCash,
+  }).price;
+  if (!structuralBreakFromSpot(direction, comparePx, row.thesis_invalidation_px)) {
     return verdict;
   }
   return {
