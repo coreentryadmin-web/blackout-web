@@ -269,11 +269,21 @@ export function magnetCoaching(
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
   const near = Math.abs(m.distancePct) < 1.2;
   const posture = resolveGammaPosture(ctx, vec);
+  // BUG FIX (2026-09-20, Ask Largo standing mandate): resolveGammaPosture is a real FOUR-value
+  // regime — "long"/"short"/"transition"/"unknown" — and "transition" (verdict.ts: spot within
+  // 0.1% of the gamma flip) is a genuinely RESOLVED posture, not an absence. dealerPostureLine
+  // (play-brief-narrative.ts, "sitting at gamma flip — regime can flip fast") and
+  // chartTechnicalsSection (play-brief-intel.ts, "Dealer gamma regime: transition (near flip)")
+  // already branch on it as its own third state; this bullet only checked `posture === "long"`
+  // and silently collapsed short/transition/unknown into the same generic acceleration-risk
+  // framing, understating that the regime is specifically unsettled right now, not just "not long".
   const pin = near
     ? "You're sitting on the magnet — expect chop; trim into extensions, don't chase breakouts."
     : posture === "long"
       ? "Dealer hedging center of mass — price gravitates here in long-gamma regimes."
-      : "Pivot node — acceleration risk if the magnet fails to hold.";
+      : posture === "transition"
+        ? "Dealers sitting at the gamma flip here — this node's pull is unsettled until the regime resolves."
+        : "Pivot node — acceleration risk if the magnet fails to hold.";
   return `**Gamma magnet ${m.strike.toFixed(2)}** (${fmtPct(m.distancePct)} from spot) — ${lead} this node. ${pin}`;
 }
 
