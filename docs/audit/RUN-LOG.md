@@ -4,6 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-20 (00:17 UTC) — [SEO] Lane heartbeat: both fixes holding, continued small positive trend, no new work
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0007, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5265 (docs fold,
+not SEO-lane), CI-running, not stuck — no action needed.
+
+Step 3: fresh opportunity scan (new day, ~6h since last one). Same 3 striking-distance queries, no
+new entrant — but **`dealer gamma` got its first-ever click** this pull (pos 16.9, up from 18.6,
+25imp, 1cl) — a small real signal, not itself a new on-page opportunity. 28d trend continues
+improving: clicks **17→19**, avgpos **26.8→25.7**, CTR **1.16%→1.32%** (window 2026-08-21→09-17)
+— same direction as the last two cycles, consistent incremental movement rather than noise.
+`/learn/dealer-gamma-options-flow-guide` picked up a 2nd click, `/learn/meridian` got a new one.
+No PR — nothing here calls for on-page action, just continued organic movement.
+
 ## 2026-09-19 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes still holding, no new work
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0398, GOOD**. `/api/og` —
