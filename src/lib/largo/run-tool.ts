@@ -1753,7 +1753,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const raw = omitUncalibratedSpxConfidence(
         confluence ?? { error: "No confluence available — SPX desk not live yet." }
       );
-      return fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
+      const fitted = fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
+      // ADDITIVE ONLY (LARGO-PRODUCT-CONTRACT.md) — every structured field above is untouched;
+      // this synthesizes them into a few connected sentences so the model isn't left to fuse
+      // action/score/bias/grade/agreeing/weighted_conflicts by hand. First step of the standing
+      // Ask Largo x Night Hawk mandate's SPX narrative gap (PR #4076 comment 5749157602).
+      const { spxConfluenceNarrative } = await import("@/lib/largo/spx-confluence-narrative");
+      const narrative = spxConfluenceNarrative(fitted as Record<string, unknown>);
+      return narrative ? { ...fitted, narrative } : fitted;
     }
     case "get_positioning": {
       const sym = uwTicker(ticker);
