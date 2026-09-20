@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-19T11:16:00Z",
+  "lastUpdated": "2026-09-20T06:22:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4079,6 +4079,12 @@
       "summary": "11:09Z healthcheck: A_edition GREEN (edition_for=2026-09-21, 4 plays, unchanged), B_marks AMBER (same MU/BMNR/ETHA/MARA 4 OCCs flagged stale, unchanged), D_pull_status SKIPPED (unchanged). C_record verdict stayed GREEN but resolved count dropped 28->24 vs the prior several cycles -- investigated rather than assumed benign.",
       "assessment": "Confirmed rolling-window artifact, not a data bug: re-ran the healthcheck with --days=15 and got resolved=28 exactly, the same number every cycle since 21:52Z Friday reported at the default --days=14. The 14-day cutoff crossed a UTC midnight boundary between the 23:37Z Friday check and this one, so 4 resolutions dated 2026-09-04 fell out of the window -- buckets still summed consistently at both window sizes, so no evidence of a real correctness defect, just the window sliding as calendar days pass with zero new resolutions over the weekend.",
       "action": "No fix needed -- documenting so a future cycle does not re-diagnose the same resolved-count drop as a suspected bug. Continuing to hold clean/repeat-clean per noise discipline; will note again if the pattern of window-boundary drops looks miscalibrated after 3 real instances."
+    },
+    {
+      "at": "2026-09-20T06:22:30Z",
+      "summary": "Retried the /nighthawk live UI interaction audit (live-ui-interaction-audit.mjs) that failed twice at 05:51Z last hour (page never became usable / browser context closed mid-run). This cycle, after two shared geometry-probe fixes landed from other lanes (#5281 nav-brand sticky/fixed false-positive, #5282 sticky matrix-header false-positive), desktop now passes clean: ALL 1 PAGES BEHAVED, 0 fails, 22/22 controls exercised and every one did something.",
+      "assessment": "Confirms last hour's failure was a transient harness flake (browser context crash), not a real product issue -- corroborated at the time by a plain HTTP fetch of /nighthawk returning 200 with a full 62.5KB page while the browser-based audit was failing. Phone viewport hit a separate, unrelated harness artifact this retry (net::ERR_CERT_AUTHORITY_INVALID on the tunnel/proxy TLS handshake) -- consistent with documented sandbox proxy/tunnel instability, not a site defect.",
+      "action": "No fix needed -- logging to close the loop on the open question from the prior cycle and avoid re-investigating the same flake as a new mystery later. Healthcheck this cycle unchanged (A_edition GREEN/4 plays, B_marks AMBER same 4 OCCs -- weekend market-closed, C_record GREEN resolved=24, D_pull_status SKIPPED)."
     }
   ],
   "knownOpenItems": {
