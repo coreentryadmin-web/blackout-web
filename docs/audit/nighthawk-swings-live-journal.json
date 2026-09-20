@@ -1,10 +1,13 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T22:05:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. PR #5327 (book-context namewall cap, independently verified last cycle) already merged by its owning session (0484ff438), CI was green -- confirmed via main's own log rather than polling the PR further. Zero open swing PRs. #4076 quiet. Board unchanged. Genuinely clean cycle -- this session has now covered essentially the full mandate surface today (C1-C10 sweep, portfolio-overlap, thesis-health root-cause + fix + verify, crypto-equity theme coverage + fix + verify, WATCH-lane marks, exit-ladder math, MFE-capture math, and a sibling PR's follow-on namewall fix, all independently verified) with three real production fixes shipped and live-confirmed (#5320, #5321, #5327) across this cycle-group. Nothing new to chase this cycle.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-20T22:25:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, full close). ReadNotifications clean. git sync clean. **Sibling collaboration: PR #5328 found and independently verified this cycle.** Direct sibling of my own WATCH-lane investigation two cycles ago (LITE's null-mark-but-real-greeks pattern) -- the sibling session found the SAME entry-fallback-mark signature causing a real, live self-contradiction on WOLF (SWING:WOLF:1218 OPEN): Position section correctly says 'Mark: unknown', but 'Trade manager read' a few lines later states a confident 'mark $0.77, needs $1.54 (+100% from here)' distance clause computed from that SAME unknown value -- a 4th instance of a self-contradiction class already fixed 3x elsewhere (all gated on optionMarkGenuinelyUnknown), this exact coaching-file call site was the one unguarded holdout. Independently re-derived: confirmed the guard's absence on main, pulled WOLF's live play-brief myself and got the exact same contradiction byte-for-byte, checked out the PR branch in an isolated worktree (120/120 green), neutralized just the new guard clause and got exactly 1 failure (119/120) -- matches the claimed RED->GREEN precisely. Posted confirming review (5753078117). Also PR #5329 opened (docs-fold for #5327's staged finding, different sibling session, low-risk mechanical fold) -- not deep-reviewed, low blast radius. Both still open, CI pending, left for their owning sessions to merge. #4076 quiet. Board unchanged. Fifth PR this cycle-group where a genuine, independently-verified fix has come from the collaborative audit lineage this mandate is built around.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "PR #5328 (sibling-authored, independently verified this cycle, not yet merged -- fake-mark-basis in next-trim distance bullet)",
+    "PR #5329 (sibling-authored docs-fold for #5327, not deep-reviewed, low-risk)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,8 +116,25 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T22:05:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-20T22:25:00Z",
+    "swing_prs": [
+      {
+        "pr": 5328,
+        "title": "fix(swing): suppress fake mark basis in Ask Largo 'next trim' distance bullet",
+        "state": "open",
+        "draft": false,
+        "mine": false,
+        "note": "independently verified this cycle, CI pending"
+      },
+      {
+        "pr": 5329,
+        "title": "docs(audit): fold swing book-context namewall-cap finding (#5327)",
+        "state": "open",
+        "draft": false,
+        "mine": false,
+        "note": "not deep-reviewed, mechanical docs fold"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
