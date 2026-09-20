@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T02:46:09Z",
-  "notes": "02:46 UTC cycle -- PR #5272 confirmed merged (0d662a33b), sibling's docs-log PR #5273 also merged. Board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). SELF-AUTHORED FIX: PR #5274 (fix/swing-catalyst-earnings-window-et-boundary). Fresh area this session (swing-catalyst.ts, CATALYST pillar + EVENT_DRIVEN archetype grounding) -- found parseEarningsWindows derives 'today' via new Date(asOfMs).toISOString().slice(0,10) (raw UTC calendar date of the instant) instead of the ET trading-day date the earnings feed's own earnings_date/report_date strings are stamped in. swing-ingest.ts's caller passes the real scan/ingest instant (Date.parse(args.asOf)), and this codebase's own live repros elsewhere (play-brief-narrative-coaching.ts's printAlreadyLandedThresholdMs fix, live repro '2026-09-14 20:36 ET') confirm this pipeline genuinely runs into evening ET hours. Past ~20:00 ET (EDT), UTC calendar date is already the next day -- so todayYmd silently ran one day ahead during those hours, meaning a same-day (ET) earnings print could misclassify as already-past instead of today, corrupting the CATALYST pillar hazard + EVENT_DRIVEN archetype fit for any name evaluated during evening ET on its own earnings day. Fixed by swapping to todayEt() (@/lib/et-date), this codebase's own established single-source-of-truth ET-date helper (already used by spx-session.ts), which already accepts an injectable Date for exactly this case -- confirmed via grep it was simply never called here. 1 new test (11:30pm EDT repro), RED->GREEN via git stash (1 fail -> 13/13 pass), swing-ingest.test.ts (the one caller) 15/15 no regressions, tsc clean, full npm test 14897 pass/0 fail/3 skipped (pre-existing). PR #5274 opened, subscribed, undrafted.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "docs/audit/findings-staging/2026-09-20-swing-catalyst-earnings-window-et-boundary.md"
-  ],
+  "last_updated": "2026-09-20T03:01:33Z",
+  "notes": "03:01 UTC cycle (v3 mandate full brief re-received) -- my own PR #5274 CI still in_progress (~7min, CodeQL green); nothing actionable, 1hr check-in already armed. No other open swing PRs, board unchanged (CRWD:39/AAPL:37 SCALING_OUT, LITE WATCH). Follow-up sibling-bug check on my own #5274 fix: verified freshestCatalystAgeDays (same file, swing-catalyst.ts) does NOT share the same ET-vs-UTC date-boundary bug -- it computes ageDays as a continuous ms-duration ((nowMs-ms)/86_400_000), not a calendar-YMD-string comparison, so it's structurally immune to the class of bug parseEarningsWindows had. Grepped the whole swing lib for any other .toISOString().slice(0,10) raw-UTC-date derivation -- zero other matches, confirming my fix removed the only instance of this pattern in src/lib/swing/. Clean sibling-check, no new work needed.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
