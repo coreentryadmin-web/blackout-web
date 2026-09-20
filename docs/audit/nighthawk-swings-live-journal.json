@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T20:05:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean (picked up sibling's FINDINGS.md fold commit e3f544472). Zero open swing PRs. #4076 quiet. Deploy for both #5320 and #5321 still in progress/pending (~30min elapsed on the first, second queued behind it, serialized ecr-push-production) -- still deferring live re-verification. Checked CLOSED-plays grading consistency (mandate item, genuinely unexplored this session) via a 14-day swing/record pull: only 1 closed position in that window (AAPL, -33.19% stopped) -- population too thin for a meaningful grading-consistency pass, consistent with the already-documented small-closed-population limitation (~31-38 over 90 days per multiple prior audit tool runs referenced in CLAUDE.md). Nothing new to report there. Board unchanged. Genuinely light cycle -- deferring next real action to live-verifying #5320/#5321 once deployed.",
+  "last_updated": "2026-09-20T20:19:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. Zero open swing PRs. #4076 quiet. **PR #5321 (crypto-equity theme coverage) confirmed LIVE in production.** Deploy for 350051b7cc completed. Pulled RIOT's live play-brief: 'Book overlap: 28 same-direction positions in theme \"crypto-equity\"' -- up from the pre-fix 11, confirming the 14 newly-added tickers (exchanges, miners, BTC/ETH wrappers) are now correctly counted toward real concentration risk. This closes the loop on that fix's full lifecycle (found -> shipped -> merged -> deployed -> live-verified). PR #5320 (thesis-health regime-clobber fix, e65014ce84) still deploying (in_progress, queued behind #5321 in the serialized pipeline) -- RIOT's Thesis health still shows the pre-fix '84% * Minor drift' as expected, will re-check once that deploy completes. Board unchanged.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
