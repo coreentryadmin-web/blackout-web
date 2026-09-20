@@ -38,6 +38,1235 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-09-05 — [P1, commerce] Post-Whop-pay tier lag — no desk “processing payment” UX — OPEN
+> **kind:** `FINDING`
+> **Found by:** Cursor 360° cross-exam (CLQ-041)
+
+| | |
+|---|---|
+| **Status** | OPEN — PARTIALLY PROVEN; live synthetic upgrade trace not run this session |
+| **Severity** | P1 conversion — member may hit 403 on desk routes between payment and webhook cache eviction |
+| **Root cause** | `whop/route.ts` evicts tier via `publishTierChanged` on webhook; no dedicated UI banner for paid-but-not-yet-tier state in layout code reviewed. |
+| **Recommended fix** | Measure upgrade→desk-access p95; add interim “activating membership” state if gap > few seconds. |
+| **Evidence** | CLQ-041 PARTIALLY PROVEN; live synthetic upgrade trace not run this session. |
+
+<!-- Cross-exam index: CLQ-045 already in FINDINGS §3040 + #3955; CLQ-048 not filed (#3945 TRIM precedence). Source: CURSOR_ANSWERS_FOR_CLAUDE.md (#3952). -->
+
+## 2026-09-05 — [P2, data-correctness] `ThermalCompareStrip` still uses raw `change_pct` not `rebaseChangePct` — OPEN
+> **kind:** `FINDING`
+> **Found by:** Cursor 360° cross-exam (CLQ-018)
+
+| | |
+|---|---|
+| **Status** | OPEN |
+| **Severity** | P2 — compare-strip % change can disagree with main Thermal desk after session rebase (#3944 fixed triple-desk, not this callsite) |
+| **Root cause** | `src/features/thermal/components/ThermalCompareStrip.tsx:63` — `const chg = data?.change_pct ?? null` with no `rebaseChangePct` helper used by sibling desk headers. |
+| **Recommended fix** | Mirror `rebaseChangePct` pattern from #3944; add component test with rebase fixture. |
+| **Evidence** | Grep: no `rebaseChangePct` in `ThermalCompareStrip.tsx`. |
+
+## 2026-09-05 — [P2, data-correctness] Swing `dailyBarComplete` is market-wide grouped-daily non-empty, not per-ticker — OPEN
+> **kind:** `FINDING`
+> **Found by:** Cursor 360° cross-exam (CLQ-003)
+
+| | |
+|---|---|
+| **Status** | OPEN |
+| **Severity** | P2 — day-1 IPO / thin names can pass G-S* daily-bar gate when SPY rows exist but ticker has no bar |
+| **Root cause** | `src/lib/swing/discovery.ts:1024-1025` sets `dailyBarComplete: grouped.length > 0` (comment: feed posted, not per-ticker). `#3934` wired the gate but left this coarse proxy. |
+| **Recommended fix** | Per-ticker grouped-daily presence (or explicit `false` when ticker absent from grouped response). Regression: IPO candidate with empty ticker bar + non-empty market feed → gate blocks. |
+| **Evidence** | `v2/gates.ts:159` blocks when `dailyBarComplete === false`; discovery never sets false for missing ticker if feed non-empty. |
+
+## 2026-09-05 — [P1, infra] `sharedCacheSetNx` fail-open on Redis command error weakens cross-replica cron locks — OPEN
+> **kind:** `OPS-NOTE`
+> **Found by:** Cursor 360° cross-exam (CLQ-037, CLQ-044)
+
+| | |
+|---|---|
+| **Status** | OPEN |
+| **Severity** | P1 — overlap/cooldown locks can be bypassed per-process during Redis blips |
+| **Root cause** | `src/lib/shared-cache.ts:172-192`: on Redis `SET NX` **catch**, execution falls through to in-memory path which **sets the key and returns `true`** (acquired). A dropped/transient Redis error during acquire lets a second cron instance in the same replica proceed as if it won the lock. Cross-replica protection is lost for that window. |
+| **Blast radius** | Every cron using `sharedCacheSetNx` (desk-warm cooldown, vector/swing/banger overlap guards, etc.) — dual cron overlap under Redis stress. |
+| **Recommended fix** | Fail **closed** on Redis error (return `false`, skip run) to match overlap-lock safety posture documented elsewhere; or retry Redis before memory fallback. Add behavioral test: Redis throw → second acquirer must not win cluster-wide. |
+| **Evidence** | CLQ answer in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md` (#3952); source at `sharedCacheSetNx`. |
+
+## 2026-09-05 — [P2, data-correctness] Shadow positions close at last mark on expiry, not intrinsic $0 — OPEN
+> **kind:** `FINDING`
+> **Found by:** Cursor 360° cross-exam (CLQ-005)
+
+| | |
+|---|---|
+| **Status** | OPEN |
+| **Severity** | P2 — shadow P&L grading misstates OTM expiry outcomes (counterfactual research skew) |
+| **Root cause** | `src/lib/swing/shadow-refresh.ts:151` — `exitMark = mark ?? row.last_mark ?? entry` on expiry close; no intrinsic-value floor at expiry for OTM legs. |
+| **Recommended fix** | On `reason === "expiry"`, use intrinsic (0 for worthless OTM) before last-mark fallback; keep −60% premium backstop for pre-expiry. |
+| **Evidence** | `decideShadowClose` returns expiry at `dte <= 0`; close path does not zero OTM intrinsic. |
+
+## 2026-09-05 — [P2, observability] No CHARM depth validator sibling to `gex-depth-validate.mjs` — OPEN
+> **kind:** `FINDING`
+> **Found by:** Cursor 360° cross-exam (CLQ-017)
+
+| | |
+|---|---|
+| **Status** | OPEN |
+| **Severity** | P2 — locally computed CHARM (`polygon-options-gex.ts:964-980`) has no automated depth/regression probe |
+| **Root cause** | GEX has `scripts/gex-depth-validate.mjs`; grep finds no `charm-depth-validate` or equivalent. |
+| **Recommended fix** | Add CHARM validator script + CI hook mirroring GEX depth audit pattern. |
+| **Evidence** | CLQ-017 answer; `charmPerShare()` closed-form BS without validator. |
+
+## Night Hawk Legacy: `resolveOutcome`'s fillability gate disagrees with `debrief.ts`'s own fill logic on the exact same real historical shape — needs a product decision, not a unilateral fix
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | OPEN — holding per the standing escalation policy ("ambiguous/live-picks-logic → report, hold"). This changes what counts as a win/loss in the live member-facing track record; it should not be resolved by picking a side without operator/product sign-off. **Updated twice, same day:** (1) found the deliberate design history (N-2, `grade-methodology.ts`) behind `resolveOutcome`'s behavior; (2) got live data + found `debrief.ts` always defers to `resolveOutcome`'s persisted outcome for every aggregate/failure-mode tag, so the two never actually disagree on a LIVE stat today — see the Update sections below. Still OPEN; evidence trail is fuller, severity is narrower than originally scored, decision is still not made. |
+| **Surface** | `resolveOutcome` (`src/features/nighthawk/lib/play-outcomes.ts`, the LIVE mechanical outcome grader run by `resolvePendingNighthawkOutcomes`) vs. `computeFill` (`src/features/nighthawk/lib/debrief.ts`, the per-play post-mortem's own fill check) |
+| **Severity** | P3 (downgraded from P2 — see Update 2) — a real, reproducible logic disagreement between two functions that read the same row fields, but `debrief.ts` never lets `computeFill` override `resolveOutcome`'s persisted verdict in any live aggregate, so this is not currently a live cross-module contradiction — only a latent inconsistency that affects FUTURE grading of a real, recurring shape (a large overnight gap through the entire published band; 23 currently-unfilled non-pulled rows in the live 90-day record). |
+
+### The two implementations, side by side
+
+`play-outcomes.ts`'s `resolveOutcome` (added under a comment titled "FILLABILITY (grading-honesty, audit MEDIUM)"):
+
+```ts
+// Range intersection: session [low, high] must overlap entry [range_low, range_high].
+const fillable = low! <= row.entry_range_high && high! >= row.entry_range_low;
+```
+
+`debrief.ts`'s `computeFill` (via `fillEdgeOf`, "the level the member would actually transact at"):
+
+```ts
+const edge = fillEdgeOf(row); // LONG: entry_range_high; SHORT: entry_range_low
+const reach = isLong ? bar.l : bar.h;
+const filled = isLong ? reach <= edge : reach >= edge;
+```
+
+`resolveOutcome` requires the session's range to overlap BOTH sides of the band (a true set-intersection test). `computeFill` requires only that the session reach past the ONE transactable edge (LONG: does the session ever trade AT OR BELOW the band's top; SHORT: at or above the band's bottom) — a single-sided test.
+
+These agree whenever the session gaps in the unfavorable direction (never comes back toward the band at all) or trades normally through the band. **They disagree when the session gaps favorably clean through and past the WHOLE band** — e.g. a LONG whose entire session stays below both the low AND the high of the published entry range.
+
+### Reproduced directly against the real historical AMD 2026-07-07 shape
+
+This exact row is `debrief.test.ts`'s own real-history anchor fixture (`AMD_0707`) — LONG $550–555 band, target 562.99, stop 550.88, session open 515.91 / high 524.97 / low 503.11 / close 516.11 (a real play that gapped ~6.55% through its own stop pre-open). `debrief.test.ts` asserts `d.fill.filled === true` for it, with the comment *"It DID fill (open below the band is fillable for a LONG)"* — and the real historical `outcome` on this row is stored as `"stop"`, not `"unfilled"`.
+
+Feeding the identical shape directly into `resolveOutcome`:
+
+```ts
+resolveOutcome({
+  direction: "LONG", entry_range_low: 550, entry_range_high: 555,
+  target: 562.99, stop: 550.88,
+  next_day_open: 515.91, next_day_close: 516.11,
+  session_high: 524.97, session_low: 503.11,
+})
+// -> { hit_target: false, hit_stop: false, outcome: "unfilled", stop_data_unavailable: false }
+```
+
+`resolveOutcome` grades this exact shape `"unfilled"` — directly contradicting both `debrief.ts`'s own logic and the real, already-recorded historical outcome (`"stop"`) for the actual AMD row. (The existing AMD row itself is unaffected — it was already graded and stored before this check existed, or under different code — but any FUTURE play with this same "gap through and past the whole band" shape would now be graded differently by the two modules.)
+
+### Why this isn't a simple pick-the-right-one fix
+
+`play-outcomes.test.ts` already has an existing, deliberately-written test asserting the CURRENT `resolveOutcome` behavior as intended:
+
+```ts
+test("LONG that gapped BELOW its entry band and never recovered grades 'unfilled'", () => {
+  const row = {
+    direction: "LONG", entry_range_low: 100, entry_range_high: 104,
+    target: 112, stop: 96,
+    next_day_open: 88, next_day_close: 92, session_high: 93, session_low: 85,
+  };
+  assert.equal(resolveOutcome(row).outcome, "unfilled");
+});
+```
+
+This is the SAME shape class as AMD (a LONG gapping clean through and below its entire band — and in this synthetic case, also clean through its own stop at 96, ending up at 88). So the codebase currently contains two different, both-defensible design philosophies, each with its own test asserting it as correct:
+
+1. **Mechanical-fill philosophy** (`debrief.ts`): if a real limit/marketable order targeting the published band would have executed — including at a better price from a gap straight through the zone — the play was filled, and whatever happens next (stop/target) is graded normally.
+2. **Plan-integrity philosophy** (the existing `resolveOutcome` test's implied intent): if the session gapped clean through the ENTIRE published band before the play could be entered as specified, the play "as published" was never actually tradeable at the geometry it described (its stop-to-entry risk is now completely different from what was published), so it should not count toward win/loss at all — regardless of which direction the gap ran.
+
+Both are legitimate answers to "should this count in the track record." Which one is *intended* for Legacy's live win-rate is a product decision, not something to infer from either function's docstring alone — the two docstrings genuinely point in different directions, and neither says "and this MUST match debrief.ts / must NOT match debrief.ts."
+
+### What this finding does NOT do
+
+No code was changed. A draft fix (aligning `resolveOutcome` to `debrief.ts`'s single-edge philosophy) was written, verified to fix the AMD-shape reproduction, and then reverted once the conflicting existing test at `play-outcomes.test.ts` surfaced the real ambiguity — shipping it would have silently flipped this codebase's answer to "does a favorable full-band gap count as a fill" without anyone deciding that's the intended behavior, and would have deleted/rewritten a test that was clearly written on purpose.
+
+### Recommended next step
+
+A human/product decision on which philosophy Legacy's live track record should use, then:
+- If mechanical-fill (matching `debrief.ts`): fix `resolveOutcome`'s intersection test to the direction-dependent single-edge check, update the now-contradicting `play-outcomes.test.ts` test's expected outcome (its title and assertion), and add the AMD-shape case as an explicit regression test citing this finding.
+- If plan-integrity (matching the existing `resolveOutcome` test): instead fix `debrief.ts`'s `computeFill` to require the full-range intersection, correct its own `AMD_0707` fixture/test/comment (which currently asserts the opposite), and reconcile the "the entry basis is the actual conservative fill price... AMD 2026-07-07 filled at 515.91" language in `DebriefExcursion`'s own doc comment, which is written assuming the mechanical-fill philosophy.
+Either direction requires touching tests that currently assert the OTHER answer — this is why it needs a decision, not a majority vote between the two files.
+
+### Evidence
+
+- Reproduced directly: `resolveOutcome` on the real AMD 2026-07-07 shape returns `"unfilled"`; the real historical record and `debrief.test.ts` both treat it as filled (graded `"stop"`).
+- `play-outcomes.test.ts`'s own existing test (line ~109, "LONG that gapped BELOW its entry band and never recovered grades 'unfilled'") asserts the CURRENT behavior as intended, on the same shape class.
+- Grepped `docs/audit/OUTCOME-GRADING-SPEC.md` for any documented resolution of this specific Legacy tension: none found (that spec covers 0DTE/Swing/Banger graders, not Legacy's `resolveOutcome`/`computeFill` pair).
+
+### Update (same day, later cycle): found the decision history behind `resolveOutcome`'s design — it deepens, not resolves, the question
+
+Improvement-hunting the same lane later this session surfaced `grade-methodology.ts` and
+`docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md` (PR-N2, 2026-07-14) — neither was checked before this
+finding was originally written. They show `resolveOutcome`'s full-band-intersection ("plan-integrity")
+behavior is **not an accidental design** — it was shipped deliberately, with real measured evidence,
+specifically to kill a "phantom win" pattern: bucketing the app's 14 then-resolved plays by
+"open-beyond-band", the gapped-away group graded **6 target / 1 stop, +5.11% avg (100% of the
+record's wins)** while genuinely fillable plays graded **0 target / 4 stop, −1.39% avg**. The
+`"unfilled"` verdict for a full-band gap-through exists specifically so a play that was never really
+enterable at its published entry can't mint a win it didn't earn. On the *gap-through-to-a-win* side,
+`resolveOutcome`'s plan-integrity philosophy is the one with real evidence behind it, not an
+arbitrary or equally-weighted alternative to `debrief.ts`'s mechanical-fill.
+
+**But that evidence is one-directional, and this finding's own AMD reproduction is the other
+direction — which N-2 never measured.** N-2's dataset bucketed by whether the gap-through row graded
+a WIN; it never asked the mirror question: does blanket-excluding every full-band gap-through row
+*also* exclude real, gap-through LOSSES (like this finding's AMD case, which historically graded
+`"stop"` — a loss) from the win/loss denominator? Excluding a genuine loss from the denominator is
+not symmetrically conservative the way excluding a phantom win is — it can *inflate* the reported win
+rate by shrinking the denominator on the loss side while the win side (already fixed by N-2) stays
+protected. N-2's own historical numbers hint at how large this could be: of the 26 plays published as
+of 2026-07-14, only 14 were app-resolved at all, and re-grading all 26 under current
+`resolveOutcome` rules produced **1 target / 5 stop / 3 open / 17 unfilled** — a large `"unfilled"`
+bucket that N-2's analysis never split by "would this have graded a loss under debrief.ts's
+mechanical-fill logic." That 17-of-26 figure is now two months stale (this session's live
+`healthcheck:legacy` reports `resolved=26` today, a different cohort) and unauthenticated access
+to `GET /api/market/nighthawk/record` from this sandbox returned 401 rather than the real current
+breakdown, so this could not be re-measured live this cycle.
+
+**Net effect on the recommendation:** this does not resolve the finding — plan-integrity is now
+better-evidenced on the phantom-win side, but the *product decision* the original finding calls for
+is unchanged, and is now sharper: whoever decides should also see whether the current `"unfilled"`
+population contains asymmetric loss-exclusion, not just re-litigate the win-side case N-2 already
+settled. **Recommended follow-up measurement** (not attempted here — needs authenticated access to
+the live record, which this sandbox could not obtain this cycle): for every currently-`"unfilled"`
+graded row, replay it through `debrief.ts`'s `computeFill`/mechanical-fill logic and split the result
+by whether it would have graded a win or a loss. If the unfilled bucket skews toward loss-shaped rows
+being excluded, that is independent evidence for tightening `resolveOutcome` (or for debrief.ts's
+computeFill to gain a matching band-integrity mode) beyond what N-2 alone shows. No gate/grading
+logic changed by this update — still OPEN, still holding for a product decision, now with the fuller
+evidence trail in one place.
+
+### Update 2 (same day, next cycle): the 401 was a self-inflicted usage bug; got live data — and a real severity downgrade
+
+The previous update's "could not obtain authenticated access" was this session's own mistake, not a
+real access limit: `fetchAuditJson(base, path)` (`scripts/audit/lib/audit-auth-fetch.mjs`) takes
+`base` and `path` as **two separate arguments**; the prior attempt passed one concatenated URL as
+`base` with `path` undefined, which 401'd. Corrected, it authenticates cleanly (`via: "cron"`).
+
+**Live `GET /api/market/nighthawk/record?days=90` (2026-09-13):** current segment (`v2_fillability`,
+resolved 141, opens 86) — `unfilled: 25`, `pulled: 27`, **`unfilled_not_pulled: 23`**, decided 5
+(2 wins / 3 losses), win rate 40% (CI 11.8–76.9%, genuinely low-n). This confirms the exclusion
+population is real and non-trivial today, not just a 2026-07-14 artifact — roughly a quarter of all
+non-open resolved rows are excluded as unfilled.
+
+**A more important correction, from reading `debrief.ts`'s failure-mode classifier itself
+(`debriefPlay`, precedence list at line ~487):** its PRIMARY per-play tag is gated on the
+already-**persisted** `row.outcome` — step 2 of the precedence is literally `outcome unfilled →
+band_detached | unfilled_never_traded_back`. `computeFill`'s own `filled`/`detail` fields are used
+only for descriptive nuance WITHIN that branch (distinguishing "near-miss" from "structurally
+detached" via distance-from-gate-threshold, and for MFE/MAE excursion narrative) — **never to
+re-decide or override whether the row counts as a win, loss, or unfilled.** Every aggregate stat in
+`debrief_report` (`failure_modes`, `improvement_queue`, etc.) and the whole `record` win-rate
+computation defer to `resolveOutcome`'s stored `outcome` as the single source of truth.
+
+**What this changes:** the original finding's severity (P2) assumed two competing graders could
+produce two different live answers about the SAME play. They can't, today — `computeFill` never gets
+a chance to override `resolveOutcome`'s persisted verdict anywhere in the product. The AMD 2026-07-07
+row itself proves this precisely: its stored `outcome` is `"stop"` (graded before/under different
+logic), so `debriefPlay` classifies it via the `outcome === "stop"` branch, matching the real record —
+`computeFill.filled === true` on that row is consistent color, not a contradiction anyone sees.
+**The live risk is narrower than originally scored: it is entirely about what `resolveOutcome`
+produces for a FUTURE full-band-gap-through row (excluding it from win/loss), not about `debrief.ts`
+silently disagreeing with a live stat anywhere today.** Downgrading blast-radius language
+accordingly; the underlying product question (is blanket "unfilled" exclusion, including gap-through
+LOSSES, the right rule) is unchanged and still needs the same decision — this only narrows WHERE the
+consequence of that decision is felt (future grading only, not a live cross-module inconsistency).
+
+Live population for the recommended follow-up measurement (replay each of the 23 currently
+`unfilled_not_pulled` rows through `computeFill` and split win/loss-shaped vs. genuinely never-close):
+`debrief_report.summary.failure_modes` (different window/report, so not a direct subtraction) shows
+`unfilled_never_traded_back: 16` of 141 debriefed rows — still requires a per-row replay to answer
+the loss-exclusion question precisely; the admin analytics/debrief-aggregate routes only expose
+aggregates, not a raw per-play list, so this remains a follow-up needing a small dedicated script
+(same shape as this toolkit's other `*-ab.mjs` measurement tools), not something answerable from the
+existing endpoints alone. No gate/grading logic changed by this update — still OPEN/HOLD.
+
+## G-23's qualify-to-commit dislocation had a real predicate but no way to measure its real distribution
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (additive telemetry — no gate/behavior change) |
+| **Severity** | P3 (observability gap, not a live defect — the gate itself was already correct and already fail-closed on missing data) |
+| **Area** | 0DTE — `src/lib/zerodte/scan.ts` (`persistZeroDteScan`'s `entry_context` builder); reads `gates.ts`'s existing `qualificationDislocationGateBlocks` (G-23) inputs |
+| **Found by** | Night Hawk three-engine deep audit (0DTE `NEEDS_MEASUREMENT` item — instrument G-23 before considering a premium-side check) |
+
+### Root cause / gap
+
+G-23 (`qualificationDislocationGateBlocks`, shipped 2026-09-09) blocks a fresh 0DTE commit when
+the underlying moved too far, too fast, since the setup qualified (magnitude+velocity trigger) or
+the contract's book is crossed/locked at commit time. The predicate itself was correct and already
+tested — but it only ever surfaces as a formatted `reason` string on the rare commit it actually
+blocks. Nothing pinned the same elapsed-ms/move-pct math for the (presumably much larger)
+population of commits that DID clear the gate, so there was no way to ask, from real production
+data, how large the real qualify-to-commit gap typically is, or whether the gate's own
+1.5%/5-minute threshold is well-calibrated against that distribution — only anecdote.
+
+### Fix
+
+Purely additive telemetry, no gate/scoring/behavior change: `persistZeroDteScan` now pins a
+`qualification_dislocation_telemetry` blob onto `entry_context` for every committed row, computed
+from the same two frozen fields (`qualification_underlying_price`/`_as_of`) and the same live
+fields (`underlying_price`/`_as_of`) the gate itself already reads — same formula
+(`elapsedMs = currentAsOf - qualificationAsOf`, `movePct = |current - qualification| / qualification
+× 100`), deliberately recomputed rather than read off the gate verdict so the telemetry can never
+disagree with what actually decided a block. Omitted (never zero-filled) when either snapshot is
+missing, matching the "never fabricate" discipline of every other evidence-only field in this
+object (`origin_direction_conflict`, `session_gap_days`, etc.).
+
+### Why this and not a premium-side check yet
+
+The cross-question review that surfaced this item explicitly named the sequencing: instrument
+first, then decide whether a premium-side (contract mark) dislocation check is warranted, based on
+real accumulated data — not before. This PR only ships the instrumentation.
+
+### Evidence / tests
+
+Added two tests to `src/lib/zerodte/scan.test.ts`:
+- pins the telemetry blob (qualification/current price+as-of, `elapsed_ms`, `move_pct`) on a
+  commit that clears G-23 (1% move over 2 minutes, under the 1.5%/5-min trigger) — proving the
+  telemetry is captured regardless of whether the gate actually blocks.
+- omits the blob entirely (not a null-filled shape) when no qualification snapshot was ever frozen
+  (the ordinary case for any setup path that doesn't call `enrichSetup`).
+
+Verified RED before the fix (both new tests fail) / GREEN after (39/39 `scan.test.ts` pass),
+`tsc --noEmit` clean.
+
+### Next step (not this PR)
+
+Once 1-2 weeks of live commits have accumulated this field, pull
+`GET /api/market/zerodte/record` and build the real qualify-to-commit elapsed/move-pct
+distribution before considering any premium-side dislocation check or threshold retune.
+
+## 0DTE skip-grading's `session_date` normalization silently fetches the WRONG day's bars — every row, every gate — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | 0DTE Command / Night Hawk (skip-grading — the counterfactual "blocked value" grader) |
+| **Severity** | P0 — structural, not small-sample: every one of the 18 hard-gate codes in `GET /api/market/zerodte/calibration`'s `blocked_value[]` read `n=0` graded outcomes on the Blocked side over a 90-day window (`docs/audit/0DTE-RESEARCH.md`'s "Gate-overlap ablation" section, 2026-09-10 run) — the counterfactual grader that is supposed to answer "what did the hard gates cost us?" has been silently producing zero usable evidence |
+| **Files** | `src/lib/zerodte/skip-grading.ts` (`runSkipGrading`'s row-mapping), `src/lib/zerodte/skip-grading.test.ts` |
+| **Prompted by** | `docs/audit/0DTE-RESEARCH.md`'s "Gate-overlap ablation" section's own NOT-YET-VERIFIED hypothesis (a different, adjacent field — see "Hypothesis investigated and REFUTED" below) |
+
+### Root cause
+
+`runSkipGrading` (`src/lib/zerodte/skip-grading.ts`) reads `zerodte_scan_rejections` rows and, for
+each one, fetches that session's underlying minute bars (`barsFor(row.ticker, row.session_date)`)
+to grade the counterfactual "would this blocked play have won?" — comparing the first bar
+at/after the block instant (`blockedAtMs`) against later bars in the SAME session.
+
+`session_date` is a plain Postgres `DATE` column (no time-of-day, no timezone — the scanner
+already stamps it with the correct ET trading-day string at INSERT time, e.g. `'2026-07-10'`).
+node-postgres hands a `DATE` column back to the application as a JS `Date` object anchored at
+**UTC midnight** for that calendar day (this is standard, well-established pg behavior, already
+documented at length elsewhere in this exact file — `src/lib/db.ts`'s `isoDateString` doc comment:
+*"DATE has no timezone, midnight-UTC is the day"*).
+
+The buggy line:
+
+```ts
+// session_date arrives as a Date object from pg — normalize to ET YYYY-MM-DD.
+session_date:
+  r.session_date instanceof Date ? etYmd(r.session_date.getTime()) : String(r.session_date).slice(0, 10),
+```
+
+`etYmd()` is built for converting a REAL epoch instant (e.g. `opts.nowMs`, an actual wall-clock
+moment) into its America/New_York calendar day — correct for that use elsewhere in this same file
+(the `since`/`today` window bounds). It is the WRONG operation for round-tripping a `DATE` column:
+run the midnight-UTC instant for `DATE '2026-07-10'` through `etYmd()`, and because
+America/New_York is **behind** UTC, midnight UTC is always still the *previous evening* in ET —
+so `etYmd()` silently returns **`"2026-07-09"`** for every single row whose real, stored
+`session_date` is `2026-07-10`. This is deterministic, not occasional: it happens on 100% of rows,
+every day of the year (the UTC/ET offset is always negative for New York; the shift only ever
+lands on the previous calendar day, never the same one).
+
+That wrong date then drives the underlying-bar fetch (`fetchAggBarsWithDiagnostics`) to pull the
+**wrong session's** minute bars — every bar timestamp returned is from the day BEFORE the row's
+real session. `entryBarOf`'s scan (`if (bar.t < blockedAtMs) continue;`) then finds no bar at or
+after `blockedAtMs` (which is correctly computed, on the real day) among bars that are all from the
+prior calendar day — so it always returns `null`, and `gradeSkippedPlay` falls through to the
+generic ungradeable reasons:
+
+- `"no underlying bar at/after the block time inside the plan window"`
+- `"no bar data available for the session — neither contract nor underlying path reconstructable"`
+
+— exactly the two dominant reasons the 2026-09-10 research-doc run found across effectively every
+ungradeable row, on every gate code, regardless of ticker or gate.
+
+### Hypothesis investigated and REFUTED (do this before reading the fix)
+
+The research doc's own not-yet-verified hypothesis blamed a DIFFERENT field: `blockedAtMs =
+Date.parse(row.observed_at)`, theorizing that `observed_at` (a `TIMESTAMPTZ` column) round-trips
+through Postgres without an explicit UTC marker and gets timezone-misinterpreted.
+
+This was checked against the real code and **does not hold**:
+- `zerodte_scan_rejections.observed_at` is declared `TIMESTAMPTZ NOT NULL DEFAULT NOW()` (`db.ts`)
+  — a real instant column, not a naive timestamp.
+- No `setTypeParser` override exists anywhere in this repo (confirmed by repo-wide grep) — pg's
+  default parser hands `TIMESTAMPTZ` back as a genuine JS `Date` object representing the correct
+  absolute instant, exactly as `db.ts`'s own `isoTimestampString` doc comment documents.
+- `skip-grading.ts` does `observed_at: String(r.observed_at)` (i.e. `Date.prototype.toString()`),
+  then later `Date.parse(row.observed_at)` in the SAME process. Verified empirically (`node -e`,
+  three different process `TZ` settings — `UTC`, `America/New_York`, `Asia/Kolkata`): this
+  round-trips to the **exact same epoch millisecond**, every time, in every zone, because
+  `toString()` always embeds an explicit `GMT±HHMM` offset and V8's `Date.parse` is the exact
+  inverse of its own `toString()` format. There is no timezone shift here — only sub-second
+  truncation (irrelevant at minute-bar granularity).
+
+So the specific mechanism the doc proposed is wrong, but the doc's broader instinct — "a
+timezone/naive-timestamp bug in this exact function" — was right, just pointing at the sibling
+field. This is why the task asked to trace the real code rather than assume the stated hypothesis:
+tracing it found the real bug one field over.
+
+### Evidence (RED → GREEN)
+
+Added a regression test that supplies `session_date` in pg's REAL return shape — a JS `Date` at
+UTC midnight, e.g. `new Date("2026-07-10T00:00:00.000Z")` — rather than the plain string every
+prior hermetic test in this file used (which is why this shipped undetected: no existing test ever
+exercised the actual pg-returned shape for this field).
+
+**RED (pre-fix, `etYmd(r.session_date.getTime())`):**
+```
+Expected values to be strictly deep-equal:
+  [ { from: '2026-07-09', symbol: 'NVDA' } ]   // actual — wrong day
+  [ { from: '2026-07-10', symbol: 'NVDA' } ]   // expected — the row's real session_date
+```
+
+**GREEN (post-fix):** the underlying-bar fetch is issued for `2026-07-10` (the correct day), and
+with real bars present at/after `blockedAtMs`, the row grades successfully (`graded: 1,
+ungradeable: 0`) instead of landing on the generic "no bar data" reason.
+
+Full suite: `npm test` (Node 20) — **13787 pass / 0 fail / 3 skipped**, unchanged pass count aside
+from the two new assertions in this file. `npx tsc --noEmit` clean.
+
+### Fix
+
+Replace the ET-conversion with the same UTC-extraction idiom `src/lib/db.ts` already establishes
+and exports for exactly this situation (`isoDateString` — "DATE has no timezone, read its UTC
+Y-M-D"), rather than inventing a second implementation of the same fix:
+
+```ts
+session_date:
+  r.session_date instanceof Date ? db.isoDateString(r.session_date) : String(r.session_date).slice(0, 10),
+```
+
+(`db` is already dynamically imported at the top of `runSkipGrading` for `dbQuery`/`dbConfigured`,
+so this adds no new import surface.) The test file's `../db` mock gained a real, lockstep copy of
+`isoDateString`'s logic so the hermetic test exercises the same normalization production does.
+
+### Blast radius
+
+Checked for the same `etYmd(<DATE-column>.getTime())` shape elsewhere in the 0DTE/swing/legacy
+lanes (grep for `etYmd(` across `src/lib/zerodte/`, `src/lib/swing/`, `src/lib/nighthawk*` and
+`src/features/nighthawk/`) — this is the only call site that feeds a `DATE`-typed column's
+`Date` object into `etYmd()`. Every other `etYmd()` call in the codebase converts a real epoch
+instant (`Date.now()`, `nowMs`, a `TIMESTAMPTZ` value), which is exactly what the function is for.
+
+### What was deliberately left unchanged
+
+- `observed_at`'s `String(Date) → Date.parse(string)` handling: verified correct (see above), not
+  touched.
+- `etYmd()` itself: correct for its actual real callers (`since`/`today` window bounds derived from
+  `opts.nowMs`); not rewritten or removed.
+- No gate threshold, scoring, or grading rule changed — this is purely a data-plumbing fix that lets
+  the existing, already-correct `gradeSkippedPlay` core see the RIGHT day's bars. The counterfactual
+  honesty rules (conservative ties, never fabricating a premium grade, `ungradeable` when truly not
+  reconstructable) are untouched.
+
+### Next step (not done here, flagged for the next audit cycle)
+
+Once this ships and a fresh set of `zerodte_scan_rejections` rows is graded under the fix,
+re-run `scripts/audit/zerodte-gate-primary-ablation.mjs --days=90` (or the calibration report's
+`blocked_value[]` directly) — the gate-overlap ablation study that was blocked entirely by this bug
+should now produce real Blocked-side win-rate/EV numbers instead of `n=0` across the board. Log
+that re-check in `docs/audit/MARKET-OPEN-VALIDATION.md`.
+
+## 2026-09-10 — Ask Largo swing play-brief never narrated how long a WATCH thesis has been building — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Night Hawk Swings — Ask Largo play-brief (`src/lib/swing/play-brief.ts`) |
+| **Severity** | P3 (dead-wired data / narrative completeness gap, not a live-trading bug) |
+| **Found by** | Night Hawk Swings audit lane, standing v3 mandate ("aggressive improvement-hunting... a signal that exists but isn't surfaced in the play-brief") |
+
+### Root cause
+
+`TerminalPlay.detectedAt` — the "WATCH Published clock", already threaded from `HorizonDeckSource.firstSeenAt` through `terminalPlayFromHorizon` (`adapters.ts`) and rendered on the live Command Deck panel — was never read by `play-brief.ts`'s `watchEntrySection`, the function that composes the Ask Largo narrative for a WATCH-status play. A member asking Largo directly about a WATCH candidate had no way to learn whether it was flagged an hour ago or over a month ago; the brief read identically either way.
+
+### Evidence
+
+Live check of the WATCH lane (`GET /api/market/nighthawk/horizons?view=swings`, 2026-09-10) found real rows sitting well below the 60-point commit score floor for extended periods with no narrative distinction from freshly-flagged candidates:
+
+```
+AMD:  score 20.6 (floor 60), firstSeenAt 2026-07-27 — 45 days
+FSLR: score 59.1 (floor 60), firstSeenAt 2026-08-31 — 10 days
+PLTR: score 34.3 (floor 60), firstSeenAt 2026-09-01 — 10 days
+```
+
+This clears this lane's own 3-instance noise threshold. Confirmed `fadeStaleSwingCandidates` (`accumulation-store.ts`) already fades a candidate that stops re-qualifying in fresh discovery scans — so a persistent row like AMD is a genuinely re-qualifying signal, not an orphaned one nobody prunes. But "still qualifying" and "still fresh" are different facts, and the play-brief only ever surfaced the first.
+
+### Fix
+
+Added a `daysOnWatch(sinceIso, nowMs)` helper and a new line in `watchEntrySection` (only emitted when `play.detectedAt` is present, never fabricated): `"First flagged **N days ago** (ET date) — still on WATCH, not yet graduated to a real position."` Threaded `readMs` (already computed once at the top of `composeSwingPlayBrief`) into `watchEntrySection` rather than calling `Date.now()` inside the narrative builder, matching the file's existing convention (`gexFreshness(gex, readMs)`).
+
+### Fix rationale
+
+No new data plumbing was needed — `detectedAt` already reaches every WATCH-status `TerminalPlay`, it just wasn't read anywhere in `src/lib/swing/*.ts`. This is purely additive: one new conditional line in an existing section, no other section, gate, or calibration touched. Deliberately scoped to the fact alone ("N days ago") rather than also citing the score-floor gap (e.g. "45 pts below the commit floor") — the commit score floor is not currently threaded onto `TerminalPlay` at all, and adding that plumbing is a separate, larger change better left for its own PR if wanted.
+
+### Blast radius
+
+`watchEntrySection` is called from exactly one place (`composeSwingPlayBrief`'s `bucket === "watch"` branch) — grepped, confirmed no other caller. `TerminalPlay.detectedAt` was already read elsewhere (Command Deck UI); this fix only adds a NEW reader, changes nothing about how `detectedAt` is populated.
+
+### Tests
+
+`src/lib/swing/play-brief.test.ts`: two new tests — a WATCH play with a real (backdated) `detectedAt` narrates the age line with the correct day count; a WATCH play with `detectedAt: null` omits the line entirely rather than fabricating one.
+
+`npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief.test.ts`: 42/42 pass.
+Full suite (Node 20): 13584 pass / 0 fail / 3 skipped. `npx tsc --noEmit`: clean.
+
+## Ask Largo swing brief — CLOSED plays show nothing but stale live-desk "Unavailable" chips — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **ID** | BO-P1-swing-closed-play-brief-unavailable-noise |
+| **Pri** | P1 |
+| **Area** | Night Hawk Swings / Ask Largo |
+| **Status** | FIXED |
+
+### Symptom (user-reported, live production)
+
+Operator screenshot of the live Swings board, CLOSED tab, AAPL 327.5C 5DTE (closed 2026-09-04,
+-56.2%): the "ASK LARGO · LIVE INTELLIGENCE" panel showed **six stacked "Unavailable" chips and
+nothing else** — HELIX flow pipeline stale, Vector heatmap/dark pool "not present on this read",
+Vector snapshot stale, prior-session swing discovery scan, prior-session Night Hawk edition. User:
+*"check why this is all empty values?? and fix the issues."*
+
+### Root cause
+
+`collectBriefUnavailableSources()` (`src/lib/swing/play-brief-absence.ts`) is called
+unconditionally by `composeSwingPlayBrief()` regardless of the play's `statusBucket` (watch/open/
+closed) — unlike `closedSection()`/`thesisHealthSection()`/`managementSection()` elsewhere in
+`play-brief.ts`, which are already bucket-gated. Every check inside it that measures "is TODAY's
+live desk state fresh/current" (HELIX flow freshness, GEX/Vector staleness + desk-state presence,
+Vector section absences, open-book ledger read, and the three prior-session mismatch checks —
+swing discovery scan, 0DTE Command, Night Hawk swings) compares against `ctx.sessionDate`, which
+`play-brief-context.ts` always computes as **today's** ET session date at request time — never the
+CLOSED play's own historical session. For a play that closed on an earlier session, every one of
+these checks is individually honest but **permanently true once any time has passed since close**:
+today's live desk state is never "current" relative to a play that finished days or weeks ago. The
+result is a wall of true-but-unhelpful negative chips with zero positive content — exactly what
+the screenshot shows.
+
+### Fix
+
+Gate every live-desk-freshness/session-currency check in `collectBriefUnavailableSources()` behind
+`isClosed = ctx.play?.status === "CLOSED"`, skipping them for closed plays: HELIX flow staleness,
+GEX cold-matrix/staleness, Vector desk-state absence/section-absences/staleness, open-book ledger
+failure, and the three prior-session mismatch chips (swing discovery scan, 0DTE Command, Night
+Hawk swings). **Genuine fetch failures are NOT skipped** — `ecosystemFetchFailed`,
+`vectorFetchFailed`, and `meridian?.unavailable` still surface for closed plays, since those
+indicate the read itself broke (still true after close), not merely that today's data doesn't
+apply to a historical row. The `option mark` check and the `thesis health` uncalibrated check were
+already implicitly closed-safe (both already gated to `OPEN`/`HOLD`/`TRIM` via
+`playExpectsLiveOptionMark`/an explicit status allowlist) and needed no change.
+
+### Blast radius
+
+Single call site (`composeSwingPlayBrief` → `collectBriefUnavailableSources`), so every CLOSED
+swing play's Ask Largo panel benefits — no other consumer of `collectBriefUnavailableSources`
+exists.
+
+### Evidence
+
+`npx tsx --test src/lib/swing/play-brief-absence.test.ts` — 41/41 pass, including two new
+regression cases: a CLOSED play with every live-desk check firing (HELIX stale, cold GEX, missing
+Vector desk state, stale Vector snapshot, Vector section absences, open-book failure, stale
+discovery scan, stale 0DTE, stale Night Hawk edition) now returns an **empty** unavailableSources
+list; a CLOSED play with genuine `ecosystemFetchFailed`/`vectorFetchFailed`/`meridian.unavailable`
+still surfaces those three. `npx tsx --test src/lib/swing/play-brief.test.ts
+src/lib/swing/play-brief-intel.test.ts src/lib/swing/play-brief-narrative.test.ts
+src/lib/swing/play-brief-narrative-coaching.test.ts` — 160/160 pass (composer-level regression).
+`npx tsc --noEmit -p .` — clean.
+
+| **Status** | FIXED — PR opened, merge pending CI/peer-review |
+
+## TRIM manageAction stuck on TAKE_PARTIAL (#5) — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — verified live in code 2026-09-20 (shipped, not merely PR'd) |
+| **Audit** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` (PR #4178), finding #5 |
+
+`manageObservablesFromEvent` now clears the status-derived `TAKE_PARTIAL` fallback when the latest
+manage snapshot action is `HOLD`.
+
+## Short volume ratio displayed as 2500%+ (#12) — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — verified live in code 2026-09-20 (shipped, not merely PR'd) |
+| **Audit** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` (PR #4178), finding #12 |
+
+`normalizeShortVolumeRatio` in `ticker-fundamentals.ts` converts percent-scale upstream values
+(>1) to 0–1 before render.
+
+## 2026-09-06 — [FINDING, P1 Night Hawk Swings / Ask Largo] Swing serving-snapshot TTL (26h) is shorter than the ordinary Friday-close → Monday-open gap, silently zeroing thesis-health enrichment every weekend — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED — `SWING_SERVING_TTL_SEC` raised 26h → 120h; regression test derives the worst-case ordinary weekly gap from `SWING_SCAN_PHASES` itself. |
+| **Priority** | P1 — recurs every single week, silently degrades Ask Largo's + the main board's core "Thesis health" panel for every live committed swing position |
+| **Area** | Night Hawk Swings / Ask Largo — `src/lib/swing/serving-lane.ts` |
+| **Branch** | `fix/swing-serving-snapshot-weekend-ttl` |
+
+### Context — where this was found
+
+Standing Ask-Largo ownership mandate cycle (CLAUDE.md), live health-check + play-brief deep-dive
+against production on 2026-09-06 (a Sunday). Session's own prior commits this cycle (#4182, merged
+hours earlier) claimed to wire `attachThesisExplanation` into the Ask Largo swing play-brief path
+specifically to fix `SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` findings #8/#9 (thesis-health frozen at a
+generic 46%/Degraded for every live position because factors/regime never reached it). Re-fetching
+the exact same 4 live committed positions (NRG:34, NN:32, CG:25, CRWD:19) post-merge showed **zero
+change** — all four still render byte-identical `46% · Degraded` with `Persistence — unknown`,
+`Entry geometry — n/a`, `Signal stack — no signals`, `Regime fit — unread`, exactly as the
+pre-fix audit captured. That is the finding below, not a report that #4182 is broken — the fix is
+correct code, but its one trigger condition (a live persisted discovery snapshot) is absent right
+now in production, and will be absent every week at this point in the cycle.
+
+### Root cause
+
+`attachThesisExplanation` (`serving-lane.ts`) is FAIL-CLOSED by design: no dossier for the ticker
+this scan ⇒ leave the row untouched (correct — never invent an explanation). Both call sites —
+`getSwingServingLane` (the main `/horizons?view=swings` board, pre-existing) and
+`play-brief-resolve.ts`'s `loadOpenTerminalPlay` (Ask Largo, #4182) — get their dossier index from
+`discoverSwingFromPersisted()`, which returns `null` outright whenever
+`readSwingServingSnapshot()` (a single Redis key, `swing:serving:latest:v1`) comes back empty. A
+`null` result means dossier lookup finds nothing for ANY ticker, so the enrichment silently no-ops
+for every committed position at once — not just the one that rotated out of today's screen.
+
+The snapshot's TTL (`SWING_SERVING_TTL_SEC`, was `26 * 60 * 60`) was sized, per its own comment, to
+"outlive a full session day so the latest scan serves until the next scan refreshes it." That
+reasoning holds Monday–Thursday (next weekday scan is <24h later) but not Friday: `swing-discovery`
+is `weekdays_only` (`cron-registry.ts`), so the next scan after Friday is Monday, not Saturday.
+
+**Live evidence, this cycle:**
+- CloudWatch Logs Insights (`/ecs/blackout-production`, `filter @message like /swing-discovery/`,
+  4-day window) shows the last write of the week at **2026-09-04 20:35:00 UTC** (Friday POST_CLOSE:
+  `commit gate: 0 graduated-eligible / 0 opened / 1 shadow-eligible / 1 shadowed`) — no OVERNIGHT
+  entry after it, and nothing again until the next weekday.
+- 26h later = **2026-09-05 22:35 UTC (Saturday evening)** — the snapshot expires and stays gone.
+- Confirmed live via `GET /api/market/nighthawk/horizons?view=swings` on 2026-09-06 ~10:03 UTC
+  (Sunday): `board.lanes.SWING.scanAsOf: null`, `scanSessionDay: null` — `readSwingServingSnapshot()`
+  is returning nothing, exactly as predicted.
+- Confirmed via `GET /api/market/swing/play-brief?playId=SWING:<T>:<id>` for all 4 live positions
+  (NRG:34, NN:32, CG:25, CRWD:19): every "Thesis health" section reads `46% · Degraded` with the
+  identical generic pillar labels — the #4182 enrichment is a live no-op right now.
+- `docs/audit/findings-staging/2026-09-04-largo-swing-horizon-missing-freshness.md` (a different,
+  already-shipped fix) independently corroborates that "hours or days stale" was already an
+  acknowledged possibility for this exact 26h constant — it solved *visibility* of staleness for the
+  Largo chat tool (`swingHorizonForLargo`); this fix addresses the *frequency/duration* of the
+  underlying outage for the deterministic play-brief and board paths, which carry no such caveat and
+  still assert `confidence.level: "high"` while silently degraded (CTO-AUDIT finding #20).
+- `admin-cron-health.ts`'s own `effectiveStaleMinutes()` already applies a **2.5× weekend
+  multiplier** to `swing-discovery`'s own `stale_after_min` (36h × 2.5 = 90h) before flagging the CRON
+  itself unhealthy — i.e. the codebase already knows this cron's ordinary idle window over a weekend
+  is far longer than 26h; the serving-snapshot TTL simply never accounted for it.
+
+### Blast radius
+
+Both consumers of `discoverSwingFromPersisted()` share this root cause and are both fixed by the
+same TTL change (no other code touched):
+- `getSwingServingLane` (main Night Hawk Swings board) — loses `factors`/`regime`/`setupState`/
+  `entryStatus`/`thesisLevel` enrichment for every WATCH row and, via `attachThesisExplanation`, the
+  factors/regime borrow for every committed row.
+- `play-brief-resolve.ts`'s `loadOpenTerminalPlay` (Ask Largo swing play-brief, #4182) — same
+  factors/regime borrow, same silent no-op.
+
+Not touched (deliberately, scope discipline): `src/lib/banger/watch-cache.ts` has an identical
+`TTL_SEC = 26 * 60 * 60` literal, but its cache key is per-session-date
+(`banger:watch:v1:${sessionDate}`), not a single rolling "latest" key — the failure shape is
+different (a stale key for *today* isn't masked by an old day's key surviving) and needs its own
+investigation rather than being folded into this fix. Flagged for follow-up (PR #4076 comment).
+
+### Fix
+
+`SWING_SERVING_TTL_SEC`: `26 * 60 * 60` → `120 * 60 * 60` (5 days). Sized with headroom past the
+*measured* worst ordinary weekly gap (~58h: Friday POST_CLOSE end at 20:00 ET → Monday PRE_OPEN start
+at 06:00 ET, i.e. the case where OVERNIGHT — the day's last phase — never fires) to also cover a
+Monday market holiday (Friday close → Tuesday PRE_OPEN, ~82h). Comment on the constant explains the
+reasoning and the measurement so it can't silently regress again.
+
+### Regression test
+
+`src/lib/swing/serving-lane.test.ts` — new test `"SWING_SERVING_TTL_SEC survives the ordinary
+Friday-close -> Monday-open gap, not just a weekday one"`. Derives the worst-case gap
+programmatically from `SWING_SCAN_PHASES` (POST_CLOSE's `endMin` → PRE_OPEN's `startMin`, plus a full
+weekend) rather than hardcoding a number, so the assertion can't drift from `scan-cadence.ts` the way
+the original 26h constant drifted from the real weekly cadence.
+
+RED pre-fix / GREEN post-fix (git-stash proof, Node 20):
+```
+$ git stash push -- src/lib/swing/serving-lane.ts   # keep the test, revert only the TTL
+$ node --experimental-test-module-mocks --import tsx --test src/lib/swing/serving-lane.test.ts
+not ok 15 - SWING_SERVING_TTL_SEC survives the ordinary Friday-close -> Monday-open gap, not just a weekday one
+  error: 'SWING_SERVING_TTL_SEC (93600s) must exceed the Fri-close -> Mon-PRE_OPEN gap (208800s / 58.0h) ...'
+# pass 14 / fail 1
+
+$ git stash pop
+$ node --experimental-test-module-mocks --import tsx --test src/lib/swing/serving-lane.test.ts
+# pass 15 / fail 0
+```
+Also ran clean together with `play-brief-resolve.test.ts`, `product-reads-swing-freshness.test.ts`,
+`serving-board.test.ts`, `serving-ingest.test.ts` (37/37 pass) and `npx tsc --noEmit` (clean).
+
+### Suggested follow-up (not in this PR — raised with Cursor separately)
+
+- Same TTL-literal pattern in `src/lib/banger/watch-cache.ts` (`TTL_SEC = 26 * 60 * 60`) is worth an
+  independent check — different cache-key shape (per-session-date vs one rolling key) means the
+  failure mode may or may not be the same, but the magic number recurring unchecked is itself a
+  signal worth a second pair of eyes.
+- Once this snapshot reliably survives the weekend, it's worth re-auditing whether
+  `attachThesisExplanation`'s fail-closed behavior (CTO-AUDIT finding #32: persistence/entry-geometry
+  pillars have no live equivalent at all, even when a dossier IS present) is the next thing worth
+  closing — this fix restores the INTENDED degrade-to-last-scan behavior, it doesn't add new signal.
+
+## Rolled-chain closed brief showed wrong leg P&L (#1) — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — verified live in code 2026-09-20 (shipped, not merely PR'd) |
+| **Audit** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` (PR #4178), finding #1 |
+
+`loadClosedPlay()` reused `closedDeckSourcesFromChains`, which applies chain-composite worst-leg
+P&L for the CLOSED deck list. A positionId-keyed Ask Largo brief now uses
+`closedDeckSourceFromRow(target)` so exit P&L matches the requested leg.
+
+## dataHonestyCoaching markIsSync polarity inverted (#6) — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — verified live in code 2026-09-20 (shipped, not merely PR'd) |
+| **Audit** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` (PR #4178), finding #6 |
+
+Coaching now warns when `markIsSync === true` (no `markAsOf`), matching `dataFreshnessSection`
+polarity.
+
+## Ask Largo live brief missing thesis factors (#8/#9) — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — verified live in code 2026-09-20 (shipped, not merely PR'd) |
+| **Audit** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` (PR #4178), findings #8/#9 |
+
+`play-brief-resolve.ts` now calls exported `attachThesisExplanation` (same as main board serving
+lane) after `livePlayFromSwingPosition`.
+
+## 2026-09-06 — `get_horizon_outcomes` graded 0DTE rows on the MECHANICAL lane while claiming to report the member-facing headline — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Priority** | P2 |
+| **Area** | 0DTE outcome grading / cross-lane reporting (`horizon-outcomes.ts`, Largo `get_horizon_outcomes`) |
+| **PR** | (this branch) |
+
+### Root cause
+
+`src/lib/horizon-outcomes.ts`'s `mapZeroDteOutcome` (backing `/api/admin/nighthawk/horizon-outcomes`
+and Largo's `get_horizon_outcomes`/cross-lane tools, grouped with the Track Record tool set in
+`system-prompt.ts`: *"get_horizon_outcomes (graded win/loss across lanes)"*) computed its ZERO_DTE
+win/loss/pnl from `record.ts`'s `officialPlanPnlPct`/`isZeroDteWin`, and the file's own header
+comment called that "the canonical member-facing win/loss."
+
+`record.ts` documents the opposite for those exact functions: `officialPlanPnlPct` backs
+`mechanicalGradeView` ("MECHANICAL grade view... the labeled comparison, not the headline" —
+`record.ts:324`), the number calibration and the feature store grade on. The real member-facing
+headline is `managedGradeView`/`asManagedPnlPct` — "AS-MANAGED grade... the exit the member was
+ACTUALLY guided to take... This is the member-facing per-play result" (`record.ts:58-61`), which is
+what `buildZeroDteRecord`'s top-level `wins`/`losses`/`win_rate_pct` are built from and what
+`/api/market/zerodte/record` and the Track Record UI (`NighthawkAnalyticsPanel`, `PlayHistoryTable`)
+actually render.
+
+The two lanes can genuinely disagree. `officialOverridingRealExit` (the one mechanism that lets
+`officialPlanPnlPct` follow a real recorded exit) only fires when the row carries a GENUINE WS-11
+trim-scale reconstruction (`readReconstructedTrimScale` — requires a non-empty `tranches` array) to
+override. A row closed by a live-only exit reason (thesis-break/ratchet-floor/flat-timeout) that
+never went through a trim-scale reconstruction at all — a plain ratchet-mode or single-exit row —
+never reaches that override, so `officialPlanPnlPct` falls straight through to the row's raw
+executable/mechanical `plan_pnl_pct`, ignoring the real exit entirely.
+
+### Concrete divergent scenario
+
+A row with `entry_context.executable = { plan_outcome: "doubled", plan_pnl_pct: 6.25 }` (no
+`tranches` — a plain executable grade, not a WS-11 reconstruction) and
+`entry_context.exit = { reason: "thesis_break:gex_walls", pnl_pct: -12 }` (a real, live-only exit):
+
+- `record.ts`'s `managedGradeView` / `/api/market/zerodte/record` / Track Record UI: the real exit
+  blocks the (nonexistent) reconstruction and reports the real exit → **loss, -12%**.
+- Pre-fix `horizon-outcomes.ts`: `officialOverridingRealExit` returns null (no `reco`), falls to
+  `readExecutableGrade(...)?.plan_pnl_pct` → **win, +6.25%**.
+
+Same row, same window, opposite label on `get_horizon_outcomes`/the admin horizon-outcomes report
+vs. the actual Track Record. This is a distinct gap from the already-documented mid-vs-official
+divergence (`OUTCOME-GRADING-SPEC.md` §9, which `horizon-outcomes.test.ts`'s existing WS-10/WS-11
+test covers) — that one is intentional and already correctly modeled; this is official-vs-as-managed,
+which no existing test or spec addressed.
+
+### Fix
+
+`mapZeroDteOutcome` now reads `asManagedPnlPct(row)` (record.ts's own exported AS-MANAGED number,
+"the same number `managedGradeView`'s headline reports") instead of `officialPlanPnlPct`/
+`isZeroDteWin`. `isGradedZeroDteRow` (the graded-row gate) is unchanged — only the pnl/win source
+once a row is confirmed graded. Also corrected the file's header comment, which stated the false
+claim that caused this gap, so a future reader doesn't reintroduce the same mismatch.
+
+### Evidence
+
+- New test, RED before / GREEN after (`git stash` on `horizon-outcomes.ts`, test kept): "a
+  live-only exit (thesis_break) that ISN'T a WS-11 reconstruction reports the AS-MANAGED result,
+  not the executable/mechanical one" — failed (`label` was `"win"`, `pnl_pct` was `6.25`) pre-fix.
+- `horizon-outcomes.test.ts`: 14/14 pass post-fix, including the pre-existing WS-10/WS-11
+  reconstruction test (line 117) — unaffected, since that fixture has no `entry_context.exit` and
+  both `officialPlanPnlPct` and `asManagedPnlPct` agree on it (the reconstruction path is the one
+  case the two lanes are DESIGNED to agree on — `record.ts:414-416`: "one and the same, so the
+  headline and the grade agree by construction").
+- `record.test.ts`: 30/30 pass (untouched, confirms no regression to `record.ts` itself).
+- `tsc --noEmit`: clean.
+- Full `npm test` (Node 20): pending in this PR's evidence trail (see push).
+
+### Blast radius
+
+- `horizon-outcomes.ts` only — `record.ts` (the source of truth) is unchanged.
+- Confirmed via grep that `get_grader_agreement` (a separate, dedicated lane-comparison tool,
+  `evidence-reads.ts`) does not read `horizon-outcomes.ts` — its purpose (comparing grading lanes)
+  is unaffected by this fix.
+- No change to `/api/market/zerodte/record`, the Track Record UI, calibration, or the feature
+  store — all already correctly used their own lane's number.
+
+### Fix rationale
+
+Matches the file's own stated intent (`mapZeroDteOutcome`'s job is to report "the SAME number"
+`/api/market/zerodte/record` reports) rather than inventing new behavior — the bug was a comment
+that asserted the wrong function achieved that, not a design question. `truth_kind: "official"` is
+left unchanged: the label already meant "the record's authoritative number" in the file's own
+framing, and the fix makes the code match that framing rather than renaming around the bug.
+
+## 2026-09-06 — Helix Hot Tickers rail arrow used the pre-#2691 raw call/put sign — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED |
+| **Priority** | P2 |
+| **Area** | Helix — flow tape |
+| **PR** | (this branch) |
+
+### Root cause
+
+`#2691` (documented at length in `src/features/helix/lib/helix-direction-read.ts`) replaced the
+raw `callPremium - putPremium >= 0` sign rule with an aggression-aware read
+(`readDirection`/`directionTone`) across `ExpiryConcentration`, `NetPremiumLeaderboard`, and the
+ticker drawer's bias pill — because a SOLD call is bearish, not bullish, and the old sign rule got
+that backwards on measured live tape (SPX's top net-premium row: a green ▲ over $4.02B whose
+direction was 0.1% readable; "This week" horizon: bearish premium slightly exceeded bullish while
+the bar rendered green).
+
+`HelixHotTickersRail` (rendered on the same page, same tape, right next to those fixed panels) was
+never migrated. Its ▲/▼ arrow and bull/bear color still come straight from
+`computeHelixHotTickers`'s `callPremium - putPremium` sign — the exact rule #2691 replaced
+everywhere else.
+
+### Concrete divergent scenario
+
+A ticker with only CALL prints, all seller-initiated (`ask_pct` ≈ 20, below the sold threshold),
+$3M total premium, $0 in puts. `NetPremiumLeaderboard`/`readDirection` correctly classify this as
+**bearish** (a sold call is bearish). `HelixHotTickersRail`'s chip for the identical ticker on the
+identical tape computes `net = 3,000,000 - 0 = +3,000,000` and renders **▲ green "bull"** — the
+opposite verdict, two panels, one tape.
+
+### Fix
+
+`computeHelixHotTickers` now retains each ticker's flows during accumulation and computes
+`direction: DirectionRead` via `readDirection(flows)` — the same derivation
+`NetPremiumLeaderboard`/`ExpiryConcentration` already use, per `helix-direction-read.ts`'s own "one
+derivation, because three surfaces on one page silently disagreeing... is the failure this whole
+lane keeps finding" design note. `HelixHotTickersRail` renders the arrow via `directionTone(row.direction)`
+instead of the raw sign, and renders no arrow at all (not a guessed one) when the verdict rests on
+a minority of readable premium — matching the sibling panels' honest-neutral behavior.
+`callPremium`/`putPremium` are untouched (still the panel's own native call-vs-put fact, per the
+Largo product contract's ADDITIVE principle — they simply no longer decide the arrow's color).
+
+### Evidence
+
+- New tests, RED before / GREEN after (`git stash` on the two source files, tests kept):
+  - "direction is aggression-aware, not the raw callPremium - putPremium sign — a ticker that's
+    100% SOLD calls reads bearish, not bullish" — failed pre-fix (`direction` was `undefined`,
+    since the old type had no such field).
+  - "a mostly-unreadable ticker (no ask_pct) renders no direction tone, not a guessed one" — same
+    failure mode pre-fix.
+  - `helix-hot-tickers.test.ts`: 3/3 pass post-fix.
+- `tsc --noEmit`: clean.
+- Full `npm test` (Node 20): pending in this PR's evidence trail (see push).
+
+### Blast radius
+
+- `helix-hot-tickers.ts` (lib) and `HelixHotTickersRail.tsx` (component) only. `HelixHotTicker`
+  gained a `direction` field; the only construction site is `computeHelixHotTickers` itself
+  (repo-wide grep confirmed no other file constructs this type as a literal).
+- No change to `readDirection`/`directionTone`/`helix-direction-read.ts` — reused verbatim,
+  matching the module's own stated intent to be the single derivation every Helix surface shares.
+
+### Fix rationale
+
+Mirrors `NetPremiumLeaderboard`'s exact established pattern (accumulate flows per ticker, call
+`readDirection(flows)` once, keep the raw sum as a separately-labeled fact) rather than inventing a
+new derivation — the whole point of `helix-direction-read.ts`'s existence is that Helix surfaces
+must share one direction computation, not five that can each independently drift.
+
+## 2026-09-06 — [FINDING, P1 SPX Slayer / 0DTE] Live condor status derivation uses DIRECTIONAL peak/trough semantics — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED — `derivePlayStatus` + `advancePlayLatch` + `governor.ts` ledger stop/P&L paths now branch on condor structure; condors hold to time-stop, settlement remains `gradeCondorFromBars`. |
+| **Priority** | P1 — session-halt governor could false-stop on a winning condor |
+| **Area** | 0DTE / SPX Slayer — live position tracking + risk governor |
+| **PR** | fix/condor-live-status-inverted-peak-trough |
+
+### Root cause
+
+`derivePlayStatus` applied directional bought-premium peak/trough TRIM/stop logic to iron condors, whose `entry_premium` is net credit and mark is debit-to-close. A falling mark (winning) drove `trough` below the directional stop threshold → false `CLOSED/stopped`, contaminating governor stop count and member-facing STOPPED label.
+
+### Fix
+
+Minimal safe path: condors skip directional TRIM/stop closes in `derivePlayStatus` (hold to time-stop only), `advancePlayLatch` passes `isCondor`, `scan.ts` excludes condors from stopEvents, `ledgerRowStopped`/`ledgerRowRealizedPnlPct` branch condor-aware.
+
+### Evidence
+
+Regression tests in `board.test.ts`, `marks-math.test.ts`, `governor.test.ts` — condor sold at $0.60 credit, mark $0.25 (+58.3% win) no longer latches stopped.
+
+## `blackout-production-web` ECS deploy rolls one task at a time — CONFIRMS existing 2026-09-04 finding, does NOT reopen the `maximumPercent` fix
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | OBSERVED ONLY — duplicate confirmation of an already-tried-and-rejected fix; no new action proposed |
+| **Severity** | P2 |
+| **Area** | Infra / deploy pipeline (`blackout-production-web` ECS service) |
+
+### Supersedes / relates to
+
+This finding's *root-cause observation* (serialized one-task-at-a-time rollout) independently
+re-confirms `docs/audit/FINDINGS.md`'s existing entry **"`blackout-production-web` deploy speed:
+`maximumPercent` 120→200 change had NO measured effect — corrected finding"** (2026-09-04, tracked
+as **OPS-001** in `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`). That finding already:
+- tried raising `maximumPercent` 120→200 via a surgical `update_service` call,
+- watched the *next real deploy* after the change, and
+- found **identical** one-task-at-a-time cadence (~2:45/wave) — the extra headroom was never used,
+  because ECS's ROLLING controller's batching behavior is not something `maximumPercent` alone
+  controls.
+
+**This PR originally proposed raising `maximumPercent` 120→150 as a new fix. That proposal is
+wrong and is withdrawn** (per Cursor's independent peer review, which caught both problems below
+before this shipped as an infra change):
+
+1. **Already disproven by the identical, larger experiment.** 200% is a bigger headroom increase
+   than 150% would have been, and it measurably did not change the rollout cadence. There is no
+   reason to expect 150% would behave differently.
+2. **150% would violate the account's own documented Fargate vCPU quota window.** `.github/workflows/ecr-push-production.yml`
+   (lines 253-263) derives and hard-codes the *only* safe `maximumPercent` range given the Fargate
+   On-Demand vCPU quota (`L-3032A538` = 30 in this account) across the service's autoscaling range
+   `desiredCount ∈ [5, 12]`: **`maximumPercent ∈ [120, 124]`**. At `desired=12`,
+   `maximumPercent=150` permits `floor(12×1.50)=18` web tasks × 2 vCPU = 36 vCPU, plus the
+   market-worker's 2 vCPU = 38 vCPU — over the 30 vCPU quota. 120 is deliberately the smallest
+   value in that window (clears every deadlock case at the low end of autoscaling); the workflow
+   itself re-applies `minimumHealthyPercent=100,maximumPercent=120` on **every** deploy
+   (`update-service --deployment-configuration ...`, same file), so even a one-off `update_service`
+   bump would be silently reverted by the very next deploy.
+
+Both defects mean the original "Proposed fix" section below (kept for the historical record, struck
+through) should never be applied.
+
+### What this finding actually adds
+
+A **fresh, independent 2026-09-05 measurement** confirming the 2026-09-04 finding's "still open"
+status holds a day later — useful as a recency data point, not as a new root cause or a new
+proposed remedy. The real open question remains exactly what the 2026-09-04 finding already
+identified as unresolved: what specifically paces ECS's ROLLING controller to one task at a time
+regardless of `maximumPercent` headroom (candidates already named there: container `healthCheck`
+`startPeriod`/`interval` pacing, or something internal to the ROLLING deployment controller itself)
+— and, separately, `ecr-push-production.yml`'s `concurrency: {cancel-in-progress: false}` deploy-queue
+serialization (raised independently as CLQ-045 in the 360° cross-exam batch 1). Neither is something
+this finding resolves; both are legitimate follow-up investigation, not a `maximumPercent` change.
+
+### ~~Original proposed fix (WITHDRAWN — do not apply)~~
+
+~~Raise `maximumPercent` on `blackout-production-web` from `120` → `150`...~~ — see "Supersedes /
+relates to" above for why this is wrong. Do not raise `maximumPercent` above 124 (the documented
+quota ceiling) or apply it without also updating `ecr-push-production.yml`'s own re-applied
+`--deployment-configuration` value and `src/lib/ecs-deploy-config.test.ts`'s quota-guard assertions
+— an out-of-band `update_service` call alone will not survive the next deploy.
+
+### Why this matters
+
+Deploy-pipeline latency is in-scope for the standing performance/latency audit mandate. This
+confirms the bottleneck is real and still open as of 2026-09-05, but the fix is NOT a
+`maximumPercent` bump — that avenue is closed per the evidence above. The genuine next steps
+(ECS ROLLING controller batching, container health-check pacing, or the separate build/push queue
+serialization) remain open work for a future investigation, not something to guess at here.
+
+### Evidence
+
+- `aws ecs describe-services --cluster blackout-production-cluster --services blackout-production-web` →
+  `deploymentConfiguration: {maximumPercent: 120, minimumHealthyPercent: 100, deploymentCircuitBreaker: {enable: true, rollback: true, resetOnHealthyTask: true, thresholdConfiguration: {type: BOUNDED_PERCENT, value: 50}}, strategy: ROLLING, bakeTimeInMinutes: 0}`, `desiredCount: 8`, `launchType: FARGATE`.
+- Same call for `blackout-production-market-worker`: `maximumPercent: 200`, `desiredCount: 1` —
+  confirms the sibling service's different config is a correct fit for its own (singleton) fleet
+  size, not evidence that 200%/150% would help an 8-task service (the 2026-09-04 finding already
+  tested exactly that on this same service and it did not help).
+- ECS service events for `blackout-production-web` (`describe-services` → `.events`) for the window
+  11:42:57Z–12:11:42Z on 2026-09-05 show 8 distinct `has started 1 tasks` / `has stopped 1 running
+  tasks` cycles, each followed by a `registered 1 targets` / `deregistered 1 targets` pair, spaced
+  ~3 minutes apart — matching the 2026-09-04 finding's own measured ~2:45/wave cadence almost
+  exactly, a day later and after that finding's `maximumPercent=200` change was in place.
+- GitHub Actions job `33962805600` → job `101300318355`, step "Roll ECS production web":
+  `started_at: 2026-09-05T11:42:57Z`, `completed_at: 2026-09-05T12:11:42Z`.
+- `.github/workflows/ecr-push-production.yml:253-263` — the vCPU-quota derivation comment
+  establishing `maximumPercent ∈ [120, 124]` as the only safe window given `L-3032A538=30`.
+- `docs/audit/FINDINGS.md` (2026-09-04 entry) — the prior `maximumPercent` 120→200 experiment and
+  its null result.
+- `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md` line 96 — `OPS-001`, tracking the same open issue.
+
+### Correction note
+
+This finding was originally staged proposing a `maximumPercent` 120→150 change and asking Cursor for
+independent verification/execution. Cursor's peer review caught both the prior-experiment
+duplication and the vCPU-quota violation before any AWS mutation was made — no infra change was
+ever applied. Filed as a corrected, no-new-action finding rather than deleting the branch, per this
+repo's standing "no auto-merge without evidence" discipline: the observation itself remains true and
+worth a durable record even though the proposed remedy was wrong.
+
+## 2026-09-04 — FlowFeed.tsx: two date/time-handling bugs (earnings-badge TZ off-by-one + replay NaN sort) — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Component** | `src/features/helix/components/FlowFeed.tsx` (HELIX `/flows` live tape) |
+| **Status** | FIXED |
+
+### Bug 1 (P2) — "days until earnings" badge used browser-local midnight instead of US/Eastern trading day
+
+### Root cause
+
+`earningsMap` (populated by `fetchEarningsCalendar()`) holds ticker → `"YYYY-MM-DD"` REPORT DATES
+that are ET trading-calendar dates — the same convention Meridian's `report_date` uses elsewhere
+in this codebase. But the `earningsDays` `useMemo` built its two comparison endpoints via:
+
+```ts
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+...
+const d = new Date(dateStr + "T00:00:00");
+const diff = Math.floor((d.getTime() - today.getTime()) / 86_400_000);
+```
+
+Per ECMA-262, a date-time string with no offset (`"YYYY-MM-DDT00:00:00"`) parses in the runtime's
+**local** timezone, and `.setHours(0,0,0,0)` mutates in local time too — neither endpoint was ever
+anchored to `America/New_York`. Every other date-boundary computation in this codebase resolves
+ET explicitly (`daysToExpiry` in `helix-flow-format.ts`, `todayEt`/`execAtEtYmd` in `et-date.ts`,
+`isTradingDayEt`) — this one alone did not.
+
+This value feeds `ctx.earnIn` in `flowSignals()` (`helix-flow-format.ts`), which renders the
+trading-relevant EARN/E{n}D badge (tone "bear") flagging a print as tied to near-term earnings
+risk — the one signal on the tape a member reads as "how many trading days until this print's
+name reports."
+
+### Evidence — verified failure case (reproduced before writing the fix)
+
+A West Coast member (America/Los_Angeles, UTC-7) at `2026-09-04T22:00:00-07:00` = `2026-09-05
+01:00 ET` — i.e. the ET trading day has **already rolled** to 2026-09-05, the ticker's actual
+report date:
+
+```
+$ TZ=America/Los_Angeles node -e '
+  const now = new Date("2026-09-04T22:00:00-07:00");
+  const today = new Date(now); today.setHours(0,0,0,0);
+  const d = new Date("2026-09-05" + "T00:00:00");
+  console.log(Math.floor((d.getTime() - today.getTime()) / 86400000));
+'
+1
+```
+
+Local PT midnight (`today`) was still `2026-09-04 00:00`; target local midnight (`d`, for
+`"2026-09-05"`) was `2026-09-05 00:00` → `diff = 1`. The badge would show **"E1D"** even though in
+ET terms the print is happening **today**. The reverse misclassification happens for zones
+*ahead* of ET (e.g. Europe) during the hours their local calendar date has rolled but ET's hasn't
+— a naive local-Date computation would read that case as `diff = 0` ("today") when ET still says
+tomorrow.
+
+### Fix
+
+Extracted a small pure, exported helper, `earningsDayDiffEt(dateStr, now)`, using the same
+DST-safe technique `daysToExpiry` (`helix-flow-format.ts`) already uses: format `now` to its ET
+calendar date via `Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" })`, then
+`Date.parse` **both** endpoints as literal UTC midnight of their respective `YYYY-MM-DD` strings.
+Because both timestamps are parsed as explicit `...T00:00:00Z` calendar strings, their difference
+is always an exact multiple of `86_400_000` — no real DST offset is ever applied — so this needs
+no DST special-casing despite being pure arithmetic, unlike a hand-appended `-04:00`/`-05:00`
+offset (which is what the task that produced this fix explicitly warned against).
+
+Deliberately does **not** clamp to `Math.max(0, …)` the way `daysToExpiry` does: `earningsDays`'
+caller filters on `diff >= 0 && diff <= 30`, so a report date that has already passed must still
+come back negative (and get filtered out), not clamped to a false "today."
+
+```ts
+export function earningsDayDiffEt(dateStr: string, now: Date = new Date()): number {
+  const todayEt  = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+  const todayMs  = Date.parse(`${todayEt}T00:00:00Z`);
+  const targetMs = Date.parse(`${dateStr.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(todayMs) || !Number.isFinite(targetMs)) return NaN;
+  return Math.round((targetMs - todayMs) / 86_400_000);
+}
+```
+
+### Bug 2 (P3) — `startReplay()`'s sort produced NaN for undated rows
+
+### Root cause
+
+`startReplay()` sorted the tape with:
+
+```ts
+const sorted = [...alerts].sort((a, b) => new Date(a.alerted_at).getTime() - new Date(b.alerted_at).getTime());
+```
+
+`flow-persist.ts` documents that a freshly-streamed SSE row can carry `alerted_at: ""` when the
+real UW print time is unknown (`event.alerted_at = realCreatedAt ?? ""`), and the merge path
+(`helix-flow-tape-merge.ts`) deliberately keeps such rows in `alerts` rather than dropping them.
+`new Date("").getTime()` is `NaN`, so any comparison involving that row returned `NaN` — an
+`Array.prototype.sort` comparator-contract violation (the spec leaves the resulting placement of
+such an element unspecified/engine-dependent) — unlike the null-safe `flowTimeMs`-based sort this
+**exact same file** already uses a few lines below (`displayAlerts`'s sort, which explicitly
+places a null time via `am == null ? 1 : ...`).
+
+### Evidence
+
+```
+$ node -e '
+  console.log(new Date("").getTime());     // NaN
+  const arr = [{alerted_at:"2026-08-21T14:00:00Z"},{alerted_at:""},{alerted_at:"2026-08-21T10:00:00Z"}];
+  const sorted = [...arr].sort((a,b)=> new Date(a.alerted_at).getTime() - new Date(b.alerted_at).getTime());
+  console.log(JSON.stringify(sorted));
+'
+NaN
+[{"alerted_at":"2026-08-21T14:00:00Z"},{"alerted_at":""},{"alerted_at":"2026-08-21T10:00:00Z"}]
+```
+
+The 10:00 row never moved ahead of the 14:00 row — the comparator's NaN return left the pair
+"equal" to V8's stable sort, so a chronologically later row could sit before an earlier one on the
+replayed tape whenever an undated row was anywhere in the array.
+
+### Fix
+
+Extracted the sort into a small pure, exported helper — `compareFlowAlertsByTimeAsc(a, b)` — built
+on the same null-safe `flowTimeMs` helper `displayAlerts` already imports, with the identical
+"undated sorts last, regardless of which side of the comparison it lands on" convention
+`displayAlerts` established, just for the opposite (ascending, oldest-first replay) direction
+instead of `displayAlerts`' descending (newest-first) one:
+
+```ts
+export function compareFlowAlertsByTimeAsc(a: FlowAlert, b: FlowAlert): number {
+  const am = flowTimeMs(a);
+  const bm = flowTimeMs(b);
+  if (am == null && bm == null) return 0;
+  if (am == null) return 1;
+  if (bm == null) return -1;
+  return am - bm;
+}
+```
+
+`startReplay()` now does `[...alerts].sort(compareFlowAlertsByTimeAsc)`.
+
+### RED → GREEN proof
+
+New regression tests: `src/features/helix/components/FlowFeed.test.ts` (12 cases — 7 for
+`earningsDayDiffEt`, 5 for `compareFlowAlertsByTimeAsc`, imported directly from `FlowFeed.tsx`).
+
+```
+$ git stash push -- src/features/helix/components/FlowFeed.tsx   # revert ONLY the source fix
+$ node --import tsx --experimental-test-module-mocks --test src/features/helix/components/FlowFeed.test.ts
+...
+# pass 1
+# fail 11        <- RED: `earningsDayDiffEt is not a function` (7x) + wrong ordering
+                      with the undated row (3x) + the unparseable-timestamp case (1x)
+
+$ git stash pop                                                   # restore the fix
+$ node --import tsx --experimental-test-module-mocks --test src/features/helix/components/FlowFeed.test.ts
+...
+# pass 12
+# fail 0         <- GREEN
+```
+
+The TZ-boundary test (`earningsDayDiffEt: THE BUG — West Coast member past ET midnight...`)
+directly reproduces the verified failure case above; a companion test checks the reverse case
+(a zone ahead of ET) and a third checks TZ-invariance of the same real instant across
+`America/Los_Angeles` / `America/New_York` / `Europe/Berlin` / `UTC`.
+
+### Full verification
+
+- `npx tsc --noEmit` — clean.
+- Full Helix test suite (`src/features/helix/**/*.test.ts`, 45 files): **328 tests / 16 suites,
+  0 failures** (Node 20.20.2).
+
+### Blast radius
+
+Both bugs were local to `FlowFeed.tsx`'s own inline computations — no other file computed the
+earnings day-diff or replay-sort this way. `daysToExpiry` (helix-flow-format.ts, the DTE column)
+and `displayAlerts`'s own sort (a few lines below the fixed `startReplay`, in this same file) were
+already correct and are what both fixes now match in technique/convention; they were not touched.
+
+### Deliberately left unchanged
+
+- `daysToExpiry`'s `Math.max(0, …)` clamp — correct for its own caller (a DTE can't be negative in
+  the UI), and deliberately NOT reused for `earningsDayDiffEt`, which needs the unclamped sign to
+  let its own `diff >= 0` filter correctly exclude a report date that has already passed.
+- `flowFreshnessAtMs`/`newestAt`'s existing future-timestamp guard (`signalWindowAgeMs`, fixed
+  2026-09-03) — a different bug, in a different computation, already covered by
+  `FlowFeed-freshness-badge.test.ts`.
+
+### Market-open validation
+
+See `docs/audit/MARKET-OPEN-VALIDATION.md` for the next-session RTH checklist entry for this fix
+(EARN/E{n}D badge day-count spot-check across a non-ET-local session; replay ordering with a
+live SSE-streamed undated row in the tape).
+
 ## Night Hawk Swings desk: banger-origin MANAGING/SCALING_OUT rows had no `positionId`, colliding into one React key and corrupting the ticker-search list live — FIXED
 
 > **kind:** `FINDING`
