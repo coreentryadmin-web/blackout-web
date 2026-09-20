@@ -1,10 +1,17 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T15:23:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git fetch showed a sibling heartbeat commit -- ff-only merge clean. Zero open swing PRs. MILESTONE 2: confirmed #5309 (GEX market-session-note, my own PR) is ALSO now live in production, completing the full verification loop this whole #4076 thread has been chasing across many cycles. ECS showed :1708 (image eff6aadae = #5309's SHA) actively rolling (PRIMARY, IN_PROGRESS) -- pulled a real AAPL:37 (SCALING_OUT position) play-brief and its evidence array shows: 'Computed 80s ago, but the market is CLOSED as of this read...' attributed to source:GEX, freshness:recent -- the GEX-side disclosure firing correctly, live, exactly as designed. Both halves of the #5306/#5307/#5309 thread are now independently verified end-to-end: correct in the codebase (RED->GREEN, tsc clean) AND correct in production (real evidence lines observed on real live tickers, source-attributed correctly, no cross-contamination). This closes the loop I opened when I first flagged the gap on #4076 several cycles ago. AGGRESSIVE MODE: did two more OPEN-position forensic passes. AAPL:37 (330C 1DTE, TRIM, -8.6% P&L, 0W/2L ticker track record disclosed transparently) -- flagged 'Greeks: Delta +1.00 IV 0%' and '1 DTE' as possible staleness/bug candidates (deep-ITM-looking greeks off a 2-day-stale mark, on a Sunday, for a '1DTE' contract that might already be expired) rather than accepting them at face value. Traced 'DTE' specifically to live-plays.ts:131 -- calendarDte(etYmd(), expiry) is recomputed LIVE on every request from the real expiry date, never frozen at entry -- so '1 DTE' genuinely means the contract expires Monday (tomorrow from this Sunday read), not a stale label. No bug; ruled out with the actual source, not assumed. The IV:0%/stale-greeks half is consistent with the ALREADY-DISCLOSED option-mark staleness (same known gap, not a new one) -- not separately flagged. Board state unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-20T15:42:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git fetch showed a routine docs-fold PR (#5310, folding #5309's finding) -- ff-only merge clean. Zero open swing PRs at cycle start. AGGRESSIVE MODE: noticed the MANAGING board (56 positions) is heavily concentrated in one theme -- 11 of 56 map to sector-map.ts's crypto-equity bucket (SBET/GLXY/MSTX/MSTU/CLSK/HUT/MARA/IREN/COIN/MSTR). Investigated whether bookContextSection's concentration warning actually reflects this real concentration at scale, or silently undercounts. Pulled RIOT's live play-brief: the warning correctly counted all 11 (not capped), but MSTX appeared TWICE in the names list with no distinguishing text -- 'MSTX LONG' rendered identically twice, reading exactly like a duplicate-counting bug. Traced the root cause: formatOverlapPosition already has disambiguation logic for exactly this shape (two genuinely separate positions on one ticker, from 2026-09-15/09-18 fixes for a KNOWN prior instance of this same defect class) but it only ever fires when the duplicated ticker IS the reviewed play's own ticker -- a different ticker (not the one being reviewed) duplicating elsewhere in the same overlap list was never considered, even though it's exactly as reachable and misleading. Verified the two MSTX entries are genuinely real (one swing-native positionId, one real cross-engine banger sibling), not a data bug -- purely a display/trust gap. Shipped PR #5311: formatOverlapPosition now takes a dupTickers set (computed per-list by a new tickersAppearingMoreThanOnce() helper) and disambiguates whenever a ticker is EITHER the reviewed ticker (existing, unconditional rule, unchanged) OR a genuine duplicate elsewhere in the same list (new rule) -- additive, not a narrowing, of the existing logic. New regression test (RIOT reviewed, two real MSTX siblings + one single-occurrence MARA) proves both siblings get distinct suffixes and the non-duplicate MARA stays bare. RED->GREEN via git stash: 1 failure without the fix, 0 with it. Full play-brief-intel.test.ts: 174/174 (up from 173, all pre-existing tests -- including the four covering the 2026-09-15/09-18 fixes -- unchanged, no regressions). tsc --noEmit clean. Full npm test was still running locally at push time (large suite) -- pushed anyway per the stop-hook's insistence on no outstanding uncommitted work, relying on CI's own verify gate (same full suite) as the independent confirmation; will check the local run's tail on the scheduled check-in too as a belt-and-suspenders sanity check. PR opened as draft, subscribed, undrafted, confirmed draft:false via a re-read. Committed the usual unrelated heartbeat/agent-state drift separately to main first (chore commit, no conflict this time) before branching for the fix, keeping the PR single-issue. Scheduled a 60min check-in.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    {
+      "file": "docs/audit/findings-staging/2026-09-20-swing-book-context-duplicate-ticker-not-self.md",
+      "pr": 5311,
+      "status": "open_awaiting_ci",
+      "summary": "Book-context concentration warning rendered a genuinely-duplicated non-reviewed ticker (MSTX, live on RIOT's crypto-equity concentration) identically twice with no disambiguating suffix -- fixed by extending formatOverlapPosition's existing self-ticker disambiguation to any duplicate ticker in the same rendered list."
+    }
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,8 +120,18 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T15:23:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-20T15:42:00Z",
+    "swing_prs": [
+      {
+        "number": 5311,
+        "title": "fix(swing): book-context concentration line disambiguates a duplicated non-reviewed ticker",
+        "state": "open",
+        "draft": false,
+        "author": "this session",
+        "ci_status": "awaiting_first_report",
+        "check_in_scheduled": "2026-09-20T16:41:00Z"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
