@@ -1,17 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T14:21:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full mandate brief). ReadNotifications clean. git fetch showed origin/main had moved to PR #5307's merge -- ff-only merge landed cleanly. Independently confirmed the merged commit matched byte-for-byte what I'd already verified last cycle (same diff) -- no re-verification needed. Zero open swing PRs at that point, board unchanged/healthy. AGGRESSIVE MODE this cycle: live-pulled a real Sunday LITE play-brief (market genuinely CLOSED) right after #5307 merged to production-test the just-shipped market_session_note fix -- and it did NOT surface. Rather than concluding a bug, checked ECS directly (AWS creds live this session): confirmed a genuine rolling deploy was in progress (blackout-production-web:1706, started 13:57Z, old :1705 tasks still draining) -- deploy lag, not a code defect. Independently reproduced describeVectorFreshness/etSessionFacts with the real observed timestamps to confirm the logic WOULD fire once deployed. While the deploy drained (polled via background bash), checked #4076 and found the sibling session's own follow-up comment (5750099882) naming a second, independent mechanism producing the identical symptom: the GEX matrix (gexFreshness/gexMatrixStale in play-brief.ts/play-brief-absence.ts) never calls describeVectorFreshness at all -- it classifies polygon-options-gex.ts's own wall-clock calculatedAt directly. Sibling explicitly offered to split this (\"Mechanism 2\") -- claimed it on #4076 (comment 5750312954) before starting, per the collaboration protocol's ownership/no-duplicate-work discipline. Shipped PR #5309: extracted the shared \"compute fresh + market CLOSED\" disclosure ternary out of describeVectorFreshness into a new source-agnostic module (market-session-disclosure.ts) -- a PURE REFACTOR of vector-state-freshness.ts, verified behavior-identical (its own 24 tests pass unchanged before/after, checked explicitly). Added gexMarketSessionNote() in play-brief-absence.ts delegating to the same shared helper, wired into evidenceFromContext() as a new GEX-attributed evidence line mirroring the Vector block's exact gating pattern (!gexStale). RED->GREEN proven via git stash on the three source files with test files kept: play-brief.test.ts 1 failure without the fix / 0 with it (96/96), play-brief-absence.test.ts 4 failures without the fix / 0 with it (76/76). Full npm test (Node 20): 14944 pass / 0 fail / 3 skipped. tsc --noEmit clean. Staged finding + MARKET-OPEN-VALIDATION.md #309 entry both written. PR opened as draft, subscribed, undrafted, confirmed draft:false via a re-read (per CLAUDE.md's documented undraft-can-silently-no-op trap) -- draft was real this time. Posted delivery comment on #4076. Scheduled a 60min check-in (send_later) for CI/merge status. Housekeeping: found unrelated heartbeat/agent-state drift sitting uncommitted in the working tree at cycle start -- committed it separately to main first (chore commit), hit a genuine merge conflict against a concurrent sibling journal push (3 files: two simple last-seen timestamp conflicts resolved by taking the newer side, one append-only event-log conflict resolved as a true union of both sides' entries in chronological order rather than dropping either side's history), verified the resulting JSON parses, pushed clean -- then created my fix branch fresh off the merged main so the PR itself stays single-issue and uncontaminated by the unrelated sync. Board state (board-check2.mjs) unchanged both at cycle start and now: COMMIT_NOW=1 (banger), WATCH=1 (LITE, banger), MANAGING=56 (all swing-native), SCALING_OUT=12 (all swing-native).",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    {
-      "file": "docs/audit/findings-staging/2026-09-20-swing-gex-market-session-note.md",
-      "pr": 5309,
-      "status": "open_awaiting_ci",
-      "summary": "GEX matrix had the same weekend-self-warm freshness gap Vector had (#4076 Mechanism 2) -- fixed via a shared marketSessionDisclosure() helper + gexMarketSessionNote(), wired into evidenceFromContext."
-    }
-  ],
+  "last_updated": "2026-09-20T14:36:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git fetch showed origin/main moved via a routine docs-fold PR (#5308, folding #5306/#5307 findings) -- ff-only merge clean. Checked PR #5309 (my own GEX market-session-note fix, opened last cycle): already MERGED (14:31:51Z, merged_by coreentryadmin-web -- not by me, some other pipeline/lane caught it green and merged before I could act) -- confirmed via git log on origin/main. CI had gone fully green (CI/CodeQL/webhooks all success; automerge.yml skipped per the known token-scope gap). Unsubscribed from #5309 activity, deleted the now-unneeded 60min check-in trigger, deleted the local feature branch. Zero open swing PRs remain. Board state unchanged/healthy throughout (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native). AGGRESSIVE MODE continuation: with #5309 merged, checked ECS -- task def :1706 (containing #5306) was fully steady-state (8/8 COMPLETED), so re-pulled a live LITE play-brief expecting #5307's market_session_note wiring to now be visible (deploy lag was the confirmed explanation last cycle, and this deploy had settled). It STILL didn't appear, despite levels/dealer-posture evidence confirming vec is genuinely live/non-stale for this ticker. Rather than assume a code bug (already independently verified the logic twice via direct describeVectorFreshness/etSessionFacts reproduction, both times correct), checked the ACTUAL deployed image tag on ECS task def :1706 directly: 177922194517.dkr.ecr.../blackout-web:b2ff8f84f... -- that SHA is #5306's own merge commit, NOT #5307's (ff0a116b4). So the fleet is running #5306-only -- the raw market_session_note field exists on Vector state internally, but evidenceFromContext's wiring (#5307) genuinely has not reached production yet. Confirmed via GitHub Actions directly: ecr-push-production.yml run 2539 (#5306) completed at 13:37-14:30(ish); run 2540 (#5307) job only started executing at 14:30:04Z (queued ~32min behind 2539) and is actively mid-build (Build and push image step in_progress, ~4min in at last check) -- completely normal Docker build pace, not stuck; run 2541 (#5309) is queued behind THAT. Root cause of the whole multi-cycle mystery: 3 merges landed close together this session (#5306, #5307, #5309), each triggers its own serialized ECR build+ECS-roll, and the pipeline processes them one at a time -- not a code defect, not a stuck pipeline, just a real queue depth from a productive session. Both fixes are verified correct in the codebase (RED->GREEN, tsc clean, full suite green); production will catch up as the queue drains. Re-check live evidence next cycle once #5307 AND #5309 have both actually rolled to ECS (watch for image tag ff0a116b4 then eff6aadae on task def :1706's successor).",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -120,18 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T14:21:00Z",
-    "swing_prs": [
-      {
-        "number": 5309,
-        "title": "fix(swing): GEX matrix gets Vector's market-session disclosure too (#4076 Mechanism 2)",
-        "state": "open",
-        "draft": false,
-        "author": "this session",
-        "ci_status": "awaiting_first_report",
-        "check_in_scheduled": "2026-09-20T15:20:00Z"
-      }
-    ]
+    "as_of": "2026-09-20T14:36:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
