@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T17:34:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean (1 queued: the trigger firing itself). git fetch: no new upstream commits since last cycle's push (main already at ffa8a5546) -- nothing to merge. Only open swing PR is my own #5317 -- checked its CI directly via the commit check-runs REST endpoint (GitHub MCP actions_list results were too large to parse through the tool wrapper twice, fell back to curl+jq on GITHUB_TOKEN): CodeQL/triage/dispatch all green, verify still in_progress (~10min elapsed, full suite typically ~5min so plausibly close) -- nothing actionable, the scheduled 60min check-in (trig_0131D3mb5zx4CKP8WsfZqExz) will catch the result. Used the remaining cycle time on a genuine C7 (evidence)/C8 (provenance) sanity check on last cycle's PR #5317 diff, since those were the two C-points not yet explicitly re-verified this session: confirmed the 'Swing ledger' source string I used matches the existing free-text pattern already used throughout evidenceFromContext() ('Vector', 'HELIX', 'Swing lane', etc.) -- BieEvidence.source (bie/answer-envelope.ts) is typed as plain `string`, not the stricter ProvenanceSource enum from largo/contract/product-read.ts (that enum/cohort field lives on the top-level ProductReadMeta wrapping a whole tool read, not on individual evidence[] bullets within one) -- so no type/contract mismatch, this was already correctly designed. No violation found, nothing to fix. Re-checked #4076 via the issues/comments REST endpoint with `since=` filtering (get_comments through the MCP tool paginates oldest-first and missed all of today's activity on the first page -- noting this so a future cycle doesn't waste a call assuming silence from an empty first page): confirmed no response yet to any of the three still-open threads (5-truth-grader proposal 5751117208, narrative-dedup registry, short-interest staleness design question) -- continuing to hold. Board unchanged: COMMIT_NOW=1/WATCH=1 (banger), MANAGING=56/SCALING_OUT=12 (swing-native). Genuinely light/clean cycle -- no new fix shipped, none manufactured.",
+  "last_updated": "2026-09-20T17:47:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean (1 queued: the trigger firing itself). git sync: PR #5317 merged since last cycle (commit 7b1c767a1, verify completed success) -- ff-only merge onto main clean, also picked up sibling PR #5316 (FINDINGS.md restamp) merged in the same window. Unsubscribed from #5317's PR activity and deleted the now-unneeded 60min check-in trigger (trig_0131D3mb5zx4CKP8WsfZqExz) since it was already confirmed merged directly via the check-runs REST endpoint -- no need to burn the scheduled fire. Zero open swing PRs remain. ecr-push-production is in_progress for 7b1c767a1 (started 17:34, still running at 17:47) -- deliberately did NOT pull a live play-brief to 'verify' the new track-record evidence[] lines yet, since a pull before the deploy completes would just show the pre-fix behavior and prove nothing; flagging for a near-future cycle once the deploy is confirmed rolled (check task-def revision or wait for the next cycle, then pull a real graduated-archetype/repeat-ticker position's play-brief and confirm the two new evidence[] entries actually appear). Board unchanged: COMMIT_NOW=1/WATCH=1 (banger, LITE), MANAGING=56/SCALING_OUT=12 (swing-native) -- same population as the last several cycles. #4076: zero new comments since my own 5751117208 (16:34) -- three threads (5-truth grader, narrative-dedup registry, short-interest staleness) all still awaiting response, continuing to hold rather than escalate or build unilaterally. Genuinely light/clean cycle -- the substantive work (shipping and merging #5317) is already recorded in the prior two journal entries; this cycle is cleanup + monitoring only.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,16 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T17:27:00Z",
-    "swing_prs": [
-      {
-        "pr": 5317,
-        "title": "feat(swing): archetype/ticker track-record numbers also surface as citable evidence (Largo C10)",
-        "state": "open",
-        "draft": false,
-        "mine": true
-      }
-    ]
+    "as_of": "2026-09-20T17:47:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
