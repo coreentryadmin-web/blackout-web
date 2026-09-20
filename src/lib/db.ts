@@ -10680,6 +10680,37 @@ export function mapNighthawkCandidateSnapshotRow(r: Record<string, unknown>): Ni
 }
 
 /**
+ * Night Hawk Legacy Signal Intelligence — Phase 0 diagnostic read (2026-09-20, "does the
+ * current ranking actually have predictive value" audit). Plain additive SELECT spanning a
+ * DATE RANGE across every `edition_for`, unlike `fetchNighthawkCandidateSnapshots` above which
+ * is scoped to exactly one edition. No schema change, no write, purely a wider read of the same
+ * table — safe to add without touching any existing caller or existing query shape.
+ *
+ * Restricted to the two terminal-and-ranked stages (`rank_final`, `rejected`) by default so a
+ * rank-bucket analysis isn't diluted by the earlier `discovery`/`scored`/`rank_governor` rows
+ * for the SAME ticker/edition (a ticker can appear once per stage it reached — see
+ * `candidate-leaderboard.ts`'s own STAGE_ORDER doc) — pass `stages` to widen this for a
+ * different read.
+ */
+export async function fetchNighthawkCandidateSnapshotsInRange(
+  startDate: string,
+  endDate: string,
+  opts?: { stages?: string[] }
+): Promise<NighthawkCandidateSnapshotRow[]> {
+  await ensureSchema();
+  const stages = opts?.stages ?? ["rank_final", "rejected"];
+  const res = await dbQuery(
+    `SELECT id, edition_for, ticker, stage, observed_at, rank, score, gov_penalty,
+            rejection_reason, selected_for_publish, snapshot_json, forward_returns
+     FROM nighthawk_candidate_snapshot
+     WHERE edition_for >= $1::date AND edition_for <= $2::date AND stage = ANY($3::text[])
+     ORDER BY edition_for ASC, observed_at ASC, id ASC`,
+    [startDate, endDate, stages]
+  );
+  return res.rows.map(mapNighthawkCandidateSnapshotRow);
+}
+
+/**
  * Read path for nighthawk_candidate_snapshot. Pass `stage` to scope to one pipeline stage
  * (e.g. every 'rejected' row for the night); omit it to see a ticker's/edition's full
  * stage-by-stage history. Always ordered oldest-first so a caller reconstructing "how did this
