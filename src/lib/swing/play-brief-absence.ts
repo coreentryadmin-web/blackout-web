@@ -1,5 +1,7 @@
 import type { BieUnavailableSource } from "@/lib/bie/answer-envelope";
-import { freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
+import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
+import { etSessionFacts } from "@/lib/et-session-facts";
+import { marketSessionDisclosure } from "@/lib/bie/market-session-disclosure";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { etStampFromIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
@@ -98,6 +100,33 @@ export function gexMatrixStale(
   // Fail-closed on clock-skewed future stamps — same guard as gexStaleFromAge / FreshnessChip.
   if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
   return ageMs > GEX_MATRIX_STALE_MS;
+}
+
+/**
+ * GEX-matrix sibling of `describeVectorFreshness`'s `market_session_note` (#5306/#4076 comment
+ * 5750099882, Mechanism 2). `gex.asof` traces to `polygon-options-gex.ts`'s
+ * `calculatedAt = new Date(now).toISOString()` — a pure wall-clock compute stamp, same shape as
+ * Vector's own `asOf` — so a weekend/holiday self-warm can compute a genuinely fresh GEX matrix
+ * from Friday's closing chain while the market itself has been shut for hours. `gexMatrixStale`
+ * alone cannot say so — it only ever saw the compute clock (same gap `describeVectorFreshness`'s
+ * own module doc named for Vector).
+ *
+ * Delegates to the SAME `marketSessionDisclosure` helper Vector uses rather than forking a second
+ * copy of the "is this misleading" conditional — the risk #5306's own PR description named this
+ * follow-up to avoid. Null whenever `gexMatrixStale` is already true (that verdict's own staleness
+ * already covers it — piling a second disclosure on top would bury the more important one) or when
+ * age is unreadable.
+ */
+export function gexMarketSessionNote(
+  gex: GexPositioning | null | undefined,
+  readMs: number = Date.now(),
+): string | null {
+  const ageMs = gexMatrixAgeMs(gex, readMs);
+  if (ageMs == null) return null;
+  if (gexMatrixStale(gex, readMs)) return null;
+  const ageSec = Math.max(0, Math.round(ageMs / 1000));
+  const marketSession = etSessionFacts(new Date(readMs)).market_session;
+  return marketSessionDisclosure(freshnessFromAgeMs(ageMs), ageSec, marketSession);
 }
 
 /**

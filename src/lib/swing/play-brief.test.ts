@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { composeSwingPlayBrief } from "./play-brief";
@@ -1212,6 +1212,80 @@ test("composeSwingPlayBrief: Vector market_session_note is suppressed when the V
   const brief = composeSwingPlayBrief(ctx);
   const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
   assert.equal(note, undefined, "must not surface the note off a session-stale Vector snapshot");
+});
+
+// GEX-matrix sibling of the two Vector tests above (#4076 comment 5750099882, "Mechanism 2" —
+// the GEX-matrix half of the same weekend-self-warm symptom, deliberately deferred out of
+// #5306/#5307 since `polygon-options-gex.ts` is a broader cross-desk surface than swing).
+// `gex.asof` (`polygon-options-gex.ts`'s own wall-clock `calculatedAt`) can be genuinely fresh
+// while the market itself is CLOSED — proves evidenceFromContext surfaces that disclosure too,
+// attributed to GEX rather than Vector.
+test("composeSwingPlayBrief: GEX market_session_note surfaces as evidence on a closed-market self-warm (Largo, #4076 Mechanism 2)", () => {
+  const frozenNowIso = "2026-09-20T14:00:00.000Z"; // a real Sunday 10:00 ET -- market CLOSED
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-20 10:00 ET",
+      sessionDate: "2026-09-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          flip: 24,
+          gamma_posture: "long",
+          asof: frozenNowIso, // computed at the exact frozen instant -- 0s old, live
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
+    assert.ok(note, "expected GEX market_session_note to surface as brief evidence");
+    assert.equal(note!.provenance?.source, "GEX", "must be attributed to GEX, not Vector");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+// The note must never surface for a GEX matrix the rest of the brief has already excluded as
+// stale -- surfacing it there would contradict the gate every other gex-derived evidence line
+// in this function already respects (mirrors the Vector session-stale suppression test above).
+test("composeSwingPlayBrief: GEX market_session_note is suppressed when the GEX matrix is already stale", () => {
+  const frozenNowIso = "2026-09-20T14:00:00.000Z"; // a real Sunday 10:00 ET -- market CLOSED
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-20 10:00 ET",
+      sessionDate: "2026-09-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          flip: 24,
+          gamma_posture: "long",
+          asof: "2026-09-20T13:00:00.000Z", // 1h old -- well past GEX_MATRIX_STALE_MS (2min)
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
+    assert.equal(note, undefined, "must not surface the note off an already-stale GEX matrix");
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test("composeSwingPlayBrief: future-skewed fundamentals as_of freshness is stale, not unknown (Largo C2)", () => {

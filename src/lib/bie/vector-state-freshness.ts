@@ -56,6 +56,7 @@ import { freshnessFromAgeMs, type BieFreshness } from "@/lib/bie/answer-envelope
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { etSessionFacts, type MarketPhase } from "@/lib/et-session-facts";
+import { formatFreshnessAge, marketSessionDisclosure } from "@/lib/bie/market-session-disclosure";
 
 /**
  * How fresh a served Vector snapshot is. This is `BieFreshness` — the taxonomy that already
@@ -186,13 +187,11 @@ export function describeVectorFreshness(
 
   // The gap this block exists to close: a compute that is genuinely fresh (calculated moments ago,
   // possibly by a weekend/holiday self-warm) can still describe a market that has not ticked since
-  // its last close. `freshness` alone cannot say so — it only ever saw the compute clock. Only fire
-  // for the "live"/"recent" verdicts: a "stale" compute already carries its own, stronger note, and
-  // piling a second disclosure on top of it would bury the more important one.
-  const marketSessionNote =
-    (freshness === "live" || freshness === "recent") && marketSession === "CLOSED"
-      ? `Computed ${formatAge(ageSec)} ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks.`
-      : null;
+  // its last close. `freshness` alone cannot say so — it only ever saw the compute clock. Delegates
+  // to the shared `marketSessionDisclosure` (which already only fires for "live"/"recent" against a
+  // CLOSED market) so GEX's own equivalent disclosure (`play-brief-absence.ts`'s
+  // `gexMarketSessionNote`) can never independently drift from this one — see that module's header.
+  const marketSessionNote = marketSessionDisclosure(freshness, ageSec, marketSession);
 
   return {
     observed_at: new Date(observedMs).toISOString(),
@@ -206,17 +205,11 @@ export function describeVectorFreshness(
     freshness,
     note:
       freshness === "stale"
-        ? `This Vector state was measured ${formatAge(ageSec)} ago and has not refreshed since — say so rather than presenting it as the current tape.`
+        ? `This Vector state was measured ${formatFreshnessAge(ageSec)} ago and has not refreshed since — say so rather than presenting it as the current tape.`
         : freshness === "recent"
-          ? `This Vector state was measured ${formatAge(ageSec)} ago (within one refresh cycle).`
+          ? `This Vector state was measured ${formatFreshnessAge(ageSec)} ago (within one refresh cycle).`
           : null,
     market_session: marketSession,
     market_session_note: marketSessionNote,
   };
-}
-
-function formatAge(sec: number): string {
-  if (sec < 90) return `${sec}s`;
-  const min = Math.round(sec / 60);
-  return min < 60 ? `${min}m` : `${Math.round(min / 6) / 10}h`;
 }
