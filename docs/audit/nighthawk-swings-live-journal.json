@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T17:06:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git fetch showed a routine docs-fold commit -- ff-only merge clean. #4076 still shows no response to my 5-truth-grader proposal (comment 5751117208, ~27min old at last check) -- continuing to give it room rather than escalating or starting the build unilaterally. Zero open swing PRs. AGGRESSIVE MODE: did a deliberate, systematic sweep of LARGO-PRODUCT-CONTRACT.md's C-points not yet explicitly audited this session, rather than opportunistic bug-hunting (this session has already organically touched C2 freshness [#5306/#5307/#5309], C3/C4 absence+identity [book-context, #5311], C9 precision [#5313]). Checked C6 (confidence) first, given CLAUDE.md's own emphasis on the fabricated-confidence risk: found manage-sync.ts's `confidence: 0` on a synthetic dossier stub, initially looked suspicious but its own comment explicitly says 'a fabricated score would be a lie' -- confirmed it's an internal-only placeholder on a `dataQuality: {degraded: true}` synthetic object the live manager only reads direction/subLane from, never surfaced to Largo/members as a real confidence value. Not a violation. play-brief-deck-view.ts's `confidence: undefined` is the correct C6-compliant omission pattern. Checked C5 (direction) next: swing's biasFromDirection() cleanly translates play.direction (LONG/SHORT/neutral) into bullish/bearish/neutral -- never a raw numeric GEX/gamma sign handed to the model (grepped for bias: assignments derived directly from net_gex/gamma/posture fields, found none). Both C-points check out clean on deliberate audit -- did not force a finding where none exists. Board unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-20T17:27:00Z",
+  "notes": "v3 mandate cycle continuation. ReadNotifications clean (3 queued: two subscription.created echoes and a ready_for_review confirmation for #5317, all self-generated, nothing actionable). Completed and shipped the C10 (historical context) sweep from last cycle as PR #5317 (feat(swing): archetype/ticker track-record numbers also surface as citable evidence[], not just prose) -- archetypeTrackRecordSection/tickerTrackRecordSection (play-brief-intel.ts) already cited C10 in their own doc comments but only ever pushed their wins/losses/n numbers into prose SECTIONS, never into evidenceFromContext()'s structured evidence[] array the way every other citable fact in that function already is. Shipped as an additive enhancement (explicitly NOT framed as a bug fix -- both sections' authors already named the gap): two new evidence[] pushes gated on the identical graduatedArchetypeEntry()/priorClosedTrades>0 checks the prose sections use, each carrying real provenance (source: 'Swing ledger', asOf/freshness computed from the snapshot's own write time or 'recent' for the live per-request ticker read). RED->GREEN proven via git stash isolation on play-brief.ts alone (2 failures without the fix, 0 with it, 99/99 total in play-brief.test.ts); tsc --noEmit clean; full npm test (Node 20) came back 14949 pass / 0 fail / 3 skipped before opening the PR (redirected to a log file this time, not piped through tail, after last cycle's truncation near-miss). Staged finding: docs/audit/findings-staging/2026-09-20-swing-track-record-evidence-citation.md. MARKET-OPEN-VALIDATION.md #311 logged. PR #5317 opened draft, subscribed, undrafted, confirmed draft:false via fresh pull_request_read (mergeable_state currently 'blocked' pending CI) -- 60min check-in scheduled (trig_0131D3mb5zx4CKP8WsfZqExz) to merge on green per the CARVE-OUT once verify passes. Board healthy and largely unchanged in shape: COMMIT_NOW=1/WATCH=1 (both banger, LITE watching), MANAGING=56 swing-native, SCALING_OUT=12 swing-native -- same live population as last cycle, no anomalies on a quick pass. #4076 still shows no response to the 5-truth-grader proposal (comment 5751117208, now ~53min old) or the two earlier still-open threads (narrative-dedup structured-fact registry proposal, short-interest staleness-threshold design question) -- continuing to give all three room rather than escalating or unilaterally starting the larger builds they'd require. This closes out the explicit C-point sweep begun over recent cycles (C2/C3/C4/C5/C6/C9/C10 now all deliberately audited this session); next cycle returns to opportunistic forensic/enhancement work and continued #4076 monitoring.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "docs/audit/findings-staging/2026-09-20-swing-track-record-evidence-citation.md (PR #5317, shipped this cycle -- enhancement, C10)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,8 +115,16 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T17:06:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-20T17:27:00Z",
+    "swing_prs": [
+      {
+        "pr": 5317,
+        "title": "feat(swing): archetype/ticker track-record numbers also surface as citable evidence (Largo C10)",
+        "state": "open",
+        "draft": false,
+        "mine": true
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
