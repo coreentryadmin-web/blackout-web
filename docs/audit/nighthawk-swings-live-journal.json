@@ -1,10 +1,17 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T12:32:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git fetch/merge --ff-only resolved cleanly this time (no divergence, unlike last cycle's push race) -- brought in a sibling's heartbeat/rotation telemetry sync commit, not swing-scoped. Zero open swing PRs; board unchanged/healthy for many consecutive cycles now (56 managing, 12 scaling out, 1 commit-now/1 watch both banger-lane, LITE). Continued the Ask Largo forensic sweep into swing-pillars.ts (scoreSwingPillars, the 7-pillar renormalized weighted scorer directly downstream of archetype.ts's classification -- natural next file in the score->classify->weight chain). Verified the renormalization math is correct (effectiveWeight_i = weight_i * 100/presentWeightSum, so a fully-present all-raw=1 read scores exactly 100) and the contributionsToFactors invariant (filtered factors always sum to the exact same score, since filtered-out pillars contributed exactly 0 either way) holds by construction. Checked a specific edge case: could presentWeightSum ever be 0 despite present pillars (a present pillar with 0 weight in some archetype's vector, silently zeroing renorm/score)? Cross-checked SWING_PILLAR_WEIGHTS_BY_ARCHETYPE in swing-archetype.ts -- every one of the 8 archetype vectors (plus the base vector) has strictly positive weight for all 7 pillars (min 5 for DATA_QUALITY, confirmed by the file's own '100-summing vector' test guard) -- the edge case can never occur. Clean, no bug found. Genuine, methodical coverage-building cycle -- static-analysis forensic sweeps are showing diminishing returns on core engine files at this point (most now independently re-verified clean); future cycles should weight more toward live WATCH/OPEN thesis reads and #4076 collaboration over pure code audits.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-20T12:47:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. Synced main (brought in a non-swing db-pool fix from a sibling). Zero open swing PRs; board unchanged/healthy. Acted on last cycle's own note (diminishing returns on pure static audits) -- pivoted to a LIVE data pull instead: authenticated (mintClerkPremiumSession via audit-auth-fetch.mjs) and pulled the real play-brief for LITE (GET /api/market/swing/play-brief?playId=SWING:LITE&ticker=LITE, 200, via clerk). Two outcomes: (1) POSITIVE LIVE CONFIRMATION -- LITE is exactly the Legacy-promoted PRE-ENTRY scenario PR #5298 fixed hours ago, and the live 'Why this setup' section correctly shows a single pinned factor ('Night Hawk edition score -- +71 pts') with no dossier-overwrite mismatch -- the fix is holding in production, a genuine second layer of verification beyond the earlier RED/GREEN test check. (2) NEW DESIGN QUESTION FOUND AND RAISED on #4076 (comment 5749904631): today is a real Sunday (confirmed via date arithmetic, markets closed ~40+h since Friday close), yet EVERY GEX/Vector-sourced field in the live envelope (dealer posture, walls, spot, gamma magnet, GEX king, max pain) carries freshness:'live' with asOf stamped essentially to request time. Traced to source: gexMatrixAgeMs/gexMatrixStale (play-brief-absence.ts) measure only compute-recency against GEX_MATRIX_STALE_MS=120s; the underlying gex.asof traces to polygon-options-gex.ts's calculatedAt=new Date(now).toISOString() -- the WALL-CLOCK COMPUTE time, never a market-session/chain-data timestamp. Confirmed via grep: zero market-hours-aware freshness guards exist anywhere in src/lib/swing or src/lib/bie. This is explicitly CROSS-DESK (the constant's own comment: 'Shared with Vector'), not swing-scoped, and the correct fix isn't obvious (3 candidate approaches sketched in the comment, each a real behavioral tradeoff to shared freshness plumbing) -- raised as a design question rather than unilaterally patched, matching this session's established practice. This is a genuinely valuable, live-evidenced Largo-contract-freshness (C2) finding that pure static reading of swing-only files would never have surfaced -- validates the pivot toward live data pulls flagged last cycle.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    {
+      "raised": "2026-09-20T12:47Z (comment 5749904631 on #4076)",
+      "title": "GEX/Vector 'live' freshness measures compute-recency, not market-session-recency -- reads 'live' on a closed weekend",
+      "severity": "design question, cross-desk (not swing-scoped) -- member-facing freshness/trust (Largo C2)",
+      "status": "OPEN -- posted with full code trace + live LITE repro, 3 candidate fix approaches sketched, no fix shipped unilaterally since it touches shared GEX/Vector freshness plumbing used across desks."
+    }
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -140,6 +147,11 @@
       "last_status": "CLOSED",
       "last_seen": "2026-09-20T06:52:00Z",
       "note": "position #32 closed 2026-09-15 stopped -60.26% (peak was +24.4%, round-tripped past breakeven); play-brief verified clean/contract-compliant 09-20"
+    },
+    "LITE": {
+      "last_status": "WATCH/PRE_TRIGGER",
+      "last_seen": "2026-09-20T12:47:00Z",
+      "note": "Legacy morning-confirm-promoted, legacy_exempt gate, entry window closes 2026-09-22 (3d left). Live play-brief pull confirmed #5298's pinned-factors fix holding in production (single 'Night Hawk edition score +71pts' factor, no mismatch). Also the repro subject for the new GEX/Vector weekend-freshness design question raised on #4076."
     }
   },
   "escalations_pending_on_4076": [
