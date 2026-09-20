@@ -85,6 +85,92 @@ test("a width:0/overflow:hidden collapsed nav brand is not reported as colliding
   }
 });
 
+// Mirrors the real, shipped `VectorOdteMatrixRail` GEX/VEX matrix rail: a scrollable `<table>`
+// with a `position: sticky; top: 0` `<thead>` (opaque background, `z-index`) over a `<tbody>`
+// whose rows are `role="button"` (clickable strike rows — `onStrikeFocus`). Reproduced live on
+// `/vector` 2026-09-20: the mount-time `resetToSpot()` scroll routinely lands a row directly under
+// the sticky header, and the header's header-cell text (`Strike`, `GEX · Δ%`) then genuinely
+// overlaps that row's rect — correct, intended sticky-header behavior, not a defect.
+const STICKY_HEADER_HTML = `<!doctype html>
+<html><head><style>
+  body { margin: 0; background: #08080e; }
+  .scroll { height: 120px; overflow-y: auto; width: 300px; font: 12px monospace; color: #fff; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { position: sticky; top: 0; z-index: 10; background: #08080e; }
+  th { text-align: left; padding: 4px; }
+  tr.row { height: 24px; }
+  tr.row th, tr.row td { padding: 4px; }
+</style></head>
+<body>
+  <div class="scroll" id="scroll">
+    <table>
+      <thead><tr><th>Strike</th><th>GEX &middot; &Delta;%</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <script>
+    const tbody = document.getElementById("tbody");
+    for (let i = 0; i < 40; i++) {
+      const tr = document.createElement("tr");
+      tr.className = "row";
+      tr.setAttribute("role", "button");
+      tr.tabIndex = 0;
+      tr.innerHTML = "<th>" + (7700 - i * 5) + "</th><td>-$" + (i * 3.1).toFixed(1) + "M</td>";
+      tbody.appendChild(tr);
+    }
+  </script>
+</body></html>`;
+
+test("a sticky table header is not reported as colliding with a row scrolled beneath it", async () => {
+  const browser = await chromium.launch({
+    executablePath: resolveChromiumPath(),
+    headless: true,
+    args: ["--no-sandbox", "--disable-gpu"],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(STICKY_HEADER_HTML);
+    // Land a row right under the sticky header, the way the real component's mount-time
+    // `resetToSpot()` scroll does — this is the exact geometry that fooled the probe live.
+    await page.evaluate(() => {
+      document.getElementById("scroll").scrollTop = 24 * 5;
+    });
+    const geo = await probeGeometry(page);
+    assert.deepEqual(geo.collide, [], "a sticky header docking over a scrolled row is intended, not a collision");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("two sticky peers sharing the same pixels are still a real collision", async () => {
+  // Negative control for the sticky exclusion: it must only swallow sticky-vs-non-sticky pairs
+  // (header docking over content), not blind the detector to two sticky things genuinely fighting
+  // for the same space — the same peer-vs-overlay distinction the FIXED test already makes.
+  const html = `<!doctype html>
+<html><head><style>
+  body { margin: 0; }
+  .a { position: sticky; top: 0; z-index: 5; display: inline-block; width: 120px; }
+  .b { position: sticky; top: 0; z-index: 5; display: inline-block; width: 120px; margin-left: -60px; }
+</style></head>
+<body>
+  <div class="a"><span>Overlapping label text</span></div>
+  <button class="b" style="height:30px;">Button</button>
+</body></html>`;
+  const browser = await chromium.launch({
+    executablePath: resolveChromiumPath(),
+    headless: true,
+    args: ["--no-sandbox", "--disable-gpu"],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html);
+    const geo = await probeGeometry(page);
+    assert.equal(geo.collide.length, 1, "two sticky elements genuinely overlapping must still be reported");
+  } finally {
+    await browser.close();
+  }
+});
+
 test("a genuinely visible, unclipped label really does still collide with a control it overlaps", async () => {
   // Negative control: the fix must not blind the detector outright. A label with no clipping
   // ancestor, no opacity/visibility trick, and (unlike the fixture above) no wrapping `<a>` of its
