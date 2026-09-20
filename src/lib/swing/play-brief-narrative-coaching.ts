@@ -1038,6 +1038,25 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   const vec = vectorOf(ctx);
   const warnings: string[] = [];
 
+  // BUG FOUND 2026-09-20 (Ask Largo standing mandate): `collectBriefUnavailableSources`
+  // (play-brief-absence.ts, PR #5264) just gained the identical guard for the identical reasoning
+  // -- a WATCH play whose entry is already dead (`deadPlayReason`: thesis invalidated,
+  // entry-validity deadline passed, contract expired, or extended past the valid entry window) has
+  // nothing left for a live-data-freshness warning to usefully say: nothing re-scans a dead
+  // candidate to ever refresh its Vector/GEX/HELIX reads, so "stale" is a permanent, uninformative
+  // state for it, not a transient one worth flagging. This function reads the SAME four live-desk
+  // signals (Vector age, GEX matrix age, HELIX pipeline freshness, discovery-scan session) into one
+  // "Data caveat" bullet but never imported `deadPlayReason` for them -- watchGateCoaching (this
+  // same file, a few lines up) and play-brief.ts's top-level Invalidation callout both already gate
+  // on it; this sibling function, called from the identical WATCH-bucket path
+  // (collectCoachingBullets), did not. Scoped to WATCH-status plays only (mirroring #5264's own
+  // `isDeadWatch` idiom) -- OPEN/HOLD/TRIM carry the same setupState/entryStatus/watchEntryExpired
+  // fields with leftover pre-entry values that must not be reinterpreted once a position is live.
+  const dead =
+    play.status !== "OPEN" && play.status !== "HOLD" && play.status !== "TRIM" && play.status !== "CLOSED"
+      ? deadPlayReason(play)
+      : null;
+
   const markAbsence = collectOptionMarkStalenessAbsence(play, Date.now());
   if (markAbsence) {
     if (markAbsence.reason === "sync quote without freshness timestamp") {
@@ -1066,21 +1085,22 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   // which missed a future-skewed Infinity dataAgeMs rendering the literal "Infinitys" and a null
   // dataAgeMs (with vec.freshness === "stale") silently never warning at all. Now gated on the
   // shared vectorAgeStale helper, matching every other staleness check in the play-brief lane.
-  if (vectorAgeStale(vec, Date.now())) {
+  if (!dead && vectorAgeStale(vec, Date.now())) {
     const label = ageSecondsLabel(vec?.dataAgeMs) ?? "clock-skewed";
     warnings.push(`Vector **${label}** stale`);
   }
   const gex = ctx.ecosystem?.gex_positioning;
-  if (gexMatrixStale(gex)) {
+  if (!dead && gexMatrixStale(gex)) {
     const label = ageSecondsLabel(gexMatrixAgeMs(gex)) ?? "clock-skewed";
     warnings.push(`GEX matrix **${label}** stale — dealer posture may lag spot`);
   }
-  if (ctx.ecosystem?.flow_feed_fresh === false) {
+  if (!dead && ctx.ecosystem?.flow_feed_fresh === false) {
     warnings.push(
       "HELIX pipeline stale — flow read unavailable, not evidence of quiet tape",
     );
   }
   if (
+    !dead &&
     ctx.scanSessionDay &&
     ctx.sessionDate &&
     ctx.scanSessionDay !== ctx.sessionDate

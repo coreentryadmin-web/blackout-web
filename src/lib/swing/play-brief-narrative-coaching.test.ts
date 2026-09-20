@@ -2015,6 +2015,56 @@ test("dataHonestyCoaching: stale GEX matrix warns dealer posture may lag (Largo 
   assert.match(line!, /dealer posture may lag spot/);
 });
 
+// BUG FOUND 2026-09-20 (Ask Largo standing mandate): dataHonestyCoaching's "Data caveat" bullet
+// (Vector/GEX/HELIX/discovery-scan staleness) fired identically for a dead WATCH play as for a
+// live one -- the same wall-of-stale-warnings-for-a-setup-nobody-can-act-on shape
+// collectBriefUnavailableSources (play-brief-absence.ts, PR #5264) was just fixed for. These tests
+// prove the fix: a dead WATCH play (expired entry window, or invalidated thesis) now suppresses
+// the four staleness warnings; a live WATCH play and an OPEN play with leftover pre-entry fields
+// both still warn (no regression).
+test("dataHonestyCoaching: dead WATCH play (entry-validity window expired) suppresses Vector staleness warning", () => {
+  const line = dataHonestyCoaching(
+    ctx({ vector: { dataAgeMs: Number.POSITIVE_INFINITY } as SwingPlayBriefContext["vector"] }),
+    play({ status: "WATCH", watchEntryExpired: true }),
+  );
+  assert.equal(line, null, "a dead WATCH play must not warn about live-data staleness it can't act on");
+});
+
+test("dataHonestyCoaching: dead WATCH play (thesis invalidated) suppresses GEX/HELIX/discovery-scan staleness warnings", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      sessionDate: "2026-09-06",
+      scanSessionDay: "2026-09-05",
+      ecosystem: {
+        flow_feed_fresh: false,
+        gex_positioning: { spot: 100, matrix_age_sec: 180, freshness: "cached" },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "WATCH", setupState: "INVALIDATED" }),
+  );
+  assert.equal(line, null, "an invalidated-thesis WATCH play must not warn about live-data staleness");
+});
+
+test("dataHonestyCoaching: a live (not dead) WATCH play still warns about Vector staleness (no regression)", () => {
+  const line = dataHonestyCoaching(
+    ctx({ vector: { dataAgeMs: Number.POSITIVE_INFINITY } as SwingPlayBriefContext["vector"] }),
+    play({ status: "WATCH" }),
+  );
+  assert.match(line!, /Vector \*\*clock-skewed\*\* stale/i);
+});
+
+test("dataHonestyCoaching: an OPEN play with a leftover pre-entry setupState still warns (dead-play suppression is WATCH-only)", () => {
+  const line = dataHonestyCoaching(
+    ctx({ vector: { dataAgeMs: Number.POSITIVE_INFINITY } as SwingPlayBriefContext["vector"] }),
+    play({ status: "OPEN", setupState: "INVALIDATED" }),
+  );
+  assert.match(
+    line!,
+    /Vector \*\*clock-skewed\*\* stale/i,
+    "OPEN/HOLD/TRIM must not reinterpret leftover pre-entry setupState as dead",
+  );
+});
+
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
   assert.match(line!, /slippage/i);
