@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-20 Vector universe null-spot completeness fix (PR pending)
+
+**What was fixed:** `GET /api/market/vector/universe` was found live serving `spot:null` for 18/55
+static-allowlist tickers (COIN, MSTR, PLTR, JPM, GS, and 13 more) while a same-tick direct
+`GET /api/market/gex-heatmap?ticker=<X>` call resolved a real spot within ~1s for the same tickers.
+Root cause: `isCompleteBuild` (`vector-universe-merge.ts`) only checked row-COUNT completeness (did
+every ticker return SOME row object), never whether that row's spot actually resolved — so a
+"complete" 55/55 build with 18 null-spot rows bypassed the merge-based carry-forward protection
+entirely and replaced the stored snapshot outright, discarding any previously-good spot with zero
+grace period. A second, layered gap in `mergeUniverseSnapshot` meant even a build that DID route
+through the merge could still let an undated (null-spot) re-attempt overwrite a still-good, dated
+carried row. Both fixed: `isCompleteBuild` now also requires a `producedWithUsableData` count to
+clear `attempted`, and the merge's fresh-rows loop now refuses to let an undated row overwrite a
+carried row that is still genuinely dated and unexpired. Full write-up:
+`docs/audit/findings-staging/2026-09-20-vector-universe-null-spot-completeness.md`.
+
+**Specific thing to check once this deploys and RTH is live:** poll `GET /api/market/vector/universe`
+a few times ~5 min apart during RTH and confirm no static-allowlist ticker that had a real spot in
+one build flips to `spot:null` in the very next build — it should now only go null after genuinely
+going unrefreshed for the full 15-minute `UNIVERSE_ROW_MAX_AGE_MS` window, not on a single bad cycle.
+If any ticker DOES show `spot:null` during RTH, cross-check it against a direct
+`GET /api/market/gex-heatmap?ticker=<T>` call — a same-tick disagreement persisting past ~15-20
+minutes would mean this fix did not fully take effect.
+
 ## WATCH LIST — 2026-09-19 Night Hawk Swings "Current" tile MOBILE overflow fix (PR pending, follow-up to #5257)
 
 **What was fixed:** #5257 (below) fixed the "Current" P&L tile's desktop truncation but explicitly

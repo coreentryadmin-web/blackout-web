@@ -64,6 +64,15 @@ export type VectorUniverseSnapshot = {
    */
   attempted?: number;
   produced?: number;
+  /**
+   * Of `produced`, how many rows actually resolved a usable (non-null) spot. Optional for the
+   * same "readable before this field existed" reason as `attempted`/`produced` — absent routes
+   * through the safe (merging) path. Distinct from `produced`: a ticker whose `fetchGexHeatmap`
+   * call blocked past its budget and fell back to spot:null still PRODUCES a row (fan-out
+   * completeness), but that row carries no usable data — see `isCompleteBuild`'s doc comment in
+   * vector-universe-merge.ts for the live incident this distinction exists to fix.
+   */
+  producedWithSpot?: number;
   updatedAt: number;
   rows: VectorUniverseRow[];
 };
@@ -366,10 +375,16 @@ export async function buildVectorUniverseSnapshot(
   // Carry the COMPLETENESS of the fan-out, not just its survivors. Without this the caller cannot
   // tell "the universe is 4 tickers" from "17 of 21 lookups failed" — and it used to persist the
   // second as though it were the first. See vector-universe-merge.ts for the measured incident.
+  //
+  // `producedWithSpot` carries the SAME distinction one level deeper (2026-09-20 audit finding):
+  // `rows.length` counts every ticker that returned A row object, even one with spot:null from a
+  // block-cap timeout — see isCompleteBuild's doc comment in vector-universe-merge.ts.
+  const producedWithSpot = rows.filter((r) => r.spot != null).length;
   return {
     ...roundFloats({ updatedAt: Date.now(), rows }),
     attempted: tickers.length,
     produced: rows.length,
+    producedWithSpot,
   };
 }
 
@@ -557,7 +572,8 @@ export async function refreshVectorUniverseSnapshot(
     // OBSERVATIONS: merge it over what is stored, so a bad fan-out refreshes fewer rows instead of
     // deleting the universe. Measured on prod 2026-08-18 — an incomplete build persisted a
     // FOUR-ticker roster over a healthy 64-ticker one and it was served, ageing, for minutes.
-    if (isCompleteBuild(snap.attempted ?? 0, snap.produced ?? snap.rows.length)) {
+    const producedWithSpot = snap.producedWithSpot ?? snap.produced ?? snap.rows.length;
+    if (isCompleteBuild(snap.attempted ?? 0, snap.produced ?? snap.rows.length, producedWithSpot)) {
       await persistVectorUniverseSnapshot(snap);
       return snap;
     }
@@ -566,7 +582,8 @@ export async function refreshVectorUniverseSnapshot(
     const merged = mergeUniverseSnapshot(previous, snap.rows, Date.now());
     const out = { ...snap, updatedAt: Date.now(), rows: merged.rows };
     console.warn(
-      `[vector-universe] incomplete build ${snap.produced ?? snap.rows.length}/${snap.attempted ?? 0} — ` +
+      `[vector-universe] incomplete build ${snap.produced ?? snap.rows.length}/${snap.attempted ?? 0} ` +
+        `(${producedWithSpot} with usable spot) — ` +
         `merged (refreshed ${merged.refreshed}, carried ${merged.carried}, expired ${merged.expired}) ` +
         `-> ${merged.rows.length} rows`
     );
