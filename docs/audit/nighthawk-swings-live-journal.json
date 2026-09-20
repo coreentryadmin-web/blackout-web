@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T16:05:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git fetch showed origin/main had moved -- PR #5311 (my own book-context duplicate-ticker fix, last cycle) confirmed MERGED. ff-only merge clean. Unsubscribed from #5311 activity, deleted the now-unneeded 60min check-in trigger, deleted the local feature branch -- clean close-out. A sibling opened PR #5312 (short-interest freshness tag scaled to FINRA's biweekly settlement cadence, not the generic 10-min market-tick bucket) closing out an #4076 comment thread (5747893411) -- real bug: catalystsSection's evidence array tagged EVERY short-interest citation 'stale' regardless of actual age (a 2-hour-old read and a 59-day-old one got the identical tag) because it delegated to the generic cross-product freshnessFromObservedMs (10min recent-window) instead of a cadence-appropriate one. Independently verified end to end: read the full diff (new fundamentalsFreshnessTag() in play-brief-absence.ts, 15-day FINRA-cycle-scaled 'recent' ceiling, never 'live' since no sub-cycle cadence exists for this data type; play-brief.ts's fundamentalsFreshness() now delegates to it); ran the PR's own play-brief.test.ts myself -- 97/97 pass; reverted the two source files to pre-fix (main) and re-ran -- confirmed RED, exact match to the claimed count (1 failure, the new few-days-old-recent test); restored the fix, confirmed GREEN again (play-brief.test.ts + play-brief-absence.test.ts combined: 173/173), tsc --noEmit clean. Root cause, diff, and RED-to-GREEN all match the PR's own claims exactly -- no corrections needed. Still CI-pending at last check (PR only ~2min old), nothing to merge yet -- will pick up naturally on a future cycle's git sync once it lands. Zero open swing PRs of my own remaining. Board state unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
+  "last_updated": "2026-09-20T16:19:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git fetch showed a sibling heartbeat commit -- ff-only merge clean. Confirmed PR #5312 (short-interest freshness tag fix, verified last cycle) is now merged into main -- content matches what I independently checked. A sibling opened PR #5313 (notable-print strikes now render to 2dp, matching every other level in the brief -- Largo C9 precision). Root cause: flowIntelSection's 'Notable prints' bullet list was the one strike-render site in play-brief-intel.ts that skipped .toFixed(2), so a real fractional-strike contract (weekly options routinely strike at .50) rendered inconsistently against every sibling level (GEX king, dark-pool, nearest wall, gamma magnet, confluence zones) in the same brief. Independently verified: read the full diff (small, single-site change, matches the guard style of every sibling render in the file); ran the PR's own play-brief-intel.test.ts myself -- 175/175 pass; reverted the source file to pre-fix (main) and re-ran -- confirmed RED, exact match to the claimed 2 failures (the updated 2026-09-18 test's regex + the new fractional-strike test); restored the fix, confirmed GREEN again (175/175), tsc --noEmit clean. Root cause, diff, and RED-to-GREEN all match the PR's own claims exactly -- no corrections needed. Still CI-pending at last check, nothing to merge yet. Board unchanged/healthy (COMMIT_NOW=1 banger, WATCH=1 LITE banger, MANAGING=56 swing-native, SCALING_OUT=12 swing-native).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,15 +113,15 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T16:05:00Z",
+    "as_of": "2026-09-20T16:19:00Z",
     "swing_prs": [
       {
-        "number": 5312,
-        "title": "fix(swing): short-interest freshness tag scaled to FINRA's biweekly cadence",
+        "number": 5313,
+        "title": "fix(swing): notable-print strikes render to 2dp, matching every other level (C9 precision)",
         "state": "open",
         "author": "sibling session",
         "independently_verified_by_this_session": true,
-        "verification_result": "root cause, diff, RED (1/97 fail), GREEN (173/173 combined), and tsc --noEmit all match the PR's own claims exactly",
+        "verification_result": "root cause, diff, RED (173/175, 2 failures), GREEN (175/175), and tsc --noEmit all match the PR's own claims exactly",
         "ci_status": "pending"
       }
     ]
