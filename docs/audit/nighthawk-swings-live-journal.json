@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T19:45:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. Zero open swing PRs. No response yet to last cycle's #4076 escalation before this cycle's own work. **SELF-CORRECTION this cycle -- walked back my own prior finding, posted as #4076 comment 5751954861.** Dug further into the 'Thesis health fabricating byte-identical 84%' finding from last cycle (comment 5751915312) rather than letting it sit, and traced the REAL mechanism: it is NOT the 2026-09-15 hardcoded-constant bug pattern I compared it to. `regimeScore()`'s `factorBoost = min(0.2, factors[0].points/100)` saturates its cap for every ticker in this batch (real factors[0].points differ per ticker -- 62/63/65/66 -- but all clear the 20pt threshold that caps the boost at 0.2, so different real inputs collapse to the same capped output); every position in the batch genuinely has dte=5 (same commit batch, same expiry) so 'Theta budget: 5DTE runway' being identical is a true fact, not a placeholder; and every delta being '+0.0 pts' is the CORRECT answer for a market that's been closed the entire weekend since Friday's commit -- SNXX (persistence 'scale-out' \u0394-10, the one outlier) proves the computation is genuinely live, not templated, since it correctly picked up SNXX's real serving-state change. The remaining, much lower-stakes open question (why 19/36 get real dossier enrichment via attachThesisExplanation vs 17/36 correctly omitted) is plausibly WORKING AS INTENDED (liquid names swing's own native discovery also independently flagged that scan vs smaller crypto-adjacent names it never touched) -- not confirmed, but the severity/fabrication framing from last cycle does not hold up, so posted the correction now rather than leaving a wrong assessment on the thread. **Lesson for future cycles, worth remembering**: a byte-identical output across many rows is not proof of fabrication by itself -- check whether the REAL inputs feeding the formula are ALSO identical (same DTE, same batch, same frozen-market delta) before concluding the computation itself is fake; a formula with capped/discretized terms can legitimately collapse a range of different real inputs to the same output. This is exactly the kind of thing this file's own 'staleness trap' discipline warns about, just applied to a same-session finding instead of a stale memory. No fix shipped (correctly -- there was nothing to fix). Board unchanged.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-20T19:55:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, ran long -- genuine shipped fix). ReadNotifications clean. git sync clean (picked up sibling's heartbeat commit). No response yet on #4076 to either the original finding (5751915312) or its self-correction (5751954861). **Shipped PR #5321** -- a real, well-scoped fix found while investigating last cycle's thesis-health question: RIOT's live 'Book overlap' evidence line read only '11 same-direction positions in theme crypto-equity' despite a real, live, ~25+-position crypto-correlated batch on the board right now. Traced to sector-map.ts's crypto-equity list never having been extended to cover crypto exchanges (GEMI, BKKT, ABTC, BLSH), bitcoin miners (BMNR, BTDR), or direct BTC/ETH trust/ETF wrappers (ETH, ETHE, ETHU, ETHA, IBIT, GBTC, BITO, BITX) -- 14 tickers, all live and committed on the board at the time. Purely additive data fix following the exact established pattern from the prior MSTU/MSTX/GLXY/SBET addition (same file, same precedent) -- deliberately left out ambiguous partial-correlation names (HOOD, CRCL, APLD, BULL) to keep the change unambiguous. RED->GREEN proven (1 failure without the fix, 0 with it, 12/12 in theme-cluster.test.ts), tsc clean, portfolio.test.ts re-run clean (11/11, no regression). Staged finding + MARKET-OPEN-VALIDATION #312 written. PR opened draft, subscribed, undrafted, confirmed draft:false, 60min check-in scheduled (trig_01VvNgC16LefQmWnRuaau4eb). A full npm test background run was still in progress at push time (committed on the strength of the scoped RED->GREEN + tsc evidence per this session's established stop-hook precedent) -- will confirm at the scheduled check-in. Minor housekeeping: resolved a 5-file merge conflict on the routine heartbeat/agent-state files when returning to main (a sibling lane had already pushed a fresher sync while I was mid-PR on the feature branch) by taking main's already-committed version rather than risk silently reverting AGENT_STATE.json's append-only event log with a stale stashed copy -- low-stakes data, safe resolution. Board unchanged.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "docs/audit/findings-staging/2026-09-20-crypto-equity-theme-coverage.md (PR #5321, open -- crypto-equity theme coverage gap, 14 tickers)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,8 +115,16 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T17:47:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-20T19:55:00Z",
+    "swing_prs": [
+      {
+        "pr": 5321,
+        "title": "fix(portfolio): extend crypto-equity theme coverage to exchanges, miners, BTC/ETH wrappers",
+        "state": "open",
+        "draft": false,
+        "mine": true
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
