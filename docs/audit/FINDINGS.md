@@ -38,6 +38,44 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing play-brief `vectorDeskSection` carried an unreachable dead-code guard — PR TBD — fix/swing-vector-desk-dead-code-stale-branch — 2026-09-20
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P4 |
+| **Area** | Swing / Ask Largo play-brief |
+
+**What was found:** `vectorDeskSection`'s stale-Vector branch (`src/lib/swing/play-brief-intel.ts`) unconditionally pushes a `"**Last snapshot** ... may lag spot."` line, optionally pushes a `"Vector desk grade: ..."` line when `p.grade` is set, then checked `if (!lines.length) return null;` before returning the section. Because the first line is pushed unconditionally *before* that check, `lines.length >= 1` always holds by the time the guard runs — the `return null` branch can never execute. This is not a correctness bug (no wrong output was ever produced; the section always rendered the staleness disclosure as intended) but is a genuine code-clarity defect: a guard that reads as if a real "nothing to show" path exists when none does, which can mislead a future reader (or a future edit built on the false assumption that this branch can return null).
+
+**Why this wasn't caught by existing tests:** both existing stale-branch tests (`"stale Vector play.bias must not badge..."`, `"future-skewed Vector dataAgeMs..."`) construct fixtures with `play.grade: "A"` set, so neither exercised the `p.grade` falsy case — the one combination that would (if the guard were ever reachable) have hit it.
+
+**What changed:** removed the dead `if (!lines.length) return null;` guard, replaced with a comment explaining why it was safe to remove (traced to the unconditional push a few lines above). Added a new regression test covering the previously-untested stale-with-no-grade combination, asserting the section still renders (never null) and omits the grade line — locking in the real, and only ever possible, behavior.
+
+**Evidence — behavior-neutral, disclosed honestly:** this is dead-code removal, not a behavioral bug fix, so the usual RED→GREEN proof does not apply in the traditional sense — the new test passes identically with the guard present or removed (verified via `git stash`: 172/172 pass both ways). The value of the change is code clarity (removing a misleading always-false condition) and the new test locking in real coverage of a previously-untested input combination, not a corrected output.
+- Full suite: `npm test` → 14905 pass / 0 fail / 3 skipped (pre-existing, unrelated).
+- `npx tsc --noEmit` → clean.
+
+**Blast radius:** Single guard removed from one branch of one function. No other call site or section touched.
+
+## 2026-09-20 — [FINDING, P3 Largo/Night Hawk Swings] `tradeManagerNarrativeSection` mislabeled the real "transition" (at-flip) dealer-gamma regime as unresolved/generic in three narration branches — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `resolveGammaPosture` (`play-brief-absence.ts`) returns a real four-value regime — `"long"` / `"short"` / `"transition"` / `"unknown"` — and `"transition"` (spot sitting within 0.1% of the ticker's own gamma flip, `verdict.ts`) is a genuinely RESOLVED posture, not an absence. Three narration branches in `play-brief-narrative.ts` (`narrateMaxPain`, `narrateKing`) and `play-brief-narrative-coaching.ts` (the live-wired `magnetCoaching`) only ever tested `posture === "long"` vs everything else, so a real `"transition"` read silently fell into the same bucket as `"short"` or a genuinely unresolved posture. The worst instance: `narrateMaxPain` rendered **"pin gravity depends on dealer gamma posture (not resolved on this read)"** for a posture that WAS resolved — a factual misstatement under this repo's own Largo absence principle (never claim absence when the data exists). |
+| **Root cause** | `dealerPostureLine` (this same file) and `chartTechnicalsSection` (`play-brief-intel.ts`, `"Dealer gamma regime: **transition** (near flip)"`) both already branch on `"transition"` explicitly as its own third state — but the three level-narration functions were never updated to match when the four-value enum shipped, so they only special-cased the `"long"` side. |
+| **Evidence** | Regression tests added below reproduced the live gap: with `regime.posture: "transition"`, `narrateMaxPain`'s bullet read `"pin gravity depends on dealer gamma posture (not resolved on this read)"`; `narrateKing`'s bullet read the generic `"Max-gamma node — moves can accelerate through if wall fades"`; and the LIVE-WIRED `magnetCoaching` bullet (not the dead-code `narrateMagnet` sibling — see below) read `"Pivot node — acceleration risk if the magnet fails to hold."` — none named the real at-the-flip regime, even though the same brief's own "Trade manager read" opening line (`dealerPostureLine`) correctly said `"sitting at gamma flip — regime can flip fast"` two bullets earlier in the SAME section, i.e. the brief contradicted itself about whether the regime was known. |
+| **Blast radius / second finding surfaced while fixing this** | `play-brief-narrative.ts`'s own `narrateMagnet` function is effectively DEAD for the magnet level: `tradeManagerNarrativeSection`'s focal-levels loop only calls it when no earlier bullet already matched `/Gamma magnet/i`, but `magnetCoaching` (`play-brief-narrative-coaching.ts`, wired in earlier via `collectCoachingBullets`) fires under the exact same existence/staleness gate as the magnet level's own inclusion in `collectFocalLevels`, so whenever `narrateMagnet` would run, `magnetCoaching` has already added a matching bullet and suppressed it. Same duplicate-implementation shape this repo has hit before (`bookContextCoaching` vs `bookContextSection`, #4110/#4116) — logged in a code comment at the call site rather than removed, to keep this PR single-issue; `narrateMagnet` was still fixed in parallel as defense-in-depth in case that suppression gate ever changes. |
+| **Fix** | Added an explicit `posture === "transition"` branch to `narrateMaxPain`, `narrateKing` (both `play-brief-narrative.ts`) and `magnetCoaching` (`play-brief-narrative-coaching.ts`, the live-wired copy), each naming the real "sitting at the gamma flip / regime unsettled" state instead of collapsing it into the long-vs-not-long or short/unknown framing. `narrateMagnet` got the same branch for consistency even though currently unreachable for the magnet case. |
+| **Regression guard** | `src/lib/swing/play-brief-narrative.test.ts` — 3 new tests: `maxPainCoaching ... transition posture is a real resolved regime, must not read as unresolved` (asserts the bullet no longer says "not resolved on this read"), `kingCoaching ... transition posture must not silently read as the acceleration/short framing`, `magnetCoaching ... transition posture must not silently read as the acceleration/short framing` (isolates the specific bullet line, not just the whole section body, after an initial version of this test passed for the wrong reason — it accidentally matched `dealerPostureLine`'s own "at gamma flip" text earlier in the same section). All three RED pre-fix, GREEN post-fix. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2) · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-narrative.test.ts src/lib/swing/play-brief-narrative-coaching.test.ts` — 218/218 pass · full `npm test` run alongside this PR. |
+| **Not a trading-behaviour change** | This only changes narrative prose for an already-computed, already-correct posture value — no gate, score, rail, or commit decision is touched. |
+| **Status** | FIXED. |
+
 ## Live-UI audit tooling: `ui-geometry-probe.mjs` reported a false "text over control" collision on the sticky matrix-table header on `/vector` (and every other scrollable table using the same `position: sticky` header pattern)
 
 > **kind:** `FINDING`
