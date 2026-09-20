@@ -4,7 +4,7 @@
  */
 import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
 import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
-import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
+import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
@@ -708,7 +708,16 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   }
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
-  const vec = ctx.vector ?? eco?.vector_full_state ?? null;
+  // Cast to include VectorFreshnessBlock's `market_session`/`market_session_note` (PR #5306,
+  // vector-state-freshness.ts): both `ctx.vector` (play-brief-context.ts, straight off
+  // `fetchVectorFullState`) and `eco?.vector_full_state` (ecosystem-context.ts, through
+  // `fitVectorFullStateForModel`, which carries the freshness block verbatim — see that module's
+  // own header) genuinely have these fields at runtime; only the declared `VectorFullState` type
+  // on `SwingPlayBriefContext`/`EcosystemContext` predates them. Cast locally rather than widening
+  // either shared type, since nothing else in this file needs it.
+  const vec = (ctx.vector ?? eco?.vector_full_state ?? null) as
+    | (VectorFullState & Partial<VectorFreshnessBlock>)
+    | null;
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): this used to
@@ -772,6 +781,26 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
           etStampFromIso(gex?.asof) ??
           ctx.asOf,
         freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+      },
+    });
+  }
+  // Fast-follow to PR #5306 (Ask Largo standing mandate, 2026-09-20): #5306 shipped
+  // `market_session_note` on the shared freshness block but deliberately stopped short of wiring
+  // it anywhere — scoped in that PR's own description as "swing-scoped, safe fast-follow". The
+  // note fires only for the misleading combination `describeVectorFreshness` exists to catch: a
+  // weekend/holiday self-warm computes off the last close and reads `freshness: "live"`/`"recent"`
+  // while the market itself has been shut for hours — gated `!vectorStale` so this can never
+  // surface a caveat about a Vector read the rest of this function has already excluded from use
+  // (session-mismatch staleness would already suppress it there; see the cast comment above for
+  // why the self-warm scenario itself does NOT trip that gate).
+  if (!vectorStale && vec?.market_session_note) {
+    out.push({
+      kind: "fact",
+      text: vec.market_session_note,
+      provenance: {
+        source: "Vector",
+        asOf: vec.asOfEt ?? etStampFromIso(vec.asOf) ?? ctx.asOf,
+        freshness: vectorFreshness(vec, readMs),
       },
     });
   }
