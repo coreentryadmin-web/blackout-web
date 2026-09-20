@@ -1,17 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T12:47:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. Synced main (brought in a non-swing db-pool fix from a sibling). Zero open swing PRs; board unchanged/healthy. Acted on last cycle's own note (diminishing returns on pure static audits) -- pivoted to a LIVE data pull instead: authenticated (mintClerkPremiumSession via audit-auth-fetch.mjs) and pulled the real play-brief for LITE (GET /api/market/swing/play-brief?playId=SWING:LITE&ticker=LITE, 200, via clerk). Two outcomes: (1) POSITIVE LIVE CONFIRMATION -- LITE is exactly the Legacy-promoted PRE-ENTRY scenario PR #5298 fixed hours ago, and the live 'Why this setup' section correctly shows a single pinned factor ('Night Hawk edition score -- +71 pts') with no dossier-overwrite mismatch -- the fix is holding in production, a genuine second layer of verification beyond the earlier RED/GREEN test check. (2) NEW DESIGN QUESTION FOUND AND RAISED on #4076 (comment 5749904631): today is a real Sunday (confirmed via date arithmetic, markets closed ~40+h since Friday close), yet EVERY GEX/Vector-sourced field in the live envelope (dealer posture, walls, spot, gamma magnet, GEX king, max pain) carries freshness:'live' with asOf stamped essentially to request time. Traced to source: gexMatrixAgeMs/gexMatrixStale (play-brief-absence.ts) measure only compute-recency against GEX_MATRIX_STALE_MS=120s; the underlying gex.asof traces to polygon-options-gex.ts's calculatedAt=new Date(now).toISOString() -- the WALL-CLOCK COMPUTE time, never a market-session/chain-data timestamp. Confirmed via grep: zero market-hours-aware freshness guards exist anywhere in src/lib/swing or src/lib/bie. This is explicitly CROSS-DESK (the constant's own comment: 'Shared with Vector'), not swing-scoped, and the correct fix isn't obvious (3 candidate approaches sketched in the comment, each a real behavioral tradeoff to shared freshness plumbing) -- raised as a design question rather than unilaterally patched, matching this session's established practice. This is a genuinely valuable, live-evidenced Largo-contract-freshness (C2) finding that pure static reading of swing-only files would never have surfaced -- validates the pivot toward live data pulls flagged last cycle.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    {
-      "raised": "2026-09-20T12:47Z (comment 5749904631 on #4076)",
-      "title": "GEX/Vector 'live' freshness measures compute-recency, not market-session-recency -- reads 'live' on a closed weekend",
-      "severity": "design question, cross-desk (not swing-scoped) -- member-facing freshness/trust (Largo C2)",
-      "status": "OPEN -- posted with full code trace + live LITE repro, 3 candidate fix approaches sketched, no fix shipped unilaterally since it touches shared GEX/Vector freshness plumbing used across desks."
-    }
-  ],
+  "last_updated": "2026-09-20T13:02:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. Synced main (already up to date). Zero open swing PRs; board unchanged. Continued the live-data-pull approach from last cycle -- pulled the real production play-brief for CRWD:39 (SCALING_OUT/TRIM, GET /api/market/swing/play-brief?playId=SWING:CRWD:39&ticker=CRWD, 200 via clerk) to complement LITE's WATCH-side pull with an OPEN-position read. Genuinely useful cross-check, no new bug: (1) GEX/Vector freshness inconsistency between tickers -- unlike LITE (showed fabricated-looking 'live' GEX/Vector), CRWD honestly shows 'GEX positioning: cold matrix / no positioning read' and 'Vector desk state: snapshot unavailable' -- this doesn't contradict the design question raised on #4076 last cycle (the code-level gap is real regardless), but shows the manifestation is per-ticker/cache-dependent, not a uniform failure -- noted as a refinement, not a retraction. (2) Closely re-examined the 'Desk says TRIM -- catalyst shifted against the thesis -- next rail at +100%' + 'Manage plan -- next trim at +100%, needs $25.40 (+228% from here)' bullets, since CRWD's manageAction (TAKE_PARTIAL) fired from catalyst_shift (an EDGE rung, unrelated to the profit_ladder mechanics) while position is at -37.8% P&L, nowhere near the +100% mechanical rail -- read manageLifecycleCoaching (play-brief-narrative-coaching.ts) in full: correctly disambiguated by design (advisory catalyst-driven trim NOW as one fact, the still-distant mechanical ladder rail as a separate reference fact) -- not contradictory, not misleading, matches the file's own extensively-documented EXIT/STOP_OUT contradiction-avoidance discipline (NRG:34 fix) which this TAKE_PARTIAL-from-a-different-rung case correctly doesn't need (the ladder info is still valid/true context for TAKE_PARTIAL, unlike for a full EXIT/STOP_OUT). Confirmed correct, not a new finding. (3) CRWD's 'Thesis health: Inputs not wired for committed positions' is a live, honest confirmation of the exact gap the sibling already deeply analyzed on #4076 and I logged as a watch item last-but-one cycle (thesis-health-entry-geometry-expired-unhandled) -- not new, correctly not re-raised. Genuinely productive live-forensics cycle, zero new findings but real verification value (confirmed correct design on two close calls rather than false-positive flagging either).",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -140,8 +133,9 @@
       "note": "trim-ladder display bug subject, fixed in #4704"
     },
     "CRWD": {
-      "last_status": "OPEN/TRIM",
-      "last_seen": "2026-09-10T04:06:00Z"
+      "last_status": "OPEN/TRIM (SCALING_OUT, position #39)",
+      "last_seen": "2026-09-20T13:02:00Z",
+      "note": "Live play-brief pulled -- P&L -37.8% (peak +39.2%, trough -44.1%, round-tripped past breakeven, correctly uses the round_trip bullet wording). manageAction TAKE_PARTIAL fired from catalyst_shift (advisory, ungraduated), not profit_ladder -- verified the 'next rail at +100%' framing is correctly disambiguated, not misleading. GEX/Vector honestly show unavailable (contrast with LITE same-cycle window showing 'live' -- see #4076 freshness design question)."
     },
     "NN": {
       "last_status": "CLOSED",
