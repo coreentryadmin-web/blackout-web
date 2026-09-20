@@ -38,6 +38,145 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing "What changed" diff engine never narrated a section DISAPPEARING between refreshes — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo swing play brief — `diffBriefSnapshots` (`src/lib/swing/play-brief-diff.ts`) |
+| **Severity** | P3 (member-facing signal loss — no crash, no wrong number, but a real, previously-shown warning could vanish with zero notice) |
+| **Status** | FIXED |
+
+### Root cause
+
+`composeSwingPlayBrief` (`play-brief.ts`) builds its `sections` array by conditionally
+`sections.push(...)`-ing many intel sections only when the underlying data genuinely supports
+them — "Book context" only while `checkPortfolioOverlap` finds real theme/direction
+concentration, "Cortex read" only while a cortex blob is pinned, "Catalysts & news"/"Meridian
+catalysts" only while a catalyst read exists and hasn't gone stale, "GEX posture"/"Wall dynamics"
+only while the matrix is fresh, etc. This is deliberate and correct per
+`docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle — a section is omitted rather than
+padded when a product genuinely has nothing to show.
+
+The consequence nobody had traced: because a section's presence is data-driven, it can genuinely
+**disappear** between two refreshes of the same play — e.g. a portfolio-overlap warning clears, a
+Cortex source starts timing out, a catalyst read goes stale and gets dropped. `diffBriefSnapshots`
+already compares `prev.sectionTitles` against `next.sectionTitles` for exactly this class of
+change, but only in one direction:
+
+```ts
+const newSections = next.sectionTitles.filter((t) => !prev.sectionTitles.includes(t));
+if (newSections.length) {
+  lines.push(`New sections: ${newSections.join(", ")}`);
+}
+```
+
+A title present in `prev` but missing from `next` produced **zero lines** — silently identical to
+a refresh where nothing changed at all, even though a member had genuinely been shown a warning
+(e.g. "Book context" concentration) that then quietly went away with no "What changed" callout.
+This is the exact same shape as two bugs already fixed in this file (the roll-candidate-clearing
+gap and the DTE-rollover headline bug) — a materially informative refresh event that produced no
+signal — just on the generic section-list path instead of a specific field.
+
+### Evidence
+
+Wrote a RED→GREEN regression test (`play-brief-diff.test.ts`): built two envelopes whose sections
+differ only by "Book context" being present in `prev` and absent in `next`, and asserted
+`diffBriefSnapshots` returns a `"No longer showing: Book context"` line.
+
+- **Before the fix:** `git stash` on `play-brief-diff.ts` alone (test file untouched) →
+  `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-diff.test.ts` → the new
+  test failed: `expected a "No longer showing" line, got: []` (33 pass / 1 fail).
+- **After the fix (`git stash pop`):** same command → 34/34 pass.
+
+### Blast radius
+
+Single call site — `diffBriefSnapshots` is the only place `sectionTitles` is diffed (confirmed via
+repo-wide grep). No other consumer duplicates this comparison, so this is a one-file fix with no
+other lane to touch.
+
+### Fix rationale
+
+Added the symmetric check — `prev.sectionTitles` minus `next.sectionTitles` — and pushed a plain
+`No longer showing: <titles>` line, deliberately **not** inventing a reason for *why* a section
+left (the diff engine has no visibility into which specific upstream condition flipped, and
+guessing one would risk stating something untrue — the same "name the fact, don't fabricate the
+cause" discipline `narrateStructuralLevelShift`'s direction-neutral framing already uses in this
+same file). Left the existing `newSections` behavior, threshold, and 8-line cap on
+`diffBriefSnapshots`'s output completely unchanged.
+
+## Swing `parseEarningsWindows` used the raw UTC calendar date instead of the ET trading day — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Swing discovery ingest — `parseEarningsWindows` (`src/lib/swing/swing-catalyst.ts`) |
+| **Severity** | P2 (silent, live, evening-hours data-correctness bug in the CATALYST pillar + EVENT_DRIVEN archetype classification) |
+| **Status** | FIXED |
+
+### Root cause
+
+`parseEarningsWindows` derived its own idea of "today" via:
+
+```ts
+const todayYmd = new Date(asOfMs).toISOString().slice(0, 10);
+```
+
+— the UTC calendar date of the instant, not the ET trading-day date the earnings feed's own
+`earnings_date`/`report_date` strings are stamped in. `swing-ingest.ts`'s caller passes `asOfMs =
+Date.parse(args.asOf)`, the real scan/ingest instant — and this codebase's own live repros
+elsewhere (e.g. `play-brief-narrative-coaching.ts`'s `printAlreadyLandedThresholdMs` fix, live
+repro "2026-09-14 20:36 ET") confirm this pipeline genuinely runs well into evening ET hours, not
+just during RTH.
+
+Past ~20:00 ET (EDT) / ~19:00 ET (EST), the UTC calendar date is already the *next* day. So
+`todayYmd` silently ran one day ahead of the real ET trading day during those hours, shifting every
+`daysBetweenYmd(todayYmd, date)` comparison in the function by one: a same-day (ET) earnings print
+could misclassify as `lastEarnings` (already happened, `daysAgo=1`) instead of `nextEarnings`
+(`daysUntil=0`) — corrupting the CATALYST pillar's `earningsInWindow` hazard and the EVENT_DRIVEN
+archetype's `catalystInWindow01` fit for any name evaluated during evening ET hours on its own
+earnings day.
+
+### Evidence
+
+Confirmed `todayEt()` (`@/lib/et-date`) is this codebase's established single source of truth for
+the ET session-calendar date — already used by `spx-session.ts` and every other ET-anchored
+comparison in the repo — and that it already accepts an injectable `Date` for exactly this
+non-"now" case (`export function todayEt(now: Date = new Date())`). `parseEarningsWindows` never
+used it.
+
+Concrete repro: `2026-07-24T23:30:00-04:00` (11:30pm EDT) is `2026-07-25T03:30:00.000Z`. The real
+ET trading day is still `2026-07-24`, but the pre-fix `.toISOString().slice(0,10)` logic read
+`"2026-07-25"` — one day ahead. An earnings row dated `earnings_date: "2026-07-24"` (today, ET)
+computed `daysBetweenYmd("2026-07-25", "2026-07-24") = -1`, landing it in the `lastEarnings`
+(past) branch with `daysAgo: 1`, instead of the correct `nextEarnings.daysUntil: 0`.
+
+### Blast radius
+
+Single function, one call site (`swing-ingest.ts`'s `assembleSwingDossierInput` catalyst block —
+repo-wide grep confirms `parseEarningsWindows` has no other caller). Downstream consumers of its
+output (`deriveCatalystReads`'s `earningsInWindow`/`catalystInWindow01`, the CATALYST pillar score,
+EVENT_DRIVEN archetype classification, and ultimately any play-brief prose citing "earnings in
+window") all inherit the corrected date, no further changes needed.
+
+### Fix rationale
+
+Swapped `new Date(asOfMs).toISOString().slice(0, 10)` for `todayEt(new Date(asOfMs))` — reusing the
+existing, already-tested "single source of truth" helper rather than re-deriving a second ET-date
+conversion. Purely a `todayYmd` derivation change; the rest of the function (the future/past split,
+soonest/most-recent selection, surprise-pct parsing) is untouched.
+
+### Tests
+
+One new test in `swing-catalyst.test.ts`: an 11:30pm-EDT `asOfMs` with a today-ET-dated earnings row
+must resolve `nextEarnings.daysUntil === 0` and `lastEarnings === null` (not the reverse). RED→GREEN
+proven via `git stash` isolating the source fix from the test: reverting only `swing-catalyst.ts`
+reproduces exactly 1 failure (the new test); restoring the fix returns to 13/13 pass in that file.
+`swing-ingest.test.ts` (the one caller): 15/15 pass, no regressions. `npx tsc --noEmit`: clean. Full
+`npm test` (Node 20): 14897 pass / 0 fail / 3 skipped (pre-existing, unrelated).
+
 ## Swing `detectRollCandidate`'s reason string falsely claimed roll execution was still deferred to PR-15 — FIXED
 
 > **kind:** `FINDING`
