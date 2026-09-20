@@ -630,6 +630,31 @@ test("guardCheckedOutClient: swallows a checked-out client's own 'error' event i
   );
 });
 
+// BUG FIX (2026-09-20, live CloudWatch: `MaxListenersExceededWarning: Possible EventEmitter
+// memory leak detected. 11 error listeners added to [Client]`). pg-pool recycles idle Client
+// OBJECTS across checkouts, so the SAME physical client can be the one `pool.connect()` hands
+// back many times over the life of the process. guardCheckedOutClient used to add a fresh
+// 'error' listener on every call with no de-dupe, so each recheckout of that same client left
+// another permanent listener behind — unbounded growth, not a one-time cost.
+test("guardCheckedOutClient: guarding the SAME physical client object twice adds only ONE 'error' listener", () => {
+  const client = new EventEmitter() as unknown as PoolClient;
+  guardCheckedOutClient(client);
+  const afterFirst = (client as unknown as EventEmitter).listenerCount("error");
+  assert.equal(afterFirst, 1, "first checkout installs exactly one guard listener");
+
+  // Simulate the client being released back to the pool and checked out again later —
+  // guardCheckedOutClient is called again at the new pool.connect() call site.
+  guardCheckedOutClient(client);
+  guardCheckedOutClient(client);
+  const afterRepeat = (client as unknown as EventEmitter).listenerCount("error");
+  assert.equal(
+    afterRepeat,
+    1,
+    "re-guarding the same recycled client must be a no-op, not stack another listener — " +
+      "this is exactly the accumulation that produced the live MaxListenersExceededWarning"
+  );
+});
+
 // BUG FIX (2026-09-08, live evidence: `GET /api/admin/cron-health` served `desk-warm`'s
 // `runs_24h: {ok:0,failed:0,skipped:2}` for a job firing every ~5 min all morning — misread at
 // first glance as "barely ran today"). `admin-cron-health.ts`'s `buildCronHealthSnapshot` built its
