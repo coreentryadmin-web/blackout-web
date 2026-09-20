@@ -24,7 +24,23 @@ const SECTORS: Record<string, string[]> = {
   // MSTU/MSTX are leveraged single-stock ETFs tracking MSTR itself — same bet, different wrapper.
   // GLXY (Galaxy Digital) and SBET (crypto-treasury) are crypto-holdings proxies in the same risk
   // bucket as COIN/MARA/etc.
-  "crypto-equity": ["COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN", "MSTU", "MSTX", "GLXY", "SBET"],
+  // Extended 2026-09-20 (Ask Largo standing mandate, live repro: a 2026-09-18 Banger-promoted swing
+  // batch of 36 positions was, per checkPortfolioOverlap's own "Book overlap" evidence line, reporting
+  // only 11 same-direction crypto-equity positions when the live book actually held ~25+ crypto-price-
+  // correlated names — every one of the additions below was live and committed at the time this was
+  // found). GEMI (Gemini Space Station), BKKT (Bakkt), ABTC (American Bitcoin Corp) and BLSH (Bullish)
+  // are crypto exchanges/custodians — same risk bucket as COIN. BMNR (Bitmine Immersion) and BTDR
+  // (Bitdeer) are bitcoin miners — same risk bucket as MARA/RIOT/CLSK/HUT/IREN. ETH, ETHE, ETHU, ETHA
+  // are direct Ethereum trust/ETF wrappers and IBIT, GBTC, BITO, BITX are direct Bitcoin trust/ETF
+  // wrappers — not equities, but an EVEN MORE direct crypto-price read than the mining/holding equities
+  // already in this bucket, so they belong in the same concentration cluster, not their own isolated
+  // one. Deliberately conservative: left out names with only partial/ambiguous crypto correlation
+  // (HOOD, CRCL, APLD, BULL) rather than over-reaching this pass.
+  "crypto-equity": [
+    "COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN", "MSTU", "MSTX", "GLXY", "SBET",
+    "GEMI", "BKKT", "ABTC", "BLSH", "BMNR", "BTDR",
+    "ETH", "ETHE", "ETHU", "ETHA", "IBIT", "GBTC", "BITO", "BITX",
+  ],
   "china-adr": ["BABA", "PDD", "NIO", "JD", "BIDU", "LI", "XPEV", "FUTU"],
   consumer: ["NKE", "SBUX", "MCD", "DIS", "WMT", "COST", "TGT", "LULU", "CMG"],
   healthcare: ["LLY", "UNH", "PFE", "JNJ", "MRNA", "ABBV", "TMO", "AMGN"],
