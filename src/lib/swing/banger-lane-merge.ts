@@ -64,6 +64,23 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
 
   return {
     ticker: row.ticker.toUpperCase(),
+    // Banger's own primary key, doubling as the swing HorizonPlay's `positionId`. WITHOUT this,
+    // CommandDeck's row identity — `id: ${horizon}:${ticker}${positionId ? `:${positionId}` : ""}`
+    // (adapters.ts terminalPlayFromHorizon) — collapses to the bare `SWING:TICKER` for every
+    // banger-origin row, because this function used to omit positionId entirely. Two banger
+    // legs on the same ticker (e.g. one MANAGING, one already SCALING_OUT after a partial) then
+    // share ONE React key, and React's reconciliation does not "double render" on a key
+    // collision — it silently reuses/misattributes DOM state across re-renders (confirmed live
+    // 2026-09-20: searching the Swings desk's ticker box for one real position returned SEVEN
+    // unrelated tickers alongside it, all of them banger-origin MANAGING/SCALING_OUT rows sharing
+    // this same collapsed id, and the extraneous rows kept accumulating across successive
+    // searches in one session — a live symptom of the identity collision, not a filter-logic
+    // bug in DeckSearchBox itself, which was independently verified correct against ordinary
+    // non-colliding tickers). `row.id` is banger_positions' own auto-increment primary key, so it
+    // is unique per banger row the same way swing_positions.id already is for
+    // livePlaysFromOpenPositions (live-plays.ts) — the two id spaces are namespaced by `ticker`
+    // in the same template, so a numeric coincidence across the two tables still cannot collide.
+    positionId: row.id,
     direction: "LONG",
     horizon: "SWING",
     score,
