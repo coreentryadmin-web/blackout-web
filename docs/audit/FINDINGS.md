@@ -12778,11 +12778,10 @@ briefs, which read correctly).
 
 ## spx-signal-weight-optimize missing NYSE holiday gate — FIXED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 | Field | Value |
 |-------|-------|
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4505), verified live in `main` 2026-09-20 |
 | **Priority** | P1 |
 | **Area** | cron / SPX signal optimizer |
 | **Discovered** | 2026-09-07 (Labor Day holiday-gate sweep) |
@@ -13386,12 +13385,11 @@ RED→GREEN: `npx tsx --test src/app/api/cron/largo-morning-brief/route.test.ts 
 
 ## Largo matrix_age_sec future-skew age-0 trap — FIXED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 | Field | Value |
 |-------|-------|
 | **ID** | BO-P2-largo-matrix-age-skew |
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4472), verified live in `main` 2026-09-20 |
 | **Severity** | P2 — Largo C2 freshness contract |
 | **Area** | Largo product reads |
 
@@ -14591,9 +14589,8 @@ Select any OPEN swing play on Night Hawk → Ask Largo rail should read e.g. `Up
 
 ## Ask Largo lane rank always null for committed swing plays
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4197), verified live in `main` 2026-09-20 |
 |------------|-------------------|
 | **Audit** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` finding **#15** |
 
@@ -14687,9 +14684,8 @@ On an OPEN swing with a recent HELIX anomaly: Trade manager read should mention 
 
 ## Closed Ask Largo brief silently dropped GEX/flow intel
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4189), verified live in `main` 2026-09-20 |
 |------------|-------------------|
 | **Audit** | `docs/audit/SWING-SYSTEM-CTO-AUDIT-2026-09-06.md` finding **#2** |
 
@@ -15035,11 +15031,10 @@ On a live swing with Vector dark pool levels, open Ask Largo → level table / S
 
 ## Swing brief — book concentration silently dropped after #4119 collapse
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 | Field | Value |
 |-------|-------|
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4123), verified live in `main` 2026-09-20 |
 | **Priority** | P1 |
 | **Area** | Night Hawk Swings / Ask Largo play-brief |
 | **Discovered** | 2026-09-06 (Claude triage on #4119) |
@@ -15581,11 +15576,10 @@ Open a swing play brief on a ticker with aged Vector cache (>120s) and confirm `
 
 ## Largo stale Vector desk section bias badges directional read off stale snapshot
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 | Field | Value |
 |-------|-------|
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4388), verified live in `main` 2026-09-20 |
 | **Area** | Night Hawk Swings / Ask Largo |
 | **Contract** | Largo C2 (freshness / absence) |
 
@@ -15662,11 +15656,10 @@ Gate Vector regime on `!vectorSnapshotStale(vec, readMs)` before returning; fall
 
 ## Largo stale Vector EMA/regime steelmanned in counter-thesis
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 | Field | Value |
 |-------|-------|
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4369), verified live in `main` 2026-09-20 |
 | **Area** | Night Hawk Swings / Ask Largo |
 | **Contract** | Largo C2 (freshness / absence) |
 
@@ -17146,9 +17139,8 @@ Unknown quote age fails open (matches legacy null handling).
 
 ## Swing Ask Largo brief — OPEN tab resolves WATCH lane row on ticker collision
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #4062), verified live in `main` 2026-09-20 |
 |------------|-------------------|
 
 ### Symptom
@@ -19061,13 +19053,12 @@ Extracted `probeOptionsSocketWithRetries()` into `scripts/lib/rth-socket-probe.m
 
 ## UW REST cache + Polygon index feed future-timestamp guards — FIXED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 ### Summary
 
 Clock-skewed future `fetchedAt` / `updatedAt` timestamps could read as infinitely fresh in three paths not covered by #3760/#3762.
 
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #3771), verified live in `main` 2026-09-20 |
 |------------|-------------------|
 
 ### Root cause
@@ -26459,9 +26450,8 @@ proactively rather than waiting for it to actually break.
 
 ## Night Hawk Legacy calendar tile diluted its premium average with stock-only nulls — FIXED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED — confirmed merged (PR #5030), verified live in `main` 2026-09-20 |
 |---|---|
 
 **Root cause:** `legacyBoardCalendarBuckets` (`src/features/nighthawk/lib/legacy-board-table-utils.ts`)
@@ -32590,9 +32580,8 @@ was deliberately avoided.
 
 ## Ask Largo `ticker-verdict.ts` fabricated a directional bias from a 0DTE condor's nominal direction — FIXED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
-| **Status** | Fixed, PR pending |
+| **Status** | FIXED — confirmed merged (PR #4870), verified live in `main` 2026-09-20 |
 |---|---|
 | **Area** | Ask Largo / BIE deterministic verdict (`src/lib/bie/ticker-verdict.ts`) |
 | **Severity** | P2 — deterministic advice-shaped answer could silently fabricate a directional read |
