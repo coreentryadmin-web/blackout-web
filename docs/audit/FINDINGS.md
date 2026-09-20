@@ -38,6 +38,150 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Live-UI audit tooling: `ui-geometry-probe.mjs` reported a false "text over control" collision on every `nav-brand-ios-compact` desk page (Thermal/`/heatmap` confirmed live; same shared component also serves Vector/Night Hawk)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — PR opened same session, verified RED→GREEN locally and against live prod. |
+| **Surface** | `scripts/audit/lib/ui-geometry-probe.mjs` (`probeGeometry`'s `vis()` and `visibleFraction()`), shared by `live-ui-interaction-audit.mjs` and `live-ui-deep-audit.mjs`. Tooling only — no application code, no runtime behavior change to the product. |
+| **Severity** | P3 (tooling correctness) — no member-facing defect; the risk is a false FAIL training a reader to distrust or skip real findings from this harness. |
+
+### What was found
+
+This cycle's live-UI/interaction pass on `/heatmap` (Ask Largo × Night Hawk standing mandate's
+required live-UI check, run via `scripts/audit/live-ui-interaction-audit.mjs` per
+`docs/audit/LIVE-UI-CONNECTION.md`) reproducibly reported:
+
+```
+FAIL /heatmap [phone]: 1 COLLISION(s) on load — "BLACKOUT" over control "☰"
+```
+
+Reproduced 2/2 runs against live production at 430×932 under the harness's iOS-app UA
+(`BlackOutiOSApp/1.0`, the shared tunnel context's default mobile UA). Direct DOM inspection
+(same tunnel, same auth) showed this is a **false positive**, not a real layout defect:
+
+```
+span.nav-wordmark ("BLACKOUT")   rect x 233.2..305.4   own computed opacity: 1
+button.nav-sheet-toggle ("☰")    rect x 225.2..269.2
+a.nav-brand (the wordmark's real ancestor, class nav-brand-ios-compact)
+                                  computed width: 0px, opacity: 0   ← the collapse the CSS rule
+                                                                       (`.nav-bar-ios-tool .nav-brand-ios-compact`,
+                                                                       globals.css) is supposed to enforce
+```
+
+The wordmark's containing `<a>` is genuinely collapsed to nothing (`opacity:0; width:0;
+overflow:hidden`) — invisible to any real member — and this collapse is itself the fix for an
+**earlier, already-documented incarnation of this exact defect** (the CSS rule's own comment
+names the live coordinates `x 233..305` / `x 225..269`, byte-identical to what this cycle
+re-measured). A closed, never-merged draft PR (#2143, opened 2026-08-13, closed unmerged
+2026-08-19 — a "draft deadlock" casualty per this repo's own CLAUDE.md, never undrafted, no
+review ever posted) had already diagnosed and fixed the exact same two probe bugs; `main` never
+picked it up, so the tooling regressed to reporting the false positive again. This PR reapplies
+that fix fresh against current `main`, with a new regression test (the original PR shipped none).
+
+### Root cause (two compounding bugs in `ui-geometry-probe.mjs`)
+
+**Bug 1 — `visibleFraction()` treated a zero-size clipping ancestor as "no constraint".**
+
+```js
+const pr = p.getBoundingClientRect();
+if (pr.width === 0 || pr.height === 0) continue;   // WRONG: skips the clip entirely
+```
+
+`width: 0; overflow: hidden` is the standard idiom for collapsing an element to nothing — it is
+the **strongest** clipping constraint there is, not the absence of one. Skipping it left the
+descendant's own unclipped `getBoundingClientRect()` (which always reports where content *would*
+render) unconstrained, so the collapsed wordmark scored `visibleFraction() === 1` ("fully
+visible") despite being invisible behind its own collapsed container.
+
+**Bug 2 — `vis()` read only the node's own `opacity`/`visibility`/`display`, never an ancestor's.**
+
+```js
+const s = getComputedStyle(el);
+return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0";
+```
+
+`opacity` does not inherit as a *computed* value: a child of an `opacity: 0` parent still computes
+its own `opacity: 1` while being completely invisible, because the parent composites its whole
+subtree into a transparent layer. Reading only the node's own value calls a deliberately
+faded-out subtree visible.
+
+Both bugs independently let the invisible `nav-wordmark` span past the collision check's
+visibility gate, at which point its real (unclipped) rect genuinely intersects the `☰` button's
+rect (233..305 vs 225..269), producing the reported collision.
+
+### Fix
+
+- `visibleFraction()`: a zero-size `overflow: hidden` ancestor now `return 0` (fully clipped)
+  instead of `continue` (no constraint).
+- `vis()`: now walks every ancestor up to `<html>`, short-circuiting on the first
+  `display:none` / `visibility:hidden` / `opacity:0` found at any level.
+
+Both changes are scoped to the shared geometry-probe file only — no application code touched, no
+change to what a member sees or how the product behaves.
+
+### Evidence
+
+- **Before (reverted fix, `git stash`):** new regression test `ui-geometry-probe.test.mjs` RED —
+  reproduces the exact collapsed-nav-brand-vs-hamburger pattern and asserts no collision; fails,
+  reporting the same `"BLACKOUT" over control "☰"` the live run produced.
+- **After (fix applied):** same test GREEN, plus a negative-control test in the same file
+  (visible, unclipped, unwrapped label genuinely overlapping the button) still correctly reports
+  exactly one real collision — the fix does not blind the detector outright.
+- **Live confirmation:** re-ran `live-ui-interaction-audit.mjs --pages=/heatmap` against prod
+  before/after the fix. Before: `FAIL — 1 COLLISION(s) on load`. After: `ALL 1 PAGES BEHAVED`, 0
+  fails, both desktop and phone viewports.
+- `npx tsc --noEmit`: clean. Full `npm test` (Node 20): run alongside this PR.
+
+### Blast radius
+
+`ui-geometry-probe.mjs` is shared by both `live-ui-interaction-audit.mjs` (interaction sweeps) and
+`live-ui-deep-audit.mjs` (page-load sweeps) — both get the fix. The same `nav-brand-ios-compact`
+pattern is shared chrome across every desk (`src/components/Nav.tsx`), so this false positive was
+not `/heatmap`-specific; the closed PR #2143 also measured it live on `/vector` and `/nighthawk`.
+No other predicate (`hiddenByScroll`, `animated`, the CLIPPED loop) changes behavior — the CLIPPED
+loop already independently excluded this exact pattern (its own comment names
+`.nav-brand-ios-compact` by name), so this fix only changes the COLLIDE path's verdict, matching
+the already-correct CLIPPED-path verdict.
+
+### Fix rationale
+
+Reapplying the diagnosed, already-written fix from #2143 rather than rediscovering a different
+one — it was correct, well-commented, and independently reproduced end-to-end this cycle (live
+DOM inspection down to the exact ancestor chain and computed styles, not just the symptom). The
+one addition beyond #2143: a real regression test (`ui-geometry-probe.test.mjs`, RED→GREEN
+verified), since the original PR shipped the fix with no automated test, which is very likely
+part of why it went unmerged and unmissed for five weeks — a green draft with no test asserting
+its own necessity gives a reviewer nothing beyond the PR description to check.
+
+## Ask Largo swing "Lessons" section silently dropped its verdict for a small-peak, weakly-captured closed trade — PR TBD — fix/swing-lessons-low-peak-capture-gap — 2026-09-20
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 |
+| **Area** | Swing / Ask Largo play-brief |
+
+**What was broken:** `lessonsSection` (`src/lib/swing/play-brief-intel.ts`) renders a "Lessons" retrospective for every CLOSED swing position. Its `capture` outcome branch had three cases — `capture >= 75`, `capture < 35 && play.peak > 20`, and `35 <= capture < 75` — but no case at all for `capture < 35 && play.peak <= 20`. A closed trade whose peak never got big enough to plausibly reach a trim rail (correctly excluded from the "tighten at first trim rail" advice, which would be nonsensical there) fell all the way through the if/else chain with nothing pushed beyond the bare `MFE capture: X% of peak move` fact — no verdict, no advice, unlike every other capture band (including the sibling `round_trip` outcome kind in the same function, which already has an explicit low-peak exception with its own wording).
+
+The sibling function `closedCoaching` (`play-brief-narrative-coaching.ts`, the "Trade manager read" section for closed plays) does not have this gap — its equivalent capture branch is exhaustive via a plain catch-all `else` ("MFE capture X% — review runner vs trim policy"). `lessonsSection`'s chain was the only one of the two with a hole.
+
+**Live evidence:** Checked the real 90-day closed-position population (`GET /api/market/swing/record?days=90`, 36 closed swing chains) for the exact `peak <= 20% && capture < 35%` combination — none currently exist. Every low-peak closed trade in the live population either round-tripped to a loss (handled by the `round_trip` outcome kind, which already has the low-peak exception) or nearly fully captured its small peak (landing in the `>= 75%` band). This is a real, confirmed code-path gap caught by comparing the two sibling functions' logic, not yet observed live — the next closed trade shaped like "peak +12%, exit +3%" would have hit it.
+
+**What changed:** Added the missing `else` branch inside `capture < 35`, gated on `play.peak > 20` the same way the existing "Gave back the move" branch is, with its own distinct message for the low-peak case: `"**Small move, weakly captured** — the peak never reached a trim rail; review entry timing or thesis strength instead."` — reusing the same "a trim rail wouldn't have fired" framing this file's `round_trip` branch already established for the identical `peak <= 20` constraint, so the reasoning is consistent across both outcome kinds. Left unconditional (no `alreadyNoted` dedup flag), matching the sibling `"Partial capture"` branch below it — `closedCoaching`'s own text for this exact bucket is the unrelated generic "review runner vs trim policy" phrase, so there is no restatement risk to gate against.
+
+**Blast radius:** Only `lessonsSection`'s capture branch changed. Additive (one new `else` arm) — cannot affect any other capture band, the `round_trip` kind, or any other section.
+
+**Evidence:**
+- New regression test in `src/lib/swing/play-brief-intel.test.ts`: `"lessonsSection: a small peak (<=20%) with weak capture (<35%) still gets a verdict line, not just the bare fact"`.
+- RED→GREEN proven via `git stash` (reverting only the source fix): 1/171 tests in `play-brief-intel.test.ts` failed pre-fix, 171/171 pass post-fix.
+- Full suite: `npm test` → 14900 pass / 0 fail / 3 skipped (pre-existing, unrelated).
+- `npx tsc --noEmit` → clean.
+
 ## 2026-09-05 — [P1, commerce] Post-Whop-pay tier lag — no desk “processing payment” UX — OPEN
 > **kind:** `FINDING`
 > **Found by:** Cursor 360° cross-exam (CLQ-041)
