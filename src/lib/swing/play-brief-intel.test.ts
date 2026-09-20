@@ -4447,3 +4447,23 @@ test("buildIntelSections: a single section throwing does not take down the whole
   assert.ok(sections.some((s) => s.title === "Trade manager read"), "other sections still render");
   assert.ok(sections.some((s) => s.title === "Watch levels"), "other sections still render");
 });
+
+// GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro BKKT: 28 same-theme overlaps
+// rendered as one uncapped comma-separated wall of tickers). A crowded book must still read as
+// trader-manager prose, not a raw name dump — see the doc comment on MAX_OVERLAP_NAMES/
+// joinOverlapNames in play-brief-intel.ts for the full live evidence.
+test("bookContextSection: a large same-theme overlap caps the rendered name list, does not dump every ticker", () => {
+  const crypto = ["COIN", "MSTU", "MARA", "RIOT", "CLSK", "HUT", "IREN", "BITX", "MSTR", "GBTC"];
+  const book: PortfolioPosition[] = crypto.map((ticker) => ({ ticker, direction: "LONG" }));
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:BKKT:1", ticker: "BKKT", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  // The true count in the lead sentence stays honest — nothing is hidden, only the namewall trims.
+  assert.match(section!.body, /already holding 10 same-direction/);
+  // Exactly MAX_OVERLAP_NAMES (8) ticker names are rendered, not all 10.
+  const renderedNames = crypto.filter((t) => section!.body.includes(`${t} LONG`));
+  assert.equal(renderedNames.length, 8, "must cap the rendered names, not list every overlap");
+  assert.match(section!.body, /\+ 2 more/, "the remainder must be folded into an honest count");
+});
