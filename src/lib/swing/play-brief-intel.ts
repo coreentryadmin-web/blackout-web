@@ -781,7 +781,17 @@ export function flowIntelSection(
         const gex = p.gex_proximity ? ` @ ${p.gex_proximity.replace(/_/g, " ")}` : "";
         const ageLabel = relativeAgeLabel(p.alerted_at || p.event_at || null);
         const agePart = ageLabel ? ` [${ageLabel}]` : "";
-        return `• ${p.option_type ?? "—"} ${p.strike ?? "—"} ${prem}${gex}${agePart}`;
+        // FIX (Ask Largo standing mandate, C9 precision, 2026-09-20): this was the one strike
+        // in the whole file rendered raw (`p.strike ?? "—"`) instead of `.toFixed(2)` — every
+        // sibling strike render here (GEX king strike, dark-pool levels, nearest wall, gamma
+        // magnet, confluence zones) rounds to 2dp at this presentation boundary. `p.strike` is a
+        // Postgres NUMERIC column round-tripped through `Number(row.strike)` (db.ts), which can
+        // legitimately carry more than 2 decimal digits for a fractional-strike contract, so an
+        // unformatted print renders inconsistently against every other level in the same brief
+        // (e.g. "232.5" here vs "232.50" two lines up) — a precision-contract violation (C9:
+        // "rounding happens exactly once, at the presentation boundary", not inconsistently).
+        const strikeLabel = typeof p.strike === "number" && Number.isFinite(p.strike) ? p.strike.toFixed(2) : "—";
+        return `• ${p.option_type ?? "—"} ${strikeLabel} ${prem}${gex}${agePart}`;
       })
       .join("\n");
     lines.push("**Notable prints (48h, largest premium first):**\n" + prints);
