@@ -711,6 +711,75 @@ test("maxPainCoaching (via tradeManagerNarrativeSection): unresolved posture sta
   assert.match(section!.body, /depends on dealer gamma posture \(not resolved on this read\)/i);
 });
 
+// BUG FOUND (2026-09-20, Ask Largo standing mandate): resolveGammaPosture (play-brief-absence.ts)
+// returns a real FOUR-value regime — "long"/"short"/"transition"/"unknown" — and "transition"
+// (verdict.ts: spot within 0.1% of the gamma flip) is a genuinely resolved, real posture, not an
+// absence. dealerPostureLine (this file) and chartTechnicalsSection (play-brief-intel.ts, "Dealer
+// gamma regime: **transition** (near flip)") both already branch on it explicitly as its own third
+// state. narrateKing/narrateMaxPain/narrateMagnet never got that same three-way branch — they only
+// test `posture === "long"` and treat everything else (short, transition, null/unresolved) as one
+// bucket. For narrateMaxPain specifically this is a factual misstatement under the Largo absence
+// principle: it renders "not resolved on this read" for a posture that WAS resolved (to
+// "transition"), the exact class of bug this file's own comments (narrateMaxPain/narrateKing/
+// narrateMagnet doc comments above) already document being fixed twice for the long-vs-short case.
+test("maxPainCoaching (via tradeManagerNarrativeSection): transition posture is a real resolved regime, must not read as unresolved", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        maxPain: 99,
+        regime: { posture: "transition" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Max pain 99\.00/i);
+  assert.doesNotMatch(
+    section!.body,
+    /not resolved on this read/i,
+    "transition IS a resolved posture (dealers sitting at the gamma flip) — must not claim it is unresolved",
+  );
+  assert.match(section!.body, /transition|at (the )?gamma flip/i, "must name the real transition regime, not a generic fallback");
+});
+
+test("kingCoaching (via tradeManagerNarrativeSection): transition posture must not silently read as the acceleration/short framing", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        ladder: { rows: [{ strike: 103, isKing: true }] },
+        regime: { posture: "transition" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const kingLine = section!.body.split("\n").find((l) => /GEX king 103\.00/i.test(l));
+  assert.ok(kingLine, "GEX king bullet must render");
+  assert.match(kingLine!, /transition|at (the )?gamma flip/i, "the king bullet itself must name the real transition regime, not the generic acceleration/short framing");
+});
+
+test("magnetCoaching (via tradeManagerNarrativeSection): transition posture must not silently read as the acceleration/short framing", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 118.95,
+        magnet: { strike: 134.37, distancePct: 13.0, pull: "up" },
+        regime: { posture: "transition" },
+      } as unknown as SwingPlayBriefContext["vector"],
+      play: play({ direction: "LONG", exitPolicy: undefined }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  const magnetLine = section!.body.split("\n").find((l) => /Gamma magnet 134\.37/i.test(l));
+  assert.ok(magnetLine, "Gamma magnet bullet must render");
+  assert.match(magnetLine!, /transition|at (the )?gamma flip/i, "the magnet bullet itself must name the real transition regime, not the generic acceleration/short framing");
+});
+
 test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not target", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

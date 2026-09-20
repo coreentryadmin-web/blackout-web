@@ -250,11 +250,21 @@ function narrateWall(level: FocalLevel, play: TerminalPlay, spot: number): strin
   );
 }
 
+// BUG FIX (2026-09-20, Ask Largo standing mandate): resolveGammaPosture is a real FOUR-value
+// regime — "long"/"short"/"transition"/"unknown" — and "transition" (verdict.ts: spot within 0.1%
+// of the gamma flip) is a genuinely RESOLVED posture, not an absence. dealerPostureLine (this
+// file, "sitting at gamma flip — regime can flip fast") and chartTechnicalsSection (play-brief-
+// intel.ts, "Dealer gamma regime: transition (near flip)") already branch on it as its own third
+// state; narrateKing/narrateMaxPain/narrateMagnet never did, so a real "at the flip" read silently
+// fell into the same bucket as "short" or "not resolved". Live-plausible: any ticker whose spot is
+// within 0.1% of its own gamma flip hits this on every read until it moves off the line.
 function narrateKing(level: FocalLevel, posture: string | null): string {
   const pin =
     posture === "long"
       ? "Pin risk — dealers hedge into this strike; expect chop around it."
-      : "Max-gamma node — moves can accelerate through if wall fades.";
+      : posture === "transition"
+        ? "Dealers sitting at the gamma flip here — regime can tip either way fast."
+        : "Max-gamma node — moves can accelerate through if wall fades.";
   return `**GEX king ${level.price.toFixed(2)}** — largest gamma concentration on the board. ${pin}`;
 }
 
@@ -273,15 +283,30 @@ function narrateMaxPain(level: FocalLevel, spot: number, posture: string | null)
       ? "expiration gravity pulls toward pin when dealers are long gamma; don't fight the pin into close."
       : posture === "short"
         ? "dealers are short gamma here — pin gravity is weaker and price can run through max pain rather than settle on it."
-        : "pin gravity depends on dealer gamma posture (not resolved on this read) — treat as a level to watch, not a settled pin.";
+        : posture === "transition"
+          ? "dealers are sitting right at the gamma flip — pin gravity is unsettled until the regime resolves one way or the other."
+          : "pin gravity depends on dealer gamma posture (not resolved on this read) — treat as a level to watch, not a settled pin.";
   return `**Max pain ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} ${pull} spot) — ${gravity}`;
 }
 
+// NOTE (found 2026-09-20, Ask Largo standing mandate — logged, not removed, to keep this PR
+// single-issue): this function is effectively DEAD for the magnet level specifically.
+// tradeManagerNarrativeSection's focal-levels loop only calls it when
+// `!bullets.some(b => /Gamma magnet/i.test(b))`, but `magnetCoaching` (play-brief-narrative-
+// coaching.ts, wired in earlier via collectCoachingBullets) fires under the EXACT same
+// existence/staleness gate as this level's own inclusion in collectFocalLevels (`vec?.magnet?.strike`
+// + `!vectorStale`), so whenever this branch would run, magnetCoaching has already added a
+// matching bullet and suppressed it. Same duplicate-implementation shape this repo has hit before
+// (bookContextCoaching vs bookContextSection, #4110/#4116) — kept in sync here (see the transition-
+// posture fix mirrored into magnetCoaching below) as defense-in-depth in case that gate ever
+// changes, but the real fix for any magnet-narration bug lives in magnetCoaching, not here.
 function narrateMagnet(level: FocalLevel, posture: string | null): string {
   const pin =
     posture === "long"
       ? "Pin gravity — dealers hedge into this strike; chop likely."
-      : "Pivot node — acceleration risk if magnet fails.";
+      : posture === "transition"
+        ? "Dealers sitting at the gamma flip — this node's pull is unsettled until the regime resolves."
+        : "Pivot node — acceleration risk if magnet fails.";
   const meta = level.meta ? ` ${level.meta}` : "";
   return `**Gamma magnet ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} from spot) — ${pin}${meta}`;
 }
