@@ -2290,6 +2290,40 @@ test("composeSwingPlayBrief: OPEN position's live greeks (delta/gamma/theta/vega
   assert.match(position!.body, /IV 49%/);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): `normalizeImpliedVol` (options-snapshot.ts)
+// exists to catch a real provider placeholder on expired/edge-row snapshots — `implied_volatility`
+// sometimes arrives on the PERCENT scale (20 = 2000%) instead of the normal DECIMAL scale
+// (0.20 = 20%) — but had zero call sites anywhere in the app before this fix: the Position
+// section's Greeks line formatted the raw value straight through `Math.round(iv * 100)`, so this
+// exact placeholder rendered as "IV 2000%" on a live position instead of the intended "IV 20%".
+test("composeSwingPlayBrief: a percent-scale IV placeholder (>= 500% decimal-equivalent) is rescaled, never rendered as a four-digit percent", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.9,
+      mark: 6.1,
+      pnlPct: 24.5,
+      // Real provider placeholder shape (options-snapshot.ts's own docstring example): 20 decimal
+      // == 2000%, meant to be read as 20% once /100'd back to the normal decimal scale.
+      greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 20 },
+    }),
+    asOf: "2026-09-18T18:00:00.000Z",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(position!.body, /IV 20%/, `expected rescaled 20%, got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /IV 2000%/, `must never render the raw percent-scale placeholder, got: ${position!.body}`);
+});
+
 test("composeSwingPlayBrief: OPEN position with no live greeks omits the Greeks line entirely (honest absence, never fabricated)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
