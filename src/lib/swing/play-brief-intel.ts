@@ -1587,7 +1587,11 @@ export function vectorDeskSection(
       `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — Vector desk read may lag spot.`,
     );
     if (p.grade) lines.push(`Vector desk grade: **${p.grade}** (from prior snapshot)`);
-    if (!lines.length) return null;
+    // FINDINGS 2026-09-20: `if (!lines.length) return null` here was dead code -- the "Last
+    // snapshot ... may lag spot" line a few lines above is pushed unconditionally in this branch,
+    // so `lines.length >= 1` always holds by this point regardless of whether `p.grade` is set.
+    // Removed rather than left as harmless-looking defensive code, since a guard that can never
+    // fire reads as intentional (implying a real path returns null here) when none exists.
     return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
   }
   // CLOSED plays: `p` is Vector's CURRENT read on the ticker, computed fresh at request time —
