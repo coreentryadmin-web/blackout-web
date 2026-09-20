@@ -1717,6 +1717,42 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   return { title: "Data freshness", body: lines.join("\n"), bias: "neutral" };
 }
 
+/**
+ * BUG FOUND (Ask Largo standing mandate, 2026-09-20): every section builder below is called bare —
+ * no try/catch anywhere in this function or in `composeSwingPlayBrief` (play-brief.ts). Each builder
+ * chases nontrivial `??`/`.reduce()`/`.toFixed()`/`.slice()` reads off live ecosystem/vector/GEX/
+ * flow data (this file's own long "GAP FOUND"/"BUG FOUND" comment history is a record of just how
+ * many null-shape edge cases have already been hit live), so a single new edge case in ANY ONE of
+ * the ~20 sections throws straight through this function, through `composeSwingPlayBrief`, to the
+ * API route's top-level catch (`src/app/api/market/swing/play-brief/route.ts`), which returns
+ * `{available:false, degraded:true}` (503) — the ENTIRE brief (Verdict/Position/Management included)
+ * disappears for that member even though 19 of the 20 intel sections, and every other section in the
+ * envelope, built perfectly fine. Live repro constructed for the regression test below: a
+ * `TerminalPlay.factors` value that is not an array (a realistic shape drift from a degraded upstream
+ * read, since `factors` is typed non-optional but nothing here defends against a bad payload) throws
+ * inside `whyThisSetupSection`'s `.slice(0, 10)` and previously took the whole brief down with it.
+ *
+ * Fix: each builder call is now wrapped in `safeSection`, which catches, logs (server-side only —
+ * never surfaced to the member), and treats a throw exactly like the section's own legitimate `null`
+ * return — silently omitted, not fatal. This is the composition-level twin of this file's own
+ * "absence must be disclosed, never silent" principle (Largo contract C3): a section that can't be
+ * built is exactly as absent as a section that decided it had nothing to say, and one broken section
+ * must never cost a member the other nineteen. Scope: this fix covers the per-section calls in THIS
+ * function (the largest, most numerous surface, every one of them already `RichSection | null`-
+ * shaped, making the wrap a pure behavior-preserving change on the success path). The bucket-specific
+ * top-level sections in `composeSwingPlayBrief` (Verdict/Entry/Management/Position/Outcome) and the
+ * evidence/levels builders are a separate, smaller surface not touched here — a natural follow-up,
+ * not folded in to keep this a single-issue PR.
+ */
+function safeSection<T>(title: string, build: () => T): T | null {
+  try {
+    return build();
+  } catch (error) {
+    console.error(`[swing/play-brief] intel section "${title}" threw — omitting it, not failing the brief`, error);
+    return null;
+  }
+}
+
 /** Build all intelligence sections for the current play state. */
 export function buildIntelSections(
   ctx: SwingPlayBriefContext,
@@ -1727,66 +1763,76 @@ export function buildIntelSections(
   const vec = vectorOf(ctx);
   const out: RichSection[] = [];
 
-  const narrative = tradeManagerNarrativeSection(ctx, bucket);
+  const narrative = safeSection("Trade manager read", () => tradeManagerNarrativeSection(ctx, bucket));
   if (narrative) out.push(narrative);
 
-  out.push(whyThisSetupSection(play));
+  const whySetup = safeSection("Why this setup", () => whyThisSetupSection(play));
+  if (whySetup) out.push(whySetup);
 
-  const book = bookContextSection(play, ctx.openBook);
+  const book = safeSection("Book context", () => bookContextSection(play, ctx.openBook));
   if (book) out.push(book);
 
-  const trackRecord = archetypeTrackRecordSection(play, ctx.archetypeTrackRecord);
+  const trackRecord = safeSection("Archetype track record", () =>
+    archetypeTrackRecordSection(play, ctx.archetypeTrackRecord),
+  );
   if (trackRecord) out.push(trackRecord);
 
-  const tickerRecord = tickerTrackRecordSection(play, ctx.tickerTrackRecord);
+  const tickerRecord = safeSection("Ticker track record", () =>
+    tickerTrackRecordSection(play, ctx.tickerTrackRecord),
+  );
   if (tickerRecord) out.push(tickerRecord);
 
-  const cortexRead = cortexReadSection(play);
+  const cortexRead = safeSection("Cortex read", () => cortexReadSection(play));
   if (cortexRead) out.push(cortexRead);
 
-  const rank = laneRankSection(play, ctx.laneRows);
+  const rank = safeSection("Lane rank", () => laneRankSection(play, ctx.laneRows));
   if (rank) out.push(rank);
 
-  const technicals = chartTechnicalsSection(vec, ctx.sessionDate, bucket, ctx);
+  const technicals = safeSection("Chart technicals", () =>
+    chartTechnicalsSection(vec, ctx.sessionDate, bucket, ctx),
+  );
   if (technicals) out.push(technicals);
 
-  const levels = chartLevelsSection(ctx);
+  const levels = safeSection("Chart levels", () => chartLevelsSection(ctx));
   if (levels) out.push(levels);
 
-  const gex = gexPostureSection(ctx);
+  const gex = safeSection("GEX posture", () => gexPostureSection(ctx));
   if (gex) out.push(gex);
 
-  const walls = wallDynamicsSection(vec, ctx.sessionDate, bucket);
+  const walls = safeSection("Wall dynamics", () => wallDynamicsSection(vec, ctx.sessionDate, bucket));
   if (walls) out.push(walls);
 
-  const vdesk = vectorDeskSection(vec, ctx.sessionDate, bucket);
+  const vdesk = safeSection("Vector desk", () => vectorDeskSection(vec, ctx.sessionDate, bucket));
   if (vdesk) out.push(vdesk);
 
-  const flow = flowIntelSection(ecosystem, play, ctx.sessionDate);
+  const flow = safeSection("Flow intel", () => flowIntelSection(ecosystem, play, ctx.sessionDate));
   if (flow) out.push(flow);
 
-  const catalysts = catalystsSection(ecosystem);
+  const catalysts = safeSection("Catalysts", () => catalystsSection(ecosystem));
   if (catalysts) out.push(catalysts);
 
-  const meridian = meridianCatalystSection(ctx);
+  const meridian = safeSection("Meridian catalyst", () => meridianCatalystSection(ctx));
   if (meridian) out.push(meridian);
 
-  const meridianPeer = meridianPeerSection(ctx);
+  const meridianPeer = safeSection("Meridian peer", () => meridianPeerSection(ctx));
   if (meridianPeer) out.push(meridianPeer);
 
-  const macro = macroTapeSection(ecosystem);
+  const macro = safeSection("Macro tape", () => macroTapeSection(ecosystem));
   if (macro) out.push(macro);
 
-  const consensus = deskConsensusSection(ecosystem, play, bucket, ctx.sessionDate);
+  const consensus = safeSection("Desk consensus", () =>
+    deskConsensusSection(ecosystem, play, bucket, ctx.sessionDate),
+  );
   if (consensus) out.push(consensus);
 
-  const fresh = dataFreshnessSection(ctx);
+  const fresh = safeSection("Data freshness", () => dataFreshnessSection(ctx));
   if (fresh) out.push(fresh);
 
-  out.push(watchForSection(ctx, bucket));
+  const watchFor = safeSection("Watch for", () => watchForSection(ctx, bucket));
+  if (watchFor) out.push(watchFor);
 
   if (bucket === "open") {
-    const hold = holdPlanSection(ctx);
+    const hold = safeSection("Hold plan", () => holdPlanSection(ctx));
     if (hold) out.push(hold);
   }
 
@@ -1800,12 +1846,8 @@ export function buildIntelSections(
     // Closes the capture>=75 "Strong exit discipline" gap the flags above left open — see
     // lessonsSection's own doc comment (2026-09-18) for the live repro (CRWD:19).
     const captureAlreadyNoted = narrative?.body?.includes("replicate trim timing") ?? false;
-    const lessons = lessonsSection(
-      play,
-      roundTripAlreadyNoted,
-      adviceAlreadyNoted,
-      stopAdviceAlreadyNoted,
-      captureAlreadyNoted,
+    const lessons = safeSection("Lessons", () =>
+      lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted, captureAlreadyNoted),
     );
     if (lessons) out.push(lessons);
   }

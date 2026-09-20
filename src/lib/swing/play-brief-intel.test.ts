@@ -4,6 +4,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   archetypeTrackRecordSection,
   bookContextSection,
+  buildIntelSections,
   catalystsSection,
   chartLevelsSection,
   chartTechnicalsSection,
@@ -4341,4 +4342,49 @@ test("catalystCoaching: still carries the near-term-earnings warning (not duplic
   const line = catalystCoaching(ctx);
   assert.ok(line);
   assert.match(line!, /\*\*Earnings in 8d\*\* \(2026-09-18/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): buildIntelSections called every section
+// builder bare — no try/catch anywhere in this function or in composeSwingPlayBrief. `factors` is
+// typed as a required array on TerminalPlay, but nothing defended against a degraded/malformed
+// upstream row actually carrying something else at runtime — whyThisSetupSection's unconditional
+// `play.factors.slice(0, 10)` (first section pushed, always unconditional) throws a real TypeError
+// on that shape. Pre-fix, that throw propagated straight out of buildIntelSections (and from there
+// through composeSwingPlayBrief to the API route's top-level catch, turning ONE bad section into a
+// 503 for the entire brief — Verdict/Position/Management included, even though every other section
+// would have built fine). Post-fix (safeSection wrapping every call), the broken section is silently
+// omitted — exactly like a section that legitimately decided it had nothing to say — and every other
+// section still renders.
+test("buildIntelSections: a single section throwing does not take down the whole brief (error boundary)", () => {
+  const play = fixturePlay({
+    status: "WATCH",
+    // Realistic malformed-upstream-row shape: TerminalPlay.factors is typed as a required array,
+    // but this simulates a degraded read that didn't honor that contract at runtime.
+    factors: undefined as unknown as TerminalPlay["factors"],
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-20T14:00:00.000Z",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  // Prove the malformed shape genuinely throws inside the unwrapped builder (the RED half of
+  // RED->GREEN) — this is not a hypothetical, it's the exact call buildIntelSections makes first.
+  assert.throws(() => whyThisSetupSection(play));
+
+  // The composed call must not throw, and every OTHER section must still be present — only the
+  // one broken section is missing.
+  let sections: ReturnType<typeof buildIntelSections> = [];
+  assert.doesNotThrow(() => {
+    sections = buildIntelSections(ctx, "watch");
+  });
+  assert.ok(!sections.some((s) => s.title === "Why this setup"), "broken section omitted, not fabricated");
+  assert.ok(sections.some((s) => s.title === "Trade manager read"), "other sections still render");
+  assert.ok(sections.some((s) => s.title === "Watch levels"), "other sections still render");
 });
