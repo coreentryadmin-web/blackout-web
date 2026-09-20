@@ -52,6 +52,36 @@ test("horizonPlayFromBangerPosition maps OPEN banger to SWING MANAGING with BANG
   assert.equal(play!.archetype, "BREAKOUT");
 });
 
+// FINDINGS 2026-09-20: horizonPlayFromBangerPosition used to omit `positionId` entirely, so
+// CommandDeck's row identity (`id: ${horizon}:${ticker}${positionId ? `:${positionId}` : ""}`,
+// adapters.ts terminalPlayFromHorizon) collapsed to the bare `SWING:TICKER` for every banger-
+// origin row. Two banger legs sharing a ticker (real production shape: a MANAGING leg and an
+// already-scaled SCALING_OUT leg on the same name) then shared ONE React key, which is what a
+// live repro on the Swings desk's ticker search actually surfaced as unrelated tickers bleeding
+// into a search result. `row.id` is banger_positions' own primary key, so it must survive onto
+// the play the same way swing_positions.id already does via livePlaysFromOpenPositions.
+test("horizonPlayFromBangerPosition carries row.id through as positionId", () => {
+  const play = horizonPlayFromBangerPosition(bangerRow({ id: 4242 }), new Date("2026-09-04T16:00:00-04:00"));
+  assert.ok(play);
+  assert.equal(play!.positionId, 4242);
+});
+
+test("two banger-origin plays on the same ticker get distinct positionIds (no CommandDeck key collision)", () => {
+  const managing = horizonPlayFromBangerPosition(
+    bangerRow({ id: 10, ticker: "ABTC", scaled_already: false, status: "OPEN" }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  const scalingOut = horizonPlayFromBangerPosition(
+    bangerRow({ id: 11, ticker: "ABTC", contract_strike: 9.5, scaled_already: true, status: "PARTIAL" }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(managing);
+  assert.ok(scalingOut);
+  assert.equal(managing!.serving, "MANAGING");
+  assert.equal(scalingOut!.serving, "SCALING_OUT");
+  assert.notEqual(managing!.positionId, scalingOut!.positionId);
+});
+
 // FINDINGS 2026-09-11: horizonPlayFromBangerPosition used to omit markAsOf entirely — a live
 // banger-origin Swing position (the majority of the merged Swing live book) served mark=<value>
 // with NO freshness signal at all, indistinguishable from "genuinely unknown" to any consumer
