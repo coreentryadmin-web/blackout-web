@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-20 (18:16 UTC) — [SEO] Lane heartbeat: both fixes holding, chased a stuck coordinator draft PR, GSC still unchanged
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 2 open agent PRs: #5318 (docs fold,
+not SEO-lane, CI-running, fine) and **#5315** (`Night Hawk Legacy: Phase 0 rank-bucket
+forward-performance diagnostic`, coordinator branch, green/mergeable but stuck in draft, nobody
+watching it — a real green-draft jam per THE DRAFT DEADLOCK). `--mark-ready` FAILED as usual (no
+GitHub MCP undraft tool this session); posted a coordinator flag comment on the PR instead
+(never-sit-idle chase-other-lanes discipline). Step 3: opportunity scan — still the identical
+2026-06-20→09-17 window as every check today, nothing new.
+
 ## 2026-09-20 (14:06 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC window still 09-17, 0 open PRs, live checks already fresh)
 
 ## 2026-09-20 (12:16 UTC) — [SEO] Lane heartbeat: both fixes holding, GSC data still unrefreshed (3rd identical pull in a row)
