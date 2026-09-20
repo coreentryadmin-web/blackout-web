@@ -345,6 +345,50 @@ test("nowMs prop: an injected clock drives staleness detection instead of the co
   assert.match(staleHtml, /STALE/);
 });
 
+// ── Greek strip IV placeholder-scale guard (Ask Largo standing mandate, 2026-09-20) ──────
+// BUG FOUND: `normalizeImpliedVol` (options-snapshot.ts) exists specifically to catch a real
+// provider placeholder — some expired/edge-row option snapshots return `implied_volatility` on
+// the PERCENT scale (20 = 2000%) instead of the normal DECIMAL scale (0.20 = 20%) — but that
+// function's own doc comment says every consumer must pass IV "through normalizeImpliedVol()...
+// at the point IV is displayed", and this greek strip (`fmtGreek`) never did: it formatted the
+// raw value straight through `Math.round(v * 100)`. A placeholder would have rendered here as
+// "IV 2000%" on a live position instead of "IV 20%". The guard is duplicated locally
+// (`normalizeIvForDisplay`) rather than importing the heavy server-only options-snapshot module
+// into this client component.
+// LEAPS is the only horizon that ever reaches this classic greek strip: `isZeroDtePremiumTerminal`
+// (terminal-display.ts) is true for ZERO_DTE/SWING, and BOTH of those are also `commandSinglePanel`
+// (PlayTerminal.tsx), so neither the `!premium` branch nor the `premium && !commandSinglePanel`
+// branch that render this strip is ever reachable for them — only LEAPS (not premium, not legacy,
+// not single-panel) actually paints it today.
+test("Greek strip: a percent-scale IV placeholder (>= 500% decimal-equivalent) is rescaled, never shown as a four-digit percent", async () => {
+  const markAsOf = new Date().toISOString();
+  const html = await render(
+    play({
+      horizon: "LEAPS",
+      status: "OPEN",
+      markAsOf,
+      greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 20 },
+    }),
+    { nowMs: Date.parse(markAsOf) },
+  );
+  assert.match(html, />20%</, `expected rescaled 20%, got greek strip in: ${html}`);
+  assert.doesNotMatch(html, />2000%</, `must never render the raw percent-scale placeholder, got: ${html}`);
+});
+
+test("Greek strip: a normal decimal-scale IV renders unchanged", async () => {
+  const markAsOf = new Date().toISOString();
+  const html = await render(
+    play({
+      horizon: "LEAPS",
+      status: "OPEN",
+      markAsOf,
+      greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 0.485 },
+    }),
+    { nowMs: Date.parse(markAsOf) },
+  );
+  assert.match(html, />49%</, `expected 49% unrescaled, got: ${html}`);
+});
+
 test("nowMs prop: omitted → renders without throwing (falls back to the component's own tick)", async () => {
   const html = await render(play({ markAsOf: new Date().toISOString(), status: "OPEN" }));
   assert.match(html, /<div/); // sanity: still produces real markup, not a crash

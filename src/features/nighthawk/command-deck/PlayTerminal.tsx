@@ -43,9 +43,26 @@ const GLAB: Record<string, string> = {
   delta: "Δ DELTA", gamma: "Γ GAMMA", theta: "Θ THETA", vega: "V VEGA", iv: "IV",
 };
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): mirrors `normalizeImpliedVol`
+// (`src/lib/providers/options-snapshot.ts`) — that server-side helper exists specifically to
+// catch a real provider placeholder (some expired/edge-row option snapshots return
+// `implied_volatility` on the PERCENT scale, e.g. 20 = 2000%, instead of the normal DECIMAL
+// scale, e.g. 0.20 = 20%) but had ZERO call sites anywhere in the app, including here: this
+// greek strip formatted the raw `iv` straight through `Math.round(v * 100)`, so a placeholder
+// would have rendered as "IV 2000%" on a live position. `options-snapshot.ts` is a heavy
+// server-only module (Polygon fetch/rate-limiter chain) unsafe to import into this client
+// component, so the guard is duplicated here — same small pure rule, same threshold, no
+// import — rather than pulling server code into the client bundle. A real IV reading
+// (including a genuine near-0% one) passes through completely unchanged.
+const IV_DECIMAL_MAX = 5; // 500% — safely above any real decimal-scale option IV; see options-snapshot.ts's own constant.
+function normalizeIvForDisplay(iv: number): number {
+  if (iv <= 0) return iv;
+  return iv >= IV_DECIMAL_MAX ? iv / 100 : iv;
+}
+
 function fmtGreek(k: string, v: number | null): string {
   if (v == null) return "—";
-  if (k === "iv") return `${Math.round(v * 100)}%`;
+  if (k === "iv") return `${Math.round(normalizeIvForDisplay(v) * 100)}%`;
   if (k === "theta") return v.toFixed(2);
   return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 }

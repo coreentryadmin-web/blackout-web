@@ -7,6 +7,7 @@ import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-en
 import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
+import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
 import { formatFixedNonZero } from "@/lib/swing/format-nonzero";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
@@ -354,7 +355,25 @@ function pnlSection(play: TerminalPlay): RichSection {
     if (g.gamma != null) parts.push(`Γ ${sign(g.gamma)}${g.gamma.toFixed(2)}`);
     if (g.theta != null) parts.push(`θ ${g.theta.toFixed(2)}/day`);
     if (g.vega != null) parts.push(`ν ${sign(g.vega)}${g.vega.toFixed(2)}`);
-    if (g.iv != null) parts.push(`IV ${Math.round(g.iv * 100)}%`);
+    // BUG FOUND (Ask Largo standing mandate, 2026-09-20): `normalizeImpliedVol` (options-snapshot.ts)
+    // exists specifically to catch a REAL provider placeholder — some expired/edge-row snapshots
+    // return `implied_volatility` on the PERCENT scale (20 = 2000%, 15.83 = 1583%) instead of the
+    // normal DECIMAL scale (0.229 = 22.9%) — but that function's own doc comment ("consumers pass
+    // it through normalizeImpliedVol()... call this at the point IV is displayed") had ZERO call
+    // sites anywhere in the app (repo-wide grep, confirmed before this fix): every consumer of
+    // `play.greeks.iv`/`ChainContract.iv` formatted the RAW provider value straight through
+    // `Math.round(iv * 100)`. A percent-scale placeholder would have rendered here as "IV 2000%"
+    // instead of the intended "IV 20%" — a live-reachable, member-visible defect on any contract
+    // Polygon returns that placeholder for (the function's own docstring: "seen on expired/edge
+    // rows"). Same shape has the identical unguarded formatter in the Command Deck's own greek
+    // strip (`PlayTerminal.tsx`'s `fmtGreek`, fixed in the same PR) — both trace back to the same
+    // unguarded `snap.iv` → `ChainContract.iv` → `DeckGreeks.iv` pipe. Guarding only rescales an
+    // unmistakable placeholder (>= 500% decimal-equivalent); every real IV reading (including a
+    // genuine near-0% one) passes through completely unchanged.
+    if (g.iv != null) {
+      const iv = normalizeImpliedVol(g.iv);
+      if (iv != null) parts.push(`IV ${Math.round(iv * 100)}%`);
+    }
     if (parts.length) lines.push(`Greeks: ${parts.join(" · ")}`);
   }
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): the deck's own greek strip (fixed above) and
