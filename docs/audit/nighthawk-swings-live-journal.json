@@ -1,10 +1,17 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T13:46:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git fetch/ff-only merge brought origin/main to b2ff8f84f -- PR #5306 (sibling-authored), a direct response to my own #4076 design-question comment (5749904631) from earlier this window re: the gexMatrixAgeMs/gexMatrixStale weekend-self-warm freshness gap. Independently verified #5306 end to end: read the full PR body + complete source diff on vector-state-freshness.ts (new market_session/market_session_note fields on VectorFreshnessBlock via etSessionFacts() delegation, additive-only per the Largo product contract, correctly gated to only fire when freshness is live/recent AND market_session is CLOSED); ran the PR's own vector-state-freshness.test.ts myself -- 24/24 pass on merged main; reverted the source file to its pre-fix parent (3315c09dc, my own last commit) via git checkout and re-ran -- confirmed RED, exact match to the claimed count (19 pass / 5 fail); restored the fix, confirmed GREEN again (24/24), tsc --noEmit clean, working tree clean. PR correctly scoped out two follow-ups rather than overreaching: wiring market_session_note into a composer, and the still-untouched GEX-matrix half of the same symptom (gexFreshness()/gexMatrixStale() never call describeVectorFreshness at all). While closing that loop, a SECOND sibling PR appeared mid-cycle: #5307, the exact fast-follow #5306 itself named as open -- wires market_session_note into play-brief.ts's evidenceFromContext (one new BieEvidence line, source:'Vector', gated !vectorStale so it can never surface a caveat about a Vector read the rest of the brief has already excluded) plus a narrow local type cast (VectorFullState & Partial<VectorFreshnessBlock>) on the existing ctx.vector/eco.vector_full_state read rather than widening either shared context type. Independently verified this one too: fetched the PR branch directly (still open, not yet merged), read the full diff on both play-brief.ts and play-brief.test.ts (one positive case -- self-warm note surfaces, attributed to Vector -- and one negative case -- session-stale Vector snapshot suppresses it, proving the new line respects the same trust gate every other vec-derived evidence line in that function already uses); ran the PR's own play-brief.test.ts myself -- 94/94 pass; reverted play-brief.ts alone (test file kept from the branch) and re-ran -- confirmed RED, exact match to the claimed count (1 failure, the new positive test); restored the fix, confirmed GREEN again (94/94), tsc --noEmit clean. Cross-checked the session-mismatch claim directly against vectorSnapshotStale's real implementation (play-brief-absence.ts:249, session-date-vs-ctx.sessionDate + age) and its own existing test ('fresh age but prior session counts as stale') -- confirms a same-day self-warm genuinely does not trip that gate, matching the PR's stated reasoning rather than taking it on faith. PR #5307 was still CI-pending (0 statuses reported) at last check this cycle -- not yet mergeable, nothing for me to merge or push; next cycle re-checks its status per the standing chase-the-lanes discipline. Board state (board-check2.mjs) unremarkable: COMMIT_NOW=1 (banger), WATCH=1 (LITE, banger), MANAGING=56 (all swing-native), SCALING_OUT=12 (all swing-native) -- no anomalies in the headline counts this cycle. I filed no new findings/fixes myself this cycle -- capacity went entirely into genuine, non-rubber-stamp adversarial verification of two sibling PRs, both of which independently reproduced clean on every claim (root cause, diff, RED count, GREEN count, typecheck).",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-20T14:21:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full mandate brief). ReadNotifications clean. git fetch showed origin/main had moved to PR #5307's merge -- ff-only merge landed cleanly. Independently confirmed the merged commit matched byte-for-byte what I'd already verified last cycle (same diff) -- no re-verification needed. Zero open swing PRs at that point, board unchanged/healthy. AGGRESSIVE MODE this cycle: live-pulled a real Sunday LITE play-brief (market genuinely CLOSED) right after #5307 merged to production-test the just-shipped market_session_note fix -- and it did NOT surface. Rather than concluding a bug, checked ECS directly (AWS creds live this session): confirmed a genuine rolling deploy was in progress (blackout-production-web:1706, started 13:57Z, old :1705 tasks still draining) -- deploy lag, not a code defect. Independently reproduced describeVectorFreshness/etSessionFacts with the real observed timestamps to confirm the logic WOULD fire once deployed. While the deploy drained (polled via background bash), checked #4076 and found the sibling session's own follow-up comment (5750099882) naming a second, independent mechanism producing the identical symptom: the GEX matrix (gexFreshness/gexMatrixStale in play-brief.ts/play-brief-absence.ts) never calls describeVectorFreshness at all -- it classifies polygon-options-gex.ts's own wall-clock calculatedAt directly. Sibling explicitly offered to split this (\"Mechanism 2\") -- claimed it on #4076 (comment 5750312954) before starting, per the collaboration protocol's ownership/no-duplicate-work discipline. Shipped PR #5309: extracted the shared \"compute fresh + market CLOSED\" disclosure ternary out of describeVectorFreshness into a new source-agnostic module (market-session-disclosure.ts) -- a PURE REFACTOR of vector-state-freshness.ts, verified behavior-identical (its own 24 tests pass unchanged before/after, checked explicitly). Added gexMarketSessionNote() in play-brief-absence.ts delegating to the same shared helper, wired into evidenceFromContext() as a new GEX-attributed evidence line mirroring the Vector block's exact gating pattern (!gexStale). RED->GREEN proven via git stash on the three source files with test files kept: play-brief.test.ts 1 failure without the fix / 0 with it (96/96), play-brief-absence.test.ts 4 failures without the fix / 0 with it (76/76). Full npm test (Node 20): 14944 pass / 0 fail / 3 skipped. tsc --noEmit clean. Staged finding + MARKET-OPEN-VALIDATION.md #309 entry both written. PR opened as draft, subscribed, undrafted, confirmed draft:false via a re-read (per CLAUDE.md's documented undraft-can-silently-no-op trap) -- draft was real this time. Posted delivery comment on #4076. Scheduled a 60min check-in (send_later) for CI/merge status. Housekeeping: found unrelated heartbeat/agent-state drift sitting uncommitted in the working tree at cycle start -- committed it separately to main first (chore commit), hit a genuine merge conflict against a concurrent sibling journal push (3 files: two simple last-seen timestamp conflicts resolved by taking the newer side, one append-only event-log conflict resolved as a true union of both sides' entries in chronological order rather than dropping either side's history), verified the resulting JSON parses, pushed clean -- then created my fix branch fresh off the merged main so the PR itself stays single-issue and uncontaminated by the unrelated sync. Board state (board-check2.mjs) unchanged both at cycle start and now: COMMIT_NOW=1 (banger), WATCH=1 (LITE, banger), MANAGING=56 (all swing-native), SCALING_OUT=12 (all swing-native).",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    {
+      "file": "docs/audit/findings-staging/2026-09-20-swing-gex-market-session-note.md",
+      "pr": 5309,
+      "status": "open_awaiting_ci",
+      "summary": "GEX matrix had the same weekend-self-warm freshness gap Vector had (#4076 Mechanism 2) -- fixed via a shared marketSessionDisclosure() helper + gexMarketSessionNote(), wired into evidenceFromContext."
+    }
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,16 +120,16 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T13:46:00Z",
+    "as_of": "2026-09-20T14:21:00Z",
     "swing_prs": [
       {
-        "number": 5307,
-        "title": "fix(swing): surface Vector market_session_note as evidence (fast-follow #5306)",
+        "number": 5309,
+        "title": "fix(swing): GEX matrix gets Vector's market-session disclosure too (#4076 Mechanism 2)",
         "state": "open",
-        "ci_status": "pending_no_statuses_yet",
-        "author": "sibling session (session_01Qtnftc16CuWyVLxR8LaMoC)",
-        "independently_verified_by_this_session": true,
-        "verification_result": "root cause, diff, RED (1/94 fail), GREEN (94/94), and tsc --noEmit all match the PR's own claims exactly"
+        "draft": false,
+        "author": "this session",
+        "ci_status": "awaiting_first_report",
+        "check_in_scheduled": "2026-09-20T15:20:00Z"
       }
     ]
   },
