@@ -18,6 +18,7 @@ import {
   meridianContribution,
   nighthawkContribution,
   spxContribution,
+  swingContribution,
   thermalContribution,
   vectorContribution,
 } from "./product-adapters";
@@ -41,6 +42,7 @@ const SOURCES: Source[] = [
   { tool: "get_earnings", input: (t) => ({ ticker: t }), adapt: meridianContribution, label: "meridian" },
   { tool: "get_zerodte_plays", input: () => ({}), adapt: nighthawkContribution, label: "nighthawk" },
   { tool: "get_spx_play", input: () => ({}), adapt: spxContribution, label: "spx" },
+  { tool: "get_swing_play_brief", input: (t) => ({ ticker: t }), adapt: swingContribution, label: "swing" },
 ];
 
 export type CrossProductPayload = CrossProductRead & {
@@ -94,6 +96,7 @@ export async function crossProductRead(
     // nighthawkContribution must be told which ticker the read is actually about — see its own
     // doc comment (product-adapters.ts) for the bug this closes.
     if (s.label === "nighthawk") return nighthawkContribution(r.value, ticker);
+    if (s.label === "swing") return swingContribution(r.value, ticker);
     return s.adapt(r.value);
   });
 
