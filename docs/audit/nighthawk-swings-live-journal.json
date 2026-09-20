@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T10:47:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean (3 routine GitHub events for #5296: subscription confirmations + ready-for-review, no CI failure/review comment). Synced main (already up to date). PR #5296's CI (CI + CodeQL) still genuinely in_progress (~4min elapsed at check time) -- not stuck, the scheduled ~1hr check-in (fires ~11:45 UTC) stands. Board unchanged/healthy (56 managing, 12 scaling out). Per NEVER SIT IDLE, continued the Ask Largo forensic sweep into setup-state.ts (deriveSetupState -- the sibling module to entry-model.ts, direction-aware pre-entry maturity FORMING->TRIGGERED->EXTENDED->INVALIDATED derivation) -- clean: INVALIDATED precedence checked first and independently of trigger knowledge (matches its own doc comment), direction-mirroring correct for both LONG/SHORT, the INVALIDATED-without-known-trigger edge case already covered by an existing test and passes. No new bug found. Small, genuine coverage-building cycle while #5296's CI completes -- no busywork manufactured.",
+  "last_updated": "2026-09-20T11:02:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git merge --ff-only revealed PR #5296 was ALREADY MERGED (10:55:20Z, merged_by coreentryadmin-web -- a sibling/coordinator lane, not my own scheduled check-in which was still ~45min out) -- unsubscribed and deleted my now-redundant check-in trigger. Confirmed on merged main: entry-model.ts + serving-ingest.test.ts + serving-lane.test.ts 37/37 pass. Zero open swing PRs; board unchanged/healthy (56 managing, 12 scaling out). Continued the Ask Largo forensic sweep into dossier.ts (buildSwingDossier, the ONE versioned SwingDossier carrier every consumer reads) -- traced one genuinely non-obvious thread that initially looked like a real gap: SwingDossierInput.catalystDerive is documented ('re-run post-classify so earningsInWindow matches the archetype DTE (Q12)') and IS populated by the real production caller (swing-ingest.ts), but buildSwingDossier itself never reads it -- grep-confirmed zero references in dossier.ts's own body. Chased it fully rather than flagging prematurely: discovery.ts's finalizeSwingDossierForArchetype is the actual Q12-aware caller -- a deliberate two-pass wrapper (preliminary buildSwingDossier call to get the archetype -> resolve the archetype's intended DTE -> re-derive catalyst reads via deriveCatalystReads(derive, intendedDte: finalDte) -> a SECOND buildSwingDossier call with the realigned input). buildSwingDossier deliberately stays a single-pass pure compose function and correctly ignores catalystDerive; the field rides on SwingDossierInput only so it can reach finalizeSwingDossierForArchetype in the SAME input object. Confirmed via code read, not a bug -- correct, deliberate layering. No new finding this cycle. Genuine forensic effort, correctly concluded clean rather than manufacturing a false-positive finding.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -109,10 +109,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T10:37:00Z",
-    "swing_prs": [
-      "#5296 (mine, draft->ready, CI pending)"
-    ]
+    "as_of": "2026-09-20T11:02:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
