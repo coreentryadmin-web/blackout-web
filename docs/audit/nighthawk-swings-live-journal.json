@@ -1,18 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T09:46:50Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git fetch/merge --ff-only brought in the sibling's 09:40 journal commit (heartbeat/agent-state sync, Legacy narrative-synthesis gap scoped). Zero open swing PRs at cycle start. Continued the manage-sync.ts/manage.ts/roll.ts sweep (the capital-preservation core, site of the just-shipped #5035 premium_stop fix) rather than re-treading play-brief.ts -- SELF-AUTHORED FIX THIS CYCLE. Found and shipped a real bug: manage-sync.ts's executionVerdictForGating (Q37 roll-execution re-arbitration) compared reads.underlyingPrice against row.thesis_invalidation_px RAW via structuralBreakFromSpot, bypassing the ex-dividend structural-stop adjustment (Q39, ex-dividend-adjustment.ts) that manage.ts's structuralStopBroken applies when building the ORIGINAL verdict this function re-arbitrates -- so a LONG position that's a genuine roll candidate (still-valid thesis, expiry_risk gate, rollIntent.roll=true) could have its roll wrongly forced into a CLOSE on an ordinary ex-dividend session, purely from the mechanical open-gap moving raw spot below the stop -- exactly the false breach Q39 exists to prevent, reintroduced one layer up because this is a separate raw compare, not a call into structuralStopBroken. Also missing the Q39 fail-safe (skip the LONG re-check when this cycle's ex-div read itself failed). Reachable on every live roll-execution tick (syncSwingManagement, the real production path), not a rare branch. Fixed by applying the same underlyingPriceForStructuralStop adjustment + fail-safe before the compare. Two new regression tests in manage-sync-q37.test.ts, RED confirmed pre-fix (2/4 fail), GREEN post-fix (4/4); swing lane 1459/1459; full npm test on Node 20 14914/14917 pass/0 fail/3 skip (one unrelated flake on first run did not reproduce on immediate re-run, confirmed unrelated to this change); tsc clean. Shipped as PR #5292 (draft->undrafted->subscribed), staged finding docs/audit/findings-staging/2026-09-20-swing-execution-verdict-ex-div-gap.md. CARVE-OUT applies (self-authored, merges on green CI alone). Stashed/restored unrelated heartbeat/agent-state files around the fix branch per standing discipline; left them as local uncommitted state on main afterward (another lane's own state, not mine to commit).",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    {
-      "pr": 5292,
-      "title": "Q37 roll-execution re-check bypassed the Q39 ex-dividend structural-stop adjustment",
-      "severity": "P1 (capital-preservation path, live/reachable)",
-      "status": "OPEN -- draft undrafted, subscribed, check-in scheduled. CARVE-OUT: self-authored, merges on green CI alone.",
-      "finding_file": "docs/audit/findings-staging/2026-09-20-swing-execution-verdict-ex-div-gap.md"
-    }
-  ],
+  "last_updated": "2026-09-20T10:06:00Z",
+  "notes": "v3 mandate re-statement cycle (trigger 1 of 4, :01 offset, delivered slightly late at 10:01:28Z, landed after this hour's :31/:46 work was already done). ReadNotifications: the full v3 mandate text (no new content vs what's already been followed) + 3 GitHub events, all routine confirmations for my own PR #5292 (subscription.created x2, pull_request.ready_for_review) -- no CI failure, no review comment, nothing actionable yet. Checked #5292 directly: CI still pending (0 statuses reported, opened ~15min prior) -- genuine wait state, not stuck; the ~1hr check-in scheduled at shipping time (fires ~11:07 UTC) stands, not re-scheduled early. Re-synced main (already up to date with the heartbeat commit). Board unchanged/healthy (56 managing, 12 scaling out, same banger-lane commit-now/watch). Zero other open swing PRs. Per NEVER SIT IDLE, did not just re-poll: spot-checked deriveScaleOutAction (zerodte/scale-out.ts, the shared premium-mechanics engine both manage.ts's premium_stop/profit_ladder rungs and 0DTE depend on) since it's directly downstream of this session's #5035/#5292 work -- clean, matches its documented rules exactly (hard-stop only pre-scale, trailing-stop only post-scale via scaledAlready, no divergence found). No new bug this cycle -- correctly logged as a light monitoring/spot-check cycle rather than manufacturing busywork while #5292's CI runs.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
