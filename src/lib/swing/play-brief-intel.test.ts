@@ -1187,6 +1187,36 @@ test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Tr
   assert.match(suppressed!.body, /sector rotation leadership/i);
 });
 
+test("lessonsSection: a small peak (<=20%) with weak capture (<35%) still gets a verdict line, not just the bare fact", () => {
+  // FINDINGS 2026-09-20 (Ask Largo × Night Hawk Swings mandate): the capture<35 branch only had a
+  // verdict line when `play.peak > 20` ("Gave back the move ... tighten at first trim rail") — for
+  // `play.peak <= 20` the if/else chain fell all the way through with nothing pushed beyond the
+  // bare "MFE capture: X% of peak move" fact, unlike every other capture band (>=75%, 35-75%, and
+  // the round-trip kind's own peak<=20 exception) which all render some verdict. No live closed
+  // position has hit this exact combination yet (checked via GET /api/market/swing/record — every
+  // low-peak trade to date either round-tripped to a loss or nearly fully captured its small peak),
+  // so this is a code-read gap, not a live repro — caught by comparing this if/else chain against
+  // the sibling `closedCoaching` (play-brief-narrative-coaching.ts), which is exhaustive here via a
+  // plain catch-all `else`.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 12,
+    exitPnlPct: 3,
+    mfeCapturePct: null,
+    closedReason: "time_stop",
+    archetype: "PULLBACK_CONTINUATION",
+  });
+
+  const section = lessonsSection(play, false, false, false, false);
+  assert.ok(section);
+  assert.match(section!.body, /MFE capture: \*\*\+25\.0%\*\* of peak move/);
+  // The gap: previously nothing rendered here at all for this exact peak/capture combination.
+  assert.match(section!.body, /small move, weakly captured/i);
+  assert.match(section!.body, /trim rail/i);
+  // Must not collide with the sibling peak>20 branch's distinct wording.
+  assert.doesNotMatch(section!.body, /gave back the move/i);
+});
+
 // Live repro 2026-09-13 (EWZ:29, CLOSED, real production play-brief): lessonsSection's own archetype
 // tag used the same underscore-replace-only transform already fixed in play-brief.ts's Verdict line
 // and play-brief-intel.ts's whyThisSetupSection (PR #4896) -- a third, missed call site. The SAME
