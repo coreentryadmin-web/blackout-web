@@ -18,7 +18,8 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
-import { archetypeLabelFromRaw, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
+import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
+import { graduatedArchetypeEntry } from "./calibration-cache";
 import {
   collectBriefUnavailableSources,
   confluenceZoneKindsLabel,
@@ -918,6 +919,39 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
         provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
       });
     }
+  }
+  // Largo C10 (historical context) enhancement (2026-09-20, Ask Largo standing mandate):
+  // archetypeTrackRecordSection/tickerTrackRecordSection (play-brief-intel.ts) already cite C10 in
+  // their own doc comments and render these same wins/losses/n numbers — but only into the "Track
+  // record"/"Ticker track record" SECTIONS' prose, never into evidence[], so the numbers were
+  // joinable/citable only as free text, not as a typed fact with its own provenance the way every
+  // other evidence[] line in this function is. Additive per the contract's wrap-don't-flatten
+  // rule — the prose sections are untouched; these are new evidence[] lines carrying the SAME
+  // numbers with real provenance, closing the gap those two sections' own comments already named
+  // without solving (a full dedicated Largo tool, C10's stated ideal, is a larger, separate call).
+  const swingArchetype = (SWING_ARCHETYPES as readonly string[]).includes(ctx.play.archetype ?? "")
+    ? (ctx.play.archetype as (typeof SWING_ARCHETYPES)[number])
+    : null;
+  const graduatedEntry = graduatedArchetypeEntry(ctx.archetypeTrackRecord, swingArchetype);
+  if (graduatedEntry && swingArchetype && ctx.archetypeTrackRecord) {
+    const snapshotMs = Date.parse(ctx.archetypeTrackRecord.asOf);
+    out.push({
+      kind: "fact",
+      text: `Archetype track record: ${ARCHETYPE_META[swingArchetype].label} ${graduatedEntry.wins}W / ${graduatedEntry.losses}L across ${graduatedEntry.n} graded plays (Wilson 95% floor ${graduatedEntry.wilsonLbPct.toFixed(0)}%).`,
+      provenance: {
+        source: "Swing ledger",
+        asOf: etStampFromIso(ctx.archetypeTrackRecord.asOf) ?? ctx.asOf,
+        freshness: Number.isFinite(snapshotMs) ? freshnessFromObservedMs(snapshotMs, readMs) : "unknown",
+      },
+    });
+  }
+  const tickerRecord = ctx.tickerTrackRecord;
+  if (tickerRecord && tickerRecord.priorClosedTrades > 0) {
+    out.push({
+      kind: "fact",
+      text: `Ticker track record: ${tickerRecord.ticker} ${tickerRecord.wins}W / ${tickerRecord.losses}L across ${tickerRecord.priorClosedTrades} prior closed trade${tickerRecord.priorClosedTrades === 1 ? "" : "s"}.`,
+      provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+    });
   }
   return out;
 }
