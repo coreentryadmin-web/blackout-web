@@ -4,6 +4,224 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Swing "Ask Largo" play-brief and the Command Deck board disagree about the same Banger-origin position's Thesis Health — a second, unguarded caller of `attachThesisExplanation` silently overwrites the honest `BANGER_LEDGER_REGIME_LABEL` sentinel — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Area** | `src/lib/swing/serving-lane.ts` (`attachThesisExplanation`), `src/lib/swing/thesis-health.ts` (`thesisHealthUncalibrated`), `src/lib/swing/banger-lane-merge.ts` (new shared `BANGER_LEDGER_REGIME_LABEL` export) |
+| **Severity** | P2 — real member-facing cross-surface inconsistency in a Largo C6 (confidence-fabrication) omission gate, on live committed positions with real capital |
+
+### Background
+
+Flagged via PR #4076 comment 5751915312 (2026-09-20, 18:57 UTC): "Thesis health" was rendering a
+byte-identical `84% · Minor drift` score across 19 of 36 structurally-identical Banger-promoted
+swing positions (RIOT, MSTR, COIN, HOOD, IBIT, CRCL, IREN, BMNR, ETHA, MARA, BITO, AAOI, HUT, MUU,
+APLD, CLSK, ETHU, LRCX all at 84%, SNXX at 74%), while the other 17 (BKKT, ABTC, GEMI, WOLF, ETHE,
+BLSH, ETH, SBET, BULL, GLXY, GBTC, AMDL, MSTX, BTDR, MSTU, BITX, SOXL) correctly rendered the honest
+omission ("Inputs not wired for committed positions — aggregate score withheld").
+
+A follow-up comment (5751954861, 7 minutes later, same author) walked the severity back: traced the
+arithmetic and found the 84% is NOT a hardcoded literal — `regimeScore()`'s `factorBoost` genuinely
+caps at 0.2 once a real `factors[0].points` clears 20 (true for all these tickers, with different
+underlying points), all 36 genuinely share `dte:5` (same Friday commit batch/expiry), and the
+`Δ +0.0 pts` deltas are correct because the market was closed all weekend (Sunday, zero real drift).
+Concluded "working as intended... nothing to fix here," with the one open question being *why*
+19/36 get dossier enrichment and 17/36 don't (guessed: a liquidity/coverage split in native
+discovery).
+
+### What the correction missed — independently confirmed via a THIRD surface
+
+Both prior comments only inspected the play-brief endpoint. Comparing the SAME positions against the
+**canonical Command Deck board** (`GET /api/market/nighthawk/horizons?horizon=SWING`, which builds
+its lane via `getSwingServingLane` — the code path `mergeBangerPositionsIntoSwingPlays` deliberately
+runs banger rows through AFTER the native-only `attachThesisExplanation` enrichment pass, so banger
+rows are NEVER enriched there by design) shows every one of RIOT/MSTR/COIN/HOOD/LRCX/BKKT/ABTC/BTDR
+carrying the honest, untouched `regime: "BREAKOUT · BANGER"` sentinel — **including the 19 tickers
+that showed a fabricated-looking 84% on the play-brief.** Live capture (2026-09-20, same scan
+`asOf`):
+
+```
+BKKT | regime= BREAKOUT · BANGER | setupState= TRIGGERED | entryStatus= AT_TRIGGER
+RIOT | regime= BREAKOUT · BANGER | setupState= TRIGGERED | entryStatus= AT_TRIGGER
+COIN | regime= BREAKOUT · BANGER | setupState= TRIGGERED | entryStatus= AT_TRIGGER
+HOOD | regime= BREAKOUT · BANGER | setupState= TRIGGERED | entryStatus= AT_TRIGGER
+LRCX | regime= BREAKOUT · BANGER | setupState= TRIGGERED | entryStatus= AT_TRIGGER
+MSTR | regime= BREAKOUT · BANGER | setupState= TRIGGERED | entryStatus= AT_TRIGGER
+```
+
+This is the real, narrower bug the walk-back's open question pointed at but didn't fully trace: the
+SAME position must not show a different Thesis Health verdict depending on which route resolved it.
+It does today, and the mechanism is deterministic, not a liquidity/coverage coincidence.
+
+### Root cause
+
+`src/lib/swing/play-brief-resolve.ts`'s `resolveSwingPlayForBrief` has a ticker-only lane fallback
+(reached when no matching native `swing_positions` row exists for the ticker — true for a pure
+Banger-ledger position) that calls:
+
+```ts
+const enriched = attachThesisExplanation(lanePlay, dossier, reads);
+```
+
+unconditionally, on whatever `pickLanePlayForBrief` selected — native or banger-origin, with no
+distinction. `attachThesisExplanation` (`serving-lane.ts`) contained:
+
+```ts
+regime: meta.regime ?? play.regime,
+```
+
+`meta.regime` comes from `swingServingMetaFromDossier`, keyed on the SAME ticker's **current,
+independent, ongoing swing discovery dossier** (`serving-ingest.ts`: `archetypeLabel + " · regime " +
+regime01.toFixed(2)`) — a completely different thesis from the already-committed Banger position,
+matched by ticker alone. Whenever that ticker also happens to still be actively re-screened by
+native FLOW/STRUCTURE discovery that session (true for liquid large-caps like RIOT/MSTR/COIN, false
+for the smaller/newer names), `meta.regime` is non-null and **wins** over `play.regime` — silently
+overwriting `horizonPlayFromBangerPosition`'s deliberate `BANGER_LEDGER_REGIME_LABEL` sentinel
+(`"BREAKOUT · BANGER"`) with the discovery dossier's own regime string. `thesisHealthUncalibrated()`
+(`thesis-health.ts`) matches on that EXACT sentinel string to correctly withhold the aggregate score
+for a banger-origin position (the 2026-09-15 fix this file's own comment describes); once the
+sentinel is gone, the omission gate no longer fires, and `computeSwingThesisHealth` proceeds to
+compute a real (not hardcoded) but still largely batch-shared aggregate — hence the byte-identical
+84% across every ticker whose regime happened to get clobbered the same way from the same shared
+`dte:5`/`setupState`/`entryStatus`/`signalKinds` ledger constants.
+
+`getSwingServingLane` itself never has this problem: `mergeBangerPositionsIntoSwingPlays` runs
+strictly AFTER the native-only `attachThesisExplanation` pass, so a banger row's sentinel is never
+exposed to this overwrite there — which is exactly why the board and the play-brief disagreed.
+`play-brief-resolve.ts`'s second call site is the one place that doesn't respect this ordering.
+
+### Blast radius
+
+Any consumer that reaches a banger-ledger `HorizonPlay` through `resolveSwingPlayForBrief`'s
+ticker-only fallback (any pure-Banger position with no matching native `swing_positions` row) is
+affected — this includes Ask Largo's play-brief tool (the reported symptom) and any other reader of
+the same resolved `TerminalPlay`. `loadOpenTerminalPlay` (the OTHER caller of
+`attachThesisExplanation` in this file, for native rows resolved by position id) is unaffected by
+this bug — native plays start with `regime: null`, so there is no sentinel for it to clobber; that
+call path is working exactly as designed and is unchanged by this fix.
+
+### Fix
+
+Exported the sentinel as `BANGER_LEDGER_REGIME_LABEL` from `banger-lane-merge.ts` (previously an
+inline literal duplicated in two call sites there, and re-declared as a SEPARATE private constant in
+`thesis-health.ts` — the exact kind of un-shared duplicate that let this drift happen unnoticed).
+`thesis-health.ts` now imports it instead of re-declaring it. `attachThesisExplanation` now computes
+`freshRegime = play.regime === BANGER_LEDGER_REGIME_LABEL ? null : meta.regime` and uses
+`freshRegime ?? play.regime` everywhere it previously used `meta.regime ?? play.regime` — a banger
+sentinel is never treated as replaceable by an unrelated, ticker-keyed discovery dossier, in EITHER
+call site, so the board and the play-brief now agree by construction rather than by which caller
+happened to still have the sentinel intact.
+
+**Why this fix and not the alternative** (e.g. skipping `attachThesisExplanation` entirely in the
+ticker-only lane fallback for banger-origin plays): the guard lives inside the shared function so
+BOTH existing and any future callers get the same correct behavior automatically, rather than
+requiring every caller to remember to special-case banger origin — the same discipline
+`mergeBangerPositionsIntoSwingPlays`'s ordering already tried to encode structurally in
+`getSwingServingLane`, just not enforced at the function itself, which is exactly the gap the second
+caller fell into. `factors`/`sectorLeadershipFacts` enrichment is left untouched (not part of this
+bug — `factorsValid` already prefers the position's own pinned factors, and banger's single
+`[{label:"Discovery gain",...}]` factor already sums to its score, so it was never at risk here).
+
+### Evidence
+
+- Live cross-surface diff (above): identical positions, disagreeing Thesis Health between board and
+  play-brief, both captured 2026-09-20 from the same scan.
+- RED→GREEN regression test in `src/lib/swing/serving-lane.test.ts`
+  ("`attachThesisExplanation` never overwrites a banger-ledger sentinel regime, even when a
+  same-ticker dossier exists (Largo C6)"), git-stash-verified: fails pre-fix
+  (`enriched.regime !== BANGER_LEDGER_REGIME_LABEL`), passes post-fix. A companion test confirms the
+  guard is scoped ONLY to the sentinel — a native play with no prior regime still gets enriched
+  normally.
+- `npx tsc --noEmit` clean; `serving-lane.test.ts` + `thesis-health.test.ts` +
+  `banger-lane-merge.test.ts` + `play-brief-resolve.test.ts` + `play-brief-narrative.test.ts` +
+  `play-brief-pillar-guard.test.ts` all green (148 tests) after the fix.
+
+### Corrective note for CLAUDE.md's Ask Largo mandate ledger
+
+The 2026-09-20 mandate-ledger correction that dismissed this as "walking back the severity...
+nothing to fix here" was itself premature — it stopped at the play-brief surface and didn't check
+the board, which is what actually revealed the real (narrower, still genuine) bug. Treat this as the
+closing correction on that thread, not a reopening of the "fabrication" framing: the 84% arithmetic
+really was real (per the walk-back), the bug is the sentinel-clobber causing the SAME position to
+disagree across surfaces, now fixed.
+
+## Book concentration (`checkPortfolioOverlap`) undercounting real crypto-correlated exposure — theme map missing exchanges, miners, and BTC/ETH trust/ETF wrappers
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Area** | `src/lib/portfolio/sector-map.ts` (`SECTORS["crypto-equity"]`) |
+
+### How found
+
+Live WATCH/OPEN thesis forensics this cycle (Ask Largo × Night Hawk Swings standing mandate). While
+investigating a separate, ultimately-non-issue "Thesis health" finding on a 2026-09-18 Banger-promoted
+commit batch (36 positions, all crypto-price-correlated names — miners, exchanges, ETH/BTC trust
+wrappers), noticed the batch's own live "Book overlap" evidence line (`play-brief.ts`, backed by
+`checkPortfolioOverlap`/`theme-cluster.ts`'s `resolveTheme`) reported only **11 same-direction
+positions in theme "crypto-equity"** — a fraction of the real ~25+ crypto-correlated names actually
+live in the book at the time.
+
+### Root cause
+
+`sector-map.ts`'s `SECTORS["crypto-equity"]` is a curated, hand-maintained static list (the file's own
+header: *"Extend as new names show up on the board"* — the same process a prior live finding, cited in
+this file's own comments, already used once for `MSTU`/`MSTX`/`GLXY`/`SBET`). It had never been
+extended to cover:
+- **Crypto exchanges/custodians**: GEMI (Gemini Space Station), BKKT (Bakkt), ABTC (American Bitcoin
+  Corp), BLSH (Bullish) — same risk bucket as the already-listed COIN.
+- **Bitcoin miners**: BMNR (Bitmine Immersion), BTDR (Bitdeer) — same risk bucket as the already-listed
+  MARA/RIOT/CLSK/HUT/IREN.
+- **Direct BTC/ETH trust/ETF wrappers**: ETH, ETHE, ETHU, ETHA (Ethereum) and IBIT, GBTC, BITO, BITX
+  (Bitcoin) — not equities, but an even more direct crypto-price read than the mining/holding equities
+  already in the bucket, so they belong in the same concentration cluster rather than each getting its
+  own isolated (and therefore invisible-to-concentration) cluster.
+
+Every one of these 14 tickers was a real, live, committed swing position on the board at the time of
+this finding — not a hypothetical gap.
+
+**Deliberately conservative, not exhaustive**: left out names with only partial/ambiguous crypto
+correlation this pass — HOOD (Robinhood, meaningful crypto revenue but also a broad retail brokerage),
+CRCL (Circle, a stablecoin issuer — arguably belongs but debatable), APLD (Applied Digital, historically
+bitcoin-mining-hosting but increasingly an AI-datacenter company), BULL (Webull, supports crypto trading
+but is a general brokerage). Extending the map further to cover those is a legitimate follow-up, not
+bundled into this fix to keep the change unambiguous.
+
+### Fix
+
+Added the 14 tickers above to `SECTORS["crypto-equity"]` in `sector-map.ts`, following the exact
+established pattern/precedent already in the file (the MSTU/MSTX/GLXY/SBET addition, same comment
+style, same array). No logic changed — `resolveTheme`/`sameThesis`/`checkPortfolioOverlap` are
+untouched; this is purely additive data.
+
+### Blast radius
+
+`sector-map.ts`'s `sectorFor()` feeds `theme-cluster.ts`'s `resolveTheme()`/`sameThesis()`, which is the
+**single, shared** theme resolver for both the swing entry gate's overlap evidence (`portfolio.ts`'s
+`checkPortfolioOverlap`, surfaced in `play-brief.ts`'s "Book overlap" evidence line and
+`play-brief-diff.ts`'s book-context narrative) and the future allocation-cap engine (per the module's
+own header). Every consumer of `sameThesis`/`resolveTheme` benefits from the corrected clustering —
+concentration counts for any of these 14 tickers will now correctly include their real crypto-correlated
+peers.
+
+### Verification
+
+New regression test in `theme-cluster.test.ts`, following the exact style of the existing
+MSTU/MSTX/GLXY/SBET test: asserts `resolveTheme` for all 14 new tickers and `sameThesis` across a
+representative cross-section (exchange vs equity, miner vs equity, ETF wrapper vs equity). RED→GREEN
+proven via `git stash` on `sector-map.ts` alone (test file kept): 1 failure without the fix, 0 with it
+(12/12 in `theme-cluster.test.ts`). `npx tsc --noEmit`: clean. `portfolio.test.ts` (the direct consumer
+of theme resolution for concentration) re-run clean, 11/11, no regression. Full `npm test` (Node 20) run
+before opening the PR.
+
+Per CLAUDE.md's rescinded Cursor-sign-off carve-out (2026-09-10): merges on green CI + clean mergeable
+state, no Cursor review wait required.
+
 ## `vector-pick-sweep` runtime trend (301s→694s→828s) is shared UW rate-limiter queue contention, not a code regression or growing ticker universe — RESEARCHED, OPEN
 
 > **kind:** `FINDING`
