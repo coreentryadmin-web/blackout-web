@@ -90,3 +90,28 @@ test("XRP wrapper tickers cluster with each other, not with crypto-equity mining
   // risk driver than mining/holding-company equity beta.
   assert.equal(sameThesis("XRP", "COIN"), false);
 });
+
+test("crypto exchanges, miners, and BTC/ETH trust/ETF wrappers cluster with crypto-equity (2026-09-20 live finding: 2026-09-18 Banger batch undercounted real book concentration 11 vs ~25 same-direction positions)", () => {
+  // Exchanges/custodians — same risk bucket as COIN.
+  assert.equal(resolveTheme("GEMI"), "crypto-equity");
+  assert.equal(resolveTheme("BKKT"), "crypto-equity");
+  assert.equal(resolveTheme("ABTC"), "crypto-equity");
+  assert.equal(resolveTheme("BLSH"), "crypto-equity");
+  // Miners — same risk bucket as MARA/RIOT/CLSK/HUT/IREN.
+  assert.equal(resolveTheme("BMNR"), "crypto-equity");
+  assert.equal(resolveTheme("BTDR"), "crypto-equity");
+  // Direct BTC/ETH trust/ETF wrappers — not equities, but an even more direct crypto-price read than
+  // the mining/holding equities already in the bucket.
+  assert.equal(resolveTheme("ETH"), "crypto-equity");
+  assert.equal(resolveTheme("ETHE"), "crypto-equity");
+  assert.equal(resolveTheme("ETHU"), "crypto-equity");
+  assert.equal(resolveTheme("ETHA"), "crypto-equity");
+  assert.equal(resolveTheme("IBIT"), "crypto-equity");
+  assert.equal(resolveTheme("GBTC"), "crypto-equity");
+  assert.equal(resolveTheme("BITO"), "crypto-equity");
+  assert.equal(resolveTheme("BITX"), "crypto-equity");
+  assert.equal(sameThesis("GEMI", "COIN"), true);
+  assert.equal(sameThesis("BMNR", "RIOT"), true);
+  assert.equal(sameThesis("ETH", "IBIT"), true);
+  assert.equal(sameThesis("ETHE", "MSTR"), true);
+});
