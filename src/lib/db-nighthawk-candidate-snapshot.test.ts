@@ -223,3 +223,19 @@ test("fetchNighthawkCandidateSnapshots: optional ticker/stage filters are parame
   // the order the pipeline actually produced them.
   assert.match(body, /ORDER BY observed_at ASC, id ASC/);
 });
+
+test("fetchNighthawkCandidateSnapshotsInRange: date range + stage filter are parameterized, never string-concatenated (Phase 0 rank-bucket-analysis read path)", () => {
+  const src = readDbSource();
+  const start = src.indexOf("export async function fetchNighthawkCandidateSnapshotsInRange(");
+  const end = src.indexOf("\n}\n", start);
+  const body = src.slice(start, end);
+
+  // Both range bounds and the stage allowlist are bound params, not interpolated.
+  assert.match(body, /edition_for >= \$1::date AND edition_for <= \$2::date AND stage = ANY\(\$3::text\[\]\)/);
+  assert.match(body, /\[startDate, endDate, stages\]/);
+  // Defaults to the two terminal-and-ranked stages so a rank-bucket read isn't diluted by earlier
+  // discovery/scored/rank_governor rows for the same ticker/edition.
+  assert.match(body, /opts\?\.stages \?\? \["rank_final", "rejected"\]/);
+  // Ordered by edition first so a caller can slice a trailing "recent" window off the tail.
+  assert.match(body, /ORDER BY edition_for ASC, observed_at ASC, id ASC/);
+});
