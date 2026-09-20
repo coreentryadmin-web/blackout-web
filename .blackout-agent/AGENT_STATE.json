@@ -1255,6 +1255,24 @@
       "open_pr_count": 0
     },
     {
+      "at": "2026-09-20T14:07:09.704Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-20T14:07:10.470Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-20T14:07:10.744Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
       "at": "2026-09-20T14:13:24.726Z",
       "type": "context_sync",
       "expired_locks": [],

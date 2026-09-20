@@ -4,6 +4,8 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-20 (14:06 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC window still 09-17, 0 open PRs, live checks already fresh)
+
 ## 2026-09-20 (12:16 UTC) — [SEO] Lane heartbeat: both fixes holding, GSC data still unrefreshed (3rd identical pull in a row)
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
