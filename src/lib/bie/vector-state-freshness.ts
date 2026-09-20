@@ -29,10 +29,33 @@
 // present, its MEANING is not, and the consumer guesses. The fix is to ship the meaning alongside
 // the timestamp — an explicit age, an explicit "now", and a named verdict — rather than to ship a
 // timestamp and hope the arithmetic happens.
+//
+// A SECOND, NARROWER GAP (found 2026-09-20, raised repeatedly on #4076 as a cross-desk question
+// before being scoped here): `freshness` above is a COMPUTE-recency verdict — "how long ago was
+// this number calculated" — and says nothing about MARKET-SESSION recency — "does that calculation
+// still describe a session the tape has moved in since". A weekend/holiday self-warm (any reader
+// that misses the Redis cache re-runs `computeVectorFullState` on demand — see the module doc
+// above) genuinely COMPUTES a fresh number *from* Friday's closing tape, so `describeVectorFreshness`
+// correctly reports `freshness: "live"`, age ~0s — while the underlying market data is 40+ hours
+// stale. Both readings are individually correct; a trader reading only `freshness: "live"` is
+// misled into thinking a live tick backs the number.
+//
+// The fix is ADDITIVE, per the Largo product contract's own rule (`docs/audit/LARGO-PRODUCT-
+// CONTRACT.md`: wrap, never flatten) — `market_session`/`market_session_note` sit ALONGSIDE
+// `freshness`, they do not replace or reinterpret it. `freshness` still answers "how old is this
+// compute"; the new fields answer the orthogonal question "is the market whose tape this compute
+// describes currently open". A consumer that wants "can I trust this as the current tape" needs
+// BOTH: `freshness !== "stale"` AND `market_session !== "CLOSED"`.
+//
+// Reuses `etSessionFacts` (`src/lib/et-session-facts.ts`) rather than inventing a fourth market-
+// phase derivation — that module's own header explains why a fourth copy is exactly how two
+// surfaces start disagreeing about the same minute; `market_session` here is a plain delegation to
+// its holiday-aware `isTradingDayEt` composition, not a new implementation.
 
 import { freshnessFromAgeMs, type BieFreshness } from "@/lib/bie/answer-envelope";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+import { etSessionFacts, type MarketPhase } from "@/lib/et-session-facts";
 
 /**
  * How fresh a served Vector snapshot is. This is `BieFreshness` — the taxonomy that already
@@ -81,6 +104,23 @@ export type VectorFreshnessBlock = {
   freshness: VectorFreshness;
   /** Plain-language disclosure to carry into an answer when the state is not live. */
   note: string | null;
+  /**
+   * MARKET-SESSION recency, orthogonal to `freshness` (see the module doc above). OPEN |
+   * PRE-MARKET | AFTER-HOURS | CLOSED, evaluated at the READ instant (`nowMs`) — CLOSED on
+   * weekends and market holidays, not just overnight. A compute can read `freshness: "live"`
+   * (calculated moments ago) while `market_session` reads `CLOSED` (from a weekend/holiday
+   * self-warm off Friday's tape); consumers that need "does this reflect a live tick" must check
+   * both, never `freshness` alone.
+   */
+  market_session: MarketPhase;
+  /**
+   * Disclosure for exactly the misleading combination: compute is fresh (`freshness` is "live" or
+   * "recent") but the market itself is shut, so the freshness verdict alone would overstate how
+   * current the underlying tape is. Null whenever that combination does not apply — including when
+   * `freshness` is already "stale"/"unknown" (that verdict's own note already covers it) or when
+   * the market is genuinely open.
+   */
+  market_session_note: string | null;
 };
 
 /**
@@ -97,6 +137,9 @@ export function describeVectorFreshness(
   // date a live SPX figure to the next session and fabricate a close for the current one.
   const asOfEt = etStamp(nowMs);
   const sessionDate = etSessionDate(nowMs);
+  // Evaluated at the READ instant, same reasoning as `asOfEt`/`sessionDate` above: this is "is the
+  // MARKET open right now", not a property of the snapshot being described.
+  const marketSession = etSessionFacts(new Date(nowMs)).market_session;
   const observedMs = observedAtIso ? Date.parse(observedAtIso) : NaN;
 
   if (!Number.isFinite(observedMs)) {
@@ -112,6 +155,10 @@ export function describeVectorFreshness(
       // "We cannot tell how old this is" is a different answer from "it is fresh", and must never
       // be allowed to read as the latter.
       note: "This Vector state carries no readable measurement time, so its age is unknown — do not present it as live.",
+      market_session: marketSession,
+      // "unknown" already carries the strongest possible disclosure; a second note here would just
+      // be noise on top of it.
+      market_session_note: null,
     };
   }
 
@@ -128,12 +175,24 @@ export function describeVectorFreshness(
       freshness: "unknown",
       note:
         "This Vector state's measurement time is ahead of the reader clock (clock skew) — do not present it as live.",
+      market_session: marketSession,
+      market_session_note: null,
     };
   }
 
   const ageSec = Math.max(0, Math.round(rawAgeMs / 1000));
   // ONE classifier for the whole product — see the VectorFreshness doc above.
   const freshness: VectorFreshness = freshnessFromAgeMs(ageSec * 1000);
+
+  // The gap this block exists to close: a compute that is genuinely fresh (calculated moments ago,
+  // possibly by a weekend/holiday self-warm) can still describe a market that has not ticked since
+  // its last close. `freshness` alone cannot say so — it only ever saw the compute clock. Only fire
+  // for the "live"/"recent" verdicts: a "stale" compute already carries its own, stronger note, and
+  // piling a second disclosure on top of it would bury the more important one.
+  const marketSessionNote =
+    (freshness === "live" || freshness === "recent") && marketSession === "CLOSED"
+      ? `Computed ${formatAge(ageSec)} ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks.`
+      : null;
 
   return {
     observed_at: new Date(observedMs).toISOString(),
@@ -151,6 +210,8 @@ export function describeVectorFreshness(
         : freshness === "recent"
           ? `This Vector state was measured ${formatAge(ageSec)} ago (within one refresh cycle).`
           : null,
+    market_session: marketSession,
+    market_session_note: marketSessionNote,
   };
 }
 
