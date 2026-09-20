@@ -26,6 +26,18 @@ import type { BangerMover } from "../banger/discovery";
 const BANGER_SIGNAL = "BANGER";
 const LIVE_BANGER = new Set(["OPEN", "PARTIAL"]);
 
+/**
+ * Fixed `regime` sentinel stamped on EVERY banger_positions ledger row (see the two literal call
+ * sites below) — there is no real per-position 7-pillar dossier for this lane, so this string marks
+ * "no calibrated regime read exists for this play" rather than a real market-regime fact.
+ * `thesis-health.ts`'s `thesisHealthUncalibrated()` matches on this EXACT string to correctly OMIT
+ * (never fabricate) an aggregate thesis-health score for a banger-origin position — see its own doc
+ * comment. Exported (not a private literal duplicated in two files) so every reader of this sentinel
+ * shares one definition instead of independently re-typing the string, which is exactly what let it
+ * drift undetected in the first place (see `serving-lane.ts`'s `attachThesisExplanation` guard).
+ */
+export const BANGER_LEDGER_REGIME_LABEL = "BREAKOUT · BANGER";
+
 function etYmd(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
 }
@@ -119,7 +131,7 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     manageAction,
     thesisLevel: "intact",
     thesisNote: row.scale_out_reason ?? "Engine B scale-out — whole-market breakout",
-    regime: "BREAKOUT · BANGER",
+    regime: BANGER_LEDGER_REGIME_LABEL,
     // FINDINGS 2026-09-12: this used to be `points: Math.round(gainPct)` — the RAW underlying %
     // gain since discovery, a completely different quantity (and roughly half the magnitude, since
     // `score` above compounds it as `60 + gainPct/2`) from what every OTHER lane's `factors[].points`
@@ -195,7 +207,7 @@ export function horizonPlayFromBangerWatch(
     serving: "WATCH",
     signalKinds: [BANGER_SIGNAL],
     bucketGraduated: false,
-    regime: "BREAKOUT · BANGER",
+    regime: BANGER_LEDGER_REGIME_LABEL,
     factors: [{ label: "Discovery gain", points: score }],
   };
 }
