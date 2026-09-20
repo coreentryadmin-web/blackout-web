@@ -1,4 +1,4 @@
-## WATCH LIST — 2026-09-20 Swing Ask Largo play-brief vs Command Deck board Thesis Health disagreement (Banger-origin regime clobber, PR pending)
+## WATCH LIST — 2026-09-20 Swing Ask Largo play-brief vs Command Deck board Thesis Health disagreement (Banger-origin regime clobber) — VALIDATED LIVE
 
 **What was fixed:** a Banger-origin (`signalKinds:["BANGER"]`) swing position resolved through
 `resolveSwingPlayForBrief`'s ticker-only lane fallback had its honest `regime:"BREAKOUT · BANGER"`
@@ -8,8 +8,11 @@ RIOT/MSTR/COIN, false for smaller ones like BKKT/GEMI). That destroyed the senti
 `thesisHealthUncalibrated()` needs to correctly withhold an aggregate Thesis Health score, so Ask
 Largo's play-brief showed a real (not hardcoded, but still largely batch-shared) computed score
 while the canonical Command Deck board — which never runs banger rows through that same enrichment
-by design — showed the honest omission for the SAME position. Full write-up:
-`docs/audit/findings-staging/2026-09-20-swing-thesis-health-banger-regime-clobber.md`.
+by design — showed the honest omission for the SAME position. Full write-up: PR #5320
+(`e65014ce845a617a0813c2c0baadcd9ff586580d`), folded into `docs/audit/FINDINGS.md` ("Swing 'Ask
+Largo' play-brief and the Command Deck board disagree about the same Banger-origin position's
+Thesis Health...") by the fold-staging sweep — the original `findings-staging/` file no longer
+exists on `main`, it was consumed by that fold.
 
 **Specific thing to check once this deploys:** pick 3-5 live Banger-origin MANAGING/SCALING_OUT
 swing positions (any ticker with `signalKinds:["BANGER"]`), then compare their Thesis Health text
@@ -19,6 +22,27 @@ either the omission text or a real per-position score), never disagree on the sa
 re-check whether any Banger-origin position ever legitimately shows a real, differentiated Thesis
 Health score post-fix (expected: none should, since the sentinel can no longer be overwritten) — if
 one does, that would mean a NEW path around the guard exists and needs tracing.
+
+**VALIDATED LIVE 2026-09-20 (post-deploy, ECS task-def revision 1714, 8/8 tasks, old revision
+1713 fully drained).** Two independent passes confirmed the fix, from two different sessions:
+- A sibling coordinator session pulled fresh live play-briefs for RIOT/MSTR/COIN directly after
+  the ECS roll completed (20:45:21) and confirmed all three now read "Inputs not wired for
+  committed positions — aggregate score withheld" instead of the fabricated-looking
+  "84% · Minor drift" — posted as the final live-confirmation comment on PR #4076
+  (comment 5752559267), journaled in `docs/audit/nighthawk-swings-live-journal.json`.
+- This session independently re-verified with a fresh temp Clerk premium session (deleted after):
+  pulled `GET /api/market/nighthawk/horizons?horizon=SWING` (70 committed SWING rows) and confirmed
+  every Banger-origin row (RIOT, MSTR, COIN, HOOD, MARA, IREN, BMNR, LRCX, BKKT, GEMI, ABTC, BTDR,
+  and 58 more) still carries the honest, unclobbered `regime: "BREAKOUT · BANGER"` sentinel on the
+  board; then pulled `GET /api/market/swing/play-brief?playId=SWING:<TICKER>` for the same 12
+  originally-affected tickers and confirmed every one renders the honest omission — "Inputs not
+  wired for committed positions — aggregate score withheld; pillar breakdown not shown" — with
+  `Today's regime read: BREAKOUT · BANGER` intact in the "Why this setup" section, matching the
+  board. No byte-identical fabricated 84% (or any other score) appeared on any sampled Banger-origin
+  position. Cross-checked two native (non-Banger) committed positions (CRWD, AAPL) too: they show
+  the SAME generic committed-position omission text (a separate, unrelated gate — "committed
+  positions" withhold thesis health regardless of origin on this endpoint), confirming the fix did
+  not regress native positions either. **No regression found — closes this watch-list item.**
 
 ## WATCH LIST — 2026-09-20 Vector universe null-spot completeness fix (PR pending)
 
