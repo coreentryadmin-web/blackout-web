@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T21:50:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, full close). ReadNotifications clean. git sync clean. #4076 quiet. **Sibling collaboration: PR #5327 found and independently verified this cycle.** The sibling session (session_01Qtnftc16CuWyVLxR8LaMoC) found a direct, elegant follow-on consequence of my own #5321 (crypto-equity theme coverage) -- my fix correctly widened the real 'Book overlap' concentration count from 11 to 28 true positions, which exposed a SEPARATE, previously-latent bug: bookContextSection's narrative-prose concentration sentence joins EVERY overlapping ticker with no length cap, so the newly-honest 28-name count rendered as one unbroken, unreadable 28-ticker comma wall -- exactly the 'bullet-dump not trade-manager voice' failure this mandate watches for. Fix: MAX_OVERLAP_NAMES=8 cap + '+N more' fold, rendering-layer only, gate/overlap-count evidence untouched. Independently re-derived rather than trusting the PR's claims: pulled BKKT's live play-brief myself against current pre-fix production and got the exact same 28-name wall quoted in the PR body; checked out the PR branch in an isolated worktree, ran play-brief-intel.test.ts clean (176/176); reverted just the cap (MAX_OVERLAP_NAMES=999999, a no-op) and got exactly 1 failure (the new test) -- matches the claimed RED->GREEN precisely. Posted a confirming adversarial-review comment (5752911947). CI (verify) still running as of this cycle's end -- left for the owning session or a future check-in to merge once green, per standard collaboration practice (not blocking me, no need to babysit someone else's PR). This is a good example of the audit lineage the mandate exists for: one real fix widening a real signal surfaced a second, genuinely separate narrative-quality bug in a downstream consumer of that same signal. Board unchanged.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "PR #5327 (sibling-authored, independently verified this cycle, not yet merged -- book-context namewall cap, direct follow-on to #5321)"
-  ],
+  "last_updated": "2026-09-20T22:05:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. PR #5327 (book-context namewall cap, independently verified last cycle) already merged by its owning session (0484ff438), CI was green -- confirmed via main's own log rather than polling the PR further. Zero open swing PRs. #4076 quiet. Board unchanged. Genuinely clean cycle -- this session has now covered essentially the full mandate surface today (C1-C10 sweep, portfolio-overlap, thesis-health root-cause + fix + verify, crypto-equity theme coverage + fix + verify, WATCH-lane marks, exit-ladder math, MFE-capture math, and a sibling PR's follow-on namewall fix, all independently verified) with three real production fixes shipped and live-confirmed (#5320, #5321, #5327) across this cycle-group. Nothing new to chase this cycle.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -115,17 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T21:50:00Z",
-    "swing_prs": [
-      {
-        "pr": 5327,
-        "title": "fix(swing): cap Ask Largo book-context name list, no more raw ticker wall",
-        "state": "open",
-        "draft": false,
-        "mine": false,
-        "note": "sibling-authored (session_01Qtnftc16CuWyVLxR8LaMoC), independently verified, CI pending"
-      }
-    ]
+    "as_of": "2026-09-20T22:05:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
