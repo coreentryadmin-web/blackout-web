@@ -38,6 +38,195 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Vector "live" freshness tag is COMPUTE-recency only — no MARKET-SESSION disclosure — FIXED (partial, scoped)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED (Vector-state half only — see "What remains open" below) |
+| **Area** | `src/lib/bie/vector-state-freshness.ts` (`describeVectorFreshness`), consumed by `product-reads.ts`, `vector-full-state.ts`, `vector-desk-brief.ts`, `play-brief.ts`, `play-brief-absence.ts`, `play-brief-narrative.ts` |
+
+### How found
+
+Raised repeatedly across several prior cycles on PR #4076 as a cross-desk design question,
+never scoped down to a concrete fix until this cycle. Live repro this cycle (PR #4076 comment
+5749904631, 2026-09-20 12:49 UTC): a Sunday `GET /api/market/swing/play-brief` read (market
+closed since Friday's close, ~40+ hours prior) returned `evidence[]`/`levels[]` entries stamped
+`"source": "Vector", "asOf": "2026-09-20 08:47 ET", "freshness": "live"` — the compute genuinely
+ran seconds before the read, but nothing in the payload disclosed that the market itself had not
+ticked in over 40 hours.
+
+### Root cause
+
+`describeVectorFreshness` (`vector-state-freshness.ts`) classifies `freshness` purely as
+`nowMs - observedMs` against `freshnessFromAgeMs`'s 60s/600s boundaries (`answer-envelope.ts`).
+That is a correct measure of COMPUTE recency, but it is the only freshness signal the function
+ships — there was no MARKET-SESSION-recency field at all. A weekend/holiday self-warm (any
+Largo/swing reader that misses the 15-minute Redis cache re-runs `computeVectorFullState` on
+demand — see the module's own long-standing doc comment) genuinely computes a fresh number *from*
+Friday's closing tape, so `freshness: "live"` is technically correct about the compute while being
+silent about — and easily misread as implying — a live market tick.
+
+### Investigation: is this genuinely shared, or narrower than assumed?
+
+Both, in different halves — which is why this PR ships one half and scopes the other rather than
+guessing at a single fix for everything the original design question named:
+
+- **`describeVectorFreshness` itself IS genuinely a shared primitive** (grep confirms live import
+  sites in `product-reads.ts`, `vector-full-state.ts`, `vector-desk-brief.ts`, `play-brief.ts`,
+  `play-brief-absence.ts`, `play-brief-narrative.ts` — Largo tool answers, Vector's own desk brief,
+  and swing's play-brief all route through it), so widening its EXISTING `freshness` scale, or
+  changing what any of those consumers receive for `.freshness`, would need the cross-desk care the
+  standing policy asks for. This PR does not touch that.
+- **But the GAP itself — no market-session field at all — is a narrow, additive omission** fixable
+  in the same file without touching `freshnessFromAgeMs`, without changing the meaning or value of
+  `.freshness` for any existing consumer, and without a schema/cache change. That's what this PR
+  ships.
+- **The GEX-matrix half of the live symptom is a SEPARATE, unrelated mechanism** and is explicitly
+  NOT touched here — see "What remains open."
+
+### Fix
+
+Added two new, purely additive fields to `VectorFreshnessBlock`/`describeVectorFreshness`'s return
+value, reusing the existing shared `etSessionFacts()` (`src/lib/et-session-facts.ts` — already
+holiday-aware via `isTradingDayEt`, already used elsewhere, so this is a delegation, not a new
+market-phase derivation):
+
+- `market_session: MarketPhase` — `OPEN | PRE-MARKET | AFTER-HOURS | CLOSED`, evaluated at the READ
+  instant, present on every branch (including the `unknown`/clock-skew branches).
+- `market_session_note: string | null` — fires ONLY for the misleading combination this finding is
+  about: `freshness` is `"live"` or `"recent"` (compute genuinely fresh) AND `market_session` is
+  `"CLOSED"`. Null whenever `freshness` is already `"stale"`/`"unknown"` (that verdict's own note
+  already covers it — no redundant second disclosure) or the market is genuinely open.
+
+Per the Largo product contract's own ADDITIVE rule (`docs/audit/LARGO-PRODUCT-CONTRACT.md`): the
+new fields sit ALONGSIDE `freshness`, they do not reinterpret or replace it. `freshness` still
+answers "how old is this compute"; `market_session`/`market_session_note` answer the orthogonal
+"is the market this compute describes currently open." A consumer that wants "can I trust this as
+the current tape" now has both signals to check instead of only the misleading one.
+
+### Blast radius
+
+One file (`vector-state-freshness.ts`) + its test file. Every existing field on
+`VectorFreshnessBlock` is unchanged in name, type, and value — the two new fields are additive, so
+every current consumer (listed above) compiles and behaves identically; none of them read the new
+fields yet (see "What remains open"), so this PR changes no visible behavior on its own — it lands
+the primitive so a follow-up can wire it in without touching this file again.
+
+### What remains open (scoped on PR #4076, not fixed here)
+
+1. **Wiring `market_session_note` into the actual swing evidence array.** `play-brief.ts`'s
+   `vectorFreshness()` helper calls `describeVectorFreshness(...)` but only extracts `.freshness`,
+   discarding the new fields — so the live symptom in the original repro (evidence entries showing
+   bare `"freshness": "live"` with no disclosure) is not yet visibly fixed by this PR alone. That
+   wiring is swing-scoped (`play-brief.ts`) and safe to do as a fast follow-up.
+2. **The GEX-matrix half is a completely separate, untouched mechanism.** `gexFreshness()`
+   (`play-brief.ts`) and `gexMatrixStale()`/`gexMatrixAgeMs()` (`play-brief-absence.ts`) never call
+   `describeVectorFreshness` at all — they classify off `gexMatrixAgeMs` (itself sourced from
+   `polygon-options-gex.ts`'s `calculatedAt = new Date(now).toISOString()`, a pure wall-clock
+   compute stamp) against the shared `GEX_MATRIX_STALE_MS` (2 minutes) constant directly. Giving
+   GEX the same market-session disclosure needs either (a) a parallel `market_session`/
+   `market_session_note` computation at its own call site (cheap, but a second copy of the same
+   logic — the `describeVectorFreshness` module's own doc explicitly warns against a second scale/
+   implementation forking from the first), or (b) a shared helper both `gexFreshness` and
+   `vectorFreshness` call. `polygon-options-gex.ts` is used broadly across desks, so which shape is
+   right is exactly the kind of design call this repo's cross-PR-ordering discipline says to scope
+   with Cursor rather than guess at solo.
+
+Both are named explicitly in a follow-up comment on PR #4076 so a future cycle (this session's or
+Cursor's) has the precise remaining scope instead of re-deriving it from scratch.
+
+### Verification
+
+New tests in `vector-state-freshness.test.ts`: a compute-fresh state on a CLOSED market carries
+the note; a compute-fresh state on an OPEN market carries none; a market HOLIDAY (Thanksgiving,
+a Thursday) reads CLOSED via `etSessionFacts`'s holiday calendar, not just weekends; a genuinely
+STALE compute suppresses the redundant note; the note is suppressed on unparseable/clock-skewed
+reads. RED→GREEN proven via `git stash` on the source file alone (tests unchanged): 5 failures
+without the fix, 0 with it. Full `vector-state-freshness.test.ts` suite: 24/24 pass. `npx tsc
+--noEmit` clean. Full `npm test` run separately (Node 20) before merge.
+
+## Ask Largo swing brief never surfaces Vector's new market_session_note disclosure — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED |
+| **Area** | `src/lib/swing/play-brief.ts` (`evidenceFromContext`), fast-follow to PR #5306 (`src/lib/bie/vector-state-freshness.ts`) |
+
+### How found
+
+Scoped as explicit follow-up work in PR #5306's own PR description ("What remains open" item 1,
+also mirrored in `docs/audit/findings-staging/2026-09-20-vector-freshness-market-session.md`): that
+PR shipped `market_session`/`market_session_note` on the shared `VectorFreshnessBlock`
+(`describeVectorFreshness`, `vector-state-freshness.ts`) — the weekend/holiday self-warm
+disclosure ("computed moments ago, but the market is CLOSED") — but deliberately stopped short of
+wiring it anywhere, since `play-brief.ts`'s own `vectorFreshness()` helper only ever extracted
+`.freshness` off the same return value, discarding the two new fields. Picked up this cycle per
+the standing Ask Largo × Night Hawk Swings ownership mandate (CLAUDE.md).
+
+### Root cause
+
+Two independent gaps stacked, not one:
+
+1. **Wiring gap** — `evidenceFromContext()` never read `market_session_note` off the resolved
+   Vector state at all, so even though the field was computed correctly server-side (via
+   `fetchVectorFullState`/`fitVectorFullStateForModel`, both of which carry it through verbatim —
+   see `vector-full-state-fit.ts`'s own header on why freshness/absence fields are carried "verbatim"
+   through the model-fit boundary), nothing in the swing play-brief composer ever looked at it.
+2. **A latent type gap that would have blocked the wiring even once attempted.** `ctx.vector`
+   (`SwingPlayBriefContext.vector`) and `ctx.ecosystem.vector_full_state`
+   (`EcosystemContext.vector_full_state`) are both statically typed as the plain `VectorFullState`
+   (`vector-full-state.ts`), which predates PR #5306 and does not carry `VectorFreshnessBlock`'s
+   fields — even though `fetchVectorFullState`'s own return type
+   (`Promise<(VectorFullState & VectorAbsenceReport & VectorFreshnessBlock) | null>`) and every
+   caller that populates those two context fields (`play-brief-context.ts`,
+   `ecosystem-context.ts`) genuinely produce the wider intersection type at runtime. `vec.market_session_note`
+   would not type-check against the declared field type without addressing this.
+
+### Fix
+
+In `evidenceFromContext()` (`play-brief.ts`):
+
+- Cast the already-existing `vec` local (`ctx.vector ?? eco?.vector_full_state ?? null`) to
+  `(VectorFullState & Partial<VectorFreshnessBlock>) | null` at its declaration site — a narrow,
+  file-local cast that reflects the true runtime shape (see root cause #2) without widening either
+  shared type (`SwingPlayBriefContext`/`EcosystemContext`), since nothing else in this repo needs
+  those two new fields yet.
+- Push a new `BieEvidence` entry (`kind: "fact"`, `source: "Vector"`) whenever
+  `vec.market_session_note` is non-null, right after the existing "Dealer posture" evidence block.
+- Gated on `!vectorStale` — the same gate every other Vector-derived evidence line in this function
+  already respects, so the new line can never disclose a caveat about a Vector read the rest of the
+  brief has already excluded as untrustworthy. This gate does NOT suppress the primary scenario
+  the field exists for: on a weekend/holiday self-warm, both `ctx.sessionDate` and the freshly-
+  computed Vector state's own `sessionDate` resolve to the same (non-trading) calendar day, so
+  `vectorSnapshotStale`'s session-mismatch check does not fire, and the age-based check does not
+  fire either (the compute genuinely just ran) — confirmed with a dedicated regression test for
+  the opposite case (a genuinely session-stale Vector snapshot correctly suppresses the note).
+
+### Blast radius
+
+One file (`play-brief.ts`) + its test file. No other composer, tool, or desk reads
+`market_session_note` yet — this PR is scoped to swing per PR #5306's own "swing-scoped, safe
+fast-follow" note. The GEX-matrix half of the original symptom (item 2 in PR #5306's "What remains
+open") is untouched — separate mechanism, separate design call, not attempted here.
+
+### Verification
+
+New tests in `play-brief.test.ts`:
+- a Vector state with a non-null `market_session_note` and a matching, fresh, non-stale snapshot
+  surfaces the note as brief evidence, attributed to `"Vector"`;
+- the identical note is suppressed when the Vector snapshot's own `sessionDate` does not match the
+  brief's `sessionDate` (i.e. `vectorSnapshotStale` is true) — proves the new line respects the
+  same trust gate as the rest of the function rather than surfacing unconditionally.
+
+RED→GREEN proven via `git stash` on `play-brief.ts` alone (test file unchanged): 1 failure without
+the fix (the suppression test passes either way, by construction), 0 with it. Full
+`play-brief.test.ts` suite: 94/94 pass. `npx tsc --noEmit` clean. Full `npm test` (Node 20) run
+before merge.
+
 ## 2026-09-20 — [FINDING, P1 correctness] Legacy-promoted swing plays' "Why this play was picked" factors didn't sum to score — 5th occurrence, fixed by making the guard self-healing — FIXED
 
 > **kind:** `FINDING`
