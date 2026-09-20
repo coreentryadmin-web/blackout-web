@@ -1006,6 +1006,102 @@ test("composeSwingPlayBrief: 'Track record' section appears ONLY when ctx.archet
   );
 });
 
+// Largo C10 enhancement (2026-09-20, Ask Largo standing mandate): the "Track record"/"Ticker
+// track record" sections above already cite the same wins/losses/n numbers in prose, but prose
+// cannot be joined/cited the way a typed evidence[] entry with its own provenance can — this
+// proves the same numbers now also reach evidence[], additive alongside the untouched sections.
+test("composeSwingPlayBrief: archetype track record also surfaces as a citable evidence[] entry, not just prose (Largo C10)", () => {
+  const graduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    asOf: "2026-09-10T15:00:00.000Z",
+    gradedPlays: 70,
+    archetypes: {
+      BREAKOUT: {
+        tier: "LIMITED",
+        graduated: true,
+        wilsonLbPct: 63.2,
+        pointDeltaPts: 22.4,
+        n: 60,
+        wins: 45,
+        losses: 15,
+        winRatePct: 75,
+      },
+    },
+    subLanes: {},
+  };
+  const baseCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ archetype: "BREAKOUT" }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const withTrackRecord = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: graduatedSnap });
+  const evidence = withTrackRecord.envelope.evidence.find((e) => e.text.startsWith("Archetype track record:"));
+  assert.ok(evidence, "expected a citable archetype track-record evidence entry");
+  assert.match(evidence!.text, /45W \/ 15L/);
+  assert.match(evidence!.text, /60 graded plays/);
+  assert.equal(evidence!.provenance?.source, "Swing ledger");
+
+  // Same absence discipline as the prose section: no cached read, no fabricated citation.
+  const withoutTrackRecord = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: undefined });
+  assert.equal(
+    withoutTrackRecord.envelope.evidence.some((e) => e.text.startsWith("Archetype track record:")),
+    false,
+    "no evidence citation when the track-record read is absent",
+  );
+
+  // An ungraduated bucket must be omitted here too, never cited as though it were trustworthy.
+  const ungraduatedSnap: SwingArchetypeTrackRecordSnapshot = {
+    ...graduatedSnap,
+    archetypes: { BREAKOUT: { ...graduatedSnap.archetypes.BREAKOUT!, graduated: false, tier: "RESEARCH" } },
+  };
+  const withUngraduated = composeSwingPlayBrief({ ...baseCtx, archetypeTrackRecord: ungraduatedSnap });
+  assert.equal(
+    withUngraduated.envelope.evidence.some((e) => e.text.startsWith("Archetype track record:")),
+    false,
+    "an ungraduated bucket must not be cited as evidence",
+  );
+});
+
+test("composeSwingPlayBrief: ticker track record also surfaces as a citable evidence[] entry, not just prose (Largo C10)", () => {
+  const baseCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "CRWD" }),
+    asOf: "2026-09-20 11:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const withRecord = composeSwingPlayBrief({
+    ...baseCtx,
+    tickerTrackRecord: { ticker: "CRWD", priorClosedTrades: 1, wins: 1, losses: 0 },
+  });
+  const evidence = withRecord.envelope.evidence.find((e) => e.text.startsWith("Ticker track record:"));
+  assert.ok(evidence, "expected a citable ticker track-record evidence entry");
+  assert.match(evidence!.text, /CRWD 1W \/ 0L across 1 prior closed trade\./);
+  assert.equal(evidence!.provenance?.source, "Swing ledger");
+
+  // Zero prior trades must not fabricate a citation (absence, not a "0W/0L" claim).
+  const withoutRecord = composeSwingPlayBrief({
+    ...baseCtx,
+    tickerTrackRecord: { ticker: "CRWD", priorClosedTrades: 0, wins: 0, losses: 0 },
+  });
+  assert.equal(
+    withoutRecord.envelope.evidence.some((e) => e.text.startsWith("Ticker track record:")),
+    false,
+    "no evidence citation when there are zero prior closed trades",
+  );
+});
+
 test("composeSwingPlayBrief: stale GEX matrix surfaces in unavailableSources (Largo C3)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
