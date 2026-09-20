@@ -4,6 +4,24 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-20 (06:16 UTC) — [SEO] Lane heartbeat: fresh container recovery, both fixes still holding, GSC data unchanged
+
+Fresh container this cycle — `/home/user/blackout-web` did not exist at all (not just an
+uncommitted-branch restart, a full clean container). Recovered via `git clone` (repo
+`coreentryadmin-web/blackout-web`, proxy-injected auth, no token persisted in `.git/config`) +
+`npm ci` (Node 20 pre-installed at `/opt/node20/bin`, `node_modules` absent as expected on a fresh
+clone) before doing anything else. Landed already at `main`'s latest (`0e6121d`), no drift to
+reconcile.
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 2 open agent PRs, neither SEO-lane,
+neither stuck (#5283 CI-running, #5282 non-draft/mergeable — will auto-merge on its own once CI
+completes). Step 3: fresh opportunity scan — **identical to the last pull** (same
+2026-06-20→09-17 window, same 3 striking-distance queries, same positions/impressions/clicks down
+to the decimal) — GSC's reporting lag means it hasn't refreshed since the last cycle ~6h ago, so no
+trend re-pull either (would just repeat the same numbers). Nothing new this cycle.
+
 ## 2026-09-20 (00:17 UTC) — [SEO] Lane heartbeat: both fixes holding, continued small positive trend, no new work
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0007, GOOD**. `/api/og` —
