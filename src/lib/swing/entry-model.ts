@@ -80,6 +80,16 @@ function expiryMs(expiry: string): number {
  * Derive the entry plan for a triggered/forming setup. `entryState` comes from signed price-vs-trigger; the
  * deadline is `asOf + sub-lane validity days`, clamped to strictly before the contract expiry so the two
  * clocks can never coincide.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-09-20): `deriveEntryState` only ever reasoned about price vs.
+ * the entry trigger — it never checked whether the CONTRACT itself had already expired, so a stale WATCH
+ * candidate whose contract expiry has passed (a real, live scenario — nothing prunes stale WATCH rows, per
+ * the standing "watch-board-stale-expired-candidates-not-pruned" gap) would still report a live-looking
+ * entryState (PRE_TRIGGER/AT_TRIGGER/PULLBACK_TO_ENTRY/EXTENDED_CHASE) rather than "EXPIRED" — even though
+ * this file's own `entryReason` switch and two downstream consumers (entry-enterability.ts's
+ * `deadPlayReason`/`evaluateSwingEntryEnterability`) already had dedicated handling for
+ * `entryStatus === "EXPIRED"` that nothing ever actually produced. Fixed by checking contract expiry
+ * FIRST, before the price-vs-trigger geometry, so "EXPIRED" is a real, reachable state.
  */
 export function deriveEntryPlan(
   dossier: SwingDossier,
@@ -90,6 +100,18 @@ export function deriveEntryPlan(
   const dir = dossier.direction;
   const subLane = dossier.subLane;
   const nowMs = toMs(asOf);
+  const expMs = expiryMs(contract.expiry);
+
+  if (Number.isFinite(expMs) && nowMs >= expMs) {
+    return {
+      entryState: "EXPIRED",
+      entryLimitPx: null,
+      entryDeadline: new Date(expMs).toISOString(),
+      actualFill: null,
+      subLane,
+      reason: entryReason("EXPIRED", dir),
+    };
+  }
 
   const entryState = deriveEntryState(dir, reads);
   const entryLimitPx = deriveEntryLimit(dir, reads, entryState);
@@ -97,7 +119,6 @@ export function deriveEntryPlan(
   // ── entry-validity deadline: short, sub-lane-scoped, and provably NOT the option expiry ──
   const validityDays = subLane ? ENTRY_VALIDITY_DAYS[subLane] : DEFAULT_ENTRY_VALIDITY_DAYS;
   let deadlineMs = nowMs + validityDays * DAY_MS;
-  const expMs = expiryMs(contract.expiry);
   // Clamp to strictly before expiry — a stale-setup clock must expire well before the contract does.
   if (Number.isFinite(expMs) && deadlineMs >= expMs - DAY_MS) {
     deadlineMs = expMs - DAY_MS;

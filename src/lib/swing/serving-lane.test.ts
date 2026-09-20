@@ -81,8 +81,11 @@ test("assembles a real sectioned lane: WATCH + RESEARCH populate; setupState sta
     ],
   });
   const readsByTicker = new Map<string, SwingServingReads>([
-    // NVDA: LONG at the trigger, inside the window + graduated → COMMIT_NOW.
-    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract }],
+    // NVDA: LONG at the trigger, inside the window + graduated → COMMIT_NOW. asOf pinned before the
+    // fixture contract's expiry (2026-08-07) — without it this falls back to Date.now() and, once real
+    // time passes that hardcoded expiry, the 2026-09-20 contract-expiry fix (entry-model.ts) correctly
+    // reports EXPIRED instead of AT_TRIGGER, which is the fixture going stale, not a bug in the fix.
+    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
     // WAT: LONG below the trigger → FORMING → WATCH.
     ["WAT", { setup: { price: 95, triggerPx: 100, invalidationPx: 90, atr: 3 } }],
   ]);
@@ -106,7 +109,8 @@ test("ungraduated AT_TRIGGER still reaches COMMIT_NOW — graduation is evidence
     plays: [play({ ticker: "NVDA", status: "COMMIT", bucketGraduated: false })],
   });
   const readsByTicker = new Map<string, SwingServingReads>([
-    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract }],
+    // asOf pinned before the fixture contract's expiry — see the comment on the identical fixture above.
+    ["NVDA", { setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 }, entry: { price: 100.5, triggerPx: 100, atr: 3, entryZoneFar: 98 }, contract, asOf: "2026-07-24T14:00:00.000Z" }],
   ]);
   const lane = await getSwingServingLane({ discover, readsByTicker });
   assert.equal(lane.sections.COMMIT_NOW.map((p) => p.ticker).join(","), "NVDA");
@@ -231,6 +235,8 @@ test("planLevels + spots drive setup maturity beyond RESEARCH on the serve path"
             setup: { price: 100.5, triggerPx: 100, invalidationPx: 90, atr: 3 },
             entry: { price: 100.5, triggerPx: 100, atr: 3 },
             contract,
+            // asOf pinned before the fixture contract's expiry — see the comment on the first such fixture above.
+            asOf: "2026-07-24T14:00:00.000Z",
           },
         ],
       ]),
