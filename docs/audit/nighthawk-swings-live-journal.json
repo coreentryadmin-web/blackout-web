@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-20T09:16:50Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. PR #5289 (verified last cycle) MERGED -- ff-merged cleanly, already fully reviewed so no further diligence needed. Zero open swing PRs. Board unchanged (many consecutive cycles now, still a quiet Sunday pre-market state). Continued the play-brief.ts sweep with levelsFromContext (the structured envelope.levels[] builder -- call/put wall, gamma flip, spot, confluence zones, dark pool levels, gamma magnet, GEX king, max pain, each with independent Vector-vs-GEX provenance/freshness precedence) -- another well-hardened function, carries its own 2026-09-15 Largo C8 fix (provenance asOf/freshness now correctly tracks the SAME vec-side variable that drives which source's price actually got picked, not just whether GEX happened to have a value too). Noted one minor, genuinely debatable observation not escalated: the function ends with `levels.slice(0, 10)`, silently truncating without any 'N more' disclosure -- unlike meridianCatalystSection's narrative truncation (which explicitly discloses 'N more in window -- open Meridian desk for full lane'), this structured array field just drops extras with no signal to the consumer. Confluence zones and dark pool levels are both unbounded loops feeding into the same array, so a ticker with many of either could genuinely hit the cap. Did not escalate as a finding: unlike narrative prose (where 'absence must be disclosed' is this file's own repeatedly-cited principle for member-facing text), a plain structured array field silently capping at a reasonable size is common, defensible API design, and I have no live evidence any real ticker has ever actually hit this cap -- would need confirmation this is actually reachable/harmful before it's worth a PR, not just theoretically possible. Correctly left as a low-confidence non-finding rather than manufacturing a fix. No new bug found, no self-authored fix this cycle.",
+  "last_updated": "2026-09-20T09:31:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git fetch/merge --ff-only brought in PR #5291 (sibling-authored, already merged 09:30:19Z): wired Night Hawk Swings into get_cross_product_read (ProductId/SOURCES/adapter were missing entirely for Swing -- a genuine C3-adjacent gap one layer up from the contract's normal absence-with-a-reason failure mode, not an honest omission at all). Independently verified end to end rather than trusting the PR body: grep-confirmed ProductId lacked \"swing\" and cross-product-read.ts had zero swing references on the pre-fix parent commit (75954d04e); diffed the actual merge against that parent (product-adapters.ts's new swingContribution follows the spx/nighthawk ticker-threading pattern exactly, direction sourced from the SAME envelope.bias the member-facing brief panel renders, so it structurally cannot disagree with the brief); ran the PR's own test files myself on Node 20 -- 27/27 pass on current main; then reverted the three touched source files to the pre-fix parent via git checkout and re-ran -- confirmed RED (20/27 pass, 7 fail), restored the fix, confirmed GREEN again (27/27), tsc --noEmit clean. Root cause, diff, and RED-to-GREEN all match the PR's claims exactly -- no corrections needed, no follow-up filed. Board healthy (board-check2.mjs): 56 managing, 12 scaling out, 1 commit-now/1 watch (both banger-lane), no anomalies. Zero other open swing PRs. Checked #4076 for anything new: found the HIGH-severity premium_stop cross-rung-latch escalation (raised 09-15, journal had it stuck OPEN) actually resolved and merged days ago as #5035, independently peer-verified on-thread, deployed -- correcting stale journal state below. Also found a new open item: my own 09-20T05:33Z design-question comment (short-interest evidence permanently tagged \"stale\" regardless of actual age, since fundamentalsFreshness uses a generic 10-min live/recent/stale threshold that biweekly-cadence short-interest data can never clear -- contradicts play-brief-absence.ts's own comment about avoiding exactly this misleading-label pattern) -- posted, no response yet, correctly left as a design question rather than picking a threshold unilaterally. No new bug found/fixed by me this cycle -- the cycle's value was thorough adversarial verification of a sibling's cross-product fix plus clearing stale escalation-tracking state.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -109,12 +109,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-15T03:20:00Z",
-    "swing_prs": [
-      "#5009 (draft, merge conflict resolved, CI pending)",
-      "#5010 (draft, CI pending)",
-      "#5011 (draft, CI pending)"
-    ]
+    "as_of": "2026-09-20T09:31:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
@@ -155,12 +151,26 @@
         "src/lib/swing/calibration.ts",
         "src/lib/zerodte/scale-out.ts"
       ],
-      "status": "OPEN"
+      "status": "RESOLVED -- shipped as #5035 (merged), independently peer-verified on-thread (comment 5684549051), deployed. Journal previously had this stuck OPEN -- corrected 09-20T09:31Z."
     },
     {
       "topic": "Narrative dedup is string-matching prose, not comparing structured facts",
       "comment_url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5734128257",
-      "summary": "Design-level pattern observation, backed by 4 concrete live-reproduced PRs from today (#5205, #5208, #5209, #5216) all sharing the same root shape: a dedup/comparison flag implemented as .includes(<fixed literal string>) against a SIBLING section's rendered prose, which silently breaks whenever either side's wording changes. Confirmed the same brittle pattern remains live today in buildIntelSections (play-brief-intel.ts ~line 1751) for stopAdviceAlreadyNoted/captureAlreadyNoted -- both currently single-phrasing, will break the same way #5216 did the moment their source branch grows a second phrasing. Proposed direction (not pushed unilaterally, flagged for a second opinion given the refactor size): a shared structured-fact registry (stable keys, not string matches) instead of re-deriving facts by scanning sibling prose. First design-level escalation to #4076 this session -- offered to scope/take it or split with whoever's deepest in the file."
+      "summary": "Design-level pattern observation, backed by 4 concrete live-reproduced PRs (#5205, #5208, #5209, #5216) sharing the same root shape: a dedup/comparison flag implemented as .includes(<fixed literal string>) against a sibling section's rendered prose, silently breaks whenever either side's wording changes. Confirmed the same brittle pattern remains live in buildIntelSections (play-brief-intel.ts ~line 1751) for stopAdviceAlreadyNoted/captureAlreadyNoted. Proposed a shared structured-fact registry instead of re-deriving facts by scanning sibling prose. Still OPEN as of 09-20, no response yet on this specific comment.",
+      "status": "OPEN"
+    },
+    {
+      "raised": "2026-09-20T05:33Z",
+      "comment_id": 5747893411,
+      "severity": "design question, not a bug",
+      "title": "Short-interest evidence permanently tagged \"stale\" regardless of actual freshness (generic 10-min live/recent/stale threshold can never clear biweekly-cadence data)",
+      "files": [
+        "src/lib/swing/play-brief-intel.ts",
+        "src/lib/swing/play-brief.ts",
+        "src/lib/largo/answer-envelope.ts",
+        "src/lib/swing/play-brief-absence.ts"
+      ],
+      "status": "OPEN -- posted, no response yet as of 09-20T09:31Z. Deliberately not shipped as a unilateral fix since it needs a real threshold decision (days? matching the ~biweekly reporting cycle?), not a guessed number."
     }
   ]
 }
