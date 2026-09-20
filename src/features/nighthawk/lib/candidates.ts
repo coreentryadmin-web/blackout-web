@@ -8,6 +8,7 @@ import {
   LEVERAGED_ETP_SET,
 } from "./constants";
 import { dbConfigured, fetchTickersAvgDailyPremium, insertNighthawkCandidateSnapshots } from "@/lib/db";
+import { alertCandidateSnapshotWriteFailure } from "./candidate-snapshot-alert";
 import { fetchTickersFlowStreaks } from "./flow-streak";
 import type { MarketWideContext } from "./market-wide";
 import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
@@ -742,7 +743,7 @@ export function buildDiscoveryStageSnapshotRows(
  * contract as recordNighthawkStageRejectedAuditTrail (play-outcomes.ts), so this capture can
  * never affect which tickers get selected or delay/break the edition build.
  */
-function recordDiscoveryStageSnapshots(
+export function recordDiscoveryStageSnapshots(
   editionFor: string,
   rows: MultiSourceCandidateRow[],
   selectedRows: MultiSourceCandidateRow[],
@@ -753,6 +754,7 @@ function recordDiscoveryStageSnapshots(
   if (!snapshotRows.length) return;
   void insertNighthawkCandidateSnapshots(snapshotRows).catch((err) => {
     console.warn(`[nighthawk/candidates] failed to write discovery-stage candidate snapshots:`, err);
+    alertCandidateSnapshotWriteFailure("discovery", editionFor, err);
   });
 }
 
