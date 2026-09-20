@@ -260,9 +260,21 @@ export function evaluateDteMigration(input: SwingManageInput): { migrate: boolea
 }
 
 /**
- * Roll candidate — INTENT ONLY (execution is PR-15). A roll only makes sense for a still-valid
- * thesis at low DTE with theta disproportion; a broken thesis or a hit structural stop is a CLOSE,
- * not a roll, so those veto the intent.
+ * Roll candidate — the intent this file's own caller (`evaluateSwingManagement`) attaches to a
+ * verdict; `roll.ts`'s executor (PR-15, shipped) is the live caller that acts on it, deciding
+ * ROLL vs CLOSE for a gating rung. A roll only makes sense for a still-valid thesis at low DTE
+ * with theta disproportion; a broken thesis or a hit structural stop is a CLOSE, not a roll, so
+ * those veto the intent.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-09-20): the returned `reason` string used to read
+ * "... (INTENT ONLY; execution deferred to PR-15)" — accurate when this function predated the
+ * executor, false now that `roll.ts` is shipped and live (it reads/acts on `rollIntent.roll` on
+ * every management tick). `live-plays.ts`/`horizon-plays.ts` already both carry their own comments
+ * documenting this exact staleness and deliberately routing member-facing prose through
+ * `dteMigration.reason` instead of this string for that reason — so no member ever saw the stale
+ * text — but the string itself, `roll.ts`'s own `decideRollAction` (which still embeds it verbatim
+ * in its ROLL action's internal `reason`), and this docstring all still asserted something false.
+ * Fixed at the source so nothing downstream needs a workaround for new false info to fix around.
  */
 export function detectRollCandidate(input: SwingManageInput): { roll: boolean; reason: string } {
   const migration = evaluateDteMigration(input);
@@ -270,7 +282,7 @@ export function detectRollCandidate(input: SwingManageInput): { roll: boolean; r
   if (input.thesisBroken === true) return { roll: false, reason: "thesis broken — close, do not roll" };
   const sb = structuralStopBroken(input);
   if (sb.broken) return { roll: false, reason: "underlying structural stop hit — close, do not roll" };
-  return { roll: true, reason: `roll intent — ${migration.reason} (INTENT ONLY; execution deferred to PR-15)` };
+  return { roll: true, reason: `roll intent — ${migration.reason}` };
 }
 
 /**

@@ -203,9 +203,13 @@ export interface HorizonPlay {
    *
    * `reason` is `rollIntent.roll === true` gating `dteMigration.reason`'s prose (the
    * post-veto-authoritative "yes" — vetoed by a broken thesis or a hit structural stop, exactly
-   * as `roll.ts`'s own executor vetoes) — never `rollIntent.reason` verbatim, which still reads
-   * "(INTENT ONLY; execution deferred to PR-15)", a stale internal note from before PR-15 wired
-   * up live execution (`manage-sync.ts`'s own header: "PR-15 ROLL WIRING... executes a roll").
+   * as `roll.ts`'s own executor vetoes) — never `rollIntent.reason` verbatim. That was originally
+   * to dodge a stale "(INTENT ONLY; execution deferred to PR-15)" note the string used to carry
+   * from before PR-15 wired up live execution; that note was fixed at its source in manage.ts
+   * (2026-09-20), but the preference for `dteMigration.reason` stands regardless — it is the
+   * member-clean prose either way, and any snapshot row persisted before the 2026-09-20 fix still
+   * has the stale text frozen in its stored `event_json` forever (a historical row is never
+   * rewritten), so this call site still must not read `rollIntent.reason` verbatim.
    * Null whenever no snapshot has fired yet or the position isn't currently a roll candidate —
    * never fabricated, and never shown as a false "not a candidate" line (absence is silence,
    * matching this file's own null-honesty convention throughout).
