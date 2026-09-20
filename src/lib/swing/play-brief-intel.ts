@@ -285,6 +285,31 @@ function tickersAppearingMoreThanOnce(positions: readonly PortfolioPosition[]): 
   return dup;
 }
 
+/**
+ * GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro BKKT's own book-context, 28-name
+ * overlap in a crowded "crypto-equity" book): every fix above disambiguates INDIVIDUAL names, but
+ * nothing ever capped how MANY of them get joined into one prose sentence. A same-theme book that
+ * has grown past ~8-10 positions (routine here — the live crypto-equity cluster alone was 28 deep)
+ * renders as one unbroken comma-separated wall of tickers, which is exactly the "bullet-dump
+ * instead of trade-manager voice" failure mode the Largo product contract's narrative principle
+ * exists to prevent — a trader cannot usefully scan 28 names in a sentence, and the ones that would
+ * matter most (this exact ticker's own cross-engine sibling, a duplicate) are buried mid-list no
+ * differently than the 20th unrelated name. Fix: cap the rendered names at `MAX_OVERLAP_NAMES` and
+ * fold the rest into a plain count ("+ N more") — the underlying overlap COUNT in the lead sentence
+ * (`overlap.sameThemeSameDirection.length`) already states the true total honestly, so nothing is
+ * hidden, only the exhaustive namewall is trimmed. Disambiguation (`dupTickers`) is still computed
+ * over the FULL list before truncation, so a duplicate that happens to fall past the cap is still
+ * correctly resolved for every name that IS shown.
+ */
+const MAX_OVERLAP_NAMES = 8;
+
+function joinOverlapNames(names: readonly string[]): string {
+  if (names.length <= MAX_OVERLAP_NAMES) return names.join(", ");
+  const shown = names.slice(0, MAX_OVERLAP_NAMES);
+  const remaining = names.length - MAX_OVERLAP_NAMES;
+  return `${shown.join(", ")}, + ${remaining} more`;
+}
+
 export function bookContextSection(
   play: TerminalPlay,
   openBook: PortfolioPosition[] | null | undefined,
@@ -304,9 +329,9 @@ export function bookContextSection(
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeSameDirection);
-    const names = overlap.sameThemeSameDirection
-      .map((p) => formatOverlapPosition(p, play.ticker, dupTickers))
-      .join(", ");
+    const names = joinOverlapNames(
+      overlap.sameThemeSameDirection.map((p) => formatOverlapPosition(p, play.ticker, dupTickers)),
+    );
     const closer = isPendingEntryDecision
       ? `Adding ${play.ticker} stacks the same wager rather than diversifying risk.`
       : `${play.ticker} stacks the same wager rather than diversifying risk.`;
@@ -318,9 +343,9 @@ export function bookContextSection(
   }
   if (overlap.sameThemeOpposedDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeOpposedDirection);
-    const names = overlap.sameThemeOpposedDirection
-      .map((p) => formatOverlapPosition(p, play.ticker, dupTickers))
-      .join(", ");
+    const names = joinOverlapNames(
+      overlap.sameThemeOpposedDirection.map((p) => formatOverlapPosition(p, play.ticker, dupTickers)),
+    );
     lines.push(
       `**Internal conflict** — ${describeThemeOverlap(overlap.theme)} already has an OPPOSED position: ${names}. ` +
         `One leg is structurally betting against the other; this is not a hedge unless intentional.`,
