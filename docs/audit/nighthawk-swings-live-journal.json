@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T00:05:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief -- NEW DAY, Monday 2026-09-21, ~9.5h before RTH open). ReadNotifications clean. git sync clean. Zero open swing PRs. #4076 quiet. Ran a fresh npm run healthcheck:swing baseline for the new trading day (mandate: 'use judgment on frequency', reasonable at a day boundary): OVERALL AMBER, same expected off-hours pattern as every prior run this session -- stale marks (pre-market, no RTH tick yet) the only non-green stage, everything else (CRON/PERSISTENCE/SERVING/BOARD/POSITIONS/GRADING) GREEN. 70 candidates, 68 live positions (MANAGING=56/SCALING_OUT=12/EXITING=0), 13/15 resolved chains graded (WR 15.4%). No new issue -- consistent with the already-understood, already-explained mark-staleness pattern from earlier cycles. Board unchanged. Clean start to the new day.",
+  "last_updated": "2026-09-21T00:20:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. Zero open swing PRs. #4076 quiet. Checked a genuinely fresh area: LITE's 'legacy_exempt' gate-bypass disclosure ('Legacy morning-confirm promotion -- Swing V2 confluence/Cortex gates were not evaluated on this path') against the actual gating source (entry-enterability.ts's resolveCommitGateBlockedBy) -- confirmed accurate: `legacyOnly` fires exactly when a candidate's signalKinds are exclusively NIGHT HAWK/NIGHT_HAWK (matches LITE's real signalKinds:['NIGHT HAWK']), meaning it genuinely came through the separate Legacy digest pipeline and never touched Swing V2's own confluence/Cortex gate stack -- the disclosure is honest, not overstated or understated. No fix needed, no false finding forced. Board unchanged. Light, clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
