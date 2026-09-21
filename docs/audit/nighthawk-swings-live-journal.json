@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T13:49:07Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded cleanly onto another lane's journal commit, no divergence. Found new sibling PR #5359 (parallel session, same #5351/#5353/#5355/#5356 readMs sweep chain) threading ctx.readMs through expectedMoveCoaching/wallIntegrityCoaching -- the two sites #5356's own commit named as the final remaining ones. Noted #5358 (an earlier, now-correctly-closed duplicate attempt from the same session that conflicted with my own #5356's magnetCoaching fix) was handled cleanly -- closed in favor of the rebased #5359, no functional loss, verified via API (state:closed, merged:false). Independently RED->GREEN verified #5359 in an isolated worktree: diff matches write-up exactly, GREEN baseline 126/126, targeted revert of just the two vectorSnapshotStale call lines (signatures/call-sites untouched) confirmed RED -- exactly the 2 new tests failed (124/126), nothing else regressed -- restored to GREEN (126/126), tsc clean, full src/lib/swing/*.test.ts collateral check 1433/1433 clean. Posted confirming comment (5761557089) -- CARVE-OUT auto-merge will take it from here once CI is green. This appears to close out the full Date.now()->ctx.readMs sweep across play-brief-narrative-coaching.ts (all call sites #5351/#5353/#5355/#5356/#5359 collectively named are now threaded). Checked #4076: no new activity since my last comment this session (pickLanePlayForBrief single-row bug, 5761378030) -- still no Cursor engagement on any of the four open findings.",
+  "last_updated": "2026-09-21T14:07:07Z",
+  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5359 (merged sibling PR, verified last cycle). Found new sibling PR #5360 (same session as #5355/#5359) threading ctx.readMs through the final six coaching functions (vexCoaching/flowPrintsCoaching/wallDynamicsCoaching/technicalsCoaching/vectorPlayCoaching/dataHonestyCoaching) -- claims to close out the whole #5351 sweep. Found a REAL merge conflict via git merge-tree/actual test merge: #5360's true fork point (git merge-base) predates #5359's merge, so both PRs edited the same 4 adjacent push() lines in collectCoachingBullets (trivial, non-overlapping threading -- #5360 wanted wallDynamicsCoaching/technicalsCoaching threaded, #5359 wanted expectedMoveCoaching/wallIntegrityCoaching threaded). By the time I'd finished confirming it was a real conflict (not just merge-tree noise) and started verifying #5360's own branch in isolation (130/130 GREEN, RED confirmed via revert-to-true-parent -- exactly the 6 new tests failed, restored GREEN, tsc clean, 1437/1437 own-branch swing suite), the sibling session had already pushed a merge commit (b60d5702f) resolving it themselves -- correctly, the union of both threadings, no leftover conflict markers. Re-verified the ACTUAL current PR head post-merge: 132/132 (130+#5359's 2), tsc clean, 1439/1439 full swing suite. Posted a confirming comment (5761808005) noting both the conflict-and-resolution and the full independent verification -- good to merge. If this lands clean, the entire #5351 Date.now()->ctx.readMs sweep across play-brief-narrative-coaching.ts (5 PRs: #5351/#5353/#5355/#5356/#5359/#5360, six sessions' worth of incremental work) is genuinely complete. Checked #4076: no new activity since my last comment (pickLanePlayForBrief single-row bug) -- still no Cursor engagement on any of the four open findings.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,12 +117,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T13:49:07Z",
+    "as_of": "2026-09-21T14:07:07Z",
     "swing_prs": [
       {
-        "number": 5359,
-        "title": "fix(swing): thread ctx.readMs through expectedMoveCoaching/wallIntegrityCoaching (#5356 follow-up)",
-        "status": "open, non-draft, sibling session, independently RED->GREEN verified by me (comment 5761557089), CI pending / CARVE-OUT auto-merge expected"
+        "number": 5360,
+        "title": "fix(swing): thread ctx.readMs through remaining coaching siblings (closes #5351 readMs sweep)",
+        "status": "open, non-draft, sibling session, self-resolved a real merge conflict with #5359, independently RED->GREEN verified by me on the current post-conflict-resolution head (comment 5761808005), CI pending / CARVE-OUT auto-merge expected"
       }
     ]
   },
