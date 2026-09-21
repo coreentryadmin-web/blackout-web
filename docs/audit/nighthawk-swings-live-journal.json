@@ -1,16 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T03:22:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. **Both sibling PRs merged**: #5333 (trough_premium) deploy completed, #5334 (greek precision) deploy in progress. Re-checked RBRK for #5333's fix live: still shows 'Trough: --' despite -2.4% P&L -- confirmed this is EXPECTED, not a regression: RBRK's markAsOf is still stuck at 2026-09-18 (no fresh live-marks tick since deploy, market closed all weekend) and the fix's own design (verified at db.ts's migration comment) is 'NULL forever until the next tick' for pre-migration rows -- there is nothing to re-verify until RTH resumes and a real tick lands. **Found and fixed a small process gap**: #5333 merged without its own MARKET-OPEN-VALIDATION.md entry (only #5334 got one, as entry #317) -- added the missing entry #318 myself, explicitly framed as a delayed/RTH-only validation (not immediate) so a future session doesn't mistake the expected still-null Trough for a broken fix. Committed directly (docs-only, no PR needed per the standing doc-update pattern). A different parallel session (session_01PzDkDzjR3bJQsFbXENzsVz) opened PR #5335 folding both staged findings into FINDINGS.md -- routine coordinator housekeeping, not mine to drive. #4076 unchanged, no response yet on the entry-price thread. Board unchanged, no swing-native forensic ticker audit this cycle -- spent it entirely on post-deploy verification + closing a real documentation gap, both genuine value.",
+  "last_updated": "2026-09-21T03:38:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean -- main now includes PR #5335 (findings fold). #4076 unchanged. **Third sibling PR from the same parallel session (session_01Qtnftc16CuWyVLxR8LaMoC), this one the biggest blast radius yet**: PR #5336 -- thesis-health was withheld on EVERY committed swing position, not just some. Root cause: thesisHealthUncalibrated() ORs across all 5 pillars (any one still-default sentinel withholds the WHOLE aggregate), and entry_geometry (src.entryStatus) was never wired for committed rows (live-plays.ts's HorizonPlay literal never sets it at all) -- the exact same structural gap a prior fix already closed for the sibling persistence pillar, but nobody had checked whether entry_geometry had the identical gap. Independently verified in full: confirmed live-plays.ts has zero entryStatus references (grep -c = 0), confirmed the OR-gate logic and the exact 'n/a' sentinel match by reading thesis-health.ts directly, fetched the branch into a worktree, ran adapters.test.ts green (150/150), reverted just the one wiring line (entryStatus: liveEntryStatus -> src.entryStatus), reran -- exactly 1 failure, restored, reconfirmed 150/150 + entry-model/thesis-health tests (174 total) green, tsc clean. Posted a confirming comment (5755028249) -- real, correctly-scoped, wide-reaching fix, no concerns. Not driving/merging (not my PR). Zero other open swing PRs, board unchanged. Third consecutive cycle spent on genuine peer verification of real sibling fixes rather than my own forensic dig -- still real value, not idle time, per the collaboration protocol.",
   "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [
-    {
-      "file": "docs/audit/MARKET-OPEN-VALIDATION.md",
-      "entry": 318,
-      "summary": "Added the MARKET-OPEN-VALIDATION entry PR #5333 (trough_premium fix) merged without -- framed as delayed/RTH-only validation so the expected still-null Trough post-deploy isn't mistaken for a failure."
-    }
-  ],
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,9 +113,9 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T03:22:00Z",
+    "as_of": "2026-09-21T03:38:00Z",
     "swing_prs": [
-      "#5335 (not mine -- parallel session's findings-fold housekeeping PR for #5333/#5334)"
+      "#5336 (not mine -- parallel session's thesis-health entry_geometry fix, independently verified, wide blast radius)"
     ]
   },
   "tickers_seen": {
