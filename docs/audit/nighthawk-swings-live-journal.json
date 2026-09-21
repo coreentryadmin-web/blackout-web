@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T11:05:38Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. **New sibling PR #5351** found via the standard swing-PR search: 'anchor play-brief staleness checks to one request-wide clock' (readMs threaded through watchForSection + confluenceCoaching, live SNXX repro of confluenceCoaching vs watchForSection disagreeing on the same put wall due to independent Date.now() samples straddling the 120s staleness boundary). Independently verified: root cause re-confirmed against main (both call sites match exactly), RED->GREEN re-derived in an isolated worktree (121/121 green on PR head, reverted just confluenceCoaching's fix -> 120/121 exact claimed failure, restored -> 121/121), tsc clean, full swing play-brief suite 704/704 (703 baseline + 1 new test, no collateral breakage). Confirming comment posted (5759471342). Fix shape confirmed minimal/backward-compatible -- optional readMs everywhere, only the 2 live-repro'd call sites wired, remaining ~18 Date.now() sites explicitly documented as a follow-up rather than silently unaddressed.",
+  "last_updated": "2026-09-21T11:19:27Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded -- **PR #5351 (staleness-clock anchor fix, independently verified last cycle) merged.** New PR #5352 opened right after (findings-fold docs PR for #5351's staged finding) -- checked it, CI still pending/in-progress (opened ~1min before this check), too early to review; will check back once CI reports. Tried to find the #5351 production deploy run to live-verify the fix on the original SNXX repro, but per CLAUDE.md's own documented deploy timing (20-40+ min), it's too early for the fix to be live yet -- deferred, not chased further. Zero other open swing PRs. **Fresh Ask Largo audit on IREN** (MANAGING, positionId 1193, BANGER-origin, first check this session): confirms the fresh discovery scan (06:00 ET) correctly propagated to this brief's freshness disclosure (no longer flagged prior-session-stale). Stop $0.45/entry $1.13 (~-60.2%) and target $2.26/entry (+100%) match the consistent mechanical rule seen across every other banger position this session. Honest absence-handling for cold GEX/Vector data (no Chart technicals section, matches HUT's earlier pattern). No new bugs found, no new PR or #4076 comment needed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,9 +113,9 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T11:05:38Z",
+    "as_of": "2026-09-21T11:19:27Z",
     "swing_prs": [
-      "#5351 (open, independently verified this cycle, awaiting merge under CARVE-OUT)"
+      "#5352 (findings-fold docs PR for merged #5351, CI pending, check next cycle)"
     ]
   },
   "tickers_seen": {
