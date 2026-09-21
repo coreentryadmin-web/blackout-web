@@ -212,10 +212,17 @@ export async function loadSwingPlayBriefContext(
     // header for why this is a plain, best-effort live read rather than a cron-distilled cache
     // like archetypeTrackRecord above. Self-excludes the reviewed play's own chain (resolved via
     // resolveRootPositionId, a second small best-effort DB read) so a CLOSED/OPEN position never
-    // cites itself as "prior" evidence.
+    // cites itself as "prior" evidence. Also passes the reviewed play's own resolution instant
+    // (`exitAt`, null for a still-open play) so a chain that resolved AT OR AFTER this play can
+    // never be cited as "traded before this play" — see play-brief-ticker-history.ts's TEMPORAL
+    // ORDERING note for the live future-leak this closes.
     withBriefSourceTimeout(
       resolveRootPositionId(positionId).then((rootId) =>
-        loadTickerTrackRecord(resolved.play.ticker, rootId),
+        loadTickerTrackRecord(
+          resolved.play.ticker,
+          rootId,
+          resolved.play.exitAt ? (Date.parse(resolved.play.exitAt) || null) : null,
+        ),
       ),
     ).catch(() => null),
   ]);

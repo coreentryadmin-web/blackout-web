@@ -31,6 +31,21 @@
 //
 // SELF-EXCLUSION: the play under review (when it has a ledger row) must not cite itself as "prior"
 // evidence — `excludeRootId` drops its own chain's root before counting.
+//
+// TEMPORAL ORDERING (fixed 2026-09-21 — the section is titled "traded before this play" but the
+// original implementation never checked "before"): self-exclusion only drops the reviewed play's
+// OWN chain; it does nothing to stop a DIFFERENT chain that CLOSED AFTER the reviewed play from
+// being cited as its "prior" history. Live-caught on two real closed EWZ chains: position #26
+// (STOPPED, closed 2026-08-28 — chronologically the FIRST EWZ trade) rendered "1W / 0L" citing
+// position #29 (closed 2026-09-03, a WIN) as if it happened first, while #29's own brief correctly
+// cited #26 (a LOSS) as "0W / 1L". The two briefs disagreed with each other, and the earlier trade
+// leaked evidence from the later one — a classic future-leak, the exact failure shape
+// `swing-loss-taxonomy-segment.mjs`'s own header calls out for its regime reconstruction and that
+// this repo treats as a first-class bug class elsewhere. Fixed by passing the reviewed play's own
+// resolution timestamp (`asOfMs`, from `play.exitAt` — null for a still-open play, which needs no
+// cutoff since every resolved chain is legitimately prior to an ongoing one) and dropping any
+// candidate chain whose OWN resolution time (max `closed_at ?? graded_at` across its legs) is not
+// strictly before it.
 
 import { fetchSwingPositionChain, fetchSwingPositionsByTicker } from "../db";
 import { buildSwingRecord, selectSwingRecordRootIds } from "./record";
@@ -50,14 +65,34 @@ export type SwingTickerTrackRecord = {
  *  fanning out into hundreds of DB round trips on a single brief request. */
 const MAX_ROOTS = 20;
 
+/** Chain's own resolution instant — the latest of any leg's `closed_at ?? graded_at`, ms since
+ *  epoch, or `null` when no leg carries a parseable timestamp (never counted as "before" anything,
+ *  never counted as "after" anything — an unresolved-time chain simply can't be ordered). */
+function chainResolvedAtMs(chain: { closed_at: string | null; graded_at: string | null }[]): number | null {
+  let latest: number | null = null;
+  for (const leg of chain) {
+    const raw = leg.closed_at ?? leg.graded_at;
+    const ms = raw ? Date.parse(raw) : NaN;
+    if (Number.isFinite(ms) && (latest === null || ms > latest)) latest = ms;
+  }
+  return latest;
+}
+
 /**
  * Best-effort ticker-scoped track record. Returns `null` on any read failure, or when there is
  * no resolved prior trade to cite — Largo C6 omission discipline: absence is reported by leaving
  * the section out, never by rendering a fabricated "no history" line.
+ *
+ * `asOfMs` is the reviewed play's OWN resolution instant (its `exitAt`, parsed) — pass `null` for
+ * a still-open/unresolved reviewed play, which needs no cutoff (every resolved chain already
+ * precedes an ongoing one). See the file header's TEMPORAL ORDERING note for why this exists: a
+ * candidate chain that resolved AT OR AFTER `asOfMs` is dropped so it can never be cited as "prior"
+ * to a play it did not actually precede.
  */
 export async function loadTickerTrackRecord(
   ticker: string,
   excludeRootId: number | null,
+  asOfMs: number | null = null,
 ): Promise<SwingTickerTrackRecord | null> {
   try {
     const rows = await fetchSwingPositionsByTicker(ticker, 200);
@@ -69,13 +104,24 @@ export async function loadTickerTrackRecord(
     const chains = await Promise.all(
       rootIds.slice(0, MAX_ROOTS).map((rootId) => fetchSwingPositionChain(rootId)),
     );
-    const records = chains.filter((chain) => chain.length > 0).map((chain) => buildSwingRecord(chain));
-    const resolved = records.filter((r) => r.composite.chainResolved);
-    if (!resolved.length) return null;
+    const nonEmptyChains = chains.filter((chain) => chain.length > 0);
+    const records = nonEmptyChains.map((chain) => ({
+      record: buildSwingRecord(chain),
+      resolvedAtMs: chainResolvedAtMs(chain),
+    }));
+    const resolved = records.filter(({ record }) => record.composite.chainResolved);
+    // Only enforce the ordering when we actually have a cutoff AND the candidate has a known
+    // resolution time — a chain with no parseable timestamp is left in rather than silently
+    // dropped, matching this module's existing "best-effort, never fabricate absence" posture.
+    const ordered =
+      asOfMs == null
+        ? resolved
+        : resolved.filter(({ resolvedAtMs }) => resolvedAtMs == null || resolvedAtMs < asOfMs);
+    if (!ordered.length) return null;
 
-    const wins = resolved.filter((r) => r.composite.outcome === "win").length;
-    const losses = resolved.filter((r) => r.composite.outcome === "loss").length;
-    return { ticker: ticker.toUpperCase(), priorClosedTrades: resolved.length, wins, losses };
+    const wins = ordered.filter(({ record }) => record.composite.outcome === "win").length;
+    const losses = ordered.filter(({ record }) => record.composite.outcome === "loss").length;
+    return { ticker: ticker.toUpperCase(), priorClosedTrades: ordered.length, wins, losses };
   } catch {
     return null;
   }
