@@ -38,6 +38,172 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo: `holdPlanSection` restates the low-thesis-health "tighten risk" advisory that "Trade manager read" already carries — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Night Hawk Swings — Ask Largo play-brief (`src/lib/swing/play-brief-intel.ts`) |
+| **Severity** | P3 (bullet-dump/restatement quality defect, not a data-correctness bug — same class as #4261/#5362) |
+| **Status** | FIXED |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate deep-dive, 2026-09-21 |
+
+### Root cause
+
+`actionNarrative`'s HOLD branch (`src/lib/swing/play-brief-narrative.ts`, feeds "Trade manager
+read") renders, whenever `rec` is neither `TRIM` nor `SELL` (the common HOLD case) and thesis
+health is calibrated and `< 45`:
+
+```
+**Hold the line** — thesis health **X%**. Health fading — tighten stop or trim into any bounce.
+```
+
+`holdPlanSection` (same file, feeds "Hold plan") independently renders, for the identical
+`health < 45` condition:
+
+```
+Thesis health **X%** (rung)
+**Tighten risk** — thesis fading; don't add size
+```
+
+Both sections render together for every live OPEN play (`buildIntelSections` pushes `narrative`
+unconditionally and `hold` for `bucket === "open"`), so a member expanding the brief
+(`expandIntel=1`) reads the same underlying advice — thesis health has degraded, tighten/reduce
+risk — twice, in two different phrasings, one section after the other.
+
+This is the 4th instance of this exact file's own restatement class: `holdPlanSection` already
+carries dedup guards for the `round_trip` giveback fact/advice and the `capture` giveback advice
+(`narrativeAlreadyNoted.roundTrip`/`.capture`, derived from `narrative.body` at the call site) —
+but the call site only ever derived those two flags. The HOLD-branch "tighten" advisory was never
+covered because nobody had traced `actionNarrative`'s HOLD branch specifically against
+`holdPlanSection`'s own health<45 line — the doc comment sitting directly above the `Tighten risk`
+line even claimed (correctly, for a *different* clause) that "advisory is NOT repeated here",
+which read as covering this case too on a fast pass.
+
+### Evidence
+
+RED→GREEN test added: `src/lib/swing/play-brief-intel.test.ts`, `buildIntelSections: does not
+restate the low-thesis-health tighten-risk advisory twice for an OPEN HOLD play`. Composes the
+real `buildIntelSections(ctx, "open", { collapseIntel: false })` (the expanded-view shape) with a
+HOLD-recommendation play carrying a calibrated `thesisHealth.health = 30` — pre-fix, "Hold plan"
+independently rendered `**Tighten risk** — thesis fading; don't add size` alongside "Trade manager
+read"'s `Health fading — tighten stop or trim into any bounce.`; confirmed RED via `git stash` on
+just the implementation file (test failed: `not ok ... does not restate ...`), GREEN restored on
+`git stash pop`. Full suite: 182/182 pass in `play-brief-intel.test.ts`.
+
+Live verification: scanned all 59 currently-committed OPEN Night Hawk Swings positions
+(`GET /api/market/nighthawk/horizons?view=SWING` → each ticker's
+`GET /api/market/swing/play-brief`) for a HOLD-rec + calibrated-health<45 combination — none
+currently live (most either carry TRIM/SELL recs, uncalibrated/withheld health, or health ≥ 45),
+so this is a structurally-proven-but-not-yet-observed-live defect, same evidentiary shape as the
+`capture<35 && peak<=20` gap documented a few lines above this one in the same file
+(`lessonsSection`, FINDINGS 2026-09-20) — will fire on its own the next time a live OPEN position's
+thesis health degrades below 45 while its recommendation is still HOLD (the common early-fade
+case, before the desk escalates to TRIM/SELL).
+
+### Fix
+
+Added a third `tighten` flag to `holdPlanSection`'s `narrativeAlreadyNoted` parameter, derived at
+the `buildIntelSections` call site from `narrative.body.includes("Health fading — tighten stop or
+trim into any bounce")` — same pattern as the existing `roundTrip`/`capture` flags. The raw
+`Thesis health **X%** (rung)` fact line is untouched (same "compact number, not a repeated
+sentence" discipline the file already applies) — only the restated advice sentence is suppressed
+once "Trade manager read" already carries the equivalent one.
+
+### Blast radius
+
+Single call site (`buildIntelSections`), single consumer (`holdPlanSection`). No other section
+renders this exact "Tighten risk" string. Checked `lessonsSection` (CLOSED-play sibling) for the
+same pattern — it has its own, already-covered dedup flags for a different set of advisory
+sentences (round-trip/strong-discipline/gave-back-the-move), not this one, so no additional gap
+found there.
+
+## Ask Largo swing play-brief: narrative price levels (spot/wall/flip/pin) can disagree by a cent with the same response's own `envelope.levels`/`structureLadder` — third occurrence of the toFixed-vs-roundFloats bug class — fix/swing-narrative-price-level-rounding-mismatch — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** every price-LEVEL narration in `play-brief-narrative.ts` (`dealerPostureLine`'s spot/γ-flip, `narrateDarkPool`, `narrateWall`, `narrateKing`, `narrateMaxPain`, `narrateMagnet`, `narrateFlip`, the break-watch stop/resist lines, the call/put-wall-overhead reasons, and the nearest-wall proximity line — 18 call sites total) formatted its raw float directly with `n.toFixed(2)`. The SAME raw values are ALSO exposed as plain JSON numbers elsewhere in the identical swing play-brief response — `envelope.levels[].price` and `envelope.structureLadder` — which the route (`src/app/api/market/swing/play-brief/route.ts:57`) rounds via `roundFloats(response)` (`Math.round(n*100)/100`, default 2dp, no override) at the response boundary. `toFixed(2)` and `Math.round(n*100)/100` are two different rounding algorithms that can disagree by a full cent on an IEEE-754 double sitting near an exact half-cent boundary (`(152.035).toFixed(2)` is `"152.03"` because 152.035 is actually stored as 152.03499999999999..., while `Math.round(152.035*100)/100` is `152.04`, because the floating-point *multiplication* rounds the other way first) — so a member (or Largo reading its own tool payload) can see two different values for the identical fact within one response.
+- **This is the THIRD occurrence of the exact same bug class.** `fmt-money.ts`'s `fmtOptionUsd` already documents two prior fixes for option-mark/stop/target DOLLAR amounts: a sign defect (2026-09-09/11) and this same rounding-mismatch (2026-09-12, live AAPL #37 repro: Position section `$6.17` vs the response's own `briefContentKey.mark` `6.18`). That fix was centralized into `fmtOptionUsd` across the four files that had each independently copied the same buggy formatter — but it only covered `$`-prefixed dollar amounts. It never covered the separate, much larger set of BARE (no `$`) price-LEVEL narrations (spot/wall/flip/pin), which kept calling `n.toFixed(2)` directly and were never touched by that fix.
+- **Evidence:** live repro, SPCX swing position #1135, 2026-09-21 (`GET /api/market/swing/play-brief?playId=SWING:SPCX:1135...`): the "Trade manager read" narrative read `"Spot **152.03**"` (`dealerPostureLine`'s plain `spot.toFixed(2)`) while the SAME response's `envelope.levels` carried `{"label":"spot","price":152.04}` and `envelope.structureLadder.spot` was also `152.04` — both built from the identical raw `vec.spot`/`gex.spot` read, rounded via `roundFloats` at the response boundary. Confirmed the exact floating-point mechanism: `(152.035).toFixed(2) === "152.03"` while `Math.round(152.035*100)/100 === 152.04` — the SAME shape as `fmtOptionUsd`'s own documented 6.175 example, just at a different magnitude. Unit-proven in `fmt-money.test.ts`'s new `fmtPriceLevel` suite and reproduced through the real call site in `play-brief-narrative.test.ts`.
+- **Blast radius:** this PR fixes ALL 18 price-LEVEL call sites in `play-brief-narrative.ts` (the file the live repro was found in) via a new shared helper, `fmtPriceLevel` (`fmt-money.ts`, mirroring `fmtOptionUsd`'s exact rounding algorithm minus the `$` prefix). **Left deliberately unfixed in this PR, disclosed as a known follow-up**: the identical `n.toFixed(2)`-on-a-price-level pattern also exists in `play-brief.ts`, `play-brief-diff.ts`, `play-brief-intel.ts`, `play-brief-ladder.ts`, and `play-brief-narrative-coaching.ts` (repo-wide grep, ~45 additional call sites across those five files) — not fixed here to keep this PR single-issue and reviewable against one concrete live repro, per the repo's own PR-size discipline, not because those sites are safe. A fast follow-up PR should sweep the remaining five files with the same mechanical `n.toFixed(2)` → `fmtPriceLevel(n)` replacement.
+- **Fix rationale:** added `fmtPriceLevel(n: number | null | undefined): string` to `fmt-money.ts` right next to `fmtOptionUsd`, same algorithm (`(Math.round(n*100)/100).toFixed(2)`), no `$` prefix (these are bare underlying-price levels, not dollar amounts). Replaced all 18 `n.toFixed(2)` price-level call sites in `play-brief-narrative.ts` with it — mechanical, no logic changes, byte-identical output for any value not sitting on a rounding boundary (confirmed: existing 101-test suite for this file passes unchanged). Left the unrelated `d.toFixed(1)`/`distancePct` percentage formatters and `fmtPct` untouched — those are a different unit, not duplicated as a raw number field elsewhere in the response the same way `price` is.
+- **Test:** `src/lib/fmt-money.test.ts` — new `fmtPriceLevel` describe block (4 tests: null-handling, no-`$`-prefix, the exact 152.035/6.175/6.725 boundary-disagreement cases, and byte-for-byte agreement with `roundFloats`' algorithm across a shared value list). `src/lib/swing/play-brief-narrative.test.ts` — 1 new test reproducing the live SPCX repro through the real `tradeManagerNarrativeSection` call path (spot 152.035 → asserts the narrative shows `152.04`, not `152.03`). RED→GREEN proven via `git stash` on the two implementation files only (test files kept): 5/116 failures pre-fix (exactly the new tests, cascading from the missing `fmtPriceLevel` export), 116/116 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` + `fmt-money.test.ts` suite: 1468/1468 — no collateral breakage.
+
+## Ask Largo swing overview: `watch_count` silently answers a different question than `section_counts.WATCH` — no disambiguating note, unlike its sibling `committed_count` — fix/swing-largo-watch-count-note — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `compactSwingLane` (`src/lib/largo/product-reads.ts`, feeding `swingHorizonForLargo`) surfaces `watch_count: lane.watchCount` with no explanatory note, right next to `committed_count` — which already carries a `committed_count_note` after an identical shape of bug (2026-09-08 live incident, `product-reads-swing-open-count.test.ts`). `lane.watchCount` is the STATUS-based back-compat split (`status === "WATCH"`, i.e. score below the SWING commit floor — `horizon-plays.ts`'s `produceHorizonPlays`). It is NOT the same population as `section_counts.WATCH`, the member-facing "Watch" rail the desk actually renders: `sectionForSwingPlay` (`serving.ts`) routes a FORMING-stage candidate to the WATCH section BEFORE it ever checks the floor (`if (setup === "FORMING") return "WATCH";` precedes the `aboveFloor` check), so a name that already cleared the floor (status "COMMIT") but hasn't triggered yet lands in `section_counts.WATCH` while being invisible to `watch_count`. The two fields can diverge in either direction and both are already present in the same tool payload with no note distinguishing them — a model (or a trader reading a Largo answer) asking "how many names is the swing desk watching" has no way to know `watch_count` answers a narrower, different question.
+- **Evidence:** live, reproduced this session (2026-09-21) via `GET /api/market/nighthawk/horizons?view=swings` (the same route `getSwingServingLane`/`compactSwingLane` both build on), two fetches ~5 minutes apart, no restart or deploy in between — an ordinary snapshot refresh: first fetch `watchCount: 0`, `sections.WATCH.length: 0` (nothing had cleared persistence into a sub-floor or FORMING state at that instant); second fetch `watchCount: 0` while `sections.WATCH.length: 2` (AMD sat alone in `COMMIT_NOW`, but by the second fetch two FORMING-stage, floor-cleared candidates had appeared in the WATCH section — status "COMMIT", so invisible to the back-compat `watch`/`watchCount` split). `committedCount`/`open_position_count` were unaffected (60→62, tracking real `MANAGING`+`SCALING_OUT` ledger rows correctly) — this is specifically a `watch_count` vs `section_counts.WATCH` divergence, not a broader lane staleness issue. Traced to `sectionForSwingPlay`'s routing order in `src/lib/swing/serving.ts` (FORMING → WATCH precedes the floor check) versus `assembleSwingServingLane`'s `watch = plays.filter((p) => p.status === "WATCH")` in `src/lib/swing/serving-board.ts` — two independently-computed views of "watch" over the same play list, with different inclusion rules.
+- **Blast radius:** one call site — `compactSwingLane` is only consumed by `swingHorizonForLargo` (`product-reads.ts`), which is Largo's sole swing-overview tool read. No UI consumer of the raw API's `lane.watchCount`/`lane.watch` fields was found (grepped `\.watchCount\b` repo-wide) — the live "Swings" desk UI computes its own local watch/skip badge from a separately-adapted `TerminalPlay[]` shape (`SwingCockpitStrip.tsx`), not from this field, so this is a Largo-tool-contract-precision issue specifically, not a member-facing UI bug.
+- **Fix rationale:** mirrored the exact, already-established pattern one field up (`committed_count_note`) rather than inventing a new shape — added `watch_count_note` immediately after `watch_count`, naming the divergence, its cause (FORMING-stage routing precedes the floor check), and pointing to `section_counts.WATCH` (already present in the same payload) as the correct field for "how many names is the desk watching." Left `watch_count` itself untouched — it is still a legitimate, well-defined number (the back-compat status split some future caller may specifically want), just no longer silently ambiguous next to a same-named section count.
+- **Test:** `src/lib/largo/product-reads-swing-watch-count-note.test.ts` — 1 new test, fixture reproducing the exact live divergence (`watchCount: 0`, `sections.WATCH` length 2). RED→GREEN proven via `git stash` on the implementation file alone (test fails pre-fix on the missing `watch_count_note` assertion, passes post-fix). Ran alongside the sibling `product-reads-swing-open-count.test.ts` + `product-reads-swing-freshness.test.ts` for collateral check (4/4 pass). `npx tsc --noEmit` clean.
+
+## Ask Largo swing play-brief: a WATCH candidate matching an existing held position's own ticker+direction was silently treated as "self" — zero concentration warning on the exact "about to double an identical wager" case — fix/book-context-watch-self-exclusion — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `bookContextSection` (`src/lib/swing/play-brief-intel.ts`) calls
+  `checkPortfolioOverlap` to detect theme/direction overlap with the open book. When the reviewed
+  play has a resolvable ledger `positionId` (any already-committed OPEN/HOLD/TRIM position), it
+  correctly passes `{ excludePositionId }` to exclude exactly that one row by identity. But a WATCH
+  candidate — the pending-entry-decision case this whole section is written FOR ("Adding {ticker}
+  stacks the same wager…") — never carries a ledger `positionId` at all: `play.id` is only ever
+  stamped `${horizon}:${ticker}${positionId ? ":"+positionId : ""}` (see
+  `banger-lane-merge.ts`'s own comment), so `parseSwingPlayId` returns `positionId: null` for
+  every WATCH play. The call site fell through to passing `undefined` options, which means
+  `checkPortfolioOverlap`'s DEFAULT `excludeSelfMatch: true` — a fallback the module's OWN doc
+  comment explicitly scopes to an already-committed play re-reading its own row: "Gate callers
+  evaluating an uncommitted dossier should pass false so a lone pre-existing same-ticker/
+  same-direction row is counted as concentration." `bookContextSection` on a WATCH play IS exactly
+  that uncommitted-dossier caller, but never passed it. Net effect: a trader looking at a WATCH
+  signal for a ticker they ALREADY hold in the SAME direction saw the existing position silently
+  matched as "self" and excluded — producing **zero** concentration warning on the single clearest
+  case the feature exists to catch (stacking an identical bet on a name already held).
+- **Evidence:** live repro reduced to a minimal fixture — `bookContextSection` called with a WATCH
+  `NVDA LONG` candidate (`id: "SWING:NVDA"`, no positionId) against an open book containing a bare
+  `{ ticker: "NVDA", direction: "LONG" }` row (the exact shape `loadOpenBook` produces for any
+  position). Pre-fix (`git stash` on the implementation, `/tmp/repro2.mjs`): `bookContextSection`
+  returned `null`. Post-fix: returns a "Book context" section reading `**Concentration** — already
+  holding 1 same-direction position in theme "semis": NVDA LONG (separate, cross-engine position).
+  Adding NVDA stacks the same wager rather than diversifying risk.` — the intended behavior.
+  Existing test at `play-brief-intel.test.ts` line 83 ("a duplicate/rolled row on the SAME
+  ticker+direction is not reported as overlap") had been asserting the buggy behavior all along —
+  it used the fixture's default WATCH status, so it was itself an accidental regression pin for
+  this exact bug rather than a test of the self-exclusion fallback it was meant to describe
+  (a rolled/re-labeled ALREADY-COMMITTED position, which does need self-exclusion). Corrected that
+  test to use `status: "OPEN"` (the scenario it actually describes) and added a new test that
+  pins the corrected WATCH behavior.
+- **Blast radius:** single call site — `bookContextSection` is the only caller of
+  `checkPortfolioOverlap` that reaches this branch (the swing entry gate's own caller in
+  `gates-pr5.ts` already passes `excludeSelfMatch: false` explicitly for its uncommitted-candidate
+  evaluation, per `portfolio.ts`'s doc comment — that path was already correct). No other section
+  reads `checkPortfolioOverlap`'s output.
+- **Fix rationale:** compute `isPendingEntryDecision` before the overlap call (previously computed
+  after, for narrative phrasing only) and pass `{ excludeSelfMatch: false }` whenever there is no
+  real ledger id to exclude by AND the play is still WATCH — a matching book row can only be a
+  genuine distinct position in that case, never "the candidate re-reading itself," so excluding it
+  can only ever hide a real signal. Left the `positionId != null` branch (committed plays)
+  completely untouched, and left the narrow `positionId == null && status != WATCH` edge case
+  (a committed play whose id is missing/malformed for some other reason) on the old conservative
+  default, since there the matching row genuinely could be the candidate's own self under a
+  stale/unresolved id and excludeSelfMatch:false would be the wrong default to force blind.
+- **Test:** `src/lib/swing/play-brief-intel.test.ts` — one existing test corrected (was pinning the
+  bug), one new test added pinning the fix. RED→GREEN proven via `git stash` on the implementation
+  file alone (`npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts`):
+  1/181 failed pre-fix (the corrected test, run against the OLD implementation, correctly fails —
+  see PR diff for the exact stash sequence), all 181 pass post-fix. `npx tsc --noEmit` clean.
+
 ## Ask Largo swing play-brief: "γ vs vanna diverge" used a fixed $0.50 gap, firing on every real ticker regardless of price — a boilerplate bullet, not a signal — fix/vex-vanna-diverge-abs-threshold — 2026-09-21
 
 > **kind:** `FINDING`
