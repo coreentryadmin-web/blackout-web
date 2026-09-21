@@ -80,9 +80,17 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
   assert.match(section?.body ?? "", /AMD SHORT/);
 });
 
-test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is not reported as overlap", () => {
+// Note: this must be an ALREADY-COMMITTED play (status != WATCH) to exercise the intended
+// self-exclusion fallback. It used to run against the default WATCH status and pass with `null`
+// -- which, per the 2026-09-21 fix below, was itself the exact bug this row now guards against
+// (a WATCH candidate is an UNCOMMITTED dossier, so a matching row is a genuine distinct position,
+// never "self" -- see that fix's comment for the live repro and the corrected assertion).
+test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is not reported as overlap (committed play, unresolved positionId)", () => {
   const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG" }];
-  assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
+  assert.equal(
+    bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG", status: "OPEN" }), book),
+    null,
+  );
 });
 
 test("bookContextSection: a genuine cross-engine sibling on the reviewed play's OWN ticker is labeled, not rendered as bare self-citation (Largo C4)", () => {
@@ -220,6 +228,28 @@ test("bookContextSection: an already-open OPEN/HOLD/TRIM position reads as EXIST
     book,
   );
   assert.match(watchSection?.body ?? "", /Adding NVDA stacks/i);
+});
+
+// BUG FIX (2026-09-21, Ask Largo standing mandate): a WATCH candidate never carries a ledger
+// positionId (play.id is only ever stamped with one once committed -- banger-lane-merge.ts's own
+// comment), so this call used to fall through to `checkPortfolioOverlap`'s DEFAULT
+// `excludeSelfMatch: true` -- meant for an ALREADY-COMMITTED play excluding its own row, not an
+// uncommitted WATCH dossier. A trader looking at a WATCH signal on a ticker they ALREADY hold in
+// the SAME direction saw the pre-existing position silently treated as "self" and got NO
+// concentration warning at all -- exactly the "about to double an identical wager" case this
+// section exists to flag. Live repro reduced to a fixture: WATCH NVDA LONG candidate, book already
+// holds a bare NVDA LONG row (no positionId, the shape a WATCH candidate's book always sees since
+// it has none of its own).
+test("bookContextSection: a WATCH candidate matching an existing held position's own ticker+direction is flagged as concentration, not silently treated as self", () => {
+  const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG" }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:NVDA", ticker: "NVDA", direction: "LONG", status: "WATCH" }),
+    book,
+  );
+  assert.ok(section, "expected a Concentration warning, not null");
+  assert.match(section!.body, /Concentration/i);
+  assert.match(section!.body, /NVDA LONG/);
+  assert.match(section!.body, /Adding NVDA stacks/i);
 });
 
 test("bookContextSection: reviewing the second of two independent same-ticker rows does not flag self", () => {

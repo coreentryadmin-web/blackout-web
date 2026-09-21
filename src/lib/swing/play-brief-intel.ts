@@ -317,14 +317,35 @@ export function bookContextSection(
   if (play.status === "CLOSED") return null;
   if (openBook == null || !openBook.length) return null;
   const { positionId } = parseSwingPlayId(play.id);
+  const isPendingEntryDecision = play.status === "WATCH";
+  // GAP FOUND (2026-09-21, Ask Largo standing mandate, live repro: a WATCH candidate on a ticker
+  // the trader already holds LONG). WATCH plays never carry a ledger positionId (play.id is only
+  // ever stamped `${horizon}:${ticker}${positionId ? ":"+positionId : ""}` -- see
+  // banger-lane-merge.ts's own comment), so `positionId` is null here and this call used to fall
+  // through to `checkPortfolioOverlap`'s DEFAULT `excludeSelfMatch: true`. That default's whole
+  // job (per portfolio.ts's own doc comment) is to drop the "this IS the reviewed position itself"
+  // row for an ALREADY-COMMITTED play being re-read from its own book -- portfolio.ts's own docs
+  // say so explicitly: "Gate callers evaluating an uncommitted dossier should pass false so a lone
+  // pre-existing same-ticker/same-direction row is counted as concentration." A WATCH candidate IS
+  // exactly that uncommitted-dossier case, but this call never passed it -- so a trader looking at
+  // a WATCH signal for a ticker they already hold LONG saw the pre-existing position silently
+  // treated as "self" and NO concentration warning at all, the precise "you're about to double an
+  // identical wager" scenario this whole section exists to flag. Fix: pass `excludeSelfMatch:
+  // false` whenever there is no real ledger id to exclude by AND the play is still a pending entry
+  // decision -- a matching row in the book can only be a genuine distinct position in that case,
+  // never "the candidate re-reading itself". Left the old default (`undefined`, i.e.
+  // `excludeSelfMatch: true`) for the positionId-unknown-but-NOT-WATCH edge case, since there the
+  // row really could be the candidate's own already-committed self under a stale/missing id.
   const overlap = checkPortfolioOverlap(
     { ticker: play.ticker, direction: play.direction },
     openBook,
-    positionId != null ? { excludePositionId: positionId } : undefined,
+    positionId != null
+      ? { excludePositionId: positionId }
+      : isPendingEntryDecision
+        ? { excludeSelfMatch: false }
+        : undefined,
   );
   if (!overlap.hasOverlap) return null;
-
-  const isPendingEntryDecision = play.status === "WATCH";
 
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
