@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T18:48:56Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries. No new #4076 activity. Found new sibling PR #5375 -- a genuinely different bug class from today's readMs/duplication sweeps: vexCoaching's 'gamma vs vanna diverge' callout compared gammaFlip/vexFlip with a FIXED $0.50 absolute gap across the whole ~$5-$700 swing book, never normalized to percent-of-spot the way the file's own confluenceCoaching sibling already does. Well-evidenced: live-checked against 22 real positions, 0/22 failed to trip 'diverge' (real gaps 2.06%-61.2% of spot) -- the $0.50 bar was so far below any real gap it was pure boilerplate. Fix converts to percent-of-spot (0.5%, anchored at the original $100/$0.50 calibration point) and honestly omits the claim when spot is unavailable rather than falling back to the broken absolute check. Independently verified: diff matches write-up exactly, GREEN baseline 135/135, targeted revert of just the threshold logic confirmed RED (exactly 2/3 new tests failed, matching the PR's own claimed pre-fix count precisely), restored GREEN, tsc clean, full swing suite 1452/1452 clean. Posted confirming comment (5765744804) -- CARVE-OUT auto-merge should take it from here. (Attempted a live spot-check of the PR's own cited SNOW gap but the VEX line wasn't present on the current live read -- market data shifted since the PR's snapshot, not concerning given the thorough 22-ticker sample and solid code-level RED/GREEN evidence already gathered.)",
+  "last_updated": "2026-09-21T19:15:00Z",
+  "notes": "v3 mandate cycle (continuing after a compaction -- resumed the interrupted WATCH-bucket diagnostic). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries + a heartbeat/state snapshot chore commit. RESOLVED the multi-cycle 'WATCH bucket always empty' open question from before compaction: re-ran the diagnostic without truncation, then a second fetch ~5min later. Root cause found, NOT a structural discovery-pipeline outage -- the persisted scan IS fresh (scanAsOf within minutes of each fetch) and DOES populate sections; the population is just genuinely thin (1-3 pre-entry candidates total across the whole swing lane at any moment), consistent with the already-documented gate restrictiveness (swing-gate-compound-funnel.mjs: G-S3 1.3% pass rate). But building the two-fetch comparison surfaced a REAL, separate, well-evidenced bug: the API's top-level watch_count field (status-based, score<floor) and section_counts.WATCH (the real member-facing Watch rail, which also includes FORMING-stage names that already cleared the floor -- sectionForSwingPlay routes FORMING to WATCH before checking aboveFloor) are two different populations that can diverge either direction, and Largo's swing overview tool (product-reads.ts's compactSwingLane/swingHorizonForLargo) surfaces watch_count with NO disambiguating note -- unlike its sibling committed_count, which already got exactly this kind of note after an identical-shape 2026-09-08 incident (committed_count mixing pre-entry candidates with real positions). Live-reproduced: watchCount 0 both fetches, sections.WATCH 0 then 2, five minutes apart, no restart -- an ordinary snapshot refresh, not an error. Self-fixed via CARVE-OUT: added watch_count_note mirroring committed_count_note's exact pattern, pointing to section_counts.WATCH as authoritative. New regression test (product-reads-swing-watch-count-note.test.ts) reproduces the live divergence with a fixture; RED->GREEN proven via git stash, sibling swing-open-count + swing-freshness tests still pass alongside it (4/4), tsc clean. Staged finding filed, PR #5377 opened+undrafted, subscribed for CI/review events -- CARVE-OUT auto-merge should take it once CI is green.",
   "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [],
+  "findings_filed_this_cycle": [
+    "2026-09-21-largo-swing-watch-count-note"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -117,12 +119,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T18:48:56Z",
+    "as_of": "2026-09-21T19:15:00Z",
     "swing_prs": [
       {
-        "number": 5375,
-        "title": "fix(swing): VEX vanna-diverge check was scale-blind across $5-$700 book",
-        "status": "open, non-draft, sibling session, independently RED->GREEN verified by me (comment 5765744804), CI pending / CARVE-OUT auto-merge expected"
+        "number": 5377,
+        "title": "fix(largo): watch_count needs a note distinguishing it from section_counts.WATCH",
+        "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected"
       }
     ]
   },
