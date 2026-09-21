@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fmtOptionUsd, fmtPremium } from "./fmt-money";
+import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "./fmt-money";
 
 describe("fmt-money", () => {
   it("returns an em-dash for null/non-finite", () => {
@@ -72,6 +72,45 @@ describe("fmtOptionUsd", () => {
     const roundFloatsStyle = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
     for (const n of [6.175, 6.725, 6.165, 6.715, 7499.360000000001, 1.005, 2.675, 0.005]) {
       assert.equal(fmtOptionUsd(n), `$${roundFloatsStyle(n)}`);
+    }
+  });
+});
+
+describe("fmtPriceLevel", () => {
+  it("returns an em-dash for null/undefined/non-finite", () => {
+    assert.equal(fmtPriceLevel(null), "—");
+    assert.equal(fmtPriceLevel(undefined), "—");
+    assert.equal(fmtPriceLevel(NaN), "—");
+    assert.equal(fmtPriceLevel(Infinity), "—");
+  });
+
+  it("never prefixes a $ — a bare price LEVEL (spot/wall/flip/pin), not a dollar amount", () => {
+    assert.equal(fmtPriceLevel(152.04), "152.04");
+    assert.equal(fmtPriceLevel(0), "0.00");
+  });
+
+  it(
+    "THIRD OCCURRENCE of fmtOptionUsd's own rounding-mismatch bug class (2026-09-12), now at bare " +
+      "price levels — live repro: SPCX's swing play-brief (2026-09-21) read 'Spot **152.03**' in " +
+      "the narrative text (plain toFixed(2)) while envelope.levels/structureLadder carried the " +
+      "number 152.04 (roundFloats' Math.round(n*100)/100) for the SAME underlying spot value in " +
+      "the SAME response",
+    () => {
+      // Sanity: plain toFixed(2) really does disagree with roundFloats-style rounding on these —
+      // see fmtOptionUsd's own sibling test for why this assumption is asserted, not assumed.
+      assert.equal((152.035).toFixed(2), "152.03", "environment assumption changed — revisit this test");
+      assert.equal((6.175).toFixed(2), "6.17", "environment assumption changed — revisit this test");
+
+      assert.equal(fmtPriceLevel(152.035), "152.04");
+      assert.equal(fmtPriceLevel(6.175), "6.18");
+      assert.equal(fmtPriceLevel(6.725), "6.73");
+    },
+  );
+
+  it("matches src/lib/round-floats.ts's roundFloats() byte-for-byte on the same raw number", () => {
+    const roundFloatsStyle = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
+    for (const n of [152.035, 6.175, 6.725, 7499.360000000001, 1.005, 2.675, 0.005]) {
+      assert.equal(fmtPriceLevel(n), roundFloatsStyle(n));
     }
   });
 });

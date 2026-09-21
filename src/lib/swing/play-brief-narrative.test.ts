@@ -344,6 +344,40 @@ test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
+test(
+  "tradeManagerNarrativeSection: dealer posture line's spot matches roundFloats' rounding, not " +
+    "plain toFixed(2) — live repro SPCX 2026-09-21 (Ask Largo standing mandate)",
+  () => {
+    // 152.035 is the exact floating-point shape of the live SPCX repro: plain toFixed(2) rounds
+    // DOWN to "152.03" (152.035 is actually stored as 152.03499999999999...) while roundFloats'
+    // Math.round(n*100)/100 rounds UP to "152.04" — and envelope.levels/structureLadder.spot (both
+    // built via levelsFromContext -> roundFloats at the response boundary) carry the SAME raw spot
+    // as a plain number, so a narrative built with plain toFixed(2) would silently disagree with
+    // the rest of the SAME response for the SAME fact. See fmt-money.test.ts's fmtPriceLevel suite
+    // for the isolated unit proof; this test proves the real call site actually uses it.
+    const section = tradeManagerNarrativeSection(
+      ctx({
+        vector: { spot: 152.035 } as SwingPlayBriefContext["vector"],
+        ecosystem: {
+          ticker: "SPCX",
+          gex_positioning: {
+            spot: 152.035,
+            flip: 150,
+            gamma_posture: "unknown",
+            matrix_age_sec: 30,
+            freshness: "cached",
+          },
+        } as SwingPlayBriefContext["ecosystem"],
+      }),
+      "open",
+    );
+
+    assert.ok(section);
+    assert.match(section!.body, /Spot \*\*152\.04\*\*/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
+    assert.doesNotMatch(section!.body, /Spot \*\*152\.03\*\*/);
+  },
+);
+
 test("tradeManagerNarrativeSection: stale Vector + stale GEX must not cite stale GEX spot (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
