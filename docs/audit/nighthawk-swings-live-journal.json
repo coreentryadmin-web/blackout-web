@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T17:20:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries, no swing-lane merges. PR #5371 (my own) CI still pending (~14min in, consistent with the ~6.5min own-module + longer full-suite timing seen elsewhere today). Found new sibling PR #5372: a genuine, correct fix for my earlier pickLanePlayForBrief finding (#4076 comment 5761378030) -- but for the MULTI-row case specifically (two concurrent ABTC banger legs, both silently resolving to the higher-livePnlPct one regardless of requested positionId), via an exact positionId match added to pickLanePlayForBrief. Independently verified: diff matches write-up, GREEN baseline 15/15, targeted revert of just the new positionId block confirmed RED (1 test failed), restored GREEN, tsc clean, full swing suite 1445/1445 clean. BUT caught a real residual gap while verifying: the new positionId check is inserted AFTER the pre-existing 'if (forTicker.length===1) return forTicker[0]' early return -- so my ORIGINAL single-row repro (AAPL #40, bogus positionId=999999) is untouched by this fix. Re-confirmed live against production right now: positionId=999999&status=CLOSED for AAPL still returns #40's real data with available:true. Posted this as a residual-gap comment on #5372 (5764597819) alongside the confirming verification -- offered to open a fast follow-up once #5372 merges rather than touching their open PR directly. Checked #4076: no new activity.",
+  "last_updated": "2026-09-21T17:34:25Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5372 (merged, confirmed) and #5371 (my own, confirmed merged too). Unsubscribed from #5371 (auto-cleared, already merged). Found new sibling PR #5373 -- FINALLY closes the actual root cause of my original 'score 0' AAPL #40 lane-rank watch item from many cycles ago (which I'd previously thought was resolved by #5364/#5367, but those only fixed thesis-health/signal_kinds -- this is the separate HorizonPlay.score field the lane-rank/peer-comparison feature reads, never touched by either earlier fix). Same AAPL:40 position still showing 'Below lane median -- #59/59 (score 0)' about a real +39.2% HOLD winner, weeks-old symptom finally getting its correct root-cause fix: additive HorizonPlay.scoreWithheld flag set when feature_vector.evidence_score is missing, computeLaneRank excludes withheld peers from the pool and returns null for a withheld self-row (matches the Largo contract's existing confidence-omission discipline). Independently re-verified: re-fetched AAPL #40 against production FIRST (confirmed still live/unpatched), then full worktree verification -- diff matches write-up exactly, GREEN baseline 28/28, targeted revert of the filtering block confirmed RED (exactly 2 tests failed), restored GREEN, tsc clean, full swing suite 1449/1449 clean. Posted confirming comment (5764783885) -- CARVE-OUT auto-merge should take it from here. This really does finally close the AAPL #40 saga (roll-child signal_kinds #5364, thesis-health partial-pillar #5367, positionId collision #5372's single-row residual still open, and now lane-rank score-withheld #5373). Checked #4076: no new activity.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,17 +117,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T17:20:00Z",
+    "as_of": "2026-09-21T17:34:25Z",
     "swing_prs": [
       {
-        "number": 5371,
-        "title": "fix(swing): stop holdPlanSection duplicating actionNarrative's giveback line (third instance of #5362's duplication class)",
-        "status": "open, non-draft, self-authored this session, CI pending (~14min in)"
-      },
-      {
-        "number": 5372,
-        "title": "fix(swing): play-brief positionId resolution ignored banger-origin positions",
-        "status": "open, non-draft, sibling session, independently verified (comment 5764597819) -- correct for the multi-row banger case, but flagged a residual single-row gap (same forTicker.length===1 shortcut my original #4076 finding named) still unfixed -- offered a fast follow-up once merged"
+        "number": 5373,
+        "title": "fix(swing): lane-rank comparison treated a fabricated score:0 fallback as real",
+        "status": "open, non-draft, sibling session, independently verified (live-repro re-confirmed against production + RED->GREEN worktree, comment 5764783885), CI pending / CARVE-OUT auto-merge expected"
       }
     ]
   },
