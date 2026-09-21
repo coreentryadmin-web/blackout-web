@@ -40,8 +40,16 @@ import {
 // tier); TRIM_SCALE's trailing_rule doesn't mention the lock tier's constants at all, so its
 // hash is unchanged except for the version-string bump baked into `version` itself — verified
 // by hand-deriving both hashes from the real stableStringify/fnv1a32 source.
-const GOLDEN_RATCHET_HASH = "exitcfg-2f3ca196";
-const GOLDEN_TRIM_SCALE_HASH = "exitcfg-87be46d8";
+// Bumped again 2026-09-21 (EXIT_VERSION v5->v6): the early-arm (+15%) and arm (+20%) ratchet
+// floors now scale the same way (peak * 0.4) instead of staying flat at +5%/+0% — same
+// measurement discipline as the v5 bump, see EXIT_RULES.ratchet_early_arm_floor_pct /
+// ratchet_arm_floor_pct in exit-engine.ts. Both goldens move this time: RATCHET's
+// trailing_rule text was rewritten (the three separate `early@.../arm@.../lock@...` clauses
+// collapsed into one `arm@+15%->floor=peak*0.4` clause now that all three tiers share the
+// same formula); TRIM_SCALE's trailing_rule text is unchanged, so only its embedded
+// `version` field moved. Both hashes recomputed live from the real source (not guessed).
+const GOLDEN_RATCHET_HASH = "exitcfg-0d350b9d";
+const GOLDEN_TRIM_SCALE_HASH = "exitcfg-45095a05";
 
 test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from the sources of truth", () => {
   const r = buildResolvedExitPolicy("ratchet");
