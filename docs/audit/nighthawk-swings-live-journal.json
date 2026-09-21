@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T12:19:08Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded -- **PR #5353 (readMs follow-up, independently verified last cycle) merged.** Zero other open swing PRs. Given the parallel session appears to be actively, incrementally sweeping the remaining ~16 readMs sites (#5351->#5353 pattern, 2 sites per PR), deliberately avoided jumping into the same files with overlapping self-authored work this cycle -- stayed in the complementary verification/forensic lane per the standing file-overlap discipline. **Re-ran the multi-truth-grade-retrace tool at a wider 30-day window**: found a new single-instance divergence, NRG #34 (THESIS CONFIRMED but markfreeze P&L -62.24%). Checked it once: peak +132.7%, exited stopped at -62.2% -- a genuine, large round-trip where the underlying's eventual favorable move (confirming THESIS via forward PATH bars) came after the option had already been stopped out at a much worse point. Matches the tool's own documented 'unremarkable' divergence category exactly (exit timing vs eventual underlying outcome, not a data bug) -- single instance, not pursued further per the 3-instance noise threshold. No new bugs found, no new PR or #4076 comment needed this cycle.",
+  "last_updated": "2026-09-21T12:33:05Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5354 (routine findings-fold for #5353, no code) merging, no divergence. Zero open swing PRs. Checked #4076 -- still no Cursor engagement across the whole session. **Chased down a plausible-sounding suspicion about the #4700 book-overlap theme mapping**: WOLF (Wolfspeed, a semiconductor company) appeared in the same MANAGING ticker list alongside the large 'crypto-equity' cluster (BKKT/ABTC/GEMI/etc) all session, raising the question of whether it was genuinely misclassified into that theme by theme-cluster.ts's resolveTheme/sectorFor. Verified via source (WOLF absent from portfolio/sector-map.ts, so resolveTheme falls through to WOLF's own isolated own-cluster sentinel, never the shared crypto-equity theme) AND live data (WOLF's own play-brief has NO 'Book context' section at all -- checkPortfolioOverlap correctly found zero theme/direction overlap, confirming it's genuinely alone in its cluster). The suspicion was unfounded -- WOLF being in the same MANAGING list as crypto names doesn't mean same THEME cluster (the list mixes many different themes); good to verify and rule out rather than leave unconfirmed or wrongly escalate. No new bugs found, no new PR or #4076 comment needed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T12:19:08Z",
+    "as_of": "2026-09-21T12:33:05Z",
     "swing_prs": []
   },
   "tickers_seen": {
