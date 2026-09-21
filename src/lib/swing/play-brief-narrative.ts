@@ -559,6 +559,23 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
     lines.push(
       `**Exit now**${sellReasonClause(play.manageReason, play.thesisBreak, play.manageReasonDetail)}. Flatten per manage engine.`,
     );
+  } else if (rec === "BUY" && bucket === "open") {
+    // BUG FIX (Ask Largo standing mandate, 2026-09-21): the same "generic label swallows the real
+    // manage.ts rung" defect already fixed on the SELL side (2026-09-10, sellReasonClause) and the
+    // TRIM side (2026-09-17, trimReasonClause) had a third, previously-unfixed instance here.
+    // manage.ts's `add_eligible` rung (thesis progressing ≥50% toward target AND the option not
+    // underwater — thesis-progress.ts's `addEligibleFromProgress`, wired live in
+    // swing-active-refresh) maps to `SwingManageAction "ADD"`, which `recommendationFromManageAction`
+    // (adapters.ts) turns into `Recommendation "BUY"` for an OPEN position. But this branch didn't
+    // exist, so rec==="BUY" fell into the generic `else` HOLD branch below ("Hold the line ... Let
+    // the trade work while structure holds") — silently discarding the desk's actual "consider
+    // adding" advisory. Gated on `bucket === "open"` only: a WATCH play's rec==="BUY" means "enter
+    // the setup" (already narrated by the watch branch above, a completely different action from
+    // "add to an existing position"), so this must not fire there.
+    lines.push(
+      "**Consider adding** — thesis has progressed well toward target and the option isn't underwater " +
+        "(advisory only; the desk does not execute trades).",
+    );
   } else {
     lines.push(
       `**Hold the line**${health != null ? ` — thesis health **${health}%**` : ""}. ` +

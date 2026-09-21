@@ -38,6 +38,58 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing play-brief: `actionNarrative`'s recommendation switch had no BUY/`add_eligible` branch, so an OPEN position's real "consider adding" advisory silently rendered as generic HOLD text — third instance of the SELL/TRIM narrative-gap bug class — fix/swing-add-eligible-narrative-gap — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `manage.ts`'s `evaluateSwingManagement` has an `add_eligible` rung
+  (`SwingManageInput.addEligible`, computed live by `thesis-progress.ts`'s
+  `addEligibleFromProgress` — thesis progressed ≥50% toward target AND the option mark is at/above
+  entry — wired in `src/app/api/cron/swing-active-refresh/route.ts:356`) that maps to
+  `SwingManageAction "ADD"`. `recommendationFromManageAction` (`adapters.ts`) turns `"ADD"` into
+  `Recommendation "BUY"` for any position with `status` OPEN/HOLD/TRIM — i.e. a live, already-open
+  swing whose thesis is working well enough to add to. But `actionNarrative` (`play-brief-narrative.ts`),
+  the function that turns `play.recommendation` into the "Trade manager read" advisory sentence for
+  OPEN/bucket plays, only had special-cased branches for `rec === "TRIM"` and `rec === "SELL"`; every
+  other value — including this live `"BUY"` case for an already-open position — fell through to the
+  generic `else` branch: `"**Hold the line** ... Let the trade work while structure holds."` The
+  desk's actual "add to this winner" signal was silently discarded and never surfaced anywhere in the
+  brief; a member reading the play-brief would see bog-standard HOLD language on a position the
+  manage engine had specifically flagged as add-eligible.
+- **Why this matters in practice:** this is the exact same defect class as two prior fixes in this
+  same file — `sellReasonClause` (FINDINGS 2026-09-10, live NRG repro: a generic "thesis or ladder
+  fired" line asserted a broken thesis/fired ladder that the data didn't support) and
+  `trimReasonClause` (2026-09-17, live CRWD/AAPL repro: TRIM always rendered "next rail at +X%" even
+  when the real manage.ts rung was `catalyst_shift`/`rel_strength_loss`, unrelated to the rail). Both
+  of those fixes covered SELL and TRIM; this is the third and, per a repo-wide grep of
+  `SwingManageAction`'s four post-`EXIT`/`STOP_OUT` values against `actionNarrative`'s rec switch,
+  the last remaining unfixed case (`ADD`→`BUY` was the only `SwingManageAction` value with no
+  matching `Recommendation` branch in this function).
+- **Fix rationale:** added an `else if (rec === "BUY" && bucket === "open")` branch, gated
+  specifically to the OPEN bucket. The gate matters: `rec === "BUY"` on a **WATCH** play means
+  something entirely different ("enter the setup" — already handled by the earlier
+  `bucket === "watch"` branch's `swingActionDisplay`/`rec === "BUY"` copy at the top of this
+  function) from `rec === "BUY"` on an **OPEN** play (`add_eligible` — "add to a position you
+  already hold"). Conflating the two would either duplicate the watch-branch copy or mislabel an
+  add-advisory as an entry signal. The new copy — `"**Consider adding** — thesis has progressed
+  well toward target and the option isn't underwater (advisory only; the desk does not execute
+  trades)."` — mirrors the existing TRIM branch's own "advisory only... the desk does not execute
+  trades" disclosure (added there 2026-09-11 for the identical product-honesty reason: this whole
+  product is recommend-only, never auto-executing) rather than inventing new disclosure language.
+  Left `manage.ts`/`adapters.ts` untouched — this is a presentation-layer gap only, the underlying
+  rung computation and recommendation mapping were already correct.
+- **Evidence / Test:** added
+  `tradeManagerNarrativeSection: BUY (add_eligible) on an OPEN play states the add advisory, not
+  generic HOLD` to `play-brief-narrative.test.ts`, asserting the body matches `/consider adding/i`
+  and does NOT match `/Hold the line/i`. RED→GREEN proven directly (test added against the
+  pre-fix implementation first): pre-fix `103/104 pass, 1 fail` (the new test); post-fix
+  `104/104 pass`. `npx tsc --noEmit` clean.
+- **Blast radius:** single function (`actionNarrative`), single file. No other call site renders
+  `SwingManageAction "ADD"`/`Recommendation "BUY"` for an open swing position.
+
 ## Ask Largo swing play-brief: 9 more sections sampled a fresh `Date.now()` instead of `ctx.readMs` despite `ctx` being in scope — #5351-class readMs-anchor bug, second sweep — fix/swing-playbrief-readms-anchor-sweep — 2026-09-21
 
 > **kind:** `FINDING`
