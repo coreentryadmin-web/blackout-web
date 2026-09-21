@@ -51,13 +51,34 @@ import { pinnedLivePnlPct } from "./marks-math";
 /** v1 exit constants (B-8: "thresholds are v1 constants; the counterfactual exit
  *  grader measures scratched-winner cost vs saved-losses and tunes them with data"). */
 export const EXIT_RULES = {
-  /** Peak P&L % that ARMS the first early floor (+5%). Captures modest winners that
-   *  never reach the breakeven tier (FINDINGS 2026-08-04: GOOGL +22%, RDDT +12%). */
+  /** Peak P&L % that ARMS the first early floor. Captures modest winners that never
+   *  reach the breakeven tier (FINDINGS 2026-08-04: GOOGL +22%, RDDT +12%). Floor
+   *  SCALES with the peak (same `ratchet_lock_floor_fraction` the lock tier already
+   *  uses) instead of staying flat at +5% — see that constant's own comment for why a
+   *  flat floor giving back a fixed-fraction-of-peak's worth of a real run is the same
+   *  bug shape one tier down. Measured 2026-09-21 (90-day window, both arm sub-tiers
+   *  together): 26 `ratchet_early_profit_floor` exits, current flat +5% mean close
+   *  4.91% vs peaks 15.3%-19.6%; scaling at 40% of peak wins on EVERY case (26/26,
+   *  mean +1.88pp) — 20%/25% of peak both net WORSE (undercuts small peaks the flat +5
+   *  already protected), 30% is a coin flip (16/26), 35%/40% both clean sweeps.
+   *  `ratchet_early_arm_floor_pct` is kept only as the value the fraction produces AT
+   *  this tier's own arm threshold — see `ratchet_lock_floor_pct`'s comment for the
+   *  identical reasoning at the lock tier. */
   ratchet_early_arm_pnl_pct: 15,
   ratchet_early_arm_floor_pct: 5,
-  /** Peak P&L % that ARMS breakeven — a trade that reached +20% may never finish red. */
+  /** Peak P&L % that ARMS breakeven — a trade that reached +20% may never finish red.
+   *  Floor SCALES with the peak (same fraction) rather than staying flat at 0% — same
+   *  2026-09-21 measurement, 40 `ratchet_breakeven_floor` exits, peaks 20.4%-48.6%,
+   *  current flat 0% floor giving back essentially the entire run (mean close -0.47%,
+   *  i.e. slightly negative — a handful of real cases closed BELOW breakeven entirely,
+   *  e.g. OKLO peak +26.4% -> -12%, SNDK peak +26.1% -> -4.16%, the exact "green trade
+   *  finishing red" this floor exists to prevent). 40% of peak wins on EVERY one of the
+   *  40 cases (mean +12.07pp) — the same fraction that won cleanly on both this tier
+   *  AND the early-arm tier above, so one constant now covers the whole curve from
+   *  +15% up through the lock tier, continuous at every boundary (0.4*15=6 > the old
+   *  flat 5; 0.4*20=8 > the old flat 0; 0.4*50=20, unchanged at the lock threshold —
+   *  see `ratchet_lock_floor_fraction`'s own comment for that boundary). */
   ratchet_arm_pnl_pct: 20,
-  /** The breakeven-armed floor (0%). */
   ratchet_arm_floor_pct: 0,
   /** Peak P&L % that LOCKS profit: floor SCALES with the peak instead of staying flat.
    *  Was a flat 20% regardless of how large the peak got — measured 2026-09-14 (90-day
@@ -245,22 +266,24 @@ function flatTimeoutDetail(
  * The monotonic protective floor (P&L %) for a given PEAK P&L. Pure function of the
  * latched peak (which only ever grows) + the trim latch, so the floor can never
  * lower — the "monotonic ratchet" property is structural, not remembered state.
+ *
+ * Every armed tier (early-arm/arm/lock) now floors at the SAME fraction of peak
+ * (`ratchet_lock_floor_fraction`, 0.4) rather than three independently-flat constants
+ * — see `ratchet_early_arm_floor_pct`/`ratchet_arm_floor_pct`/`ratchet_lock_floor_pct`'s
+ * own comments for the three separate measurements (2026-09-21 for the first two,
+ * 2026-09-14 for the lock tier) that each independently found the identical fraction
+ * winning cleanly on their own real population. The curve is continuous at every
+ * boundary by construction (0.4 * threshold, evaluated on both sides, always agrees),
+ * so this reads as one rule, not three coincidentally-aligned ones.
  */
 export function ratchetFloorPct(peakPnlPct: number | null, trimmed: boolean): number | null {
   // Post-trim runner: +50% floor dominates every ratchet tier (20 < 50), so the
   // trim latch alone decides — a trimmed play's floor is never below +50%.
   if (trimmed) return EXIT_RULES.runner_floor_pct;
   if (peakPnlPct == null) return null;
-  // Locked tier: floor SCALES with the peak (fraction of peak) instead of staying flat
-  // at +20% — see EXIT_RULES.ratchet_lock_floor_fraction's comment for the measurement
-  // that motivated this. At exactly the +50% threshold this equals the old flat 20%
-  // (0.4 * 50 = 20), so the floor is continuous across the arm/lock boundary; above it
-  // the floor now grows with the peak instead of giving back everything past +20pp.
-  if (peakPnlPct >= EXIT_RULES.ratchet_lock_pnl_pct) {
+  if (peakPnlPct >= EXIT_RULES.ratchet_early_arm_pnl_pct) {
     return round2(peakPnlPct * EXIT_RULES.ratchet_lock_floor_fraction);
   }
-  if (peakPnlPct >= EXIT_RULES.ratchet_arm_pnl_pct) return EXIT_RULES.ratchet_arm_floor_pct;
-  if (peakPnlPct >= EXIT_RULES.ratchet_early_arm_pnl_pct) return EXIT_RULES.ratchet_early_arm_floor_pct;
   return null;
 }
 
@@ -323,11 +346,20 @@ export function resolveExitMark(
   return { mark: round2(observedMark), honored: false };
 }
 
-/** The snake_case reason for a floor breach/arm at this floor level. */
-function floorReason(floor: number, trimmed: boolean): string {
+/**
+ * The snake_case reason for a floor breach/arm, classified by which PEAK band armed
+ * it — not by the computed floor value. Before the 2026-09-21 fix (all three tiers now
+ * scale at the same fraction of peak) the floor's VALUE alone told the tiers apart
+ * (flat 0/5/>=20); now every tier's floor is `peak * 0.4`, so a peak-band check is the
+ * only way to keep the three reason tokens (and their distinct member-facing exit
+ * narratives) apart. The tokens themselves (`ratchet_breakeven_floor` etc.) are kept
+ * unchanged for backward compatibility with existing ledger rows/dashboards that key
+ * off them, even though "breakeven" no longer describes the floor's literal value.
+ */
+function floorReason(peakPnlPct: number, trimmed: boolean): string {
   if (trimmed) return "runner_floor";
-  if (floor >= EXIT_RULES.ratchet_lock_floor_pct) return "ratchet_profit_floor";
-  if (floor > EXIT_RULES.ratchet_arm_floor_pct) return "ratchet_early_profit_floor";
+  if (peakPnlPct >= EXIT_RULES.ratchet_lock_pnl_pct) return "ratchet_profit_floor";
+  if (peakPnlPct < EXIT_RULES.ratchet_arm_pnl_pct) return "ratchet_early_profit_floor";
   return "ratchet_breakeven_floor";
 }
 
@@ -635,7 +667,7 @@ function decideTrimScale(
     // lock floor exit.
     const reason = inTrimScaleDeadZone(peakPnlPct, regime)
       ? "trim_scale_dead_zone_floor"
-      : floorReason(sharedFloor, peakClearedTarget);
+      : floorReason(peakPnlPct!, peakClearedTarget);
     return {
       action: "EXIT",
       floorPnlPct: sharedFloor,
@@ -796,7 +828,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
     const useFloor =
       floorBreached && (!stopBreached || (floorMark != null && floorMark >= (input.planStop as number)));
     if (useFloor) {
-      const reason = floorReason(floor!, input.trimmed);
+      const reason = floorReason(peakPnlPct!, input.trimmed);
       return {
         action: "EXIT",
         floorPnlPct: floor,
@@ -871,7 +903,7 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
     return {
       action: "RAISE_FLOOR",
       floorPnlPct: floor,
-      reason: input.trimmed ? "runner_floor_set" : `${floorReason(floor, false)}_set`,
+      reason: input.trimmed ? "runner_floor_set" : `${floorReason(peakPnlPct!, false)}_set`,
       detail: `Floor ${fmtPct(floor)} armed by a ${fmtPct(peakPnlPct)} peak — holding above it (${fmtPct(pnlPct)}).`,
     };
   }

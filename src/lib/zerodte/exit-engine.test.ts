@@ -63,25 +63,25 @@ test("ratchet: below +15% peak nothing is armed — the trade keeps its room", (
   assert.equal(d.reason, "hold");
 });
 
-test("ratchet: +15% peak arms the early +5% floor", () => {
+test("ratchet: +15% peak arms the early floor at 40% of peak (+6%, was a flat +5%)", () => {
   const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.6, currentMark: 4.3 })); // peak +15%, now +7.5%
   assert.equal(d.action, "RAISE_FLOOR");
-  assert.equal(d.floorPnlPct, 5);
+  assert.equal(d.floorPnlPct, 6);
   assert.equal(d.reason, "ratchet_early_profit_floor_set");
 });
 
-test("ratchet: +20% peak arms the breakeven floor (no exit while above it)", () => {
+test("ratchet: +20% peak arms the breakeven-tier floor at 40% of peak (+8%, was a flat 0%; no exit while above it)", () => {
   const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.4 })); // peak +20%, now +10%
   assert.equal(d.action, "RAISE_FLOOR");
-  assert.equal(d.floorPnlPct, 0);
+  assert.equal(d.floorPnlPct, 8);
   assert.equal(d.reason, "ratchet_breakeven_floor_set");
 });
 
-test("ratchet: a mark AT the breakeven floor after a +20% peak exits — green never finishes red", () => {
-  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.0 })); // back to 0%
+test("ratchet: a mark AT the breakeven-tier floor after a +20% peak exits — still green, never finishes red", () => {
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.32 })); // at the new +8% floor
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "ratchet_breakeven_floor");
-  assert.equal(d.floorPnlPct, 0);
+  assert.equal(d.floorPnlPct, 8);
 });
 
 test("ratchet: a mark BELOW the floor exits too (breach, not just touch)", () => {
@@ -111,15 +111,15 @@ test("ratchet: the floor is MONOTONIC — a deep retrace never lowers +20% back 
   assert.equal(d.floorPnlPct, 20, "floor derives from the latched peak, never the retraced mark");
 });
 
-test("ratchetFloorPct: pure floor table (early 15→5, arm 20→0, lock 50→20, trim→50)", () => {
+test("ratchetFloorPct: pure floor table — one continuous peak*0.4 rule from +15% up (2026-09-21: early/arm tiers no longer flat)", () => {
   assert.equal(ratchetFloorPct(null, false), null);
-  assert.equal(ratchetFloorPct(14.99, false), null);
-  assert.equal(ratchetFloorPct(15, false), 5);
-  assert.equal(ratchetFloorPct(19.99, false), 5);
-  assert.equal(ratchetFloorPct(20, false), 0);
-  assert.equal(ratchetFloorPct(49.99, false), 0);
-  assert.equal(ratchetFloorPct(50, false), 20); // 0.4 * 50 == the old flat floor, continuous at the boundary
-  assert.equal(ratchetFloorPct(400, false), 160); // scales with peak now, not a flat 20 regardless of size
+  assert.equal(ratchetFloorPct(14.99, false), null, "below the early-arm threshold, no floor at all");
+  assert.equal(ratchetFloorPct(15, false), 6, "0.4 * 15 -- was a flat 5 before this fix");
+  assert.equal(ratchetFloorPct(19.99, false), 8); // 0.4 * 19.99 == 7.996, round2 -> 8
+  assert.equal(ratchetFloorPct(20, false), 8, "0.4 * 20 -- was a flat 0 before this fix");
+  assert.equal(ratchetFloorPct(49.99, false), 20); // 0.4 * 49.99 == 19.996, round2 -> 20
+  assert.equal(ratchetFloorPct(50, false), 20, "0.4 * 50 -- unchanged, continuous across the lock boundary since v5");
+  assert.equal(ratchetFloorPct(400, false), 160, "scales with peak at every armed tier now, not just the old lock tier");
   assert.equal(ratchetFloorPct(10, true), EXIT_RULES.runner_floor_pct, "trim latch alone sets the runner floor");
 });
 
@@ -394,8 +394,8 @@ test("buildExitContext: floor breach honors the floor mark — never persists a 
   const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.48 })); // −13% observed
   assert.equal(decision.reason, "ratchet_breakeven_floor");
   const ctx = buildExitContext(decision, ENTRY, 3.48, 4.8, Date.UTC(2026, 6, 14, 15, 0, 0));
-  assert.equal(ctx.mark, 4.0, "breakeven floor honored even when mark gapped through");
-  assert.equal(ctx.pnl_pct, 0);
+  assert.equal(ctx.mark, 4.32, "breakeven-tier floor (now 8% of the +20% peak) honored even when mark gapped through");
+  assert.equal(ctx.pnl_pct, 8);
   assert.equal(ctx.peak_pnl_pct, 20);
   // Provenance: the persisted mark (4.0) is a floor-HONORED inference, not the observed 3.48 print.
   assert.equal(ctx.mark_observed, 3.48, "the raw observed mark is kept, not discarded");
@@ -454,18 +454,21 @@ test("buildExitContext: a thesis exit's pnl_pct must not be erased by cent-round
 // honored must come from the RAW (pre-rounding) comparison the floor mechanism itself
 // used, not from comparing the two post-rounding values.
 test("buildExitContext: a floor mark that rounds to the same cent as the raw observed print is still honored", () => {
-  const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.995 })); // peak +20%, observed −0.125%
+  // Breakeven-tier floor is now 8% of a +20% peak -> floor mark 4.32. Pick a raw observed
+  // print (4.317) that is genuinely BELOW 4.32 but cent-rounds to the SAME 4.32 -- the
+  // exact rounding-boundary shape the original QQQ finding (2026-09-10) reproduced.
+  const decision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.317 })); // peak +20%, observed +7.925%
   assert.equal(decision.reason, "ratchet_breakeven_floor");
-  const ctx = buildExitContext(decision, ENTRY, 3.995, 4.8, Date.UTC(2026, 6, 14, 15, 0, 0));
-  assert.equal(ctx.mark, 4.0, "the floor (4.00) still wins over the raw observed 3.995");
+  const ctx = buildExitContext(decision, ENTRY, 4.317, 4.8, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.mark, 4.32, "the floor (4.32) still wins over the raw observed 4.317");
   assert.equal(
     ctx.mark_honored,
     true,
-    "the floor determined the fill even though round2(3.995) coincidentally also reads 4.00"
+    "the floor determined the fill even though round2(4.317) coincidentally also reads 4.32"
   );
   assert.equal(
     ctx.pnl_pct,
-    0,
+    8,
     "a floor-honored exit must price off the floor mark, not the raw observed print that lost to it"
   );
 });
@@ -473,7 +476,7 @@ test("buildExitContext: a floor mark that rounds to the same cent as the raw obs
 test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed", () => {
   const floorDecision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.5 }));
   const floorResolved = resolveExitMark(floorDecision, ENTRY, 3.5);
-  assert.equal(floorResolved.mark, 4.0);
+  assert.equal(floorResolved.mark, 4.32, "breakeven-tier floor is now 8% of the +20% peak, not a flat 4.00");
   assert.equal(floorResolved.honored, true);
   const thesisDecision = evaluateExitState(
     input({
@@ -653,7 +656,7 @@ test("trim_scale: +15% peak with retrace exits on shared early floor before firs
   );
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "ratchet_early_profit_floor");
-  assert.equal(d.floorPnlPct, 5);
+  assert.equal(d.floorPnlPct, 6, "shared floor now scales at 40% of peak (was a flat 5)");
 });
 
 test("trim_scale regime: RANGE banks tighter (+15% arms the first third)", () => {
@@ -1120,9 +1123,10 @@ test("categorizeExitReason: a real EXIT decision's reason round-trips to a famil
 
 // ── protective collision: when the plan stop sits ABOVE the floor mark, plan_stop labels it ──
 test("precedence: stop AND floor breached but the STOP mark is the higher protector → plan_stop labels the exit", () => {
-  // Breakeven floor armed by a +20% peak → floor mark = entry = 4.0. A plan stop set ABOVE that
-  // (4.2) is the higher protective level, so the exit is labeled plan_stop, not the floor.
-  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.0, planStop: 4.2 }));
+  // Breakeven-tier floor armed by a +20% peak -> floor mark = 4.32 (8% of peak). A plan stop
+  // set ABOVE that (4.4) is the higher protective level, so the exit is labeled plan_stop,
+  // not the floor.
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 4.0, planStop: 4.4 }));
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "plan_stop", "the higher protective mark (the stop) labels the exit");
 });
