@@ -40,12 +40,33 @@ function contractMatches(play: HorizonPlay, strike: number | null, right: "C" | 
 export function pickLanePlayForBrief(
   rows: HorizonPlay[],
   ticker: string,
-  hints: { status?: string | null; strike?: number | null; right?: "C" | "P" | null },
+  hints: { status?: string | null; strike?: number | null; right?: "C" | "P" | null; positionId?: number | null },
 ): HorizonPlay | null {
   const upper = ticker.toUpperCase();
   const forTicker = rows.filter((p) => p.ticker.toUpperCase() === upper);
   if (!forTicker.length) return null;
   if (forTicker.length === 1) return forTicker[0]!;
+
+  // BANGER-ORIGIN IDENTITY FIX (Ask Largo standing mandate, 2026-09-21). A banger-origin swing play's
+  // `positionId` is `banger_positions.id` (banger-lane-merge.ts's own doc comment: "a completely
+  // separate id space from swing_positions.id"), so `loadOpenTerminalPlay`/`loadClosedPlay` in
+  // play-brief-resolve.ts — which only ever query the `swing_positions` table — can NEVER find a row
+  // for it, no matter which positionId the caller asked about. Before this fix, that meant the
+  // positionId hint was silently dropped once resolution fell through to THIS function, and with no
+  // strike/right hint either, a ticker carrying two live banger-origin positions (e.g. ABTC's 9.5C
+  // TRIM +200% and 10.5C OPEN +25%, live 2026-09-21) always resolved to whichever leg had the higher
+  // live P&L — REGARDLESS of which positionId was requested. Live-repro'd: `?playId=SWING:ABTC:1220`
+  // and `?playId=SWING:ABTC:1185` (and the equivalent `&positionId=` query-param forms) all returned
+  // the IDENTICAL 9.5C brief, while `&strike=10.5&right=C` correctly resolved the other leg — proving
+  // the strike-hint path already worked and only the positionId path was blind. Since every
+  // HorizonPlay this function sees DOES carry its own correct `positionId` (banger's `row.id`, or a
+  // real `swing_positions.id` for a non-banger-origin lane row), the fix is a direct, exact match on
+  // it here — first, before any of the heuristic fallbacks below, so an unambiguous positionId never
+  // gets second-guessed by a P&L/score tiebreak it doesn't need.
+  if (hints.positionId != null) {
+    const exact = forTicker.find((p) => p.positionId === hints.positionId);
+    if (exact) return exact;
+  }
 
   const right = hints.right ?? null;
   const strike = hints.strike ?? null;
