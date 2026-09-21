@@ -1,15 +1,15 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T02:00:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. **Deploy for PR #5331 completed** (run 35550072991, success) -- live-tested the new /api/admin/swing/multi-truth-grade endpoint for real against production for the first time: 37 closed/rolled positions, 90-day window, PATH+THESIS both 100% gradeable, 17/37 (46%) show a THESIS-vs-markfreeze divergence. Most are unremarkable (thesis eventually confirmed after the position had already exited worse). **6 share a genuinely suspicious shape and got a real investigation**: PYPL#24/WULF#17/WULF#13/NFLX#12/IGV#16/NVDA#2 all closed within 13min-few hours of commit, froze at EXACTLY 0% markfreeze P&L, and show large adverse PATH/THESIS INVALIDATED. Traced the adverse PATH to entry_underlying_px values that are 9-25% off real market price on the commit date (verified against real Polygon daily bars, not rounding) -- ruled out Legacy-promotion (PYPL#24's accumulation-export record shows organic CATALYST/FLOW signal_kinds, not NIGHT HAWK), ruled out a clean split-adjustment or staleness-from-earlier-scan explanation for PYPL specifically (its real price barely moved the whole 08-14..08-21 week either way). Traced the field's provenance to deriveSwingPlanLevels (structure-levels.ts, entryUnderlyingPx: price -- a pure passthrough, confirmed correct) but ran out of cycle budget before tracing the actual commit-time price source further upstream (discovery.ts/dossier.ts's plan-building, which I haven't fully traced into the scan-cadence re-evaluation pipeline). **Escalated per the standing 'ambiguous -> report, hold' discipline rather than guessing at a fix** -- posted comment 5754393669 on #4076 with the full evidence table, what's ruled out, what's still open, and offered to take it myself next cycle or split with Cursor. Flagged the real possible blast radius beyond these 6 closed rows: entry_underlying_px also feeds thesisProgress01 (time_stop/add_eligible gates) and play-brief-intel.ts's cushion/room% for OPEN positions -- worth checking a live MANAGING position for the same shape before assuming it's confined to fast-closed legs. This is the first real payoff from PR #5331/#5332 -- exactly the kind of genuine gap the endpoint was built to surface. #4076 otherwise unchanged before this post. Zero other open swing PRs. Board unchanged.",
+  "last_updated": "2026-09-21T02:15:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. Zero open swing PRs. #4076 at 217 comments before this cycle's post (just my own prior comment, no Cursor response yet). Board unchanged. **Continued the entry_underlying_px investigation from last cycle (took my own 'first dibs')**: traced the FULL commit-time pipeline end to end -- discovery.ts's commit-candidate mapper (dossier rebuilt fresh on the SAME scan pass as commit, not cached from an earlier day) -> dossier.ts (pure passthrough) -> swing-ingest.ts's ingestSwingReads (entryUnderlyingPx = last daily close, a pure function) -> deps.fetchDailyCloses -> swing-discovery/route.ts's closesFor (per-ticker-memoized fetchStockDailyBars, correctly keyed by uppercase ticker, to=todayEt(now), no shared-mutable-loop-variable bug or cache-key collision found). Every hop checks out -- no code-level staleness or ticker-mismapping bug in the discovery->ingest->commit path itself. Two remaining candidates I could NOT rule out or confirm: (1) the persisted accumulation-store promotion path (swing_candidate_accumulation) -- haven't confirmed whether WATCH->COMMIT reuses a snapshot from an earlier observation day rather than rebuilding fresh, though even that wouldn't fully explain PYPL specifically since its real price never left $59-63 all week; (2) a transient, non-reproducible provider anomaly at original fetch time. Posted an honest update (comment 5754459279) on #4076 -- ruled out what I checked, named the one remaining unread piece (accumulation-store promotion path), offered it to Cursor if capacity lines up, otherwise will pick it up again. Stopped here rather than guessing further or reading the whole accumulation-store file blind -- this is 6 already-closed positions, no live-trading-path impact today, not worth burning an unbounded number of cycles on without a concrete next lead.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [
     {
-      "comment_id": 5754393669,
-      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5754393669",
-      "summary": "6/37 closed swing positions show entry_underlying_px 9-25% off real market price on commit date, correlated with near-instant closes + 0% markfreeze P&L. Root cause not yet pinned down (traced to a pure passthrough, ruled out Legacy-promotion and simple staleness for PYPL specifically) -- escalated, not fixed.",
-      "status": "OPEN -- offered to take myself next cycle or split with Cursor"
+      "comment_id": 5754459279,
+      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5754459279",
+      "summary": "Follow-up investigation on the entry_underlying_px anomaly (5754393669) -- traced and ruled out the whole discovery->ingest->commit pipeline as the source. Root cause still open; narrowed to the accumulation-store promotion path or a non-reproducible provider glitch.",
+      "status": "OPEN -- offered to Cursor, will resume if nobody picks it up"
     }
   ],
   "loss_taxonomy": {
@@ -120,7 +120,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T02:00:00Z",
+    "as_of": "2026-09-21T02:15:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
