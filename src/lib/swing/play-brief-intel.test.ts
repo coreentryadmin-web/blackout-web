@@ -1891,6 +1891,63 @@ test("vectorDeskSection: future-skewed Vector dataAgeMs (Infinity) renders 'cloc
   assert.doesNotMatch(section!.body, /Infinitys/i);
 });
 
+// Ask Largo standing mandate, same #5351/#5392/#5393-class readMs-anchor sweep — wallDynamicsSection
+// and vectorDeskSection were the last two swing play-brief sections still sampling the real wall
+// clock (`Date.now()`) instead of the brief's single stamped `ctx.readMs`, so a request straddling
+// a staleness boundary while composing could disagree with every other section in the same brief
+// about "now". Both take a NEW trailing optional `ctx` param (backward-compatible: every
+// pre-existing call/test above that omits it keeps behaving identically off a fresh `Date.now()`).
+test("wallDynamicsSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  // No dataAgeMs/freshness set — vectorAgeStale falls back to `readMs - Date.parse(vec.asOf)`,
+  // the exact readMs-dependent branch this bug hits (same shape as gexPostureSection's own test).
+  const vec = fixtureVec({
+    asOf: new Date(Date.now() - 60_000).toISOString(), // fresh vs real now, ancient vs the far-future anchor
+    wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+  } as Partial<VectorFullState>);
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+
+  // Under the real wall clock this same vec is fresh, so the section must render.
+  const liveSection = wallDynamicsSection(vec, null, "open");
+  assert.ok(liveSection, "fresh vs the real wall clock must render");
+
+  // Under ctx.readMs (anchored a year out) the identical vec must read stale and suppress.
+  const anchoredSection = wallDynamicsSection(vec, null, "open", ctx);
+  assert.equal(
+    anchoredSection,
+    null,
+    "must read the Vector snapshot as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+test("vectorDeskSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const vec = fixtureVec({
+    asOf: new Date(Date.now() - 60_000).toISOString(), // fresh vs real now, ancient vs the far-future anchor
+    play: {
+      bias: "long",
+      headline: "Ride momentum",
+      grade: "A",
+      conviction: "high",
+      targets: [],
+      starred: [],
+    },
+  } as Partial<VectorFullState>);
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+
+  const liveSection = vectorDeskSection(vec, null, "open");
+  assert.ok(liveSection);
+  assert.doesNotMatch(liveSection!.body, /Last snapshot/i, "fresh vs the real wall clock must render live");
+
+  const anchoredSection = vectorDeskSection(vec, null, "open", ctx);
+  assert.ok(anchoredSection);
+  assert.match(
+    anchoredSection!.body,
+    /Last snapshot/i,
+    "must read the Vector snapshot as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
 test("vectorDeskSection: stale Vector with no play.grade still renders the section, not null", () => {
   // FINDINGS 2026-09-20: the stale branch used to end with `if (!lines.length) return null` --
   // dead code, since the "Last snapshot ... may lag spot" line just above it is always pushed in
