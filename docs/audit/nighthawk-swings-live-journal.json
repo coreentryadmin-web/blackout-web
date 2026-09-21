@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T22:20:00Z",
-  "notes": "Same cycle, continued (NEVER SIT IDLE while PR #5390's CI was pending -- 0 checks reported yet a few minutes after opening, nothing actionable there). PR #5390 confirmed open, non-draft (ready_for_review event received), subscribed. No new #4076 activity (page 48 still empty). PR #5389 (a parallel session's docs-only loss-taxonomy re-run PR) also CI-pending, not mine to drive -- no action needed. Closed out the disclosed follow-up lead from this cycle's own PR #5390 body: traced contract-ranker.ts/ex-dividend-adjustment.ts/serving-ingest.ts's toFixed(2) hits to confirm/rule out. RULED OUT, not a bug: contract-ranker.ts's delta/tradability/thesisFit are dimensionless option-greek/score values (never duplicated as a raw price level elsewhere); serving-ingest.ts's regime01 is a normalized 0-1 score; ex-dividend-adjustment.ts's cash is the dividend-per-share amount baked into underlyingPriceForStructuralStop's detail string (itself consumed by manage.ts's structuralStopBroken 'holding stop' reason, already fmtPriceLevel-clean after PR #5390) -- grepped for exDividendCash across src/lib/swing/*.ts and confirmed it is never separately exposed as its own roundFloats()'d envelope field, so there is no second copy of this exact value anywhere for it to disagree with. This closes the toFixed-vs-roundFloats price-level sweep for real this time -- 7 confirmed live instances (#5380/#5383/#5384/#5385/#5387 x2/#5390), zero remaining open leads from any of this session's sanity greps.",
+  "last_updated": "2026-09-21T22:24:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5389 (parallel session's docs-only loss-taxonomy re-run, merged clean, not mine to drive). PR #5390's CI went green (~12 min) and it self-merged via the CARVE-OUT pipeline (merged_by coreentryadmin-web) before I even re-checked -- confirmed via a fresh pull_request_read, no manual merge needed. Unsubscribed (already auto-cleared). Folded both outstanding staged findings (PR #5387's play-brief.ts evidence-line fix incl. the play-brief-diff.ts correction, and PR #5390's manage.ts structural-stop fix) into FINDINGS.md via findings-fold-staging.mjs; findings-hygiene.test.ts clean 9/9. While PR #5390's CI was pending, used the wait productively (NEVER SIT IDLE): fresh WATCH/OPEN thesis forensics on the swing desk's live state. /api/market/swing/record currently shows 0 open, 0 watch in the record route's own windowed view but 1 live HOLD chain (AAPL, positionId 40, rolled once from the $330 to the $335 call on 2026-09-21) -- fetched its full play-brief (playId=SWING:AAPL:40) and hand-verified: P&L math (entry $5.23, mark $7.48 -> +43.1% mid, bid $7.10 -> +35.9% exec, -7% slippage, all internally consistent), stop/target rail percentages (71% cushion to $2.09 stop, 47% move needed to $10.45 target, both recompute correctly off the current $7.10 bid), roll-chain continuity (leg 37's frozen exit mark $5.23 correctly becomes leg 40's entry -- the roll-freeze mechanism working as designed), and honest stale/absence handling (option mark correctly flagged stale since 16:00 ET RTH close, 18:18 ET current time is after-hours so staleness is EXPECTED not a bug; ecosystem-context/Vector-state fetch failures and thesis-health withholding all disclosed via unavailableSources rather than fabricated). No bug found -- this is the product working as designed off-hours. Also separately confirmed the swing/record route's 30-day summary (14 chains, 13 resolved, 15.4% win rate) -- low win rate here is consistent with, not contradicting, the loss-taxonomy work already in flight (PR #5389 just landed EVENT_DRIVEN/SECTOR_ROTATION divergence at n>=5) -- not treated as a new finding, already tracked territory.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,14 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T22:20:00Z",
-    "swing_prs": [
-      {
-        "number": 5390,
-        "title": "fix(swing): manage.ts's structural-stop reason had the same toFixed-vs-roundFloats mismatch (7th instance)",
-        "status": "open, non-draft, subscribed, CI pending (just opened) / CARVE-OUT auto-merge expected once green"
-      }
-    ]
+    "as_of": "2026-09-21T22:24:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
