@@ -38,6 +38,81 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing play-brief: `expectedMoveCoaching`/`wallIntegrityCoaching` still sampled `Date.now()` instead of `ctx.readMs` — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** This session's readMs sweep (#5334/#5336/#5341/#5345/#5351/#5353/#5355/#5356) has
+been incrementally threading `ctx.readMs` (the single request-wide staleness anchor
+`composeSwingPlayBrief` samples once) through `play-brief-narrative-coaching.ts`. #5356's own
+commit message explicitly named the next two remaining call sites: *"the remaining ~10 Date.now()
+call sites in this file (expectedMoveCoaching, wallIntegrityCoaching, ...) still don't currently
+take ctx and would need the same optional-readMs-param signature change confluenceCoaching
+established in #5351 — left as the next follow-up."* (magnetCoaching/crossDeskCoaching/
+shortInterestCoaching were fixed in that same #5356 — this finding does NOT touch them, and this
+PR was rebased on top of #5356 to avoid re-doing that work.)
+
+**Root cause.** In `composeCoachingBullets`'s single `push()` block, `expectedMoveCoaching` and
+`wallIntegrityCoaching` sit immediately next to `confluenceCoaching` (already anchored) and
+`magnetCoaching` (already anchored as of #5356), all reading the same `vec` snapshot in the same
+compose pass — but neither ever had a `readMs` parameter at all, so each called `Date.now()`
+directly inside its own `vectorSnapshotStale` check.
+
+**Why it matters.** Same live-repro class every prior fix in this chain describes: two sections
+judging the SAME Vector snapshot at two different real clock instants can straddle the 120s
+`VECTOR_STALE_MS` window and disagree about whether identical data is fresh — one bullet renders,
+its sibling silently drops, for no reason a member could see.
+
+**Fix.** Added an optional trailing `readMs?: number` param to both functions (default
+`Date.now()` for backward compatibility with existing callers/tests), mirroring
+`confluenceCoaching`'s existing shape exactly. `composeCoachingBullets` now threads
+`ctx.readMs ?? undefined` into both calls.
+
+**Blast radius.** Scoped to these two functions + their one call site; no other call sites exist
+repo-wide (grepped).
+
+**Evidence (RED→GREEN).** Added 2 tests mirroring `confluenceCoaching`'s existing anchor test
+(same vec/asOf fixture; an anchor 60s after `asOf` reads FRESH, no anchor falls back to the real
+wall clock — decades past the fixture — and reads STALE/null). RED confirmed pre-fix via
+`git stash` isolating only the source change (both new tests fail, nothing else regresses). GREEN
+post-fix: full `play-brief-narrative-coaching.test.ts` suite passes. `npx tsc --noEmit -p .` clean.
+
+**Scope note (this cycle, market-open, 2026-09-21):** ran the standard 5-engine health check +
+CloudWatch sweep alongside this fix; no other new defects found this cycle (0DTE board coherence
+pass under real RTH opening-window gating, live swing ticker sampling on 3 fresh tickers — see
+coordinator handback for detail).
+
+## 2026-09-21 — [FINDING, P3 Largo/Night Hawk Swings] `magnetCoaching`/`crossDeskCoaching`/`shortInterestCoaching` still sampled the real wall clock instead of `ctx.readMs` — third follow-up to #5351/#5353/#5355 — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Continuation of the #5351 → #5353 → #5355 sweep threading `SwingPlayBriefContext.readMs` (the single canonical "now" `composeSwingPlayBrief` stamps once before any section builds) through every staleness check in the narrative/coaching layer. #5355's own staged finding named `magnetCoaching`, `catalystCoaching`, `crossDeskCoaching`, `shortInterestCoaching` as the four remaining call sites that already receive `ctx` in scope (no signature change needed). Auditing each: `catalystCoaching` turned out to already be anchored off `ctx.asOf` (via `parseEtStamp`/`Date.parse`, fixed separately 2026-09-15) with no bare `Date.now()` call at all, so it needed no change here. The other three did: `magnetCoaching` sampled `Date.now()` twice (its own `vectorSnapshotStale` check at the top, plus an implicit second read inside `resolveGammaPosture(ctx, vec)`, called with no `readMs` arg); `crossDeskCoaching` sampled it once for its Vector-liveness gate; `shortInterestCoaching` sampled it once via `fundamentalsAncient(fund.as_of, Date.now())`. |
+| **Root cause** | Same shape as every prior fix in this chain: each call independently asked "what time is it right now" instead of using the instant `composeSwingPlayBrief` already pinned for the rest of the brief. This can disagree with any other section of the same brief judging the identical `vec`/fundamentals snapshot off `ctx.readMs` — the "chip says stale, narrative says fresh" (or vice versa) failure class #5353's write-up first named. |
+| **Evidence** | Three new regression tests (`play-brief-narrative-coaching.test.ts`), same technique as #5355's: a fixed `asOf`/`as_of` timestamp with `ctx.readMs` set to that SAME instant (genuinely fresh under `ctx.readMs`), while the real wall clock at actual test-run time is weeks (Vector's 120s window) or well over a year (fundamentals' 60-day ceiling) later. RED confirmed pre-fix via `git stash` on the source file only (tests kept): exactly the 3 new tests failed (`124 tests, 121 pass, 3 fail`), nothing else regressed. GREEN post-fix: 124/124 in `play-brief-narrative-coaching.test.ts`. `tsc --noEmit` clean. Full swing suite (`src/lib/swing/*.test.ts`): 1431/1431 pass, 0 fail — no collateral breakage. |
+| **Fix** | `magnetCoaching` and `crossDeskCoaching` each capture `const readMs = ctx.readMs ?? Date.now();` (or inline the same fallback) and thread it into `vectorSnapshotStale`/`resolveGammaPosture`. `shortInterestCoaching` inlines `ctx.readMs ?? Date.now()` directly into its `fundamentalsAncient` call. `catalystCoaching` confirmed to need no change — already `ctx.asOf`-anchored, not `Date.now()`-based. |
+| **Deliberately scoped down** | The remaining ~10 `Date.now()` call sites across `play-brief-narrative-coaching.ts` (`expectedMoveCoaching`, `wallIntegrityCoaching`, `vectorPlayCoaching`, `vexCoaching`, `flowPrintsCoaching`, `wallDynamicsCoaching`, `technicalsCoaching`) still don't currently take `ctx` and would need the same optional-`readMs`-param signature change `confluenceCoaching` established in #5351 — left as the next follow-up in this same chain, same scoping discipline #5351/#5353/#5355 all used. |
+| **Not a trading-behaviour change** | No gate, score, rail, exit rule or grading path touched — only which wall-clock instant a coaching bullet's freshness gate uses. |
+| **Status** | FIXED. |
+
+## 2026-09-21 — [FINDING, P3 Largo/Night Hawk Swings] `vexCoaching`/`flowPrintsCoaching`/`wallDynamicsCoaching`/`technicalsCoaching`/`vectorPlayCoaching`/`dataHonestyCoaching` still sampled the real wall clock instead of `ctx.readMs` — closes the #5351→#5353→#5355→#5356 sweep — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Continuation of the standing `SwingPlayBriefContext.readMs` sweep (#5351/#5353/#5355/#5356, plus concurrent PR #5359 fixing `expectedMoveCoaching`/`wallIntegrityCoaching`). #5356's own staged finding explicitly named the remaining call sites as "left as the next follow-up": `vectorPlayCoaching`, `vexCoaching`, `flowPrintsCoaching`, `wallDynamicsCoaching`, `technicalsCoaching` (all bare `Date.now()` inside `vectorSnapshotStale`, no `readMs` param at all) plus `dataHonestyCoaching` (has `ctx` in scope but still called `Date.now()` directly for both `collectOptionMarkStalenessAbsence` and `vectorAgeStale`). Verified against `origin/main` before starting (per this cycle's explicit instruction to re-grep rather than trust a "fully complete" claim) — all six were still bare as of this cycle, confirming the sweep was NOT fully done even after #5356/#5359. |
+| **Root cause** | Same shape as every prior fix in this chain: each function independently sampled "what time is it right now" via its own fresh `Date.now()` call instead of consulting the single instant `composeSwingPlayBrief` pins onto `ctx.readMs` before any section builds. A Vector snapshot sitting near the 120s `VECTOR_STALE_MS` boundary can therefore read FRESH in one of these six bullets and STALE in a sibling section (`confluenceCoaching`, `magnetCoaching`, `watchForSection`, etc.) judging the *identical* `vec` object in the same compose pass — the "chip says stale, narrative says fresh" failure class #5353's write-up first named. |
+| **Evidence** | 6 new regression tests added to `play-brief-narrative-coaching.test.ts`, same technique as every prior fix in the chain: a fixed `asOf` timestamp with an explicit `readMs`/`ctx.readMs` anchor set 60s after it (genuinely fresh, well inside the 120s window) vs. no anchor at all (falls back to the real wall clock, weeks past the fixture — must read stale). RED confirmed pre-fix via `git stash` on the source file only (tests kept): exactly the 6 new tests failed (`130 tests, 124 pass, 6 fail`), nothing else regressed. GREEN post-fix: 130/130 in `play-brief-narrative-coaching.test.ts`. `tsc --noEmit -p .` clean. Full repo suite (`npm test`, Node 20): 15110 pass / 0 fail / 3 skipped — no collateral breakage anywhere. |
+| **Fix** | `vexCoaching`, `flowPrintsCoaching`, `wallDynamicsCoaching`, `technicalsCoaching`, `vectorPlayCoaching` each gained an optional trailing `readMs?: number` param (same shape `confluenceCoaching` established in #5351 — defaults to `Date.now()` for backward compat with every existing call site/test) and thread it into their `vectorSnapshotStale` call. `dataHonestyCoaching` (already takes `ctx`) captures `const readMs = ctx.readMs ?? Date.now();` once and threads it into both `collectOptionMarkStalenessAbsence` and `vectorAgeStale`. `collectCoachingBullets`'s call sites for all six now pass `ctx.readMs ?? undefined`. |
+| **Blast radius** | Scoped entirely to `play-brief-narrative-coaching.ts` + its test file — no other call sites for any of these six functions exist repo-wide (grepped). `expectedMoveCoaching`/`wallIntegrityCoaching` deliberately left untouched here — in-flight on the concurrently-open #5359, avoiding a duplicate/conflicting edit to the same two functions. |
+| **Not a trading-behaviour change** | No gate, score, rail, exit rule or grading path touched — only which wall-clock instant six coaching bullets' freshness gates use. With this PR (once #5359 also merges), every `vectorSnapshotStale`/`vectorAgeStale`/`fundamentalsAncient` call site in `play-brief-narrative-coaching.ts` is `ctx.readMs`-anchored — the sweep this chain has been running since #5351 is now actually complete; verified via fresh grep, not asserted from memory. |
+| **Status** | FIXED. |
+
 ## 2026-09-21 — [FINDING, P3 Largo/Night Hawk Swings] `counterThesisLine`/`dealerPostureLine` still sampled the real wall clock instead of `ctx.readMs` — the same defect shape #5351/#5353 already fixed twice — FIXED
 
 > **kind:** `FINDING`
