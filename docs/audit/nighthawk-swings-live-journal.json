@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T10:48:36Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. **Real board-state change noticed and investigated**: COMMIT_NOW and WATCH sections both went from 1 entry each (SMCI, LITE -- audited earlier this session) to completely empty. Checked whether either was promoted to MANAGING (no) or had simply vanished (yes, from all 7 sections). Root cause: today's swing discovery scan finally ran -- MARA's brief now shows 'Swing scan: 2026-09-21 06:00 ET', replacing the stale 2026-09-18 16:37 ET snapshot that had persisted through this entire session (every brief checked all day showed 'today's scan not yet run'). SMCI/LITE were candidates from the old persisted snapshot; the fresh 06:00 ET scan simply didn't re-flag them -- normal candidate turnover as the discovery pool refreshes for the new trading day, not a bug or data loss. A genuinely useful positive confirmation that the discovery pipeline is alive and correctly cycling, and explains a real state change rather than leaving it unexplained. No new bugs found, no new PR or #4076 comment needed this cycle.",
+  "last_updated": "2026-09-21T11:05:38Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. **New sibling PR #5351** found via the standard swing-PR search: 'anchor play-brief staleness checks to one request-wide clock' (readMs threaded through watchForSection + confluenceCoaching, live SNXX repro of confluenceCoaching vs watchForSection disagreeing on the same put wall due to independent Date.now() samples straddling the 120s staleness boundary). Independently verified: root cause re-confirmed against main (both call sites match exactly), RED->GREEN re-derived in an isolated worktree (121/121 green on PR head, reverted just confluenceCoaching's fix -> 120/121 exact claimed failure, restored -> 121/121), tsc clean, full swing play-brief suite 704/704 (703 baseline + 1 new test, no collateral breakage). Confirming comment posted (5759471342). Fix shape confirmed minimal/backward-compatible -- optional readMs everywhere, only the 2 live-repro'd call sites wired, remaining ~18 Date.now() sites explicitly documented as a follow-up rather than silently unaddressed.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,8 +113,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T10:48:36Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T11:05:38Z",
+    "swing_prs": [
+      "#5351 (open, independently verified this cycle, awaiting merge under CARVE-OUT)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
