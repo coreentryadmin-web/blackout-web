@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T05:21:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. #4076 unchanged, no response. Zero open swing PRs, board unchanged. LITE WATCH check -- no material change (still 3 days, FORMING, entry window unmoved). **Ask Largo audit on SNOW (MANAGING, positionId 1137)**, first check this session. Clean, with one item worth naming: Trough still shows '--' despite the position currently sitting at -48.1% P&L (well below entry) -- looks alarming in isolation but is EXACTLY the already-diagnosed #5333 situation (MARKET-OPEN-VALIDATION.md entry #318): SNOW's markAsOf is the same stale 2026-09-18 16:00 ET timestamp as everything else this weekend, so no live tick has landed since the fix deployed -- expected, not a new bug, not re-reporting. Verified math throughout: P&L -48.1% exact, peak 94.4% consistent with a ~$7.00 high (just under the $7.20/+100% trim trigger, correctly un-fired -- 'Trim ladder: +100%' with no checkmark, consistent with peak never crossing it), round-trip-past-breakeven framing correct (94% peak to -48% current genuinely crosses zero), 'next trim... +285% from here' exact from the stale mark. New theme category confirmed beyond crypto-equity: Book context correctly cites 'software' theme (CRWD LONG overlap) -- confirms theme detection generalizes, not crypto-specific. No new bugs found.",
+  "last_updated": "2026-09-21T05:36:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean -- main includes PR #5343 (routine findings-fold housekeeping for #5339/#5341, not mine). #4076 unchanged, no response. Zero open swing PRs, board unchanged. Noted PR #5341's content while syncing (already merged by another swing session, well-evidenced EWZ future-leak repro on ticker track record's chronological ordering) -- doesn't invalidate anything I've verified (I only checked track-record citations render correctly, never checked chronological correctness of WHICH trades get cited). **Ask Largo audit on CLSK (MANAGING, positionId 1204)**, first check this session. Clean. One useful corroboration: CLSK IS BANGER-origin ('Signals fired: BANGER') yet DOES show a real IV rank line ('IV rank 10 -- vol cheap') -- this is the SAME ticker-only-dossier-match coincidence already reported (comment 5755332460, the MSTR case) firing again, a 3rd/4th supporting instance -- not re-reporting, already well-evidenced. Checked the gap between the nearest GEX support (confluence 12.00, -16.3%) and the actual structural invalidation level (9.50, -33.75%) -- plausible and consistent (thesis_invalidation_px is ATR-based structural stop, a different concept from a dealer-flow GEX wall, not required to coincide). No new bugs found.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T05:21:00Z",
+    "as_of": "2026-09-21T05:36:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
