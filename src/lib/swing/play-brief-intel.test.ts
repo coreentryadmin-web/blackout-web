@@ -1270,6 +1270,45 @@ test("lessonsSection: Archetype tag uses the canonical humanized label, not the 
   assert.doesNotMatch(section!.body, /PULLBACK CONTINUATION|PULLBACK_CONTINUATION/);
 });
 
+// Live repro 2026-09-21 (KKR closed play, real production play-brief, Ask Largo × Night Hawk
+// Swings mandate): "Lessons" unconditionally rendered "Mechanical exit fired as designed —
+// thesis or ladder did its job." for ANY closedReason of "target"/"ratchet", with no regard for
+// how the trade actually played out. Real numbers: peak +203.8%, exit +50.5%, MFE capture 24.8%
+// — a genuinely bad outcome (gave back three-quarters of the peak move) — and the SAME section
+// rendered "MFE capture: 24.8% of peak move" immediately followed by the unqualified "did its
+// job" praise, directly contradicting the capture-quality read two lines above it (and, when not
+// deduped into "Trade manager read", the "Gave back the move — tighten at first trim rail" line
+// right next to it). A mechanically-correct exit is not the same claim as "this was a good
+// outcome"; the line must not praise a giveback.
+test("lessonsSection: does not claim 'did its job' for a target/ratchet exit that gave back most of its peak", () => {
+  const weakCapturePlay = fixturePlay({
+    status: "CLOSED",
+    peak: 203.8,
+    exitPnlPct: 50.5,
+    mfeCapturePct: 24.8,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+  });
+  const section = lessonsSection(weakCapturePlay, false, false, false, false);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /did its job/i);
+  assert.match(section!.body, /ladder banked little of the peak/i);
+
+  // A genuinely strong capture on the same closedReason must still get the "did its job" praise —
+  // the fix narrows the unqualified line, it doesn't remove it.
+  const strongCapturePlay = fixturePlay({
+    status: "CLOSED",
+    peak: 60,
+    exitPnlPct: 55,
+    mfeCapturePct: 91.7,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+  });
+  const strongSection = lessonsSection(strongCapturePlay, false, false, false, false);
+  assert.ok(strongSection);
+  assert.match(strongSection!.body, /did its job/i);
+});
+
 function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {
   return {
     spot: 100,

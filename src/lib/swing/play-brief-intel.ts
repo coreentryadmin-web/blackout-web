@@ -1281,8 +1281,11 @@ export function lessonsSection(
 ): RichSection | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
+  // Hoisted out of the `if (play.peak != null...)` block below so the closedReason branch
+  // (target/ratchet) can see it too — see the BUG FIX note at that call site for why.
+  let outcome: ReturnType<typeof mfeCaptureOutcome> = null;
   if (play.peak != null && play.exitPnlPct != null) {
-    const outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
+    outcome = mfeCaptureOutcome(play.exitPnlPct, play.peak, play.mfeCapturePct);
     lines.push(`Peak was **${fmtPct(play.peak)}** · exited **${fmtPct(play.exitPnlPct)}**`);
     if (outcome?.kind === "round_trip") {
       if (!roundTripAlreadyNoted) {
@@ -1349,7 +1352,29 @@ export function lessonsSection(
     const reason = play.closedReason.replace(/_/g, " ");
     lines.push(`Exit: **${reason}**`);
     if (play.closedReason === "target" || play.closedReason === "ratchet") {
-      lines.push("Mechanical exit fired as designed — thesis or ladder did its job.");
+      // BUG FIX (2026-09-21, Ask Largo × Night Hawk Swings mandate): this line used to fire
+      // UNCONDITIONALLY whenever closedReason was "target"/"ratchet", with no regard for how the
+      // trade actually played out. Live repro (KKR closed play, real production play-brief,
+      // peak +203.8%, exit +50.5%, MFE capture 24.8%): the SAME "Lessons" section rendered
+      // "MFE capture: 24.8% of peak move" (and, when not already deduped into "Trade manager
+      // read", "Gave back the move — next time tighten at first trim rail or thesis fade.")
+      // immediately followed by "Mechanical exit fired as designed — thesis or ladder did its
+      // job." — flatly contradictory framing of the identical exit two lines apart: one calls it
+      // a giveback worth tightening next time, the other calls it a job well done. Exactly the
+      // "disconnected bullet-dump" contradiction class this function's own history (see the
+      // round_trip/capture>=75 BUG FIX comments above) already fixed twice for other branches;
+      // this was the one branch with zero gating at all. A mechanically-correct exit (the ladder
+      // fired at its programmed level) is not the same claim as "this was a good outcome" — only
+      // say so when the capture was NOT already flagged as weak.
+      const weakCapture =
+        outcome?.kind === "round_trip" || (outcome?.kind === "capture" && outcome.capturePct < 35);
+      if (weakCapture) {
+        lines.push(
+          "Exit mechanism fired correctly, but the ladder banked little of the peak — see MFE capture above; review trim timing, not the mechanism.",
+        );
+      } else {
+        lines.push("Mechanical exit fired as designed — thesis or ladder did its job.");
+      }
     } else if (play.closedReason === "stopped" || play.closedReason === "stop") {
       if (!stopAdviceAlreadyNoted) {
         lines.push("Stop loss — check if invalidation level was respected or entry was extended.");
