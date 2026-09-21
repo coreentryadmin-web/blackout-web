@@ -1,10 +1,16 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T00:38:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean. Zero open swing PRs. **Closed a stale open thread on #4076**: re-checked my own ~19h-old short-interest freshness-tag design question (5747893411) rather than continuing to let it sit -- found it was already resolved: play-brief.ts's fundamentalsFreshness() now delegates to fundamentalsFreshnessTag (play-brief-absence.ts), using FUNDAMENTALS_RECENT_CEILING_MS (15 days) instead of the generic 10-minute market-tick bucket. Live-verified against the exact original repro (CRWD:39's 'DTC 2.2d * short vol ratio 60%' short-interest evidence): now correctly reads freshness:'recent', was 'stale' when the question was raised. Posted a closing confirmation (5753899839) rather than leaving stale text implying an unresolved question on the thread -- exactly the staleness-trap discipline CLAUDE.md warns about, applied to my own prior comment this time rather than the mandate section. Didn't catch which PR shipped the fix (untraced, but confirmed live and correct is what matters). One smaller sub-question (catalystsSection's narrative body lacking the same staleness disclosure headlines get) left flagged as still open if anyone picks it up. Board unchanged.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-21T01:05:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync clean. Zero open swing PRs pre-cycle. #4076 checked (216 comments, updated_at matched my own last comment 5753899839 -- nothing new since). Board check clean (MANAGING=56, SCALING_OUT=12, COMMIT_NOW/WATCH=1 each). **Acted on my own dormant-gap comment from the prior cycle (5751117208, 'Swing 5-truth grader still completely unwired')**: no objection landed on #4076 (8+ hours idle), so I took the smallest of the three proposed shapes myself -- NOT a new cron (this sandbox can't deploy a new EventBridge rule) but a read-only, admin-gated GET /api/admin/swing/multi-truth-grade that re-grades closed/rolled swing_positions against the REAL grade.ts gradeSwingPosition (PATH+THESIS this pass, real Polygon forward underlying bars; EXECUTION/FINANCIAL/MANAGEMENT stay honestly ungradeable -- no fill price or option bars fetched yet, a real follow-up not a shortcut). New db.ts accessor (fetchClosedSwingPositionsRange), pure unit-tested row mapper (grade-retrace.ts, 9 new tests, RED->GREEN verified against the real grader), companion audit script (swing-multi-truth-grade-retrace.mjs) that will report THESIS-vs-markfreeze divergences once deployed. tsc clean, full swing suite (1418 tests) + db-swing-ledger (32 tests) green on Node 20. Shipped as PR #5331, undrafted (CARVE-OUT: self-authored merges on green CI alone), subscribed. Live retrace against production deferred to post-merge/deploy (route doesn't exist yet -- 404 confirmed expected, not a bug).",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    {
+      "file": "docs/audit/findings-staging/2026-09-21-swing-multi-truth-grader-retrace-endpoint.md",
+      "pr": "#5331",
+      "summary": "New admin read-only retrace endpoint + pure mapper closing the 'swing 5-truth grader unwired' gap -- additive, no schema/cron/infra dependency."
+    }
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,8 +119,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-20T22:33:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T01:05:00Z",
+    "swing_prs": [
+      "#5331 (mine, undrafted, awaiting CI)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
