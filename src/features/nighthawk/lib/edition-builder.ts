@@ -35,6 +35,8 @@ import { fetchIndexDossiers } from "./index-dossier";
 import { fetchMarketWideContext, type MarketWideContext } from "./market-wide";
 import { critiquePlays } from "./play-critic";
 import { rankCandidates, regimeContextFromMarket, scoredCandidateSnapshotPayload, type ScoredCandidate } from "./scorer";
+import { classifySetupType, setupTypeInputFromScored } from "./setup-classification";
+import { buildRawFeatureSnapshot } from "./raw-feature-snapshot";
 import { rescoreDossier } from "./hunt-builder";
 import { DOSSIER_BATCH_SIZE, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
 import {
@@ -256,7 +258,8 @@ export type ScoringStageSnapshotRow = {
 export function buildScoringStageSnapshotRows(
   editionFor: string,
   stage: string,
-  candidates: ScoredCandidate[]
+  candidates: ScoredCandidate[],
+  dossierMap: Record<string, TickerDossier> = {}
 ): ScoringStageSnapshotRow[] {
   return candidates.map((c, i) => ({
     edition_for: editionFor,
@@ -267,13 +270,22 @@ export function buildScoringStageSnapshotRows(
     gov_penalty: c.govPenalty ?? null,
     rejection_reason: null,
     selected_for_publish: null,
-    snapshot_json: scoredCandidateSnapshotPayload(c),
+    // raw_features additive (Workstream C / #20's D3, 2026-09-21) — observational only, built
+    // straight from the already-populated TickerDossier, no new fetch. null when the caller
+    // doesn't pass a dossierMap (existing callers/tests are unaffected — default {}), never
+    // fabricated when a ticker's dossier is genuinely missing from the map.
+    snapshot_json: { ...scoredCandidateSnapshotPayload(c), raw_features: buildRawFeatureSnapshot(dossierMap[c.ticker]) },
   }));
 }
 
-export function recordScoringStageSnapshots(editionFor: string, stage: string, candidates: ScoredCandidate[]): void {
+export function recordScoringStageSnapshots(
+  editionFor: string,
+  stage: string,
+  candidates: ScoredCandidate[],
+  dossierMap: Record<string, TickerDossier> = {}
+): void {
   if (!candidates.length) return;
-  const rows = buildScoringStageSnapshotRows(editionFor, stage, candidates);
+  const rows = buildScoringStageSnapshotRows(editionFor, stage, candidates, dossierMap);
   void insertNighthawkCandidateSnapshots(rows).catch((err) => {
     console.warn(`[nighthawk/edition] failed to write ${stage}-stage candidate snapshots:`, err);
     alertCandidateSnapshotWriteFailure(stage, editionFor, err);
@@ -308,10 +320,16 @@ export function buildRankFinalSnapshotRows(
     rejection_reason: null,
     selected_for_publish: true,
     snapshot_json: {
-      schema_version: 2,
+      schema_version: 3,
       direction: p.direction,
       conviction: p.conviction,
       levels: parsePlayLevels(p),
+      // Workstream C / #20's D1/D2 (2026-09-21), additive over v2 — observational only.
+      // setup_type derives straight from the play's own factor_breakdown (already persisted for
+      // the member-facing factor bars) rather than needing a separate ScoredCandidate lookup.
+      // dte is null (not 0) whenever the play never had a real contract picked (stock-only).
+      setup_type: p.factor_breakdown ? classifySetupType(p.factor_breakdown) : "unknown",
+      dte: p.dte ?? null,
     },
   }));
 }
@@ -398,11 +416,23 @@ export function buildStageRejectionSnapshotRows(
     rejection_reason: r.detail.stage,
     selected_for_publish: false,
     snapshot_json: {
-      schema_version: 2,
+      schema_version: 3,
       detail: r.detail,
       confluence: confluenceSnapshot(r.scored ?? null),
       levels: r.play ? parsePlayLevels(r.play) : null,
       direction: r.play ? r.play.direction : null,
+      // Workstream C / #20's D1/D2 (2026-09-21), additive over v2 — observational only. dte comes
+      // from r.play (only populated once a contract was picked, i.e. sector_concentration/
+      // publish_gate/the rare STAGE-6 geometry-safety-net reasons — never confluence_gate, which
+      // predates contract selection). setup_type falls back to the play's own factor_breakdown
+      // when the raw scored candidate isn't passed in, so this stays populated wherever the
+      // caller can supply either.
+      setup_type: r.scored
+        ? classifySetupType(setupTypeInputFromScored(r.scored))
+        : r.play?.factor_breakdown
+          ? classifySetupType(r.play.factor_breakdown)
+          : "unknown",
+      dte: r.play?.dte ?? null,
     },
   }));
 }
@@ -859,7 +889,7 @@ export async function buildEveningEdition(opts?: {
     const scoredList = Object.values(dossiers)
       .filter((d) => d.scored != null)
       .map((d) => d.scored!);
-    recordScoringStageSnapshots(editionFor, "scored", scoredList);
+    recordScoringStageSnapshots(editionFor, "scored", scoredList, dossiers);
 
     if (!scoredList.length) {
       // Funnel collapsed at stage_dossiers — candidates existed but none produced a scored dossier
@@ -979,7 +1009,7 @@ export async function buildEveningEdition(opts?: {
     // the exact govPenalty a signal-intelligence-corrections.ts shadow_bugfix pass needs to
     // recompute what the FINAL sort should have used.
     const govPenaltyByTicker = new Map(ranked.map((c) => [c.ticker, c.govPenalty ?? 0]));
-    recordScoringStageSnapshots(editionFor, "rank_governor", ranked);
+    recordScoringStageSnapshots(editionFor, "rank_governor", ranked, dossiers);
 
     // STAGE 4c — Bearish-tape posture (PR-N9): when ≥2 of tide/breadth/regime signal
     // bearish, re-rank to prefer SHORT candidates via a score bonus/penalty. Candidates

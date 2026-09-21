@@ -33,7 +33,7 @@ import {
   MAX_OPTION_COST_PER_CONTRACT,
   MAX_OPTION_PREMIUM_PER_SHARE,
 } from "./constants";
-import { rescuePlaysEnabled } from "./edition-quality";
+import { rescuePlaysEnabled, mainLoopRejectionCaptureEnabled } from "./edition-quality";
 import type { GroundingSummary } from "./grounding";
 import type { ScoredCandidate } from "./scorer";
 import { assignNighthawkTier, nhTierInputFromScored, nhConvictionRank } from "./nighthawk-tiers";
@@ -122,7 +122,7 @@ export async function generateEditionPlays(params: {
   // risk_note — the proven banger exit; does not change the plan or grading). Sourced from the ctx's
   // breakout screen already computed in fetchMarketWideContext (no new work here).
   const bangerTickers = new Set((params.ctx.breakout_movers ?? []).map((m) => m.ticker.toUpperCase()));
-  let { plays: detPlays, funnel: detFunnel } = buildDeterministicEditionPlays({
+  let { plays: detPlays, funnel: detFunnel, mainLoopRejected } = buildDeterministicEditionPlays({
     ranked: params.ranked,
     dossierMap,
     chains: detChains,
@@ -160,6 +160,15 @@ export async function generateEditionPlays(params: {
   );
   const sectorCap = capSectorConcentration(detPlays, sectorByTicker);
   const stageRejected: Array<{ ticker: string; play: PlaybookPlay; detail: NighthawkRejectionDetail; scored: ScoredCandidate | null }> = [];
+  // Workstream C / #20's D4-extra (2026-09-21) — INSTRUMENTATION ONLY, default OFF. buildDeterministic
+  // EditionPlays always computes mainLoopRejected (geometry/premium_cap drops); this flag gates only
+  // whether those already-computed rejections get merged in for durable capture (audit trail +
+  // nighthawk_candidate_snapshot, both already wired for stageRejected below) — it does not change
+  // detPlays/detFunnel/scores/ordering in any way, since buildDeterministicEditionPlays itself never
+  // reads this flag.
+  if (mainLoopRejectionCaptureEnabled()) {
+    stageRejected.push(...mainLoopRejected);
+  }
   if (sectorCap.dropped.length) {
     console.warn(
       "[nighthawk/edition] sector-concentration cap dropped:",

@@ -44,13 +44,15 @@ import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./play-constraints";
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
-import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+import { MAX_OPTION_PREMIUM_PER_SHARE, MAX_OPTION_COST_PER_CONTRACT, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
 import {
   diversityHedgeEnabled,
   forcedContrarianHedgeEnabled,
 } from "./edition-quality";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
+import { calendarDteBetween } from "@/lib/zerodte/board";
+import type { NighthawkRejectionDetail } from "./play-outcomes";
 
 /** Default number of plays a full edition publishes. Mirrors the Claude path's top-5 shape. */
 export const DETERMINISTIC_EDITION_TARGET = 5;
@@ -748,6 +750,10 @@ function buildPlay(
   const options_play = formatOptionsPlay(scored.ticker, contract);
   const dir = scored.direction === "short" ? "SHORT" : "LONG";
   const rr = computeRiskReward({ direction: dir, entry_range: levels.entry_range, target: levels.target, stop: levels.stop });
+  // Workstream C / #20's D1 (2026-09-21) — observational only, never read by selection/scoring.
+  // Absent (not 0) when no contract was picked, so a stock-only/caveated fallback never reads as
+  // same-day DTE.
+  const dte = contract ? calendarDteBetween(todayEtYmd(), contract.expiry) : null;
   const base: PlaybookPlay = {
     rank,
     ticker: scored.ticker,
@@ -761,6 +767,7 @@ function buildPlay(
     stop: levels.stop,
     options_play,
     score: scored.score,
+    dte,
     sector: scored.sector?.toLowerCase() || undefined,
     flow_streak_days: dossier?.flow_streak?.streak_days ?? undefined,
     iv_rank: dossier?.iv_rank ?? undefined,
@@ -814,7 +821,18 @@ export function buildDeterministicEditionPlays(params: {
   maxDte?: number | null;
   /** Tickers surfaced by the whole-market breakout lane — these get the scale-out exit risk_note. */
   bangerTickers?: Set<string>;
-}): { plays: PlaybookPlay[]; funnel: { candidates: number; score_below_floor: number; contract_ok: number; stock_only: number; no_chain: number; no_spot: number; premium_capped: number; geometry_fail: number; geometry_ok: number; premium_ok: number; grounded: number; dropped_ungrounded: number } } {
+}): {
+  plays: PlaybookPlay[];
+  funnel: { candidates: number; score_below_floor: number; contract_ok: number; stock_only: number; no_chain: number; no_spot: number; premium_capped: number; geometry_fail: number; geometry_ok: number; premium_ok: number; grounded: number; dropped_ungrounded: number };
+  /** Workstream C / #20's D4-extra (2026-09-21) — INSTRUMENTATION ONLY, unconditionally
+   *  populated (no env-flag read here; the flag lives entirely in the caller that decides
+   *  whether to act on this array). Every geometry/premium_cap drop from the main loop below,
+   *  in the SAME NighthawkRejectionDetail shape claude-edition.ts's own `stageRejected` already
+   *  uses, so a caller can merge them in with zero new capture code. Never read by any
+   *  selection/scoring/gating logic in this file — the `continue` statements at each drop point
+   *  are completely unchanged; this is a `.push()` beside an existing branch, not inside it. */
+  mainLoopRejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored: ScoredCandidate; play: PlaybookPlay }>;
+} {
   const target = params.target ?? DETERMINISTIC_EDITION_TARGET;
   // PR-N18: increased buffer from target+12 to target+20 — with 60 candidates and wider
   // chain coverage, grounding/geometry drops are absorbed without emptying the book.
@@ -831,6 +849,7 @@ export function buildDeterministicEditionPlays(params: {
   const built: PlaybookPlay[] = [];
   const selectedFamilies = new Set<string>();
   const strictContractTickers = new Set<string>();
+  const mainLoopRejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored: ScoredCandidate; play: PlaybookPlay }> = [];
 
   let scoreBelowFloorCount = 0;
   for (const scored of params.ranked) {
@@ -869,6 +888,19 @@ export function buildDeterministicEditionPlays(params: {
 
     if (contract && !contract.caveat && play.premium_cap_ok === false) {
       premiumCapCount += 1;
+      // D4-extra: observational only -- the `continue` right below is completely unchanged.
+      mainLoopRejected.push({
+        ticker,
+        detail: {
+          stage: "premium_cap",
+          entry_premium: play.entry_premium ?? null,
+          cap_per_share: MAX_OPTION_PREMIUM_PER_SHARE,
+          entry_cost_per_contract: play.entry_cost_per_contract ?? null,
+          cap_per_contract: MAX_OPTION_COST_PER_CONTRACT,
+        },
+        scored,
+        play,
+      });
       continue;
     }
     premiumOk += 1;
@@ -876,6 +908,8 @@ export function buildDeterministicEditionPlays(params: {
     const geom = validatePlayGeometry(play);
     if (!geom.ok) {
       geometryFailCount += 1;
+      // D4-extra: observational only -- the `continue` right below is completely unchanged.
+      mainLoopRejected.push({ ticker, detail: { stage: "geometry", drops: geom.drops }, scored, play });
       continue;
     }
     geometryOk += 1;
@@ -1023,6 +1057,7 @@ export function buildDeterministicEditionPlays(params: {
       grounded: summary.grounded,
       dropped_ungrounded: summary.dropped_ungrounded,
     },
+    mainLoopRejected,
   };
 }
 
@@ -1074,6 +1109,7 @@ export function buildRescuePlays(params: {
     if (!contract) {
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
+    const dte = contract ? calendarDteBetween(todayEtYmd(), contract.expiry) : null;
 
     plays.push({
       rank: plays.length + 1,
@@ -1083,6 +1119,7 @@ export function buildRescuePlays(params: {
       play_type: classifyPlayType(ticker),
       thesis,
       key_signal,
+      dte,
       entry_range: levels.entry_range,
       target: levels.target,
       stop: levels.stop,

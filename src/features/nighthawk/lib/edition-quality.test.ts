@@ -10,6 +10,7 @@ import {
   gatePromoteEnabled,
   gatePromoteMinScore,
   legacyGlobalStrongest,
+  mainLoopRejectionCaptureEnabled,
   thinEditionBackfillEnabled,
 } from "./edition-quality";
 import { MAX_DOSSIER_STOCKS } from "./constants";
@@ -201,5 +202,27 @@ test("anyRankedClearsScoreFloor is intentionally LOOSER than countRankedClearing
     if (countRankedClearingMerit(ranked) > 0) {
       assert.equal(anyRankedClearsScoreFloor(ranked), true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mainLoopRejectionCaptureEnabled (Workstream C / #20's D4-extra, 2026-09-21 —
+// INSTRUMENTATION ONLY, default OFF)
+// ---------------------------------------------------------------------------
+
+test("mainLoopRejectionCaptureEnabled defaults OFF (unlike most flags in this file, which default ON)", () => {
+  const prev = process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+  delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+  try {
+    assert.equal(mainLoopRejectionCaptureEnabled(), false);
+  } finally {
+    if (prev === undefined) delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+    else process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED = prev;
+  }
+});
+
+test("mainLoopRejectionCaptureEnabled reads NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED=1", () => {
+  withEnv({ NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED: "1" }, () => {
+    assert.equal(mainLoopRejectionCaptureEnabled(), true);
   });
 });
