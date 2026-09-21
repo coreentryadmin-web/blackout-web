@@ -2,181 +2,6 @@
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
   "updated_at": "2026-09-17T20:38Z",
   "watch_stage_tracking": {
-    "2026-09-17T13:08Z": {
-      "note": "2026-09-17 morning cold-start. Session PRE_MARKET, board healthy, ledger fresh. Journal pruned this cycle (108->54 entries, dropped >2 trading days old). Yesterday close: 9 plays (5W/4L-scratch: SPCH +9.38%, ALAB +6.85%, CRDO +5.05%, SMTC +4.13%, HOOD +1.42% wins; CIFR -4.41%, SPCX -3.43%, QQQ -0.18%, CORZ 0% losses/scratches). Shipped 2 narrative fixes (PR #5037, #5043, both merged). Open finding on PR #4076 (not yet resolved): flat_theta_bleed exit narrative can claim \"never left the +-10% band\" when trough actually breached it (CORZ instance) -- structural gap (no troughPremium field on ExitEngineInput), n=1 so far, holding per noise discipline. Board-upstream degradation recurred 2x yesterday (durations ~30min and ~37min, both new maxes, /record unaffected both times) -- watching whether duration keeps growing."
-    },
-    "2026-09-17T13:15Z": {
-      "note": "Still PRE_MARKET, unchanged, ledger empty. No new finding."
-    },
-    "2026-09-17T13:38Z": {
-      "note": "Market OPEN, OPENING_DRIVE, no commits yet. Operator asked about RKRB -- not found in current 35 setups or last 3 days of record; told them it may not be a 0DTE-lane ticker or not yet screened. No new finding."
-    },
-    "2026-09-17T13:46Z": {
-      "note": "Still OPENING_DRIVE, no commits yet. Board healthy, unchanged. No new finding."
-    },
-    "2026-09-17T14:11Z": {
-      "cycle": ":00 offset, RTH",
-      "session_state": "RTH (desk hot, heat_pct 100, commits open until 3:30 PM ET)",
-      "board_upstream_ok": true,
-      "setups_count": 118,
-      "ledger_count": 0,
-      "commits_today": 0,
-      "note": "No commits yet today (2026-09-17). Checked all 118 board setups gate verdicts: 100% BLOCKED, 0 cleared. Near-miss single-block setups: GNRC/IREN (max_itm_pct), MARA (conditional_band_unmet), SPXW (cortex_net_negative), TEM (cortex_gex_walls_oppose_unresolved) -- all legitimate, no anomaly. discovery_health BREAKOUT/PIN both ok. Still watching for next commit per operator standing request (\"keep watching, ping me on the next commit\")."
-    },
-    "2026-09-17T14:15Z": {
-      "cycle": ":15 offset, RTH",
-      "session_state": "RTH, 142-150 setups scanned",
-      "board_upstream_ok": true,
-      "commits_today": 0,
-      "observation": "NVDA (long, C-tier, score 80, O:NVDA260918C00215000) briefly showed gate.verdict=COMMIT / session_stats.commit_ready=1 at scan-observed committed_at_et=10:13, but never appeared in board.ledger or /record, and by the very next poll (~65s later, 10:16 ET) its own gate had reverted to BLOCKED / commit_ready=0 -- the setup was re-scanned and re-gated before any execution step ever picked it up. Not yet calling this a bug (1st instance, below 3-instance threshold) -- plausible innocent explanation is gate re-evaluation cadence (quotes/VIX/spread refresh) simply outpacing whatever cadence actually executes a commit_ready setup into the ledger, i.e. legitimate flicker on fresh live data rather than a stuck/lost commit. Watching for recurrence: if a setup repeatedly clears commit_ready and reverts to BLOCKED without ever landing in committed_open, that would suggest the execution step is missing a real, if brief, commit window -- worth escalating at 3 instances."
-    },
-    "2026-09-17T14:33Z": {
-      "cycle": ":30 offset, RTH",
-      "session_state": "RTH, 164 setups scanned",
-      "board_upstream_ok": true,
-      "commits_today": 0,
-      "note": "TEM (long, score 79) commit_ready since 10:29 ET, still not in ledger after ~90s of polling -- traced this to session-board-stats.ts + zerodte-warm cron cadence (see known_explained_patterns, newest entry). Expected behavior, not a bug. Watching TEM specifically for whether it actually lands within the next warm cycle."
-    },
-    "2026-09-17T14:57Z_first_commits": {
-      "event": "FIRST COMMITS OF THE DAY -- 4 plays committed within the same minute (~10:54-10:55 ET), pinged operator per standing keep-watching request",
-      "plays": [
-        {
-          "ticker": "TEM",
-          "direction": "long",
-          "entry": 1.85,
-          "strike": 81,
-          "expiry": "2026-09-18",
-          "score": 87,
-          "flagged_et": "10:55"
-        },
-        {
-          "ticker": "SMCI",
-          "direction": "long",
-          "entry": 0.75,
-          "strike": 41,
-          "expiry": "2026-09-18",
-          "score": 83,
-          "flagged_et": "10:54"
-        },
-        {
-          "ticker": "CMPS",
-          "direction": "long",
-          "entry": 0.38,
-          "strike": 15,
-          "expiry": "2026-09-18",
-          "score": 76,
-          "flagged_et": "10:54"
-        },
-        {
-          "ticker": "SNDK",
-          "direction": "long",
-          "entry": 29.87,
-          "strike": 1620,
-          "expiry": "2026-09-18",
-          "score": 75,
-          "conviction": "C",
-          "flagged_et": "10:54"
-        }
-      ],
-      "note": "session_stats.gate_blocked dropped from 141-164 (pre-commit stretch) to 13 as the scanned pool shrank to 14 post-commit -- consistent, not anomalous (fewer fresh candidates once 4 already committed this pass)."
-    },
-    "2026-09-17T15:16Z": {
-      "cycle": ":15 offset, RTH",
-      "note": "All 4 committed plays still open/holding, no exits yet. TEM -21.1% (peak was +14.3%), SMCI -8.0% (peak +12.7%), CMPS +13.2% (peak +11.8%, currently AT its own peak), SNDK -20.3% (never positive, peak=trough so far). Nothing anomalous -- normal early-hold volatility. Watching TEM and SNDK for how they manage given they are both showing meaningful drawdown from entry."
-    },
-    "2026-09-17T15:39Z": {
-      "cycle": ":30 offset, RTH",
-      "note": "SMCI CLOSED via thesis_break:gex-walls at -26% -- narrative checked, correct and coherent (long target path crosses dominant call wall 41.5, inside 0.5x expected move -- legitimate veto, unconditional-at-any-pnl behavior working as documented). TEM now -35.1% (peak was +14.3%, never cleared range regimes +15% first-tranche trigger so no floor ever armed -- exit-policy trim_scale/range, floor_pnl_pct=None, this is INTENTIONAL DESIGN per TRIM_SCALE_RULES, not a bug: modest peaks below the tranche trigger get zero protection by design). CMPS similarly -34.2% (peak +11.8%, same no-floor-armed shape). SNDK -25.9%, still never been positive. No bugs found this cycle -- all behavior matches documented exit-engine rules."
-    },
-    "2026-09-17T15:46Z": {
-      "cycle": ":45 offset, RTH",
-      "note": "No new commits, no new exits this cycle. TEM -27.0% (peak +14.3%, still no floor armed), SNDK -29.9% (never positive), CMPS recovered to -13.2% (from -34.2% last cycle -- volatile but within normal band-not-yet-stopped territory). SMCI stays CLOSED (thesis_break, correctly narrated last cycle). session_stats now shows top_block_code=thesis_rank_reject (216 scanned, 212 blocked) -- new top blocker vs earlier cycles score_floor/opening_window, consistent with later-session dynamics (more candidates competing for rank). Nothing anomalous."
-    },
-    "2026-09-17T16:15Z": {
-      "cycle": ":00 offset, RTH",
-      "note": "TEM/SNDK still open and drawing down (SNDK -46.6%, approaching the -50% stop -- watching closely). CMPS and SMCI both CLOSED. Found and traced a real board-display bug this cycle: CMPS showed closed_reason=time_stop for ~20 min while its real DB-persisted exit was thesis_break:gex-walls at -27.63% -- see open_findings, now a 4th confirmed instance of the recurring board/record lag pattern, holding for direction (needs DB/CloudWatch access this sandbox lacks to fully root-cause the ~20min gap vs the prior 3 instances' \"a few minutes\")."
-    },
-    "2026-09-17T16:16Z": {
-      "cycle": ":15 offset, RTH",
-      "note": "No new commits/exits. SNDK now -47.6% (entry 29.87, mark 15.65), closing in on -50% stop -- watching for the stop to fire correctly next cycle. TEM stable -20%. CMPS closed_reason confirmed self-corrected to thesis (was time_stop last cycle, see open_findings -- propagation lag resolved itself as expected)."
-    },
-    "2026-09-17T16:38Z": {
-      "cycle": ":30 offset, RTH",
-      "note": "SNDK STOPPED via plan_stop at -50.79% (2026-09-17T16:14:47Z) -- confirms the -50% hard stop fired correctly, closing the position I flagged as approaching it last cycle. TEM still open, no exit yet. Board itself is currently degraded (upstream_ok:false, empty setups/ledger, discovery_health BREAKOUT/PIN disabled) -- matches the known recurring self-resolving pattern, likely related to the UW rate-limiter incident a parallel session just logged this same window (baec36fb5, self-healed). Confirmed via /record (DB path) that all 4 today plays have correct data -- CMPS/SMCI thesis_break, SNDK plan_stop, TEM still open -- so this is display-layer only, no data loss."
-    },
-    "2026-09-17T16:46Z": {
-      "cycle": ":45 offset, RTH",
-      "note": "Board recovered (upstream_ok:true), confirms the :30 cycle degradation was transient as expected. SNDK now correctly shows closed_reason=stopped, live_pnl=-50 (pinned to stop). TEM still open, -24.9%. 3 of 4 todays plays now closed (SMCI/CMPS thesis_break, SNDK stopped), only TEM remains open. Nothing anomalous."
-    },
-    "2026-09-17T17:08Z": {
-      "cycle": ":00 offset, RTH",
-      "note": "No new commits. TEM recovered to -15.7% (from -24.9%), still open. Aggressive-mode dig this cycle: investigated why session_stats.top_block_code has shown thesis_rank_reject for several consecutive cycles -- traced to discovery_funnel.top_gate, which is a SESSION-CUMULATIVE gate-rejection tally (gate_blocked_events:1100, top_gate_n:289 today), NOT the current scan passs live setups[] block mix. Cross-checked THIS passs actual setups[].gate.blocks distribution: plan_illiquid (241) and score_floor (237) are the real dominant blockers RIGHT NOW, thesis_rank_reject is only 37 -- a big gap between the cumulative headline stat and the live instantaneous picture. Not calling this a bug (both numbers are honestly computed, answering different questions -- cumulative-session vs this-pass), but flagging as a possible product-clarity enhancement: a trader reading top_block_code to understand why nothing is committing right now gets a stale/cumulative answer that can diverge sharply from what todays actual setups show. Worth raising on PR #4076 as an idea, not urgent."
-    },
-    "2026-09-17T17:16Z": {
-      "cycle": ":15 offset, RTH",
-      "note": "No new commits/exits. TEM back down to -23.2% (was -15.7% last cycle -- volatile, still no floor armed since peak never cleared range regimes +15% trigger). Nothing anomalous."
-    },
-    "2026-09-17T17:38Z": {
-      "cycle": ":30 offset, RTH",
-      "note": "Board degraded again (upstream_ok:false, session_stats:null) -- 2nd instance this session (1st at 16:38Z, self-healed by 16:46Z). Confirmed /record still intact and correct (CMPS/SMCI thesis_break, SNDK plan_stop, TEM still open) -- display-layer only, matches the known recurring self-resolving pattern, already tracked. Not re-escalating (already an open item with unclear root cause, duration has been trending upward across sessions per prior notes)."
-    },
-    "2026-09-17T17:46Z": {
-      "cycle": ":45 offset, RTH",
-      "note": "Board recovered again (upstream_ok:true), confirms the :30 degradation was transient as expected. TEM now -32.4% (still no floor armed), getting closer to stop territory -- watching. No new commits/exits."
-    },
-    "2026-09-17T18:08Z": {
-      "cycle": ":00 offset, RTH",
-      "note": "Board degraded again -- 3rd instance this session (16:38Z, 17:38Z, now 18:08Z -- roughly hourly, though this gap was only 30min). /record confirmed intact again (CMPS/SMCI/SNDK closed correctly, TEM still open). Frequency is notable -- 3 instances in ~1.5hrs is more often than earlier-session instances (previously spaced further apart). Still self-healing every time so far, but the increasing frequency is worth flagging alongside the already-open board/record propagation-lag finding for whoever eventually gets DB/CloudWatch access to root-cause this properly."
-    },
-    "2026-09-17T18:16Z": {
-      "cycle": ":15 offset, RTH",
-      "note": "Board STILL degraded (upstream_ok:false, discovery_health BREAKOUT/PIN disabled) -- confirmed as_of advanced fresh (18:16:04Z) so this is a genuinely failing live build, not a stale cache; sustained across at least 2 consecutive cycles now (18:08Z, 18:16Z), longer than the prior 2 instances today. Likely the same root cause a parallel session already investigated this session (UW rate-limiter contention from audit backtests, logged baec36fb5 as self-healed/no code regression) resurfacing -- not opening a fresh investigation since that diagnosis already exists and nothing here contradicts it. /record still fully intact (CMPS/SMCI/SNDK closed correctly, TEM still open). Watching for recovery next cycle."
-    },
-    "2026-09-17T18:38Z": {
-      "cycle": ":30 offset, RTH",
-      "note": "Board STILL degraded -- now 3 consecutive checks in a row (18:08Z, 18:16Z, 18:38Z), ~30 min sustained, fresh as_of each time (not a stale cache). Real member impact now: TEM is a live open 0DTE position and the board currently shows ZERO live visibility into it (empty setups/ledger) -- a member checking their position right now sees nothing. /record confirms TEM is still genuinely open (no exit stamped) so this is display/discovery-layer only, not a lost position, but 30+ min of blind live P&L during RTH on an open position is real member impact, not just an audit inconvenience. Escalating on PR #4076 given the duration now clearly exceeds every prior instance today."
-    },
-    "2026-09-17T18:46Z": {
-      "cycle": ":45 offset, RTH",
-      "note": "Board still degraded -- now ~38 min sustained (18:08Z-18:46Z, 4 consecutive checks). /record confirms TEM still genuinely open (no exit stamped, no new commits since degradation began) -- consistent with discovery/board-build being paused/failing rather than the underlying exit engine or DB being affected. Already escalated on PR #4076 last cycle; not re-posting every cycle, just tracking. Will flag again if it crosses 1hr or if TEM data itself shows any sign of staleness/corruption beyond the display layer."
-    },
-    "2026-09-17T19:08Z": {
-      "cycle": ":00 offset, RTH",
-      "note": "Board RECOVERED (upstream_ok:true, fresh as_of 19:00:32Z) after ~50min degradation (18:08Z-~19:00Z) -- longest instance today, resolved. TEM finally closed via thesis_break at -25.95% (peak was +14.3%, never armed a floor -- same shape as the other 3 todays plays). All 4 todays plays now CLOSED: TEM/SMCI/CMPS thesis_break, SNDK stopped. Session net for the day across all 4: roughly -32% avg (not weighted by size). Swings lane also confirmed this incident closed independently (30c00c631) -- cross-lane corroboration."
-    },
-    "2026-09-17T19:16Z": {
-      "cycle": ":15 offset, RTH",
-      "note": "Board stable/healthy. No new commits, all 4 todays plays remain closed and correctly labeled. Quiet cycle, no positions to watch."
-    },
-    "2026-09-17T19:38Z": {
-      "cycle": ":30 offset, RTH",
-      "note": "Board healthy, quiet. No new commits, all 4 todays plays remain closed. Scanned pool down to 6 (late-session thinning, expected)."
-    },
-    "2026-09-17T19:46Z": {
-      "cycle": ":45 offset, RTH",
-      "note": "No new commits. Used the quiet stretch for an aggressive-mode dig: all 3 of todays thesis_break exits (TEM/SMCI/CMPS) share an identical shape -- real double-digit peaks (11.8-14.3%) clustered just under range regimes +15% first-tranche trigger, zero protection armed, then a later thesis_break veto gave back the whole peak plus more (38-40pp round trips). 3/3 same-day clears the naming threshold but is single-session evidence -- documented as a scoped research question (not a fix) in docs/audit/0DTE-RESEARCH.md via PR #5156, mirroring the existing trend-regime dead-zone items caution. No gate changed."
-    },
-    "2026-09-17T19:56Z": {
-      "note": "PR #5156 (range-regime sub-15% peak dead zone research note) merged and verified live on origin/main (1c9e3fb63)."
-    },
-    "2026-09-17T20:16Z": {
-      "cycle": ":15 offset, session CLOSED",
-      "note": "Session closed for the day, board quiet as expected. Checked PR #4076 for any response to todays escalations (board-degradation, range-regime dead-zone) -- thread is very large (30+ pages), spot-checked recent pages, no reply specific to todays comments found yet (not unusual, thread covers many lanes). Not spending further budget paging through it since both todays escalations were self-closed-loop (raised + later confirmed resolved by me). Nothing else actionable with the market closed."
-    },
-    "2026-09-17T20:38Z": {
-      "cycle": ":30 offset, session CLOSED",
-      "note": "Session closed, unchanged. Nothing to report."
-    },
-    "2026-09-17T20:51:19Z": {
-      "session_state": "post-close, market closed",
-      "activity": "Aggressive-mode research-archaeology cycle: caught and corrected a stale open_findings entry (2026-09-10-qqq-stale-entry-premium) before it perpetuated -- CLAUDE.md's own staleness-trap warning ('a fresh session must verify against main... never trust a shipped-so-far list at face value') applied directly to my own journal, not just this file's operator-mandate section. Cross-checked plan.ts's resolveLedgerEntryPremium current code + its board.test.ts regression tests against the finding's own root-cause files and PR #4786's (2026-09-11) commit message, plus the earlier 2026-08-27 PR #2986 finding in FINDINGS.md, and confirmed all 7 backtested near-instant catastrophic-stop instances are pre-fix historical DB artifacts, not an ongoing gap -- the STOP_TRIGGER_PCT=50% ceiling now mathematically closes the entire dead zone (verified via the exact numeric boundary test: mark 50.00% below caps, 49.99% below doesn't). Closed the finding out as MERGED/FIXED. No new code change needed -- this was a bookkeeping correction, not a bug fix.",
-      "findings_this_cycle": "0 new -- 1 stale finding reconciled and closed"
-    },
-    "2026-09-17T21:00:19Z": {
-      "session_state": "post-close, market closed",
-      "activity": "Picked up the 2026-09-11 cross-lane handoff from Legacy (0dte-rr-preentry-display-rounding-boundary): PlayTerminal.tsx's ZeroDtePreEntryContext shared deterministic-edition.ts's already-fixed rr.toFixed(1)-vs-raw-threshold display bug. Root-causing further (not just applying the named fix blindly) found the handoff's named line is currently unreachable for 0DTE horizon (commandSinglePanel routes ZERO_DTE straight to ZeroDteCommandPanel) -- grepped every rrRatio call site and found the REAL live 0DTE instance plus 2 more of the same shape, 5 total. Fixed all 5 with the proven floor-based pattern from PR #4813, added 3 regression tests (RED->GREEN via git stash), full command-deck suite 431/431, tsc clean. Opened PR #5157 (draft), subscribed to activity.",
-      "findings_this_cycle": "1 fixed (5 call sites, 1 root cause) -- PR #5157 open"
-    },
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
       "activity": "13:00 UTC offset trigger. Board pulled: upstream_ok true, as_of fresh (13:09:16Z), setups=[] ledger=[] (session hasn't opened yet, nothing forensic to read). Overnight check: no changes to my own open_findings or journal since the 21:10Z close-out yesterday (PR #5157 verified merged). Confirmed via git log that the overnight activity on main was entirely the Swings lane (PRs #5191-5201, promotion ladder / trim-label / roll-narrative / daily-digest work) -- not my surface, correctly left untouched. PR #4076 collaboration thread checked: no new comments since my own 18:38-19:08 UTC posts yesterday (board-degradation escalation + resolution), no Cursor response. Aggressive-mode note: did not force a low-value re-run of a research backtest against an empty pre-market board -- real forensic/upside-hunting work resumes once today's session produces actual WATCH/OPEN plays after the 13:30 UTC open.",
@@ -435,6 +260,10 @@
     "2026-09-21T19:47:00Z": {
       "session_state": "POST_COMMIT (heat_pct 70, 'No new 0DTE commits after 3:30 PM ET -- managing open risk to the 3:50 PM hard exit')",
       "activity": "Session transitioned to POST_COMMIT right on schedule. MRNA deepened slightly further to -26.1%, LUNR steady at +36.76% -- both will be forced out by the 3:50 PM ET hard exit in ~5 min, nothing to act on before then. governor shows session_pnl_pct +44.67% (a strong day overall) and a would_halt informational note (6 realized losers today vs a 5-loss cap, referencing a historical SEV-3 audit item in its own message text) -- halted:false, this is correctly just informational since no new commits are possible anyway in POST_COMMIT, not an active halt. Coherent, expected end-of-session behavior. PR queue clean."
+    },
+    "2026-09-21T20:12:00Z": {
+      "session_state": "CLOSED -- final tick, MRNA closed via time_stop at -27.88%, LUNR settled +36.76%",
+      "activity": "MRNA's final exit: closed_reason 'time_stop' at -27.88% -- the 3:50 PM ET hard exit took it, exactly as expected. Confirms the whole arc was coherent end to end: the engine correctly never found thesis-break grounds (only ever 1 oppose, no veto) so it correctly held to the session's own hard boundary rather than inventing an early exit signal that wasn't there. LUNR settled its day at +36.76% (peak 44.85%), floor-protected throughout. Session governor: +53.55% session_pnl_pct, 7 realized losers (the recurring informational note referencing a historical SEV-3 finding is unchanged/pre-existing, not new). PR queue clean at close."
     }
   },
   "sessions": {
@@ -758,5 +587,26 @@
   },
   "2026-09-18T20:09:00Z_session_closed_summary": {
     "note": "SESSION CLOSED 2026-09-18 (session.heat.state=CLOSED, ~20:07 UTC). Full-day summary: 7 plays committed, all closed. 3 winners / 2 losers / 2 near-flat scratches: QBTS short flat_theta_bleed 0% (score 97), MARA long ratchet +9.52% (96), RKLB short ratchet +6.82% (84), IONQ short thesis_break -20% (84), PL short flat_theta_bleed -1.04% (83), RDW short thesis_break +5.26% (79, a POSITIVE thesis-break exit -- risk system protecting a gain, not just cutting a loss), TSLA short thesis_break -36.39% (78). Session pnl -34.79%, 2 realized losers, governor never halted. Every exit mechanism checked was coherent: flat_theta_bleed narratives correctly matched real trough data (confirming yesterday's PR #5139 fix), trim_scale_dead_zone_floor correctly locked in two winners off retraced peaks, thesis_break fired on real structural/Cortex evidence each time. No exit-engine bugs found across all 7 plays. Two board-upstream degradations today (~16:09-16:16 UTC ~7min, ~19:08-19:17 UTC ~9min) -- both self-resolved, /record confirmed correct throughout both, matches the established recurring pattern (6th+ instance overall). One board/record propagation-lag instance (QBTS, ~15:08-15:15 UTC, ~7-10min self-correction) -- confirmed as the 5th instance of the standing tracked finding, journal updated with the cache-latency-vs-real-lag discipline it established (verify as_of genuinely advances before calling a stale read a new instance). PRs shipped today: #5157 (R:R display rounding, 5 call sites) and #5207 (top_block_code stale-cumulative-tally fix) -- both merged and verified on main. No open findings requiring next-session follow-up beyond the standing propagation-lag watch (still holding, no code fix -- needs DB/CloudWatch access this sandbox lacks) and the score_floor/confluence_floor entry-timing research thread (owned by a separate session, tracked on PR #4076, not this session's to advance). Tomorrow: continue standing mandate, resume forensic cycles at market open."
+  },
+  "2026-09-21T20:12:00Z_session_closed_summary": {
+    "headline": "Strong day: session_pnl_pct +53.55%, 1 genuine live-trading bug found+fixed+merged (PR #5366), lock-tier floor math validated live, 1 tracked pattern at 2 instances (below escalation), 4 board-degradation self-heals",
+    "shipped": [
+      "PR #5366 (merged 28911d54e): resolveExitMark's reason allowlist was missing 'trim_scale_dead_zone_floor', so the trend dead-zone floor's own protection promise silently never applied to the persisted exit mark/pnl_pct. Found live on today's real TSLA trade (floor promised +12.31%, persisted at +9.33%), reproduced byte-identical in a standalone script BEFORE touching code, root-caused to a one-line gap (the sibling categorizeExitReason function had the correct special-case, resolveExitMark did not), fixed, regression test added (RED->GREEN via git stash: 95/96->96/96), full exit-engine+exit-sync+board suite 245/245, two independent full-repo runs (15122/15125 and 15123/15126, 0 fail both) on the merged state, CI green (verify+CodeQL+Analyze). Confirms this session's forensic OPEN-stage story-reading (not just gate-verdict checking) is what caught a real live-trading-path bug the previous day's session missed."
+    ],
+    "validated_live": [
+      "DOCN's standard ratchet_early_profit_floor exit (exit_mark_honored:true, floor won over raw print) -- confirms PR #5366's fix was correctly scoped, the other floor families were never broken.",
+      "QCOM's peak (53.76%) correctly crossed the +50% lock tier and floor_pnl_pct (21.5%) matches round2(peak*0.4) exactly -- but the REAL exit was a thesis_break veto at +51.61%, 2.4x better than the floor alone -- correct precedence (thesis > floor) confirmed on a big real winner.",
+      "MU and MRNA's full life cycles (both entered with the identical gex-walls momentum-vs-mean-reversion oppose text, both drew down materially, both correctly held with no rule firing until a flat-timeout/hard-stop respectively caught them) -- system behaved coherently on both, no bug, but flagged as a 2-instance pattern worth a 3rd data point before any research/escalation."
+    ],
+    "open_tracking": [
+      "ENHANCEMENT IDEA (not implemented, needs a real backtest before any threshold change): the [20%,50%) 'arm' tier's flat 0% floor may have the same shape of problem the 2026-09-14 lock-tier fix (n=9, scaled floor beat flat floor on every case) already solved one level up -- LUNR (peak 44.85%->27.94% at the time) and QCOM (peak 43.55%->28.6% before eventually crossing into the lock tier) both showed large arm-tier giveback today. Candidate for a dedicated backtest, same methodology as the lock-tier fix's own evidence gathering.",
+      "gex-walls momentum-vs-mean-reversion oppose pattern (MU, MRNA) -- 2 instances, below the 3-instance bar, watching for a 3rd before connecting to the existing cortex-oppose-magnitude-ab.mjs research area.",
+      "board upstream_ok:false self-healing degradation -- 4th instance today (~4min recovery, no data loss), same established pattern from prior sessions, still no CloudWatch/DB access from this sandbox to root-cause the upstream side."
+    ],
+    "methodology_notes": [
+      "Caught and self-corrected a false alarm mid-session: a `tail -12` in my own polling script truncated the ledger dump once it grew past 11 rows, making a real position (LUNR) look like it had vanished -- verified against /record before concluding anything, per the standing discipline this journal itself teaches. Fixed by removing the truncation for full-ledger checks going forward.",
+      "Working-tree discipline during the PR #5366 fix: used a separate git worktree to write journal entries to main while a background npm test run was in flight in the primary worktree, avoiding a repeat of an earlier incident (documented in this session's transcript) where switching branches mid-test-run risked corrupting the in-flight results.",
+      "Auto-generated coordination-state drift (.blackout-agent/*, data/x-intel/*rotation.json) recurred multiple times mid-session from a background process outside this lane's control; one attempt to sync it to main was blocked by the permission classifier ('Modify Shared Resources') -- did not retry the blocked action, reverted locally instead to keep the working tree clean without fighting the block."
+    ]
   }
 }
