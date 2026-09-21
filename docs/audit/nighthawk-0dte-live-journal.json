@@ -391,6 +391,10 @@
     "2026-09-21T16:10:00Z": {
       "session_state": "RTH, 4 open (LUNR HOLD +33.82%, QCOM TRIM +11.83%, MU HOLD -32.79%, APP OPEN 0%) + 4 closed",
       "activity": "MU flagged for WATCH -- large drawdown to -32.79% (peak only +5.3%, never armed any floor -- trend regime first tranche is +40%, so this is expected null floor, not a bug). Checked entry quality per the mandate's 'did a promoted LOSER have a genuinely strong entry' cross-check: net Cortex score +0.3 at commit (3 supports -- flow-quality/sector-heat/vex-charm -- vs 1 oppose, gex-walls flagging 'momentum-style long in a long-gamma mean-reversion tape', weight 0.6), decision PASS, score_max 80. This reads as a genuinely-supported entry that adverse price action moved against, not a thin/bad entry slipping through -- only 1 oppose item exists, below the 2-item thesis-break cluster threshold, so no rule has fired to exit yet (correct per the engine's own precedence: stop/thesis-break/timeout only, no discretionary cut). Single instance, not a pattern -- watching for next cycle: does it hit its plan stop, thesis-break on a second oppose, or recover. PR queue clean (swing PR #5367 from earlier cycles already merged)."
+    },
+    "2026-09-21T16:17:00Z": {
+      "session_state": "RTH, 2 open (LUNR HOLD +36.76%, QCOM TRIM +15.05%) + 6 closed",
+      "activity": "Closing the loop on last cycle's MU watch item: closed via flat_theta_bleed at -7.31%, with the narrative correctly describing the FULL journey -- 'dipped to -41.99% intraday but recovered back inside the \u00b110% band' -- confirming the trough-narrative fix (PR #5139) keeps working correctly even on a dramatic real case (a -42% trough followed by a 25-min timeout at -7.31%). Not a bug, clean resolution. APP also closed this cycle via thesis_break at +3.36% -- a Cortex VETO fired (gex-walls: long path crosses a dominant call wall within 0.5x expected move), correctly exiting a small winner before riding into resistance -- coherent, unconditional thesis-break rule doing its job. LUNR/QCOM continue healthy, floor-protected. No new findings. PR queue clean (Dependabot only)."
     }
   },
   "sessions": {
