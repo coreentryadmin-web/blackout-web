@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T15:50:24Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto several other-lane commits (0DTE zerodte-deadzone-floor fix #5366 + journals) -- not swing-lane, no action needed. Found new sibling PR #5367 (same parallel session), again using AAPL SWING:AAPL:40 as its live repro -- fixes thesisHealthSection's all-or-nothing pillar hiding: thesisHealthUncalibrated() correctly ORs across 5 pillars, but the panel discarded ALL pillars (including genuinely-calibrated ones like persistence/entry_geometry, live-derived since #5336) whenever just ONE (flow_corroboration, honestly empty for SECTOR_ROTATION-archetype or confluence-unenforced commits) was fake. New calibratedThesisPillars() filters per-pillar instead of per-panel; aggregate % correctly stays withheld in both branches (still the real Largo C6 guard). Independently re-verified: **re-fetched AAPL #40's live brief against production first** -- confirmed the all-hidden bug is still live/unpatched right now. Then full worktree verification: branch forked before #5366 (no real conflict, confirmed via throwaway merge test), diff matches write-up exactly, GREEN baseline 115/115, targeted revert isolated to just the play-brief.ts call site (thesis-health.ts's own calibratedThesisPillars test still passed unreverted, correctly isolating the regression to the right layer) confirmed RED (1 test failed), restored GREEN, tsc clean, full swing suite 1444/1444 clean. Posted confirming comment (5763349438) -- CARVE-OUT auto-merge should take it from here. Checked #4076: still no new activity.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-21T16:04:16Z",
+  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5367 (merged, confirmed via log). No new open swing PRs, no new #4076 activity. Re-checked AAPL #40's thesis-health section post-#5367-merge -- still shows the old all-hidden message, deploy hasn't rolled out yet (ECR/ECS lag, expected -- will re-check next cycle, not a concern). Fresh Ask Largo audit on BLSH #1179 (banger, second concurrent BLSH position not yet checked this session) -- clean, no bugs, math all correct (entry $0.82/mark $1.16 -> +41.5% P&L, peak +79.9%/trough +12.2% consistent, stop $0.33/target $1.64 correctly derived). Correctly disclosed 'Other concurrent position(s)' -- BLSH carries 2 live positions, this brief covers one, names the other's own entry/P&L. Nice incidental confirmation: capturePct here is ~52% (41.5/79.9), well under both the 75%/80% floors -- exactly the condition PR #5362 (giveback duplication, merged 2 cycles ago) was built to fix. Confirmed LIVE and working: actionNarrative's own line correctly states 'Gave back 48% of peak' while the Live-read bullet correctly does NOT repeat it (old buggy code would have duplicated it, since 52 < 80). Nothing new found -- clean cycle.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -117,14 +117,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T15:50:24Z",
-    "swing_prs": [
-      {
-        "number": 5367,
-        "title": "fix(swing): show real thesis-health pillars instead of hiding the whole panel when only one is uncalibrated",
-        "status": "open, non-draft, sibling session, independently verified (live-repro re-confirmed against production + RED->GREEN worktree, comment 5763349438), CI pending / CARVE-OUT auto-merge expected"
-      }
-    ]
+    "as_of": "2026-09-21T16:04:16Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
