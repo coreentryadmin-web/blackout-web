@@ -3,7 +3,7 @@
  * Surfaces chart technicals, flow, GEX nodes, catalysts, watch levels, and hold plan.
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
-import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -527,20 +527,20 @@ export function chartTechnicalsSection(
     if (bucket === "closed") lines.unshift(closedDisclosure);
     return { title: "Chart technicals", body: lines.join("\n"), bias: "neutral" };
   }
-  if (vec.spot != null) lines.push(`Spot: **${vec.spot.toFixed(2)}**`);
+  if (vec.spot != null) lines.push(`Spot: **${fmtPriceLevel(vec.spot)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
   if (t?.vwap != null) {
     const side = vec.spot != null && vec.spot >= t.vwap ? "above" : "below";
-    lines.push(`VWAP **${t.vwap.toFixed(2)}** — price ${side} session VWAP`);
+    lines.push(`VWAP **${fmtPriceLevel(t.vwap)}** — price ${side} session VWAP`);
   }
   if (t?.rsi != null) lines.push(`RSI: **${t.rsi.toFixed(0)}**`);
   if (t?.macd) lines.push(`MACD: **${t.macd}**`);
   if (t?.goldenPocket) {
-    lines.push(`Golden pocket: **${t.goldenPocket.low.toFixed(2)}–${t.goldenPocket.high.toFixed(2)}**`);
+    lines.push(`Golden pocket: **${fmtPriceLevel(t.goldenPocket.low)}–${fmtPriceLevel(t.goldenPocket.high)}**`);
   }
   if (t?.structure) {
     lines.push(
-      `Structure: **${t.structure.type}** ${t.structure.direction} @ **${t.structure.level.toFixed(2)}**`,
+      `Structure: **${t.structure.type}** ${t.structure.direction} @ **${fmtPriceLevel(t.structure.level)}**`,
     );
   }
   // "Vector regime" is a DEALER GAMMA posture (long-gamma/short-gamma), not a directional call —
@@ -584,7 +584,7 @@ function formatConfluenceZone(
 ): string {
   const kinds = confluenceZoneKindsLabel(z, primary);
   const dist = spot != null ? ` · ${fmtDist(spot, z.center)}` : "";
-  return `• **${z.center.toFixed(2)}** (${kinds}, score ${z.score.toFixed(1)})${dist}`;
+  return `• **${fmtPriceLevel(z.center)}** (${kinds}, score ${z.score.toFixed(1)})${dist}`;
 }
 
 /**
@@ -665,24 +665,24 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const kingFromStaleGex = vecKingForLevels == null && gex?.gex_king_strike != null && gexStaleForLevels;
 
   if (callWall != null && !callWallFromStaleGex) {
-    lines.push(`**Call wall (GEX):** ${callWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, callWall)}` : ""}`);
+    lines.push(`**Call wall (GEX):** ${fmtPriceLevel(callWall)}${spot != null ? ` — ${fmtDist(spot, callWall)}` : ""}`);
   }
   if (putWall != null && !putWallFromStaleGex) {
-    lines.push(`**Put wall (GEX):** ${putWall.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, putWall)}` : ""}`);
+    lines.push(`**Put wall (GEX):** ${fmtPriceLevel(putWall)}${spot != null ? ` — ${fmtDist(spot, putWall)}` : ""}`);
   }
   if (flip != null && !flipFromStaleGex) {
-    lines.push(`**Gamma flip:** ${flip.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, flip)}` : ""}`);
+    lines.push(`**Gamma flip:** ${fmtPriceLevel(flip)}${spot != null ? ` — ${fmtDist(spot, flip)}` : ""}`);
   }
   if (king != null && !kingFromStaleGex) {
-    lines.push(`GEX king strike: **${king.toFixed(2)}**`);
+    lines.push(`GEX king strike: **${fmtPriceLevel(king)}**`);
   }
   if (vec?.maxPain != null && !vectorStaleForLevels) {
-    lines.push(`Max pain: **${vec.maxPain.toFixed(2)}**`);
+    lines.push(`Max pain: **${fmtPriceLevel(vec.maxPain)}**`);
   }
   if (vec?.expectedMove?.bands?.length && !vectorStaleForLevels) {
     const bandStr = vec.expectedMove.bands
       .slice(0, 2)
-      .map((b) => `${b.sigma}σ ${b.low.toFixed(2)}–${b.high.toFixed(2)}`)
+      .map((b) => `${b.sigma}σ ${fmtPriceLevel(b.low)}–${fmtPriceLevel(b.high)}`)
       .join(" · ");
     lines.push(`Expected move: **${bandStr}**`);
   }
@@ -712,7 +712,7 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
       "**Dark pool levels:** " +
         dp
           .slice(0, 3)
-          .map((l) => `${l.strike.toFixed(2)} (${l.premium != null ? fmtPremium(l.premium) : "—"})`)
+          .map((l) => `${fmtPriceLevel(l.strike)} (${l.premium != null ? fmtPremium(l.premium) : "—"})`)
           .join(" · "),
     );
   }
@@ -730,7 +730,7 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   // of bug this file's own "Nearest wall" dedup comment (above) warns against.
   if (vec?.magnet?.strike != null && !vectorStaleForLevels && statusBucket(ctx.play) === "closed") {
     lines.push(
-      `**Gamma magnet:** ${vec.magnet.strike.toFixed(2)}${spot != null ? ` — ${fmtDist(spot, vec.magnet.strike)}` : ""}`,
+      `**Gamma magnet:** ${fmtPriceLevel(vec.magnet.strike)}${spot != null ? ` — ${fmtDist(spot, vec.magnet.strike)}` : ""}`,
     );
   }
   if (!lines.length) return null;
@@ -836,7 +836,7 @@ export function flowIntelSection(
         // unformatted print renders inconsistently against every other level in the same brief
         // (e.g. "232.5" here vs "232.50" two lines up) — a precision-contract violation (C9:
         // "rounding happens exactly once, at the presentation boundary", not inconsistently).
-        const strikeLabel = typeof p.strike === "number" && Number.isFinite(p.strike) ? p.strike.toFixed(2) : "—";
+        const strikeLabel = typeof p.strike === "number" && Number.isFinite(p.strike) ? fmtPriceLevel(p.strike) : "—";
         return `• ${p.option_type ?? "—"} ${strikeLabel} ${prem}${gex}${agePart}`;
       })
       .join("\n");
@@ -1001,7 +1001,7 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     // this is a single scalar with no count worth preserving, so the second copy is dropped rather
     // than replaced with a pointer.
     if (play.flagUnderlyingPx != null) {
-      lines.push(`Flag anchor: **${play.flagUnderlyingPx.toFixed(2)}** — track move from here`);
+      lines.push(`Flag anchor: **${fmtPriceLevel(play.flagUnderlyingPx)}** — track move from here`);
     }
     // Distinct from the flag anchor above (pinned, historical): this is the CURRENT level a
     // break/reclaim of actually flips entry geometry from PRE_TRIGGER/FORMING to AT_TRIGGER/
@@ -1012,8 +1012,8 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       const deadReason = entryTriggerDeadReason(play);
       lines.push(
         deadReason
-          ? `Entry trigger: **${play.entryTriggerUnderlyingPx.toFixed(2)}** — ${verb}, but ${deadReason}`
-          : `Entry trigger: **${play.entryTriggerUnderlyingPx.toFixed(2)}** — ${verb} this is what actually fires the setup`,
+          ? `Entry trigger: **${fmtPriceLevel(play.entryTriggerUnderlyingPx)}** — ${verb}, but ${deadReason}`
+          : `Entry trigger: **${fmtPriceLevel(play.entryTriggerUnderlyingPx)}** — ${verb} this is what actually fires the setup`,
       );
     }
   }
@@ -1057,14 +1057,14 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     const spotAboveFlip = spot > flip;
     const watch =
       bucket === "closed"
-        ? `Now trades **${spot.toFixed(2)}** vs gamma flip **${flip.toFixed(2)}** — where the dealer regime sits since this play closed`
+        ? `Now trades **${fmtPriceLevel(spot)}** vs gamma flip **${fmtPriceLevel(flip)}** — where the dealer regime sits since this play closed`
         : play.direction === "LONG"
           ? spotAboveFlip
-            ? `Lose gamma flip **${flip.toFixed(2)}** — dealer posture turns against longs`
-            : `Reclaim gamma flip **${flip.toFixed(2)}** — needed to restore dealer support for longs`
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}** — dealer posture turns against longs`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}** — needed to restore dealer support for longs`
           : spotAboveFlip
-            ? `Lose gamma flip **${flip.toFixed(2)}** — needed to confirm the short thesis`
-            : `Reclaim gamma flip **${flip.toFixed(2)}** — invalidates short thesis`;
+            ? `Lose gamma flip **${fmtPriceLevel(flip)}** — needed to confirm the short thesis`
+            : `Reclaim gamma flip **${fmtPriceLevel(flip)}** — invalidates short thesis`;
     lines.push(watch);
   }
 
@@ -1076,10 +1076,10 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   const putWallFromStaleGex = vecPutWall == null && gexForLevels?.put_wall != null && gexStaleForLevels;
   const callWallFromStaleGex = vecCallWall == null && gexForLevels?.call_wall != null && gexStaleForLevels;
   if (play.direction === "LONG" && putWall != null && !putWallFromStaleGex) {
-    lines.push(`Structural support node: put wall **${putWall.toFixed(2)}**`);
+    lines.push(`Structural support node: put wall **${fmtPriceLevel(putWall)}**`);
   }
   if (play.direction === "SHORT" && callWall != null && !callWallFromStaleGex) {
-    lines.push(`Structural resistance node: call wall **${callWall.toFixed(2)}**`);
+    lines.push(`Structural resistance node: call wall **${fmtPriceLevel(callWall)}**`);
   }
 
   if (bucket === "open" && play.exitPolicy?.stop_premium != null) {
@@ -1688,7 +1688,7 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
       : null;
   if (!stale && nearest != null) {
     lines.push(
-      `Nearest wall: **${nearest.strike.toFixed(2)}** (${nearest.kind}, ${nearest.distance_pts.toFixed(1)} pts from spot **${preferred.spot!.toFixed(2)}**)`,
+      `Nearest wall: **${fmtPriceLevel(nearest.strike)}** (${nearest.kind}, ${nearest.distance_pts.toFixed(1)} pts from spot **${fmtPriceLevel(preferred.spot!)}**)`,
     );
   }
   if (!stale && gex.change_pct != null) lines.push(`Underlying session: **${fmtPct(gex.change_pct)}**`);
@@ -1717,7 +1717,7 @@ export function wallDynamicsSection(
   const lines = events
     .slice(0, 5)
     .map((e) => {
-      const at = e.strike != null ? ` @ ${e.strike.toFixed(2)}` : e.flip != null ? ` @ flip ${e.flip.toFixed(2)}` : "";
+      const at = e.strike != null ? ` @ ${fmtPriceLevel(e.strike)}` : e.flip != null ? ` @ flip ${fmtPriceLevel(e.flip)}` : "";
       return `• **${e.kind.replace(/_/g, " ")}**${at} — ${e.message}`;
     });
   if (bucket === "closed") {

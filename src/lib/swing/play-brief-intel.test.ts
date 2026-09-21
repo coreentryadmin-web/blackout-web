@@ -2542,6 +2542,30 @@ test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (
   assert.equal(section, null, "stale Vector-only levels must not render a section");
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — sweep of the play-brief-narrative.ts
+// toFixed-vs-roundFloats rounding-mismatch fix (#5380) into this file's own price-level lines).
+// Same live-repro shape as fmt-money.test.ts's fmtPriceLevel suite: 152.035's raw IEEE-754 storage
+// rounds DOWN with plain toFixed(2) ("152.03") but UP with roundFloats' own Math.round(n*100)/100
+// algorithm ("152.04") — and the SAME raw max-pain level is also exposed as a plain number in
+// envelope.levels (the response's roundFloats()'d "max pain" entry), so a line built with plain
+// toFixed(2) could silently disagree with the rest of the response.
+test("chartLevelsSection: max pain matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ spot: 100, maxPain: 152.035 }),
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Max pain: \*\*152\.04\*\*/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
+  assert.doesNotMatch(section!.body, /152\.03/);
+});
+
 // FINDING (Ask Largo standing mandate, 2026-09-15): fmtDist passed a SIGNED delta straight into
 // fmtOptionUsd, whose own doc comment says it is "never signed" — negatives already carry a minus
 // from `.toFixed(2)`, so prepending "$" produced "$-19.48" instead of "-$19.48" for every level
