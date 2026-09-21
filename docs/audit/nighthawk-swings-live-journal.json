@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T19:35:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5377 (my own, auto-merged via CARVE-OUT at 19:23:49 -- confirmed via pull_request_read: merged:true, merged_by coreentryadmin-web) + #5378 (mechanical findings-fold for #5375, docs-only). Unsubscribed from #5377 PR activity now that it's merged. No new open swing PRs (both #5376 and #5377 cleared this cycle), no new #4076 activity. Fresh Ask Largo audit on GLXY #1212 (banger, SCALING_OUT/TAKE_PARTIAL, not yet checked this session) -- clean, no bugs. Math hand-verified: blended P&L (50% banked @ +100% + 50% open runner @ +93.5%) = 96.75%, matches displayed 96.8% exactly. Capture ratio 93.5/116.7=80.1% (>75% threshold) correctly suppresses the giveback line -- no false positive/negative. Premium stop/target rail percentages hand-verified correct (79% cushion, 3% to target). Thesis health showing #5367's fix working (aggregate withheld, 5 real calibrated pillars). Book context correctly used the positionId-known branch (excludePositionId, GLXY's own row excluded from its 33-position crypto-equity theme concentration list) -- confirms PR #5376's fix (which only touched the WATCH/no-positionId branch) left this already-correct branch untouched, as its own write-up claimed. Meridian catalysts honestly labeled stale (~382s old) alongside its content, consistent with the Largo contract's freshness point -- not a contradiction. Nothing new found -- clean, quiet cycle after an active stretch (2 sibling PRs both merged).",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-21T20:05:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries + a heartbeat/state snapshot chore. No new #4076 activity, no new sibling swing PRs. Fresh Ask Largo audit on SPCX #1135 (banger, MANAGING/HOLD) surfaced a genuine, well-evidenced bug: narrative text read 'Spot **152.03**' while the SAME response's envelope.levels/structureLadder both carried the number 152.04 for the identical raw spot value -- traced to play-brief-narrative.ts's price-level narrations (spot/wall/flip/pin, 18 call sites) using plain n.toFixed(2) while envelope.levels/structureLadder go through the route's roundFloats() (Math.round(n*100)/100) at the response boundary -- two different rounding algorithms that can disagree by a cent at an IEEE-754 half-cent boundary. This is the THIRD occurrence of the exact bug class fmtOptionUsd's own header already documents twice (sign defect 2026-09-09/11, rounding mismatch 2026-09-12, AAPL #37) -- that fix only covered $-prefixed dollar amounts, never the separate bare price-level narrations. Self-fixed via CARVE-OUT: added fmtPriceLevel (fmt-money.ts, mirrors fmtOptionUsd minus the $ prefix) and converted all 18 call sites in play-brief-narrative.ts. Disclosed, NOT fixed here (to keep the PR single-issue): the same pattern also exists in play-brief.ts/play-brief-diff.ts/play-brief-intel.ts/play-brief-ladder.ts/play-brief-narrative-coaching.ts (~45 more call sites) -- flagged as a fast follow-up, tracked here so it isn't lost. RED->GREEN proven via git stash on the two implementation files only (5/116 fail pre-fix, exactly the new tests; 116/116 post-fix), tsc clean, full swing suite + fmt-money 1468/1468 clean. PR #5380 opened+undrafted, subscribed -- CARVE-OUT auto-merge expected.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-21-narrative-price-level-rounding-mismatch"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -86,7 +88,8 @@
     {
       "topic": "AAPL #37 (STANDARD sub-lane, dte=0 today) -- manage-engine expiry_risk GATE (priority #3, EXIT, manage.ts:335-337, expiryRiskDte=2 for STANDARD) not yet reflected in pinned manageAction/manageReason (still TAKE_PARTIAL/rel_strength_loss as of 09:24 ET pre-market)",
       "status": "SUPERSEDED 2026-09-21T13:35Z -- #37 closed at/around today's RTH open before a second manage-tick could be observed, so the original expiry_risk-priority question is unresolved/moot on this specific instance. But trying to pull #37's closed brief for the record surfaced a much bigger, confirmed bug instead: pickLanePlayForBrief's single-row shortcut silently returns the WRONG (new #40) position's live data for ANY positionId/status request once a ticker has exactly one current row. Posted to #4076 (comment 5761378030) with full root-cause trace. This experiment entry is closed; track the new finding instead."
-    }
+    },
+    "FOLLOW-UP (2026-09-21, from PR #5380's own disclosed blast radius): sweep the remaining 5 swing play-brief files (play-brief.ts, play-brief-diff.ts, play-brief-intel.ts, play-brief-ladder.ts, play-brief-narrative-coaching.ts) for the same n.toFixed(2)-on-a-price-level pattern PR #5380 fixed in play-brief-narrative.ts, and convert each to the new shared fmtPriceLevel (fmt-money.ts). ~45 call sites, repo-wide grep already run and listed in the PR body. Mechanical, same fix shape, not yet started."
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
     "as_of": "2026-09-10T07:32:00Z",
@@ -117,8 +120,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T19:35:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T20:05:00Z",
+    "swing_prs": [
+      {
+        "number": 5380,
+        "title": "fix(swing): narrative price levels disagreed with envelope.levels by a cent (toFixed vs roundFloats)",
+        "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
