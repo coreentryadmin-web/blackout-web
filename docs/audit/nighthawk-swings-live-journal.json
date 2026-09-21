@@ -1,11 +1,11 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T20:42:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto a coordinator-lane findings-fold commit (#5376/#5377/#5379/#5380 all folded into FINDINGS.md) + a coordinator journal entry. No new #4076 activity, no new open swing PRs at cycle start. Picked up the disclosed follow-up from my own PR #5380 (narrative price-level rounding mismatch) rather than starting fresh discovery -- swept the first and highest-traffic of the 5 remaining files, play-brief-narrative-coaching.ts (feeds the SAME 'Trade manager read' composed narrative via collectCoachingBullets). Fixed 9 price-level toFixed(2) call sites (magnetCoaching, expectedMoveCoaching's 1-sigma band, confluenceCoaching, vexCoaching's 3 vanna levels, flowPrintsCoaching's large-print strike, VWAP/structure-level technicals lines) with the already-shared fmtPriceLevel helper from #5380 -- no new formatter needed. Deliberately left the two macro yield/curve-spread lines untouched (percentages, not price levels, never duplicated in envelope.levels -- converting them would be cosmetic, not a real fix). RED->GREEN proven via git stash on the implementation file only (1/136 fail pre-fix -- exactly the new magnetCoaching regression test at the 152.035 boundary -- 136/136 post-fix), tsc clean, full swing suite 1456/1456 clean. PR #5383 opened+undrafted, subscribed -- CARVE-OUT auto-merge expected. Remaining follow-up (play-brief.ts, play-brief-diff.ts, play-brief-intel.ts, play-brief-ladder.ts) still tracked, not yet started.",
+  "last_updated": "2026-09-21T20:57:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset -- ran across a container restart, background task bn6ahqnhw from very early this session lost/stale, irrelevant, not recreated). ReadNotifications clean post-restart. git sync clean. Confirmed PR #5383 (own, from last cycle) merged -- CI green (verify job success, ~11min runtime), mergeable_state clean, but automerge.yml's own enable-automerge/auto-merge jobs both skipped (matches CLAUDE.md's documented PAT GraphQL-scope gap) -- attempted a direct merge_pull_request call which raced a 405 error, but re-fetching confirmed it was ALREADY merged (merged_by coreentryadmin-web) by the time of the retry -- likely a parallel session or a delayed automerge run won the race. Either way, confirmed merged, unsubscribed. Continued the disclosed price-level-rounding follow-up sweep (3rd of 6 files): play-brief-intel.ts, 18 more toFixed(2)-vs-roundFloats call sites (chartTechnicalsSection, formatConfluenceZone, chartLevelsSection's call/put wall+flip+king+max pain+expected move+dark pool+magnet, HELIX notable-prints strike, watchForSection's flag anchor/entry trigger, the CLOSED-bucket gamma-flip block, gexPostureSection's nearest-wall line, wallDynamicsSection's event label) -- converted to fmtPriceLevel, same shared helper, no new formatter. Left the two macro yield/curve-spread lines untouched (not price levels, not duplicated in envelope.levels, same discipline as the prior 2 PRs). RED->GREEN proven via git stash on the implementation file only (1/183 fail pre-fix -- exactly the new chartLevelsSection max-pain regression test at the 152.035 boundary -- 183/183 post-fix), tsc clean, full swing suite 1457/1457 clean. PR #5384 opened+undrafted, subscribed -- CARVE-OUT auto-merge expected. 3/6 files done; play-brief.ts, play-brief-diff.ts, play-brief-ladder.ts remain.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [
-    "2026-09-21-narrative-coaching-price-level-rounding"
+    "2026-09-21-intel-price-level-rounding"
   ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -89,7 +89,7 @@
       "topic": "AAPL #37 (STANDARD sub-lane, dte=0 today) -- manage-engine expiry_risk GATE (priority #3, EXIT, manage.ts:335-337, expiryRiskDte=2 for STANDARD) not yet reflected in pinned manageAction/manageReason (still TAKE_PARTIAL/rel_strength_loss as of 09:24 ET pre-market)",
       "status": "SUPERSEDED 2026-09-21T13:35Z -- #37 closed at/around today's RTH open before a second manage-tick could be observed, so the original expiry_risk-priority question is unresolved/moot on this specific instance. But trying to pull #37's closed brief for the record surfaced a much bigger, confirmed bug instead: pickLanePlayForBrief's single-row shortcut silently returns the WRONG (new #40) position's live data for ANY positionId/status request once a ticker has exactly one current row. Posted to #4076 (comment 5761378030) with full root-cause trace. This experiment entry is closed; track the new finding instead."
     },
-    "FOLLOW-UP (2026-09-21, from PR #5380's own disclosed blast radius, UPDATED after PR #5383): sweep the remaining 4 swing play-brief files (play-brief.ts, play-brief-diff.ts, play-brief-intel.ts, play-brief-ladder.ts) for the same n.toFixed(2)-on-a-price-level pattern PR #5380 fixed in play-brief-narrative.ts and PR #5383 fixed in play-brief-narrative-coaching.ts, converting each to the shared fmtPriceLevel (fmt-money.ts). 2 of 6 files done. Mechanical, same fix shape, not yet started on the remaining 4."
+    "FOLLOW-UP (2026-09-21, from PR #5380's own disclosed blast radius, UPDATED after PR #5384): sweep the remaining 3 swing play-brief files (play-brief.ts, play-brief-diff.ts, play-brief-ladder.ts) for the same n.toFixed(2)-on-a-price-level pattern already fixed in play-brief-narrative.ts (#5380), play-brief-narrative-coaching.ts (#5383), and play-brief-intel.ts (#5384), converting each to the shared fmtPriceLevel (fmt-money.ts). 3 of 6 files done. Mechanical, same fix shape, not yet started on the remaining 3."
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
     "as_of": "2026-09-10T07:32:00Z",
@@ -120,11 +120,11 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T20:42:00Z",
+    "as_of": "2026-09-21T20:57:00Z",
     "swing_prs": [
       {
-        "number": 5383,
-        "title": "fix(swing): play-brief-narrative-coaching.ts had the same toFixed-vs-roundFloats price-level mismatch as #5380",
+        "number": 5384,
+        "title": "fix(swing): play-brief-intel.ts had the same toFixed-vs-roundFloats price-level mismatch (3rd file, #5380/#5383 sweep)",
         "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected"
       }
     ]
