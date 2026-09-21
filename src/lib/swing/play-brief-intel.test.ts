@@ -824,6 +824,123 @@ test("holdPlanSection: round-tripped-past-breakeven note fires when current pnl 
   assert.match(section!.body, /consider protecting what's left/);
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — third instance of #5362's duplication class,
+// live repro SWING:BLSH:1179): the expandIntel=1 expanded view renders "Hold plan" as its own
+// standalone section alongside "Trade manager read" (the default collapsed view folds it away
+// instead), and actionNarrative (play-brief-narrative.ts) already renders the identical round_trip
+// fact into "Trade manager read" unconditionally whenever giveback.kind==="round_trip" — so this
+// bullet duplicated it on every expanded-view read. Same guard shape as lessonsSection's own
+// roundTripAlreadyNoted for the closed-play sibling.
+test("holdPlanSection: round-trip note suppressed when narrative already stated it (narrativeAlreadyNoted.roundTrip)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 132.7,
+      pnlPct: -10,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const withoutSuppression = holdPlanSection(ctx);
+  assert.match(withoutSuppression!.body, /Round-tripped past breakeven/);
+
+  const suppressed = holdPlanSection(ctx, { roundTrip: true });
+  assert.ok(suppressed, "contract runway line still renders regardless of the round-trip note");
+  assert.doesNotMatch(suppressed!.body, /Round-tripped past breakeven/);
+});
+
+// Same shape, capture branch: live BLSH:1179 repro had capturePct ~52.5% (well under this
+// section's own <70 floor, which is itself a strict subset of actionNarrative's <75 floor), so
+// actionNarrative's "Gave back **47%** of peak" ALWAYS fires before this section's "Gave back
+// **47%** from peak" can, guaranteeing the duplicate whenever this branch is reachable.
+test("holdPlanSection: capture giveback note suppressed when narrative already stated it (narrativeAlreadyNoted.capture)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 132.7,
+      pnlPct: 39.8,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const withoutSuppression = holdPlanSection(ctx);
+  assert.match(withoutSuppression!.body, /Gave back \*\*70%\*\* from peak/);
+
+  const suppressed = holdPlanSection(ctx, { capture: true });
+  assert.ok(suppressed, "contract runway line still renders regardless of the capture note");
+  assert.doesNotMatch(suppressed!.body, /Gave back/i);
+});
+
 test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({

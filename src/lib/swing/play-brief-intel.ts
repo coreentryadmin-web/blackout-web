@@ -1174,7 +1174,10 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
 }
 
 /** Hold plan — time/theta, earnings risk, session stops, thesis-health coaching for open rows. */
-export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null {
+export function holdPlanSection(
+  ctx: SwingPlayBriefContext,
+  narrativeAlreadyNoted?: { roundTrip?: boolean; capture?: boolean },
+): RichSection | null {
   const { play } = ctx;
   if (statusBucket(play) !== "open") return null;
 
@@ -1219,18 +1222,32 @@ export function holdPlanSection(ctx: SwingPlayBriefContext): RichSection | null 
     // captureFloor=70 is the LEAST sensitive of the three call sites — this bullet only renders
     // when thesisHealth is already present (a live open play with a computed thesis read already
     // surfaced above), so a smaller giveback is less likely to be worth a second callout here.
+    //
+    // BUG FIX (2026-09-21, Ask Largo standing mandate — third instance of #5362's duplication
+    // class, live repro SWING:BLSH:1179): this section is only ever independently VISIBLE to a
+    // member in the expandIntel=1 expanded view (the default collapsed view folds it entirely
+    // into "Trade manager read" without restating its content) — but actionNarrative
+    // (play-brief-narrative.ts) already renders the identical round_trip/capture<75 giveback fact
+    // into "Trade manager read" unconditionally, and since this section's own capture<70 floor is
+    // a strict subset of actionNarrative's <75, and round_trip is kind-gated (not threshold-gated)
+    // in both places, this bullet duplicated actionNarrative's fact on every expanded-view read
+    // whenever either branch fired. Same shape as the CLOSED-play sibling lessonsSection's own
+    // roundTripAlreadyNoted/captureAlreadyNoted guards just below in this file — this OPEN-play
+    // path never got the equivalent.
     const giveback = mfeCaptureOutcome(play.pnlPct, play.peak, null);
     if (giveback?.kind === "round_trip") {
-      // NOT "consider trim into strength" — the play has already round-tripped PAST breakeven
-      // into a loss, so there is no strength left to trim into; that phrasing was the exact
-      // self-contradiction fixed in actionNarrative's TRIM branch (FINDINGS 2026-09-10,
-      // "trim-strength-line-vs-round-trip") — this call site independently computes the same
-      // giveback and was missed by that fix's blast-radius check. Matches the wording
-      // play-brief-narrative.ts's SELL branch already uses for the identical fact.
-      lines.push(
-        `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left`,
-      );
-    } else if (giveback?.kind === "capture" && giveback.capturePct < 70) {
+      if (!narrativeAlreadyNoted?.roundTrip) {
+        // NOT "consider trim into strength" — the play has already round-tripped PAST breakeven
+        // into a loss, so there is no strength left to trim into; that phrasing was the exact
+        // self-contradiction fixed in actionNarrative's TRIM branch (FINDINGS 2026-09-10,
+        // "trim-strength-line-vs-round-trip") — this call site independently computes the same
+        // giveback and was missed by that fix's blast-radius check. Matches the wording
+        // play-brief-narrative.ts's SELL branch already uses for the identical fact.
+        lines.push(
+          `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left`,
+        );
+      }
+    } else if (giveback?.kind === "capture" && giveback.capturePct < 70 && !narrativeAlreadyNoted?.capture) {
       lines.push(`Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`);
     }
   }
@@ -1949,7 +1966,14 @@ export function buildIntelSections(
   if (watchFor) out.push(watchFor);
 
   if (bucket === "open") {
-    const hold = safeSection("Hold plan", () => holdPlanSection(ctx));
+    // Same cross-section restatement guard as the closed-bucket lessonsSection below — narrative
+    // is composed above (line ~1883) before this call, so "Trade manager read"'s own
+    // actionNarrative giveback fact is already known here.
+    const roundTripAlreadyNoted = narrative?.body?.includes("Round-tripped past breakeven") ?? false;
+    const captureAlreadyNoted = narrative?.body?.includes("Gave back") ?? false;
+    const hold = safeSection("Hold plan", () =>
+      holdPlanSection(ctx, { roundTrip: roundTripAlreadyNoted, capture: captureAlreadyNoted }),
+    );
     if (hold) out.push(hold);
   }
 
