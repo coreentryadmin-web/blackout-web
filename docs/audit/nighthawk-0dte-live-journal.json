@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-17T20:38Z",
+  "updated_at": "2026-09-21T20:35:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -264,6 +264,12 @@
     "2026-09-21T20:12:00Z": {
       "session_state": "CLOSED -- final tick, MRNA closed via time_stop at -27.88%, LUNR settled +36.76%",
       "activity": "MRNA's final exit: closed_reason 'time_stop' at -27.88% -- the 3:50 PM ET hard exit took it, exactly as expected. Confirms the whole arc was coherent end to end: the engine correctly never found thesis-break grounds (only ever 1 oppose, no veto) so it correctly held to the session's own hard boundary rather than inventing an early exit signal that wasn't there. LUNR settled its day at +36.76% (peak 44.85%), floor-protected throughout. Session governor: +53.55% session_pnl_pct, 7 realized losers (the recurring informational note referencing a historical SEV-3 finding is unchanged/pre-existing, not new). PR queue clean at close."
+    },
+    "2026-09-21T20:35:00Z": {
+      "stage": "POST_COMMIT/session_closed",
+      "action": "PR #5382 opened+verified (arm/breakeven ratchet floor scaling, 40% peak fraction, n=66 backtest 66/66 win) -- full-repo npm test 15144/15147 pass 0 fail confirmed post-open; PR #5381 (findings fold) merged manually via GitHub MCP after enable-automerge/auto-merge both skipped (documented PAT-scope gap) -- verify+CodeQL green, mergeable_state clean",
+      "board_state": "session fully closed, 17/17 ledger rows CLOSED, 0 committed_open, +53.55%-era session already summarized 9/21; TSLA row (peak 24.62, live_pnl 9.48, floor 0) is the same historical PR #5366 dead-zone-fix subject, not new activity",
+      "next": "watch PR #5382 CI (verify+CodeQL in_progress at last check); continue MU/MRNA gex-walls oppose-text pattern watch (2/3 instances so far, need 1 more before escalating)"
     }
   },
   "sessions": {
