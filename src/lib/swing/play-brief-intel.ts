@@ -510,7 +510,10 @@ export function chartTechnicalsSection(
   ctx?: SwingPlayBriefContext | null,
 ): RichSection | null {
   if (!vec?.technicals && vec?.spot == null) return null;
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: `ctx` is already threaded
+  // into this call (composeSwingPlayBrief passes it at the real call site) specifically so every
+  // staleness check in the brief agrees on ONE "now" — prefer it over a fresh wall-clock sample.
+  const readMs = ctx?.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const t = vec.technicals;
   // Prepended only once real content exists below (never on an otherwise-empty section) — a
@@ -613,7 +616,9 @@ export function preferredGexWalls(ctx: SwingPlayBriefContext): {
 } {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
+  // here — prefer its stamped readMs over a fresh wall-clock sample.
+  const readMs = ctx.readMs ?? Date.now();
   const vectorStaleForLevels = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexStaleForLevels = gexMatrixStale(gex, readMs);
   const spot =
@@ -642,7 +647,9 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const vec = vectorOf(ctx);
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
+  // here — prefer its stamped readMs over a fresh wall-clock sample.
+  const readMs = ctx.readMs ?? Date.now();
   const vectorStaleForLevels = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexStaleForLevels = gexMatrixStale(gex, readMs);
   const { spot, callWall, putWall, callWallFromStaleGex, putWallFromStaleGex } = preferredGexWalls(ctx);
@@ -1482,7 +1489,9 @@ export function meridianCatalystSection(ctx: SwingPlayBriefContext): RichSection
       body: "Catalyst calendar unavailable on this read — not evidence of a quiet calendar.",
     };
   }
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
+  // here — prefer its stamped readMs over a fresh wall-clock sample.
+  const readMs = ctx.readMs ?? Date.now();
   const stale = meridianCatalystStale(slice, readMs);
   const ageLabel = stale ? ageSecondsLabel(meridianCatalystAgeMs(slice, readMs)) : null;
   const staleLead = stale
@@ -1650,7 +1659,9 @@ export function deskConsensusSection(
 export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | null {
   const gex = ctx.ecosystem?.gex_positioning;
   if (!gex) return null;
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
+  // here — prefer its stamped readMs over a fresh wall-clock sample.
+  const readMs = ctx.readMs ?? Date.now();
   const stale = gexMatrixStale(gex, readMs);
   const ageLabel = stale ? ageSecondsLabel(gexMatrixAgeMs(gex, readMs)) : null;
   const lines: string[] = [];
