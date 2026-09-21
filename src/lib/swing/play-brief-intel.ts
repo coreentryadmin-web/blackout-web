@@ -1730,8 +1730,19 @@ export function wallDynamicsSection(
   vec: VectorFullState | null,
   sessionDate?: string | null,
   bucket: "watch" | "open" | "closed" = "open",
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351/#5392/#5393: this and
+  // `vectorDeskSection` below were the last two bare `Date.now()` staleness anchors in the swing
+  // play-brief family — every sibling (`gexPostureSection`, `chartLevelsSection`,
+  // `catalystsSection`, `dataFreshnessSection`, `meridianCatalystSection`, ...) already prefers
+  // the brief's single stamped `ctx.readMs` so every section in one brief agrees on "now" even
+  // if the request straddles a staleness boundary while composing. `ctx` is optional (defaults to
+  // a fresh `Date.now()`) so pre-existing callers/tests that pass only `(vec, sessionDate, bucket)`
+  // keep compiling and behaving identically; the real production call site
+  // (`composeSwingPlayBrief`) now passes it.
+  ctx?: SwingPlayBriefContext | null,
 ): RichSection | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  const readMs = ctx?.readMs ?? Date.now();
+  if (vectorSnapshotStale(vec, readMs, sessionDate)) return null;
   const events = vec?.wallEvents ?? [];
   if (!events.length) return null;
   const lines = events
@@ -1751,10 +1762,15 @@ export function vectorDeskSection(
   vec: VectorFullState | null,
   sessionDate?: string | null,
   bucket: "watch" | "open" | "closed" = "open",
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351/#5392/#5393: same
+  // trailing-optional-`ctx` pattern as `wallDynamicsSection` just above — see its comment for the
+  // full rationale. This was the other of the two remaining bare `Date.now()` anchors in the
+  // swing play-brief family.
+  ctx?: SwingPlayBriefContext | null,
 ): RichSection | null {
   const p = vec?.play;
   if (!p) return null;
-  const readMs = Date.now();
+  const readMs = ctx?.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const lines: string[] = [];
   if (vectorStale) {
@@ -1986,10 +2002,10 @@ export function buildIntelSections(
   const gex = safeSection("GEX posture", () => gexPostureSection(ctx));
   if (gex) out.push(gex);
 
-  const walls = safeSection("Wall dynamics", () => wallDynamicsSection(vec, ctx.sessionDate, bucket));
+  const walls = safeSection("Wall dynamics", () => wallDynamicsSection(vec, ctx.sessionDate, bucket, ctx));
   if (walls) out.push(walls);
 
-  const vdesk = safeSection("Vector desk", () => vectorDeskSection(vec, ctx.sessionDate, bucket));
+  const vdesk = safeSection("Vector desk", () => vectorDeskSection(vec, ctx.sessionDate, bucket, ctx));
   if (vdesk) out.push(vdesk);
 
   const flow = safeSection("Flow intel", () => flowIntelSection(ecosystem, play, ctx.sessionDate));
