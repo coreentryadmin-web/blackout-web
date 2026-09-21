@@ -1,17 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T04:35:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean -- main includes Night Hawk Legacy PRs (#5339, not my lane). #5336's deploy completed (04:26:51Z). Zero open swing PRs, board unchanged. **Post-deploy verification of #5336 found a genuine, unexpected follow-on**: re-checked thesis-health on 4 real committed positions (CRWD, WOLF, HOOD, a BKKT-batch ticker) post-deploy -- all 4 STILL show 'Inputs not wired', despite #5336 being correctly deployed. Dug into the raw horizons fields each pillar needs and found the OR-gate is still tripping, just on a DIFFERENT pillar per row: CRWD has real liveSpot/entryTriggerUnderlyingPx (entry_geometry CAN compute) but signalKinds is empty (flow_corroboration defaults to 'no signals'); WOLF has real signalKinds (['BANGER']) but liveSpot/entryTriggerUnderlyingPx are BOTH undefined (entry_geometry/persistence fall back to defaults regardless of the fix). Traced signal_kinds's write side (commit.ts: entry_context.signal_kinds = cand.discoveryPaths ?? null) -- supposed to be written on every commit, root cause for why CRWD's is empty not yet pinned down (possibly an older commit predating reliable discoveryPaths tracking). Posted a well-evidenced follow-up (comment 5755456759) on #4076 -- NOT a regression in #5336 (independently verified correct earlier this hour, still correct), but the OR-across-5-pillars design means one pillar's fix only helps rows where every OTHER pillar already has real data, which in this live sample is apparently rare. Did not propose a fix -- flagged for a systematic sample before anyone commits to a third pillar fix, and noted a possible connection to the still-open entry_underlying_px anomaly thread (WOLF's missing liveSpot/entryTriggerUnderlyingPx might be the same root cause).",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    {
-      "comment_id": 5755456759,
-      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5755456759",
-      "summary": "Post-deploy verification of #5336: thesis-health is still withheld on every real position checked (4/4) despite the entry_geometry fix landing correctly -- the OR-gate design means a different pillar (flow_corroboration on CRWD, entry_geometry/persistence's own missing liveSpot on WOLF) still trips per row. Not a regression, but the feature likely isn't actually restored for most of the real book yet.",
-      "status": "OPEN -- flagged for a systematic sample, possible connection to the entry_underlying_px thread"
-    }
-  ],
+  "last_updated": "2026-09-21T04:50:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. git sync clean -- main includes PR #5341 (another swing session's fix, ticker-track-record citing a chain closed after the reviewed play -- already merged, nothing for me to verify, not mine). #4076 unchanged since my last post, no response yet. Zero open swing PRs, board unchanged. **Handled one genuine user question this session (Is $ON on swings at all) mid-cycle**: checked the live board directly, confirmed ON is not present in COMMIT_NOW/WATCH/MANAGING/SCALING_OUT. **Followed up on my own last comment's WOLF liveSpot/entryTriggerUnderlyingPx=undefined claim** (5755456759) before letting it stand unchecked further -- re-pulled WOLF's play-brief and found 'Spot 25.67' genuinely renders in the narrative, which could have suggested my horizons-route check was reading a stale/different code path (horizons reads a CACHED serving-lane snapshot built by a background cron, distinct from play-brief-resolve.ts's own fresh live-marks computation) rather than reflecting the true state. Reasoned through it: liveSpot IS genuinely timing-sensitive across the two routes (explaining the narrative's real spot despite horizons showing undefined), but entryTriggerUnderlyingPx (row.entry_underlying_px) is a STATIC, pinned-at-commit DB column, not a live-computed value -- so it should read identically regardless of which route reads it, meaning the horizons check likely still correctly reflects a genuine DB-level absence for WOLF. Could not fully re-verify from the play-brief markdown alone (an OPEN/committed position never narrates an 'Entry trigger' line regardless of whether the underlying column has a value, since that's a WATCH-only display). Original claim's substance holds -- no correction needed, but the verification pass itself was worthwhile rather than assuming.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -120,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T04:35:00Z",
+    "as_of": "2026-09-21T04:50:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
