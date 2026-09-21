@@ -876,9 +876,18 @@ export function flowIntelSection(
 }
 
 /** Earnings, news, short interest, peers. */
-export function catalystsSection(eco: EcosystemContext | null): RichSection | null {
+export function catalystsSection(
+  eco: EcosystemContext | null,
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351/#5392: this section was
+  // NOT among the 9 sites #5392 fixed — it still sampled the wall clock twice below instead of
+  // reusing the brief's single readMs anchor. `ctx` is optional (defaults to a fresh Date.now())
+  // so existing callers/tests that don't have a full context on hand are unaffected; the real
+  // production call site (buildIntelSections) now passes it.
+  ctx?: SwingPlayBriefContext | null,
+): RichSection | null {
   const arsenal = eco?.arsenal;
   if (!arsenal) return null;
+  const readMs = ctx?.readMs ?? Date.now();
   const lines: string[] = [];
 
   if (arsenal.earnings?.earnings_date) {
@@ -896,7 +905,7 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
     );
   }
 
-  if (arsenal.fundamentals && !fundamentalsAncient(arsenal.fundamentals.as_of, Date.now())) {
+  if (arsenal.fundamentals && !fundamentalsAncient(arsenal.fundamentals.as_of, readMs)) {
     const f = arsenal.fundamentals;
     const parts: string[] = [];
     if (f.days_to_cover != null) parts.push(`short DTC **${f.days_to_cover.toFixed(1)}d**`);
@@ -912,8 +921,8 @@ export function catalystsSection(eco: EcosystemContext | null): RichSection | nu
     // up to 10 minutes under `serverCache`'s stale-while-revalidate path — the identical exposure
     // `meridianCatalystSection` two functions down already discloses for its own catalyst read;
     // this section was the one sibling that read a freshness-bearing field with zero disclosure.
-    const stale = newsCatalystStale(arsenal.news.as_of, Date.now());
-    const ageLabel = stale ? ageSecondsLabel(newsCatalystAgeMs(arsenal.news.as_of, Date.now())) : null;
+    const stale = newsCatalystStale(arsenal.news.as_of, readMs);
+    const ageLabel = stale ? ageSecondsLabel(newsCatalystAgeMs(arsenal.news.as_of, readMs)) : null;
     const staleLead = stale
       ? `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — headlines may lag.\n\n`
       : "";
@@ -1986,7 +1995,7 @@ export function buildIntelSections(
   const flow = safeSection("Flow intel", () => flowIntelSection(ecosystem, play, ctx.sessionDate));
   if (flow) out.push(flow);
 
-  const catalysts = safeSection("Catalysts", () => catalystsSection(ecosystem));
+  const catalysts = safeSection("Catalysts", () => catalystsSection(ecosystem, ctx));
   if (catalysts) out.push(catalysts);
 
   const meridian = safeSection("Meridian catalyst", () => meridianCatalystSection(ctx));

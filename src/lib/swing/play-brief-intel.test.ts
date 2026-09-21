@@ -1593,6 +1593,102 @@ test("catalystsSection: headlines from a fresh news read carry NO staleness disc
   assert.match(section!.body, /CrowdStrike stock moves higher/);
 });
 
+// Ask Largo standing mandate, same #5351/#5392-class readMs-anchor sweep — catalystsSection was
+// NOT among the 9 sites #5392 fixed (confirmed against #5392's own diff, which never touched this
+// function) even though it reads TWO freshness-bearing fields (fundamentals.as_of, news.as_of) and
+// sampled a fresh Date.now() at each. A real request runs sections sequentially with real I/O in
+// between, so each bare Date.now() sample can land on a different real instant and disagree with a
+// sibling section about whether the SAME arsenal read is stale.
+test("catalystsSection: uses ctx.readMs as the staleness anchor for fundamentals, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsOf = new Date(Date.now() - 60_000).toISOString(); // fresh vs real now, ancient vs anchor
+  const ecosystem = {
+    ticker: "CRCG",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 12.4, short_volume_ratio: 0.41, price_target: null, as_of: freshAsOf },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as unknown as EcosystemContext;
+
+  // No ctx (or a real-clock ctx): fundamentals is fresh, so the section renders it.
+  const liveSection = catalystsSection(ecosystem);
+  assert.ok(liveSection);
+  assert.match(liveSection!.body, /short DTC/);
+
+  // ctx.readMs anchored a year in the future: the SAME fundamentals read must now be treated as
+  // ancient and omitted — same as fundamentalsAncient's own ancient-omission contract (Largo C3).
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+  const anchoredSection = catalystsSection(ecosystem, ctx);
+  assert.equal(
+    anchoredSection,
+    null,
+    "must read fundamentals as ancient under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+test("catalystsSection: uses ctx.readMs as the staleness anchor for news headlines, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString(); // fresh vs real now, stale vs anchor
+  const ecosystem = {
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as unknown as EcosystemContext;
+
+  // No ctx: news is fresh under the real wall clock, so no staleness disclosure.
+  const liveSection = catalystsSection(ecosystem);
+  assert.ok(liveSection);
+  assert.doesNotMatch(liveSection!.body, /Last snapshot/);
+
+  // ctx.readMs anchored a year in the future: the SAME news read must now render the staleness
+  // disclosure this section already has logic for (Largo C2) — the bug was that it never consulted
+  // the anchor to decide.
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+  const anchoredSection = catalystsSection(ecosystem, ctx);
+  assert.ok(anchoredSection);
+  assert.match(
+    anchoredSection!.body,
+    /\*\*Last snapshot\*\*.*old.*headlines may lag/s,
+    "must read the news headlines as stale under ctx.readMs even though they are fresh under the real wall clock",
+  );
+});
+
 test("chartTechnicalsSection: bias reads bearish from the technicals on a SHORT play whose tape is entirely bullish (FINDINGS 2026-09-06 #13, INTC shape)", () => {
   // Reproduces the live INTC envelope: SHORT position, but EMA-up/above-VWAP/RSI-bull/CHOCH-up —
   // an entirely bullish technical picture. The badge must say bullish (the tape), not bearish
