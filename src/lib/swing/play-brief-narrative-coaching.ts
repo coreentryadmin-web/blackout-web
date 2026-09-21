@@ -280,7 +280,18 @@ export function magnetCoaching(
   vec: VectorFullState | null,
   spot: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), ctx.sessionDate)) return null;
+  // BUG FIX (2026-09-21, Ask Largo standing mandate, market-open cycle): `ctx` (which carries the
+  // request-wide `readMs` staleness anchor — see SwingPlayBriefContext's own doc comment) is
+  // already this function's first parameter, yet this staleness check sampled a FRESH `Date.now()`
+  // instead of using `ctx.readMs` — the same class of bug already fixed across ~20 other call
+  // sites this session (#5334/#5336/#5341/#5345/#5351/#5353/#5355/#5356), just missed here because
+  // the sibling `confluenceCoaching` call two lines below in the SAME aggregation block (line
+  // ~1332) already got this exact fix while this one, despite having `ctx` in hand for free,
+  // did not. Live risk is identical: this bullet and confluenceCoaching's both stale-check the
+  // SAME `vec` snapshot in the SAME compose pass, and disagreeing verdicts from two different
+  // clock reads straddling the 120s staleness window is exactly what caused the confluenceCoaching
+  // fix in the first place (see that function's own doc comment above).
+  if (vectorSnapshotStale(vec, ctx.readMs ?? Date.now(), ctx.sessionDate)) return null;
   const m = vec?.magnet;
   if (!m?.strike) return null;
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
@@ -309,8 +320,14 @@ export function expectedMoveCoaching(
   vec: VectorFullState | null,
   spot: number,
   sessionDate?: string | null,
+  // Request-wide staleness anchor (SwingPlayBriefContext.readMs) — optional, defaulting to
+  // Date.now() so every existing call site/test keeps working unchanged. Same threading fix as
+  // confluenceCoaching above; see that function's doc comment and the 2026-09-21 note on
+  // magnetCoaching for why sampling the clock fresh here (rather than reusing this brief's single
+  // anchor) can disagree with sibling sections reading the identical `vec`.
+  readMs?: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const em = vec?.expectedMove;
   const b1 = em?.bands?.find((b) => b.sigma === 1);
   if (!b1) return null;
@@ -390,8 +407,11 @@ export function wallIntegrityCoaching(
   vec: VectorFullState | null,
   play: TerminalPlay,
   sessionDate?: string | null,
+  // Request-wide staleness anchor (SwingPlayBriefContext.readMs) — same threading fix as
+  // confluenceCoaching/expectedMoveCoaching above.
+  readMs?: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const wi = vec?.wallIntegrity;
   if (!wi) return null;
   const call = wi.call?.tier;
@@ -1330,8 +1350,8 @@ export function collectCoachingBullets(
     push(flowPrintsCoaching(vec, play, ctx.sessionDate));
     push(magnetCoaching(ctx, vec, spot));
     push(confluenceCoaching(vec, play, spot, ctx.sessionDate, ctx.readMs ?? undefined));
-    push(expectedMoveCoaching(vec, spot, ctx.sessionDate));
-    push(wallIntegrityCoaching(vec, play, ctx.sessionDate));
+    push(expectedMoveCoaching(vec, spot, ctx.sessionDate, ctx.readMs ?? undefined));
+    push(wallIntegrityCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
     push(wallDynamicsCoaching(vec, ctx.sessionDate));
     push(technicalsCoaching(vec, play, ctx.sessionDate));
   } else {

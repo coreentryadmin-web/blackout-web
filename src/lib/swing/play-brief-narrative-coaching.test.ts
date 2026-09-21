@@ -11,6 +11,7 @@ import {
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
+  expectedMoveCoaching,
   flowPrintsCoaching,
   ivRankCoaching,
   laneRankCoaching,
@@ -23,6 +24,7 @@ import {
   vectorPlayCoaching,
   vexCoaching,
   wallDynamicsCoaching,
+  wallIntegrityCoaching,
   watchGateCoaching,
   technicalsCoaching,
 } from "./play-brief-narrative-coaching";
@@ -1979,6 +1981,62 @@ test("confluenceCoaching: an explicit readMs anchor (not the real wall clock) de
   // No anchor supplied -> falls back to the REAL Date.now(), decades past this fixture's `asOf` ->
   // must NOT render. Proves the anchor is what made the call above succeed, not a lenient default.
   const noAnchor = confluenceCoaching(vec, play({ direction: "LONG" }), 100, null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-09-21 market-open cycle): magnetCoaching already
+// received `ctx` (which carries the request-wide `readMs` staleness anchor) as its first
+// parameter, yet sampled a fresh `Date.now()` internally instead of using `ctx.readMs` -- the
+// exact confluenceCoaching bug fixed above, but missed on this sibling in the SAME aggregation
+// block (composeCoachingBullets pushes magnetCoaching and confluenceCoaching back-to-back reading
+// the identical `vec`). Proves the anchor now actually controls the verdict here too.
+test("magnetCoaching: ctx.readMs (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-01-01T00:00:00.000Z",
+    magnet: { strike: 100, distancePct: 0.5, pull: "at" },
+    regime: { posture: "long", label: "LONG" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+
+  const anchoredReadMs = Date.parse("2026-01-01T00:01:00.000Z");
+  const fresh = magnetCoaching(ctx({ readMs: anchoredReadMs }), vec, 100);
+  assert.ok(fresh, "must render when ctx.readMs puts the snapshot well inside the staleness window");
+  assert.match(fresh!, /Gamma magnet 100\.00/);
+
+  const noAnchor = magnetCoaching(ctx({ readMs: null }), vec, 100);
+  assert.equal(noAnchor, null, "with no ctx.readMs the real wall clock must read this snapshot as stale");
+});
+
+// Sibling fix, same aggregation block: expectedMoveCoaching and wallIntegrityCoaching never took a
+// readMs param at all (unlike confluenceCoaching, which already had one) -- added one, threaded
+// from ctx.readMs at the composeCoachingBullets call site.
+test("expectedMoveCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-01-01T00:00:00.000Z",
+    spot: 100,
+    expectedMove: { bands: [{ sigma: 1, low: 98, high: 102, movePts: 2 }] },
+  } as unknown as Parameters<typeof expectedMoveCoaching>[0];
+
+  const anchoredReadMs = Date.parse("2026-01-01T00:01:00.000Z");
+  const fresh = expectedMoveCoaching(vec, 100, null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  assert.match(fresh!, /Expected move 1σ/);
+
+  const noAnchor = expectedMoveCoaching(vec, 100, null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
+});
+
+test("wallIntegrityCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-01-01T00:00:00.000Z",
+    wallIntegrity: { call: { tier: "firm" }, put: { tier: "firm" } },
+  } as unknown as Parameters<typeof wallIntegrityCoaching>[0];
+
+  const anchoredReadMs = Date.parse("2026-01-01T00:01:00.000Z");
+  const fresh = wallIntegrityCoaching(vec, play({ direction: "LONG" }), null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  assert.match(fresh!, /wall firm/);
+
+  const noAnchor = wallIntegrityCoaching(vec, play({ direction: "LONG" }), null);
   assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
 });
 
