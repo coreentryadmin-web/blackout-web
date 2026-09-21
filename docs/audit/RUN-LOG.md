@@ -4,6 +4,20 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-21 (16:33 UTC / Mon 12:33 ET) — [SEO] Market-hours wake: gamma-snapshot clean, last cycle's mobile CLS outlier resolved as noise
+
+Confirmed clock myself (12:33 ET, Monday, in-window, ~27min left in RTH). `/tools/gamma-snapshot`'s
+public API re-checked: `market_session: "OPEN"`, `degraded: false`, spot genuinely moving
+tick-to-tick (7755.90→7755.64→7755.43 across 3 polls), `calculation_id` advancing every call.
+Cross-checked against Massive `/v3/snapshot/indices` (7754.28) — 0.015% apart, normal tick drift.
+
+Live CLS: desktop **0.0001, GOOD**. Followed up on the last cycle's single 0.1145 mobile outlier
+with 3 more mobile reads — **0.0319 / 0.0312 / 0.0338, all GOOD**, same tight cluster as before.
+Cumulative across both cycles: **8 of 9 mobile reads GOOD** (~0.031-0.034 baseline), 1 outlier.
+Confirms the prior read: a transient blip, not a reproducible regression of #2453 — closing out
+that anomaly as resolved-noise rather than leaving it open indefinitely. No PR. Market closes at
+13:00 ET; returning to normal search/authority work after that.
+
 ## 2026-09-21 (15:33 UTC / Mon 11:33 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one noisy mobile CLS outlier (inconclusive)
 
 Confirmed clock myself (11:33 ET, Monday, in-window). `/tools/gamma-snapshot`'s public API
