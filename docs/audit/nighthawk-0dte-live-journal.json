@@ -2,168 +2,6 @@
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
   "updated_at": "2026-09-17T20:38Z",
   "watch_stage_tracking": {
-    "2026-09-14T20:07Z_session_closed_summary": {
-      "note": "SESSION CLOSED 2026-09-14 (session.heat.state=CLOSED at 20:05 UTC). Full-day summary: 11 plays committed, all closed. 7 winners / 3 losers / 1 breakeven (63.6% win rate): SLS 0%, IONQ -6.92%, CRWD +5.35%, ZS +100.57% (days standout, hit +100% trim target cleanly), S +16.28%, OKTA +1.56%, SAIL -6.67%, QBTS +5%, MARA -13.95%, FIGR +5.71%, W +31.87%. Sum of individual position P&Ls ~+139pp across the day. Early-window [10:00,11:00 ET) commits (SLS/MARA/IONQ) were the weakest cohort, consistent with the already-documented E2 research finding -- confirmatory, not new. No stop-miss, no grading anomaly, no exit-engine bug found in any position checked this session. Board-upstream degradation recurred 5 CONFIRMED times today (+1 uncounted single-pull blip) -- all self-resolved within 5-27min, DB/record path unaffected throughout, real positions never at risk. Reported with full evidence + timeline on PR #4076; root cause still unknown (no CloudWatch access this session), flagged for whoever has AWS access. One real fix shipped: PR #4973 (merged) -- Cortex sector-heat evidence rendered a tickers own directional % without a sign, could misread as same-signed as an oppositely-signed sector; fixed with new fmtSigned helper, RED->GREEN proven, full suite clean. Also investigated and ruled out (not bugs): session_stats.top_block_code session-aggregate-vs-live-setups discrepancy, governor.time_of_day_label last directional commit window bucket definition. Tomorrow: continue standing mandate, watch for a 6th board-upstream instance to further characterize the pattern, no other open threads."
-    },
-    "2026-09-15T14:15Z": {
-      "note": "First live commit today: SPXW long FLOW, tier B (prime score 77, VIX elevated 17.57 penalty, clean Cortex support +0.5 but 6/8 sources absent -- honest thin-evidence flag, early-window penalty). +6.36% live. Tier reasoning coherent, no issue. Board healthy."
-    },
-    "2026-09-15T14:37Z": {
-      "note": "SPXW closed +21.02%, a clean win off its earlier +6.36% mid-flight read. 1 closed, 0 open. Board stable, no degradation. Nothing to escalate."
-    },
-    "2026-09-15T15:08Z": {
-      "note": "Several consecutive quiet cycles (board unchanged, just SPXW closed +21.02%). Per aggressive-mode discipline, spent this cycle hunting for a sign-formatting bug similar to yesterdays sector-heat fix (PR #4973) elsewhere in the 0DTE-specific codebase -- checked rs.ts (relative-strength alpha), thesis-health.ts (price move note), gates.ts (qualification-dislocation movePct). All already correctly signed or intentionally unsigned (movePct is Math.abs() by design, a magnitude not a signed comparison). No new bug found this pass -- honest null result, not a stopping condition, will keep hunting other cycles."
-    },
-    "2026-09-15T16:08Z": {
-      "note": "Board still unchanged (SPXW closed +21.02% remains the only play today, 228 scanned all gate-blocked score_floor). Checked PR #4076 -- no response yet to yesterdays board-upstream-degradation escalation; recent comments are Swing-lane research (late-promotion win-rate correlation finding), not directed at my lane. Quiet cycle, nothing to escalate."
-    },
-    "2026-09-15T16:37Z": {
-      "note": "Verified discovery is actively running, not stalled (scanned climbing 228->264, discovery_health.BREAKOUT ok with 253 setups) -- just none clearing score_floor this pass, genuinely quiet market for qualifying setups today, not a bug. Board otherwise unchanged (SPXW +21.02% the only play). Nothing to escalate."
-    },
-    "2026-09-15T17:07Z": {
-      "note": "Board-upstream degradation recurred, 1st confirmed instance today (6th total across both days). upstream_ok:false confirmed on 2 consecutive pulls at 17:08 UTC. /record DB path healthy throughout (12 plays). Posted on PR #4076. Watching for resolution timing."
-    },
-    "2026-09-15T17:17Z": {
-      "note": "6th board-upstream degradation instance (1st confirmed today) RESOLVED. First confirmed degraded 17:08:04 UTC (2 consecutive pulls), confirmed healthy again by 17:17:54 UTC (upstream_ok:true, 325 setups, discovery_health BREAKOUT/PIN both ok) -- resolution window <=10-17min, consistent with the 5-27min range across all prior instances. /record stayed healthy throughout (12 plays). Only play today: SPXW short, tier B, closed +21.02% (win). No open positions, governor clean (halted:false, realized_losers:0, session_pnl_pct 21.02). Will post a brief closing follow-up on PR #4076."
-    },
-    "2026-09-15T17:37Z": {
-      "note": "Board healthy, board-upstream degradation stays resolved (upstream_ok:true, 339 setups, discovery_health BREAKOUT/PIN both ok, up from 325 at 17:17Z). Ledger unchanged: only play today SPXW short tier B, CLOSED +21.02%. Governor clean (halted:false, no open_plans, realized_losers 0/5). Spot-checked top score-100 live setups (HQ/ARWR/PBF/SWKS/ALHC) -- all correctly BLOCKED on plan_no_quote (no live quote/flow fill on top strike yet), not a bug, evidence-only pre-commit gate working as designed. Checked open PRs: only 4 dependabot major-version bumps open, nothing in the 0DTE lane needs action. No new finding this cycle."
-    },
-    "2026-09-15T17:45Z": {
-      "note": "Quiet cycle, no change since 17:37Z. Board healthy (upstream_ok:true, 329 setups). Ledger/record unchanged: SPXW +21.02% still the only 09-15 play; the 09-14 loss trio (MARA -15.12%, SAIL -6.67%, IONQ -7.31%) already forensically cleared in a prior cycle -- no new plays to review. 90-day-window record snapshot: 12 graded, 8W/4L, 66.7% WR, +8.15% avg pnl -- consistent with prior reads. No new finding; staying quiet on PR #4076."
-    },
-    "2026-09-15T18:07Z": {
-      "note": "AGGRESSIVE-MODE upside hunt (deliberate, after 3 quiet cycles): traced SPXW (2026-09-15, only play today, CLOSED +21.02%) through the trim_scale exit machinery. exit_policy.trim_levels shows BOTH tranches fired:true (33% at +20% trigger premium 14.16, 33% at +50% trigger premium 17.70), but timeline_tranches is null and every P&L field (exit_pnl_pct/live_pnl_pct/floor_pnl_pct/managed_pnl_pct) plus the live exit_detail narrative reflect ONLY the final-third floor exit (21.02%, ratchetFloorPct lock-tier peak*0.4) with zero mention of the two banked tranches. Rough blend (1/3*20 + 1/3*50 + 1/3*21.02 ~= 30.0%) suggests real realized return may be materially higher than displayed everywhere. Traced root: timeline_tranches only populated from entry_context.executable.tranches (play-timeline.ts), which is written by the offline WS-10/WS-11 batch reconstruction (plan.ts), not live by scan.ts as trims fire -- this row has no executable blob yet. Per CLAUDE.md/OUTCOME-GRADING-SPEC.md that reconstruction covers only a minority of rows, so this MAY be the already-known mechanical-mid-pin gap, not new. What is newly flagged: the live exit_detail narrative never mentions the two fired tranches even though exit_policy.trim_levels[].fired is already true and available on the same row -- a narrative-completeness gap independent of the P&L-reconciliation timing question. Reported on PR #4076 with full evidence, NOT fixed this cycle (P&L-reporting-adjacent, wanted certainty first, n=1 so far). Will watch for a 2nd/3rd instance per noise discipline before treating as confirmed."
-    },
-    "2026-09-15T18:15Z": {
-      "note": "Followed up on the :00-cycle SPXW trim-tranche finding. Traced scan.ts onTrimBank: confirmed it persists only trimsTaken (count) + a Discord notification, never a real per-tranche P&L record -- timeline_tranches genuinely only ever comes from the offline WS-10/WS-11 reconstruction (plan.ts), so this IS the already-documented reconstruction-coverage gap, not a new P&L bug. Left the deeper P&L question open on PR #4076 for someone with fuller reconstruction-cadence context. Shipped the narrower, low-risk piece myself: PR #5037 (draft, fix/trim-scale-floor-exit-tranche-note) -- decideTrimScale floor-exit detail sentence now names how many tranches were already banked (using taken/thresholds.length, already in scope) instead of describing the runner-only floor as if it were the whole trade. Narrative-only, no P&L/gate change. RED->GREEN via git-stash, full suite 14313 pass/0 fail/3 skipped (pre-existing) on Node 20, tsc clean. Staged finding + subscribed to PR activity."
-    },
-    "2026-09-15T18:38Z": {
-      "note": "PR #5037 (trim-tranche narrative fix) was already MERGED by a parallel coordinator session by the time I checked (a1b0ed775, all CI green, verified+re-checked tsc on the merged SHA per its own merge comment) -- unsubscribed from PR #4076-style tracking for it, nothing left to do there. Board-upstream degradation recurred AGAIN (7th instance today's-session-total): upstream_ok:false confirmed on 2 consecutive pulls at 18:38 UTC, discovery_health BREAKOUT/PIN both disabled, setups/ledger empty. /record stayed healthy (12 plays). Consistent with the established self-resolving pattern (5-27min historical range) -- posting a brief note on PR #4076, will check resolution next cycle."
-    },
-    "2026-09-15T18:45Z": {
-      "note": "7th board-upstream degradation instance RESOLVED. Confirmed degraded 18:38 UTC (2 consecutive pulls), confirmed healthy again by 18:46 UTC (upstream_ok:true, 382 setups, discovery_health BREAKOUT/PIN both ok) -- resolution window ~8min, within the established 5-27min range. Ledger unchanged: SPXW still the only play, +21.02%. Confirmed PR #5037 is live on main (exit-engine.ts has the tranche-note fix) but this SPXW row's exit_detail is still the OLD string (no tranche mention) -- expected, not a bug: the row exited and persisted BEFORE the fix merged, so it is historical and correctly does not retroactively change. The fix only affects exits computed fresh going forward. No new finding this cycle."
-    },
-    "2026-09-15T19:07Z": {
-      "note": "Quiet cycle. Board healthy, unchanged since 18:45Z resolution (upstream_ok:true, 384 setups). Ledger/record unchanged: SPXW +21.02% still the only 09-15 play. Checked open PRs -- only dependabot bumps, nothing in the 0DTE lane needs action. No new finding."
-    },
-    "2026-09-15T19:16Z": {
-      "note": "Board-upstream degradation recurred AGAIN (8th instance today's session): upstream_ok:false confirmed on 2 consecutive pulls at 19:16 UTC, discovery_health BREAKOUT/PIN both disabled, setups/ledger empty. /record stayed healthy (12 plays). Only ~38min after the 7th instance resolved (18:46Z) -- noticeably shorter gap than earlier today (17:08, then 18:38, now 19:16 -- gaps of ~90min then ~38min). Not escalating framing yet (still fully consistent with self-resolving, DB-unaffected pattern; one shorter gap is not yet a trend), but flagging the gap-shortening observation on PR #4076 for whoever traces root cause, since a tightening recurrence interval could matter even though duration/severity look unchanged."
-    },
-    "2026-09-15T19:37Z": {
-      "note": "8th board-upstream degradation instance RESOLVED. Confirmed degraded 19:16 UTC, confirmed healthy again by 19:37 UTC -- ~21min, within the established 5-27min range. Session has now crossed into POST_COMMIT (\"Managing\", 15:30 ET new-commit cutoff passed, note: \"No new 0DTE commits after 3:30 PM ET -- managing open risk to the 3:50 PM hard exit\"). discovery_health BREAKOUT/PIN correctly read off_hours now (not a bug -- intentional, no point screening for new candidates post-cutoff) and setups count dropped to 13 (stale leftover candidates, expected). Ledger unchanged: SPXW still the only 09-15 play, +21.02%. From here forward today, expect no new commits -- next few cycles should focus on managing/closing any OPEN rows (none currently) and the 3:50 PM ET hard-exit window, not discovery."
-    },
-    "2026-09-15T19:45Z": {
-      "note": "Quiet cycle. Board healthy, unchanged (upstream_ok:true, still POST_COMMIT/Managing, 13 stale setups). Ledger unchanged: SPXW +21.02% still the only 09-15 play, no open positions to manage. No new finding."
-    },
-    "2026-09-15T20:07Z_session_closed_summary": {
-      "note": "2026-09-15 session CLOSED (session.heat.state=CLOSED, \"Night Hawk builds tomorrow's playbook after the close\"). Final tally: 1 play (SPXW short, tier B, FLOW origin), closed +21.02%, a clean win. Session highlights: (1) shipped PR #5037 (merged, a1b0ed775) -- decideTrimScale's floor-exit narrative now names already-banked trim tranches, found via forensic trace of the SPXW exit (both tranches fired:true but exit_detail never mentioned them); RED->GREEN proof, full suite 14313/0/3, tsc clean; logged to MARKET-OPEN-VALIDATION.md #228 for next-session live verification (needs a FRESH trim_scale floor exit, today's SPXW closed pre-fix). (2) Traced and ruled out as intentional: scan.ts onTrimBank only persists a trims-taken count + Discord notify, never a live per-tranche P&L record -- confirms the deeper managed_pnl_pct/timeline_tranches blending question is the already-documented WS-10/WS-11 offline-reconstruction coverage gap, left open on PR #4076 for someone with fuller context, not fixed. (3) Board-upstream degradation recurred 3 more times today (6th, 7th, 8th instances total across the 09-14/09-15 window) -- all self-resolved within 8-21min, /record never affected, consistent with the established pattern; root cause still untraced (no CloudWatch/AWS access this session). Session now POST_COMMIT->CLOSED, no open positions. Next session should: verify PR #5037 live per MARKET-OPEN-VALIDATION.md #228, continue tracking degradation recurrence-gap (noted possibly shortening -- 90min then 38min -- watch if that continues), and resume the standing forensic/enhancement-hunt cadence at next market open."
-    },
-    "2026-09-15T20:15Z": {
-      "note": "Quiet cycle. Session still CLOSED, unchanged since 20:07Z close-out. No new finding."
-    },
-    "2026-09-15T20:37Z": {
-      "note": "Aggressive-mode upside hunt (deliberate, after 2 quiet post-close cycles): re-audited decideTrimScale for other exit paths sharing the earlier banked-tranche narrative gap (PR #5037). Found one more: the thesis_break branch also only closes the remaining position and also never mentioned banked tranches. Checked trim_scale_runner_target and trim_scale_running -- both already mention banked tranches, no change needed. Shipped PR #5043 (draft, fix/trim-scale-thesis-break-tranche-note) -- hoisted the shared tranche-note clause so both branches use it without duplicating logic; floor-exit branch byte-identical to before. RED->GREEN, full suite 14317/0/3 on Node 20, tsc clean. Staged finding + subscribed to PR."
-    },
-    "2026-09-15T20:45Z": {
-      "note": "PR #5043 CI still in progress (verify/CodeQL in_progress ~1min in), nothing actionable yet. Sanity-checked main: PR #5037 is correctly merged and unaffected (PR #5043 refactor hasnt landed yet, no regression). Board unchanged, still CLOSED. Will check PR #5043 CI again next cycle."
-    },
-    "2026-09-16T13:08Z": {
-      "note": "2026-09-16 morning cold-start. Session PRE_MARKET (\"feeds warming, overnight plays confirming, lotto scan pending\"). Board healthy, ledger empty (fresh day). Confirmed PR #5043 (thesis-break tranche-note follow-up) merged overnight by a parallel session (21:06:56Z 09-15) -- both PR #5037 and #5043 now live on main. MARKET-OPEN-VALIDATION.md #228 still needs verifying: watch for the FIRST fresh trim_scale floor/thesis-break exit today and confirm its exit_detail names banked tranches when taken>0. Yesterday close: 1 play (SPXW +21.02%), 2 shipped narrative fixes, 8 board-upstream degradation instances (all self-resolved, /record unaffected, root cause still untraced). Other lanes (swings) actively committing to their own journal overnight -- confirmed unrelated to this lane, no conflict."
-    },
-    "2026-09-16T13:15Z": {
-      "note": "Quiet. Still PRE_MARKET, unchanged, ledger empty. No new finding."
-    },
-    "2026-09-16T13:38Z": {
-      "note": "Market OPEN, session OPENING_DRIVE (ranges forming, G-2 unlock at 10:00 ET). Board healthy, 11 setups scanned, no commits yet (expected pre-10:00). No new finding."
-    },
-    "2026-09-16T13:45Z": {
-      "note": "Still OPENING_DRIVE, no commits yet (G-2 unlock ~14min out). Board healthy, unchanged. No new finding."
-    },
-    "2026-09-16T14:07Z": {
-      "note": "Operator asked to be pinged on the next commit (conversational request, this session). Still empty ledger this cycle -- watching."
-    },
-    "2026-09-16T14:15Z": {
-      "note": "Still no commit. Watching per operator request."
-    },
-    "2026-09-16T14:38Z": {
-      "note": "First commit of the day: SPCX long tier A, committed ~14:19 UTC, entry 1.75, peaked +9.71%, exited -3.43% at 14:28 UTC via thesis_break veto -- gex-walls flipped from supporting (no dominant wall at entry) to a veto (155 call wall, 27.5% ladder gamma, 3.63pts above spot, inside 0.5x EM) as spot approached it. Legitimate fresh-evidence override, not a bug -- discussed live with operator, who is now actively watching this lane and asked to be pinged on the NEXT commit. Still just 1 ledger entry (SPCX) this cycle, no new commit yet."
-    },
-    "2026-09-16T14:45Z": {
-      "note": "2 new commits since last cycle: CIFR long (17.5C exp 9/18, entry 0.68, tier B, breakout momentum) and SPCH long (10C exp 9/18, entry 0.48, tier B, breakout momentum), both flagged ~10:39 ET. Discussed live with operator (who is actively watching this lane), both currently OPEN and green (CIFR +4.41%, SPCH +4.17%). Noted a brief propagation lag: /record showed both before board.ledger caught up (few-min lag), not investigated as a bug yet -- worth a second look if it recurs. SPCX (first commit today) already closed -3.43% via thesis_break, discussed earlier. No new finding this cycle beyond normal drift."
-    },
-    "2026-09-16T15:07Z": {
-      "note": "Busy cycle, reported live to operator. 6 ledger rows total today: CLOSED -- SPCX -3.43% (thesis, gex-walls wall-in-path veto), CIFR -4.41% (thesis, same gex-walls wall-in-path pattern -- now 2 instances of this exact veto shape today, watching for a 3rd), QQQ -0.18% (thesis, oppose_cluster: momentum short in a long-gamma/mean-reversion tape, 4 opposing signals). OPEN -- SPCH +18.75% (running well, no tranche fired yet, first trigger +40%), CRDO +2.91% (new), ALAB -1.79% (new). 3 losses today all legitimate fresh-evidence thesis-break overrides, not bugs -- same mechanism, correctly firing. Watching for whether the gex-walls wall-in-path veto pattern (SPCX+CIFR, both long calls broken by a dominant wall appearing in the target path) recurs a 3rd time today, which would cross the noise-discipline threshold worth a closer look at gate/veto timing (is the wall genuinely appearing late, or was it knowable at entry and the veto is just slow to update)."
-    },
-    "2026-09-16T15:15Z": {
-      "note": "No new commits/exits. Same 3 open (SPCH +18.75%, CRDO +0.97% down from +2.91%, ALAB +7.74% up from -1.79%), same 3 closed. Normal drift only, nothing pinged to operator."
-    },
-    "2026-09-16T15:37Z": {
-      "note": "SPCH CLOSED +9.38% (peak +25%, ratchet floor caught the pullback, never reached its first trim tranche at +40% so no tranche mention needed -- confirms PR #5037/#5043 tranche-note fix behaving correctly live: no false claim of banked tranches when taken=0). New commit: CORZ long, just flagged 0.22, too fresh to read. Current open: CRDO +11.65%, ALAB +6.9%, CORZ new. Day tally so far: 3 closed losses (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, all legitimate thesis-break overrides) + 1 closed win (SPCH +9.38%). Reported live to operator throughout."
-    },
-    "2026-09-16T15:45Z": {
-      "note": "ALAB CLOSED +6.85% via flat_theta_bleed (25min in band, peak +7.74%, clean scratch not a bug). CRDO pulled back to +3.88% (was +11.65%), CORZ dipped to -4.55% (from 0% at entry) -- both still open, no exit trigger yet. Day tally: 4 closed (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, ALAB +6.85%) + SPCH +9.38% = 5 closed (2W/3L so far), 2 still open (CRDO, CORZ). Reported live to operator throughout."
-    },
-    "2026-09-16T16:07Z": {
-      "note": "CORZ CLOSED 0% (flat_theta_bleed, 28min never left the band, clean scratch). CRDO status TRIM -- a trim tranche fired (peak .00/+16.5%, now .45/+5.83% live, part already banked). Both reported live to operator. Day tally: 6 closed (SPCH +9.38%, ALAB +6.85% wins; SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0% losses/scratches) + 1 open (CRDO, trim-managed). No change this specific cycle vs the conversational check just before it -- confirmed stable."
-    },
-    "2026-09-16T16:15Z": {
-      "note": "CRDO CLOSED +5.05% (ratchet). Via /record (board.ledger propagation lag again, same pattern as CIFR/SPCH earlier -- not investigated as a bug yet, keeps recurring, worth checking if it crosses 3 instances): HOOD short CLOSED +1.42% (thesis_break but exited above breakeven). New open: SMTC long, score 95 tier B, flagged 12:10 ET, too fresh for a read. Day tally: 9 plays, 8 closed/1 open. 4 winners (SPCH +9.38%, ALAB +6.85%, CRDO +5.05%, HOOD +1.42%), 4 losses/scratches (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0%). Reported live to operator throughout."
-    },
-    "2026-09-16T16:37Z": {
-      "note": "HOOD/SMTC now fully propagated to board.ledger (9 rows total). No new commits/exits this cycle. SMTC (only open) +1.65%, still early. Quiet."
-    },
-    "2026-09-16T16:45Z": {
-      "note": "SMTC CLOSED +4.13% (flat_theta_bleed). All 9 rows today now closed, nothing currently open. Day tally: 9 plays, 5 winners (SPCH +9.38%, ALAB +6.85%, CRDO +5.05%, SMTC +4.13%, HOOD +1.42%) vs 4 losses/scratches (SPCX -3.43%, CIFR -4.41%, QQQ -0.18%, CORZ 0%). Reported live to operator throughout the session. Solid day. Watching for the next commit."
-    },
-    "2026-09-16T17:07Z": {
-      "note": "Board-upstream degradation recurred (2026-09-16, 1st instance): upstream_ok:false confirmed on 2 consecutive pulls at 17:07 UTC, setups/ledger empty, discovery_health disabled. /record stayed healthy (21 plays, graded=21) -- confirmed to operator that nothing was lost, just the live board view. Consistent with yesterdays established self-resolving pattern (8 instances, 5-27min range). Will check resolution next cycle."
-    },
-    "2026-09-16T17:15Z": {
-      "note": "Board-upstream degradation resolved, confirmed healthy by 17:15 UTC (~8min from 17:07 confirmation). Same 9 closed positions, nothing new. Pattern held."
-    },
-    "2026-09-16T17:37Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
-    "2026-09-16T17:45Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
-    "2026-09-16T18:07Z": {
-      "note": "Aggressive-mode dig (deliberate, after 4 quiet cycles): spot-checked all 3 flat_theta_bleed exits today (CORZ/ALAB/SMTC) against their own ledger peak/trough fields. Found CORZ exit_detail is factually wrong: claims \"never left the +-10% band\" but trough was -13.64% (entry 0.22, trough 0.19) -- outside the band. Traced root cause: ExitEngineInput has no troughPremium field at all, evaluateLedgerRowExit never reads row.trough_premium -- the flat-timeout condition is structurally blind to downside excursions, only checks peak+current. This is systemic (will recur on any play that dips below -10% then recovers), not a one-off. Two possible fixes with very different stakes: narrative-only (plumb trough through, soften the sentence) vs behavior-changing (trough breach disqualifies the flat scratch, changing which plays get exited). Only 1 confirmed instance today -- reported with full evidence on PR #4076, NOT fixed (ambiguous, touches live exit decisions, n=1 vs the 3-instance threshold). Board otherwise unchanged, same 9 closed positions."
-    },
-    "2026-09-16T18:15Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
-    "2026-09-16T18:37Z": {
-      "note": "Board-upstream degradation recurred (2026-09-16, 2nd instance): confirmed on 2 consecutive pulls at 18:38 UTC, upstream_ok:false, ledger empty. /record stayed healthy (21 plays). Consistent with the established self-resolving pattern. Will check resolution next cycle."
-    },
-    "2026-09-16T18:45Z": {
-      "note": "Board-upstream degradation still ongoing (confirmed 18:38, still down at 18:45 -- ~7min so far, within normal range). Not re-flagging on PR #4076 yet per the established discipline of avoiding repeated posts for the same still-ongoing instance. Will check next cycle."
-    },
-    "2026-09-16T19:07Z": {
-      "note": "Board-upstream degradation (first confirmed 18:38 UTC) still ongoing at 19:08 UTC -- ~30min, exceeds the previous max duration (27min across 10 prior instances). /record still healthy (21 plays). Posted a duration-flag follow-up on PR #4076 since this specific data point (longer than ever observed) is new even though the failure mode itself is unchanged. Will keep watching for resolution."
-    },
-    "2026-09-16T19:15Z": {
-      "note": "Board-upstream degradation RESOLVED. First confirmed 18:38 UTC, confirmed healthy again by 19:15 UTC -- ~37min total, the longest instance yet (prior max was 27min). Same 9 closed positions, no changes. /record was healthy throughout."
-    },
-    "2026-09-16T19:37Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
-    "2026-09-16T19:45Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
-    "2026-09-16T20:07Z": {
-      "note": "Aggressive-mode dig (after 4 quiet cycles): tallied Cortex source absence across all 9 plays today -- wall-trend/catalyst-news/darkpool-confluence all showed 100% absence (9/9), looked suspicious at first. Checked actual per-ticker reasons: legitimate diversity, not a systemic bug -- mostly genuine insufficient-data/no-signal conditions (wall-trend needs 8+ rail samples in 45min, catalyst-news correctly reports no same-day catalyst for these names, darkpool-confluence correctly reports no supporting wall), plus 3 real CortexSourceTimeout instances (CIFR x2, SMTC x1) already covered by cortex-source-timeout-outcome-ab.mjs with no measured outcome degradation. Ruled out, not a bug. No new finding this cycle. Board unchanged, same 9 closed positions."
-    },
-    "2026-09-16T20:15Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
-    "2026-09-16T20:37Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
-    "2026-09-16T20:45Z": {
-      "note": "No new commits, board healthy, same 9 closed positions. Quiet."
-    },
     "2026-09-17T13:08Z": {
       "note": "2026-09-17 morning cold-start. Session PRE_MARKET, board healthy, ledger fresh. Journal pruned this cycle (108->54 entries, dropped >2 trading days old). Yesterday close: 9 plays (5W/4L-scratch: SPCH +9.38%, ALAB +6.85%, CRDO +5.05%, SMTC +4.13%, HOOD +1.42% wins; CIFR -4.41%, SPCX -3.43%, QQQ -0.18%, CORZ 0% losses/scratches). Shipped 2 narrative fixes (PR #5037, #5043, both merged). Open finding on PR #4076 (not yet resolved): flat_theta_bleed exit narrative can claim \"never left the +-10% band\" when trough actually breached it (CORZ instance) -- structural gap (no troughPremium field on ExitEngineInput), n=1 so far, holding per noise discipline. Board-upstream degradation recurred 2x yesterday (durations ~30min and ~37min, both new maxes, /record unaffected both times) -- watching whether duration keeps growing."
     },
@@ -513,6 +351,10 @@
       "session_state": "CLOSED (post-close, all 7 today's plays CLOSED, upstream_ok true, as_of genuinely advancing)",
       "activity": "Container restarted since last cycle (OS build fc-v33->fc-v37) -- verified per CLAUDE.md restart-safety guidance: git branch=main, HEAD matches last pushed commit, node_modules intact (542 entries), Node 20 present at /opt/node20/bin/node. No corrective action needed. CloudWatch swept for the last 25min: zero cron failures ('warmed=3 failed=0', 'backup warm ok'), zerodte-warm cadence still healthy and correctly self-skipping BREAKOUT/PIN post-close. Board unchanged from last cycle (7/7 CLOSED). Clean cycle -- staying quiet per the mandate's own instruction, no new finding to escalate.",
       "open_pr_queue_swept": "New since last cycle: #5230 'fix(swing): stop gexPostureSection rendering a real net GEX as false 0' -- swing lane, not mine, 3min old. #5229 (nighthawk edition stale-flag replay) and #5225 (SPX GEX sticky fallback) both still open/draft, ~56min and ~10min old respectively -- neither stuck yet by this session's observed fleet velocity, neither in my lane. Nothing actionable in the 0DTE lane's queue."
+    },
+    "2026-09-21T13:12:00Z": {
+      "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
+      "activity": "Cold-start for the new trading week. Restart-safety verified: local was behind origin/main (HEAD 81e05844e vs origin b64ff32a0, many PRs merged over the weekend by other lanes) -- reset to origin/main before any journal write, per the standing 'never trust stale local copy' rule. Board confirmed clean pre-market state: ledger empty (fresh day), setups=0, session_stats all-zero with top_block_code correctly null (nothing scanned yet -- live confirmation of the PR #5207 never-fabricated-null behavior, same as Friday). governor shows healthy defaults (halted:false, 0 realized_losers, time_of_day_sizing_factor 0.85). CloudWatch swept: zero critical_stale events in the last 2h, zerodte-warm firing on a healthy ~15-20s cadence and correctly SKIPping BREAKOUT ('outside the RTH commit window') and PIN ('before RTH open') -- exactly the expected pre-market posture, PR #5219's critical_stale lock-steal fix never needed to fire because nothing wedged over the weekend. PR queue swept: only 4 open PRs, all Dependabot (not auto-merge-eligible per standing policy) -- every agent-authored PR from Friday's close-out and the weekend cleared clean, nothing stuck in the draft-deadlock pattern. Journal pruned: removed 54 entries older than 2026-09-17 (2026-09-14/15/16) per the mandate's own '>~2 trading days' retention instruction -- kept 09-17/09-18 (Friday's close-out work, incl. the propagation-lag open_finding's most recent QBTS instance) plus this cold-start entry. watch_stage_tracking: 121 -> 68 entries. Nothing actionable yet -- G-2 opening_window gate blocks all commits until 10:00 ET (14:00 UTC), ~48min from this check. Will re-check once RTH opens and the first setups start scanning."
     }
   },
   "sessions": {
