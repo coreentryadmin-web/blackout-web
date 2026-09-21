@@ -74,6 +74,7 @@ import { partitionPlaysByGeometry } from "./play-constraints";
 import { applyCrossEditionGovernor, GOV_LOOKBACK_EDITIONS } from "./cross-edition-governor";
 import type { RecentOutcomeRow } from "./cross-edition-governor";
 import { applyBearishPosture, BEARISH_RECAP_REASON } from "./bearish-posture";
+import { compareBearishPosture, buildBearishPostureShadowSnapshotRow } from "./bearish-posture-shadow";
 import { nextTradingDayEt, todayEt } from "./session";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
@@ -987,6 +988,11 @@ export async function buildEveningEdition(opts?: {
     // why (a long's sub-scores are direction-specific and would be wrong on a flipped
     // short) — so this log reports the real re-ranking effect (boosted/penalized counts),
     // not a "flipped" count that this stage structurally can never produce.
+    // Captured BEFORE applyBearishPosture potentially reassigns `ranked` below — the shadow
+    // comparison (and its own internal re-derivation of both the actual and corrected postures)
+    // needs the PRE-posture-adjustment list, exactly like applyBearishPosture(ranked, regime)
+    // itself is about to be called with, never the already-adjusted result.
+    const prePostureRanked = ranked;
     const postureResult = applyBearishPosture(ranked, regime);
     if (postureResult.posture === "SHORT") {
       ranked = postureResult.ranked;
@@ -996,6 +1002,18 @@ export async function buildEveningEdition(opts?: {
       );
     }
     funnel.posture_applied = ranked.length;
+
+    // #30 shadow-log (observational only, never feeds back into ranked/postureResult): compares
+    // the LIVE (buggy) composite_regime gate against the corrected comp.includes("DOWN") gate.
+    // Same pre-adjustment ranked/regime objects applyBearishPosture was just called with above.
+    // Fire-and-forget, matching every other snapshot-write call site in this file exactly.
+    const bearishPostureShadow = compareBearishPosture(prePostureRanked, regime);
+    void insertNighthawkCandidateSnapshots([
+      buildBearishPostureShadowSnapshotRow(editionFor, bearishPostureShadow),
+    ]).catch((err) => {
+      console.warn("[nighthawk/edition] failed to write bearish-posture-shadow candidate snapshot:", err);
+      alertCandidateSnapshotWriteFailure("bearish_posture_shadow", editionFor, err);
+    });
 
     // Pre-synthesis merit-floor check (2026-08-05, moved earlier — Lever 5 of the discovery-
     // architecture redesign). This is a PURE OPTIMIZATION, not a new gate. The organic path
