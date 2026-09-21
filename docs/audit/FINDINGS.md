@@ -38,6 +38,268 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 0DTE ratchet early-arm/arm ("breakeven") floors were flat regardless of peak size, giving back ~66 real trades' worth of real gains — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/lib/zerodte/exit-engine.ts` (`ratchetFloorPct`, `floorReason`), `src/lib/zerodte/strategy-version.ts` (`EXIT_VERSION`, `buildResolvedExitPolicy`'s `trailing_rule`) |
+| **Severity** | P2 — live-trading-path, member-facing P&L on the majority of real ratchet-mode winning exits |
+
+### Root cause
+
+`ratchetFloorPct`'s "locked" tier (peak >= +50%) was already fixed on 2026-09-14
+(`fix/0dte-ratchet-lock-floor-scales-with-peak`) to scale the floor at 40% of peak instead of a
+flat +20%, after a 90-day backtest (n=9) showed every locked-tier exit closing inside a narrow
+band regardless of how large the peak got. That fix's own comment already named the mechanism —
+"a flat floor giving back a fixed amount past a threshold, regardless of how much bigger the
+peak grew" — but only applied the scaling to the ONE tier the 9-case sample happened to cover.
+The two tiers below it (`ratchet_early_arm_floor_pct`, flat +5% for peak in [15%,20%);
+`ratchet_arm_floor_pct`, flat 0% for peak in [20%,50%)) were left untouched, carrying the exact
+same bug shape one and two tiers down.
+
+### Evidence
+
+Pulled the 90-day `/record` window (`entry_context.exit`, the same field the lock-tier fix's own
+measurement used) and filtered for `ratchet_early_profit_floor` and `ratchet_breakeven_floor`
+exit reasons — the two flat-floor tiers below the lock tier. **70 real exits found** (26 early-arm,
+40 breakeven, both far larger samples than the lock tier's original n=9), peaks ranging
+15.3%-48.6%.
+
+Counterfactual backtest (same "monotonic decline from peak to close" simplifying assumption the
+lock-tier fix disclosed and used — conservative by construction, since a real path that dipped
+below a higher floor before recovering would have exited even earlier at that same floor, never
+later) at candidate fractions of peak:
+
+```
+EARLY-ARM (flat +5% floor, n=26): current mean close 4.91%
+  20% of peak: 0/26 win (mean -1.51pp)   25%: 2/26 win   30%: 16/26 win
+  35% of peak: 26/26 win (mean +1.04pp)  40%: 26/26 win (mean +1.88pp)
+
+BREAKEVEN (flat 0% floor, n=40): current mean close -0.47% (several real cases closed
+  BELOW breakeven entirely — OKLO peak +26.4% -> -12%, SNDK peak +26.1% -> -4.16% — the
+  exact "green trade finishes red" this floor exists to prevent, happening anyway)
+  20% of peak: 40/40 win (mean +6.27pp)  25%: 40/40 win (+7.72pp)  30%: 40/40 win (+9.17pp)
+  35% of peak: 40/40 win (+10.62pp)      40%: 40/40 win (+12.07pp)
+```
+
+**40% of peak — the exact same fraction the lock tier already shipped — wins on every single one
+of the 66 real cases across both tiers**, the cleanest, largest-sample result of any exit-floor
+measurement in this file's history. This also independently confirms the blast radius of the
+same-day `trim_scale_dead_zone_floor` mark-honoring fix (PR #5366): 4 of the 70 rows use that
+reason and all 4 show the exact understatement pattern that fix corrected (e.g. TSLA peak 24.62%
+closed at 9.33% instead of the correct 12.31% — the live bug that PR fixed, caught independently
+here from the historical data side).
+
+### Fix
+
+`ratchetFloorPct` now floors at `round2(peakPnlPct * EXIT_RULES.ratchet_lock_floor_fraction)` for
+any peak >= `ratchet_early_arm_pnl_pct` (+15%), collapsing what were three independently-flat
+constants into one continuous rule — the same fraction the lock tier already used, now applied
+from the first arm threshold all the way up. The curve is continuous at every boundary by
+construction (0.4 * 15 = 6, 0.4 * 20 = 8, 0.4 * 50 = 20 — each exceeds the corresponding old flat
+value, matching the measured win-on-every-case result). `trimScaleFloorPct` delegates to
+`ratchetFloorPct` for these same tiers, so trim_scale-mode rows in the early-arm/breakeven range
+pick up the identical fix with no separate change.
+
+`floorReason` (which maps a floor breach to its `ratchet_breakeven_floor` /
+`ratchet_early_profit_floor` / `ratchet_profit_floor` reason token, used for both the ledger
+field and member-facing exit narrative) previously classified by the COMPUTED FLOOR VALUE
+(flat 0 / flat 5 / >=20 uniquely identified each tier). That stopped working once all three
+tiers compute the same continuous formula — every armed floor is now > 0, so the old
+value-based check would have made `ratchet_breakeven_floor` permanently unreachable. Fixed by
+reclassifying on the PEAK band instead (the same thresholds that arm each tier in the first
+place), preserving the exact same three reason tokens for backward compatibility with existing
+ledger rows and dashboards that key off them, even though "breakeven" no longer describes the
+floor's literal value.
+
+### Fix rationale
+
+Reused the identical fraction (`ratchet_lock_floor_fraction`, 0.4) already shipped and measured
+for the lock tier, rather than introducing a second constant, because the backtest showed it
+winning cleanly on BOTH remaining tiers independently — one fraction now covers the whole curve
+from +15% up, which is simpler to reason about than three separately-tuned tiers that happen to
+share a boundary. Kept the reason-token names and the peak-threshold boundaries (15/20/50%)
+unchanged — this is a VALUE change (what floor a peak arms), not a THRESHOLD change (when a
+floor arms), matching the narrowest fix that the evidence supports.
+
+### Blast radius
+
+`ratchetFloorPct`'s three call sites in `exit-engine.ts` (ratchet-mode floor arm/breach,
+`trimScaleFloorPct`'s delegation for early-arm/breakeven trim_scale rows) all pick up the fix
+automatically. `floorReason`'s three call sites updated to pass `peakPnlPct` instead of the
+floor value. `buildResolvedExitPolicy`'s `trailing_rule` string (embedded in the frozen
+`exit_policy_snapshot` every commit carries) changed shape — `EXIT_VERSION` bumped v5->v6 per
+this file's own convention, so a grader replaying an OLD row still uses that row's own frozen
+numbers, never silently re-graded under the new curve. `docs/audit/nighthawk-0dte-live-journal.json`
+already carries the research trail for this finding (2026-09-21 entries) since it was found via
+this session's own OPEN-stage forensic backtest, not a code-review pass.
+
+### Tests
+
+`src/lib/zerodte/exit-engine.test.ts`: 9 pre-existing tests updated from the old flat values
+(5/0) to the new scaled values (computed directly from `peak * 0.4`, not re-guessed) —
+`ratchetFloorPct`'s own pure-function table test, three `evaluateExitState` arm/breach tests,
+two `buildExitContext` floor-honoring tests (including the rounding-boundary regression, redone
+with new numbers that reproduce the identical edge case), `resolveExitMark`'s own floor test, a
+`trim_scale` shared-floor test, and a stop-vs-floor precedence test (bumped `planStop` so the
+stop still sits above the new, higher floor mark, preserving that test's original intent).
+`src/lib/zerodte/exit-sync.test.ts`: 2 pre-existing tests (live-sync floor breach + freshest-mark
+override) updated the same way. `src/lib/zerodte/exit-policy-snapshot.test.ts`: golden
+`config_hash` values recomputed live from the real `buildResolvedExitPolicy` output (not
+guessed) for both `ratchet` and `trim_scale` policies.
+
+Full suite: `exit-engine.test.ts` 96/96, `exit-sync.test.ts` + `board.test.ts` +
+`exit-policy-snapshot.test.ts` + `strategy-version.test.ts` + `plan.test.ts` combined 298/298,
+`zerodte-service.test.ts` + `plan.test.ts` 57/57, `npx tsc --noEmit` clean. Full-repo suite run
+in progress at staging time.
+
+---
+_Generated by [Claude Code](https://claude.com/claude-code)_
+
+## Swing "Structure Ladder" cross-desk agreement note had the same toFixed-vs-roundFloats price mismatch as #5380/#5383 — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Night Hawk Swings — Ask Largo (`GET /api/market/swing/play-brief`) |
+| **File** | `src/lib/swing/play-brief-ladder.ts` |
+| **Status** | FIXED (`fix/swing-play-brief-toFixed-diff-ladder`) |
+
+### Root cause
+`narrateVectorGexAgreement` (the function behind `StructureLadder.crossDeskAgreement.note`) baked
+the raw `gex.flip` and `spot` floats into its disagreement sentence with `n.toFixed(2)`. The SAME
+raw floats also feed `StructureLadder.spot` and the ladder's own `rung.price` fields — plain
+numeric JSON fields that get rounded by `roundFloats()` (`Math.round(n*100)/100`) when the whole
+`play-brief` route response is serialized (`route.ts` line 57:
+`NextResponse.json(roundFloats({ available: true, ...brief }), ...)`).
+
+`toFixed` and `Math.round(n*100)/100` can disagree by a full cent at an IEEE-754 half-cent
+boundary — e.g. `(95.175).toFixed(2)` is `"95.17"` (95.175 is actually stored as
+95.174999999999997...) while `Math.round(95.175*100)/100` is `95.18`. Because `note` is a STRING
+baked server-side BEFORE `roundFloats()` runs, the wrapper can't fix it after the fact — it can
+only round plain numeric fields, not numbers already embedded in text.
+
+This is the THIRD occurrence of the exact bug class already fixed in `play-brief-narrative.ts`
+(#5380) and `play-brief-narrative-coaching.ts` (#5383) — same shared `fmtPriceLevel` helper
+(`src/lib/fmt-money.ts`, added by #5380), same mechanism, different file.
+
+### Evidence
+Added a RED→GREEN regression test in `play-brief-ladder.test.ts` using `gex.flip = 95.175` /
+`vector.spot = 100.005` — values chosen because they hit the documented IEEE-754 half-cent
+boundary. Pre-fix: `git stash` on the code fix alone, test fails (`note` contains `"95.17"` and
+`"100.00"`, i.e. the raw-`.toFixed(2)` values). Post-fix: `note` contains `"95.18"` and `"100.01"`
+(the `roundFloats`-consistent values), matching what `ladder.spot`/rung prices would show
+elsewhere in the same response. Full swing test dir + `fmt-money.test.ts`: 1471/1471 pass.
+`tsc --noEmit` clean.
+
+### Blast radius
+Checked the other three files disclosed as follow-up in #5383's own PR body
+(`play-brief.ts`, `play-brief-diff.ts`, `play-brief-intel.ts`) for the same pattern:
+- `play-brief.ts` / `play-brief-intel.ts` still carry many raw `n.toFixed(2)` price-level call
+  sites (wall/flip/spot/strike) — genuine remaining follow-up, NOT fixed in this PR (large,
+  many-call-site sweep; scoping to keep this PR single-issue per the repo's PR-size policy).
+- `play-brief-diff.ts` was investigated and NOT changed: its `narrateSpotShift`/`narrateMarkShift`/
+  `narrateStructuralLevelShift` run entirely CLIENT-SIDE (`useSwingPlayBrief.ts`, `"use client"`),
+  reading `spot`/`gammaFlip`/`callWall`/`putWall` from `envelope.levels` and `mark` from a
+  `TerminalPlay` sourced off `horizons/route.ts` — BOTH of which already apply `roundFloats()`
+  server-side before the client ever sees them. Reformatting an already-2dp-rounded number with
+  raw `.toFixed(2)` is a no-op, not a live mismatch, so no bug exists there today; converting it to
+  `fmtPriceLevel` would be defensive-only, not a fix, and is left alone to avoid overclaiming a
+  finding that doesn't reproduce.
+
+### Fix rationale
+Same fix as #5380/#5383: import `fmtPriceLevel` from `@/lib/fmt-money` and use it for the two bare
+price levels (`gex.flip`, `spot`) instead of raw `.toFixed(2)`. Left every other numeric field in
+this file (R:R ratios, distance %, ATR multiples) untouched — none of them are duplicated
+elsewhere in the response as a `roundFloats`'d field, so they carry no such risk.
+
+### Remaining follow-up (disclosed, not started)
+`play-brief.ts` and `play-brief-intel.ts` still need the same sweep — many call sites
+(wall/flip/spot/strike price levels), large enough to warrant their own PR(s).
+
+## Ask Largo swing play-brief: `play-brief-narrative-coaching.ts` price levels had the same toFixed-vs-roundFloats mismatch as `play-brief-narrative.ts` (PR #5380) — fast follow-up sweep, disclosed in that PR — fix/swing-narrative-coaching-price-level-rounding — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** PR #5380 (this session, same day) fixed 18 price-LEVEL call sites in `play-brief-narrative.ts` that formatted raw floats with `n.toFixed(2)` instead of the shared `fmtPriceLevel` helper (`fmt-money.ts`, `Math.round(n*100)/100` then `.toFixed(2)` — the same algorithm `roundFloats` applies to `envelope.levels`/`structureLadder` at the response boundary). That PR's own write-up disclosed the identical pattern in five sibling files as a known follow-up, kept out of that PR to stay single-issue. This is that follow-up for the first (and highest-traffic) of the five: `play-brief-narrative-coaching.ts`, which feeds the SAME "Trade manager read" composed narrative `collectCoachingBullets` (magnet/confluence/expected-move/VEX-vanna/HELIX-large-print/VWAP/structure bullets) — 9 price-LEVEL call sites across `magnetCoaching`, `expectedMoveCoaching` (×2, the 1σ band low/high), `confluenceCoaching`, `vexCoaching` (×3, vanna flip/call wall/put wall), `flowPrintsCoaching` (large-print strike), and the technicals VWAP/structure-level lines.
+- **Evidence:** same floating-point mechanism as #5380's SPCX live repro — `(152.035).toFixed(2) === "152.03"` while `Math.round(152.035*100)/100 === 152.04` (152.035's IEEE-754 storage rounds down under plain multiplication-then-compare, up under the shared helper's multiply-then-round). Reproduced through the real `magnetCoaching` call site: a magnet strike of `152.035` rendered `"**Gamma magnet 152.04**"` post-fix vs. would have rendered `"**Gamma magnet 152.03**"` pre-fix — the same value `envelope.levels`'s `"gamma magnet"` entry (built via `play-brief.ts`'s `levelsFromContext`, already `roundFloats`'d) would show as `152.04`.
+- **Blast radius:** this PR fixes all 9 price-LEVEL sites in `play-brief-narrative-coaching.ts`. Left deliberately unfixed, per two of the six now-remaining sites' own unit: `m.yield_10_year.toFixed(2)`/`m.curve_10y_1y_spread.toFixed(2)` (macro yield/curve-spread lines) are percentages, not price levels, and are not duplicated anywhere in `envelope.levels`/`structureLadder` — converting them would be a no-op stylistic change, not a correctness fix, so left as-is. **Still open, tracked as the remaining follow-up**: `play-brief.ts`, `play-brief-diff.ts`, `play-brief-intel.ts`, `play-brief-ladder.ts` (repo-wide grep from #5380's own write-up).
+- **Fix rationale:** mechanical `n.toFixed(2)` → `fmtPriceLevel(n)` replacement, identical shape to #5380, reusing the already-shared helper (no new formatter added). No logic changes; byte-identical output for any value not sitting on a rounding boundary (confirmed: existing 135-test suite for this file passes unchanged).
+- **Test:** `src/lib/swing/play-brief-narrative-coaching.test.ts` — 1 new test (`magnetCoaching`, strike `152.035`, asserts `152.04` renders, `152.03` does not) through the real call path, mirroring #5380's own `dealerPostureLine` regression test. RED→GREEN proven via `git stash` on the implementation file only: 1/136 failure pre-fix (exactly the new test), 136/136 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1456/1456 — no collateral breakage.
+
+## Ask Largo swing play-brief: `play-brief-intel.ts` had the same toFixed-vs-roundFloats price-level mismatch as #5380/#5383 — fast follow-up sweep (3 of 6 files) — fix/swing-intel-price-level-rounding — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** third file in the disclosed follow-up sweep from PR #5380 (`play-brief-narrative.ts`, 18 sites) and PR #5383 (`play-brief-narrative-coaching.ts`, 9 sites): `play-brief-intel.ts` had the identical `n.toFixed(2)` price-LEVEL pattern instead of the shared `fmtPriceLevel` helper (`fmt-money.ts`) across 18 more call sites — `chartTechnicalsSection` (spot/VWAP/golden-pocket/structure), `formatConfluenceZone`, `chartLevelsSection` (call/put wall, gamma flip, GEX king strike, max pain, expected-move bands, dark-pool strikes, gamma magnet), the HELIX notable-prints strike label, `watchForSection`'s flag-anchor/entry-trigger levels, the CLOSED-bucket gamma-flip lose/reclaim block + structural support/resistance wall lines, `gexPostureSection`'s nearest-wall line, and `wallDynamicsSection`'s per-event strike/flip label. This is the highest call-site-count of the three files fixed so far — `play-brief-intel.ts` feeds `chartLevelsSection`/`chartTechnicalsSection`/`gexPostureSection`/`wallDynamicsSection`, several of which are ALSO the same `envelope.levels`-duplicated facts (call/put wall, gamma flip, max pain, GEX king) the earlier two PRs already fixed in the narrative layer — so this file was the third independent source of the exact same divergence risk for the exact same underlying facts.
+- **Evidence:** same floating-point mechanism as #5380/#5383's SPCX/`magnetCoaching` repros — `(152.035).toFixed(2) === "152.03"` while `Math.round(152.035*100)/100 === 152.04`. Reproduced through the real `chartLevelsSection` call site: a max-pain level of `152.035` renders `"Max pain: **152.04**"` post-fix (matching what `envelope.levels`'s `"max pain"` entry would show, already `roundFloats`'d) vs. would have rendered `"152.03"` pre-fix.
+- **Blast radius:** this PR fixes all 18 price-LEVEL sites in `play-brief-intel.ts`. Left deliberately unfixed, same discipline as the prior two PRs: `m.yield_10_year.toFixed(2)`/`m.curve_10y_1y_spread.toFixed(2)` (macro yield/curve-spread lines) — percentages, not price levels, never duplicated in `envelope.levels`. **Still open, tracked as the remaining follow-up**: `play-brief.ts`, `play-brief-diff.ts`, `play-brief-ladder.ts` (3 of 6 files now done: `play-brief-narrative.ts` #5380, `play-brief-narrative-coaching.ts` #5383, this one).
+- **Fix rationale:** mechanical `n.toFixed(2)` → `fmtPriceLevel(n)` replacement, identical shape to the prior two PRs, reusing the already-shared helper. No logic changes; byte-identical output for any value not sitting on a rounding boundary (confirmed: existing 182-test suite for this file passes unchanged).
+- **Test:** `src/lib/swing/play-brief-intel.test.ts` — 1 new test (`chartLevelsSection`, max pain `152.035`, asserts `152.04` renders, `152.03` does not) through the real call path, mirroring #5380/#5383's own regression tests. RED→GREEN proven via `git stash` on the implementation file only: 1/183 failure pre-fix (exactly the new test), 183/183 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1457/1457 — no collateral breakage.
+
+## HELIX/Thermal compare card's gamma summary baked a fully-unrounded flip float into its text — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Largo cross-product compare card (`get_helix_thermal_compare` / `HelixThermalCompareCard`) |
+| **File** | `src/lib/largo/helix-thermal-compare.ts` |
+| **Status** | FIXED (`fix/helix-thermal-compare-unrounded-flip-summary`) |
+
+### Root cause
+`gammaSummary`'s fallback branch (used whenever a positioning snapshot has no `gamma_regime_read`
+prose but does have a real `flip`) built its string with raw template-literal interpolation:
+`` `Flip ${flip}` ``. `flip` is a plain JS number straight off the upstream provider, with no
+rounding applied — template-literal interpolation calls `Number.prototype.toString()`, which
+prints FULL double precision, not 2dp.
+
+The SAME raw `flip` also feeds the numeric `gamma.flip` field a few lines down, which — because
+the whole payload is wrapped in `roundFloats()` at the top of `helixThermalCompareForLargo`/
+`peerTickerCompareForLargo` — gets correctly rounded to `Math.round(n*100)/100`. But `summary` is
+already a baked STRING by the time `roundFloats()` runs, so the wrapper can't touch a number
+already embedded in text. Result: two different-looking values for the same fact in one payload.
+
+This is CLAUDE.md's own named "systemic: several endpoints serve unrounded floats" class, but one
+layer deeper than the usual raw-JSON-number case — it's a raw number baked into narrated PROSE,
+the same shape as the toFixed-vs-roundFloats bug already fixed three times this week in
+`play-brief-narrative.ts` (#5380), `play-brief-narrative-coaching.ts` (#5383), and
+`play-brief-ladder.ts` (#5385) — but in the HELIX/Thermal compare card rather than the swing play
+brief, and via raw interpolation rather than `.toFixed(2)` (an even less-rounded starting point).
+
+### Evidence
+Live repro, run directly against the pure `compareSidesFrom` function:
+```
+compareSidesFrom({ gamma_regime_read: null, gamma_posture: null, flip: 4523.360000000001, spot: 4520 }, { rows: [], available: false })
+  -> gamma.summary === "Flip 4523.360000000001"   (raw, unrounded)
+  -> gamma.flip    === 4523.360000000001          (would round to 4523.36 via roundFloats() at the route)
+```
+Added a RED→GREEN regression test in `helix-thermal-compare.test.ts` pinning `summary === "Flip
+4523.36"` for this exact input. Pre-fix: fails (`"Flip 4523.360000000001"`). Post-fix: passes.
+Full `largo/*.test.ts` + `fmt-money.test.ts`: 942/942 pass. `tsc --noEmit` clean.
+
+### Blast radius
+Single call site — `gammaSummary`'s one fallback branch. `gamma.summary` is read by both card
+modes this file exports (`helix_thermal` and `peer_tickers`), so both are fixed by the one change.
+No other raw-number template-literal interpolations exist elsewhere in this file (checked via grep
+for `${...}` template literals — every other one interpolates a label/bias string, never a number).
+
+### Fix rationale
+`fmtPriceLevel` (from `@/lib/fmt-money`, the same helper #5380/#5383/#5385 already established for
+"bare price level, no `$`, must match `roundFloats`'s rounding") replaces the raw interpolation.
+`gamma.flip` itself was already correct (it's a plain numeric field `roundFloats()` handles) — only
+the string needed the fix.
+
 ## Ask Largo: `holdPlanSection` restates the low-thesis-health "tighten risk" advisory that "Trade manager read" already carries — FIXED
 
 > **kind:** `FINDING`
