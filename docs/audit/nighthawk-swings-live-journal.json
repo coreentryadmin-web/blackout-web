@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T01:20:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. **PR #5331 already merged** (own PR, verify+CodeQL both green, merged into main as 441e5eace) -- unsubscribed. ECR deploy for that commit is in_progress (run 35550072991, started 01:11Z) -- too early to live-test the new /api/admin/swing/multi-truth-grade endpoint yet, re-check next cycle. #4076 unchanged (216 comments, same updated_at) -- no new activity to act on. Zero open swing PRs. Board unchanged (still Sunday off-hours). **Live re-confirmed two of my own recent fixes, fresh pulls this cycle (not relying on stale prior-session confirmation):** (1) WOLF:1218 OPEN brief -- 'next trim at +100%' with NO fabricated 'mark $0.77, needs $1.54' distance text, Position section correctly shows 'Mark: unknown' -- #5328's fake-mark-basis suppression fix is genuinely live and holding. (2) BKKT:1221 OPEN brief -- Book context concentration line correctly states the true count (28 same-direction crypto-equity positions) and caps the rendered name list to exactly 8 names + '+ 20 more' (8+20=28, arithmetic checks) -- confirms #5321 (crypto-equity theme coverage) and #5327 (MAX_OVERLAP_NAMES cap) are both live and composing correctly together. No new bugs found this cycle -- genuinely clean, not manufactured.",
+  "last_updated": "2026-09-21T01:25:00Z",
+  "notes": "Scheduled check-in fired (the 20-min one from PR #5331's CI wait) -- PR #5331 was already merged last cycle, so this check-in's PR-verify task was moot; confirmed again (state=merged, verify+CodeQL green). ECR deploy for that commit (run 35550072991) still in_progress ~14min in -- normal, CLAUDE.md notes deploys often take 30-40min; will verify the new admin endpoint live on a later cycle once it completes. Noticed a DIFFERENT, parallel coordinator session (session_01PzDkDzjR3bJQsFbXENzsVz) opened PR #5332 folding my staged finding into FINDINGS.md -- not mine to drive (didn't open it, not asked to), left alone per collaboration/ownership discipline; it's open, non-draft, not stuck. #4076 unchanged, no new comments. **Used the wait productively (NEVER SIT IDLE)**: full Ask Largo audit on LITE (WATCH banger, not freshly pulled this session before). Checked the 'Flag anchor' (950.47) == 'Entry trigger' (950.47) coincidence -- traced to source (play-brief-intel.ts ~979-990): these are two DELIBERATELY separate fields (flagUnderlyingPx pinned-historical vs entryTriggerUnderlyingPx current-and-refreshable, already fixed for a real duplication-read bug 2026-09-12) that simply happen to carry the same value here because the one scan pass since flagging didn't move the level -- not a bug. Also checked Legacy desk-context cross-reference ('last pick on this name closed unfilled'), gate disclosure (legacy_exempt, consistent), entry-window countdown math (3 days elapsed / 2 days left against a 5-day window, correct rounding) -- all clean. No new bugs.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,8 +113,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T01:20:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T01:25:00Z",
+    "swing_prs": [
+      "#5332 (not mine -- parallel session's findings-fold housekeeping PR, left alone)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
