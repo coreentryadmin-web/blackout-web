@@ -90,6 +90,80 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 - **Blast radius:** single function (`actionNarrative`), single file. No other call site renders
   `SwingManageAction "ADD"`/`Recommendation "BUY"` for an open swing position.
 
+## Ask Largo swing play-brief: 9 more sections sampled a fresh `Date.now()` instead of `ctx.readMs` despite `ctx` being in scope — #5351-class readMs-anchor bug, second sweep — fix/swing-playbrief-readms-anchor-sweep — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** PR #5351 (2026-09-19-ish) established that `composeSwingPlayBrief` stamps ONE canonical `readMs` onto `ctx` before any section runs, specifically so every staleness check in a brief (Vector snapshot age, GEX matrix age, Meridian catalyst age, option-mark age) agrees on the same "now" — because `compose` does real sequential I/O between sections, two bare `Date.now()` samples taken at different points in that same request can land on opposite sides of a staleness cutoff and disagree about the identical underlying field. #5351 fixed exactly 2 of the ~20 call sites this class applies to (`watchForSection`, `confluenceCoaching`), documented in `SwingPlayBriefContext.readMs`'s own doc comment as an open follow-up covering "the other ~18." A follow-up grep across `play-brief*.ts` for `Date.now()` found **9 more genuinely reachable instances** where the function already takes `ctx: SwingPlayBriefContext` (required or optional) as a parameter — so `ctx.readMs` was always in scope — but the function body still called `Date.now()` directly instead of consulting it:
+  - `src/lib/swing/play-brief-intel.ts`: `chartTechnicalsSection` (optional `ctx`), `preferredGexWalls`, `chartLevelsSection`, `meridianCatalystSection`, `gexPostureSection` (all required `ctx`).
+  - `src/lib/swing/play-brief-ladder.ts`: `buildStructureLadder` (Structure Ladder widget).
+  - `src/lib/swing/play-brief-narrative.ts`: `collectFocalLevels`, `resolveBreakInvalidation`, and **`tradeManagerNarrativeSection`** — the brief's main narrative section, the highest-visibility site in this batch.
+- **Why this matters in practice:** any pair of these sections (or one of these against an already-fixed sibling like `watchForSection`) reasoning about the same GEX matrix, Vector snapshot, or Meridian catalyst read can render a different staleness verdict for the identical field within one response — e.g. "GEX posture" ("Last snapshot ... may lag spot") disagreeing with "Trade manager read" (rendering the same matrix's dealer posture as live) purely because the two sections' internal `Date.now()` calls straddled the `GEX_MATRIX_STALE_MS`/`VECTOR_STALE_MS`/`MERIDIAN_CATALYST_STALE_MS` cutoff between them. This is the exact "same fact, two answers within one envelope" defect class #5351 fixed for a different pair of sections, now closed for the remaining structurally-reachable ones.
+- **Not fixed (correctly, not an oversight):** `vectorDeskSection` and `wallDynamicsSection` in `play-brief-intel.ts` also sample a bare `Date.now()`, but neither takes `ctx` — they're called with only `(vec, sessionDate, bucket)` at the real call site, so `ctx.readMs` is not in scope without a signature change (adding an optional `ctx` param, the same pattern `chartTechnicalsSection` already uses). Left as a genuine, narrower follow-up rather than widening this PR's blast radius; `play-brief.ts:1030`'s own `Date.now()` is the correct origin point (where `readMs` is created and stamped onto `ctx` once) and was correctly left untouched.
+- **Fix rationale:** mechanical `const readMs = Date.now();` → `const readMs = ctx.readMs ?? Date.now();` (or `ctx?.readMs ?? Date.now()` for `chartTechnicalsSection`'s optional `ctx`) at each of the 9 sites — same minimal, non-behavior-changing-when-anchored pattern #5351 used, so an un-anchored caller (a test constructing `ctx` without `readMs`, or any call path outside `composeSwingPlayBrief`) still falls back to the real wall clock exactly as before.
+- **Evidence / Test:** added 3 new regression tests, each proving the section reads `ctx.readMs` rather than the real wall clock:
+  - `play-brief-intel.test.ts`: `meridianCatalystSection` and `gexPostureSection` — `ctx.readMs` anchored 1 year in the future while the underlying `as_of`/`asof` field is fresh vs. the *real* wall clock (so a real bug reads it as fresh; the fix reads it as stale under `ctx.readMs`).
+  - `play-brief-narrative.test.ts`: `tradeManagerNarrativeSection` — same fixed-clock technique `counterThesisLine`'s own #5351-follow-up test already established (no global `Date.now()` mocking): `ctx.readMs` and `vec.asOf` pinned to the same historical instant (genuinely fresh, 0ms age) while the suite's real run-time clock is weeks later.
+  RED→GREEN proven via `git stash` on the 3 implementation files only (tests kept): pre-fix 2/185 fail in `play-brief-intel.test.ts` (exactly the 2 new tests) and 1/103 fail in `play-brief-narrative.test.ts` (exactly the 1 new test); post-fix both suites fully green. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1463/1463 — no collateral breakage.
+- **Follow-up, not started:** `vectorDeskSection`/`wallDynamicsSection` (need a signature change to accept `ctx`), and the disclosed remainder of the original "~18" count this PR does not fully close — a future sweep should re-grep `play-brief*.ts` for `Date.now()` rather than trusting either this file's count or #5351's as exhaustive.
+
+## Ask Largo swing play-brief: `catalystsSection` sampled a fresh `Date.now()` for both its freshness-bearing fields instead of `ctx.readMs` — #5351/#5392-class readMs-anchor bug, not among the 9 sites #5392 fixed — fix/swing-catalystssection-readms-anchor — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `catalystsSection(eco: EcosystemContext | null)` in `src/lib/swing/play-brief-intel.ts`
+  renders earnings date, short-interest fundamentals, news headlines, and peers for a swing play
+  brief. Two of those reads are freshness-bearing (`arsenal.fundamentals.as_of`,
+  `arsenal.news.as_of`), and both staleness checks sampled a bare `Date.now()` directly
+  (`fundamentalsAncient(arsenal.fundamentals.as_of, Date.now())` and
+  `newsCatalystStale(arsenal.news.as_of, Date.now())` / `newsCatalystAgeMs(..., Date.now())`)
+  instead of the request-wide `ctx.readMs` anchor `composeSwingPlayBrief` stamps once before any
+  section runs (per #5351). `catalystsSection` did not even take `ctx` as a parameter, unlike the
+  9 sibling sections PR #5392 fixed the same day (`chartTechnicalsSection`, `preferredGexWalls`,
+  `chartLevelsSection`, `meridianCatalystSection`, `gexPostureSection`, `buildStructureLadder`,
+  `collectFocalLevels`, `resolveBreakInvalidation`, `tradeManagerNarrativeSection`) — confirmed
+  against #5392's own merged diff, which never touches this function.
+- **Why this matters in practice:** a real request runs sections sequentially with real I/O
+  between them, so `catalystsSection`'s own two internal `Date.now()` samples can each land on a
+  different real instant, and can disagree with a sibling section (e.g. `meridianCatalystSection`,
+  now anchored via #5392) about whether the same underlying arsenal snapshot should be treated as
+  stale — the exact "same fact, two answers within one envelope" defect class #5351/#5392 already
+  fixed elsewhere in this file, left open here because this function was outside that sweep's grep
+  scope (it read `Date.now()` with no `ctx` param in sight at all, so a naive "does this call
+  `ctx.readMs`" grep would miss it just as easily as a naive "does this call `Date.now()`" grep
+  would flag every other correctly-anchored call site).
+- **Fix rationale:** thread an optional `ctx?: SwingPlayBriefContext | null` second parameter
+  (same pattern `chartTechnicalsSection` and `expectedMoveCoaching` already use for backward
+  compatibility — existing callers/tests that construct `catalystsSection(ecosystem)` alone are
+  unaffected, falling back to a fresh `Date.now()` exactly as before), derive
+  `const readMs = ctx?.readMs ?? Date.now();` once at the top of the function, and use `readMs` at
+  both internal call sites instead of resampling the clock. Updated the real production call site
+  in `buildIntelSections` (`catalystsSection(ecosystem)` → `catalystsSection(ecosystem, ctx)`) where
+  `ctx` was already in scope.
+- **Evidence / Test:** the two regression tests already existed in `play-brief-intel.test.ts` —
+  written by a prior cycle alongside #5392 to document this exact gap before it was fixed
+  (`catalystsSection: uses ctx.readMs as the staleness anchor for fundamentals, not the real wall
+  clock` and the news-headlines sibling), using the same fixed-future-anchor technique as #5392's
+  own tests: `ctx.readMs` pinned one year in the future while the underlying `as_of` is fresh vs.
+  the *real* wall clock, so a pre-fix run reads it as fresh (wrong) and a post-fix run reads it as
+  ancient/stale under the anchor (correct). RED→GREEN proven via `git stash` on the implementation
+  file only (test file kept): pre-fix `2/187 fail` in `play-brief-intel.test.ts` (exactly the 2
+  target tests); post-fix `187/187` pass. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts`
+  suite: 1465/1465 — no collateral breakage.
+- **Blast radius:** single function, single call site (`buildIntelSections`). No other caller of
+  `catalystsSection` exists in the codebase.
+- **Follow-up, not started:** `vectorDeskSection`/`wallDynamicsSection` (flagged as a genuine open
+  follow-up by #5392's own finding — need a signature change to accept `ctx` since neither
+  currently takes any context-shaped parameter) remain unfixed; a future sweep should re-grep
+  `play-brief*.ts` for `Date.now()` rather than trusting any prior count (including this one) as
+  exhaustive.
+
 ## Ask Largo swing play-brief: `play-brief.ts`'s evidence-line nearest-wall/γ-flip had the same toFixed-vs-roundFloats price-level mismatch as #5380/#5383/#5384 — completes the 6-file sweep, with a correction on two of the three files this PR touched — fix/swing-remaining-price-level-rounding — 2026-09-21
 
 > **kind:** `FINDING`

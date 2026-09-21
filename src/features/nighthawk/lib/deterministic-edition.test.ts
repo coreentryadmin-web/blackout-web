@@ -500,6 +500,61 @@ test("pickChainContract: preferAffordable=true falls through to the unchanged la
   assert.equal(c?.strike, 1000, "no strike clears both bars -> unchanged nearest-to-spot ladder");
 });
 
+// ── preferAffordable pass 2: relaxed-OI fallback (live 2026-09-22 — the pass-1-only preference
+// shipped 2026-09-21 was itself a no-op on ALAB/TWLO: both had a real, quoted, cost+delta-qualifying
+// strike, just under the 500-OI tieredMinOi bar their $200+ spot requires — ALAB $430C real: $7.03,
+// 0.183Δ, 75 OI; TWLO $290C real: $6.10, 0.289Δ, 248 OI — landing on their $30.23 and $12.75 ATM
+// picks instead. See PREFERRED_OPTION_RELAXED_MIN_OI's own doc comment in constants.ts. ────────────
+
+/** Spot >= 200 so tieredMinOi is the real 500 floor (matches ALAB/TWLO). ATM is deep-liquidity but
+ *  too pricey to prefer; a further strike clears cost + delta but sits at oi=75 -- below the 500
+ *  floor (so it lands in relaxedOi, not strict) but above PREFERRED_OPTION_RELAXED_MIN_OI (50). */
+function thinButAffordableChain(): EditionChainData {
+  return {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: deep liquid, too pricey
+      row(1060, { oi: 75, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // affordable + real delta, thin OI
+    ],
+  };
+}
+
+test("pickChainContract: preferAffordable=true falls back to a thin-but-real (oi>=50) affordable strike when nothing in the deep-liquidity pool qualifies", () => {
+  const c = pickChainContract(thinButAffordableChain(), "long", null, undefined, true);
+  assert.equal(c?.strike, 1060, "1060 clears cost+delta and its oi=75 clears the relaxed floor -- must not fall all the way back to the $20 ATM pick");
+  assert.equal(c?.premium, 7);
+});
+
+test("pickChainContract: without preferAffordable, the thin-but-affordable strike is never reached -- zero regression on the ordinary ladder", () => {
+  const c = pickChainContract(thinButAffordableChain(), "long");
+  assert.equal(c?.strike, 1000, "ordinary nearest-to-spot ladder is untouched by the relaxed-OI fallback");
+});
+
+test("pickChainContract: relaxed-OI fallback still excludes a genuinely untradeable phantom-quote strike (oi below PREFERRED_OPTION_RELAXED_MIN_OI)", () => {
+  const chain: EditionChainData = {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: deep liquid, too pricey
+      row(1060, { oi: 3, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // affordable + real delta, but oi=3 (noise)
+    ],
+  };
+  const c = pickChainContract(chain, "long", null, undefined, true);
+  assert.equal(c?.strike, 1000, "oi=3 is below even the relaxed floor -- must fall through to the unchanged ordinary ladder, not pick a near-untradeable strike");
+});
+
+test("pickChainContract: a strict-pool affordable strike is always preferred over a thinner relaxed-pool one, even if the relaxed one is nearer to spot", () => {
+  const chain: EditionChainData = {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: too pricey
+      row(1055, { oi: 60, callAsk: 7.5, callBid: 7.1, callDelta: 0.19 }), // nearer to spot, but thin (relaxed pool)
+      row(1060, { oi: 5_000, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // farther, but deeply liquid (strict pool)
+    ],
+  };
+  const c = pickChainContract(chain, "long", null, undefined, true);
+  assert.equal(c?.strike, 1060, "a real strict-pool affordable candidate must win over a nearer but thinner relaxed-pool one -- liquidity safety still comes first when a real liquid option exists");
+});
+
 test("thesis is grounded in the score breakdown and cites the leading driver", () => {
   const s = scored("XYZ", "long", 66);
   const { thesis, key_signal } = buildDeterministicThesis(s, dossier("XYZ", 120));
