@@ -446,11 +446,13 @@ export function vectorPlayCoaching(
   play: TerminalPlay,
   sessionDate?: string | null,
   conflictAlreadyNoted?: boolean,
+  // Same readMs-anchor fix as vexCoaching above — see its doc comment.
+  readMs?: number,
 ): string | null {
   const vp = vec?.play;
   if (!vp?.headline && !vp?.invalidation) return null;
   // Largo C2 — stale Vector desk must not coach thesis/invalidation (same gate as technicalsCoaching #4400).
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
 
   // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TDOC/ASAN): `vp.bias` is a
   // four-value enum (`VectorPlayBias`, vector-play-engine.ts) — "long" | "short" | "range" |
@@ -844,8 +846,13 @@ export function vexCoaching(
   vec: VectorFullState | null,
   spot: number | null,
   sessionDate?: string | null,
+  // Same #5351/#5353/#5355/#5356-class fix, completing the sweep across this file's remaining
+  // siblings: optional trailing anchor, defaulting to Date.now() for backward compat with every
+  // existing call site/test, so this bullet's staleness verdict can agree with the rest of the
+  // brief judging the identical vec snapshot instead of sampling its own, later, wall-clock read.
+  readMs?: number,
 ): string | null {
-  if (!vec || vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (!vec || vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const vFlip = fin(vec.vexFlip);
   const gFlip = fin(vec.gammaFlip);
   const vCall = vec.vexWalls?.callWalls?.[0]?.strike;
@@ -873,8 +880,10 @@ export function flowPrintsCoaching(
   vec: VectorFullState | null,
   play: TerminalPlay,
   sessionDate?: string | null,
+  // Same readMs-anchor fix as vexCoaching above — see its doc comment.
+  readMs?: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const f = vec?.flowMarkers;
   if (!f?.available || !f.prints?.length) return null;
   const top = f.prints[0]!;
@@ -966,8 +975,10 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
 export function wallDynamicsCoaching(
   vec: VectorFullState | null,
   sessionDate?: string | null,
+  // Same readMs-anchor fix as vexCoaching above — see its doc comment.
+  readMs?: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const events = vec?.wallEvents ?? [];
   if (events.length < 2) return null;
   const recent = events.slice(-2);
@@ -1024,9 +1035,11 @@ export function technicalsCoaching(
   vec: VectorFullState | null,
   play: TerminalPlay,
   sessionDate?: string | null,
+  // Same readMs-anchor fix as vexCoaching above — see its doc comment.
+  readMs?: number,
 ): string | null {
   // Largo C2 — stale Vector chart read must not coach directional alignment (#4387 class).
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const t = vec?.technicals;
   if (!t) return null;
   const parts: string[] = [];
@@ -1108,7 +1121,11 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
       ? deadPlayReason(play)
       : null;
 
-  const markAbsence = collectOptionMarkStalenessAbsence(play, Date.now());
+  // Same #5351/#5353/#5355/#5356-class fix: prefer ctx.readMs over a fresh Date.now() sample so
+  // this bullet's staleness verdicts agree with every other section of the same brief judging the
+  // identical vec/mark snapshot.
+  const readMs = ctx.readMs ?? Date.now();
+  const markAbsence = collectOptionMarkStalenessAbsence(play, readMs);
   if (markAbsence) {
     if (markAbsence.reason === "sync quote without freshness timestamp") {
       // Live repro 2026-09-11 (Ask Largo standing mandate, TWST): `markIsSync` collapses two
@@ -1136,7 +1153,7 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   // which missed a future-skewed Infinity dataAgeMs rendering the literal "Infinitys" and a null
   // dataAgeMs (with vec.freshness === "stale") silently never warning at all. Now gated on the
   // shared vectorAgeStale helper, matching every other staleness check in the play-brief lane.
-  if (!dead && vectorAgeStale(vec, Date.now())) {
+  if (!dead && vectorAgeStale(vec, readMs)) {
     const label = ageSecondsLabel(vec?.dataAgeMs) ?? "clock-skewed";
     warnings.push(`Vector **${label}** stale`);
   }
@@ -1344,20 +1361,20 @@ export function collectCoachingBullets(
   push(ivRankCoaching(play));
 
   if (spot != null) {
-    push(vexCoaching(vec, spot, ctx.sessionDate));
-    push(flowPrintsCoaching(vec, play, ctx.sessionDate));
+    push(vexCoaching(vec, spot, ctx.sessionDate, ctx.readMs ?? undefined));
+    push(flowPrintsCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
     push(magnetCoaching(ctx, vec, spot));
     push(confluenceCoaching(vec, play, spot, ctx.sessionDate, ctx.readMs ?? undefined));
     push(expectedMoveCoaching(vec, spot, ctx.sessionDate, ctx.readMs ?? undefined));
     push(wallIntegrityCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
-    push(wallDynamicsCoaching(vec, ctx.sessionDate));
-    push(technicalsCoaching(vec, play, ctx.sessionDate));
+    push(wallDynamicsCoaching(vec, ctx.sessionDate, ctx.readMs ?? undefined));
+    push(technicalsCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
   } else {
-    push(vexCoaching(vec, null, ctx.sessionDate));
-    push(flowPrintsCoaching(vec, play, ctx.sessionDate));
+    push(vexCoaching(vec, null, ctx.sessionDate, ctx.readMs ?? undefined));
+    push(flowPrintsCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
   }
 
-  push(vectorPlayCoaching(vec, play, ctx.sessionDate, vectorConflictAlreadyNoted));
+  push(vectorPlayCoaching(vec, play, ctx.sessionDate, vectorConflictAlreadyNoted, ctx.readMs ?? undefined));
   push(dataHonestyCoaching(ctx, play));
 
   return out;
