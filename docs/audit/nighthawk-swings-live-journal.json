@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T14:48:11Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto #5362 (merged, confirmed via log). No new open swing PRs. No new #4076 activity. Followed up on the AAPL #40 'score 0' lane-rank watch item from two cycles ago -- did NOT self-resolve as hypothesized: still score:0/#61-of-61 more than an hour after commit (13:30:38 ET), even though the contract's own live data (bid/ask/greeks, manageReason:'hold') is fully populated by now, so this isn't simple just-committed staleness. Fully root-caused via source: the lane-rank score reads row.feature_vector.evidence_score (live-plays.ts:522-525), hard-defaulting to 0 when that field isn't a finite number; commit.ts writes evidenceScore: cand.score at commit time (both call sites, line 607/678) -- so a 0 here means the CANDIDATE object that triggered this specific commit itself had score 0/null at commit time, not a downstream display bug. Working hypothesis, not yet confirmed: AAPL #40 committed at the exact instant of RTH open (09:30:38 ET), replacing a position (#37) that had just closed minutes earlier on the same ticker -- possibly a market-open-specific commit/promotion path that doesn't run the normal scan-and-score funnel before triggering a re-entry. NOT escalating yet -- single instance, and I don't yet know if this is a genuine anomaly specific to AAPL's same-day reopen or a structural characteristic of a particular commit trigger path (would need to check event-trigger.ts's SWING_EVENT_MIN_DTE-style immediate-commit paths, which I haven't traced yet). Per the noise threshold, watching for a 2nd/3rd instance (another freshly-committed position whose score stays 0 well past its first live tick) before treating this as a real, escalation-worthy pattern rather than a one-off.",
+  "last_updated": "2026-09-21T15:05:00Z",
+  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5363 (cron overlap guard, not swing-lane, no action needed). Found new sibling PR #5364 (same parallel session) -- forwards entry_context.signal_kinds into roll-child rows (roll-plan.ts's buildRollChild) so thesis-health survives a roll, using MY OWN watch-item ticker (AAPL SWING:AAPL:40) as its live repro. This resolved the mystery from my last two cycles' 'score 0' watch item: #40 is a ROLL CHILD of #37 (rolled 330C->335C at RTH open this morning), not a fresh independent commit as I'd assumed -- explaining why it never self-resolved. Independently RED->GREEN verified #5364: diff matches write-up exactly, GREEN baseline 22/22, targeted revert of just the added signal_kinds field confirmed RED (exactly the 2 new tests failed), restored GREEN, combined with live-plays.test.ts 66/66, tsc clean, full swing suite 1442/1442 clean. Posted confirming comment (5762693631) PLUS a bonus finding: grepped buildRollChild and confirmed it ALSO never sets feature_vector/evidence_score at all (zero hits, same missing-forward shape as signal_kinds, just a different field this PR doesn't touch) -- this is the exact root cause of my own AAPL #40 score:0 lane-rank observation (live-plays.ts:522-525's score read hard-defaults to 0 when feature_vector isn't a number-bearing object). Flagged on the PR thread with full corroboration rather than filing a separate PR myself -- the right forwarded value (verbatim parent score vs. a fresh re-score) is a real design question, not a mechanical copy like signal_kinds was. This CLOSES my own watch item as properly root-caused and reported (no longer just 'single instance, watching') -- removed from open_experiments, tracked via the PR comment instead. Checked #4076: still no new activity.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -86,10 +86,6 @@
     {
       "topic": "AAPL #37 (STANDARD sub-lane, dte=0 today) -- manage-engine expiry_risk GATE (priority #3, EXIT, manage.ts:335-337, expiryRiskDte=2 for STANDARD) not yet reflected in pinned manageAction/manageReason (still TAKE_PARTIAL/rel_strength_loss as of 09:24 ET pre-market)",
       "status": "SUPERSEDED 2026-09-21T13:35Z -- #37 closed at/around today's RTH open before a second manage-tick could be observed, so the original expiry_risk-priority question is unresolved/moot on this specific instance. But trying to pull #37's closed brief for the record surfaced a much bigger, confirmed bug instead: pickLanePlayForBrief's single-row shortcut silently returns the WRONG (new #40) position's live data for ANY positionId/status request once a ticker has exactly one current row. Posted to #4076 (comment 5761378030) with full root-cause trace. This experiment entry is closed; track the new finding instead."
-    },
-    {
-      "topic": "AAPL #40 (freshly-committed swing-native position, committed at exact RTH open 09:30:38 ET, replacing #37 which closed minutes earlier) -- lane-rank score PERSISTS at 0/#61-of-61 more than an hour past commit, not a transient just-committed artifact. Root-caused to row.feature_vector.evidence_score (commit-time pinned field) genuinely being 0/null -- meaning the CANDIDATE that triggered this commit itself carried no real score, not a downstream display bug.",
-      "status": "OPEN, single instance, root cause traced to source (live-plays.ts:522-525 reads row.feature_vector.evidence_score, commit.ts:607/678 writes evidenceScore: cand.score at commit -- so score:0 means the commit-triggering candidate object itself had no score). Working hypothesis: a market-open-instant same-ticker re-entry may bypass the normal scan-and-score funnel (event-trigger.ts's immediate-commit paths not yet traced). NOT escalated -- need a 2nd/3rd instance (another position whose lane-rank score stays 0 well past its first live tick, ideally also a same-day reopen) before calling this a real pattern. Next step if it recurs: trace which exact commit call site (commit.ts:602 vs :673) AAPL #40 went through and what cand.score its own candidate object carried at that moment."
     }
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
@@ -121,8 +117,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T14:48:11Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T15:05:00Z",
+    "swing_prs": [
+      {
+        "number": 5364,
+        "title": "fix(swing): forward signal_kinds into roll-child entry_context so thesis-health survives a roll",
+        "status": "open, non-draft, sibling session, independently RED->GREEN verified + bonus adjacent-gap finding posted (comment 5762693631), CI pending / CARVE-OUT auto-merge expected"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
