@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T06:41:21Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4 window). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. **Completed independent verification of sibling PR #5345** (swing Lessons 'did its job' mechanical-exit-praise contradiction on a target/ratchet exit with weak MFE capture) -- root cause re-derived directly against main (matches PR claim exactly), RED->GREEN re-derived in an isolated worktree: 177/177 green on PR head, reverted just the fix's gated block -> 176/177 with the sole failure being the PR's own new test (exact match), restored -> 177/177, tsc clean. Confirming comment posted. **Ask Largo forensic dig on LRCX** (MANAGING, positionId 1187, BANGER-origin, first check this session): found a SECOND live instance of the ticker-only dossier-match IV-rank display (after MSTR) -- accumulation-export confirms LRCX's matched dossier is an independent, unrelated, never-promoted FLOW candidate (signal_kinds=[FLOW], promoted_position_id=null). This time traced the deeper mechanism: fetchIvRank(ticker) in swing-ingest.ts (~L407-420) is a ticker-scoped, not candidate-scoped, live market read refreshed every scan -- so the displayed number IS legitimate/correct data, not a misattribution bug as my earlier correction (5755332460) implied. Posted a settling follow-up on #4076 (5756424288) walking that back: the real open item is a coverage inconsistency (BANGER-origin positions get IV rank only by scan-overlap luck, no guaranteed pinning of their own), raised as a product question, not filed as a fix since nothing is actually broken. No new PR filed this cycle -- both threads (PR verify + design-question settling) were the substantive work.",
+  "last_updated": "2026-09-21T06:49:46Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit from a parallel session, no divergence. Zero open swing PRs (checked #5345 status -- merged since last cycle). **#4076 self-correction + full census.** Re-checking WOLF/HOOD directly (regime: 'BREAKOUT \u00b7 BANGER') found my prior comment (5755456759) misattributed WOLF's thesis-health withholding to missing liveSpot/entryTriggerUnderlyingPx -- the real, independent, always-fires reason is the BANGER_LEDGER_REGIME_LABEL sentinel exclusion, which my own scratchpad script (board-check2.mjs) masked by classifying rows as swing-native via `positionId != null`, when banger-ledger rows also carry a non-null positionId (their own banger_positions.id). Fixed the classifier and swept the full current committed book (68 rows, MANAGING+SCALING_OUT): 66/68 (97%) are banger-ledger origin -- thesis-health withholding on all of them is correct, working-as-designed, not a gap. Only 2 rows are genuinely swing-native (CRWD #39, AAPL #37) -- both, the FULL addressable population not a sample, have empty signal_kinds tripping the flow_corroboration pillar. Posted the correction + census on #4076 (5756515500), narrowing 'thesis-health mostly withheld' down to a precisely scoped 2-row open gap. Also, earlier this cycle: settled the LRCX IV-rank question from last cycle -- confirmed LRCX (positionId 1187) is genuinely banger-ledger origin (resolves via the lane fallback path, not fetchOpenSwingPositions -- its positionId is banger_positions.id, not swing_positions.id), so its thesis-health withholding is also expected/correct, consistent with the #4076 finding above. No new PR filed -- this cycle's value was entirely a self-correction + precision narrowing of an open finding, not a code fix.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,10 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T06:41:21Z",
-    "swing_prs": [
-      "#5345 (open, independently verified this cycle, awaiting merge under CARVE-OUT)"
-    ]
+    "as_of": "2026-09-21T06:49:46Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
