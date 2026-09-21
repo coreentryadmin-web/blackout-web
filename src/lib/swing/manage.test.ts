@@ -152,6 +152,34 @@ test("structural_stop reason: plain (non-ex-div) LONG/SHORT breach also renders 
   assert.match(shortV.reason, /underlying 101\.00 ≥ structural stop 100\.00/);
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — 7th instance of the toFixed-vs-roundFloats
+// price-level bug class this session already fixed across #5380/#5383/#5384/#5385/#5387). PR
+// #5190's own fix above collapsed structuralStopBroken()'s reason to exactly 2 decimal digits
+// (`n.toFixed(2)`) to kill many-digit floating-point artifacts — correct for THAT problem, but
+// `.toFixed(2)` and roundFloats' own `Math.round(n*100)/100` can disagree by a full cent on a
+// value sitting exactly on a half-cent boundary (e.g. `(95.175).toFixed(2) === "95.17"` while
+// `Math.round(95.175*100)/100 === 95.18`). This reason string is PERSISTED verbatim every tick
+// (manage-sync.ts's event_json.reason) and rendered member-facing via manageReasonDetail
+// (play-brief-narrative.ts's sellReasonClause, "**Exit now** — underlying X <= structural stop
+// Y ...") — while the SAME underlying spot / structural-stop level (a call/put wall or gamma
+// flip) is ALSO shown as a raw, roundFloats()'d number in envelope.levels for the same brief, so
+// the two can silently disagree for a real EXIT/structural_stop verdict, the same shape as this
+// session's other 6 fixes just in a persisted decision-trail string rather than a live-request
+// narration function.
+test("structural_stop reason matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary", () => {
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94, // <= stop 95.175 -> broken
+    structuralStopLevel: 95.175,
+  });
+  assert.equal(v.rung, "structural_stop");
+  assert.match(v.reason, /structural stop 95\.18/, "must round like roundFloats (95.18), not plain toFixed(2) (95.17)");
+  assert.doesNotMatch(v.reason, /95\.17\b/);
+});
+
 test("structural_stop: ex-div LONG adjustment prevents false breach on mechanical gap (Q39)", () => {
   const breached = evaluateSwingManagement({
     dossier: LONG_STD,

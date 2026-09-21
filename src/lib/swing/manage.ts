@@ -38,6 +38,7 @@ import type { SwingDossier } from "./dossier";
 import type { SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { underlyingPriceForStructuralStop } from "./ex-dividend-adjustment";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 import {
   deriveScaleOutAction,
   SCALE_OUT_RULES,
@@ -196,21 +197,21 @@ function structuralStopBroken(input: SwingManageInput): { broken: boolean; reaso
       return {
         broken: false,
         reason:
-          `ex-dividend data unavailable this cycle — cannot confirm underlying ${comparePx.toFixed(2)} ≤ ` +
-          `structural stop ${stop.toFixed(2)} isn't a mechanical ex-div gap; skipping structural stop for LONG ` +
+          `ex-dividend data unavailable this cycle — cannot confirm underlying ${fmtPriceLevel(comparePx)} ≤ ` +
+          `structural stop ${fmtPriceLevel(stop)} isn't a mechanical ex-div gap; skipping structural stop for LONG ` +
           `this cycle (fail-safe, Q39)`,
       };
     }
-    const adj = adjusted.adjusted ? ` (ex-div adjusted from ${price.toFixed(2)})` : "";
+    const adj = adjusted.adjusted ? ` (ex-div adjusted from ${fmtPriceLevel(price)})` : "";
     return {
       broken: true,
-      reason: `underlying ${comparePx.toFixed(2)} ≤ structural stop ${stop.toFixed(2)} — LONG thesis broken in underlying terms${adj}`,
+      reason: `underlying ${fmtPriceLevel(comparePx)} ≤ structural stop ${fmtPriceLevel(stop)} — LONG thesis broken in underlying terms${adj}`,
     };
   }
   if (dir === "SHORT" && comparePx >= stop) {
     return {
       broken: true,
-      reason: `underlying ${comparePx.toFixed(2)} ≥ structural stop ${stop.toFixed(2)} — SHORT thesis broken in underlying terms`,
+      reason: `underlying ${fmtPriceLevel(comparePx)} ≥ structural stop ${fmtPriceLevel(stop)} — SHORT thesis broken in underlying terms`,
     };
   }
   if (adjusted.adjusted) {
