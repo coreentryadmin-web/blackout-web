@@ -1,10 +1,16 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T03:08:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. Deploy for #5333 (trough_premium fix) still in_progress (~28min, within normal range) -- RBRK recheck deferred to next cycle. #4076 unchanged, no response on the entry-price thread. **Another sibling PR from the same parallel session (session_01Qtnftc16CuWyVLxR8LaMoC)**: PR #5334 (nighthawk/horizons route destroys gamma/theta/vega/iv to 0.00 at a bare-2dp roundFloats boundary -- live repro AAPL positionId 37). Independently verified per the standing sibling-review option: confirmed root cause against main (keyDp map genuinely missing gamma/theta/vega/iv, round-floats.ts's own key-scoping doc comment confirms it would correctly match nested contract.gamma), confirmed the field names match what live-plays.ts actually serves, fetched the branch into a worktree, ran route.test.ts green (7/7), reverted just the keyDp map, reran -- exactly 1 failure (expected 0.0031, actual 0), restored, reconfirmed 7/7 green, tsc clean. Posted a confirming comment (5754833980). Not driving/merging (not my PR). Board unchanged, zero other open swing PRs. Spent this cycle entirely on peer verification -- two real sibling fixes cross-checked this hour, both held up under independent adversarial re-derivation.",
+  "last_updated": "2026-09-21T03:22:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. **Both sibling PRs merged**: #5333 (trough_premium) deploy completed, #5334 (greek precision) deploy in progress. Re-checked RBRK for #5333's fix live: still shows 'Trough: --' despite -2.4% P&L -- confirmed this is EXPECTED, not a regression: RBRK's markAsOf is still stuck at 2026-09-18 (no fresh live-marks tick since deploy, market closed all weekend) and the fix's own design (verified at db.ts's migration comment) is 'NULL forever until the next tick' for pre-migration rows -- there is nothing to re-verify until RTH resumes and a real tick lands. **Found and fixed a small process gap**: #5333 merged without its own MARKET-OPEN-VALIDATION.md entry (only #5334 got one, as entry #317) -- added the missing entry #318 myself, explicitly framed as a delayed/RTH-only validation (not immediate) so a future session doesn't mistake the expected still-null Trough for a broken fix. Committed directly (docs-only, no PR needed per the standing doc-update pattern). A different parallel session (session_01PzDkDzjR3bJQsFbXENzsVz) opened PR #5335 folding both staged findings into FINDINGS.md -- routine coordinator housekeeping, not mine to drive. #4076 unchanged, no response yet on the entry-price thread. Board unchanged, no swing-native forensic ticker audit this cycle -- spent it entirely on post-deploy verification + closing a real documentation gap, both genuine value.",
   "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "findings_filed_this_cycle": [
+    {
+      "file": "docs/audit/MARKET-OPEN-VALIDATION.md",
+      "entry": 318,
+      "summary": "Added the MARKET-OPEN-VALIDATION entry PR #5333 (trough_premium fix) merged without -- framed as delayed/RTH-only validation so the expected still-null Trough post-deploy isn't mistaken for a failure."
+    }
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,9 +119,9 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T03:08:00Z",
+    "as_of": "2026-09-21T03:22:00Z",
     "swing_prs": [
-      "#5334 (not mine -- parallel session's greek-precision fix, independently verified, CI status not yet checked)"
+      "#5335 (not mine -- parallel session's findings-fold housekeeping PR for #5333/#5334)"
     ]
   },
   "tickers_seen": {
