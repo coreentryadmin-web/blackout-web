@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T18:03:26Z",
-  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: already up to date. No new open swing PRs, no new #4076 activity. DEPLOY QUEUE TIMING NOTE (useful context, not a bug): checked GitHub Actions directly rather than keep blind-polling AAPL #40. ecr-push-production runs appear to process roughly sequentially -- #5367's own successful run (2573) took ~55min start-to-finish (created 15:51, completed ~16:47), which recalibrates expectations: 20-30min is NOT the normal deploy time here, 45-55min+ is. With #5371/#5372/#5373 all merging within ~25min of each other, the queue is working through them one at a time -- #5372's run (2576) was still showing in_progress via the Actions API when checked, but its EFFECT was already confirmed live (re-fetched ABTC's two real concurrent positions #1220/#1185 -- now correctly resolve to their own distinct data, Entry $0.40/10.5C vs Entry $0.35/9.5C, no longer collapsing to the same wrong response). #5373's deploy (run 2577) is still queued/pending behind it -- AAPL #40 still shows the pre-fix 'score 0' lane-rank text, expected, not a concern, will keep checking. Also re-confirmed my own flagged residual gap on #5372 (the single-row forTicker.length===1 shortcut) is STILL open even with #5372's real fix now live -- positionId=999999&status=CLOSED for AAPL still returns wrong/fabricated data. My #5372 comment's characterization remains accurate; no new escalation needed, already tracked. Nothing new found this cycle -- clean.",
+  "last_updated": "2026-09-21T18:18:08Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries. No new open swing PRs, no new #4076 activity. Checked deploy status directly via Actions API rather than blind-polling: #5372's run confirmed conclusion:success (took ~40min, matches the ~45-55min pattern already established), #5373's run confirmed status:in_progress (~33min elapsed at check time) -- on pace, not stuck. AAPL #40 still shows pre-#5373 text, expected. Fresh Ask Largo audit on MSTX #1209 (banger, TAKE_PARTIAL, not yet checked this session) -- clean, no bugs. Math hand-verified: blended P&L (50%@+100% + 50%@+199.5% runner) = 149.8%, matches displayed exactly. Giveback correctly triggered (capturePct 74.0% < 75% threshold, 'Gave back 26% of peak'). Noted MSTX's Catalysts headlines include 'Trading Halt' Benzinga news items -- verified this is just historical/general news feed content (the position has an active current mark as of 14:15 ET, so the ticker is clearly trading normally right now), not a live safety gap or missing caveat. Nothing new found -- clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,7 +117,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T18:03:26Z",
+    "as_of": "2026-09-21T18:18:08Z",
     "swing_prs": []
   },
   "tickers_seen": {
