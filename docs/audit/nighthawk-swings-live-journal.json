@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T21:52:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: already up to date. Confirmed PR #5387 merged (matches HEAD ff91675ff) -- unsubscribed. No #4076 activity, no new open swing PRs. The full 6-file price-level-rounding sweep from #5380 is now genuinely closed and confirmed on main. AGGRESSIVE-MODE lead found, NOT yet investigated deeply (flagging for next cycle rather than over-extending this one after a heavy hour): ran a final sanity grep across ALL of src/lib/swing/*.ts (not just the 6 play-brief*.ts files already swept) for the same raw toFixed(2) pattern on price-like values. Found candidates OUTSIDE the original 6-file scope: manage.ts's structuralStopBroken/evaluateDteMigration reason strings bake raw underlying/stop/premium-ratio values via plain toFixed(2) at COMPUTE time (e.g. 'underlying X <= structural stop Y -- LONG thesis broken'). These reason strings flow into play.rollCandidate.reason, which play-brief-diff.ts's BriefSnapshot type already captures (rollCandidateReason field) -- meaning if this reason text is ever rendered member-facing (e.g. in a 'Roll history'/'Why this setup' section) AND the same underlying/stop value is also shown as a raw envelope.levels number elsewhere, this would be a genuine SEVENTH instance of the bug class, outside the already-disclosed 6 files. NOT yet confirmed live -- need to trace whether rollCandidate.reason actually reaches a member-visible section (vs. being internal/audit-log only), same diligence as this hour's play-brief-diff.ts correction taught. contract-ranker.ts/ex-dividend-adjustment.ts/serving-ingest.ts's other toFixed(2) hits looked like scores/ratios/cash-deltas, not obviously duplicated price levels -- lower priority, not pursued further this cycle. Scoped next step: grep manage-sync.ts for exactly how/where rollCandidate.reason (or structuralStopBroken's own reason) reaches the API response, confirm live-vs-internal before claiming a bug.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-21T22:12:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries (legacy lane's overnight edition roll). No new #4076 activity, no new open swing PRs at cycle start. Followed up on last cycle's flagged manage.ts lead and CONFIRMED it live -- traced the exact runtime path (manage.ts's structuralStopBroken -> manage-sync.ts's persisted event_json.reason -> live-plays.ts's manageReasonDetail -> play-brief-narrative.ts's sellReasonClause -> the 'Exit now' line) using the same rigor this session's play-brief-diff.ts correction established (server vs client, persisted vs live-computed, actually check the consumer chain before claiming a bug). Confirmed genuinely live and member-facing for any structural_stop/thesis_stop EXIT recommendation -- 7th instance of the toFixed-vs-roundFloats price-level bug class this session, outside the already-closed 6-file play-brief*.ts sweep. Notable: PR #5190 (2026-09-18) already fixed a DIFFERENT problem on this exact line (collapsing many-decimal-digit ex-div-sum floating-point artifacts to 2dp) -- that fix stays correct; fmtPriceLevel produces the same 2-digit shape, just the right rounding algorithm at the half-cent boundary. Confirmed via PR #5190's own existing tests still passing unchanged. RED->GREEN proven via git stash on the implementation file only (1/20 fail pre-fix -- exactly the new test at the 95.175 boundary -- 20/20 post-fix), tsc clean, full swing suite 1460/1460 clean. PR #5390 opened+undrafted, subscribed -- CARVE-OUT auto-merge expected. Disclosed a further follow-up (not started): manage-sync.ts's other persisted event_json fields, and contract-ranker.ts/ex-dividend-adjustment.ts/serving-ingest.ts's own toFixed(2) hits from the same sanity grep, not yet traced for live reachability -- lower priority (looked like scores/ratios/cash-deltas on first pass, not obviously duplicated price levels, but not conclusively ruled out either).",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-21-manage-structural-stop-reason-rounding"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -88,7 +90,7 @@
       "status": "SUPERSEDED 2026-09-21T13:35Z -- #37 closed at/around today's RTH open before a second manage-tick could be observed, so the original expiry_risk-priority question is unresolved/moot on this specific instance. But trying to pull #37's closed brief for the record surfaced a much bigger, confirmed bug instead: pickLanePlayForBrief's single-row shortcut silently returns the WRONG (new #40) position's live data for ANY positionId/status request once a ticker has exactly one current row. Posted to #4076 (comment 5761378030) with full root-cause trace. This experiment entry is closed; track the new finding instead."
     },
     "RESOLVED (2026-09-21): the price-level-rounding follow-up from PR #5380's disclosed blast radius is COMPLETE -- all 6 files fixed across #5380 (play-brief-narrative.ts), #5383 (play-brief-narrative-coaching.ts), #5384 (play-brief-intel.ts), and #5387 (play-brief.ts, play-brief-diff.ts, play-brief-ladder.ts). No known remaining toFixed(2)-vs-roundFloats price-level call sites in the swing play-brief lane.",
-    "NEW LEAD (2026-09-21, from a post-sweep sanity grep, not yet investigated): manage.ts's structuralStopBroken/evaluateDteMigration reason strings bake raw underlying/stop/premium-ratio values via plain toFixed(2) at compute time, and flow into play.rollCandidate.reason (captured by play-brief-diff.ts's BriefSnapshot type). Potential SEVENTH instance of the toFixed-vs-roundFloats price-level bug class (#5380/#5383/#5384/#5385/#5387), outside the already-closed 6-file play-brief*.ts sweep -- but NOT yet confirmed live. Next step: trace whether rollCandidate.reason (or the raw structuralStopBroken reason) actually reaches a member-visible play-brief section, and whether the same underlying/stop value duplicates a raw number shown elsewhere in envelope.levels, before claiming this as a real bug -- exactly the verification this session's own play-brief-diff.ts correction (PR #5387) shows matters."
+    "RESOLVED (2026-09-21): the manage.ts structuralStopBroken lead was confirmed LIVE and fixed -- PR #5390 (7th instance of the toFixed-vs-roundFloats price-level bug class). Remaining lower-priority follow-up: manage-sync.ts's other persisted event_json fields, and contract-ranker.ts/ex-dividend-adjustment.ts/serving-ingest.ts's own toFixed(2) hits (scores/ratios/cash-deltas on first pass, not yet conclusively ruled out as duplicated price levels) -- not yet traced for live member-facing reachability."
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
     "as_of": "2026-09-10T07:32:00Z",
@@ -119,8 +121,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T21:52:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T22:12:00Z",
+    "swing_prs": [
+      {
+        "number": 5390,
+        "title": "fix(swing): manage.ts's structural-stop reason had the same toFixed-vs-roundFloats mismatch (7th instance)",
+        "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
