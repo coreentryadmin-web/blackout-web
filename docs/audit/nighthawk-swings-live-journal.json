@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T19:25:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean (subscription-created echoes + my own PR #5377's ready_for_review notice -- self-generated, no action needed beyond what was already done). git sync: already up to date. Checked PR #5377 (my own, from last cycle): CI in_progress, progressing normally -- type check/guards all green, Unit tests step running at check time, no red, nothing stuck. Normal drive-to-green posture: nothing actionable yet, will recheck next cycle/on CI event. Found NEW sibling PR #5376 (bookContextSection WATCH self-exclusion bug -- a genuinely different, well-evidenced find: checkPortfolioOverlap's default excludeSelfMatch:true, meant for an already-committed play re-reading its own ledger row, was also silently applying to WATCH candidates with no positionId -- meaning a trader looking at a WATCH signal for a ticker they ALREADY hold got ZERO concentration warning, the exact case the section exists to catch). Independently verified: diff matches write-up exactly, confirmed checkPortfolioOverlap's default behavior claim directly against portfolio.ts, GREEN baseline 181/181 (matches PR claim), targeted revert of implementation file only -> exactly 1 failure and it's the exact new WATCH-concentration test (the corrected OPEN-status duplicate-row test still passed unmodified, confirming it wasn't also exercising the bug), restored GREEN 181/181, tsc clean, full swing suite 1453/1453 clean. Posted confirming comment (5766135549) -- CARVE-OUT auto-merge should take it from here.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-21T19:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5377 (my own, auto-merged via CARVE-OUT at 19:23:49 -- confirmed via pull_request_read: merged:true, merged_by coreentryadmin-web) + #5378 (mechanical findings-fold for #5375, docs-only). Unsubscribed from #5377 PR activity now that it's merged. No new open swing PRs (both #5376 and #5377 cleared this cycle), no new #4076 activity. Fresh Ask Largo audit on GLXY #1212 (banger, SCALING_OUT/TAKE_PARTIAL, not yet checked this session) -- clean, no bugs. Math hand-verified: blended P&L (50% banked @ +100% + 50% open runner @ +93.5%) = 96.75%, matches displayed 96.8% exactly. Capture ratio 93.5/116.7=80.1% (>75% threshold) correctly suppresses the giveback line -- no false positive/negative. Premium stop/target rail percentages hand-verified correct (79% cushion, 3% to target). Thesis health showing #5367's fix working (aggregate withheld, 5 real calibrated pillars). Book context correctly used the positionId-known branch (excludePositionId, GLXY's own row excluded from its 33-position crypto-equity theme concentration list) -- confirms PR #5376's fix (which only touched the WATCH/no-positionId branch) left this already-correct branch untouched, as its own write-up claimed. Meridian catalysts honestly labeled stale (~382s old) alongside its content, consistent with the Largo contract's freshness point -- not a contradiction. Nothing new found -- clean, quiet cycle after an active stretch (2 sibling PRs both merged).",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -117,19 +117,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T19:25:00Z",
-    "swing_prs": [
-      {
-        "number": 5376,
-        "title": "fix: swing play-brief bookContextSection silently self-excluded a WATCH candidate's own matching position",
-        "status": "open, non-draft, sibling session, independently RED->GREEN verified by me (comment 5766135549), CI pending / CARVE-OUT auto-merge expected"
-      },
-      {
-        "number": 5377,
-        "title": "fix(largo): watch_count needs a note distinguishing it from section_counts.WATCH",
-        "status": "open, non-draft, self-authored, RED->GREEN verified locally, CI in_progress (normal, not stuck) / CARVE-OUT auto-merge expected"
-      }
-    ]
+    "as_of": "2026-09-21T19:35:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
