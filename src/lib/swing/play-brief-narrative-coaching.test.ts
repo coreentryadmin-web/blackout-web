@@ -1625,6 +1625,27 @@ test("vectorPlayCoaching: stale Vector returns null (Largo C2)", () => {
   assert.equal(vectorPlayCoaching(vec, play({ direction: "LONG" })), null);
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — completes the #5351/#5353/#5355/#5356 sweep
+// across this file): vectorPlayCoaching sampled a fresh Date.now() instead of consulting the
+// request-wide ctx.readMs anchor, so this bullet's freshness verdict could disagree with sibling
+// coaching bullets (magnetCoaching, confluenceCoaching, crossDeskCoaching, shortInterestCoaching)
+// judging the identical vec snapshot in the same compose pass. Same anchor-vs-real-clock proof
+// shape as magnetCoaching's own readMs test: vec.asOf carries no dataAgeMs, so staleness falls
+// through to the readMs-vs-asOf branch.
+test("vectorPlayCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    play: { bias: "long", headline: "Ride momentum", invalidation: "below 50" },
+  } as unknown as Parameters<typeof vectorPlayCoaching>[0];
+  const anchoredReadMs = Date.parse("2026-09-05T20:01:00.000Z");
+  const fresh = vectorPlayCoaching(vec, play({ direction: "LONG" }), null, false, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  assert.match(fresh!, /Ride momentum/);
+
+  const noAnchor = vectorPlayCoaching(vec, play({ direction: "LONG" }), null, false);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
+});
+
 test("vexCoaching: stale Vector returns null (Largo C2)", () => {
   const vec = {
     freshness: "stale",
@@ -1632,6 +1653,19 @@ test("vexCoaching: stale Vector returns null (Largo C2)", () => {
     vexWalls: { callWalls: [{ strike: 105, pct: 5 }], putWalls: [] },
   } as unknown as Parameters<typeof vexCoaching>[0];
   assert.equal(vexCoaching(vec, 102), null);
+});
+
+test("vexCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    vexFlip: 100,
+    vexWalls: { callWalls: [{ strike: 105, pct: 5 }], putWalls: [] },
+  } as unknown as Parameters<typeof vexCoaching>[0];
+  const anchoredReadMs = Date.parse("2026-09-05T20:01:00.000Z");
+  const fresh = vexCoaching(vec, 102, null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  const noAnchor = vexCoaching(vec, 102, null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
 });
 
 test("magnetCoaching: stale Vector returns null (Largo C2)", () => {
@@ -1675,6 +1709,22 @@ test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {
   assert.equal(flowPrintsCoaching(vec, play({ direction: "LONG" })), null);
 });
 
+test("flowPrintsCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    flowMarkers: {
+      available: true,
+      prints: [{ side: "call", strike: 100, premium: 2_000_000 }],
+      meta: { largeFound: 1 },
+    },
+  } as unknown as Parameters<typeof flowPrintsCoaching>[0];
+  const anchoredReadMs = Date.parse("2026-09-05T20:01:00.000Z");
+  const fresh = flowPrintsCoaching(vec, play({ direction: "LONG" }), null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  const noAnchor = flowPrintsCoaching(vec, play({ direction: "LONG" }), null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
+});
+
 test("wallDynamicsCoaching: stale Vector returns null (Largo C2)", () => {
   const vec = {
     freshness: "stale",
@@ -1684,6 +1734,21 @@ test("wallDynamicsCoaching: stale Vector returns null (Largo C2)", () => {
     ],
   } as unknown as Parameters<typeof wallDynamicsCoaching>[0];
   assert.equal(wallDynamicsCoaching(vec), null);
+});
+
+test("wallDynamicsCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    wallEvents: [
+      { kind: "call_wall_build", message: "wall building", strike: 100 },
+      { kind: "put_wall_fade", message: "put fading", strike: 95 },
+    ],
+  } as unknown as Parameters<typeof wallDynamicsCoaching>[0];
+  const anchoredReadMs = Date.parse("2026-09-05T20:01:00.000Z");
+  const fresh = wallDynamicsCoaching(vec, null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  const noAnchor = wallDynamicsCoaching(vec, null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
 });
 
 test("collectCoachingBullets: stale Vector suppresses VEX/magnet/flow coaching lines", () => {
@@ -2208,6 +2273,26 @@ test("dataHonestyCoaching: an OPEN play with a leftover pre-entry setupState sti
   );
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — completes the #5351/#5353/#5355/#5356 sweep):
+// dataHonestyCoaching read Date.now() directly for BOTH the option-mark-staleness check and the
+// Vector-age check, instead of ctx.readMs — the same request-wide anchor every sibling coaching
+// bullet now uses. Proves the anchor is load-bearing for the Vector-age branch specifically: a
+// vec with only an `asOf` (no dataAgeMs/freshness) reads FRESH under an anchor near it and STALE
+// with no anchor at all (falling back to the real wall clock, decades later).
+test("dataHonestyCoaching: uses ctx.readMs, not the real wall clock, to judge Vector freshness", () => {
+  const vec = { asOf: "2026-09-05T20:00:00.000Z" } as SwingPlayBriefContext["vector"];
+  const anchoredReadMs = Date.parse("2026-09-05T20:01:00.000Z");
+  const fresh = dataHonestyCoaching(ctx({ vector: vec, readMs: anchoredReadMs }), play({ status: "WATCH" }));
+  assert.equal(fresh, null, "ctx.readMs-fresh Vector snapshot must not trigger a staleness warning");
+
+  const noAnchor = dataHonestyCoaching(ctx({ vector: vec }), play({ status: "WATCH" }));
+  assert.match(
+    noAnchor!,
+    /Vector \*\*.*\*\* stale/i,
+    "with no anchor the real wall clock must read this snapshot as stale",
+  );
+});
+
 test("execSlippageCoaching: flags wide mid vs fill gap", () => {
   const line = execSlippageCoaching(play({ pnlPct: 50, execPnlPct: 30 }));
   assert.match(line!, /slippage/i);
@@ -2351,6 +2436,26 @@ test("technicalsCoaching: stale Vector snapshot returns null (Largo C2)", () => 
     },
   } as import("@/lib/bie/vector-full-state").VectorFullState;
   assert.equal(technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" })), null);
+});
+
+test("technicalsCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    spot: 95,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+  const anchoredReadMs = Date.parse("2026-09-05T20:01:00.000Z");
+  const fresh = technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" }), null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  const noAnchor = technicalsCoaching(vec, play({ direction: "LONG", ticker: "INTC" }), null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
 });
 
 test("technicalsCoaching: prior-session Vector returns null even when age is fresh (Largo C2)", () => {
