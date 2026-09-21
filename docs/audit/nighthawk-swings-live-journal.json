@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T16:17:05Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries, no swing-lane changes. No new open swing PRs, no new #4076 activity. AAPL #40's thesis-health section still shows the pre-#5367 message ~24min post-merge -- checked WHY via GitHub Actions rather than just re-polling blind: the ecr-push-production run for #5367's own merge commit (973cc8d39, run 35621729652) is genuinely still status:in_progress (started 15:51 UTC, 20+ min elapsed as of this check) -- not stuck, just a real in-flight build+deploy. Also explains something that could otherwise look alarming: TWO earlier ecr-push runs (#5362's own push, #5366's push) show conclusion:cancelled -- but this is benign, not a dropped deploy: each push's ECR run builds the FULL current main tree, not a diff, so a cancelled run just means a later push's build superseded it before it finished, and that later successful run (#5364's, confirmed conclusion:success) already carried #5362's code forward -- consistent with BLSH's brief already confirming #5362 live in production last cycle. Will re-check AAPL #40's thesis-health next cycle once #5367's deploy run actually completes. Nothing new found -- clean cycle, just deploy-timing bookkeeping.",
+  "last_updated": "2026-09-21T16:32:45Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5368 (mechanical findings-fold for #5366/#5367, docs-only) + another lane's journal entry. No new open swing PRs, no new #4076 activity. CLOSED THE LOOP on PR #5367: re-fetched AAPL #40's live brief -- the ecr-push deploy finished, and the Thesis health panel now correctly shows 'Aggregate score withheld -- not every pillar input is wired for this position yet' followed by 4 real calibrated pillar rows (Persistence triggered, Entry geometry chase risk, Regime fit unread, Theta budget 9DTE runway), each with a Delta. Confirmed exactly the intended shape: flow_corroboration is the one pillar correctly dropped (signal_kinds still absent on this pre-#5364 roll child), aggregate % still honestly withheld. Sanity-checked one thing that looked odd at a glance -- all 4 shown pillars display 'Delta +0.0 pts' -- traced the formula (deltaPts = weight * (currentScore - commitScore)) and confirmed this is plausible, not a bug: the position rolled to its current leg only hours ago, so currentScore hasn't diverged from commitScore yet for any pillar. This fully closes the multi-cycle AAPL #40 thread that started with my own 'score 0' lane-rank watch item -- root-caused via #5364's live repro, the adjacent thesis-health gap fixed by #5367, both independently verified by me and now confirmed live on production. Nothing new found this cycle -- clean.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,7 +117,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T16:17:05Z",
+    "as_of": "2026-09-21T16:32:45Z",
     "swing_prs": []
   },
   "tickers_seen": {
