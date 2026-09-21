@@ -288,7 +288,9 @@ export function buildStructureLadder(
 ): StructureLadder | null {
   if (bucket === "closed") return null;
 
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
+  // here — prefer its stamped readMs over a fresh wall-clock sample.
+  const readMs = ctx.readMs ?? Date.now();
   const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
   const gex = ctx.ecosystem?.gex_positioning ?? null;
   const { spot } = preferredGexWalls(ctx);

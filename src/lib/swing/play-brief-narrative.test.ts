@@ -2590,3 +2590,34 @@ test("tradeManagerNarrativeSection: roll-history line omits the runway clause (n
   assert.match(section!.body, /\*\*Rolled once\*\* — most recently from the \$100 call to the \$110 call on 2026-08-20\./);
   assert.doesNotMatch(section!.body, /extra runway/);
 });
+
+// BUG FIX (Ask Largo standing mandate, #5351 readMs-anchor sweep follow-up): tradeManagerNarrativeSection
+// — the brief's MAIN narrative section — sampled a fresh Date.now() for its Vector/GEX staleness
+// checks instead of consulting ctx.readMs, even though ctx is a required parameter here. Same
+// fixed-clock proof technique as counterThesisLine's own #5351-follow-up test above: vec.asOf
+// carries no dataAgeMs, so staleness falls through to the readMs-dependent branch. ctx.readMs is
+// set to the SAME instant as vec.asOf (genuinely fresh, 0ms age) while the real wall clock (this
+// suite's actual run time) is weeks later — pre-fix, the bare Date.now() call judges vec stale off
+// the real clock and drops the dealer-posture line; post-fix, ctx.readMs correctly judges it fresh.
+test("tradeManagerNarrativeSection: uses ctx.readMs, not the real wall clock, to judge Vector/GEX freshness", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      readMs,
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+        asOf: "2026-09-05T20:00:00.000Z",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: null,
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /long gamma/i,
+    "ctx.readMs-fresh Vector regime must render dealer posture, not read as stale off the real wall clock",
+  );
+});

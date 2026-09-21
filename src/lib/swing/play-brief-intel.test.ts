@@ -2146,6 +2146,66 @@ test("dataFreshnessSection: uses ctx.readMs as the staleness anchor, not the rea
   );
 });
 
+// Ask Largo standing mandate, same #5351-class readMs-anchor sweep — this time on
+// meridianCatalystSection, chartLevelsSection, gexPostureSection, and preferredGexWalls, which all
+// take a required `ctx: SwingPlayBriefContext` (so ctx.readMs was always in scope) but each still
+// sampled a fresh Date.now() instead of consulting it. A real request runs these sections
+// sequentially with real I/O in between, so each bare Date.now() sample can land on a different
+// real instant and disagree with a sibling section (or with `dataFreshnessSection` above, already
+// fixed) about whether the SAME underlying GEX/Meridian read is stale.
+test("meridianCatalystSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsOf = new Date(Date.now() - 60_000).toISOString(); // fresh vs real now, ancient vs anchor
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-21 10:00 ET",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: { as_of: freshAsOf, items: [], total_matched: 0 },
+    ecosystem: null,
+    vector: null,
+    readMs: anchorFarFuture,
+  };
+  const section = meridianCatalystSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Last snapshot/i,
+    "must read the Meridian catalyst slice as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+test("gexPostureSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsof = new Date(Date.now() - 60_000).toISOString(); // fresh vs real now, ancient vs anchor
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-21 10:00 ET",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    // No matrix_age_sec so gexMatrixAgeMs falls back to readMs - Date.parse(gex.asof) — the
+    // readMs-dependent branch this bug actually hits.
+    ecosystem: {
+      gex_positioning: { spot: 100, gamma_posture: "long", net_gex: 5_000_000, asof: freshAsof },
+    } as EcosystemContext,
+    vector: null,
+    readMs: anchorFarFuture,
+  };
+  const section = gexPostureSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Last snapshot/i,
+    "must read the GEX matrix as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+  assert.doesNotMatch(section!.body, /long gamma/i, "stale-under-ctx.readMs posture must not render as live");
+});
+
 // ── CLOSED plays must not narrate "today's" live-desk staleness (FINDINGS 2026-09-12) ──────────
 // A CLOSED play is a historical record; scan/Vector/GEX/HELIX staleness are all claims about
 // TODAY's live desk state and fire forever once ANY time has passed since close if left ungated —

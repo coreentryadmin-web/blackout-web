@@ -85,7 +85,9 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
   const gex = ctx.ecosystem?.gex_positioning;
   const out: FocalLevel[] = [];
 
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
+  // here — prefer its stamped readMs over a fresh wall-clock sample.
+  const readMs = ctx.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
 
   for (const dp of (vec?.darkPoolLevels ?? []).slice(0, 3)) {
@@ -666,7 +668,9 @@ function breakTrigger(
 export function resolveBreakInvalidation(ctx: SwingPlayBriefContext): string | null {
   const { play } = ctx;
   const vec = vectorOf(ctx);
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: ctx is a required param
+  // here — prefer its stamped readMs over a fresh wall-clock sample.
+  const readMs = ctx.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gex = ctx.ecosystem?.gex_positioning;
   const gexStale = gexMatrixStale(gex, readMs);
@@ -1002,7 +1006,13 @@ export function tradeManagerNarrativeSection(
 ): RichSection | null {
   const { play } = ctx;
   const vec = vectorOf(ctx);
-  const readMs = Date.now();
+  // Ask Largo standing mandate, readMs-anchor sweep follow-up to #5351: this is the brief's main
+  // narrative section, so a fresh wall-clock sample here (instead of ctx.readMs, the one canonical
+  // "now" composeSwingPlayBrief stamps before any section runs) is exactly the risk the doc comment
+  // on SwingPlayBriefContext.readMs warns about — a staleness verdict here disagreeing with a
+  // sibling section over the SAME underlying field because compose does real sequential I/O between
+  // sections and each bare Date.now() call can land on a different real instant.
+  const readMs = ctx.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gex = ctx.ecosystem?.gex_positioning;
   const gexStale = gexMatrixStale(gex, readMs);
