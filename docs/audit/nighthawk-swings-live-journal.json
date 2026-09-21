@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T19:15:00Z",
-  "notes": "v3 mandate cycle (continuing after a compaction -- resumed the interrupted WATCH-bucket diagnostic). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries + a heartbeat/state snapshot chore commit. RESOLVED the multi-cycle 'WATCH bucket always empty' open question from before compaction: re-ran the diagnostic without truncation, then a second fetch ~5min later. Root cause found, NOT a structural discovery-pipeline outage -- the persisted scan IS fresh (scanAsOf within minutes of each fetch) and DOES populate sections; the population is just genuinely thin (1-3 pre-entry candidates total across the whole swing lane at any moment), consistent with the already-documented gate restrictiveness (swing-gate-compound-funnel.mjs: G-S3 1.3% pass rate). But building the two-fetch comparison surfaced a REAL, separate, well-evidenced bug: the API's top-level watch_count field (status-based, score<floor) and section_counts.WATCH (the real member-facing Watch rail, which also includes FORMING-stage names that already cleared the floor -- sectionForSwingPlay routes FORMING to WATCH before checking aboveFloor) are two different populations that can diverge either direction, and Largo's swing overview tool (product-reads.ts's compactSwingLane/swingHorizonForLargo) surfaces watch_count with NO disambiguating note -- unlike its sibling committed_count, which already got exactly this kind of note after an identical-shape 2026-09-08 incident (committed_count mixing pre-entry candidates with real positions). Live-reproduced: watchCount 0 both fetches, sections.WATCH 0 then 2, five minutes apart, no restart -- an ordinary snapshot refresh, not an error. Self-fixed via CARVE-OUT: added watch_count_note mirroring committed_count_note's exact pattern, pointing to section_counts.WATCH as authoritative. New regression test (product-reads-swing-watch-count-note.test.ts) reproduces the live divergence with a fixture; RED->GREEN proven via git stash, sibling swing-open-count + swing-freshness tests still pass alongside it (4/4), tsc clean. Staged finding filed, PR #5377 opened+undrafted, subscribed for CI/review events -- CARVE-OUT auto-merge should take it once CI is green.",
+  "last_updated": "2026-09-21T19:25:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean (subscription-created echoes + my own PR #5377's ready_for_review notice -- self-generated, no action needed beyond what was already done). git sync: already up to date. Checked PR #5377 (my own, from last cycle): CI in_progress, progressing normally -- type check/guards all green, Unit tests step running at check time, no red, nothing stuck. Normal drive-to-green posture: nothing actionable yet, will recheck next cycle/on CI event. Found NEW sibling PR #5376 (bookContextSection WATCH self-exclusion bug -- a genuinely different, well-evidenced find: checkPortfolioOverlap's default excludeSelfMatch:true, meant for an already-committed play re-reading its own ledger row, was also silently applying to WATCH candidates with no positionId -- meaning a trader looking at a WATCH signal for a ticker they ALREADY hold got ZERO concentration warning, the exact case the section exists to catch). Independently verified: diff matches write-up exactly, confirmed checkPortfolioOverlap's default behavior claim directly against portfolio.ts, GREEN baseline 181/181 (matches PR claim), targeted revert of implementation file only -> exactly 1 failure and it's the exact new WATCH-concentration test (the corrected OPEN-status duplicate-row test still passed unmodified, confirming it wasn't also exercising the bug), restored GREEN 181/181, tsc clean, full swing suite 1453/1453 clean. Posted confirming comment (5766135549) -- CARVE-OUT auto-merge should take it from here.",
   "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-21-largo-swing-watch-count-note"
-  ],
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,12 +117,17 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T19:15:00Z",
+    "as_of": "2026-09-21T19:25:00Z",
     "swing_prs": [
+      {
+        "number": 5376,
+        "title": "fix: swing play-brief bookContextSection silently self-excluded a WATCH candidate's own matching position",
+        "status": "open, non-draft, sibling session, independently RED->GREEN verified by me (comment 5766135549), CI pending / CARVE-OUT auto-merge expected"
+      },
       {
         "number": 5377,
         "title": "fix(largo): watch_count needs a note distinguishing it from section_counts.WATCH",
-        "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected"
+        "status": "open, non-draft, self-authored, RED->GREEN verified locally, CI in_progress (normal, not stuck) / CARVE-OUT auto-merge expected"
       }
     ]
   },
