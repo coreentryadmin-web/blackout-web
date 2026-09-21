@@ -487,6 +487,36 @@ test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed
   assert.equal(thesisResolved.honored, false);
 });
 
+test("buildExitContext: trim_scale dead-zone floor exit HONORS its own floor (2026-09-21 TSLA finding — resolveExitMark's reason allowlist didn't recognize this reason, so the exit persisted the raw unhonored observed mark instead)", () => {
+  // Trend regime, peak +24.62% (inside the [20,40) dead zone — no tranche armed yet),
+  // retraced to +9.33% — the exact live shape that exposed the gap. `evaluateExitState`
+  // correctly fires with reason "trim_scale_dead_zone_floor" and floorPnlPct 12.31, but
+  // `resolveExitMark`'s old condition only recognized reasons starting with "ratchet" or
+  // "runner_floor" — this reason matches neither, so the floor-honoring max(observed,
+  // floor) never ran and the exit persisted at the raw, worse +9.33% print.
+  const peakPremium = ENTRY * 1.2462;
+  const currentMark = ENTRY * 1.0933;
+  const decision = evaluateExitState(
+    input({ exitMode: "trim_scale", regime: "trend", peakPremium, currentMark, trimsTaken: 0 })
+  );
+  assert.equal(decision.action, "EXIT");
+  assert.equal(decision.reason, "trim_scale_dead_zone_floor");
+  assert.equal(decision.floorPnlPct, 12.31);
+
+  const ctx = buildExitContext(decision, ENTRY, currentMark, peakPremium, Date.now());
+  assert.equal(ctx.mark, 4.49, "the floor mark (4.49) must win over the worse raw observed print (4.37)");
+  assert.equal(
+    ctx.mark_honored,
+    true,
+    "the dead-zone floor must win over the worse raw print, same as every other floor family"
+  );
+  assert.equal(
+    ctx.pnl_pct,
+    12.25,
+    "persisted pnl_pct must price off the honored floor mark, not the raw +9.33% print that lost to it"
+  );
+});
+
 test("protectiveFloorMark: entry-scaled floor premium", () => {
   assert.equal(protectiveFloorMark(ENTRY, 0), 4.0);
   assert.equal(protectiveFloorMark(ENTRY, 5), 4.2);
