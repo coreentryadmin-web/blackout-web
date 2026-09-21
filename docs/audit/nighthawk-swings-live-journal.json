@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T09:20:05Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. Tried to find a live example of the Meridian catalysts 'has a real near-term catalyst' branch (every ticker checked this session so far has hit the quiet-calendar path) -- checked HPQ, still 64 days out, book currently has no near-term earnings names; abandoned the search rather than force a static-only check. **Pivoted to verifying the 'Ticker track record' aggregation logic** on WULF, using context from the earlier entry_underlying_px investigation (WULF #17 and #13, both known-anomalous historical closes). Pulled both closed briefs directly: both #17 (committed 08-18) and #13 (committed 08-17) exited exactly 0.0% ('flat' reason) -- confirms the entry_underlying_px finding's 'froze at exactly 0% markfreeze P&L' detail. #17's own brief correctly shows 'Ticker track record: WULF 1 time before this play: 0W / 1L' -- correctly self-excludes #17 from its own prior-trades count, and correctly counts #13 (also flat/0%) as a LOSS under the documented isSwingWin binary rule (exact 0% counts as a loss, not a win). Confirms both the self-exclusion logic and the breakeven-as-loss convention are working correctly on a real multi-trade ticker. No new bugs found, no new PR or #4076 comment needed this cycle -- a clean, well-verified cycle.",
+  "last_updated": "2026-09-21T09:33:17Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. Zero open swing PRs. **Verified the roll-history disclosure feature on a real multi-leg chain** -- an area the mission's own play-brief-context.ts doc comments mention but I hadn't specifically checked yet. Found the one real rolled chain in the 90-day /record window: rootPositionId 30 (INTC short put, rollSeq 0 -> 1, positionId 30 ROLLED -40.83% -> positionId 35 CLOSED -33.19%, chain composite -60.47% compounded). Pulled INTC #35's play-brief and confirmed the 'Trade manager read' correctly renders: 'Rolled once -- most recently from the $91 put to the $90 put on 2026-09-03, buying 5d of extra runway. Full chain result: -60.5% compounded (loss, worst leg -40.8%)' -- matches the /record composite exactly (compoundedReturnPct -60.47 ~= -60.5%, worstLegPnlPct -40.83 ~= -40.8%). Also cross-checked the round-trip advice branch: peak +25.7% > the 20% threshold verified two cycles ago, correctly triggers the 'tighten at first trim rail next time' framing (not the 'barely cleared breakeven' one). Both the roll-chain math and the round-trip threshold logic check out clean on this real example. No new bugs found, no new PR or #4076 comment needed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T09:20:05Z",
+    "as_of": "2026-09-21T09:33:17Z",
     "swing_prs": []
   },
   "tickers_seen": {
