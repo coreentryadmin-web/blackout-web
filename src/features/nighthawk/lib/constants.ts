@@ -113,3 +113,26 @@ export const MAX_OPTION_COST_PER_CONTRACT = MAX_OPTION_PREMIUM_PER_SHARE * 100;
 
 export const PLAYBOOK_PREMIUM_CAP_LINE = `Entry option premium MUST be ≤ $${MAX_OPTION_PREMIUM_PER_SHARE}/share (≤ $${MAX_OPTION_COST_PER_CONTRACT.toLocaleString()} per 1-lot contract). If no suitable contract exists under this cap, skip the ticker and substitute the next-ranked candidate.`;
 
+/** Soft, PREFERRED contract-cost target — distinct from MAX_OPTION_PREMIUM_PER_SHARE above, which is
+ *  a hard ceiling that exists so a candidate is never dropped outright (PR-N15's own history: a
+ *  lower ceiling silently eliminated every strong name above ~$250/share). This is a *preference*
+ *  `pickChainContract` reaches for FIRST when a real, liquid, still-directional strike exists under
+ *  it — never a filter, and it never excludes a ticker. Without it, ATM/nearest-to-spot selection
+ *  defaults to full at-the-money regardless of the underlying's own price, so a $1,000+ stock's ATM
+ *  weekly can cost 10-50x a $20 stock's ATM weekly for the same "closest to spot" reason — confirmed
+ *  live 2026-09-21 (MU $1020C ATM = $2,488/contract vs BMNR/ETHA/MARA's $52-$111 ATM contracts in the
+ *  same book) after a member asked why Legacy's contracts were so much more expensive on some nights. */
+export const PREFERRED_OPTION_PREMIUM_PER_SHARE = 8;
+export const PREFERRED_OPTION_COST_PER_CONTRACT = PREFERRED_OPTION_PREMIUM_PER_SHARE * 100;
+
+/** Floor on |delta| for a contract to qualify for the cost preference above. Moving OTM to cut cost
+ *  on an expensive underlying is only a legitimate trade-off down to a point — below this, delta is
+ *  low enough that the contract stops tracking the thesis and becomes a low-probability lottery
+ *  ticket rather than a directional swing pick. Grounded in a live MU chain pull (2026-09-21, spot
+ *  $1017.75, Sep-25 expiry): 0.15Δ ≈ $550-650/contract (a real, still-directional trade-off), while
+ *  the $100-150/contract range other cheap tickers sit at natively only appears below ~0.06Δ on MU —
+ *  genuinely lottery-territory, not a comparable contract. Only enforced when the chain row actually
+ *  carries delta (some UW-sourced rows don't); missing delta never excludes a candidate from the
+ *  ORDINARY pick, it just means that candidate can't be preferred over it. */
+export const MIN_PREFERRED_CONTRACT_DELTA = 0.15;
+

@@ -20,7 +20,16 @@ import type { TickerDossier } from "./dossier";
 // ── Synthetic fixtures ────────────────────────────────────────────────────────────────────────
 function row(
   strike: number,
-  opts: { oi?: number; callAsk?: number; callBid?: number; putAsk?: number; putBid?: number; expiry?: string } = {}
+  opts: {
+    oi?: number;
+    callAsk?: number;
+    callBid?: number;
+    putAsk?: number;
+    putBid?: number;
+    expiry?: string;
+    callDelta?: number | null;
+    putDelta?: number | null;
+  } = {}
 ): ChainStrikeRow {
   const oi = opts.oi ?? 5_000;
   return {
@@ -34,12 +43,12 @@ function row(
     strike,
     call_bid: opts.callBid ?? null,
     call_ask: opts.callAsk ?? null,
-    call_delta: null,
+    call_delta: opts.callDelta ?? null,
     call_oi: oi,
     call_iv: null,
     put_bid: opts.putBid ?? null,
     put_ask: opts.putAsk ?? null,
-    put_delta: null,
+    put_delta: opts.putDelta ?? null,
     put_oi: oi,
     put_iv: null,
   };
@@ -61,6 +70,20 @@ function chainAround(spot: number, opts: { oi?: number; expiry?: string } = {}):
         putBid: 3.8,
       })
     ),
+  };
+}
+
+/** Same shape as chainAround, but with real delta on the ATM strike (matching a real Polygon-sourced
+ *  row) and a cheap, sub-$2 ATM premium — for proving the preferAffordable tier is a no-op on tickers
+ *  whose own ATM strike is already affordable (the common case for a $13-$26 stock). */
+function chainAroundWithDelta(spot: number, atmDelta: number): EditionChainData {
+  return {
+    spot,
+    rows: [
+      row(spot - 2, { oi: 5_000, callAsk: 2.3, callBid: 2.1, callDelta: Math.min(0.95, atmDelta + 0.2) }),
+      row(spot, { oi: 5_000, callAsk: 1.15, callBid: 1.05, callDelta: atmDelta }),
+      row(spot + 2, { oi: 5_000, callAsk: 0.55, callBid: 0.45, callDelta: Math.max(0.05, atmDelta - 0.2) }),
+    ],
   };
 }
 
@@ -143,6 +166,21 @@ test("emits N valid plays with correct geometry and direction from the score sig
   const bbb = plays.find((p) => p.ticker === "BBB")!;
   assert.equal(bbb.direction, "SHORT");
   assert.equal(parseOptionsContract(bbb.options_play)?.side, "put");
+});
+
+test("buildDeterministicEditionPlays: end-to-end, an expensive underlying gets the affordable-preference contract while a cheap one is unaffected (member complaint 2026-09-21)", () => {
+  const ranked = [scored("MUX", "long", 70), scored("CHEAP", "long", 65)];
+  const chains = { MUX: expensiveUnderlyingChain(), CHEAP: chainAroundWithDelta(20, 0.5) };
+  const dossierMap = { MUX: dossier("MUX", 1000), CHEAP: dossier("CHEAP", 20) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+
+  const mux = plays.find((p) => p.ticker === "MUX")!;
+  assert.ok(mux, "MUX should be published");
+  assert.equal(mux.entry_premium, 7, "main-loop call site opts into preferAffordable -- picks the $7/share 1060 strike, not the $20 ATM");
+
+  const cheap = plays.find((p) => p.ticker === "CHEAP")!;
+  assert.ok(cheap, "CHEAP should be published");
+  assert.ok(cheap.entry_premium != null && cheap.entry_premium < 2, "an already-affordable ticker's pick is unchanged by the preference tier");
 });
 
 // ── Workstream C / #20's D4-extra (2026-09-21): mainLoopRejected capture ────────────────────────
@@ -372,6 +410,94 @@ test("pickChainContract rejects same-day expiry but accepts 3-day", () => {
   const c = pickChainContract(chain, "long");
   assert.ok(c != null);
   assert.equal(c!.expiry, threeDayExpiry, "3-day contract accepted; same-day rejected");
+});
+
+// ── preferAffordable: cost-preference tier (member complaint 2026-09-21 — MU's real $2,488/contract
+// ATM pick vs $52-$111 for the rest of that night's book, all from the same "nearest to spot" logic
+// applied to wildly different-priced underlyings). See constants.ts's own doc comments for the real
+// evidence (a live MU chain pull) grounding $8/share preferred and 0.15 delta floor. ──────────────
+
+/** An "expensive underlying" chain shaped like the real MU pull that motivated this fix: ATM is
+ *  affordable-tier-ineligible (too pricey), a real strike further OTM clears BOTH the preferred cost
+ *  and the delta floor, and a strike further still is cheap enough but has fallen into lotto-delta
+ *  territory and must NOT be preferred despite costing less. */
+function expensiveUnderlyingChain(): EditionChainData {
+  return {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: today's pick, too pricey to prefer
+      row(1050, { oi: 5_000, callAsk: 9.2, callBid: 8.8, callDelta: 0.25 }), // still above the $8 preferred cap
+      row(1060, { oi: 5_000, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // clears BOTH bars — should be preferred
+      row(1100, { oi: 5_000, callAsk: 3.2, callBid: 2.8, callDelta: 0.08 }), // cheaper still, but delta floor excludes it
+    ],
+  };
+}
+
+test("pickChainContract: without preferAffordable, unchanged nearest-to-spot (ATM) — zero regression", () => {
+  const c = pickChainContract(expensiveUnderlyingChain(), "long");
+  assert.equal(c?.strike, 1000, "default behavior is exactly today's — nearest to spot, cost/delta irrelevant");
+  assert.equal(c?.premium, 20);
+});
+
+test("pickChainContract: preferAffordable=true picks the nearest strike clearing BOTH the preferred cost and delta floor", () => {
+  const c = pickChainContract(expensiveUnderlyingChain(), "long", null, undefined, true);
+  assert.equal(c?.strike, 1060, "1050 fails the $8 preferred cap, 1000 (ATM) fails it too — 1060 is nearest-to-spot among strikes that clear both bars");
+  assert.equal(c?.premium, 7);
+  assert.equal(c?.caveat, undefined, "a preferred pick is a normal strict-pool contract, never caveated");
+});
+
+test("pickChainContract: preferAffordable never crosses the delta floor into a lotto strike, even though it's cheaper", () => {
+  const c = pickChainContract(expensiveUnderlyingChain(), "long", null, undefined, true);
+  assert.notEqual(c?.strike, 1100, "1100 is cheaper ($3.20 vs $7.20) but 0.08 delta is below the 0.15 floor — must not be picked over 1060");
+});
+
+test("pickChainContract: preferAffordable=true is a no-op when every row lacks delta (never regresses UW-sourced chains without greeks)", () => {
+  // chainAround-style fixture: cheap and liquid, but delta is null on every row (matches real UW rows,
+  // per ChainStrikeRow's own comment on greeks being source-dependent).
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      row(90, { oi: 5_000, callAsk: 5.2, callBid: 4.8 }),
+      row(100, { oi: 5_000, callAsk: 4.2, callBid: 3.8 }), // ATM
+      row(110, { oi: 5_000, callAsk: 1.2, callBid: 1.0 }),
+    ],
+  };
+  const withPref = pickChainContract(chain, "long", null, undefined, true);
+  const without = pickChainContract(chain, "long");
+  assert.deepEqual(withPref, without, "no delta data anywhere -> identical pick with or without the flag");
+  assert.equal(withPref?.strike, 100);
+});
+
+test("pickChainContract: preferAffordable=true reproduces today's exact pick when the ATM strike already clears both bars", () => {
+  // The real, common case for a cheap-underlying ticker (e.g. a $13-$26 stock): ATM premium and delta
+  // both already sit inside the preferred band, so the preferred subset's nearest-to-spot member IS
+  // the ATM strike itself — same output as the flag being off.
+  const chain: EditionChainData = {
+    spot: 20,
+    rows: [
+      row(18, { oi: 5_000, callAsk: 2.3, callBid: 2.1, callDelta: 0.7 }),
+      row(20, { oi: 5_000, callAsk: 1.15, callBid: 1.05, callDelta: 0.5 }), // ATM — already affordable + real delta
+      row(22, { oi: 5_000, callAsk: 0.55, callBid: 0.45, callDelta: 0.3 }),
+    ],
+  };
+  const withPref = pickChainContract(chain, "long", null, undefined, true);
+  const without = pickChainContract(chain, "long");
+  assert.deepEqual(withPref, without, "already-affordable ATM strike is unaffected by the preference tier");
+  assert.equal(withPref?.strike, 20);
+});
+
+test("pickChainContract: preferAffordable=true falls through to the unchanged ladder when NOTHING clears both bars", () => {
+  // Every strike is either too pricey or (once cheap enough) below the delta floor — no gap in
+  // between, unlike expensiveUnderlyingChain() above. Must fall back to plain nearest-to-spot.
+  const chain: EditionChainData = {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // too pricey
+      row(1150, { oi: 5_000, callAsk: 1.2, callBid: 1.0, callDelta: 0.05 }), // cheap enough but below delta floor
+    ],
+  };
+  const c = pickChainContract(chain, "long", null, undefined, true);
+  assert.equal(c?.strike, 1000, "no strike clears both bars -> unchanged nearest-to-spot ladder");
 });
 
 test("thesis is grounded in the score breakdown and cites the leading driver", () => {

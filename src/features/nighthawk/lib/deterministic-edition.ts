@@ -44,7 +44,7 @@ import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./play-constraints";
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
-import { MAX_OPTION_PREMIUM_PER_SHARE, MAX_OPTION_COST_PER_CONTRACT, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+import { MAX_OPTION_PREMIUM_PER_SHARE, MAX_OPTION_COST_PER_CONTRACT, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS, PREFERRED_OPTION_PREMIUM_PER_SHARE, MIN_PREFERRED_CONTRACT_DELTA } from "./constants";
 import {
   diversityHedgeEnabled,
   forcedContrarianHedgeEnabled,
@@ -169,6 +169,13 @@ function contractOi(row: ChainStrikeRow, side: "call" | "put"): number {
   return Number.isFinite(oi) ? oi : 0;
 }
 
+/** Per-contract delta for the cost-preference tier below. Honestly null (never fabricated) when the
+ *  row's source didn't carry greeks — see ChainStrikeRow's own comment on UW rows lacking them. */
+function contractDelta(row: ChainStrikeRow, side: "call" | "put"): number | null {
+  const delta = side === "call" ? row.call_delta : row.put_delta;
+  return delta != null && Number.isFinite(delta) ? delta : null;
+}
+
 /** Format a strike for the option-card string so parseOptionsContract can re-read it. Integers stay
  *  integers ("120"); fractional strikes keep up to two decimals with no trailing zeros ("122.5"). */
 function formatStrike(strike: number): string {
@@ -247,6 +254,15 @@ function addCalendarDaysYmd(ymd: string, days: number): string {
  *                   whole intraday board (the "only one play all day" bug's structural half). A
  *                   ticker with no expiry inside the window returns null (honest: no 0DTE to trade).
  *
+ * `preferAffordable` (optional, default off — every existing caller outside Night Hawk Legacy is
+ * unaffected): before the nearest-to-spot ladder below, first tries a PREFERRED subset of the
+ * strict pool — premium ≤ PREFERRED_OPTION_PREMIUM_PER_SHARE AND |delta| ≥ MIN_PREFERRED_CONTRACT_DELTA
+ * (when delta is known) — and picks the nearest-to-spot strike within THAT subset. Falls through to
+ * the unchanged ladder when nothing clears both. Exists because plain nearest-to-spot defaults to
+ * full ATM regardless of the underlying's own price, so a $1,000+ stock's ATM weekly can cost
+ * 10-50x a $20 stock's ATM weekly for the exact same "closest to spot" reason — see the constants'
+ * own doc comments for the live evidence this was built from.
+ *
  * `targetStrike` (optional) ranks candidates by distance to that strike instead of to spot — Night
  * Hawk's own callers never pass it (its 0DTE picks are ATM-nearest-to-spot by design, unchanged),
  * but Vector's role-specific specs (gex-king-pin, magnet-mean, fade-dip/rip) need to target the
@@ -257,7 +273,8 @@ export function pickChainContract(
   chain: EditionChainData,
   direction: "long" | "short",
   maxDte?: number | null,
-  targetStrike?: number | null
+  targetStrike?: number | null,
+  preferAffordable?: boolean
 ): PickedContract | null {
   const side: "call" | "put" = direction === "long" ? "call" : "put";
   const spot = chain.spot;
@@ -268,7 +285,7 @@ export function pickChainContract(
   const minExpiry = minExpiryDate(today);
   const distanceRef = targetStrike != null && Number.isFinite(targetStrike) ? targetStrike : spot;
 
-  type Candidate = PickedContract & { dist: number };
+  type Candidate = PickedContract & { dist: number; delta: number | null };
   const strict: Candidate[] = [];
   const relaxedPremium: Candidate[] = [];
   const relaxedOi: Candidate[] = [];
@@ -294,6 +311,7 @@ export function pickChainContract(
       expiry: row.expiry,
       premium: Number(premium.toFixed(2)),
       dist: distanceRef > 0 ? Math.abs(row.strike - distanceRef) : row.strike,
+      delta: contractDelta(row, side),
     };
     const oiOk = oi >= minOi;
     const premOk = premium <= MAX_OPTION_PREMIUM_PER_SHARE;
@@ -310,6 +328,20 @@ export function pickChainContract(
 
   const sortFn = (a: Candidate, b: Candidate) =>
     a.dist - b.dist || a.expiry.localeCompare(b.expiry) || a.strike - b.strike;
+
+  // Cost-preference tier: only within the already-strict (liquid + under the hard cap) pool, and
+  // only when the caller opted in. Never excludes a ticker — falls straight through to the unchanged
+  // ladder below when nothing clears both the preferred cost and the delta floor.
+  if (preferAffordable && strict.length) {
+    const affordable = strict.filter(
+      (c) => c.premium <= PREFERRED_OPTION_PREMIUM_PER_SHARE && c.delta != null && Math.abs(c.delta) >= MIN_PREFERRED_CONTRACT_DELTA
+    );
+    if (affordable.length) {
+      affordable.sort(sortFn);
+      const best = affordable[0]!;
+      return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
+    }
+  }
 
   for (const pool of [strict, relaxedPremium, relaxedOi, anyQuoted, shortDated]) {
     if (pool.length) {
@@ -863,7 +895,10 @@ export function buildDeterministicEditionPlays(params: {
     const dossier = params.dossierMap[ticker] ?? params.dossierMap[scored.ticker];
     const spot = chain?.spot ?? dossier?.tech?.price ?? null;
 
-    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
+    // preferAffordable=true: see pickChainContract's own doc comment — every Legacy call site opts
+    // in so an expensive underlying's ATM strike doesn't default to a wildly costlier contract than
+    // the rest of that night's book for no reason other than "closest to spot."
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true) : null;
     if (contract && !contract.caveat) {
       contractOk += 1;
     } else if (contract && contract.caveat) {
@@ -967,7 +1002,7 @@ export function buildDeterministicEditionPlays(params: {
         const dos = params.dossierMap[t] ?? params.dossierMap[scored.ticker];
         const sp = ch?.spot ?? dos?.tech?.price ?? null;
         if (sp == null || !Number.isFinite(sp) || sp <= 0) continue;
-        const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte) : null;
+        const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte, undefined, true) : null;
         const lvl = resolveLevels(dos, scored.direction, sp);
         const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers);
         if (!validatePlayGeometry(p).ok) continue;
@@ -1007,7 +1042,7 @@ export function buildDeterministicEditionPlays(params: {
           );
           if (contrarian.score < FORCED_CONTRARIAN_FLOOR) continue;
 
-          const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte) : null;
+          const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte, undefined, true) : null;
           const lvl = resolveLevels(dos, contrarian.direction, sp);
           const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers);
           if (!validatePlayGeometry(p).ok) { contrarianScores[contrarianScores.length - 1] += ":geom-fail"; continue; }
@@ -1104,7 +1139,7 @@ export function buildRescuePlays(params: {
     const geom = validatePlayGeometry({ ...levels, direction } as Parameters<typeof validatePlayGeometry>[0]);
     if (!geom.ok) continue;
 
-    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true) : null;
     const options_play = formatOptionsPlay(ticker, contract);
     if (!contract) {
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
