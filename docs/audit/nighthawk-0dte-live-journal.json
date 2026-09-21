@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-21T20:35:00Z",
+  "updated_at": "2026-09-21T20:44:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -270,6 +270,13 @@
       "action": "PR #5382 opened+verified (arm/breakeven ratchet floor scaling, 40% peak fraction, n=66 backtest 66/66 win) -- full-repo npm test 15144/15147 pass 0 fail confirmed post-open; PR #5381 (findings fold) merged manually via GitHub MCP after enable-automerge/auto-merge both skipped (documented PAT-scope gap) -- verify+CodeQL green, mergeable_state clean",
       "board_state": "session fully closed, 17/17 ledger rows CLOSED, 0 committed_open, +53.55%-era session already summarized 9/21; TSLA row (peak 24.62, live_pnl 9.48, floor 0) is the same historical PR #5366 dead-zone-fix subject, not new activity",
       "next": "watch PR #5382 CI (verify+CodeQL in_progress at last check); continue MU/MRNA gex-walls oppose-text pattern watch (2/3 instances so far, need 1 more before escalating)"
+    },
+    "2026-09-21T20:44:00Z": {
+      "stage": "POST_COMMIT/session_closed",
+      "action": "PR #5382 CONFIRMED MERGED (merged_at 20:39:22Z, verify+CodeQL green) -- verified fix present live on main (git show origin/main:src/lib/zerodte/exit-engine.ts ratchetFloorPct now peak*0.4 continuous formula from +15% peak). My own undraft call landed AFTER a parallel session/mirror-merge already closed it -- consistent with the documented mirror-failure pattern, no conflict, no action needed.",
+      "cross_lane_note": "PR #5383 observed open (fix/swing-narrative-coaching-price-level-rounding, session_01ThDiEa7iE7mM1twas1e6Kg) -- belongs to the Ask Largo/Night Hawk Swings lane, not 0DTE; out of this lane scope, left to its own owner per standing lane-ownership discipline.",
+      "board_state": "session remains fully closed, 17/17 CLOSED, 0 committed_open -- no new 0DTE activity this cycle",
+      "next": "both this session (#5366) and this cycle (#5382) shipped/verified live -- ratchet floor curve is now continuous peak*0.4 from +15% peak all the way to lock tier. Next natural research thread: re-run swing-early-trim-style analysis on the NEW post-fix population once enough fresh exits accumulate under the v6 EXIT_VERSION to confirm the backtest holds prospectively, not just retrospectively. Continue MU/MRNA gex-walls oppose-text pattern watch (still 2/3 instances)."
     }
   },
   "sessions": {
