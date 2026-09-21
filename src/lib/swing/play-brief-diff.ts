@@ -6,6 +6,7 @@ import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { roundFloats } from "@/lib/round-floats";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 
 export type BriefSnapshot = {
   headline: string;
@@ -90,13 +91,13 @@ function narratePnlShift(prev: number, next: number): string {
 function narrateSpotShift(prev: number, next: number): string {
   const d = next - prev;
   const dir = d > 0 ? "higher" : "lower";
-  return `**Spot drifted ${dir}** — **$${next.toFixed(2)}** (${d >= 0 ? "+" : ""}${d.toFixed(2)} vs prior read)`;
+  return `**Spot drifted ${dir}** — **$${fmtPriceLevel(next)}** (${d >= 0 ? "+" : ""}${d.toFixed(2)} vs prior read)`;
 }
 
 function narrateMarkShift(prev: number, next: number): string {
   const d = next - prev;
   const tone = d >= 0 ? "built" : "slipped";
-  return `**Option mark ${tone}** — $${prev.toFixed(2)} → $${next.toFixed(2)} (${d >= 0 ? "+" : ""}${d.toFixed(2)})`;
+  return `**Option mark ${tone}** — $${fmtPriceLevel(prev)} → $${fmtPriceLevel(next)} (${d >= 0 ? "+" : ""}${d.toFixed(2)})`;
 }
 
 /** A structural GEX level (call wall/put wall/gamma flip) moving is a distinct fact from spot
@@ -124,7 +125,7 @@ function narrateStructuralLevelShift(
   const compressing = nextRoom < prevRoom;
   const verb = compressing ? "closing in" : "receding";
   const readout = compressing ? "less room before it matters" : "more room before it matters";
-  return `**${label} ${verb}** — $${prev.toFixed(2)} → $${next.toFixed(2)}, now $${nextRoom.toFixed(2)} away (was $${prevRoom.toFixed(2)}) — ${readout}`;
+  return `**${label} ${verb}** — $${fmtPriceLevel(prev)} → $${fmtPriceLevel(next)}, now $${fmtPriceLevel(nextRoom)} away (was $${fmtPriceLevel(prevRoom)}) — ${readout}`;
 }
 
 /** BUY > HOLD > TRIM > SELL — matches the ACTION vocabulary `swingActionDisplay` renders
@@ -189,8 +190,8 @@ function synthesizeThesisAndPrice(
   const thesisFact = narrateThesisShift(prev.thesisHealth!, next.thesisHealth!);
   const spotFact = narrateSpotShift(prev.spot!, next.spot!);
   const route = adverse.throughFlip
-    ? `through the gamma flip toward the **${adverse.label}** ($${adverse.level.toFixed(2)})`
-    : `toward the **${adverse.label}** ($${adverse.level.toFixed(2)})`;
+    ? `through the gamma flip toward the **${adverse.label}** ($${fmtPriceLevel(adverse.level)})`
+    : `toward the **${adverse.label}** ($${fmtPriceLevel(adverse.level)})`;
   const downgradeClause = downgradeTo
     ? ` — that combination is why the desk downgraded to **${downgradeTo}**`
     : "";

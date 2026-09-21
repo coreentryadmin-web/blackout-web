@@ -42,7 +42,7 @@ import { deadPlayReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
-import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
 
@@ -780,9 +780,9 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
             )
           : null;
       if (wall) {
-        parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
+        parts.push(`nearest wall ${fmtPriceLevel(wall.strike)} (${wall.distance_pts.toFixed(1)} pts)`);
       } else if (gex.flip != null) {
-        parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
+        parts.push(`γ-flip ${fmtPriceLevel(gex.flip)}`);
       }
     }
     out.push({

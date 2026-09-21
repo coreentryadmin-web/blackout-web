@@ -133,6 +133,28 @@ function thesisPayload(health: number, overrides: Record<string, unknown> = {}) 
   };
 }
 
+// HARDENING, NOT A PROVEN LIVE BUG (corrected 2026-09-21 after PR #5387's own comment thread —
+// see that PR for the full correction). Unlike #5380/#5383/#5384's genuinely live repros,
+// diffBriefSnapshots/narrateSpotShift are called from exactly one place — src/hooks/
+// useSwingPlayBrief.ts, a CLIENT-side hook, fed `raw = data?.envelope` (the SWR-fetched JSON the
+// API route already ran through roundFloats() before sending). By the time a snapshot's spot/mark
+// values reach these narration functions they are already 2dp-clean, so plain .toFixed(2) cannot
+// reproduce the half-cent-boundary disagreement — that requires a raw, many-decimal-digit float
+// BEFORE any rounding, which this call path never delivers. #5385 (a parallel session) correctly
+// traced this and left play-brief-diff.ts untouched for exactly this reason. This test still
+// exercises a real, worth-keeping invariant — the function's OWN behavior when handed an unrounded
+// input (e.g. a future refactor that feeds it fresh provider data) — kept as defensive coverage,
+// not as evidence of a member-visible defect.
+test("diffBriefSnapshots: 'Spot drifted' matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary (defensive — see note above, not a live repro)", () => {
+  const prev = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 100 });
+  const next = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 152.035 });
+  const lines = diffBriefSnapshots(prev, next);
+  const spotLine = lines.find((l) => l.includes("Spot drifted"));
+  assert.ok(spotLine, `expected a spot-drift line, got: ${JSON.stringify(lines)}`);
+  assert.match(spotLine!, /\$152\.04/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
+  assert.doesNotMatch(spotLine!, /152\.03/);
+});
+
 test("diffBriefSnapshots: cross-field synthesis — thesis fade + FAVORABLE price move stay independent", () => {
   // Thesis fades AND spot moves, but UP (favorable for a LONG) — the two facts pull in
   // different directions, so this must read as two separate bullets, never a forced
