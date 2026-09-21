@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T05:06:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean -- main includes PR #5342 (docs-only market-open-validation log for #5341, not mine, routine). #4076 unchanged, no response yet. Zero open swing PRs, board unchanged. **Ask Largo audit on AAPL (SCALING_OUT, positionId 37)**, first check this session, deliberately picked as a non-crypto-equity control case. Genuinely clean and thorough: '## Book context' section is correctly ABSENT entirely (not '0 positions', just omitted) -- confirms checkPortfolioOverlap's honest-absence path works when there's truly no overlap, a useful contrast after 8+ crypto-equity tickers this session that all correctly SHOWED concentration. Verified math throughout: mid P&L -8.6% exact, Exec P&L -12.3% exact from bid $5.90, round-trip-past-breakeven '25% peak -> -9%' consistent with -8.6% rounding, spread 8.1% exact, premium stop rail 54% cushion computed from BID not mid (basis-mismatch-fix discipline holding), premium target rail 128% move needed matches the Manage-plan bullet's own '+128% from here' exactly (no internal inconsistency), ticker track record (AAPL 0W/2L) correctly cited. No new bugs found.",
+  "last_updated": "2026-09-21T05:21:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. #4076 unchanged, no response. Zero open swing PRs, board unchanged. LITE WATCH check -- no material change (still 3 days, FORMING, entry window unmoved). **Ask Largo audit on SNOW (MANAGING, positionId 1137)**, first check this session. Clean, with one item worth naming: Trough still shows '--' despite the position currently sitting at -48.1% P&L (well below entry) -- looks alarming in isolation but is EXACTLY the already-diagnosed #5333 situation (MARKET-OPEN-VALIDATION.md entry #318): SNOW's markAsOf is the same stale 2026-09-18 16:00 ET timestamp as everything else this weekend, so no live tick has landed since the fix deployed -- expected, not a new bug, not re-reporting. Verified math throughout: P&L -48.1% exact, peak 94.4% consistent with a ~$7.00 high (just under the $7.20/+100% trim trigger, correctly un-fired -- 'Trim ladder: +100%' with no checkmark, consistent with peak never crossing it), round-trip-past-breakeven framing correct (94% peak to -48% current genuinely crosses zero), 'next trim... +285% from here' exact from the stale mark. New theme category confirmed beyond crypto-equity: Book context correctly cites 'software' theme (CRWD LONG overlap) -- confirms theme detection generalizes, not crypto-specific. No new bugs found.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T05:06:00Z",
+    "as_of": "2026-09-21T05:21:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
