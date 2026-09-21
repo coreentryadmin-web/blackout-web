@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T05:51:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. git sync clean. #4076 unchanged, no response yet. Zero open swing PRs, board unchanged. **Ran the npm run healthcheck:swing baseline** (first time this session, several hours in -- judged it worth establishing a fresh baseline given the volume of live findings/fixes this hour). Result: 6/7 stages GREEN (A CRON, B PERSISTENCE, C SERVING, D BOARD, E POSITIONS, G GRADING/RECORD all clean -- 70 candidates, 68 live positions, WR 16.7% across 12 resolved chains of 14). One AMBER: Stage F MARKS ('mark=0.17 age=unknown section=COMMIT') -- exactly the same expected off-hours option-mark staleness pattern observed manually across every single play-brief checked this whole session (weekend, no live tick since Friday close), not a new/different finding. Overall AMBER rollup is the honest, correct off-hours read -- matches everything found by hand this session, a useful independent cross-check that nothing systemic is actually broken beyond the already-well-documented off-hours staleness.",
+  "last_updated": "2026-09-21T06:07:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. #4076 unchanged, no response. Zero open swing PRs, board unchanged (still Friday-frozen off-hours). Answered a genuine user question between cycles: 'top 5 fresh swing plays for tomorrow' -- checked both the live WATCH queue (only LITE, 3 days old, still pre-trigger) and the pre-WATCH accumulation pool (16 rows, ALL distinct_session_days=1, all from Friday, mostly UNCLASSIFIED -- none cleared the engine's own 2-session persistence bar) and gave an honest 'nothing crosses the bar yet, here's literally the only thing live, check back after tomorrow's open' answer rather than fabricating 5 plays from stale/unpersisted noise. **Ask Largo audit on RIOT (MANAGING, positionId 1203)**, first check this session. Clean -- every percentage-distance level (call wall +5.3%, max pain -15.8%, put wall -20.0% exact, gamma magnet +12.2%) hand-verified exact against spot 23.75. No IV rank shown (correctly, honestly absent this time -- no ticker-coincidence with an unrelated organic scan, unlike MSTR/CLSK). No new bugs found.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T05:51:00Z",
+    "as_of": "2026-09-21T06:07:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
