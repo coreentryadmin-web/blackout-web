@@ -116,6 +116,44 @@ test("pickLanePlayForBrief: contract strike disambiguates same ticker", () => {
   assert.equal(picked?.contract.strike, 580);
 });
 
+// BANGER-ORIGIN IDENTITY FIX (Ask Largo standing mandate, 2026-09-21). Live-repro'd on ABTC
+// 2026-09-21: two concurrent banger-origin swing positions (9.5C TRIM +200%, 10.5C OPEN +25%),
+// each carrying its own real `positionId` (banger_positions.id — see banger-lane-merge.ts).
+// `?playId=SWING:ABTC:1220` and `?playId=SWING:ABTC:1185` (and the equivalent `&positionId=`
+// query-param forms) both resolved to the IDENTICAL 9.5C brief before this fix — the positionId
+// hint was silently dropped by `pickLanePlayForBrief` (it only ever checked strike/right/status),
+// so with neither given, resolution fell to the highest-live-P&L tiebreak regardless of which
+// position was actually asked about.
+test("pickLanePlayForBrief: exact positionId hint resolves the SPECIFIC banger-origin leg, not the highest-P&L one", () => {
+  const rows = [
+    laneRow({
+      ticker: "ABTC",
+      score: 62,
+      positionId: 1185,
+      liveStatus: "TRIM",
+      livePnlPct: 200,
+      contract: { ticker: "ABTC", strike: 9.5, right: "C", expiry: "2026-09-25", dte: 4, mid: 1.05, bid: null, ask: null, delta: null, openInterest: 0 },
+    }),
+    laneRow({
+      ticker: "ABTC",
+      score: 65,
+      positionId: 1220,
+      liveStatus: "OPEN",
+      livePnlPct: 25,
+      contract: { ticker: "ABTC", strike: 10.5, right: "C", expiry: "2026-09-25", dte: 4, mid: 0.5, bid: null, ask: null, delta: null, openInterest: 0 },
+    }),
+  ];
+  // Without the fix, no strike/right/status hint means the sort-by-livePnlPct fallback always wins
+  // — asking for 1220 (the LOWER P&L leg) must still return 1220, not silently swap to 1185.
+  const pickedLowerPnl = pickLanePlayForBrief(rows, "ABTC", { positionId: 1220 });
+  assert.equal(pickedLowerPnl?.positionId, 1220);
+  assert.equal(pickedLowerPnl?.contract.strike, 10.5);
+
+  const pickedHigherPnl = pickLanePlayForBrief(rows, "ABTC", { positionId: 1185 });
+  assert.equal(pickedHigherPnl?.positionId, 1185);
+  assert.equal(pickedHigherPnl?.contract.strike, 9.5);
+});
+
 // ── loadOpenTerminalPlay: Ask Largo must restore factors/regime the same way the main board does ──
 //
 // THE BUG (swing-system CTO audit, 2026-09-06, finding #3/#8/#9/#17/#20): serving-lane.ts's

@@ -359,7 +359,7 @@ export async function resolveSwingPlayForBrief(
     }
   }
 
-  const lanePlay = pickLanePlayForBrief(rows, ticker, { status, strike, right });
+  const lanePlay = pickLanePlayForBrief(rows, ticker, { status, strike, right, positionId });
   if (lanePlay) {
     const discovery = await discoverSwingFromPersisted().catch(() => null);
     const dossier = discovery?.dossiers?.find((d) => d.ticker.toUpperCase() === ticker);
