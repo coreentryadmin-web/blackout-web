@@ -38,6 +38,250 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo — swing "Thesis health" section permanently withheld for committed positions because the entry-geometry pillar was never live-derived (only its sibling, persistence, was) — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/features/nighthawk/command-deck/adapters.ts`, `src/lib/swing/entry-model.ts` |
+| **Status** | FIXED |
+| **Severity** | P2 — Largo product-contract absence/precision issue (a real, computable pillar was withheld member-facing as "Inputs not wired", every cycle, for every committed swing position); no wrong-direction risk |
+| **Found via** | Ask Largo × Night Hawk Swings standing ownership mandate (`CLAUDE.md`) live deep-dive against `GET /api/market/swing/play-brief` for 3 fresh tickers (HOOD, SNOW, SMCI) not previously checked this session |
+
+### Root cause
+
+`computeSwingThesisHealth` (`src/lib/swing/thesis-health.ts`) scores five pillars — persistence,
+entry geometry, flow corroboration, regime, theta budget — and `thesisHealthUncalibrated()` withholds
+the WHOLE aggregate score (member sees only "Inputs not wired for committed positions — aggregate
+score withheld; pillar breakdown not shown.") if **any single pillar** is still sitting on its generic
+default label. It is an OR across pillars, not a per-pillar gate.
+
+A prior fix (comment dated 2026-09-20, `adapters.ts` around `liveSetupState`) already closed this gap
+for the **persistence** pillar: `src.setupState` is structurally `null` for every committed SWING
+position (the WATCH-lane dossier state never survives the WATCH→COMMIT transition — `live-plays.ts`'s
+`livePlaysFromOpenPositions` never sets it), so `liveSetupState` now re-derives it live via
+`deriveSetupState(direction, {price: liveSpot, triggerPx: entryTriggerUnderlyingPx, invalidationPx})`.
+`flow_corroboration` (signalKinds) was independently fixed by reading `entry_context.signal_kinds`
+back off the commit row.
+
+**But the exact same structural gap exists for `entry_geometry` (`src.entryStatus`), and nothing had
+fixed it.** `HorizonPlay` literals built from committed rows in `live-plays.ts` never set
+`entryStatus` at all — not even to `null`, it is simply absent from the returned object — so
+`entryGeometryScore(undefined)` in `thesis-health.ts` always falls through to its `"n/a"` default
+label. Because `thesisHealthUncalibrated()` ORs across all five pillars, this ONE unfixed pillar was
+enough to keep tripping the whole withheld-aggregate path on every single committed swing
+position, regardless of how complete the other four pillars' inputs were.
+
+Live-verified 2026-09-21 against production (`GET /api/market/swing/play-brief`, temp Clerk session):
+**every** committed swing position checked this cycle — HOOD, SNOW, SMCI, and the previously-known
+CRWD — showed the same withheld "Thesis health" section, even though setupState and signalKinds are
+both wired today. The persistence-pillar fix landed correctly but never actually restored the
+feature it was aimed at, because its OR-gated sibling was still permanently defaulted.
+
+### Evidence
+
+RED→GREEN regression added to `src/features/nighthawk/command-deck/adapters.test.ts`:
+- **RED (pre-fix, confirmed via `git stash` on the two source files):** a committed-row fixture with
+  real `liveSpot`/`entryTriggerUnderlyingPx` (the same two legs the persistence fix already uses)
+  still produced `entryGeometry.currentLabel === "n/a"` — the uncalibrated default — instead of a real
+  derived state.
+- **GREEN (post-fix):** the same fixture now derives `"at trigger"` from live price-vs-trigger
+  geometry; a second test confirms the fallback (no `liveSpot`/`entryTriggerUnderlyingPx`) still
+  correctly reads `"n/a"` — no regression to the honest-absence case.
+
+### Fix
+
+`src/lib/swing/entry-model.ts`: exported the previously-module-private `deriveEntryState(dir, reads)`
+— it already needed only `direction`/`price`/`triggerPx` (with `entryZoneFar`/`atr` optional and
+gracefully degrading), the same two legs `deriveSetupState` already threads through for the sibling
+persistence fix.
+
+`src/features/nighthawk/command-deck/adapters.ts`: added `liveEntryStatus`, computed the same way
+`liveSetupState` already is — `working && liveSpot != null && entryTriggerUnderlyingPx != null` gates
+a live call to `deriveEntryState`, falling back to `src.entryStatus` (still structurally absent, but
+kept as the honest no-op fallback) otherwise. Wired into `computeSwingThesisHealth`'s `entryStatus`
+field in place of the always-undefined `src.entryStatus`.
+
+### Blast radius
+
+Single call site — `terminalPlayFromHorizon` in `adapters.ts` is the only place `computeSwingThesisHealth`
+is invoked for a live/committed SWING row (the play-brief's own thesis-health section reads the SAME
+`TerminalPlay.thesisHealth` this adapter produces, so the fix reaches the Ask Largo play-brief and the
+live Command Deck panel identically, with no second implementation to fix). WATCH-lane call sites
+(`swingEnterability`/`entryVerdict`, same file, ~lines 848/881) already read a REAL `src.entryStatus`
+from the WATCH-lane dossier and were untouched — this fix only affects the `working` (OPEN/HOLD/TRIM)
+branch.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/features/nighthawk/command-deck/adapters.test.ts` — 150/150 pass (was 149/150 red pre-fix on the new test alone; full suite untouched otherwise).
+- `npx tsx --experimental-test-module-mocks --test src/lib/swing/entry-model.test.ts src/lib/swing/thesis-health.test.ts src/lib/swing/play-brief-narrative.test.ts src/lib/swing/play-brief-pillar-guard.test.ts src/lib/swing/play-brief-resolve.test.ts src/features/nighthawk/command-deck/terminal-display.test.ts` — 164/164 pass.
+- `npx tsc --noEmit` — clean.
+- Full `npm test` — run in background this cycle; see `docs/audit/RUN-LOG.md` for the pass/fail tail if not yet folded in at merge time.
+
+## Night Hawk Legacy — rank-bucket diagnostic doc comment described bucketing backwards; extended with median/CI/tail-rate/correlation/segmentation + counterfactual tracing — FIXED (doc) + EXTENDED (analysis)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/features/nighthawk/lib/rank-bucket-analysis.ts` (doc comment), new `rank-bucket-analysis-extended.ts`, `src/app/api/admin/nighthawk/rank-bucket-analysis/route.ts` |
+| **Status** | FIXED (doc comment) + EXTENDED (new read-only analysis capability) |
+| **Severity** | P3 — a documentation inaccuracy (not a code bug: `computeRankBucketStats` itself already bucketed strictly by the row's own `rank` column, correctly) that would have led anyone reading it to misinterpret what "rejected" rows in each bucket actually represent |
+| **Found via** | operator directive to answer, with real evidence, whether Legacy's current rank/score already concentrates forward performance into ranks 1-5 — before any Winner-DNA design work |
+
+### Root cause (doc comment)
+
+`bucketForRank`'s doc comment claimed a "rejected" row that was ranked before being cut (e.g. by
+the cross-edition governor or a STAGE-6 gate) buckets by that rank, and that only a confluence-gate
+reject falls into `rejected_unranked`. Verified directly against the row-builders in
+`edition-builder.ts`: `buildGovernorCutSnapshotRows` (governor cuts) and
+`buildStageRejectionSnapshotRows` (all 6 STAGE-6 reasons) both write `rank: null`
+**unconditionally** — the opposite of what the comment claimed. Only the STAGE-2 confluence-gate
+reject (`candidates.ts`'s `buildDiscoveryStageSnapshotRows`) carries a rank at all, and it's that
+ticker's **discovery-stage** rank (its position in the raw composite-score pool, before
+dossiers/scoring/chains exist) — not any later pre-cut position, since no later stage ever stamps
+one for a rejected row. The comment has been corrected in place; `bucketForRank`'s actual logic
+(bucket strictly by `row.rank`, null → `rejected_unranked`) was already correct and is unchanged.
+
+### What shipped: extended analysis, not a production change
+
+New file `src/features/nighthawk/lib/rank-bucket-analysis-extended.ts` (pure, no I/O, kept
+separate from the tested base module) adds:
+- Median MFE/MAE (the base module only had mean), an MFE:MAE ratio, and a large-winner/large-loser
+  tail rate (a disclosed, adjustable threshold — default 10% sign-aligned EOD move — never
+  silently assumed).
+- Normal-approximation 95% confidence intervals on win rate and mean EOD return, genuinely wide at
+  low n rather than hidden.
+- A Spearman rank↔outcome correlation (h1/eod/MFE/MAE), computed only over rows carrying both a
+  real `rank` and a graded reading, reporting `null` with an explicit reason below a minimum-n
+  floor or when either side has zero variance — never fabricated as 0.
+- Segmentation by direction (CALL/PUT), conviction tier (A/B/C), a fuller trend-regime read (joins
+  the `discovery`-stage row's full `market_regime.trend`, since only the coarse
+  `regime_multiplier` scalar survives past discovery), and a heuristic `setup_type` label
+  (whichever score component dominates `snapshot_json.components` — explicitly documented as a
+  DERIVED, best-effort label, "unknown" whenever no components object is present, which is true
+  for most `rank_final` and STAGE-6 rejected rows today).
+- A counterfactual "rejected winner / Top-5 loser" tracer: Top-5 losers are a straightforward
+  `rank_final` filter; rejected winners compare the row's own `score` (always populated on
+  rejected rows, unlike `rank`) against that same edition's real published scores — an honest,
+  disclosed proxy for "would this have made the book," never presented as the literal rank the
+  candidate would have held.
+
+The admin route (`GET /api/admin/nighthawk/rank-bucket-analysis`) gained an additive `extended`
+block on both the `baseline` and `recent` windows, computed from the exact rows already fetched
+(zero extra I/O), plus one opt-in extra fetch (`include_discovery_regime=1`) for the trend-regime
+join. Every existing field/behavior is unchanged; no current caller's shape breaks.
+
+### Genuine data gaps, disclosed rather than worked around
+
+- **DTE/expiry**: not captured anywhere in `nighthawk_candidate_snapshot` at any stage — confirmed
+  by reading every stage's `snapshot_json` shape. No DTE breakdown exists here because there is
+  nothing to break down; see the companion Workstream C PR for the capture fix.
+- **Real data volume as of 2026-09-21**: per the durable journal, the table holds essentially one
+  edition's worth of ungraded rows. This diagnostic will correctly report low-n/insufficient-data
+  almost everywhere until several more trading days accumulate and grade — that is the honest
+  current answer to "does rank concentrate performance today," not a defect in the tool.
+
+### Evidence
+
+- `git diff` on `rank-bucket-analysis.ts`: doc comment only, zero logic change; its own
+  `rank-bucket-analysis.test.ts` (23 tests) passes completely unmodified.
+- New `rank-bucket-analysis-extended.test.ts`: 22 tests covering every new stat, every
+  segmentation, and both tracer functions (including the exact counterfactual-rank-estimate string
+  format and the honest confluence-gate fallback).
+- Full `src/features/nighthawk/**` suite: 1817/1817 pass. `tsc --noEmit` clean. `next lint`: no
+  warnings.
+
+### What's still open
+
+Once enough real editions accumulate and grade, pull `GET /api/admin/nighthawk/rank-bucket-analysis`
+(with `include_discovery_regime=1` for the fuller regime read) and report the actual numbers —
+that report is the deliverable the operator asked for. No Winner-DNA design work resumes before
+that.
+
+## Night Hawk Legacy — bearish-posture `composite_regime` check is provably dead code — SHADOW-LOG ADDED, LIVE FIX DEFERRED (operator instruction)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/features/nighthawk/lib/bearish-posture.ts` (`detectBookPosture`) |
+| **Status** | SHADOW-LOGGED, NOT FIXED |
+| **Severity** | P3 — the gate still works today at a stricter-than-intended bar (2 of 2 live signals instead of 2 of 3); no incorrect picks, no data corruption, but the SHORT-posture re-rank engages less often than the original PR-N9 design intended |
+| **Found via** | operator directive to unblock task #30 (previously held pending confirmation that the fix is genuinely low-risk — investigation showed it is not) |
+
+### Root cause
+
+`detectBookPosture` (`bearish-posture.ts:49-52`) checks:
+
+```ts
+const comp = regime.composite_regime?.toUpperCase();
+if (comp && (comp.includes("BEARISH") || comp.includes("NEGATIVE"))) {
+  signals.push(`composite regime bearish (${regime.composite_regime})`);
+}
+```
+
+`composite_regime` is populated from `deriveComposite()`
+(`src/app/api/cron/market-regime-detector/derive-composite.ts`), whose only 7 possible return
+values are `MEAN_REVERT_TRENDING_UP`, `MEAN_REVERT_TRENDING_DOWN`, `AMPLIFY_BREAKOUT`,
+`AMPLIFY_BREAKDOWN`, `AMPLIFY_MIXED`, `MEAN_REVERT_MIXED`, `NEUTRAL`. None of these — including
+the two genuinely bearish ones — contain the substrings `"BEARISH"` or `"NEGATIVE"`. This branch
+of the "any 2 of 3" gate (`BEARISH_POSTURE_MIN_SIGNALS = 2`, line 31) can therefore never fire on
+real data; it is structurally, permanently dead. `composite_regime` itself IS correctly wired
+through (`scorer.ts`'s `regimeContextFromMarket` → `edition-builder.ts:793`/`:990`), so this is a
+one-line string-match bug, not a wiring gap.
+
+### Why this was initially mis-scoped as "low-risk"
+
+A plain string-match fix (`comp.includes("DOWN")`, matching both `MEAN_REVERT_TRENDING_DOWN` and
+`AMPLIFY_BREAKDOWN`, since `"BREAKDOWN"` contains `"DOWN"`) restores this dead path — but doing so
+changes LIVE ranking behavior on any future session where `composite_regime` reads a down-trend
+value: it can newly complete the 2-of-3 gate and trigger `applyBearishPosture`'s SHORT-preference
+re-rank (`bearish-posture.ts:65-98`, `SHORT_POSTURE_BONUS=8`/`LONG_POSTURE_PENALTY=6`), which
+directly changes which candidates rank highest and can change which plays publish. This is a real
+selection-behavior change, not a pure dead-code cleanup — which is why fixing it directly was not
+authorized.
+
+### Fix shipped this PR: shadow-log only
+
+New file `src/features/nighthawk/lib/bearish-posture-shadow.ts` (pure, zero edits to
+`bearish-posture.ts`):
+- `detectBookPostureCorrected(regime)` — mirrors `detectBookPosture` with the one corrected line.
+- `compareBearishPosture(ranked, regime)` — calls the REAL, unmodified `detectBookPosture`/
+  `applyBearishPosture` for the "actual" side (so it can never diverge from real production
+  output) and the corrected mirror for the "corrected" side; reports whether posture, the
+  resulting Top-5, and boost/penalty counts would differ.
+- `buildBearishPostureShadowSnapshotRow` — one sentinel row per edition build (`ticker:
+  "__EDITION__"`), new free-text `stage: "bearish_posture_shadow"` on the existing, unmigrated
+  `nighthawk_candidate_snapshot` table.
+
+Wired into `edition-builder.ts` immediately after the existing `applyBearishPosture(ranked,
+regime)` call (STAGE 4c), against the pre-adjustment `ranked` snapshot, fire-and-forget via the
+same `insertNighthawkCandidateSnapshots(...).catch(...)` idiom every other capture call site in
+this file already uses. `bearish-posture.ts` itself has an EMPTY diff in this PR and its existing
+test suite passes completely unmodified — the load-bearing proof that live selection is
+byte-identical before and after.
+
+### Evidence
+
+- `git diff` on `bearish-posture.ts`: empty.
+- `bearish-posture.test.ts`: 8/8 pass, unmodified.
+- New `bearish-posture-shadow.test.ts`: reproduces the real bug directly (`MEAN_REVERT_TRENDING_DOWN`
+  + tide BEARISH → `actual.posture === "NEUTRAL"` today, `corrected.posture === "SHORT"` once
+  fixed), asserts the "actual" side can never drift from a direct `detectBookPosture` call across
+  multiple fixtures, and source-inspects `bearish-posture.ts` as a drift guard so this shadow
+  module is flagged for review the moment the real fix (or the two re-rank constants) ever change.
+- Full `src/features/nighthawk/**` suite: 1813/1813 pass, `tsc --noEmit` clean.
+
+### What's still open
+
+The real fix (`comp.includes("DOWN")`) remains deferred pending a fresh, explicit operator
+go-ahead, informed by whatever the shadow log shows once it accumulates real editions where
+`composite_regime` reads a down-trend value — i.e., whether the corrected gate would have
+materially changed recent nights' Top 5, before flipping live behavior.
+
 ## Ask Largo — `GET /api/market/nighthawk/horizons?view=swings` destroyed real gamma/theta/vega/iv to 0.00 at the response boundary — FIXED
 
 > **kind:** `FINDING`
