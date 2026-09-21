@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T18:18:08Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries. No new open swing PRs, no new #4076 activity. Checked deploy status directly via Actions API rather than blind-polling: #5372's run confirmed conclusion:success (took ~40min, matches the ~45-55min pattern already established), #5373's run confirmed status:in_progress (~33min elapsed at check time) -- on pace, not stuck. AAPL #40 still shows pre-#5373 text, expected. Fresh Ask Largo audit on MSTX #1209 (banger, TAKE_PARTIAL, not yet checked this session) -- clean, no bugs. Math hand-verified: blended P&L (50%@+100% + 50%@+199.5% runner) = 149.8%, matches displayed exactly. Giveback correctly triggered (capturePct 74.0% < 75% threshold, 'Gave back 26% of peak'). Noted MSTX's Catalysts headlines include 'Trading Halt' Benzinga news items -- verified this is just historical/general news feed content (the position has an active current mark as of 14:15 ET, so the ticker is clearly trading normally right now), not a live safety gap or missing caveat. Nothing new found -- clean cycle.",
+  "last_updated": "2026-09-21T18:32:30Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5374 (mechanical findings-fold for #5371/#5372/#5373, docs-only). No new open swing PRs, no new #4076 activity. CLOSED THE LOOP: #5373's deploy confirmed fully live -- re-fetched AAPL #40's brief and the 'Below lane median -- #59/59 (score 0...)' line is now correctly ABSENT entirely (not just showing a real number -- computeLaneRank returns null for a withheld self-row per the fix's own design, so laneRankCoaching correctly renders nothing rather than any rank at all). Thesis health section still healthy (4 real pillars, aggregate correctly withheld) -- #5367's fix continues working alongside #5373's. This is the true, final close of the multi-cycle AAPL #40 saga: #5364 (roll-child signal_kinds), #5367 (thesis-health partial-pillar display), #5372 (positionId collision for the multi-row banger case -- single-row residual still open, tracked separately), #5373 (lane-rank score-withheld). All four independently RED->GREEN verified by me this session, three self-corroborated live on production, one (#5372's fix itself) also confirmed live via the ABTC multi-leg case. Nothing new found this cycle -- clean, quiet 15 minutes after a very active stretch.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,7 +117,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T18:18:08Z",
+    "as_of": "2026-09-21T18:32:30Z",
     "swing_prs": []
   },
   "tickers_seen": {
