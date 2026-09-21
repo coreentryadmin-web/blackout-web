@@ -383,6 +383,10 @@
     "2026-09-21T15:45:00Z": {
       "session_state": "RTH, 3 open (LUNR HOLD, CRWV OPEN, QCOM OPEN) + 3 closed today (AXTI thesis-break loss, TSLA/SPXW dead-zone floor wins)",
       "activity": "Quick coherence sweep on new activity: AXTI closed via thesis_break at -10.23% (peak only +3.41%, weak entry that never worked -- thesis-break firing at a loss is correct, unconditional rule). LUNR now HOLD, peak 36.03% retraced to 26.47%, floor still 0 holding it well above breakeven -- same verified mechanics as earlier. New CRWV/QCOM entries both score 77-78, reasonable. Nothing anomalous, no new finding. PR queue: only a fresh swing-lane PR (#5367), not mine."
+    },
+    "2026-09-21T15:48:00Z": {
+      "session_state": "RTH, 3 open (LUNR HOLD +30.88%, QCOM TRIM +14.62%, MU OPEN -4.41%) + 4 closed today",
+      "activity": "CRWV closed via flat_theta_bleed (peak only +1.52%, sat flat past the timeout -- coherent). QCOM flipped OPEN->TRIM (peak 30.65%, floor 0 holding through the retrace to +14.62% -- same verified mechanics). New MU position, small early drawdown. LUNR still holding a large gain (+30.88%) well-protected by its floor. Nothing anomalous, no new finding. PR queue unchanged (#5367 swing PR still fresh, not mine)."
     }
   },
   "sessions": {
