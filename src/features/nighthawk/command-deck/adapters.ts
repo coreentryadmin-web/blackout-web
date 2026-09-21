@@ -24,6 +24,7 @@ import {
 import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "@/lib/swing/thesis-health";
 import { deriveSetupState } from "@/lib/swing/setup-state";
+import { deriveEntryState } from "@/lib/swing/entry-model";
 import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -947,12 +948,30 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
           },
         )
       : src.setupState;
+  // Same structural gap as setupState above, for the SIBLING pillar: `src.entryStatus` (the
+  // WATCH-lane dossier's entry-execution stance) also never survives the WATCH→COMMIT transition —
+  // HorizonPlay literals built from committed rows (live-plays.ts's `livePlaysFromOpenPositions`)
+  // never set `entryStatus` at all, so it is always `undefined` for a live SWING position. Left
+  // unfixed, `entryGeometryScore` (thesis-health.ts) always falls through to its "n/a" default label,
+  // which BY ITSELF trips `thesisHealthUncalibrated()` — the check is an OR across pillars — so the
+  // "Inputs not wired for committed positions" degrade kept firing on every committed play-brief even
+  // after the persistence (setupState) and flow_corroboration (signalKinds) pillars were wired.
+  // `deriveEntryState` needs only the same two legs `liveSetupState` above already has (direction,
+  // live price, trigger price), so reuse them here rather than threading a third live-derived field
+  // through live-plays.ts.
+  const liveEntryStatus =
+    working && src.liveSpot != null && src.entryTriggerUnderlyingPx != null
+      ? deriveEntryState(src.direction, {
+          price: src.liveSpot,
+          triggerPx: src.entryTriggerUnderlyingPx,
+        })
+      : src.entryStatus;
   const thesisHealth = working
     ? computeSwingThesisHealth({
         direction: src.direction,
         status,
         setupState: liveSetupState,
-        entryStatus: src.entryStatus,
+        entryStatus: liveEntryStatus,
         factors: src.factors,
         regime: src.regime,
         signalKinds: src.signalKinds,

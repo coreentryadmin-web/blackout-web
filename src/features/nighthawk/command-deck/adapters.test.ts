@@ -1369,6 +1369,56 @@ test("horizon adapter: committed row missing liveSpot/entryTriggerUnderlyingPx f
   assert.equal(persistence!.currentLabel, "unknown");
 });
 
+// Ask Largo standing mandate (#4076), 2026-09-21: the SIBLING gap to the persistence-pillar fix two
+// tests above. `src.entryStatus` (the "Entry geometry" pillar's input) was NEVER threaded through for
+// committed SWING positions — unlike setupState/signalKinds, no live-derivation existed for it at all
+// — so `entryGeometryScore` always fell through to its "n/a" default, which by itself kept tripping
+// `thesisHealthUncalibrated()` (an OR across pillars) even once persistence/flow_corroboration were
+// fixed. Live-verified 2026-09-21: HOOD/SNOW/SMCI play-briefs all still showed "Inputs not wired for
+// committed positions" despite carrying real setupState/signalKinds data. Reuses the exact same two
+// legs (direction, live price, trigger price) the persistence fix already threads through.
+test("horizon adapter: committed row with liveSpot/entryTriggerUnderlyingPx derives a real (non-'n/a') entry-geometry pillar (Ask Largo #4076)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+    entryTriggerUnderlyingPx: 170,
+    invalidationUnderlyingPx: 160,
+    liveSpot: 170, // exactly at the trigger, no ATR supplied → AT_TRIGGER (chaseDist collapses to 0)
+  });
+  assert.ok(play.thesisHealth);
+  const entryGeometry = play.thesisHealth!.pillars.find((p) => p.label === "Entry geometry");
+  assert.ok(entryGeometry, "entry geometry pillar must be present");
+  assert.equal(entryGeometry!.currentLabel, "at trigger");
+  assert.notEqual(entryGeometry!.currentLabel, "n/a");
+});
+
+test("horizon adapter: committed row missing liveSpot/entryTriggerUnderlyingPx falls back to the existing uncalibrated entry-geometry read (no regression)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+  });
+  const entryGeometry = play.thesisHealth!.pillars.find((p) => p.label === "Entry geometry");
+  assert.equal(entryGeometry!.currentLabel, "n/a");
+});
+
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
   const p = terminalPlayFromEdition({
     ticker: "NVDA",
