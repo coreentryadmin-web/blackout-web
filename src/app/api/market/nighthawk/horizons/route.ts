@@ -121,6 +121,21 @@ export async function GET(req: NextRequest) {
     // mark 0.125 → displayed 0.13, but livePnlPct -16.7% only matches the raw 0.125). Same
     // per-key-precision pattern round-floats.ts's own docs establish for gamma (0.0008-0.05
     // needs 4dp or it quantizes to 0.00) — option premiums need the same treatment.
+    //
+    // gamma/theta/vega ALSO need the override, not just a citation of it: this comment already
+    // named round-floats.ts's own gamma-quantization warning as precedent but the keyDp map below
+    // never actually added gamma/theta/vega, so `contract.gamma`/`.theta`/`.vega` from
+    // live-plays.ts's honest `quote?.gamma ?? null` (never fabricated) were being served as a
+    // real number then DESTROYED to 0.00 at this 2dp boundary — a genuine small live greek (e.g.
+    // gamma 0.003 on a deep-ITM near-expiry swing contract) renders as a confident "0", which is
+    // exactly the Largo-contract precision violation (fabricated certainty via lossy rounding,
+    // not an honest omission) the standing Ask Largo mandate exists to catch. `iv` is included too
+    // (same round-floats.ts precedent: "delta/theta/IV are perfectly readable at 4dp") even though
+    // IV rarely quantizes to zero at 2dp, for the same reason vector-response-rounding.ts documents:
+    // once a payload mixes scales, every fractional-scale field in that family should share the
+    // override rather than re-discovering the bug field-by-field. `delta` is left at the 2dp
+    // default deliberately — it is already served at native precision from `row.contract_delta`
+    // pinned at commit (0.30-0.70 range), so 2dp does not destroy it the way gamma/theta/vega do.
     return NextResponse.json(
       roundFloats(
         {
@@ -129,7 +144,7 @@ export async function GET(req: NextRequest) {
           session: payload?.session ?? null,
         },
         2,
-        { mid: 4, entryPremium: 4, peakPremium: 4 }
+        { mid: 4, entryPremium: 4, peakPremium: 4, gamma: 4, theta: 4, vega: 4, iv: 4 }
       ),
       {
         headers: NO_STORE_HEADERS,
