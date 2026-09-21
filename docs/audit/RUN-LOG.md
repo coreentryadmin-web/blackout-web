@@ -4,6 +4,32 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-21 (13:33 UTC / Mon 09:33 ET) — [SEO] Market-hours wake: `/tools/gamma-snapshot` live-data validation, clean
+
+Confirmed clock myself (09:33 ET, Monday, not a NYSE holiday) before treating this as RTH work —
+in-window (09:30-13:00 ET), market genuinely open.
+
+**`/tools/gamma-snapshot`'s public API** (`/api/public/gex-snapshot?ticker=SPX`): `market_session:
+"OPEN"`, `degraded: false`, fresh (`snapshot_data_age_seconds` 6-12 across three calls). Spot
+7,696.62 cross-checked against an independent source (Massive `/v3/snapshot/indices`, SPX
+7,696.17) — 0.006% apart, consistent with normal tick drift between two separate calls, not a
+data-correctness problem. **5s refresh genuinely refreshes** — polled 3x at 6s intervals, spot
+moved 7695.59→7695.66→7696.16, `asof`/`calculation_id` advanced every call, never sat on a stale
+snapshot.
+
+**Live CLS on the real RTH-rendering homepage** (not a frozen off-hours page): purged Cloudflare
+edge first, then measured — desktop **0, GOOD**; mobile **0.0318, GOOD**. #2453 holds under real
+market-data rendering, not just at rest.
+
+**Derived-vs-raw check** (the licensing question `RESEARCH-PUBLISH-POSTURE.md` flags as an open
+item): confirmed the live payload still only carries derived values (gamma flip, call/put wall,
+posture, narrative `read`) — no chain, no strike matrix — exactly matching that doc's existing
+description. Nothing new to escalate; that item is already correctly tracked as a deliberate,
+pending business-terms decision, not a code defect.
+
+No PR — nothing broken. Returning to normal search/authority work per the brief once 13:00 ET
+passes.
+
 ## 2026-09-21 (12:17 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (Monday pre-open)
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
