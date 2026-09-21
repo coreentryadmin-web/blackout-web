@@ -38,6 +38,120 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-09-21 — [FINDING, P2 Largo/Night Hawk Swings] A rolled swing position's child leg never carried the parent's `signal_kinds` forward, permanently withholding the thesis-health aggregate score after any roll — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A committed swing position's Ask Largo play-brief shows "Thesis health: Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown" **forever**, for the rest of that position's life, the instant it is rolled once — even after the two sibling structural gaps at the WATCH→COMMIT boundary (`setupState` persistence pillar, `entryStatus` entry-geometry pillar — #5334/#5336, both merged 2026-09-20/21) are fully wired and working. |
+| **Live repro** | `SWING:AAPL:40` (real committed position, 2026-09-21, ~1hr into RTH, fetched via `GET /api/market/swing/play-brief`): committed and rolled (330C→335C) this morning. `liveSpot=336.93` and `entryTriggerUnderlyingPx=333.91` are BOTH present on the live row (per `GET /api/market/nighthawk/horizons?view=swings`), which is everything `liveSetupState`/`liveEntryStatus` (adapters.ts, #5334/#5336) need to derive real persistence/entry-geometry pillar values — yet the play-brief still rendered "Inputs not wired for committed positions." The raw `HorizonPlay` JSON confirmed `signalKinds` was entirely absent (not `[]`, not `null` — the key itself missing), the one remaining pillar input those two prior fixes don't touch. |
+| **Root cause** | `entry_context.signal_kinds` is pinned once, at the ORIGINAL commit, by `commit.ts`'s `buildCommitInsert` (`signal_kinds: cand.discoveryPaths ?? null`) — the discovery-provenance kinds that cleared the G-S6 confluence gate. `live-plays.ts`'s `livePlayFromSwingPosition` reads it back (array-shape guarded) so `computeSwingThesisHealth`'s `flow_corroboration` pillar has a real value instead of its "no signals" default. But a ROLL opens a genuinely NEW DB row (a child leg, `roll-plan.ts`'s `buildRollChild`) with its own fresh `entry_context` — and that child's `entry_context` literal (`commit_gate: "swing.roll.child.v1"`) never referenced `signal_kinds` at all. So the instant a position rolls, its `entry_context.signal_kinds` silently reverts to absent, `flow_corroboration` falls back to its uncalibrated default, and — because `thesisHealthUncalibrated()` is an OR across all five pillars — the entire aggregate is withheld regardless of what the other four pillars are doing. This is the identical "a field doesn't survive a row-shape transition" bug family #5334/#5336 already fixed once (WATCH→COMMIT); this is the sibling instance at the COMMIT→ROLL-CHILD boundary. |
+| **Why it wasn't caught earlier** | #5334/#5336 (2026-09-20/21) each live-verified against real committed positions and correctly closed the WATCH→COMMIT gap for `setupState`/`entryStatus` — those two ARE derived live from spot/trigger price so they don't need any DB field to survive at all, which is why they generalize across a roll for free. `signal_kinds` has no live-derivable equivalent (it is inherently a provenance fact about how the position was originally discovered, not something re-computable from live price), so it was the one pillar input still purely DB-sourced, and nobody had checked whether the COMMIT→ROLL-CHILD transition (a separate code path, `roll-plan.ts`, not `commit.ts`) preserved it. A rolled position reads identically to a fresh one in every other respect (contract, entry premium, direction all correctly carried forward), so the gap was invisible without diffing the two `entry_context` literals side by side. |
+| **Fix** | `roll-plan.ts`'s `buildRollChild` now forwards the parent row's `entry_context.signal_kinds` into the child's `entry_context`, using the exact same array-shape guard `live-plays.ts` already uses when reading it back (never trust an unknown JSONB blob's shape blindly) — `null` when the parent genuinely had none (honest absence, never fabricated), the real array otherwise. |
+| **Blast radius** | Scoped to `roll-plan.ts`'s `buildRollChild` — the single site that constructs a roll child's `entry_context`. No other roll/close code path builds a `SwingPositionInsert` for a new row (grepped: `computeSwingCommitPlan`/`executeSwingCommits` in `commit.ts` is the only other writer, and it already sets `signal_kinds` at original commit). Every OTHER field the roll child carries (`archetype`, `sub_lane`, `direction`, `entry_underlying_px`, `thesis_invalidation_px`, `target_underlying_px`) was already correctly threaded through from the parent row before this fix — `signal_kinds` was the one field missing from that list. |
+| **Fix rationale** | Forward the value rather than re-deriving it: unlike `setupState`/`entryStatus`, there is no live signal that reconstructs "what discovery paths originally corroborated this thesis" — it is a fact about history, so the only honest option is to carry the parent's own already-graduated value forward, exactly as the original commit-time comment in `commit.ts` already does for the parent ("Reusing the gate's own already-graduated value rather than recomputing keeps this consistent with what actually cleared G-S6"). A roll is documented (`roll-plan.ts`'s own header) as "a time-in-thesis extension, not a new thesis" — the discovery provenance that justified the thesis in the first place is still true of the child leg. |
+| **Evidence (RED→GREEN)** | Two new regression tests in `roll-plan.test.ts`: one asserts a parent's real `signal_kinds` (`["FLOW","CATALYST"]`) survives onto the child's `entry_context`, the other asserts a parent with no `signal_kinds` forwards `null` (never fabricated). RED (pre-fix, `git stash` on `roll-plan.ts` only): `22 tests, 20 pass, 2 fail` — exactly the two new tests failed, confirming the field really was missing before. GREEN (post-fix): `22/22` in `roll-plan.test.ts`, `66/66` combined with `live-plays.test.ts` (the sibling read-side test file). `npx tsc --noEmit -p .` clean. |
+| **Not a trading-behaviour change** | No gate, score, rail, exit rule, budget cap, or grading path touched — the roll's gating (armed budget, book-percent caps, idempotency, further-out-DTE requirement) is completely unaffected. Only the thesis-health narrative section's ability to show a calibrated aggregate score for a rolled position changed. |
+| **Status** | FIXED. |
+
+## 2026-09-21 — [FINDING, P2 Largo/Night Hawk Swings] `degradedReadLine`'s giveback clause duplicated `actionNarrative`'s own giveback line for any capturePct below 75%, contradicting its own code comment — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The swing play-brief "Trade manager read" section can repeat the exact same "gave back X% of peak" fact twice, once in the "Desk says TRIM"/"Hold the line" bullet and again in the "Live read" bullet three lines later — a bullet-dump duplication the standing mandate's narrative-quality angle exists to catch. |
+| **Live repro** | `SWING:COIN:1190` (real committed position, 2026-09-21 RTH, fetched via `GET /api/market/swing/play-brief`): pnlPct 115.2%, peak 178.5% -> capturePct 64.54%. Served envelope's "Trade manager read" section: `"• **Desk says TRIM**. ... Gave back **35%** of peak — consider protecting runner."` followed three bullets later by `"• **Live read** — Vector spot not wired on this tick; desk still says **TRIM** · mark **$6.80** · gave back **35%** from peak. Levels refresh on next poll."` — the same 35% fact stated twice. |
+| **Root cause** | `actionNarrative` (`play-brief-narrative.ts`) renders its own "Gave back X% of peak" line whenever `giveback.kind === "capture" && giveback.capturePct < 75`. `degradedReadLine` (the "Live read" fallback, fires only when Vector spot isn't wired) independently renders its own "gave back X% from peak" clause whenever `giveback.kind === "capture" && giveback.capturePct < 80`. Both read the exact same `mfeCaptureOutcome(play.pnlPct, play.peak, null)` result on the same play, so for ANY capturePct below 75% — not just the `[75,80)` band the surrounding comment claimed was the only overlap — BOTH conditions are simultaneously true and both bullets fire. The section's own de-dup (`seen`, keyed on each line's first 48 characters) cannot catch it because the two bullets open with different prose ("**Desk says TRIM**..." vs "**Live read**..."), even though the embedded fact is identical — the same shape as the "Entry stance"/"Gates blocking entry" duplication this file's own history already documents fixing once, and the same shape as the 2026-09-12 `round_trip`-kind fix for this identical function, which this `capture`-kind branch was deliberately (and incorrectly) left out of at the time. The comment guarding this code explicitly asserted "no live evidence of that case duplicating, so left as-is" — that assertion was wrong; a live repro existed the whole time and the repo's own pre-existing NRG regression test fixture (`pnlPct=39.8, peak=132.7` -> capturePct 30%) was itself already exercising the duplicate case, undetected, because that test only asserted the Live-read text was present and never checked the sibling bullet for a repeat. |
+| **Why it wasn't caught earlier** | The existing regression test for this exact function (`"degraded-read 'Live read' giveback clause also uses honest relative retracement"`) only asserted `section!.body` matched the expected Live-read substring — it never asserted the substring appeared exactly once, or that `actionNarrative`'s own line was absent. Both bullets were present in the test's own rendered output the whole time; nothing was checking for the duplication the surrounding comment claimed didn't happen. |
+| **Fix** | `degradedReadLine`'s `givebackBit` condition narrowed from `giveback.capturePct < 80` to `giveback.capturePct >= 75 && giveback.capturePct < 80` — the `[75,80)` band is the ONLY range where `actionNarrative`'s own `<75` branch does not already render the identical fact, so this line is now genuinely additive instead of an echo. This matches the intent the removed comment always stated, it just never enforced it. |
+| **Blast radius** | Scoped to `degradedReadLine` in `play-brief-narrative.ts`. No other call site duplicates this pattern (grepped: `mfeCaptureOutcome` has exactly these two call sites in this file, plus a third in the CLOSED-play post-mortem grader which is a different lifecycle stage entirely and unaffected). `actionNarrative` itself is untouched — it is the one line of the two that should keep firing. |
+| **Evidence (RED→GREEN)** | Existing NRG fixture (`pnlPct=39.8, peak=132.7` -> capturePct 30%) moved to a genuinely-additive `[75,80)` fixture for the original "honest relative retracement" test (still proves the point-vs-relative math it was written for), and its old numbers repurposed into a NEW regression test asserting the "gave back 70%" fact now appears exactly once and the Live-read bullet no longer repeats it. RED (pre-fix, source stashed): `101 tests, 100 pass, 1 fail` — exactly the new duplication test failed. GREEN (post-fix): `101/101` in `play-brief-narrative.test.ts`. `npx tsc --noEmit -p .` clean. Full repo suite (`npm test`, Node 20): **15113 pass / 0 fail / 3 skipped** — no collateral breakage. |
+| **Not a trading-behaviour change** | No gate, score, rail, exit rule or grading path touched — only whether one already-stated fact is repeated a second time in the same narrative section. |
+| **Status** | FIXED. |
+
+## `bie-full-state-snapshot` cron had no cross-replica overlap guard — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 (tail-latency / performance) |
+| **Found** | 2026-09-21, standing performance/latency audit mandate |
+
+### Evidence
+
+Deployed EventBridge rule (confirmed live via `boto3` `describe_rule`):
+
+```
+blackout-production-bie-full-state-snapshot -> cron(*/5 11-21 ? * MON-FRI *) ENABLED
+```
+
+Live CloudWatch Logs (`/ecs/blackout-production`, `elapsed=` grep, 2026-09-21 11:37-14:37 UTC RTH
+window):
+
+```
+[cron/bie-full-state-snapshot] background done — ... elapsed=407874ms
+[cron/bie-full-state-snapshot] background done — ... elapsed=355974ms
+```
+
+Both real runs exceed the cron's own 300-second (5-minute) schedule interval — 407.9s and 356.0s
+respectively. `src/app/api/cron/bie-full-state-snapshot/route.ts` had no overlap guard at all: the
+next scheduled EventBridge fire starts `buildBieFullState()` a second time while the previous run
+is still in flight. `buildBieFullState()` fans out across the same cluster-wide Polygon/UW rate
+limiters (`GLOBAL_MAX_RPS`) that real member requests and every other Vector/0DTE cron already
+depend on — the exact overlap shape `vector-pick-sweep`'s own guard (fixed 2026-09-02/03, see that
+route's own header comment) was built to prevent. Same window's ALB `TargetResponseTime` showed
+p99 in the tens of seconds (up to ~48s) with p50 staying under 300ms — a tail-latency signature
+consistent with a small number of background jobs saturating the shared rate limiters, not a
+fleet-capacity problem.
+
+### Root cause
+
+`route.ts`'s `GET` handler dispatched `runBieFullStateSnapshot()` unconditionally in the background
+(`after(dispatchSnapshot)`) with no idempotent-skip lock — unlike its sibling crons
+(`vector-pick-sweep`, `zerodte-warm`, `swing-discovery`, `banger-discovery`, `thermal-discord`,
+`darkpool-discord`, `data-correctness`, `helix-discord-digest`) which all already use the
+`sharedCacheSetNx` cross-replica overlap-lock pattern for this exact problem shape.
+
+### Fix
+
+Added the same `sharedCacheSetNx`/`sharedCacheDel` overlap-lock pattern as `vector-pick-sweep`:
+- `OVERLAP_LOCK_KEY = "bie-full-state-snapshot:running"`, `OVERLAP_LOCK_TTL_SEC = 900` (15 min,
+  matching the cron's own `stale_after_min: 15` in `cron-registry.ts`, which was already correctly
+  set — no change needed there).
+- Acquire before dispatch; a lost race returns `{ skipped: true, reason: "previous snapshot still
+  in flight (idempotent skip)" }` instead of running a second snapshot.
+- Fails OPEN on a Redis error (`.catch(() => true)`) — a missed overlap guard is safer than a
+  wedged cron.
+- Lock released in a `finally` block so a thrown snapshot still frees the next run.
+
+TTL of 900s gives real margin above the worst observed 408s runtime.
+
+### Blast radius
+
+Scoped to `src/app/api/cron/bie-full-state-snapshot/route.ts`. No other call site invokes
+`buildBieFullState()` directly (grepped) — this is the cron's only trigger path. `vector-full-state-snapshot`
+(same 5-min schedule) and `vector-dark-pool-warm` (10-min schedule) were also checked against their
+own measured elapsed times in the same CloudWatch window and are NOT at risk (max observed 197s vs
+300s schedule; max observed 383s vs 600s schedule respectively) — left untouched per the standing
+mandate's "do not add a lock to a cron that doesn't need one" discipline.
+
+### Evidence (RED→GREEN)
+
+New test file `src/app/api/cron/bie-full-state-snapshot/route.test.ts` (7 tests), mirroring
+`vector-pick-sweep/route.test.ts`'s existing pattern:
+- RED (pre-fix, source stashed via `git stash`): `7 tests, 0 pass, 7 fail` — every new test failed.
+- GREEN (post-fix): `7/7` pass.
+- `npx tsc --noEmit -p .` clean.
+- Full repo suite (`npm test`, Node 20): run alongside this cycle's merge validation, no collateral
+  breakage in this file's area.
+
+Not a trading-behaviour change — no gate, score, rail, exit rule or grading path touched, only
+adds an idempotent cross-replica skip to a background cache-warming cron.
+
 ## Swing play-brief: `expectedMoveCoaching`/`wallIntegrityCoaching` still sampled `Date.now()` instead of `ctx.readMs` — FIXED
 
 > **kind:** `FINDING`
