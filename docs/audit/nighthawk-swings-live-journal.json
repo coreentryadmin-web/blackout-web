@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T23:22:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5393's merge + heartbeat commit. Observed two more parallel-session PRs (same lane, session_01Qtnftc16CuWyVLxR8LaMoC): #5394 (wallDynamicsSection/vectorDeskSection readMs anchor -- explicitly declares 'This closes the readMs-anchor bug class in the swing play-brief family', re-grepped and disclosed the 4 remaining Date.now() sites as genuinely NOT staleness-comparison bugs) and #5395 (catalystCoaching Meridian-staleness disclosure, same class, narrative-coaching sibling). Both well-documented, CI pending. Not mine, did not duplicate -- that lane has now thoroughly closed this bug class end to end. Pivoted to a different v3-checklist item not yet audited this session: MFE capture correctness (mfeCaptureOutcome, relative retracement not raw pp delta). Read mfe-capture.ts and its 3 call sites in play-brief-narrative.ts -- found a live-repro fix already in the current source, dated TODAY (2026-09-21, no session id visible, likely an earlier cycle this same session or a parallel one): the 'Live read' fallback bullet's giveback-duplication bug (COIN SWING:COIN:1190 cited as live repro -- both actionNarrative's <75 branch AND this fallback's old <80 branch fired for the same capturePct, producing two near-identical 'gave back X% of peak' bullets in one brief) was fixed by restricting the fallback to the genuinely-additive [75,80) band only. Verified this fix holds LIVE right now: re-fetched COIN's current play-brief (still TRIM, capturePct ~29% i.e. well under both floors) and confirmed only ONE 'Gave back 71% of peak' bullet renders, no duplicate. No bug found -- clean verification of a same-day fix. mfe-capture.ts's core math itself (capturePct = pnlPct/peak*100, round_trip branch for negative pnl, null-guard on peak<=0) reviewed and looks sound -- no edge case found where an overshoot (pnl > peak, e.g. a stale peak not yet updated) would render a nonsensical >100% capture in the narrative text, since the <75/[75,80) gates only ever fire on LOW capture, never flag a high one as broken.",
+  "last_updated": "2026-09-21T23:38:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PRs #5394/#5395 (parallel session's readMs-anchor closure) merging + #5397 (folding those findings). Observed PR #5396 (Legacy-lane, deterministic-edition.ts contract-cost preference, different session_01LdCi2xwgMrmNhwvN7A8gaE) -- explicitly out of scope per my own WHO-YOU-ARE lane boundary (Legacy is a separate desk), not touched. IMPORTANT CORRECTION to the standing mandate's own boilerplate: this cycle's v3 brief text still names '#4700 Banger-lane blindspot' in the book/portfolio-overlap checklist item as a KNOWN, presumably still-open gap. Investigated per the mandate's own 'verify against main, never trust a stale list' discipline -- it is STALE. #4700 (2026-09-10, docs-only design proposal, correctly NOT a fix at the time) described bookContextSection's checkPortfolioOverlap as functionally dead because loadOpenBook() only saw the 4 real swing-ledger rows out of 94 displayed, never the ~90 Banger-merged rows. Traced git history on play-brief-context.ts: PR #4833 ('merge banger_positions into Ask Largo book-context overlap check') already fixed this, and PR #5167 further refined it (bangerId field to disambiguate multiple Banger siblings on the same ticker, positionId collision-avoidance since banger_positions and swing_positions are separate DB sequences). Read the current loadOpenBook() source directly: confirmed Banger positions ARE merged into ctx.openBook today, with careful, well-commented handling of the exact positionId-collision risk #4700 implicitly raised. Cross-checked against AAPL's live HOLD brief (the one open native position): its 'Book context' section correctly does NOT render, verified as CORRECT (not the #4700 bug) -- checkPortfolioOverlap groups by theme-cluster (theme-cluster.ts's resolveTheme/sameThesis), and AAPL shares no theme+direction cluster with any Banger-merged position (all crypto/mining leverage tickers) or with the two other candidate SECTOR_ROTATION names (AMD/META, neither actually committed capital -- AMD gate-blocked, both distinct tickers anyway). Zero overlap is the honest, correct read for the current book, not an absence bug. No new finding filed -- this is a documentation-staleness correction for future cycles, not a code defect. Future cycles reading the v3 brief's '#4700 Banger-lane blindspot' line should treat it as HISTORICAL (fixed by #4833/#5167), not as live open work, unless a fresh grep of checkPortfolioOverlap/loadOpenBook shows regression.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,19 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T23:22:00Z",
-    "swing_prs": [
-      {
-        "number": 5394,
-        "title": "fix(swing): wallDynamicsSection/vectorDeskSection readMs anchor \u2014 closes the readMs-anchor bug class",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
-      },
-      {
-        "number": 5395,
-        "title": "fix(swing): catalystCoaching discloses Meridian catalyst staleness",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
-      }
-    ]
+    "as_of": "2026-09-21T23:38:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
