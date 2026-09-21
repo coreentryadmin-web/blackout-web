@@ -4,6 +4,13 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-21 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (post-RTH)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0003, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs. Step 3: opportunity
+scan — still the identical 2026-06-21→09-18 window/data as the recent cycles. Nothing new.
+
 ## 2026-09-21 (16:33 UTC / Mon 12:33 ET) — [SEO] Market-hours wake: gamma-snapshot clean, last cycle's mobile CLS outlier resolved as noise
 
 Confirmed clock myself (12:33 ET, Monday, in-window, ~27min left in RTH). `/tools/gamma-snapshot`'s
