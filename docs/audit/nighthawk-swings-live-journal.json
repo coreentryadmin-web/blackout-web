@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T08:32:51Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. Zero open swing PRs. WATCH bucket unchanged (still just LITE, already audited). **Picked up my own 'first dibs next cycle' commitment on the entry_underlying_px anomaly** (5754393669/5754459279, open since earlier this session) -- traced the one remaining unread piece, the accumulation-store promotion path. Read accumulation-store.ts's observeSwingCandidate/promoteSwingCandidate/fetchWatchEligible AND the underlying SwingAccumRow DB schema (db.ts L7631) directly: confirmed it carries ZERO price/plan fields (only ticker/direction/archetype/persistence-tracking metadata) -- structurally cannot be the source of a stale entry price. This rules out the last remaining code-level hypothesis; combined with the prior cycle's trace (discovery->ingest->commit all checked out clean), the full pipeline is now exhaustively traced with no bug found anywhere in it. Posted a closing update on #4076 (5757632149) concluding the anomaly is most likely a genuine, non-reproducible historical data-provider glitch rather than a code bug, and recommending the thread close unless a currently-OPEN position shows the same shape (which would give a fresh, live-verifiable repro). No PR filed -- this cycle's value was definitively closing out a previously-open investigation with a solid negative result, which is real progress even without finding a bug to fix.",
+  "last_updated": "2026-09-21T08:48:26Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. Checked #4076 for responses to this session's now-extensive comment history (thesis-health chain, IV-rank chain, R:R clarity finding, track-record/closed-brief banger gaps, entry_underlying_px closure) -- none yet from Cursor, proceeded with fresh work per NEVER SIT IDLE. **Fresh audit on AAPL #38** (a real swing-native CLOSED position, STOPPED -33.2%, peak +10.2%, trough -56.6%) -- verified the Lessons/closedCoaching narrative math against source: 'Round-tripped past breakeven ... barely cleared breakeven before reversing' phrasing correctly matches the documented outcome.peakPct > 20 threshold in play-brief-narrative-coaching.ts:1160 (AAPL's own peak of +10.2% falls under 20%, correctly triggering the 'entry timing/thesis' framing over the 'tighten at trim rail' framing) -- this exact threshold has its own prior AAPL:36 (2026-09-13) fix precedent in the code comments, confirming the logic is deliberate and correctly applied here too. Drawdown/peak/exit figures internally consistent (trough more negative than exit, exit between trough and peak). 'Since it closed' section correctly disclaims current GEX/chart figures as not-what-this-trade-traded-under. No new bugs found, no new PR filed, no new #4076 comment needed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T08:32:51Z",
+    "as_of": "2026-09-21T08:48:26Z",
     "swing_prs": []
   },
   "tickers_seen": {
