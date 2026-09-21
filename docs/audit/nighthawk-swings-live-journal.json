@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T21:12:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean (PR #5384 subscription-created + ready_for_review echoes -- self-generated). git sync: fast-forwarded onto PR #5384 (own, confirmed merged). Unsubscribed. No new #4076 activity. COMPLETED the price-level-rounding follow-up sweep this cycle -- fixed the final 3 of 6 files (play-brief.ts, play-brief-diff.ts, play-brief-ladder.ts) disclosed by #5380. Notable finding while doing this: play-brief-diff.ts ALREADY imports roundFloats and its own briefContentKey doc comment documents a prior 2026-09-11 fix for this exact bug class -- but that earlier fix only covered the internal SSE-dedupe key, never the member-visible diff narration functions (narrateSpotShift/narrateMarkShift/narrateStructuralLevelShift), which still called raw toFixed(2). Confirms the bug class can recur even in a file that already knows about it, absent a shared reused helper -- exactly why centralizing into fmtPriceLevel (rather than re-patching each site ad hoc) is the right shape. Also noted (not fixed, out of scope): play-brief-diff.ts's price lines are $-prefixed, unlike the other 5 files in this sweep which render bare -- a pre-existing display-convention difference, left untouched; only the rounding inside the existing template changed. RED->GREEN proven via git stash on all 3 implementation files together (1/155 fail pre-fix -- exactly the new diffBriefSnapshots spot-drift regression test at the 152.035 boundary -- 155/155 post-fix), tsc clean, full swing suite 1457/1457 clean. PR #5387 opened+undrafted, subscribed -- CARVE-OUT auto-merge expected. This closes the ENTIRE 6-file sweep from PR #5380 -- no more files with this pattern known; the follow-up tracker entry can be resolved once #5387 merges.",
+  "last_updated": "2026-09-21T21:30:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean (PR #5387 subscription echoes). git sync: fast-forwarded onto #5385 (parallel session's play-brief-ladder.ts fix -- see below) and #5386 (unrelated HELIX/Thermal fix, different lane, not touched). IMPORTANT SELF-CORRECTION THIS CYCLE. Discovered a parallel session independently shipped PR #5385 with the IDENTICAL play-brief-ladder.ts fix I'd already put in my own open PR #5387 -- both sessions converged on the exact same fmtPriceLevel wrap mechanically. More importantly, #5385's write-up explicitly investigated play-brief-diff.ts (the file I'd ALSO 'fixed' in #5387) and correctly concluded it is NOT a live bug: narrateSpotShift/narrateMarkShift/etc. are called from exactly ONE place -- src/hooks/useSwingPlayBrief.ts, a CLIENT-side React hook fed the SWR-fetched JSON the API route already ran through roundFloats() before sending. By the time a snapshot reaches these narration functions its values are already 2dp-clean, so plain toFixed(2) can never reproduce the half-cent-boundary mismatch (needs a raw float BEFORE rounding, never delivered on this path). I traced this myself, confirmed #5385 was right and I was wrong -- my PR #5387's claim 'Reproduced through the real diffBriefSnapshots call path' was overstated: my test fed 152.035 directly into a fixture, which is valid for unit-testing the function in isolation but doesn't prove the real call path ever delivers unrounded input. Posted a full correcting comment on #5387 (5767665020), corrected the staged finding file and the test's own doc comment to relabel it as defensive hardening (not live-repro evidence), rewrote the PR body to match, resolved the resulting merge conflict with #5385's already-merged play-brief-ladder.ts fix (adopted its version verbatim, fixed a duplicate-import that the merge introduced), re-verified tsc clean + full suite 1506/1506 green, and pushed the corrected branch. Net effect on #5387: still closes the 6-file sweep (play-brief.ts's evidence-line nearest-wall/gamma-flip fix is the one genuinely new, confirmed-live fix left in it), but the PR no longer overclaims. This is exactly the 'adversarially challenge your own conclusion, even after collaborating' discipline the collaboration protocol requires -- keeping it in the journal since it's a real process lesson: verify the ACTUAL runtime data flow (server vs client, pre- vs post-rounding) before asserting a shared bug class applies to every file that merely shares the same toFixed(2) syntax pattern.",
   "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-21-remaining-price-level-rounding"
-  ],
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -120,12 +118,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T21:12:00Z",
+    "as_of": "2026-09-21T21:30:00Z",
     "swing_prs": [
       {
         "number": 5387,
-        "title": "fix(swing): play-brief.ts/play-brief-diff.ts/play-brief-ladder.ts had the same toFixed-vs-roundFloats price-level mismatch -- completes the 6-file sweep",
-        "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected"
+        "title": "fix(swing): play-brief.ts had the genuinely live toFixed-vs-roundFloats price-level mismatch (corrected -- play-brief-diff.ts portion was NOT a live bug, see PR comment 5767665020)",
+        "status": "open, non-draft, self-authored, corrected after adversarial self-review + cross-session finding, RED->GREEN + full suite re-verified post-correction, CI pending / CARVE-OUT auto-merge expected"
       }
     ]
   },
