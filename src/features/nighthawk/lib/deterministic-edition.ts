@@ -44,7 +44,7 @@ import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./play-constraints";
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
-import { MAX_OPTION_PREMIUM_PER_SHARE, MAX_OPTION_COST_PER_CONTRACT, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS, PREFERRED_OPTION_PREMIUM_PER_SHARE, MIN_PREFERRED_CONTRACT_DELTA } from "./constants";
+import { MAX_OPTION_PREMIUM_PER_SHARE, MAX_OPTION_COST_PER_CONTRACT, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS, PREFERRED_OPTION_PREMIUM_PER_SHARE, MIN_PREFERRED_CONTRACT_DELTA, PREFERRED_OPTION_RELAXED_MIN_OI } from "./constants";
 import {
   diversityHedgeEnabled,
   forcedContrarianHedgeEnabled,
@@ -285,7 +285,7 @@ export function pickChainContract(
   const minExpiry = minExpiryDate(today);
   const distanceRef = targetStrike != null && Number.isFinite(targetStrike) ? targetStrike : spot;
 
-  type Candidate = PickedContract & { dist: number; delta: number | null };
+  type Candidate = PickedContract & { dist: number; delta: number | null; oi: number };
   const strict: Candidate[] = [];
   const relaxedPremium: Candidate[] = [];
   const relaxedOi: Candidate[] = [];
@@ -312,6 +312,7 @@ export function pickChainContract(
       premium: Number(premium.toFixed(2)),
       dist: distanceRef > 0 ? Math.abs(row.strike - distanceRef) : row.strike,
       delta: contractDelta(row, side),
+      oi,
     };
     const oiOk = oi >= minOi;
     const premOk = premium <= MAX_OPTION_PREMIUM_PER_SHARE;
@@ -329,16 +330,28 @@ export function pickChainContract(
   const sortFn = (a: Candidate, b: Candidate) =>
     a.dist - b.dist || a.expiry.localeCompare(b.expiry) || a.strike - b.strike;
 
-  // Cost-preference tier: only within the already-strict (liquid + under the hard cap) pool, and
-  // only when the caller opted in. Never excludes a ticker — falls straight through to the unchanged
-  // ladder below when nothing clears both the preferred cost and the delta floor.
-  if (preferAffordable && strict.length) {
-    const affordable = strict.filter(
-      (c) => c.premium <= PREFERRED_OPTION_PREMIUM_PER_SHARE && c.delta != null && Math.abs(c.delta) >= MIN_PREFERRED_CONTRACT_DELTA
-    );
-    if (affordable.length) {
-      affordable.sort(sortFn);
-      const best = affordable[0]!;
+  // Cost-preference tier: only when the caller opted in. Never excludes a ticker — falls straight
+  // through to the unchanged ladder below when nothing clears the preferred cost + delta floor
+  // (and, for the second pass, the relaxed OI floor) in either pool searched.
+  if (preferAffordable) {
+    const isAffordable = (c: Candidate) =>
+      c.premium <= PREFERRED_OPTION_PREMIUM_PER_SHARE && c.delta != null && Math.abs(c.delta) >= MIN_PREFERRED_CONTRACT_DELTA;
+    // Pass 1: the already-strict (deeply liquid + under the hard cap) pool — same behavior as before
+    // this fallback existed.
+    const strictAffordable = strict.filter(isAffordable);
+    if (strictAffordable.length) {
+      strictAffordable.sort(sortFn);
+      const best = strictAffordable[0]!;
+      return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
+    }
+    // Pass 2: relax the liquidity bar (not the cost/delta bars) down to PREFERRED_OPTION_RELAXED_MIN_OI
+    // — real, quoted, tradeable contracts that simply fall short of the deep-liquidity bar built for
+    // index-class names (see that constant's own doc comment for the live evidence motivating this).
+    // Only consulted when NO strict-pool candidate satisfies the preference at all.
+    const relaxedAffordable = relaxedOi.filter((c) => isAffordable(c) && c.oi >= PREFERRED_OPTION_RELAXED_MIN_OI);
+    if (relaxedAffordable.length) {
+      relaxedAffordable.sort(sortFn);
+      const best = relaxedAffordable[0]!;
       return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
     }
   }
