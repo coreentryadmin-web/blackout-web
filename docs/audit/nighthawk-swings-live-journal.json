@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T08:04:48Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, AGGRESSIVE MODE full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. Zero open swing PRs. Re-ran my own PR #5331 tooling (swing-multi-truth-grade-retrace.mjs) for fresh closed-position divergences: recent 14-day population is thin (n=1), nothing new. **Pivoted to exit-management/track-record surfaces per the mission's explicit callout -- surfaced a significant finding.** Tried to pull CRDO's (SCALING_OUT) exit-management state via GET /api/market/swing/record and found CRDO entirely absent even at a 45-day window. Traced: swing/record's route.ts calls fetchSwingPositionsRange, which queries swing_positions ONLY -- confirmed CRDO is banger-ledger origin (regime: BREAKOUT x BANGER), so it structurally can never appear. Generalized: of the 68 currently-open Swing Command positions, 66 (97%, per last cycle's census) are banger-origin and thus invisible to /record. Confirmed this endpoint's win_rate_pct IS a prominent member-facing stat -- SwingAnalyticsPanel.tsx, labeled 'Swing Command track record', renders 'Win {win_rate_pct}%' directly. Confirmed no separate aggregate banger win-rate surface exists anywhere (gradeBangerScaleOut is a per-position grader, not an aggregate; no banger/record route, only banger/board). Net: the member-visible 'Swing Command track record' win-rate tile is computed from ~2 open + a handful of historical swing-native closes, silently excluding the 97% banger-majority of the actual live book, with no scope disclosure to the member. Posted as a significant, well-evidenced architecture finding on #4076 (5757314206) with concrete numbers and three non-prescriptive options -- past CARVE-OUT (real architecture question, not a small fix). No PR filed this cycle.",
+  "last_updated": "2026-09-21T08:18:16Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. **Direct, well-evidenced follow-up to last cycle's Swing Command track record finding (5757314206).** Checked whether the SAME banger/swing_positions split also breaks the per-position closed-play brief (not just the aggregate stat) -- confirmed with a LIVE repro: CAPR, a real closed banger position (id 1182, STOPPED -60% on 2026-09-18, pulled from GET /api/market/banger/board), returns {available:false, error:'play not found'} from Ask Largo's closed-brief lookup, both with an explicit positionId and via the ticker-only closed fallback. Root cause: loadClosedPlay (play-brief-resolve.ts L186) also calls fetchSwingPositionsRange (swing_positions only) -- and unlike the OPEN/WATCH side (which has real mappers, horizonPlayFromBangerPosition/horizonPlayFromBangerWatch, wired into the lane), there is NO closed-side equivalent anywhere in banger-lane-merge.ts, and the real fetchBangerClosedBoardRows fetcher (positions-db.ts) is never imported into play-brief-resolve.ts. This is a real functional 'not found' gap, not just a scoped-stat issue -- given 97% of the book is banger-origin, most closed positions going forward will hit this. Posted as a direct follow-up on #4076 (5757474451) connecting both halves of the gap for whoever picks up the fix -- not self-fixing (real scoped feature work on a live trading-path lookup, past CARVE-OUT). No PR filed this cycle.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T08:04:48Z",
+    "as_of": "2026-09-21T08:18:16Z",
     "swing_prs": []
   },
   "tickers_seen": {
