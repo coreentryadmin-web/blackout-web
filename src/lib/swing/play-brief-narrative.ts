@@ -951,12 +951,28 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
   // "round-tripped past breakeven — was up **130%** at peak, now **-10%**" again inside this very
   // function's "Live read" bullet. The section's own de-dup (`seen`, first-48-chars) never caught
   // it — same shape as the "Entry stance"/"Gates blocking entry" duplication this file's own
-  // comment already documents fixing once, a case this is NOT the same call-site pair as. The
-  // `capture` branch below is untouched: actionNarrative only renders THAT one below its own 75%
-  // floor (this function's floor is 80%), so a capturePct in [75,80) is genuinely new information
-  // here, not a duplicate — no live evidence of that case duplicating, so left as-is.
+  // comment already documents fixing once, a case this is NOT the same call-site pair as.
+  //
+  // BUG FIX (2026-09-21, Ask Largo standing mandate): the `capture` branch's own comment (left
+  // above until now) claimed "no live evidence of that case duplicating" for capturePct<75 — that
+  // claim was never actually true. `giveback.capturePct < 80` here overlaps
+  // `giveback.capturePct < 75` in actionNarrative's OWN capture branch (both read the identical
+  // `mfeCaptureOutcome` result), so for ANY capturePct below 75 — not just the intended [75,80)
+  // "genuinely new information" band — BOTH functions render a giveback line and the section's
+  // `seen` de-dup can't catch it (the two lines open with different prose, "Desk says TRIM..." vs
+  // "**Live read**...", so their first-48-char keys never match even though the embedded fact is
+  // identical). Live repro: COIN SWING:COIN:1190 (committed, 2026-09-21 RTH) — pnlPct 115.2%,
+  // peak 178.5% -> capturePct 64.54%, well under BOTH floors. Real served envelope's "Trade
+  // manager read" section carried "Gave back **35%** of peak — consider protecting runner." in
+  // the "Desk says TRIM" bullet AND "gave back **35%** from peak" again in the "Live read" bullet
+  // three bullets later. Also reproduces off this file's own existing NRG fixture
+  // (pnlPct=39.8, peak=132.7 -> capturePct 30%) in the "4th call site" test below, which only
+  // asserted the Live-read text was present and never checked the sibling bullet for the
+  // duplicate it was already emitting. Fix: restrict this bit to the [75,80) band the comment
+  // always intended — the ONLY range where actionNarrative's own <75 branch does NOT already fire,
+  // so this line is genuinely additive instead of an echo.
   const givebackBit =
-    giveback?.kind === "capture" && giveback.capturePct < 80
+    giveback?.kind === "capture" && giveback.capturePct >= 75 && giveback.capturePct < 80
       ? ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
       : "";
   const healthBit = health != null ? ` · thesis **${health}%**` : "";

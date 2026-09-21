@@ -1112,7 +1112,39 @@ test("tradeManagerNarrativeSection: TRIM recommendation does NOT add the advisor
 // spot isn't wired on this tick) independently carried the SAME peak-pnlPct point-difference bug
 // right beside actionNarrative's copy in this same file — a 4th call site found while fixing the
 // three named in the original finding (blast radius).
-test("tradeManagerNarrativeSection: degraded-read 'Live read' giveback clause also uses honest relative retracement (4th call site, live NRG repro)", () => {
+//
+// Fixture updated 2026-09-21 (Ask Largo standing mandate): the original NRG numbers
+// (pnlPct=39.8, peak=132.7 -> capturePct 30%) sat BELOW both this function's 80% floor and
+// actionNarrative's own 75% floor, so — unnoticed until now — this exact fixture was ALSO live
+// evidence of the duplication bug fixed below (see the new test right after this one). Moved the
+// fixture into the [75,80) band that's the only range where this bit is genuinely additive rather
+// than an echo of actionNarrative's own "Gave back X% of peak" line, so this test still exercises
+// the honest-relative-retracement math it was written for without asserting on since-fixed
+// duplicate output.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' giveback clause also uses honest relative retracement (4th call site)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "HOLD", recommendation: "HOLD", pnlPct: 77, peak: 100 }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Live read.*gave back \*\*23%\*\* from peak/, `expected ~23% relative giveback in Live read, got: ${section!.body}`);
+});
+
+// BUG FIX (2026-09-21, Ask Largo standing mandate): degradedReadLine's own "gave back X% from
+// peak" clause fired for ANY capturePct < 80, which overlaps actionNarrative's identical "Gave
+// back X% of peak" line for ANY capturePct < 75 — the two functions read the exact same
+// mfeCaptureOutcome result, so below 75% capture BOTH rendered the same fact, and the section's
+// `seen` de-dup (keyed on each line's first 48 chars) can't catch it because the two bullets open
+// with different prose. Live repro: COIN SWING:COIN:1190 (committed swing position, 2026-09-21
+// RTH) — pnlPct 115.2%, peak 178.5% -> capturePct 64.54%. The real served "Trade manager read"
+// section carried "Gave back **35%** of peak — consider protecting runner." in the "Desk says
+// TRIM" bullet, then "gave back **35%** from peak" again in the "Live read" bullet three lines
+// later. This fixture reproduces the same shape off the file's own NRG numbers (capturePct 30%,
+// well under both floors, previously exercised — unnoticed — by the test above before its
+// fixture was moved).
+test("tradeManagerNarrativeSection: degraded-read 'Live read' no longer duplicates actionNarrative's own giveback line below the 75% floor (live COIN repro)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
       play: play({ status: "HOLD", recommendation: "HOLD", pnlPct: 39.8, peak: 132.7 }),
@@ -1120,8 +1152,9 @@ test("tradeManagerNarrativeSection: degraded-read 'Live read' giveback clause al
     "open",
   );
   assert.ok(section);
-  assert.match(section!.body, /Live read.*gave back \*\*70%\*\* from peak/, `expected ~70% relative giveback in Live read, got: ${section!.body}`);
-  assert.doesNotMatch(section!.body, /gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
+  const givebackMentions = (section!.body.match(/gave back \*\*70%\*\*/gi) ?? []).length;
+  assert.equal(givebackMentions, 1, `expected the 70% giveback fact exactly once, got ${givebackMentions} in: ${section!.body}`);
+  assert.doesNotMatch(section!.body, /Live read.*gave back/i, "below the 75% floor, Live read must defer to actionNarrative's own giveback line rather than repeating it");
 });
 
 test("describeDarkPoolLevel: support language for long below spot", () => {
