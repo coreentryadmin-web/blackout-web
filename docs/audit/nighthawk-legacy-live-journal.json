@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-21T20:07:16Z",
+  "lastUpdated": "2026-09-21T21:52:04Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4145,6 +4145,12 @@
       "summary": "Post-RTH-close transition: A_edition flipped GREEN->AMBER ('edition is stale -- served an older date than requested') and all 4 marks (MU/BMNR/ETHA/MARA) flagged stale simultaneously, right at 16:07:55 EDT (~8min after the 4:00pm ET close). C_record/D_pull_status stayed GREEN throughout.",
       "assessment": "Matches the ALREADY-CONFIRMED-BENIGN daily post-close pattern first verified 2026-09-16T20:08:02Z and reconfirmed 2026-09-12/09-15/09-18 (see those checkIns entries -- older schema used trigger/healthcheck/result keys): quotes genuinely stop live-updating once options trading halts at the close, and the edition route self-reports stale until tomorrow evening's rebuild. This is the expected end-of-session state, not a bug -- 5th+ observed instance of this exact daily transition, well past the noise-discipline threshold. Correctly distinguished from the mid-session per-ticker jitter closed out at 18:52Z today: that was independent, uncorrelated single-ticker lag during live RTH; this is a correlated, all-4-at-once transition precisely coincident with the close, which is exactly the 'breaks the pattern' shape flagged in that closing entry as worth distinguishing.",
       "action": "No fix needed, no deeper investigation warranted -- known daily pattern. This is likely the LAST healthcheck-relevant cycle of today's RTH session; expect A_edition/B_marks to stay AMBER through the close until tomorrow's edition build. Continuing the routine 15-min cadence."
+    },
+    {
+      "at": "2026-09-21T21:52:04Z",
+      "summary": "Overnight edition rolled forward: editionFor flipped 2026-09-21 -> 2026-09-22. A_edition back to GREEN (3 play(s), fresh, not degraded -- new book: ALAB/META/TWLO) after the expected post-close AMBER window. B_marks AMBER on all 3 new tickers ('mark flagged stale by the API') -- expected: these are brand-new pre-open picks with no live two-sided quote yet, not a defect (matches the same shape as every prior night's pre-9:30-ET AMBER window). D_pull_status correctly SKIPPED ('morning confirmation not yet run for this date') -- the gate that would flip these to CONFIRMED/INVALIDATED hasn't fired yet for 09-22. C_record steady GREEN, resolved=28 unchanged.",
+      "assessment": "Clean, expected overnight transition -- same shape as every prior day's edition rollover this session (see 2026-09-18T21:52:40Z entry for the same pattern one week prior). No correctness concern: a fresh book with pre-open marks and a not-yet-run morning-confirm gate is exactly the honest state this early in the cycle, not a bug.",
+      "action": "No fix needed. New book to watch tomorrow: ALAB 40C (2026-10-16 exp), META 75C (2026-09-25 exp), TWLO 70C (2026-10-16 exp) -- will track D_pull_status once the 9:15am ET morning-confirm cron fires. Continuing the routine 15-min cadence."
     }
   ],
   "knownOpenItems": {
