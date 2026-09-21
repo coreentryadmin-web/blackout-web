@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T08:18:16Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. **Direct, well-evidenced follow-up to last cycle's Swing Command track record finding (5757314206).** Checked whether the SAME banger/swing_positions split also breaks the per-position closed-play brief (not just the aggregate stat) -- confirmed with a LIVE repro: CAPR, a real closed banger position (id 1182, STOPPED -60% on 2026-09-18, pulled from GET /api/market/banger/board), returns {available:false, error:'play not found'} from Ask Largo's closed-brief lookup, both with an explicit positionId and via the ticker-only closed fallback. Root cause: loadClosedPlay (play-brief-resolve.ts L186) also calls fetchSwingPositionsRange (swing_positions only) -- and unlike the OPEN/WATCH side (which has real mappers, horizonPlayFromBangerPosition/horizonPlayFromBangerWatch, wired into the lane), there is NO closed-side equivalent anywhere in banger-lane-merge.ts, and the real fetchBangerClosedBoardRows fetcher (positions-db.ts) is never imported into play-brief-resolve.ts. This is a real functional 'not found' gap, not just a scoped-stat issue -- given 97% of the book is banger-origin, most closed positions going forward will hit this. Posted as a direct follow-up on #4076 (5757474451) connecting both halves of the gap for whoever picks up the fix -- not self-fixing (real scoped feature work on a live trading-path lookup, past CARVE-OUT). No PR filed this cycle.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-21T08:32:51Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. Zero open swing PRs. WATCH bucket unchanged (still just LITE, already audited). **Picked up my own 'first dibs next cycle' commitment on the entry_underlying_px anomaly** (5754393669/5754459279, open since earlier this session) -- traced the one remaining unread piece, the accumulation-store promotion path. Read accumulation-store.ts's observeSwingCandidate/promoteSwingCandidate/fetchWatchEligible AND the underlying SwingAccumRow DB schema (db.ts L7631) directly: confirmed it carries ZERO price/plan fields (only ticker/direction/archetype/persistence-tracking metadata) -- structurally cannot be the source of a stale entry price. This rules out the last remaining code-level hypothesis; combined with the prior cycle's trace (discovery->ingest->commit all checked out clean), the full pipeline is now exhaustively traced with no bug found anywhere in it. Posted a closing update on #4076 (5757632149) concluding the anomaly is most likely a genuine, non-reproducible historical data-provider glitch rather than a code bug, and recommending the thread close unless a currently-OPEN position shows the same shape (which would give a fresh, live-verifiable repro). No PR filed -- this cycle's value was definitively closing out a previously-open investigation with a solid negative result, which is real progress even without finding a bug to fix.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T08:18:16Z",
+    "as_of": "2026-09-21T08:32:51Z",
     "swing_prs": []
   },
   "tickers_seen": {
@@ -193,7 +193,7 @@
       "raised_at": "2026-09-21T02:00:00Z",
       "topic": "6/37 closed swing positions show entry_underlying_px 9-25% off real market price on commit date",
       "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5754393669",
-      "status": "OPEN -- escalated, root cause not pinned down (traced to a pure passthrough in structure-levels.ts, ruled out Legacy-promotion and simple staleness for PYPL specifically, ran out of cycle budget before tracing the commit-time price source further upstream into discovery.ts/dossier.ts)",
+      "status": "CLOSED (code-level investigation, no fix) -- traced the full discovery->ingest->commit->accumulation pipeline end to end across two cycles; the accumulation store (final unread piece) has zero price/plan fields in its DB schema (SwingAccumRow, db.ts L7631) so it structurally cannot be the source. Nothing in the pipeline explains the anomaly -- concluded most likely a non-reproducible historical provider glitch. Posted closing update 5757632149. Reopen only if a currently-OPEN position shows the same implausible-entry-price shape (fresh, live-verifiable repro).",
       "proposed_next_step_if_uncontested": "take it myself next cycle -- trace discovery.ts's plan-building on the actual commit-triggering scan pass to find where a stale/wrong price enters"
     }
   ]
