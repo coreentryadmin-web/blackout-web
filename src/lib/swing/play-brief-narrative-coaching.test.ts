@@ -2008,6 +2008,57 @@ test("vexCoaching: narrates vanna flip", () => {
   assert.match(line!, /diverge/i);
 });
 
+// FINDING 2026-09-21 (Ask Largo standing mandate, live repro AMD/HOOD/IBIT/... — 22 real committed/
+// watch swing positions, 0/22 with both flips present did NOT trigger "diverge"): the divergence
+// check used a FIXED $0.50 absolute gap, which is scale-blind across a book running $5-$700+.
+// A high-priced ticker with a TRULY negligible gap (well under 1% of spot) used to still trip
+// "diverge" just because $0.50 is a tiny fraction of a $600+ stock's price — this is the false-
+// positive half of the bug the percent-of-spot fix closes.
+test("vexCoaching: a sub-1%-of-spot gap on a high-priced ticker is NOT divergence (scale-blind $0.50 bug)", () => {
+  const line = vexCoaching(
+    {
+      vexFlip: 610.9,
+      gammaFlip: 610.3, // $0.60 gap — would have tripped the old fixed $0.50 bar, but is only 0.1% of spot
+      vexWalls: { callWalls: [{ strike: 650 }], putWalls: [{ strike: 550 }] },
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    610,
+  );
+  assert.match(line!, /VEX lens/i);
+  assert.doesNotMatch(line!, /diverge/i, "a 0.1%-of-spot gap must not be surfaced as a meaningful divergence");
+});
+
+// Same fix, the other direction: a genuinely wide gap (several percent of spot) on the SAME
+// high-priced ticker must still be flagged — proves the percent-of-spot form isn't just silencing
+// the bullet everywhere, only the scale-blind false positives.
+test("vexCoaching: a multi-percent-of-spot gap on a high-priced ticker still flags divergence", () => {
+  const line = vexCoaching(
+    {
+      vexFlip: 640,
+      gammaFlip: 610, // $30 gap on a $600 spot = 5% — genuinely wide
+      vexWalls: { callWalls: [{ strike: 650 }], putWalls: [{ strike: 550 }] },
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    600,
+  );
+  assert.match(line!, /VEX lens/i);
+  assert.match(line!, /diverge/i);
+});
+
+// Without a spot, the divergence claim cannot be honestly scaled — omit rather than fall back to
+// the scale-blind absolute check (LARGO-PRODUCT-CONTRACT.md's absence principle: omission over
+// fabrication).
+test("vexCoaching: omits the divergence claim entirely when spot is unavailable", () => {
+  const line = vexCoaching(
+    {
+      vexFlip: 100,
+      gammaFlip: 90, // a $10 gap that would clearly diverge if spot were known
+      vexWalls: { callWalls: [{ strike: 105 }], putWalls: [] },
+    } as import("@/lib/bie/vector-full-state").VectorFullState,
+    null,
+  );
+  assert.match(line!, /VEX lens/i);
+  assert.doesNotMatch(line!, /diverge/i);
+});
+
 // FINDING 2026-09-08 (Ask Largo monitor cycle): confluence-zone scores are half-point weighted
 // sums (call-wall 3, gamma-flip 2.5, ...), so a real score can land on e.g. 7.5. This line used to
 // interpolate `top.score` raw (no rounding) while chartLevelsSection's "Levels on chart" section
