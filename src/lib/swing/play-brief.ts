@@ -1014,6 +1014,12 @@ export function composeSwingPlayBrief(
   opts?: ComposeSwingPlayBriefOptions,
 ): SwingPlayBriefResult {
   const readMs = Date.now();
+  // Stamp the canonical "now" onto ctx ONCE, before any section composes, so every staleness
+  // check downstream that reads `ctx.readMs` (rather than sampling `Date.now()` itself) agrees on
+  // the same instant — see the field's own doc comment (play-brief-types.ts) for the live repro
+  // this fixes. `ctx.readMs ?? readMs` keeps an already-stamped ctx (e.g. a caller that composes
+  // multiple briefs off one shared anchor) untouched rather than overwriting it.
+  ctx = { ...ctx, readMs: ctx.readMs ?? readMs };
   const { play } = ctx;
   const bucket = statusBucket(play);
   const headline = playContractHeadline(play);
