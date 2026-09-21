@@ -141,7 +141,24 @@ export function deriveEntryPlan(
  * [trigger, trigger + 0.5·ATR] ⇒ AT_TRIGGER · > trigger + 0.5·ATR ⇒ EXTENDED_CHASE.
  * Without direction or price ⇒ PRE_TRIGGER (honest "not entering yet").
  */
-function deriveEntryState(dir: PlayDirection | null, reads: EntryReads): SwingEntryState {
+/**
+ * Exported so a committed position can derive its entry-execution stance LIVE from price-vs-trigger
+ * alone, mirroring how `deriveSetupState` (setup-state.ts) is already re-derived live for the
+ * persistence pillar — see the "Ask Largo standing mandate" comment on `liveSetupState` in
+ * adapters.ts. `entryStatus` (the WATCH-lane dossier's `SwingEntryPlan.entryState`) never survives
+ * the WATCH→COMMIT transition either (same structural cause as setupState: the row shape a committed
+ * position is built from, `HorizonPlay` in live-plays.ts, never carries it), so `entryGeometryScore`
+ * in thesis-health.ts always fell through to its "n/a" default for every committed swing position —
+ * which by itself was enough to permanently trip `thesisHealthUncalibrated()` regardless of whether
+ * the persistence/flow_corroboration pillars had already been fixed, since that check is an OR across
+ * every pillar. Live-verified 2026-09-21: every committed SWING play-brief checked (CRWD, HOOD, SNOW,
+ * SMCI) showed "Inputs not wired for committed positions" even though setupState/signalKinds are both
+ * wired today. This function needs only `dir`/`price`/`triggerPx` (the same two legs the setupState
+ * fix already threads through) to produce a real state — `entryZoneFar`/`atr` stay optional and the
+ * function degrades gracefully without them, exactly like `deriveSetupState` does for its own optional
+ * inputs.
+ */
+export function deriveEntryState(dir: PlayDirection | null, reads: EntryReads): SwingEntryState {
   const { price, triggerPx } = reads;
   if (dir == null || !isNum(price) || !isNum(triggerPx)) return "PRE_TRIGGER";
 
