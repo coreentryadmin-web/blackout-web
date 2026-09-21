@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T11:19:27Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded -- **PR #5351 (staleness-clock anchor fix, independently verified last cycle) merged.** New PR #5352 opened right after (findings-fold docs PR for #5351's staged finding) -- checked it, CI still pending/in-progress (opened ~1min before this check), too early to review; will check back once CI reports. Tried to find the #5351 production deploy run to live-verify the fix on the original SNXX repro, but per CLAUDE.md's own documented deploy timing (20-40+ min), it's too early for the fix to be live yet -- deferred, not chased further. Zero other open swing PRs. **Fresh Ask Largo audit on IREN** (MANAGING, positionId 1193, BANGER-origin, first check this session): confirms the fresh discovery scan (06:00 ET) correctly propagated to this brief's freshness disclosure (no longer flagged prior-session-stale). Stop $0.45/entry $1.13 (~-60.2%) and target $2.26/entry (+100%) match the consistent mechanical rule seen across every other banger position this session. Honest absence-handling for cold GEX/Vector data (no Chart technicals section, matches HUT's earlier pattern). No new bugs found, no new PR or #4076 comment needed this cycle.",
+  "last_updated": "2026-09-21T11:33:24Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto **PR #5352 (findings-fold docs PR for #5351) merging** -- routine, mechanical, no trading-path code touched, no independent review needed beyond what I already gave #5351 itself. Zero other open swing PRs. **Tried to live-verify #5351's staleness-clock fix on the original SNXX repro** -- pulled SNXX's live brief and it STILL shows the same 'Confluence 15.50' vs 'Structural support node: put wall 10.00' split the PR's evidence originally cited. Spent real effort trying to pin down the exact ECR production deploy run via the Actions API to confirm rollout status but couldn't cleanly isolate it (the listing calls kept returning docs-PR-related runs, workflow_id filtering wasn't behaving as expected) -- gave up chasing the CI run rather than burn more cycle budget on tooling friction. Given #5351 merged ~35min before this check and CLAUDE.md documents ECS deploys as 'typically 20-40+ minutes', this is right at the boundary -- genuinely ambiguous whether the live discrepancy reflects a not-yet-rolled-out deploy or something else, NOT evidence the fix itself is wrong (already independently RED->GREEN verified at the unit level last cycle). Deferring the live-verification check to next cycle rather than drawing a premature conclusion either way. No new PR or #4076 comment this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,10 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T11:19:27Z",
-    "swing_prs": [
-      "#5352 (findings-fold docs PR for merged #5351, CI pending, check next cycle)"
-    ]
+    "as_of": "2026-09-21T11:33:24Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
