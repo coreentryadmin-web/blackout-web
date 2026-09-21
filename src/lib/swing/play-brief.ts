@@ -44,7 +44,7 @@ import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
 import { fmtOptionUsd as fmtUsd, fmtPremium } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
-import { thesisHealthUncalibrated } from "./thesis-health";
+import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -67,10 +67,24 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   if (!h) return null;
   const uncalibrated = thesisHealthUncalibrated(h);
   if (uncalibrated) {
+    // Largo C6 gap (2026-09-21, Ask Largo standing mandate): don't blank the ENTIRE panel just
+    // because one pillar is a generic default — show whichever pillars genuinely calibrated (e.g.
+    // persistence/entry-geometry live-derived from real price/trigger reads) instead of discarding
+    // them alongside a flow_corroboration pillar that's honestly empty for this position (a
+    // non-flow archetype like SECTOR_ROTATION, or a commit that predates/skipped G-S6 enforcement).
+    // The blended AGGREGATE % still stays withheld — it can't honestly represent a pillar with no
+    // real read — see calibratedThesisPillars's doc comment for the full trace.
+    const rows = calibratedThesisPillars(h)
+      .map((p) => {
+        const deltaStr = p.deltaPts != null ? ` (Δ ${p.deltaPts >= 0 ? "+" : ""}${p.deltaPts.toFixed(1)} pts)` : "";
+        return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
+      })
+      .join("\n");
     return {
       title: "Thesis health",
-      body:
-        "Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown.",
+      body: rows
+        ? `Aggregate score withheld — not every pillar input is wired for this position yet.\n\n${rows}`
+        : "Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown.",
       bias: "neutral",
     };
   }

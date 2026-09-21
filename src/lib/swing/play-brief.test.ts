@@ -5,6 +5,7 @@ import { composeSwingPlayBrief } from "./play-brief";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 import type { HorizonPlay } from "@/lib/horizon-plays";
+import { computeSwingThesisHealth } from "./thesis-health";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -2588,6 +2589,64 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(
     !/Thesis strength/i.test(verdict.body),
     `Verdict must not leak fabricated thesis strength, got: ${verdict.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: partially-calibrated Thesis health keeps real pillars and only withholds the aggregate % (2026-09-21 live gap, AAPL position 40 SECTOR_ROTATION)", () => {
+  // Live repro (2026-09-21, Ask Largo standing mandate): a committed non-Banger position can have
+  // BOTH setupState AND entryStatus live-derived (real, calibrated) while signalKinds is genuinely
+  // empty — a non-flow archetype (SECTOR_ROTATION, off industry-group RS) that never carried a
+  // Tier-0 FLOW/STRUCTURE/CATALYST screen path, or a commit that predates/skipped G-S6 enforcement.
+  // Before this fix, `thesisHealthSection` treated ANY uncalibrated pillar as a reason to hide the
+  // ENTIRE panel — discarding two genuinely-real pillar reads along with the honestly-empty one.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 5.225,
+      mark: 6.3,
+      pnlPct: 20.6,
+      peak: 20.6,
+      manageAction: "HOLD",
+      thesisHealth: computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: [],
+        regime: "SECTOR_ROTATION",
+        dte: 9,
+        computedAtEt: "14:00 ET",
+      }),
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [],
+        runner_fraction: 1,
+        stop_premium: 2.09,
+        target_premium: 10.45,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-09-21T15:20:00.000Z",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.match(thesis!.body, /score withheld/i, "aggregate % must still be withheld — flow_corroboration is a real default");
+  assert.match(thesis!.body, /triggered/i, "real, live-derived persistence pillar must still render");
+  assert.match(thesis!.body, /at trigger/i, "real, live-derived entry-geometry pillar must still render");
+  assert.ok(
+    !/no signals/i.test(thesis!.body),
+    "the genuinely-empty flow_corroboration default must still be omitted, not shown as a real read",
   );
 });
 

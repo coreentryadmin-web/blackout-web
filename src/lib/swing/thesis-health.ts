@@ -95,6 +95,45 @@ export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefin
   return false;
 }
 
+/** `UNCALIBRATED_PILLAR_LABELS` keyed by the mapped `ThesisHealthPayload` pillar id instead of the
+ *  swing-native `SwingThesisPillarId` — lets a caller filter `h.pillars` (which carries the mapped
+ *  ids) without re-deriving `PILLAR_ID_MAP` itself. */
+const UNCALIBRATED_MAPPED_LABELS: Partial<Record<ThesisPillarId, string>> = Object.fromEntries(
+  (Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<[SwingThesisPillarId, string]>).map(([id, label]) => [
+    PILLAR_ID_MAP[id],
+    label,
+  ]),
+);
+
+/**
+ * The subset of `h.pillars` that carry a REAL, position-specific read — every pillar EXCEPT one
+ * whose `currentLabel` is the generic uncalibrated-default sentinel for its own id.
+ *
+ * GAP FOUND (2026-09-21, Ask Largo standing mandate): `thesisHealthUncalibrated()` is an OR across
+ * pillars — ANY single pillar defaulting trips it — and until now `play-brief.ts`'s
+ * `thesisHealthSection` treated that as "hide the ENTIRE panel", discarding calibrated pillars
+ * along with the uncalibrated one. That was correct for the ORIGINAL bug this function was built
+ * to catch (setupState/entryStatus/signalKinds ALL structurally null for every committed position,
+ * so every pillar was a fabricated default at once — see the header comments on `entryGeometryScore`
+ * callers and #5336/#5364). It stopped being correct once persistence/entry_geometry started being
+ * live-derived (2026-09-20's #5336): a position can have BOTH real, live-derived persistence and
+ * entry-geometry reads AND a genuinely empty flow_corroboration pillar (G-S6 confluence wasn't
+ * enforced when it committed — `isSwingConfluenceEnforced()` is a runtime toggle, `commit.ts`'s
+ * `enforceConfluence` is opt-in — or its archetype, e.g. SECTOR_ROTATION off industry-group RS, never
+ * carries a Tier-0 FLOW/STRUCTURE/CATALYST/BANGER/VECTOR/POSITIONING screen path at all). Live-
+ * verified 2026-09-21: AAPL position 40 (SECTOR_ROTATION, committed today) had `setupState:
+ * TRIGGERED`/`entryStatus: AT_TRIGGER` (both real) but zero `signal_kinds`, and the play-brief showed
+ * "Inputs not wired for committed positions" with NO pillar breakdown at all — a member reading that
+ * position's Ask Largo brief lost two genuinely-calibrated reads because a third, unrelated one was
+ * honestly absent. This filters per-pillar instead of per-panel: the AGGREGATE % (a blend across all
+ * five weighted pillars, including the fabricated one) still stays withheld — that part of the
+ * uncalibrated guard is unchanged and still correct, since a blended score CANNOT honestly represent
+ * a pillar it has no real read for.
+ */
+export function calibratedThesisPillars(h: ThesisHealthPayload): ThesisPillarState[] {
+  return h.pillars.filter((p) => UNCALIBRATED_MAPPED_LABELS[p.id] !== p.currentLabel);
+}
+
 const DEFAULT_WEIGHTS: Record<SwingThesisPillarId, number> = {
   persistence: 0.28,
   entry_geometry: 0.22,
