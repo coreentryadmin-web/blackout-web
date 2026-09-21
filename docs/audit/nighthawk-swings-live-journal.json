@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T04:50:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. git sync clean -- main includes PR #5341 (another swing session's fix, ticker-track-record citing a chain closed after the reviewed play -- already merged, nothing for me to verify, not mine). #4076 unchanged since my last post, no response yet. Zero open swing PRs, board unchanged. **Handled one genuine user question this session (Is $ON on swings at all) mid-cycle**: checked the live board directly, confirmed ON is not present in COMMIT_NOW/WATCH/MANAGING/SCALING_OUT. **Followed up on my own last comment's WOLF liveSpot/entryTriggerUnderlyingPx=undefined claim** (5755456759) before letting it stand unchecked further -- re-pulled WOLF's play-brief and found 'Spot 25.67' genuinely renders in the narrative, which could have suggested my horizons-route check was reading a stale/different code path (horizons reads a CACHED serving-lane snapshot built by a background cron, distinct from play-brief-resolve.ts's own fresh live-marks computation) rather than reflecting the true state. Reasoned through it: liveSpot IS genuinely timing-sensitive across the two routes (explaining the narrative's real spot despite horizons showing undefined), but entryTriggerUnderlyingPx (row.entry_underlying_px) is a STATIC, pinned-at-commit DB column, not a live-computed value -- so it should read identically regardless of which route reads it, meaning the horizons check likely still correctly reflects a genuine DB-level absence for WOLF. Could not fully re-verify from the play-brief markdown alone (an OPEN/committed position never narrates an 'Entry trigger' line regardless of whether the underlying column has a value, since that's a WATCH-only display). Original claim's substance holds -- no correction needed, but the verification pass itself was worthwhile rather than assuming.",
+  "last_updated": "2026-09-21T05:06:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean -- main includes PR #5342 (docs-only market-open-validation log for #5341, not mine, routine). #4076 unchanged, no response yet. Zero open swing PRs, board unchanged. **Ask Largo audit on AAPL (SCALING_OUT, positionId 37)**, first check this session, deliberately picked as a non-crypto-equity control case. Genuinely clean and thorough: '## Book context' section is correctly ABSENT entirely (not '0 positions', just omitted) -- confirms checkPortfolioOverlap's honest-absence path works when there's truly no overlap, a useful contrast after 8+ crypto-equity tickers this session that all correctly SHOWED concentration. Verified math throughout: mid P&L -8.6% exact, Exec P&L -12.3% exact from bid $5.90, round-trip-past-breakeven '25% peak -> -9%' consistent with -8.6% rounding, spread 8.1% exact, premium stop rail 54% cushion computed from BID not mid (basis-mismatch-fix discipline holding), premium target rail 128% move needed matches the Manage-plan bullet's own '+128% from here' exactly (no internal inconsistency), ticker track record (AAPL 0W/2L) correctly cited. No new bugs found.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T04:50:00Z",
+    "as_of": "2026-09-21T05:06:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
