@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T02:52:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. git sync clean -- main now at 9ebceb20c (PR #5333, the sibling trough_premium fix I independently verified last cycle, merged). ECR deploy for that commit in_progress (run 35554943285, started 02:40Z). #4076 unchanged, no Cursor response yet. Zero open swing PRs. Board unchanged. **Captured the pre-deploy baseline for #5333's own repro** (RBRK, ticker=RBRK): confirmed live 'Peak: +91.5%' / 'Trough: --' with P&L -2.4% (below entry) -- matches the PR's stated bug exactly, still live since the deploy hasn't rolled out yet. Will re-check RBRK next cycle once deployed to confirm the fix landed (same before/after discipline as the WOLF/#5328 verification). **Ask Largo audit on MSTR (MANAGING, positionId 1186)**, first check this session. Investigated one specific, deliberately-checked design question: the Vector desk line lacked the usual '-- aligned with swing lane' / '-- cross-check' suffix seen on other tickers. Traced to source (vectorPlayCoaching, play-brief-narrative-coaching.ts) -- confirmed intentional, already-fixed behavior (2026-09-15 TDOC/ASAN fix): Vector's bias here is 'range' (non-directional), and the code correctly withholds BOTH the aligned and cross-check framing for a non-directional bias since neither claim would be true. Not a bug. Also confirmed the ticker track record citation (MSTR 1 prior trade, 0W/1L) renders correctly, and the 28-position crypto-equity book-context concentration line (same theme as BKKT last checked, consistent count). No new bugs this cycle.",
+  "last_updated": "2026-09-21T03:08:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean. Deploy for #5333 (trough_premium fix) still in_progress (~28min, within normal range) -- RBRK recheck deferred to next cycle. #4076 unchanged, no response on the entry-price thread. **Another sibling PR from the same parallel session (session_01Qtnftc16CuWyVLxR8LaMoC)**: PR #5334 (nighthawk/horizons route destroys gamma/theta/vega/iv to 0.00 at a bare-2dp roundFloats boundary -- live repro AAPL positionId 37). Independently verified per the standing sibling-review option: confirmed root cause against main (keyDp map genuinely missing gamma/theta/vega/iv, round-floats.ts's own key-scoping doc comment confirms it would correctly match nested contract.gamma), confirmed the field names match what live-plays.ts actually serves, fetched the branch into a worktree, ran route.test.ts green (7/7), reverted just the keyDp map, reran -- exactly 1 failure (expected 0.0031, actual 0), restored, reconfirmed 7/7 green, tsc clean. Posted a confirming comment (5754833980). Not driving/merging (not my PR). Board unchanged, zero other open swing PRs. Spent this cycle entirely on peer verification -- two real sibling fixes cross-checked this hour, both held up under independent adversarial re-derivation.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,8 +113,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T02:52:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T03:08:00Z",
+    "swing_prs": [
+      "#5334 (not mine -- parallel session's greek-precision fix, independently verified, CI status not yet checked)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
