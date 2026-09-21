@@ -43,12 +43,22 @@ const RANK_BUCKET_ORDER: RankBucketKey[] = [
   "rejected_unranked",
 ];
 
-/** Buckets purely by the row's own `rank` column — a "rejected" row that WAS ranked before being
- *  cut (e.g. by the cross-edition governor or a STAGE-6 gate) buckets by that rank, same as a
- *  `rank_final` row; only a row with no rank at all (never reached scoring, e.g. a confluence-
- *  gate reject) falls into `rejected_unranked`. This is deliberate: it answers "did depth in the
- *  ranking predict forward performance" INCLUDING candidates the ranking liked but a downstream
- *  gate vetoed, not just the raw discovery funnel. */
+/** Buckets purely by the row's own `rank` column.
+ *
+ *  CORRECTED 2026-09-21 (this comment previously described the opposite of what the row-builders
+ *  actually write — verified directly against edition-builder.ts): `buildGovernorCutSnapshotRows`
+ *  and `buildStageRejectionSnapshotRows` both write `rank: null` UNCONDITIONALLY for every
+ *  governor-cut and STAGE-6 rejection reason (geometry/premium_cap/illiquid_strike/ungrounded/
+ *  sector_concentration/publish_gate) — those rows always land in `rejected_unranked` here. Only
+ *  the STAGE-2 confluence-gate reject (`candidates.ts`'s `buildDiscoveryStageSnapshotRows`) carries
+ *  a rank at all, and it's that ticker's DISCOVERY-stage rank (its position in the raw
+ *  composite-score pool, before dossiers/scoring/chains exist) — not any later pre-cut position,
+ *  since no later stage ever stamps one for a rejected row. So this bucketing answers "did
+ *  discovery-stage depth predict forward performance for candidates the confluence gate cut,"
+ *  never "did a downstream (governor/STAGE-6) gate veto a candidate the final ranking liked" —
+ *  that question needs a different signal (the row's own `score`, always populated on rejected
+ *  rows even when `rank` is not) compared against the same edition's real `rank_final` scores; see
+ *  `rank-bucket-analysis-extended.ts`'s counterfactual score-comparison tracing for that. */
 export function bucketForRank(rank: number | null): RankBucketKey {
   if (rank == null) return "rejected_unranked";
   if (rank <= 5) return "rank_1_5";
@@ -57,9 +67,9 @@ export function bucketForRank(rank: number | null): RankBucketKey {
   return "rank_26_plus";
 }
 
-type Direction = "long" | "short";
+export type Direction = "long" | "short";
 
-function directionOf(row: NighthawkCandidateSnapshotRow): Direction | null {
+export function directionOf(row: NighthawkCandidateSnapshotRow): Direction | null {
   const d = row.snapshot_json?.direction;
   return d === "long" || d === "short" ? d : null;
 }
@@ -80,7 +90,7 @@ type ForwardReturnsShape = {
 
 /** One row's sign-aligned reading, or null across the board when direction/forward_returns are
  *  unavailable — never fabricated. */
-function signAlignedReading(row: NighthawkCandidateSnapshotRow): {
+export function signAlignedReading(row: NighthawkCandidateSnapshotRow): {
   h1: number | null;
   eod: number | null;
   mfe: number | null;
