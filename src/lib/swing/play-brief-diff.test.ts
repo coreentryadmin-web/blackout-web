@@ -133,14 +133,19 @@ function thesisPayload(health: number, overrides: Record<string, unknown> = {}) 
   };
 }
 
-// BUG FIX (2026-09-21, Ask Largo standing mandate — sweep of #5380/#5383/#5384's toFixed-vs-
-// roundFloats price-level fix into this file's own diff narration). Same live-repro shape as
-// fmt-money.test.ts's fmtPriceLevel suite: 152.035's raw IEEE-754 storage rounds DOWN with plain
-// toFixed(2) ("152.03") but UP with roundFloats' own Math.round(n*100)/100 algorithm ("152.04") —
-// and the SAME raw spot value is also exposed as a plain number elsewhere in the swing play-brief
-// response (envelope.levels' "spot" entry), so a diff line built with plain toFixed(2) could
-// silently disagree with the rest of the response.
-test("diffBriefSnapshots: 'Spot drifted' matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary", () => {
+// HARDENING, NOT A PROVEN LIVE BUG (corrected 2026-09-21 after PR #5387's own comment thread —
+// see that PR for the full correction). Unlike #5380/#5383/#5384's genuinely live repros,
+// diffBriefSnapshots/narrateSpotShift are called from exactly one place — src/hooks/
+// useSwingPlayBrief.ts, a CLIENT-side hook, fed `raw = data?.envelope` (the SWR-fetched JSON the
+// API route already ran through roundFloats() before sending). By the time a snapshot's spot/mark
+// values reach these narration functions they are already 2dp-clean, so plain .toFixed(2) cannot
+// reproduce the half-cent-boundary disagreement — that requires a raw, many-decimal-digit float
+// BEFORE any rounding, which this call path never delivers. #5385 (a parallel session) correctly
+// traced this and left play-brief-diff.ts untouched for exactly this reason. This test still
+// exercises a real, worth-keeping invariant — the function's OWN behavior when handed an unrounded
+// input (e.g. a future refactor that feeds it fresh provider data) — kept as defensive coverage,
+// not as evidence of a member-visible defect.
+test("diffBriefSnapshots: 'Spot drifted' matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary (defensive — see note above, not a live repro)", () => {
   const prev = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 100 });
   const next = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 152.035 });
   const lines = diffBriefSnapshots(prev, next);
