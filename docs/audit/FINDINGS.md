@@ -4,6 +4,248 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-09-21 — [FINDING, P1 Night Hawk Swings / Ask Largo] Play-brief positionId resolution silently ignores banger-origin positions — a specific requested leg always resolved to the highest-live-P&L leg on the same ticker — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/lib/swing/play-brief-resolve-pure.ts` (`pickLanePlayForBrief`), `src/lib/swing/play-brief-resolve.ts` (`resolveSwingPlayForBrief`) |
+| **Severity** | P1 — member-facing / Largo-facing data-integrity defect: `GET /api/market/swing/play-brief` can return a DIFFERENT position's entry/mark/P&L/management-plan than the one explicitly requested, with no error, no degraded flag, no signal anything is wrong |
+
+### Root cause
+
+A banger-origin swing play's `positionId` is `banger_positions.id` — a namespace completely
+separate from `swing_positions.id` (see `banger-lane-merge.ts`'s own doc comment, added
+2026-09-20 to fix an analogous React-key collision on the Command Deck). `play-brief-resolve.ts`'s
+`loadOpenTerminalPlay`/`loadClosedPlay` only ever query the `swing_positions` table
+(`fetchOpenSwingPositions()`/`fetchSwingPositionsRange()`), so a `positionId` hint pointing at a
+banger-origin leg can **never** match a row there — `matches.find((r) => r.id === hints.positionId
+|| r.root_position_id === hints.positionId)` always comes back empty for that leg, regardless of
+which specific id was requested.
+
+Resolution then falls through `resolveSwingPlayForBrief`'s chain (closed-by-id, open-by-id, the
+multi-roll chain-root retry — all `swing_positions`-only, all empty for the same reason) to
+`pickLanePlayForBrief`, the ticker-only lane fallback. That function's hints type
+(`{ status, strike, right }`) never carried `positionId` at all, so when the caller supplied
+neither `strike` nor `right` (the play-brief route's/Largo's own documented common case —
+`?playId=SWING:<ticker>:<positionId>`, no contract hint), the fallback silently ignored the
+requested id and picked among all live legs for that ticker by **highest `livePnlPct`** —
+deterministically the same answer no matter which of the ticker's concurrent positions was asked
+about.
+
+### Evidence
+
+Live-reproduced 2026-09-21 (RTH) against production, on ABTC's two real concurrent banger-origin
+swing positions:
+
+- Position `1185` (9.5C, entry $0.35, `liveStatus: "TRIM"`, `livePnlPct: 200`)
+- Position `1220` (10.5C, entry $0.40, `liveStatus: "OPEN"`, `livePnlPct: 25`)
+
+```
+GET /api/market/swing/play-brief?playId=SWING:ABTC:1220   → headline "TRIM — ABTC 9.5C 4DTE", Entry $0.35  (WRONG — this is position 1185's data)
+GET /api/market/swing/play-brief?playId=SWING:ABTC:1185   → headline "TRIM — ABTC 9.5C 4DTE", Entry $0.35  (same response, byte-identical)
+GET /api/market/swing/play-brief?playId=SWING:ABTC&positionId=1220  → same wrong 9.5C response
+GET /api/market/swing/play-brief?playId=SWING:ABTC&strike=10.5&right=C → headline "HOLD — ABTC 10.5C 4DTE", Entry $0.40  (CORRECT — proves the strike-hint path works and only positionId was blind)
+```
+
+Both `1185` and `1220` requests returned an **identical** brief — the fallback's
+highest-`livePnlPct` tiebreak, not the requested id. A member or Largo asking specifically about
+the lagging 10.5C leg (P&L +25%, still `OPEN`, no management action fired) was silently shown the
+already-`TRIM`ming 9.5C leg's numbers (P&L +200%, partial already banked) instead — a real,
+actionable-decision-grade data mismatch with no error surfaced anywhere in the response.
+
+### Fix rationale
+
+Every `HorizonPlay` the lane fallback sees already carries its own correct `positionId` (the
+banger row's real `id` for a banger-origin play, or a real `swing_positions.id` for a non-banger
+lane row — `terminalPlayFromHorizon`/`horizonRowToDeckSource` already round-trip it). So the
+minimal, correct fix is to check for an **exact `positionId` match** in `pickLanePlayForBrief`
+first, before any of the strike/right/status/P&L heuristics — it can never be wrong when present
+(it's the caller's own explicit request), and every existing heuristic stays exactly as it was for
+the case that motivated it (a genuine ticker-only ambiguity with no id in hand). `positionId` is
+threaded through the one call site in `resolveSwingPlayForBrief` that reaches this fallback.
+
+Deliberately NOT touched: `loadOpenTerminalPlay`/`loadClosedPlay`'s `swing_positions`-only
+queries. A "query `banger_positions` too" fix at that layer would be a larger, riskier change
+(new IO dependency, new merge/precedence logic between two ledgers) for the same outcome this
+smaller fix already achieves — the banger-origin play is always present in the lane rows
+(`getSwingServingLane` already merges it in via `mergeBangerPositionsIntoSwingPlays`), so fixing
+the *fallback* that already sees it is sufficient and lower blast-radius.
+
+### Regression test
+
+`src/lib/swing/play-brief-resolve.test.ts` — "pickLanePlayForBrief: exact positionId hint resolves
+the SPECIFIC banger-origin leg, not the highest-P&L one". Reproduces the exact live ABTC shape
+(two concurrent legs, no strike/right hint) and asserts each `positionId` resolves to its own
+distinct leg. Verified RED against the pre-fix `pickLanePlayForBrief` (git-stash), GREEN after.
+Full `src/lib/swing/*.test.ts` (1445 tests) and `tsc --noEmit` both clean post-fix.
+
+### Blast radius
+
+Any ticker with 2+ concurrent banger-origin swing positions and no strike/right disambiguation on
+the play-brief request. Non-banger-origin swing plays are unaffected (their `positionId` already
+matched via `swing_positions` at the earlier, unmodified resolution steps). Largo's tool-call
+convention for this route (`?playId=SWING:<ticker>:<positionId>`) is exactly the shape this bug
+hit hardest — no strike/right ever accompanies it.
+
+## 2026-09-21 — [FINDING, P2, Swing/Ask Largo] Lane-rank narrative compared a fabricated `score: 0` fallback as if it were a real value — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED (this PR) |
+| **Area** | `src/lib/swing/play-brief-lane-rank.ts`, `src/lib/swing/live-plays.ts`, `src/lib/horizon-plays.ts` |
+| **Severity** | P2 — misleading member-facing coaching text on a live, real-money position |
+| **Found via** | Standing Ask Largo × Night Hawk Swings ownership mandate deep-dive, live GET `/api/market/swing/play-brief?playId=SWING:AAPL:40` |
+
+### Root cause
+
+`livePlayFromSwingPosition` (live-plays.ts) computes a committed swing position's `score` as:
+
+```ts
+const score =
+  row.feature_vector && typeof row.feature_vector.evidence_score === "number"
+    ? (row.feature_vector.evidence_score as number)
+    : 0;
+```
+
+`HorizonPlay.score` is a non-nullable `number`, so a position whose `feature_vector.evidence_score`
+was never pinned (an older commit predating that pin, or any other shape gap) falls back to a
+**literal `0`** — not an honest "unknown," a real comparable number as far as every downstream
+consumer can tell.
+
+`computeLaneRank` (`play-brief-lane-rank.ts`) sorts ALL peer rows by this raw `score` to compute
+rank/median/the named "lane leader," with no awareness that a `0` can be a fallback rather than a
+measurement. Live repro, `SWING:AAPL:40` (2026-09-21, RTH): a real, live, +39.2% P&L position the
+desk says to HOLD — its own brief's "Why this setup" section shows real non-zero pillar points
+(Catalyst 35.3 + Structure 26.5 + Regime 14.7 + Volatility 14.3 ≈ 91) reconstructed from the pinned
+`feature_vector` via a separate path (`pinnedFactorsFromFeatureVector`) — while the SAME brief's
+"Trade manager read" section said:
+
+> **Below lane median** — **#59/59** (score **0**, -63 vs median). Leader: **GEMI** @ **74** —
+> confirm before adding size.
+
+A trader reading that line sees "worst-scored position in the entire 59-position book, confirm
+before adding size" about a real winner the desk is telling them to hold — the opposite of what the
+brief's own other sections say about the same position two paragraphs apart.
+
+This is the same violation class this repo's Largo product contract already names for `confidence`:
+*"`confidence` must be OMITTED when a product cannot calibrate it... fabricated certainty... corrupts
+cross-product ranking. Omission is honest; fabrication is not."* `score: 0` here is the same shape of
+problem one level down — a per-play ranking input, not a cross-product confidence field, but the
+same fix applies: an uncalibrated value must never be compared against calibrated peers.
+
+Note this is a *different* "score withheld" mechanism from the one already in `play-brief.ts`
+(`thesisHealthSection`'s "Aggregate score withheld — not every pillar input is wired for this
+position yet.") — that one covers the pillar-AGGREGATE percentage shown in the "Thesis health"
+section; this bug is in the separate `TerminalPlay`/`HorizonPlay.score` field the lane-rank/peer-
+comparison feature reads. Both are real, both needed the same honest-omission discipline, only one
+had it.
+
+### Evidence
+
+Live run, 2026-09-21 17:21 UTC (RTH, real data):
+```
+GET /api/market/nighthawk/horizons?view=swings
+  → SWING lane, 61 committed rows, exactly 1 with score === 0 (AAPL, positionId 40)
+
+GET /api/market/swing/play-brief?playId=SWING:AAPL:40
+  → "Why this setup" pillars sum to ~90.8 (real, non-zero)
+  → "Trade manager read" simultaneously: "Below lane median — #59/59 (score 0, -63 vs median).
+     Leader: GEMI @ 74 — confirm before adding size."
+```
+
+### Blast radius
+
+`computeLaneRank` is called from two sites, both affected: `play-brief-lane-rank.ts`'s own
+`laneRankSection` (the standalone "Lane rank" section) and `play-brief-narrative-coaching.ts`'s
+`laneRankCoaching` (the folded "Below lane median"/"Top-ranked" line inside "Trade manager read").
+Both render off the same `LaneRankSnapshot`, so a single fix at `computeLaneRank` covers both.
+
+Beyond AAPL's own fabricated rank, the same `score: 0` row was also counted as a real peer in the
+`sorted`/`medianScore` pool for every OTHER open swing position's own lane-rank comparison —
+dragging every other brief's computed median down by one artificially-low data point (small effect
+at n=61, but the same shape of contamination scales worse the more positions carry an unwired
+`feature_vector`).
+
+### Fix rationale
+
+Added `HorizonPlay.scoreWithheld?: boolean` (additive, optional — every existing producer/consumer
+of `HorizonPlay` is unaffected) and set it true in `live-plays.ts` exactly when the `0` fallback is
+used. `computeLaneRank` now:
+1. Excludes any row carrying `scoreWithheld` from the peer pool entirely (median/rank for every
+   OTHER play's own brief is computed only over real, calibrated scores).
+2. Returns `null` outright when the CALLING play's own row is `scoreWithheld` — no snapshot, no
+   fabricated "#59/59," no "Lane rank" section at all, matching the honest-omission pattern this
+   feature's own sibling text (`thesisHealthSection`'s "score withheld") already uses.
+
+Deliberately left unchanged: the underlying reason `feature_vector.evidence_score` is sometimes
+missing (an older commit predating the pin) — that's a data-lineage fact about legacy rows, not a
+bug to backfill here; fixing the CONSUMER to stop treating the fallback as real data is the scoped,
+low-blast-radius fix. Also left `HorizonPlay.score` itself non-nullable, per its existing design
+(board sort/display never null-checks it) — `scoreWithheld` is the honest sidecar flag rather than a
+breaking type change across every `HorizonPlay` consumer.
+
+### Test
+
+`src/lib/swing/play-brief-lane-rank.test.ts` — two new tests: (1) a play whose own row is
+`scoreWithheld` returns `null` from `computeLaneRank` (RED pre-fix: fabricated `#2/2, score 0`
+snapshot; GREEN post-fix), (2) a withheld PEER is excluded from another play's own median/rank
+computation (RED pre-fix: counted as a 3rd real peer; GREEN post-fix: pool of 2, correct median).
+Full `npx tsc --noEmit` clean; `src/lib/swing/live-plays.test.ts`,
+`src/lib/swing/play-brief-narrative-coaching.test.ts`, `src/lib/swing/play-brief.test.ts`,
+`src/lib/swing/play-brief-intel.test.ts` all pass (466 tests, 0 fail) alongside the new tests.
+
+## 2026-09-21 — [FINDING, P3 Largo/Night Hawk Swings] `holdPlanSection` duplicated `actionNarrative`'s giveback fact in the `expandIntel=1` expanded view — third instance of #5362's duplication class — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | #5362 (merged 2026-09-21) fixed `degradedReadLine` duplicating `actionNarrative`'s "Gave back X% of peak" line. Auditing the other `mfeCaptureOutcome(play.pnlPct, play.peak, null)` call sites for the same overlap pattern found a third, unaudited instance: `holdPlanSection` (`play-brief-intel.ts`) independently renders the identical round_trip/capture fact `actionNarrative` (`play-brief-narrative.ts`) already renders into "Trade manager read." Live repro, `SWING:BLSH:1179` (real committed position, capturePct ≈ 52.5%), `expandIntel=1`: "Trade manager read" carried `"Gave back **47%** of peak — consider protecting runner."` and the separate "Hold plan" section carried `"Gave back **47%** from peak — consider trim into strength"` — same fact, two sections, same response. |
+| **Root cause** | `holdPlanSection`'s own comment calls its `capturePct < 70` floor "the LEAST sensitive of the three call sites" — confirming the original author knew of exactly three call sites (`actionNarrative` `<75`, `degradedReadLine` now `[75,80)` post-#5362, `holdPlanSection` `<70`) but only #5362 closed the gap. Since 70 < 75, `holdPlanSection`'s capture condition is a strict subset of `actionNarrative`'s — whenever it fires, `actionNarrative`'s has already fired. The `round_trip` branch is worse: it's kind-gated, not threshold-gated, so it duplicates `actionNarrative`'s round-trip line 100% of the time `giveback.kind === "round_trip"`, with byte-identical wording in the non-partial-trim case. Only reachable in the `expandIntel=1` expanded view — the default collapsed view (`play-brief.ts:1077`, `collapseIntel: !opts?.expandIntel`) folds `holdPlanSection`'s content away entirely without restating it, so the default narrative was never affected. |
+| **Evidence** | Two new regression tests in `play-brief-intel.test.ts`, mirroring `lessonsSection`'s existing `roundTripAlreadyNoted`/`captureAlreadyNoted` pattern for the CLOSED-play sibling. RED confirmed pre-fix via `git stash` on the source file only (tests kept): exactly the 2 new tests failed (`180 tests, 178 pass, 2 fail`), nothing else regressed. GREEN post-fix: 180/180 in `play-brief-intel.test.ts`. `tsc --noEmit` clean. Full swing suite (`src/lib/swing/*.test.ts`): 1446/1446 pass, 0 fail — no collateral breakage. |
+| **Fix** | `holdPlanSection` gains an optional `narrativeAlreadyNoted?: { roundTrip?: boolean; capture?: boolean }` param gating both branches. `buildIntelSections`'s OPEN-bucket call site computes `roundTripAlreadyNoted`/`captureAlreadyNoted` from the already-composed `narrative?.body` (available before `holdPlanSection` is called, same compose order the CLOSED-bucket `lessonsSection` call already relies on) via `.includes("Round-tripped past breakeven")` / `.includes("Gave back")` — the latter checked against `actionNarrative`'s exact capitalized phrasing (`"Gave back **X%** of peak"`), distinct from `degradedReadLine`'s lowercase `"gave back **X%** from peak"`, so the check targets only the fact that's guaranteed to have already fired. |
+| **Blast radius** | Scoped to `holdPlanSection` + its one call site in `buildIntelSections`. All 8 pre-existing direct `holdPlanSection(ctx)` test call sites are unaffected (the new param is optional, defaults to `undefined` → both flags falsy → identical behavior to before). No gate, score, rail, exit rule or grading path touched — only whether the OPEN-play expanded view restates an already-stated narrative fact. |
+| **Status** | FIXED. |
+
 ## 2026-09-21 — [FINDING, P2 Thermal] GEX cross-validation was permanently dormant during healthy RTH, contradicting its own UI copy — FIXED
 
 > **kind:** `FINDING`
@@ -100,40 +342,6 @@ ticker (RED pre-fix, confirmed via `git stash` on `route.ts` — 1/16 tests fail
 post-fix, 16/16 pass), (2) a STALE matrix also invokes it (no regression on the pre-existing
 path), (3) a non-preset ticker still skips it (UW overlay budget guard intact). `tsc --noEmit`
 and `eslint` clean on both touched files.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 0DTE trim_scale trend dead-zone floor exits persisted the raw unhonored observed mark, understating P&L — FIXED
 
