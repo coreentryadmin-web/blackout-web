@@ -555,6 +555,17 @@ function collectGexStalenessAbsence(
 /** Aggregate every honest absence signal for the swing play brief envelope (Largo C3). */
 export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieUnavailableSource[] {
   const out: BieUnavailableSource[] = [...(ctx.ecosystem?.arsenal?.unavailable_sources ?? [])];
+  // Ask Largo standing mandate, #5351 follow-up: every staleness check below independently
+  // sampled the real wall clock (Date.now()) instead of ctx.readMs, the one canonical "now"
+  // composeSwingPlayBrief stamps before any section builds. #5351 fixed the identical defect
+  // shape for watchForSection/confluenceCoaching (two NARRATIVE sections disagreeing on the SAME
+  // field because each sampled Date.now() at a different real instant during compose); this
+  // function is the source of the unavailableSources[] chips the UI's UnavailableChip renders,
+  // so the SAME risk here is a narrative-vs-chip disagreement — e.g. dataFreshnessSection (fixed
+  // in the same PR) could call the option mark fresh while this function's own, independently
+  // sampled Date.now() calls it stale, or vice versa, for the identical markAsOf field in the
+  // identical envelope.
+  const readMs = ctx.readMs ?? Date.now();
 
   // CLOSED plays are a historical record, not a live position — every check below this point
   // (HELIX flow freshness, GEX/Vector staleness+desk-state, discovery/0DTE/Night-Hawk "today's
@@ -603,7 +614,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   }
   // FINDINGS 2026-09-06 (#22) + live probe 2026-09-07: sync-without-timestamp AND aged markAsOf
   // must both reach unavailableSources — prose in dataHonestyCoaching alone is not enough (C3).
-  const markAbsence = collectOptionMarkStalenessAbsence(ctx.play, Date.now());
+  const markAbsence = collectOptionMarkStalenessAbsence(ctx.play, readMs);
   if (markAbsence) out.push(markAbsence);
   // Cold GEX is distinct from a total ecosystem fetch failure — the read succeeded but the shared
   // matrix had no positioning for this ticker.
@@ -617,7 +628,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   }
   if (!isNotLive) {
     const gex = ctx.ecosystem?.gex_positioning;
-    const gexStale = collectGexStalenessAbsence(gex, Date.now());
+    const gexStale = collectGexStalenessAbsence(gex, readMs);
     if (gexStale) out.push(gexStale);
   }
   // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
@@ -634,7 +645,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const vec = vectorOf(ctx);
     if (vec && hasVectorDeskState(ctx)) {
       out.push(...collectVectorSectionAbsences(vec));
-      const stale = collectVectorStalenessAbsence(vec, ctx.sessionDate);
+      const stale = collectVectorStalenessAbsence(vec, ctx.sessionDate, readMs);
       if (stale) out.push(stale);
       // reportVectorAbsences treats non-null flowMarkers as present even when available=false.
       if (vec.flowMarkers?.available === false) {
@@ -663,7 +674,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       what_is_missing: "the Meridian catalyst timeline for this ticker",
       retryable: true,
     });
-  } else if (!isNotLive && meridianCatalystStale(ctx.meridian, Date.now())) {
+  } else if (!isNotLive && meridianCatalystStale(ctx.meridian, readMs)) {
     out.push({
       source: "Meridian catalysts",
       reason: "stale — calendar read may lag",
@@ -688,7 +699,7 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   if (
     !isNotLive &&
     ctx.ecosystem?.arsenal?.news?.headlines?.length &&
-    newsCatalystStale(ctx.ecosystem.arsenal.news.as_of, Date.now())
+    newsCatalystStale(ctx.ecosystem.arsenal.news.as_of, readMs)
   ) {
     out.push({
       source: "Ticker news",

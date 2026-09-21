@@ -1966,6 +1966,39 @@ test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is f
   assert.match(section!.body, /tape read may lag/);
 });
 
+// Ask Largo standing mandate follow-up to #5351: dataFreshnessSection independently sampled the
+// real wall clock (Date.now()) for its option-mark/Vector/GEX staleness checks instead of
+// consulting ctx.readMs, the one canonical "now" composeSwingPlayBrief stamps before any section
+// builds. Because compose does real sequential I/O between sections, this section's own
+// Date.now() sample can land on the opposite side of a staleness cutoff from a sibling section
+// (watchForSection, already fixed in #5351) reasoning about the SAME underlying field — the exact
+// "same fact, two answers within one envelope" defect #5351 fixed for a different pair of sections.
+// This test anchors ctx.readMs far in the future (well past every staleness window) while the
+// real wall clock (Date.now()) at test-run time is NOT stale — proving the section must consult
+// ctx.readMs rather than silently falling back to the real clock.
+test("dataFreshnessSection: uses ctx.readMs as the staleness anchor, not the real wall clock (Ask Largo standing mandate, #5351 follow-up)", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshMarkAsOf = new Date(Date.now() - 5 * 60_000).toISOString(); // fresh vs real now
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", markAsOf: freshMarkAsOf, markIsSync: false }),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: anchorFarFuture,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(
+    section!.body,
+    /Option mark \*\*stale\*\*/,
+    "must read the mark as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
 // ── CLOSED plays must not narrate "today's" live-desk staleness (FINDINGS 2026-09-12) ──────────
 // A CLOSED play is a historical record; scan/Vector/GEX/HELIX staleness are all claims about
 // TODAY's live desk state and fire forever once ANY time has passed since close if left ungated —

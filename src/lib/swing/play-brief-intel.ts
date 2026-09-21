@@ -1736,6 +1736,17 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   const { play, scanAsOf, scanSessionDay, sessionDate } = ctx;
   const vec = vectorOf(ctx);
   const lines: string[] = [];
+  // Ask Largo standing mandate, #5351 follow-up: this whole section independently sampled the
+  // real wall clock (Date.now()) at every staleness check below instead of ctx.readMs, the one
+  // canonical "now" composeSwingPlayBrief stamps before any section builds. #5351 fixed the exact
+  // same defect shape for watchForSection/confluenceCoaching (two sections disagreeing on the SAME
+  // Vector wall because each sampled Date.now() at a different real instant during compose); this
+  // section carries the identical risk against sibling sections that DO already anchor on
+  // ctx.readMs (watchForSection) or on the identical field via collectBriefUnavailableSources
+  // (fixed in the same PR) — e.g. this section could call a mark "as of <time>" with no staleness
+  // qualifier while the unavailableSources[] chip for the SAME mark says "stale", if the two
+  // Date.now() samples straddled the 18-minute SWING_OPTION_MARK_STALE_MS cutoff.
+  const readMs = ctx.readMs ?? Date.now();
   if (play.markAsOf) {
     // Largo C2 (2026-09-16): this line printed the raw mark stamp unconditionally, the one
     // section named specifically for freshness disclosure never actually checking it — while
@@ -1746,7 +1757,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
     // Live repro: CRWD:39/AAPL:38/AAPL:37 all carried a 2026-09-15 16:00 ET mark (prior session's
     // close print) read the next morning, ~14h past the 18-minute SWING_OPTION_MARK_STALE_MS bound.
     lines.push(
-      optionMarkIsStale(play, Date.now())
+      optionMarkIsStale(play, readMs)
         ? `Option mark **stale** — last synced **${etStampFromIso(play.markAsOf)}**`
         : `Option mark as of **${etStampFromIso(play.markAsOf)}**`,
     );
@@ -1790,7 +1801,7 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
     // `gexAgeMs > GEX_MATRIX_STALE_MS` silently reads as fresh instead of failing closed the way
     // `gexMatrixStale` already does. Using the shared boolean gates the rendering; the raw ages
     // still drive the seconds label when they're finite and non-negative.
-    if (vectorAgeStale(vec, Date.now())) {
+    if (vectorAgeStale(vec, readMs)) {
       const ageMs = vec?.dataAgeMs;
       const ageLabel =
         typeof ageMs === "number" && Number.isFinite(ageMs) && ageMs >= 0
@@ -1798,8 +1809,8 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
           : "clock-skewed";
       lines.push(`Vector data **${ageLabel}** old — levels may lag live spot`);
     }
-    const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning);
-    if (gexMatrixStale(ctx.ecosystem?.gex_positioning, Date.now())) {
+    const gexAgeMs = gexMatrixAgeMs(ctx.ecosystem?.gex_positioning, readMs);
+    if (gexMatrixStale(ctx.ecosystem?.gex_positioning, readMs)) {
       const gexLabel =
         typeof gexAgeMs === "number" && Number.isFinite(gexAgeMs) && gexAgeMs >= 0
           ? `${Math.round(gexAgeMs / 1000)}s`
