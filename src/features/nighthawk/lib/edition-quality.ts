@@ -116,6 +116,16 @@ export function criticRescueEnabled(): boolean {
   return envFlag("NH_LEGACY_CRITIC_RESCUE", true);
 }
 
+/** Workstream C / #20's D4-extra (2026-09-21) — INSTRUMENTATION ONLY, default OFF. Gates whether
+ *  buildDeterministicEditionPlays' unconditionally-computed `mainLoopRejected` (geometry/
+ *  premium_cap drops from the main synthesis loop) gets merged into generateEditionPlays'
+ *  `stageRejected` array for durable capture. Never read by buildDeterministicEditionPlays
+ *  itself, which is why its own funnel/plays/scores/ordering cannot depend on this flag at all —
+ *  only whether the already-computed rejections get written anywhere. */
+export function mainLoopRejectionCaptureEnabled(): boolean {
+  return envFlag("NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED", false);
+}
+
 /** Effective merit score — governor demotions apply to selection order. */
 export function effectiveMeritScore(scored: ScoredCandidate): number {
   return scored.score - (scored.govPenalty ?? 0);

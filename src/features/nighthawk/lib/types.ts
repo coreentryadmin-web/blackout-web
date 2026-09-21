@@ -70,6 +70,12 @@ export type PlaybookPlay = {
   tier?: NighthawkTierAssignment | null;
   /** Per-play morning confirm instant from morning_verdict.checked_at (read-time overlay). */
   morning_checked_at?: string;
+  /** Calendar days to the picked contract's expiry, computed once at buildPlay() time via
+   *  calendarDteBetween(todayEtYmd(), contract.expiry). Absent (not 0) when no contract was
+   *  picked (stock-only/caveated fallback) — the analysis layer must never read a missing DTE
+   *  as same-day. Workstream C / #20's D1, 2026-09-21 — observational only, never read by any
+   *  selection/scoring/gating logic. */
+  dte?: number | null;
 };
 
 export type PlayExplainRequest = {

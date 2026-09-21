@@ -10,6 +10,7 @@ import type { MarketWideContext } from "./market-wide";
 import type { PositioningSummary } from "./positioning";
 import type { TechnicalCard } from "./technicals";
 import { assignNighthawkTier } from "./nighthawk-tiers";
+import { classifySetupType, setupTypeInputFromScored } from "./setup-classification";
 
 export type NightHawkRegimeContext = {
   vix_iv_rank: number | null;
@@ -83,6 +84,10 @@ export function scoredCandidateSnapshotPayload(c: ScoredCandidate): Record<strin
     schema_version: 1,
     score: c.score,
     direction: c.direction,
+    // Workstream C / #20's D2 (2026-09-21) — explicit, deterministic, rule-based classification
+    // stamped once at capture time rather than derived heuristically after the fact. Purely
+    // observational: never read by scoring/ranking/selection.
+    setup_type: classifySetupType(setupTypeInputFromScored(c)),
     components: {
       flow_score: c.flow_score,
       tech_score: c.tech_score,

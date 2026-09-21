@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   buildDeterministicEditionPlays,
   buildRescuePlays,
@@ -141,6 +143,87 @@ test("emits N valid plays with correct geometry and direction from the score sig
   const bbb = plays.find((p) => p.ticker === "BBB")!;
   assert.equal(bbb.direction, "SHORT");
   assert.equal(parseOptionsContract(bbb.options_play)?.side, "put");
+});
+
+// ── Workstream C / #20's D4-extra (2026-09-21): mainLoopRejected capture ────────────────────────
+// Both the premium_cap and geometry drop points inside the main loop are narrow/hard-to-trigger
+// paths by design (pickChainContract's strict pool already enforces the premium cap before a
+// non-caveated contract is ever returned, and resolveLevels/buildDirectionalStockLevels already
+// self-correct R:R before validatePlayGeometry runs -- see play-levels.ts's own MIN_RR_RATIO
+// correction). A direct source-inspection proof (this codebase's established substitute for a
+// hard-to-organically-trigger internal branch, e.g. candidate-forward-grade.test.ts's own
+// orchestration tests) is the precise, cheap way to prove the instrumentation is correct without
+// needing to first reverse-engineer a fixture that reliably reaches either branch.
+
+test("mainLoopRejected: buildDeterministicEditionPlays is ALWAYS returned with this field, empty when nothing was rejected", () => {
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: chainAround(120) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const result = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  assert.ok(Array.isArray(result.mainLoopRejected));
+  assert.equal(result.mainLoopRejected.length, 0);
+});
+
+test("mainLoopRejected: source proof -- both drop points push before their EXISTING, unmodified `continue`, never altering the branch condition", () => {
+  const src = readFileSync(fileURLToPath(new URL("./deterministic-edition.ts", import.meta.url)), "utf8");
+
+  const premiumCapBlock = src.slice(
+    src.indexOf("if (contract && !contract.caveat && play.premium_cap_ok === false) {"),
+    src.indexOf("if (contract && !contract.caveat && play.premium_cap_ok === false) {") + 700
+  );
+  assert.match(premiumCapBlock, /premiumCapCount \+= 1;/, "existing counter increment must be unchanged");
+  assert.match(premiumCapBlock, /mainLoopRejected\.push\(\{/, "must push a rejection row");
+  assert.match(premiumCapBlock, /stage: "premium_cap"/);
+  assert.match(premiumCapBlock, /cap_per_share: MAX_OPTION_PREMIUM_PER_SHARE/);
+  assert.match(premiumCapBlock, /cap_per_contract: MAX_OPTION_COST_PER_CONTRACT/);
+  // The push must appear BEFORE the continue, and the continue itself must be exactly the
+  // original bare statement -- no condition added to it.
+  const continueAfterPush = premiumCapBlock.slice(premiumCapBlock.indexOf("mainLoopRejected.push"));
+  assert.match(continueAfterPush, /^\s*(?:.|\n)*?\n\s+continue;\n\s+\}/, "continue must remain a bare, unconditional statement right after the push");
+
+  const geometryBlock = src.slice(src.indexOf("const geom = validatePlayGeometry(play);"), src.indexOf("const geom = validatePlayGeometry(play);") + 400);
+  assert.match(geometryBlock, /geometryFailCount \+= 1;/, "existing counter increment must be unchanged");
+  assert.match(geometryBlock, /mainLoopRejected\.push\(\{ ticker, detail: \{ stage: "geometry", drops: geom\.drops \}, scored, play \}\);/);
+  assert.match(geometryBlock, /\n\s+continue;\n\s+\}/, "continue must remain a bare, unconditional statement right after the push");
+});
+
+test("mainLoopRejected: buildDeterministicEditionPlays never reads the capture-enabled flag -- output is structurally independent of it", () => {
+  const src = readFileSync(fileURLToPath(new URL("./deterministic-edition.ts", import.meta.url)), "utf8");
+  assert.doesNotMatch(src, /NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED/, "the flag must live entirely in the caller, never in the pure builder");
+  assert.doesNotMatch(src, /mainLoopRejectionCaptureEnabled/);
+
+  // Behavioral half of the same proof: run it with the env var unset/0 and with it set to "1" --
+  // plays/funnel must be byte-identical either way, since this file never reads it.
+  const ranked = [scored("AAA", "long", 68), scored("BBB", "short", 61)];
+  const chains = { AAA: chainAround(120), BBB: chainAround(80) };
+  const dossierMap = { AAA: dossier("AAA", 120), BBB: dossier("BBB", 80) };
+
+  delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+  const off = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED = "1";
+  const on = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+
+  assert.deepEqual(off.plays, on.plays, "plays must be byte-identical regardless of the flag");
+  assert.deepEqual(off.funnel, on.funnel, "funnel must be byte-identical regardless of the flag");
+});
+
+test("Workstream C / #20's D1 (2026-09-21): a built play with a real contract carries the computed dte", () => {
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: chainAround(120, { expiry: ymdPlus(37) }) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  const p = plays.find((pl) => pl.ticker === "AAA")!;
+  assert.equal(p.dte, 37);
+});
+
+test("Workstream C / #20's D1: a stock-only play (no chain at all, overnight swing) carries dte=null, never a fabricated 0", () => {
+  const ranked = [scored("NOCHAIN", "long", 68)];
+  const chains = {}; // no chain for this ticker -- stock-only fallback path
+  const dossierMap = { NOCHAIN: dossier("NOCHAIN", 120) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  const p = plays.find((pl) => pl.ticker === "NOCHAIN");
+  if (p) assert.equal(p.dte, null);
 });
 
 test("SHORT play has target below entry and stop above (correct short geometry)", () => {

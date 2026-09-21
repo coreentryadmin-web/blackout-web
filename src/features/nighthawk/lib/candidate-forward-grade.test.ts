@@ -183,6 +183,37 @@ test("gradeNighthawkCandidateForwardReturns: groups by (edition_for, ticker), fe
   assert.match(source, /} catch \(err\) \{\s*\n\s*errors\.push/, "a per-group failure must land in errors, never throw and abort the whole pass");
 });
 
+// ── Workstream C / #20's D4 (2026-09-21): does every rejection reason really get forward-graded,
+// not just published rank_final rows? Confirmed by direct source read against db.ts's query, not
+// assumed -- a query-shape regression here would silently stop rejected candidates from ever
+// being gradeable, which is exactly the "did a gate throw away a real winner" question the
+// rank-bucket diagnostic depends on being answerable. ──────────────────────────────────────────
+
+test("fetchNighthawkCandidateSnapshotsMissingForwardGrade: the query has NO stage or rejection_reason filter -- every stage/reason is eligible for grading", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../../lib/db.ts", import.meta.url)), "utf8");
+  const start = source.indexOf("export async function fetchNighthawkCandidateSnapshotsMissingForwardGrade");
+  assert.ok(start >= 0, "fetchNighthawkCandidateSnapshotsMissingForwardGrade not found in db.ts");
+  const fnSource = source.slice(start, start + 800);
+
+  assert.match(fnSource, /FROM nighthawk_candidate_snapshot/);
+  assert.match(fnSource, /WHERE forward_returns IS NULL/);
+  // The WHERE clause's only other condition must be the lookback-window date filter -- no
+  // `stage =`/`stage IN`/`rejection_reason` restriction anywhere in this function's SQL.
+  const whereClauseEnd = fnSource.indexOf("ORDER BY");
+  const whereClause = fnSource.slice(fnSource.indexOf("WHERE"), whereClauseEnd);
+  assert.doesNotMatch(whereClause, /\bstage\b/i, "grading must not be restricted to specific stages");
+  assert.doesNotMatch(whereClause, /rejection_reason/, "grading must not be restricted by rejection reason");
+});
+
+test("gradeNighthawkCandidateForwardReturns: calls the fetch with only lookbackDays -- no stage-restricting option exists to pass", () => {
+  const source = readFileSync(fileURLToPath(new URL("./candidate-forward-grade.ts", import.meta.url)), "utf8");
+  assert.match(
+    source,
+    /fetchNighthawkCandidateSnapshotsMissingForwardGrade\(lookbackDays\)/,
+    "the call site must not (and structurally cannot, per its single-param signature) filter by stage"
+  );
+});
+
 test("cron/nighthawk-outcomes route wires the forward-grade pass in fail-soft alongside the other post-grading passes", () => {
   const routeSrc = readFileSync(
     fileURLToPath(new URL("../../../app/api/cron/nighthawk-outcomes/route.ts", import.meta.url)),

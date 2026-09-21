@@ -125,7 +125,7 @@ test("buildRankFinalSnapshotRows: an empty play list produces an empty result", 
   assert.deepEqual(buildRankFinalSnapshotRows("2026-09-17", [], new Map()), []);
 });
 
-test("buildRankFinalSnapshotRows: schema v2 -- snapshot_json carries the play's own parsed trade-geometry levels (candidate-r-multiple.ts's input)", async () => {
+test("buildRankFinalSnapshotRows: schema v3 -- snapshot_json carries the play's own parsed trade-geometry levels (candidate-r-multiple.ts's input)", async () => {
   const { buildRankFinalSnapshotRows } = await import("./edition-builder");
   const rows = buildRankFinalSnapshotRows(
     "2026-09-17",
@@ -133,11 +133,31 @@ test("buildRankFinalSnapshotRows: schema v2 -- snapshot_json carries the play's 
     new Map()
   );
   const payload = rows[0]!.snapshot_json as any;
-  assert.equal(payload.schema_version, 2);
+  assert.equal(payload.schema_version, 3);
   assert.equal(payload.levels.entry_range_low, 100);
   assert.equal(payload.levels.entry_range_high, 104);
   assert.equal(payload.levels.target, 112.5);
   assert.equal(payload.levels.stop, 96);
+});
+
+test("buildRankFinalSnapshotRows: v3 additive fields -- setup_type derives from the play's own factor_breakdown, dte from the play's own dte", async () => {
+  const { buildRankFinalSnapshotRows } = await import("./edition-builder");
+  const rows = buildRankFinalSnapshotRows(
+    "2026-09-17",
+    [play({ ticker: "NVDA", factor_breakdown: { flow: 20, tech: 5, positioning: 2, smart_money: 1, news: 0 }, dte: 5 })],
+    new Map()
+  );
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.setup_type, "flow_led");
+  assert.equal(payload.dte, 5);
+});
+
+test("buildRankFinalSnapshotRows: v3 additive fields are honestly absent/unknown, never fabricated, when the play carries neither", async () => {
+  const { buildRankFinalSnapshotRows } = await import("./edition-builder");
+  const rows = buildRankFinalSnapshotRows("2026-09-17", [play({ ticker: "NVDA" })], new Map());
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.setup_type, "unknown");
+  assert.equal(payload.dte, null);
 });
 
 test("buildGovernorCutSnapshotRows: a governor-cut candidate gets a 'rejected' row with the real reasons and its full scored breakdown", async () => {
@@ -221,7 +241,7 @@ test("buildStageRejectionSnapshotRows: an empty rejection list produces an empty
   assert.deepEqual(buildStageRejectionSnapshotRows("2026-09-17", []), []);
 });
 
-test("buildStageRejectionSnapshotRows: schema v2 -- a rejection WITH a play (premium_cap/illiquid_strike/ungrounded/sector_concentration/publish_gate all carry one) captures its parsed levels + direction", async () => {
+test("buildStageRejectionSnapshotRows: schema v3 -- a rejection WITH a play (premium_cap/illiquid_strike/ungrounded/sector_concentration/publish_gate all carry one) captures its parsed levels + direction", async () => {
   const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
   const rows = buildStageRejectionSnapshotRows("2026-09-17", [
     {
@@ -232,10 +252,49 @@ test("buildStageRejectionSnapshotRows: schema v2 -- a rejection WITH a play (pre
     },
   ]);
   const payload = rows[0]!.snapshot_json as any;
-  assert.equal(payload.schema_version, 2);
+  assert.equal(payload.schema_version, 3);
   assert.equal(payload.direction, "SHORT");
   assert.equal(payload.levels.entry_range_low, 100);
   assert.equal(payload.levels.stop, 110);
+});
+
+test("buildStageRejectionSnapshotRows: v3 -- setup_type derives from the passed-in scored candidate, dte from the play (null when the play never had a contract)", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    {
+      ticker: "NVDA",
+      detail: { stage: "sector_concentration", sector: "Tech", already_filled: 3, max_per_sector: 3 },
+      scored: scored({ ticker: "NVDA", flow_score: 30, tech_score: 5, pos_score: 2, news_score: 0, smart_money_score: 1 }),
+      play: play({ ticker: "NVDA", dte: 3 }),
+    },
+  ]);
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.setup_type, "flow_led");
+  assert.equal(payload.dte, 3);
+});
+
+test("buildStageRejectionSnapshotRows: v3 -- setup_type falls back to the play's factor_breakdown when no scored candidate is passed", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    {
+      ticker: "NVDA",
+      detail: { stage: "publish_gate", blocks: [] },
+      scored: null,
+      play: play({ ticker: "NVDA", factor_breakdown: { flow: 2, tech: 25, positioning: 1, smart_money: 0, news: 0 } }),
+    },
+  ]);
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.setup_type, "technical_led");
+});
+
+test("buildStageRejectionSnapshotRows: v3 -- confluence_gate rejects (no play, no contract ever picked) honestly report setup_type=unknown, dte=null", async () => {
+  const { buildStageRejectionSnapshotRows } = await import("./edition-builder");
+  const rows = buildStageRejectionSnapshotRows("2026-09-17", [
+    { ticker: "NVDA", detail: { stage: "geometry", drops: ["target<=entry"] }, scored: null },
+  ]);
+  const payload = rows[0]!.snapshot_json as any;
+  assert.equal(payload.setup_type, "unknown");
+  assert.equal(payload.dte, null);
 });
 
 test("buildStageRejectionSnapshotRows: a rejection with NO play (a future stage that never has one) captures levels:null/direction:null, never a fabricated geometry", async () => {
