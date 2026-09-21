@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T12:07:49Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. **New sibling PR #5353** -- a direct, well-scoped #5351 follow-up threading ctx.readMs through dataFreshnessSection + collectBriefUnavailableSources (the 2 highest-risk of the ~16 remaining Date.now() sites #5351 explicitly deferred). Independently verified: root cause re-confirmed against main (both functions' Date.now() calls match exactly), RED->GREEN re-derived in an isolated worktree (178/178 green on PR head, targeted single-line revert of optionMarkIsStale's call site -> 177/178 exact claimed failure, restored -> 178/178), tsc clean, full swing play-brief suite 705/705 (704 baseline + 1 new test, no collateral breakage). Confirming comment posted (5760221859). Fix correctly follows #5351's own precedent pattern and scoping discipline (explicit ~16-site remainder still deferred, not silently dropped).",
+  "last_updated": "2026-09-21T12:19:08Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded -- **PR #5353 (readMs follow-up, independently verified last cycle) merged.** Zero other open swing PRs. Given the parallel session appears to be actively, incrementally sweeping the remaining ~16 readMs sites (#5351->#5353 pattern, 2 sites per PR), deliberately avoided jumping into the same files with overlapping self-authored work this cycle -- stayed in the complementary verification/forensic lane per the standing file-overlap discipline. **Re-ran the multi-truth-grade-retrace tool at a wider 30-day window**: found a new single-instance divergence, NRG #34 (THESIS CONFIRMED but markfreeze P&L -62.24%). Checked it once: peak +132.7%, exited stopped at -62.2% -- a genuine, large round-trip where the underlying's eventual favorable move (confirming THESIS via forward PATH bars) came after the option had already been stopped out at a much worse point. Matches the tool's own documented 'unremarkable' divergence category exactly (exit timing vs eventual underlying outcome, not a data bug) -- single instance, not pursued further per the 3-instance noise threshold. No new bugs found, no new PR or #4076 comment needed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,10 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T12:07:49Z",
-    "swing_prs": [
-      "#5353 (open, independently verified this cycle, awaiting merge under CARVE-OUT)"
-    ]
+    "as_of": "2026-09-21T12:19:08Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
