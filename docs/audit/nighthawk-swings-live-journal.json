@@ -1,15 +1,15 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T04:22:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. #5336's deploy still in_progress. Zero open swing PRs, board unchanged. **Self-correction on my own :01-cycle finding (5755223428)**: went looking for a 3rd confirming instance of the IV-rank-missing-for-banger gap (checked IREN, positionId 1193 -- confirmed clean, no IV rank line) but ALSO re-checked MSTR and found it CONTRADICTS the original claim -- MSTR (genuinely BANGER-ledger-origin per its regime label) DOES show a real 'IV rank 22' line. Dug into why rather than let the discrepancy sit: resolveBriefIvRank's caller (play-brief-resolve.ts) matches a live discovery dossier by TICKER STRING ALONE, with no check that the dossier actually belongs to the position being briefed. GET /api/admin/swing/accumulation-export confirmed MSTR independently has its own unrelated organic accumulation-store entry (FLOW signal, promoted_position_id: null) from a completely separate scan -- that unrelated entry's ivRank is what leaked into the banger brief, pure ticker-string coincidence. TEM also has an accumulation entry but did NOT show IV rank on its own brief, consistent with this being coincidental/timing-dependent rather than a real signal. Posted a correction (comment 5755332460) on #4076: the real shape is worse than 'cleanly absent' -- it's inconsistent/accidental, tied to whatever ticker happens to coincide with an unrelated live scan that moment, with no way for a member to tell the difference. Named this as its own smaller finding (the ticker-only dossier match) independent of the larger IV-rank-for-banger design question. Same self-correction discipline as the earlier thesis-health fabrication walkback this session -- verify before letting an overstated claim stand, even on my own prior comment.",
+  "last_updated": "2026-09-21T04:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean -- main includes Night Hawk Legacy PRs (#5339, not my lane). #5336's deploy completed (04:26:51Z). Zero open swing PRs, board unchanged. **Post-deploy verification of #5336 found a genuine, unexpected follow-on**: re-checked thesis-health on 4 real committed positions (CRWD, WOLF, HOOD, a BKKT-batch ticker) post-deploy -- all 4 STILL show 'Inputs not wired', despite #5336 being correctly deployed. Dug into the raw horizons fields each pillar needs and found the OR-gate is still tripping, just on a DIFFERENT pillar per row: CRWD has real liveSpot/entryTriggerUnderlyingPx (entry_geometry CAN compute) but signalKinds is empty (flow_corroboration defaults to 'no signals'); WOLF has real signalKinds (['BANGER']) but liveSpot/entryTriggerUnderlyingPx are BOTH undefined (entry_geometry/persistence fall back to defaults regardless of the fix). Traced signal_kinds's write side (commit.ts: entry_context.signal_kinds = cand.discoveryPaths ?? null) -- supposed to be written on every commit, root cause for why CRWD's is empty not yet pinned down (possibly an older commit predating reliable discoveryPaths tracking). Posted a well-evidenced follow-up (comment 5755456759) on #4076 -- NOT a regression in #5336 (independently verified correct earlier this hour, still correct), but the OR-across-5-pillars design means one pillar's fix only helps rows where every OTHER pillar already has real data, which in this live sample is apparently rare. Did not propose a fix -- flagged for a systematic sample before anyone commits to a third pillar fix, and noted a possible connection to the still-open entry_underlying_px anomaly thread (WOLF's missing liveSpot/entryTriggerUnderlyingPx might be the same root cause).",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [
     {
-      "comment_id": 5755332460,
-      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5755332460",
-      "summary": "Correction to the IV-rank-for-banger finding: resolveBriefIvRank's caller matches a live discovery dossier by ticker string alone (no position-scope check), so a banger position can coincidentally inherit an unrelated organic scan's ivRank for the same ticker -- worse than a clean gap, since it's inconsistent/accidental.",
-      "status": "OPEN -- folded into the same design thread as 5755223428"
+      "comment_id": 5755456759,
+      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5755456759",
+      "summary": "Post-deploy verification of #5336: thesis-health is still withheld on every real position checked (4/4) despite the entry_geometry fix landing correctly -- the OR-gate design means a different pillar (flow_corroboration on CRWD, entry_geometry/persistence's own missing liveSpot on WOLF) still trips per row. Not a regression, but the feature likely isn't actually restored for most of the real book yet.",
+      "status": "OPEN -- flagged for a systematic sample, possible connection to the entry_underlying_px thread"
     }
   ],
   "loss_taxonomy": {
@@ -120,7 +120,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T04:22:00Z",
+    "as_of": "2026-09-21T04:35:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
