@@ -8234,6 +8234,27 @@ export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000):
 }
 
 /**
+ * Terminal (CLOSED/ROLLED) legs only, for the multi-truth-grade retrace (`swing/grade.ts`'s real
+ * `gradeSwingPosition` — see grade-retrace.ts / the admin multi-truth-grade route). `grade_json` on
+ * these rows is ALWAYS the markfreeze P&L snapshot (`gradeParentFromMark`, roll-plan.ts) — this
+ * accessor exists so a caller can re-grade the SAME rows against the real 5-truth grader without a
+ * status filter drifting from the one `gradeParentFromMark`/`decideRollAction` actually write.
+ */
+export async function fetchClosedSwingPositionsRange(sinceDate: string, limit = 500): Promise<SwingPositionRow[]> {
+  await ensureSchema();
+  const normalized = normalizeIsoDateInput(sinceDate);
+  if (!normalized) return [];
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_positions
+      WHERE session_date >= $1::date AND status IN ('CLOSED','ROLLED')
+      ORDER BY session_date DESC, id DESC
+      LIMIT $2`,
+    [normalized, limit]
+  );
+  return res.rows.map(mapSwingPositionRow);
+}
+
+/**
  * Every row (any status/leg) on ONE ticker, most recent first — the ticker-scoped historical-
  * context read (Largo product contract C10; play-brief-ticker-history.ts). Deliberately unfiltered
  * on status: `record.ts`'s `selectSwingRecordRootIds` needs OPEN rows too (to know which roots to
