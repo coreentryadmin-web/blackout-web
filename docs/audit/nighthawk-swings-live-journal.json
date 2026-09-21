@@ -1,16 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T01:05:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync clean. Zero open swing PRs pre-cycle. #4076 checked (216 comments, updated_at matched my own last comment 5753899839 -- nothing new since). Board check clean (MANAGING=56, SCALING_OUT=12, COMMIT_NOW/WATCH=1 each). **Acted on my own dormant-gap comment from the prior cycle (5751117208, 'Swing 5-truth grader still completely unwired')**: no objection landed on #4076 (8+ hours idle), so I took the smallest of the three proposed shapes myself -- NOT a new cron (this sandbox can't deploy a new EventBridge rule) but a read-only, admin-gated GET /api/admin/swing/multi-truth-grade that re-grades closed/rolled swing_positions against the REAL grade.ts gradeSwingPosition (PATH+THESIS this pass, real Polygon forward underlying bars; EXECUTION/FINANCIAL/MANAGEMENT stay honestly ungradeable -- no fill price or option bars fetched yet, a real follow-up not a shortcut). New db.ts accessor (fetchClosedSwingPositionsRange), pure unit-tested row mapper (grade-retrace.ts, 9 new tests, RED->GREEN verified against the real grader), companion audit script (swing-multi-truth-grade-retrace.mjs) that will report THESIS-vs-markfreeze divergences once deployed. tsc clean, full swing suite (1418 tests) + db-swing-ledger (32 tests) green on Node 20. Shipped as PR #5331, undrafted (CARVE-OUT: self-authored merges on green CI alone), subscribed. Live retrace against production deferred to post-merge/deploy (route doesn't exist yet -- 404 confirmed expected, not a bug).",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    {
-      "file": "docs/audit/findings-staging/2026-09-21-swing-multi-truth-grader-retrace-endpoint.md",
-      "pr": "#5331",
-      "summary": "New admin read-only retrace endpoint + pure mapper closing the 'swing 5-truth grader unwired' gap -- additive, no schema/cron/infra dependency."
-    }
-  ],
+  "last_updated": "2026-09-21T01:10:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean (4 items: 2x duplicate PR #5331 subscription.created echoes + 1x ready_for_review echo, all self-caused by my own actions last cycle -- plus this trigger firing). PR #5331 (mine, swing multi-truth-grade retrace) checked: CI still in_progress (verify + CodeQL), no comments, mergeable_state unknown (not yet computed, not a real conflict) -- nothing actionable, 20-min check-in already scheduled from last cycle. git sync clean. Only open swing PR is my own #5331. Board unchanged since prior cycle (MANAGING=56, SCALING_OUT=12, COMMIT_NOW/WATCH=1 each). **AGGRESSIVE MODE deep-dive on TEM (SCALING_OUT, positionId 1125)** -- full Ask Largo C1-C10 audit, first time this ticker's been checked this session. Verified clean: blended P&L math exact (0.5*100% + 0.5*180% = 140%, matches rendered), peak-giveback math exact (302%->180% = 40.1% giveback of peak, matches rendered '40%'), thesis-health correctly withheld for a committed position (honest omission, not fabrication), same-ticker duplicate-position book-context citation correctly disambiguated ('separate, cross-engine position #1023') per the 2026-09-15/18 fixes, and -- good live confirmation -- BOTH the Vector and GEX 'weekend self-warm, market CLOSED' disclosures (#5306/#5307/#5308/#5309, my own fixes from earlier this week) fired correctly on this real Sunday-evening read. Traced one candidate oddity (Management section's bare 'Rails: stop $1.00 . target $5.00' line showing a target below the current $7.00 mark) to source: this is a DIFFERENT, simpler line (play-brief.ts:135, static policy values, no room% math) from the narrative layer's smarter 'Premium target rail' bullet (play-brief-intel.ts ~1141), which correctly SUPPRESSES itself once mark has already passed target (targetRoomPct requires target > targetBasis) -- confirmed absent from this exact brief's Trade manager read section. Not a bug, just two different rails presentations with different design intent; not worth a fix.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,9 +113,9 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T01:05:00Z",
+    "as_of": "2026-09-21T01:10:00Z",
     "swing_prs": [
-      "#5331 (mine, undrafted, awaiting CI)"
+      "#5331 (mine, CI in_progress, no comments, 20-min check-in scheduled)"
     ]
   },
   "tickers_seen": {
