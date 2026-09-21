@@ -2368,6 +2368,35 @@ test("tradeManagerNarrativeSection: TRIM from the profit ladder itself keeps the
   assert.match(section!.body, /\*\*Desk says TRIM\*\* — next rail at \*\*\+200%\*\*\./);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-21): the same "generic label swallows the real
+// manage.ts rung" defect the SELL-side (2026-09-10) and TRIM-side (2026-09-17) fixes above were
+// built to catch has a third, previously-unfixed instance on the BUY side. manage.ts's
+// `add_eligible` rung (thesis progressing ≥50% to target AND the option not underwater) maps to
+// `SwingManageAction "ADD"`, which `recommendationFromManageAction` (adapters.ts) turns into
+// `Recommendation "BUY"` for an already-OPEN position — but `actionNarrative`'s rec-branch only
+// special-cased "TRIM" and "SELL"; every other value (including this live "BUY" case for an OPEN
+// play) fell through to the generic HOLD branch ("Hold the line ... Let the trade work while
+// structure holds"), which silently discards the desk's actual "consider adding" advisory a member
+// would otherwise never see anywhere in the brief.
+test("tradeManagerNarrativeSection: BUY (add_eligible) on an OPEN play states the add advisory, not generic HOLD", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        recommendation: "BUY",
+        manageReason: "add_eligible",
+        status: "OPEN",
+        pnlPct: 22,
+        peak: 24,
+      }),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /consider adding/i);
+  assert.doesNotMatch(section!.body, /Hold the line/i);
+});
+
 test("tradeManagerNarrativeSection: never-rolled position gets no roll-history line (Largo C6 omission)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
