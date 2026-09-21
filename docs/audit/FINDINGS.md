@@ -4,35 +4,6 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## Ask Largo swing play-brief: `play-brief.ts`'s evidence-line nearest-wall/γ-flip had the same toFixed-vs-roundFloats price-level mismatch as #5380/#5383/#5384 — completes the 6-file sweep, with a correction on two of the three files this PR touched — fix/swing-remaining-price-level-rounding — 2026-09-21
-
-> **kind:** `FINDING`
-
-| **Status** | FIXED |
-|---|---|
-
-- **What was broken (the genuinely live part):** `play-brief.ts`'s `evidenceFromContext` — server-side, runs at COMPOSE time inside `composeSwingPlayBrief`, before the API route's `roundFloats()` wrap — baked its "nearest wall"/"γ-flip" evidence-line text via raw `wall.strike.toFixed(2)`/`gex.flip.toFixed(2)`, while the same raw `wall.strike`/`gex.flip` values are also exposed as plain numbers elsewhere in the response (`envelope.levels`, `structureLadder`), which DO go through `roundFloats` (`Math.round(n*100)/100`) at the response boundary. Same floating-point mechanism as #5380/#5383/#5384's repros — `(152.035).toFixed(2) === "152.03"` while `Math.round(152.035*100)/100 === 152.04`. This is the genuine sixth-file live instance of the bug class, fixed here with `fmtPriceLevel` (`fmt-money.ts`), same shared helper as the prior three PRs.
-- **CORRECTION (filed against this PR's own original write-up, after a parallel session's PR #5385 pointed at the right answer first) — `play-brief-diff.ts` is NOT a live bug.** This PR originally also "fixed" `play-brief-diff.ts`'s `narrateSpotShift`/`narrateMarkShift`/`narrateStructuralLevelShift` the same way, claiming a live repro. That claim was wrong: those functions are called from exactly one place, `src/hooks/useSwingPlayBrief.ts`, a **client-side** React hook fed `raw = data?.envelope` — the SWR-fetched JSON the API route already sent through `roundFloats()`. By the time a snapshot's `spot`/`mark`/wall values reach this file's narration functions they are already 2dp-clean; plain `.toFixed(2)` on an already-rounded value cannot reproduce the half-cent-boundary disagreement, which requires a raw, many-decimal-digit float *before* any rounding. #5385's own write-up says so directly: *"Investigated play-brief-diff.ts ... found it does NOT reproduce: its narration runs client-side off already-roundFloats'd JSON on both sides ... left unchanged rather than overclaiming a finding that doesn't repro."* The code change in this file is harmless (defensive-only, correct if this pure function is ever fed unrounded data by a future refactor) and was left in place with its regression test relabeled as hardening, not a live-repro proof — see the corrected comment in `play-brief-diff.test.ts`.
-- **`play-brief-ladder.ts` — merged away, superseded by #5385.** #5385 (parallel session, merged just ahead of this PR) shipped the byte-identical fix to `crossDeskAgreementFor`'s disagreement note first. This PR's own branch history reconciled with that merge (conflict resolved on the shared lines, adopting #5385's version verbatim); no new change from this PR survives in that file.
-- **A display-convention note on `play-brief-diff.ts`, not a bug:** its price lines are `$`-prefixed (e.g. `"Spot drifted higher — $152.04"`), unlike every other file in this sweep which renders spot/wall/flip bare (no `$`). Pre-existing convention, left untouched — the (harmless, defensive) change only touches rounding inside the existing `$${...}` template.
-- **Blast radius:** with the correction above, the ONLY genuinely new live fix from this PR is `play-brief.ts`'s evidence line. **This still closes the 6-file sweep #5380 disclosed** (`play-brief-narrative.ts` #5380, `play-brief-narrative-coaching.ts` #5383, `play-brief-intel.ts` #5384, `play-brief-ladder.ts` #5385, `play-brief.ts` here) — `play-brief-diff.ts` turned out not to need the fix at all, for the structural reason above (client-side, always pre-rounded input).
-- **Test:** `src/lib/swing/play-brief-diff.test.ts`'s regression test kept (relabeled as defensive hardening, not live-repro evidence). RED→GREEN was originally proven via `git stash` on all three implementation files together: 1/155 failure pre-fix, 155/155 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1457/1457 — no collateral breakage.
-
-## Ask Largo swing play-brief: `manage.ts`'s `structuralStopBroken` reason string had the same toFixed-vs-roundFloats price-level mismatch — 7th instance of the class this session, outside the already-closed 6-file play-brief*.ts sweep — fix/swing-manage-structural-stop-reason-rounding — 2026-09-21
-
-> **kind:** `FINDING`
-
-| **Status** | FIXED |
-|---|---|
-
-- **What was broken:** `manage.ts`'s `structuralStopBroken()` (the swing management state machine's structural-stop gate) baked its `reason` string via raw `comparePx.toFixed(2)`/`stop.toFixed(2)` (and `price.toFixed(2)` for the ex-div-adjusted note). This reason string is **persisted verbatim every management tick** (`manage-sync.ts`'s `event_json.reason`) and, since PR #5190 (2026-09-18), is rendered member-facing: `live-plays.ts` reads it back as `manageReasonDetail`, and `play-brief-narrative.ts`'s `sellReasonClause` renders it directly into the "**Exit now** — ..." line for any `structural_stop`/`thesis_stop` EXIT recommendation. The same underlying spot / structural-stop level (a call wall, put wall, or gamma flip) is ALSO shown as a raw, `roundFloats()`'d number elsewhere in the same play-brief response (`envelope.levels`) — so the two can silently disagree for a real EXIT verdict, the same divergence shape as the six files already fixed this session (#5380/#5383/#5384/#5385/#5387), just landing in a **persisted decision-trail string** rather than a live-request narration function.
-- **Why this wasn't caught by the earlier sweep:** the disclosed 6-file sweep from #5380 was scoped to `play-brief*.ts` (the envelope-composition layer). `manage.ts` lives one layer upstream — the management STATE MACHINE, not the brief. A post-sweep sanity grep across all of `src/lib/swing/*.ts` (not just the swept files) surfaced this and a few other `toFixed(2)` call sites; tracing each one's actual runtime data flow (the exact discipline this session's own `play-brief-diff.ts` correction established is necessary — see PR #5387's comment thread) confirmed `manage.ts`'s `structuralStopBroken` reason genuinely reaches a member-visible field, unlike `play-brief-diff.ts`'s narration (client-side, always pre-rounded, correctly left alone).
-- **A prior, DIFFERENT fix already exists on this exact line, and remains correct:** PR #5190 (2026-09-18, see the test comment directly above the existing regression test in `manage.test.ts`) added `.toFixed(2)` here specifically to collapse a MANY-decimal-digit floating-point artifact (`price + cash` ex-dividend addition producing e.g. `10.790000000000001`) down to exactly 2 digits — that fix is still correct and this PR does not undo it. `fmtPriceLevel` produces the identical 2-decimal-digit SHAPE; it only changes the ROUNDING ALGORITHM at the exact half-cent boundary where `toFixed` and `Math.round(n*100)/100` can disagree by a cent. Confirmed no regression: PR #5190's own existing tests (`/underlying 10\.79 ≤ structural stop 148\.00/`, `doesNotMatch(/\d\.\d{3,}/)`) still pass unchanged.
-- **Evidence:** `(95.175).toFixed(2) === "95.17"` while `Math.round(95.175*100)/100 === 95.18` — same mechanism as every other fix this session. Reproduced through the real `evaluateSwingManagement` call path: `structuralStopLevel: 95.175` with a breaching `underlyingPrice: 94` renders `"structural stop 95.18"` post-fix vs. would have rendered `"95.17"` pre-fix.
-- **Blast radius:** fixed all 7 price-LEVEL `.toFixed(2)` call sites inside `structuralStopBroken` (the ex-div-fail-safe reason, the ex-div-adjusted note, and both the LONG/SHORT breach reasons). Left `evaluateDteMigration`'s `premiumRatio`/`progress` and the `time_stop` rung's `progress` untouched — those are dimensionless ratios (premium-vs-entry, thesis-progress-vs-target), never duplicated as a raw underlying price anywhere in the response, so this bug class does not apply to them. **New, actionable follow-up** (not started): a broader sweep of `manage-sync.ts`'s other persisted `event_json` fields, and any other `swing/*.ts` file outside the original 6, for the same pattern — the sanity grep that found this also surfaced `contract-ranker.ts`/`ex-dividend-adjustment.ts`/`serving-ingest.ts` hits not yet traced for live reachability.
-- **Fix rationale:** mechanical `n.toFixed(2)` → `fmtPriceLevel(n)` replacement, same shared helper as the six prior fixes this session.
-- **Test:** `src/lib/swing/manage.test.ts` — 1 new test (`structuralStopLevel: 95.175`, asserts the reason string shows `95.18`, not `95.17`) through the real `evaluateSwingManagement` call path. RED→GREEN proven via `git stash` on the implementation file only: 1/20 failure pre-fix (exactly the new test), 20/20 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1460/1460 — no collateral breakage, including PR #5190's own existing regression tests on this exact function.
-
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
@@ -66,6 +37,109 @@ Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so
 PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Ask Largo swing play-brief: 9 more sections sampled a fresh `Date.now()` instead of `ctx.readMs` despite `ctx` being in scope — #5351-class readMs-anchor bug, second sweep — fix/swing-playbrief-readms-anchor-sweep — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** PR #5351 (2026-09-19-ish) established that `composeSwingPlayBrief` stamps ONE canonical `readMs` onto `ctx` before any section runs, specifically so every staleness check in a brief (Vector snapshot age, GEX matrix age, Meridian catalyst age, option-mark age) agrees on the same "now" — because `compose` does real sequential I/O between sections, two bare `Date.now()` samples taken at different points in that same request can land on opposite sides of a staleness cutoff and disagree about the identical underlying field. #5351 fixed exactly 2 of the ~20 call sites this class applies to (`watchForSection`, `confluenceCoaching`), documented in `SwingPlayBriefContext.readMs`'s own doc comment as an open follow-up covering "the other ~18." A follow-up grep across `play-brief*.ts` for `Date.now()` found **9 more genuinely reachable instances** where the function already takes `ctx: SwingPlayBriefContext` (required or optional) as a parameter — so `ctx.readMs` was always in scope — but the function body still called `Date.now()` directly instead of consulting it:
+  - `src/lib/swing/play-brief-intel.ts`: `chartTechnicalsSection` (optional `ctx`), `preferredGexWalls`, `chartLevelsSection`, `meridianCatalystSection`, `gexPostureSection` (all required `ctx`).
+  - `src/lib/swing/play-brief-ladder.ts`: `buildStructureLadder` (Structure Ladder widget).
+  - `src/lib/swing/play-brief-narrative.ts`: `collectFocalLevels`, `resolveBreakInvalidation`, and **`tradeManagerNarrativeSection`** — the brief's main narrative section, the highest-visibility site in this batch.
+- **Why this matters in practice:** any pair of these sections (or one of these against an already-fixed sibling like `watchForSection`) reasoning about the same GEX matrix, Vector snapshot, or Meridian catalyst read can render a different staleness verdict for the identical field within one response — e.g. "GEX posture" ("Last snapshot ... may lag spot") disagreeing with "Trade manager read" (rendering the same matrix's dealer posture as live) purely because the two sections' internal `Date.now()` calls straddled the `GEX_MATRIX_STALE_MS`/`VECTOR_STALE_MS`/`MERIDIAN_CATALYST_STALE_MS` cutoff between them. This is the exact "same fact, two answers within one envelope" defect class #5351 fixed for a different pair of sections, now closed for the remaining structurally-reachable ones.
+- **Not fixed (correctly, not an oversight):** `vectorDeskSection` and `wallDynamicsSection` in `play-brief-intel.ts` also sample a bare `Date.now()`, but neither takes `ctx` — they're called with only `(vec, sessionDate, bucket)` at the real call site, so `ctx.readMs` is not in scope without a signature change (adding an optional `ctx` param, the same pattern `chartTechnicalsSection` already uses). Left as a genuine, narrower follow-up rather than widening this PR's blast radius; `play-brief.ts:1030`'s own `Date.now()` is the correct origin point (where `readMs` is created and stamped onto `ctx` once) and was correctly left untouched.
+- **Fix rationale:** mechanical `const readMs = Date.now();` → `const readMs = ctx.readMs ?? Date.now();` (or `ctx?.readMs ?? Date.now()` for `chartTechnicalsSection`'s optional `ctx`) at each of the 9 sites — same minimal, non-behavior-changing-when-anchored pattern #5351 used, so an un-anchored caller (a test constructing `ctx` without `readMs`, or any call path outside `composeSwingPlayBrief`) still falls back to the real wall clock exactly as before.
+- **Evidence / Test:** added 3 new regression tests, each proving the section reads `ctx.readMs` rather than the real wall clock:
+  - `play-brief-intel.test.ts`: `meridianCatalystSection` and `gexPostureSection` — `ctx.readMs` anchored 1 year in the future while the underlying `as_of`/`asof` field is fresh vs. the *real* wall clock (so a real bug reads it as fresh; the fix reads it as stale under `ctx.readMs`).
+  - `play-brief-narrative.test.ts`: `tradeManagerNarrativeSection` — same fixed-clock technique `counterThesisLine`'s own #5351-follow-up test already established (no global `Date.now()` mocking): `ctx.readMs` and `vec.asOf` pinned to the same historical instant (genuinely fresh, 0ms age) while the suite's real run-time clock is weeks later.
+  RED→GREEN proven via `git stash` on the 3 implementation files only (tests kept): pre-fix 2/185 fail in `play-brief-intel.test.ts` (exactly the 2 new tests) and 1/103 fail in `play-brief-narrative.test.ts` (exactly the 1 new test); post-fix both suites fully green. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1463/1463 — no collateral breakage.
+- **Follow-up, not started:** `vectorDeskSection`/`wallDynamicsSection` (need a signature change to accept `ctx`), and the disclosed remainder of the original "~18" count this PR does not fully close — a future sweep should re-grep `play-brief*.ts` for `Date.now()` rather than trusting either this file's count or #5351's as exhaustive.
+
+## Ask Largo swing play-brief: `catalystsSection` sampled a fresh `Date.now()` for both its freshness-bearing fields instead of `ctx.readMs` — #5351/#5392-class readMs-anchor bug, not among the 9 sites #5392 fixed — fix/swing-catalystssection-readms-anchor — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `catalystsSection(eco: EcosystemContext | null)` in `src/lib/swing/play-brief-intel.ts`
+  renders earnings date, short-interest fundamentals, news headlines, and peers for a swing play
+  brief. Two of those reads are freshness-bearing (`arsenal.fundamentals.as_of`,
+  `arsenal.news.as_of`), and both staleness checks sampled a bare `Date.now()` directly
+  (`fundamentalsAncient(arsenal.fundamentals.as_of, Date.now())` and
+  `newsCatalystStale(arsenal.news.as_of, Date.now())` / `newsCatalystAgeMs(..., Date.now())`)
+  instead of the request-wide `ctx.readMs` anchor `composeSwingPlayBrief` stamps once before any
+  section runs (per #5351). `catalystsSection` did not even take `ctx` as a parameter, unlike the
+  9 sibling sections PR #5392 fixed the same day (`chartTechnicalsSection`, `preferredGexWalls`,
+  `chartLevelsSection`, `meridianCatalystSection`, `gexPostureSection`, `buildStructureLadder`,
+  `collectFocalLevels`, `resolveBreakInvalidation`, `tradeManagerNarrativeSection`) — confirmed
+  against #5392's own merged diff, which never touches this function.
+- **Why this matters in practice:** a real request runs sections sequentially with real I/O
+  between them, so `catalystsSection`'s own two internal `Date.now()` samples can each land on a
+  different real instant, and can disagree with a sibling section (e.g. `meridianCatalystSection`,
+  now anchored via #5392) about whether the same underlying arsenal snapshot should be treated as
+  stale — the exact "same fact, two answers within one envelope" defect class #5351/#5392 already
+  fixed elsewhere in this file, left open here because this function was outside that sweep's grep
+  scope (it read `Date.now()` with no `ctx` param in sight at all, so a naive "does this call
+  `ctx.readMs`" grep would miss it just as easily as a naive "does this call `Date.now()`" grep
+  would flag every other correctly-anchored call site).
+- **Fix rationale:** thread an optional `ctx?: SwingPlayBriefContext | null` second parameter
+  (same pattern `chartTechnicalsSection` and `expectedMoveCoaching` already use for backward
+  compatibility — existing callers/tests that construct `catalystsSection(ecosystem)` alone are
+  unaffected, falling back to a fresh `Date.now()` exactly as before), derive
+  `const readMs = ctx?.readMs ?? Date.now();` once at the top of the function, and use `readMs` at
+  both internal call sites instead of resampling the clock. Updated the real production call site
+  in `buildIntelSections` (`catalystsSection(ecosystem)` → `catalystsSection(ecosystem, ctx)`) where
+  `ctx` was already in scope.
+- **Evidence / Test:** the two regression tests already existed in `play-brief-intel.test.ts` —
+  written by a prior cycle alongside #5392 to document this exact gap before it was fixed
+  (`catalystsSection: uses ctx.readMs as the staleness anchor for fundamentals, not the real wall
+  clock` and the news-headlines sibling), using the same fixed-future-anchor technique as #5392's
+  own tests: `ctx.readMs` pinned one year in the future while the underlying `as_of` is fresh vs.
+  the *real* wall clock, so a pre-fix run reads it as fresh (wrong) and a post-fix run reads it as
+  ancient/stale under the anchor (correct). RED→GREEN proven via `git stash` on the implementation
+  file only (test file kept): pre-fix `2/187 fail` in `play-brief-intel.test.ts` (exactly the 2
+  target tests); post-fix `187/187` pass. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts`
+  suite: 1465/1465 — no collateral breakage.
+- **Blast radius:** single function, single call site (`buildIntelSections`). No other caller of
+  `catalystsSection` exists in the codebase.
+- **Follow-up, not started:** `vectorDeskSection`/`wallDynamicsSection` (flagged as a genuine open
+  follow-up by #5392's own finding — need a signature change to accept `ctx` since neither
+  currently takes any context-shaped parameter) remain unfixed; a future sweep should re-grep
+  `play-brief*.ts` for `Date.now()` rather than trusting any prior count (including this one) as
+  exhaustive.
+
+## Ask Largo swing play-brief: `play-brief.ts`'s evidence-line nearest-wall/γ-flip had the same toFixed-vs-roundFloats price-level mismatch as #5380/#5383/#5384 — completes the 6-file sweep, with a correction on two of the three files this PR touched — fix/swing-remaining-price-level-rounding — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken (the genuinely live part):** `play-brief.ts`'s `evidenceFromContext` — server-side, runs at COMPOSE time inside `composeSwingPlayBrief`, before the API route's `roundFloats()` wrap — baked its "nearest wall"/"γ-flip" evidence-line text via raw `wall.strike.toFixed(2)`/`gex.flip.toFixed(2)`, while the same raw `wall.strike`/`gex.flip` values are also exposed as plain numbers elsewhere in the response (`envelope.levels`, `structureLadder`), which DO go through `roundFloats` (`Math.round(n*100)/100`) at the response boundary. Same floating-point mechanism as #5380/#5383/#5384's repros — `(152.035).toFixed(2) === "152.03"` while `Math.round(152.035*100)/100 === 152.04`. This is the genuine sixth-file live instance of the bug class, fixed here with `fmtPriceLevel` (`fmt-money.ts`), same shared helper as the prior three PRs.
+- **CORRECTION (filed against this PR's own original write-up, after a parallel session's PR #5385 pointed at the right answer first) — `play-brief-diff.ts` is NOT a live bug.** This PR originally also "fixed" `play-brief-diff.ts`'s `narrateSpotShift`/`narrateMarkShift`/`narrateStructuralLevelShift` the same way, claiming a live repro. That claim was wrong: those functions are called from exactly one place, `src/hooks/useSwingPlayBrief.ts`, a **client-side** React hook fed `raw = data?.envelope` — the SWR-fetched JSON the API route already sent through `roundFloats()`. By the time a snapshot's `spot`/`mark`/wall values reach this file's narration functions they are already 2dp-clean; plain `.toFixed(2)` on an already-rounded value cannot reproduce the half-cent-boundary disagreement, which requires a raw, many-decimal-digit float *before* any rounding. #5385's own write-up says so directly: *"Investigated play-brief-diff.ts ... found it does NOT reproduce: its narration runs client-side off already-roundFloats'd JSON on both sides ... left unchanged rather than overclaiming a finding that doesn't repro."* The code change in this file is harmless (defensive-only, correct if this pure function is ever fed unrounded data by a future refactor) and was left in place with its regression test relabeled as hardening, not a live-repro proof — see the corrected comment in `play-brief-diff.test.ts`.
+- **`play-brief-ladder.ts` — merged away, superseded by #5385.** #5385 (parallel session, merged just ahead of this PR) shipped the byte-identical fix to `crossDeskAgreementFor`'s disagreement note first. This PR's own branch history reconciled with that merge (conflict resolved on the shared lines, adopting #5385's version verbatim); no new change from this PR survives in that file.
+- **A display-convention note on `play-brief-diff.ts`, not a bug:** its price lines are `$`-prefixed (e.g. `"Spot drifted higher — $152.04"`), unlike every other file in this sweep which renders spot/wall/flip bare (no `$`). Pre-existing convention, left untouched — the (harmless, defensive) change only touches rounding inside the existing `$${...}` template.
+- **Blast radius:** with the correction above, the ONLY genuinely new live fix from this PR is `play-brief.ts`'s evidence line. **This still closes the 6-file sweep #5380 disclosed** (`play-brief-narrative.ts` #5380, `play-brief-narrative-coaching.ts` #5383, `play-brief-intel.ts` #5384, `play-brief-ladder.ts` #5385, `play-brief.ts` here) — `play-brief-diff.ts` turned out not to need the fix at all, for the structural reason above (client-side, always pre-rounded input).
+- **Test:** `src/lib/swing/play-brief-diff.test.ts`'s regression test kept (relabeled as defensive hardening, not live-repro evidence). RED→GREEN was originally proven via `git stash` on all three implementation files together: 1/155 failure pre-fix, 155/155 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1457/1457 — no collateral breakage.
+
+## Ask Largo swing play-brief: `manage.ts`'s `structuralStopBroken` reason string had the same toFixed-vs-roundFloats price-level mismatch — 7th instance of the class this session, outside the already-closed 6-file play-brief*.ts sweep — fix/swing-manage-structural-stop-reason-rounding — 2026-09-21
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `manage.ts`'s `structuralStopBroken()` (the swing management state machine's structural-stop gate) baked its `reason` string via raw `comparePx.toFixed(2)`/`stop.toFixed(2)` (and `price.toFixed(2)` for the ex-div-adjusted note). This reason string is **persisted verbatim every management tick** (`manage-sync.ts`'s `event_json.reason`) and, since PR #5190 (2026-09-18), is rendered member-facing: `live-plays.ts` reads it back as `manageReasonDetail`, and `play-brief-narrative.ts`'s `sellReasonClause` renders it directly into the "**Exit now** — ..." line for any `structural_stop`/`thesis_stop` EXIT recommendation. The same underlying spot / structural-stop level (a call wall, put wall, or gamma flip) is ALSO shown as a raw, `roundFloats()`'d number elsewhere in the same play-brief response (`envelope.levels`) — so the two can silently disagree for a real EXIT verdict, the same divergence shape as the six files already fixed this session (#5380/#5383/#5384/#5385/#5387), just landing in a **persisted decision-trail string** rather than a live-request narration function.
+- **Why this wasn't caught by the earlier sweep:** the disclosed 6-file sweep from #5380 was scoped to `play-brief*.ts` (the envelope-composition layer). `manage.ts` lives one layer upstream — the management STATE MACHINE, not the brief. A post-sweep sanity grep across all of `src/lib/swing/*.ts` (not just the swept files) surfaced this and a few other `toFixed(2)` call sites; tracing each one's actual runtime data flow (the exact discipline this session's own `play-brief-diff.ts` correction established is necessary — see PR #5387's comment thread) confirmed `manage.ts`'s `structuralStopBroken` reason genuinely reaches a member-visible field, unlike `play-brief-diff.ts`'s narration (client-side, always pre-rounded, correctly left alone).
+- **A prior, DIFFERENT fix already exists on this exact line, and remains correct:** PR #5190 (2026-09-18, see the test comment directly above the existing regression test in `manage.test.ts`) added `.toFixed(2)` here specifically to collapse a MANY-decimal-digit floating-point artifact (`price + cash` ex-dividend addition producing e.g. `10.790000000000001`) down to exactly 2 digits — that fix is still correct and this PR does not undo it. `fmtPriceLevel` produces the identical 2-decimal-digit SHAPE; it only changes the ROUNDING ALGORITHM at the exact half-cent boundary where `toFixed` and `Math.round(n*100)/100` can disagree by a cent. Confirmed no regression: PR #5190's own existing tests (`/underlying 10\.79 ≤ structural stop 148\.00/`, `doesNotMatch(/\d\.\d{3,}/)`) still pass unchanged.
+- **Evidence:** `(95.175).toFixed(2) === "95.17"` while `Math.round(95.175*100)/100 === 95.18` — same mechanism as every other fix this session. Reproduced through the real `evaluateSwingManagement` call path: `structuralStopLevel: 95.175` with a breaching `underlyingPrice: 94` renders `"structural stop 95.18"` post-fix vs. would have rendered `"95.17"` pre-fix.
+- **Blast radius:** fixed all 7 price-LEVEL `.toFixed(2)` call sites inside `structuralStopBroken` (the ex-div-fail-safe reason, the ex-div-adjusted note, and both the LONG/SHORT breach reasons). Left `evaluateDteMigration`'s `premiumRatio`/`progress` and the `time_stop` rung's `progress` untouched — those are dimensionless ratios (premium-vs-entry, thesis-progress-vs-target), never duplicated as a raw underlying price anywhere in the response, so this bug class does not apply to them. **New, actionable follow-up** (not started): a broader sweep of `manage-sync.ts`'s other persisted `event_json` fields, and any other `swing/*.ts` file outside the original 6, for the same pattern — the sanity grep that found this also surfaced `contract-ranker.ts`/`ex-dividend-adjustment.ts`/`serving-ingest.ts` hits not yet traced for live reachability.
+- **Fix rationale:** mechanical `n.toFixed(2)` → `fmtPriceLevel(n)` replacement, same shared helper as the six prior fixes this session.
+- **Test:** `src/lib/swing/manage.test.ts` — 1 new test (`structuralStopLevel: 95.175`, asserts the reason string shows `95.18`, not `95.17`) through the real `evaluateSwingManagement` call path. RED→GREEN proven via `git stash` on the implementation file only: 1/20 failure pre-fix (exactly the new test), 20/20 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1460/1460 — no collateral breakage, including PR #5190's own existing regression tests on this exact function.
 
 ## Ask Largo swing play-brief: `play-brief.ts`'s evidence-line nearest-wall/γ-flip had the same toFixed-vs-roundFloats price-level mismatch as #5380/#5383/#5384 — completes the 6-file sweep, with a correction on two of the three files this PR touched — fix/swing-remaining-price-level-rounding — 2026-09-21
 
