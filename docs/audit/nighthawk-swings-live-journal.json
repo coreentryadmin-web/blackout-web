@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T23:38:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PRs #5394/#5395 (parallel session's readMs-anchor closure) merging + #5397 (folding those findings). Observed PR #5396 (Legacy-lane, deterministic-edition.ts contract-cost preference, different session_01LdCi2xwgMrmNhwvN7A8gaE) -- explicitly out of scope per my own WHO-YOU-ARE lane boundary (Legacy is a separate desk), not touched. IMPORTANT CORRECTION to the standing mandate's own boilerplate: this cycle's v3 brief text still names '#4700 Banger-lane blindspot' in the book/portfolio-overlap checklist item as a KNOWN, presumably still-open gap. Investigated per the mandate's own 'verify against main, never trust a stale list' discipline -- it is STALE. #4700 (2026-09-10, docs-only design proposal, correctly NOT a fix at the time) described bookContextSection's checkPortfolioOverlap as functionally dead because loadOpenBook() only saw the 4 real swing-ledger rows out of 94 displayed, never the ~90 Banger-merged rows. Traced git history on play-brief-context.ts: PR #4833 ('merge banger_positions into Ask Largo book-context overlap check') already fixed this, and PR #5167 further refined it (bangerId field to disambiguate multiple Banger siblings on the same ticker, positionId collision-avoidance since banger_positions and swing_positions are separate DB sequences). Read the current loadOpenBook() source directly: confirmed Banger positions ARE merged into ctx.openBook today, with careful, well-commented handling of the exact positionId-collision risk #4700 implicitly raised. Cross-checked against AAPL's live HOLD brief (the one open native position): its 'Book context' section correctly does NOT render, verified as CORRECT (not the #4700 bug) -- checkPortfolioOverlap groups by theme-cluster (theme-cluster.ts's resolveTheme/sameThesis), and AAPL shares no theme+direction cluster with any Banger-merged position (all crypto/mining leverage tickers) or with the two other candidate SECTOR_ROTATION names (AMD/META, neither actually committed capital -- AMD gate-blocked, both distinct tickers anyway). Zero overlap is the honest, correct read for the current book, not an absence bug. No new finding filed -- this is a documentation-staleness correction for future cycles, not a code defect. Future cycles reading the v3 brief's '#4700 Banger-lane blindspot' line should treat it as HISTORICAL (fixed by #4833/#5167), not as live open work, unless a fresh grep of checkPortfolioOverlap/loadOpenBook shows regression.",
+  "last_updated": "2026-09-21T23:50:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5396's merge (Legacy-lane, not mine) + its own journal entry. Observed parallel-session PR #5398: manage.ts's add_eligible rung (ADD->BUY) fell through actionNarrative's generic HOLD branch instead of narrating 'Consider adding' -- and this is EXACTLY the AAPL position I've been tracking all session (manageReason: 'add_eligible', manageReasonDetail: 'position qualifies to add (advisory)', observed but not flagged as a bug in an earlier cycle's play-brief read). Did an independent adversarial review of the fix before it merged (collaboration-protocol point 10, not just trusting the PR description): confirmed recommendationFromManageAction (adapters.ts:186-187) maps ADD->BUY exactly as claimed; confirmed the new `bucket === \"open\"` gate, while logically redundant at that point in actionNarrative (watch/closed already returned earlier in the function, so bucket can only be 'open' there), is harmless defensive code, not a bug. Fix logic checks out clean. CI still in_progress at last check -- not mine, did not merge or push, letting CARVE-OUT handle it. Re-verified swing board state unchanged since last cycle (still exactly 1 live position, AAPL HOLD, positionId 40). Once #5398 merges, next cycle should re-pull AAPL's play-brief to confirm the 'Consider adding' text renders live in production for this exact real position -- a rare case where I can validate a fix against the SAME live example the fixing session used to justify it. No bug found/filed this cycle -- productive verification pass, not idle observation.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,8 +119,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T23:38:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T23:50:00Z",
+    "swing_prs": [
+      {
+        "number": 5398,
+        "title": "fix(swing): narrate the add_eligible manage rung instead of generic HOLD",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI in_progress -- independently reviewed the fix logic, checks out. Re-verify against AAPL's live play-brief once merged."
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
