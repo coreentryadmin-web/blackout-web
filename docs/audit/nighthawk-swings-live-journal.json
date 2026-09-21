@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T12:33:05Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5354 (routine findings-fold for #5353, no code) merging, no divergence. Zero open swing PRs. Checked #4076 -- still no Cursor engagement across the whole session. **Chased down a plausible-sounding suspicion about the #4700 book-overlap theme mapping**: WOLF (Wolfspeed, a semiconductor company) appeared in the same MANAGING ticker list alongside the large 'crypto-equity' cluster (BKKT/ABTC/GEMI/etc) all session, raising the question of whether it was genuinely misclassified into that theme by theme-cluster.ts's resolveTheme/sectorFor. Verified via source (WOLF absent from portfolio/sector-map.ts, so resolveTheme falls through to WOLF's own isolated own-cluster sentinel, never the shared crypto-equity theme) AND live data (WOLF's own play-brief has NO 'Book context' section at all -- checkPortfolioOverlap correctly found zero theme/direction overlap, confirming it's genuinely alone in its cluster). The suspicion was unfounded -- WOLF being in the same MANAGING list as crypto names doesn't mean same THEME cluster (the list mixes many different themes); good to verify and rule out rather than leave unconfirmed or wrongly escalate. No new bugs found, no new PR or #4076 comment needed this cycle.",
+  "last_updated": "2026-09-21T12:48:02Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto routine heartbeat commits, no divergence. Zero open swing PRs. **Fresh Ask Largo audit on APLD** (MANAGING, positionId 1202, BANGER-origin, first check this session): stop $0.17/entry $0.43 (~-60.5%), target $0.86 (+100% of entry) -- matches the consistent mechanical rule seen across every banger position this session. No Book context section (no theme/direction overlap tripped -- plausible given APLD's datacenter/HPC business may sector-map differently from the crypto-equity cluster; not investigated further, no reason to suspect a bug given the WOLF check two cycles ago already validated the same mechanism). Honest absence-handling throughout (mark unknown, HELIX stale, Vector spot not wired -- all correctly caveated, nothing fabricated). Market still pre-open (~08:47 ET) so mark/spot data staying unknown/stale is expected, not a gap. No new bugs found, no new PR or #4076 comment needed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T12:33:05Z",
+    "as_of": "2026-09-21T12:48:02Z",
     "swing_prs": []
   },
   "tickers_seen": {
