@@ -10,6 +10,8 @@ import {
   fundamentalsAncient,
   gexMatrixAgeMs,
   gexMatrixStale,
+  meridianCatalystAgeMs,
+  meridianCatalystStale,
   optionMarkGenuinelyUnknown,
   resolveGammaPosture,
   vectorAgeStale,
@@ -772,10 +774,34 @@ function printAlreadyLandedThresholdMs(ymd: string, reportTime: string | null): 
   return null;
 }
 
+/**
+ * BUG FOUND (Ask Largo standing mandate, 2026-09-21, fresh play-brief deep-dive against
+ * LARGO-PRODUCT-CONTRACT.md's freshness point): `meridianCatalystSection` (play-brief-intel.ts,
+ * the bullet-dump display section) reads `meridianCatalystStale(ctx.meridian, readMs)` and
+ * prefixes a "Last snapshot (~Nm old) — catalyst calendar may lag" caveat whenever the Meridian
+ * timeline read is stale — `withServerCache`'s stale-while-revalidate path can legitimately keep
+ * serving the same stored payload (and its true, un-bumped `as_of`) for up to 10 minutes
+ * (server-cache.ts's `MAX_STALE_AGE_MS`) on a degraded Benzinga upstream. This function reads the
+ * SAME `ctx.meridian.items[0]` but never checked staleness at all — it renders a confident,
+ * actionable trade instruction ("Vol can expand — tighten or reduce size") off a Meridian catalyst
+ * that could be minutes stale with zero disclosure, while the bullet-dump section a member might
+ * not even read down to already discloses the exact same risk for the exact same underlying read.
+ * This is the identical split the news-catalyst fix (#5166, documented in play-brief-absence.ts's
+ * own comment above `newsCatalystStale`'s wiring) already named as a bug pattern for a sibling
+ * freshness signal — narrative prose and the absence/chip surface disagreeing about whether a read
+ * is fresh. Fixed by threading the same `meridianCatalystStale`/`ageSecondsLabel` pair this file's
+ * sibling coaching functions (magnetCoaching, expectedMoveCoaching, confluenceCoaching,
+ * wallIntegrityCoaching, vectorPlayCoaching, crossDeskCoaching) already use for Vector staleness,
+ * and the SAME ctx.readMs anchor per the #5351/#5392/#5393/#5394 readMs-anchor fix class — sampling
+ * a fresh Date.now() here instead would let this bullet's own staleness verdict disagree with
+ * meridianCatalystSection's for the identical ctx.meridian snapshot.
+ */
 /** Earnings + Meridian catalyst window. */
 export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
   const earnings = ctx.ecosystem?.arsenal?.earnings;
   const meridian = ctx.meridian?.items?.[0];
+  const meridianReadMs = ctx.readMs ?? Date.now();
+  const meridianStale = meridianCatalystStale(ctx.meridian, meridianReadMs);
 
   if (earnings?.days_until != null && earnings.days_until <= 14) {
     const timing = earnings.report_time ? ` (${earnings.report_time})` : "";
@@ -835,7 +861,15 @@ export function catalystCoaching(ctx: SwingPlayBriefContext): string | null {
     const when =
       meridian.days_until <= 0 ? "**today**" : meridian.days_until === 1 ? "**tomorrow**" : `in **${meridian.days_until}d**`;
     const em = meridian.expected_move_pct != null ? ` · implied **${meridian.expected_move_pct.toFixed(1)}%**` : "";
-    return `**Catalyst ${when}** — **${meridian.title}** (${meridian.kind}, ${meridian.impact})${em}. Vol can expand — tighten or reduce size.`;
+    const staleLead = meridianStale
+      ? `**Last snapshot**${
+          (() => {
+            const ageLabel = ageSecondsLabel(meridianCatalystAgeMs(ctx.meridian, meridianReadMs));
+            return ageLabel != null ? ` (~${ageLabel} old)` : "";
+          })()
+        } — catalyst calendar may lag; confirm the date/timing before sizing off it. `
+      : "";
+    return `${staleLead}**Catalyst ${when}** — **${meridian.title}** (${meridian.kind}, ${meridian.impact})${em}. Vol can expand — tighten or reduce size.`;
   }
 
   return null;

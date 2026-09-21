@@ -1209,6 +1209,67 @@ test("catalystCoaching: earnings within 14d", () => {
   assert.match(line!, /Earnings in 5d/i);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-21): meridianCatalystSection (play-brief-intel.ts)
+// discloses staleness on the exact same ctx.meridian read via a "Last snapshot ... may lag" prefix,
+// but this narrative bullet rendered the identical Meridian catalyst with a confident, actionable
+// instruction ("Vol can expand — tighten or reduce size") with zero staleness disclosure — the same
+// split the #5166 news-catalyst fix already named as a bug pattern for a sibling freshness signal.
+function meridianItem(overrides: Partial<{ days_until: number; title: string; kind: string; impact: string; expected_move_pct: number | null }> = {}) {
+  return {
+    id: "fda:NRG:2026-09-08",
+    kind: "fda",
+    title: "FDA decision",
+    subtitle: null,
+    date: "2026-09-08",
+    time: null,
+    impact: "high",
+    days_until: 1,
+    ticker: "NRG",
+    date_status: null,
+    importance: 4,
+    is_printed: null,
+    expected_move_pct: null,
+    ...overrides,
+  };
+}
+
+test("catalystCoaching: FRESH Meridian catalyst renders the instruction with no stale-lead", () => {
+  const readMs = Date.parse("2026-09-07T12:00:00.000Z");
+  const line = catalystCoaching(
+    ctx({
+      readMs,
+      meridian: {
+        as_of: new Date(readMs - 5_000).toISOString(), // 5s old — well under the stale bound
+        items: [meridianItem()],
+        total_matched: 1,
+      } as SwingPlayBriefContext["meridian"],
+    }),
+  );
+  assert.match(line!, /Catalyst \*\*tomorrow\*\*/i);
+  assert.match(line!, /FDA decision/i);
+  assert.doesNotMatch(line!, /Last snapshot/i);
+});
+
+test("catalystCoaching: STALE Meridian catalyst (as_of past the 120s bound) discloses the lag instead of asserting a fresh read", () => {
+  const readMs = Date.parse("2026-09-07T12:00:00.000Z");
+  const line = catalystCoaching(
+    ctx({
+      readMs,
+      meridian: {
+        as_of: new Date(readMs - 5 * 60_000).toISOString(), // 5 minutes old — over MERIDIAN_CATALYST_STALE_MS
+        items: [meridianItem()],
+        total_matched: 1,
+      } as SwingPlayBriefContext["meridian"],
+    }),
+  );
+  assert.match(line!, /Last snapshot/i);
+  assert.match(line!, /may lag/i);
+  // The instruction still renders (the underlying event may well still be genuinely upcoming) —
+  // this is a disclosure fix, not a suppression fix.
+  assert.match(line!, /Catalyst \*\*tomorrow\*\*/i);
+  assert.match(line!, /FDA decision/i);
+});
+
 // Adversarial follow-up to #4764's sibling-position disclosure (Ask Largo standing mandate,
 // 2026-09-11): this brief's own contract can expire BEFORE the earnings print even when the
 // ticker-level "earnings within 14d" fact fires, and a concurrent same-ticker sibling can carry a
