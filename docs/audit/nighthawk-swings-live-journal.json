@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T15:17:34Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto #5364 (merged, confirmed via log -- my bonus finding on that thread has no reply yet, expected, it merged fast). No new open swing PRs, no new #4076 activity. WATCH bucket still empty. Fresh Ask Largo audit on GEMI #1219 (current lane leader, score 74, 'Lane leader -- #1 of 60 on OPEN' -- the ticker AAPL's own brief pointed to two cycles ago) -- clean, no bugs. Math hand-verified: entry $0.33/mark $0.25 -> -24.2% P&L correct, peak +6.1%/trough -31.8% consistent with the round-tripped-past-breakeven narrative, stop $0.13 (-60% backstop) and target $0.66 (+100% trim) both correctly derived from entry. Noted 'Book overlap: 33 same-direction positions in theme crypto-equity' -- a real, large concentration number, but consistent with the already-documented 97%-banger-origin book composition (a whole-market banger scanner naturally clustering during a crypto rally, not a portfolio-cap malfunction) -- not escalating as a new finding, no evidence this differs from the engine's known/intentional design. Nothing new found this cycle -- clean.",
+  "last_updated": "2026-09-21T15:32:34Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5365 (mechanical findings-fold for #5362/#5363/#5364, docs-only) and another lane's TSLA journal entry (not swing-lane, no action needed). No new open swing PRs, no new #4076 activity. Covered a mission pillar I hadn't touched yet this session: CLOSED-play retrace. CRWD #39 (the position I audited while still OPEN earlier today) closed this morning at RTH open (09:30:28 ET, STOPPED, -58.3%) -- pulled its closed brief and cross-checked against my own earlier open-state numbers: exit P&L -58.3% (~$5.30 exit mark) lands just above the -60% premium stop rail ($5.08) I'd already verified from entry $12.70, consistent with a normal favorable-slippage stop fill, not a gap-through. Peak +39.2% matches exactly what I'd computed from entry/peak-premium while it was still open. 'Round-tripped past breakeven' framing correct (was +39.2% at peak, closed -58.3%, genuinely crossed breakeven on the way down). Ticker track record correctly excludes the position's own just-closed outcome (frames as history 'before this play', not self-referential) -- an honest, deliberate design choice, not a staleness bug. AAPL #38 (a second, older closed position, 2026-09-18, -33.19%) noted but not deep-audited this cycle -- budget spent on CRWD's full retrace instead. Nothing new found -- clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,7 +117,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T15:17:34Z",
+    "as_of": "2026-09-21T15:32:34Z",
     "swing_prs": []
   },
   "tickers_seen": {
