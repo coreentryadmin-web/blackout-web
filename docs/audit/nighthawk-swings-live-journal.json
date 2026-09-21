@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T14:18:33Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded cleanly onto #5360 (merged, confirmed via log) -- the full #5351/#5353/#5355/#5356/#5359/#5360 Date.now()->ctx.readMs sweep across play-brief-narrative-coaching.ts now appears complete, six PRs across multiple sessions. No open swing PRs, no new #4076 activity since the pickLanePlayForBrief bug report. WATCH bucket currently empty (no candidates this instant -- consistent with documented cadence-phase gaps, not a bug). Fresh Ask Largo audit on AAPL #40 (the brand-new position from two cycles ago, first real read since commit at 09:30:38 ET): all math hand-verified correct -- P&L +17.2% (entry $5.23/mark $6.13), exec P&L +11.0% off the bid ($5.80), stop $2.09 (-60% backstop) and target $10.45 (+100% trim rail) both correctly derived from entry, counter-thesis correctly shows 'corroborated across 2 independent reads' (call wall overhead + dealer long-gamma, both real). Honest absence-handling throughout (Vector 500s stale correctly caveated in both the freshness chip and narrative, Night Hawk Legacy/wall-history correctly listed unavailable). One minor, NOT escalation-worthy cosmetic observation: the lane-rank line reads 'Below lane median -- #62/62 (score 0, -63 vs median)' -- a freshly-committed row with score=0 because its feature vector/pillars haven't populated yet (entryPresentPillars:null), technically honest (not fabricated) but could read as alarming to a member seeing a brand-new position immediately flagged dead-last on the board. Single instance, not 3x-corroborated -- logging as a watch item to see if it self-resolves on the position's next scan-cadence tick (same 'score 0' should populate a real value once pillars compute), not a live escalation. Nothing else found this cycle -- clean.",
-  "checked_this_cycle_no_bug_found": true,
+  "last_updated": "2026-09-21T14:33:52Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5361 (mechanical findings-fold for #5356/#5359/#5360, docs-only). Found new sibling PR #5362 (same parallel session), a genuinely different bug class from the readMs sweep -- Live-read giveback-bullet duplication. degradedReadLine's givebackBit fired on capturePct<80 while actionNarrative's own giveback line fires on capturePct<75 -- since <80 fully contains <75, ANY capturePct below 75 duplicated the same 'gave back X% of peak' fact twice in the same Trade manager read section (different opening prose so the seen/first-48-char de-dup never caught it). A prior (2026-09-12) fix to this exact function had explicitly reasoned through this branch and wrongly concluded it was safe -- the PR corrects that stale reasoning with a live repro. Independently re-verified: **re-fetched the live COIN #1190 brief against PRODUCTION myself before even looking at the diff** -- confirmed the duplication is real and still live right now ('Gave back 34% of peak' / 'gave back 34% from peak', two bullets, same fact). Then full worktree verification: diff matches write-up exactly, GREEN baseline 101/101, targeted revert of just the condition confirmed RED (exactly the 1 new test failed), restored GREEN, tsc clean, full swing suite 1440/1440 clean. Posted confirming comment (5762213201) -- CARVE-OUT auto-merge should take it from here. Checked #4076: still no new activity since the pickLanePlayForBrief report.",
+  "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -121,8 +121,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T14:18:33Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T14:33:52Z",
+    "swing_prs": [
+      {
+        "number": 5362,
+        "title": "fix(swing): stop Live-read giveback bullet duplicating actionNarrative's own line",
+        "status": "open, non-draft, sibling session, independently verified (live-repro re-confirmed against production + RED->GREEN worktree, comment 5762213201), CI pending / CARVE-OUT auto-merge expected"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
