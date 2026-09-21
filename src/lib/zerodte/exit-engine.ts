@@ -287,6 +287,19 @@ export function protectiveFloorMark(entryPremium: number, floorPnlPct: number): 
  * and called it "not honored", which routed `pnl_pct` in `buildExitContext` down
  * the RAW-observed-mark branch and persisted a red exit for a trade the engine's
  * own `exit_detail` said "cannot finish red".)
+ *
+ * `"trim_scale_dead_zone_floor"` (trimScaleFloorPct's trend dead-zone tier, added
+ * 2026-09-12) is ALSO a protective floor exit — same "cannot finish red" promise in
+ * its own `exit_detail` text — but its reason string starts with neither "ratchet"
+ * nor "runner_floor", so it fell through to the unhonored branch below undetected:
+ * `categorizeExitReason` (a few dozen lines down) was correctly special-cased to
+ * file this reason under the "ratchet" family, but this sibling function — the one
+ * that actually computes the PERSISTED fill price/P&L — was not. Found live
+ * 2026-09-21 (TSLA): floor armed at +12.31% off a +24.62% peak, but the exit
+ * persisted at the raw, unhonored +9.33% observed mark, ~3pp worse than the floor
+ * its own exit_detail promised. Listed as an explicit exact-match alongside the
+ * prefix checks (rather than folded into a broadened prefix) because it is the one
+ * other named reason, not a family of them the way "ratchet_*" is.
  */
 export function resolveExitMark(
   decision: ExitDecision,
@@ -297,7 +310,9 @@ export function resolveExitMark(
   if (
     decision.action === "EXIT" &&
     floor != null &&
-    (decision.reason.startsWith("ratchet") || decision.reason.startsWith("runner_floor"))
+    (decision.reason.startsWith("ratchet") ||
+      decision.reason.startsWith("runner_floor") ||
+      decision.reason === "trim_scale_dead_zone_floor")
   ) {
     const floorMark = protectiveFloorMark(entryPremium, floor);
     // Raw, unrounded comparison — the same values Math.max below actually compares —
