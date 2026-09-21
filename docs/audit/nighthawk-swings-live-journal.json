@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T22:24:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5389 (parallel session's docs-only loss-taxonomy re-run, merged clean, not mine to drive). PR #5390's CI went green (~12 min) and it self-merged via the CARVE-OUT pipeline (merged_by coreentryadmin-web) before I even re-checked -- confirmed via a fresh pull_request_read, no manual merge needed. Unsubscribed (already auto-cleared). Folded both outstanding staged findings (PR #5387's play-brief.ts evidence-line fix incl. the play-brief-diff.ts correction, and PR #5390's manage.ts structural-stop fix) into FINDINGS.md via findings-fold-staging.mjs; findings-hygiene.test.ts clean 9/9. While PR #5390's CI was pending, used the wait productively (NEVER SIT IDLE): fresh WATCH/OPEN thesis forensics on the swing desk's live state. /api/market/swing/record currently shows 0 open, 0 watch in the record route's own windowed view but 1 live HOLD chain (AAPL, positionId 40, rolled once from the $330 to the $335 call on 2026-09-21) -- fetched its full play-brief (playId=SWING:AAPL:40) and hand-verified: P&L math (entry $5.23, mark $7.48 -> +43.1% mid, bid $7.10 -> +35.9% exec, -7% slippage, all internally consistent), stop/target rail percentages (71% cushion to $2.09 stop, 47% move needed to $10.45 target, both recompute correctly off the current $7.10 bid), roll-chain continuity (leg 37's frozen exit mark $5.23 correctly becomes leg 40's entry -- the roll-freeze mechanism working as designed), and honest stale/absence handling (option mark correctly flagged stale since 16:00 ET RTH close, 18:18 ET current time is after-hours so staleness is EXPECTED not a bug; ecosystem-context/Vector-state fetch failures and thesis-health withholding all disclosed via unavailableSources rather than fabricated). No bug found -- this is the product working as designed off-hours. Also separately confirmed the swing/record route's 30-day summary (14 chains, 13 resolved, 15.4% win rate) -- low win rate here is consistent with, not contradicting, the loss-taxonomy work already in flight (PR #5389 just landed EVENT_DRIVEN/SECTOR_ROTATION divergence at n>=5) -- not treated as a new finding, already tracked territory.",
+  "last_updated": "2026-09-21T22:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5387's fold (#5391, a parallel session already folded that finding -- fine, idempotent with my own #5390 fold from last cycle) and a heartbeat/state-snapshot commit. Observed a NEW parallel-session PR, #5392 (session_01Qtnftc16CuWyVLxR8LaMoC): 9 more play-brief*.ts sections sampling raw Date.now() instead of ctx.readMs (finding #322/#5351's own follow-up class -- tradeManagerNarrativeSection, chartTechnicalsSection, chartLevelsSection, meridianCatalystSection, gexPostureSection, buildStructureLadder, collectFocalLevels, resolveBreakInvalidation, preferredGexWalls). Well-documented (RED->GREEN proof, 1463/1463 swing suite, 15153/15156 full suite), CI pending -- not mine to drive, did NOT duplicate this work. Instead used the cycle to independently verify the readMs-anchor bug class doesn't extend BEYOND play-brief*.ts (the same 'check outside the swept scope' discipline that found the manage.ts rounding bug last cycle): grepped all Date.now() call sites across src/lib/swing/*.ts excluding play-brief*.ts and tests. Result: RULED OUT, no new instances -- entry-enterability.ts/entry-model.ts/roll-plan.ts/underlying-spot-freshness.ts all already use the correct injectable-anchor pattern (`input.nowMs ?? Date.now()`, a parameter default, not a bare call); ex-dividend-reads.ts's Date.now() is a private 6h cache-TTL gate, never compared against another section's independently-sampled clock within one request, so the specific cross-section-disagreement bug class does not apply to it; legacy-confirm-promote.ts is the Legacy desk, outside composeSwingPlayBrief entirely. Confirms PR #5392's file-scope decision was correct and there is nothing further to add to that sweep. WATCH/OPEN forensics: /api/market/swing/record still shows 0 watch (consistent with prior cycles' 'thin, genuinely fluctuating pool' finding, not re-litigated), 1 open (AAPL, already hand-verified clean last cycle -- no new management tick since, unchanged). No bug found this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,8 +119,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T22:24:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T22:35:00Z",
+    "swing_prs": [
+      {
+        "number": 5392,
+        "title": "fix(swing): 9 more play-brief sections sampled Date.now() instead of ctx.readMs (#5351 follow-up)",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending -- observing only, CARVE-OUT auto-merge expected once green"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
