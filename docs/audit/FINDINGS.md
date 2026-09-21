@@ -38,6 +38,180 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo / Swing play-brief "Lessons" section praised a giveback as "did its job" for any target/ratchet exit, regardless of how much of the peak was actually captured — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/lib/swing/play-brief-intel.ts` (`lessonsSection`) |
+| **Status** | FIXED |
+| **Severity** | P3 — narrative-quality/coherence, not a data-correctness bug (every underlying number rendered was correct) |
+| **Found via** | Ask Largo × Night Hawk Swings standing ownership mandate — live `GET /api/market/swing/play-brief` deep-dive against fresh (not previously checked) closed positions, 2026-09-21 |
+
+### Root cause
+
+`lessonsSection`'s `closedReason` block rendered `"Mechanical exit fired as designed — thesis or
+ladder did its job."` **unconditionally** whenever `play.closedReason` was `"target"` or
+`"ratchet"` — with no regard for the MFE-capture quality the same function had just computed a few
+lines earlier in the identical section. A "target"/"ratchet" exit reason only means the exit
+*mechanism* fired at its programmed level; it says nothing about whether that was a good outcome,
+and the two can diverge sharply (a first-rung target that fires while the position later runs much
+higher before the rest closes on a weak trailing exit still reports `closedReason: "target"`).
+
+This is the exact "disconnected bullet-dump contradiction" class this same function has already
+been fixed for twice before (see the `BUG FIX (2026-09-18)` comments immediately above this one in
+the file, for the `round_trip` and `capture>=75` branches) — this was the one branch with **zero**
+gating at all.
+
+### Evidence
+
+Live repro, `GET /api/market/swing/play-brief?playId=SWING:KKR:<id>` (real production data,
+2026-09-21, closed KKR position): peak `+203.8%`, exit `+50.5%`, MFE capture `24.8%` — the ladder
+gave back roughly three-quarters of the peak move. The SAME "Lessons" section rendered, in order:
+
+```
+MFE capture: **24.8%** of peak move
+Exit: **target**
+Mechanical exit fired as designed — thesis or ladder did its job.
+```
+
+("Gave back the move — next time tighten at first trim rail or thesis fade." was correctly
+present in "Trade manager read" and correctly deduped out of "Lessons" by the existing
+`adviceAlreadyNoted` gate — that part was working. It's the very next line, unrelated to that gate,
+that contradicted it.) A member reading top-to-bottom sees a 24.8% capture called out as weak,
+immediately followed by unqualified praise for the exact same exit. Same pattern independently
+confirmed on RVMD/WULF/NOW briefs pulled the same session, all clean (their captures didn't land in
+the weak band, so the pre-fix code happened to be correct there too — which is exactly why this
+went unnoticed: it only misfires on the *specific* combination of `closedReason` in
+`{target,ratchet}` **and** a weak-capture outcome, not on every target exit).
+
+### Fix
+
+Hoisted the already-computed `mfeCaptureOutcome()` result (previously scoped only inside the
+`peak != null && exitPnlPct != null` block) to function scope, and gated the "did its job" line on
+it: when the outcome is `round_trip`, or `capture` with `capturePct < 35`, the line is replaced
+with an honest one that separates the two claims —
+`"Exit mechanism fired correctly, but the ladder banked little of the peak — see MFE capture
+above; review trim timing, not the mechanism."` A genuinely strong capture on the same
+`closedReason` still gets the original "did its job" praise — the fix narrows the unqualified
+claim, it does not remove it.
+
+### Blast radius
+
+Single call site (`lessonsSection`'s `closedReason` block). `closedCoaching`
+(`play-brief-narrative-coaching.ts`, feeds "Trade manager read") has no equivalent "did its job"
+line for `target`/`ratchet` at all, so there was nothing to keep in sync there. No other section
+composes this claim.
+
+### Tests
+
+New test in `play-brief-intel.test.ts`: a weak-capture target exit (peak +203.8%, exit +50.5%,
+capture 24.8% — the live KKR shape) no longer renders "did its job" and instead renders the new
+honest line; a strong-capture target exit (peak +60%, exit +55%, capture 91.7%) still renders "did
+its job", proving the fix narrows rather than removes the line. RED→GREEN verified via
+`git stash` on the implementation file alone (test fails against the old code, passes against the
+new). Full `play-brief-intel.test.ts`: 177/177 pass. `tsc --noEmit`: clean.
+
+## Night Hawk Legacy — contract selection defaults to full ATM regardless of underlying price, so an expensive stock's pick can cost 10-50x a cheap stock's in the same book — FIXED (opt-in cost preference, delta-floor guarded)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/features/nighthawk/lib/deterministic-edition.ts` (`pickChainContract`, all 4 Legacy call sites), `constants.ts` |
+| **Status** | FIXED |
+| **Severity** | P2 — member-facing product quality, not a correctness bug (every published contract was legitimate and under the hard premium cap) |
+| **Found via** | operator directly asking why one night's book had a $2,488 MU contract alongside three sub-$120 contracts (BMNR/ETHA/MARA) |
+
+### Root cause
+
+`pickChainContract` doesn't pick "the most affordable eligible contract" — it picks whichever
+strike on the chain is closest to spot (i.e. ATM), then only checks that its premium clears the
+hard `MAX_OPTION_PREMIUM_PER_SHARE = $35/share` ceiling. That ceiling exists (PR-N15) so a strong
+candidate is never dropped outright on an expensive underlying — it was never meant to be an
+affordability target. Nothing in the function optimizes for dollar cost.
+
+For a cheap stock ($13-$26), the ATM strike is naturally cheap. For an expensive one ($1,000+),
+ATM premium scales roughly linearly with the underlying's own price (Black-Scholes ATM
+approximation ≈ 0.4 × S × IV × √T), so the exact same "closest to spot" logic produces a wildly
+more expensive contract for no reason related to setup quality, liquidity, or conviction — purely
+because the stock itself costs more.
+
+### Evidence
+
+Live MU option chain pull, 2026-09-21, spot $1017.75, Sep-25 expiry (the exact contract the real
+edition published that night, `MU $1020 CALL @ $24.88` = $2,488/contract):
+
+| strike | Δ | mid | $/contract |
+|---|---|---|---|
+| 1020 (ATM, actual pick) | 0.502 | $24.88 | $2,488 |
+| 1060 | 0.279 | $11.15 | $1,115 |
+| 1090 | 0.159 | $5.57 | $557 |
+| 1100 | 0.132 | $4.45 | $445 |
+| 1150 | 0.048 | $1.46 | $146 |
+
+Same night, BMNR/ETHA/MARA's own ATM strikes cost $111/$52/$71 per contract — 20-50x less than
+MU's ATM pick, purely a function of stock price, not setup quality.
+
+Delta floor was chosen from this same data: 0.15Δ still sits at a genuinely directional ~$550-650
+on MU, while the $100-150/contract range other tickers sit at natively only shows up below ~0.06Δ
+on MU — real lottery-ticket territory, not a comparable contract.
+
+### Fix
+
+Added a new, strictly opt-in **preference** tier (never a filter — never excludes a ticker):
+`pickChainContract` gained a 5th optional parameter, `preferAffordable`. When true, it first tries
+a subset of the already-strict (liquid + under the hard $35/share cap) pool filtered to
+`premium ≤ PREFERRED_OPTION_PREMIUM_PER_SHARE ($8)` AND `|delta| ≥ MIN_PREFERRED_CONTRACT_DELTA
+(0.15)`, picking the nearest-to-spot strike within that subset. If nothing clears both bars
+(including when the chain row has no delta at all, e.g. some UW-sourced rows), it falls straight
+through to the exact, unchanged nearest-to-spot ladder that existed before this fix.
+
+All 4 Legacy call sites in `deterministic-edition.ts` (main synthesis loop, the diversity-hedge
+swap, the forced-contrarian re-score, and `buildRescuePlays`) now pass `preferAffordable: true`.
+`pickChainContract` is also called from Vector (`vector-play-candidates.ts`,
+`vector-dte-horizon.ts`) — those call sites are untouched and don't pass the new parameter, so
+they are structurally unaffected (the parameter defaults to `undefined`/falsy).
+
+### Blast radius
+
+- `pickChainContract`'s default behavior (no 5th arg) is byte-identical to before — proven by a
+  dedicated regression test plus every pre-existing test in the file passing unmodified.
+- Only Night Hawk Legacy's 4 call sites opted in. Vector and any other consumer of the shared
+  function are unaffected by construction (new trailing optional parameter, not a signature
+  change to any existing parameter).
+- A ticker whose ATM strike is *already* inside the preferred band (the common case for a cheap
+  stock) picks the exact same strike as before — the preference tier's nearest-to-spot member IS
+  the ATM strike in that case.
+
+### Fix rationale — why a delta floor, not just a lower cost cap
+
+Swing's own `HORIZONS` config (`src/lib/horizons.ts`) documents exactly this trade-off already
+having been made and reversed once: it explicitly replaced a "0.35Δ / [0.25,0.50] cheap OTM
+banger" stance with a higher 0.50-0.75Δ stance because a multi-session directional thesis needs an
+instrument that tracks the underlying, not a low-delta lotto. Simply minimizing premium for an
+expensive underlying would eventually force a strike so far OTM it stops being a real directional
+bet — the delta floor is what keeps "cheaper" from becoming "worse trade."
+
+### Tests
+
+7 new tests in `deterministic-edition.test.ts`: default behavior unchanged (regression), the
+preferred pick fires and lands on the nearest strike clearing both bars, the delta floor correctly
+excludes a cheaper-but-too-low-delta strike, a no-delta-anywhere chain is a total no-op (matches
+real UW-sourced data), an already-affordable ATM strike is unaffected, a chain with no gap between
+"too pricey" and "too low-delta" correctly falls through to the unchanged ladder, and one
+end-to-end `buildDeterministicEditionPlays` test proving the real call site wiring works and a
+cheap ticker in the same book is untouched. Full `src/features/nighthawk/**` suite: **1876/1876
+pass**. `tsc --noEmit`: clean. `next lint`: no warnings.
+
+### What's still open
+
+`PREFERRED_OPTION_PREMIUM_PER_SHARE ($8)` and `MIN_PREFERRED_CONTRACT_DELTA (0.15)` are reasoned,
+evidence-grounded defaults from one live chain pull, not backtested/calibrated constants — if
+member feedback or forward-grading data suggests they should move, that's a future, separate,
+evidence-driven change, not something to re-derive from this PR's own write-up.
+
 ## Swing "Ticker track record" cited a LATER trade as "prior" evidence — FIXED
 
 > **kind:** `FINDING`
