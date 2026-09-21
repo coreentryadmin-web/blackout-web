@@ -133,6 +133,23 @@ function thesisPayload(health: number, overrides: Record<string, unknown> = {}) 
   };
 }
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — sweep of #5380/#5383/#5384's toFixed-vs-
+// roundFloats price-level fix into this file's own diff narration). Same live-repro shape as
+// fmt-money.test.ts's fmtPriceLevel suite: 152.035's raw IEEE-754 storage rounds DOWN with plain
+// toFixed(2) ("152.03") but UP with roundFloats' own Math.round(n*100)/100 algorithm ("152.04") —
+// and the SAME raw spot value is also exposed as a plain number elsewhere in the swing play-brief
+// response (envelope.levels' "spot" entry), so a diff line built with plain toFixed(2) could
+// silently disagree with the rest of the response.
+test("diffBriefSnapshots: 'Spot drifted' matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary", () => {
+  const prev = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 100 });
+  const next = snapshotFromBrief(env(), play({ direction: "LONG" }), { spot: 152.035 });
+  const lines = diffBriefSnapshots(prev, next);
+  const spotLine = lines.find((l) => l.includes("Spot drifted"));
+  assert.ok(spotLine, `expected a spot-drift line, got: ${JSON.stringify(lines)}`);
+  assert.match(spotLine!, /\$152\.04/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
+  assert.doesNotMatch(spotLine!, /152\.03/);
+});
+
 test("diffBriefSnapshots: cross-field synthesis — thesis fade + FAVORABLE price move stay independent", () => {
   // Thesis fades AND spot moves, but UP (favorable for a LONG) — the two facts pull in
   // different directions, so this must read as two separate bullets, never a forced

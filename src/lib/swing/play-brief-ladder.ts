@@ -47,6 +47,7 @@ import { collectFocalLevels, type FocalLevel, type LevelKind } from "./play-brie
 import { gexMatrixStale, vectorSnapshotStale } from "./play-brief-absence";
 import { deriveSwingPlanLevels } from "./structure-levels";
 import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 import { ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
@@ -238,8 +239,8 @@ function crossDeskAgreementFor(
   return {
     status: "disagreement",
     note:
-      `Vector reads **${vecPosture} gamma** while the GEX matrix's flip (**${gex.flip.toFixed(2)}**) vs ` +
-      `spot (**${spot.toFixed(2)}**) implies **${matrixImplied} gamma** — the two dealer-positioning ` +
+      `Vector reads **${vecPosture} gamma** while the GEX matrix's flip (**${fmtPriceLevel(gex.flip)}**) vs ` +
+      `spot (**${fmtPriceLevel(spot)}**) implies **${matrixImplied} gamma** — the two dealer-positioning ` +
       `reads disagree on regime.`,
   };
 }
