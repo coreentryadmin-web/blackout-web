@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T16:04:16Z",
-  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5367 (merged, confirmed via log). No new open swing PRs, no new #4076 activity. Re-checked AAPL #40's thesis-health section post-#5367-merge -- still shows the old all-hidden message, deploy hasn't rolled out yet (ECR/ECS lag, expected -- will re-check next cycle, not a concern). Fresh Ask Largo audit on BLSH #1179 (banger, second concurrent BLSH position not yet checked this session) -- clean, no bugs, math all correct (entry $0.82/mark $1.16 -> +41.5% P&L, peak +79.9%/trough +12.2% consistent, stop $0.33/target $1.64 correctly derived). Correctly disclosed 'Other concurrent position(s)' -- BLSH carries 2 live positions, this brief covers one, names the other's own entry/P&L. Nice incidental confirmation: capturePct here is ~52% (41.5/79.9), well under both the 75%/80% floors -- exactly the condition PR #5362 (giveback duplication, merged 2 cycles ago) was built to fix. Confirmed LIVE and working: actionNarrative's own line correctly states 'Gave back 48% of peak' while the Live-read bullet correctly does NOT repeat it (old buggy code would have duplicated it, since 52 < 80). Nothing new found -- clean cycle.",
+  "last_updated": "2026-09-21T16:17:05Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries, no swing-lane changes. No new open swing PRs, no new #4076 activity. AAPL #40's thesis-health section still shows the pre-#5367 message ~24min post-merge -- checked WHY via GitHub Actions rather than just re-polling blind: the ecr-push-production run for #5367's own merge commit (973cc8d39, run 35621729652) is genuinely still status:in_progress (started 15:51 UTC, 20+ min elapsed as of this check) -- not stuck, just a real in-flight build+deploy. Also explains something that could otherwise look alarming: TWO earlier ecr-push runs (#5362's own push, #5366's push) show conclusion:cancelled -- but this is benign, not a dropped deploy: each push's ECR run builds the FULL current main tree, not a diff, so a cancelled run just means a later push's build superseded it before it finished, and that later successful run (#5364's, confirmed conclusion:success) already carried #5362's code forward -- consistent with BLSH's brief already confirming #5362 live in production last cycle. Will re-check AAPL #40's thesis-health next cycle once #5367's deploy run actually completes. Nothing new found -- clean cycle, just deploy-timing bookkeeping.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,7 +117,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T16:04:16Z",
+    "as_of": "2026-09-21T16:17:05Z",
     "swing_prs": []
   },
   "tickers_seen": {
