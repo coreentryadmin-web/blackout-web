@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-09-21 Thermal "Cross-check" chip was permanently off during healthy RTH — deploy pending validation
+
+**What was fixed:** `GET /api/market/gex-heatmap?ticker=<T>`'s UW cross-validation
+(`validateGexAgainstUW`, backing the Thermal desk's "Cross-check" chip) was gated on
+`skipSlowEnrichment` (matrix cache fresh, i.e. age < 90s) even though cross-validation does no
+network I/O on this call site (REST fallback is structurally dead — see the staged finding).
+Since `heatmap-warm` keeps the matrix fresh essentially always during healthy RTH, the check
+never ran, and the chip stayed permanently "off" with copy claiming it "resumes when the live
+strike ladder is back at the open." Fixed by decoupling `crossValPromise` from the freshness
+gate. Full write-up: `docs/audit/findings-staging/2026-09-21-thermal-gex-cross-validation-permanently-dormant.md`.
+This also resolves the "STILL UNMEASURED" open question in `docs/audit/THERMAL-MAP.md` §10 item 3.
+
+**Specific thing to check once this deploys, during RTH:** poll `GET
+/api/market/gex-heatmap?ticker=SPX` (and SPY/QQQ/IWM/NVDA/TSLA/AAPL/AMD/META/AMZN/GOOGL — the
+full preset list) a few times and confirm `cross_validation` is now non-null (or at minimum
+`crossValPresent` flips true) at least some of the time during live RTH, not permanently `null`
+the way it was pre-fix (20/20 reads null, measured 2026-09-21 16:17-16:19 UTC). Also check the
+live Thermal desk UI (`/heatmap`) "Cross-check" chip no longer reads "Cross-check off" as its
+constant, unchanging state through a normal RTH session — some genuine on/off transitions as the
+UW WS channel freshness fluctuates would confirm the chip is now reflecting real state rather
+than a permanently-tripped gate.
+
+---
+
 ## WATCH LIST — 2026-09-20 Swing Ask Largo play-brief vs Command Deck board Thesis Health disagreement (Banger-origin regime clobber) — VALIDATED LIVE
 
 **What was fixed:** a Banger-origin (`signalKinds:["BANGER"]`) swing position resolved through
