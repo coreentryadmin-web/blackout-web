@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T22:35:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5387's fold (#5391, a parallel session already folded that finding -- fine, idempotent with my own #5390 fold from last cycle) and a heartbeat/state-snapshot commit. Observed a NEW parallel-session PR, #5392 (session_01Qtnftc16CuWyVLxR8LaMoC): 9 more play-brief*.ts sections sampling raw Date.now() instead of ctx.readMs (finding #322/#5351's own follow-up class -- tradeManagerNarrativeSection, chartTechnicalsSection, chartLevelsSection, meridianCatalystSection, gexPostureSection, buildStructureLadder, collectFocalLevels, resolveBreakInvalidation, preferredGexWalls). Well-documented (RED->GREEN proof, 1463/1463 swing suite, 15153/15156 full suite), CI pending -- not mine to drive, did NOT duplicate this work. Instead used the cycle to independently verify the readMs-anchor bug class doesn't extend BEYOND play-brief*.ts (the same 'check outside the swept scope' discipline that found the manage.ts rounding bug last cycle): grepped all Date.now() call sites across src/lib/swing/*.ts excluding play-brief*.ts and tests. Result: RULED OUT, no new instances -- entry-enterability.ts/entry-model.ts/roll-plan.ts/underlying-spot-freshness.ts all already use the correct injectable-anchor pattern (`input.nowMs ?? Date.now()`, a parameter default, not a bare call); ex-dividend-reads.ts's Date.now() is a private 6h cache-TTL gate, never compared against another section's independently-sampled clock within one request, so the specific cross-section-disagreement bug class does not apply to it; legacy-confirm-promote.ts is the Legacy desk, outside composeSwingPlayBrief entirely. Confirms PR #5392's file-scope decision was correct and there is nothing further to add to that sweep. WATCH/OPEN forensics: /api/market/swing/record still shows 0 watch (consistent with prior cycles' 'thin, genuinely fluctuating pool' finding, not re-litigated), 1 open (AAPL, already hand-verified clean last cycle -- no new management tick since, unchanged). No bug found this cycle.",
+  "last_updated": "2026-09-21T22:50:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5392's merge (9-site readMs anchor sweep, parallel session, merged clean). No new #4076 activity. Observed a further parallel-session PR, #5393 (same session 01Qtnftc16CuWyVLxR8LaMoC): catalystsSection's own independent instance of the readMs-anchor bug (missed by #5392's grep because it didn't take a ctx param at all before this fix) -- well-documented, RED->GREEN proven (2/187->187/187), CI pending. Not mine, did not duplicate. That PR's own disclosed follow-up (vectorDeskSection/wallDynamicsSection still need a ctx signature change) is that lane's own next step, not claimed here, to avoid two sessions editing the same file concurrently. WATCH/OPEN forensics: still exactly 1 live position (AAPL HOLD, positionId 40), 0 watch -- unchanged since last cycle (market closed after-hours, no new scan tick). Deep-audited the 'Ticker track record' section specifically (not previously spot-checked this session): play-brief claims AAPL 0W/2L across 2 prior trades. Pulled the full 365-day swing record and confirmed independently -- 3 total AAPL chains exist: rootPositionId 37 (the CURRENT chain, leg 37 ROLLED -22.3% + leg 40 the live HOLD, correctly excluded from 'prior' since it's the same chain being displayed), rootPositionId 38 (CLOSED, -33.19%, loss), rootPositionId 36 (CLOSED, -56.19%, loss). 2 distinct prior CLOSED chains, both losses = 0W/2L exactly as displayed. Ticker-track-record math confirmed correct: counts distinct CLOSED chains (not legs), correctly excludes the current chain's own rolled-forward leg. No bug found. Clean cycle -- closing out the :46-offset trigger for this hour. Two parallel-session PRs (#5392 merged, #5393 pending) are actively covering the readMs-anchor bug class thoroughly; this session's own toFixed-vs-roundFloats sweep (7 instances) is fully closed with no open leads. Next cycle (v3 full brief, :01 offset) should re-survey broadly rather than re-tread either of these two now-well-covered bug classes.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,12 +119,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T22:35:00Z",
+    "as_of": "2026-09-21T22:50:00Z",
     "swing_prs": [
       {
-        "number": 5392,
-        "title": "fix(swing): 9 more play-brief sections sampled Date.now() instead of ctx.readMs (#5351 follow-up)",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending -- observing only, CARVE-OUT auto-merge expected once green"
+        "number": 5393,
+        "title": "fix(swing): catalystsSection readMs anchor \u2014 not among the 9 sites #5392 fixed",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending -- observing only"
       }
     ]
   },
