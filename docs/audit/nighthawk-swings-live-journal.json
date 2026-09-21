@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T02:20:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. #4076 unchanged since my last post (218 comments, no Cursor response yet on the entry_underlying_px thread) -- deliberately did NOT re-dive into that investigation this cycle to avoid tunnel vision; will resume if still unanswered in a couple more cycles. Zero open swing PRs. Board unchanged. **Ask Largo audit on ALAB (MANAGING, positionId 1153)**, first check this session, picked for variety (non-crypto). Clean: blended P&L math exact (0.5*100+0.5*284.7=192.35, matches rendered 192.3%), peak-giveback correctly SUPPRESSED (peak 291.6% vs current 284.7%, only ~2.4% giveback -- well under the 25% threshold play-brief-narrative.ts gates the 'Gave back X% of peak' bullet on, confirmed at source). Genuinely nice design observed: 'Other concurrent position(s)' section correctly discloses a SECOND real swing-native position on the same ticker (310C vs this brief's 285C) with its own entry/P&L, distinct from the cross-engine book-context dup-disambiguation feature -- both legitimate positions, clearly surfaced, not conflated. Also a live transient fetch failure ('ecosystem context fetch failed', 'Vector state fetch failed') degraded gracefully -- fewer sections shown, no fabrication, 'Live read' bullet correctly said 'Vector spot not wired on this tick' rather than guessing. No new bugs found this cycle.",
+  "last_updated": "2026-09-21T02:38:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean (main now at 71cc0e82b -- a parallel automated process pushed an agent-heartbeat state commit, unrelated). #4076 unchanged since my last post, no Cursor response yet on the entry-price thread. **A DIFFERENT parallel session (session_01Qtnftc16CuWyVLxR8LaMoC) opened PR #5333** (trough_premium untracked for BANGER-origin swing positions, live repro on RBRK) -- not mine, but did a genuine independent adversarial verification per the standing 'review a sibling PR' mandate option: confirmed the root cause against current main (bangerRowToActivePlay hardcodes trough_premium: null, banger_positions table genuinely has no trough_premium column, banger-lane-merge.ts/positions-db.ts have zero hits for the field), fetched the branch into an isolated worktree, ran its own test file green (8/8), reverted just the one fixed line, reran -- exactly 1 failure (null !== 2.1), restored, reconfirmed 8/8 green. tsc clean. Posted a confirming independent-verification comment (5754657853) on the PR -- real, correctly-scoped fix, no concerns. Not driving/merging it myself since it's not my PR and CI was still running when checked. Board unchanged. No new findings of my own this cycle -- spent it on peer verification instead, which is genuine value per the collaboration protocol, not idle time.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,8 +113,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T02:20:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T02:38:00Z",
+    "swing_prs": [
+      "#5333 (not mine -- parallel session's trough_premium fix, independently verified, CI in progress)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
