@@ -519,10 +519,15 @@ export function livePlayFromSwingPosition(
   const { manageAction, thesisLevel, manageReason, manageReasonDetail, manageEnforced, rollCandidate, underlyingExcursion } =
     manageObservablesFromEvent(manageEvent, spotObs);
 
-  const score =
+  const evidenceScore =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
-      : 0;
+      : null;
+  const score = evidenceScore ?? 0;
+  // See HorizonPlay.scoreWithheld's doc comment (horizon-plays.ts) — this `0` is a fallback for a
+  // non-nullable field, not a measured score, so downstream peer-ranking must be told not to
+  // compare it as one.
+  const scoreWithheld = evidenceScore == null;
 
   // Reconstructed from the SAME pinned feature_vector `score` came from (see the function's own doc for
   // the live bug this closes) — guaranteed to sum to `score` exactly, never a freshly re-run dossier's.
@@ -574,6 +579,7 @@ export function livePlayFromSwingPosition(
     direction,
     horizon: "SWING",
     score,
+    scoreWithheld,
     status: "COMMIT", // live capital is committed — back-compat committed[] view
     contract,
     scoreFloor: HORIZONS.SWING.scoreFloor,

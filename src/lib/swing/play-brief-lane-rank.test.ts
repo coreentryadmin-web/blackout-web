@@ -372,3 +372,33 @@ test("computeLaneRank: a genuinely open position (status COMMIT + liveStatus) is
   const snap = computeLaneRank(play1, lanes);
   assert.equal(snap, null, "BYND must not count as a WATCH peer, leaving only 1 real peer (< 2 minimum)");
 });
+
+test("computeLaneRank: a play whose OWN score is withheld (0 fallback) returns null, never a fabricated rank (live repro SWING:AAPL:40, 2026-09-21)", () => {
+  // The live bug: AAPL's committed row carries score 0 because feature_vector.evidence_score was
+  // never pinned (an older/legacy commit), and score is a non-nullable field so live-plays.ts falls
+  // back to a literal 0. Without the scoreWithheld guard this renders "Below lane median — #59/59
+  // (score 0, -63 vs median)" on a real +39.2% HOLD winner. With the guard, no snapshot at all —
+  // matching the honest-omission pattern the thesis-health "score withheld" text already uses for
+  // the unrelated pillar-aggregate score.
+  const lanes = [
+    row("AAPL", 0, "COMMIT"), // withheld — set below
+    row("AMD", 79.9, "COMMIT"),
+    row("META", 79.5, "COMMIT"),
+  ];
+  lanes[0]!.scoreWithheld = true;
+  const snap = computeLaneRank(play({ ticker: "AAPL", score: 0, status: "HOLD", contract: undefined }), lanes);
+  assert.equal(snap, null, "AAPL's own withheld score must not produce a fabricated rank");
+});
+
+test("computeLaneRank: a withheld PEER is excluded from the pool so it cannot drag down another play's median/rank", () => {
+  const lanes = [
+    row("AAPL", 0, "COMMIT"), // withheld peer — must not count toward AMD's peer pool
+    row("AMD", 79.9, "COMMIT"),
+    row("META", 79.5, "COMMIT"),
+  ];
+  lanes[0]!.scoreWithheld = true;
+  const snap = computeLaneRank(play({ ticker: "AMD", score: 79.9, status: "HOLD" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.total, 2, "withheld AAPL must not be counted as a real peer");
+  assert.equal(snap!.medianScore, (79.9 + 79.5) / 2, "median must be computed only over real-scored peers");
+});

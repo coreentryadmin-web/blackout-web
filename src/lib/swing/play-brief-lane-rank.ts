@@ -115,7 +115,16 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   const bucket = bucketFor(play);
   if (bucket === "closed") return null;
 
-  const peers = (laneRows ?? []).filter((r) => rowInBucket(r, bucket));
+  // BUG FIX (2026-09-21, Ask Largo standing mandate): a row whose `score` is a `0` FALLBACK, not a
+  // real measured value (HorizonPlay.scoreWithheld — see its doc comment), must never be compared
+  // as if it were. Two things follow: (1) if THIS play's own row is withheld, there is nothing
+  // honest to rank it against — return null rather than render "#59/59 (score 0)" for a position
+  // whose score was simply never wired (live repro: SWING:AAPL:40, a real +39.2% HOLD winner read
+  // as the lane's worst-scored play). (2) a withheld PEER is excluded from the pool entirely so it
+  // can't drag down the median/rank computed for every OTHER position's own brief either.
+  const peers = (laneRows ?? []).filter((r) => rowInBucket(r, bucket) && !r.scoreWithheld);
+  const ownRowWithheld = (laneRows ?? []).some((r) => r.scoreWithheld && laneRowMatchesPlay(r, play));
+  if (ownRowWithheld) return null;
   if (peers.length < 2) return null;
 
   const sorted = [...peers].sort((a, b) => b.score - a.score);
