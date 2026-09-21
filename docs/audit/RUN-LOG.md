@@ -4,6 +4,23 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-21 (00:16 UTC) — [SEO] Lane heartbeat: #5315 merged, one new striking-distance query already well-covered, continued small positive trend
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs — confirmed #5315
+(the coordinator green-draft flagged last cycle) merged.
+
+Step 3: GSC data finally advanced a day (window 2026-06-21→09-18, first move in several checks).
+One new striking-distance query: `what is dealer gamma` (pos 13.0, 4imp, thin). Checked whether it
+needs on-page work: `/learn/what-is-dealer-gamma-exposure` and the pillar guide both already carry
+`ARTICLE_FAQS` entries phrased almost exactly as this query ("What is dealer gamma exposure?",
+"What is dealer gamma in options trading?") — a natural variant of the already-optimized `dealer
+gamma` cluster, not a genuine gap. No PR; adding more content here would be exactly the forbidden
+churn-on-already-good-pages. 28d trend continues improving: avgpos **25.7→24.6**, CTR
+**1.32%→1.36%**, clicks flat at 19 (window 2026-08-22→09-18) — same direction as the last several
+cycles.
+
 ## 2026-09-20 (18:16 UTC) — [SEO] Lane heartbeat: both fixes holding, chased a stuck coordinator draft PR, GSC still unchanged
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
