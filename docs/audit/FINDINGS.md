@@ -38,6 +38,121 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 0DTE trim_scale trend dead-zone floor exits persisted the raw unhonored observed mark, understating P&L — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/lib/zerodte/exit-engine.ts` (`resolveExitMark`) |
+| **Severity** | P2 — live-trading-path, member-facing P&L accuracy on real committed positions |
+
+### Root cause
+
+`resolveExitMark` decides whether an EXIT's persisted `mark`/`pnl_pct` honors the armed
+protective floor (`mark = max(observedMark, floorMark)`) or falls back to the raw observed
+print. It gates that decision on a reason-string allowlist:
+
+```ts
+decision.reason.startsWith("ratchet") || decision.reason.startsWith("runner_floor")
+```
+
+`trimScaleFloorPct`'s trend-regime dead-zone tier (2026-09-12, the fix for the "regime-
+conditioned trend dead-zone" — a `trend` peak in `[20%, 40%)` has no tranche armed yet, so it
+floors at half the peak instead of flat breakeven) returns the reason
+`"trim_scale_dead_zone_floor"` for its EXIT decision. That string starts with neither
+`"ratchet"` nor `"runner_floor"`, so it silently fell through to the unhonored branch:
+`return { mark: round2(observedMark), honored: false }`. The exit still fires correctly (the
+floor-breach detection and `floorPnlPct` value are both right), but the FILL PRICE used for
+the persisted `mark`/`pnl_pct`/`mark_honored` never applies the floor's own promise — exactly
+the "cannot finish red" (or here, "cannot give back more than the floor") guarantee the same
+decision's own `exit_detail` text asserts.
+
+Notably, the SIBLING function `categorizeExitReason` (a few dozen lines below in the same
+file) was correctly special-cased for this exact reason string, with a comment explaining it
+belongs in the "ratchet" (floor) family for display purposes — the fix was applied to the
+function that labels the exit, but not to the function that actually PRICES it.
+
+### Evidence
+
+Live, 2026-09-21, real committed TSLA position (`GET /api/market/zerodte/board`, RTH cycle
+14:47-15:07 UTC): entered 10:45:46 ET at 3.27, peaked at 4.08 (+24.62%, `trend` regime, no
+tranche armed — inside the dead zone), retraced and closed 5 minutes later. Persisted ledger
+row: `exit_detail: "Mark 3.575 (+9.33%) is at/below the +12.31% floor armed by a +24.62%
+peak — the protective floor exits so the green trade cannot finish red."`, but
+`exit_pnl_pct: 9.33`, `exit_mark_honored: false` — the position was graded ~3 percentage
+points BELOW the floor its own exit narrative promised.
+
+Reproduced exactly via a standalone script feeding the same entry/peak/mark shape through the
+real `evaluateExitState`/`buildExitContext` functions: decision floor 12.31%, but
+`buildExitContext` returned `mark_honored: false`, `pnl_pct: 9.33` pre-fix — byte-identical to
+the live TSLA numbers, confirming this isn't a data artifact but the shipped logic gap.
+
+### Fix
+
+Added `decision.reason === "trim_scale_dead_zone_floor"` as an explicit third condition
+alongside the two existing prefix checks in `resolveExitMark`. Listed as an exact match rather
+than folded into a broadened prefix (e.g. a generic `"trim_scale"` prefix) because it is the
+one other specifically-named floor reason, not a family — `trim_scale_first`/
+`trim_scale_second`/`trim_scale_runner_target` are profit-TAKING exits (the fill price IS the
+tag/tranche price, no separate floor concept to honor) and must not be swept in by a broader
+prefix match.
+
+### Fix rationale
+
+Considered widening the prefix check instead (e.g. matching any reason containing `"floor"`),
+but an explicit exact-match mirrors the pattern `categorizeExitReason` already uses for this
+exact reason string and is the smallest, most auditable change — it cannot accidentally rope
+in a future reason that happens to share a substring.
+
+### Blast radius
+
+Single function, single call site inside `buildExitContext` (also in this file), whose own
+callers are `exit-sync.ts`'s live sync tick (persists `entry_context.exit` via
+`stampZeroDteExitContext`) and any test/audit tool that replays `evaluateExitState` +
+`buildExitContext` together. Every OTHER floor family (`ratchet_*`, `runner_floor`) already
+matched the old condition and is unaffected — this only changes behavior for the one
+previously-uncovered reason. Any position that has ALREADY closed via
+`trim_scale_dead_zone_floor` before this fix (TSLA above, and per the historical dead-zone
+measurement referenced in `exit-engine.ts`'s own comments, ~9.9% of a 372-play sample hit the
+pre-2026-09-12 flat-breakeven version of this dead zone) has a persisted `pnl_pct`
+understating the true floor-protected outcome — those historical rows are not retroactively
+corrected by this fix (a data-backfill question, out of scope for this PR), but every NEW exit
+via this path is now priced correctly going forward.
+
+### Tests
+
+`src/lib/zerodte/exit-engine.test.ts`: added
+`"buildExitContext: trim_scale dead-zone floor exit HONORS its own floor"`, reproducing the
+exact live TSLA shape (trend regime, peak +24.62%, retrace to +9.33%, no tranche armed) and
+asserting `mark_honored: true`, `mark: 4.49` (the floor price, not the raw 4.37 observed
+print), `pnl_pct: 12.25` (matching the floor, not the worse raw print). RED→GREEN confirmed
+via `git stash` isolating the `exit-engine.ts` fix from the new test (95/96 pass pre-fix, the
+new test failing exactly as expected; 96/96 pass post-fix). Full
+`exit-engine.test.ts` + `exit-sync.test.ts` + `board.test.ts` suite: 245/245 pass. `npx tsc
+--noEmit`: clean. All on Node 20.20.2.
+
+---
+_Generated by [Claude Code](https://claude.com/claude-code)_
+
+## 2026-09-21 — [FINDING, P2 Largo/Night Hawk Swings] `thesisHealthSection` blanked the ENTIRE Thesis health panel whenever any single pillar was uncalibrated, discarding genuinely-real persistence/entry-geometry reads along with it — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A committed swing position's Ask Largo play-brief can show `Thesis health: Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown` even when TWO of its five pillars (persistence, entry_geometry) are genuinely live-derived, real, calibrated reads — the member loses that real information because a THIRD, unrelated pillar (flow_corroboration) happens to have no data. |
+| **Live repro** | `SWING:AAPL:40` (real committed position, 2026-09-21, fetched via `GET /api/market/swing/play-brief` at 11:22 ET): `GET /api/market/nighthawk/horizons?view=swings` shows `setupState: "TRIGGERED"`, `entryStatus: "AT_TRIGGER"` — both real, live-derived from `liveSpot=337.50` / `entryTriggerUnderlyingPx=333.91` (adapters.ts's `liveSetupState`/`liveEntryStatus`, #5334/#5336, both already merged and working correctly) — yet `signalKinds` is absent, and the play-brief's Thesis health section rendered the generic "not wired" message with **zero pillar rows**, hiding the two real reads along with the one honestly-empty one. This specific position is itself a residual case of the already-fixed #5364 (roll children not forwarding `entry_context.signal_kinds`) — it rolled 330C→335C *before* that fix was deployed, and `entry_context` is pinned once at row-insert time and never rewritten, so this particular row can never retroactively pick up the fix. That is expected and not itself a bug. What IS a bug, independent of #5364 and not fixed by it, is the section's own all-or-nothing behavior: even after every future roll correctly forwards `signal_kinds` (#5364) and every future commit's `setupState`/`entryStatus` derive live (#5334/#5336), there will always be a real population of positions with a genuinely-empty `flow_corroboration` pillar — non-flow archetypes like `SECTOR_ROTATION` (which classifies off industry-group relative strength, not any Tier-0 FLOW/STRUCTURE/CATALYST/BANGER/VECTOR/POSITIONING screen path) and any commit made while `isSwingConfluenceEnforced()` (a runtime toggle) was off. For every one of those, the panel will keep hiding calibrated data forever, not just until the next fix lands. |
+| **Root cause** | `thesisHealthUncalibrated(h)` (`thesis-health.ts`) is a deliberate OR across pillars — ANY one pillar matching its own generic-default sentinel label (`persistence: "unknown"`, `entry_geometry: "n/a"`, `flow_corroboration: "no signals"`) trips it, by design, so a blended aggregate % is never computed from a fabricated pillar (Largo C6 — "an invented score is worse than nothing"). That part is correct and unchanged by this fix. The bug was one level up, in `play-brief.ts`'s `thesisHealthSection`: on `uncalibrated === true` it discarded `h.pillars` ENTIRELY and rendered a single fixed prose string, rather than distinguishing "which pillar(s) are the fabricated default" from "which pillars are real." When `thesisHealthUncalibrated` was written (2026-09-15/-20), EVERY pillar was simultaneously a fabricated default for every committed position (the original structural gap — `setupState`/`entryStatus`/`signalKinds` all null), so panel-level hiding and pillar-level hiding were indistinguishable outcomes. Once #5336 (2026-09-20) made persistence/entry_geometry live-derivable independent of any DB field, that equivalence broke — the panel-level hide became strictly worse than what the data actually supported. |
+| **Why it wasn't caught earlier** | #5334/#5336 each live-verified their OWN pillar (setupState / entryStatus) started calibrating correctly, and confirmed `thesisHealthUncalibrated()` itself still correctly returns `true` when flow_corroboration alone is empty — which is the RIGHT behavior for the boolean flag. Neither PR's write-up claimed the flag's *consumer* (the panel-rendering code) should change how it reacts to that flag once it's no longer an "all pillars are fake" signal — that's a distinct question about display granularity, not about the flag's own correctness, and nobody had re-examined the consumer after the flag's meaning shifted from "everything is fake" to "at least one thing is fake." A live spot-check against a real position with a mix of real and fake pillars (rather than re-checking the SAME pillar each prior fix targeted) is what surfaced it. |
+| **Fix** | New exported `calibratedThesisPillars(h)` in `thesis-health.ts`: filters `h.pillars` down to every pillar whose `currentLabel` does NOT match the generic-default sentinel for its own id (reusing the exact same `UNCALIBRATED_PILLAR_LABELS` map `thesisHealthUncalibrated` already keys off, remapped through `PILLAR_ID_MAP` so it can filter by the payload's own pillar ids). `play-brief.ts`'s `thesisHealthSection`, on the uncalibrated branch, now renders whatever calibrated pillars remain (still withholding the blended aggregate % — that part is untouched and still correct) and only falls back to the original all-hidden message when literally nothing survives the filter (e.g. the original pre-#5334/#5336 case, or a Banger-ledger row where every pillar is a stamped constant). |
+| **Blast radius** | Scoped to the single uncalibrated-branch of `thesisHealthSection` (`play-brief.ts`) plus the new pure helper in `thesis-health.ts`. Does not touch `thesisHealthUncalibrated` itself (still an OR across all pillars, still correctly withholds the aggregate %), does not touch `computeSwingThesisHealth`'s scoring math, does not touch any gate/rail/exit/budget logic. The existing regression test guarding the ORIGINAL all-fake case (`play-brief.test.ts`'s "OPEN play emits management + thesis health" — asserts `/Persistence.*unknown/i` must NOT appear) still passes unmodified: that fixture's sole pillar IS the fabricated one, so `calibratedThesisPillars` correctly filters it down to nothing and the fallback message still fires. |
+| **Fix rationale** | Filter per-pillar rather than loosen the panel-level `thesisHealthUncalibrated` boolean itself, and rather than try to compute a partial/re-weighted aggregate % from only the calibrated pillars (that second option was considered and rejected — a re-weighted blend across 2-4 of 5 pillars is itself a fabricated-precision number nobody asked the model to calibrate, the same C6 violation this whole guard exists to prevent; withholding the % entirely stays the honest choice whenever even one pillar is faked). Forwarding what the system already correctly knows (real, live-derived persistence/entry-geometry reads) is strictly more informative than hiding it, and never risks presenting a fabricated number as real. |
+| **Evidence (RED→GREEN)** | Two new regression tests: `thesis-health.test.ts` (`calibratedThesisPillars: keeps real persistence/entry-geometry pillars, drops only the honestly-empty flow_corroboration one`) and `play-brief.test.ts` (`composeSwingPlayBrief: partially-calibrated Thesis health keeps real pillars and only withholds the aggregate %`), both built directly off the live AAPL:40 repro (setupState TRIGGERED / entryStatus AT_TRIGGER / signalKinds empty). RED (`git stash` on `thesis-health.ts` + `play-brief.ts` only): `115 tests, 113 pass, 2 fail` — exactly the two new tests failed. GREEN (post-fix): `115/115` across both files. `npx tsc --noEmit -p tsconfig.json` clean. Full `npm test` run alongside this finding. |
+| **Not a trading-behaviour change** | No gate, score, rail, exit rule, budget cap, or grading path touched — this only changes what the Ask Largo Thesis health SECTION renders. The underlying `computeSwingThesisHealth` scoring, `thesisHealthUncalibrated`'s own true/false verdict, and every downstream consumer of that verdict (e.g. the Verdict section's "must not leak fabricated thesis strength" guard) are all unchanged and re-verified passing. |
+| **Status** | FIXED. |
+
 ## 2026-09-21 — [FINDING, P2 Largo/Night Hawk Swings] A rolled swing position's child leg never carried the parent's `signal_kinds` forward, permanently withholding the thesis-health aggregate score after any roll — FIXED
 
 > **kind:** `FINDING`
