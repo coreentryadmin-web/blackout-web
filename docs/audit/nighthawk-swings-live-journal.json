@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T17:06:46Z",
-  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5370 (mechanical findings-fold for #5369, not swing-lane). No new open swing PRs, no reply yet on my #4076 holdPlanSection finding (comment 5764180533) -- expected, only ~15min old. SELF-FIXED the finding I raised last cycle: on re-reading, the correct fix turned out to be mechanical after all -- the narrative body IS already in scope at holdPlanSection's call site (buildIntelSections composes 'Trade manager read' at line ~1883, holdPlanSection is called at ~1952, same compose order lessonsSection's own roundTripAlreadyNoted/captureAlreadyNoted guards already use for the CLOSED-play sibling) -- so this crossed the CARVE-OUT bar once traced fully, not a genuinely open design question. Implemented: holdPlanSection gained an optional narrativeAlreadyNoted:{roundTrip?,capture?} param gating both its round_trip and capture branches; buildIntelSections computes both flags from narrative?.body via .includes('Round-tripped past breakeven') / .includes('Gave back') (capitalized -- verified this only matches actionNarrative's phrasing, not degradedReadLine's lowercase 'gave back'). Added 2 new regression tests mirroring lessonsSection's existing pattern exactly. RED confirmed via git stash on source only (exactly 2 new tests failed, 178/180), GREEN restored (180/180), tsc clean, full swing suite 1446/1446 clean, full npm test kicked off in background for extra assurance. Opened PR #5371 (branch fix/swing-holdplan-giveback-duplicate), staged finding docs/audit/findings-staging/2026-09-21-holdplan-giveback-duplicate.md, undrafted (confirmed draft:false), subscribed to PR activity. CARVE-OUT auto-merge should take it once CI is green. Left my original #4076 finding comment as-is (still accurate context/root-cause trace) -- the PR itself is the resolution.",
+  "last_updated": "2026-09-21T17:20:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto other-lane journal entries, no swing-lane merges. PR #5371 (my own) CI still pending (~14min in, consistent with the ~6.5min own-module + longer full-suite timing seen elsewhere today). Found new sibling PR #5372: a genuine, correct fix for my earlier pickLanePlayForBrief finding (#4076 comment 5761378030) -- but for the MULTI-row case specifically (two concurrent ABTC banger legs, both silently resolving to the higher-livePnlPct one regardless of requested positionId), via an exact positionId match added to pickLanePlayForBrief. Independently verified: diff matches write-up, GREEN baseline 15/15, targeted revert of just the new positionId block confirmed RED (1 test failed), restored GREEN, tsc clean, full swing suite 1445/1445 clean. BUT caught a real residual gap while verifying: the new positionId check is inserted AFTER the pre-existing 'if (forTicker.length===1) return forTicker[0]' early return -- so my ORIGINAL single-row repro (AAPL #40, bogus positionId=999999) is untouched by this fix. Re-confirmed live against production right now: positionId=999999&status=CLOSED for AAPL still returns #40's real data with available:true. Posted this as a residual-gap comment on #5372 (5764597819) alongside the confirming verification -- offered to open a fast follow-up once #5372 merges rather than touching their open PR directly. Checked #4076: no new activity.",
   "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-21-holdplan-giveback-duplicate"
-  ],
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,12 +117,17 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T17:06:46Z",
+    "as_of": "2026-09-21T17:20:00Z",
     "swing_prs": [
       {
         "number": 5371,
         "title": "fix(swing): stop holdPlanSection duplicating actionNarrative's giveback line (third instance of #5362's duplication class)",
-        "status": "open, non-draft, self-authored this session, CI pending"
+        "status": "open, non-draft, self-authored this session, CI pending (~14min in)"
+      },
+      {
+        "number": 5372,
+        "title": "fix(swing): play-brief positionId resolution ignored banger-origin positions",
+        "status": "open, non-draft, sibling session, independently verified (comment 5764597819) -- correct for the multi-row banger case, but flagged a residual single-row gap (same forTicker.length===1 shortcut my original #4076 finding named) still unfixed -- offered a fast follow-up once merged"
       }
     ]
   },
