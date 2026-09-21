@@ -1,10 +1,17 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T01:35:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean -- main now at 47dd4b0fc (PR #5332, a parallel session's findings-fold PR, merged). ECR deploy for #5331 (run 35550072991) still in_progress ~24min in. #4076 unchanged. Zero open swing PRs. Board unchanged (Sunday off-hours). **Ask Largo deep-dive on RUM (SCALING_OUT, positionId 1134)**, first check this session. Investigated one candidate discrepancy: Position section shows 'Mark: $0.73' and 'P&L: +81.2%', but hand-computing (0.73-0.40)/0.40 from the DISPLAYED rounded dollar values gives 82.5%, a 1.3pp gap. Traced to source (banger-lane-merge.ts's livePnlPct: round(((mark/entry-1)*100)*10)/10) -- pnlPct and mark both derive from the SAME full-precision Postgres NUMERIC entry_premium/last_mark values; fmtUsd only rounds to 2dp for DISPLAY. On a sub-$1 option premium, 2dp rounding can swing the hand-recomputed %% by several points (checked the math: rounding-explained range for this row is roughly 79.5%%-85.8%%, comfortably including the real 81.2%%) -- an inherent currency-rounding-vs-precise-%% artifact on cheap premiums, not a computation bug. Corroborated: blended P&L (90.6%%) and peak-giveback (38%%) both tie out EXACTLY to the 81.2%% figure, confirming the pipeline itself is internally consistent, only the display rounding creates the hand-math mismatch. Same class as CLAUDE.md's own 'round at the data layer' note but not a new instance worth a fix -- would need either more decimal places shown (clutters larger-value premiums) or living with it; system-wide on all cheap-premium rows, not RUM-specific. Ruled out, not filed. Also confirmed cross-desk friction narrative (#4104/#4110/#4116 lineage) and counter-thesis corroboration-weight labeling (#4939) both rendering correctly live on this row.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-21T02:00:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. **Deploy for PR #5331 completed** (run 35550072991, success) -- live-tested the new /api/admin/swing/multi-truth-grade endpoint for real against production for the first time: 37 closed/rolled positions, 90-day window, PATH+THESIS both 100% gradeable, 17/37 (46%) show a THESIS-vs-markfreeze divergence. Most are unremarkable (thesis eventually confirmed after the position had already exited worse). **6 share a genuinely suspicious shape and got a real investigation**: PYPL#24/WULF#17/WULF#13/NFLX#12/IGV#16/NVDA#2 all closed within 13min-few hours of commit, froze at EXACTLY 0% markfreeze P&L, and show large adverse PATH/THESIS INVALIDATED. Traced the adverse PATH to entry_underlying_px values that are 9-25% off real market price on the commit date (verified against real Polygon daily bars, not rounding) -- ruled out Legacy-promotion (PYPL#24's accumulation-export record shows organic CATALYST/FLOW signal_kinds, not NIGHT HAWK), ruled out a clean split-adjustment or staleness-from-earlier-scan explanation for PYPL specifically (its real price barely moved the whole 08-14..08-21 week either way). Traced the field's provenance to deriveSwingPlanLevels (structure-levels.ts, entryUnderlyingPx: price -- a pure passthrough, confirmed correct) but ran out of cycle budget before tracing the actual commit-time price source further upstream (discovery.ts/dossier.ts's plan-building, which I haven't fully traced into the scan-cadence re-evaluation pipeline). **Escalated per the standing 'ambiguous -> report, hold' discipline rather than guessing at a fix** -- posted comment 5754393669 on #4076 with the full evidence table, what's ruled out, what's still open, and offered to take it myself next cycle or split with Cursor. Flagged the real possible blast radius beyond these 6 closed rows: entry_underlying_px also feeds thesisProgress01 (time_stop/add_eligible gates) and play-brief-intel.ts's cushion/room% for OPEN positions -- worth checking a live MANAGING position for the same shape before assuming it's confined to fast-closed legs. This is the first real payoff from PR #5331/#5332 -- exactly the kind of genuine gap the endpoint was built to surface. #4076 otherwise unchanged before this post. Zero other open swing PRs. Board unchanged.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    {
+      "comment_id": 5754393669,
+      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5754393669",
+      "summary": "6/37 closed swing positions show entry_underlying_px 9-25% off real market price on commit date, correlated with near-instant closes + 0% markfreeze P&L. Root cause not yet pinned down (traced to a pure passthrough, ruled out Legacy-promotion and simple staleness for PYPL specifically) -- escalated, not fixed.",
+      "status": "OPEN -- offered to take myself next cycle or split with Cursor"
+    }
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,7 +120,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T01:35:00Z",
+    "as_of": "2026-09-21T02:00:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
@@ -186,8 +193,15 @@
       "raised_at": "2026-09-20T16:34:00Z",
       "topic": "Swing 5-truth grader (swing/grade.ts) still completely unwired -- re-surfaced dormant OUTCOME-GRADING-SPEC.md #6 gap",
       "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5751117208",
-      "status": "awaiting_response",
+      "status": "RESOLVED -- shipped as PR #5331 (merged+deployed) + #5332 (findings fold). Live retrace already surfaced a real follow-on finding, see 5754393669 below.",
       "proposed_next_step_if_uncontested": "smallest option -- additive cron writing the 5 truths to a new column/table, no member-facing surface change"
+    },
+    {
+      "raised_at": "2026-09-21T02:00:00Z",
+      "topic": "6/37 closed swing positions show entry_underlying_px 9-25% off real market price on commit date",
+      "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5754393669",
+      "status": "OPEN -- escalated, root cause not pinned down (traced to a pure passthrough in structure-levels.ts, ruled out Legacy-promotion and simple staleness for PYPL specifically, ran out of cycle budget before tracing the commit-time price source further upstream into discovery.ts/dossier.ts)",
+      "proposed_next_step_if_uncontested": "take it myself next cycle -- trace discovery.ts's plan-building on the actual commit-triggering scan pass to find where a stale/wrong price enters"
     }
   ]
 }
