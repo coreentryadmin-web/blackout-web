@@ -92,6 +92,20 @@ function compactSwingLane(lane: Awaited<ReturnType<typeof getSwingServingLane>>)
       "Score-floor-cleared candidates (pre-entry + open) — NOT a count of open positions. Use open_position_count for that.",
     open_position_count: openPositionCount,
     watch_count: lane.watchCount,
+    // `watch_count` is the STATUS-based back-compat split (`status === "WATCH"`, i.e. score below
+    // the commit floor) — it is NOT the same population as the member-facing "Watch" rail the desk
+    // actually renders (`section_counts.WATCH`), which ALSO includes FORMING-stage candidates that
+    // have already cleared the floor (status "COMMIT") but haven't triggered yet — `sectionForSwingPlay`
+    // (serving.ts) routes those to WATCH before it ever checks the floor. The two can diverge in
+    // either direction: measured live 2026-09-21, one fetch read watch_count 0 / section_counts.WATCH
+    // 2 minutes apart on the SAME lane with no restart in between — an ordinary snapshot refresh, not
+    // an error. Same root shape as `committed_count`'s own note above (a status-based field silently
+    // answering a section-based question) — use `section_counts.WATCH` for "how many names is the desk
+    // watching," not this field.
+    watch_count_note:
+      "Status-based back-compat count (score below the commit floor) — NOT the member-facing Watch " +
+      "rail. Use section_counts.WATCH for that; it also includes floor-cleared FORMING-stage names " +
+      "this field omits, and can differ from watch_count in either direction.",
     section_counts: sectionCounts,
     sample_plays: sample,
     score_floor: lane.scoreFloor,
