@@ -4,6 +4,23 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-21 (15:33 UTC / Mon 11:33 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one noisy mobile CLS outlier (inconclusive)
+
+Confirmed clock myself (11:33 ET, Monday, in-window). `/tools/gamma-snapshot`'s public API
+re-checked: `market_session: "OPEN"`, `degraded: false`, spot genuinely moving tick-to-tick
+(7729.97→7729.64→7729.66 across 3 polls), `calculation_id` advancing every call. Cross-checked
+against Massive `/v3/snapshot/indices` (7728.73) — 0.012% apart, normal tick drift. Same clean
+result as this morning's wake.
+
+Live CLS: purged edge, desktop **0.0001, GOOD**. Mobile came back **0.1145, NEEDS-IMPROVEMENT** on
+the first read — a real outlier vs this morning's clean 0.0318. Did not dismiss OR jump to a fix on
+one read: re-measured 4 more times (0.0329 / 0.0318 / 0.031 / 0.0318, all GOOD, tightly clustered).
+**5 reads total, 1 outlier against 4 consistent GOODs** — reads as a transient/intermittent blip
+(a live market-data update or network timing landing mid-measurement is the likely shape), not a
+reproducible regression of #2453. Logging as an inconclusive anomaly to watch, same discipline as
+the still-open `/tools/gamma-snapshot` intermittent CLS anomaly documented earlier this session —
+not fabricating a root cause or opening a PR without real reproducibility. No PR.
+
 ## 2026-09-21 (14:06 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC identical to last cycle, 0 stuck PRs, live checks fresh from this morning's RTH wake)
 
 ## 2026-09-21 (13:33 UTC / Mon 09:33 ET) — [SEO] Market-hours wake: `/tools/gamma-snapshot` live-data validation, clean
