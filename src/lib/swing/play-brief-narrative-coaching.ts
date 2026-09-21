@@ -867,9 +867,30 @@ export function vexCoaching(
   if (vCall != null) parts.push(`vanna+ wall **${vCall.toFixed(2)}**`);
   if (vPut != null) parts.push(`vanna− wall **${vPut.toFixed(2)}**`);
 
+  // BUG FIX (2026-09-21, Ask Largo standing mandate — first deep audit of this section since it
+  // shipped): this used to be `Math.abs(gFlip - vFlip) > 0.5`, a FIXED DOLLAR gap applied across
+  // every ticker regardless of price. That is scale-blind in a book that runs from ~$5 (RUM, GEMI)
+  // to ~$700+ (AMD) — the same file's OWN pattern one section up (line ~384, confluence distance)
+  // already normalizes a level-vs-spot gap to a PERCENT of spot for exactly this reason, and this
+  // bullet never got the same treatment. Live-verified against 22 real committed/watch swing
+  // positions on 2026-09-21 (AMD/HOOD/IBIT/IREN/CLSK/RIOT/APLD/AXTI/CRDO/TEM/MSTR/ABTC/BYND/MUU/
+  // SNXX/ETHU/ETHA/AMBA/FSLY/HPE/BRUN/SPCH/SNOW): every single one where BOTH gammaFlip and
+  // vexFlip were present tripped "diverge" (0/22 did not) — real gaps ranged 2.06% (SNOW) to
+  // 61.20% (SPCH) of spot, i.e. the $0.50 absolute bar is so far below the real, honest gap
+  // between two independently-computed flip levels that the bullet is boilerplate, not a signal:
+  // it told every trader on every ticker the same thing regardless of whether THIS ticker's gap
+  // was unusually wide. Fixed by converting to the same percent-of-spot form the confluence
+  // section already uses, anchored at the ORIGINAL calibration point (spot $100, $0.50 gap ->
+  // 0.5%) rather than inventing a fresh, unevidenced cutoff — this is a scale-invariance fix, not
+  // a re-tuning. Requires `spot` to compute (honest omission over a scale-blind guess, per
+  // LARGO-PRODUCT-CONTRACT.md's absence principle) — when spot is unavailable the divergence claim
+  // is silently dropped rather than falling back to the broken absolute check.
   let diverge = "";
-  if (gFlip != null && vFlip != null && Math.abs(gFlip - vFlip) > 0.5) {
-    diverge = " **γ vs vanna diverge** — vanna can accelerate moves gamma alone wouldn't predict.";
+  if (gFlip != null && vFlip != null && spot != null && spot > 0) {
+    const gapPct = Math.abs(gFlip - vFlip) / spot;
+    if (gapPct > 0.005) {
+      diverge = " **γ vs vanna diverge** — vanna can accelerate moves gamma alone wouldn't predict.";
+    }
   }
 
   return `**VEX lens** — ${parts.join(" · ")}.${diverge} Watch vanna walls on vol-expansion days.`;
