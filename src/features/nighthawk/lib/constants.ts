@@ -136,3 +136,22 @@ export const PREFERRED_OPTION_COST_PER_CONTRACT = PREFERRED_OPTION_PREMIUM_PER_S
  *  ORDINARY pick, it just means that candidate can't be preferred over it. */
 export const MIN_PREFERRED_CONTRACT_DELTA = 0.15;
 
+/** Secondary, LOWER open-interest floor the cost-preference tier may fall back to when nothing
+ *  clears the full `tieredMinOi` bar (grounding.ts) at an affordable premium — distinct from that
+ *  floor, which stays completely unchanged for the ORDINARY (non-preferred) pick. Without this,
+ *  the preference tier only ever searches the same deep-liquidity pool the ordinary pick already
+ *  searches, so on any underlying where "affordable" and "deeply liquid" don't overlap, the
+ *  preference silently does nothing and the member sees no benefit from it at all — confirmed
+ *  live 2026-09-22 on the very next book after the preference above shipped: ALAB ($303 spot,
+ *  tieredMinOi=500) had a real $430C at $7.03/share, 0.183Δ, but only 75 OI, so it never entered
+ *  the pool `preferAffordable` searches, and the ordinary pick landed on the $340 ATM strike at
+ *  $30.23/share instead; TWLO ($244 spot, tieredMinOi=500) had a real $290C at $6.10/share, 0.289Δ,
+ *  248 OI, same story, landing on the $270 ATM strike at $12.75/share. Both rejected candidates
+ *  are real, quoted, non-zero-OI contracts a member could actually trade — just not "deep" by the
+ *  500-OI bar built for index-class names. 50 is set well above the OI=0 phantom-quote strikes seen
+ *  on the same two chains (multiple real strikes with an ask but zero OI) and comfortably below both
+ *  evidenced real candidates (75, 248), so it excludes untradeable noise without re-excluding either
+ *  one. Only ever consulted AFTER a real `tieredMinOi`-clearing affordable candidate is confirmed not
+ *  to exist — the ordinary (non-preferred) ladder's own liquidity floor is untouched by this. */
+export const PREFERRED_OPTION_RELAXED_MIN_OI = 50;
+
