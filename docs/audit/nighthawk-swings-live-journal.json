@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T09:03:10Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, AGGRESSIVE MODE full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. Zero open swing PRs. **Verified the mission brief's own named '#4700 Banger-lane blindspot' callout for book/portfolio-overlap** -- hadn't specifically checked this exact named item yet this session. Traced loadOpenBook() (play-brief-context.ts L59-99): confirmed it correctly, carefully merges fetchOpenSwingPositions() + fetchBangerOpenBookRows() into one PortfolioPosition[], with a real documented id-collision-avoidance pattern (banger rows leave positionId unset, falling back to ticker+direction self-exclusion since banger is always LONG; carries the real banger row id separately as bangerId, never fed into the identity-match logic). Confirmed live too -- MARA/HUT's Book context sections already correctly listed real banger-origin tickers in the concentration count. The #4700 fix holds, no regression. Posted a short connective comment on #4076 (5757975660) pointing out this is the exact working template/precedent for the closed-side banger merge my last two cycles' findings (5757314206/5757474451) need -- not a new finding, just closing the loop on the mission's own callout and narrowing scope for whoever picks up the open work. No PR filed this cycle.",
+  "last_updated": "2026-09-21T09:20:05Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. Tried to find a live example of the Meridian catalysts 'has a real near-term catalyst' branch (every ticker checked this session so far has hit the quiet-calendar path) -- checked HPQ, still 64 days out, book currently has no near-term earnings names; abandoned the search rather than force a static-only check. **Pivoted to verifying the 'Ticker track record' aggregation logic** on WULF, using context from the earlier entry_underlying_px investigation (WULF #17 and #13, both known-anomalous historical closes). Pulled both closed briefs directly: both #17 (committed 08-18) and #13 (committed 08-17) exited exactly 0.0% ('flat' reason) -- confirms the entry_underlying_px finding's 'froze at exactly 0% markfreeze P&L' detail. #17's own brief correctly shows 'Ticker track record: WULF 1 time before this play: 0W / 1L' -- correctly self-excludes #17 from its own prior-trades count, and correctly counts #13 (also flat/0%) as a LOSS under the documented isSwingWin binary rule (exact 0% counts as a loss, not a win). Confirms both the self-exclusion logic and the breakeven-as-loss convention are working correctly on a real multi-trade ticker. No new bugs found, no new PR or #4076 comment needed this cycle -- a clean, well-verified cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T09:03:10Z",
+    "as_of": "2026-09-21T09:20:05Z",
     "swing_prs": []
   },
   "tickers_seen": {
