@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T14:07:07Z",
-  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5359 (merged sibling PR, verified last cycle). Found new sibling PR #5360 (same session as #5355/#5359) threading ctx.readMs through the final six coaching functions (vexCoaching/flowPrintsCoaching/wallDynamicsCoaching/technicalsCoaching/vectorPlayCoaching/dataHonestyCoaching) -- claims to close out the whole #5351 sweep. Found a REAL merge conflict via git merge-tree/actual test merge: #5360's true fork point (git merge-base) predates #5359's merge, so both PRs edited the same 4 adjacent push() lines in collectCoachingBullets (trivial, non-overlapping threading -- #5360 wanted wallDynamicsCoaching/technicalsCoaching threaded, #5359 wanted expectedMoveCoaching/wallIntegrityCoaching threaded). By the time I'd finished confirming it was a real conflict (not just merge-tree noise) and started verifying #5360's own branch in isolation (130/130 GREEN, RED confirmed via revert-to-true-parent -- exactly the 6 new tests failed, restored GREEN, tsc clean, 1437/1437 own-branch swing suite), the sibling session had already pushed a merge commit (b60d5702f) resolving it themselves -- correctly, the union of both threadings, no leftover conflict markers. Re-verified the ACTUAL current PR head post-merge: 132/132 (130+#5359's 2), tsc clean, 1439/1439 full swing suite. Posted a confirming comment (5761808005) noting both the conflict-and-resolution and the full independent verification -- good to merge. If this lands clean, the entire #5351 Date.now()->ctx.readMs sweep across play-brief-narrative-coaching.ts (5 PRs: #5351/#5353/#5355/#5356/#5359/#5360, six sessions' worth of incremental work) is genuinely complete. Checked #4076: no new activity since my last comment (pickLanePlayForBrief single-row bug) -- still no Cursor engagement on any of the four open findings.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-21T14:18:33Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded cleanly onto #5360 (merged, confirmed via log) -- the full #5351/#5353/#5355/#5356/#5359/#5360 Date.now()->ctx.readMs sweep across play-brief-narrative-coaching.ts now appears complete, six PRs across multiple sessions. No open swing PRs, no new #4076 activity since the pickLanePlayForBrief bug report. WATCH bucket currently empty (no candidates this instant -- consistent with documented cadence-phase gaps, not a bug). Fresh Ask Largo audit on AAPL #40 (the brand-new position from two cycles ago, first real read since commit at 09:30:38 ET): all math hand-verified correct -- P&L +17.2% (entry $5.23/mark $6.13), exec P&L +11.0% off the bid ($5.80), stop $2.09 (-60% backstop) and target $10.45 (+100% trim rail) both correctly derived from entry, counter-thesis correctly shows 'corroborated across 2 independent reads' (call wall overhead + dealer long-gamma, both real). Honest absence-handling throughout (Vector 500s stale correctly caveated in both the freshness chip and narrative, Night Hawk Legacy/wall-history correctly listed unavailable). One minor, NOT escalation-worthy cosmetic observation: the lane-rank line reads 'Below lane median -- #62/62 (score 0, -63 vs median)' -- a freshly-committed row with score=0 because its feature vector/pillars haven't populated yet (entryPresentPillars:null), technically honest (not fabricated) but could read as alarming to a member seeing a brand-new position immediately flagged dead-last on the board. Single instance, not 3x-corroborated -- logging as a watch item to see if it self-resolves on the position's next scan-cadence tick (same 'score 0' should populate a real value once pillars compute), not a live escalation. Nothing else found this cycle -- clean.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -86,6 +86,10 @@
     {
       "topic": "AAPL #37 (STANDARD sub-lane, dte=0 today) -- manage-engine expiry_risk GATE (priority #3, EXIT, manage.ts:335-337, expiryRiskDte=2 for STANDARD) not yet reflected in pinned manageAction/manageReason (still TAKE_PARTIAL/rel_strength_loss as of 09:24 ET pre-market)",
       "status": "SUPERSEDED 2026-09-21T13:35Z -- #37 closed at/around today's RTH open before a second manage-tick could be observed, so the original expiry_risk-priority question is unresolved/moot on this specific instance. But trying to pull #37's closed brief for the record surfaced a much bigger, confirmed bug instead: pickLanePlayForBrief's single-row shortcut silently returns the WRONG (new #40) position's live data for ANY positionId/status request once a ticker has exactly one current row. Posted to #4076 (comment 5761378030) with full root-cause trace. This experiment entry is closed; track the new finding instead."
+    },
+    {
+      "topic": "AAPL #40 (freshly-committed swing-native position) showed lane-rank 'score 0, #62/62' in its play-brief narrative right after commit -- feature vector/pillars not yet populated at first read (entryPresentPillars:null)",
+      "status": "OPEN, single instance, cosmetic/display only -- not escalated. Honest (not fabricated), but a freshly-opened position reading as literally dead-last on the board could alarm a member. Watch whether this self-resolves on the position's next scan-cadence tick (expected, if pillars populate asynchronously after commit) -- if a THIRD instance of a freshly-committed row still showing score:0 well after its first scan tick turns up, that would be worth a real finding/fix (e.g. suppress the lane-rank line entirely until pillars are populated, same honest-omission discipline used elsewhere in this file)."
     }
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
@@ -117,14 +121,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T14:07:07Z",
-    "swing_prs": [
-      {
-        "number": 5360,
-        "title": "fix(swing): thread ctx.readMs through remaining coaching siblings (closes #5351 readMs sweep)",
-        "status": "open, non-draft, sibling session, self-resolved a real merge conflict with #5359, independently RED->GREEN verified by me on the current post-conflict-resolution head (comment 5761808005), CI pending / CARVE-OUT auto-merge expected"
-      }
-    ]
+    "as_of": "2026-09-21T14:18:33Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
