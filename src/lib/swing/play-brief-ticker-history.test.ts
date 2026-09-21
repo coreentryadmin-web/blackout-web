@@ -140,4 +140,60 @@ describe("loadTickerTrackRecord", () => {
     const result = await loadTickerTrackRecord("aapl", null);
     assert.equal(result?.ticker, "AAPL");
   });
+
+  // TEMPORAL ORDERING — regression for the live future-leak on EWZ #26/#29 (see file header):
+  // a chain that closed AFTER the reviewed play must never be cited as its "prior" history.
+  it("excludes a candidate chain that resolved AFTER the reviewed play's own asOfMs", async () => {
+    // Earlier trade (a LOSS), closed 2026-08-28.
+    const earlierLoss = row({
+      id: 26,
+      realized_pnl_pct: -34.2,
+      closed_at: "2026-08-28T16:15:00.000Z",
+      graded_at: "2026-08-28T16:15:00.000Z",
+    });
+    // Later trade (a WIN), closed 2026-09-03 — must NOT be cited as "prior" when reviewing #26.
+    const laterWin = row({
+      id: 29,
+      realized_pnl_pct: 438.8,
+      closed_at: "2026-09-03T11:00:00.000Z",
+      graded_at: "2026-09-03T11:00:00.000Z",
+    });
+    mockRows = [earlierLoss, laterWin];
+    mockChains = { 26: [earlierLoss], 29: [laterWin] };
+
+    // Reviewing #26 (asOfMs = its own exitAt) — the only real prior EWZ trade is NONE (it's the
+    // first), so the later #29 win must be excluded and the result must be null, not "1W/0L".
+    const reviewingEarlier = await loadTickerTrackRecord(
+      "EWZ",
+      26,
+      Date.parse("2026-08-28T16:15:00.000Z"),
+    );
+    assert.equal(reviewingEarlier, null);
+
+    // Reviewing #29 (asOfMs = its own exitAt) — #26 genuinely precedes it, so it SHOULD be cited,
+    // correctly as a loss.
+    const reviewingLater = await loadTickerTrackRecord(
+      "EWZ",
+      29,
+      Date.parse("2026-09-03T11:00:00.000Z"),
+    );
+    assert.deepEqual(reviewingLater, { ticker: "EWZ", priorClosedTrades: 1, wins: 0, losses: 1 });
+  });
+
+  it("applies no cutoff (asOfMs omitted/null) for a still-open reviewed play — every resolved chain counts", async () => {
+    const win1 = row({ id: 40, realized_pnl_pct: 25, closed_at: "2026-09-10T00:00:00.000Z" });
+    const win2 = row({ id: 41, realized_pnl_pct: 15, closed_at: "2026-09-15T00:00:00.000Z" });
+    mockRows = [win1, win2];
+    mockChains = { 40: [win1], 41: [win2] };
+    const result = await loadTickerTrackRecord("AAPL", null, null);
+    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 2, wins: 2, losses: 0 });
+  });
+
+  it("keeps a candidate chain with no parseable resolution timestamp rather than dropping it silently", async () => {
+    const undated = row({ id: 50, realized_pnl_pct: 20, closed_at: null, graded_at: "not-a-date" });
+    mockRows = [undated];
+    mockChains = { 50: [undated] };
+    const result = await loadTickerTrackRecord("AAPL", null, Date.parse("2026-09-20T00:00:00.000Z"));
+    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 1, wins: 1, losses: 0 });
+  });
 });
