@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T02:38:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean (main now at 71cc0e82b -- a parallel automated process pushed an agent-heartbeat state commit, unrelated). #4076 unchanged since my last post, no Cursor response yet on the entry-price thread. **A DIFFERENT parallel session (session_01Qtnftc16CuWyVLxR8LaMoC) opened PR #5333** (trough_premium untracked for BANGER-origin swing positions, live repro on RBRK) -- not mine, but did a genuine independent adversarial verification per the standing 'review a sibling PR' mandate option: confirmed the root cause against current main (bangerRowToActivePlay hardcodes trough_premium: null, banger_positions table genuinely has no trough_premium column, banger-lane-merge.ts/positions-db.ts have zero hits for the field), fetched the branch into an isolated worktree, ran its own test file green (8/8), reverted just the one fixed line, reran -- exactly 1 failure (null !== 2.1), restored, reconfirmed 8/8 green. tsc clean. Posted a confirming independent-verification comment (5754657853) on the PR -- real, correctly-scoped fix, no concerns. Not driving/merging it myself since it's not my PR and CI was still running when checked. Board unchanged. No new findings of my own this cycle -- spent it on peer verification instead, which is genuine value per the collaboration protocol, not idle time.",
+  "last_updated": "2026-09-21T02:52:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. git sync clean -- main now at 9ebceb20c (PR #5333, the sibling trough_premium fix I independently verified last cycle, merged). ECR deploy for that commit in_progress (run 35554943285, started 02:40Z). #4076 unchanged, no Cursor response yet. Zero open swing PRs. Board unchanged. **Captured the pre-deploy baseline for #5333's own repro** (RBRK, ticker=RBRK): confirmed live 'Peak: +91.5%' / 'Trough: --' with P&L -2.4% (below entry) -- matches the PR's stated bug exactly, still live since the deploy hasn't rolled out yet. Will re-check RBRK next cycle once deployed to confirm the fix landed (same before/after discipline as the WOLF/#5328 verification). **Ask Largo audit on MSTR (MANAGING, positionId 1186)**, first check this session. Investigated one specific, deliberately-checked design question: the Vector desk line lacked the usual '-- aligned with swing lane' / '-- cross-check' suffix seen on other tickers. Traced to source (vectorPlayCoaching, play-brief-narrative-coaching.ts) -- confirmed intentional, already-fixed behavior (2026-09-15 TDOC/ASAN fix): Vector's bias here is 'range' (non-directional), and the code correctly withholds BOTH the aligned and cross-check framing for a non-directional bias since neither claim would be true. Not a bug. Also confirmed the ticker track record citation (MSTR 1 prior trade, 0W/1L) renders correctly, and the 28-position crypto-equity book-context concentration line (same theme as BKKT last checked, consistent count). No new bugs this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,10 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T02:38:00Z",
-    "swing_prs": [
-      "#5333 (not mine -- parallel session's trough_premium fix, independently verified, CI in progress)"
-    ]
+    "as_of": "2026-09-21T02:52:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
