@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T16:49:15Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto #5369 (Thermal GEX fix, not swing-lane) + other-lane journal entries. No new open swing PRs, no new #4076 activity from Cursor. AGGRESSIVE-MODE forensic win this cycle: grepped every mfeCaptureOutcome(play.pnlPct, play.peak, null) call site to check for OTHER instances of the exact duplication class #5362 just fixed -- found there are THREE call sites total, not two: actionNarrative (<75, play-brief-narrative.ts), degradedReadLine (now [75,80) post-#5362), and a third I hadn't audited yet -- holdPlanSection (play-brief-intel.ts:1222-1234, <70, its own comment calls it 'the LEAST sensitive of the three call sites' -- confirming the original author knew of all three but only #5362 got fixed). Since 70<75, holdPlanSection's condition is a strict subset of actionNarrative's -- guaranteed duplicate whenever it fires. Live-repro'd on BLSH #1179 (capturePct ~52.5%): with expandIntel=1, 'Trade manager read' shows 'Gave back 47% of peak' and the separate 'Hold plan' section shows 'Gave back 47% from peak' -- same fact, same response. Confirmed the bug is SCOPED to the expandIntel=1 expanded view only -- the default collapsed view correctly folds Hold plan away and shows the fact exactly once (verified both paths against the live BLSH position). Traced that the CLOSED-play sibling (lessonsSection, same file) already has the right shape (roundTripAlreadyNoted/captureAlreadyNoted flags checking narrative body via .includes()) that holdPlanSection is missing for the OPEN-play path. Posted full root-cause + live repro to #4076 (comment 5764180533) -- not self-fixed, narrower than #5362 but the correct fix needs a real design choice (thread an alreadyNoted flag vs. narrow the threshold further, and 70 was picked deliberately per the function's own comment, so it's not obviously a one-line fix). Offered to take it myself if uncontested.",
+  "last_updated": "2026-09-21T17:06:46Z",
+  "notes": "v3 full-brief cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5370 (mechanical findings-fold for #5369, not swing-lane). No new open swing PRs, no reply yet on my #4076 holdPlanSection finding (comment 5764180533) -- expected, only ~15min old. SELF-FIXED the finding I raised last cycle: on re-reading, the correct fix turned out to be mechanical after all -- the narrative body IS already in scope at holdPlanSection's call site (buildIntelSections composes 'Trade manager read' at line ~1883, holdPlanSection is called at ~1952, same compose order lessonsSection's own roundTripAlreadyNoted/captureAlreadyNoted guards already use for the CLOSED-play sibling) -- so this crossed the CARVE-OUT bar once traced fully, not a genuinely open design question. Implemented: holdPlanSection gained an optional narrativeAlreadyNoted:{roundTrip?,capture?} param gating both its round_trip and capture branches; buildIntelSections computes both flags from narrative?.body via .includes('Round-tripped past breakeven') / .includes('Gave back') (capitalized -- verified this only matches actionNarrative's phrasing, not degradedReadLine's lowercase 'gave back'). Added 2 new regression tests mirroring lessonsSection's existing pattern exactly. RED confirmed via git stash on source only (exactly 2 new tests failed, 178/180), GREEN restored (180/180), tsc clean, full swing suite 1446/1446 clean, full npm test kicked off in background for extra assurance. Opened PR #5371 (branch fix/swing-holdplan-giveback-duplicate), staged finding docs/audit/findings-staging/2026-09-21-holdplan-giveback-duplicate.md, undrafted (confirmed draft:false), subscribed to PR activity. CARVE-OUT auto-merge should take it once CI is green. Left my original #4076 finding comment as-is (still accurate context/root-cause trace) -- the PR itself is the resolution.",
   "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [],
+  "findings_filed_this_cycle": [
+    "2026-09-21-holdplan-giveback-duplicate"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -117,8 +119,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T16:49:15Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T17:06:46Z",
+    "swing_prs": [
+      {
+        "number": 5371,
+        "title": "fix(swing): stop holdPlanSection duplicating actionNarrative's giveback line (third instance of #5362's duplication class)",
+        "status": "open, non-draft, self-authored this session, CI pending"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
@@ -204,7 +212,7 @@
       "raised_at": "2026-09-21T16:49:00Z",
       "topic": "Third instance of #5362's giveback-duplication class: holdPlanSection (play-brief-intel.ts) duplicates actionNarrative's own line, visible only in the expandIntel=1 expanded view",
       "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5764180533",
-      "status": "OPEN -- live repro'd (BLSH #1179), root cause fully traced, not self-fixed (needs a real design choice: alreadyNoted-style flag vs. narrowing the deliberately-chosen <70 threshold further). Offered to take it myself next cycle if nobody's on it."
+      "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ]
 }
