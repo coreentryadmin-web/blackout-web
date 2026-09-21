@@ -42,6 +42,7 @@ import type { PlayDirection } from "../horizon-fanout";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 import { preferredGexWalls } from "./play-brief-intel";
 import { collectFocalLevels, type FocalLevel, type LevelKind } from "./play-brief-narrative";
 import { gexMatrixStale, vectorSnapshotStale } from "./play-brief-absence";
@@ -238,8 +239,13 @@ function crossDeskAgreementFor(
   return {
     status: "disagreement",
     note:
-      `Vector reads **${vecPosture} gamma** while the GEX matrix's flip (**${gex.flip.toFixed(2)}**) vs ` +
-      `spot (**${spot.toFixed(2)}**) implies **${matrixImplied} gamma** — the two dealer-positioning ` +
+      // fmtPriceLevel (not raw .toFixed(2)) — same rounding-consistency requirement as every other
+      // bare price level narrated in this brief (see fmt-money.ts's own header): this text sits
+      // alongside `envelope.structureLadder.spot`/rung prices, both derived from these SAME raw
+      // `spot`/`gex.flip` floats but rounded via `roundFloats` at the route boundary, which can
+      // disagree with `n.toFixed(2)` by a full cent at an IEEE-754 half-cent boundary.
+      `Vector reads **${vecPosture} gamma** while the GEX matrix's flip (**${fmtPriceLevel(gex.flip)}**) vs ` +
+      `spot (**${fmtPriceLevel(spot)}**) implies **${matrixImplied} gamma** — the two dealer-positioning ` +
       `reads disagree on regime.`,
   };
 }

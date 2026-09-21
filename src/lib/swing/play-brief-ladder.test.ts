@@ -221,6 +221,26 @@ test("buildStructureLadder: crossDeskAgreement is DISAGREEMENT when Vector's own
   assert.match(ladder.crossDeskAgreement!.note ?? "", /long gamma/);
 });
 
+test("buildStructureLadder: crossDeskAgreement.note rounds the flip/spot at an IEEE-754 half-cent boundary the SAME way the route's roundFloats does (toFixed-vs-roundFloats mismatch, Ask Largo 2026-09-21)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  // 95.175 is stored as ...74999... in IEEE-754, so raw `.toFixed(2)` prints "95.17" while
+  // `Math.round(n*100)/100` (what `roundFloats` uses to round the SAME raw float for the numeric
+  // `ladder.spot`/rung `price` fields elsewhere in this same response) prints "95.18" — a real,
+  // live, byte-provable disagreement between this narrated string and the numeric fields it sits
+  // beside, the same bug class already fixed twice in play-brief-narrative*.ts (#5380, #5383).
+  const ctx = fixtureCtx({
+    play,
+    vector: fixtureVec({ spot: 100.005, regime: { posture: "short" } }),
+    ecosystem: gexEco({ flip: 95.175 }),
+  });
+  const ladder = buildStructureLadder(ctx, play, "open")!;
+  const note = ladder.crossDeskAgreement!.note ?? "";
+  assert.match(note, /95\.18/);
+  assert.doesNotMatch(note, /95\.17\b/);
+  assert.match(note, /100\.01/);
+  assert.doesNotMatch(note, /100\.00\b/);
+});
+
 test("buildStructureLadder: crossDeskAgreement is OMITTED (never forced) when Vector's own read is unknown/absent", () => {
   const play = fixturePlay({ direction: "LONG" });
   const unknownCtx = fixtureCtx({
