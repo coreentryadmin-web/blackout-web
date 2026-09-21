@@ -84,7 +84,10 @@ export function bangerRowToActivePlay(row: BangerPositionRow, today: string): Ac
     entry_premium: row.entry_premium,
     status: row.status === "PARTIAL" ? "TRIM" : "OPEN",
     peak_premium: row.peak_premium,
-    trough_premium: null,
+    // FINDINGS 2026-09-21: was hardcoded null — banger_positions never carried a trough_premium
+    // column until this same fix added it (db.ts / positions-db.ts). Forward the real value now
+    // that one exists, same as swingRowToActivePlay does above.
+    trough_premium: row.trough_premium,
   };
 }
 

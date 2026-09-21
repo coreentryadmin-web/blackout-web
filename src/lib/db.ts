@@ -2474,6 +2474,21 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS last_mark_at TIMESTAMPTZ;
   `);
+  // FINDINGS 2026-09-21 (Ask Largo/Night Hawk Swings audit): banger_positions only ever tracked
+  // peak_premium (the running MAXIMUM mark since entry) — there was no trough_premium column at
+  // all, unlike swing_positions which has always latched BOTH peak and trough (see the
+  // peak_premium/trough_premium GREATEST/LEAST pair a few hundred lines up). Since Engine B
+  // banger positions are folded into the Swing lane (banger-lane-merge.ts) and Ask Largo's
+  // play-brief reads trough_premium for the Position card's "Trough" line and the closed-play
+  // "Drawdown before outcome" narrative, every BANGER-origin swing play showed "Trough: —" — not
+  // because the data was unavailable, but because the column that would hold it never existed.
+  // Adding it here (mirrors the last_mark_at ALTER immediately above) and latching it in
+  // updateBangerLiveState (positions-db.ts) lets it start filling on the very next live tick;
+  // rows written before this migration keep trough_premium NULL, same honest-absence behavior
+  // the play-brief already handles (never fabricated).
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS trough_premium NUMERIC;
+  `);
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS email_captures (

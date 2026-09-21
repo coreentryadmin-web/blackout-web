@@ -49,6 +49,14 @@ export type BangerPositionRow = {
    *  so every banger-origin position served markAsOf=null forever regardless of true freshness). */
   last_mark_at: string | null;
   peak_premium: number | null;
+  /** Running MINIMUM mark since entry (MAE — max adverse excursion), latched the same
+   *  GREATEST/LEAST way swing_positions.trough_premium is (see FINDINGS 2026-09-21). Was
+   *  absent from this table entirely until that fix — banger_positions only ever tracked
+   *  peak_premium, so every banger-origin swing position (BANGER-origin rows merged into the
+   *  Swing lane by banger-lane-merge.ts) could never show a Position-card "Trough" or a
+   *  closed-play "Drawdown before outcome" line even when the DB genuinely had the data,
+   *  because the column to hold it never existed upstream. */
+  trough_premium: number | null;
   scaled_already: boolean;
   scale_out_action: string | null;
   scale_out_reason: string | null;
@@ -96,6 +104,7 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
     last_mark: num(r.last_mark),
     last_mark_at: isoTimestampString(r.last_mark_at),
     peak_premium: num(r.peak_premium),
+    trough_premium: num(r.trough_premium),
     scaled_already: Boolean(r.scaled_already),
     scale_out_action: r.scale_out_action != null ? String(r.scale_out_action) : null,
     scale_out_reason: r.scale_out_reason != null ? String(r.scale_out_reason) : null,
@@ -196,6 +205,11 @@ export async function updateBangerLiveState(id: number, s: BangerLiveStateUpdate
        -- write — otherwise "last touched" would masquerade as "last quoted" (FINDINGS 2026-09-11).
        last_mark_at = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE last_mark_at END,
        peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
+       -- FINDINGS 2026-09-21 (Ask Largo/swing audit): peak_premium ratcheted up on every mark but
+       -- there was no LEAST-latched counterpart, so banger_positions could never answer "how far
+       -- underwater did this position get" — mirrors updateSwingLiveState's identical
+       -- peak/trough pair in db.ts.
+       trough_premium = CASE WHEN $3 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $3), $3) ELSE trough_premium END,
        scaled_already = scaled_already OR COALESCE($4, FALSE),
        scale_out_action = COALESCE($5, scale_out_action),
        scale_out_reason = COALESCE($6, scale_out_reason),

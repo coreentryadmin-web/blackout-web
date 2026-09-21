@@ -18,6 +18,7 @@ test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", (
     entry_premium: "1.5",
     last_mark: "3.2",
     peak_premium: "3.4",
+    trough_premium: "1.4",
     scaled_already: true,
     scale_out_action: "TAKE_PARTIAL",
     scale_out_reason: "mark >= 2x entry",
@@ -42,6 +43,44 @@ test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", (
   assert.deepEqual(row.entry_context, { discovery: { screen: "banger" } });
   assert.equal(row.closed_at, null);
   assert.equal(row.last_mark_at, null);
+  assert.equal(row.trough_premium, 1.4);
+});
+
+// FINDINGS 2026-09-21 (Ask Largo/Night Hawk Swings audit): banger_positions never had a
+// trough_premium column at all — only peak_premium was ever tracked — so a BANGER-origin swing
+// play could never show a Position-card "Trough" or a closed-play "Drawdown before outcome" line
+// even when the position genuinely dipped below entry, because there was nowhere for that number
+// to live. Confirms the mapper round-trips it now that the column + latch exist (db.ts's
+// ALTER + updateBangerLiveState's LEAST clause), same pattern as the last_mark_at test above.
+test("mapBangerPositionRow surfaces trough_premium when the column carries a value, and null when absent", () => {
+  const base = {
+    id: "1",
+    commit_key: "k",
+    session_date: "2026-08-04",
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: "2026-08-14",
+    contract_occ: "occ",
+    entry_premium: "2",
+    last_mark: "1.5",
+    peak_premium: "2.5",
+    scaled_already: false,
+    scale_out_action: null,
+    scale_out_reason: null,
+    partial_realized_premium: null,
+    realized_pnl_pct: null,
+    realized_pnl_usd: null,
+    entry_context: null,
+    status: "OPEN",
+    first_seen_at: "2026-08-04T13:30:00.000Z",
+    committed_at: "2026-08-04T13:30:00.000Z",
+    closed_at: null,
+    updated_at: "2026-08-04T14:00:00.000Z",
+  };
+  const withTrough = mapBangerPositionRow({ ...base, trough_premium: "1.35" });
+  assert.equal(withTrough.trough_premium, 1.35);
+  const withoutTrough = mapBangerPositionRow({ ...base, trough_premium: null });
+  assert.equal(withoutTrough.trough_premium, null);
 });
 
 // FINDINGS 2026-09-11: banger_positions never had a per-mark timestamp column at all, so this

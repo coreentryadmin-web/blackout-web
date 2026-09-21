@@ -125,6 +125,13 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     entryPremium: entry,
     livePnlPct: livePnlPct(entry, mark),
     peakPremium: row.peak_premium,
+    // FINDINGS 2026-09-21: banger_positions never carried a trough_premium column at all (only
+    // peak), so this field was previously omitted here — not merely null, ABSENT from the
+    // object — which read to the play-brief as "field never wired" and rendered "Trough: —" on
+    // every BANGER-origin swing play regardless of whether the position had genuinely dipped
+    // below entry. Now that the column + latch exist (db.ts / positions-db.ts), forward it
+    // through same as peakPremium.
+    troughPremium: row.trough_premium,
     signalKinds: [BANGER_SIGNAL],
     bucketGraduated: false,
     liveStatus,

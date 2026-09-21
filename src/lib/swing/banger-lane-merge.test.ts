@@ -26,6 +26,7 @@ function bangerRow(overrides: Partial<BangerPositionRow> = {}): BangerPositionRo
     last_mark: 5.0,
     last_mark_at: "2026-09-04T20:55:00.000Z",
     peak_premium: 5.5,
+    trough_premium: 3.9,
     scaled_already: false,
     scale_out_action: null,
     scale_out_reason: null,
@@ -50,6 +51,25 @@ test("horizonPlayFromBangerPosition maps OPEN banger to SWING MANAGING with BANG
   assert.equal(play!.liveStatus, "OPEN");
   assert.deepEqual(play!.signalKinds, ["BANGER"]);
   assert.equal(play!.archetype, "BREAKOUT");
+});
+
+// FINDINGS 2026-09-21 (Ask Largo/Night Hawk Swings audit): horizonPlayFromBangerPosition built
+// peakPremium off row.peak_premium but omitted troughPremium entirely — not merely null, the key
+// was never set on the returned object — because banger_positions had no trough_premium column
+// to read from at all. Ask Largo's play-brief Position card ("Trough: —") and closed-play
+// "Drawdown before outcome" narrative both read HorizonPlay.troughPremium, so every BANGER-origin
+// swing play rendered as if it had never dipped below entry, regardless of the real path. Now
+// that the column + latch exist (positions-db.ts), this must forward it exactly like peakPremium.
+test("horizonPlayFromBangerPosition forwards troughPremium from the row (was previously omitted entirely)", () => {
+  const play = horizonPlayFromBangerPosition(bangerRow({ trough_premium: 3.9 }), new Date("2026-09-04T16:00:00-04:00"));
+  assert.ok(play);
+  assert.equal(play!.troughPremium, 3.9);
+});
+
+test("horizonPlayFromBangerPosition passes through a genuinely-null troughPremium honestly (never fabricated)", () => {
+  const play = horizonPlayFromBangerPosition(bangerRow({ trough_premium: null }), new Date("2026-09-04T16:00:00-04:00"));
+  assert.ok(play);
+  assert.equal(play!.troughPremium, null);
 });
 
 // FINDINGS 2026-09-20: horizonPlayFromBangerPosition used to omit `positionId` entirely, so
