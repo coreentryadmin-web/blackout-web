@@ -1699,6 +1699,26 @@ test("magnetCoaching: uses ctx.readMs, not the real wall clock, to judge Vector 
   assert.match(line!, /Dealer hedging center of mass/i);
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — sweep of the play-brief-narrative.ts
+// toFixed-vs-roundFloats rounding-mismatch fix into this sibling file's price-level coaching
+// bullets). Same live-repro shape as fmt-money.test.ts's fmtPriceLevel suite: 152.035's raw
+// IEEE-754 storage rounds DOWN with plain toFixed(2) ("152.03") but UP with roundFloats' own
+// Math.round(n*100)/100 algorithm ("152.04") — and the SAME raw magnet strike is also exposed as
+// a plain number in envelope.levels (the response's roundFloats()'d "gamma magnet" level), so a
+// bullet built with plain toFixed(2) could silently disagree with the rest of the response.
+test("magnetCoaching: strike matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    magnet: { strike: 152.035, distancePct: 3, pull: "up" },
+    regime: { posture: "long", label: "LONG GAMMA" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  const line = magnetCoaching(ctx({ readMs }), vec, 100);
+  assert.ok(line);
+  assert.match(line!, /\*\*Gamma magnet 152\.04\*\*/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
+  assert.doesNotMatch(line!, /152\.03/);
+});
+
 test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {
   const vec = {
     freshness: "stale",
