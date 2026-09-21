@@ -8,6 +8,7 @@
  */
 
 import { roundFloats } from "@/lib/round-floats";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 // ONE definition of "what session is it" across every lane. A local Intl call here would be a
 // second definition, and two tools that disagree about today is exactly the failure #2418/#2420
 // were opened for.
@@ -232,7 +233,18 @@ function flowSummary(bias: HelixThermalSide["bias"], win: string): string {
 
 function gammaSummary(gammaRegime: string | null, flip: number | null | undefined): string {
   if (gammaRegime != null && String(gammaRegime).trim()) return String(gammaRegime);
-  if (flip != null) return `Flip ${flip}`;
+  // fmtPriceLevel, not raw `${flip}` string interpolation — `flip` is the SAME unrounded upstream
+  // float the numeric `gamma.flip` field carries (rounded by `roundFloats()` at the payload's own
+  // top-level wrap, `helixThermalCompareForLargo`/`peerTickerCompareForLargo` below). A raw
+  // template-literal interpolation stringifies the float with FULL precision — CLAUDE.md's own
+  // "systemic: several endpoints serve unrounded floats" class, one layer deeper: once baked into
+  // this `summary` string, `roundFloats()` can no longer touch it (it only rounds plain numeric
+  // JSON fields, not numbers already embedded in text). Live repro: a positioning snapshot with no
+  // `gamma_regime_read` prose but a real `flip` produced `summary: "Flip 4523.360000000001"`
+  // alongside a correctly-rounded `gamma.flip: 4523.36` in the SAME payload — two different-looking
+  // values for the same fact, the exact Largo-contract precision violation (C9) already fixed for
+  // this file's sibling narrators in play-brief*.ts (#5380, #5383, #5385).
+  if (flip != null) return `Flip ${fmtPriceLevel(flip)}`;
   return "Positioning unavailable";
 }
 
