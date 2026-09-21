@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T10:32:36Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto a Dependabot minor-and-patch group bump (#5347), nothing swing-specific in the dependency changes themselves. Zero open swing PRs. Ran a quick post-dependency-bump sanity check: full swing play-brief test suite (play-brief*.test.ts, Node 20, --experimental-test-module-mocks) -- 703/703 pass, 0 fail, confirming the bump didn't regress anything in the swing engine. Given extensive source-level coverage already completed this session across MANAGING/SCALING_OUT/WATCH/COMMIT_NOW/CLOSED buckets, thesis-health, IV-rank, R:R clarity, track-record architecture, closed-brief banger gap, entry_underlying_px, portfolio-overlap, ticker/archetype track record, roll-history, counter-thesis weighting, and cross-desk agreement -- this cycle's value was the dependency-bump regression check rather than a new forensic dig. No new bugs found, no new PR or #4076 comment needed this cycle.",
+  "last_updated": "2026-09-21T10:48:36Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. **Real board-state change noticed and investigated**: COMMIT_NOW and WATCH sections both went from 1 entry each (SMCI, LITE -- audited earlier this session) to completely empty. Checked whether either was promoted to MANAGING (no) or had simply vanished (yes, from all 7 sections). Root cause: today's swing discovery scan finally ran -- MARA's brief now shows 'Swing scan: 2026-09-21 06:00 ET', replacing the stale 2026-09-18 16:37 ET snapshot that had persisted through this entire session (every brief checked all day showed 'today's scan not yet run'). SMCI/LITE were candidates from the old persisted snapshot; the fresh 06:00 ET scan simply didn't re-flag them -- normal candidate turnover as the discovery pool refreshes for the new trading day, not a bug or data loss. A genuinely useful positive confirmation that the discovery pipeline is alive and correctly cycling, and explains a real state change rather than leaving it unexplained. No new bugs found, no new PR or #4076 comment needed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T10:32:36Z",
+    "as_of": "2026-09-21T10:48:36Z",
     "swing_prs": []
   },
   "tickers_seen": {
