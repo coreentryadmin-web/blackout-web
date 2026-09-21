@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T20:26:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5380 (my own, confirmed merged) + legacy-lane's own end-of-session journal entries (different journal file, different desk). Unsubscribed from #5380 now merged. No new #4076 activity, no new open swing PRs. POST-CLOSE INVESTIGATION (worth recording): swing lane's committed count jumped 60->84 within one cycle right at/after the 16:00 ET close (MANAGING 24->58, SCALING_OUT 35->23, all new positionIds 1221-1264) -- initially flagged this as suspicious (large sudden batch, several same-ticker re-entries: MSTX/FSLY/RBRK/MSTU/AXTI/ALAB/SOXL each now have TWO open positions, one older TRIM'd leg + one brand-new HOLD leg). Investigated directly rather than assuming either 'benign daily pattern' or 'bug': confirmed via MSTX #1209 vs #1251 pairwise comparison these are genuinely DIFFERENT positions (19.5C entry $0.92 vs fresh 23.5C entry $1.15, same 2026-09-25 expiry) -- a real pyramid/re-entry on a continuing trend, not a duplicate-commit bug. This is a legitimate whole-market POST_CLOSE swing-discovery batch (scan-cadence.ts's own documented POST_CLOSE phase), not a defect. Spot-checked one fresh position (DDOG #1238, positionId in the new batch): envelope correctly honest end-to-end for a just-committed row with no live mark yet -- Mark/P&L/Peak/Trough all correctly show 'unknown'/'--' rather than a fabricated flat value, every unavailable source disclosed (HELIX pipeline stale, GEX cold matrix, Vector snapshot unavailable), trim ladder correctly shows no checkmark (trimsFired:0). Also confirmed MSTX #1251's book-context correctly counts its own same-ticker sibling #1209 among its 28 same-direction crypto-equity overlaps (not self-excluded) -- the committed-play excludePositionId branch (untouched by #5376's WATCH-only fix) continues working correctly for this genuine same-ticker-two-legs case. Nothing new found -- clean, well-investigated cycle.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-21T20:42:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto a coordinator-lane findings-fold commit (#5376/#5377/#5379/#5380 all folded into FINDINGS.md) + a coordinator journal entry. No new #4076 activity, no new open swing PRs at cycle start. Picked up the disclosed follow-up from my own PR #5380 (narrative price-level rounding mismatch) rather than starting fresh discovery -- swept the first and highest-traffic of the 5 remaining files, play-brief-narrative-coaching.ts (feeds the SAME 'Trade manager read' composed narrative via collectCoachingBullets). Fixed 9 price-level toFixed(2) call sites (magnetCoaching, expectedMoveCoaching's 1-sigma band, confluenceCoaching, vexCoaching's 3 vanna levels, flowPrintsCoaching's large-print strike, VWAP/structure-level technicals lines) with the already-shared fmtPriceLevel helper from #5380 -- no new formatter needed. Deliberately left the two macro yield/curve-spread lines untouched (percentages, not price levels, never duplicated in envelope.levels -- converting them would be cosmetic, not a real fix). RED->GREEN proven via git stash on the implementation file only (1/136 fail pre-fix -- exactly the new magnetCoaching regression test at the 152.035 boundary -- 136/136 post-fix), tsc clean, full swing suite 1456/1456 clean. PR #5383 opened+undrafted, subscribed -- CARVE-OUT auto-merge expected. Remaining follow-up (play-brief.ts, play-brief-diff.ts, play-brief-intel.ts, play-brief-ladder.ts) still tracked, not yet started.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-21-narrative-coaching-price-level-rounding"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -87,7 +89,7 @@
       "topic": "AAPL #37 (STANDARD sub-lane, dte=0 today) -- manage-engine expiry_risk GATE (priority #3, EXIT, manage.ts:335-337, expiryRiskDte=2 for STANDARD) not yet reflected in pinned manageAction/manageReason (still TAKE_PARTIAL/rel_strength_loss as of 09:24 ET pre-market)",
       "status": "SUPERSEDED 2026-09-21T13:35Z -- #37 closed at/around today's RTH open before a second manage-tick could be observed, so the original expiry_risk-priority question is unresolved/moot on this specific instance. But trying to pull #37's closed brief for the record surfaced a much bigger, confirmed bug instead: pickLanePlayForBrief's single-row shortcut silently returns the WRONG (new #40) position's live data for ANY positionId/status request once a ticker has exactly one current row. Posted to #4076 (comment 5761378030) with full root-cause trace. This experiment entry is closed; track the new finding instead."
     },
-    "FOLLOW-UP (2026-09-21, from PR #5380's own disclosed blast radius): sweep the remaining 5 swing play-brief files (play-brief.ts, play-brief-diff.ts, play-brief-intel.ts, play-brief-ladder.ts, play-brief-narrative-coaching.ts) for the same n.toFixed(2)-on-a-price-level pattern PR #5380 fixed in play-brief-narrative.ts, and convert each to the new shared fmtPriceLevel (fmt-money.ts). ~45 call sites, repo-wide grep already run and listed in the PR body. Mechanical, same fix shape, not yet started."
+    "FOLLOW-UP (2026-09-21, from PR #5380's own disclosed blast radius, UPDATED after PR #5383): sweep the remaining 4 swing play-brief files (play-brief.ts, play-brief-diff.ts, play-brief-intel.ts, play-brief-ladder.ts) for the same n.toFixed(2)-on-a-price-level pattern PR #5380 fixed in play-brief-narrative.ts and PR #5383 fixed in play-brief-narrative-coaching.ts, converting each to the shared fmtPriceLevel (fmt-money.ts). 2 of 6 files done. Mechanical, same fix shape, not yet started on the remaining 4."
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
     "as_of": "2026-09-10T07:32:00Z",
@@ -118,8 +120,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T20:26:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T20:42:00Z",
+    "swing_prs": [
+      {
+        "number": 5383,
+        "title": "fix(swing): play-brief-narrative-coaching.ts had the same toFixed-vs-roundFloats price-level mismatch as #5380",
+        "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
