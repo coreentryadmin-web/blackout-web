@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-21T21:52:04Z",
+  "lastUpdated": "2026-09-21T23:37:29Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4151,6 +4151,12 @@
       "summary": "Overnight edition rolled forward: editionFor flipped 2026-09-21 -> 2026-09-22. A_edition back to GREEN (3 play(s), fresh, not degraded -- new book: ALAB/META/TWLO) after the expected post-close AMBER window. B_marks AMBER on all 3 new tickers ('mark flagged stale by the API') -- expected: these are brand-new pre-open picks with no live two-sided quote yet, not a defect (matches the same shape as every prior night's pre-9:30-ET AMBER window). D_pull_status correctly SKIPPED ('morning confirmation not yet run for this date') -- the gate that would flip these to CONFIRMED/INVALIDATED hasn't fired yet for 09-22. C_record steady GREEN, resolved=28 unchanged.",
       "assessment": "Clean, expected overnight transition -- same shape as every prior day's edition rollover this session (see 2026-09-18T21:52:40Z entry for the same pattern one week prior). No correctness concern: a fresh book with pre-open marks and a not-yet-run morning-confirm gate is exactly the honest state this early in the cycle, not a bug.",
       "action": "No fix needed. New book to watch tomorrow: ALAB 40C (2026-10-16 exp), META 75C (2026-09-25 exp), TWLO 70C (2026-10-16 exp) -- will track D_pull_status once the 9:15am ET morning-confirm cron fires. Continuing the routine 15-min cadence."
+    },
+    {
+      "at": "2026-09-21T23:36:54Z",
+      "summary": "PR #5396 MERGED (squash, sha 47536d05a): relaxed-OI fallback for the Legacy contract-cost preference tier. Direct operator escalation this session ('cons should be under 10.00 for Nighthawk') after the morning's -preference fix (PR #5344, merged earlier today) turned out to be a silent no-op on ALAB/TWLO -- both had real, quoted, cost+delta-qualifying strikes (ALAB 30C .03/0.183delta/75oi, TWLO 90C .10/0.289delta/248oi) that fell just under the 500-OI tieredMinOi liquidity floor required at their 00+ spot, so the preference never even saw them and fell back to the 0.23/2.75 ATM picks. Fix adds a second pass: when nothing in the deep-liquidity pool qualifies, search the already-under-cap relaxedOi pool for a candidate that ALSO clears cost+delta AND a new PREFERRED_OPTION_RELAXED_MIN_OI=50 floor. Strict-pool affordable still always wins when it exists. CI verify+CodeQL both green, 15159/15159 full suite pass, zero Vector blast radius (preferAffordable never passed there).",
+      "assessment": "Real, well-evidenced fix to a genuine gap in the SAME-DAY earlier fix -- not a new bug, a refinement once the first attempt's blind spot became visible against live data the very next edition. Tonight's ALREADY-PUBLISHED book (ALAB/META/TWLO, built 21:38Z, before this merge) is unaffected -- editions build once per night, so this only takes effect starting with the NEXT edition build.",
+      "action": "Watch tomorrow night's edition build (for 2026-09-23) as the first real test of the relaxed-OI fallback in production -- specifically whether any 00+ spot pick lands on a sub-0/share relaxed-pool contract instead of full ATM. Continuing the routine 15-min cadence."
     }
   ],
   "knownOpenItems": {
