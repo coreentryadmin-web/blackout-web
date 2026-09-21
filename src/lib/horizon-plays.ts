@@ -74,6 +74,23 @@ export interface HorizonPlay {
   direction: PlayDirection;
   horizon: Horizon;
   score: number;
+  /**
+   * True when `score` above is a literal `0` FALLBACK, not a real measured conviction — a live
+   * committed swing position whose pinned `feature_vector.evidence_score` is missing (an older
+   * commit predating that pin, or a shape gap) falls back to `0` in live-plays.ts because `score`
+   * itself is non-nullable (kept that way so board sort/display never has to null-check it). That
+   * `0` is a real number to every naive consumer, so a ranking feature comparing raw `score` across
+   * peers (play-brief-lane-rank.ts's `computeLaneRank`) previously read it as "the worst-scored
+   * position in the book" and told the member "Below lane median — #59/59 (score 0)... confirm
+   * before adding size" about a live position whose true score was simply never wired — live repro
+   * 2026-09-21, SWING:AAPL:40, a real +39.2% winner the desk says HOLD, ranked dead-last purely off
+   * the fallback. Same violation class as the Largo product contract's confidence-omission rule
+   * (`docs/audit/LARGO-PRODUCT-CONTRACT.md`: "fabricated certainty... corrupts cross-product
+   * ranking") — `score: 0` here is not calibrated, it must not be compared as if it were. Consumers
+   * that rank/compare `score` across peers must exclude rows carrying this flag rather than treat
+   * their `0` as a real value.
+   */
+  scoreWithheld?: boolean;
   status: PlayStatus;
   contract: ChainContract;
   /** The lane's commit floor, and whether this score cleared it (for UI/debug transparency). */
