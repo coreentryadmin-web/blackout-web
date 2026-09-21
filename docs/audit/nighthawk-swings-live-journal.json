@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T07:48:45Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, AGGRESSIVE MODE). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. Checked #4076 for responses to this session's 4 comments (WOLF correction/census, thesis-health closure, LITE R:R finding, LRCX IV-rank) -- none yet, no action needed (NEVER SIT IDLE -- proceeded with fresh forensic work rather than just waiting). **Fresh Ask Largo audit on SMCI COMMIT_NOW** (first check of this bucket type this session, legacy_exempt-gated pending candidate, score 91): investigated two leads that initially looked like potential bugs, both resolved clean after tracing the code. (1) The top-level 'Invalidation' field showed the legacy_exempt gate-blocking reason text instead of a price level -- traced to play-brief.ts's documented fallback chain (resolveBreakInvalidation ?? gateBlocks[0].reason ?? premium-stop), explicitly the intended behavior for 'no real level computable' (SMCI's GEX/Vector data is genuinely cold this tick) -- and the file's own extensive comments show this exact category of issue (stale/moot gate reasons) was already hunted down and fixed twice before; SMCI's gate is neither stale nor moot, so this is the correct, working fallback, not a third instance. (2) 'Lane leader -- #1 of 2 on WATCH' for a play whose serving section is COMMIT_NOW -- traced to play-brief-lane-rank.ts's bucketFor/rowInBucket, which deliberately treats WATCH+COMMIT_NOW as one unified pre-entry 'watch' bucket by design (own documented bug-fix history, 2026-09-17: LITE was previously invisible to peer ranking for exactly this reason before the unification) -- the WATCH label is intentionally the lane name, not a literal section-field echo. Both leads chased to ground with real code tracing rather than flagged on suspicion; both are correct, hardened, already-documented design. No new bugs found, no new PR filed, no new #4076 comment needed this cycle -- a genuinely clean cycle after real investigation.",
-  "checked_this_cycle_no_bug_found": true,
+  "last_updated": "2026-09-21T08:04:48Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, AGGRESSIVE MODE full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. Zero open swing PRs. Re-ran my own PR #5331 tooling (swing-multi-truth-grade-retrace.mjs) for fresh closed-position divergences: recent 14-day population is thin (n=1), nothing new. **Pivoted to exit-management/track-record surfaces per the mission's explicit callout -- surfaced a significant finding.** Tried to pull CRDO's (SCALING_OUT) exit-management state via GET /api/market/swing/record and found CRDO entirely absent even at a 45-day window. Traced: swing/record's route.ts calls fetchSwingPositionsRange, which queries swing_positions ONLY -- confirmed CRDO is banger-ledger origin (regime: BREAKOUT x BANGER), so it structurally can never appear. Generalized: of the 68 currently-open Swing Command positions, 66 (97%, per last cycle's census) are banger-origin and thus invisible to /record. Confirmed this endpoint's win_rate_pct IS a prominent member-facing stat -- SwingAnalyticsPanel.tsx, labeled 'Swing Command track record', renders 'Win {win_rate_pct}%' directly. Confirmed no separate aggregate banger win-rate surface exists anywhere (gradeBangerScaleOut is a per-position grader, not an aggregate; no banger/record route, only banger/board). Net: the member-visible 'Swing Command track record' win-rate tile is computed from ~2 open + a handful of historical swing-native closes, silently excluding the 97% banger-majority of the actual live book, with no scope disclosure to the member. Posted as a significant, well-evidenced architecture finding on #4076 (5757314206) with concrete numbers and three non-prescriptive options -- past CARVE-OUT (real architecture question, not a small fix). No PR filed this cycle.",
+  "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T07:48:45Z",
+    "as_of": "2026-09-21T08:04:48Z",
     "swing_prs": []
   },
   "tickers_seen": {
