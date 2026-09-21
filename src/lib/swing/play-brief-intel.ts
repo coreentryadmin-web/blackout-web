@@ -940,7 +940,11 @@ function entryTriggerDeadReason(play: TerminalPlay): string | null {
 export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "open" | "closed"): RichSection {
   const { play } = ctx;
   const vec = vectorOf(ctx);
-  const readMs = Date.now();
+  // Use the request-wide anchor (stamped once by composeSwingPlayBrief) rather than a fresh
+  // Date.now() sampled at whatever instant THIS section happens to compose — see
+  // SwingPlayBriefContext.readMs's own doc comment for the live repro (this section's own put-wall
+  // fallback disagreeing with confluenceCoaching's, same vec, same request) this anchor fixes.
+  const readMs = ctx.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const gexForSpot = ctx.ecosystem?.gex_positioning;
   const gexStaleForSpot = gexMatrixStale(gexForSpot, readMs);

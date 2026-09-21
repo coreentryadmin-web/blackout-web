@@ -67,6 +67,32 @@ export type SwingPlayBriefContext = {
    * to cite; `undefined` only in fixtures predating this field (treated identically to `null`).
    */
   tickerTrackRecord?: SwingTickerTrackRecord | null;
+  /**
+   * Single canonical "now" (epoch ms) for every Vector/GEX staleness check this brief's compose
+   * performs — stamped ONCE by `composeSwingPlayBrief` before any section is built. Optional so
+   * every existing fixture/test that predates this field keeps working (each staleness helper
+   * still falls back to its own `Date.now()` when this is absent).
+   *
+   * BUG FIX (Ask Largo standing mandate, 2026-09-21): before this field existed, every one of the
+   * ~20 `vectorSnapshotStale(vec, Date.now(), ...)`/`gexMatrixStale(..., Date.now())` call sites
+   * spread across play-brief.ts/play-brief-intel.ts/play-brief-narrative.ts/
+   * play-brief-narrative-coaching.ts sampled the wall clock independently, at whatever instant
+   * that particular section happened to compose (compose does real sequential I/O — Meridian,
+   * book-context, archetype-track-record reads — between sections, so these instants can be
+   * seconds apart within one request). When the underlying Vector snapshot's age sits near the
+   * 120s `VECTOR_STALE_MS` cutoff, two sections reading the exact SAME cached `vec` object could
+   * land on OPPOSITE sides of the boundary and silently disagree — one renders the live Vector
+   * wall, the other falls back to the (different) GEX-matrix number — with no indication to the
+   * trader that two different data sources answered what reads as one fact. Live repro 2026-09-21
+   * (SNXX committed brief): "Trade manager read"'s `confluenceCoaching` bullet ("Confluence 15.50
+   * (put-wall@15.5 ...)") disagreed with "What to watch"'s `watchForSection` ("Structural support
+   * node: put wall 10.00") in the SAME envelope — both trace back to `vec.gexWalls.putWalls[0]`,
+   * but one call evaluated the snapshot as live and the other as stale. Only `confluenceCoaching`
+   * and `watchForSection` (the two call sites this live repro actually exercised) are wired to
+   * this anchor so far; the other ~18 `Date.now()` call sites are the same class of latent risk
+   * and a natural next sweep, left as a documented follow-up rather than folded into this fix.
+   */
+  readMs?: number | null;
 };
 
 /** One leg's identity for the roll-history narrative — deliberately minimal (no P&L; the

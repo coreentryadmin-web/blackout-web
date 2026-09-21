@@ -1952,6 +1952,36 @@ test("confluenceCoaching: keeps the plain kind name when the zone's wall matches
   assert.doesNotMatch(line!, /call-wall@/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-21, live repro SNXX): before the optional `readMs`
+// param existed, this function always sampled `Date.now()` itself instead of the request-wide
+// anchor `composeSwingPlayBrief` stamps onto `ctx.readMs` — so a Vector snapshot near the 120s
+// staleness boundary could read as FRESH here while a sibling section (`watchForSection`,
+// play-brief-intel.ts) that samples its own `Date.now()` moments later in the SAME compose read
+// the identical snapshot as STALE, producing two different numbers for "the put wall" in one
+// brief. This test proves the anchor actually controls the verdict (not just accepted and
+// ignored): the SAME vec/asOf combination reads FRESH under an anchor near it and STALE with no
+// anchor at all (falling back to the real wall clock, which is ~25 years past this fixture's
+// `asOf`) — i.e. the param is load-bearing, which is what lets composeSwingPlayBrief's single
+// `ctx.readMs` keep this function and watchForSection in agreement.
+test("confluenceCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-01-01T00:00:00.000Z",
+    spot: 100,
+    confluenceZones: [{ center: 100, kinds: ["max-pain"], score: 5.0 }],
+  } as import("@/lib/bie/vector-full-state").VectorFullState;
+
+  // Anchored 60s after asOf — well inside the 120s staleness window — must render.
+  const anchoredReadMs = Date.parse("2026-01-01T00:01:00.000Z");
+  const fresh = confluenceCoaching(vec, play({ direction: "LONG" }), 100, null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  assert.match(fresh!, /Confluence 100\.00/);
+
+  // No anchor supplied -> falls back to the REAL Date.now(), decades past this fixture's `asOf` ->
+  // must NOT render. Proves the anchor is what made the call above succeed, not a lenient default.
+  const noAnchor = confluenceCoaching(vec, play({ direction: "LONG" }), 100, null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
+});
+
 test("dataHonestyCoaching: aged markAsOf warns not-live-synced (Largo C2/C3)", () => {
   const line = dataHonestyCoaching(
     ctx(),

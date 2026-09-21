@@ -343,8 +343,14 @@ export function confluenceCoaching(
   play: TerminalPlay,
   spot: number,
   sessionDate?: string | null,
+  // Request-wide staleness anchor (SwingPlayBriefContext.readMs) — optional, defaulting to
+  // Date.now() so every existing call site/test keeps working unchanged. Threading the SAME
+  // instant this brief's other sections use (rather than sampling the clock fresh here) is what
+  // fixes the live repro that field's own doc comment describes: this bullet's put-wall citation
+  // disagreeing with watchForSection's "Structural support node" for the identical `vec` snapshot.
+  readMs?: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const zones = vec?.confluenceZones ?? [];
   if (!zones.length) return null;
   const top = [...zones].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
@@ -1323,7 +1329,7 @@ export function collectCoachingBullets(
     push(vexCoaching(vec, spot, ctx.sessionDate));
     push(flowPrintsCoaching(vec, play, ctx.sessionDate));
     push(magnetCoaching(ctx, vec, spot));
-    push(confluenceCoaching(vec, play, spot, ctx.sessionDate));
+    push(confluenceCoaching(vec, play, spot, ctx.sessionDate, ctx.readMs ?? undefined));
     push(expectedMoveCoaching(vec, spot, ctx.sessionDate));
     push(wallIntegrityCoaching(vec, play, ctx.sessionDate));
     push(wallDynamicsCoaching(vec, ctx.sessionDate));
