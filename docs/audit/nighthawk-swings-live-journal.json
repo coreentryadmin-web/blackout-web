@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T07:19:02Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. **Followed up on last cycle's low-confidence MARA rewardRisk observation** (structure-ladder RR figures looked ~0.05-0.09 off from a spot/stop approximation): read the real formula in play-brief-ladder.ts (buildStructureLadder) -- rewardRisk = |target - entryUnderlyingPx| / |entryUnderlyingPx - thesisInvalidationPx|, i.e. measured from ENTRY price and the real thesis invalidation level, NOT from current spot and the displayed near-term stop the way I'd approximated it. My own back-of-envelope formula was wrong, not the product -- resolved, no bug, no PR needed. **Fresh Ask Largo audit on HUT** (MANAGING, positionId 1200, BANGER-origin, first check this session): GEX/Vector genuinely cold this tick (cold matrix, snapshot unavailable) and the brief correctly omits the affected sections entirely (structureLadder: null, levels: [], no Chart technicals section) rather than fabricating anything -- honest absence handling, matches contract. Stop/target rails follow the same consistent mechanical rule seen on MARA/LRCX (stop ~= -60% of entry, target = +100%) -- no anomaly. IV rank 14 present via the already-settled ticker-scoped-live-read mechanism (not re-flagging, well-understood as of last session). No new bugs found, no new PR filed this cycle.",
-  "checked_this_cycle_no_bug_found": true,
+  "last_updated": "2026-09-21T07:34:15Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, AGGRESSIVE MODE). ReadNotifications clean. git sync: fast-forwarded onto a merged findings-fold PR (#5346), no divergence. Zero open swing PRs. **Fresh Ask Largo audit on LITE WATCH play** (first WATCH-bucket check this session, prior audits all MANAGING/SCALING_OUT) -- surfaced a genuine design/UX finding, not a code bug: the member-visible structure-ladder 'R' badge (BieStructureLadder.tsx, rendered as e.g. '3.3R' with no label) is computed via deriveSwingPlanLevels against a synthetic 1.5xATR mechanical stop (909.96, -2.25% from spot) deliberately matching the reward_risk_floor entry gate -- while the SAME brief's prominent 'Break watch' invalidation line names the put wall (800, -14.06% from spot) as the real structural stop. Recomputed against that real invalidation: R ~= 0.53, not 3.3 -- a ~6x gap. Confirmed the ATR-based calc is intentional/documented (matches a real shared gate calc in swing-ingest.ts/calibration.ts, not a stray duplicate) -- this is a genuine trader-facing clarity gap (a number that could read as real R:R but silently uses a much tighter synthetic stop), not a data-correctness bug. Posted as a well-evidenced design finding on #4076 (5756982212) with concrete LITE numbers and options, not a unilateral fix -- past the CARVE-OUT bar (touches live gate-calibration math + a member-visible UI surface). No PR filed this cycle -- AGGRESSIVE MODE enhancement-hunting produced a real finding worth escalating rather than a quiet self-fix.",
+  "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T07:19:02Z",
+    "as_of": "2026-09-21T07:34:15Z",
     "swing_prs": []
   },
   "tickers_seen": {
