@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T08:48:26Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. Checked #4076 for responses to this session's now-extensive comment history (thesis-health chain, IV-rank chain, R:R clarity finding, track-record/closed-brief banger gaps, entry_underlying_px closure) -- none yet from Cursor, proceeded with fresh work per NEVER SIT IDLE. **Fresh audit on AAPL #38** (a real swing-native CLOSED position, STOPPED -33.2%, peak +10.2%, trough -56.6%) -- verified the Lessons/closedCoaching narrative math against source: 'Round-tripped past breakeven ... barely cleared breakeven before reversing' phrasing correctly matches the documented outcome.peakPct > 20 threshold in play-brief-narrative-coaching.ts:1160 (AAPL's own peak of +10.2% falls under 20%, correctly triggering the 'entry timing/thesis' framing over the 'tighten at trim rail' framing) -- this exact threshold has its own prior AAPL:36 (2026-09-13) fix precedent in the code comments, confirming the logic is deliberate and correctly applied here too. Drawdown/peak/exit figures internally consistent (trough more negative than exit, exit between trough and peak). 'Since it closed' section correctly disclaims current GEX/chart figures as not-what-this-trade-traded-under. No new bugs found, no new PR filed, no new #4076 comment needed this cycle.",
+  "last_updated": "2026-09-21T09:03:10Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, AGGRESSIVE MODE full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. Zero open swing PRs. **Verified the mission brief's own named '#4700 Banger-lane blindspot' callout for book/portfolio-overlap** -- hadn't specifically checked this exact named item yet this session. Traced loadOpenBook() (play-brief-context.ts L59-99): confirmed it correctly, carefully merges fetchOpenSwingPositions() + fetchBangerOpenBookRows() into one PortfolioPosition[], with a real documented id-collision-avoidance pattern (banger rows leave positionId unset, falling back to ticker+direction self-exclusion since banger is always LONG; carries the real banger row id separately as bangerId, never fed into the identity-match logic). Confirmed live too -- MARA/HUT's Book context sections already correctly listed real banger-origin tickers in the concentration count. The #4700 fix holds, no regression. Posted a short connective comment on #4076 (5757975660) pointing out this is the exact working template/precedent for the closed-side banger merge my last two cycles' findings (5757314206/5757474451) need -- not a new finding, just closing the loop on the mission's own callout and narrowing scope for whoever picks up the open work. No PR filed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,7 +113,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T08:48:26Z",
+    "as_of": "2026-09-21T09:03:10Z",
     "swing_prs": []
   },
   "tickers_seen": {
