@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health.ts";
+import { calibratedThesisPillars, computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health.ts";
 
 describe("computeSwingThesisHealth", () => {
   test("returns null for WATCH rows", () => {
@@ -117,6 +117,35 @@ describe("computeSwingThesisHealth", () => {
     });
     assert.ok(h);
     assert.equal(thesisHealthUncalibrated(h), false);
+  });
+
+  test("calibratedThesisPillars: keeps real persistence/entry-geometry pillars, drops only the honestly-empty flow_corroboration one (2026-09-21 live gap, AAPL position 40 SECTOR_ROTATION)", () => {
+    // setupState/entryStatus are BOTH real, live-derived reads (matches how adapters.ts's
+    // liveSetupState/liveEntryStatus derive them for a committed position with liveSpot +
+    // entryTriggerUnderlyingPx) — only signalKinds is genuinely empty (this archetype's
+    // discovery path never carries a Tier-0 FLOW/STRUCTURE/CATALYST screen path, or G-S6
+    // confluence wasn't enforced at commit). thesisHealthUncalibrated() correctly still flags
+    // the WHOLE payload uncalibrated (the flow_corroboration pillar IS a generic default), but
+    // calibratedThesisPillars must not throw the two genuinely-real pillars out with it.
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: [],
+      regime: "SECTOR_ROTATION",
+      dte: 9,
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    assert.equal(thesisHealthUncalibrated(h), true, "flow_corroboration alone must still trip the aggregate-withhold guard");
+    const kept = calibratedThesisPillars(h);
+    const keptIds = kept.map((p) => p.id).sort();
+    assert.ok(keptIds.includes("structure"), "persistence (real: triggered) must survive the filter");
+    assert.ok(keptIds.includes("momentum"), "entry_geometry (real: at trigger) must survive the filter");
+    assert.ok(!keptIds.includes("flow"), "flow_corroboration (default: no signals) must still be dropped");
+    const persistence = kept.find((p) => p.id === "structure");
+    assert.equal(persistence?.currentLabel, "triggered");
   });
 
   test("default persistence pillar stays intact at float boundary (not falsely faded)", () => {
