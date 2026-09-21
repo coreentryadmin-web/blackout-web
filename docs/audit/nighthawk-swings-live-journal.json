@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T22:50:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5392's merge (9-site readMs anchor sweep, parallel session, merged clean). No new #4076 activity. Observed a further parallel-session PR, #5393 (same session 01Qtnftc16CuWyVLxR8LaMoC): catalystsSection's own independent instance of the readMs-anchor bug (missed by #5392's grep because it didn't take a ctx param at all before this fix) -- well-documented, RED->GREEN proven (2/187->187/187), CI pending. Not mine, did not duplicate. That PR's own disclosed follow-up (vectorDeskSection/wallDynamicsSection still need a ctx signature change) is that lane's own next step, not claimed here, to avoid two sessions editing the same file concurrently. WATCH/OPEN forensics: still exactly 1 live position (AAPL HOLD, positionId 40), 0 watch -- unchanged since last cycle (market closed after-hours, no new scan tick). Deep-audited the 'Ticker track record' section specifically (not previously spot-checked this session): play-brief claims AAPL 0W/2L across 2 prior trades. Pulled the full 365-day swing record and confirmed independently -- 3 total AAPL chains exist: rootPositionId 37 (the CURRENT chain, leg 37 ROLLED -22.3% + leg 40 the live HOLD, correctly excluded from 'prior' since it's the same chain being displayed), rootPositionId 38 (CLOSED, -33.19%, loss), rootPositionId 36 (CLOSED, -56.19%, loss). 2 distinct prior CLOSED chains, both losses = 0W/2L exactly as displayed. Ticker-track-record math confirmed correct: counts distinct CLOSED chains (not legs), correctly excludes the current chain's own rolled-forward leg. No bug found. Clean cycle -- closing out the :46-offset trigger for this hour. Two parallel-session PRs (#5392 merged, #5393 pending) are actively covering the readMs-anchor bug class thoroughly; this session's own toFixed-vs-roundFloats sweep (7 instances) is fully closed with no open leads. Next cycle (v3 full brief, :01 offset) should re-survey broadly rather than re-tread either of these two now-well-covered bug classes.",
+  "last_updated": "2026-09-21T23:08:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5393's merge (catalystsSection readMs anchor, parallel session, merged clean). No new open swing PRs at cycle start. NEW SURFACE EXPLORED this cycle (per v3's WATCH-theses instruction, GET /api/market/nighthawk/horizons?view=swings -- hadn't checked this endpoint before, only ever used /api/market/swing/record and /play-brief). Found what first looked like a major discrepancy: horizons' SWING lane shows committedCount:83 with huge P&L (GBTC +435.7%, IBIT +413.3%, MSTR +199.7%, etc.) vs /record's own 30-day summary showing only 1 open (AAPL). Investigated properly before concluding anything -- read horizons/route.ts source directly: this is INTENTIONAL DESIGN, not a bug. getSwingServingLane() merges the native Ask-Largo swing engine's open positions WITH fetchBangerOpenBookRows() (a separate whole-market weekly-banger discovery+commit engine) into one unified SWING horizon board -- matches CLAUDE.md's own documented #4700 Banger-lane blindspot note. The huge P&L/crypto-leverage tickers (GBTC/IBIT/MSTR/SOXL/TQQQ/etc.) are Banger-origin, not native-swing-origin; my own /record and /play-brief calls this whole session only ever touched the native Ask-Largo swing engine's own OPEN ledger, which correctly shows just 1 (AAPL). No new finding here -- resolved my own initial concern via source reading rather than raising a false alarm. This DID surface a valuable connection: serving-lane.ts's attachThesisExplanation carries a detailed 2026-09-20 fix comment for exactly this merge boundary (a real shipped bug: 18-19/36 Banger-promoted swing positions rendered a byte-identical fabricated 84% Thesis Health score because a banger-ledger sentinel regime was being overwritten by an unrelated same-ticker discovery dossier). Verified that fix is holding correctly LIVE right now: pulled GBTC's play-brief (Banger-origin, TRIM, +435.7% P&L, positionId 1211, committed 2026-09-18) and confirmed Thesis health correctly shows 'Aggregate score withheld' with the honest 'BREAKOUT \u00b7 BANGER' regime sentinel preserved -- not a fabricated score. Fix confirmed holding, no regression. Useful for future cycles: the horizons?view=swings endpoint is a genuinely different, wider surface than /record (includes Banger-merged positions) and worth periodic spot-checks of Banger-origin play-briefs specifically, since that merge boundary has a real prior-bug history.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,14 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T22:50:00Z",
-    "swing_prs": [
-      {
-        "number": 5393,
-        "title": "fix(swing): catalystsSection readMs anchor \u2014 not among the 9 sites #5392 fixed",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending -- observing only"
-      }
-    ]
+    "as_of": "2026-09-21T23:08:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
