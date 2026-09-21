@@ -4667,6 +4667,93 @@ test("buildIntelSections: a single section throwing does not take down the whole
   assert.ok(sections.some((s) => s.title === "Watch levels"), "other sections still render");
 });
 
+// BUG FOUND (2026-09-21, Ask Largo standing mandate — 4th instance of the #5362/#4261 duplication
+// class, live repro pattern: any OPEN play with a HOLD recommendation and a calibrated thesis
+// health below 45). actionNarrative's HOLD branch (play-brief-narrative.ts, feeds "Trade manager
+// read") renders "**Hold the line** — thesis health **X%**. Health fading — tighten stop or trim
+// into any bounce." whenever `rec !== "TRIM" && rec !== "SELL"` and health < 45. holdPlanSection
+// (this file) independently renders "Thesis health **X%** (rung). **Tighten risk** — thesis
+// fading; don't add size" for the SAME health < 45 condition in "Hold plan", which renders
+// together with "Trade manager read" for every live OPEN play (buildIntelSections pushes
+// `narrative` unconditionally and `hold` for bucket === "open"). Both are the identical underlying
+// advice — thesis health has degraded, tighten/reduce risk — restated in different prose across
+// two sections a member reads back to back. The dedup guards this file already carries for
+// round_trip/capture (narrativeAlreadyNoted) never covered this HOLD-branch advisory text because
+// the call site only ever derived roundTrip/capture flags, not a tighten/health-fading one.
+test("buildIntelSections: does not restate the low-thesis-health tighten-risk advisory twice for an OPEN HOLD play", () => {
+  const play = fixturePlay({
+    status: "HOLD",
+    recommendation: "HOLD",
+    contract: "110C · 12DTE",
+    thesisHealth: {
+      health: 30,
+      entryIndex: 70,
+      currentIndex: 30,
+      delta: -40,
+      rung: "MAJOR",
+      rungLabel: "Major fade",
+      pillars: [
+        {
+          id: "structure",
+          label: "Persistence",
+          weight: 0.28,
+          commitScore: 0.9,
+          currentScore: 0.2,
+          commitLabel: "triggered",
+          currentLabel: "broken",
+          status: "faded",
+          contributionPts: 6,
+          deltaPts: -19,
+        },
+        {
+          id: "momentum",
+          label: "Entry geometry",
+          weight: 0.22,
+          commitScore: 1,
+          currentScore: 1,
+          commitLabel: "at trigger",
+          currentLabel: "at trigger",
+          status: "intact",
+          contributionPts: 22,
+          deltaPts: 0,
+        },
+      ],
+      moves: [],
+      committedAtEt: null,
+      computedAtEt: "10:00 ET",
+      advisory: "Thesis fading — tighten risk or trim into strength.",
+      thesisBreakLevel: "warn",
+    },
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-21T20:00:00.000Z",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  // collapseIntel: false — the expanded-view shape (expandIntel=1), where "Hold plan" is an
+  // independently visible section rather than folded into "Trade manager read"'s collapsed
+  // summary. Same expansion the BUG FIX note above describes as the condition under which this
+  // duplication is member-visible at all.
+  const sections = buildIntelSections(ctx, "open", { collapseIntel: false });
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  const hold = sections.find((s) => s.title === "Hold plan");
+  assert.ok(narrative, "Trade manager read renders");
+  assert.match(narrative!.body, /Health fading — tighten stop or trim into any bounce\./);
+  assert.ok(hold, "Hold plan renders");
+  // The raw health%/rung number is a compact fact, not prose — it stays independently (same
+  // discipline as the thesis-health advisory-sentence fix above). Only the restated ADVICE
+  // sentence must be suppressed once "Trade manager read" already carries the equivalent one.
+  assert.match(hold!.body, /Thesis health \*\*30%\*\* \(Major fade\)/);
+  assert.doesNotMatch(hold!.body, /\*\*Tighten risk\*\* — thesis fading; don't add size/);
+});
+
 // GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro BKKT: 28 same-theme overlaps
 // rendered as one uncapped comma-separated wall of tickers). A crowded book must still read as
 // trader-manager prose, not a raw name dump — see the doc comment on MAX_OVERLAP_NAMES/

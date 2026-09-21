@@ -1197,7 +1197,7 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
 /** Hold plan — time/theta, earnings risk, session stops, thesis-health coaching for open rows. */
 export function holdPlanSection(
   ctx: SwingPlayBriefContext,
-  narrativeAlreadyNoted?: { roundTrip?: boolean; capture?: boolean },
+  narrativeAlreadyNoted?: { roundTrip?: boolean; capture?: boolean; tighten?: boolean },
 ): RichSection | null {
   const { play } = ctx;
   if (statusBucket(play) !== "open") return null;
@@ -1235,7 +1235,19 @@ export function holdPlanSection(
       // pillar-fade narration already carries in "Trade manager read" (both render for any live
       // play). Health%/rung is a compact number, not a repeated sentence, so it stays.
       lines.push(`Thesis health **${h.health}%** (${h.rungLabel})`);
-      if (h.health < 45) lines.push("**Tighten risk** — thesis fading; don't add size");
+      // BUG FIX (2026-09-21, Ask Largo standing mandate — 4th instance of this file's own
+      // round_trip/capture duplication class): actionNarrative's HOLD branch (play-brief-
+      // narrative.ts, feeds "Trade manager read", renders for every OPEN play alongside this
+      // section) independently renders "Health fading — tighten stop or trim into any bounce."
+      // for the SAME health < 45 condition whenever rec is neither TRIM nor SELL — the common
+      // case for a fading-but-still-held thesis. Same underlying advice ("tighten/reduce risk,
+      // thesis is degrading") restated in different prose across two sections a member reads back
+      // to back, exactly the pattern the round_trip/capture guards two lines below already close
+      // for THIS section — this one line was the gap those guards never covered, because the call
+      // site only ever derived roundTrip/capture flags from narrative.body, never a tighten one.
+      if (h.health < 45 && !narrativeAlreadyNoted?.tighten) {
+        lines.push("**Tighten risk** — thesis fading; don't add size");
+      }
     }
     // Peak giveback is grounded in committed trade marks — independent of thesis-health calibration.
     // Honest RELATIVE retracement via mfe-capture.ts, not a percentage-POINT subtraction of two
@@ -1992,8 +2004,17 @@ export function buildIntelSections(
     // actionNarrative giveback fact is already known here.
     const roundTripAlreadyNoted = narrative?.body?.includes("Round-tripped past breakeven") ?? false;
     const captureAlreadyNoted = narrative?.body?.includes("Gave back") ?? false;
+    // Closes the low-thesis-health "tighten risk" gap the two flags above don't cover — see the
+    // BUG FIX note on holdPlanSection's own "Tighten risk" line (2026-09-21) for the live-shape
+    // repro (any OPEN play with a HOLD-class recommendation and health < 45).
+    const tightenAlreadyNoted =
+      narrative?.body?.includes("Health fading — tighten stop or trim into any bounce") ?? false;
     const hold = safeSection("Hold plan", () =>
-      holdPlanSection(ctx, { roundTrip: roundTripAlreadyNoted, capture: captureAlreadyNoted }),
+      holdPlanSection(ctx, {
+        roundTrip: roundTripAlreadyNoted,
+        capture: captureAlreadyNoted,
+        tighten: tightenAlreadyNoted,
+      }),
     );
     if (hold) out.push(hold);
   }
