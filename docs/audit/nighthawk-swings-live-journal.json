@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T23:08:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5393's merge (catalystsSection readMs anchor, parallel session, merged clean). No new open swing PRs at cycle start. NEW SURFACE EXPLORED this cycle (per v3's WATCH-theses instruction, GET /api/market/nighthawk/horizons?view=swings -- hadn't checked this endpoint before, only ever used /api/market/swing/record and /play-brief). Found what first looked like a major discrepancy: horizons' SWING lane shows committedCount:83 with huge P&L (GBTC +435.7%, IBIT +413.3%, MSTR +199.7%, etc.) vs /record's own 30-day summary showing only 1 open (AAPL). Investigated properly before concluding anything -- read horizons/route.ts source directly: this is INTENTIONAL DESIGN, not a bug. getSwingServingLane() merges the native Ask-Largo swing engine's open positions WITH fetchBangerOpenBookRows() (a separate whole-market weekly-banger discovery+commit engine) into one unified SWING horizon board -- matches CLAUDE.md's own documented #4700 Banger-lane blindspot note. The huge P&L/crypto-leverage tickers (GBTC/IBIT/MSTR/SOXL/TQQQ/etc.) are Banger-origin, not native-swing-origin; my own /record and /play-brief calls this whole session only ever touched the native Ask-Largo swing engine's own OPEN ledger, which correctly shows just 1 (AAPL). No new finding here -- resolved my own initial concern via source reading rather than raising a false alarm. This DID surface a valuable connection: serving-lane.ts's attachThesisExplanation carries a detailed 2026-09-20 fix comment for exactly this merge boundary (a real shipped bug: 18-19/36 Banger-promoted swing positions rendered a byte-identical fabricated 84% Thesis Health score because a banger-ledger sentinel regime was being overwritten by an unrelated same-ticker discovery dossier). Verified that fix is holding correctly LIVE right now: pulled GBTC's play-brief (Banger-origin, TRIM, +435.7% P&L, positionId 1211, committed 2026-09-18) and confirmed Thesis health correctly shows 'Aggregate score withheld' with the honest 'BREAKOUT \u00b7 BANGER' regime sentinel preserved -- not a fabricated score. Fix confirmed holding, no regression. Useful for future cycles: the horizons?view=swings endpoint is a genuinely different, wider surface than /record (includes Banger-merged positions) and worth periodic spot-checks of Banger-origin play-briefs specifically, since that merge boundary has a real prior-bug history.",
+  "last_updated": "2026-09-21T23:22:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5393's merge + heartbeat commit. Observed two more parallel-session PRs (same lane, session_01Qtnftc16CuWyVLxR8LaMoC): #5394 (wallDynamicsSection/vectorDeskSection readMs anchor -- explicitly declares 'This closes the readMs-anchor bug class in the swing play-brief family', re-grepped and disclosed the 4 remaining Date.now() sites as genuinely NOT staleness-comparison bugs) and #5395 (catalystCoaching Meridian-staleness disclosure, same class, narrative-coaching sibling). Both well-documented, CI pending. Not mine, did not duplicate -- that lane has now thoroughly closed this bug class end to end. Pivoted to a different v3-checklist item not yet audited this session: MFE capture correctness (mfeCaptureOutcome, relative retracement not raw pp delta). Read mfe-capture.ts and its 3 call sites in play-brief-narrative.ts -- found a live-repro fix already in the current source, dated TODAY (2026-09-21, no session id visible, likely an earlier cycle this same session or a parallel one): the 'Live read' fallback bullet's giveback-duplication bug (COIN SWING:COIN:1190 cited as live repro -- both actionNarrative's <75 branch AND this fallback's old <80 branch fired for the same capturePct, producing two near-identical 'gave back X% of peak' bullets in one brief) was fixed by restricting the fallback to the genuinely-additive [75,80) band only. Verified this fix holds LIVE right now: re-fetched COIN's current play-brief (still TRIM, capturePct ~29% i.e. well under both floors) and confirmed only ONE 'Gave back 71% of peak' bullet renders, no duplicate. No bug found -- clean verification of a same-day fix. mfe-capture.ts's core math itself (capturePct = pnlPct/peak*100, round_trip branch for negative pnl, null-guard on peak<=0) reviewed and looks sound -- no edge case found where an overshoot (pnl > peak, e.g. a stale peak not yet updated) would render a nonsensical >100% capture in the narrative text, since the <75/[75,80) gates only ever fire on LOW capture, never flag a high one as broken.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,8 +119,19 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T23:08:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T23:22:00Z",
+    "swing_prs": [
+      {
+        "number": 5394,
+        "title": "fix(swing): wallDynamicsSection/vectorDeskSection readMs anchor \u2014 closes the readMs-anchor bug class",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
+      },
+      {
+        "number": 5395,
+        "title": "fix(swing): catalystCoaching discloses Meridian catalyst staleness",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
