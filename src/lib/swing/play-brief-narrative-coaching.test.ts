@@ -675,6 +675,32 @@ test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk frict
   assert.equal(line, null, "stale Vector must not coach cross-desk Vector friction");
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — #5351/#5353/#5355 follow-up): crossDeskCoaching
+// judged Vector liveness off a bare `Date.now()` instead of `ctx.readMs`, so this bullet could
+// disagree with every other section of the same brief judging the identical Vector snapshot.
+// Same test shape as #5355's counterThesisLine regression: vector.asOf carries no dataAgeMs, so
+// staleness falls through to the readMs-vs-asOf branch — ctx.readMs is set to the SAME instant as
+// vector.asOf (genuinely fresh), while the real wall clock at test-run time is weeks later.
+test("crossDeskCoaching: uses ctx.readMs, not the real wall clock, to judge Vector freshness", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const line = crossDeskCoaching(
+    ctx({
+      readMs,
+      vector: {
+        asOf: "2026-09-05T20:00:00.000Z",
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.match(line!, /Cross-desk friction/i, "ctx.readMs-fresh Vector bias must count as live, not stale");
+  assert.match(line!, /Vector bearish/i);
+});
+
 test("shortInterestCoaching: renders for a fresh DTC read", () => {
   const line = shortInterestCoaching(
     ctx({
@@ -706,6 +732,28 @@ test("shortInterestCoaching: ancient DTC read is withheld, not presented as curr
     play({ direction: "LONG" }),
   );
   assert.equal(line, null);
+});
+
+// BUG FIX (2026-09-21, Ask Largo standing mandate — #5351/#5353/#5355 follow-up): shortInterestCoaching
+// judged the DTC read's age off a bare `Date.now()` instead of `ctx.readMs`. This test proves the
+// threading without mocking global time: fund.as_of is a fixed 2025-06-01 date, ctx.readMs is set
+// one day later (well under the 60-day FUNDAMENTALS_ANCIENT_CEILING_MS — genuinely fresh), while the
+// real wall clock at test-run time is well over a year later, past the ancient-DTC ceiling.
+test("shortInterestCoaching: uses ctx.readMs, not the real wall clock, to judge DTC-read freshness", () => {
+  const readMs = Date.parse("2025-06-02T00:00:00.000Z");
+  const line = shortInterestCoaching(
+    ctx({
+      readMs,
+      ecosystem: {
+        ticker: "NRG",
+        arsenal: {
+          fundamentals: { days_to_cover: 6.1, short_volume_ratio: 0.4, price_target: null, as_of: "2025-06-01" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+  );
+  assert.match(line!, /Short interest/i, "ctx.readMs-fresh DTC read must render, not be withheld as ancient");
 });
 
 test("crossDeskCoaching: stale HELIX flow must not invent call-led / put-led friction", () => {
@@ -1593,6 +1641,26 @@ test("magnetCoaching: stale Vector returns null (Largo C2)", () => {
     regime: { posture: "long", label: "LONG" },
   } as unknown as Parameters<typeof magnetCoaching>[1];
   assert.equal(magnetCoaching(ctx(), vec, 100), null);
+});
+
+// BUG FIX (2026-09-21, Ask Largo standing mandate — #5351/#5353/#5355 follow-up): magnetCoaching
+// sampled `Date.now()` twice (its own vectorSnapshotStale check, plus an implicit second read
+// inside resolveGammaPosture(ctx, vec)) instead of consulting `ctx.readMs`, the single canonical
+// "now" composeSwingPlayBrief stamps once before any section builds. Same test shape as #5355's
+// counterThesisLine regression: vec.asOf carries no dataAgeMs, so staleness falls through to the
+// readMs-vs-asOf branch — ctx.readMs is set to the SAME instant as vec.asOf (genuinely fresh),
+// while the real wall clock at actual test-run time is weeks later, past the 120s Vector window.
+test("magnetCoaching: uses ctx.readMs, not the real wall clock, to judge Vector freshness", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const vec = {
+    asOf: "2026-09-05T20:00:00.000Z",
+    magnet: { strike: 100, distancePct: 3, pull: "up" },
+    regime: { posture: "long", label: "LONG GAMMA" },
+  } as unknown as Parameters<typeof magnetCoaching>[1];
+  const line = magnetCoaching(ctx({ readMs }), vec, 100);
+  assert.ok(line, "ctx.readMs-fresh Vector magnet must render, not be dropped as stale");
+  assert.match(line!, /Gamma magnet/i);
+  assert.match(line!, /Dealer hedging center of mass/i);
 });
 
 test("flowPrintsCoaching: stale Vector returns null (Largo C2)", () => {

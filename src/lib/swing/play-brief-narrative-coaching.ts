@@ -280,12 +280,16 @@ export function magnetCoaching(
   vec: VectorFullState | null,
   spot: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), ctx.sessionDate)) return null;
+  // Same #5351/#5353/#5355-class fix: prefer the request-wide ctx.readMs anchor over a fresh
+  // local Date.now() so this bullet's staleness verdict agrees with every other section of the
+  // same brief judging the identical vec snapshot.
+  const readMs = ctx.readMs ?? Date.now();
+  if (vectorSnapshotStale(vec, readMs, ctx.sessionDate)) return null;
   const m = vec?.magnet;
   if (!m?.strike) return null;
   const lead = m.pull === "at" ? "pinned at" : `pull **${m.pull}** toward`;
   const near = Math.abs(m.distancePct) < 1.2;
-  const posture = resolveGammaPosture(ctx, vec);
+  const posture = resolveGammaPosture(ctx, vec, readMs);
   // BUG FIX (2026-09-20, Ask Largo standing mandate): resolveGammaPosture is a real FOUR-value
   // regime — "long"/"short"/"transition"/"unknown" — and "transition" (verdict.ts: spot within
   // 0.1% of the gamma flip) is a genuinely RESOLVED posture, not an absence. dealerPostureLine
@@ -641,7 +645,10 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
 
   const vec = vectorOf(ctx);
   const vp = vec?.play;
-  const vectorLive = !vectorSnapshotStale(vec, Date.now(), ctx.sessionDate);
+  // Same #5351/#5353/#5355-class fix: use the request-wide ctx.readMs anchor, not a fresh
+  // Date.now() sample, so cross-desk conflict detection agrees with the rest of the brief on
+  // whether this Vector snapshot is live.
+  const vectorLive = !vectorSnapshotStale(vec, ctx.readMs ?? Date.now(), ctx.sessionDate);
   const vLong = vectorLive && vp?.bias === "long";
   const vShort = vectorLive && vp?.bias === "short";
 
@@ -919,7 +926,8 @@ export function execSlippageCoaching(play: TerminalPlay): string | null {
 export function shortInterestCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
   const fund = ctx.ecosystem?.arsenal?.fundamentals;
   if (!fund?.days_to_cover) return null;
-  if (fundamentalsAncient(fund.as_of, Date.now())) return null;
+  // Same #5351/#5353/#5355-class fix: prefer ctx.readMs over a fresh Date.now() sample.
+  if (fundamentalsAncient(fund.as_of, ctx.readMs ?? Date.now())) return null;
   const dtc = fund.days_to_cover;
   if (dtc < 3) return null;
   if (play.direction === "LONG" && dtc >= 5) {
