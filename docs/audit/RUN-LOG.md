@@ -5110,3 +5110,32 @@ widths (only `ungradeable` grew, as expected) — no drift, unlike the pre-fix 1
 
 Both watch-list checks pass. No code change — this is the post-deploy confirmation the fix actually
 reached production, not just that the PR merged clean. GREEN pass, no follow-up needed.
+
+## 2026-09-21 — [DISCOVERY] `swing-loss-taxonomy-segment.mjs` re-run: two new n>=5 archetype divergences surface as the closed population grew 31→37
+
+Re-ran `scripts/audit/swing-loss-taxonomy-segment.mjs --days=90 --min-n=5` (Ask Largo × Night Hawk
+Swings standing deep-dive, per CLAUDE.md) as scheduled by its own 2026-09-10 write-up ("re-running
+as the closed population grows, not touching a gate on one measurement"). Closed population grew
+37 chains (29 classifiable, up from 31/27) since the last run.
+
+**By ARCHETYPE, two segments now clear the n>=5 divergence bar that did not before** (2026-09-10
+run found "nothing diverges >=20pp from the aggregate at n>=5" for archetype):
+- `EVENT_DRIVEN` — n=10, loss rate 70.0% (7/10: 4 BAD_EXIT + 3 BAD_ENTRY), **+25.2pp vs the 44.8%
+  aggregate**.
+- `SECTOR_ROTATION` — n=9, loss rate 22.2% (2/9), **-22.6pp vs aggregate** (the mirror-image good
+  side of the same split).
+
+By SUB-LANE, `TACTICAL` still diverges (n=5, 80% loss rate, +30pp vs aggregate) — same segment
+flagged 2026-09-10, population hasn't grown past 5 yet. By REGIME, still nothing diverges at
+n>=5 — RISK_ON 54.2% vs RISK_OFF 41.7%, consistent with the standing "no evidence the regime gate
+needs recalibration" conclusion.
+
+**No gate/calibration changed** — same discipline as every prior swing v6 measurement: n=9-10 is
+still thin (well below the Helix-lane minN=30 bar this toolkit otherwise holds itself to), and
+EVENT_DRIVEN is exactly the archetype family G-S3 (earnings/binary-print gate) and the confluence
+gate's CATALYST-kind requirement already exist to protect — worth watching for whether G-S3/G-S6
+are under-protecting this archetype specifically as more EVENT_DRIVEN closes accumulate, but one
+measurement at n=10 is not grounds to touch a gate. Flagging here (not FINDINGS.md — no bug, no
+fix) so the next cycle re-runs against a larger EVENT_DRIVEN population before drawing a
+conclusion, per the same "verify against fresh data, never trust a stale snapshot" discipline this
+repo's CLAUDE.md states everywhere else.
