@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T12:48:02Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto routine heartbeat commits, no divergence. Zero open swing PRs. **Fresh Ask Largo audit on APLD** (MANAGING, positionId 1202, BANGER-origin, first check this session): stop $0.17/entry $0.43 (~-60.5%), target $0.86 (+100% of entry) -- matches the consistent mechanical rule seen across every banger position this session. No Book context section (no theme/direction overlap tripped -- plausible given APLD's datacenter/HPC business may sector-map differently from the crypto-equity cluster; not investigated further, no reason to suspect a bug given the WOLF check two cycles ago already validated the same mechanism). Honest absence-handling throughout (mark unknown, HELIX stale, Vector spot not wired -- all correctly caveated, nothing fabricated). Market still pre-open (~08:47 ET) so mark/spot data staying unknown/stale is expected, not a gap. No new bugs found, no new PR or #4076 comment needed this cycle.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-21T13:16:27Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5355 (merged sibling PR -- crossDeskCoaching-class fix threading ctx.readMs through counterThesisLine/dealerPostureLine). Independently RED->GREEN verified #5355 in an isolated worktree: targeted revert of the resolveGammaPosture(ctx, vec, readMs) call site in counterThesisLine confirmed RED (exactly the claimed new test failed, 99/100), restored to GREEN (100/100), tsc clean, full src/lib/swing/*.test.ts collateral check 1428/1428 clean. Already merged, matches PR body exactly -- no comment needed. Checked for open swing PRs: none in flight, so picked up the next increment of the #5351/#5353/#5355 Date.now()->ctx.readMs sweep myself (well-precedented pattern, 3 prior identical-shape merges, no file-overlap risk since nothing else was in flight): fixed magnetCoaching (2 sites: its own vectorSnapshotStale check + resolveGammaPosture implicit default), crossDeskCoaching (1 site, Vector-liveness gate feeding cross-desk conflict detection), shortInterestCoaching (1 site, fundamentalsAncient DTC-freshness gate). catalystCoaching audited too but needed no change -- already ctx.asOf-anchored, not Date.now()-based (the #5355 finding categorized it as a remaining site, but tracing the actual source found no bare Date.now() call in it). Added 3 regression tests (same fixed-asOf-vs-real-clock technique as #5355), proved RED pre-fix via git stash (exactly 3 new tests failed, 121/124), GREEN post-fix (124/124), tsc clean, full swing suite 1431/1431 clean. Opened as PR #5356 (branch fix/swing-coaching-readms-followup, correctly went through the branch->PR->CI flow per the Issue-handling policy rather than a direct push to main, since this is a real code fix not a journal-only entry), staged finding docs/audit/findings-staging/2026-09-21-coaching-readms-followup.md, undrafted via GitHub MCP (confirmed draft:false), subscribed to PR activity. Also ran the full local `npm test` on Node 20 for extra assurance (not just the scoped module) -- 15104/15104 pass, 0 fail, exit 0. CI/CARVE-OUT auto-merge will take it from here once verify is green. Remaining ~10 Date.now() sites in play-brief-narrative-coaching.ts (expectedMoveCoaching, wallIntegrityCoaching, vectorPlayCoaching, vexCoaching, flowPrintsCoaching, wallDynamicsCoaching, technicalsCoaching) still need the confluenceCoaching-style optional-readMs-param signature change -- documented as next follow-up in the staged finding, left for a future cycle (self or sibling session).",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-21-coaching-readms-followup"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,8 +115,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T12:48:02Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T13:16:27Z",
+    "swing_prs": [
+      {
+        "number": 5356,
+        "title": "fix(swing): thread ctx.readMs through magnetCoaching/crossDeskCoaching/shortInterestCoaching (#5351/#5353/#5355 follow-up)",
+        "status": "open, non-draft, self-authored this session, CI pending"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
