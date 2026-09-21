@@ -18,7 +18,7 @@ import {
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtOptionUsd, fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -305,7 +305,7 @@ export function magnetCoaching(
       : posture === "transition"
         ? "Dealers sitting at the gamma flip here — this node's pull is unsettled until the regime resolves."
         : "Pivot node — acceleration risk if the magnet fails to hold.";
-  return `**Gamma magnet ${m.strike.toFixed(2)}** (${fmtPct(m.distancePct)} from spot) — ${lead} this node. ${pin}`;
+  return `**Gamma magnet ${fmtPriceLevel(m.strike)}** (${fmtPct(m.distancePct)} from spot) — ${lead} this node. ${pin}`;
 }
 
 /** Options-implied move envelope — don't chase outside bands. */
@@ -338,7 +338,7 @@ export function expectedMoveCoaching(
   // real, nonzero band still exists. See format-nonzero.ts's own doc comment for the general shape
   // of this bug (also fixed at play-brief.ts's net-GEX line the same pass).
   return (
-    `**Expected move 1σ** — **${b1.low.toFixed(2)}–${b1.high.toFixed(2)}** (±${formatFixedNonZero(b1.movePts, 1)} pts). ` +
+    `**Expected move 1σ** — **${fmtPriceLevel(b1.low)}–${fmtPriceLevel(b1.high)}** (±${formatFixedNonZero(b1.movePts, 1)} pts). ` +
     `${inside ? "Inside band" : "Outside band"} — ${stretch}.`
   );
 }
@@ -392,7 +392,7 @@ export function confluenceCoaching(
         ? "fade rallies into this node"
         : "cover if reclaimed";
   return (
-    `**Confluence ${top.center.toFixed(2)}** (${kinds}, score ${top.score != null ? top.score.toFixed(1) : "—"}) — ${fmtPct(dist)} ${side}. ${action}.`
+    `**Confluence ${fmtPriceLevel(top.center)}** (${kinds}, score ${top.score != null ? top.score.toFixed(1) : "—"}) — ${fmtPct(dist)} ${side}. ${action}.`
   );
 }
 
@@ -862,10 +862,10 @@ export function vexCoaching(
   const parts: string[] = [];
   if (vFlip != null) {
     const above = spot != null ? (spot >= vFlip ? "above" : "below") : null;
-    parts.push(`vanna flip **${vFlip.toFixed(2)}**${above ? ` (spot ${above})` : ""}`);
+    parts.push(`vanna flip **${fmtPriceLevel(vFlip)}**${above ? ` (spot ${above})` : ""}`);
   }
-  if (vCall != null) parts.push(`vanna+ wall **${vCall.toFixed(2)}**`);
-  if (vPut != null) parts.push(`vanna− wall **${vPut.toFixed(2)}**`);
+  if (vCall != null) parts.push(`vanna+ wall **${fmtPriceLevel(vCall)}**`);
+  if (vPut != null) parts.push(`vanna− wall **${fmtPriceLevel(vPut)}**`);
 
   // BUG FIX (2026-09-21, Ask Largo standing mandate — first deep audit of this section since it
   // shipped): this used to be `Math.abs(gFlip - vFlip) > 0.5`, a FIXED DOLLAR gap applied across
@@ -919,7 +919,7 @@ export function flowPrintsCoaching(
   else if (conflict) tail = " **Conflicts** with swing — size down until tape agrees.";
   const more = f.meta.largeFound > f.prints.length ? ` (+${f.meta.largeFound - f.prints.length} more)` : "";
   return (
-    `**Large print** — ${top.side} **${top.strike.toFixed(2)}** ${fmtPremium(top.premium)}` +
+    `**Large print** — ${top.side} **${fmtPriceLevel(top.strike)}** ${fmtPremium(top.premium)}` +
     `${f.expiry ? ` (${f.expiry})` : ""}${more}.${tail}`
   );
 }
@@ -1075,7 +1075,7 @@ export function technicalsCoaching(
     // (play-brief-technicals.ts) computes the bull/bear VOTE from the same `spot >= vwap` test
     // correctly — only this display label had the sense flipped.
     const vwapAtOrBelowSpot = vec.spot >= t.vwap;
-    parts.push(`VWAP **${t.vwap.toFixed(2)}** (${vwapAtOrBelowSpot ? "below" : "above"} spot)`);
+    parts.push(`VWAP **${fmtPriceLevel(t.vwap)}** (${vwapAtOrBelowSpot ? "below" : "above"} spot)`);
   }
   if (t.rsi != null) {
     const zone = t.rsi > 70 ? "overbought" : t.rsi < 30 ? "oversold" : "neutral";
@@ -1092,7 +1092,7 @@ export function technicalsCoaching(
   }
   if (t.structure?.type) {
     parts.push(
-      `structure **${t.structure.type.replace(/_/g, " ")} ${t.structure.direction}** @ **${t.structure.level.toFixed(2)}**`,
+      `structure **${t.structure.type.replace(/_/g, " ")} ${t.structure.direction}** @ **${fmtPriceLevel(t.structure.level)}**`,
     );
   }
   if (!parts.length) return null;
