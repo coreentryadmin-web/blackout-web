@@ -23,7 +23,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
-import { fmtOptionUsd, fmtPremium } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -184,7 +184,7 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
   if (!posture || posture === "unknown") {
-    if (spot != null) return `Spot **${spot.toFixed(2)}** — dealer gamma posture not resolved on this read.`;
+    if (spot != null) return `Spot **${fmtPriceLevel(spot)}** — dealer gamma posture not resolved on this read.`;
     return null;
   }
 
@@ -198,7 +198,7 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
 
   const flipBit =
     flip != null
-      ? ` · γ-flip **${flip.toFixed(2)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
+      ? ` · γ-flip **${fmtPriceLevel(flip)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
       : "";
 
   const snapshotStale = vectorStale;
@@ -207,7 +207,7 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
     ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
 
-  return `${lead} — spot **${spot.toFixed(2)}** · ${mechanic}${flipBit}`;
+  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}`;
 }
 
 function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): string {
@@ -222,7 +222,7 @@ function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): s
         : "lose short thesis if reclaimed";
 
   return (
-    `**Watch ${level.price.toFixed(2)}** — major **dark pool** print (${level.meta ?? "institutional block"}). ` +
+    `**Watch ${fmtPriceLevel(level.price)}** — major **dark pool** print (${level.meta ?? "institutional block"}). ` +
     `Institutions stacked here; treat as **${side}**. ${hold.charAt(0).toUpperCase()}${hold.slice(1)}.`
   );
 }
@@ -249,7 +249,7 @@ function narrateWall(level: FocalLevel, play: TerminalPlay, spot: number): strin
           : "break below accelerates";
 
   return (
-    `**${isCall ? "Call" : "Put"} wall ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} from spot) — ${verb}. ` +
+    `**${isCall ? "Call" : "Put"} wall ${fmtPriceLevel(level.price)}** (${fmtPct(level.distancePct)} from spot) — ${verb}. ` +
     `${action.charAt(0).toUpperCase()}${action.slice(1)}.`
   );
 }
@@ -269,7 +269,7 @@ function narrateKing(level: FocalLevel, posture: string | null): string {
       : posture === "transition"
         ? "Dealers sitting at the gamma flip here — regime can tip either way fast."
         : "Max-gamma node — moves can accelerate through if wall fades.";
-  return `**GEX king ${level.price.toFixed(2)}** — largest gamma concentration on the board. ${pin}`;
+  return `**GEX king ${fmtPriceLevel(level.price)}** — largest gamma concentration on the board. ${pin}`;
 }
 
 function narrateMaxPain(level: FocalLevel, spot: number, posture: string | null): string {
@@ -290,7 +290,7 @@ function narrateMaxPain(level: FocalLevel, spot: number, posture: string | null)
         : posture === "transition"
           ? "dealers are sitting right at the gamma flip — pin gravity is unsettled until the regime resolves one way or the other."
           : "pin gravity depends on dealer gamma posture (not resolved on this read) — treat as a level to watch, not a settled pin.";
-  return `**Max pain ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} ${pull} spot) — ${gravity}`;
+  return `**Max pain ${fmtPriceLevel(level.price)}** (${fmtPct(level.distancePct)} ${pull} spot) — ${gravity}`;
 }
 
 // NOTE (found 2026-09-20, Ask Largo standing mandate — logged, not removed, to keep this PR
@@ -312,7 +312,7 @@ function narrateMagnet(level: FocalLevel, posture: string | null): string {
         ? "Dealers sitting at the gamma flip — this node's pull is unsettled until the regime resolves."
         : "Pivot node — acceleration risk if magnet fails.";
   const meta = level.meta ? ` ${level.meta}` : "";
-  return `**Gamma magnet ${level.price.toFixed(2)}** (${fmtPct(level.distancePct)} from spot) — ${pin}${meta}`;
+  return `**Gamma magnet ${fmtPriceLevel(level.price)}** (${fmtPct(level.distancePct)} from spot) — ${pin}${meta}`;
 }
 
 function narrateFlip(level: FocalLevel, play: TerminalPlay, spot: number): string {
@@ -327,12 +327,12 @@ function narrateFlip(level: FocalLevel, play: TerminalPlay, spot: number): strin
   const longBreak =
     play.direction === "LONG"
       ? spotAboveFlip
-        ? `Lose **${level.price.toFixed(2)}** → dealer posture turns against longs — tighten or trim.`
-        : `Reclaim **${level.price.toFixed(2)}** → needed to restore dealer support for longs.`
+        ? `Lose **${fmtPriceLevel(level.price)}** → dealer posture turns against longs — tighten or trim.`
+        : `Reclaim **${fmtPriceLevel(level.price)}** → needed to restore dealer support for longs.`
       : spotAboveFlip
-        ? `Lose **${level.price.toFixed(2)}** → needed to confirm the short thesis.`
-        : `Reclaim **${level.price.toFixed(2)}** → invalidates short gamma thesis.`;
-  return `**Gamma flip ${level.price.toFixed(2)}** — regime line. ${longBreak}`;
+        ? `Lose **${fmtPriceLevel(level.price)}** → needed to confirm the short thesis.`
+        : `Reclaim **${fmtPriceLevel(level.price)}** → invalidates short gamma thesis.`;
+  return `**Gamma flip ${fmtPriceLevel(level.price)}** — regime line. ${longBreak}`;
 }
 
 function flowNarrative(ctx: SwingPlayBriefContext, play: TerminalPlay): string | null {
@@ -631,11 +631,11 @@ function breakTrigger(
     const stop = support ?? (flipBelowSpot ? flip : null);
     if (stop != null) {
       const action = preEntry ? "this setup is no longer live — skip it" : "exit or cut size";
-      return `**Break watch** — lose **${stop.toFixed(2)}** on a closing basis → structural support failed; ${action}.`;
+      return `**Break watch** — lose **${fmtPriceLevel(stop)}** on a closing basis → structural support failed; ${action}.`;
     }
   } else if (play.direction === "SHORT" && resist != null) {
     const action = preEntry ? "this setup is no longer live — skip it" : "cover shorts";
-    return `**Break watch** — reclaim **${resist.toFixed(2)}** → resistance broken; ${action}.`;
+    return `**Break watch** — reclaim **${fmtPriceLevel(resist)}** → resistance broken; ${action}.`;
   }
   return null;
 }
@@ -785,11 +785,11 @@ export function counterThesisLine(
     const putWallFromStaleGex = vecPutWall == null && gexForWalls?.put_wall != null && gexStaleForWalls;
     if (play.direction === "LONG" && callWall != null && callWall > spot && !callWallFromStaleGex) {
       const d = distPct(spot, callWall);
-      if (d < 3) reasons.push(`call wall **${callWall.toFixed(2)}** overhead (${d.toFixed(1)}%)`);
+      if (d < 3) reasons.push(`call wall **${fmtPriceLevel(callWall)}** overhead (${d.toFixed(1)}%)`);
     }
     if (play.direction === "SHORT" && putWall != null && putWall < spot && !putWallFromStaleGex) {
       const d = Math.abs(distPct(spot, putWall));
-      if (d < 3) reasons.push(`put wall **${putWall.toFixed(2)}** below (${d.toFixed(1)}%)`);
+      if (d < 3) reasons.push(`put wall **${fmtPriceLevel(putWall)}** below (${d.toFixed(1)}%)`);
     }
   }
 
@@ -1095,7 +1095,7 @@ export function tradeManagerNarrativeSection(
     const vectorLive = !vectorStale;
     const prox = vec?.proximity;
     if (vectorLive && prox?.callout && bullets.length < MAX_BULLETS) {
-      add(`**Nearest wall ${prox.strike.toFixed(2)}** (${prox.side}) — ${prox.callout}`);
+      add(`**Nearest wall ${fmtPriceLevel(prox.strike)}** (${prox.side}) — ${prox.callout}`);
     }
 
     const walls = vec?.wallEvents ?? [];

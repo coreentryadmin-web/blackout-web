@@ -42,6 +42,33 @@ export function fmtOptionUsd(n: number | null | undefined): string {
   return `$${(Math.round(n * 100) / 100).toFixed(2)}`;
 }
 
+/**
+ * Bare (no `$`) price-LEVEL at 2dp, e.g. "152.04" — for underlying spot/wall/flip/pin levels,
+ * never a dollar amount (those are `fmtOptionUsd` above). Same rounding-consistency requirement,
+ * same fix: `Math.round(n * 100) / 100` THEN `.toFixed(2)`, matching `roundFloats` exactly,
+ * rather than `n.toFixed(2)` directly, which can disagree by a full cent at an IEEE-754 half-cent
+ * boundary (see `fmtOptionUsd`'s own header for the mechanism).
+ *
+ * THIRD OCCURRENCE of this exact bug class (Ask Largo standing mandate, 2026-09-21). `fmtOptionUsd`
+ * above already documents two prior fixes for option-mark/stop/target dollar amounts (a sign defect
+ * 2026-09-09, this same rounding mismatch 2026-09-12) — but those never covered the BARE price
+ * levels (`spot`/`level.price`/wall/flip/pin) narrated across `play-brief-narrative.ts`,
+ * `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`, `play-brief.ts`, `play-brief-ladder.ts`
+ * and `play-brief-diff.ts`, all of which independently call `n.toFixed(2)` on a raw float that is
+ * ALSO exposed as a plain JSON number elsewhere in the same swing play-brief response (`envelope.
+ * levels[].price`, `envelope.structureLadder`), which the route rounds via `roundFloats` at the
+ * response boundary. Live repro (SPCX, 2026-09-21): the same request's narrative text read
+ * "Spot **152.03**" (`n.toFixed(2)` on the raw float) while `envelope.levels` and
+ * `envelope.structureLadder.spot` both carried the number `152.04` (`roundFloats`'s
+ * `Math.round(n*100)/100` on the identical raw float) — two different values for the same fact in
+ * one response, the exact Largo-contract precision violation (C9) `fmtOptionUsd`'s own history
+ * already names.
+ */
+export function fmtPriceLevel(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
 /** Compact signed dollar magnitude, e.g. "$38.2M" / "-$4.1K". */
 export function fmtPremium(n: number | null): string {
   // NaN/Infinity guard (not just null): these formatters are used pervasively by desk
