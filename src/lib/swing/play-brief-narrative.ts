@@ -172,8 +172,12 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
 function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | null {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
-  const readMs = Date.now();
-  const posture = resolveGammaPosture(ctx, vec);
+  // Same #5351/#5353-class fix as counterThesisLine above: prefer the request-wide
+  // ctx.readMs anchor over a fresh local Date.now(), and thread it into resolveGammaPosture
+  // (which previously defaulted to its OWN fresh Date.now(), a second clock read for the
+  // same vec/gex snapshot this function already samples once below).
+  const readMs = ctx.readMs ?? Date.now();
+  const posture = resolveGammaPosture(ctx, vec, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const vecFlip = vectorStale ? undefined : vec?.gammaFlip;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexMatrixStale(gex, readMs);
@@ -718,6 +722,18 @@ export function counterThesisLine(
   const vec = vectorOf(ctx);
   const eco = ctx.ecosystem;
   const reasons: string[] = [];
+  // BUG FIX (2026-09-21, Ask Largo standing mandate — #5351/#5353 follow-up): this function used
+  // to sample the wall clock FIVE separate times (one bare `Date.now()` per staleness check below)
+  // instead of consulting `ctx.readMs` — the single canonical "now" `composeSwingPlayBrief` stamps
+  // once before any section builds, per #5351's own doc comment on `SwingPlayBriefContext.readMs`.
+  // That's the identical bug shape #5351/#5353 already fixed twice in this same file/its sibling
+  // (`dataFreshnessSection`, `collectBriefUnavailableSources`): a member could see this bullet
+  // judge `vec`/`gexForWalls` fresh while another section of the SAME brief — built off the shared
+  // `ctx.readMs` — judges the identical snapshot stale, purely from wall-clock drift between calls
+  // within one request, not from any real data change. Threading `ctx.readMs` here closes the last
+  // un-migrated call site in this file that both (a) already receives `ctx` and (b) drives a
+  // member-visible narrative bullet ("Counter-thesis" in Trade manager read).
+  const readMs = ctx.readMs ?? Date.now();
 
   const flow = trustedHelixFlow(eco);
   if (flow) {
@@ -744,7 +760,7 @@ export function counterThesisLine(
   const vp = vec?.play;
   // Same Largo C2 gap as stale GEX walls/posture (#4355/#4364): steelmanning Vector desk bias
   // off a stale snapshot reads like a live opposing read.
-  if (!vectorSnapshotStale(vec, Date.now(), ctx.sessionDate) && !vectorConflictAlreadyNoted) {
+  if (!vectorSnapshotStale(vec, readMs, ctx.sessionDate) && !vectorConflictAlreadyNoted) {
     if (play.direction === "LONG" && vp?.bias === "short") {
       reasons.push(`Vector bearish (${vp.headline ?? vp.grade ?? "desk read"})`);
     } else if (play.direction === "SHORT" && vp?.bias === "long") {
@@ -754,7 +770,7 @@ export function counterThesisLine(
 
   if (spot != null) {
     const gexForWalls = eco?.gex_positioning;
-    const vectorStaleForWalls = vectorSnapshotStale(vec, Date.now(), ctx.sessionDate);
+    const vectorStaleForWalls = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
     const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
     const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
     const callWall = vecCallWall ?? gexForWalls?.call_wall ?? null;
@@ -764,7 +780,7 @@ export function counterThesisLine(
     // off a stale snapshot is the same dishonesty as "dealers long gamma" off one. Gated per-wall,
     // not both-or-nothing, since one side can come from a live Vector read while the other falls
     // back to stale GEX.
-    const gexStaleForWalls = gexMatrixStale(gexForWalls, Date.now());
+    const gexStaleForWalls = gexMatrixStale(gexForWalls, readMs);
     const callWallFromStaleGex = vecCallWall == null && gexForWalls?.call_wall != null && gexStaleForWalls;
     const putWallFromStaleGex = vecPutWall == null && gexForWalls?.put_wall != null && gexStaleForWalls;
     if (play.direction === "LONG" && callWall != null && callWall > spot && !callWallFromStaleGex) {
@@ -777,7 +793,7 @@ export function counterThesisLine(
     }
   }
 
-  const vectorStale = vectorSnapshotStale(vec, Date.now(), ctx.sessionDate);
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
   const ema = !vectorStale ? vec?.technicals?.emaStack ?? null : null;
   if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
   if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
@@ -791,7 +807,7 @@ export function counterThesisLine(
   // the "corroborated across N independent reads" count just below. `resolveGammaPosture` already
   // encodes the same stale-GEX gating `skipGexPosture` used to apply by hand, so it fully replaces
   // this block.
-  const posture = resolveGammaPosture(ctx, vec);
+  const posture = resolveGammaPosture(ctx, vec, readMs);
   if (play.direction === "LONG" && posture === "long") reasons.push("dealer long-gamma pins rallies");
   if (play.direction === "SHORT" && posture === "short") reasons.push("dealer short-gamma can squeeze shorts");
 

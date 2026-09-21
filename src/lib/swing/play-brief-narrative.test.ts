@@ -1819,6 +1819,35 @@ test("counterThesisLine: stale Vector regime posture must not steelman dealer ga
   assert.equal(line, null, "stale Vector regime must not appear in counter-thesis");
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — #5351/#5353 follow-up): counterThesisLine used
+// to sample the wall clock with FIVE separate bare `Date.now()` calls instead of consulting
+// `ctx.readMs` — the single canonical "now" `composeSwingPlayBrief` stamps once before any section
+// builds. This test proves the threading without mocking global time: `vec.asOf` carries no
+// `dataAgeMs`, so staleness falls through to the `readMs - Date.parse(vec.asOf)` branch
+// (`vectorAgeStale`, play-brief-absence.ts) — set `ctx.readMs` to the SAME instant as `vec.asOf`
+// (genuinely fresh, 0ms age) while the real wall clock (whatever `Date.now()` returns when this
+// suite actually runs) is weeks later than that fixed 2026-09-05 fixture date. Pre-fix, the bare
+// `Date.now()` calls judge `vec` stale off the real run-time clock and drop every Vector-sourced
+// counter-thesis reason; post-fix, `ctx.readMs` correctly judges it fresh.
+test("counterThesisLine: uses ctx.readMs, not the real wall clock, to judge Vector freshness", () => {
+  const readMs = Date.parse("2026-09-05T20:00:00.000Z");
+  const line = counterThesisLine(
+    ctx({
+      readMs,
+      vector: {
+        spot: 100,
+        regime: { posture: "long", label: "LONG GAMMA" },
+        asOf: "2026-09-05T20:00:00.000Z",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: null,
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line, "ctx.readMs-fresh Vector regime must steelman dealer-gamma counter-thesis");
+  assert.match(line!, /dealer long-gamma pins rallies/);
+});
+
 // FINDINGS 2026-09-09 (live repro, 3 committed positions, different tickers/directions/scores):
 // counterThesisLine's fading-pillar reason read play.thesisHealth.pillars[].status with NO
 // thesisHealthUncalibrated() guard, while degradedReadLine (this file, above) and
