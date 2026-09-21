@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T14:33:52Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5361 (mechanical findings-fold for #5356/#5359/#5360, docs-only). Found new sibling PR #5362 (same parallel session), a genuinely different bug class from the readMs sweep -- Live-read giveback-bullet duplication. degradedReadLine's givebackBit fired on capturePct<80 while actionNarrative's own giveback line fires on capturePct<75 -- since <80 fully contains <75, ANY capturePct below 75 duplicated the same 'gave back X% of peak' fact twice in the same Trade manager read section (different opening prose so the seen/first-48-char de-dup never caught it). A prior (2026-09-12) fix to this exact function had explicitly reasoned through this branch and wrongly concluded it was safe -- the PR corrects that stale reasoning with a live repro. Independently re-verified: **re-fetched the live COIN #1190 brief against PRODUCTION myself before even looking at the diff** -- confirmed the duplication is real and still live right now ('Gave back 34% of peak' / 'gave back 34% from peak', two bullets, same fact). Then full worktree verification: diff matches write-up exactly, GREEN baseline 101/101, targeted revert of just the condition confirmed RED (exactly the 1 new test failed), restored GREEN, tsc clean, full swing suite 1440/1440 clean. Posted confirming comment (5762213201) -- CARVE-OUT auto-merge should take it from here. Checked #4076: still no new activity since the pickLanePlayForBrief report.",
+  "last_updated": "2026-09-21T14:48:11Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto #5362 (merged, confirmed via log). No new open swing PRs. No new #4076 activity. Followed up on the AAPL #40 'score 0' lane-rank watch item from two cycles ago -- did NOT self-resolve as hypothesized: still score:0/#61-of-61 more than an hour after commit (13:30:38 ET), even though the contract's own live data (bid/ask/greeks, manageReason:'hold') is fully populated by now, so this isn't simple just-committed staleness. Fully root-caused via source: the lane-rank score reads row.feature_vector.evidence_score (live-plays.ts:522-525), hard-defaulting to 0 when that field isn't a finite number; commit.ts writes evidenceScore: cand.score at commit time (both call sites, line 607/678) -- so a 0 here means the CANDIDATE object that triggered this specific commit itself had score 0/null at commit time, not a downstream display bug. Working hypothesis, not yet confirmed: AAPL #40 committed at the exact instant of RTH open (09:30:38 ET), replacing a position (#37) that had just closed minutes earlier on the same ticker -- possibly a market-open-specific commit/promotion path that doesn't run the normal scan-and-score funnel before triggering a re-entry. NOT escalating yet -- single instance, and I don't yet know if this is a genuine anomaly specific to AAPL's same-day reopen or a structural characteristic of a particular commit trigger path (would need to check event-trigger.ts's SWING_EVENT_MIN_DTE-style immediate-commit paths, which I haven't traced yet). Per the noise threshold, watching for a 2nd/3rd instance (another freshly-committed position whose score stays 0 well past its first live tick) before treating this as a real, escalation-worthy pattern rather than a one-off.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -88,8 +88,8 @@
       "status": "SUPERSEDED 2026-09-21T13:35Z -- #37 closed at/around today's RTH open before a second manage-tick could be observed, so the original expiry_risk-priority question is unresolved/moot on this specific instance. But trying to pull #37's closed brief for the record surfaced a much bigger, confirmed bug instead: pickLanePlayForBrief's single-row shortcut silently returns the WRONG (new #40) position's live data for ANY positionId/status request once a ticker has exactly one current row. Posted to #4076 (comment 5761378030) with full root-cause trace. This experiment entry is closed; track the new finding instead."
     },
     {
-      "topic": "AAPL #40 (freshly-committed swing-native position) showed lane-rank 'score 0, #62/62' in its play-brief narrative right after commit -- feature vector/pillars not yet populated at first read (entryPresentPillars:null)",
-      "status": "OPEN, single instance, cosmetic/display only -- not escalated. Honest (not fabricated), but a freshly-opened position reading as literally dead-last on the board could alarm a member. Watch whether this self-resolves on the position's next scan-cadence tick (expected, if pillars populate asynchronously after commit) -- if a THIRD instance of a freshly-committed row still showing score:0 well after its first scan tick turns up, that would be worth a real finding/fix (e.g. suppress the lane-rank line entirely until pillars are populated, same honest-omission discipline used elsewhere in this file)."
+      "topic": "AAPL #40 (freshly-committed swing-native position, committed at exact RTH open 09:30:38 ET, replacing #37 which closed minutes earlier) -- lane-rank score PERSISTS at 0/#61-of-61 more than an hour past commit, not a transient just-committed artifact. Root-caused to row.feature_vector.evidence_score (commit-time pinned field) genuinely being 0/null -- meaning the CANDIDATE that triggered this commit itself carried no real score, not a downstream display bug.",
+      "status": "OPEN, single instance, root cause traced to source (live-plays.ts:522-525 reads row.feature_vector.evidence_score, commit.ts:607/678 writes evidenceScore: cand.score at commit -- so score:0 means the commit-triggering candidate object itself had no score). Working hypothesis: a market-open-instant same-ticker re-entry may bypass the normal scan-and-score funnel (event-trigger.ts's immediate-commit paths not yet traced). NOT escalated -- need a 2nd/3rd instance (another position whose lane-rank score stays 0 well past its first live tick, ideally also a same-day reopen) before calling this a real pattern. Next step if it recurs: trace which exact commit call site (commit.ts:602 vs :673) AAPL #40 went through and what cand.score its own candidate object carried at that moment."
     }
   ],
   "v6_item2_correlated_risk_CHECKED_BLOCKED": {
@@ -121,14 +121,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T14:33:52Z",
-    "swing_prs": [
-      {
-        "number": 5362,
-        "title": "fix(swing): stop Live-read giveback bullet duplicating actionNarrative's own line",
-        "status": "open, non-draft, sibling session, independently verified (live-repro re-confirmed against production + RED->GREEN worktree, comment 5762213201), CI pending / CARVE-OUT auto-merge expected"
-      }
-    ]
+    "as_of": "2026-09-21T14:48:11Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
