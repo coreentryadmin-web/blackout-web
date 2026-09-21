@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T06:22:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. #4076 unchanged, no response. Zero open swing PRs, board unchanged. **Ask Largo audit on CRDO (SCALING_OUT, positionId 1136)**, first check this session. Clean. Math exact: P&L +133.8% from entry $4.00/mark $9.35, blended P&L 116.9% (0.5*100+0.5*133.8, exact), premium stop cushion 83% exact. No Book context section despite the Peers list naming ALAB (also in this session's live book) -- confirmed this is a different, unrelated concept (Peers = catalyst/related-company data-provider list, not the book-overlap theme check), not a missed-overlap bug -- CRDO/ALAB simply don't share a configured sector-map theme. GEX matrix correctly disclosed as 'cold matrix / no positioning read' and Vector state 'snapshot unavailable' -- consistently NO GEX/Vector bullets fabricated anywhere in the brief, honest end to end. IV rank 3 shown despite BANGER origin -- 4th+ corroborating instance of the already-reported ticker-coincidence bug (5755332460), not re-reporting. No new bugs found.",
+  "last_updated": "2026-09-21T06:41:21Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4 window). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. **Completed independent verification of sibling PR #5345** (swing Lessons 'did its job' mechanical-exit-praise contradiction on a target/ratchet exit with weak MFE capture) -- root cause re-derived directly against main (matches PR claim exactly), RED->GREEN re-derived in an isolated worktree: 177/177 green on PR head, reverted just the fix's gated block -> 176/177 with the sole failure being the PR's own new test (exact match), restored -> 177/177, tsc clean. Confirming comment posted. **Ask Largo forensic dig on LRCX** (MANAGING, positionId 1187, BANGER-origin, first check this session): found a SECOND live instance of the ticker-only dossier-match IV-rank display (after MSTR) -- accumulation-export confirms LRCX's matched dossier is an independent, unrelated, never-promoted FLOW candidate (signal_kinds=[FLOW], promoted_position_id=null). This time traced the deeper mechanism: fetchIvRank(ticker) in swing-ingest.ts (~L407-420) is a ticker-scoped, not candidate-scoped, live market read refreshed every scan -- so the displayed number IS legitimate/correct data, not a misattribution bug as my earlier correction (5755332460) implied. Posted a settling follow-up on #4076 (5756424288) walking that back: the real open item is a coverage inconsistency (BANGER-origin positions get IV rank only by scan-overlap luck, no guaranteed pinning of their own), raised as a product question, not filed as a fix since nothing is actually broken. No new PR filed this cycle -- both threads (PR verify + design-question settling) were the substantive work.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,8 +113,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T06:22:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T06:41:21Z",
+    "swing_prs": [
+      "#5345 (open, independently verified this cycle, awaiting merge under CARVE-OUT)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
