@@ -379,6 +379,10 @@
     "2026-09-21T15:40:00Z": {
       "session_state": "RTH -- PR #5366 (dead-zone floor mark-honoring bug) MERGED to main",
       "activity": "PR #5366 shipped: CI (verify + CodeQL) went green, and a parallel session on this account undrafted + merged it (consistent with CLAUDE.md's documented 'mirror failure, Claude side' pattern -- multiple sessions applying the same standing merge-authorization policy). Verified the fix actually landed on origin/main (not just trusting the merge): commit 28911d54e, `git show origin/main:...exit-engine.ts` confirms the corrected condition (decision.reason === 'trim_scale_dead_zone_floor') is present at line 315. Local repo synced to origin/main, feature branch deleted. This closes out this cycle's genuine live-trading-path finding -- every NEW 0DTE exit via the trend dead-zone floor path is now priced correctly (floor-honored) going forward. Historical rows that closed via this path before the fix (incl. today's TSLA) remain understated in the DB -- noted in the staged finding as a separate, out-of-scope data-backfill question, not re-opening here."
+    },
+    "2026-09-21T15:45:00Z": {
+      "session_state": "RTH, 3 open (LUNR HOLD, CRWV OPEN, QCOM OPEN) + 3 closed today (AXTI thesis-break loss, TSLA/SPXW dead-zone floor wins)",
+      "activity": "Quick coherence sweep on new activity: AXTI closed via thesis_break at -10.23% (peak only +3.41%, weak entry that never worked -- thesis-break firing at a loss is correct, unconditional rule). LUNR now HOLD, peak 36.03% retraced to 26.47%, floor still 0 holding it well above breakeven -- same verified mechanics as earlier. New CRWV/QCOM entries both score 77-78, reasonable. Nothing anomalous, no new finding. PR queue: only a fresh swing-lane PR (#5367), not mine."
     }
   },
   "sessions": {
