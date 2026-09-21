@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T03:38:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean -- main now includes PR #5335 (findings fold). #4076 unchanged. **Third sibling PR from the same parallel session (session_01Qtnftc16CuWyVLxR8LaMoC), this one the biggest blast radius yet**: PR #5336 -- thesis-health was withheld on EVERY committed swing position, not just some. Root cause: thesisHealthUncalibrated() ORs across all 5 pillars (any one still-default sentinel withholds the WHOLE aggregate), and entry_geometry (src.entryStatus) was never wired for committed rows (live-plays.ts's HorizonPlay literal never sets it at all) -- the exact same structural gap a prior fix already closed for the sibling persistence pillar, but nobody had checked whether entry_geometry had the identical gap. Independently verified in full: confirmed live-plays.ts has zero entryStatus references (grep -c = 0), confirmed the OR-gate logic and the exact 'n/a' sentinel match by reading thesis-health.ts directly, fetched the branch into a worktree, ran adapters.test.ts green (150/150), reverted just the one wiring line (entryStatus: liveEntryStatus -> src.entryStatus), reran -- exactly 1 failure, restored, reconfirmed 150/150 + entry-model/thesis-health tests (174 total) green, tsc clean. Posted a confirming comment (5755028249) -- real, correctly-scoped, wide-reaching fix, no concerns. Not driving/merging (not my PR). Zero other open swing PRs, board unchanged. Third consecutive cycle spent on genuine peer verification of real sibling fixes rather than my own forensic dig -- still real value, not idle time, per the collaboration protocol.",
+  "last_updated": "2026-09-21T03:52:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. git sync clean. #4076 unchanged, no response. Zero open swing PRs -- #5336 already merged. Board unchanged. **Deploy queue status**: #5334 (greek precision) still deploying (serialized pipeline), #5336 (thesis-health) queued behind it. **Captured a pre-deploy baseline for #5336's fix** on HOOD (positionId 1189, one of the PR's own named repro tickers): confirmed 'Inputs not wired for committed positions' still showing, as expected pre-deploy. Will re-check once #5336 is live to confirm thesis-health actually starts rendering a real score. **Ask Largo audit on COIN (MANAGING, positionId 1190)**, first check this session. Clean: honest staleness disclosures throughout (Vector 282s stale, GEX matrix 279s stale, HELIX pipeline stale, mark genuinely unknown with no fabricated cushion%), 'Chart technicals' correctly labeled 'from prior snapshot' rather than presenting a stale grade as current. No new bugs found.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,10 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T03:38:00Z",
-    "swing_prs": [
-      "#5336 (not mine -- parallel session's thesis-health entry_geometry fix, independently verified, wide blast radius)"
-    ]
+    "as_of": "2026-09-21T03:52:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
