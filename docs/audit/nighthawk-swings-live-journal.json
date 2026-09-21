@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T13:35:59Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: merged origin/main, picked up #5356 (my own PR) MERGED cleanly via CARVE-OUT auto-merge (verified via API: merged:true, merged_by coreentryadmin-web, head sha matches my push) + #5357 (mechanical findings-fold for #5355, not code). Unsubscribed from #5356 PR activity. No new open swing PRs. Re-checked the AAPL #37 expiry_risk watch item from last cycle now that RTH opened (09:30 ET) -- and it resolved into something much more significant than expected: #37 (330C dte=0) is GONE from the committed book (closed at/around today's open, presumably via expiry/expiry_risk -- did not get to observe the exact mechanism since it closed between checks), replaced by a FRESH AAPL position #40 (335C, 9DTE, committed exactly 09:30:38 ET). Tried to pull #37's closed brief for the record -- got HTTP 200 available:true with #40's live data instead of #37's, or an honest not-found. Controlled with a bogus positionId=999999&status=CLOSED (impossible to legitimately resolve) -- SAME result, #40's live data, every time, cache headers confirmed DYNAMIC/no-store so not a CDN artifact. Traced root cause fully via source: pickLanePlayForBrief (play-brief-resolve-pure.ts:47) has an unconditional `if (forTicker.length===1) return forTicker[0]!` shortcut that fires BEFORE any status/positionId/strike/right check -- whenever a ticker has exactly one current lane row (now true for AAPL), the caller's status/positionId params are completely decorative. Realized this likely explains why my EARLIER 'working correctly' CRWD/AAPL(#37-while-still-open) fetches this session succeeded too -- coincidentally correct because there was only one row and it happened to be the wanted one, not because status filtering actually worked (WORKING set in that file doesn't even include 'COMMIT', the status value those earlier requests used). This is worse than the already-tracked closed-brief banger-lookup gap (5757474451, which at least fails honestly) -- this one silently substitutes WRONG financial data under available:true, on the exact 'review a past trade' surface. Posted full live-repro + root-cause trace to #4076 (comment 5761378030), explicitly connected to the two already-open closed-brief findings (5757314206/5757474451) since all three are the same play-brief-resolve.ts funnel and likely get fixed together. Not self-fixed -- live-trading-path financial-history presentation, CARVE-OUT bar, needs careful scoping to not regress the shortcut's legitimate no-hint use case. Checked #4076 again after posting: no new Cursor engagement yet on any of the four open findings (structure-ladder R:R, Swing Command track record scope gap, closed-brief banger lookup gap, and this new pickLanePlayForBrief single-row bug).",
+  "last_updated": "2026-09-21T13:49:07Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded cleanly onto another lane's journal commit, no divergence. Found new sibling PR #5359 (parallel session, same #5351/#5353/#5355/#5356 readMs sweep chain) threading ctx.readMs through expectedMoveCoaching/wallIntegrityCoaching -- the two sites #5356's own commit named as the final remaining ones. Noted #5358 (an earlier, now-correctly-closed duplicate attempt from the same session that conflicted with my own #5356's magnetCoaching fix) was handled cleanly -- closed in favor of the rebased #5359, no functional loss, verified via API (state:closed, merged:false). Independently RED->GREEN verified #5359 in an isolated worktree: diff matches write-up exactly, GREEN baseline 126/126, targeted revert of just the two vectorSnapshotStale call lines (signatures/call-sites untouched) confirmed RED -- exactly the 2 new tests failed (124/126), nothing else regressed -- restored to GREEN (126/126), tsc clean, full src/lib/swing/*.test.ts collateral check 1433/1433 clean. Posted confirming comment (5761557089) -- CARVE-OUT auto-merge will take it from here once CI is green. This appears to close out the full Date.now()->ctx.readMs sweep across play-brief-narrative-coaching.ts (all call sites #5351/#5353/#5355/#5356/#5359 collectively named are now threaded). Checked #4076: no new activity since my last comment this session (pickLanePlayForBrief single-row bug, 5761378030) -- still no Cursor engagement on any of the four open findings.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -117,8 +117,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T13:35:59Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T13:49:07Z",
+    "swing_prs": [
+      {
+        "number": 5359,
+        "title": "fix(swing): thread ctx.readMs through expectedMoveCoaching/wallIntegrityCoaching (#5356 follow-up)",
+        "status": "open, non-draft, sibling session, independently RED->GREEN verified by me (comment 5761557089), CI pending / CARVE-OUT auto-merge expected"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
