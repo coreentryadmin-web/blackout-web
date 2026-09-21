@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T01:10:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean (4 items: 2x duplicate PR #5331 subscription.created echoes + 1x ready_for_review echo, all self-caused by my own actions last cycle -- plus this trigger firing). PR #5331 (mine, swing multi-truth-grade retrace) checked: CI still in_progress (verify + CodeQL), no comments, mergeable_state unknown (not yet computed, not a real conflict) -- nothing actionable, 20-min check-in already scheduled from last cycle. git sync clean. Only open swing PR is my own #5331. Board unchanged since prior cycle (MANAGING=56, SCALING_OUT=12, COMMIT_NOW/WATCH=1 each). **AGGRESSIVE MODE deep-dive on TEM (SCALING_OUT, positionId 1125)** -- full Ask Largo C1-C10 audit, first time this ticker's been checked this session. Verified clean: blended P&L math exact (0.5*100% + 0.5*180% = 140%, matches rendered), peak-giveback math exact (302%->180% = 40.1% giveback of peak, matches rendered '40%'), thesis-health correctly withheld for a committed position (honest omission, not fabrication), same-ticker duplicate-position book-context citation correctly disambiguated ('separate, cross-engine position #1023') per the 2026-09-15/18 fixes, and -- good live confirmation -- BOTH the Vector and GEX 'weekend self-warm, market CLOSED' disclosures (#5306/#5307/#5308/#5309, my own fixes from earlier this week) fired correctly on this real Sunday-evening read. Traced one candidate oddity (Management section's bare 'Rails: stop $1.00 . target $5.00' line showing a target below the current $7.00 mark) to source: this is a DIFFERENT, simpler line (play-brief.ts:135, static policy values, no room% math) from the narrative layer's smarter 'Premium target rail' bullet (play-brief-intel.ts ~1141), which correctly SUPPRESSES itself once mark has already passed target (targetRoomPct requires target > targetBasis) -- confirmed absent from this exact brief's Trade manager read section. Not a bug, just two different rails presentations with different design intent; not worth a fix.",
+  "last_updated": "2026-09-21T01:20:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. **PR #5331 already merged** (own PR, verify+CodeQL both green, merged into main as 441e5eace) -- unsubscribed. ECR deploy for that commit is in_progress (run 35550072991, started 01:11Z) -- too early to live-test the new /api/admin/swing/multi-truth-grade endpoint yet, re-check next cycle. #4076 unchanged (216 comments, same updated_at) -- no new activity to act on. Zero open swing PRs. Board unchanged (still Sunday off-hours). **Live re-confirmed two of my own recent fixes, fresh pulls this cycle (not relying on stale prior-session confirmation):** (1) WOLF:1218 OPEN brief -- 'next trim at +100%' with NO fabricated 'mark $0.77, needs $1.54' distance text, Position section correctly shows 'Mark: unknown' -- #5328's fake-mark-basis suppression fix is genuinely live and holding. (2) BKKT:1221 OPEN brief -- Book context concentration line correctly states the true count (28 same-direction crypto-equity positions) and caps the rendered name list to exactly 8 names + '+ 20 more' (8+20=28, arithmetic checks) -- confirms #5321 (crypto-equity theme coverage) and #5327 (MAX_OVERLAP_NAMES cap) are both live and composing correctly together. No new bugs found this cycle -- genuinely clean, not manufactured.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,10 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T01:10:00Z",
-    "swing_prs": [
-      "#5331 (mine, CI in_progress, no comments, 20-min check-in scheduled)"
-    ]
+    "as_of": "2026-09-21T01:20:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
