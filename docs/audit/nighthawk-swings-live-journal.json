@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T11:47:37Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto a routine heartbeat commit, no divergence. Zero open swing PRs. **Completed the deferred live verification of PR #5351's staleness-clock fix.** Re-checked SNXX's brief now ~50min post-merge (well past the deploy window): the 'Confluence' bullet is now cleanly ABSENT (confluenceCoaching correctly returns null when the Vector snapshot reads stale) while 'Structural support node: put wall 10.00' (the GEX-matrix fallback) remains -- both sections now agree the snapshot is stale and fall back consistently, instead of splitting between a fresh Vector read and a stale GEX fallback the way the original bug reproduced. This matches the PR's own evidence description of a 'second fetch ~60s later' showing exactly this pattern (Confluence bullet disappearing while put wall 10.00 stays unchanged) -- a clean, positive live confirmation the fix is deployed and working as intended. Closes the loop on last cycle's deferred check. No new bugs found, no new PR or #4076 comment needed this cycle.",
+  "last_updated": "2026-09-21T12:07:49Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean, up to date with origin/main, no divergence. **New sibling PR #5353** -- a direct, well-scoped #5351 follow-up threading ctx.readMs through dataFreshnessSection + collectBriefUnavailableSources (the 2 highest-risk of the ~16 remaining Date.now() sites #5351 explicitly deferred). Independently verified: root cause re-confirmed against main (both functions' Date.now() calls match exactly), RED->GREEN re-derived in an isolated worktree (178/178 green on PR head, targeted single-line revert of optionMarkIsStale's call site -> 177/178 exact claimed failure, restored -> 178/178), tsc clean, full swing play-brief suite 705/705 (704 baseline + 1 new test, no collateral breakage). Confirming comment posted (5760221859). Fix correctly follows #5351's own precedent pattern and scoping discipline (explicit ~16-site remainder still deferred, not silently dropped).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,8 +113,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T11:47:37Z",
-    "swing_prs": []
+    "as_of": "2026-09-21T12:07:49Z",
+    "swing_prs": [
+      "#5353 (open, independently verified this cycle, awaiting merge under CARVE-OUT)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
