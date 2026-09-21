@@ -1,15 +1,15 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T04:08:00Z",
-  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean -- main includes PR #5337 (Night Hawk Legacy, not my lane, no action). #5336's deploy still in_progress. #4076 unchanged before this cycle's post. Zero open swing PRs. Board unchanged. **Did NOT re-verify the #4700 Banger-lane book-context blindspot** despite the mission brief still naming it as an open item -- checked git log first (per the v3 CADENCE discipline: don't redundantly re-run mechanical checks), confirmed it's been independently re-verified fixed across at least 6 separate prior cycles (PR #4833) -- the mission-brief template itself is stale on this one point, already flagged as such in an earlier cycle. Not re-litigating again. **AGGRESSIVE MODE: found and raised a genuine new enhancement idea** -- IV rank coaching (ivRankCoaching, play-brief-narrative-coaching.ts) never fires for BANGER-origin swing positions. Confirmed via grep: banger-lane-merge.ts never sets ivRank (zero hits), banger_positions has no feature_vector column to pin it in, and nothing in the banger live-marks tick (updateBangerLiveState, the same function #5333 just extended) ever calls fetchUwIvRank. Not a bug (honest omission, ivRankCoaching correctly returns null rather than fabricating) but a real, currently-majority-of-the-book coverage gap -- checked and confirmed essentially all currently MANAGING/SCALING_OUT positions are BANGER-origin right now, so this silently never fires for most of the live book. Two legitimate design shapes (pin at commit/tick like swing-native, vs fetch live at play-brief request time since the underlying UW call is already Redis-cached EOD-cadence) with a real tradeoff neither obviously wins -- posted as a design-level idea (comment 5755223428) on #4076 rather than picking one unilaterally, per the standing ambiguous-design escalation discipline.",
+  "last_updated": "2026-09-21T04:22:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset, condensed brief). ReadNotifications clean. git sync clean. #5336's deploy still in_progress. Zero open swing PRs, board unchanged. **Self-correction on my own :01-cycle finding (5755223428)**: went looking for a 3rd confirming instance of the IV-rank-missing-for-banger gap (checked IREN, positionId 1193 -- confirmed clean, no IV rank line) but ALSO re-checked MSTR and found it CONTRADICTS the original claim -- MSTR (genuinely BANGER-ledger-origin per its regime label) DOES show a real 'IV rank 22' line. Dug into why rather than let the discrepancy sit: resolveBriefIvRank's caller (play-brief-resolve.ts) matches a live discovery dossier by TICKER STRING ALONE, with no check that the dossier actually belongs to the position being briefed. GET /api/admin/swing/accumulation-export confirmed MSTR independently has its own unrelated organic accumulation-store entry (FLOW signal, promoted_position_id: null) from a completely separate scan -- that unrelated entry's ivRank is what leaked into the banger brief, pure ticker-string coincidence. TEM also has an accumulation entry but did NOT show IV rank on its own brief, consistent with this being coincidental/timing-dependent rather than a real signal. Posted a correction (comment 5755332460) on #4076: the real shape is worse than 'cleanly absent' -- it's inconsistent/accidental, tied to whatever ticker happens to coincide with an unrelated live scan that moment, with no way for a member to tell the difference. Named this as its own smaller finding (the ticker-only dossier match) independent of the larger IV-rank-for-banger design question. Same self-correction discipline as the earlier thesis-health fabrication walkback this session -- verify before letting an overstated claim stand, even on my own prior comment.",
   "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [
     {
-      "comment_id": 5755223428,
-      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5755223428",
-      "summary": "IV rank coaching never fires for BANGER-origin swing positions -- a real, currently-majority-of-the-book signal gap, not a bug. Two legitimate design shapes floated, neither picked unilaterally.",
-      "status": "OPEN -- design question, awaiting a second opinion"
+      "comment_id": 5755332460,
+      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5755332460",
+      "summary": "Correction to the IV-rank-for-banger finding: resolveBriefIvRank's caller matches a live discovery dossier by ticker string alone (no position-scope check), so a banger position can coincidentally inherit an unrelated organic scan's ivRank for the same ticker -- worse than a clean gap, since it's inconsistent/accidental.",
+      "status": "OPEN -- folded into the same design thread as 5755223428"
     }
   ],
   "loss_taxonomy": {
@@ -120,7 +120,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T04:08:00Z",
+    "as_of": "2026-09-21T04:22:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
