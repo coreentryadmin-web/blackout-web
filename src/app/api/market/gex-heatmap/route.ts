@@ -404,8 +404,23 @@ export async function GET(req: NextRequest) {
     const nighthawkPromise = skipSlowEnrichment
       ? Promise.resolve(null)
       : withEnrichmentTimeout(getNightHawkContext(ticker), null);
+    // NOT gated on `skipSlowEnrichment`, unlike overlays/Night Hawk above — this call never
+    // performs network I/O. `validateGexAgainstUW` reads the UW `gex_strike_expiry` WS ladder,
+    // which is either an already-warm in-process Map (near-zero cost) or, when the channel isn't
+    // fresh, returns null immediately: `restFallbackAllowed()` is unconditionally false whenever
+    // `nearTermExpiries` is supplied (see gex-cross-validation-core.ts), and `nearTermExpiries` is
+    // ALWAYS supplied here (`resolveNearTermExpiriesForCrossValidation` never returns empty for a
+    // heatmap with any expiries) — so the REST fallback branch, the only path with real I/O cost,
+    // is provably dead on this call site. Previously bundling it into `skipSlowEnrichment` meant
+    // cross-validation only ran once the matrix cache aged past 90s — which `heatmap-warm` keeps
+    // from ever happening during healthy RTH operation (measured 2026-09-21: 20/20 live reads
+    // across SPX/SPY/QQQ/IWM, matrix age 1.6-43.8s, cross_validation null every time). The
+    // member-facing "Cross-check" chip (thermal-desk-state.ts) was therefore permanently "off"
+    // with copy promising it "resumes when the live strike ladder is back at the open" — a false
+    // promise on every healthy trading day, not just off-hours. Decoupling this from the
+    // freshness gate lets the (cost-free) check actually run and the chip reflect real state.
     const crossValPromise =
-      skipSlowEnrichment || !isHeatmapPreset(ticker) || !heatmap.gex
+      !isHeatmapPreset(ticker) || !heatmap.gex
         ? Promise.resolve(null)
         : withEnrichmentTimeout(
             validateGexAgainstUW(
