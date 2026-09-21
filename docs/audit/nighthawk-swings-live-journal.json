@@ -1,10 +1,17 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T03:52:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset, condensed brief). ReadNotifications clean. git sync clean. #4076 unchanged, no response. Zero open swing PRs -- #5336 already merged. Board unchanged. **Deploy queue status**: #5334 (greek precision) still deploying (serialized pipeline), #5336 (thesis-health) queued behind it. **Captured a pre-deploy baseline for #5336's fix** on HOOD (positionId 1189, one of the PR's own named repro tickers): confirmed 'Inputs not wired for committed positions' still showing, as expected pre-deploy. Will re-check once #5336 is live to confirm thesis-health actually starts rendering a real score. **Ask Largo audit on COIN (MANAGING, positionId 1190)**, first check this session. Clean: honest staleness disclosures throughout (Vector 282s stale, GEX matrix 279s stale, HELIX pipeline stale, mark genuinely unknown with no fabricated cushion%), 'Chart technicals' correctly labeled 'from prior snapshot' rather than presenting a stale grade as current. No new bugs found.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-21T04:08:00Z",
+  "notes": "v3 mandate cycle (trigger 1 of 4, :01 offset, full brief). ReadNotifications clean. git sync clean -- main includes PR #5337 (Night Hawk Legacy, not my lane, no action). #5336's deploy still in_progress. #4076 unchanged before this cycle's post. Zero open swing PRs. Board unchanged. **Did NOT re-verify the #4700 Banger-lane book-context blindspot** despite the mission brief still naming it as an open item -- checked git log first (per the v3 CADENCE discipline: don't redundantly re-run mechanical checks), confirmed it's been independently re-verified fixed across at least 6 separate prior cycles (PR #4833) -- the mission-brief template itself is stale on this one point, already flagged as such in an earlier cycle. Not re-litigating again. **AGGRESSIVE MODE: found and raised a genuine new enhancement idea** -- IV rank coaching (ivRankCoaching, play-brief-narrative-coaching.ts) never fires for BANGER-origin swing positions. Confirmed via grep: banger-lane-merge.ts never sets ivRank (zero hits), banger_positions has no feature_vector column to pin it in, and nothing in the banger live-marks tick (updateBangerLiveState, the same function #5333 just extended) ever calls fetchUwIvRank. Not a bug (honest omission, ivRankCoaching correctly returns null rather than fabricating) but a real, currently-majority-of-the-book coverage gap -- checked and confirmed essentially all currently MANAGING/SCALING_OUT positions are BANGER-origin right now, so this silently never fires for most of the live book. Two legitimate design shapes (pin at commit/tick like swing-native, vs fetch live at play-brief request time since the underlying UW call is already Redis-cached EOD-cadence) with a real tradeoff neither obviously wins -- posted as a design-level idea (comment 5755223428) on #4076 rather than picking one unilaterally, per the standing ambiguous-design escalation discipline.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    {
+      "comment_id": 5755223428,
+      "url": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5755223428",
+      "summary": "IV rank coaching never fires for BANGER-origin swing positions -- a real, currently-majority-of-the-book signal gap, not a bug. Two legitimate design shapes floated, neither picked unilaterally.",
+      "status": "OPEN -- design question, awaiting a second opinion"
+    }
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -113,7 +120,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T03:52:00Z",
+    "as_of": "2026-09-21T04:08:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
