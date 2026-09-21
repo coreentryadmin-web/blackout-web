@@ -313,8 +313,15 @@ export function expectedMoveCoaching(
   vec: VectorFullState | null,
   spot: number,
   sessionDate?: string | null,
+  // Request-wide staleness anchor (SwingPlayBriefContext.readMs) — optional, defaulting to
+  // Date.now() so every existing call site/test keeps working unchanged. Same
+  // #5351/#5353/#5355/#5356-class threading fix as confluenceCoaching/magnetCoaching/
+  // crossDeskCoaching/shortInterestCoaching: sampling the clock fresh here (rather than reusing
+  // this brief's single ctx.readMs anchor) can disagree with sibling sections in the SAME
+  // composeCoachingBullets push() block reading the identical `vec` snapshot.
+  readMs?: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const em = vec?.expectedMove;
   const b1 = em?.bands?.find((b) => b.sigma === 1);
   if (!b1) return null;
@@ -394,8 +401,11 @@ export function wallIntegrityCoaching(
   vec: VectorFullState | null,
   play: TerminalPlay,
   sessionDate?: string | null,
+  // Request-wide staleness anchor (SwingPlayBriefContext.readMs) — same threading fix as
+  // expectedMoveCoaching above.
+  readMs?: number,
 ): string | null {
-  if (vectorSnapshotStale(vec, Date.now(), sessionDate)) return null;
+  if (vectorSnapshotStale(vec, readMs ?? Date.now(), sessionDate)) return null;
   const wi = vec?.wallIntegrity;
   if (!wi) return null;
   const call = wi.call?.tier;
@@ -1355,8 +1365,8 @@ export function collectCoachingBullets(
     push(flowPrintsCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
     push(magnetCoaching(ctx, vec, spot));
     push(confluenceCoaching(vec, play, spot, ctx.sessionDate, ctx.readMs ?? undefined));
-    push(expectedMoveCoaching(vec, spot, ctx.sessionDate));
-    push(wallIntegrityCoaching(vec, play, ctx.sessionDate));
+    push(expectedMoveCoaching(vec, spot, ctx.sessionDate, ctx.readMs ?? undefined));
+    push(wallIntegrityCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
     push(wallDynamicsCoaching(vec, ctx.sessionDate, ctx.readMs ?? undefined));
     push(technicalsCoaching(vec, play, ctx.sessionDate, ctx.readMs ?? undefined));
   } else {

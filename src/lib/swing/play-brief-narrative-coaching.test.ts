@@ -11,6 +11,7 @@ import {
   crossDeskCoaching,
   dataHonestyCoaching,
   execSlippageCoaching,
+  expectedMoveCoaching,
   flowPrintsCoaching,
   ivRankCoaching,
   laneRankCoaching,
@@ -23,6 +24,7 @@ import {
   vectorPlayCoaching,
   vexCoaching,
   wallDynamicsCoaching,
+  wallIntegrityCoaching,
   watchGateCoaching,
   technicalsCoaching,
 } from "./play-brief-narrative-coaching";
@@ -2112,6 +2114,42 @@ test("confluenceCoaching: an explicit readMs anchor (not the real wall clock) de
   // No anchor supplied -> falls back to the REAL Date.now(), decades past this fixture's `asOf` ->
   // must NOT render. Proves the anchor is what made the call above succeed, not a lenient default.
   const noAnchor = confluenceCoaching(vec, play({ direction: "LONG" }), 100, null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-09-21 market-open cycle — #5351/#5353/#5355/#5356
+// follow-up): expectedMoveCoaching and wallIntegrityCoaching were named in #5356's own commit
+// message as the next two call sites still needing this exact threading fix (they never took a
+// readMs param at all, unlike their confluenceCoaching neighbor in the same push() block). Same
+// test shape as confluenceCoaching's own anchor test above.
+test("expectedMoveCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-01-01T00:00:00.000Z",
+    spot: 100,
+    expectedMove: { bands: [{ sigma: 1, low: 98, high: 102, movePts: 2 }] },
+  } as unknown as Parameters<typeof expectedMoveCoaching>[0];
+
+  const anchoredReadMs = Date.parse("2026-01-01T00:01:00.000Z");
+  const fresh = expectedMoveCoaching(vec, 100, null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  assert.match(fresh!, /Expected move 1σ/);
+
+  const noAnchor = expectedMoveCoaching(vec, 100, null);
+  assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
+});
+
+test("wallIntegrityCoaching: an explicit readMs anchor (not the real wall clock) decides staleness", () => {
+  const vec = {
+    asOf: "2026-01-01T00:00:00.000Z",
+    wallIntegrity: { call: { tier: "firm" }, put: { tier: "firm" } },
+  } as unknown as Parameters<typeof wallIntegrityCoaching>[0];
+
+  const anchoredReadMs = Date.parse("2026-01-01T00:01:00.000Z");
+  const fresh = wallIntegrityCoaching(vec, play({ direction: "LONG" }), null, anchoredReadMs);
+  assert.ok(fresh, "must render when the supplied anchor puts the snapshot well inside the staleness window");
+  assert.match(fresh!, /wall firm/);
+
+  const noAnchor = wallIntegrityCoaching(vec, play({ direction: "LONG" }), null);
   assert.equal(noAnchor, null, "with no anchor the real wall clock must read this snapshot as stale");
 });
 
