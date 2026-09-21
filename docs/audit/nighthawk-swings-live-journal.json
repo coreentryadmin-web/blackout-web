@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T16:32:45Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5368 (mechanical findings-fold for #5366/#5367, docs-only) + another lane's journal entry. No new open swing PRs, no new #4076 activity. CLOSED THE LOOP on PR #5367: re-fetched AAPL #40's live brief -- the ecr-push deploy finished, and the Thesis health panel now correctly shows 'Aggregate score withheld -- not every pillar input is wired for this position yet' followed by 4 real calibrated pillar rows (Persistence triggered, Entry geometry chase risk, Regime fit unread, Theta budget 9DTE runway), each with a Delta. Confirmed exactly the intended shape: flow_corroboration is the one pillar correctly dropped (signal_kinds still absent on this pre-#5364 roll child), aggregate % still honestly withheld. Sanity-checked one thing that looked odd at a glance -- all 4 shown pillars display 'Delta +0.0 pts' -- traced the formula (deltaPts = weight * (currentScore - commitScore)) and confirmed this is plausible, not a bug: the position rolled to its current leg only hours ago, so currentScore hasn't diverged from commitScore yet for any pillar. This fully closes the multi-cycle AAPL #40 thread that started with my own 'score 0' lane-rank watch item -- root-caused via #5364's live repro, the adjacent thesis-health gap fixed by #5367, both independently verified by me and now confirmed live on production. Nothing new found this cycle -- clean.",
-  "checked_this_cycle_no_bug_found": true,
+  "last_updated": "2026-09-21T16:49:15Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto #5369 (Thermal GEX fix, not swing-lane) + other-lane journal entries. No new open swing PRs, no new #4076 activity from Cursor. AGGRESSIVE-MODE forensic win this cycle: grepped every mfeCaptureOutcome(play.pnlPct, play.peak, null) call site to check for OTHER instances of the exact duplication class #5362 just fixed -- found there are THREE call sites total, not two: actionNarrative (<75, play-brief-narrative.ts), degradedReadLine (now [75,80) post-#5362), and a third I hadn't audited yet -- holdPlanSection (play-brief-intel.ts:1222-1234, <70, its own comment calls it 'the LEAST sensitive of the three call sites' -- confirming the original author knew of all three but only #5362 got fixed). Since 70<75, holdPlanSection's condition is a strict subset of actionNarrative's -- guaranteed duplicate whenever it fires. Live-repro'd on BLSH #1179 (capturePct ~52.5%): with expandIntel=1, 'Trade manager read' shows 'Gave back 47% of peak' and the separate 'Hold plan' section shows 'Gave back 47% from peak' -- same fact, same response. Confirmed the bug is SCOPED to the expandIntel=1 expanded view only -- the default collapsed view correctly folds Hold plan away and shows the fact exactly once (verified both paths against the live BLSH position). Traced that the CLOSED-play sibling (lessonsSection, same file) already has the right shape (roundTripAlreadyNoted/captureAlreadyNoted flags checking narrative body via .includes()) that holdPlanSection is missing for the OPEN-play path. Posted full root-cause + live repro to #4076 (comment 5764180533) -- not self-fixed, narrower than #5362 but the correct fix needs a real design choice (thread an alreadyNoted flag vs. narrow the threshold further, and 70 was picked deliberately per the function's own comment, so it's not obviously a one-line fix). Offered to take it myself if uncontested.",
+  "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -117,7 +117,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T16:32:45Z",
+    "as_of": "2026-09-21T16:49:15Z",
     "swing_prs": []
   },
   "tickers_seen": {
@@ -199,6 +199,12 @@
       "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5754393669",
       "status": "CLOSED (code-level investigation, no fix) -- traced the full discovery->ingest->commit->accumulation pipeline end to end across two cycles; the accumulation store (final unread piece) has zero price/plan fields in its DB schema (SwingAccumRow, db.ts L7631) so it structurally cannot be the source. Nothing in the pipeline explains the anomaly -- concluded most likely a non-reproducible historical provider glitch. Posted closing update 5757632149. Reopen only if a currently-OPEN position shows the same implausible-entry-price shape (fresh, live-verifiable repro).",
       "proposed_next_step_if_uncontested": "take it myself next cycle -- trace discovery.ts's plan-building on the actual commit-triggering scan pass to find where a stale/wrong price enters"
+    },
+    {
+      "raised_at": "2026-09-21T16:49:00Z",
+      "topic": "Third instance of #5362's giveback-duplication class: holdPlanSection (play-brief-intel.ts) duplicates actionNarrative's own line, visible only in the expandIntel=1 expanded view",
+      "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5764180533",
+      "status": "OPEN -- live repro'd (BLSH #1179), root cause fully traced, not self-fixed (needs a real design choice: alreadyNoted-style flag vs. narrowing the deliberately-chosen <70 threshold further). Offered to take it myself next cycle if nobody's on it."
     }
   ]
 }
