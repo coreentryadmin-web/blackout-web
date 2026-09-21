@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T01:25:00Z",
-  "notes": "Scheduled check-in fired (the 20-min one from PR #5331's CI wait) -- PR #5331 was already merged last cycle, so this check-in's PR-verify task was moot; confirmed again (state=merged, verify+CodeQL green). ECR deploy for that commit (run 35550072991) still in_progress ~14min in -- normal, CLAUDE.md notes deploys often take 30-40min; will verify the new admin endpoint live on a later cycle once it completes. Noticed a DIFFERENT, parallel coordinator session (session_01PzDkDzjR3bJQsFbXENzsVz) opened PR #5332 folding my staged finding into FINDINGS.md -- not mine to drive (didn't open it, not asked to), left alone per collaboration/ownership discipline; it's open, non-draft, not stuck. #4076 unchanged, no new comments. **Used the wait productively (NEVER SIT IDLE)**: full Ask Largo audit on LITE (WATCH banger, not freshly pulled this session before). Checked the 'Flag anchor' (950.47) == 'Entry trigger' (950.47) coincidence -- traced to source (play-brief-intel.ts ~979-990): these are two DELIBERATELY separate fields (flagUnderlyingPx pinned-historical vs entryTriggerUnderlyingPx current-and-refreshable, already fixed for a real duplication-read bug 2026-09-12) that simply happen to carry the same value here because the one scan pass since flagging didn't move the level -- not a bug. Also checked Legacy desk-context cross-reference ('last pick on this name closed unfilled'), gate disclosure (legacy_exempt, consistent), entry-window countdown math (3 days elapsed / 2 days left against a 5-day window, correct rounding) -- all clean. No new bugs.",
+  "last_updated": "2026-09-21T01:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset, condensed brief). ReadNotifications clean. git sync clean -- main now at 47dd4b0fc (PR #5332, a parallel session's findings-fold PR, merged). ECR deploy for #5331 (run 35550072991) still in_progress ~24min in. #4076 unchanged. Zero open swing PRs. Board unchanged (Sunday off-hours). **Ask Largo deep-dive on RUM (SCALING_OUT, positionId 1134)**, first check this session. Investigated one candidate discrepancy: Position section shows 'Mark: $0.73' and 'P&L: +81.2%', but hand-computing (0.73-0.40)/0.40 from the DISPLAYED rounded dollar values gives 82.5%, a 1.3pp gap. Traced to source (banger-lane-merge.ts's livePnlPct: round(((mark/entry-1)*100)*10)/10) -- pnlPct and mark both derive from the SAME full-precision Postgres NUMERIC entry_premium/last_mark values; fmtUsd only rounds to 2dp for DISPLAY. On a sub-$1 option premium, 2dp rounding can swing the hand-recomputed %% by several points (checked the math: rounding-explained range for this row is roughly 79.5%%-85.8%%, comfortably including the real 81.2%%) -- an inherent currency-rounding-vs-precise-%% artifact on cheap premiums, not a computation bug. Corroborated: blended P&L (90.6%%) and peak-giveback (38%%) both tie out EXACTLY to the 81.2%% figure, confirming the pipeline itself is internally consistent, only the display rounding creates the hand-math mismatch. Same class as CLAUDE.md's own 'round at the data layer' note but not a new instance worth a fix -- would need either more decimal places shown (clutters larger-value premiums) or living with it; system-wide on all cheap-premium rows, not RUM-specific. Ruled out, not filed. Also confirmed cross-desk friction narrative (#4104/#4110/#4116 lineage) and counter-thesis corroboration-weight labeling (#4939) both rendering correctly live on this row.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -113,10 +113,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T01:25:00Z",
-    "swing_prs": [
-      "#5332 (not mine -- parallel session's findings-fold housekeeping PR, left alone)"
-    ]
+    "as_of": "2026-09-21T01:35:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
