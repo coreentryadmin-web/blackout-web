@@ -909,6 +909,13 @@ export function flowIntelSection(
   }
 
   if (!lines.length) return null;
+  // Same disclosure as chartTechnicalsSection/chartLevelsSection/gexPostureSection/
+  // wallDynamicsSection: every line above is CURRENT (as-of-request-time) flow/anomaly/desk
+  // content, never a stored snapshot of what the trade actually traded under — a closed play
+  // reading this with no framing could easily mistake it for the trade's own conditions.
+  if (statusBucket(play) === "closed") {
+    lines.unshift("_Current flow — not what this trade traded under._");
+  }
   return { title: "Flow & positioning", body: lines.join("\n\n") };
 }
 
