@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T06:05:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean (3 GitHub events on #5419: subscription-created x2, ready_for_review -- none required action, no CI failure/review comment yet). CLOSED OUT PR #5419 from last cycle: verify + CodeQL + Analyze all completed success, enable-automerge/auto-merge both skipped as documented (the known PAT GraphQL-scope gap in CLAUDE.md) -- merged manually via GitHub MCP merge_pull_request (squash), sha 1b9bae845. Unsubscribed from PR activity, deleted the local branch, cancelled the now-unneeded 1hr check-in trigger. The target-rail self-contradiction fix (found auditing MUU last cycle) is now on main, pending its own ECR deploy -- will verify live on a later cycle once deployed, same discipline as the #5416 deploy-tracking two cycles ago. Left the staged finding un-folded this cycle (no competing fold PR exists, but folding is its own branch/PR and not urgent -- a future cycle or the coordinator's own wave-fold sweep will pick it up). Continued the fresh-code-path sweep while CI ran: full read of thesis-progress.ts (the pure helpers feeding manage.ts's thesisProgress01/addEligibleFromProgress/volCollapsedFromIvRanks -- directly the source of the 'ADD' manageAction verified live on both AAPL and, per this cycle's read, structurally the same mechanism MUU's own brief would use were it still pre-target). Verified the LONG/SHORT progress formulas are direction-correct, IV-rank normalization handles both 0-100 and 0-1 scales independently before comparing, and addEligibleFromProgress's null-honesty (never fabricates an add signal from partial inputs) is sound. No new bug found there. Zero other open swing PRs. Board otherwise unchanged (AAPL HOLD/ADD, MUU TRIM/scaling out, both as previously described).",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-22T06:21:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16-offset routine firing). ReadNotifications clean. git sync: no new commits. Zero open swing PRs. #5419's ECR deploy still in_progress at ~20min (normal range, not stalled -- will re-verify live once it completes, likely next cycle). Fulfilled the standing mandate's own 'CLOSED plays: retrace vs the 5-truth grader' mission item literally this cycle rather than just reading code: read grade-retrace.ts (74 lines, the pure mapper bridging swing_positions rows + Polygon underlying bars into grade.ts's SwingGradeInput) and its sole call site, the admin-only GET /api/admin/swing/multi-truth-grade route -- both clean, no bug, and both explicitly self-documented as a deliberately narrow-scope (PATH+THESIS only) diagnostic that has never actually been RUN against real data before (per its own header, following up on an earlier #4076 comment). Ran it live (90-day window, days=90, admin-gated Clerk session): 39 closed/rolled legs, 100% path+thesis gradeable. Cross-tabbed thesis outcome (CONFIRMED/INVALIDATED/OPEN, from real Polygon underlying bars) against the realized P&L members actually saw: 26/39 (67%) coherent (INVALIDATED->loss or CONFIRMED->win), but 7/39 (18%) CONFIRMED-thesis positions still lost money on the option, several dramatically (IBIT -98.6% option P&L vs +19.52% underlying MFE; SPCX -66.9% vs +32.67% MFE; TSM -62.3% vs +18.46% MFE) -- real evidence the underlying direction call was often right while the OPTION still lost near-everything, pointing at strike/DTE selection or exit/roll timing rather than thesis quality. Posted a concise, evidence-based writeup (full table, no gate/behavior change) as a #4076 comment (comment id 5772058668) per the standing collaboration protocol -- this is genuinely new information for whoever picks up the FINANCIAL/MANAGEMENT scope-completion follow-up (option-bar fetch + OCC resolution) the route's own header already names as a real, not-yet-done next step, and offered to split that work with Cursor. No code bug found/fixed this cycle -- this was research/forensics output, not a fix.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T06:05:00Z",
+    "as_of": "2026-09-22T06:21:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "confirm PR #5419's fix (Premium target rail post-trim-fired omission) is live on MUU's brief once its ECR deploy completes"
+  "watch_next_cycle": "confirm PR #5419's fix is live on MUU's brief once its ECR deploy completes"
 }
