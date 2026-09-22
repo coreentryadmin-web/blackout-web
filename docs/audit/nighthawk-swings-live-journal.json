@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T05:52:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46-offset routine firing). ReadNotifications clean. No new commits since last cycle; zero open swing-scoped PRs at cycle start. REAL BUG FOUND AND FIXED this cycle, prompted by the operator asking directly about MUU on swings. Pulled MUU's live play-brief (positionId 1201, Banger-origin BREAKOUT, TRIM status, entry $1.20, peaked $2.85, trim fired at +100%/$2.40 banking 50%, pulled back to mark $2.025) for genuine Ask Largo deep-audit forensics rather than a code-only sweep. Verified the P&L math first (livePnlPct 68.8% = (2.025-1.20)/1.20 off the precise contract mid, not the rounded $2.03 display; blended P&L 84.4% = 0.5*100% + 0.5*68.8%, exact) -- clean. Then found a real self-contradiction reading the full markdown: Management section said 'Trim ladder: +100% checkmark' (target already hit) while 'What to watch' a few lines later said 'Premium target rail: $2.40 -- 19% move still needed to reach target' (implies NOT yet hit) -- the SAME document asserting both. Root cause: watchForSection's target-rail gate (play-brief-intel.ts) only checked target > mark, never checked whether a trim tranche priced at/above that same target had already FIRED. Swing's own exit-policy.ts prices target_pct identically to its one trim rung's trigger_pct, so this isn't a rare edge case -- it fires on every swing position that scaled out and pulled back below its own trim level, an ordinary post-trim state. Fixed: also check play.exitPolicy.trim_levels for a fired tranche at/above target, omit the room% line when found (never fabricate, only omit -- matches the sibling stop-rail cushion block's own discipline). Added a second control test confirming a LOWER fired rung does not wrongly suppress the room% for a HIGHER still-pending target. RED->GREEN via git-stash: 1 new test fails pre-fix (194/195), 195/195 post-fix. Full src/lib/swing/*.test.ts: 1498/1498 pass. tsc --noEmit clean. Staged finding filed, PR #5419 opened+undrafted+subscribed.",
+  "last_updated": "2026-09-22T06:05:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean (3 GitHub events on #5419: subscription-created x2, ready_for_review -- none required action, no CI failure/review comment yet). CLOSED OUT PR #5419 from last cycle: verify + CodeQL + Analyze all completed success, enable-automerge/auto-merge both skipped as documented (the known PAT GraphQL-scope gap in CLAUDE.md) -- merged manually via GitHub MCP merge_pull_request (squash), sha 1b9bae845. Unsubscribed from PR activity, deleted the local branch, cancelled the now-unneeded 1hr check-in trigger. The target-rail self-contradiction fix (found auditing MUU last cycle) is now on main, pending its own ECR deploy -- will verify live on a later cycle once deployed, same discipline as the #5416 deploy-tracking two cycles ago. Left the staged finding un-folded this cycle (no competing fold PR exists, but folding is its own branch/PR and not urgent -- a future cycle or the coordinator's own wave-fold sweep will pick it up). Continued the fresh-code-path sweep while CI ran: full read of thesis-progress.ts (the pure helpers feeding manage.ts's thesisProgress01/addEligibleFromProgress/volCollapsedFromIvRanks -- directly the source of the 'ADD' manageAction verified live on both AAPL and, per this cycle's read, structurally the same mechanism MUU's own brief would use were it still pre-target). Verified the LONG/SHORT progress formulas are direction-correct, IV-rank normalization handles both 0-100 and 0-1 scales independently before comparing, and addEligibleFromProgress's null-honesty (never fabricates an add signal from partial inputs) is sound. No new bug found there. Zero other open swing PRs. Board otherwise unchanged (AAPL HOLD/ADD, MUU TRIM/scaling out, both as previously described).",
   "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-22-swing-target-rail-post-trim-pullback.md (PR #5419, open)"
-  ],
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -121,10 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T05:52:00Z",
-    "swing_prs": [
-      "#5419 fix/swing-target-rail-post-trim-pullback (mine, open, watching for CI)"
-    ]
+    "as_of": "2026-09-22T06:05:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
@@ -213,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "watch PR #5419 CI + auto-merge (CARVE-OUT applies, self-authored PR)"
+  "watch_next_cycle": "confirm PR #5419's fix (Premium target rail post-trim-fired omission) is live on MUU's brief once its ECR deploy completes"
 }
