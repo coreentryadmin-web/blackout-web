@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T06:35:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync surfaced a PARALLEL Night Hawk Swings session actively working the same mandate concurrently (commits ed69e7b2b/616dee8d7, different message convention -- 'journal: ...' not my own 'docs(swing-journal): ...'): they found+fixed a real bug (banger risk_note DTE-mismatch, PR #5420, opened, not touched by me -- one owner per task, leaving it to them per the standing collaboration/ownership discipline) and folded #5417+#5419 together into FINDINGS.md via #5421 (also not mine, a fold PR, left alone). No collision on my own work -- different files, different findings. CLOSED OUT the #5419 watch item: live-checked MUU's play-brief again -- 'What to watch' now goes straight from 'Premium stop rail' to 'Hold plan' with NO 'Premium target rail' line at all, confirming the fix (omit once a trim tranche already fired at/above the target) is live and correct in production. This closes the loop from finding to fix to verified-live in 3 cycles (~40min wall clock), same discipline as the #5416/#5404 deploy-tracking earlier this session. No new bug found/filed by me this cycle -- verification + situational awareness of the parallel session's independent work, not idle.",
+  "last_updated": "2026-09-22T06:51:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46-offset routine firing). ReadNotifications clean. git sync: the parallel session's PR #5420 (banger risk_note DTE-mismatch) merged since last cycle. Reviewed its diff for correctness (not just trusting the merge, same discipline used on #5416/#5417 this session): bangerScaleOutNote() now takes optional {dte}, dte<=10 keeps the weekly framing byte-for-byte (zero behavior change for the whole-market banger board's existing no-context callers), dte>10 names the real DTE instead of falsely claiming 'weeklies' -- clean, well-tested (5 unit + 1 e2e case), no issue found. Zero open swing PRs now (both #5420 and my own #5419 merged this hour). Continued the fresh-code-path sweep: full read of swing-catalyst.ts (336 lines) -- the pure CATALYST-pillar + EVENT_DRIVEN/POST_EARNINGS_DRIFT archetype-fit grounding (deriveCatalystReads/parseEarningsWindows/freshestCatalystAgeDays/contractQualityFromIvRank). Verified: the documented 2026-09-20 todayEt() ET-vs-UTC fix is correctly in place; earnings next/last window selection correctly tracks soonest-future and most-recent-past independently; postEarningsDrift01's clamp01 on a direction-SIGNED return correctly floors an against-thesis move to 0 rather than reading as negative drift; earningsInWindow (hazard) and catalystInWindow01 (classification) are deliberately kept separate per the file's own doc comment, with the hazard discount applied downstream (out of scope here, not missing). No bug found. Board unchanged -- AAPL HOLD/ADD, MUU TRIM (target-rail fix confirmed live last cycle). Clean cycle, no new finding.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,10 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T06:35:00Z",
-    "swing_prs": [
-      "#5420 (banger risk_note DTE fix, opened by a parallel swing session, not mine)"
-    ]
+    "as_of": "2026-09-22T06:51:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
