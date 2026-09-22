@@ -33,6 +33,8 @@ import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
+import { NO_SECTOR_BENCHMARK_THEMES } from "./industry-group-rs";
+import { sectorFor } from "../portfolio/sector-map";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
 import { trustedHelixFlow, zerodteLiveForSession, relativeAgeLabel } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -157,11 +159,30 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   if (play.regime) lines.push(`**Today's regime read:** ${play.regime}`);
   if (play.sectorLeadershipFacts) {
     const f = play.sectorLeadershipFacts;
-    const verb = f.deltaPct >= 0 ? "leading" : "lagging";
-    lines.push(
-      `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(f.deltaPct).toFixed(1)}% ` +
-        `over 10 sessions (${fmtPct(f.nameReturnPct)} vs ${fmtPct(f.groupReturnPct)}).`,
-    );
+    // BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): `sectorLeadershipFacts`
+    // is frozen into the dossier at commit/discovery time and never re-derived (active-refresh.ts only
+    // refreshes live price/manage state, never re-runs buildSwingDossier) — so a position committed
+    // BEFORE #5446 shipped can still carry a pre-fix benchmark for a name #5446 now excludes entirely
+    // (a crypto-equity ticker mechanically resolved against a SIC/label-derived sector ETF, e.g. HUT
+    // vs Financials/XLF). Rewriting the frozen evidence live would misrepresent why the play actually
+    // scored what it did at commit (the same "grade against what was known at the time" principle the
+    // calibration/track-record machinery already depends on) — so this checks the EXACT, narrow bug
+    // signature #5446 fixed (a name whose theme is now excluded from benchmarking, but whose frozen
+    // facts still carry one) and discloses it instead of silently repeating a claim now known false.
+    // Mirrors the `statusBucket(play)==="closed"` disclosure pattern in `flowIntelSection` (#5444) —
+    // same "disclose, don't silently rewrite" shape, gated on a different, narrower condition.
+    const staleBenchmark = NO_SECTOR_BENCHMARK_THEMES.has(sectorFor(play.ticker) ?? "");
+    if (staleBenchmark) {
+      lines.push(
+        "**Industry read:** sector benchmark evidence recorded before a classification fix — historical score unaffected.",
+      );
+    } else {
+      const verb = f.deltaPct >= 0 ? "leading" : "lagging";
+      lines.push(
+        `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(f.deltaPct).toFixed(1)}% ` +
+          `over 10 sessions (${fmtPct(f.nameReturnPct)} vs ${fmtPct(f.groupReturnPct)}).`,
+      );
+    }
   }
   // recNote is NOT repeated here — Management (open bucket, play-brief.ts) and Verdict (watch
   // bucket) already render it verbatim. Duplicating it produced the same sentence twice in one

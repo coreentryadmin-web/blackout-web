@@ -191,7 +191,7 @@ function sectorEtfFromSic(sic: number): { etf: string; label: string } | null {
  * mislabeling it" — see header), a theme with no real sector-ETF analogue must resolve to null, not a
  * mechanically-nearest-but-substantively-wrong ETF.
  */
-const NO_SECTOR_BENCHMARK_THEMES: ReadonlySet<string> = new Set(["crypto-equity"]);
+export const NO_SECTOR_BENCHMARK_THEMES: ReadonlySet<string> = new Set(["crypto-equity"]);
 
 /**
  * Resolve a name's SECTOR_ROTATION benchmark, finest-first: an exact-SIC INDUSTRY ETF, else a SIC-range
