@@ -1,182 +1,7 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T19:15:00Z",
+  "updated_at": "2026-09-22T20:10:00Z",
   "watch_stage_tracking": {
-    "2026-09-18T13:11:00Z": {
-      "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
-      "activity": "13:00 UTC offset trigger. Board pulled: upstream_ok true, as_of fresh (13:09:16Z), setups=[] ledger=[] (session hasn't opened yet, nothing forensic to read). Overnight check: no changes to my own open_findings or journal since the 21:10Z close-out yesterday (PR #5157 verified merged). Confirmed via git log that the overnight activity on main was entirely the Swings lane (PRs #5191-5201, promotion ladder / trim-label / roll-narrative / daily-digest work) -- not my surface, correctly left untouched. PR #4076 collaboration thread checked: no new comments since my own 18:38-19:08 UTC posts yesterday (board-degradation escalation + resolution), no Cursor response. Aggressive-mode note: did not force a low-value re-run of a research backtest against an empty pre-market board -- real forensic/upside-hunting work resumes once today's session produces actual WATCH/OPEN plays after the 13:30 UTC open.",
-      "findings_this_cycle": "0 -- quiet pre-market, nothing to report"
-    },
-    "2026-09-18T13:19:00Z": {
-      "session_state": "PRE_MARKET (heat_pct 35, ~11min before RTH open)",
-      "activity": "13:15 UTC offset trigger. Board unchanged from 13:11 check: upstream_ok true, setups=[] ledger=[]. Nothing new to forensically read. Skipping a redundant full healthcheck run per cadence guidance -- next real work starts once the 13:30 UTC open produces plays.",
-      "findings_this_cycle": "0 -- quiet pre-market, unchanged from last cycle"
-    },
-    "2026-09-18T13:40:00Z": {
-      "session_state": "OPENING_DRIVE (heat_pct 70)",
-      "activity": "13:37 UTC offset trigger. Market open, 41 setups scanned, 0 commit-ready, 0 ledger rows -- entirely explained by G-2 opening_window (blocks all new 0DTE commits before 10:00 ET, unlocks 14:00Z), confirmed on the top setups' own gate.blocks (LITZ/LITE/LITX all show opening_window plus their own independent secondary blocks -- score_floor, plan_moved, plan_illiquid, conditional_band_unmet -- so even post-10:00 several would likely stay blocked on their own merits, not purely the window). This is correct, intentional gating, not a bug. Nothing to escalate.",
-      "findings_this_cycle": "0 -- opening drive behaving as designed"
-    },
-    "2026-09-18T13:52:00Z": {
-      "session_state": "OPENING_DRIVE, ~8min from 10:00 ET commit unlock",
-      "activity": "13:46 UTC offset trigger. Still 0 commits (opening_window unlock at 14:00Z, ~8min out). Aggressive-mode upside-hunt this cycle: shipped PR #5207 -- the top_block_code stale-cumulative-tally finding from yesterday's journal (ruled out as a bug then, flagged as a product-clarity enhancement, never actually fixed) turned out to be a small, well-scoped, single-call-site fix once traced to session-board-stats.ts's precedence logic -- shipped it now rather than leaving it as a stale 'someday' idea. RED->GREEN proven, 161/161 related suite green, tsc clean, PR opened as draft, subscribed.",
-      "findings_this_cycle": "1 fixed -- PR #5207 open (top_block_code precedence)"
-    },
-    "2026-09-18T13:55:00Z": {
-      "session_state": "OPENING_DRIVE, commit unlock imminent",
-      "activity": "PR #5207 hit a merge conflict against main (docs/audit/MARKET-OPEN-VALIDATION.md -- another lane's PR #5204 landed the same '### 283' entry number at the same append point between when I branched and pushed). Resolved per CLAUDE.md's CROSS-PR ORDERING/merge-conflict guidance: merged main into my branch, kept both entries, renumbered mine to #284 since #5204's #283 was already on main. Re-validated: tsc clean, 195/195 across the affected test files (mine + the merged-in Legacy edition files), pushed the merge commit. PR now mergeable:true, CI re-running.",
-      "findings_this_cycle": "0 new -- merge-conflict resolution on PR #5207"
-    },
-    "2026-09-18T14:02:00Z": {
-      "session_state": "OPENING_DRIVE, commit unlock imminent",
-      "activity": "PR #5207 hit a SECOND merge conflict against main (same append-point collision on MARKET-OPEN-VALIDATION.md -- this repo is extremely high-velocity right now, multiple lanes merging every few minutes to the same file). Resolved the same way: merged main, renumbered my entry to #285 (Swings lane had already taken #284 in the interim). tsc clean, session-board-stats.test.ts 4/4, pushed. mergeable:true, CI re-running. Noting for future cycles: this append-point-collision pattern on MARKET-OPEN-VALIDATION.md is now a recurring, expected cost of this file's shared-tail-append convention during a busy multi-lane session -- not a sign of anything wrong, just needs re-checking after every push before trusting mergeable:true.",
-      "findings_this_cycle": "0 new -- second merge-conflict resolution on PR #5207"
-    },
-    "2026-09-18T14:11:00Z": {
-      "session_state": "OPENING_DRIVE -> post-10:00-ET unlock",
-      "activity": "14:08 UTC (:00-offset) trigger. Confirmed live at 10:09 ET: opening_window (G-2) has genuinely lifted -- 0/116 setups now blocked by it, vs 100% blocked by it at the last check (13:37-13:40 UTC). Real-time corroboration of the PR #5207 fix already in flight: the live setups[] show ZERO opening_window blocks this pass, yet session_stats.top_block_code still reads 'opening_window' -- exactly the stale-cumulative-tally bug being fixed, caught live in the act. 3 setups now genuinely commit_ready (QBTS short 86, RGTI short 79, LUNR short 83) but ledger still empty -- watch next cycle for whether they land as real commits (discovery COMMIT verdict vs the separate commit-cron pass can lag by design; not calling this anomalous on n=1). Live block-code mix post-unlock: score_floor(91) and a new-to-me code early_window_prime_score(100) now dominant, plan_illiquid(85) -- consistent with the standing score_floor-dominant-chokepoint research finding, not new. PR #5207 CI still running (2nd merge-conflict resolution pushed last cycle); will merge once green.",
-      "findings_this_cycle": "0 new -- watching QBTS/RGTI/LUNR for next-cycle commit confirmation"
-    },
-    "2026-09-18T14:20:00Z": {
-      "session_state": "post-unlock RTH",
-      "activity": "14:15 UTC (:15-offset) trigger. PR #5207 hit a THIRD merge conflict on MARKET-OPEN-VALIDATION.md (same append-point collision pattern, now clearly the expected cost of a high-velocity multi-lane afternoon on this shared-tail file) -- resolved same way, renumbered to #286, tsc clean, session-board-stats.test.ts 4/4, pushed, CI re-running. Board check: the 3 commit_ready setups from last cycle (QBTS/RGTI/LUNR) are no longer commit_ready (0 now) AND never appeared in ledger (still empty) -- they flickered out of COMMIT eligibility without ever committing. NOT escalating on n=1 (3-instance threshold) -- plausibly normal (live quote/score re-evaluation between passes), but noting for pattern-watching: if this repeats (candidates repeatedly reaching COMMIT verdict then reverting before the commit cron picks them up), that would be worth a real trace.",
-      "findings_this_cycle": "0 -- watching for a possible commit_ready-flicker pattern, not yet 3 instances"
-    },
-    "2026-09-18T14:28:00Z": {
-      "session_state": "post-unlock RTH",
-      "activity": "PR #5207 finally green + mergeable:true (clean, no new conflict this pass), undrafted and merged (commit 8ad6d4679). Verified directly against origin/main: session-board-stats.ts carries the fix. Took 3 merge-conflict resolutions total this session due to a very high-velocity afternoon on the shared MARKET-OPEN-VALIDATION.md append point (multiple lanes shipping every few minutes) -- worth noting for future sessions as an expected cost during busy periods, not a sign of anything wrong.",
-      "findings_this_cycle": "1 merged -- PR #5207 (top_block_code precedence fix)"
-    },
-    "2026-09-18T14:41:00Z": {
-      "session_state": "RTH, 'prime continuation window'",
-      "activity": "14:37 UTC (:30-offset) trigger. Correcting last cycle's own over-hasty framing: the QBTS/RGTI/LUNR->0 transition wasn't evidence of a 'flicker' bug -- verified this cycle by polling the board 3x, 3s apart: as_of stayed byte-identical across all 3 calls (cached snapshot), and RKLB/TSLA (today's current commit_ready pair) held stable across all 3 reads. So gate verdicts ARE stable within one scan pass; what changed between my checks was simply the scanner producing a NEW pass with different candidates -- ordinary continuous-discovery turnover, not instability. Retracting the 'watch for a flicker pattern' note. session_stats.top_block_code now correctly reads score_floor and agrees with the live setups' own dominant blocker (discovery_funnel.top_gate also score_floor) -- PR #5207's fix confirmed working correctly on real live data, not just in tests. Genuinely zero commits 70+ min into RTH (13:30-14:41 UTC) -- consistent with the standing, already-measured score_floor-dominant-chokepoint research (zerodte-gate-compound-funnel.mjs), not new evidence of anything broken.",
-      "findings_this_cycle": "0 -- corrected an earlier over-hasty note, nothing anomalous found"
-    },
-    "2026-09-18T14:48:00Z": {
-      "session_state": "RTH",
-      "activity": "14:45 UTC (:45-offset) trigger. Board unchanged: ledger still empty, 0 commits ~75min into RTH, score_floor still the consistent dominant blocker (matches standing research, not new). Swept the open-PR queue for anything needing attention (team-capacity check) -- 3 non-dependabot open PRs, all Swings-lane, all actively updated in the last ~15min, nothing stuck/abandoned. No Cursor PRs open. Nothing actionable in my own lane or elsewhere this cycle.",
-      "findings_this_cycle": "0 -- clean cycle"
-    },
-    "2026-09-18T15:12:00Z": {
-      "session_state": "RTH, first real commits of the session",
-      "activity": "15:07 UTC (:00-offset) trigger. First real commits of the session finally landed: QBTS (short, score 92), RKLB (short, score 78), TSLA (short, score 78). Deep-read: RKLB exited via trim_scale_dead_zone_floor at +6.82% (peak +27.27%, floor armed at half-peak +13.64%) -- correct, designed behavior, locks in green. TSLA exited thesis_break:vex-charm at -36.39% -- legitimate Cortex-opposition risk exit, narrative coherent. QBTS: entry_context.exit shows flat_theta_bleed fired at 15:08:21Z (mark 0.33, pnl 0%, peak +3.03% never breached -10% band -- 'never left the band' narrative is genuinely accurate here, PR #5139's trough-fix working correctly), managed_outcome=flat_scratch at top level. BUT board ledger still shows QBTS status:OPEN, live_pnl_pct:3.03 (stale pre-exit value) -- POSSIBLE 5th instance of the standing board/record propagation-lag finding (2026-09-17-board-ledger-record-propagation-lag-mislabels-closed-reason). NOT YET CONFIRMED: the board response is served from a cache that hasn't refreshed at all across 3 polls ~3min apart (as_of pinned at 15:08:07Z throughout, ~14s BEFORE the exit fired) -- this could be ordinary cache latency rather than the specific propagation-lag bug (which needs a genuinely FRESH poll still showing stale data well after the exit). Deferring the PR #4076 escalation until next cycle's fresh poll either confirms (cache has refreshed to a post-15:08:21Z as_of but still shows OPEN -> real 5th instance) or refutes (refreshed and now correctly shows CLOSED -> just cache latency, not the bug).",
-      "findings_this_cycle": "0 confirmed -- monitoring a possible 5th propagation-lag instance, checking next cycle"
-    },
-    "2026-09-18T15:17:00Z": {
-      "session_state": "RTH, all 3 today's plays now closed",
-      "activity": "15:15 UTC (:15-offset) trigger. QBTS self-corrected -- board now shows status:CLOSED, closed_reason:flat, matching /record exactly. Confirmed as a real 5th instance of the standing propagation-lag finding (updated open_findings entry with the instance + the cache-latency discipline this one established). All 3 of today's plays (QBTS flat scratch, RKLB trim_scale_dead_zone_floor +6.82%, TSLA thesis_break -36.39%) now closed and correctly reflected on both board and record. No new commits this pass. Not re-posting to PR #4076 for this instance alone -- no new diagnostic information beyond confirming the pattern continues and self-corrects, consistent with the 4 prior instances; would be noise.",
-      "findings_this_cycle": "0 new -- confirmed 5th instance of already-tracked finding, journal updated"
-    },
-    "2026-09-18T15:39:00Z": {
-      "session_state": "RTH, prime continuation window",
-      "activity": "15:37 UTC (:30-offset) trigger. Same 3 plays (QBTS/RKLB/TSLA), no new commits since last cycle. Governor healthy: session_pnl -29.57% (1 realized loser, TSLA), not halted, well within loss floor. 1 setup currently commit_ready. Nothing new to report.",
-      "findings_this_cycle": "0 -- clean cycle"
-    },
-    "2026-09-18T15:48:00Z": {
-      "session_state": "RTH, prime continuation window",
-      "activity": "15:45 UTC (:45-offset) trigger. Board unchanged from last cycle: same 3 closed plays, no new commits, governor healthy (-29.57% session pnl, 1 realized loser, not halted). 2 setups commit_ready (SNDK long 81, PL short 83) -- nothing anomalous in either. Clean cycle.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T16:12:00Z": {
-      "session_state": "RTH, board-upstream degradation in progress",
-      "activity": "16:08 UTC (:00-offset) trigger. PL (short, score 83) committed and went OPEN since last cycle -- real new position, no exit yet, nothing anomalous in the commit. BUT: board now shows upstream_ok:false (first observed 16:09:32Z this cycle) -- the recurring board-upstream degradation pattern (5+ prior instances this week, 2026-09-16/17, self-resolving in 5-50min, no real data loss). Confirmed /record still correct and unaffected throughout (PL shows no exit yet, QBTS/RKLB/TSLA all correctly show their real exit reasons) -- matches the established pattern exactly (board goes stale, DB/record path stays sound). Not escalating yet (matches prior practice of only posting once sustained ~30min+ or confirmed causing real member-visible harm) -- watching for resolution over the next 1-2 cycles.",
-      "findings_this_cycle": "0 new -- board-upstream degradation started, matches known recurring pattern, watching"
-    },
-    "2026-09-18T16:18:00Z": {
-      "session_state": "RTH, degradation resolved",
-      "activity": "16:15 UTC (:15-offset) trigger. Container restart detected (OS build changed) -- verified branch=main, journal current, node20 present, node_modules intact, scratchpad survived. Board-upstream degradation from last cycle self-resolved: upstream_ok back to true by 16:16:28Z (started ~16:09:32Z, ~7min total, well within the established range). PL closed flat_theta_bleed at -1.04% (genuinely flat the whole hold, narrative accurate). All 4 of today's plays now closed: QBTS flat, RKLB trim_scale_dead_zone_floor +6.82%, TSLA thesis_break -36.39%, PL flat -1.04%. Nothing new to escalate.",
-      "findings_this_cycle": "0 -- degradation self-resolved as expected, PL closed cleanly"
-    },
-    "2026-09-18T16:39:00Z": {
-      "session_state": "RTH, lunch chop (sizing factor 0.75)",
-      "activity": "16:38 UTC (:30-offset) trigger. 5th play of the day: IONQ (short, score 84) committed 16:24:58Z, exited thesis_break:gex-walls at -20% just 3.3min later (16:28:19Z) -- fast hold but coherent: real structural veto (short target crosses dominant put wall inside 0.5x expected move), not a bug. Governor now shows time_of_day_label 'lunch chop -- fade-prone, size down' (0.75 sizing factor) -- correct calibration for this time window. Session pnl -49.57% (2 realized losers: TSLA, IONQ). 5 plays deep-read today across 5 different exit mechanisms (flat_theta_bleed x2, trim_scale_dead_zone_floor, thesis_break x2) -- all coherent, no bugs found. Clean cycle.",
-      "findings_this_cycle": "0 -- IONQ fast thesis-break exit is legitimate, not anomalous"
-    },
-    "2026-09-18T16:46:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "16:45 UTC (:45-offset) trigger. Board unchanged from last cycle: same 5 closed plays, no new commits, governor unchanged/healthy. Clean cycle.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T17:09:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "17:07 UTC (:00-offset) trigger. Board unchanged (same 5 closed plays, 3rd consecutive quiet cycle). Swept for upside per aggressive-mode discipline: PR #4076 has no new activity since 02:33 UTC (all my own posts, still no Cursor engagement); open-PR queue down to just the 4 stale dependabot PRs (all Swings-lane work from earlier merged). Nothing actionable anywhere. Clean cycle.",
-      "findings_this_cycle": "0 -- verified clean across board, collaboration thread, and PR queue"
-    },
-    "2026-09-18T17:17:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "17:15 UTC (:15-offset) trigger. Board unchanged, 4th consecutive quiet cycle. No new commits, nothing new anywhere. Clean.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T17:39:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "17:37 UTC (:30-offset) trigger. Board unchanged, 5th consecutive quiet cycle. Used the quiet window for a genuine upside-hunt: investigated whether `mark_honored`/`exit_mark_honored` (exit-engine.ts) was correctly distinguishing an INFERRED floor-fill from an OBSERVED print -- specifically whether RKLB's trim_scale_dead_zone_floor exit (a 'protective floor' exit by name) should have shown honored:true but didn't. Verified against the actual data: RKLB's observed mark (0.94, +6.82%) was ALREADY at/below the +13.64% floor threshold when the tick printed, so mark===mark_observed and honored:false is the mathematically correct value per the field's own documented semantics (honored only fires when the floor price improves on a worse observed print). No bug -- ruled out a real hypothesis with real data rather than guessing.",
-      "findings_this_cycle": "0 -- investigated and ruled out a mark_honored hypothesis"
-    },
-    "2026-09-18T17:47:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "17:45 UTC (:45-offset) trigger. 6th consecutive quiet ledger cycle -- verified the pipeline itself is genuinely alive, not stalled: scanned 203->254, gate_blocked_events 425->987 since last check, discovery actively running. Zero commits is real market conditions (lunch chop, plan_illiquid/thesis_rank_reject dominant), not a stuck system. Clean cycle.",
-      "findings_this_cycle": "0 -- confirmed pipeline healthy and active, quiet is real"
-    },
-    "2026-09-18T18:08:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "18:07 UTC (:00-offset) trigger. Board unchanged, 7th consecutive quiet ledger cycle. Live pass now thinner (scanned:12 vs earlier 254 -- fewer candidates surfacing this exact pass, normal chop variance), top_block_code correctly agrees with live setups (score_floor). Clean.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T18:17:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "18:15 UTC (:15-offset) trigger. Board unchanged, 8th consecutive quiet ledger cycle. No new commits. Clean.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T18:39:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "18:37 UTC (:30-offset) trigger. Board unchanged, 9th consecutive quiet ledger cycle. Checked the iron-condor lens per the mission brief's explicit callout: 0 condors in the last 3 days (19 total plays, all single-leg) -- condor engine hasn't fired recently, consistent with its conditional range-bound entry criteria, nothing to deep-read there right now. Clean.",
-      "findings_this_cycle": "0 -- confirmed no condor activity to review, ledger unchanged"
-    },
-    "2026-09-18T18:47:00Z": {
-      "session_state": "RTH, lunch chop",
-      "activity": "18:45 UTC (:45-offset) trigger. Board unchanged, 10th consecutive quiet ledger cycle. No new commits. Clean.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T19:09:00Z": {
-      "session_state": "RTH, 2nd board-upstream degradation of the day",
-      "activity": "19:07 UTC (:00-offset) trigger. Board shows upstream_ok:false (first observed 19:08:09Z this cycle) -- 2nd instance today (1st was ~16:09-16:16Z, ~7min, self-resolved). Confirmed /record still correct and unaffected (RKLB/TSLA and older plays all show real data). Matches the established recurring pattern exactly. Not escalating yet -- watching for resolution next cycle.",
-      "findings_this_cycle": "0 new -- 2nd board-upstream degradation instance today, matches known pattern, watching"
-    },
-    "2026-09-18T19:19:00Z": {
-      "session_state": "RTH, last directional commit window",
-      "activity": "19:15 UTC (:15-offset) trigger. 2nd degradation resolved: upstream_ok back true by 19:17:28Z (started 19:08:09Z, ~9min, matches the pattern). Two new plays closed: MARA (ratchet floor +9.52%, peak +21.43% protected -- correct) and RDW (thesis_break:oppose at +5.26%, a POSITIVE thesis-break exit -- the risk system protecting a gain, not just cutting a loss, coherent behavior). Governor now shows 'last directional commit window' time-of-day label (new for today, normal afternoon progression). Session pnl improved to -34.79%. Nothing anomalous.",
-      "findings_this_cycle": "0 -- 2nd degradation resolved, 2 new plays coherent"
-    },
-    "2026-09-18T19:39:00Z": {
-      "session_state": "RTH, last directional commit window",
-      "activity": "19:37 UTC (:30-offset) trigger. Board unchanged (same 7 closed plays), upstream_ok true. Clean.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T19:47:00Z": {
-      "session_state": "RTH, last directional commit window",
-      "activity": "19:45 UTC (:45-offset) trigger. Board unchanged, same 7 closed plays. Clean.",
-      "findings_this_cycle": "0 -- clean"
-    },
-    "2026-09-18T20:20:00Z": {
-      "session_state": "CLOSED, post-close",
-      "activity": "20:15 UTC (:15-offset) trigger, post-close. Applied NEVER-SIT-IDLE discipline: swept the open-PR queue and found #5218 (Cursor), a real P0 fix for MY lane's own infrastructure -- zerodte-warm cron wedged for 47min at ~17:10 UTC today (discovery/commit path stalled). Helped resolve its merge conflict (only in stale .blackout-agent/ coordination files from a week-old branch point, resolved by taking main's current state -- zero risk to the actual fix). Validated: tsc clean, 11/11 zerodte-warm route tests + 185/185 across the other files main's concurrent merges touched. Then discovered, before merging, that a PARALLEL session had already shipped the IDENTICAL fix via PR #5219 (merged 17:39:08Z) -- confirmed via an empty diff between the (now main-merged) PR branch and main. Closed #5218 as a superseded duplicate with a clear explanation rather than merging an empty diff, per this repo's established duplicate-PR handling. The underlying incident is genuinely fixed and live on main -- good outcome, just via a different PR number than I initially expected to merge.",
-      "findings_this_cycle": "0 new -- helped unblock and then correctly closed a duplicate PR on my lane's own infra"
-    },
-    "2026-09-18T20:25:00Z": {
-      "session_state": "CLOSED (post-close, all 7 today's plays CLOSED, upstream_ok true, as_of advancing normally)",
-      "activity": "NEVER-SIT-IDLE continuation: with AWS creds live this cycle (rare -- verified via sts get-caller-identity), used the window to independently verify PR #5219's zerodte-warm critical_stale lock-steal fix (merged 17:39 UTC today, the fix that superseded #5218 closed last cycle) is actually holding LIVE in production, not just green in CI. Queried /ecs/blackout-production CloudWatch Logs directly: zero 'critical_stale' events in the 3 hours since the fix deployed (was wedging with 47min stalls before the fix). Confirmed zerodte-warm is still firing on a healthy cadence post-close (last event 20:08:21 UTC, ~14min before this check) and correctly self-skipping BREAKOUT/PIN rails as 'outside the RTH commit window' / 'past condor late window' while FLOW rail keeps scanning -- exactly the expected post-close behavior, not a stall. Real production evidence, not an inference from the merged diff -- closes the loop on last cycle's PR #5218/#5219 episode with actual proof the underlying incident stays fixed.",
-      "open_pr_queue_swept": "3 open draft PRs (#5225 SPX GEX sticky-fallback, #5226 swing bid/ask spread, #5227 swing GEX/expected-move rounding) -- all <15min old, another lane's work-in-progress, not my lane (0DTE) and too fresh to be a stuck-draft jam candidate. 4 Dependabot majors (unchanged, not auto-merge-eligible per standing policy). Nothing in my lane's queue needing action this cycle."
-    },
-    "2026-09-18T20:40:00Z": {
-      "session_state": "CLOSED (post-close, all 7 today's plays CLOSED, upstream_ok true, as_of genuinely advancing)",
-      "activity": "Live confirmation PR #5207's top_block_code precedence fix is working exactly as designed in a real live scenario: this cycle's board shows session_stats.top_block_code == 'late_afternoon' (the genuine live reason 15/16 scanned setups are gate-blocked post-close right now), not a stale session-cumulative code from earlier in the day -- the exact failure mode the fix corrected. zerodte-warm cron confirmed still healthy (CloudWatch: normal 2-3min cadence, correctly self-skipping BREAKOUT/PIN post-close, FLOW rail still scanning). No condor field on today's board payload -- no condor play ran today (directional-only session, 7/7 named tickers), not a bug (condor generation is conditional on PIN regime, which discovery_health shows was off_hours all cycle).",
-      "open_pr_queue_swept": "New since last cycle: #5229 'fix(nighthawk): stop replaying a captured stale flag once dates match' (edition.stale replay bug in resolveNighthawkEdition's timeout-fallback path, Legacy digest lane, not 0DTE) -- opened 2min ago by a parallel session under the same account (session_01Qtnftc16CuWyVLxR8LaMoC), draft, too fresh to need intervention. #5225/5226/5227 from last cycle no longer in the open list (merged or closed since). #5228 'fix(swing): stop labeling a true flat/breakeven close as stopped' also new, swing lane, not mine, too fresh. Nothing in my 0DTE lane's queue needing action."
-    },
-    "2026-09-18T20:48:00Z": {
-      "session_state": "CLOSED (post-close, all 7 today's plays CLOSED, upstream_ok true, as_of genuinely advancing)",
-      "activity": "Container restarted since last cycle (OS build fc-v33->fc-v37) -- verified per CLAUDE.md restart-safety guidance: git branch=main, HEAD matches last pushed commit, node_modules intact (542 entries), Node 20 present at /opt/node20/bin/node. No corrective action needed. CloudWatch swept for the last 25min: zero cron failures ('warmed=3 failed=0', 'backup warm ok'), zerodte-warm cadence still healthy and correctly self-skipping BREAKOUT/PIN post-close. Board unchanged from last cycle (7/7 CLOSED). Clean cycle -- staying quiet per the mandate's own instruction, no new finding to escalate.",
-      "open_pr_queue_swept": "New since last cycle: #5230 'fix(swing): stop gexPostureSection rendering a real net GEX as false 0' -- swing lane, not mine, 3min old. #5229 (nighthawk edition stale-flag replay) and #5225 (SPX GEX sticky fallback) both still open/draft, ~56min and ~10min old respectively -- neither stuck yet by this session's observed fleet velocity, neither in my lane. Nothing actionable in the 0DTE lane's queue."
-    },
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
       "activity": "Cold-start for the new trading week. Restart-safety verified: local was behind origin/main (HEAD 81e05844e vs origin b64ff32a0, many PRs merged over the weekend by other lanes) -- reset to origin/main before any journal write, per the standing 'never trust stale local copy' rule. Board confirmed clean pre-market state: ledger empty (fresh day), setups=0, session_stats all-zero with top_block_code correctly null (nothing scanned yet -- live confirmation of the PR #5207 never-fabricated-null behavior, same as Friday). governor shows healthy defaults (halted:false, 0 realized_losers, time_of_day_sizing_factor 0.85). CloudWatch swept: zero critical_stale events in the last 2h, zerodte-warm firing on a healthy ~15-20s cadence and correctly SKIPping BREAKOUT ('outside the RTH commit window') and PIN ('before RTH open') -- exactly the expected pre-market posture, PR #5219's critical_stale lock-steal fix never needed to fire because nothing wedged over the weekend. PR queue swept: only 4 open PRs, all Dependabot (not auto-merge-eligible per standing policy) -- every agent-authored PR from Friday's close-out and the weekend cleared clean, nothing stuck in the draft-deadlock pattern. Journal pruned: removed 54 entries older than 2026-09-17 (2026-09-14/15/16) per the mandate's own '>~2 trading days' retention instruction -- kept 09-17/09-18 (Friday's close-out work, incl. the propagation-lag open_finding's most recent QBTS instance) plus this cold-start entry. watch_stage_tracking: 121 -> 68 entries. Nothing actionable yet -- G-2 opening_window gate blocks all commits until 10:00 ET (14:00 UTC), ~48min from this check. Will re-check once RTH opens and the first setups start scanning."
@@ -359,6 +184,27 @@
       "validation": "BTU is the FIRST LIVE CONFIRMATION of PR #5382 (arm-tier floor scaling) working correctly in production: floor_pnl_pct=6.3 == round2(peak 15.74 * ratchet_lock_floor_fraction 0.4) == round2(6.296) == 6.3, exact match to the new continuous v6 formula shipped yesterday. Real evidence the fix is live and computing correctly.",
       "single_instance_note": "SPXW round-tripped +11.36% peak -> -50% hard stop with zero floor protection (peak never reached the +15% arm threshold) -- consistent with known intentional design (floor only exists above +15%), but is exactly the kind of large give-back that could motivate a future lower-tier floor discussion. Single instance, not escalation-worthy, watching for a pattern.",
       "session_totals": "8 closed today, 1 win (BTU) 7 losses. Board self-healed 3x today (37min/5min/28min), all confirmed record-unaffected."
+    },
+    "2026-09-22T20:10:00Z_session_closed_summary": {
+      "stage": "session_closed_summary",
+      "headline": "Session closed. 8 committed, 8 closed, 1 win (BTU +5.56%) 7 losses. Two forensic fixes from earlier this multi-day mandate CONFIRMED LIVE AND WORKING on real data today.",
+      "shipped_and_validated_live": [
+        "PR #5366 (dead-zone floor mark-honoring) -- merged and live on main since prior session, no new dead-zone cases hit today to re-validate but code confirmed present.",
+        "PR #5382 (arm-tier ratchet floor scaling, peak*0.4 continuous curve v6) -- merged prior session; TODAY'S BTU trade is the first live production confirmation: peak 15.74%, floor_pnl_pct=6.3, and round2(15.74*0.4)=6.3 EXACT MATCH to the new formula. The fix is live and computing correctly on real member trades."
+      ],
+      "patterns_investigated_this_session": [
+        "thesis_break:gex-walls: 4/4 same-day exits (SNXX/SCHW/ALAB/MSFT), all losers -- looked escalation-worthy at the 3-instance threshold, but a 90-day historical pull (n=132) showed win_rate 36.4% / mean_pnl +0.53%, essentially identical to the overall 432-play population (35.9% WR) -- RESOLVED AS NOISE, not a real miscalibration. Good example of measure-before-guessing catching a false alarm.",
+        "vex-charm oppose (SCHW): 1st instance today, distinct from the pre-existing gex-walls oppose watch (MU/MRNA, still 2/3, no new instance today).",
+        "SPXW: peak +11.36% round-tripped to -50% hard stop with zero floor protection (below the +15% arm threshold) -- single instance, consistent with known intentional design, not actionable alone but worth watching if repeated."
+      ],
+      "infra_escalation": "Board upstream_ok:false fired 3 DISTINCT times today (37min, ~5min, ~28min durations) -- unusually frequent vs the historical ~1/session baseline. /record confirmed healthy and zero data loss all 3 times -- purely board-snapshot/display-layer, never a trading-engine or member-fund issue. ESCALATED with full evidence + a recommendation for a human/ops CloudWatch check (no AWS access from this sandbox to root-cause further). This is the single open item from today worth a fresh session's attention.",
+      "cross_lane_note": "PR #5383 (swing narrative price-level rounding, session_01ThDiEa7iE7mM1twas1e6Kg) observed open during this session -- belongs to the Ask Largo/Swings lane, correctly left untouched.",
+      "session_pnl_summary": "ALAB -7.9%, MUU -4.49%, SNXX -14.81%, BTU +5.56% (WIN), SPXW -50%, SCHW -28.39%, PINS -9.52%, MSFT -1.02% -- 1W/7L, all exit reasons coherent with their trigger mechanisms.",
+      "next_session_priorities": [
+        "Watch for board upstream_ok:false frequency continuing tomorrow (escalation from today, needs ops CloudWatch follow-up)",
+        "Continue MU/MRNA gex-walls oppose watch (2/3) and vex-charm oppose watch (1/3)",
+        "Watch for a 2nd instance of peak-round-trip-below-arm-threshold (SPXW pattern) before considering it worth investigating"
+      ]
     }
   },
   "sessions": {
