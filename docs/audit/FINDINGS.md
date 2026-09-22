@@ -4,6 +4,175 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 0DTE record: `trim_scale_dead_zone_floor`/`trim_scale_runner_target` real exits mislabeled in `by_outcome` — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Engine** | Night Hawk 0DTE (`src/lib/zerodte/record.ts`) |
+| **Severity** | P2 — data-correctness in the member/Largo-facing outcome breakdown, not P&L-affecting |
+| **Status** | FIXED — PR (this branch), regression tests added, RED→GREEN proven via git-stash |
+
+### Root cause
+
+`managedOutcomeLabel()` (the function that maps a real, live-stamped `entry_context.exit.reason`
+onto the record's `by_outcome`/`managed_outcome` vocabulary) hand-rolled its own ad hoc checks plus
+a `/ratchet|runner/` substring regex, instead of reusing `categorizeExitReason` (exit-engine.ts) —
+the module's OWN authoritative reason→family classifier, already imported into `record.ts` and
+already trusted by `realExitIsBarWalkReproducible` a few lines above it for the exact same purpose.
+
+Two real, live-stampable EXIT reasons from `exit-engine.ts`'s trim-scale mode (`decideTrimScale`)
+fell through that ad hoc logic incorrectly:
+
+1. **`trim_scale_dead_zone_floor`** — the trim-scale regime dead-zone's own protective floor (bank
+   at HALF the peak when no tranche has armed yet — the trim-scale analogue of ratchet mode's
+   `ratchet_breakeven_floor`/`ratchet_early_profit_floor`/`ratchet_profit_floor`, which all
+   correctly bucket `"ratchet"`). This exact string contains neither `"ratchet"` nor `"runner"`, so
+   it fell all the way through to the bare win/loss/breakeven-by-sign label — the only real EXIT
+   reason the function had **no case for at all**.
+2. **`trim_scale_runner_target`** — fires when both tranches are already banked AND the final third
+   also tags the plan target (the trim-scale analogue of ratchet mode's `plan_target_final`, which
+   correctly buckets `"doubled"`). This string DOES contain the substring `"runner"`, so the old
+   regex mislabeled a genuine, full profit-TARGET capture as `"ratchet"` (a defensive floor exit) —
+   conflating two outcome shapes that `by_outcome` exists specifically to keep apart.
+
+### Evidence
+
+**Unit-level RED→GREEN** (git-stash proof, `src/lib/zerodte/record.test.ts`):
+- Pre-fix: `managedOutcomeLabel("trim_scale_dead_zone_floor", 0)` → `"breakeven"` (bare sign, not a
+  named bucket).
+- Pre-fix: `managedOutcomeLabel("trim_scale_runner_target", 60)` → `"ratchet"` (should be
+  `"doubled"`).
+- Two new tests added (`record.test.ts`) reproduce both live-reachable scenarios (a `withExit` row
+  carrying only the real `entry_context.exit` stamp, no WS-11 reconstruction to supersede it) and
+  assert the correct buckets. Confirmed RED (2 failures) on the pre-fix code via `git stash`, GREEN
+  (35/35) after the fix.
+
+**Live production confirmation** (`GET /api/market/zerodte/record?days=90` via a temp Clerk
+session, read-only, 2026-09-22): **4 real committed rows currently show the bug live** —
+TSLA (2026-09-21), MARA/RKLB (2026-09-18), SPCH (2026-09-16) all carry a real
+`entry_context.exit.reason === "trim_scale_dead_zone_floor"` with `managed_source: "engine"`
+(i.e. reached via the buggy path directly, no reconstruction override), and all four currently
+render `managed_outcome: "win"` instead of the correct `"ratchet"` bucket. 7 further rows carry a
+real `trim_scale_runner_target` exit, but all 7 happen to also carry a genuine WS-11 reconstruction
+that supersedes the live-engine label in `managedGradeView`'s precedence — so the `"ratchet"`
+mislabel for that reason is confirmed correct-by-code-reading but not yet observed live in a row
+where it would actually surface (reachable whenever a trim_scale row's reconstruction is
+absent/degenerate — a real, if less frequently hit, path).
+
+### Blast radius
+
+Only `record.ts`'s own `managedOutcomeLabel` — no other call site duplicates this logic (the module
+comment already notes `categorizeExitReason` is the single source of truth `realExitIsBarWalkReproducible`
+depends on; this fix brings the second consumer of exit-reason semantics into the same source of
+truth instead of a second, drifted copy). No P&L numbers changed — `managed_pnl_pct`, `wins`,
+`losses`, `win_rate_pct`, `avg_pnl_pct` are all unaffected (they come from the same `pnl_pct`
+regardless of label); only the `by_outcome` bucket a play lands in, and its per-play
+`managed_outcome` string, change.
+
+### Fix rationale
+
+Route `managedOutcomeLabel` through `categorizeExitReason`'s 5 categories (`stop`/`target`/
+`ratchet`/`thesis`/`flat`) instead of duplicating a parallel, drift-prone reason→label mapping.
+`categorizeExitReason`'s own prefix ordering already resolves both cases correctly (the dead-zone
+floor is an exact match checked BEFORE the general `trim_scale`-prefix `"target"` bucket), so this
+single change fixes both defects and removes the class of bug entirely (any future EXIT reason
+`exit-engine.ts` adds gets categorized once, correctly, in one place, rather than needing a second
+hand-written check here). Left unchanged: the `bySign` fallback for a `null`/unrecognized reason
+(same fail-closed posture `categorizeExitReason` and `realExitIsBarWalkReproducible` already use).
+
+### Market-open validation
+
+See `docs/audit/MARKET-OPEN-VALIDATION.md` for the next-session checklist entry.
+
+## Ask Largo swing play-brief: meridian/meridianPeer were awaited BEFORE the context fan-out instead of racing inside it, tripling worst-case source-timeout budget — fix/swing-brief-meridian-latency-serialization
+> **kind:** `FINDING`
+
+**Status**: FIXED
+
+### Root cause / gap
+
+`loadSwingPlayBriefContext` (`src/lib/swing/play-brief-context.ts`) composes 8 independent
+context reads for the swing play-brief, each individually bounded by `withBriefSourceTimeout`'s
+8s budget (`brief-source-timeout.ts`) — a deliberate design the file's own header comment
+documents was built specifically to stop a single slow upstream from hanging the whole brief past
+Cloudflare's edge timeout (a real 2026-09-09 incident: a request hung past a 120s client timeout
+while ALB `TargetResponseTime` showed repeated p99 spikes to 90-104s).
+
+Two of those 8 sources — `fetchMeridianForTicker` and `fetchMeridianPeerForBrief` — were NOT
+inside that bounding `Promise.all`. They were `await`ed one after another, sequentially, BEFORE
+the `Promise.all` fanning out the other six sources (ecosystem, vector, open book, archetype
+track record, roll history, ticker track record) ever started. meridianPeer does genuinely depend
+on meridian's own result (`fetchMeridianPeerForBrief(meridian, ticker)` reads `meridian.items` to
+find an earnings catalyst to fetch a peer cohort for) — but nothing about the other six sources
+depends on either of them, so sequencing them ahead of the fan-out bought no correctness and cost
+real worst-case latency: `meridian(≤8s) + meridianPeer(≤8s) + Promise.all(≤8s)` — up to ~24s
+serialized into one request, on the exact code path the same file's header comment already flags
+as latency-sensitive.
+
+### Fix
+
+`meridianPromise` is created immediately (still individually `withBriefSourceTimeout`-bounded).
+`meridianPeerPromise` is chained off it with `.then()` — so it still only starts once `meridian`
+resolves, preserving the real dependency — and both are added as two more entries in the SAME
+`Promise.all` as the other six sources, instead of sitting outside it. Worst case drops to ~16s
+(the `meridian`→`meridianPeer` chain, now the tallest single path, racing concurrently with the
+other six 8s-bounded reads) instead of ~24s. No change to any source's own logic, timeout budget,
+or the composed envelope's shape — purely a scheduling fix.
+
+### Evidence
+
+- New timing regression test (`play-brief-context.test.ts`, "independent sources fan out
+  concurrently, not serially"): gives `fetchMeridianForTicker` and `fetchEcosystemContext` mocks
+  an artificial 150ms delay each and asserts total elapsed stays well under their sum.
+- RED confirmed pre-fix via `git stash` on `play-brief-context.ts` alone (test kept): 301ms
+  elapsed — the two delays serialize almost exactly as before the fix.
+- GREEN post-fix: ~152ms elapsed — the two sources race, bounded by the max delay, not the sum.
+- `npx tsc --noEmit`: clean.
+- Full `npm test` (Node 20): 15186 pass / 0 fail / 3 skipped (pre-existing, unrelated).
+
+### Blast radius
+
+One call site: `loadSwingPlayBriefContext` is the only place `fetchMeridianForTicker` and
+`fetchMeridianPeerForBrief` are composed together (confirmed via repo-wide grep on both function
+names — no other caller schedules them relative to the rest of a context fan-out). Both source
+functions themselves are unchanged; this is a scheduling-only fix inside the one composition site.
+
 ## Ask Largo — Night Hawk Swings: sub-lane track-record citation was fully built, wired write-side, and unit-tested — but had zero read-side call sites — SHIPPED
 
 > **kind:** `FINDING`
@@ -69,40 +238,6 @@ snapshot shape changed. `swing-loss-taxonomy-segment.mjs`'s 2026-09-10 measureme
 sub-lane diverging to an 80% loss rate at n=5, flagged as a real signal to watch) is the concrete
 motivating case this citation will surface once that sub-lane's real closed population clears the
 Wilson-LB graduation bar.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Ask Largo — Night Hawk Swings: `crossDeskCoaching`'s Vector-dedup guard fails when Vector is demoted to a "rest" conflict — FIXED
 
