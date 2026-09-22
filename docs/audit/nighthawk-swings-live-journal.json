@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T12:18:29Z",
-  "notes": "Trigger 3/4 (:16 offset), 2026-09-22 ~12:17 UTC. No open swing PRs. Skipped re-checking #4076 this cycle (only checked 15min ago, noise discipline). AAPL position 40 unchanged. Read manage-edge-reads.ts in full (153 lines, deep-dive Q16 -- the pure derivation feeding manage.ts's catalystShift/regimeShift/flowDecayed/relStrengthLost/thesisBroken edge-rung inputs from commit-pinned pillars + fresh live reads). Mostly clean, well-reasoned. One LOW-CONFIDENCE observation, not filed: the thesis_stop branch's EVENT_DRIVEN case gates on commitCat != null && commitCat >= STRONG_PILLAR (the catalyst pillar was genuinely strong at commit) before allowing a thesis-broken call, but the POST_EARNINGS_DRIFT case has no such gate -- fires purely on sessions>=5 && progress<0.15 regardless of catalyst pillar strength. Traced into archetype.ts: POST_EARNINGS_DRIFT's CLASSIFICATION uses separate archetypeExtras signals (earningsGapRecent01/postEarningsDrift01), not the CATALYST pillar score used for dossier scoring -- so commitCat may not even be a meaningful precondition for this archetype the way it is for EVENT_DRIVEN, which would make the asymmetry intentional rather than an oversight. Not confident enough either way to file as a finding or escalate as a design question -- flagging in the journal for a future cycle with more budget to trace fitPostEarningsDrift/fitEventDriven's exact classification inputs before concluding either way.",
+  "last_updated": "2026-09-22T12:33:25Z",
+  "notes": "Trigger 2/4 (:31 offset), 2026-09-22 ~12:32 UTC. Synced -- noted a different parallel session (session_01A2TSNDQ38egcMPhQGihPfT, general coordinator) touched RUN-LOG.md, unrelated to this journal. My PR #5430 finding folded into FINDINGS.md (#5432). No open swing PRs. Followed up on last cycle's low-confidence manage-edge-reads.ts asymmetry (POST_EARNINGS_DRIFT's thesis_stop missing EVENT_DRIVEN's commitCat>=STRONG_PILLAR gate) by tracing archetype.ts's fitPostEarningsDrift/fitEventDriven and swing-pillars.ts's catalystSignal: confirmed the CATALYST pillar (commitCat, from generic catalystStrength01) is a COMPLETELY DISJOINT signal from BOTH archetypes' actual classification inputs (earningsGapRecent01/postEarningsDrift01 vs catalystInWindow01) -- so requiring it for POST_EARNINGS_DRIFT could make that rung unreachable for many legitimate cases if the pillar happens to be null/weak for that archetype (plausible, since it doesn't drive classification either). Concluded this is genuinely ambiguous -- could read either way, current code may be the safer/more permissive choice -- and is NOT confident enough to file as a finding or fix. Closing this investigation thread as inconclusive-but-resolved (no further action planned unless new live evidence surfaces). Also read occ-from-row.ts (41 lines) -- small, clean, explicitly fail-closed by design (never reconstructs OCC from strike columns, only trusts the stored value). No bug. AAPL position 40 unchanged.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -120,7 +120,7 @@
   ],
   "known_open_prs_snapshot": {
     "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T12:18:29Z"
+    "checked_at": "2026-09-22T12:33:25Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641, now ~1hr old). AAPL position 40 still the only real native open swing chain. Possible follow-up: trace archetype.ts's fitPostEarningsDrift vs fitEventDriven to resolve whether manage-edge-reads.ts's thesis_stop asymmetry (POST_EARNINGS_DRIFT missing a commitCat gate EVENT_DRIVEN has) is intentional or a gap. Still-unswept files: occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, grade-retrace.ts, commit.ts, swing-portfolio-budget.ts."
+  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641, now ~1.25hr old -- may be worth a gentle re-flag if still unanswered after several more hours). AAPL position 40 still the only real native open swing chain. Still-unswept files: shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts (only catalystSignal read so far, rest unread), archetype.ts (only first 160 lines read), grade-retrace.ts, commit.ts, swing-portfolio-budget.ts."
 }
