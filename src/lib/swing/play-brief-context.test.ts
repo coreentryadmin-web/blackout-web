@@ -18,6 +18,18 @@ let mockBangerRows: BangerPositionRow[] = [];
 let bangerEngineEnabled = true;
 let bangerFetchShouldThrow = false;
 
+// PERFORMANCE REGRESSION (standing latency mandate, 2026-09-22): meridian/meridianPeer and
+// ecosystem used to be `await`ed in strict sequence (meridian, THEN meridianPeer, THEN the
+// Promise.all carrying ecosystem/vector/etc), so their artificial delays below summed. Fixed,
+// they race concurrently and only the meridian->meridianPeer CHAIN (still real: meridianPeer
+// reads meridian's own result) contributes its own delay on top of a single meridian wait.
+const SOURCE_DELAY_MS = 150;
+let meridianDelayMs = 0;
+let ecosystemDelayMs = 0;
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function swingRow(ticker: string, id: number, direction: "long" | "short" = "long"): SwingPositionRow {
   return {
     id,
@@ -125,7 +137,12 @@ mock.module("../banger/flag", {
 });
 
 mock.module("../bie/ecosystem-context", {
-  namedExports: { fetchEcosystemContext: async () => null },
+  namedExports: {
+    fetchEcosystemContext: async () => {
+      if (ecosystemDelayMs > 0) await delay(ecosystemDelayMs);
+      return null;
+    },
+  },
 });
 
 mock.module("../bie/vector-full-state", {
@@ -133,7 +150,12 @@ mock.module("../bie/vector-full-state", {
 });
 
 mock.module("./play-brief-meridian", {
-  namedExports: { fetchMeridianForTicker: async () => null },
+  namedExports: {
+    fetchMeridianForTicker: async () => {
+      if (meridianDelayMs > 0) await delay(meridianDelayMs);
+      return null;
+    },
+  },
 });
 
 mock.module("./play-brief-meridian-peer", {
@@ -228,5 +250,44 @@ describe("loadSwingPlayBriefContext: openBook merges swing_positions AND banger_
     assert.ok(book, "a banger-fetch error must not null out the whole book");
     assert.equal(book!.length, 1);
     assert.equal(book![0]!.ticker, "NN");
+  });
+});
+
+describe("loadSwingPlayBriefContext: independent sources fan out concurrently, not serially", () => {
+  let mod: typeof import("./play-brief-context");
+
+  before(async () => {
+    mod = await import("./play-brief-context");
+  });
+
+  it("does not sum the meridian and ecosystem delays — they must race, not queue", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+    meridianDelayMs = SOURCE_DELAY_MS;
+    ecosystemDelayMs = SOURCE_DELAY_MS;
+
+    const start = Date.now();
+    const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+    const elapsedMs = Date.now() - start;
+
+    meridianDelayMs = 0;
+    ecosystemDelayMs = 0;
+
+    assert.ok(ctx, "context must still resolve");
+    // Sequential (the bug): meridian's own delay, THEN ecosystem's delay inside a later
+    // Promise.all — elapsed is close to their SUM (2x SOURCE_DELAY_MS).
+    // Concurrent (the fix): both race from the start — elapsed is close to their MAX
+    // (1x SOURCE_DELAY_MS), regardless of meridianPeer's harmless dependent chain off meridian
+    // (meridianPeer resolves to null near-instantly here since this fixture's meridian result has
+    // no `.items` for it to key off of).
+    const sequentialFloorMs = SOURCE_DELAY_MS * 2 - 40; // generous slack below the sequential sum
+    assert.ok(
+      elapsedMs < sequentialFloorMs,
+      `expected concurrent fan-out (~${SOURCE_DELAY_MS}ms) but took ${elapsedMs}ms — looks like ` +
+        `meridian/meridianPeer are still being awaited BEFORE the rest of the sources start, ` +
+        `serializing their delays instead of racing them`,
+    );
   });
 });
