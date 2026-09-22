@@ -107,6 +107,24 @@ test("livePlayFromSwingPosition: TRIM + HOLD snapshot clears stale TAKE_PARTIAL 
   assert.equal(trim.manageAction, undefined);
 });
 
+test("livePlayFromSwingPosition: add_eligible manage snapshot (action: ADD) surfaces manageAction ADD, not dropped to undefined", () => {
+  // BUG FIX (Ask Largo standing mandate, 2026-09-22): manageObservablesFromEvent's action switch
+  // recognized 5 of SwingManageAction's 6 values and silently dropped "ADD" -- live repro was a
+  // real AAPL HOLD position whose persisted manage snapshot carried action:"ADD"/rung:"add_eligible"
+  // yet manageAction rendered undefined, making #5398's "Consider adding" narrative branch
+  // unreachable in production. manageEnforced still carries the graduated-vs-evidence-only
+  // distinction separately -- this test only asserts the action itself is no longer swallowed.
+  const play = livePlayFromSwingPosition(row(), 178, {
+    action: "ADD",
+    rung: "add_eligible",
+    reason: "position qualifies to add (advisory)",
+    enforced: false,
+  })!;
+  assert.equal(play.manageAction, "ADD");
+  assert.equal(play.manageEnforced, false);
+  assert.equal(play.thesisLevel, "intact");
+});
+
 test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", () => {
   const play = livePlayFromSwingPosition(row(), 160)!; // below 165 invalidation
   assert.equal(play.manageAction, "EXIT");

@@ -222,8 +222,24 @@ export function manageObservablesFromEvent(
   let manageAction = spotFallback.manageAction;
   let thesisLevel = spotFallback.thesisLevel ?? "intact";
 
+  // BUG FIX (Ask Largo standing mandate, 2026-09-22): SwingManageAction is exactly
+  // {HOLD, EXIT, STOP_OUT, TAKE_PARTIAL, EXIT_RUNNER, ADD} (manage.ts) — this switch recognized
+  // 5 of 6 and silently dropped "ADD", so `manageAction` stayed at the spot-fallback value
+  // (undefined for a non-broken, non-TRIM row) for every add_eligible position, no matter what
+  // the persisted event said. That made #5398's new `rec === "BUY"` narrative branch dead code:
+  // `recommendationFromManageAction(undefined)` always resolves to "HOLD", so a member never saw
+  // the "Consider adding" advisory in production despite the fix being correctly merged and
+  // deployed. Not a deliberate enforcement gate — `manageEnforced` (read separately, a few lines
+  // below) already carries the graduated-vs-evidence-only distinction, exactly like it does for
+  // TAKE_PARTIAL/EXIT_RUNNER, which this same switch already passes through unconditionally.
   const action = manageEvent.action;
-  if (action === "EXIT" || action === "STOP_OUT" || action === "TAKE_PARTIAL" || action === "EXIT_RUNNER") {
+  if (
+    action === "EXIT" ||
+    action === "STOP_OUT" ||
+    action === "TAKE_PARTIAL" ||
+    action === "EXIT_RUNNER" ||
+    action === "ADD"
+  ) {
     manageAction = action;
   } else if (action === "HOLD") {
     // A TRIM row seeds manageAction from status ("TAKE_PARTIAL") before this runs; an honest HOLD
