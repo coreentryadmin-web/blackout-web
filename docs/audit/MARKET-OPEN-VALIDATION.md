@@ -6385,6 +6385,19 @@ this file documents).
 - **What changed:** `meridianPromise` now starts immediately; `meridianPeerPromise` chains off it with `.then()` (preserving the real meridianPeer→meridian dependency); both are added as two more entries in the SAME `Promise.all` as the other six sources instead of sitting outside it. Worst case drops to ~16s (the meridian→meridianPeer chain, racing concurrently with the other six 8s-bounded reads) instead of ~24s. Purely a scheduling fix — no source's own logic or the composed envelope's shape changed.
 - **RTH check:** this is a tail-latency fix, hardest to observe directly on any single request. During RTH, if a play-brief request is ever seen to hang or degrade a source to "unavailable" (`ecosystemFetchFailed`/`vectorFetchFailed`/an omitted "Meridian catalysts" section), confirm it is no longer compounded by the OLD serialization — i.e., a slow meridian/meridianPeer read alone should no longer be able to push total request time close to the old ~24s ceiling. No specific live repro is expected (the bug only bites when at least one of the 8 sources is genuinely slow, which is intermittent by nature) — this entry exists so a future slow-brief investigation checks this scheduling fix landed rather than re-discovering the same serialization from scratch.
 
+### 2026-09-22 — SPX Slayer: Night Hawk prior bonus now recomputes grade/direction, not just score
+- **What was broken:** the Night Hawk "morning prior" confluence bonus mutated `confluence.score`
+  in place without recomputing `grade`/`direction`/`agreeing`/`conflicts`, so a boundary-crossing
+  bonus (±3, real grade thresholds at abs 30/45/58/72) could leave a play gated/soft-passed
+  against a stale grade or a stale null direction. See `docs/audit/findings-staging/2026-09-22-spx-nh-bonus-stale-grade-direction.md`.
+- **What the fix changed:** added `reclassifyConfluenceScore` and reassign grade/direction/
+  agreeing/conflicts together with score whenever the bonus is applied.
+- **RTH check:** on a session morning where a fresh Night Hawk edition carries a clear A-grade
+  directional cluster (so `getNhConfluenceBonus` fires a non-zero bonus), pull the SPX Slayer
+  board/gates payload and confirm the displayed grade/direction for that first confluence read
+  are internally consistent with the displayed score (e.g. a score that reads ≥58 shows grade A or
+  better, not a stale B) — this could only be seen live on a morning the bonus actually fires.
+
 ### 337. Night Hawk Swings WATCH board never pruned/demoted candidates past their own entry-validity deadline — closes the 2026-09-12 `watch-board-stale-expired-candidates-not-pruned` gap — fix/swing-watch-board-expired-candidates-pruned — 2026-09-22
 
 - **What was broken:** `serving.ts`'s `sectionForSwingPlay` (the ONE place a swing play's serving section — COMMIT_NOW/WAITING_FOR_ENTRY/WATCH/RESEARCH/… — is decided) never consulted the entry-validity deadline (`entry-model.ts`'s sub-lane-scoped window, always shorter than the option's own expiry), even though `entry-enterability.ts` already computed `expired: true` off that same deadline back on 2026-09-12 for the command-deck's client-side EXPIRED pill. The raw board API (`GET /api/market/nighthawk/horizons?view=swings` — read directly by Largo's tools, not through the client adapter) kept serving a stale name at full prominence: live repro, META (first flagged 2026-08-26) sat #1 in `sections.WATCH` at score 84.7, 26+ days past its own entry window, with no honest signal in the raw JSON that it was dead.
