@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T11:19:14Z",
-  "notes": "Trigger 3/4 (:16 offset), 2026-09-22 ~11:17 UTC. PR #5430 confirmed merged (d804d4a8e, mergeable_state flipped blocked->clean, merged via CARVE-OUT), cleaned up. Continued chasing the stale-DTE-range pattern into a THIRD, genuinely ambiguous instance: src/features/nighthawk/lib/hunt-mode.ts's 'Hunt Mode' preset system (huntModeWeights/huntDteGuidance) feeds a completely SEPARATE product -- the Night Hawk LEGACY edition-synthesis LLM prompt (format.ts's generateEditionPlaysPrompt, 'HUNT MODE: Swing hunt -- prefer 2-30 DTE contracts.' gets embedded directly into the LLM prompt that drafts next-day Legacy picks). Unlike event-trigger.ts (clearly the SAME engine/window, hardcoded copy drifted -- fixed as PR #5430), Legacy is an explicitly separate, untouched next-day-digest lane per 0DTE-UNIFICATION-DESIGN.md that doesn't route through Swing Command's real-time commit gates -- so a wider LLM-suggestion net here COULD be intentional design, not a bug. Judged this genuinely ambiguous (not small/unambiguous per the escalation policy) and posted a design question on #4076 (comment 5775500641) rather than guessing at a fix -- flagged the exact code, why it's different from the two just-fixed instances, and offered to take the fix (same derive-from-HORIZONS.SWING shape) once intent is confirmed either way.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-22T11:32:19Z",
+  "notes": "Trigger 2/4 (:31 offset), 2026-09-22 ~11:31 UTC. Coordinator folded my 2 staged findings (#5428 sample_plays gate-disclosure, #5429 taxonomy.ts stale DTE) into FINDINGS.md via PR #5431 -- confirmed synced. No open swing PRs. Checked #4076 for a response to yesterday's Hunt Mode design question (comment 5775500641) -- none yet (only ~15min since posting, expected). AAPL position 40 unchanged (still HOLD, ungraded). Read manage-sync.ts in full (the file this mandate's own brief explicitly names as the real exit-management path: planManageSync/syncSwingManagement/latchSwingLiveStatus) -- extensively already audited (Q36 stale-overlapping-refresh guard, Q37 roll-execution-time re-arbitration with the same ex-div adjustment as manage.ts, Q39 ex-div fail-safe, the 2026-09-15 latchSwingLiveStatus profit_ladder-only TRIM-latch fix all present and internally consistent). No new bug found -- a clean, well-covered file.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -120,7 +120,7 @@
   ],
   "known_open_prs_snapshot": {
     "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T11:19:14Z"
+    "checked_at": "2026-09-22T11:32:19Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641) -- take the fix if confirmed it should track Swing Command's window, leave alone if Legacy's own next-day range is intentionally wider. Remaining low-priority comment-only '[2,30]' stale doc references not yet touched: dossier.ts:76, grade.ts:73, serving-ingest.ts:52, legacy-confirm-promote.ts:117 (confirmed this one also describes the Swing-Command-hold concept, same drift, comment-only, zero behavior impact). AAPL position 40 still the only real native open swing chain. No open swing/Largo PRs remain."
+  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641). AAPL position 40 still the only real native open swing chain. Still-unswept files: manage-edge-reads.ts, live-marks-active.ts, live-plays.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, roll-plan.ts, grade-retrace.ts. Low-priority remaining comment-only '[2,30]' stale doc refs (dossier.ts, grade.ts, serving-ingest.ts) still not touched."
 }
