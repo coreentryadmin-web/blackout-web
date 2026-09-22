@@ -4,6 +4,22 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-22 (00:16 UTC) — [SEO] Lane heartbeat: both fixes holding, continued small positive trend, HTTP-variant GSC row checked out clean
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5400 (docs fold,
+not SEO-lane), created 1 minute before this check — no CI run yet because it's simply too fresh,
+not stuck.
+
+Step 3: opportunity scan — window advanced a day (2026-06-22→09-19), same 4 striking-distance
+queries, no new entrant, small position improvements (`dealer gamma` 16.9→16.6, `gamma three
+trading` 13.4→13.3). 28d trend continues improving: avgpos **24.6→23.4**, CTR **1.36%→1.4%**,
+clicks flat at 19 — same direction as every recent cycle. One odd row in the page breakdown:
+`http://blackouttrades.com/` (non-HTTPS, pos 1, 2imp) — checked directly, confirmed a clean 301 to
+`https://blackouttrades.com/`, so this is just GSC logging a stray pre-redirect crawl/impression,
+not a real canonicalization defect. No PR.
+
 ## 2026-09-21 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (post-RTH)
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0003, GOOD**. `/api/og` —
