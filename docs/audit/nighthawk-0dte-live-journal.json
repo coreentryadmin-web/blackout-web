@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T16:44:00Z",
+  "updated_at": "2026-09-22T16:47:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -310,6 +310,14 @@
       "action": "board upstream_ok:false now 34+min (well past the typical ~4min pattern) but /record confirms real trading unaffected: SCHW exited cleanly 15:49:52Z via thesis_break:gex-walls at -28.39%, mark_honored:false correctly matches exit-engine doc (thesis exits use observed mark verbatim, never a floor). No data loss -- this is board-snapshot display degradation, not a trading-engine fault. No fix actionable from this sandbox (no CloudWatch/DB access to root-cause upstream).",
       "pattern_watch": "Both of todays 2 closed plays (SNXX long, SCHW short) exited via the SAME mechanism -- thesis_break:gex-walls (dominant gamma wall crossing target path inside 0.5x expected move). 2/3 instances of this specific failure mode today, consistent with already-documented cortex-oppose-magnitude-ab.mjs research (active gex-walls oppose correlates with worse outcomes). Not yet 3-instance threshold, watching for a 3rd.",
       "next": "recheck board recovery next trigger; watch for 3rd gex-walls thesis_break instance"
+    },
+    "2026-09-22T16:47:00Z": {
+      "stage": "OPEN/escalation",
+      "action": "ESCALATING (4/4 same-failure-mode instances, past 3-instance threshold): every closed play today (SNXX -14.81%, SCHW -28.39%, ALAB -7.94%, MSFT -1.02%) exited via the identical thesis_break:gex-walls mechanism -- a dominant gamma wall crossing the target path inside 0.5x expected move -- 100% loss rate, n=4, single day.",
+      "root_cause_check": "Verified NOT a commit/relief bug: gex_walls_veto_relieved was true only for MSFT; ALAB/SNXX/SCHW committed with the wall genuinely clear at commit time (PASS, no relief needed). The veto fired later as spot moved toward a wall mid-trade -- correctly detecting real thesis erosion per the mechanisms own design, not a wiring/logic defect.",
+      "open_question": "Does exiting on thesis_break:gex-walls protect capital, or lock in losses that would have partially mean-reverted? This is the live-trading-path calibration question the existing cortex-oppose-magnitude-ab.mjs did NOT answer (that tool measures gex-walls OPPOSE at commit-time scoring, not this EXIT-time veto). Needs a dedicated counterfactual backtest: for historical thesis_break:gex-walls exits, what would P&L have been at T+5/T+15/T+30min had the position been held through the veto instead of exiting immediately.",
+      "reason_not_fixing_now": "n=4 is single-day, and this requires historical backtest evidence (same discipline as every other exit-timing finding in this files research toolkit) before any threshold/logic change -- not a quick code read. Reporting with evidence and holding per the ambiguous/live-trading-path escalation policy rather than guessing at a fix.",
+      "next_specific_experiment": "Build/run a thesis-break-gex-walls-outcome counterfactual backtest (same shape as tier-exit-mode-ab.mjs/swing-early-trim-ab.mjs): pull historical committed plays that exited via thesis_break:gex-walls reason from entry_context.exit, replay real minute bars forward from the veto moment, measure realized vs counterfactual-held P&L at fixed horizons."
     }
   },
   "sessions": {
