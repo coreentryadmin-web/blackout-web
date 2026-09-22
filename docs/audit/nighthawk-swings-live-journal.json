@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T12:47:30Z",
-  "notes": "Trigger 4/4 (:46 offset), 2026-09-22 ~12:46 UTC. No open swing PRs. No response yet on #4076 design question. AAPL position 40 unchanged. Read industry-group-rs.ts in full (302 lines) -- the SECTOR_ROTATION industry-group RS feed (SIC-code -> benchmark ETF resolver + the direction-signed RS score). Cross-checked against AAPL's own live sectorLeadershipFacts I pulled earlier this session (benchmarkEtf: XLK, benchmarkLabel: Technology, kind: sector) -- correctly explained by the file's own tier design: AAPL's SIC (3571, electronic computers) isn't in the exact-SIC INDUSTRY_ETF_BY_SIC table (only semis/software/banks/gold-miners/airlines/oil-gas-E&P/homebuilders are), so it correctly falls to the coarser SIC-range sectorEtfFromSic tier (3570-3579 -> XLK). Manually scanned the entire ~50-branch SIC-range if-chain for overlap/ordering bugs (a sequential if-chain is fragile to range overlaps silently shadowing the wrong branch) -- every nested specific-range check (2830-2836 pharma before 2800-2899 materials, 3570-3579 computers before 3500-3599 machinery, 6798 REIT-special-case before 6700-6799 general financials, etc.) is correctly sequenced specific-before-general. No bug found.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-22T13:01:00Z",
+  "notes": "Finished shipping the thesis-health.ts fix found last cycle via Ask Largo play-brief deep audit on NMAX (positionId 1264, Banger-lane merged row): calibratedThesisPillars() (2026-09-21 per-pillar filter) never recognized the Banger-ledger regime sentinel (BANGER_LEDGER_REGIME_LABEL = 'BREAKOUT \u00b7 BANGER') because it derived its filter set purely from UNCALIBRATED_PILLAR_LABELS, which had no regime entry -- thesisHealthUncalibrated() had a SEPARATE hardcoded check for the same sentinel (correctly withholding the aggregate score) but calibratedThesisPillars never saw it, so the individual 'Regime fit -- BREAKOUT \u00b7 BANGER (\u0394 +0.0 pts)' pillar line rendered as if calibrated right next to the 'Aggregate score withheld' note. Fixed by adding regime: BANGER_LEDGER_REGIME_LABEL to the shared UNCALIBRATED_PILLAR_LABELS map both functions read from (both mechanisms now agree via existing filter machinery, no new logic), and removed the now-redundant separate hardcoded check in thesisHealthUncalibrated. RED->GREEN proof via git stash (new test in the existing Banger-origin describe block). Full thesis-health.test.ts 16/16, collateral sweep across every swing-lane test file importing this module (play-brief/play-brief-narrative/play-brief-pillar-guard/roll-plan/serving-lane) 253/253, tsc --noEmit clean. Staged finding filed, PR #5433 opened, undrafted, subscribed, pushed. This is the exact C6 violation class LARGO-PRODUCT-CONTRACT.md names -- fabricated precision presented as calibrated.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "docs/audit/findings-staging/2026-09-22-swing-thesis-health-fabricated-regime-pillar-shown-as-calibrated.md (PR #5433, open)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -118,10 +120,9 @@
       "moved_the_needle": "correctness/tooling/infra + THREE honest measurement tools (early-trim, score-calibration, loss-taxonomy-segmentation) + one data-capture fix (fill-quality) + one narrative/UX enhancement (watch-age). The loss-taxonomy segmentation tool is the first result with real actionable signal: TACTICAL sub-lane's 80% loss rate (n=5) diverges from the 44.4% aggregate -- watching, not yet acted on. That IS the scorecard entry for this week: measurement infrastructure + one genuine enhancement shipped, no premature calibration changes made, one real signal now being tracked."
     }
   ],
-  "known_open_prs_snapshot": {
-    "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T12:47:30Z"
-  },
+  "known_open_prs_snapshot": [
+    "#5433 (fix/swing-thesis-health-banger-regime-pillar-leak) -- opened this cycle, awaiting CI"
+  ],
   "tickers_seen": {
     "INTC": {
       "last_status": "CLOSED",
@@ -209,5 +210,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641, now ~1.5hr old). AAPL position 40 still the only real native open swing chain. Still-unswept files: shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts (mostly unread), archetype.ts (mostly unread, only the fit functions), grade-retrace.ts, commit.ts, swing-portfolio-budget.ts."
+  "watch_next_cycle": "Check PR #5433 CI/mergeable_state and merge once green (CARVE-OUT, no Cursor sign-off required). Still watching #4076 for a response on the still-unanswered Hunt Mode/Legacy DTE-range design question (comment 5775500641). Continue sweeping previously-unexamined swing engine files: shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts (only grepped, not fully read), swing-pillars.ts (only catalystSignal read), archetype.ts (only fit functions read), grade-retrace.ts, commit.ts, swing-portfolio-budget.ts. Continue genuine Ask Largo play-brief deep audits on other live positions beyond AAPL/NMAX -- this cycle's find demonstrates real value in spot-checking individual play-briefs, not just sweeping code files."
 }
