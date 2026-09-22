@@ -333,5 +333,36 @@ describe("computeSwingThesisHealth", () => {
       const keptIds = kept.map((p) => p.id);
       assert.ok(!keptIds.includes("market"), "regime (stamped Banger-ledger sentinel) must be dropped, not rendered as calibrated");
     });
+
+    test("calibratedThesisPillars: drops EVERY pillar for a Banger-origin row, not just regime (live repro 2026-09-22, AMDL positionId 1210)", () => {
+      // setupState/entryStatus/signalKinds are the SAME stamped constants on every Banger row (see
+      // horizonPlayFromBangerPosition's header), so entry_geometry ("at trigger") and
+      // flow_corroboration ("BANGER") are just as byte-identical-across-every-ticker fabricated as
+      // regime is -- neither string happens to match the generic-default sentinels ("n/a"/"no
+      // signals"), which only fire on a MISSING input, not a populated-but-fake one, so the general
+      // per-pillar filter used to keep both. Live repro: AMDL (positionId 1210) rendered "Entry
+      // geometry — at trigger" and "Signal stack — BANGER" in the Thesis health section as if
+      // calibrated, alongside the already-fixed-away regime line.
+      const h = computeSwingThesisHealth(bangerLedgerInput);
+      assert.ok(h);
+      const kept = calibratedThesisPillars(h);
+      assert.deepEqual(kept, [], "a Banger-origin row has no real per-position dossier at all -- every pillar must be dropped, not just regime");
+    });
+
+    test("calibratedThesisPillars: still drops every pillar for a Banger-origin row even when a live manage action gives persistence a real-looking label", () => {
+      // The trickiest case: degradeFromManage() overwrites persistence's currentLabel to
+      // "scale-out"/"exit signal" off a REAL, live manageAction (TAKE_PARTIAL/EXIT/etc) -- not a
+      // stamped constant -- so persistence alone might look like genuine live data. But the
+      // UNDERLYING setup this manage action is degrading (setupState/entryStatus/signalKinds) is
+      // still 100% fabricated for a Banger row, and the position's regime sentinel already proves
+      // there is no real dossier to anchor a "persistence" read to at all. Must still drop ALL
+      // pillars, including persistence.
+      const h = computeSwingThesisHealth({ ...bangerLedgerInput, manageAction: "TAKE_PARTIAL" });
+      assert.ok(h);
+      const persistencePillar = h!.pillars.find((p) => p.id === "structure");
+      assert.equal(persistencePillar?.currentLabel, "scale-out", "sanity: manage action did degrade persistence's label");
+      const kept = calibratedThesisPillars(h);
+      assert.deepEqual(kept, [], "persistence's manage-driven label must not exempt a Banger-origin row from the full withhold");
+    });
   });
 });
