@@ -4,6 +4,20 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-22 (15:35 UTC / Tue 11:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, refresh cadence a bit coarser than "5s" but never stale
+
+Confirmed clock myself (11:35 ET, Tuesday, in-window). `/tools/gamma-snapshot`'s public API:
+`market_session: "OPEN"`, `degraded: false`. Noticed two consecutive 6s-apart polls sharing the
+same `calculation_id` — checked more closely with 4s-interval polling and found `calculation_id`
+genuinely advances roughly every ~10-12s, not stuck indefinitely. Reads a bit coarser than the
+literal "every 5s" framing, but the actual behavior that matters (never sits on stale data) holds
+— spot moved realistically across every poll (7759.54→7760.1→7759.46→7759.32) and cross-checked
+against Massive `/v3/snapshot/indices` (7759.21) — 0.001% apart, accurate.
+
+Live CLS: purged edge, desktop **0.0005, GOOD**; mobile **0.0318, GOOD** — both at normal
+baseline. No PR — nothing broken, just a cadence note that doesn't rise to a defect. Returning to
+normal search/authority work after 13:00 ET.
+
 ## 2026-09-22 (14:05 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC identical to last cycle, 0 stuck PRs, live checks fresh from this morning's RTH wake)
 
 ## 2026-09-22 (13:33 UTC / Tue 09:33 ET) — [SEO] Market-hours wake: gamma-snapshot live-data validation, clean
