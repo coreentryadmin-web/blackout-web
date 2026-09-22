@@ -4187,6 +4187,11 @@
       "at": "2026-09-22T15:22:39Z",
       "summary": "TRANSIENT: one healthcheck call at 15:21:50 UTC (11:21am ET) read editionFor=2026-09-23 with A_edition AMBER (\"edition served from degraded fallback source\") and B_marks reporting no open plays -- but 2 immediate re-checks (direct /edition fetch + full healthcheck re-run, both within ~30s) both reverted to editionFor=2026-09-22, the still-current book, full GREEN, 3 plays, marks live. This is the FIRST time editionFor has shown 2026-09-23 at all this session -- likely a mid-write read caught while tonights edition build (for 2026-09-23) is actively running, not a real defect.",
       "assessment": "Not escalating -- self-consistent on immediate re-check, and a transient degraded-fallback read during an active background build is expected/benign (the route falling back to the last good edition while the new one is being written). This IS the signal that the real 2026-09-23 edition -- the first to run through PR #5396s relaxed-OI contract-cost fallback AND PR #5420s DTE-aware risk_note fix -- is imminent. Watching closely over the next few cycles for the actual rollover to verify both fixes in production, per the standing commitment made earlier this session."
+    },
+    {
+      "at": "2026-09-22T15:37:04Z",
+      "summary": "Second instance of the single-ticker transient RTH mark-staleness blip: ALAB flagged \"stale by the API\" at 15:36:43 UTC (11:36am ET) while META/TWLO stayed GREEN in the same cycle -- identical shape to the TWLO instance at 14:21:28 UTC. Re-fetched raw /legacy-marks ~10s later (15:36:53 UTC): ALAB stale:false, live mark=43.55 bid=42.00 ask=45.10.",
+      "assessment": "INSTANCE 2 of 3 for this pattern (different ticker this time -- ALAB not TWLO -- so this looks like a general single-contract transient quote-fetch blip during RTH, not a ticker-specific issue). Still self-resolves within seconds, still not escalating per the flake discipline. If a 3rd instance occurs, will investigate root cause (rate limiting, provider hiccup, or something more) rather than continuing to treat as pure noise."
     }
   ],
   "knownOpenItems": {
