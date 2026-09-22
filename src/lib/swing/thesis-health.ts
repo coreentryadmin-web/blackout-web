@@ -142,8 +142,27 @@ const UNCALIBRATED_MAPPED_LABELS: Partial<Record<ThesisPillarId, string[]>> = Ob
  * five weighted pillars, including the fabricated one) still stays withheld — that part of the
  * uncalibrated guard is unchanged and still correct, since a blended score CANNOT honestly represent
  * a pillar it has no real read for.
+ *
+ * SECOND GAP FOUND (2026-09-22, same mandate, live repro AMDL positionId 1210): the per-pillar filter
+ * above correctly drops `regime` for a Banger-ledger-origin row, but `horizonPlayFromBangerPosition`
+ * (banger-lane-merge.ts) stamps `setupState: "TRIGGERED"`, `entryStatus: "AT_TRIGGER"`, and
+ * `signalKinds: ["BANGER"]` as the SAME fixed constants on EVERY Banger row, identical across every
+ * ticker — not just regime. `entryGeometryScore("AT_TRIGGER")` and `signalScore(["BANGER"])` then
+ * compute the SAME `currentLabel` ("at trigger" / "BANGER") for every Banger position, but neither
+ * string happens to match `UNCALIBRATED_PILLAR_LABELS`' generic-default sentinels ("n/a"/"no
+ * signals") — those sentinels fire on an EMPTY/missing input, not a populated-but-fake one — so the
+ * general per-pillar filter kept both, reopening the identical byte-identical-fabricated-pillar bug
+ * the 2026-09-15 fix closed, through the very filter meant to protect genuinely-partial rows like
+ * AAPL. The distinguishing fact a per-pillar filter cannot see: for a Banger-origin row, ALL of
+ * setupState/entryStatus/signalKinds (and regime) are the SAME per-row-invariant constants at once —
+ * there is no real per-position 7-pillar dossier for this lane at all (single mechanical price
+ * trigger, per horizonPlayFromBangerPosition's own header) — so once `regime` identifies the row as
+ * Banger-origin, no OTHER pillar in that same row can be trusted either, and the correct behavior is
+ * the pre-2026-09-21 one: withhold the whole breakdown, not a partial one.
  */
 export function calibratedThesisPillars(h: ThesisHealthPayload): ThesisPillarState[] {
+  const regimePillar = h.pillars.find((p) => p.id === PILLAR_ID_MAP.regime);
+  if (regimePillar?.currentLabel === BANGER_LEDGER_REGIME_LABEL) return [];
   return h.pillars.filter((p) => !UNCALIBRATED_MAPPED_LABELS[p.id]?.includes(p.currentLabel));
 }
 
