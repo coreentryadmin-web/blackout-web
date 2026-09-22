@@ -15,6 +15,7 @@ function spxPlayDebug(...args: unknown[]) {
 }
 import {
   computeSpxConfluence,
+  reclassifyConfluenceScore,
   type SpxConfluence,
   type SpxPlayAction,
   type SpxPlayDirection,
@@ -1771,12 +1772,26 @@ async function evaluateSpxPlayCore(
   // Bounded at ±3 — a soft prior, not an override. Only applies when the edition is fresh
   // (< 20h old) and shows a clear directional A-grade cluster.
   if (nhBonus && nhBonus.bonus !== 0) {
-    confluence.score += nhBonus.bonus;
     confluence.factors.push({
       label: "Night Hawk prior",
       weight: nhBonus.bonus,
       detail: nhBonus.label,
     });
+    // BUG FIX (2026-09-22): mutating `score`/`factors` alone left `grade`/`direction`/`agreeing`/
+    // `conflicts`/`weighted_conflicts` frozen at their PRE-bonus values (computed once inside
+    // computeSpxConfluence) — see reclassifyConfluenceScore's own header for the full trace.
+    // evaluatePlayGates gates on confluence.grade/direction directly and evaluateMtfHybrid below
+    // is called with both confluence.grade (would have been stale) and confluence.score (already
+    // mutated) — reassign every derived field together so they can never disagree with score.
+    const reclass = reclassifyConfluenceScore(desk, confluence.score + nhBonus.bonus, confluence.factors);
+    confluence.score = reclass.score;
+    confluence.bias = reclass.bias;
+    confluence.action = reclass.action;
+    confluence.grade = reclass.grade;
+    confluence.direction = reclass.direction;
+    confluence.agreeing = reclass.agreeing;
+    confluence.conflicts = reclass.conflicts;
+    confluence.weighted_conflicts = reclass.weighted_conflicts;
   }
 
   const confirmations = evaluatePlayConfirmations(desk, confluence, technicals);

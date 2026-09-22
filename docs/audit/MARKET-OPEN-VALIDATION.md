@@ -6384,3 +6384,16 @@ this file documents).
 - **What was broken:** `loadSwingPlayBriefContext` (`play-brief-context.ts`) awaited `fetchMeridianForTicker` then `fetchMeridianPeerForBrief` one at a time, sequentially, BEFORE the `Promise.all` fanning out the other six context reads (ecosystem, vector, open book, archetype track record, roll history, ticker track record) ever started — even though nothing about those six sources depends on meridian/meridianPeer. Each of the 8 sources is individually bounded by `withBriefSourceTimeout`'s 8s budget, so this file's OLD shape had a worst case of `meridian(8s) + meridianPeer(8s) + Promise.all(8s)` ≈ 24s serialized into one request — on the exact code path this same file's header comment already documents hung past a 120s client timeout under real upstream stalls (2026-09-09).
 - **What changed:** `meridianPromise` now starts immediately; `meridianPeerPromise` chains off it with `.then()` (preserving the real meridianPeer→meridian dependency); both are added as two more entries in the SAME `Promise.all` as the other six sources instead of sitting outside it. Worst case drops to ~16s (the meridian→meridianPeer chain, racing concurrently with the other six 8s-bounded reads) instead of ~24s. Purely a scheduling fix — no source's own logic or the composed envelope's shape changed.
 - **RTH check:** this is a tail-latency fix, hardest to observe directly on any single request. During RTH, if a play-brief request is ever seen to hang or degrade a source to "unavailable" (`ecosystemFetchFailed`/`vectorFetchFailed`/an omitted "Meridian catalysts" section), confirm it is no longer compounded by the OLD serialization — i.e., a slow meridian/meridianPeer read alone should no longer be able to push total request time close to the old ~24s ceiling. No specific live repro is expected (the bug only bites when at least one of the 8 sources is genuinely slow, which is intermittent by nature) — this entry exists so a future slow-brief investigation checks this scheduling fix landed rather than re-discovering the same serialization from scratch.
+
+### 2026-09-22 — SPX Slayer: Night Hawk prior bonus now recomputes grade/direction, not just score
+- **What was broken:** the Night Hawk "morning prior" confluence bonus mutated `confluence.score`
+  in place without recomputing `grade`/`direction`/`agreeing`/`conflicts`, so a boundary-crossing
+  bonus (±3, real grade thresholds at abs 30/45/58/72) could leave a play gated/soft-passed
+  against a stale grade or a stale null direction. See `docs/audit/findings-staging/2026-09-22-spx-nh-bonus-stale-grade-direction.md`.
+- **What the fix changed:** added `reclassifyConfluenceScore` and reassign grade/direction/
+  agreeing/conflicts together with score whenever the bonus is applied.
+- **RTH check:** on a session morning where a fresh Night Hawk edition carries a clear A-grade
+  directional cluster (so `getNhConfluenceBonus` fires a non-zero bonus), pull the SPX Slayer
+  board/gates payload and confirm the displayed grade/direction for that first confluence read
+  are internally consistent with the displayed score (e.g. a score that reads ≥58 shows grade A or
+  better, not a stale B) — this could only be seen live on a morning the bonus actually fires.
