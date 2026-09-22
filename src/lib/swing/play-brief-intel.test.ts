@@ -4826,6 +4826,83 @@ test("watchForSection: Premium target rail omits the room note once the basis ha
   assert.doesNotMatch(section.body, /Premium target rail/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-09-22, live repro MUU TRIM brief): unlike the test
+// above (mark itself already past target -> omitted), this covers the position that reached
+// target, TRIMMED there, and has since pulled back BELOW it -- `target > targetBasis` is true
+// again, so the old code rendered "Premium target rail: $2.40 -- 19% move still needed to reach
+// target" a few lines below "Trim ladder: +100% checkmark" in the SAME document, directly
+// contradicting itself. Swing's own exit policy prices target_pct identically to its one trim
+// rung's trigger_pct, so this is the common post-trim-pullback shape, not a rare edge case.
+test("watchForSection: Premium target rail is omitted once its own trim tranche already fired, even after the mark pulls back below it again", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "TRIM",
+        direction: "LONG",
+        mark: 2.025, // pulled back from peak 2.85, still below the 2.40 target level again
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.4, fired: true }],
+          runner_fraction: 0.5,
+          stop_premium: 0.48,
+          target_premium: 2.4,
+        },
+      }),
+      asOf: "2026-09-22 01:32 ET",
+      sessionDate: "2026-09-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Premium target rail/);
+});
+
+test("watchForSection: Premium target rail still shows the room% for a target no trim tranche has reached yet", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 2.025,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          // A rung below target that HAS fired must not suppress the room% for a HIGHER,
+          // not-yet-reached target -- only a fired tranche at/above the target level should.
+          trim_levels: [{ trigger_pct: 25, fraction: 0.33, premium: 1.5, fired: true }],
+          runner_fraction: 0.5,
+          stop_premium: 0.48,
+          target_premium: 2.4,
+        },
+      }),
+      asOf: "2026-09-22 01:32 ET",
+      sessionDate: "2026-09-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (2.40 - 2.025) / 2.025 * 100 = 18.5% -> 19%
+  assert.match(
+    section.body,
+    /Premium target rail: \*\*\$2\.40\*\* — \*\*19%\*\* move still needed from current mark to reach target/,
+  );
+});
+
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
 // duplication class as #4261 (recNote/rails) and the thesis-health advisory fix above:
 // catalystCoaching (play-brief-narrative-coaching.ts) already renders "Earnings in Nd (DATE) —

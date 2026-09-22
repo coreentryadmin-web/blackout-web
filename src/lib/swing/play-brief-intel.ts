@@ -1218,11 +1218,29 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // state for a position still open pending its own trim/exit management.
   if (bucket === "open" && play.exitPolicy?.target_premium != null) {
     const target = play.exitPolicy.target_premium;
+    // BUG FIX (Ask Largo standing mandate, 2026-09-22, live repro MUU TRIM brief): once a trim
+    // tranche priced at/above this same target level has already FIRED (the latched peak reached
+    // it), the position already hit this rail and has since pulled back — rendering "X% move
+    // still needed to reach target" reads as a fresh, unmet objective a few lines below "Trim
+    // ladder: +100% ✓" in the SAME document, a direct self-contradiction. Swing's own
+    // SWING_SCALE_OUT_POLICY (exit-policy.ts) prices target_pct identically to its single trim
+    // rung's trigger_pct (both 100), so `target_premium` and the fired trim's `premium` are the
+    // literal same dollar level — this fires on every swing position that has already scaled out
+    // and pulled back below that level, not a rare edge case. Once fired, the rail no longer
+    // describes something ahead for the runner (which trails off peak, not toward a second climb
+    // to the same number) — omit the room% rather than recompute one off a target already banked.
+    const targetAlreadyFired = (play.exitPolicy.trim_levels ?? []).some(
+      (t) => t.fired === true && t.premium != null && t.premium >= target,
+    );
     const execMarkForTarget = play.execMark;
     const targetBasis = execMarkForTarget != null && execMarkForTarget > 0 ? execMarkForTarget : play.mark;
     const targetBasisIsExec = execMarkForTarget != null && execMarkForTarget > 0;
     const targetRoomPct =
-      targetBasis != null && targetBasis > 0 && target > targetBasis && !optionMarkGenuinelyUnknown(play)
+      !targetAlreadyFired &&
+      targetBasis != null &&
+      targetBasis > 0 &&
+      target > targetBasis &&
+      !optionMarkGenuinelyUnknown(play)
         ? ((target - targetBasis) / targetBasis) * 100
         : null;
     if (targetRoomPct != null) {
