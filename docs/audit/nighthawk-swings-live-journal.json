@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T10:18:54Z",
-  "notes": "Trigger 3/4 (:16 offset), 2026-09-22 ~10:16 UTC. PR #5428 (opened last cycle) CI still running (verify job in_progress since creation -- normal, this repo's verify job spins up a throwaway Postgres and takes several minutes; CodeQL already completed successfully). No action needed, scheduled 60-min check-in (and webhook subscription) will catch completion. AAPL position 40 unchanged (still HOLD, ungraded, no new leg). Continued forensic sweep: read entry-model.ts (deriveEntryPlan/deriveEntryState) in full. Found a subtle internal-consistency quirk -- a contract with <1 trading day left to its own expiry (but not yet past it) can compute an entryDeadline that clamps to a timestamp already in the PAST (deadlineMs = expMs - DAY_MS < nowMs) while entryState still reads a live-looking state like AT_TRIGGER, rather than the function returning EXPIRED itself. Traced both known consumers (entry-enterability.ts's evaluateSwingEntryEnterability, which checks pastEntryDeadline BEFORE anything else in its if-chain, and serving.ts's sectionForSwingPlay via entryWindowExpiredFromPlay, which also gates on the same expired flag before COMMIT_NOW routing) -- both correctly demote this case to WAIT/dont_buy and RESEARCH respectively, so there is no live member-facing bug. Logged as a minor internal-invariant observation, not filed (no evidenced external behavior change, would be pure tidying).",
+  "last_updated": "2026-09-22T10:33:02Z",
+  "notes": "Trigger 2/4 (:31 offset), 2026-09-22 ~10:31 UTC. PR #5428 MERGED (10:20:39Z, merged_by coreentryadmin-web -- automerge or a parallel session, either way done) -- confirmed via pull_request_read, cleaned up: local branch deleted, unsubscribe attempted (no active sub -- webhook self-cleared on merge, expected), 60-min check-in trigger deleted. No open swing/Largo PRs remain (only unrelated Dependabot bumps). AAPL position 40 unchanged (still HOLD, ungraded). Continued fresh-file sweep: event-trigger.ts (live-tape advance-only accumulation router, debouncer eviction logic verified correct), structure-levels.ts (ATR-proxy + entry/stop/target underlying-terms plan levels, off-by-one checked clean), contract-ranker.ts (full tradability x thesisFit contract ranker incl. breakevenMovePct direction math for both LONG/SHORT verified correct) -- all three clean, no bugs found.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,10 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "swing_related_open_prs": [
-      "#5428 (mine, CI running)"
-    ],
-    "checked_at": "2026-09-22T10:18:54Z"
+    "swing_related_open_prs": [],
+    "checked_at": "2026-09-22T10:33:02Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -211,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "PR #5428: verify CI status, merge if green (CARVE-OUT). AAPL position 40 still the only real open swing chain. Still-unswept files: event-trigger.ts, structure-levels.ts, contract-ranker.ts, taxonomy.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts."
+  "watch_next_cycle": "AAPL position 40 still the only real open swing chain. Still-unswept files: taxonomy.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, roll-plan.ts, grade-retrace.ts, manage-sync.ts, manage-edge-reads.ts, live-marks-active.ts, live-plays.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts."
 }
