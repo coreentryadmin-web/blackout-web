@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T14:11:00Z",
+  "updated_at": "2026-09-22T15:43:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -283,6 +283,12 @@
       "action": "New trading day baseline: RTH desk hot, SNXX first commit (10:03 ET, long, thesis intact, Cortex PASS+1.01, 2/2 confluence) -- 8min old, peak 1.85%, live -14.81%, floor never armed (below +15% threshold). Normal early drawdown, advisory correctly reads intact/let-runner-work. Single instance, no pattern yet.",
       "session_context": "Both PRs from prior session (#5366 dead-zone floor mark-honoring, #5382 arm-tier floor scaling) confirmed merged+live on main as of yesterday close -- ratchet floor curve now continuous peak*0.4 from +15% up.",
       "next": "watch SNXX for floor-arm/exit-mode coherence once it crosses +15% peak (will exercise the new v6 EXIT_VERSION continuous curve for the first time on real data)"
+    },
+    "2026-09-22T15:43:00Z": {
+      "stage": "OPEN",
+      "action": "New commit: SCHW short, 11:28 ET entry, Cortex PASS +0.29 conviction C (thin: 3 absent sources -- wall-trend/catalyst-news/darkpool-confluence), one active oppose (vex-charm, dealer VEX fights short). live -9.68%, peak still 0 (never went positive). Correctly weak/thin-evidence profile per design, not a bug.",
+      "pattern_watch": "vex-charm oppose is a NEW oppose-source instance (1/3) -- distinct from the already-tracked gex-walls oppose pattern on MU/MRNA (still 2/3). Watching both separately.",
+      "next": "continue watching SCHW for exit coherence once it resolves; continue both oppose-source pattern counts toward 3-instance threshold"
     }
   },
   "sessions": {
