@@ -66,3 +66,28 @@ test("enrichSwingPlaysWithVectorLeaders: no leader for the ticker leaves the pla
   const [out] = enrichSwingPlaysWithVectorLeaders([play], [{ ticker: "OTHER", peakPremiumPct: 40 }]);
   assert.equal(out, play);
 });
+
+// Live gap found 2026-09-22: peakPremiumPct is a genuine running max (GREATEST across every sweep
+// tick), so a negative value means the Vector pick has NEVER been profitable — a losing signal, not
+// corroboration. Unguarded, this used to compute a negative rawBump, silently reducing score with
+// no factor line (appliedBump<0 skips the factor append), while still tagging VECTOR + "Vector
+// corroboration" as if it were supporting evidence.
+test("enrichPlayWithVectorLeader: a confirmed-negative peakPremiumPct (a losing Vector pick) gets no enrichment at all", () => {
+  const play = basePlay();
+  const enriched = enrichPlayWithVectorLeader(play, { ticker: "NVDA", peakPremiumPct: -20 });
+  assert.equal(enriched, play, "play must be returned completely untouched, not silently penalized");
+  assert.equal(enriched.score, 70, "score must not be reduced by an undisclosed 'corroboration' bump");
+  assert.ok(!(enriched.signalKinds ?? []).includes("VECTOR"), "a losing pick must not be tagged as a corroborating VECTOR signal");
+  assert.ok(!enriched.reason.includes("Vector"), "reason must not claim corroboration from a losing pick");
+});
+
+test("enrichPlayWithVectorLeader: a peakPremiumPct of exactly 0 still gets the normal small-bump treatment (boundary, not negative)", () => {
+  const play = basePlay();
+  const enriched = enrichPlayWithVectorLeader(play, { ticker: "NVDA", peakPremiumPct: 0 });
+  // rawBump = min(8, round(0/5)) = 0 -> appliedBump = 0 -> no factor added, but this is the existing
+  // zero-bump path (already covered by the ceiling test above for a different reason), not the
+  // negative-peak skip -- score/signalKinds/reason still update since the leader is genuine, just
+  // with a zero-point nudge.
+  assert.equal(enriched.score, 70);
+  assert.ok((enriched.signalKinds ?? []).includes("VECTOR"));
+});

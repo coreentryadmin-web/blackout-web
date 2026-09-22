@@ -30,6 +30,18 @@ export function enrichPlayWithVectorLeader(
   leader: VectorLeaderHint | null | undefined,
 ): HorizonPlay {
   if (!leader) return play;
+  // `peakPremiumPct` is a genuine running max (GREATEST across every sweep tick — see
+  // upsertVectorPickLeader's SQL), so a NEGATIVE value means this Vector pick has never once been
+  // profitable — a losing signal, not corroboration. Fed through unguarded, that used to compute a
+  // NEGATIVE rawBump (e.g. peakPremiumPct=-20 -> round(-20/5)=-4), silently REDUCING the play's
+  // score with no factors[] entry to explain why (appliedBump<0 skips the factor append below,
+  // breaking the very sum(factors.points)===score invariant the 2026-09-12 fix, #4826, was written
+  // to guarantee for THIS function) while still tagging signalKinds with "VECTOR" and appending
+  // "Vector corroboration" to `reason` — mislabeling a contradicting signal as supporting. A
+  // confirmed-negative peak gets no enrichment at all rather than a fabricated, undisclosed penalty.
+  if (leader.peakPremiumPct != null && Number.isFinite(leader.peakPremiumPct) && leader.peakPremiumPct < 0) {
+    return play;
+  }
   const kinds = new Set(play.signalKinds ?? []);
   kinds.add(VECTOR_SIGNAL);
   const rawBump =
