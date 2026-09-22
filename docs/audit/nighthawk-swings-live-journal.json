@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T08:40:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync: a fold PR (#5424, for #5423) merged, not mine, left alone. Zero open swing PRs at cycle start. REAL FINDING while continuing the swing-risk/allocation sweep started last cycle: read swing-allocation.ts (allocateSwingBook) end to end and found its OWN documentation directly contradicts its real live behavior. The file's header/field comments repeatedly claim the book-percent caps (5%/20%/40%/3) are 'advisory only... blocks nothing until PR-16 graduates them' -- but traced the actual call site (commit.ts's Gate 2, computeSwingCommitPlan, called from discovery.ts -- confirmed live, not dead) and found it reads capFlags[].wouldBreach from this exact function and pushes every breach onto blockedBy, which is a hard prerequisite for committable -- a real cap breach TODAY blocks a real position (shadow row only). commit.ts's own header independently and correctly says the caps are 'real-time risk controls, unchanged and unweakened' -- directly contradicting swing-allocation.ts's claim. Also found the SAME stale claim baked into a returned runtime reasons[] string ('advisory -- enforce:false, not applied') for the exact decisions that DO get blocked. This is a genuine documentation-vs-behavior correctness bug with real risk: a future reader trusting only this file's comments could conclude the caps are inert and propose removing them as dead code, silently disarming a real capital-risk gate. Fixed: corrected the header + every misleading field doc + the runtime string, doc/data-only, zero logic touched. npx tsc --noEmit clean. swing-allocation.test.ts 10/10, commit.test.ts 44/44, full src/lib/swing/*.test.ts 1503/1503 -- confirms zero behavior change as expected. Staged finding filed, PR #5425 opened+undrafted+subscribed.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-22-swing-allocation-caps-stale-enforce-claim.md (PR #5425, open, doc-correctness)"
-  ],
+  "last_updated": "2026-09-22T08:51:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46-offset routine firing). ReadNotifications clean (3 GitHub events on #5425 -- subscription-created x2, ready_for_review -- none required action, no CI failure/review comment yet). CLOSED OUT PR #5425: verify + CodeQL both completed success, merged manually via GitHub MCP (squash, sha 8504d3ffd) since enable-automerge/auto-merge were skipped per the known PAT-scope gap. Unsubscribed, deleted local branch, cancelled the now-unneeded 1hr check-in trigger. Confirmed the merged file on main matches the intended fix exactly (corrected header + field docs + runtime reasons[] string, all accurate now). Zero open swing PRs. Board unchanged.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -121,10 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T08:40:00Z",
-    "swing_prs": [
-      "#5425 docs/swing-allocation-caps-stale-enforce-claim (mine, open, watching for CI)"
-    ]
+    "as_of": "2026-09-22T08:51:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
@@ -213,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "watch PR #5425 CI + auto-merge (CARVE-OUT applies)"
+  "watch_next_cycle": null
 }
