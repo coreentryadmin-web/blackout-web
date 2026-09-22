@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T14:12:00Z",
-  "notes": "Trigger 1/4 (:01 offset, full v3 mandate brief). PR #5435 MERGED -- unsubscribed, deleted check-in trigger, deleted local branch. No new #4076 activity. Prioritized forensic Ask Largo deep audit per v3's aggressive-mode emphasis: live board pull showed AAPL:40 now +62.2% (manageAction still ADD), then picked AMDL (positionId 1210, +395.6% live P&L, an extreme value good for edge-case bugs) for a full play-brief audit. First confirmed #5433/#5434 working correctly live -- the Thesis health section correctly omitted the regime pillar for this Banger-origin row. But found a THIRD, deepest instance of the same bug class: entry_geometry ('at trigger') and flow_corroboration ('BANGER') were STILL rendering as calibrated, because horizonPlayFromBangerPosition stamps setupState/entryStatus/signalKinds as the SAME constants on every Banger row (not just regime), and neither 'at trigger' nor 'BANGER' matches the generic-ABSENCE sentinels ('n/a'/'no signals') the per-pillar filter checks -- those fire on a MISSING input, not a populated-with-a-fake-constant one. Fix: calibratedThesisPillars now checks the regime pillar FIRST -- if it's the Banger sentinel, short-circuits to [] before any per-pillar filtering (whole-row withhold), since a Banger row has no real per-position dossier for ANY pillar. play-brief.ts's existing empty-list fallback already renders correctly, no render-layer change needed. Verified this doesn't break the trickier case where a real live manageAction gives persistence a real-looking degraded label ('scale-out') -- still fully withheld, new test added. RED->GREEN via git stash. thesis-health.test.ts 19/19, full src/lib/swing/ + command-deck sweep 2021/2021, tsc clean. Staged finding filed, PR #5436 opened/undrafted/subscribed/pushed.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "docs/audit/findings-staging/2026-09-22-swing-thesis-health-banger-row-partial-pillar-leak.md (PR #5436, open)"
-  ],
+  "last_updated": "2026-09-22T14:20:00Z",
+  "notes": "Trigger 3/4 (:16 offset). PR #5436 mergeable_state:clean -- MERGED (squash, a5c02a854). Unsubscribed, deleted check-in trigger, deleted local branch. Did the promised live verification (re-pulled AMDL:1210's play-brief post-merge) -- Thesis health STILL shows the old partial breakdown (Entry geometry/Signal stack still rendering). NOT a regression or a broken fix -- this is the 'measure right after a deploy proves nothing' trap CLAUDE.md's own depth-live-check.mjs section documents: the merge to main only triggers ecr-push-production.yml, a separate build+deploy pipeline that takes real time to roll out; checking seconds after merge measures the OLD running container, not the new code. Deferred the live-verification re-check to next cycle rather than concluding anything from this premature read. No new #4076 activity (still my own last comment). This closes the fix-shipping half of a 4-fix chain this session: #5433 (regime Banger sentinel) -> #5434 (regime 'unread' default) -> #5435 (vector-enrich negative-peak, separate bug found mid-chain) -> #5436 (Banger-row full-withhold, the real completion of the regime-pillar investigation) -- all merged.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -120,9 +118,7 @@
       "moved_the_needle": "correctness/tooling/infra + THREE honest measurement tools (early-trim, score-calibration, loss-taxonomy-segmentation) + one data-capture fix (fill-quality) + one narrative/UX enhancement (watch-age). The loss-taxonomy segmentation tool is the first result with real actionable signal: TACTICAL sub-lane's 80% loss rate (n=5) diverges from the 44.4% aggregate -- watching, not yet acted on. That IS the scorecard entry for this week: measurement infrastructure + one genuine enhancement shipped, no premature calibration changes made, one real signal now being tracked."
     }
   ],
-  "known_open_prs_snapshot": [
-    "#5436 (fix/swing-thesis-health-banger-row-full-withhold) -- opened this cycle, awaiting CI"
-  ],
+  "known_open_prs_snapshot": [],
   "tickers_seen": {
     "INTC": {
       "last_status": "CLOSED",
@@ -210,5 +206,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Check PR #5436 CI/mergeable_state and merge once green. Once merged, worth one more live re-check of AMDL's (or another Banger row's) play-brief to confirm the Thesis health section now correctly shows the full 'Inputs not wired for committed positions' fallback instead of the partial breakdown -- close the loop on this 3-fix chain (#5433/#5434/#5436) with a live verification, same discipline as checking #5433 landed before finding this. Still watching #4076 for responses on TWO outstanding design questions (Hunt Mode/Legacy DTE-range: comment 5775500641; analyzeShadowGateEvidence orphaned-consumer: comment 5777566499). Continue sweeping previously-unexamined swing engine files: ex-dividend-adjustment.ts/ex-dividend-reads.ts, feature-store.ts/feature-vector.ts, swing-pillars.ts (only catalystSignal read), archetype.ts (only fit functions read), grade-retrace.ts, commit.ts, swing-portfolio-budget.ts. The zero-call-sites sweep raw list (2 cycles ago) is still worth a smarter re-run (real import graph, not bare-identifier grep) with more budget."
+  "watch_next_cycle": "Re-verify AMDL:1210 (or any live Banger-origin position)'s play-brief Thesis health section now correctly shows 'Inputs not wired for committed positions -- aggregate score withheld; pillar breakdown not shown.' instead of the partial pillar list -- give the ECR build+deploy pipeline real time to roll out before re-checking (don't re-check within the same cycle as the merge). Still watching #4076 for responses on TWO outstanding design questions (Hunt Mode/Legacy DTE-range: comment 5775500641; analyzeShadowGateEvidence orphaned-consumer: comment 5777566499). Continue sweeping previously-unexamined swing engine files: ex-dividend-adjustment.ts/ex-dividend-reads.ts, feature-store.ts/feature-vector.ts, swing-pillars.ts (only catalystSignal read), archetype.ts (only fit functions read), grade-retrace.ts, commit.ts, swing-portfolio-budget.ts. The zero-call-sites sweep raw list (a few cycles ago) is still worth a smarter re-run (real import graph, not bare-identifier grep) with more budget."
 }
