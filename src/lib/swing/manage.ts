@@ -396,5 +396,27 @@ export function evaluateSwingManagement(input: SwingManageInput): SwingManageVer
   if (!anyEvaluable) {
     return mk("HOLD", "insufficient_data", "no usable management read — holding (null-honesty)");
   }
-  return mk("HOLD", "hold", `thesis intact, premium above the ${SCALE_OUT_RULES.hard_stop_mult}× backstop, ample time — hold`);
+
+  // Build the hold reason from ONLY the dimensions actually evaluated this tick. The old reason string
+  // was hardcoded to assert all three claims ("thesis intact", "premium above the backstop", "ample
+  // time") whenever ANY single input was present — e.g. only `sessionsHeld` known, with premium (no
+  // entry/mark), structural (no underlyingPrice/structuralStopLevel/direction) and DTE/lane all
+  // unusable/unknown (a live mark+spot fetch outage, a documented recurring pattern in this repo). That
+  // fabricated confidence on the two unverified claims directly contradicted this file's own
+  // NULL-HONESTY principle, and the reason string is durably written into every management snapshot's
+  // event_json for the desk/grader to read as WHY the position held.
+  const structuralEvaluable =
+    numOrNull(input.underlyingPrice) != null &&
+    numOrNull(input.structuralStopLevel) != null &&
+    input.dossier.direction != null;
+  const timeEvaluable = spec != null && dte != null;
+  const holdParts: string[] = [];
+  if (structuralEvaluable || input.thesisBroken === false) holdParts.push("thesis intact");
+  if (premiumUsable) holdParts.push(`premium above the ${SCALE_OUT_RULES.hard_stop_mult}× backstop`);
+  if (timeEvaluable) holdParts.push("ample time");
+  const holdReason =
+    holdParts.length > 0
+      ? `${holdParts.join(", ")} — hold`
+      : "no gate/edge rung fired this tick on a partial read — hold (null-honesty)";
+  return mk("HOLD", "hold", holdReason);
 }
