@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T15:45:00Z",
+  "updated_at": "2026-09-22T16:10:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -294,6 +294,11 @@
       "stage": "OPEN",
       "action": "SCHW deteriorated -9.68%->-32.9%, thesis-health engine correctly flipped intact->warn (VWAP side flipped wrong, confluence 2/2->1/2), advisory correctly reads weakening/tighten-management/partial-trim-prudent. Coherent real-time degradation tracking, not a bug. Still within -50% hard stop.",
       "next": "watch SCHW resolve (stop, thesis-break exit, or recovery) for exit-coherence check"
+    },
+    "2026-09-22T16:10:00Z": {
+      "stage": "infra",
+      "action": "board upstream_ok:false (5th+ instance this multi-day session), /record confirmed unaffected (full payload) -- matches the already well-characterized self-healing pattern (~4min typical recovery). Not escalating, not a new bug.",
+      "next": "recheck board on next trigger to confirm self-heal per known pattern"
     }
   },
   "sessions": {
