@@ -6,8 +6,15 @@
 // out of the board's provider load graph, and casing is converted at the boundary (board uses lowercase
 // long/short; the allocator/PlayDirection use LONG/SHORT).
 //
-// ADVISORY: the decision rides ALONGSIDE each setup; it does not gate the engine or resize a real position
-// (swing-allocation returns `enforce:false`). The portfolio backtest graduates the caps first (PR-16). PURE.
+// ADVISORY, AND CURRENTLY UNWIRED (corrected 2026-09-22, Ask Largo standing mandate): the decision this
+// file's own `allocateSwingBoard` computes rides ALONGSIDE each setup and does not gate the engine or
+// resize a real position — but that's simply because nothing calls `allocateSwingBoard` today (grep
+// confirms zero callers outside its own test file), not because the underlying caps are advisory system-
+// wide. `swing-allocation.ts`'s own header previously made the identical claim and was wrong about it:
+// `commit.ts`'s Gate 2 calls `allocateSwingBook` (the pure function this adapter wraps) DIRECTLY, with the
+// real operator-confirmed caps, and treats a `capFlags[].wouldBreach` as a live block on real commits —
+// see that file's header for the full trace. So the caps themselves are NOT waiting on any future
+// graduation; only this specific board-display wiring is unwired. PURE.
 
 import type { PlayDirection } from "../horizon-fanout";
 import {
