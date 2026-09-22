@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T07:25:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. Zero open swing PRs at cycle start. AGGRESSIVE MODE enhancement hunt (per this trigger's own explicit directive -- 'zero bugs AND zero enhancement ideas across several cycles means you haven't looked hard enough'): pulled AAPL's live play-brief for a genuine narrative-quality read (not just a code sweep) and found a real gap -- play-brief-ticker-history.ts's loadTickerTrackRecord (Largo C10, chain-aware, already tested/fixed for temporal ordering) computes a plain ticker-specific W/L count, but it only ever reached the brief as a standalone section + one evidence-array [FACT] line, NEVER the 'Trade manager read' narrative a member actually reads to decide whether to act. Live: AAPL's brief leads with 'Consider adding' while its own evidence array separately says 'AAPL 0W / 2L across 2 prior closed trades' -- a 100% loss rate invisible unless you scroll to the evidence list. Built tickerHistoryCoaching(ctx), wired into collectCoachingBullets near crossDeskCoaching, firing only when losses>wins (a winning/neutral record needs no special callout). 4 new unit tests + 1 collectCoachingBullets integration test. TOOLING NOTE for future cycles: this sandbox's full play-brief-narrative-coaching.test.ts (144 tests) hung 3x in a row today under `npx tsx --experimental-test-module-mocks --test <file>` with NO code change involved (confirmed by reverting to a trivial null-stub and still hanging) -- traced to a genuinely stuck node process from an earlier attempt still pegging CPU at 100% in the background, invisible until `ps aux` was checked directly; killing it (kill -9) did not immediately fix subsequent runs, but `--test-name-pattern=<name>` to isolate just the new tests ran in <1s both RED and GREEN, avoiding whatever the full-file hang was. Full file + full suite ran clean (144/144, then 1503/1503) once isolated first. If a full-file test run hangs in this sandbox again, check `ps aux | grep node` for a stray 100%-CPU process before assuming the new code is the cause. RED->GREEN confirmed, tsc clean, full src/lib/swing/*.test.ts 1503/1503. Staged finding filed, PR #5423 opened+undrafted+subscribed.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-22-swing-ticker-history-not-in-narrative.md (PR #5423, open, enhancement not a bug)"
-  ],
+  "last_updated": "2026-09-22T07:23:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16-offset routine firing). ReadNotifications clean (3 GitHub events on my own #5423 -- subscription-created x2, ready_for_review -- none required action, no CI result yet). git sync: one new PR since last cycle, #5422 (findings-fold for #5420, opened by the parallel session, not mine, left alone). PR #5423 CI still running (verify + CodeQL in_progress at ~4min, normal range, not stalled). Full board scan (GET /api/market/swing/record, all 14 chains): unchanged since earlier this session -- AAPL (root 37) still the only open/HOLD chain, everything else CLOSED with no new closes since the last full scan. No new WATCH/OPEN forensic leads. No new bug found/filed this cycle -- monitoring #5423's CI (normal, in-progress) and confirming board state is genuinely quiet rather than idly re-deriving prior work.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -121,9 +119,9 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T07:25:00Z",
+    "as_of": "2026-09-22T07:23:00Z",
     "swing_prs": [
-      "#5423 feat/swing-ticker-history-coaching (mine, open, watching for CI)"
+      "#5423 feat/swing-ticker-history-coaching (mine, open, CI running)"
     ]
   },
   "tickers_seen": {
