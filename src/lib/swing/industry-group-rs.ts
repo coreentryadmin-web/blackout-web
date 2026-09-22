@@ -26,6 +26,7 @@
 
 import type { PlayDirection } from "../horizon-fanout";
 import { relativeStrengthScore } from "../horizon-scorers";
+import { sectorFor } from "../portfolio/sector-map";
 
 /** The benchmark a name's relative strength is measured against for the SECTOR_ROTATION thesis. */
 export interface GroupBenchmark {
@@ -175,17 +176,38 @@ function sectorEtfFromSic(sic: number): { etf: string; label: string } | null {
 }
 
 /**
+ * Themes whose real risk driver has no equity-SIC analogue a SPDR sector ETF can honestly stand in for.
+ * "crypto-equity" (`portfolio/sector-map.ts`'s `sectorFor` — the SAME hand-curated classification the
+ * allocation engine and the play-brief's own "Book context" concentration read already use for these names)
+ * is the confirmed case: bitcoin miners / crypto-treasury / exchange names routinely get bucketed by data
+ * providers under a generic finance/holding-company SIC (live-confirmed 2026-09-22: Polygon classifies HUT,
+ * Hut 8 Corp — an energy-infrastructure/bitcoin-mining company — as `sic_code 6199 "FINANCE SERVICES"`,
+ * which lands squarely in `sectorEtfFromSic`'s 6000-6499 Financials range) or under an unrelated static
+ * sector-map label (MSTR/COIN are hand-classified "Tech" in the flow-aggregation `sector-map.ts`). Either
+ * path mechanically resolved a real SECTOR_ROTATION benchmark — XLF for HUT — that the rest of the engine
+ * already knows is wrong: the SAME play-brief's "Book context" section correctly groups HUT with the other
+ * crypto-equity holdings, while "Why this setup" cited "leading Financials (XLF) by 10.7%" as the single
+ * largest score pillar. Per this file's OWN stated design ("a null is HONEST ABSENCE... far better than
+ * mislabeling it" — see header), a theme with no real sector-ETF analogue must resolve to null, not a
+ * mechanically-nearest-but-substantively-wrong ETF.
+ */
+const NO_SECTOR_BENCHMARK_THEMES: ReadonlySet<string> = new Set(["crypto-equity"]);
+
+/**
  * Resolve a name's SECTOR_ROTATION benchmark, finest-first: an exact-SIC INDUSTRY ETF, else a SIC-range
  * SECTOR ETF, else the static sector-map SECTOR ETF, else null (honest absence). PURE.
  *
  * Guards: an ETF candidate (`tickerType === "ETF"`) gets NO benchmark — rotation is a single-name thesis, and
- * a sector ETF has no "own group" to lead. And a resolved benchmark that IS the candidate itself (e.g. the
- * candidate is XLK) is dropped — a name can't have relative strength against itself.
+ * a sector ETF has no "own group" to lead. A name in `NO_SECTOR_BENCHMARK_THEMES` gets NO benchmark either —
+ * its real risk driver has no equity-sector analogue, so any SIC/label-derived ETF would mislabel it. And a
+ * resolved benchmark that IS the candidate itself (e.g. the candidate is XLK) is dropped — a name can't have
+ * relative strength against itself.
  */
 export function resolveGroupBenchmark(q: GroupBenchmarkQuery): GroupBenchmark | null {
   const ticker = String(q.ticker ?? "").trim().toUpperCase();
   if (!ticker) return null;
   if ((q.tickerType ?? "").toUpperCase() === "ETF") return null;
+  if (NO_SECTOR_BENCHMARK_THEMES.has(sectorFor(ticker) ?? "")) return null;
 
   let benchmark: GroupBenchmark | null = null;
 
