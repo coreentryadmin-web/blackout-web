@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T02:07:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto a heartbeat commit. Observed new parallel-session PR #5408 (crossDeskCoaching Vector-dedup guard regex too narrow, misses the 'Vector also reads X' demoted-conflict phrasing -- well-documented live repro, RED->GREEN proven, CI still running full suite per its own PR body). Not mine, did not duplicate. Deploy queue resolved as predicted last cycle: run #2598 (SHA before my #5404 fix, triggered by #5403's merge) completed conclusion:success -- production is CURRENTLY running code WITHOUT the ADD-action fix. Run #2601 (SHA after my fix, triggered by #5407's merge) is now in_progress -- this is the one to watch; once it completes (assuming #5408 merging doesn't supersede it first), AAPL's play-brief should finally show 'Consider adding'. Board unchanged: still exactly 1 live position (AAPL HOLD, positionId 40). Did not re-pull AAPL's play-brief this cycle since the relevant deploy (#2601) hasn't completed yet -- no point re-checking before that. Next cycle: check #2601's conclusion; if success, do the final AAPL verification.",
+  "last_updated": "2026-09-22T02:21:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5408's merge (Vector-dedup guard regex, parallel session, well-documented, not mine). No new open swing PRs. Deploy status: run #2601 (SHA 37c129dd4, includes my #5404 fix -- it's AFTER ea55d8d39 in the chain) is STILL in_progress after ~34min. #5408's own merge queued a new run (#2602, SHA 1d19e150, also after my fix) behind it, currently pending. Since #2601 already contains my fix, I don't need #2602 specifically to succeed -- #2601 completing is sufficient. ~34min is within this repo's documented ~45-55min full pipeline window (build+push+async ECS rollout), so continuing to wait is correct, not a new deploy-lag concern to re-litigate. Board unchanged (AAPL HOLD, positionId 40 still the only live position). No new forensic work this cycle -- correctly holding off the AAPL re-check until #2601 actually completes, per the same discipline that avoided a premature false-negative earlier in this thread.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,14 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T02:07:00Z",
-    "swing_prs": [
-      {
-        "number": 5408,
-        "title": "fix(swing): crossDeskCoaching Vector-dedup guard misses demoted \"rest\" conflicts",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI running full suite"
-      }
-    ]
+    "as_of": "2026-09-22T02:21:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
