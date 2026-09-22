@@ -243,9 +243,20 @@
         "src/lib/swing/thesis-health.ts"
       ],
       "status": "OPEN -- posted, no response yet. Found via live spot-check of AAPL:40 (native position) showing Delta +0.0 pts on all 4 displayed pillars. thetaBudgetScore's 0 was correct/expected (ample-runway zone); regimeScore/signalScore always literally return {commit:score, current:score} in every branch -- no live-vs-commit comparison implemented at all for those two. Not fixing: overlaps an existing related WATCHING note (entry_geometry deliberately pinned-at-commit) that explicitly warns live-deriving this class of pillar without a real design decision is risky."
+    },
+    {
+      "raised_at": "2026-09-22T18:25:00Z",
+      "severity": "design question, not a bug (but a real dark cap)",
+      "title": "swing-allocation.ts's per-position 5% cap can structurally never fire -- proposedPct is hardcoded to equal caps.perPositionPct, so wouldBreach compares the cap to itself",
+      "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5781661692",
+      "files": [
+        "src/lib/swing/swing-allocation.ts"
+      ],
+      "status": "OPEN -- posted, no response yet. Not fixed: the doc comment describes an existing-weight comparison that doesn't exist in code, and fixing it raises a real policy question (should one existing position's drift block an unrelated new commit) rather than being a mechanical fix.",
+      "summary": "Of the 4 operator-confirmed caps (per-position 5%, per-theme-sector 20%, total-in-swings 40%, max-same-week-expiry 3) that commit.ts's Gate 2 reads as a live blocking check, 3 work correctly (confirmed by re-reading the running-aggregate logic). per-position cannot: proposedPct is always exactly caps.perPositionPct (fixed sizing, v1), so wouldBreach:(proposedPct > caps.perPositionPct) is always false. positionsOverCap (meant to catch an existing over-weight position per its own doc comment) is never populated (no code compares existing.weightPct against the cap) AND never read by any consumer (confirmed repo-wide grep) -- dark on both ends."
     }
   ],
-  "watch_next_cycle": "PR #5444 confirmed merged (318c05d86) by a parallel session. All 3 PRs shipped this session (#5439/#5442/#5444) now merged+verified live. Continuing code sweeps: contract-ranker.ts (338 lines) and swing-allocation.ts (339 lines) remain as candidates. Four design questions on #4076 still open, no responses yet. Continue mixing live Ask Largo audits with code sweeps.",
+  "watch_next_cycle": "swing-allocation.ts (339 lines) fully re-read this cycle -- found and posted the per-position dark-cap design question. Now FIVE open design questions on #4076 (Hunt Mode DTE, analyzeShadowGateEvidence, calibration.ts graduation gap, thesis-health regime/signal delta gap, this one), none answered yet. Remaining code-sweep candidate: contract-ranker.ts (338 lines). All 3 session PRs merged+verified. Continue mixing live Ask Largo audits with code sweeps.",
   "prs_this_session": [
     {
       "pr": 5439,
