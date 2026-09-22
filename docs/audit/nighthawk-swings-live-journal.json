@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T01:36:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5404's own merge, plus #5405 (Helix print-table, merged) and observed #5406 (docs-only, folds #5401/#5403's findings, parallel session, CI pending) and #5407 (Vector Pulse uppercase option_type -- same bug CLASS as #5405, found by the parallel session deliberately sweeping for recurrence; not swing, not mine). PR #5404 CONFIRMED MERGED. Its own ecr-push-production deploy got cancelled (superseded by #5403's then-in_progress deploy, itself queued behind #5405's newer pending one) -- normal rapid-merge-cadence pattern this session has seen many times; the eventually-completing deploy will include #5404's fix since it builds from current main HEAD, not incrementally. No action needed, just noted for next cycle's re-verification. Found my own staged finding (2026-09-22-swing-manageaction-add-dropped.md) still un-folded alongside 3 others (2 of which #5406 is already mid-flight folding). Deliberately did NOT run findings-fold-staging.mjs myself this cycle -- doing so would race #5406's own fold and risk a duplicate/conflicting FINDINGS.md edit. Deferred: fold my own (and the Helix one, if still unfolded by then) in a later cycle once #5406 has landed. Next cycle: (1) check #5406 merged, then fold remaining staged findings; (2) check whether a deploy has completed since #5404 merged, and if so re-verify AAPL's live play-brief shows 'Consider adding' -- the final close-the-loop check for this whole investigation thread.",
+  "last_updated": "2026-09-22T01:52:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5406's merge (docs-only fold, parallel session) + PR #5407 (Vector Pulse uppercase option_type, parallel session, same bug CLASS as #5405, not swing, not mine). Folded my own 3 remaining staged findings (#5404 manageAction ADD, #5405 Helix print-table, #5407 Vector Pulse -- all still un-folded, no competing fold PR found this time) via findings-fold-staging.mjs. findings-hygiene.test.ts 9/9 clean, tsc clean, pushed. Deploy queue analysis: run #2598 (triggered by #5403's merge, SHA BEFORE my #5404 fix) has been in_progress for ~40min and appears to be the one that will actually complete (survived while #5405's and #5407's own newly-triggered runs got auto-cancelled/superseded -- the concurrency group seems to cancel QUEUED runs behind an in-progress one, not the in-progress one itself). That means #2598 will likely deploy code WITHOUT my fix. Run #2601 (triggered by #5407's merge, SHA AFTER my fix) is currently pending/queued behind it -- once #2598 finishes and #2601 gets to run (assuming nothing newer supersedes IT), that deploy will include #5404's fix. Re-pulled AAPL's play-brief once more: still generic 'Hold the line', consistent with this analysis (no completed deploy has included the fix yet). No new bug -- this is expected given the queue state, not a fresh deploy-lag concern to re-litigate. Next cycle: check whether #2601 (or whatever run eventually completes with a SHA at or after ea55d8d39) has conclusion:success, and if so do the final AAPL play-brief re-check.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,14 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T01:36:00Z",
-    "swing_prs": [
-      {
-        "number": 5406,
-        "title": "docs(audit): fold null-contract_type fabrication findings (#5401, #5403)",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending -- will fold remaining staged findings after this lands"
-      }
-    ]
+    "as_of": "2026-09-22T01:52:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
