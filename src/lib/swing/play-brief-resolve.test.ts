@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { before, describe, mock } from "node:test";
+import { before, describe, it, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import {
   pickLanePlayForBrief,
