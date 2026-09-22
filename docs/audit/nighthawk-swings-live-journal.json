@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T09:52:36Z",
-  "notes": "Trigger 4/4 (:46 offset) cycle, 2026-09-22 ~09:46 UTC. Live board: openDeck via /api/market/swing/record shows 1 open chain (AAPL rootPositionId 37, leg positionId 40, rollSeq 1, status HOLD, entry $5.23, last frozen leg -22.3%). Pulled AAPL's live play-brief (playId SWING:AAPL:40): PnL +43.1% (mark $7.48 vs entry $5.23), trimsFired:0, target rail 'Premium target rail: $10.45 -- 47% move still needed' still SHOWN (correct per PR #5419's fix -- no trim tranche has fired yet, so suppression should NOT trigger). Management/What-to-watch/Hold-plan sections all internally consistent, no narrative contradiction found. Deep-dived thesis-health.ts's '\u0394 +0.0 pts' pattern on all 4 shown pillars (persistence/entry_geometry/regime/theta_budget) suspecting a dead-wired delta computation -- traced computeSwingThesisHealth and confirmed via FINDINGS.md (~line 30985, the #4076 PR #5336-era discussion) this is INTENTIONAL, ALREADY SETTLED design: pinning setupState/entryStatus at literal commit time would be tautological (commit-time price IS the trigger by definition), so commit/current intentionally derive from the SAME live-derived state each render -- the delta is a fixed per-STATE table entry (mostly 0 except INVALIDATED/default), not a time-series comparison. Verified this is NOT a fresh bug before filing anything -- exactly the 'verify against main, not memory' discipline the mandate requires. No finding filed (would be a duplicate of already-settled ground). Swept 4 previously-unexamined swing engine files for correctness: manage.ts (management state machine, precedence gates structural_stop > thesis_stop > expiry_risk > premium_stop, all correctly ordered, extensively self-documented with prior P0 fixes referenced inline -- clean), roll.ts (the roll executor/transaction, ALL-OR-NOTHING child-first-then-parent-grade ordering, premium_stop/structural_stop/thesis_stop all correctly force CLOSE not ROLL -- clean, very thorough prior audit trail), grade.ts (5-family grader EXECUTION/PATH/THESIS/MANAGEMENT/FINANCIAL, intrabar stop-before-target ordering confirmed conservative/no-look-ahead -- clean), mfe-capture.ts (small pure capture-ratio/round-trip helper -- clean, well-guarded edge cases). No open swing/Largo PRs (search is:open is:pr -- only 4 Dependabot bumps unrelated to swing, not touched). Git synced clean with origin/main throughout, no new commits from parallel sessions since last cycle.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-22T10:08:44Z",
+  "notes": "Trigger 1/4 (:01 offset), full v3 mandate (AGGRESSIVE MODE + 15-min cadence), 2026-09-22 ~10:01 UTC. AGGRESSIVE-MODE genuine finding + fix this cycle: pulled GET /api/market/nighthawk/horizons?view=swings (the real Largo-facing board read) and found SWING lane totalCommitted=83 vs the native swing/record endpoint's 1 open chain -- traced the gap: 80 of 83 are real Banger-lane merges (expected, documented pattern), but 2 (AMD, META) have status:COMMIT (score cleared the floor) + real populated commitGateBlockedBy (G-S12 halt-feed-stale / G-S6 confluence / G-S14 cortex veto) + NO positionId -- i.e. genuinely NOT open positions, still blocked by live commit gates. Traced whether this reaches a member: the real command-deck (entry-verdict.ts's swingEntryVerdict, used by terminalPlayFromHorizon) is UNAFFECTED -- correctly re-resolves gates and shows WAIT. The dead/unmounted HorizonLaneBoard.tsx component (zero render call sites, confirmed by grep) also has the bug but is unreachable. The ONE live reachable gap: get_nighthawk_horizons' sample_plays (product-reads.ts's compactSwingLane) samples the first 8 of [...committed,...watch] with only {ticker,status,direction,horizon,score,reason} -- AMD/META land in that first-8 slice with status COMMIT and zero caveat, even though the sibling committed_count field already got this exact disclosure fix on 2026-09-08 (committed_count_note/open_position_count). Fixed: added open_position (positionId!=null) and commit_gate_blocked (commitGateBlockedBy.length>0) to each sampled row. RED->GREEN proof (git stash), tsc clean, full product-reads*.test.ts sweep 40/40 pass. Staged finding docs/audit/findings-staging/2026-09-22-largo-swing-sample-plays-gate-blocked-not-disclosed.md. PR #5428 opened, undrafted, subscribed. Also confirmed en route: no open swing/Largo PRs before this one (only Dependabot bumps). Git synced clean throughout.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-22-largo-swing-sample-plays-gate-blocked-not-disclosed.md (PR #5428, open)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,8 +121,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T09:52:36Z"
+    "swing_related_open_prs": [
+      "#5428 (mine, just opened)"
+    ],
+    "checked_at": "2026-09-22T10:08:44Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +213,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "AAPL position 40 (SECTOR_ROTATION, 8DTE, rolled once from $330C->$335C) is the only live open swing chain -- next trim rung at +100% (currently +43.1%), needs bid to reach $10.45 from $7.10. Re-check after RTH open for fresh discovery scan (today's scan not yet run as of this pre-market cycle) and watch for the +100% trim firing (would then need to re-verify PR #5419's targetAlreadyFired suppression actually engages once trimsFired flips to 1). Still-unswept files for future cycles: entry-verdict.ts, entry-model.ts, entry-enterability.ts, event-trigger.ts, structure-levels.ts, contract-ranker.ts, taxonomy.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts."
+  "watch_next_cycle": "Check PR #5428 CI/merge status next cycle (subscribed, will also get async wake on events). AAPL position 40 still the only real open swing chain -- watch for +100% trim rung. AMD/META worth re-checking periodically to see if/when their commit gates clear (would then become real positions, or continue sitting gate-blocked -- either way now correctly disclosed to Largo). Still-unswept files: entry-model.ts, event-trigger.ts, structure-levels.ts, contract-ranker.ts, taxonomy.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts."
 }
