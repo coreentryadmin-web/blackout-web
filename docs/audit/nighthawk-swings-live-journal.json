@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T11:47:15Z",
-  "notes": "Trigger 4/4 (:46 offset), 2026-09-22 ~11:46 UTC. No open swing PRs. No response yet on the #4076 Hunt Mode design question (posted last cycle, ~30min ago -- still early, expected). AAPL position 40 unchanged (still HOLD, ungraded). Read live-plays.ts in full (673 lines) -- the live-position HorizonPlay mapper, referenced by multiple other files I'd already read this session (structuralBreakFromSpot, liveSetupState derivation in adapters.ts). This turned out to be one of THE most heavily audited files in the codebase: at least 6 distinct prior 'GAP FOUND'/'BUG FIX (Ask Largo standing mandate)' fixes dated 2026-09-12 through 2026-09-22 already present and internally consistent (manageAction ADD switch-case fix, enforced-flag read-back, dte_migration/roll_intent wiring, running_mfe/mae wiring, pinnedFactorsFromFeatureVector's sum-to-score invariant fix, entryPresentPillars/archetypeNearTie/topFlowProvenance read-backs, the regime-vs-archetype display-string fix). Careful read found no new bug -- a legitimately clean, exhaustively-covered file.",
+  "last_updated": "2026-09-22T12:03:54Z",
+  "notes": "Trigger 1/4 (:01 offset), full v3 mandate, 2026-09-22 ~12:02 UTC. No open swing PRs. No response yet on the #4076 Hunt Mode design question (comment 5775500641, ~50min old). AAPL position 40 unchanged. Read roll-plan.ts in full (407 lines, the ROLL-plan builder manage-sync's buildSwingRollPlan delegates to) -- directly references AAPL SWING:AAPL:40 by name in its own fix comment (the 2026-09-21 signal_kinds-forward-across-roll fix). Verified live: pulled AAPL's current thesis-health envelope again -- flow_corroboration is STILL the uncalibrated 'no signals' default (filtered from the rendered pillar list, aggregate stays withheld) but this is CONFIRMED HONEST, not a propagation failure -- matches the already-traced thesis-health.ts comment from an earlier cycle explaining SECTOR_ROTATION positions (AAPL's own archetype) legitimately never carry a Tier-0 FLOW/STRUCTURE/CATALYST/BANGER/VECTOR discovery-path signal at all, so 'no signals' is a genuine absence the roll-plan.ts fix correctly forwards (whatever the parent had at original commit, which was already empty) rather than a wiring gap. Also verified: MAX_LATCHED_MARK_AGE_MS (90min) grade-freeze staleness bound, the resolveParentGradeMark dte<0-escape-hatch for expired contracts, and the same-pass running-book-growth swap (parent removed/child pushed in place, so a second roll in the same active-refresh pass gates against the correct post-roll book) all read correct and well-reasoned. No new bug found -- a positive confirmation that a previously-shipped fix is behaving exactly as intended in production, not a fresh issue.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -120,7 +120,7 @@
   ],
   "known_open_prs_snapshot": {
     "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T11:47:15Z"
+    "checked_at": "2026-09-22T12:03:54Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641). AAPL position 40 still the only real native open swing chain. Still-unswept files: manage-edge-reads.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, roll-plan.ts, grade-retrace.ts. Low-priority remaining comment-only '[2,30]' stale doc refs (dossier.ts, grade.ts, serving-ingest.ts) still not touched -- genuinely low value, may not be worth a future cycle's time given the diminishing-returns pattern this whole DTE-range sweep has shown (2 real fixes, 1 flagged-ambiguous, rest pure zero-impact doc drift)."
+  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641). AAPL position 40 still the only real native open swing chain. Still-unswept files: manage-edge-reads.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, grade-retrace.ts, commit.ts (haven't fully re-read since earlier cycles), swing-portfolio-budget.ts."
 }
