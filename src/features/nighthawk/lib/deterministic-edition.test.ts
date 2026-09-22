@@ -1493,6 +1493,39 @@ test("no bangerTickers passed → no play gets a scale-out note (backwards compa
   assert.equal(plays[0]?.risk_note, undefined);
 });
 
+// 2026-09-22: found live on Night Hawk Legacy — a banger-lane ticker whose ACTUAL picked contract
+// is a 25-DTE, non-cheap monthly still got the unconditional "cheap OTM weeklies spike then decay"
+// risk_note, which is flatly false about the specific contract the member is holding. Fixed by
+// threading the play's own real `dte` into bangerScaleOutNote() (scale-out.ts).
+test("banger risk_note reflects the ACTUAL contract's DTE: near-term stays 'weekly', far-dated names its real DTE", () => {
+  const rankedNear = [scored("AAA", "long", 68)];
+  const nearChain = { AAA: chainAround(120, { expiry: ymdPlus(4) }) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const { plays: nearPlays } = buildDeterministicEditionPlays({
+    ranked: rankedNear,
+    dossierMap,
+    chains: nearChain,
+    target: 5,
+    bangerTickers: new Set(["AAA"]),
+  });
+  assert.equal(nearPlays[0]?.dte, 4);
+  assert.match(nearPlays[0]?.risk_note ?? "", /cheap OTM weeklies/, "near-term (<=10 DTE) keeps the weekly framing");
+
+  const rankedFar = [scored("BBB", "long", 68)];
+  const farChain = { BBB: chainAround(120, { expiry: ymdPlus(25) }) };
+  const dossierMapFar = { BBB: dossier("BBB", 120) };
+  const { plays: farPlays } = buildDeterministicEditionPlays({
+    ranked: rankedFar,
+    dossierMap: dossierMapFar,
+    chains: farChain,
+    target: 5,
+    bangerTickers: new Set(["BBB"]),
+  });
+  assert.equal(farPlays[0]?.dte, 25);
+  assert.doesNotMatch(farPlays[0]?.risk_note ?? "", /weeklies/i, "25-DTE play must not claim to be a weekly");
+  assert.match(farPlays[0]?.risk_note ?? "", /This 25-DTE contract can still spike/);
+});
+
 // ── buildRescuePlays sector propagation ─────────────────────────────────────────
 // Regression: buildRescuePlays omitted `sector` from the play object, breaking
 // the cross-edition governor's per-sector cap.

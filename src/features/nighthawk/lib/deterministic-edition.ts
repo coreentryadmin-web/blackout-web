@@ -841,7 +841,7 @@ function buildPlay(
   // OTM momentum plays spike then decay, so hold-to-target is the wrong exit. Advisory only (risk_note)
   // — it does NOT change the play's plan/target/stop or how it's graded.
   if (bangerTickers?.has(scored.ticker.toUpperCase())) {
-    base.risk_note = bangerScaleOutNote();
+    base.risk_note = bangerScaleOutNote({ dte });
     base.exit_style = "scale_out"; // structured marker (not just prose) so the ledger can SELECT bangers
   }
   if (contract) {
