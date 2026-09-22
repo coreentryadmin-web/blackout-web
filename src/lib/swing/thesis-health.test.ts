@@ -277,5 +277,22 @@ describe("computeSwingThesisHealth", () => {
       assert.ok(h);
       assert.equal(thesisHealthUncalibrated(h), false);
     });
+
+    test("calibratedThesisPillars: drops the fabricated regime pillar too, not just flow/persistence/entry-geometry defaults (live repro 2026-09-22, NMAX position 1264)", () => {
+      // Before this fix, UNCALIBRATED_PILLAR_LABELS (and therefore UNCALIBRATED_MAPPED_LABELS,
+      // which calibratedThesisPillars filters against) only carried persistence/entry_geometry/
+      // flow_corroboration defaults — thesisHealthUncalibrated() had a SEPARATE hardcoded check
+      // for the Banger-ledger regime sentinel that correctly withheld the aggregate score, but
+      // calibratedThesisPillars() never saw it, so the "Regime fit — BREAKOUT · BANGER (Δ +0.0
+      // pts)" line rendered in Ask Largo's play-brief as if it were a real, calibrated read —
+      // live-verified on NMAX (positionId 1264) via GET /api/market/swing/play-brief. This is the
+      // exact C6 violation this file's own header comment on thesisHealthUncalibrated names: a
+      // fabricated value must be OMITTED, not just partially withheld.
+      const h = computeSwingThesisHealth(bangerLedgerInput);
+      assert.ok(h);
+      const kept = calibratedThesisPillars(h);
+      const keptIds = kept.map((p) => p.id);
+      assert.ok(!keptIds.includes("market"), "regime (stamped Banger-ledger sentinel) must be dropped, not rendered as calibrated");
+    });
   });
 });
