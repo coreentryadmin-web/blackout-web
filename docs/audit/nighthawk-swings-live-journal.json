@@ -211,7 +211,7 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "PR #5442 open (manage.ts fallback-hold-reason-honesty fix), CI pending -- check-in scheduled. manage.ts (400 lines) fully re-read this cycle as the first target of the second-pass re-sweep -- found a real 5th instance of the fabricated-confidence bug class (see PR #5442). This validates the second-pass strategy: a first clean read is not proof of no bug, the exact right partial-data scenario has to be traced. Remaining second-pass candidates: roll.ts (264 lines), roll-plan.ts (407 lines, partially covered by commit.ts-era test runs but not a dedicated read), calibration.ts (583 lines, the graduation ladder commit.ts leans on). #4076 still unchanged, no response on the two open design questions. WATCH lane was empty as of last check (16:47 UTC) -- re-check next cycle.",
+  "watch_next_cycle": "Second-pass re-sweep: manage.ts (400 lines, real bug found+fixed, PR #5442 CI pending) and roll.ts (264 lines, clean) both fully re-read this cycle. roll-plan.ts (408 lines) also fully re-read -- clean except one low-severity, self-healing edge case logged above (not filed). Remaining second-pass candidate: calibration.ts (583 lines, the graduation ladder commit.ts leans on) -- next target. #4076 still unchanged, no response on the two open design questions. Continue mixing with live Ask Largo play-brief audits.",
   "prs_this_session": [
     {
       "pr": 5439,
@@ -228,6 +228,13 @@
       "status": "OPEN, CI pending",
       "file": "src/lib/swing/manage.ts",
       "summary": "evaluateSwingManagement's final fallback HOLD branch returned a hardcoded reason claiming premium/structural/time were all checked, gated only by 'is ANY input present' (sessionsHeld alone satisfies it). On a tick where live mark+spot reads both fail (documented recurring pattern), the manager fabricated 'premium above the backstop, ample time' claims it never checked, landing in every management snapshot's event_json. Fifth instance this session of the C6 fabricated-confidence bug class (after thesis-health x3, vector-lane-enrich x1), found via a fresh full read of manage.ts (the live exit-management engine -- second-pass re-sweep target). Fixed to build the reason from only evaluated dimensions; byte-identical output proven on the normal all-evaluable path. RED->GREEN test added, 395 collateral tests pass, tsc clean."
+    }
+  ],
+  "open_experiments": [
+    {
+      "id": "roll-plan-book-mutation-before-confirmed-write",
+      "status": "WATCHING -- not filed, low confidence for an unprompted fix.",
+      "summary": "roll-plan.ts's buildRollChild mutates the CALLER's in-memory rollBook (splice parent, push child) during PLAN-BUILDING, before syncSwingManagement's immediately-following runRoll (the actual closeAndRollSwingPosition DB write) confirms success. If that write later fails for this row (child insert throws, grade race), the parent stays OPEN in the DB but rollBook already reflects the swap for the REST of this same batch pass -- a later row's budget/cap gate could be evaluated against phantom freed/added capital. Rare trigger (DB write failure, not routine partial data), self-heals next 15-min cron tick (openRows re-fetched fresh), and mirrors an already-accepted tradeoff in commit.ts's own runningBook (mutated during planning, before executeSwingCommits' separate insert pass confirms each write) -- same repo, same pattern, not previously flagged as a bug there either. Not filing a fix: thin real-world impact vs. commit.ts's own established precedent for this shape. Revisit if a live repro ever surfaces (a roll that failed mid-batch with evidence a later same-pass candidate was mis-gated as a result)."
     }
   ]
 }
