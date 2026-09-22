@@ -4,17 +4,18 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // Source-inspection regression guard (2026-09-20 audit follow-up, extended 2026-09-21 for #30's
-// bearish-posture-shadow call site): every one of the six
-// `insertNighthawkCandidateSnapshots(...).catch(...)` call sites in candidates.ts/edition-builder.ts
-// must call alertCandidateSnapshotWriteFailure from inside its catch block, so a real future write
-// failure is never silent again. A full behavioral test of all six would require mocking the
-// entire multi-thousand-line buildEveningEdition pipeline for the three inline (non-extracted) call
-// sites -- this direct source check is the cheap, precise substitute: it fails the instant any of
-// the six loses its alert call, without needing to stand up that machinery. The three call sites
-// that live in their own named functions (recordDiscoveryStageSnapshots,
+// bearish-posture-shadow call site, extended 2026-09-22 for the breakout-confluence-shadow call
+// site): every one of the seven `insertNighthawkCandidateSnapshots(...).catch(...)` call sites in
+// candidates.ts/edition-builder.ts must call alertCandidateSnapshotWriteFailure from inside its
+// catch block, so a real future write failure is never silent again. A full behavioral test of all
+// seven would require mocking the entire multi-thousand-line buildEveningEdition pipeline for the
+// inline (non-extracted) call sites -- this direct source check is the cheap, precise substitute:
+// it fails the instant any of the seven loses its alert call, without needing to stand up that
+// machinery. The call sites that live in their own named functions (recordDiscoveryStageSnapshots,
 // recordScoringStageSnapshots, recordStageRejectionSnapshots) get a real behavioral test too, in
-// their own test files -- this file exists specifically to also cover the three inline sites
-// (governor-cut, rank_final, bearish-posture-shadow) that behavioral testing can't reach cheaply.
+// their own test files -- this file exists specifically to also cover the inline sites
+// (governor-cut, rank_final, bearish-posture-shadow, breakout-confluence-shadow) that behavioral
+// testing can't reach cheaply.
 
 function readSource(file: string): string {
   return readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
@@ -67,12 +68,18 @@ test("edition-builder.ts: bearish-posture-shadow snapshot write failure calls al
   assert.match(block, /alertCandidateSnapshotWriteFailure\("bearish_posture_shadow", editionFor, err\)/);
 });
 
-test("all six call sites use insertNighthawkCandidateSnapshots().catch() -- never awaited into the critical path", () => {
+test("candidates.ts: breakout-confluence-shadow snapshot write failure calls alertCandidateSnapshotWriteFailure", () => {
+  const src = readSource("./candidates.ts");
+  const block = catchBlockFor(src, "failed to write breakout-confluence-shadow candidate snapshot");
+  assert.match(block, /alertCandidateSnapshotWriteFailure\("breakout_confluence_shadow", editionFor, err\)/);
+});
+
+test("all seven call sites use insertNighthawkCandidateSnapshots().catch() -- never awaited into the critical path", () => {
   const candidatesSrc = readSource("./candidates.ts");
   const editionSrc = readSource("./edition-builder.ts");
   const combined = candidatesSrc + editionSrc;
   const voidInsertCalls = combined.match(/void insertNighthawkCandidateSnapshots\(/g) ?? [];
-  assert.equal(voidInsertCalls.length, 6, "expected exactly 6 fire-and-forget snapshot-write call sites");
+  assert.equal(voidInsertCalls.length, 7, "expected exactly 7 fire-and-forget snapshot-write call sites");
   // None of the six may be preceded by `await` -- a plain string search for "await
   // insertNighthawkCandidateSnapshots" (as opposed to "void insertNighthawkCandidateSnapshots")
   // would mean a write got threaded into the critical path.

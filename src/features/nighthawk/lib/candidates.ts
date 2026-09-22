@@ -13,6 +13,7 @@ import { fetchTickersFlowStreaks } from "./flow-streak";
 import type { MarketWideContext } from "./market-wide";
 import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
 import { classifyMarketRegime, type MarketRegimeTag } from "./market-regime";
+import { compareCandidatePool, buildBreakoutConfluenceShadowSnapshotRow } from "./candidates-breakout-shadow";
 
 function safeFloat(v: unknown): number {
   const n = Number(String(v ?? 0).replace(/[$,]/g, ""));
@@ -890,6 +891,20 @@ export async function extractMultiSourceCandidates(
     macro_events: ctx.macro_events,
   });
   recordDiscoveryStageSnapshots(editionFor, rows, selectedRows, captureExtras, marketRegime);
+
+  // Breakout-confluence structure-exemption SHADOW LOG (observational only, never feeds back into
+  // `selected`/`selectedRows`): compares the LIVE applyConfluenceGate output against a corrected
+  // gate that admits a structure-only (breakout-lane) name unconditionally, mirroring Swing's own
+  // discovery.ts guarantee. Same `rows`/`maxTickers` applyConfluenceGate was just called with above
+  // — fire-and-forget, matching every other snapshot-write call site in this file exactly.
+  const breakoutConfluenceShadow = compareCandidatePool(rows, maxTickers);
+  void insertNighthawkCandidateSnapshots([
+    buildBreakoutConfluenceShadowSnapshotRow(editionFor, breakoutConfluenceShadow),
+  ]).catch((err) => {
+    console.warn("[nighthawk/candidates] failed to write breakout-confluence-shadow candidate snapshot:", err);
+    alertCandidateSnapshotWriteFailure("breakout_confluence_shadow", editionFor, err);
+  });
+
   const multiSourceCount = rows.filter((r) => r.source_count >= 2).length;
   const singleLaneSelected = selectedRows.filter((r) => r.source_count < CONFLUENCE_MIN_SOURCES).length;
   console.info(
