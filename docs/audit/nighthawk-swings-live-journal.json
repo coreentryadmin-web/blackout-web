@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T12:33:25Z",
-  "notes": "Trigger 2/4 (:31 offset), 2026-09-22 ~12:32 UTC. Synced -- noted a different parallel session (session_01A2TSNDQ38egcMPhQGihPfT, general coordinator) touched RUN-LOG.md, unrelated to this journal. My PR #5430 finding folded into FINDINGS.md (#5432). No open swing PRs. Followed up on last cycle's low-confidence manage-edge-reads.ts asymmetry (POST_EARNINGS_DRIFT's thesis_stop missing EVENT_DRIVEN's commitCat>=STRONG_PILLAR gate) by tracing archetype.ts's fitPostEarningsDrift/fitEventDriven and swing-pillars.ts's catalystSignal: confirmed the CATALYST pillar (commitCat, from generic catalystStrength01) is a COMPLETELY DISJOINT signal from BOTH archetypes' actual classification inputs (earningsGapRecent01/postEarningsDrift01 vs catalystInWindow01) -- so requiring it for POST_EARNINGS_DRIFT could make that rung unreachable for many legitimate cases if the pillar happens to be null/weak for that archetype (plausible, since it doesn't drive classification either). Concluded this is genuinely ambiguous -- could read either way, current code may be the safer/more permissive choice -- and is NOT confident enough to file as a finding or fix. Closing this investigation thread as inconclusive-but-resolved (no further action planned unless new live evidence surfaces). Also read occ-from-row.ts (41 lines) -- small, clean, explicitly fail-closed by design (never reconstructs OCC from strike columns, only trusts the stored value). No bug. AAPL position 40 unchanged.",
+  "last_updated": "2026-09-22T12:47:30Z",
+  "notes": "Trigger 4/4 (:46 offset), 2026-09-22 ~12:46 UTC. No open swing PRs. No response yet on #4076 design question. AAPL position 40 unchanged. Read industry-group-rs.ts in full (302 lines) -- the SECTOR_ROTATION industry-group RS feed (SIC-code -> benchmark ETF resolver + the direction-signed RS score). Cross-checked against AAPL's own live sectorLeadershipFacts I pulled earlier this session (benchmarkEtf: XLK, benchmarkLabel: Technology, kind: sector) -- correctly explained by the file's own tier design: AAPL's SIC (3571, electronic computers) isn't in the exact-SIC INDUSTRY_ETF_BY_SIC table (only semis/software/banks/gold-miners/airlines/oil-gas-E&P/homebuilders are), so it correctly falls to the coarser SIC-range sectorEtfFromSic tier (3570-3579 -> XLK). Manually scanned the entire ~50-branch SIC-range if-chain for overlap/ordering bugs (a sequential if-chain is fragile to range overlaps silently shadowing the wrong branch) -- every nested specific-range check (2830-2836 pharma before 2800-2899 materials, 3570-3579 computers before 3500-3599 machinery, 6798 REIT-special-case before 6700-6799 general financials, etc.) is correctly sequenced specific-before-general. No bug found.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -120,7 +120,7 @@
   ],
   "known_open_prs_snapshot": {
     "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T12:33:25Z"
+    "checked_at": "2026-09-22T12:47:30Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641, now ~1.25hr old -- may be worth a gentle re-flag if still unanswered after several more hours). AAPL position 40 still the only real native open swing chain. Still-unswept files: shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts (only catalystSignal read so far, rest unread), archetype.ts (only first 160 lines read), grade-retrace.ts, commit.ts, swing-portfolio-budget.ts."
+  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641, now ~1.5hr old). AAPL position 40 still the only real native open swing chain. Still-unswept files: shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts (mostly unread), archetype.ts (mostly unread, only the fit functions), grade-retrace.ts, commit.ts, swing-portfolio-budget.ts."
 }
