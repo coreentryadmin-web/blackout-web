@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T04:23:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. No new commits, no new open swing PRs, no new #4076 activity, board unchanged (AAPL HOLD only). Continued the fresh-code-path sweep into genuine real-money risk-gating territory this cycle: full read of swing-portfolio-budget.ts (evaluatePortfolioBudget/evaluateSwingCommitBudget), the ARMED production budget the live roll/commit gates actually consult (capitalUsd $100k reference, maxPortfolioLossPct 6%, perPositionLossPct 2%, eventExposureCap 3%, overnightCap 4%, enforce:true, env-overridable). No bug found. Confirmed the per-candidate blocking logic is sound: a candidate is blocked ONLY for a hard-exceeded dimension it actually contributes to (non-event candidates never blocked by an event-exposure breach; a fresh small candidate never blocked by an EXISTING position's own per-position breach); a zero-risk candidate is never blocked even when the book is already over an aggregate cap (can't be the cause of a breach it contributes nothing to); env var parsing fails safe (malformed/blank override falls back to the constant, never a hollow 0/NaN limit that could silently open the gate); default enforce posture is ARMED unless explicitly disarmed via SWING_BUDGET_ENFORCE=0/false/no/off. Every documented edge case in the file's own comments matches the actual code behavior exactly -- no drift between the doc and the implementation. Clean, thorough review of core capital-preservation logic; no finding to file.",
+  "last_updated": "2026-09-22T04:31:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :31 offset -- picking up after the journal-commit step for the prior cycle was interrupted by a context-compaction boundary and resumed cleanly). ReadNotifications clean. No queued notifications. Only one open PR repo-wide (#5415, a findings-fold PR for #5413/#5414 -- Meridian/0DTE scope, not swing, not touched). Zero open swing-scoped PRs. Board unchanged (AAPL HOLD only). Continued the fresh-code-path sweep with the single most load-bearing file not yet read in full this session: manage.ts, the actual SWING management state machine (evaluateSwingManagement/evaluateDteMigration/detectRollCandidate/structuralStopBroken) -- the very function whose action output my own PR #5404 fix (ADD dropped in live-plays.ts) feeds into. Read the whole file end to end. Verified: the 4-gate precedence order in the code (structural_stop -> thesis_stop -> expiry_risk -> premium_stop) exactly matches the file's own documented precedence comment; the ex-dividend LONG-only adjustment (via ex-dividend-adjustment.ts's underlyingPriceForStructuralStop) is correctly asymmetric -- SHORT gets no adjustment because a dividend gap-down can only ever help (never falsely trigger) a SHORT structural breach, so the exDividendDataUnavailable fail-safe is correctly scoped to the LONG branch only, not a gap; premiumUsable gates both premium_stop and profit_ladder consistently so an unusable/NaN scale-out result from deriveScaleOutAction can never leak into a verdict; the null-honesty fallback (insufficient_data vs hold) checks every evaluable input, not just a subset. No bug found -- this file's own code comments already document one bug I traced and fixed in a prior cycle (the detectRollCandidate stale-string fix, 2026-09-20) and nothing further surfaced on a full fresh read. Clean, thorough cycle on the single most central file in the swing management pipeline.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T04:23:00Z",
+    "as_of": "2026-09-22T04:31:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
