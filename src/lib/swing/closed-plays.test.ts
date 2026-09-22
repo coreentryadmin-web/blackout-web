@@ -64,6 +64,25 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(closedDeckSourceFromRow(row({ graded_at: null })), null);
   });
 
+  // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence). `contract_type` is a
+  // genuinely nullable DB column (TEXT, no NOT NULL). The old `row.contract_type === "put" ? "P" :
+  // "C"` ternary fabricated a "C" (call) for a null/unrecorded contract_type instead of ever
+  // actually checking for "call" — a trader would read a fabricated "call" as a real recorded
+  // fact about a closed position. Absence must stay absent (return null, same as the existing
+  // missing-expiry/strike cases), never silently become "call".
+  it("returns null (not a fabricated call) when contract_type was never recorded", () => {
+    assert.equal(closedDeckSourceFromRow(row({ contract_type: null })), null);
+  });
+
+  it("returns null for an unrecognized contract_type value, same fail-closed rule", () => {
+    assert.equal(closedDeckSourceFromRow(row({ contract_type: "unknown" })), null);
+  });
+
+  it("still correctly identifies a real put (not defaulted to call)", () => {
+    const src = closedDeckSourceFromRow(row({ contract_type: "put" }));
+    assert.equal(src?.contract.right, "P");
+  });
+
   // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro PYPL#24): a true flat/breakeven
   // close (entryPremium === peakPremium === troughPremium) can carry float-division residue in
   // realized_pnl_pct (e.g. -0.0001, not a real loss) — must round before the sign check, else this

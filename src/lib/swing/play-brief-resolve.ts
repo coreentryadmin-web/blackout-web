@@ -35,6 +35,7 @@ import {
   parseSwingPlayId,
   pickLanePlayForBrief,
   resolveBriefIvRank,
+  rightFromContractType,
   type ParsedSwingPlayId,
 } from "./play-brief-resolve-pure";
 import { occSymbolFromSwingRow } from "./occ-from-row";
@@ -140,7 +141,16 @@ function rowContractMatches(row: SwingPositionRow, strike: number | null, right:
   if (strike == null) return true;
   if (row.contract_strike !== strike) return false;
   if (right == null) return true;
-  const rowRight = row.contract_type === "put" ? "P" : "C";
+  // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+  // roll-history fix and this cycle's closed-plays.ts/live-plays.ts sibling fixes). `contract_type`
+  // is a genuinely nullable DB column; the old `row.contract_type === "put" ? "P" : "C"` ternary
+  // fabricated "C" for a row whose real contract type was never recorded — which meant a hint
+  // asking for a specific "C" leg could FALSELY MATCH a row of unknown type (an identity bug, not
+  // just a display one: this function exists specifically to fix ticker-collision misidentification,
+  // per the file header). An unrecorded right can't confidently be declared EITHER "C" or "P", so
+  // it now stays `null` and fails the match rather than guessing — fail-closed, consistent with
+  // `normalizeRight` just above already returning `null` for anything it can't parse.
+  const rowRight = rightFromContractType(row.contract_type);
   return rowRight === right;
 }
 

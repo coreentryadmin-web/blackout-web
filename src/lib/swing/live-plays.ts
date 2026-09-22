@@ -127,6 +127,15 @@ function contractFromRow(row: SwingPositionRow, quote?: SwingLiveQuote | null): 
   const expiry = row.contract_expiry;
   const strike = row.contract_strike;
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
+  // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+  // roll-history fix and closed-plays.ts's sibling fix same day). `contract_type` is a genuinely
+  // nullable DB column (TEXT, no NOT NULL); the old `row.contract_type === "put" ? "P" : "C"`
+  // ternary fabricated "C" (call) for a null/unrecognized value instead of ever checking for
+  // "call". This function already returns null above when expiry/strike can't be reconstructed —
+  // an unrecorded right is the same honest absence, not a license to guess a live position's
+  // direction, so it now returns null here too instead of shipping a ChainContract with an
+  // invented `right`.
+  if (row.contract_type !== "call" && row.contract_type !== "put") return null;
   const right = row.contract_type === "put" ? "P" : "C";
   const dte = calendarDte(etYmd(), expiry.slice(0, 10));
   const mark = row.last_mark;

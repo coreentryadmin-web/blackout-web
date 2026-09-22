@@ -93,6 +93,15 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
   const expiry = row.contract_expiry;
   const strike = row.contract_strike;
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
+  // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+  // roll-history fix). `contract_type` is a genuinely nullable DB column (`TEXT`, no `NOT NULL` —
+  // see db.ts's schema + `SwingPositionRow.contract_type: string | null`); the old
+  // `row.contract_type === "put" ? "P" : "C"` ternary fabricated "C" (call) for ANY row whose
+  // contract_type was null or an unrecognized value, never actually checking for "call". This
+  // function already returns null for every other "not reconstructible" case above (missing
+  // expiry/strike) — a missing right is the same absence, not a license to guess, so it now joins
+  // that pattern instead of inventing a direction a trader would read as real.
+  if (row.contract_type !== "call" && row.contract_type !== "put") return null;
   const right = row.contract_type === "put" ? "P" : "C";
   // FINDINGS 2026-09-06 (swing-closed-dte-negative): a CLOSED position's DTE must be frozen to its
   // own trade lifecycle, never recomputed against "now". The ledger carries no dedicated

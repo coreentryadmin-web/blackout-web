@@ -29,6 +29,19 @@ export function parseSwingPlayId(playId: string): ParsedSwingPlayId {
   return { ticker, positionId: pos != null && Number.isFinite(pos) ? pos : null };
 }
 
+// BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+// roll-history fix). `contract_type` is a genuinely nullable DB column (TEXT, no NOT NULL); the
+// naive `contract_type === "put" ? "P" : "C"` ternary used across this file's siblings
+// (closed-plays.ts, live-plays.ts) fabricates "C" for a row whose real type was never recorded.
+// Pulled out here (this module deliberately carries no heavy imports — see the file's own
+// pattern with play-brief-roll-history.ts) so play-brief-resolve.ts's identity-matching logic can
+// be unit-tested directly without dragging in the server-only-guarded DB/Vector import chain.
+export function rightFromContractType(contract_type: string | null | undefined): "C" | "P" | null {
+  if (contract_type === "put") return "P";
+  if (contract_type === "call") return "C";
+  return null;
+}
+
 function contractMatches(play: HorizonPlay, strike: number | null, right: "C" | "P" | null): boolean {
   if (strike == null) return true;
   if (play.contract.strike !== strike) return false;
