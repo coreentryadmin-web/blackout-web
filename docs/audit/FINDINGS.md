@@ -4,6 +4,188 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Vector Pulse "flow-print" signal has never fired on real production data — every real HELIX flow print silently dropped — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED (2026-09-22, Ask Largo standing mandate — fresh angle this cycle: same bug CLASS
+as #5405's HELIX print-table fix, found the same day in a different desk while checking whether the
+class recurred elsewhere. #5405's own write-up claimed "No other call site in the repo compares
+`option_type` against a lowercase literal outside the already-fixed `helix-read.ts` prose line and
+the swing `contract_type` family" — that claim was incomplete; this is the counter-example.)
+
+### What was broken
+
+`flowAlertToPulseSignal` (`src/features/vector/lib/vector-pulse.ts`) — the function that turns a
+large options-flow print into a "flow-print" signal on the Vector desk's live Pulse ticker —
+compared `flow.option_type` directly against the lowercase literals `"call"`/`"put"`:
+
+```ts
+const isBullish = (flow.option_type === "call" && dir.includes("buy")) ||
+  (flow.option_type === "put" && dir.includes("sell"));
+const isBearish = (flow.option_type === "put" && dir.includes("buy")) ||
+  (flow.option_type === "call" && dir.includes("sell"));
+```
+
+`FlowAlert.option_type` (`src/lib/api.ts`) is typed as a plain `string`, but every REAL producer of
+that field is UPPERCASE, never lowercase:
+- `parseUwFlowAlert`/`parseOccSymbol` (`src/lib/providers/unusual-whales.ts:266,343`) emit
+  `"CALL"`/`"PUT"`/`"UNKNOWN"`.
+- The DB read path this route actually serves through — `fetchRecentFlows` (`src/lib/db.ts:3232`) —
+  stamps `option_type: String(row.option_type ?? "").toUpperCase()` on every row.
+
+`VectorPulse.tsx` is the ONLY caller of `flowAlertToPulseSignal`, and it feeds it rows from
+`fetchFlows()` → `GET /api/market/flows` → `readFlowsMemberCached` → `fetchRecentFlows` — the exact
+uppercase path above. So `flow.option_type` reaching this function in production was NEVER
+lowercase `"call"`/`"put"` — both `isBullish` and `isBearish` were **always false** for every real
+print, and the function's own guard (`if (!isBullish && !isBearish) return null;`) then dropped
+every single one. The "flow-print" signal kind (item 7 of this file's own documented priority
+list — "large options flow print (sweeps, blocks, dark pool)") has therefore never actually fired
+on real production data since it was built; the render-line's own identical lowercase comparison
+one line further down (`flow.option_type === "call" ? "C" : "P"`) was moot because execution never
+reached it.
+
+This file's own test suite (`vector-pulse.test.ts`) never caught it because every fixture used
+lowercase `"call"`/`"put"` — the exact same case-shape mismatch between test fixtures and real
+runtime data that let the HELIX bug (#5405) ship the same day.
+
+### Why this matters (Largo product contract / standing perf-latency mandate overlap)
+
+Not a Largo play-brief section, but the same underlying data-correctness class this repo's audit
+discipline treats uniformly: a signal feed that silently discards 100% of its intended input is
+strictly worse than one that was never built, because it *looks* wired (the code compiles, the
+component renders, the feed exists in the UI) while doing nothing. A trader watching the Vector
+Pulse ticker for large flow prints during RTH would never see one, with no error or empty-state
+message distinguishing "no large flow right now" from "this feature is silently broken."
+
+### Fix
+
+Normalize `flow.option_type` to uppercase once (`const side = flow.option_type?.toUpperCase() ?? ""`)
+and compare against `"CALL"`/`"PUT"` at both the classification site and the render-line site.
+Minimal, single-file change — no behavior change for the (nonexistent in production, but still
+supported) lowercase-input case beyond making it now also match correctly.
+
+### Evidence (RED → GREEN, git-stash proven)
+
+Added two tests to `vector-pulse.test.ts` using the REAL production shape (uppercase `"CALL"`/
+`"PUT"`) alongside the file's existing lowercase-fixture tests:
+- "REAL uppercase option_type (production shape) — call buy still bulls"
+- "REAL uppercase option_type (production shape) — put buy still bears"
+
+- Stashed only the source fix (`vector-pulse.ts`), kept the new tests: **2 failures** (both new
+  tests — a real $1.2M CALL buy and a real $1.1M PUT buy both produced `null` instead of a signal).
+- Restored the fix: **41/41 pass** in the file, 0 fail.
+- `npx tsc --noEmit` clean; full `npm test` run alongside this PR.
+
+### Blast radius
+
+One file, `src/features/vector/lib/vector-pulse.ts` — the only two lines in the repo doing this
+specific broken comparison against `FlowAlert.option_type` (confirmed via repo-wide grep for
+`option_type === "call"` / `option_type === "put"` outside test files: `spx-play-engine.ts` and
+`options-socket.ts` compare against their OWN differently-cased/typed `option_type` fields, already
+correct for their own producers — not the same bug; the swing `contract_type` family is a
+completely different nullable DB column, already covered by #5401/#5403 this same day).
+
+### Not touched (deliberately)
+
+`isSignificantFlow` (same file) — only checks `flow.premium`, never reads `option_type`, so it
+carries no part of this defect.
+
+## Ask Largo swing play-brief: `manageObservablesFromEvent` silently dropped the `ADD` manage action, making PR #5398's "Consider adding" narrative unreachable in production — fix/swing-manage-action-add-dropped — 2026-09-22
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `SwingManageAction` (`manage.ts`) is exactly `"HOLD" | "TAKE_PARTIAL" | "EXIT_RUNNER" | "STOP_OUT" | "EXIT" | "ADD"` — six values. `live-plays.ts`'s `manageObservablesFromEvent`, the sole reader of the persisted manage-tick event that hydrates a live position's `HorizonPlay.manageAction`, recognized only five of them:
+  ```ts
+  if (action === "EXIT" || action === "STOP_OUT" || action === "TAKE_PARTIAL" || action === "EXIT_RUNNER") {
+    manageAction = action;
+  } else if (action === "HOLD") {
+    manageAction = undefined;
+  }
+  ```
+  `"ADD"` matched neither branch, so `manageAction` silently stayed at whatever the caller's spot-fallback default was (`undefined` for any position that is neither structurally broken nor already `TRIM`) — regardless of what the persisted `manage_events` row actually said.
+- **Live repro (this session's own tracked position):** AAPL, `SWING:AAPL:40`, committed 2026-09-21. Its live manage snapshot correctly carried `action: "add_eligible"`'s mapped action `"ADD"` (`manage.ts`'s `add_eligible` rung — thesis progressed ≥50% toward target and the option not underwater, computed live by `thesis-progress.ts`'s `addEligibleFromProgress`), surfaced honestly on the `GET /api/market/nighthawk/horizons?view=swings` board as `manageReason: "add_eligible"` / `manageReasonDetail: "position qualifies to add (advisory)"`. But `HorizonPlay.manageAction` — the field `recommendationFromManageAction` (adapters.ts) maps 1:1 to the member-facing `Recommendation` badge — came back `undefined`, so `recommendationFromManageAction(undefined)` fell to its `default: "HOLD"`, and `play-brief-narrative.ts`'s `actionNarrative` rendered the generic "**Hold the line**. Let the trade work while structure holds." — never the "Consider adding" advisory.
+- **Why this wasn't caught by PR #5398:** #5398 (merged 2026-09-21T23:54:16Z, same day) correctly fixed the *narrative* gap — `actionNarrative` had no branch at all for `rec === "BUY"` on an open position. Its own regression test constructs a `TerminalPlay` with `recommendation: "BUY"` directly, which is correct for testing the narrative logic in isolation, but never exercises the real data path (`manage_events` → `manageObservablesFromEvent` → `manageAction` → `recommendationFromManageAction` → `rec`) that has to actually deliver `"BUY"` in production. Verified against the real, deployed fix over the following ~70 minutes across three cycles: the `ecr-push-production` deploy for #5398 completed successfully (`conclusion: "success"`) and AAPL's own `manageReason` was reconfirmed unchanged (`"add_eligible"`) at every check — ruling out both "not deployed yet" and "the underlying condition changed" before concluding the gap was upstream of the narrative fix, in the data-plumbing layer PR #5398 never touched.
+- **Fix:** add `action === "ADD"` to `manageObservablesFromEvent`'s recognized-action branch. Not a new enforcement gate: `manageEnforced` is already read out separately a few lines below (and already correctly showed `false` for AAPL's un-graduated `add_eligible` rung) — exactly the same "surface the advisory, flag it as unenforced separately" pattern the file's own 2026-09-18 "GAP FOUND" comment documents for the capital-preservation rungs, and exactly the same treatment `TAKE_PARTIAL`/`EXIT_RUNNER` (the other two edge-rung actions) already received in this same switch. Corroborating signal found while writing the fix: `REASON_VERB_BY_MANAGE_ACTION` (same file, line 37-43) already had an `ADD: "add to"` entry — dead code before this fix, since `manageAction` could never actually equal `"ADD"` to look it up — confirming `ADD` support was intended and partially wired, not deliberately excluded.
+- **Blast radius:** single function (`manageObservablesFromEvent`), single file. Every consumer of `HorizonPlay.manageAction` downstream (the horizons board's `reason` string, `swingManagementVerdict`'s `recommendationFromManageAction`, `play-brief-narrative.ts`'s `actionNarrative`) now correctly receives `"ADD"` instead of silently losing the signal. Confirmed no other reader independently reconstructs `manageAction` from a raw `manage_events.action` string (grepped `src/lib/swing/*.ts` for `.action ===`).
+- **Test:** new regression test in `live-plays.test.ts` (`add_eligible manage snapshot (action: ADD) surfaces manageAction ADD, not dropped to undefined`). RED→GREEN proven via `git stash` on the implementation file only: 44/45 pass pre-fix (the new test the sole failure, `undefined` vs expected `'ADD'`), 45/45 post-fix. `npx tsc --noEmit` clean. Full `src/lib/swing/*.test.ts` suite: 1474/1474 — no collateral breakage.
+
+## HELIX print-list TABLE renderer mislabeled every real PUT print as a call — FIXED
+
+> **kind:** `FINDING`
+
+**Status:** FIXED (2026-09-22, Ask Largo standing mandate — fresh angle this cycle, checking a
+non-swing desk's product-read/BIE-answer surface for once: HELIX's answer-formatting layer)
+
+### What was broken
+
+`helix-read-intent.ts`'s own header already documents this exact bug class and where it was fixed:
+`option_type` is ALWAYS produced UPPERCASE by every real producer (`FlowAlert` is typed
+`"CALL" | "PUT"`; `computeFlowStrikeStacks` normalizes to `"CALL"`/`"PUT"` too), so comparing it
+against a lowercase `"put"` literal is ALWAYS false. That comment describes the fix applied to
+`helix-read.ts`'s PROSE line (`optionSideSuffix`, case-insensitive, returns `"?"` rather than
+guessing an unknown side) — but the sibling TABLE renderer for the exact same `helix_read` intent,
+`formatHelixPrintTable` in `src/lib/bie/dynamic-format.ts`, still had the original broken
+comparison:
+
+```ts
+`${p.strike ?? "—"}${p.option_type === "put" ? "p" : "c"}`
+```
+
+Reachable path: `inferAnswerShape` (`response-shape.ts`) returns `"table"` for any question
+matching `wantsHelixPrintList` (e.g. "top 5 prints by premium on NVDA", "list only", "biggest
+prints") — a completely ordinary member question — and `applyDynamicFormat`
+(`dynamic-format.ts:353`) then dispatches `route.intent === "helix_read"` straight to
+`formatHelixPrintTable`. Every row in that table compared real uppercase `"PUT"`/`"CALL"` data
+against the lowercase literal, so the comparison was always false and **every print — regardless
+of size or true side — rendered as a lowercase "c" (call)**. A member asking for the top prints in
+table form saw every real put mislabeled a call; the same question phrased to get the prose answer
+(no `wantsHelixPrintList` match) rendered correctly via `optionSideSuffix`, so the same tape read
+two different, contradictory ways depending only on how the question was phrased.
+
+### Why this matters (Largo product contract)
+
+Per `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s direction point (C5): a wrong bearish/bullish label on
+a large real print is a correctness fault, not cosmetic — a $23M PUT read as a call inverts the
+implied positioning a trader would act on.
+
+### Fix
+
+`formatHelixPrintTable` now calls the same `optionSideSuffix` helper `helix-read.ts`'s prose path
+already uses, imported from `helix-read-intent.ts` (a pure, dependency-free module built specifically
+so both call sites can share one correct implementation instead of drifting). Case-insensitive,
+tolerant of a bare `"C"`/`"P"`, and returns `"?"` for a genuinely unknown side rather than guessing.
+
+### Evidence (RED → GREEN, git-stash proven)
+
+Added `dynamic-format.test.ts`: "helix print-list TABLE renders real PUT prints as puts, not
+fabricated calls" — feeds `applyDynamicFormat` a `helix_read` route + a print-list question with
+one real `"PUT"` row (strike 500) and one real `"CALL"` row (strike 510).
+
+- Stashed only the source fix (`dynamic-format.ts`), kept the new test: **1 failure** — table
+  rendered `500c` (fabricated) instead of `500p`.
+- Restored the fix: **3/3 pass** in the file, 0 fail.
+- `npx tsc --noEmit` clean; full `npm test` run alongside this PR.
+
+### Blast radius
+
+One file (`dynamic-format.ts`) — the single TABLE renderer for `helix_read`. Checked every other
+sibling table formatter in the same file for the identical raw-lowercase-comparison pattern
+(`formatPlaySuggestTable`'s `idea.option_type === "put"` at line 38): that one is fed
+`buildPlayIdea`'s output, which is strictly typed `"call" | "put"` (lowercase) and only present when
+`idea` is truthy — not the same bug, left untouched. No other call site in the repo compares
+`option_type` against a lowercase literal outside the already-fixed `helix-read.ts` prose line and
+the swing `contract_type` family (different field, already covered by #5401/#5403 this same day).
+
+### Not touched (deliberately)
+
+`formatPlaySuggestTable`, `formatTechnicalsTable`, `formatWallDynamicsTable`,
+`formatGridRejectionsTable`, `formatPlayEngineTable`, `formatThermalMetricTable` — none read
+`option_type`, so none carry this defect.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
