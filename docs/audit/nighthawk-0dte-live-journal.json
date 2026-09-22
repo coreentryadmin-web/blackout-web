@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T17:16:00Z",
+  "updated_at": "2026-09-22T18:10:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -334,6 +334,11 @@
       "action": "2nd board degradation self-healed quickly (~5-6min, back to normal pattern). MUU closed via flat_theta_bleed (-4.49%, different mechanism than the 4 gex-walls exits) -- confirms todays 0/5 record is normal variance (~36% historical base rate implies ~11% chance of a 0/5 day), not systemic. top_block_code now macro_hard_block -- verified this is the legitimate documented G-7 gate (CPI/FOMC/NFP/PPI/GDP hard-block window), intentional, not a bug.",
       "session_summary_so_far": "Todays 0DTE session: 5 committed, 5 closed, 0 wins (SNXX/SCHW/ALAB/MSFT via thesis_break:gex-walls, MUU via flat_theta_bleed). Board upstream degraded twice (37min + 5min), both self-healed, /record never affected either time.",
       "next": "continue normal cadence monitoring; no open escalations"
+    },
+    "2026-09-22T18:10:00Z": {
+      "stage": "WATCH",
+      "action": "Upside-hunt this cycle (several quiet cycles prior): 2 commit_ready candidates (DKS score 90, ASTS score 76) checked for latency -- both computed 14:08 ET, only 2min stale at check time, normal processing cadence, no delay issue. No bugs or enhancement ideas surfaced this cycle. Board otherwise unchanged, 5 closed rows same as last several checks.",
+      "next": "watch DKS/ASTS for commit + subsequent exit-coherence tracking"
     }
   },
   "sessions": {
