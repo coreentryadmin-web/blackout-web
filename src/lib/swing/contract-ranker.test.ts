@@ -13,7 +13,7 @@ import { HORIZONS } from "../horizons.ts";
 import type { ChainContract } from "../horizon-fanout.ts";
 import { mapUnifiedSnapshotResult } from "../providers/options-snapshot.ts";
 
-// A STANDARD-lane call with sensible defaults (8–21 DTE, band [0.50,0.72], target 0.60).
+// A STANDARD-lane call with sensible defaults (8–15 DTE, band [0.50,0.72], target 0.60).
 function mkContract(over: Partial<ChainContract> = {}): ChainContract {
   const bid = over.bid ?? 3.9;
   const ask = over.ask ?? 4.1;

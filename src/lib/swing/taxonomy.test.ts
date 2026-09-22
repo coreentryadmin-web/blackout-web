@@ -129,3 +129,25 @@ test("archetypeLabelFromRaw: every real archetype maps to its own ARCHETYPE_META
   // loosely match, only an exact SWING_ARCHETYPES member resolves.
   assert.equal(archetypeLabelFromRaw("breakout"), null);
 });
+
+test("sub-lane contract.note DTE range must match its own dteMin/dteMax (2026-09-22 live audit)", () => {
+  // REGRESSION: STANDARD's contract.note read "directional 8–21d, breakeven inside target" while
+  // dteMax (derived from HORIZONS.SWING.dteMax) is 15 — a leftover from before the 2026-09-04
+  // 5-30 -> 5-15 DTE narrowing (this file's own header comment names that exact narrowing). The
+  // field has zero code consumers today (grep confirms no reader anywhere in src/), so it never
+  // reached a member — but it directly contradicts this same file's own dteMin/dteMax a few lines
+  // above, and would mislead any future reader (human or AI) taking the note at face value. This
+  // ratchet parses the "<n>–<n>d" range embedded in each lane's note and asserts it equals the
+  // lane's real [dteMin, dteMax] — so a future DTE-window change (like the 2026-09-04 narrowing)
+  // that updates dteMin/dteMax without touching the prose note fails loudly here instead of
+  // silently drifting again.
+  const DTE_RANGE_RE = /(\d+)\D(\d+)d\b/;
+  for (const id of Object.keys(SWING_SUB_LANES) as Array<keyof typeof SWING_SUB_LANES>) {
+    const spec = SWING_SUB_LANES[id];
+    const m = spec.contract.note.match(DTE_RANGE_RE);
+    assert.ok(m, `${id}'s contract.note ("${spec.contract.note}") must embed an "<n>-<n>d" DTE range`);
+    const [, lo, hi] = m!;
+    assert.equal(Number(lo), spec.dteMin, `${id}'s contract.note DTE low bound must match dteMin`);
+    assert.equal(Number(hi), spec.dteMax, `${id}'s contract.note DTE high bound must match dteMax`);
+  }
+});

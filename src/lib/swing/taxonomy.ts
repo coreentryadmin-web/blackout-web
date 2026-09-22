@@ -2,7 +2,7 @@
 //
 // No IO, no deps beyond horizon types. This file is the single source of truth for the archetype
 // partition (the calibration key — a breakout and a mean-reversion must never share a scoring bucket:
-// failure mode #7), the three contract sub-lanes (2–7 / 8–21 / 22–30 DTE are NOT one contract class:
+// failure mode #7), the three contract sub-lanes (5–7 / 8–15 / 22–30 DTE are NOT one contract class:
 // failure mode #2), and the pre-entry lifecycle vocabulary the serving router keys on. It carries NO
 // score/weight logic — only the shapes + the DTE→sub-lane routing — so it can be imported everywhere
 // (scorer, contract ranker, gates, manage, grader, calibration, serving) without a cycle.
@@ -286,7 +286,7 @@ export const SWING_SUB_LANES: Record<SwingSubLane, SwingSubLaneSpec> = {
     label: "Standard (8–15d)",
     dteMin: 8,
     dteMax: HORIZONS.SWING.dteMax,
-    contract: { targetDelta: 0.6, deltaBand: [0.5, 0.72], note: "directional 8–21d, breakeven inside target" },
+    contract: { targetDelta: 0.6, deltaBand: [0.5, 0.72], note: "directional 8–15d, breakeven inside target" },
     liquidity: { minOpenInterest: 250, maxSpreadPct: 0.25, maxPremiumPerShare: 45 },
     exit: "SCALE_OUT",
     grader: "hour",
