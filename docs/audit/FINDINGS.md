@@ -38,6 +38,116 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-09-22 — [FINDING, P2 live RTH incident, recurrence of the 2026-09-16 #5083/#5085 pattern] Brief shared-DB connectivity blips are recurring during RTH and leaving the live 0DTE board `upstream_ok:false` for several minutes past the blip's own recovery (self-heals, but with real lag)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this is** | A recurrence, at smaller scale, of the exact incident shape already documented 2026-09-16 (`## 2026-09-16 — [FINDING, P0 live RTH incident, NEW angle on the same #5083 incident window]`) — that entry ended "pending confirmation of a shared root cause" and was never closed out with a fix in this codebase (grepped `docs/audit/FINDINGS.md` and merged PR history for a follow-up; none found). Flagging fresh rather than assuming it's stale, per this file's own "verify against `main`, never trust a list at face value" discipline. |
+| **Live evidence, today (16:09-16:11 UTC and 16:42-16:44 UTC, 2026-09-22, RTH)** | CloudWatch `/ecs/blackout-production`: `[ready] database ping failed after retries: Connection terminated due to connection timeout` — 20 occurrences in two tight ~2-3min clusters, ~33min apart. Simultaneously, EVERY DB consumer across the fleet failed the same way in the same windows: `api-telemetry-persist`, `gex-regime-events` persist, `vector-wall-db` batch persist, `spx-play-engine` shadow-factor logging, `spx-slayer-badge` snapshot build, `nighthawk/platform-intel` snapshot, `[zerodte-scan] primary flow fetch failed — board degrades to empty FLOW origin this cycle`. |
+| **RDS/RDS Proxy themselves report healthy, again** | `blackout-production-postgres`: `available`, Multi-AZ, CPU ~9-10%, DatabaseConnections steady 17-20, no RDS events in the window. `blackout-production-proxy`: target `AVAILABLE`, `ClientConnections`/`DatabaseConnectionsCurrentlySessionPinned` both flat and low through both blip windows, `QueryDatabaseResponseLatency` shows no spike at 16:09 or 16:42 specifically (some OTHER unrelated minutes ran higher). Same conclusion as 2026-09-16: the DB and its proxy are not the bottleneck; this looks like a network-path or ECS-container-level outbound-connection failure. |
+| **New this time: confirmed ECS causal chain** | `ecs.describe_services` events show a task replaced right after each blip (`has stopped 1 running tasks` / `Amazon ECS replaced 1 tasks due to an unhealthy status` at 16:29:38 and 16:43:43, steady-state reached 16:30:53 and 16:44:50). `describe_tasks` on the stopped task: `stoppedReason: "Task failed ELB health checks"`, while the container's own ECS-reported `healthStatus` was `HEALTHY` — i.e. the ALB's `/api/ready` probe (which does a real DB ping, 6 attempts over up to 24s) is what actually failed, not the container's own liveness. This is the missing mechanism link 2026-09-16's write-up didn't have: a brief shared DB-connectivity blip → `/api/ready` exhausts its 6 retries → ALB marks the target unhealthy → ECS replaces an otherwise-fine task. |
+| **The board DOES self-heal, but with a real multi-minute lag** | Repeated `GET /api/market/zerodte/board` reads spanning 16:42:57 → 16:46:23 (~3.5min) all returned `upstream_ok:false, setups:[]` even though CloudWatch showed `[zerodte-breakout]` successfully building 160-170 real setups per cycle throughout that same window (16:45:10-16:45:38) and `cron-staleness-watchdog` logged a **successful** re-warm (`status 200`) at 16:45:49. A follow-up read one minute later, at 16:47:14, came back `upstream_ok:true, setups:172` — fully recovered. So the degraded snapshot from the 16:42:30 failed cycle persisted for roughly **4-5 minutes** past the blip's own end and past at least one successful intervening scan cycle, before finally being overwritten. Not permanently stuck, but a real, multi-minute member-visible gap wider than the blip itself. Also notable: the served `discovery_health.BREAKOUT.status` read `"disabled"` during the degraded window, which per `discovery-health.ts`'s own comments should only happen when `ZERODTE_WHOLE_MARKET`/`ZERODTE_SRC_BREAKOUT` flags are off — yet the logs show BREAKOUT actively computing setups every cycle in the same window. Worth the owning lane checking whether `initialDiscoveryHealth()`'s "disabled" default is being served as a stand-in for "this cycle's health object was never populated" rather than the flag-off case it's documented for. |
+| **Live member impact** | The 0DTE board read `upstream_ok:false, setups:[]` to a real authenticated session for roughly 5-10 minutes straddling the 16:42 blip (self-recovered by 16:47:14), during `"heat": {"state": "RTH", "note": "All engines live — new 0DTE commits until 3:30 PM ET"}` — i.e., members saw an empty board during an active commit window despite the discovery engine internally finding 160-170 real candidates for most of that window. |
+| **What I did NOT do** | Did not touch DB pool config, RDS Proxy settings, ALB health-check thresholds, or the board-snapshot write path — this needs the owning Night Hawk 0DTE lane to trace exactly why the write-lag between a degraded snapshot and the next healthy one runs several minutes rather than one scan cycle; that trace needs either an ECS exec session or direct code-path reading this sandbox pass didn't have budget for this cycle. Root network-layer cause (why the shared blip happens at all, ~every 15-30min) is still unconfirmed, same limitation 2026-09-16 noted (no packet-level trace possible from this sandbox). |
+| **Suggested next steps** | (1) Trace why the served zerodte board snapshot takes several minutes (not one scan cycle) to refresh from a healthy cycle after a degraded one — this is the new, concrete, code-traceable half of the puzzle; it self-heals, so this is about shortening a real gap, not fixing a stuck state. (2) If #5083/#5085's Polygon-congestion fix ever shipped, check whether it's still effective — today's occurrence is much smaller in blast radius (no sustained memory climb this time; web fleet CPU/Memory measured healthy at 22-33%/30-33% throughout this cycle) suggesting either a different, smaller trigger or a partially-effective prior fix. (3) Consider whether `/api/ready`'s 6×4s retry budget (24s) is well-matched to the ALB's own unhealthy-threshold — if the ALB's consecutive-failure count is low, a brief <30s DB blip can still cost a full task cycle even though the container was fine throughout. |
+| **Status** | Live investigation, not yet a code fix — flagged for the owning Night Hawk 0DTE lane / Cursor collaboration thread (#4076) per the standing collaboration protocol, since this needs either ECS exec access or deeper board-snapshot-path tracing this sandbox pass didn't reach. |
+
+## Swing commit budget: existing over-cap position wrongly blocks a same-ticker sibling candidate — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**File:** `src/lib/swing/swing-portfolio-budget.ts` (`evaluateSwingCommitBudget`)
+
+### Root cause
+
+`evaluateSwingCommitBudget`'s per-position gate is supposed to block a candidate ONLY when the
+candidate's **own** risk exceeds `perPositionLossPct` — its own docstring states the invariant
+explicitly: *"an existing over-cap position must not block a fresh small one."*
+
+The implementation instead checked ticker-string membership against the dimension's aggregate
+`offenders` list:
+
+```ts
+const key = candidate.ticker.trim().toUpperCase();
+...
+case "per_position_loss":
+  return dv?.offenders.includes(key) ?? false;
+```
+
+`evalDimension`'s `offenders` array is built once over **every** contributing position (the whole
+book plus the candidate), keyed only by ticker string:
+
+```ts
+for (const p of contributors) {
+  const r = risk(p);
+  if (constrained && limitUsd != null && r > limitUsd) offenders.push(p.ticker.trim().toUpperCase());
+}
+```
+
+Two *different* positions can legitimately share one ticker — `swingThesisKey(ticker, direction,
+archetype)` (the idempotency gate in `commit.ts`) only prevents re-opening the *identical*
+(ticker, direction, archetype) thesis, so a LONG `PULLBACK_CONTINUATION` NVDA and a LONG
+`BREAKOUT` NVDA (or a LONG and a SHORT NVDA) can both be open at once. When they collapse to the
+same ticker string in `offenders`, `dv.offenders.includes(key)` cannot tell which position is the
+actual offender — an EXISTING position on the book being over-cap (e.g. because the operator
+retuned `SWING_CAPITAL_USD`/`SWING_PER_POSITION_LOSS_PCT` mid-session via
+`resolveProductionPortfolioBudget`'s documented env-override path, making a previously-compliant
+position newly non-compliant) silently blocks a brand-new, well-sized candidate on the same
+ticker — even though the candidate's own risk is nowhere near the cap.
+
+### Evidence (RED → GREEN)
+
+Added a regression test reproducing the exact scenario: book holds an existing NVDA position at
+$3,000 risk (over the $2,000/2% per-position cap under `PRODUCTION_PORTFOLIO_BUDGET`), and a new
+$500 NVDA candidate (a different archetype/direction) is evaluated.
+
+- **Before the fix:** `v.blocked === true` — the small candidate was wrongly blocked (`true !==
+  false` assertion failure, confirmed via `git stash` isolating the fix).
+- **After the fix:** `v.blocked === false`, `blockedDimensions: []` — the candidate clears on its
+  own merits.
+
+Full `swing-portfolio-budget.test.ts` (17/17), plus collateral `commit.test.ts` /
+`roll-plan.test.ts` / `discovery.test.ts` / `swing-allocation.test.ts` (104/104 total), all pass.
+`npx tsc --noEmit` is silent.
+
+### Fix
+
+Compare the candidate's own `candidateRiskUsd` directly against the resolved `limitUsd` for the
+`per_position_loss` dimension, instead of looking the candidate's ticker up in the aggregate
+`offenders` list:
+
+```ts
+case "per_position_loss":
+  return dv?.constrained === true && dv.limitUsd != null && candidateRiskUsd > dv.limitUsd;
+```
+
+This is a pure per-position comparison (no cross-position interaction needed for this dimension,
+unlike the aggregate `portfolio_loss`/`event_exposure`/`overnight` dimensions, which correctly
+still block any nonzero-risk contributor once the aggregate is breached). The removed `key`
+variable (only used for the buggy lookup) is deleted; no other call site referenced it.
+
+### Blast radius
+
+`evaluateSwingCommitBudget` is the live pre-commit gate consulted by `computeSwingCommitPlan`
+(`commit.ts` Gate 1, "ARMED BUDGET" — real money, this is the swing lane's live commit path). No
+other call site reimplements this comparison. `evalDimension`'s `offenders` field itself is
+unchanged (still correct for its other consumer, the aggregate-dimension advisory display) — only
+the per-position *candidate-blocking* decision was wrong.
+
+### Fix rationale
+
+Comparing the candidate's own risk to the limit directly is both simpler and provably correct: it
+needs no ticker-identity disambiguation at all, since the per-position dimension's block decision
+never depended on any *other* position in the first place — only on whether this one candidate's
+own risk exceeds the cap. Kept the `dv?.` optional-chaining defensiveness matching the file's
+existing style, though `dv` is always present in practice (all four dimensions are always
+evaluated in `evaluatePortfolioBudget`).
+
 ## `calibratedThesisPillars` still rendered entry_geometry/flow_corroboration as calibrated on Banger-origin rows — the per-pillar filter can't see a whole-row fabrication
 
 > **kind:** `FINDING`
