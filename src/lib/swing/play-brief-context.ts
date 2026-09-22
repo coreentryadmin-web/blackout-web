@@ -176,8 +176,23 @@ export async function loadSwingPlayBriefContext(
   if (!resolved) return null;
 
   const ticker = resolved.play.ticker.toUpperCase();
-  const meridian = await withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() => null);
-  const meridianPeer = await withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() => null);
+
+  // PERFORMANCE FIX (standing latency mandate, 2026-09-22): `meridian` and `meridianPeer` used to
+  // be `await`ed one after another BEFORE the `Promise.all` below ever started — meridianPeer
+  // genuinely depends on meridian's own result (it reads `meridian.items` to find an earnings
+  // catalyst to fetch peers for), but nothing about the OTHER six sources depends on either of
+  // them. Sequencing them ahead of the fan-out serialized up to 3 full `withBriefSourceTimeout`
+  // budgets (meridian 8s + meridianPeer 8s + the Promise.all's own up-to-8s) into a ~24s worst
+  // case, on the exact request this file's own header comment already documents as having hung
+  // past a 120s client timeout under real upstream stalls (2026-09-09). Chaining meridianPeer off
+  // meridian with `.then()` and folding both into the SAME `Promise.all` as the other six reads
+  // keeps the real dependency (meridianPeer still only starts once meridian resolves) while
+  // letting every independent source race concurrently — worst case drops to ~16s (the
+  // meridian→meridianPeer chain, still the tallest single path) instead of ~24s.
+  const meridianPromise = withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() => null);
+  const meridianPeerPromise = meridianPromise.then((meridian) =>
+    withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() => null),
+  );
 
   // Distinguish a genuine "no data" null from a thrown fetch — FINDINGS 2026-09-06 (#11): an
   // ecosystem/vector fetch that THROWS must not read the same as one that legitimately returned
@@ -186,7 +201,18 @@ export async function loadSwingPlayBriefContext(
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
   const positionId = positionIdFromPlayId(resolved.play.id);
-  const [ecosystem, vector, openBook, archetypeTrackRecord, rollHistory, tickerTrackRecord] = await Promise.all([
+  const [
+    meridian,
+    meridianPeer,
+    ecosystem,
+    vector,
+    openBook,
+    archetypeTrackRecord,
+    rollHistory,
+    tickerTrackRecord,
+  ] = await Promise.all([
+    meridianPromise,
+    meridianPeerPromise,
     withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch(() => {
       ecosystemFetchFailed = true;
       return null;
