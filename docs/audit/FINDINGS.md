@@ -38,6 +38,287 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## A losing Vector pick silently penalized a swing play's score and mislabeled it as "Vector corroboration"
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Date** | 2026-09-22 |
+| **Severity** | P2 (score/provenance integrity — a losing signal presented as supporting evidence, undisclosed score reduction, reopens the exact invariant class #4826 fixed 2026-09-12) |
+| **Surface** | Night Hawk Swings — `src/lib/swing/vector-lane-enrich.ts` |
+
+### Root cause
+
+`enrichPlayWithVectorLeader` stamps `VECTOR` provenance and a score "corroboration" bump onto a swing
+WATCH/COMMIT play whenever its ticker matches an active Vector pick leader:
+
+```ts
+const rawBump =
+  leader.peakPremiumPct != null && Number.isFinite(leader.peakPremiumPct)
+    ? Math.min(8, Math.round(leader.peakPremiumPct / 5))
+    : 3;
+const nextScore = Math.min(99, play.score + rawBump);
+```
+
+`peakPremiumPct` is a genuine running max — `upsertVectorPickLeader`'s SQL upsert
+(`vector-pick-leaders-db.ts`) merges it via `GREATEST(existing, new)` on every sweep tick, so it can
+only ever hold the HIGHEST premium % the pick has ever reached. A NEGATIVE value therefore means the
+pick has never once been profitable — a genuinely losing signal, not corroboration.
+
+Fed through unguarded, a negative `peakPremiumPct` (e.g. −20) computes a NEGATIVE `rawBump`
+(`round(-20/5) = -4`), which reduces `nextScore` below `play.score`. Because `appliedBump = nextScore -
+play.score` is then negative, the `appliedBump > 0` guard a few lines down correctly skips adding a
+`factors[]` entry for it — but the function unconditionally still: (1) applies the score reduction, (2)
+adds `"VECTOR"` to `signalKinds`, and (3) appends `" · Vector corroboration"` to `reason` — mislabeling a
+contradicting signal as supporting, with the score change left completely undisclosed. This is the exact
+invariant class (`sum(factors.points) === score`) the 2026-09-12 fix (#4826) closed for the *positive*
+case in this same function, reopened here for the negative one, which that fix's own comment didn't
+anticipate.
+
+### Evidence
+
+Traced the full read path with no filtering anywhere that would exclude a losing/invalidated Vector
+leader before it reaches this function: `GET /api/market/nighthawk/horizons` (`horizons/route.ts`)
+fetches up to 120 leader rows via `fetchVectorPickLeaderRows({ limit: 120 })` — unfiltered by
+`action_status`/`setup_invalidated`/sign of `peak_premium_pct` — and maps every one straight into
+`VectorLeaderHint[]`, passed to `getSwingServingLane` → `enrichSwingPlaysWithVectorLeaders` →
+`enrichPlayWithVectorLeader`. A Vector pick that has never gone green (plausible and expected for some
+real picks) is therefore a live-reachable input.
+
+New regression tests in `vector-lane-enrich.test.ts`: a `peakPremiumPct: -20` case asserts the play comes
+back completely untouched (`enriched === play`, no score change, no `VECTOR` tag, no "Vector" in
+`reason`); a `peakPremiumPct: 0` boundary case confirms the fix's `< 0` check doesn't over-trigger on a
+genuinely non-negative (if zero-bump) leader. RED confirmed via `git stash push -- src/lib/swing/vector-lane-enrich.ts`
+(negative-peak test failed pre-fix — the play was mutated). GREEN after restoring the fix.
+
+Full `vector-lane-enrich.test.ts`: 7/7 pass. Collateral (`serving-lane.test.ts`, the only other file
+importing these functions — repo-wide grep): 27/27 pass combined. `npx tsc --noEmit`: clean.
+
+### Fix
+
+Added an early return in `enrichPlayWithVectorLeader`: when `leader.peakPremiumPct` is a finite number
+strictly less than 0, return `play` unchanged — no score change, no signal tag, no reason text. The
+existing null/undefined-peak path (defaults to a flat +3 bump) and the zero-peak path (computes a
+genuine zero-point bump, still tagged/disclosed) are both left exactly as they were — only the
+confirmed-negative case is now excluded.
+
+### Blast radius
+
+One file changed for behavior (`vector-lane-enrich.ts`). `enrichSwingPlaysWithVectorLeaders` (the only
+caller, `serving-lane.ts`) is unaffected in shape — it still maps every play through
+`enrichPlayWithVectorLeader`, which now simply no-ops for the negative-peak case instead of silently
+penalizing. No other consumer of `VectorLeaderHint`/`enrichPlayWithVectorLeader` exists (repo-wide grep).
+
+### Fix rationale
+
+Minimal, symmetric with the function's own existing early-return shape (`if (!leader) return play;`) —
+adds one more "this input doesn't qualify for enrichment" guard rather than trying to make the
+downstream math handle a negative bump gracefully (e.g. clamping rawBump to ≥0 would still leave the
+`VECTOR` tag and "corroboration" reason text on a losing pick, which is the more serious half of the
+bug — the mislabeling, not just the score arithmetic). Deliberately left unchanged: the null-peak default
+bump and the positive-peak bump math, both already covered by #4826's tests.
+
+## Swing thesis-health's uncalibrated-regime detection only recognized the Banger-ledger sentinel — `regimeScore()`'s own "unread" default slipped through on native positions too
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Date** | 2026-09-22 |
+| **Severity** | P2 (Largo product-contract C6 violation, live and member-reachable via Ask Largo's swing play-brief — fabricated precision presented as calibrated on a NATIVE (non-Banger) position, no capital/gating impact) |
+| **Surface** | Night Hawk Swings / Ask Largo — `src/lib/swing/thesis-health.ts` |
+
+### Root cause
+
+This is a second, independently-reachable instance of the exact bug class PR #5433 (merged just before
+this one, same file) fixed for the Banger-ledger sentinel — found via the same-cycle live Ask Largo
+play-brief deep audit on AAPL position 40 (the lane's one real native open swing chain) immediately
+after #5433 landed.
+
+`thesis-health.ts`'s `regimeScore(regime, factors)` has its OWN generic-default fallback, independent of
+the Banger-ledger merge path:
+
+```ts
+return { commit: score, current: score, label: regime ?? (top ? top.label : "unread") };
+```
+
+When a position's `regime` input is `null`/`undefined` AND it has no `factors[0]` to borrow a label from
+(both true for AAPL position 40 — a SECTOR_ROTATION archetype committed live-add, `regime: null`,
+`factors: []`), the pillar's `currentLabel` becomes the literal string `"unread"` — a genuine, native
+"nothing to read" default, structurally the same kind of fabricated-precision case as persistence's
+`"unknown"`, entry_geometry's `"n/a"`, or flow_corroboration's `"no signals"`.
+
+`UNCALIBRATED_PILLAR_LABELS` (the shared map both `thesisHealthUncalibrated` and `calibratedThesisPillars`
+read from) was, until #5433, `Partial<Record<SwingThesisPillarId, string>>` — ONE default-label slot per
+pillar id. #5433 correctly populated `regime`'s slot with `BANGER_LEDGER_REGIME_LABEL`, but that slot can
+only ever hold one string, so `"unread"` — which was ALSO never recognized by the code that predated
+#5433 (the old separate hardcoded check only ever matched the Banger sentinel, never `"unread"`) —
+remained uncaught. The map's single-string-per-key shape structurally could not represent two
+independently-triggering defaults for the same pillar.
+
+### Evidence
+
+Live repro: `GET /api/market/swing/play-brief?playId=SWING:AAPL:40&ticker=AAPL&positionId=40&expandIntel=1`
+(AAPL, positionId 40, the lane's one real native committed position) rendered:
+
+```
+Aggregate score withheld — not every pillar input is wired for this position yet.
+
+• **Persistence** — triggered (Δ +0.0 pts)
+• **Entry geometry** — chase risk (Δ +0.0 pts)
+• **Regime fit** — unread (Δ +0.0 pts)
+• **Theta budget** — 8DTE runway (Δ +0.0 pts)
+```
+
+The aggregate was correctly withheld (via `flow_corroboration`'s own real "no signals" default — AAPL's
+`signalKinds` is empty this session), but the "Regime fit — unread (Δ +0.0 pts)" bullet rendered as if it
+were a calibrated per-position read, carrying a fabricated zero-delta precision, exactly the C6 violation
+class `LARGO-PRODUCT-CONTRACT.md` names: *"If a product cannot produce a calibrated score, OMIT the
+field... An invented score is worse than nothing."* Confirmed in source: `regimeScore`'s fallback branch
+(`thesis-health.ts`), and that `UNCALIBRATED_PILLAR_LABELS.regime` pre-fix held only
+`BANGER_LEDGER_REGIME_LABEL`.
+
+New regression test in `thesis-health.test.ts` (isolates the regime pillar specifically — every other
+input real/wired): asserts `calibratedThesisPillars(h)` drops the `"market"`-id pillar when `regime`/
+`factors` are both omitted. RED confirmed via `git stash push -- src/lib/swing/thesis-health.ts` (test
+failed pre-fix — regime pillar survived the filter). GREEN after restoring the fix.
+
+Fixing this also surfaced two PRE-EXISTING test fixtures (`thesis-health.test.ts`'s `"thesisHealthUncalibrated:
+false when commit inputs wired"` and `play-brief-narrative.test.ts`'s `"counterThesisLine: calibrated
+thesisHealth with a genuinely faded pillar still steelmans it"`) that both omitted `regime` while
+asserting the payload was fully calibrated — passing only because of this exact blind spot. Both updated
+to wire a real `regime` value, matching what their own test names/assertions claim.
+
+Full `thesis-health.test.ts`: 17/17 pass. Full collateral sweep — every test file in `src/lib/swing/` and
+`src/features/nighthawk/command-deck/` (2019 tests across 29 suites): 2019/2019 pass. `npx tsc --noEmit`:
+clean.
+
+### Fix
+
+Broadened `UNCALIBRATED_PILLAR_LABELS` from `Partial<Record<SwingThesisPillarId, string>>` to
+`Partial<Record<SwingThesisPillarId, string[]>>` — an array of default labels per pillar id, so `regime`
+can hold both `BANGER_LEDGER_REGIME_LABEL` and `"unread"` simultaneously. Updated both consuming loops
+(`thesisHealthUncalibrated`'s main loop, and `calibratedThesisPillars`'s derived
+`UNCALIBRATED_MAPPED_LABELS`) to check array membership (`.includes(...)`) instead of strict string
+equality. No other pillar's real values collide with either sentinel string, so this is purely additive —
+every other pillar's single-default behavior is unchanged (now expressed as a one-element array).
+
+### Blast radius
+
+One file changed for behavior (`thesis-health.ts`), plus the two pre-existing test fixtures corrected
+(not new tests, but existing assertions whose fixtures didn't actually test what their names claimed).
+`thesisHealthUncalibrated`'s return value now correctly flips to `true` for any payload whose ONLY
+generic default is a native "unread" regime (previously such a payload could read as fully calibrated —
+this was a real gap in the aggregate-withhold guard, not just the per-pillar filter, since the old
+separate hardcoded check never covered "unread" either). `calibratedThesisPillars`'s per-pillar output
+now also drops the regime pillar for this case. `play-brief.ts`'s `thesisHealthSection` is the only render
+call site (repo-wide grep) and now correctly omits/withholds the fabricated line in both regime-default
+scenarios. Collateral sweep (above) confirms no other caller assumed the old single-string behavior.
+
+### Fix rationale
+
+Same shared-data-layer fix shape as #5433: broaden the one map both functions read from rather than
+adding a second bespoke check to either function individually, keeping the two mechanisms unable to
+drift apart again. Chose an array (not a second map, not a Set) to keep the existing
+`Object.entries`/`Object.fromEntries` derivation pattern intact with a minimal diff. Deliberately left
+unchanged: every other pillar's calibrated/uncalibrated classification, and the aggregate-withhold
+semantics (still an OR across all pillars, now correctly covering both regime defaults).
+
+## Swing thesis-health's per-pillar calibrated filter never recognized the Banger-ledger regime sentinel — a fabricated "Regime fit" rendered as a real read
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Date** | 2026-09-22 |
+| **Severity** | P2 (Largo product-contract C6 violation, live and member-reachable via Ask Largo's swing play-brief — fabricated precision presented as calibrated, no capital/gating impact) |
+| **Surface** | Night Hawk Swings / Ask Largo — `src/lib/swing/thesis-health.ts` |
+
+### Root cause
+
+`thesis-health.ts` has two separate mechanisms that are supposed to recognize the exact same set of
+"this pillar's `currentLabel` is a fabricated default, not a real read" sentinel values, and until this
+fix they diverged:
+
+- `thesisHealthUncalibrated(h)` — an OR-across-pillars check that decides whether the AGGREGATE health
+  score must be withheld. It looped over `UNCALIBRATED_PILLAR_LABELS` (persistence/entry_geometry/
+  flow_corroboration) AND had a fourth, separately hardcoded check specifically for the regime pillar:
+  `if (regimePillar?.currentLabel === BANGER_LEDGER_REGIME_LABEL) return true;`.
+- `calibratedThesisPillars(h)` (added 2026-09-21, per-pillar filter deciding which individual pillar
+  ROWS survive into the rendered body even when the aggregate is withheld) — derives its filter set,
+  `UNCALIBRATED_MAPPED_LABELS`, purely from `UNCALIBRATED_PILLAR_LABELS` via `Object.fromEntries`. It
+  never saw the regime sentinel, because the sentinel lived only in the separate hardcoded branch inside
+  `thesisHealthUncalibrated`, not in the shared map `calibratedThesisPillars` actually reads.
+
+Net effect: for any Banger-ledger-origin position (`BANGER_LEDGER_REGIME_LABEL = "BREAKOUT · BANGER"`,
+stamped unconditionally on every `banger_positions` ledger row by `horizonPlayFromBangerPosition`/
+`horizonPlayFromBangerWatch` in `banger-lane-merge.ts` — a fixed constant, never a real per-position
+regime calc), `thesisHealthUncalibrated()` correctly withheld the blended aggregate score, but
+`play-brief.ts`'s `thesisHealthSection()` — which renders the individual pillar bullets via
+`calibratedThesisPillars(h)` once the aggregate is withheld — kept the regime pillar in the list, because
+`calibratedThesisPillars` had no way to recognize it as fabricated. A member reading that position's Ask
+Largo play-brief saw a line like `"**Regime fit** — BREAKOUT · BANGER (Δ +0.0 pts)"` formatted identically
+to the genuinely-calibrated pillars beside it, with no indication it was a stamped constant rather than a
+measured read — the exact class of C6 violation `LARGO-PRODUCT-CONTRACT.md` names: "If a product cannot
+produce a calibrated score, OMIT the field... An invented score is worse than nothing."
+
+### Evidence
+
+Live repro via `GET /api/market/swing/play-brief?playId=SWING:NMAX:1264&ticker=NMAX&positionId=1264&expandIntel=1`
+(NMAX, positionId 1264, a Banger-lane merged row): the rendered Thesis health section included
+`"**Regime fit** — BREAKOUT · BANGER (Δ +0.0 pts)"` alongside the "Aggregate score withheld" note, i.e.
+one specific pillar row rendered as if calibrated while the surrounding text says the aggregate isn't.
+Traced in source: `grep -n BANGER_LEDGER_REGIME_LABEL src/lib/swing/banger-lane-merge.ts` confirms the
+constant (`"BREAKOUT · BANGER"`, line 39) is stamped unconditionally at both ledger-merge call sites
+(lines 141, 217). Confirmed `UNCALIBRATED_PILLAR_LABELS` (pre-fix) carried only
+`persistence`/`entry_geometry`/`flow_corroboration` and no `regime` key, so
+`UNCALIBRATED_MAPPED_LABELS[market]` was `undefined` and `calibratedThesisPillars`'s filter
+(`p.currentLabel !== UNCALIBRATED_MAPPED_LABELS[p.id]`) always kept the regime pillar regardless of its
+label.
+
+New regression test (`thesis-health.test.ts`, inside the existing "Banger-origin ledger rows..." describe
+block): asserts `calibratedThesisPillars(h)` drops the `"market"`-id pillar for the same
+`bangerLedgerInput` fixture the block's other tests already use. RED confirmed via `git stash push --
+src/lib/swing/thesis-health.ts` (assertion failed: `keptIds` still included `"market"`). GREEN after
+restoring the fix. Full `thesis-health.test.ts` suite: 16/16 pass. Collateral sweep (`play-brief.test.ts`,
+`play-brief-narrative.test.ts`, `play-brief-pillar-guard.test.ts`, `roll-plan.test.ts`,
+`serving-lane.test.ts` — every test file in the swing lane that imports `thesis-health.ts` or its two
+functions): 253/253 pass. `npx tsc --noEmit` clean.
+
+### Fix
+
+Added `regime: BANGER_LEDGER_REGIME_LABEL` to `UNCALIBRATED_PILLAR_LABELS`, the single shared map both
+`thesisHealthUncalibrated`'s main loop and `calibratedThesisPillars`'s derived
+`UNCALIBRATED_MAPPED_LABELS` already read from. This makes both mechanisms automatically agree on the
+regime sentinel using the EXISTING filter machinery — no new branch, no new logic. Removed the now-
+redundant separate hardcoded regime check inside `thesisHealthUncalibrated` (the main loop over
+`UNCALIBRATED_PILLAR_LABELS` now covers it), folding its explanatory comment into the function's own doc
+comment so the reasoning (why a stamped-constant regime string counts as fabricated the same way
+"unknown"/"n/a"/"no signals" do) isn't lost.
+
+### Blast radius
+
+One file changed for behavior (`thesis-health.ts`). `thesisHealthUncalibrated`'s own return value is
+unchanged for every input (the regime sentinel was already caught by its now-removed separate branch, so
+no aggregate-withhold behavior moved) — only `calibratedThesisPillars`'s per-pillar output changes,
+dropping the regime pillar for Banger-ledger-origin rows specifically. Every consumer of
+`calibratedThesisPillars` (`play-brief.ts`'s `thesisHealthSection`, the only render call site, per repo-
+wide grep) now correctly omits the fabricated line instead of rendering it. No other caller of either
+function exists outside the swing lane's own play-brief/narrative/serving files, all covered by the
+collateral test run above.
+
+### Fix rationale
+
+Fix at the shared data layer (the map both functions already read), not by adding a second bespoke check
+to `calibratedThesisPillars` that would need to be kept in sync with `thesisHealthUncalibrated`'s by hand
+— the exact kind of two-mechanisms-that-should-agree-but-don't drift this bug itself was an instance of.
+Deliberately left unchanged: the aggregate-withhold behavior and every other pillar's calibrated/
+uncalibrated classification.
+
 ## Live-tape swing accumulation advance accepted DTE up to 30, three weeks after the real swing window narrowed to 15
 
 > **kind:** `FINDING`
