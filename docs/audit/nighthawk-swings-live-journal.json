@@ -154,6 +154,11 @@
       "last_status": "OPEN/HOLD (Banger-lane, position #1234)",
       "last_seen": "2026-09-22T16:45:00Z",
       "note": "Live play-brief spot-check (3DTE breakout continuation, entry $2.95/mark $1.78, P&L -39.8%). Confirms #5436's Banger-origin Thesis-health withholding fix generalizes correctly beyond the two tickers already verified (AMDL/RKLB) -- correctly renders the withheld-pillar-breakdown message, not fabricated data. All rails/percentages cross-checked and internally consistent (premium-stop cushion 34%, target-rail +232% math, P&L from entry/mark). No new bug found."
+    },
+    "AAPL": {
+      "last_status": "OPEN/ADD (position #40, native swing)",
+      "last_seen": "2026-09-22T17:52:00Z",
+      "note": "Live play-brief pulled -- Sector rotation leadership, 8DTE, P&L +66.5% (peak +101%, trough -12.4%). Confirms #5433/#5434/#5436 work correctly on a mixed-calibration native row (flow_corroboration correctly withheld as uncalibrated, other 4 pillars shown as real). Surfaced the regime/flow_corroboration always-delta-0 design question above."
     }
   },
   "escalations_pending_on_4076": [
@@ -223,9 +228,19 @@
       ],
       "status": "OPEN -- posted, no response yet. Not fixed: 4 distinct fixes needed (persistence design for 3, a legacy-vs-v2 redesign/retire call for the 4th), squarely architectural per the escalation policy.",
       "summary": "graduatedEdgeRungsFromReport (feeds manage.ts's graduatedRungs, every edge exit rung's enforcement) is a PERMANENTLY empty array in production -- not a cold-book warm-up state as swing-active-refresh's own comment assumes, a structural gap that cannot resolve no matter how much data accumulates. analyzeSwingGateCalibration grades a retired concept (reward_risk_floor/entry_extended belong only to legacy-calibration/gates-pr5.ts, explicitly 'NOT production'; v2/gates.ts's real G-S1..G-S14 stack has no such names). analyzeContractRankCalibration/analyzeAllocationRecord same shape as the rung gap. Only analyzeArchetypeRecord/analyzeSubLaneRecord (score-floor wrappers) actually work -- confirmed shipping via #4685."
+    },
+    {
+      "raised_at": "2026-09-22T17:55:00Z",
+      "severity": "design question, not a bug",
+      "title": "3 of 5 Thesis-health pillars (regime/flow_corroboration/entry_geometry normal states) structurally cannot ever show a nonzero delta -- commit===current by construction",
+      "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5781073895",
+      "files": [
+        "src/lib/swing/thesis-health.ts"
+      ],
+      "status": "OPEN -- posted, no response yet. Found via live spot-check of AAPL:40 (native position) showing Delta +0.0 pts on all 4 displayed pillars. thetaBudgetScore's 0 was correct/expected (ample-runway zone); regimeScore/signalScore always literally return {commit:score, current:score} in every branch -- no live-vs-commit comparison implemented at all for those two. Not fixing: overlaps an existing related WATCHING note (entry_geometry deliberately pinned-at-commit) that explicitly warns live-deriving this class of pillar without a real design decision is risky."
     }
   ],
-  "watch_next_cycle": "MAJOR finding this cycle: calibration.ts's 4-of-7 graduation-wrapper gap posted to #4076 (comment 5780868689) -- see escalations_pending_on_4076. Not fixed (architectural, multi-part). calibration.ts sweep otherwise complete -- the Wilson-LB math and the two working wrappers (archetype/sub-lane floors) are correct and well-tested. Second-pass re-sweep candidates remaining: none currently identified as a dedicated next target -- consider a third file class (contract-ranker.ts, swing-allocation.ts, gates.ts/v2) or resume live Ask Largo play-brief forensic audits, which haven't run the last several cycles. Still watching #4076 for responses on THREE now-open design questions (Hunt Mode DTE-range, analyzeShadowGateEvidence orphaned-consumer, this new calibration-wrapper gap).",
+  "watch_next_cycle": "Two design questions raised this cycle: calibration.ts's 4/7 permanently-inert graduation wrappers (comment 5780868689) and thesis-health.ts's regime/flow_corroboration always-zero-delta gap (comment 5781073895) -- both awaiting response, now THREE total open design questions on #4076 alongside the earlier Hunt Mode DTE-range and analyzeShadowGateEvidence orphaned-consumer ones (four total). WATCH lane confirmed empty again this cycle (2nd check ~1hr apart) -- still not escalating (board healthy, scan fresh) but worth a dedicated look if it stays empty much longer. Next: continue mixing live Ask Largo audits (haven't done a CLOSED-play or a fresh WATCH audit in a while) with code sweeps -- consider contract-ranker.ts/swing-allocation.ts/gates.ts(v2) as the next code-sweep targets, or a second pass on thesis-health.ts's degradeFromManage/entryGeometryScore given today's finding.",
   "prs_this_session": [
     {
       "pr": 5439,
