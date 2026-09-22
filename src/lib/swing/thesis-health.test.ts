@@ -113,6 +113,12 @@ describe("computeSwingThesisHealth", () => {
       setupState: "TRIGGERED",
       entryStatus: "AT_TRIGGER",
       signalKinds: ["FLOW", "VECTOR"],
+      // regime must also be wired (real, non-"unread" value) for this to be a genuine
+      // all-commit-inputs-wired case — 2026-09-22 fix: an omitted regime falls back to
+      // regimeScore()'s "unread" default, which is now itself a recognized uncalibrated
+      // sentinel (see UNCALIBRATED_PILLAR_LABELS), so leaving it out here would no longer
+      // test what this test's name claims.
+      regime: "momentum long",
       computedAtEt: "14:00 ET",
     });
     assert.ok(h);
@@ -146,6 +152,39 @@ describe("computeSwingThesisHealth", () => {
     assert.ok(!keptIds.includes("flow"), "flow_corroboration (default: no signals) must still be dropped");
     const persistence = kept.find((p) => p.id === "structure");
     assert.equal(persistence?.currentLabel, "triggered");
+  });
+
+  test("calibratedThesisPillars: drops the regime pillar when it's regimeScore()'s own \"unread\" default, not just the Banger-ledger sentinel (live repro 2026-09-22, AAPL position 40)", () => {
+    // regimeScore() falls back to the label "unread" when BOTH `regime` is null/undefined AND
+    // there's no factors[0] to borrow a label from — a genuine, native "nothing to read" default,
+    // distinct from (and independently reachable from) the Banger-ledger stamped-constant sentinel.
+    // Before UNCALIBRATED_PILLAR_LABELS became an array-per-pillar map, `regime`'s one slot was
+    // occupied by the Banger sentinel and "unread" was never recognized by either function — live
+    // repro: AAPL position 40 (a NATIVE position, setupState/entryStatus/signalKinds all real)
+    // rendered "**Regime fit** — unread (Δ +0.0 pts)" as if calibrated, right next to the
+    // aggregate-withheld note (which fired only because of flow_corroboration in that live case).
+    // Every other input here is real/wired so this isolates the regime pillar specifically.
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW"],
+      dte: 9,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+      // regime and factors both omitted -> regimeScore() falls back to label "unread".
+    });
+    assert.ok(h);
+    const regimePillar = h!.pillars.find((p) => p.id === "market");
+    assert.equal(regimePillar?.currentLabel, "unread", "test setup must actually hit the unread default");
+    assert.equal(thesisHealthUncalibrated(h), true, "an unread regime pillar must still trip the aggregate-withhold guard");
+    const kept = calibratedThesisPillars(h);
+    const keptIds = kept.map((p) => p.id);
+    assert.ok(!keptIds.includes("market"), "regime (unread default) must be dropped, not rendered as calibrated");
+    assert.ok(keptIds.includes("structure"), "persistence (real: triggered) must still survive the filter");
+    assert.ok(keptIds.includes("momentum"), "entry_geometry (real: at trigger) must still survive the filter");
+    assert.ok(keptIds.includes("flow"), "flow_corroboration (real: FLOW signal) must still survive the filter");
   });
 
   test("default persistence pillar stays intact at float boundary (not falsely faded)", () => {

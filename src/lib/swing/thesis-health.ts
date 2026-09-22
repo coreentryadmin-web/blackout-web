@@ -43,14 +43,22 @@ const PILLAR_ID_MAP: Record<SwingThesisPillarId, ThesisPillarId> = {
 };
 
 /** Default pillar labels when commit-time inputs (setupState/entryStatus/signalKinds) are not wired.
- *  `regime`'s entry is the Banger-ledger stamped-constant sentinel (BANGER_LEDGER_REGIME_LABEL) —
- *  see the file-level comment below `thesisHealthUncalibrated` for why a fixed regime string counts
- *  as an uncalibrated default the same way "unknown"/"n/a"/"no signals" do for their own pillars. */
-const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string>> = {
-  persistence: "unknown",
-  entry_geometry: "n/a",
-  flow_corroboration: "no signals",
-  regime: BANGER_LEDGER_REGIME_LABEL,
+ *  Each pillar can have MORE THAN ONE generic-default label — `regime` has two, independently
+ *  reachable: `regimeScore()`'s own "unread" fallback (regime input null AND no factors[0] — the
+ *  native "nothing to read" case) and the Banger-ledger stamped-constant sentinel
+ *  (BANGER_LEDGER_REGIME_LABEL — see the file-level comment below `thesisHealthUncalibrated`). A
+ *  single-string map can only ever hold one of the two, so this is an array per pillar id, and
+ *  every consumer below checks membership, not strict equality. Live gap found 2026-09-22 (AAPL
+ *  position 40): before this array shape, the Banger sentinel occupied `regime`'s one slot and
+ *  "unread" was never recognized by either function — even in the code predating that sentinel's
+ *  addition, since the original hardcoded check only ever matched the Banger string. A native
+ *  position with no regime data at all rendered "**Regime fit** — unread (Δ +0.0 pts)" as if
+ *  calibrated, right next to the aggregate-withheld note — the identical C6 violation class. */
+const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string[]>> = {
+  persistence: ["unknown"],
+  entry_geometry: ["n/a"],
+  flow_corroboration: ["no signals"],
+  regime: [BANGER_LEDGER_REGIME_LABEL, "unread"],
 };
 
 /**
@@ -90,12 +98,12 @@ const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string>> =
  *  calibrated score, OMIT the field... An invented score is worse than nothing." */
 export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefined): boolean {
   if (!h?.pillars?.length) return false;
-  for (const [id, defaultLabel] of Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<
-    [SwingThesisPillarId, string]
+  for (const [id, defaultLabels] of Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<
+    [SwingThesisPillarId, string[]]
   >) {
     const mappedId = PILLAR_ID_MAP[id];
     const pillar = h.pillars.find((p) => p.id === mappedId);
-    if (pillar?.currentLabel === defaultLabel) return true;
+    if (pillar?.currentLabel != null && defaultLabels.includes(pillar.currentLabel)) return true;
   }
   return false;
 }
@@ -103,10 +111,10 @@ export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefin
 /** `UNCALIBRATED_PILLAR_LABELS` keyed by the mapped `ThesisHealthPayload` pillar id instead of the
  *  swing-native `SwingThesisPillarId` — lets a caller filter `h.pillars` (which carries the mapped
  *  ids) without re-deriving `PILLAR_ID_MAP` itself. */
-const UNCALIBRATED_MAPPED_LABELS: Partial<Record<ThesisPillarId, string>> = Object.fromEntries(
-  (Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<[SwingThesisPillarId, string]>).map(([id, label]) => [
+const UNCALIBRATED_MAPPED_LABELS: Partial<Record<ThesisPillarId, string[]>> = Object.fromEntries(
+  (Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<[SwingThesisPillarId, string[]]>).map(([id, labels]) => [
     PILLAR_ID_MAP[id],
-    label,
+    labels,
   ]),
 );
 
@@ -136,7 +144,7 @@ const UNCALIBRATED_MAPPED_LABELS: Partial<Record<ThesisPillarId, string>> = Obje
  * a pillar it has no real read for.
  */
 export function calibratedThesisPillars(h: ThesisHealthPayload): ThesisPillarState[] {
-  return h.pillars.filter((p) => UNCALIBRATED_MAPPED_LABELS[p.id] !== p.currentLabel);
+  return h.pillars.filter((p) => !UNCALIBRATED_MAPPED_LABELS[p.id]?.includes(p.currentLabel));
 }
 
 const DEFAULT_WEIGHTS: Record<SwingThesisPillarId, number> = {
