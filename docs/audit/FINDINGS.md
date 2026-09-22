@@ -38,6 +38,114 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## swing-board-allocation.ts repeats the same stale "caps are advisory-only" claim just fixed in its sibling
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 (documentation correctness) |
+| **Lane** | Night Hawk Swings |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate (2026-09-22), same-cycle follow-up to the `swing-allocation.ts` fix (PR #5425) |
+
+### Root cause
+
+While sweeping `swing-allocation.ts`'s sibling wiring file for the same class of issue, found the
+identical stale claim repeated: `swing-board-allocation.ts`'s header said the allocator's decision
+"does not gate the engine or resize a real position (swing-allocation returns `enforce:false`).
+The portfolio backtest graduates the caps first (PR-16)."
+
+That justification is the exact claim `swing-allocation.ts`'s own header made and was corrected
+for in the immediately-preceding fix this cycle: `commit.ts`'s Gate 2 calls `allocateSwingBook`
+directly with the real caps and treats a breach as a live block on real commits — the caps are
+not waiting on any future graduation.
+
+What IS true, and worth keeping documented, is narrower: this file's own exported
+`allocateSwingBoard` function has **zero callers anywhere in the app** (confirmed by grep — only
+its own test file references it), so whatever it computes never reaches a served board today. The
+file conflated "my own wrapper is unwired" (true) with "the underlying caps are advisory" (false,
+per the sibling fix) — the same shape of conflation, just one level removed.
+
+### Fix
+
+Corrected the header to state the real reason this file's output never gates anything (zero
+callers, not un-graduated caps), and pointed to `swing-allocation.ts`'s header for the full trace
+of where the caps actually do gate. Documentation-only — no logic touched.
+
+### Evidence
+
+`npx tsc --noEmit`: clean. `swing-board-allocation.test.ts`: 4/4 pass. Full
+`src/lib/swing/*.test.ts`: 1503/1503 pass — confirms zero behavior change.
+
+### Blast radius
+
+One file, comment-only. No caller reads it programmatically.
+
+## swing-allocation.ts's own comments claim the book-percent caps are advisory-only — they are a live commit gate today
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 (documentation correctness, capital-risk-relevant) |
+| **Lane** | Night Hawk Swings |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate (2026-09-22) |
+
+### Root cause
+
+`swing-allocation.ts`'s own header and several field-level doc comments say, repeatedly and
+unambiguously: `capFlags` are "advisory (enforce:false) — nothing is applied", `advisorySizing`
+is "a suggestion only, never applied", and the whole module's caps only "start sizing/blocking
+real risk once the portfolio backtest graduates them (PR-16)". A returned runtime string
+(`reasons[]`) even told a caller a breached cap was "not applied".
+
+None of this is true of the actual live path. `commit.ts`'s `computeSwingCommitPlan` (called from
+`discovery.ts`, the real discovery/commit cron path) calls `allocateSwingBook` as its "Gate 2" with
+the real, "operator-confirmed" `DEFAULT_SWING_CAPS` (5%/20%/40%/3), reads
+`decision.capFlags[].wouldBreach` for the returned decision, and pushes every breach onto
+`blockedBy`. `blockedBy.length === 0` is a hard prerequisite for `committable`; a candidate that
+isn't committable never gets a real `SwingPositionInsert` — at best it gets a zero-capital SHADOW
+row. `commit.ts`'s own header independently and correctly says the caps are "real-time risk
+controls, unchanged and unweakened" — `swing-allocation.ts`'s header directly contradicted its own
+consumer.
+
+`allocateSwingBook` itself genuinely never resizes or blocks anything — it's a pure annotator, and
+`advisorySizing` genuinely is never read by any caller (confirmed by grep — only `capFlags` is
+consulted). So the file wasn't simply wrong, it conflated two different things: "this function
+doesn't act on its own output" (true) with "nothing downstream acts on it either" (false, and the
+false half is the one a future reader would actually rely on when reasoning about whether these
+caps protect real capital).
+
+### Why this matters
+
+A future session (or a fold/audit pass) reading only this file's own comments would reasonably
+conclude the book-percent caps are inert scaffolding waiting on a "PR-16" that may never have
+existed as described, and could propose relaxing/removing them as "dead code" or fail to flag a
+regression that silently disabled Gate 2 — because the file itself says nothing would change.
+
+### Fix
+
+Corrected the header block and every misleading field doc (`wouldBreach`, `capFlags`,
+`proposedPct`, `enforce`, `advisorySizing`) to state precisely what's true: this module never
+mutates or blocks on its own, but `commit.ts`'s Gate 2 already treats a `capFlags[].wouldBreach`
+as a live block, today, with the real default caps. Also fixed the runtime `reasons[]` string that
+claimed a breach was "not applied" — for the exact case that string is emitted, it was about to be.
+Documentation/data-only change — no logic, no exported behavior touched.
+
+### Evidence
+
+`npx tsc --noEmit`: clean. `swing-allocation.test.ts`: 10/10 pass. `commit.test.ts`: 44/44 pass.
+Full `src/lib/swing/*.test.ts`: 1503/1503 pass — confirms zero behavior change, as expected for a
+comment/string-only correction.
+
+### Blast radius
+
+One file. No caller reads the corrected comments programmatically; the one corrected runtime
+string (`reasons[]`) has no test asserting its exact text (confirmed by grep) and is evidence/log
+content, not a member-facing surface.
+
 ## Swing brief's ticker-specific losing track record never reaches "Trade manager read"
 
 > **kind:** `FINDING`
