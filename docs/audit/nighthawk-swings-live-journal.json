@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T00:12:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset, first cycle of 2026-09-22). ReadNotifications clean. git sync: fast-forwarded onto PR #5398's merge. Followed up on last cycle's own note: re-pulled AAPL's live play-brief (SWING:AAPL:40) to confirm PR #5398's 'Consider adding' text renders. It does NOT yet -- still shows generic 'Hold the line. Let the trade work while structure holds.' Investigated properly before flagging anything: (1) confirmed AAPL's manageReason is STILL 'add_eligible' right now via the horizons board (rules out the data having changed under the fix), (2) checked the actual ecr-push-production.yml workflow runs on main and found the deploy for #5398's commit (da46eff03) is status:'pending' -- the two prior same-session deploy runs (#5395, #5396) both show conclusion:'cancelled', superseded by the rapid succession of merges (GitHub Actions' normal behavior: a newer push to the same ref cancels an in-flight run of the same workflow). CONCLUSION: pure deploy lag, not a bug -- #5398 merged 2026-09-21T23:54:16Z, and prod deploys take ~45-55 min per this repo's own documented timing, so the fix simply hasn't reached production yet. No finding filed. Next cycle (~00:16-00:31 UTC) should re-check AAPL's brief once the deploy window has passed -- if 'Consider adding' still doesn't render by ~00:50 UTC (45-55 min past merge), THAT would be worth escalating as a real deploy-pipeline or fix bug, not before. Observed parallel-session PR #5399 (Meridian peer earnings coaching -- subject ticker's own beat rate was filtered out and never narrated, only peers' rates shown). Well-documented, not duplicated, CI pending.",
+  "last_updated": "2026-09-22T00:22:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5399's merge (Meridian peer subject beat-rate, parallel session). No new open swing PRs. Deploy window for #5398 (merged 23:54:16Z) not yet passed (~22 min elapsed of the ~45-55min window) -- deliberately did NOT re-check AAPL's play-brief again this cycle per last cycle's own plan (avoid a premature false-negative re-check); will re-verify next cycle or the one after, once past ~00:50 UTC. Used this cycle for a different angle: verified evaluateDteMigration's roll-candidate threshold logic against AAPL's real live state. SWING_SUBLANE_MANAGE.STANDARD.migrationDte=4; AAPL is at 9 DTE (9 > 4 -> 'ample time', migrate:false) -- exactly matches the live rollCandidate:null already observed on the horizons board. Clean, consistent, no bug. This closes out one more of the v3 brief's named checklist items (exit management via manage-sync/exit-policy) with a concrete cross-check against real data rather than just reading the source in isolation.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,14 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T00:12:00Z",
-    "swing_prs": [
-      {
-        "number": 5399,
-        "title": "fix(swing): narrate the subject ticker's own earnings beat rate, not just peers'",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
-      }
-    ]
+    "as_of": "2026-09-22T00:22:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
