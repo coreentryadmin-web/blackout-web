@@ -159,6 +159,11 @@
       "last_status": "OPEN/ADD (position #40, native swing)",
       "last_seen": "2026-09-22T17:52:00Z",
       "note": "Live play-brief pulled -- Sector rotation leadership, 8DTE, P&L +66.5% (peak +101%, trough -12.4%). Confirms #5433/#5434/#5436 work correctly on a mixed-calibration native row (flow_corroboration correctly withheld as uncalibrated, other 4 pillars shown as real). Surfaced the regime/flow_corroboration always-delta-0 design question above."
+    },
+    "MSTR": {
+      "last_status": "CLOSED (position #33, stopped -61.5%)",
+      "last_seen": "2026-09-22T18:00:00Z",
+      "note": "CLOSED-play brief spot-check via the 5-truth-grader angle. Found + fixed the Flow & positioning missing-disclosure gap (PR #5444). Rest of the brief (chart technicals/levels/GEX posture, all correctly disclosed as current-not-historical) was clean and internally coherent (short thesis broke as MSTR rallied hard since close, consistent with current bullish technicals)."
     }
   },
   "escalations_pending_on_4076": [
@@ -240,7 +245,7 @@
       "status": "OPEN -- posted, no response yet. Found via live spot-check of AAPL:40 (native position) showing Delta +0.0 pts on all 4 displayed pillars. thetaBudgetScore's 0 was correct/expected (ample-runway zone); regimeScore/signalScore always literally return {commit:score, current:score} in every branch -- no live-vs-commit comparison implemented at all for those two. Not fixing: overlaps an existing related WATCHING note (entry_geometry deliberately pinned-at-commit) that explicitly warns live-deriving this class of pillar without a real design decision is risky."
     }
   ],
-  "watch_next_cycle": "Two design questions raised this cycle: calibration.ts's 4/7 permanently-inert graduation wrappers (comment 5780868689) and thesis-health.ts's regime/flow_corroboration always-zero-delta gap (comment 5781073895) -- both awaiting response, now THREE total open design questions on #4076 alongside the earlier Hunt Mode DTE-range and analyzeShadowGateEvidence orphaned-consumer ones (four total). WATCH lane confirmed empty again this cycle (2nd check ~1hr apart) -- still not escalating (board healthy, scan fresh) but worth a dedicated look if it stays empty much longer. Next: continue mixing live Ask Largo audits (haven't done a CLOSED-play or a fresh WATCH audit in a while) with code sweeps -- consider contract-ranker.ts/swing-allocation.ts/gates.ts(v2) as the next code-sweep targets, or a second pass on thesis-health.ts's degradeFromManage/entryGeometryScore given today's finding.",
+  "watch_next_cycle": "PR #5444 open (flow-intel closed-disclosure fix), CI pending -- check-in scheduled. This closes out ALL FIVE sibling current-vs-historical disclosure sections in play-brief-intel.ts (chart technicals, levels, GEX posture, wall dynamics, flow -- consistent now). Two design questions on #4076 still awaiting response (calibration.ts graduation gap, thesis-health regime/signal delta gap), plus the two earlier ones (Hunt Mode DTE, analyzeShadowGateEvidence). WATCH lane still empty on last check. Next: continue mixing live audits (more CLOSED/OPEN spot-checks) with code sweeps (contract-ranker.ts, swing-allocation.ts, v2/gates.ts as candidates).",
   "prs_this_session": [
     {
       "pr": 5439,
@@ -257,6 +262,14 @@
       "status": "MERGED (5b830442a, squash, 2026-09-22T17:15:55Z) -- verified fix content live on main.",
       "file": "src/lib/swing/manage.ts",
       "summary": "evaluateSwingManagement's final fallback HOLD branch returned a hardcoded reason claiming premium/structural/time were all checked, gated only by 'is ANY input present' (sessionsHeld alone satisfies it). On a tick where live mark+spot reads both fail (documented recurring pattern), the manager fabricated 'premium above the backstop, ample time' claims it never checked, landing in every management snapshot's event_json. Fifth instance this session of the C6 fabricated-confidence bug class (after thesis-health x3, vector-lane-enrich x1), found via a fresh full read of manage.ts (the live exit-management engine -- second-pass re-sweep target). Fixed to build the reason from only evaluated dimensions; byte-identical output proven on the normal all-evaluable path. RED->GREEN test added, 395 collateral tests pass, tsc clean."
+    },
+    {
+      "pr": 5444,
+      "title": "fix(swing): Flow & positioning gets the same CLOSED-play disclosure as its siblings",
+      "opened_at": "2026-09-22T18:05:00Z",
+      "status": "OPEN, CI pending",
+      "file": "src/lib/swing/play-brief-intel.ts",
+      "summary": "flowIntelSection was the one sibling section (of 5: chart technicals, levels, GEX posture, wall dynamics, flow) missing the 'not what this trade traded under' CLOSED-bucket disclosure. Live repro MSTR:33 showed current HELIX flow/anomalies/prints/0DTE-desk content with zero framing beside sibling sections that correctly disclosed theirs. Fixed with the same statusBucket guard the other four already use. RED->GREEN test, 354 collateral tests pass, tsc clean."
     }
   ],
   "open_experiments": [
