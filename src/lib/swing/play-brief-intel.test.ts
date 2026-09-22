@@ -4274,6 +4274,39 @@ test("flowIntelSection: notable-print strikes render to 2dp like every other str
   assert.match(section!.body, /PUT 232\.50 \$500000\.00/, "strike must round to 2dp, not render the raw float");
 });
 
+// FINDING (Ask Largo standing mandate, 2026-09-22, live repro MSTR:33): chartTechnicalsSection,
+// chartLevelsSection, gexPostureSection and wallDynamicsSection all unshift a "_Current X — not
+// what this trade traded under._" disclosure on a CLOSED play (see each section's own fix — the
+// chart-technicals one cites live AAPL:36 evidence for the exact same failure mode: today's data
+// rendered "with no framing whatsoever, reading as if it described the trade's own conditions").
+// flowIntelSection carries the IDENTICAL risk — its HELIX tape/anomalies/notable-prints/0DTE-desk
+// content is always CURRENT (as-of-request-time), yet was the one sibling section never given the
+// same disclosure. Live MSTR:33 (closed 2026-09-03) rendered "HELIX tape (6h): call-heavy...",
+// several dated "[Nh ago]" anomalies/prints, and a 0DTE desk alignment line with zero indication
+// any of it postdates the trade by weeks — a member could easily read it as the flow context the
+// trade was actually taken under.
+test("flowIntelSection: CLOSED bucket gets the same 'not what this trade traded under' disclosure as its sibling sections", () => {
+  const eco = {
+    ticker: "MSTR",
+    flow_feed_fresh: true,
+    recent_flow: { window_hours: 6, print_count: 4, call_premium: 4_600_000, put_premium: 1_900_000, unknown_premium: 0 },
+    recent_anomalies: [],
+    flow_full_state: { count: 1, total_premium: 5_200_000, top_tickers: [], recent: [] },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as unknown as EcosystemContext;
+
+  const closedSection = flowIntelSection(eco, fixturePlay({ status: "CLOSED" }));
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current flow — not what this trade traded under/);
+
+  const openSection = flowIntelSection(eco, fixturePlay({ status: "OPEN" }));
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current flow/, "open/watch buckets are unchanged");
+});
+
 test("watchForSection: CLOSED bucket suppresses the live ticker-level thesis note (not this trade's thesis)", () => {
   // serving-ingest.ts computes thesisBreak from a LIVE, present-tense "is there a fresh setup on
   // this ticker right now" read — unrelated to the specific, already-resolved CLOSED position. Live
