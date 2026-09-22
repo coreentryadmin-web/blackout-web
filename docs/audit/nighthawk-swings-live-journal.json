@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T00:36:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5401's merge (roll-history fabricated 'call' for null contract_type, parallel session) + #5400 (folding 4 findings from #5394-#5399). No new open swing PRs. Checked #5398's deploy status directly rather than re-pulling AAPL's brief again (would be premature mid-deploy): ecr-push-production run for #5398's commit is status:'in_progress' (~37min elapsed) -- still deploying, consistent with continued deploy lag, not a new problem. The two newer merges (#5399, #5401) had their own deploy runs auto-cancelled (superseded), confirming #5398's in-progress run is the one that will actually land; once it completes, AAPL's brief should pick up all THREE merged fixes (#5398 add-eligible narrative, #5399 Meridian peer subject beat rate if applicable, #5401 roll-history) in one deploy. Checked whether #5401's fix is relevant to AAPL's own roll history specifically: read swingRollHistoryLegFromRow (play-brief-roll-history.ts) -- confirmed fixed in source (right: contract_type==='put'?'P':contract_type==='call'?'C':null). AAPL's own two roll legs (positionId 37->40) are both genuine recorded calls (contract.right:'C' confirmed on every pull this session), so this specific null-contract_type edge case would not have visibly affected AAPL's own roll-history narrative even pre-fix -- the bug is real and correctly fixed, just not one that happened to manifest on the one live position being tracked. No action needed, not duplicated. Next cycle: check whether #5398's deploy has completed and re-verify AAPL's play-brief then.",
+  "last_updated": "2026-09-22T00:52:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto #5402 (MARKET-OPEN-VALIDATION entry for #5401). Observed new parallel-session PR #5403 (closed-plays/live-plays/play-brief-resolve.ts -- same null-contract_type-fabricates-call bug class as #5401, 3 more call sites incl. the identity-resolution helper rowContractMatches, genuinely worth fixing per its own reasoning re: why the 3 independent nullable columns argument in #5401's blast-radius note didn't actually hold). Not mine, not duplicated. #5398's ecr-push-production deploy is now status:completed/conclusion:success (~00:40:52Z). Re-pulled AAPL's live play-brief -- STILL shows generic 'Hold the line', not 'Consider adding'. Investigated rather than escalating prematurely: (1) reconfirmed manageReason is STILL 'add_eligible' right now (data unchanged, rules out a state flip), (2) read the actual ecr-push-production.yml workflow source -- it DOES include the ECS 'aws ecs update-service --force-new-deployment' step ('Roll ECS production web'), but the workflow's OWN code comment explicitly documents that call as ASYNCHRONOUS: a successful API response means the deployment was successfully REQUESTED, not that new tasks are healthy and old ones drained. Workflow 'success' at 00:40:52Z was only ~10min before this check -- ECS rolling deployment (health checks, deregistration_delay, drain time) plausibly still finishing. CONCLUSION: still deploy-propagation lag, not a confirmed bug -- but the margin for that explanation is narrowing (workflow success + ~10-15min should normally be enough for an ECS rollout). Next cycle (~01:01 UTC, ~20min past workflow success) is the real decision point: if 'Consider adding' still doesn't render then, treat it as a genuine live defect worth escalating/investigating (e.g., CDN/edge caching the old play-brief response, a stale ECS task not yet drained, or the fix itself not actually reaching this code path in prod) rather than deploy lag.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,8 +119,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T00:36:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-22T00:52:00Z",
+    "swing_prs": [
+      {
+        "number": 5403,
+        "title": "fix(swing): closed-plays/live-plays/play-brief-resolve no longer fabricate \"call\" for a null contract_type",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
