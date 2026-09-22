@@ -3949,6 +3949,52 @@ test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
   assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): sectorLeadershipFacts is
+// frozen into the dossier at commit/discovery time and never re-derived — a position committed BEFORE
+// #5446 shipped can still carry a pre-fix benchmark for a theme #5446 now excludes entirely (a
+// crypto-equity name mechanically benchmarked against a SIC/label-derived sector ETF, e.g. HUT vs
+// Financials/XLF). Live-repro'd on HUT:41 ~40min after #5446 merged: the brief still read "leading
+// Financials (XLF) by 10.7%". Caveat only the exact bug signature (theme now excluded from
+// benchmarking + frozen facts still carry one) rather than rewriting the frozen evidence.
+test("whyThisSetupSection: caveats stale pre-fix industry-read evidence for a now-excluded theme (HUT/crypto-equity)", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      ticker: "HUT",
+      sectorLeadershipFacts: {
+        benchmarkEtf: "XLF",
+        benchmarkLabel: "Financials",
+        kind: "sector",
+        nameReturnPct: 6.5,
+        groupReturnPct: -4.2,
+        deltaPct: 10.7,
+      },
+    }),
+  );
+  assert.doesNotMatch(section.body, /Financials/);
+  assert.doesNotMatch(section.body, /XLF/);
+  assert.match(
+    section.body,
+    /\*\*Industry read:\*\* sector benchmark evidence recorded before a classification fix — historical score unaffected\./,
+  );
+});
+
+test("whyThisSetupSection: still surfaces a live, legitimate industry read (non-crypto-equity name, unaffected)", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      ticker: "NVDA",
+      sectorLeadershipFacts: {
+        benchmarkEtf: "SMH",
+        benchmarkLabel: "Semiconductors",
+        kind: "industry",
+        nameReturnPct: 1.6,
+        groupReturnPct: 5.6,
+        deltaPct: -4.0,
+      },
+    }),
+  );
+  assert.match(section.body, /\*\*Industry read:\*\* lagging \*\*Semiconductors\*\* \(SMH\) by 4\.0% over 10 sessions \(\+1\.6% vs \+5\.6%\)\./);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18, fresh angle: `dossier.ts`'s commit-time
 // dataQuality.presentPillars/degraded read, pinned into `feature_vector.present_pillars`/
 // `dq_degraded` at commit — feature-vector.ts, commit.ts — but never read back out anywhere in the
