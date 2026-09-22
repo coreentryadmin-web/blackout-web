@@ -211,7 +211,7 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "PR #5439 MERGED and verified live on main (1f82deecb) -- commit.ts + swing-portfolio-budget.ts sweep fully closed out this cycle, including the shipped fix. #4076 still unchanged as of last check (236 comments), no response yet on the two open design questions (Hunt Mode DTE-range, analyzeShadowGateEvidence orphaned consumer). WATCH lane was empty (watchCount:0) as of 16:47 UTC -- healthy board, not escalated, but worth a follow-up look across a few more cycles to see if it's a normal clean state or a discovery gap. Next: start the second, deeper re-pass over already-swept files (first pass found real bugs in thesis-health.ts / vector-lane-enrich.ts / swing-portfolio-budget.ts that only surfaced once the exact live/adversarial scenario was traced -- a first clean read is not proof of no bug). Good candidates to re-open with fresh eyes: manage.ts (the live exit-management engine, real money, large and central -- worth the same commit.ts-level dedicated-cycle treatment even though pieces of it were spot-checked earlier), roll.ts/roll-plan.ts (roll mechanics, real money), calibration.ts (the graduation ladder commit.ts leans on). Continue mixing with live Ask Largo play-brief audits on fresh OPEN/WATCH/CLOSED positions.",
+  "watch_next_cycle": "PR #5442 open (manage.ts fallback-hold-reason-honesty fix), CI pending -- check-in scheduled. manage.ts (400 lines) fully re-read this cycle as the first target of the second-pass re-sweep -- found a real 5th instance of the fabricated-confidence bug class (see PR #5442). This validates the second-pass strategy: a first clean read is not proof of no bug, the exact right partial-data scenario has to be traced. Remaining second-pass candidates: roll.ts (264 lines), roll-plan.ts (407 lines, partially covered by commit.ts-era test runs but not a dedicated read), calibration.ts (583 lines, the graduation ladder commit.ts leans on). #4076 still unchanged, no response on the two open design questions. WATCH lane was empty as of last check (16:47 UTC) -- re-check next cycle.",
   "prs_this_session": [
     {
       "pr": 5439,
@@ -220,6 +220,14 @@
       "status": "MERGED (1f82deecb, squash, 2026-09-22T16:52:44Z) -- verified fix content live on main.",
       "file": "src/lib/swing/swing-portfolio-budget.ts",
       "summary": "evaluateSwingCommitBudget's per_position_loss check matched by ticker string against the aggregate offenders list; two different positions (different archetype/direction) can share a ticker, so an existing over-cap sibling silently blocked a fresh, properly-sized candidate. Fixed to compare the candidate's own risk directly against the resolved limit. RED->GREEN test added, 121 collateral tests pass, tsc clean."
+    },
+    {
+      "pr": 5442,
+      "title": "fix(swing): manage engine's fallback HOLD reason no longer claims unverified facts",
+      "opened_at": "2026-09-22T17:10:00Z",
+      "status": "OPEN, CI pending",
+      "file": "src/lib/swing/manage.ts",
+      "summary": "evaluateSwingManagement's final fallback HOLD branch returned a hardcoded reason claiming premium/structural/time were all checked, gated only by 'is ANY input present' (sessionsHeld alone satisfies it). On a tick where live mark+spot reads both fail (documented recurring pattern), the manager fabricated 'premium above the backstop, ample time' claims it never checked, landing in every management snapshot's event_json. Fifth instance this session of the C6 fabricated-confidence bug class (after thesis-health x3, vector-lane-enrich x1), found via a fresh full read of manage.ts (the live exit-management engine -- second-pass re-sweep target). Fixed to build the reason from only evaluated dimensions; byte-identical output proven on the normal all-evaluable path. RED->GREEN test added, 395 collateral tests pass, tsc clean."
     }
   ]
 }
