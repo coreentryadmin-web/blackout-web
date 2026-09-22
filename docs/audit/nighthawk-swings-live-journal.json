@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T16:20:00Z",
-  "notes": "Trigger 3/4 (:16 offset). No new #4076 activity. Covered the mission's CLOSED-plays item for the first time this visible window: pulled GET /api/market/swing/record?days=14's closedDeck (only 2 rows -- AAPL:38, CRWD:39, both NATIVE swing positions, not Banger-lane -- a genuinely different class from every position spot-checked so far this session). Deep-audited both CLOSED play-briefs. AAPL:38: entry $5.65/peak $6.23/trough $2.45/exit -33.19% -- all displayed %s arithmetically exact (peak +10.2%%, trough -56.6%%, exit -33.2%%). CRWD:39: peak +39.2%%, exit -58.3%%, also exact. Both correctly show the archetype near-tie disclosure (archetypeNearTie: marginPct 0, priority-order tie-break named), the strike-vs-flow-magnet transparency (topFlowProvenance), and avoid the round-trip/Lessons duplication bug fixed earlier (#5362/#4965) -- Lessons restates facts plainly without repeating the narrative sentence. No bugs found. (The already-known closedReason-is-P&L-sign-only gap, comment 5645638333, is consistent with what's shown -- not re-flagging, already tracked.)",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-22T18:45:00Z",
+  "notes": "Resumed the in-progress HUT:41 industry-benchmark investigation from before compaction. Read industry-group-rs.ts's resolveGroupBenchmark in full (was cut off mid-read at line 180). Confirmed via live Polygon /v3/reference/tickers/HUT: sic_code=6199 (FINANCE SERVICES), which sectorEtfFromSic's 6000-6499 range resolves to XLF -- a real provider SIC quirk (crypto miners commonly bucketed under a generic finance SIC), not evidence HUT is a Financials-rotation name. Traced the sectorLabel path too: swing-ingest.ts's groupBenchmark resolution passes sectorLabel from getSector() in src/lib/sector-map.ts (a THIRD, unrelated sector map from portfolio/sector-map.ts's sectorFor -- confirmed these are two different files with different classifications; sector-map.ts has no HUT entry at all -- falls to 'Other', not the bug path -- but independently mislabels MSTR/COIN as 'Tech'). Shipped PR #5446: NO_SECTOR_BENCHMARK_THEMES guard using the SAME sectorFor('crypto-equity') classification Book-context already relies on, so the SIC/label mislabel and the concentration-risk grouping can never disagree again. Theme-general fix, not HUT-specific -- closes MSTR/COIN too. Full RED->GREEN discipline: proved HUT/6199 resolved XLF pre-fix via git-stash isolation, null post-fix; tsc clean; 42/42 collateral tests. Deliberately did NOT invent a crypto-sector benchmark ETF (a real product decision, out of scope for a CARVE-OUT fix) and did NOT touch sector-map.ts's own MSTR/COIN 'Tech' label or unify all three sector-classification files -- that reconciliation is bigger than this bug and not attempted unilaterally. This completes the second full deep-pass sweep of the swing engine core this session -- next cycle should lean on live Ask Largo forensic audits over further code-sweep, per the mandate's own observation that both methods keep finding real bugs but the code-sweep candidate list is now genuinely exhausted at this depth.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "docs/audit/findings-staging/2026-09-22-swing-industry-rs-crypto-equity-financials-mislabel.md"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -281,6 +283,14 @@
       "status": "MERGED (318c05d86, squash) -- merged+verified by a parallel coordinator session at 18:04 UTC, ahead of this session's own scheduled check-in (cancelled as redundant).",
       "file": "src/lib/swing/play-brief-intel.ts",
       "summary": "flowIntelSection was the one sibling section (of 5: chart technicals, levels, GEX posture, wall dynamics, flow) missing the 'not what this trade traded under' CLOSED-bucket disclosure. Live repro MSTR:33 showed current HELIX flow/anomalies/prints/0DTE-desk content with zero framing beside sibling sections that correctly disclosed theirs. Fixed with the same statusBucket guard the other four already use. RED->GREEN test, 354 collateral tests pass, tsc clean."
+    },
+    {
+      "pr": 5446,
+      "title": "fix(swing): don't benchmark crypto-equity names against a SIC-derived sector ETF",
+      "opened_at": "2026-09-22T18:45:00Z",
+      "status": "OPEN, undrafted, subscribed -- awaiting CI/merge.",
+      "file": "src/lib/swing/industry-group-rs.ts",
+      "summary": "Live HUT:41 play-brief forensic audit found an internal contradiction: Book-context correctly grouped HUT under theme 'crypto-equity' while the same brief's Industry-read cited 'leading Financials (XLF) by 10.7%' as the single largest score pillar. Root-caused live via Polygon /v3/reference/tickers/HUT (sic_code 6199 FINANCE SERVICES -> sectorEtfFromSic's 6000-6499 range -> XLF). Fixed with a NO_SECTOR_BENCHMARK_THEMES guard in resolveGroupBenchmark (reuses portfolio/sector-map.ts's sectorFor -- the SAME classification Book-context already uses -- theme-general so it also closes the latent MSTR/COIN mislabel via the unrelated sector-map.ts Tech label). RED->GREEN test, tsc clean, 42/42 collateral (swing-ingest/dossier/archetype/swing-pillars)."
     }
   ],
   "open_experiments": [
