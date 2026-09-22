@@ -1181,7 +1181,14 @@ export function tradeManagerNarrativeSection(
 
   // crossDeskCoaching (collected into `bullets` above via collectCoachingBullets) already names
   // the same Vector headline when desks conflict — see counterThesisLine's own doc comment.
-  const vectorConflictAlreadyNoted = bullets.some((b) => /Vector (bearish|bullish)/.test(b));
+  // BUG FIX (2026-09-22, Ask Largo standing mandate): the sibling dedup check in
+  // play-brief-narrative-coaching.ts's `composeCoachingBullets` had the identical bug — this regex
+  // only matched Vector-as-LEAD-conflict phrasing ("Vector bearish (...)"), not Vector-as-demoted-
+  // "rest"-conflict phrasing ("Vector also reads bearish (...)"), which renderCrossDeskConflict
+  // produces whenever another desk (today: only HELIX, on a FLOW_ACCUMULATION archetype) outranks
+  // Vector's own weight. See that file's matching fix comment for the full mechanism + regression
+  // test.
+  const vectorConflictAlreadyNoted = bullets.some((b) => /Vector (?:also reads )?(bearish|bullish)/.test(b));
   const counter = counterThesisLine(ctx, play, spot, vectorConflictAlreadyNoted);
   if (counter) add(counter, { reserved: true });
 

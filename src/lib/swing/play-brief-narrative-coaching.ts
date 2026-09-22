@@ -1378,7 +1378,19 @@ export function collectCoachingBullets(
   const crossDesk = crossDeskCoaching(ctx, play);
   push(crossDesk);
   // Threaded into vectorPlayCoaching below — see that function's own doc comment for why.
-  const vectorConflictAlreadyNoted = crossDesk != null && /Vector (bearish|bullish)/.test(crossDesk);
+  // BUG FIX (2026-09-22, Ask Largo standing mandate): renderCrossDeskConflict formats the LEAD
+  // conflict as `${desk} ${claim}` ("Vector bearish (...)") but a demoted "rest" conflict as
+  // `${desk} also reads ${claim}` ("Vector also reads bearish (...)") — the old regex only matched
+  // the lead phrasing, so whenever Vector's own weight (structure, base 3) was outranked by another
+  // desk's archetype-bonused weight (only possible today for FLOW_ACCUMULATION, which bumps HELIX's
+  // "flow" kind to 2+2=4 > Vector's un-bonused 3), Vector's conflict rendered in the "rest" clause
+  // and this dedup check silently read it as "never noted" — reopening the exact triple-restated
+  // duplication the 2026-09-09 fix (see this file's `vectorPlayCoaching` doc comment) was built to
+  // prevent: vectorPlayCoaching then re-quoted the same headline as its own separate bullet. Live
+  // repro + regression test: play-brief-narrative-coaching.test.ts's
+  // "Vector-conflict headline still duplicates when a FLOW_ACCUMULATION archetype demotes Vector..."
+  const vectorConflictAlreadyNoted =
+    crossDesk != null && /Vector (?:also reads )?(bearish|bullish)/.test(crossDesk);
   push(laneRankCoaching(play, ctx.laneRows));
   push(macroTapeCoaching(ctx));
   // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `scorecardCoaching` (formerly here)
