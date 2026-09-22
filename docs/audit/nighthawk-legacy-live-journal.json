@@ -4192,6 +4192,11 @@
       "at": "2026-09-22T15:37:04Z",
       "summary": "Second instance of the single-ticker transient RTH mark-staleness blip: ALAB flagged \"stale by the API\" at 15:36:43 UTC (11:36am ET) while META/TWLO stayed GREEN in the same cycle -- identical shape to the TWLO instance at 14:21:28 UTC. Re-fetched raw /legacy-marks ~10s later (15:36:53 UTC): ALAB stale:false, live mark=43.55 bid=42.00 ask=45.10.",
       "assessment": "INSTANCE 2 of 3 for this pattern (different ticker this time -- ALAB not TWLO -- so this looks like a general single-contract transient quote-fetch blip during RTH, not a ticker-specific issue). Still self-resolves within seconds, still not escalating per the flake discipline. If a 3rd instance occurs, will investigate root cause (rate limiting, provider hiccup, or something more) rather than continuing to treat as pure noise."
+    },
+    {
+      "at": "2026-09-22T15:52:30Z",
+      "summary": "ROOT CAUSE FOUND for the transient single-ticker RTH mark-staleness pattern (3rd instance, ALAB again at 15:51:42 UTC, 2nd consecutive cycle for this ticker). Direct 3x retry of raw /legacy-marks 3s apart: attempt 0 (asof 15:50:57Z) stale:true; attempts 1-2 (asof 15:51:56Z/15:52:00Z) stale:false -- SAME underlying mark/bid/ask (44.70/42.95/46.45) across all 3, value never changed or froze. This is a benign polling-cadence boundary effect: the staleness check compares quote age (asof) against a fixed threshold, and this audits checks occasionally land right before the next ~60s poll refreshes the timestamp -- not a real data-integrity defect (no sign error, no NaN, no genuinely frozen mark at a wrong value).",
+      "assessment": "CLOSING this pattern as EXPLAINED, not escalating. All 3 instances (TWLO 14:21, ALAB 15:36, ALAB 15:51) share the identical root cause -- a momentary stale-flag window at the polling boundary, self-resolving within ~60s every time, values always correct. No code fix warranted: the staleness threshold is working as designed (correctly flags quotes older than its window), this is inherent to any polling-based freshness check, not a bug in Legacy. Future occurrences of this exact shape (same values, stale flag flips on immediate re-check) can be recognized as this same benign pattern without re-investigating from scratch."
     }
   ],
   "knownOpenItems": {
