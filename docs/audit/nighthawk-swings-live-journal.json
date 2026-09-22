@@ -149,6 +149,11 @@
       "last_status": "WATCH/PRE_TRIGGER",
       "last_seen": "2026-09-20T12:47:00Z",
       "note": "Legacy morning-confirm-promoted, legacy_exempt gate, entry window closes 2026-09-22 (3d left). Live play-brief pull confirmed #5298's pinned-factors fix holding in production (single 'Night Hawk edition score +71pts' factor, no mismatch). Also the repro subject for the new GEX/Vector weekend-freshness design question raised on #4076."
+    },
+    "CBRS": {
+      "last_status": "OPEN/HOLD (Banger-lane, position #1234)",
+      "last_seen": "2026-09-22T16:45:00Z",
+      "note": "Live play-brief spot-check (3DTE breakout continuation, entry $2.95/mark $1.78, P&L -39.8%). Confirms #5436's Banger-origin Thesis-health withholding fix generalizes correctly beyond the two tickers already verified (AMDL/RKLB) -- correctly renders the withheld-pillar-breakdown message, not fabricated data. All rails/percentages cross-checked and internally consistent (premium-stop cushion 34%, target-rail +232% math, P&L from entry/mark). No new bug found."
     }
   },
   "escalations_pending_on_4076": [
