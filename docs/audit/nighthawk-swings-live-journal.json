@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T02:36:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5409 (fold PR#5408's finding, parallel session) + observed new PR #5410 (sub-lane track record citation, parallel session, well-documented, not duplicated -- self-activates once a sub-lane bucket graduates, correctly renders nothing on today's thin closed population per its own live spot-check). **LOOP CLOSED END TO END.** Deploy run #2601 (SHA 37c129dd4, includes my #5404 fix) completed conclusion:success. Re-pulled AAPL's live play-brief (SWING:AAPL:40) and CONFIRMED THE FIX IS LIVE IN PRODUCTION: Management section now shows 'Recommended: BUY', 'live add to -- SECTOR_ROTATION thesis', 'Manage engine: ADD', with the honest 'Advisory only -- this signal hasn't graduated to an enforced recommendation yet' disclosure; Trade manager read now shows '**Consider adding** -- thesis has progressed well toward target and the option isn't underwater (advisory only; the desk does not execute trades).' instead of the generic 'Hold the line' text that persisted across ~9 check cycles and ~2.5 hours since PR #5398 first merged. This closes the full investigation arc from this session: observed the stale text -> verified #5398's own deploy succeeded -> ruled out data changing -> root-caused the real bug (manageObservablesFromEvent dropping the ADD action) -> fixed it (#5404) -> tracked the deploy queue through several superseded runs -> confirmed live. A genuine, complete, verified member-facing improvement to Ask Largo's swing play-brief. The pre-existing minor phrasing quirk noted earlier ('live add to --' in the reason line, from REASON_VERB_BY_MANAGE_ACTION's 'add to' verb) is confirmed present but low-visibility/out of scope, unchanged from prior assessment. Board unchanged otherwise: still exactly 1 live position (AAPL). No new finding to file this cycle -- this closes out prior findings' verification, doesn't create a new one.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-22T02:52:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5410's merge (sub-lane track record citation, parallel session). No new open swing PRs. Board unchanged (AAPL HOLD only). Independently verified #5410's self-activation claim on AAPL's live brief: confirmed NO 'Archetype track record' section renders at all (only the separate, already-verified 'Ticker track record' feature) -- consistent with the PR's own disclosure that neither the archetype nor sub-lane bucket has graduated yet for the ~31-37-trade closed population, so the whole section correctly omits rather than partially/incorrectly rendering. Clean, independent confirmation rather than trusting the PR's claim at face value. Noticed a new 'Catalysts & news' section in AAPL's brief not seen in earlier pulls this session (12 sections now vs 11 before) -- investigated for a possible contradiction against the existing 'Meridian catalysts' section, which still says 'No catalysts in the 14-day Meridian window.' Confirmed NOT a contradiction: 'Meridian catalysts' is explicitly scoped to a 14-day window (correctly quiet -- AAPL's earnings is 38 days out per the new section), while 'Catalysts & news' is a wider, differently-scoped section (real earnings date regardless of distance + general Benzinga news headlines + peer list). Two complementary, non-overlapping sections, clean design. No bug found. This closes out a clean, thorough cycle after last cycle's major confirmed fix -- standing mandate continues, no new findings to file.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -119,14 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T02:36:00Z",
-    "swing_prs": [
-      {
-        "number": 5410,
-        "title": "feat(swing): cite sub-lane track record in Ask Largo brief",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), not yet checked for CI status this cycle"
-      }
-    ]
+    "as_of": "2026-09-22T02:52:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
