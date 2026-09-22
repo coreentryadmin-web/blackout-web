@@ -211,7 +211,7 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Second-pass re-sweep: manage.ts (400 lines, real bug found+fixed, PR #5442 CI pending) and roll.ts (264 lines, clean) both fully re-read this cycle. roll-plan.ts (408 lines) also fully re-read -- clean except one low-severity, self-healing edge case logged above (not filed). Remaining second-pass candidate: calibration.ts (583 lines, the graduation ladder commit.ts leans on) -- next target. #4076 still unchanged, no response on the two open design questions. Continue mixing with live Ask Largo play-brief audits.",
+  "watch_next_cycle": "PR #5442 MERGED and verified live on main (5b830442a). manage.ts + roll.ts + roll-plan.ts second-pass re-sweep fully closed out. Next second-pass target: calibration.ts (583 lines, the graduation ladder commit.ts leans on) -- starting now. #4076 still unchanged, no response on the two open design questions. WATCH lane was empty as of last check (16:47 UTC) -- re-check again this cycle or next.",
   "prs_this_session": [
     {
       "pr": 5439,
@@ -225,7 +225,7 @@
       "pr": 5442,
       "title": "fix(swing): manage engine's fallback HOLD reason no longer claims unverified facts",
       "opened_at": "2026-09-22T17:10:00Z",
-      "status": "OPEN, CI pending",
+      "status": "MERGED (5b830442a, squash, 2026-09-22T17:15:55Z) -- verified fix content live on main.",
       "file": "src/lib/swing/manage.ts",
       "summary": "evaluateSwingManagement's final fallback HOLD branch returned a hardcoded reason claiming premium/structural/time were all checked, gated only by 'is ANY input present' (sessionsHeld alone satisfies it). On a tick where live mark+spot reads both fail (documented recurring pattern), the manager fabricated 'premium above the backstop, ample time' claims it never checked, landing in every management snapshot's event_json. Fifth instance this session of the C6 fabricated-confidence bug class (after thesis-health x3, vector-lane-enrich x1), found via a fresh full read of manage.ts (the live exit-management engine -- second-pass re-sweep target). Fixed to build the reason from only evaluated dimensions; byte-identical output proven on the normal all-evaluable path. RED->GREEN test added, 395 collateral tests pass, tsc clean."
     }
