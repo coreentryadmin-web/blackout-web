@@ -24,9 +24,10 @@
 // SCOPE: sections populate for the SWING lane only. 0DTE keeps its ratchet flow and LEAPS its thesis flow;
 // their boards carry no `sections`, and `committed`/`watch` stay as derived back-compat views everywhere.
 
-import type { SwingSetupState, SwingEntryState } from "./taxonomy";
+import type { SwingSetupState, SwingEntryState, SwingSubLane } from "./taxonomy";
 import type { SwingManageAction } from "./manage";
 import type { HorizonPlay } from "../horizon-plays";
+import { evaluateSwingEntryEnterability } from "./entry-enterability";
 
 /**
  * The seven serving sections — the member-facing triage buckets a swing name can land in.
@@ -92,6 +93,19 @@ export interface SwingServingObservables {
   bucketGraduated?: boolean | null;
   /** When true, the play is visible in RESEARCH — seen but below the persistence bar. */
   persistenceObserved?: boolean | null;
+  /**
+   * True when this PRE-ENTRY play's own entry-validity deadline (entry-model.ts's sub-lane-scoped
+   * window, TACTICAL 2 / STANDARD 3 / EXTENDED 5 trading days — a much shorter clock than the
+   * option's own expiry) has already passed. Standing gap (FINDINGS.md, `watch-board-stale-
+   * expired-candidates-not-pruned`, logged 2026-09-12): nothing in this router ever consulted the
+   * deadline, so a name that stopped being actionable weeks ago (live repro: META, first flagged
+   * 2026-08-26, still sitting in the #1 WATCH slot at score 84.7 with no honest signal it was dead)
+   * kept occupying WATCH/WAITING_FOR_ENTRY/COMMIT_NOW indefinitely — the exact same class of bug
+   * `evaluateSwingEntryEnterability`'s `expired` flag was built to catch for the member-facing pill
+   * (2026-09-12), just never wired into the SECTION the row is served in. Always null/false for a
+   * live position (the deadline only governs PRE-ENTRY plays; a live row is routed by liveStatus
+   * before this field is ever consulted). */
+  entryWindowExpired?: boolean | null;
 }
 
 /**
@@ -137,6 +151,14 @@ export function sectionForSwingPlay(o: SwingServingObservables): SwingServingSec
   if (setup == null) return "RESEARCH";
   if (setup === "INVALIDATED") return "RESEARCH";
 
+  // A stale name whose entry-validity deadline already passed is dead the same way an INVALIDATED
+  // thesis is dead — checked BEFORE setup maturity/floor/trigger so it overrides every other
+  // pre-entry section (WATCH, WAITING_FOR_ENTRY, even COMMIT_NOW): a lapsed deadline means no clean
+  // entry exists any more, regardless of how the price geometry happens to read right now. Routes to
+  // RESEARCH rather than being dropped outright — the row (and its real score/factors) stays
+  // reachable for anyone auditing why it went stale, it just stops occupying an ACTIONABLE bucket.
+  if (o.entryWindowExpired === true) return "RESEARCH";
+
   // Still building the thesis → WATCH (not yet actionable).
   if (setup === "FORMING") return "WATCH";
 
@@ -161,6 +183,32 @@ export function sectionForSwingPlay(o: SwingServingObservables): SwingServingSec
 }
 
 /**
+ * Whether a PRE-ENTRY play's own entry-validity deadline has already passed — the same computation
+ * `terminalPlayFromHorizon` (command-deck adapters.ts) already runs for the member-facing EXPIRED
+ * pill, reused here rather than re-derived so the two never drift apart. Always false for a live
+ * position: `liveStatus` set means real capital is already committed, so the pre-entry entry window
+ * is moot (the router never consults this for a live row anyway — see `sectionForSwingPlay`'s
+ * liveStatus short-circuit — this early-out just avoids computing a meaningless anchor for it).
+ */
+function entryWindowExpiredFromPlay(play: HorizonPlay): boolean {
+  if (play.liveStatus != null) return false;
+  return (
+    evaluateSwingEntryEnterability({
+      setupState: play.setupState ?? null,
+      entryStatus: play.entryStatus ?? null,
+      aboveFloor: play.status === "COMMIT",
+      persistenceObserved: play.persistenceObserved === true,
+      commitGateBlockedBy: play.commitGateBlockedBy ?? null,
+      signalKinds: play.signalKinds ?? null,
+      archetype: play.archetype ?? null,
+      subLane: (play.subLane as SwingSubLane) ?? null,
+      anchoredAt: play.committedAt ?? play.firstSeenAt ?? null,
+      deskCommitted: Boolean(play.liveStatus || play.committedAt),
+    }).expired === true
+  );
+}
+
+/**
  * Extract the router's observables from a produced HorizonPlay. The pre-entry swing fields (setupState/
  * entryStatus) ride the play as optional metadata (PR-12 wires the real reads); `aboveFloor` is the play's
  * existing COMMIT/WATCH status — the mechanical floor gate, not the score. Produced plays are pre-entry,
@@ -179,6 +227,7 @@ export function observablesFromHorizonPlay(play: HorizonPlay): SwingServingObser
     liveStatus: play.liveStatus ?? null,
     manageAction: play.manageAction ?? null,
     thesisLevel: play.thesisLevel ?? null,
+    entryWindowExpired: entryWindowExpiredFromPlay(play),
   };
 }
 
@@ -200,14 +249,22 @@ export function emptySwingSections(): SwingServingSections {
 
 /**
  * Group a lane's plays into the seven serving sections. Each play is stamped with its resolved `serving`
- * section (so a consumer reading a single play knows its bucket without re-running the router). Order
- * within a section is preserved from the input (already score-sorted by produceHorizonPlays).
+ * section (so a consumer reading a single play knows its bucket without re-running the router), plus
+ * `watchEntryExpired` whenever the router routed it to RESEARCH specifically because its entry-validity
+ * deadline lapsed — the same honest label `entry-enterability.ts`'s `deadPlayReason` already keys on for
+ * the command-deck pill/play-brief text, so a consumer reading this raw board row (Largo's tools included,
+ * which read `sections.WATCH`/`sections.RESEARCH` directly — not through the command-deck adapter layer
+ * that already computed this fact client-side) can label the row "expired — no longer actionable" instead
+ * of confusing it with a genuinely-unclassified/invalidated RESEARCH row. Order within a section is
+ * preserved from the input (already score-sorted by produceHorizonPlays).
  */
 export function buildSwingSections(plays: readonly HorizonPlay[]): SwingServingSections {
   const out = emptySwingSections();
   for (const play of plays) {
-    const section = sectionForSwingPlay(observablesFromHorizonPlay(play));
-    out[section].push({ ...play, serving: section });
+    const observables = observablesFromHorizonPlay(play);
+    const section = sectionForSwingPlay(observables);
+    const watchEntryExpired = observables.entryWindowExpired === true ? true : play.watchEntryExpired;
+    out[section].push({ ...play, serving: section, watchEntryExpired });
   }
   return out;
 }
