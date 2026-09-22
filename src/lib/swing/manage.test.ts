@@ -397,6 +397,39 @@ test("genuine HOLD (not insufficient) when data IS present and nothing fires", (
   assert.equal(v.rung, "hold");
 });
 
+test("hold reason is HONEST about what was evaluated — never claims premium/time were checked when they weren't", () => {
+  // Only sessionsHeld is known (making anyEvaluable true) -- premium (no entry/mark), structural (no
+  // underlyingPrice/structuralStopLevel), and DTE/lane are all unusable/unknown this tick (e.g. a live
+  // mark+spot-price fetch outage, a documented recurring pattern in this repo). The verdict must still
+  // be a HOLD (nothing indicates an exit), but its reason must not claim "premium above the backstop"
+  // or "ample time" -- neither was ever actually checked this tick. This is the same null-honesty
+  // discipline the file's header promises for every gate/rung above; the old hardcoded reason string
+  // violated it for this one fallback path.
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    sessionsHeld: 2, // STANDARD's own timeStopSessions floor is 8, so this alone doesn't fire time_stop
+  });
+  assert.equal(v.action, "HOLD");
+  assert.equal(v.rung, "hold");
+  assert.doesNotMatch(v.reason, /premium above the/, "premium was never evaluated (no entry/mark) -- must not claim it");
+  assert.doesNotMatch(v.reason, /ample time/, "DTE/lane was never evaluated -- must not claim ample time");
+});
+
+test("hold reason still asserts every dimension when all three ARE evaluable (unchanged from before)", () => {
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 108,
+    structuralStopLevel: 95,
+  });
+  assert.equal(v.rung, "hold");
+  assert.match(v.reason, /thesis intact/);
+  assert.match(v.reason, /premium above the/);
+  assert.match(v.reason, /ample time/);
+});
+
 test("enforce split: all four capital-preservation rungs enforce; every edge rung is advisory until graduated", () => {
   assert.deepEqual(
     [...GATING_RUNGS].sort(),
