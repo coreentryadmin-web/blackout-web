@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-21T23:59:17.602Z",
+  "updated_at": "2026-09-22T00:19:10.397Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "da46eff03aaf8a8fefe3017d3067dbc9d346832b",
+    "last_main_sha": "dd7ade35b10ee75c867cc235f87b209c1a047622",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-20T19:06:40.536Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-20T19:06:40.799Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-20T19:15:35.238Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-09-20T19:15:35.823Z",
       "type": "context_sync",
@@ -1271,9 +1253,88 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-22T00:19:08.592Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-22T00:19:09.637Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-22T00:19:10.397Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 5401,
+      "title": "fix(swing): roll-history narrative no longer fabricates \"call\" for a null contract_type",
+      "branch": "fix/swing-roll-history-null-right-v2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-22T00:18:31Z"
+    },
+    {
+      "number": 5400,
+      "title": "docs(audit): fold 4 findings — Legacy relaxed-OI, readMs sweep close-out, Meridian coaching staleness, peer subject beat rate (#5394-#5399)",
+      "branch": "docs/fold-batch-2026-09-22",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-22T00:17:34Z"
+    },
+    {
+      "number": 5350,
+      "title": "chore(deps): Bump @whop/sdk from 0.0.42 to 1.1.5",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-1.1.5",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-21T10:25:18Z"
+    },
+    {
+      "number": 5349,
+      "title": "chore(deps): Bump next from 15.5.25 to 16.3.5",
+      "branch": "dependabot/npm_and_yarn/next-16.3.5",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-21T10:24:53Z"
+    },
+    {
+      "number": 5348,
+      "title": "chore(deps-dev): Bump eslint-config-next from 15.5.19 to 16.3.5",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.5",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-21T10:10:05Z"
+    },
+    {
+      "number": 4477,
+      "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-12T00:30:20Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",
