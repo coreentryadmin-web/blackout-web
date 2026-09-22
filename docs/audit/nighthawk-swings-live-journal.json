@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-21T23:50:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5396's merge (Legacy-lane, not mine) + its own journal entry. Observed parallel-session PR #5398: manage.ts's add_eligible rung (ADD->BUY) fell through actionNarrative's generic HOLD branch instead of narrating 'Consider adding' -- and this is EXACTLY the AAPL position I've been tracking all session (manageReason: 'add_eligible', manageReasonDetail: 'position qualifies to add (advisory)', observed but not flagged as a bug in an earlier cycle's play-brief read). Did an independent adversarial review of the fix before it merged (collaboration-protocol point 10, not just trusting the PR description): confirmed recommendationFromManageAction (adapters.ts:186-187) maps ADD->BUY exactly as claimed; confirmed the new `bucket === \"open\"` gate, while logically redundant at that point in actionNarrative (watch/closed already returned earlier in the function, so bucket can only be 'open' there), is harmless defensive code, not a bug. Fix logic checks out clean. CI still in_progress at last check -- not mine, did not merge or push, letting CARVE-OUT handle it. Re-verified swing board state unchanged since last cycle (still exactly 1 live position, AAPL HOLD, positionId 40). Once #5398 merges, next cycle should re-pull AAPL's play-brief to confirm the 'Consider adding' text renders live in production for this exact real position -- a rare case where I can validate a fix against the SAME live example the fixing session used to justify it. No bug found/filed this cycle -- productive verification pass, not idle observation.",
+  "last_updated": "2026-09-22T00:12:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset, first cycle of 2026-09-22). ReadNotifications clean. git sync: fast-forwarded onto PR #5398's merge. Followed up on last cycle's own note: re-pulled AAPL's live play-brief (SWING:AAPL:40) to confirm PR #5398's 'Consider adding' text renders. It does NOT yet -- still shows generic 'Hold the line. Let the trade work while structure holds.' Investigated properly before flagging anything: (1) confirmed AAPL's manageReason is STILL 'add_eligible' right now via the horizons board (rules out the data having changed under the fix), (2) checked the actual ecr-push-production.yml workflow runs on main and found the deploy for #5398's commit (da46eff03) is status:'pending' -- the two prior same-session deploy runs (#5395, #5396) both show conclusion:'cancelled', superseded by the rapid succession of merges (GitHub Actions' normal behavior: a newer push to the same ref cancels an in-flight run of the same workflow). CONCLUSION: pure deploy lag, not a bug -- #5398 merged 2026-09-21T23:54:16Z, and prod deploys take ~45-55 min per this repo's own documented timing, so the fix simply hasn't reached production yet. No finding filed. Next cycle (~00:16-00:31 UTC) should re-check AAPL's brief once the deploy window has passed -- if 'Consider adding' still doesn't render by ~00:50 UTC (45-55 min past merge), THAT would be worth escalating as a real deploy-pipeline or fix bug, not before. Observed parallel-session PR #5399 (Meridian peer earnings coaching -- subject ticker's own beat rate was filtered out and never narrated, only peers' rates shown). Well-documented, not duplicated, CI pending.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,12 +119,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-21T23:50:00Z",
+    "as_of": "2026-09-22T00:12:00Z",
     "swing_prs": [
       {
-        "number": 5398,
-        "title": "fix(swing): narrate the add_eligible manage rung instead of generic HOLD",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI in_progress -- independently reviewed the fix logic, checks out. Re-verify against AAPL's live play-brief once merged."
+        "number": 5399,
+        "title": "fix(swing): narrate the subject ticker's own earnings beat rate, not just peers'",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
       }
     ]
   },
