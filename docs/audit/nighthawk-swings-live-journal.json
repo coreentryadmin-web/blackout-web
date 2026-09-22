@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T02:21:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5408's merge (Vector-dedup guard regex, parallel session, well-documented, not mine). No new open swing PRs. Deploy status: run #2601 (SHA 37c129dd4, includes my #5404 fix -- it's AFTER ea55d8d39 in the chain) is STILL in_progress after ~34min. #5408's own merge queued a new run (#2602, SHA 1d19e150, also after my fix) behind it, currently pending. Since #2601 already contains my fix, I don't need #2602 specifically to succeed -- #2601 completing is sufficient. ~34min is within this repo's documented ~45-55min full pipeline window (build+push+async ECS rollout), so continuing to wait is correct, not a new deploy-lag concern to re-litigate. Board unchanged (AAPL HOLD, positionId 40 still the only live position). No new forensic work this cycle -- correctly holding off the AAPL re-check until #2601 actually completes, per the same discipline that avoided a premature false-negative earlier in this thread.",
-  "checked_this_cycle_no_bug_found": true,
+  "last_updated": "2026-09-22T02:36:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto #5409 (fold PR#5408's finding, parallel session) + observed new PR #5410 (sub-lane track record citation, parallel session, well-documented, not duplicated -- self-activates once a sub-lane bucket graduates, correctly renders nothing on today's thin closed population per its own live spot-check). **LOOP CLOSED END TO END.** Deploy run #2601 (SHA 37c129dd4, includes my #5404 fix) completed conclusion:success. Re-pulled AAPL's live play-brief (SWING:AAPL:40) and CONFIRMED THE FIX IS LIVE IN PRODUCTION: Management section now shows 'Recommended: BUY', 'live add to -- SECTOR_ROTATION thesis', 'Manage engine: ADD', with the honest 'Advisory only -- this signal hasn't graduated to an enforced recommendation yet' disclosure; Trade manager read now shows '**Consider adding** -- thesis has progressed well toward target and the option isn't underwater (advisory only; the desk does not execute trades).' instead of the generic 'Hold the line' text that persisted across ~9 check cycles and ~2.5 hours since PR #5398 first merged. This closes the full investigation arc from this session: observed the stale text -> verified #5398's own deploy succeeded -> ruled out data changing -> root-caused the real bug (manageObservablesFromEvent dropping the ADD action) -> fixed it (#5404) -> tracked the deploy queue through several superseded runs -> confirmed live. A genuine, complete, verified member-facing improvement to Ask Largo's swing play-brief. The pre-existing minor phrasing quirk noted earlier ('live add to --' in the reason line, from REASON_VERB_BY_MANAGE_ACTION's 'add to' verb) is confirmed present but low-visibility/out of scope, unchanged from prior assessment. Board unchanged otherwise: still exactly 1 live position (AAPL). No new finding to file this cycle -- this closes out prior findings' verification, doesn't create a new one.",
+  "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -119,8 +119,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T02:21:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-22T02:36:00Z",
+    "swing_prs": [
+      {
+        "number": 5410,
+        "title": "feat(swing): cite sub-lane track record in Ask Largo brief",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), not yet checked for CI status this cycle"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
