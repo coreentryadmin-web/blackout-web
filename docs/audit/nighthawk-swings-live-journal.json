@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T11:32:19Z",
-  "notes": "Trigger 2/4 (:31 offset), 2026-09-22 ~11:31 UTC. Coordinator folded my 2 staged findings (#5428 sample_plays gate-disclosure, #5429 taxonomy.ts stale DTE) into FINDINGS.md via PR #5431 -- confirmed synced. No open swing PRs. Checked #4076 for a response to yesterday's Hunt Mode design question (comment 5775500641) -- none yet (only ~15min since posting, expected). AAPL position 40 unchanged (still HOLD, ungraded). Read manage-sync.ts in full (the file this mandate's own brief explicitly names as the real exit-management path: planManageSync/syncSwingManagement/latchSwingLiveStatus) -- extensively already audited (Q36 stale-overlapping-refresh guard, Q37 roll-execution-time re-arbitration with the same ex-div adjustment as manage.ts, Q39 ex-div fail-safe, the 2026-09-15 latchSwingLiveStatus profit_ladder-only TRIM-latch fix all present and internally consistent). No new bug found -- a clean, well-covered file.",
+  "last_updated": "2026-09-22T11:47:15Z",
+  "notes": "Trigger 4/4 (:46 offset), 2026-09-22 ~11:46 UTC. No open swing PRs. No response yet on the #4076 Hunt Mode design question (posted last cycle, ~30min ago -- still early, expected). AAPL position 40 unchanged (still HOLD, ungraded). Read live-plays.ts in full (673 lines) -- the live-position HorizonPlay mapper, referenced by multiple other files I'd already read this session (structuralBreakFromSpot, liveSetupState derivation in adapters.ts). This turned out to be one of THE most heavily audited files in the codebase: at least 6 distinct prior 'GAP FOUND'/'BUG FIX (Ask Largo standing mandate)' fixes dated 2026-09-12 through 2026-09-22 already present and internally consistent (manageAction ADD switch-case fix, enforced-flag read-back, dte_migration/roll_intent wiring, running_mfe/mae wiring, pinnedFactorsFromFeatureVector's sum-to-score invariant fix, entryPresentPillars/archetypeNearTie/topFlowProvenance read-backs, the regime-vs-archetype display-string fix). Careful read found no new bug -- a legitimately clean, exhaustively-covered file.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -120,7 +120,7 @@
   ],
   "known_open_prs_snapshot": {
     "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T11:32:19Z"
+    "checked_at": "2026-09-22T11:47:15Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641). AAPL position 40 still the only real native open swing chain. Still-unswept files: manage-edge-reads.ts, live-marks-active.ts, live-plays.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, roll-plan.ts, grade-retrace.ts. Low-priority remaining comment-only '[2,30]' stale doc refs (dossier.ts, grade.ts, serving-ingest.ts) still not touched."
+  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641). AAPL position 40 still the only real native open swing chain. Still-unswept files: manage-edge-reads.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, roll-plan.ts, grade-retrace.ts. Low-priority remaining comment-only '[2,30]' stale doc refs (dossier.ts, grade.ts, serving-ingest.ts) still not touched -- genuinely low value, may not be worth a future cycle's time given the diminishing-returns pattern this whole DTE-range sweep has shown (2 real fixes, 1 flagged-ambiguous, rest pure zero-impact doc drift)."
 }
