@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T19:10:00Z",
+  "updated_at": "2026-09-22T19:15:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -352,6 +352,13 @@
       "stage": "infra",
       "action": "3rd instance (started 18:46Z) still ongoing at 19:10Z (~24min so far). /record still confirmed healthy, no data loss. No new evidence beyond the 18:46Z escalation -- continuing to hold per that report.",
       "next": "continue tracking until resolution; total daily instance count now 3, durations 37min/5min/24min+ so far"
+    },
+    "2026-09-22T19:15:00Z": {
+      "stage": "resolution+validation",
+      "action": "3rd board instance resolved (~28min, self-healed). 3 new closes: BTU (WIN +5.56%, peak 15.74%, floor 6.3), SPXW (-50% hard stop, peak was 11.36%), PINS (-9.52%, never positive).",
+      "validation": "BTU is the FIRST LIVE CONFIRMATION of PR #5382 (arm-tier floor scaling) working correctly in production: floor_pnl_pct=6.3 == round2(peak 15.74 * ratchet_lock_floor_fraction 0.4) == round2(6.296) == 6.3, exact match to the new continuous v6 formula shipped yesterday. Real evidence the fix is live and computing correctly.",
+      "single_instance_note": "SPXW round-tripped +11.36% peak -> -50% hard stop with zero floor protection (peak never reached the +15% arm threshold) -- consistent with known intentional design (floor only exists above +15%), but is exactly the kind of large give-back that could motivate a future lower-tier floor discussion. Single instance, not escalation-worthy, watching for a pattern.",
+      "session_totals": "8 closed today, 1 win (BTU) 7 losses. Board self-healed 3x today (37min/5min/28min), all confirmed record-unaffected."
     }
   },
   "sessions": {
