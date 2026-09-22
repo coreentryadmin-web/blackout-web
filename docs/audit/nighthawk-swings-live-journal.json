@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T07:50:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46-offset routine firing). ReadNotifications clean. Zero open swing PRs. #5423's ECR deploy (run 35700010474) checked at job-step granularity: 'Roll ECS production web' step started 07:36:27, still in_progress at ~10min into that step (current cycle time ~07:47) -- within the normal ~10-30min range this step has taken on recent deploys (#5416 took ~26min end to end on that same step), not stalled. Deliberately did not re-poll the live board for the new coaching bullet yet -- deferring the post-deploy verification to next cycle once the roll actually completes, same discipline as every other deploy-lag tracking this session (checked job steps, not just run-level status, to avoid the false-negative trap from earlier in this session where run-level 'in_progress' masked an already-complete web roll). Full board re-check: still 14 chains, AAPL (root 37) unchanged -- parent ROLLED -22.3%, child leg 40 still HOLD/ungraded. No new WATCH/OPEN leads. Clean cycle.",
+  "last_updated": "2026-09-22T08:05:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. Zero open swing PRs. CLOSED OUT PR #5423's deploy tracking: 'Roll ECS production web' completed 08:02:14, Cloudflare purge same second. Live-verified: AAPL's play-brief 'Trade manager read' now shows 'Ticker history -- AAPL is 0W / 2L across 2 prior closed trades -- the desk hasn't found an edge on this exact name yet; weigh that against the current setup' right after 'Manage plan', exactly the intended visibility fix -- confirmed working end to end in production. Continued the fresh-code-path sweep while waiting on the deploy: full read of portfolio.ts (checkPortfolioOverlap), the mandate's own named book/portfolio-overlap mission-item function. Verified the excludePositionId-vs-excludeSelfMatch precedence is correct (when a precise ledger id is known, the fuzzy ticker+direction self-match fallback is correctly SKIPPED entirely -- never both applied), and cross-checked its main call site (bookContextSection, play-brief-intel.ts) against the file's own documented 2026-09-21 WATCH-candidate self-exclusion fix -- the three-way branch (excludePositionId when known / excludeSelfMatch:false for a WATCH candidate with no ledger id / default true otherwise) matches portfolio.ts's own documented semantics exactly. No bug found. Two real fixes now confirmed fully live this session: #5419 (target-rail self-contradiction, MUU) and #5423 (ticker history visibility, AAPL) -- both verified end-to-end from finding to fix to production.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T07:50:00Z",
+    "as_of": "2026-09-22T08:05:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "confirm PR #5423's Ticker history coaching bullet is live on AAPL's brief once its deploy (run 35700010474) completes"
+  "watch_next_cycle": null
 }
