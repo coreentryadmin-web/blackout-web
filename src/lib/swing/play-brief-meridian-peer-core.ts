@@ -73,6 +73,30 @@ export function meridianPeerEarningsCoaching(
     if (peer.sector_label) parts.push(`sector **${peer.sector_label}**`);
     if (peer.interpretation?.trim()) parts.push(peer.interpretation.trim());
     if (peer.position_summary) parts.push(peer.position_summary);
+    // GAP FOUND (2026-09-21, Ask Largo standing mandate): `shapeMeridianPeerCohortForLargo`
+    // (meridian-peer-cohort-for-largo-core.ts) tags the subject ticker's OWN historical print
+    // record onto `peer.members` as `is_subject: true` — carrying its own `beat_rate`/
+    // `beat_rate_n`/`avg_reaction_pct`, computed by the exact same engine as the three peer
+    // rows below. Until now this function filtered it OUT (`!m.is_subject`) and narrated only
+    // OTHER tickers' beat rates — a trader deciding whether to hold THIS position through ITS
+    // OWN print never saw the one number most directly relevant to that decision (how has this
+    // exact ticker behaved on past prints), while three unrelated peers' beat rates rendered
+    // instead. Live-verified: no other swing brief section narrates it either (`grep -rn
+    // "is_subject" src/lib/swing/*.ts` outside this file returns nothing) — this was a real,
+    // silent absence, not a duplicate of something shown elsewhere. Fixed by surfacing the
+    // subject's own line FIRST, ahead of peer history, gated on the SAME `beat_rate_n >= 3`
+    // sample-size floor peers already require (never fabricate a rate off a thin sample —
+    // Largo product contract's absence principle) and independent of whether any peer clears
+    // that bar, so a thin peer cohort no longer hides an otherwise well-sampled subject read.
+    const subject = (peer.members ?? []).find((m) => m.is_subject);
+    if (subject && subject.beat_rate_n >= 3 && subject.beat_rate != null) {
+      const beat = `${Math.round(subject.beat_rate * 100)}% beat`;
+      const reaction =
+        subject.avg_reaction_pct != null && subject.reaction_sample_n > 0
+          ? `, avg reaction **${subject.avg_reaction_pct >= 0 ? "+" : ""}${subject.avg_reaction_pct.toFixed(1)}%** (n=${subject.reaction_sample_n})`
+          : "";
+      parts.push(`**this ticker's own print history: ${beat}** (n=${subject.beat_rate_n})${reaction}`);
+    }
     const peers = (peer.members ?? []).filter((m) => !m.is_subject && m.beat_rate_n >= 3);
     if (peers.length) {
       const snippets = peers
