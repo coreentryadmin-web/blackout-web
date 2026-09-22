@@ -4162,6 +4162,11 @@
       "at": "2026-09-22T06:17:47Z",
       "summary": "AGGRESSIVE-MODE find: banger-lane risk_note claimed \"cheap OTM weeklies\" on ALAB while its ACTUAL picked contract is a 25-DTE, $30.23/share ($3,023/contract) monthly -- flatly false about the specific contract, and ties directly to the already-tracked contract-cost complaint (PR #5396) but on the narrative-text side rather than the pick itself. bangerScaleOutNote() (scale-out.ts) took no arguments and always appended the fixed weekly-framing sentence regardless of the real DTE, even though dte was already computed and in scope at the call site.",
       "assessment": "PR #5420 opened (draft): bangerScaleOutNote({dte}) now names the real DTE when >10 (25-DTE case) and keeps weekly framing when <=10; no-context callers (banger/board route) byte-for-byte unchanged -- zero blast radius there. 6 new tests (5 scale-out.test.ts + 1 end-to-end deterministic-edition.test.ts), full suite 15169/15172 pass (3 pre-existing skips), tsc clean. CI pending -- will drive to green and merge per CARVE-OUT (self-authored fix/* PR, no Cursor sign-off required)."
+    },
+    {
+      "at": "2026-09-22T06:32:02Z",
+      "summary": "PR #5420 MERGED (squash, sha db7f7b85b): banger risk_note DTE-accuracy fix. CI green (verify + CodeQL) within ~12min, mergeable_state clean, no review threads -- marked ready and merged per CARVE-OUT (self-authored fix/*, no Cursor sign-off required).",
+      "assessment": "Both banger-lane tickers on the live board (ALAB, TWLO -- 25 DTE each) will get the corrected risk_note wording (naming the real DTE instead of claiming \"cheap OTM weeklies\") starting with the next edition build. Verify alongside PR #5396s contract-cost check once the 2026-09-23 edition publishes."
     }
   ],
   "knownOpenItems": {
