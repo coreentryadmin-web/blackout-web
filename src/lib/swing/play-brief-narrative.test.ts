@@ -1954,6 +1954,10 @@ test("counterThesisLine: calibrated thesisHealth with a genuinely faded pillar s
     setupState: "TRIGGERED",
     entryStatus: "AT_TRIGGER",
     signalKinds: ["FLOW", "VECTOR"],
+    // regime must also be wired (real, non-"unread" value) for "real commit inputs wired means
+    // this IS calibrated" to actually hold — 2026-09-22 fix: an omitted regime falls back to
+    // regimeScore()'s "unread" default, now itself a recognized uncalibrated sentinel.
+    regime: "momentum long",
     manageAction: "TAKE_PARTIAL",
     computedAtEt: "10:00:00",
   });
