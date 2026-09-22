@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T08:22:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16-offset routine firing). ReadNotifications clean. Zero open swing PRs. Board unchanged. Continued the fresh-code-path sweep: full read of swing-risk.ts (computeSwingRisk, PR-6) -- found a real, significant 'dead-wired data' gap worth raising rather than a code bug to fix. The function itself is correct and well-tested (direction-signed delta, natural-sign gamma/theta/vega for bought premium, beta-weighted dollar delta, full null-honesty), but has ZERO production call sites (grep confirmed: only its own test file). What makes this worth a #4076 post rather than a shrug: swing-active-refresh (the LIVE cron) already warms and caches every ticker's beta every tick specifically for this -- its own code comment says 'risk math consumes via fetchNameBeta when sizing' -- but the consumer (computeSwingRisk) that beta-warming was built to feed was never actually wired in. So the swing book's real net-greek / beta-weighted market exposure is invisible in production despite live infrastructure existing specifically to compute it. Contrasted against swing-portfolio-budget.ts's SIMPLER dollar-only risk model, which I confirmed earlier this mandate IS armed and gating real commits -- these are two parallel PR-6 pieces, only one of which got connected. Did NOT attempt to wire this into the live commit gate myself -- that's an architectural call (ambiguous/live-trading-path per the standing escalation policy), not a CARVE-OUT fix. Posted the evidence to #4076 (comment id 5773313614) with a smallest-safe-next-step proposal (a read-only admin diagnostic mirroring the multi-truth-grade route precedent) and offered to build it or take a different slice. No code changed this cycle -- forensics + collaboration raise, not a fix.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-22T08:40:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync: a fold PR (#5424, for #5423) merged, not mine, left alone. Zero open swing PRs at cycle start. REAL FINDING while continuing the swing-risk/allocation sweep started last cycle: read swing-allocation.ts (allocateSwingBook) end to end and found its OWN documentation directly contradicts its real live behavior. The file's header/field comments repeatedly claim the book-percent caps (5%/20%/40%/3) are 'advisory only... blocks nothing until PR-16 graduates them' -- but traced the actual call site (commit.ts's Gate 2, computeSwingCommitPlan, called from discovery.ts -- confirmed live, not dead) and found it reads capFlags[].wouldBreach from this exact function and pushes every breach onto blockedBy, which is a hard prerequisite for committable -- a real cap breach TODAY blocks a real position (shadow row only). commit.ts's own header independently and correctly says the caps are 'real-time risk controls, unchanged and unweakened' -- directly contradicting swing-allocation.ts's claim. Also found the SAME stale claim baked into a returned runtime reasons[] string ('advisory -- enforce:false, not applied') for the exact decisions that DO get blocked. This is a genuine documentation-vs-behavior correctness bug with real risk: a future reader trusting only this file's comments could conclude the caps are inert and propose removing them as dead code, silently disarming a real capital-risk gate. Fixed: corrected the header + every misleading field doc + the runtime string, doc/data-only, zero logic touched. npx tsc --noEmit clean. swing-allocation.test.ts 10/10, commit.test.ts 44/44, full src/lib/swing/*.test.ts 1503/1503 -- confirms zero behavior change as expected. Staged finding filed, PR #5425 opened+undrafted+subscribed.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-22-swing-allocation-caps-stale-enforce-claim.md (PR #5425, open, doc-correctness)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,8 +121,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T08:22:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-22T08:40:00Z",
+    "swing_prs": [
+      "#5425 docs/swing-allocation-caps-stale-enforce-claim (mine, open, watching for CI)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +213,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": null
+  "watch_next_cycle": "watch PR #5425 CI + auto-merge (CARVE-OUT applies)"
 }
