@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T05:20:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16-offset routine firing). ReadNotifications clean. git sync: no new commits since last cycle. One new open PR repo-wide (#5417, SPX-lane, not swing -- not touched); zero open swing-scoped PRs. Re-checked the #5416 deploy tracked last cycle: GitHub Actions run 35689006366 still status:in_progress at ~17min elapsed -- compared against this same workflow's typical total runtime on recent swing merges (#5414 ~53min, #5413 ~50min, #5408 ~51min end-to-end build+push+ECS-deploy), 17min is well within normal range, not stalled. Deliberately did NOT re-poll the live board yet (per this trigger's own 'don't run redundant mechanical re-checks every 15-min tick' guidance) -- will re-verify META drops out of WATCH once the run shows completed, next cycle or the one after. Continued the Ask Largo fresh-code-path sweep: full read of play-brief-context.ts, the server-side context LOADER for the whole brief (loadSwingPlayBriefContext) -- the file #5413's latency fix (parallelizing meridian/meridianPeer into the main Promise.all) touched earlier this session. Verified the fix itself reads correctly on a fresh pass (meridianPeer still chained via .then() off meridian's real result so the dependency is preserved while racing the other 6 sources). Chased one apparent gap before ruling it out: the returned SwingPlayBriefContext here has no readMs field, which looked like it could reintroduce the exact 'each section samples its own Date.now()' class of bug #5351 fixed -- traced it through and confirmed this is NOT a gap: play-brief.ts's composeSwingPlayBrief (the caller, not this loader) stamps the canonical readMs = Date.now() once and attaches it to the context AFTER loadSwingPlayBriefContext returns, before any section builds -- by design, not an omission. Also verified loadOpenBook's banger-lane merge (2026-09-12 fix) and loadRollHistory/resolveRootPositionId's self-exclusion logic are internally consistent with their own documented invariants. No bug found.",
+  "last_updated": "2026-09-22T05:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync: fast-forwarded onto #5417 (SPX-lane, not touched). New open PR #5418 is a findings-fold PR for #5416 opened by a parallel session -- not run myself, avoiding a race on the same fold. CLOSED OUT the watch item from the last 2 cycles: checked run 35689006366's job steps directly (not just the run-level status) -- 'Roll ECS production web' completed at 05:31:22, Cloudflare purge completed same second, confirming the #5416 deploy had actually landed (the run-level 'in_progress' was just the trailing static-asset-validation/market-worker-roll steps, not the part that matters for this fix). Live-verified via GET /api/market/nighthawk/horizons?view=swings: sections.WATCH is now EMPTY (was [META] before), and META (score 84.7) now correctly sits in sections.RESEARCH with watchEntryExpired:true. Bonus finding: AMD (score 82.4), which was sitting in COMMIT_NOW two cycles ago, is ALSO now correctly in RESEARCH with watchEntryExpired:true -- confirms the fix's documented behavior of overriding every pre-entry section including COMMIT_NOW, not just WATCH, and that it's not a single-ticker coincidence. #5416 is fully confirmed working end-to-end in production. Board otherwise unchanged (AAPL still the only MANAGING position). No bug found this cycle -- closed out prior tracking rather than opening new ground, given the deploy-confirmation work was the substantive task.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,8 +119,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T05:20:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-22T05:35:00Z",
+    "swing_prs": [
+      "#5418 (findings-fold for #5416, opened by another session, not touched)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +211,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "confirm META (and any other expired WATCH name) drops out of sections.WATCH once PR #5416's deploy (run 35689006366) completes"
+  "watch_next_cycle": null
 }
