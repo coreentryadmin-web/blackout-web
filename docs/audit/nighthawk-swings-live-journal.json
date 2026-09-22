@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T10:08:44Z",
-  "notes": "Trigger 1/4 (:01 offset), full v3 mandate (AGGRESSIVE MODE + 15-min cadence), 2026-09-22 ~10:01 UTC. AGGRESSIVE-MODE genuine finding + fix this cycle: pulled GET /api/market/nighthawk/horizons?view=swings (the real Largo-facing board read) and found SWING lane totalCommitted=83 vs the native swing/record endpoint's 1 open chain -- traced the gap: 80 of 83 are real Banger-lane merges (expected, documented pattern), but 2 (AMD, META) have status:COMMIT (score cleared the floor) + real populated commitGateBlockedBy (G-S12 halt-feed-stale / G-S6 confluence / G-S14 cortex veto) + NO positionId -- i.e. genuinely NOT open positions, still blocked by live commit gates. Traced whether this reaches a member: the real command-deck (entry-verdict.ts's swingEntryVerdict, used by terminalPlayFromHorizon) is UNAFFECTED -- correctly re-resolves gates and shows WAIT. The dead/unmounted HorizonLaneBoard.tsx component (zero render call sites, confirmed by grep) also has the bug but is unreachable. The ONE live reachable gap: get_nighthawk_horizons' sample_plays (product-reads.ts's compactSwingLane) samples the first 8 of [...committed,...watch] with only {ticker,status,direction,horizon,score,reason} -- AMD/META land in that first-8 slice with status COMMIT and zero caveat, even though the sibling committed_count field already got this exact disclosure fix on 2026-09-08 (committed_count_note/open_position_count). Fixed: added open_position (positionId!=null) and commit_gate_blocked (commitGateBlockedBy.length>0) to each sampled row. RED->GREEN proof (git stash), tsc clean, full product-reads*.test.ts sweep 40/40 pass. Staged finding docs/audit/findings-staging/2026-09-22-largo-swing-sample-plays-gate-blocked-not-disclosed.md. PR #5428 opened, undrafted, subscribed. Also confirmed en route: no open swing/Largo PRs before this one (only Dependabot bumps). Git synced clean throughout.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-22-largo-swing-sample-plays-gate-blocked-not-disclosed.md (PR #5428, open)"
-  ],
+  "last_updated": "2026-09-22T10:18:54Z",
+  "notes": "Trigger 3/4 (:16 offset), 2026-09-22 ~10:16 UTC. PR #5428 (opened last cycle) CI still running (verify job in_progress since creation -- normal, this repo's verify job spins up a throwaway Postgres and takes several minutes; CodeQL already completed successfully). No action needed, scheduled 60-min check-in (and webhook subscription) will catch completion. AAPL position 40 unchanged (still HOLD, ungraded, no new leg). Continued forensic sweep: read entry-model.ts (deriveEntryPlan/deriveEntryState) in full. Found a subtle internal-consistency quirk -- a contract with <1 trading day left to its own expiry (but not yet past it) can compute an entryDeadline that clamps to a timestamp already in the PAST (deadlineMs = expMs - DAY_MS < nowMs) while entryState still reads a live-looking state like AT_TRIGGER, rather than the function returning EXPIRED itself. Traced both known consumers (entry-enterability.ts's evaluateSwingEntryEnterability, which checks pastEntryDeadline BEFORE anything else in its if-chain, and serving.ts's sectionForSwingPlay via entryWindowExpiredFromPlay, which also gates on the same expired flag before COMMIT_NOW routing) -- both correctly demote this case to WAIT/dont_buy and RESEARCH respectively, so there is no live member-facing bug. Logged as a minor internal-invariant observation, not filed (no evidenced external behavior change, would be pure tidying).",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -122,9 +120,9 @@
   ],
   "known_open_prs_snapshot": {
     "swing_related_open_prs": [
-      "#5428 (mine, just opened)"
+      "#5428 (mine, CI running)"
     ],
-    "checked_at": "2026-09-22T10:08:44Z"
+    "checked_at": "2026-09-22T10:18:54Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -213,5 +211,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Check PR #5428 CI/merge status next cycle (subscribed, will also get async wake on events). AAPL position 40 still the only real open swing chain -- watch for +100% trim rung. AMD/META worth re-checking periodically to see if/when their commit gates clear (would then become real positions, or continue sitting gate-blocked -- either way now correctly disclosed to Largo). Still-unswept files: entry-model.ts, event-trigger.ts, structure-levels.ts, contract-ranker.ts, taxonomy.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts."
+  "watch_next_cycle": "PR #5428: verify CI status, merge if green (CARVE-OUT). AAPL position 40 still the only real open swing chain. Still-unswept files: event-trigger.ts, structure-levels.ts, contract-ranker.ts, taxonomy.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts."
 }
