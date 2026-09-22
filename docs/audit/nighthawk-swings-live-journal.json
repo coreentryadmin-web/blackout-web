@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T00:22:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5399's merge (Meridian peer subject beat-rate, parallel session). No new open swing PRs. Deploy window for #5398 (merged 23:54:16Z) not yet passed (~22 min elapsed of the ~45-55min window) -- deliberately did NOT re-check AAPL's play-brief again this cycle per last cycle's own plan (avoid a premature false-negative re-check); will re-verify next cycle or the one after, once past ~00:50 UTC. Used this cycle for a different angle: verified evaluateDteMigration's roll-candidate threshold logic against AAPL's real live state. SWING_SUBLANE_MANAGE.STANDARD.migrationDte=4; AAPL is at 9 DTE (9 > 4 -> 'ample time', migrate:false) -- exactly matches the live rollCandidate:null already observed on the horizons board. Clean, consistent, no bug. This closes out one more of the v3 brief's named checklist items (exit management via manage-sync/exit-policy) with a concrete cross-check against real data rather than just reading the source in isolation.",
+  "last_updated": "2026-09-22T00:36:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5401's merge (roll-history fabricated 'call' for null contract_type, parallel session) + #5400 (folding 4 findings from #5394-#5399). No new open swing PRs. Checked #5398's deploy status directly rather than re-pulling AAPL's brief again (would be premature mid-deploy): ecr-push-production run for #5398's commit is status:'in_progress' (~37min elapsed) -- still deploying, consistent with continued deploy lag, not a new problem. The two newer merges (#5399, #5401) had their own deploy runs auto-cancelled (superseded), confirming #5398's in-progress run is the one that will actually land; once it completes, AAPL's brief should pick up all THREE merged fixes (#5398 add-eligible narrative, #5399 Meridian peer subject beat rate if applicable, #5401 roll-history) in one deploy. Checked whether #5401's fix is relevant to AAPL's own roll history specifically: read swingRollHistoryLegFromRow (play-brief-roll-history.ts) -- confirmed fixed in source (right: contract_type==='put'?'P':contract_type==='call'?'C':null). AAPL's own two roll legs (positionId 37->40) are both genuine recorded calls (contract.right:'C' confirmed on every pull this session), so this specific null-contract_type edge case would not have visibly affected AAPL's own roll-history narrative even pre-fix -- the bug is real and correctly fixed, just not one that happened to manifest on the one live position being tracked. No action needed, not duplicated. Next cycle: check whether #5398's deploy has completed and re-verify AAPL's play-brief then.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T00:22:00Z",
+    "as_of": "2026-09-22T00:36:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
