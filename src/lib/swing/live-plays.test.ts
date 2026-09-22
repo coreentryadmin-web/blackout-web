@@ -201,6 +201,28 @@ test("livePlayFromSwingPosition: regime is always null — no genuine market-reg
   );
 });
 
+// BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+// roll-history fix and closed-plays.ts's sibling fix this same cycle). `contract_type` is a
+// genuinely nullable DB column; the old `row.contract_type === "put" ? "P" : "C"` ternary
+// fabricated a "C" (call) right for any row whose real contract_type was never recorded, instead
+// of ever checking for "call" — a live position's option side was invented, not read. The
+// function already returns null for other "not reconstructible" cases (missing expiry/strike);
+// an unrecorded right joins that same honest-absence pattern.
+test("livePlayFromSwingPosition returns null (not a fabricated call) when contract_type was never recorded", () => {
+  const play = livePlayFromSwingPosition(row({ contract_type: null }));
+  assert.equal(play, null);
+});
+
+test("livePlayFromSwingPosition returns null for an unrecognized contract_type, same fail-closed rule", () => {
+  const play = livePlayFromSwingPosition(row({ contract_type: "unknown" }));
+  assert.equal(play, null);
+});
+
+test("livePlayFromSwingPosition still correctly identifies a real put (not defaulted to call)", () => {
+  const play = livePlayFromSwingPosition(row({ contract_type: "put" }));
+  assert.equal(play?.contract?.right, "P");
+});
+
 test("livePlaysFromOpenPositions skips CLOSED and contract-less rows", () => {
   const plays = livePlaysFromOpenPositions(
     [

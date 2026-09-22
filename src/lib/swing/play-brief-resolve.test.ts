@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { before, describe, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
-import { pickLanePlayForBrief, parseSwingPlayId, resolveBriefIvRank } from "./play-brief-resolve-pure";
+import {
+  pickLanePlayForBrief,
+  parseSwingPlayId,
+  resolveBriefIvRank,
+  rightFromContractType,
+} from "./play-brief-resolve-pure";
 import { attachThesisExplanation, dossiersByTicker } from "./serving-lane";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier";
 import type { SwingReads } from "../swing-signals";
@@ -34,6 +39,30 @@ function laneRow(overrides: Partial<HorizonPlay> & { ticker: string }): HorizonP
     ...overrides,
   };
 }
+
+// BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+// roll-history fix and this cycle's closed-plays.ts/live-plays.ts sibling fixes).
+// `rightFromContractType` backs `rowContractMatches` in play-brief-resolve.ts, a function that
+// exists specifically to fix ticker-collision identity bugs (file header: "NRG OPEN 110C vs WATCH
+// 115C"). The old inline `contract_type === "put" ? "P" : "C"` ternary made a row whose real
+// contract_type was never recorded FALSELY MATCH a hint asking for "C" — a correctness bug in
+// WHICH position resolves, not just cosmetic narrative. (Tested here via the pure helper rather
+// than `rowContractMatches` itself, since play-brief-resolve.ts pulls in the server-only-guarded
+// DB/Vector import chain and cannot be imported from a plain node:test file.)
+describe("rightFromContractType — absence must not resolve to either side", () => {
+  it("null contract_type maps to null, not a fabricated 'C'", () => {
+    assert.equal(rightFromContractType(null), null);
+  });
+
+  it("an unrecognized contract_type value also maps to null, same fail-closed rule", () => {
+    assert.equal(rightFromContractType("unknown"), null);
+  });
+
+  it("a real 'call' maps to 'C' and a real 'put' maps to 'P'", () => {
+    assert.equal(rightFromContractType("call"), "C");
+    assert.equal(rightFromContractType("put"), "P");
+  });
+});
 
 test("parseSwingPlayId: extracts ticker and position id", () => {
   assert.deepEqual(parseSwingPlayId("SWING:NRG"), { ticker: "NRG", positionId: null });
