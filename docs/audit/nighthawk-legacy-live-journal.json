@@ -4177,6 +4177,11 @@
       "at": "2026-09-22T13:36:58Z",
       "summary": "FULL GREEN transition at 13:36 UTC (9:36am ET), ~6min after the 9:30am ET open: B_marks flipped AMBER->GREEN, live quotes now populated and every mark within its [bid,ask] band. All 3 plays showing strong early gains vs entry: ALAB 0.23->6.65 (+21.2%), META .58->0.03 (+32.3%), TWLO 2.75->0.05 (+57.3%). A_edition/C_record/D_pull_status all steady GREEN. Overall healthcheck verdict AMBER->GREEN for the first time this session.",
       "assessment": "Clean, expected open-of-session transition -- exactly the pattern documented for prior sessions (marks resolve to live quotes shortly after 9:30 ET open). Worth watching TWLO specifically: +57.3% is approaching (not yet at) the banger scale-out 2x trigger (PR #5420s dte-aware risk_note logic applies to it -- 25 DTE, so it correctly reads \"can still spike and give the move back fast\" rather than claiming weekly). No action needed -- continuing routine cadence."
+    },
+    {
+      "at": "2026-09-22T14:22:45Z",
+      "summary": "Single-ticker transient mark-staleness blip during RTH: TWLO briefly flagged \"stale by the API\" at 14:21:28 UTC (10:21am ET) while ALAB/META stayed GREEN in the same cycle. Re-fetched raw /legacy-marks ~1min later (14:22:15 UTC): TWLO stale:false, live quote mark=22.70 bid=21.40 ask=24.00. Re-ran the full healthcheck at 14:22:32 UTC: back to full GREEN across all 3 tickers.",
+      "assessment": "Self-resolved within ~1 minute, no persistent defect -- treated as a genuine transient quote-fetch blip (flake), not a root cause, per the standing \"flake is not a root cause\" discipline. Logging as INSTANCE 1 of the 3-instance noise-discipline threshold for pattern-tracking only -- not escalating. Watch for recurrence on TWLO or other tickers during RTH; only escalate if this repeats a 3rd time."
     }
   ],
   "knownOpenItems": {
