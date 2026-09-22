@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T01:52:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5406's merge (docs-only fold, parallel session) + PR #5407 (Vector Pulse uppercase option_type, parallel session, same bug CLASS as #5405, not swing, not mine). Folded my own 3 remaining staged findings (#5404 manageAction ADD, #5405 Helix print-table, #5407 Vector Pulse -- all still un-folded, no competing fold PR found this time) via findings-fold-staging.mjs. findings-hygiene.test.ts 9/9 clean, tsc clean, pushed. Deploy queue analysis: run #2598 (triggered by #5403's merge, SHA BEFORE my #5404 fix) has been in_progress for ~40min and appears to be the one that will actually complete (survived while #5405's and #5407's own newly-triggered runs got auto-cancelled/superseded -- the concurrency group seems to cancel QUEUED runs behind an in-progress one, not the in-progress one itself). That means #2598 will likely deploy code WITHOUT my fix. Run #2601 (triggered by #5407's merge, SHA AFTER my fix) is currently pending/queued behind it -- once #2598 finishes and #2601 gets to run (assuming nothing newer supersedes IT), that deploy will include #5404's fix. Re-pulled AAPL's play-brief once more: still generic 'Hold the line', consistent with this analysis (no completed deploy has included the fix yet). No new bug -- this is expected given the queue state, not a fresh deploy-lag concern to re-litigate. Next cycle: check whether #2601 (or whatever run eventually completes with a SHA at or after ea55d8d39) has conclusion:success, and if so do the final AAPL play-brief re-check.",
+  "last_updated": "2026-09-22T02:07:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto a heartbeat commit. Observed new parallel-session PR #5408 (crossDeskCoaching Vector-dedup guard regex too narrow, misses the 'Vector also reads X' demoted-conflict phrasing -- well-documented live repro, RED->GREEN proven, CI still running full suite per its own PR body). Not mine, did not duplicate. Deploy queue resolved as predicted last cycle: run #2598 (SHA before my #5404 fix, triggered by #5403's merge) completed conclusion:success -- production is CURRENTLY running code WITHOUT the ADD-action fix. Run #2601 (SHA after my fix, triggered by #5407's merge) is now in_progress -- this is the one to watch; once it completes (assuming #5408 merging doesn't supersede it first), AAPL's play-brief should finally show 'Consider adding'. Board unchanged: still exactly 1 live position (AAPL HOLD, positionId 40). Did not re-pull AAPL's play-brief this cycle since the relevant deploy (#2601) hasn't completed yet -- no point re-checking before that. Next cycle: check #2601's conclusion; if success, do the final AAPL verification.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,8 +119,14 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T01:52:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-22T02:07:00Z",
+    "swing_prs": [
+      {
+        "number": 5408,
+        "title": "fix(swing): crossDeskCoaching Vector-dedup guard misses demoted \"rest\" conflicts",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI running full suite"
+      }
+    ]
   },
   "tickers_seen": {
     "INTC": {
