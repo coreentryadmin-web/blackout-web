@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T11:08:15Z",
-  "notes": "Trigger 1/4 (:01 offset), full v3 mandate, 2026-09-22 ~11:03 UTC. PR #5429 confirmed merged (56d3ad2ab, mergeable_state flipped blocked->clean, merged via CARVE-OUT), cleaned up (branch/subscription/check-in). Checked #4076 for anything from Cursor needing a response -- last ~23 comments (through 08:17:49Z) are all mine from recent cycles, nothing outstanding. SIGNIFICANT finding + fix this cycle: while investigating the stale '8-21 DTE'/taxonomy.ts drift pattern further, grepped repo-wide for '[2,30]'/'2-30 DTE' and found event-trigger.ts's SWING_EVENT_MAX_DTE was hardcoded to 30 (never derived from HORIZONS.SWING.dteMax like its sibling SWING_EVENT_MIN_DTE already does from dteMin) -- and this is NOT just a stale comment, it's LIVE LOGIC wired into uw-socket.ts's real WS flow handler (line ~1398, advanceSwingAccumulationFromFlow called on every real material UW print). observeSwingCandidate accretes into swing_candidate_accumulation keyed on (ticker,direction,UNCLASSIFIED) with NO DTE field carried -- so a real 16-30 DTE print (now genuinely LEAPS territory since the 2026-09-04 narrowing; subLaneForDte returns null above 15) was silently corroborating cross-session swing persistence for tickers/directions that could never actually resolve to a committable swing thesis at that DTE. The existing event-trigger.test.ts had baked the stale window in as a PASSING assertion ('30 DTE is the inclusive upper edge') since nobody touched it when the window narrowed -- exactly the kind of test that hides drift instead of catching it. Fixed: SWING_EVENT_MAX_DTE now derives from HORIZONS.SWING.dteMax; updated 3 stale '2-30 DTE' comments (event-trigger.ts x2, uw-socket.ts x2); updated the boundary test (15=upper edge, 16=rejected, 30=regression-proof-rejected). RED->GREEN via git stash, tsc clean, 6/6 event-trigger.test.ts. Staged finding docs/audit/findings-staging/2026-09-22-swing-event-trigger-max-dte-stale-ceiling.md. PR #5430 opened, undrafted, subscribed. Noted but deliberately NOT touched this cycle (lower-value, comment-only, no live-behavior impact, to keep this PR tightly scoped): dossier.ts:76, grade.ts:73, serving-ingest.ts:52 all still say '[2,30]' in doc comments; dossier.test.ts:108's test NAME says '[2,30]' but doesn't actually exercise the 15/30 boundary (tests intendedDte:45, outside both old and new windows either way, so not masking anything); legacy-confirm-promote.ts:117 describes LEGACY's own range which may be genuinely different from Swing Command's -- needs separate verification, not assumed stale.",
+  "last_updated": "2026-09-22T11:19:14Z",
+  "notes": "Trigger 3/4 (:16 offset), 2026-09-22 ~11:17 UTC. PR #5430 confirmed merged (d804d4a8e, mergeable_state flipped blocked->clean, merged via CARVE-OUT), cleaned up. Continued chasing the stale-DTE-range pattern into a THIRD, genuinely ambiguous instance: src/features/nighthawk/lib/hunt-mode.ts's 'Hunt Mode' preset system (huntModeWeights/huntDteGuidance) feeds a completely SEPARATE product -- the Night Hawk LEGACY edition-synthesis LLM prompt (format.ts's generateEditionPlaysPrompt, 'HUNT MODE: Swing hunt -- prefer 2-30 DTE contracts.' gets embedded directly into the LLM prompt that drafts next-day Legacy picks). Unlike event-trigger.ts (clearly the SAME engine/window, hardcoded copy drifted -- fixed as PR #5430), Legacy is an explicitly separate, untouched next-day-digest lane per 0DTE-UNIFICATION-DESIGN.md that doesn't route through Swing Command's real-time commit gates -- so a wider LLM-suggestion net here COULD be intentional design, not a bug. Judged this genuinely ambiguous (not small/unambiguous per the escalation policy) and posted a design question on #4076 (comment 5775500641) rather than guessing at a fix -- flagged the exact code, why it's different from the two just-fixed instances, and offered to take the fix (same derive-from-HORIZONS.SWING shape) once intent is confirmed either way.",
   "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-22-swing-event-trigger-max-dte-stale-ceiling.md (PR #5430, open)"
-  ],
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -121,10 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "swing_related_open_prs": [
-      "#5430 (mine, just opened)"
-    ],
-    "checked_at": "2026-09-22T11:08:15Z"
+    "swing_related_open_prs": [],
+    "checked_at": "2026-09-22T11:19:14Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -213,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "Check PR #5430 CI/merge status next cycle (subscribed). Consider a follow-up pass on the remaining comment-only '[2,30]' stale references (dossier.ts, grade.ts, serving-ingest.ts) if time allows -- low priority, zero live-behavior impact, just doc accuracy. Verify whether legacy-confirm-promote.ts's '2-30 DTE' reference is genuinely Legacy's own (different) range before touching it. AAPL position 40 still the only real native open swing chain."
+  "watch_next_cycle": "Watch #4076 for a response on the Hunt Mode/Legacy DTE-range design question (comment 5775500641) -- take the fix if confirmed it should track Swing Command's window, leave alone if Legacy's own next-day range is intentionally wider. Remaining low-priority comment-only '[2,30]' stale doc references not yet touched: dossier.ts:76, grade.ts:73, serving-ingest.ts:52, legacy-confirm-promote.ts:117 (confirmed this one also describes the Swing-Command-hold concept, same drift, comment-only, zero behavior impact). AAPL position 40 still the only real native open swing chain. No open swing/Largo PRs remain."
 }
