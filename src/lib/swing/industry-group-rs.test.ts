@@ -62,6 +62,26 @@ test("resolveGroupBenchmark: 'Indices'/'Other' labels never resolve (no rotation
   assert.equal(resolveGroupBenchmark({ ticker: "SPY", sectorLabel: "Indices" }), null);
 });
 
+test("resolveGroupBenchmark: a known crypto-equity name gets NO benchmark, never a mechanical Financials mislabel", () => {
+  // Live-confirmed 2026-09-22: Polygon classifies HUT (Hut 8 Corp, a bitcoin-mining/digital-infrastructure
+  // company) under sic_code 6199 "FINANCE SERVICES" — a real provider classification that lands squarely in
+  // sectorEtfFromSic's 6000-6499 "Finance" range and mechanically resolves to XLF/Financials. That is a
+  // genuine SIC-provider quirk (crypto miners routinely get bucketed under a finance-services SIC because
+  // they don't fit a traditional mining code), not evidence HUT is a Financials-sector-rotation name — the
+  // rest of the engine (portfolio.ts concentration risk, the play-brief's own "Book context" section) already
+  // treats HUT as "crypto-equity" via `sectorFor`. Before the fix this returned `{etf:"XLF",...}`; per this
+  // file's own null-over-mislabel design (see header), a name whose REAL theme has no equity-sector analogue
+  // must get NO benchmark rather than a mismatched one.
+  assert.equal(resolveGroupBenchmark({ ticker: "HUT", sicCode: "6199", sicDescription: "FINANCE SERVICES" }), null);
+  // Same guard applies regardless of which tier would otherwise have fired — a crypto-equity name with no SIC
+  // at all must not fall through to a sector-map label mislabel either (MSTR/COIN are hand-classified "Tech" in
+  // the flow-aggregation sector-map.ts, which would otherwise resolve XLK — still wrong for the same reason).
+  assert.equal(resolveGroupBenchmark({ ticker: "MSTR", sectorLabel: "Tech" }), null);
+  assert.equal(resolveGroupBenchmark({ ticker: "COIN", sectorLabel: "Tech" }), null);
+  // A non-crypto name with the SAME SIC code is unaffected — the guard is ticker-scoped, not SIC-scoped.
+  assert.equal(resolveGroupBenchmark({ ticker: "JPM", sicCode: "6021" })?.etf, "KBE");
+});
+
 test("industryGroupRs01: name OUTperforming its group scores > 0; UNDERperforming clamps to 0", () => {
   const nameUp5 = mk(100, 105); // +5% over 10 sessions
   const groupUp2 = mk(100, 102); // +2%
