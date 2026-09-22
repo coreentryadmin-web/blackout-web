@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T05:35:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync: fast-forwarded onto #5417 (SPX-lane, not touched). New open PR #5418 is a findings-fold PR for #5416 opened by a parallel session -- not run myself, avoiding a race on the same fold. CLOSED OUT the watch item from the last 2 cycles: checked run 35689006366's job steps directly (not just the run-level status) -- 'Roll ECS production web' completed at 05:31:22, Cloudflare purge completed same second, confirming the #5416 deploy had actually landed (the run-level 'in_progress' was just the trailing static-asset-validation/market-worker-roll steps, not the part that matters for this fix). Live-verified via GET /api/market/nighthawk/horizons?view=swings: sections.WATCH is now EMPTY (was [META] before), and META (score 84.7) now correctly sits in sections.RESEARCH with watchEntryExpired:true. Bonus finding: AMD (score 82.4), which was sitting in COMMIT_NOW two cycles ago, is ALSO now correctly in RESEARCH with watchEntryExpired:true -- confirms the fix's documented behavior of overriding every pre-entry section including COMMIT_NOW, not just WATCH, and that it's not a single-ticker coincidence. #5416 is fully confirmed working end-to-end in production. Board otherwise unchanged (AAPL still the only MANAGING position). No bug found this cycle -- closed out prior tracking rather than opening new ground, given the deploy-confirmation work was the substantive task.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-22T05:52:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46-offset routine firing). ReadNotifications clean. No new commits since last cycle; zero open swing-scoped PRs at cycle start. REAL BUG FOUND AND FIXED this cycle, prompted by the operator asking directly about MUU on swings. Pulled MUU's live play-brief (positionId 1201, Banger-origin BREAKOUT, TRIM status, entry $1.20, peaked $2.85, trim fired at +100%/$2.40 banking 50%, pulled back to mark $2.025) for genuine Ask Largo deep-audit forensics rather than a code-only sweep. Verified the P&L math first (livePnlPct 68.8% = (2.025-1.20)/1.20 off the precise contract mid, not the rounded $2.03 display; blended P&L 84.4% = 0.5*100% + 0.5*68.8%, exact) -- clean. Then found a real self-contradiction reading the full markdown: Management section said 'Trim ladder: +100% checkmark' (target already hit) while 'What to watch' a few lines later said 'Premium target rail: $2.40 -- 19% move still needed to reach target' (implies NOT yet hit) -- the SAME document asserting both. Root cause: watchForSection's target-rail gate (play-brief-intel.ts) only checked target > mark, never checked whether a trim tranche priced at/above that same target had already FIRED. Swing's own exit-policy.ts prices target_pct identically to its one trim rung's trigger_pct, so this isn't a rare edge case -- it fires on every swing position that scaled out and pulled back below its own trim level, an ordinary post-trim state. Fixed: also check play.exitPolicy.trim_levels for a fired tranche at/above target, omit the room% line when found (never fabricate, only omit -- matches the sibling stop-rail cushion block's own discipline). Added a second control test confirming a LOWER fired rung does not wrongly suppress the room% for a HIGHER still-pending target. RED->GREEN via git-stash: 1 new test fails pre-fix (194/195), 195/195 post-fix. Full src/lib/swing/*.test.ts: 1498/1498 pass. tsc --noEmit clean. Staged finding filed, PR #5419 opened+undrafted+subscribed.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-22-swing-target-rail-post-trim-pullback.md (PR #5419, open)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,9 +121,9 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T05:35:00Z",
+    "as_of": "2026-09-22T05:52:00Z",
     "swing_prs": [
-      "#5418 (findings-fold for #5416, opened by another session, not touched)"
+      "#5419 fix/swing-target-rail-post-trim-pullback (mine, open, watching for CI)"
     ]
   },
   "tickers_seen": {
@@ -211,5 +213,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": null
+  "watch_next_cycle": "watch PR #5419 CI + auto-merge (CARVE-OUT applies, self-authored PR)"
 }
