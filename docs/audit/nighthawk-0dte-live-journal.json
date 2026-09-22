@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T16:47:00Z",
+  "updated_at": "2026-09-22T16:50:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -318,6 +318,11 @@
       "open_question": "Does exiting on thesis_break:gex-walls protect capital, or lock in losses that would have partially mean-reverted? This is the live-trading-path calibration question the existing cortex-oppose-magnitude-ab.mjs did NOT answer (that tool measures gex-walls OPPOSE at commit-time scoring, not this EXIT-time veto). Needs a dedicated counterfactual backtest: for historical thesis_break:gex-walls exits, what would P&L have been at T+5/T+15/T+30min had the position been held through the veto instead of exiting immediately.",
       "reason_not_fixing_now": "n=4 is single-day, and this requires historical backtest evidence (same discipline as every other exit-timing finding in this files research toolkit) before any threshold/logic change -- not a quick code read. Reporting with evidence and holding per the ambiguous/live-trading-path escalation policy rather than guessing at a fix.",
       "next_specific_experiment": "Build/run a thesis-break-gex-walls-outcome counterfactual backtest (same shape as tier-exit-mode-ab.mjs/swing-early-trim-ab.mjs): pull historical committed plays that exited via thesis_break:gex-walls reason from entry_context.exit, replay real minute bars forward from the veto moment, measure realized vs counterfactual-held P&L at fixed horizons."
+    },
+    "2026-09-22T16:50:00Z": {
+      "stage": "resolution",
+      "action": "RESOLVED the 16:47Z escalation as noise, with real evidence (measure before guessing, per standing discipline): pulled 90-day /record history for thesis_break:gex-walls exits -- n=132, win_rate 36.4%, mean_pnl +0.53%, essentially IDENTICAL to the overall 432-play population win_rate 35.9%. Todays 4/4 loss streak on this exact exit reason is pure small-sample noise (n=4 against a well-behaved n=132 historical base rate), not a real miscalibration. No further action needed -- closing this out rather than carrying it forward as an open item.",
+      "lesson": "Good discipline catch: the SAME-DAY same-mechanism pattern looked escalation-worthy at n=4/4 same-failure-mode, but pulling the historical base rate immediately (cheap, one API call) showed it is completely unremarkable. Exactly the measure-before-guessing principle -- a single days streak is not evidence of degradation when the historical distribution already explains it."
     }
   },
   "sessions": {
