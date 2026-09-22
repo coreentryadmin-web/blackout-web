@@ -1889,6 +1889,58 @@ test("collectCoachingBullets: crossDeskCoaching's Vector-conflict bullet suppres
   assert.match(vectorDesk[0]!, /102\.00/);
 });
 
+// BUG FOUND (2026-09-22, Ask Largo standing mandate, fresh crossDeskCoaching audit pass): both
+// dedup guards above — this file's own `vectorConflictAlreadyNoted` (composeCoachingBullets) AND
+// play-brief-narrative.ts's `counterThesisLine` sibling — detect "crossDeskCoaching already named
+// the Vector conflict" by regex-matching the RENDERED TEXT for the literal substring
+// "Vector bearish"/"Vector bullish" (renderCrossDeskConflict's `${lead.desk} ${lead.claim}` format
+// when Vector is the LEAD conflict). But renderCrossDeskConflict formats a NON-lead ("rest")
+// conflict differently: `${c.desk} also reads ${c.claim}` — "Vector also reads bearish (...)" —
+// which the same regex does NOT match, because "Vector" is followed by "also", not directly by
+// "bearish"/"bullish". Vector's own weight (structure, base 3) is high enough to be the lead for
+// every archetype EXCEPT FLOW_ACCUMULATION, whose archetype bonus goes to HELIX's "flow" evidence
+// kind instead (2+2=4 > Vector's un-bonused 3) — so a FLOW_ACCUMULATION swing with BOTH HELIX and
+// Vector conflicting demotes Vector to "rest", the dedup regex silently fails, and the exact
+// "triple restated" duplication the 2026-09-09 fix (documented above) was built to prevent comes
+// back: vectorPlayCoaching renders the SAME headline crossDeskCoaching already quoted, as a
+// separate "Vector desk:" bullet, because it's told (falsely) that the conflict was never noted.
+test("collectCoachingBullets: Vector-conflict headline still duplicates when a FLOW_ACCUMULATION archetype demotes Vector below HELIX in the friction ranking", () => {
+  const bullets = collectCoachingBullets(
+    ctx({
+      play: play({ direction: "LONG", archetype: "FLOW_ACCUMULATION" }),
+      vector: {
+        spot: 100,
+        // `invalidation` present (same as the LEAD-conflict dedup test above) so vectorPlayCoaching
+        // still has non-duplicative content to render once the headline itself is correctly
+        // suppressed — proving suppression, not just incidentally emitting no bullet at all.
+        play: { bias: "short", headline: "Fade the rip", invalidation: "102.00", grade: "B" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "XYZ",
+        recent_flow: { window_hours: 24, print_count: 40, call_premium: 400_000, put_premium: 1_600_000, unknown_premium: 0 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+    100,
+  );
+  const joined = bullets.join("\n");
+  const friction = bullets.filter((b) => /Cross-desk friction/i.test(b));
+  const vectorDesk = bullets.filter((b) => /^• Vector desk:/i.test(b));
+  assert.equal(friction.length, 1, `expected exactly one Cross-desk friction bullet, got: ${joined}`);
+  // Vector is real content in the friction bullet, just not the LEAD clause — confirms the demotion
+  // this test targets actually happened rather than Vector being absent entirely.
+  assert.match(friction[0]!, /Vector also reads bearish \(Fade the rip\)/);
+  assert.equal(vectorDesk.length, 1, `expected exactly one Vector desk bullet, got: ${joined}`);
+  // The bug: without this fix, vectorDesk[0] repeats "Fade the rip" verbatim — the same headline
+  // the friction bullet already quoted two lines above it in the same document.
+  assert.doesNotMatch(
+    vectorDesk[0]!,
+    /Fade the rip/,
+    `Vector desk bullet must not repeat the headline crossDeskCoaching already quoted: ${joined}`,
+  );
+  assert.match(vectorDesk[0]!, /102\.00/);
+});
+
 // FINDINGS 2026-09-11 (live GOOG WATCH-bucket repro): "Flag anchor 329.87" and "Entry geometry
 // AT TRIGGER" appeared near-verbatim in BOTH "Trade manager read" (this module's watch-bucket
 // bullets) and "Watch levels" (watchForSection, play-brief-intel.ts) — the same play.flagUnderlyingPx
