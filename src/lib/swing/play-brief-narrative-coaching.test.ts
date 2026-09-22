@@ -19,6 +19,7 @@ import {
   manageLifecycleCoaching,
   shortInterestCoaching,
   thesisBreakCoaching,
+  tickerHistoryCoaching,
   thesisPillarCoaching,
   troughResilienceCoaching,
   vectorPlayCoaching,
@@ -1858,6 +1859,15 @@ test("collectCoachingBullets: stale Vector suppresses VEX/magnet/flow coaching l
   assert.doesNotMatch(joined, /VEX lens|Gamma magnet|Large print|Vector desk:/i);
 });
 
+test("collectCoachingBullets: a losing ticker track record reaches the aggregate bullet list", () => {
+  const bullets = collectCoachingBullets(
+    ctx({ tickerTrackRecord: { ticker: "AAPL", priorClosedTrades: 2, wins: 0, losses: 2 } }),
+    "open",
+    null,
+  );
+  assert.ok(bullets.some((b) => /Ticker history.*AAPL is 0W \/ 2L/.test(b)));
+});
+
 // FINDINGS 2026-09-09, CORRECTED 2026-09-13 (live AAPL repro): crossDeskCoaching's "Cross-desk
 // friction" bullet and vectorPlayCoaching's own bullet both fired for the same Vector-vs-swing
 // misalignment, each citing the identical headline as a separate fact — a bullet-dump duplicate,
@@ -2530,6 +2540,51 @@ test("ivRankCoaching: fires when play carries ivRank", () => {
   assert.match(cheap!, /vol cheap/i);
 
   assert.equal(ivRankCoaching(play({ ivRank: null })), null);
+});
+
+// tickerHistoryCoaching (2026-09-22, Ask Largo standing mandate): a losing ticker-specific track
+// record was already computed (play-brief-ticker-history.ts) and shown as a bare evidence fact +
+// standalone section, but never reached "Trade manager read" — the one place a member actually
+// decides whether to act on a live "Consider adding"/BUY recommendation. Live repro: AAPL 0W/2L.
+test("tickerHistoryCoaching: fires when the desk has a losing record on this exact ticker", () => {
+  const line = tickerHistoryCoaching(
+    ctx({ tickerTrackRecord: { ticker: "AAPL", priorClosedTrades: 2, wins: 0, losses: 2 } }),
+  );
+  assert.match(line!, /Ticker history/i);
+  assert.match(line!, /AAPL is 0W \/ 2L across 2 prior closed trades/);
+});
+
+test("tickerHistoryCoaching: a single prior loss is worded as one trade, not a plural", () => {
+  const line = tickerHistoryCoaching(
+    ctx({ tickerTrackRecord: { ticker: "NRG", priorClosedTrades: 1, wins: 0, losses: 1 } }),
+  );
+  assert.match(line!, /across 1 prior closed trade\b/);
+  assert.doesNotMatch(line!, /trades\b/);
+});
+
+test("tickerHistoryCoaching: a winning or even record needs no special callout (the bare section already cites it)", () => {
+  assert.equal(
+    tickerHistoryCoaching(
+      ctx({ tickerTrackRecord: { ticker: "AAPL", priorClosedTrades: 2, wins: 2, losses: 0 } }),
+    ),
+    null,
+  );
+  assert.equal(
+    tickerHistoryCoaching(
+      ctx({ tickerTrackRecord: { ticker: "AAPL", priorClosedTrades: 2, wins: 1, losses: 1 } }),
+    ),
+    null,
+  );
+});
+
+test("tickerHistoryCoaching: no prior trades / no record at all → null, never fabricated", () => {
+  assert.equal(
+    tickerHistoryCoaching(
+      ctx({ tickerTrackRecord: { ticker: "AAPL", priorClosedTrades: 0, wins: 0, losses: 0 } }),
+    ),
+    null,
+  );
+  assert.equal(tickerHistoryCoaching(ctx({ tickerTrackRecord: null })), null);
 });
 
 test("technicalsCoaching: bias reads bullish from tape on SHORT play (Largo C5 — chart evidence, not position direction)", () => {
