@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T16:16:00Z",
+  "updated_at": "2026-09-22T16:44:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -304,6 +304,12 @@
       "stage": "infra",
       "action": "board upstream_ok:false STILL down at 16:16 (~6+min, slightly longer than the typical ~4min but not dramatic), /record still confirmed healthy. Continuing to watch, not escalating yet.",
       "next": "recheck at next trigger; escalate only if this exceeds the pattern materially or record is also affected"
+    },
+    "2026-09-22T16:44:00Z": {
+      "stage": "infra+OPEN",
+      "action": "board upstream_ok:false now 34+min (well past the typical ~4min pattern) but /record confirms real trading unaffected: SCHW exited cleanly 15:49:52Z via thesis_break:gex-walls at -28.39%, mark_honored:false correctly matches exit-engine doc (thesis exits use observed mark verbatim, never a floor). No data loss -- this is board-snapshot display degradation, not a trading-engine fault. No fix actionable from this sandbox (no CloudWatch/DB access to root-cause upstream).",
+      "pattern_watch": "Both of todays 2 closed plays (SNXX long, SCHW short) exited via the SAME mechanism -- thesis_break:gex-walls (dominant gamma wall crossing target path inside 0.5x expected move). 2/3 instances of this specific failure mode today, consistent with already-documented cortex-oppose-magnitude-ab.mjs research (active gex-walls oppose correlates with worse outcomes). Not yet 3-instance threshold, watching for a 3rd.",
+      "next": "recheck board recovery next trigger; watch for 3rd gex-walls thesis_break instance"
     }
   },
   "sessions": {
