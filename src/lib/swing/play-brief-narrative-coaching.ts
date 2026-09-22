@@ -1026,6 +1026,34 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
   return null;
 }
 
+/**
+ * Ticker-specific losing track record — surfaced in the narrative, not just the bare evidence
+ * fact. `ctx.tickerTrackRecord` (play-brief-ticker-history.ts, Largo C10) is already rendered as
+ * a standalone "Ticker track record" section (play-brief-intel.ts's `tickerTrackRecordSection`)
+ * and cited once in the evidence array (play-brief.ts) — but neither reaches "Trade manager
+ * read", the one place a member actually decides whether to act on "Consider adding"/BUY. Live
+ * repro (Ask Largo standing mandate, 2026-09-22): AAPL:40's brief renders "Consider adding" as
+ * its lead recommendation while the SAME brief's evidence array separately states "AAPL 0W / 2L
+ * across 2 prior closed trades" — a 100% loss rate on this exact ticker that a member reading only
+ * the bolded recommendation would never see, unless they also read the evidence list at the very
+ * bottom of the document.
+ *
+ * Fires ONLY when the record is actually cautionary (losses strictly outnumber wins) — a neutral
+ * or winning record needs no special callout; the bare section already cites it and "Consider
+ * adding" needs no extra corroboration to stand. No minimum-sample gate (loadTickerTrackRecord's
+ * own header already establishes this is a plain factual count, not a calibrated score needing
+ * Largo C6 graduation), but the wording names the sample size so a thin 0W/1L reads as thin
+ * evidence, not a damning verdict — same "label the evidence weight honestly" discipline
+ * `counterThesisLine()` already uses for cross-desk conflict.
+ */
+export function tickerHistoryCoaching(ctx: SwingPlayBriefContext): string | null {
+  const record = ctx.tickerTrackRecord;
+  if (!record || record.priorClosedTrades === 0) return null;
+  if (record.losses <= record.wins) return null;
+  const n = record.priorClosedTrades;
+  return `**Ticker history** — ${record.ticker} is ${record.wins}W / ${record.losses}L across ${n} prior closed trade${n === 1 ? "" : "s"} — the desk hasn't found an edge on this exact name yet; weigh that against the current setup.`;
+}
+
 /** Recent wall dynamics — last 2 bead events for live structure shifts. */
 export function wallDynamicsCoaching(
   vec: VectorFullState | null,
@@ -1391,6 +1419,7 @@ export function collectCoachingBullets(
   // "Vector-conflict headline still duplicates when a FLOW_ACCUMULATION archetype demotes Vector..."
   const vectorConflictAlreadyNoted =
     crossDesk != null && /Vector (?:also reads )?(bearish|bullish)/.test(crossDesk);
+  push(tickerHistoryCoaching(ctx));
   push(laneRankCoaching(play, ctx.laneRows));
   push(macroTapeCoaching(ctx));
   // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `scorecardCoaching` (formerly here)
