@@ -42,8 +42,12 @@ import { formatFixedNonZero } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason } from "./entry-enterability";
 import { thesisHealthUncalibrated } from "./thesis-health";
-import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES } from "./taxonomy";
-import { graduatedArchetypeEntry, type SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy";
+import {
+  graduatedArchetypeEntry,
+  graduatedSubLaneEntry,
+  type SwingArchetypeTrackRecordSnapshot,
+} from "./calibration-cache";
 import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 import {
   meridianPeerEarningsCoaching,
@@ -387,11 +391,18 @@ export function bookContextSection(
  * cache read (ctx.archetypeTrackRecord null/undefined), also renders nothing — same honest absence,
  * not an error.
  *
- * Scoped to the ARCHETYPE dimension only for this section (sub-lane graduation is distilled and
- * cached alongside it — calibration-cache.ts's `snapshot.subLanes` — but combining two graduated
- * dimensions into one citation without double-counting evidence or cluttering the brief is left as
- * a follow-up; shipping the archetype citation alone is the smaller, correct slice per the standing
- * "ship less but correct" guidance).
+ * Also cites the SUB-LANE dimension (TACTICAL 5-7d vs STANDARD 8-21d — `snapshot.subLanes`,
+ * distilled by the same cron tick) as an ADDITIONAL paragraph when that bucket has independently
+ * graduated, rather than as a follow-up left unshipped: this previously stopped at the archetype
+ * dimension alone ("combining two graduated dimensions... is left as a follow-up") but
+ * `graduatedSubLaneEntry` was fully built, wired write-side every cron tick, and unit-tested with
+ * zero read-side call sites — a real, if honest, gap once the archetype citation had been live long
+ * enough to prove the pattern out. Deliberately does NOT merge the two into one blended stat (that
+ * would double-count the same underlying graded rows across two overlapping cuts of the same
+ * population); it cites them as two separate, independently-gated evidence lines, each honestly
+ * omitted on its own if its own bucket hasn't graduated — the archetype line can render alone, the
+ * sub-lane line can render alone, both can render, or (most common while the closed-swing
+ * population is still small) neither can.
  */
 export function archetypeTrackRecordSection(
   play: TerminalPlay,
@@ -400,21 +411,47 @@ export function archetypeTrackRecordSection(
   const archetype = (SWING_ARCHETYPES as readonly string[]).includes(play.archetype ?? "")
     ? (play.archetype as (typeof SWING_ARCHETYPES)[number])
     : null;
-  const entry = graduatedArchetypeEntry(snapshot, archetype);
-  if (!entry || !archetype) return null;
+  const archetypeEntry = graduatedArchetypeEntry(snapshot, archetype);
 
-  const label = ARCHETYPE_META[archetype].label;
-  const sampleNote = entry.tier === "BROAD" ? "broad sample" : "limited sample — still evidence, not vibes";
-  const lines: string[] = [
-    `**${label}** — ${entry.wins}W / ${entry.losses}L across **${entry.n}** graded plays (${sampleNote}).`,
-    `Raw win rate **${entry.winRatePct != null ? `${entry.winRatePct.toFixed(0)}%` : "—"}** · Wilson 95% lower bound **${entry.wilsonLbPct.toFixed(0)}%** — the conservative floor this evidence actually supports, not the point estimate.`,
-  ];
-  if (entry.pointDeltaPts != null) {
-    lines.push(
-      `Clears this archetype's provisional score floor by **+${entry.pointDeltaPts.toFixed(0)} pts** win-rate edge vs setups that did not.`,
-    );
+  const subLane = (SWING_SUB_LANES_ORDER as readonly string[]).includes(play.subLane ?? "")
+    ? (play.subLane as (typeof SWING_SUB_LANES_ORDER)[number])
+    : null;
+  const subLaneEntry = graduatedSubLaneEntry(snapshot, subLane);
+
+  if (!archetypeEntry && !subLaneEntry) return null;
+
+  const blocks: string[] = [];
+  if (archetypeEntry && archetype) {
+    const label = ARCHETYPE_META[archetype].label;
+    const sampleNote =
+      archetypeEntry.tier === "BROAD" ? "broad sample" : "limited sample — still evidence, not vibes";
+    const lines: string[] = [
+      `**${label}** — ${archetypeEntry.wins}W / ${archetypeEntry.losses}L across **${archetypeEntry.n}** graded plays (${sampleNote}).`,
+      `Raw win rate **${archetypeEntry.winRatePct != null ? `${archetypeEntry.winRatePct.toFixed(0)}%` : "—"}** · Wilson 95% lower bound **${archetypeEntry.wilsonLbPct.toFixed(0)}%** — the conservative floor this evidence actually supports, not the point estimate.`,
+    ];
+    if (archetypeEntry.pointDeltaPts != null) {
+      lines.push(
+        `Clears this archetype's provisional score floor by **+${archetypeEntry.pointDeltaPts.toFixed(0)} pts** win-rate edge vs setups that did not.`,
+      );
+    }
+    blocks.push(lines.join("\n"));
   }
-  return { title: "Track record", body: lines.join("\n\n"), bias: "neutral" };
+  if (subLaneEntry && subLane) {
+    const label = SWING_SUB_LANES[subLane].label;
+    const sampleNote =
+      subLaneEntry.tier === "BROAD" ? "broad sample" : "limited sample — still evidence, not vibes";
+    const lines: string[] = [
+      `**${label} sub-lane** — ${subLaneEntry.wins}W / ${subLaneEntry.losses}L across **${subLaneEntry.n}** graded plays (${sampleNote}).`,
+      `Raw win rate **${subLaneEntry.winRatePct != null ? `${subLaneEntry.winRatePct.toFixed(0)}%` : "—"}** · Wilson 95% lower bound **${subLaneEntry.wilsonLbPct.toFixed(0)}%**.`,
+    ];
+    if (subLaneEntry.pointDeltaPts != null) {
+      lines.push(
+        `Clears this sub-lane's provisional score floor by **+${subLaneEntry.pointDeltaPts.toFixed(0)} pts** win-rate edge vs setups that did not.`,
+      );
+    }
+    blocks.push(lines.join("\n"));
+  }
+  return { title: "Track record", body: blocks.join("\n\n"), bias: "neutral" };
 }
 
 /**

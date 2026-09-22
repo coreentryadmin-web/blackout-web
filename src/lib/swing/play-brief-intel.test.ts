@@ -373,6 +373,54 @@ test("archetypeTrackRecordSection: omits the point-Δ line when pointDeltaPts is
   assert.doesNotMatch(body, /pts.*edge/);
 });
 
+// ── sub-lane citation (graduatedSubLaneEntry — previously wired write-side/tested but never read
+// from a brief section; see this file's header comment on why it now ships as an additive line
+// alongside the archetype citation rather than replacing it) ──────────────────────────────────────
+function snapshotWithSubLanes(
+  archetypes: SwingArchetypeTrackRecordSnapshot["archetypes"] = {},
+  subLanes: SwingArchetypeTrackRecordSnapshot["subLanes"] = {},
+): SwingArchetypeTrackRecordSnapshot {
+  return { asOf: "2026-09-10T15:00:00.000Z", gradedPlays: 70, archetypes, subLanes };
+}
+
+test("archetypeTrackRecordSection: cites the sub-lane too when its own bucket has independently graduated", () => {
+  const snap = snapshotWithSubLanes(
+    { BREAKOUT: trackRecordEntry({ wins: 45, losses: 15, n: 60 }) },
+    { TACTICAL: trackRecordEntry({ wins: 1, losses: 4, n: 5, winRatePct: 20, wilsonLbPct: 5.7 }) },
+  );
+  const play = fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" });
+  const body = archetypeTrackRecordSection(play, snap)?.body ?? "";
+  assert.match(body, /45W \/ 15L/, "archetype line still present");
+  assert.match(body, /Tactical.*sub-lane/i, "sub-lane line present");
+  assert.match(body, /1W \/ 4L/, "sub-lane's own wins\\/losses cited, not the archetype's");
+});
+
+test("archetypeTrackRecordSection: renders the sub-lane citation ALONE when only the sub-lane has graduated (archetype ungraduated/absent)", () => {
+  const snap = snapshotWithSubLanes(
+    {},
+    { STANDARD: trackRecordEntry({ wins: 10, losses: 5, n: 15 }) },
+  );
+  const play = fixturePlay({ archetype: null, subLane: "STANDARD" });
+  const section = archetypeTrackRecordSection(play, snap);
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Standard.*sub-lane/i);
+});
+
+test("archetypeTrackRecordSection: null when neither dimension has graduated", () => {
+  const snap = snapshotWithSubLanes(
+    { BREAKOUT: trackRecordEntry({ graduated: false }) },
+    { TACTICAL: trackRecordEntry({ graduated: false }) },
+  );
+  const play = fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" });
+  assert.equal(archetypeTrackRecordSection(play, snap), null);
+});
+
+test("archetypeTrackRecordSection: an unrecognized subLane string is treated as absent, never fabricated", () => {
+  const snap = snapshotWithSubLanes({}, { TACTICAL: trackRecordEntry() });
+  const play = fixturePlay({ archetype: null, subLane: "NOT_A_REAL_SUB_LANE" });
+  assert.equal(archetypeTrackRecordSection(play, snap), null);
+});
+
 // ── tickerTrackRecordSection (Largo C10 historical context, TICKER-scoped — Ask Largo mandate
 // round 19, 2026-09-18) — sibling of archetypeTrackRecordSection above, scoped to the ticker
 // instead of the archetype. Unlike the archetype section this has no graduation gate: it's a
