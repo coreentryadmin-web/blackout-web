@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T18:10:00Z",
+  "updated_at": "2026-09-22T18:46:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -339,6 +339,14 @@
       "stage": "WATCH",
       "action": "Upside-hunt this cycle (several quiet cycles prior): 2 commit_ready candidates (DKS score 90, ASTS score 76) checked for latency -- both computed 14:08 ET, only 2min stale at check time, normal processing cadence, no delay issue. No bugs or enhancement ideas surfaced this cycle. Board otherwise unchanged, 5 closed rows same as last several checks.",
       "next": "watch DKS/ASTS for commit + subsequent exit-coherence tracking"
+    },
+    "2026-09-22T18:46:00Z": {
+      "stage": "ESCALATION/infra",
+      "action": "ESCALATING: 3rd distinct board upstream_ok:false instance today (2026-09-22) -- #1: ~16:10-16:47 (37min), #2: ~17:10-17:15 (5-6min), #3: ~18:46-ongoing. This frequency (3x in one RTH session) is unusual vs the historical ~1-instance-per-session baseline established across prior sessions this multi-day mandate. /record confirmed healthy and unaffected all 3 times -- zero data loss, zero trading-engine impact, purely a board-snapshot/display-layer issue each time.",
+      "evidence": "Each instance independently verified via direct API polls (board upstream_ok flag + ledger_len=0/session_stats=null vs /record returning full valid payload with real play data throughout). No pattern in duration (37min vs 5min vs ongoing) or timing (spans opening/mid-RTH/afternoon) that points to a specific trigger from this sandbox side.",
+      "reason_not_fixing": "No CloudWatch/AWS/DB access from this sandbox to root-cause the upstream side (standing documented limitation). This is infra, not application code I can read/fix from here.",
+      "recommendation": "Worth a human/ops check of CloudWatch Logs for the board API route (/api/market/zerodte/board) around these 3 windows (16:10-16:47, 17:10-17:15, 18:46+) today to see if theres a shared root cause (e.g. cache invalidation race, upstream data-provider timeout, ECS task recycling) -- 3x in one session is enough of a frequency signal to be worth a look, even though no member-facing harm has occurred (record/trading path unaffected every time).",
+      "next": "continue monitoring; note resolution time when #3 clears"
     }
   },
   "sessions": {
