@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T16:50:00Z",
+  "updated_at": "2026-09-22T17:10:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -323,6 +323,11 @@
       "stage": "resolution",
       "action": "RESOLVED the 16:47Z escalation as noise, with real evidence (measure before guessing, per standing discipline): pulled 90-day /record history for thesis_break:gex-walls exits -- n=132, win_rate 36.4%, mean_pnl +0.53%, essentially IDENTICAL to the overall 432-play population win_rate 35.9%. Todays 4/4 loss streak on this exact exit reason is pure small-sample noise (n=4 against a well-behaved n=132 historical base rate), not a real miscalibration. No further action needed -- closing this out rather than carrying it forward as an open item.",
       "lesson": "Good discipline catch: the SAME-DAY same-mechanism pattern looked escalation-worthy at n=4/4 same-failure-mode, but pulling the historical base rate immediately (cheap, one API call) showed it is completely unremarkable. Exactly the measure-before-guessing principle -- a single days streak is not evidence of degradation when the historical distribution already explains it."
+    },
+    "2026-09-22T17:10:00Z": {
+      "stage": "infra",
+      "action": "2nd distinct board upstream_ok:false instance today (1st: ~16:10-16:47, 37min; recovered cleanly, healthy gap ~16:47-17:10 ~23min; now down again as of 17:10). /record confirmed healthy again -- same self-healing pattern, no data loss. 2 distinct instances today (vs the usual ~1 per session historically) -- watching frequency, not yet escalating (need evidence of real harm or a 3rd distinct instance with different characteristics).",
+      "next": "recheck next trigger; if this becomes a 3rd/4th distinct instance today (unusually frequent vs historical ~1/session), escalate as a frequency-increase finding even without new root-cause evidence"
     }
   },
   "sessions": {
