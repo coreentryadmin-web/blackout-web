@@ -393,11 +393,26 @@ function fmtPremium(n: number): string {
 export function flowAlertToPulseSignal(flow: FlowAlert, at: number): PulseSignal | null {
   if (flow.premium < FLOW_MIN_PREMIUM) return null;
 
+  // BUG FIX (2026-09-22, Ask Largo standing mandate — fresh angle, same bug CLASS as #5405's HELIX
+  // print-table fix found the same day). `FlowAlert.option_type` is typed as a plain `string`, but
+  // every REAL runtime value is UPPERCASE: `parseUwFlowAlert`/`parseOccSymbol` (unusual-whales.ts)
+  // emit "CALL"/"PUT"/"UNKNOWN", and the DB read path (`fetchRecentFlows`, db.ts ~line 3232) stamps
+  // `option_type: String(row.option_type ?? "").toUpperCase()` on every row this route serves — so
+  // a real flow print reaching this function from `/api/market/flows` (the ONLY path VectorPulse.tsx
+  // feeds it, via `fetchFlows`) never carries a lowercase "call"/"put". The two comparisons below
+  // used to compare directly against the lowercase literals, so `isBullish`/`isBearish` were BOTH
+  // always false for every real print, and the very next line unconditionally dropped it — i.e. the
+  // Vector Pulse "flow-print" signal kind (dealer/sweep/block prints) has never fired on real
+  // production data, only in this file's own tests, whose fixtures happen to use lowercase
+  // "call"/"put" (masking the exact same case-shape trap the HELIX bug had). Normalizing to
+  // uppercase before comparing fixes both the classification here and the render line below
+  // (`option_type === "call" ? "C" : "P"`), which had the identical latent defect one level down.
+  const side = flow.option_type?.toUpperCase() ?? "";
   const dir = flow.direction?.toLowerCase() ?? "";
-  const isBullish = (flow.option_type === "call" && dir.includes("buy")) ||
-    (flow.option_type === "put" && dir.includes("sell"));
-  const isBearish = (flow.option_type === "put" && dir.includes("buy")) ||
-    (flow.option_type === "call" && dir.includes("sell"));
+  const isBullish = (side === "CALL" && dir.includes("buy")) ||
+    (side === "PUT" && dir.includes("sell"));
+  const isBearish = (side === "PUT" && dir.includes("buy")) ||
+    (side === "CALL" && dir.includes("sell"));
 
   // A print that's neither clearly bullish nor bearish (route/side ambiguous) can't be acted on —
   // drop it rather than surface an "INFO" row a member has to parse and then discard themselves.
@@ -413,7 +428,7 @@ export function flowAlertToPulseSignal(flow: FlowAlert, at: number): PulseSignal
     kind: "flow-print",
     tone,
     at,
-    line: `💰 ${fmtPremium(flow.premium)} ${flow.ticker} ${flow.strike}${flow.option_type === "call" ? "C" : "P"} ${flow.expiry} ${dir}${route}${gex}`,
+    line: `💰 ${fmtPremium(flow.premium)} ${flow.ticker} ${flow.strike}${side === "CALL" ? "C" : "P"} ${flow.expiry} ${dir}${route}${gex}`,
   };
 }
 
