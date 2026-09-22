@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T09:08:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. Zero open swing PRs at cycle start. Checked #4076 (page 47) for replies to my two open research comments (5-truth grader, swing-risk.ts unwired) -- no reply yet, nothing to act on. Noticed and verified a separate item on that same thread: a giveback-duplication bug I (or a parallel session, same account) flagged 2026-09-21T16:49 with full root cause but explicitly did not fix at the time -- confirmed via direct code read it HAS since been fixed (holdPlanSection now takes narrativeAlreadyNoted.roundTrip/.capture guards, matching the proposed fix shape) -- no action needed, just confirming the fleet closed the loop, not idle re-discovery. Board unchanged (AAPL still the only open chain). Same-cycle follow-up finding: while sweeping swing-board-allocation.ts (the sibling wiring file to swing-allocation.ts, fixed last cycle as #5425), found it repeats the IDENTICAL stale 'caps are advisory, graduates PR-16' claim in its own header. What's actually true is narrower: this file's own allocateSwingBoard has ZERO callers anywhere (confirmed by grep) -- so it's genuinely unwired, but not because the underlying caps are advisory (commit.ts's Gate 2 already gates real commits with them, per the #5425 trace). Corrected the header to state the real reason. Doc-only, zero logic touched. npx tsc --noEmit clean, swing-board-allocation.test.ts 4/4, full src/lib/swing/*.test.ts 1503/1503. Staged finding filed, PR #5426 opened+undrafted+subscribed.",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-22-swing-board-allocation-stale-enforce-claim.md (PR #5426, open, doc-correctness)"
-  ],
+  "last_updated": "2026-09-22T09:20:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16-offset routine firing). ReadNotifications clean. PR #5426 was already merged by the time this cycle checked (CI green, no intervention needed) -- unsubscribed, deleted local branch, cancelled the now-unneeded check-in trigger. Zero open swing PRs. Board unchanged (AAPL leg 40 still HOLD/ungraded, 14 chains total). This closes out a productive run through the swing portfolio/allocation/risk cluster of files this session: portfolio.ts (checkPortfolioOverlap, clean), swing-portfolio-budget.ts (clean, ARMED dollar-risk gate confirmed), swing-risk.ts (correct but unwired -- flagged on #4076, not fixed, architectural), swing-allocation.ts (stale enforce-claim doc bug, FIXED #5425), swing-board-allocation.ts (same stale claim repeated, FIXED #5426). The %-cap and dollar-budget gates in commit.ts are now both independently verified live and correctly documented; the one remaining known gap in this cluster (greek/beta risk math unwired) is raised for collaboration, not silently left mis-documented. No new bug found this cycle -- cleanup + confirmation of prior work.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -121,10 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T09:08:00Z",
-    "swing_prs": [
-      "#5426 docs/swing-board-allocation-stale-enforce-claim (mine, open, watching for CI)"
-    ]
+    "as_of": "2026-09-22T09:20:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
@@ -213,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "watch PR #5426 CI + auto-merge (CARVE-OUT applies)"
+  "watch_next_cycle": null
 }
