@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T07:23:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16-offset routine firing). ReadNotifications clean (3 GitHub events on my own #5423 -- subscription-created x2, ready_for_review -- none required action, no CI result yet). git sync: one new PR since last cycle, #5422 (findings-fold for #5420, opened by the parallel session, not mine, left alone). PR #5423 CI still running (verify + CodeQL in_progress at ~4min, normal range, not stalled). Full board scan (GET /api/market/swing/record, all 14 chains): unchanged since earlier this session -- AAPL (root 37) still the only open/HOLD chain, everything else CLOSED with no new closes since the last full scan. No new WATCH/OPEN forensic leads. No new bug found/filed this cycle -- monitoring #5423's CI (normal, in-progress) and confirming board state is genuinely quiet rather than idly re-deriving prior work.",
+  "last_updated": "2026-09-22T07:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync: PR #5423 (ticker-history coaching, found+fixed last cycle) merged clean -- CI green throughout, merged by coreentryadmin-web at 07:31:11Z (before this cycle's own check, likely the coordinator's own merge sweep or a parallel session picking it up once green -- either way, done, no action needed). Also #5422 (fold PR for #5420) merged. Unsubscribed from #5423, deleted the local branch, cancelled the now-unneeded 1hr check-in trigger. Zero open swing PRs. Board unchanged (AAPL still the only open chain). Deferred the live post-deploy verification of #5423's narrative change (does AAPL's brief now show the 'Ticker history' coaching bullet) to next cycle -- it merged only minutes ago, deploy still needs to land, same discipline as every other deploy-lag tracking this session. No new bug found this cycle -- cleanup + confirmation, not idle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,10 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T07:23:00Z",
-    "swing_prs": [
-      "#5423 feat/swing-ticker-history-coaching (mine, open, CI running)"
-    ]
+    "as_of": "2026-09-22T07:35:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
@@ -211,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "watch PR #5423 CI + auto-merge (CARVE-OUT applies)"
+  "watch_next_cycle": "confirm PR #5423's Ticker history coaching bullet is live on AAPL's brief once its deploy completes"
 }
