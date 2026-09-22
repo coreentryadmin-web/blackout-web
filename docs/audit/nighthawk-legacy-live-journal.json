@@ -4182,6 +4182,11 @@
       "at": "2026-09-22T14:22:45Z",
       "summary": "Single-ticker transient mark-staleness blip during RTH: TWLO briefly flagged \"stale by the API\" at 14:21:28 UTC (10:21am ET) while ALAB/META stayed GREEN in the same cycle. Re-fetched raw /legacy-marks ~1min later (14:22:15 UTC): TWLO stale:false, live quote mark=22.70 bid=21.40 ask=24.00. Re-ran the full healthcheck at 14:22:32 UTC: back to full GREEN across all 3 tickers.",
       "assessment": "Self-resolved within ~1 minute, no persistent defect -- treated as a genuine transient quote-fetch blip (flake), not a root cause, per the standing \"flake is not a root cause\" discipline. Logging as INSTANCE 1 of the 3-instance noise-discipline threshold for pattern-tracking only -- not escalating. Watch for recurrence on TWLO or other tickers during RTH; only escalate if this repeats a 3rd time."
+    },
+    {
+      "at": "2026-09-22T15:22:39Z",
+      "summary": "TRANSIENT: one healthcheck call at 15:21:50 UTC (11:21am ET) read editionFor=2026-09-23 with A_edition AMBER (\"edition served from degraded fallback source\") and B_marks reporting no open plays -- but 2 immediate re-checks (direct /edition fetch + full healthcheck re-run, both within ~30s) both reverted to editionFor=2026-09-22, the still-current book, full GREEN, 3 plays, marks live. This is the FIRST time editionFor has shown 2026-09-23 at all this session -- likely a mid-write read caught while tonights edition build (for 2026-09-23) is actively running, not a real defect.",
+      "assessment": "Not escalating -- self-consistent on immediate re-check, and a transient degraded-fallback read during an active background build is expected/benign (the route falling back to the last good edition while the new one is being written). This IS the signal that the real 2026-09-23 edition -- the first to run through PR #5396s relaxed-OI contract-cost fallback AND PR #5420s DTE-aware risk_note fix -- is imminent. Watching closely over the next few cycles for the actual rollover to verify both fixes in production, per the standing commitment made earlier this session."
     }
   ],
   "knownOpenItems": {
