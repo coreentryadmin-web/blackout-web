@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T10:33:02Z",
-  "notes": "Trigger 2/4 (:31 offset), 2026-09-22 ~10:31 UTC. PR #5428 MERGED (10:20:39Z, merged_by coreentryadmin-web -- automerge or a parallel session, either way done) -- confirmed via pull_request_read, cleaned up: local branch deleted, unsubscribe attempted (no active sub -- webhook self-cleared on merge, expected), 60-min check-in trigger deleted. No open swing/Largo PRs remain (only unrelated Dependabot bumps). AAPL position 40 unchanged (still HOLD, ungraded). Continued fresh-file sweep: event-trigger.ts (live-tape advance-only accumulation router, debouncer eviction logic verified correct), structure-levels.ts (ATR-proxy + entry/stop/target underlying-terms plan levels, off-by-one checked clean), contract-ranker.ts (full tradability x thesisFit contract ranker incl. breakevenMovePct direction math for both LONG/SHORT verified correct) -- all three clean, no bugs found.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-22T10:50:33Z",
+  "notes": "Trigger 4/4 (:46 offset), 2026-09-22 ~10:46 UTC. Today's swing discovery scan HAS now run (scanSessionDay flipped to 2026-09-22, scanAsOf 10:00 UTC) -- live sections: COMMIT_NOW 0, WAITING_FOR_ENTRY 0, WATCH 0, RESEARCH 2, MANAGING 58, SCALING_OUT 23, EXITING 0 (the 58+23=81 MANAGING/SCALING_OUT count is dominated by real Banger-lane merged positions, consistent with the committed=83 breakdown found 2 cycles ago). Confirmed the RESEARCH:2 are exactly AMD+META (the two gate-blocked/no-position candidates from PR #5428's evidence) -- they now correctly route to RESEARCH via watchEntryExpired:true (their entry-validity window lapsed weeks ago), confirming serving.ts's entry-window-expiry guard works as designed. Also confirmed PR #5428's fix still holds correctly under this fresh state: open_position:false still fires for both via positionId being undefined, regardless of which specific reason (gate-blocked vs expired) applies this poll. AAPL position 40 unchanged. AGGRESSIVE-MODE finding + fix this cycle: while reading taxonomy.ts fresh, found its own header comment and SWING_SUB_LANES.STANDARD.contract.note both still quoted the pre-2026-09-04 stale '8-21 DTE' / '2-7/8-21/22-30' range (the file's OWN header comment documents the 5-30->5-15 narrowing that made these stale) -- STANDARD.contract.note directly contradicted STANDARD.dteMax (15) a few lines above in the same object literal. Zero code consumers of contract.note (grepped ContractPreference repo-wide) so never reached a member, but misleads any future reader. Also found + fixed the identical stale '8-21 DTE' in contract-ranker.test.ts's mkContract comment. Fixed all three strings + added a ratchet test (taxonomy.test.ts) that parses each sub-lane's note for its embedded DTE range and asserts it matches dteMin/dteMax, so a future DTE-window change can't silently drift the prose again -- this is the SECOND time this exact drift class has hit this file (per horizons.ts's own dteRangeLabel() fix note). RED->GREEN via git stash (21 !== 15), tsc clean, 19/19 across taxonomy.test.ts + contract-ranker.test.ts. Staged finding docs/audit/findings-staging/2026-09-22-swing-taxonomy-stale-8-21-dte-range.md. PR #5429 opened, undrafted, subscribed.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-22-swing-taxonomy-stale-8-21-dte-range.md (PR #5429, open)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,8 +121,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "swing_related_open_prs": [],
-    "checked_at": "2026-09-22T10:33:02Z"
+    "swing_related_open_prs": [
+      "#5429 (mine, just opened)"
+    ],
+    "checked_at": "2026-09-22T10:50:33Z"
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +213,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "AAPL position 40 still the only real open swing chain. Still-unswept files: taxonomy.ts, industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, roll-plan.ts, grade-retrace.ts, manage-sync.ts, manage-edge-reads.ts, live-marks-active.ts, live-plays.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts."
+  "watch_next_cycle": "Check PR #5429 CI/merge status next cycle (subscribed). AAPL position 40 still the only real native open swing chain; 81 Banger-lane positions live-managing (normal, expected). Still-unswept files: industry-group-rs.ts, ex-dividend-adjustment.ts/ex-dividend-reads.ts, calibration.ts/calibration-cache.ts, feature-store.ts/feature-vector.ts, dossier.ts, banger-lane-merge.ts, swing-pillars.ts, archetype.ts/swing-archetype.ts, roll-plan.ts, grade-retrace.ts, manage-sync.ts, manage-edge-reads.ts, live-marks-active.ts, live-plays.ts, occ-from-row.ts, shadow-calibration.ts, shadow-refresh.ts, underlying-spot-freshness.ts, vector-lane-enrich.ts."
 }
