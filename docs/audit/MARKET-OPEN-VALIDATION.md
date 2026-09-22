@@ -1,3 +1,26 @@
+## WATCH LIST — 2026-09-22 0DTE record `by_outcome` mislabeled two real trim-scale exit reasons — deploy pending validation
+
+**What was fixed:** `record.ts`'s `managedOutcomeLabel()` used an ad hoc `/ratchet|runner/` regex
+instead of the module's own authoritative `categorizeExitReason` classifier, so two real,
+live-stamped `entry_context.exit.reason` values were mislabeled in the member/Largo-facing
+`by_outcome`/`managed_outcome` fields: `trim_scale_dead_zone_floor` (a real protective-floor exit)
+fell through to a bare win/loss/breakeven label instead of `"ratchet"`, and `trim_scale_runner_target`
+(a real full-target capture) was mislabeled `"ratchet"` instead of `"doubled"` (the regex's "runner"
+substring match caught it by accident). Confirmed live 2026-09-22: TSLA/MARA/RKLB/SPCH currently
+show `managed_outcome: "win"` where it should read `"ratchet"`. No P&L numbers were wrong — only the
+outcome bucket/label. Full write-up:
+`docs/audit/findings-staging/2026-09-22-zerodte-trim-scale-outcome-label.md`.
+
+**Specific thing to check once this deploys:** `GET /api/market/zerodte/record?days=7` and confirm
+any row whose `entry_context.exit.reason` is `trim_scale_dead_zone_floor` now reads
+`managed_outcome: "ratchet"` (not `"win"`/`"loss"`/`"breakeven"`), and any row with
+`trim_scale_runner_target` (whose `managed_source` is `"engine"`, i.e. no reconstruction
+superseded it) reads `"doubled"` (not `"ratchet"`). Also spot-check the live Night Hawk 0DTE record
+UI's outcome breakdown chart/table no longer shows a generic win/loss slice absorbing dead-zone-floor
+exits.
+
+---
+
 ## WATCH LIST — 2026-09-21 Thermal "Cross-check" chip was permanently off during healthy RTH — deploy pending validation
 
 **What was fixed:** `GET /api/market/gex-heatmap?ticker=<T>`'s UW cross-validation
