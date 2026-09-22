@@ -38,6 +38,128 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing "Premium target rail" self-contradicts once its own trim tranche already fired and the mark pulls back
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 |
+| **Lane** | Night Hawk Swings — Ask Largo play-brief |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate (2026-09-22) |
+
+### Root cause
+
+`watchForSection` (`src/lib/swing/play-brief-intel.ts`) renders a "Premium target rail" line
+whenever the current mark/execMark is still below `play.exitPolicy.target_premium`, framed as
+"**$X — Y% move still needed from current mark to reach target**". The gate only checked
+`target > targetBasis` — it never checked whether the position had *already* reached that same
+target level once, via an already-fired trim tranche, and has since pulled back below it again.
+
+For swing positions this is not a rare edge case: `SWING_SCALE_OUT_POLICY` (`exit-policy.ts`)
+prices `target_pct` identically to its one trim rung's `trigger_pct` (both `100`), so
+`exitPolicy.target_premium` and the fired trim tranche's `premium` are the *literal same dollar
+level*. Any swing position that scaled out at its one trim rung and has since drifted back below
+that level — a completely ordinary post-trim state, not a malfunction — hits this every time.
+
+### Live repro (MUU, 2026-09-22, TRIM status, positionId 1201)
+
+Entry $1.20, peaked $2.85 (trim fired at the +100%/$2.40 rung, banking 50%), pulled back to a
+mark of $2.025 by the time of this read. The SAME brief document rendered, a few lines apart:
+
+- Management section: `Trim ladder: +100% ✓` — i.e. the target was already reached.
+- What to watch: `Premium target rail: **$2.40** — **19%** move still needed from current mark
+  to reach target` — i.e. the target has *not* been reached yet.
+
+A member reading "What to watch" alone would believe there is a fresh, unmet objective ahead of
+the runner, when the runner is actually trailing off a peak that already cleared this exact level
+once. The runner's real remaining risk parameter is the trailing-stop-from-peak mechanic
+(`SCALE_OUT_RULES.trail_from_peak`), not "climb back to $2.40" — the rail's own room% math was
+correct arithmetic on a premise (this target is still pending) that was no longer true.
+
+### Fix
+
+`watchForSection` now also checks `play.exitPolicy.trim_levels` for any tranche that has already
+`fired` at a `premium` at/above the target level; when one has, the room% line is omitted
+entirely (same "never fabricate, only ever omit" discipline the sibling stop-rail cushion fix
+already uses) rather than restating a target the position has already banked.
+
+### Evidence
+
+RED→GREEN via `git stash` on `play-brief-intel.ts` alone: 1 new test fails pre-fix (194/195
+pass), 195/195 post-fix. A second new control test (a lower, not-yet-reached trim rung must NOT
+suppress the room% for a higher, still-pending target) confirms the fix is scoped to "a fired
+tranche at/above THIS target," not "any trim has ever fired." Full `src/lib/swing/*.test.ts`:
+1498/1498 pass. `npx tsc --noEmit`: clean.
+
+### Blast radius
+
+One call site (`watchForSection`'s target-rail block); the sibling stop-rail cushion block a few
+lines above was not touched (it already omits correctly once the basis is through the stop, and
+has no analogous "already fired and bounced back" ambiguity — a stop breach doesn't un-happen the
+way a profit target's relevance changes once trimmed). No other file renders `target_premium`
+with a room% computation (confirmed by the original 2026-09-18 PR's own exhaustive grep, still
+true — this file is the only place that math exists).
+
+## 337. SPX Slayer: Night Hawk "morning prior" bonus mutated confluence.score without recomputing grade/direction/agreeing — fix/spx-nh-bonus-stale-grade-direction — 2026-09-22
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+- **What was broken:** `spx-play-engine.ts` applies the Night Hawk morning-prior bonus (a signed
+  confluence factor bounded ±3 by `getNhConfluenceBonus`'s own contract) by mutating an
+  already-built `SpxConfluence` object in place — `confluence.score += nhBonus.bonus` and
+  `confluence.factors.push({ label: "Night Hawk prior", ... })` — but never recomputed
+  `grade`/`direction`/`agreeing`/`conflicts`/`weighted_conflicts`. Those fields were derived once,
+  inside `computeSpxConfluence` (spx-signals.ts), from the PRE-bonus score/factors, then frozen
+  into the returned object. `evaluatePlayGates` (spx-play-gates.ts) reads `confluence.grade` and
+  `confluence.direction` directly — not re-derived from score — so a play could be gated (grade
+  minimum, mixed-tape threshold, `agreeing` factors check, direction null-check) against a stale
+  classification while `confluence.score` itself already reflected the bonus. Worse,
+  `evaluateMtfHybrid(direction, keyLevel, technicals, confluence.grade, confluence.score)` is
+  called with the STALE grade and the ALREADY-MUTATED score in the same call — a mismatched pair
+  feeding `soft3mAllowed(grade, score)`'s soft-pass eligibility check directly.
+  Grade thresholds sit at abs score 30/45/58/72 (`scoreToGrade`), and the bonus is bounded at ±3,
+  so a boundary score (e.g. 57→60, crossing the 58 A-grade threshold) is a real, reachable case —
+  not a hypothetical one. Similarly the null/non-null direction boundary sits at abs score 10; a
+  score of 8→11 crosses it and would leave `direction` frozen at `null` post-bonus.
+  `agreeing` alone was accidentally shielded from this staleness: `spx-play-gates.ts` happens to
+  recompute its own local `agreeing` from `confluence.factors` (a pre-existing, unrelated
+  duplication of the same field) rather than trusting `confluence.agreeing`, so it picks up the
+  newly-pushed "Night Hawk prior" factor even though the frozen `confluence.agreeing` field itself
+  does not. `grade`/`direction`/`conflicts`/`weighted_conflicts` had no such accidental safety net.
+- **Evidence:** `git stash` of the fix (keeping the new tests) reproduces the failure — 2/7 tests
+  in `spx-signals.test.ts` fail with `reclassifyConfluenceScore is not a function` pre-fix; all 7
+  pass post-fix (`npx tsx --experimental-test-module-mocks --test src/features/spx/lib/spx-signals.test.ts`).
+  New unit tests assert: (1) a fixture at score 57 (factors summing to abs 57, 0 conflicts) grades
+  "B"; the same factors + a +3 Night Hawk prior bonus at score 60 must reclassify to "A", not stay
+  frozen at "B"; `agreeing` must include the newly-pushed factor. (2) a fixture at score 8 (abs <
+  10) has `direction: null`; the same + a +3 bonus at score 11 must reclassify `direction: "long"`.
+- **Blast radius:** every consumer of `confluence.grade`/`confluence.direction`/`confluence.agreeing`/
+  `confluence.conflicts`/`confluence.weighted_conflicts` downstream of the Night Hawk prior mutation
+  in `spx-play-engine.ts` — both `evaluateFlatPlay` (via `evaluatePlayGates`, `evaluateMtfHybrid`)
+  and any headline/thesis text built from `confluence.grade`/`direction` further downstream in the
+  same function. Nothing outside `spx-play-engine.ts` mutates `confluence.score` post-build, so this
+  is the only call site affected.
+- **Fix rationale:** added `reclassifyConfluenceScore(desk, score, factors)`, an exported pure
+  function in `spx-signals.ts` that mirrors `computeSpxConfluence`'s own bias/action/grade/
+  direction/agreeing/conflicts derivation (same thresholds, verified via the new tests), and called
+  it in `spx-play-engine.ts` right after the score/factors mutation, reassigning every field it
+  returns together — so score and its derived classification can never disagree again. Deliberately
+  did NOT refactor `computeSpxConfluence` itself to call this new helper internally (it has its own
+  tight byte-for-byte regression test guarding untouched behavior); the new function intentionally
+  duplicates the classification logic with a code comment cross-referencing the original, rather
+  than risk touching a heavily-tested working code path for an unrelated bug fix.
+- **In-code comments**: both the new function (spx-signals.ts) and its call site
+  (spx-play-engine.ts) carry a full trace of the bug and why every field must be reassigned
+  together, not just `score`.
+
+**Market-open validation**: see `docs/audit/MARKET-OPEN-VALIDATION.md` for the RTH check to run
+next session.
+
 ## Night Hawk Swings — the WATCH board never pruned/demoted candidates past their own entry-validity deadline, letting a dead setup sit #1 in `sections.WATCH` for weeks — FIXED
 
 > **kind:** `FINDING`
