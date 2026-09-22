@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T06:51:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46-offset routine firing). ReadNotifications clean. git sync: the parallel session's PR #5420 (banger risk_note DTE-mismatch) merged since last cycle. Reviewed its diff for correctness (not just trusting the merge, same discipline used on #5416/#5417 this session): bangerScaleOutNote() now takes optional {dte}, dte<=10 keeps the weekly framing byte-for-byte (zero behavior change for the whole-market banger board's existing no-context callers), dte>10 names the real DTE instead of falsely claiming 'weeklies' -- clean, well-tested (5 unit + 1 e2e case), no issue found. Zero open swing PRs now (both #5420 and my own #5419 merged this hour). Continued the fresh-code-path sweep: full read of swing-catalyst.ts (336 lines) -- the pure CATALYST-pillar + EVENT_DRIVEN/POST_EARNINGS_DRIFT archetype-fit grounding (deriveCatalystReads/parseEarningsWindows/freshestCatalystAgeDays/contractQualityFromIvRank). Verified: the documented 2026-09-20 todayEt() ET-vs-UTC fix is correctly in place; earnings next/last window selection correctly tracks soonest-future and most-recent-past independently; postEarningsDrift01's clamp01 on a direction-SIGNED return correctly floors an against-thesis move to 0 rather than reading as negative drift; earningsInWindow (hazard) and catalystInWindow01 (classification) are deliberately kept separate per the file's own doc comment, with the hazard discount applied downstream (out of scope here, not missing). No bug found. Board unchanged -- AAPL HOLD/ADD, MUU TRIM (target-rail fix confirmed live last cycle). Clean cycle, no new finding.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-22T07:25:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. Zero open swing PRs at cycle start. AGGRESSIVE MODE enhancement hunt (per this trigger's own explicit directive -- 'zero bugs AND zero enhancement ideas across several cycles means you haven't looked hard enough'): pulled AAPL's live play-brief for a genuine narrative-quality read (not just a code sweep) and found a real gap -- play-brief-ticker-history.ts's loadTickerTrackRecord (Largo C10, chain-aware, already tested/fixed for temporal ordering) computes a plain ticker-specific W/L count, but it only ever reached the brief as a standalone section + one evidence-array [FACT] line, NEVER the 'Trade manager read' narrative a member actually reads to decide whether to act. Live: AAPL's brief leads with 'Consider adding' while its own evidence array separately says 'AAPL 0W / 2L across 2 prior closed trades' -- a 100% loss rate invisible unless you scroll to the evidence list. Built tickerHistoryCoaching(ctx), wired into collectCoachingBullets near crossDeskCoaching, firing only when losses>wins (a winning/neutral record needs no special callout). 4 new unit tests + 1 collectCoachingBullets integration test. TOOLING NOTE for future cycles: this sandbox's full play-brief-narrative-coaching.test.ts (144 tests) hung 3x in a row today under `npx tsx --experimental-test-module-mocks --test <file>` with NO code change involved (confirmed by reverting to a trivial null-stub and still hanging) -- traced to a genuinely stuck node process from an earlier attempt still pegging CPU at 100% in the background, invisible until `ps aux` was checked directly; killing it (kill -9) did not immediately fix subsequent runs, but `--test-name-pattern=<name>` to isolate just the new tests ran in <1s both RED and GREEN, avoiding whatever the full-file hang was. Full file + full suite ran clean (144/144, then 1503/1503) once isolated first. If a full-file test run hangs in this sandbox again, check `ps aux | grep node` for a stray 100%-CPU process before assuming the new code is the cause. RED->GREEN confirmed, tsc clean, full src/lib/swing/*.test.ts 1503/1503. Staged finding filed, PR #5423 opened+undrafted+subscribed.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-22-swing-ticker-history-not-in-narrative.md (PR #5423, open, enhancement not a bug)"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -119,8 +121,10 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T06:51:00Z",
-    "swing_prs": []
+    "as_of": "2026-09-22T07:25:00Z",
+    "swing_prs": [
+      "#5423 feat/swing-ticker-history-coaching (mine, open, watching for CI)"
+    ]
   },
   "tickers_seen": {
     "INTC": {
@@ -209,5 +213,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": null
+  "watch_next_cycle": "watch PR #5423 CI + auto-merge (CARVE-OUT applies)"
 }
