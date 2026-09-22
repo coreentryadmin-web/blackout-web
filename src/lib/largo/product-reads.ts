@@ -70,6 +70,20 @@ function compactSwingLane(lane: Awaited<ReturnType<typeof getSwingServingLane>>)
     horizon: p.horizon,
     score: p.score ?? null,
     reason: typeof p.reason === "string" ? p.reason.slice(0, 120) : null,
+    // Same "status COMMIT is not a real position" gap `committed_count_note` already discloses at
+    // the AGGREGATE level (2026-09-08) — but this per-row sample carried no equivalent per-item
+    // signal, so a model reading an individual sampled play still had no way to tell "floor-cleared
+    // candidate, real-time gates still blocking, no capital" from "genuinely open position." Live
+    // repro 2026-09-22: AMD/META both sample here with status "COMMIT" (score cleared the floor) but
+    // carry real, populated `commitGateBlockedBy` (G-S12 halt-feed-stale / G-S6 confluence / G-S14
+    // cortex veto) and no `positionId` — the exact two-of-eight sampled rows a member asking "what's
+    // committed in swings" would most likely have Largo describe, with no caveat that they aren't
+    // actually open. `open_position` mirrors `open_position_count`'s own real-ledger-row test
+    // (positionId presence, not the status label); `commit_gate_blocked` surfaces the same evidence
+    // entry-verdict.ts's member-facing WAIT pill already keys on, so Largo can say "not yet — gates
+    // are still blocking" instead of treating a floor-cleared candidate as live.
+    open_position: p.positionId != null,
+    commit_gate_blocked: (p.commitGateBlockedBy?.length ?? 0) > 0,
   }));
   // `committed_count` is `lane.committed.length` — every play whose STATUS field is "COMMIT". For
   // SWING that flag means "score cleared the commit floor", which is stamped on a play the moment
