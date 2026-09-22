@@ -1,12 +1,10 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T01:15:00Z",
-  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5403's open (parallel session, closed-plays/live-plays/play-brief-resolve null contract_type follow-up to #5401, not mine). REAL FINDING, not deploy lag: re-checked AAPL's play-brief at the self-set decision point (~21min past #5398's deploy success) -- STILL generic 'Hold the line', not 'Consider adding'. This time dug into the actual data path rather than assuming more lag. Root-caused it: live-plays.ts's manageObservablesFromEvent (the sole reader of the persisted manage-tick event) recognizes only 5 of SwingManageAction's 6 values in its action switch -- EXIT/STOP_OUT/TAKE_PARTIAL/EXIT_RUNNER/HOLD -- and silently drops 'ADD', leaving manageAction at its spot-fallback default (undefined for AAPL, since it's neither broken nor TRIM). This made manage.ts's real 'ADD' action (from the add_eligible rung) never reach recommendationFromManageAction, so rec never became 'BUY', so PR #5398's new narrative branch was dead code in production despite being correctly merged and deployed -- confirmed via a corroborating signal (REASON_VERB_BY_MANAGE_ACTION already had an unused ADD entry, meaning ADD support was intended but incompletely wired, not deliberately excluded; manageEnforced is already read separately and correctly carries the graduated-vs-evidence-only distinction, so adding ADD to the recognized-action list isn't a new enforcement bypass). Fixed per CARVE-OUT: added `action === \"ADD\"` to the recognized branch. RED->GREEN proven (44/45 fail->45/45 pass on the new test, git-stash verified), tsc clean, full swing suite 1474/1474. PR #5404 opened, undrafted, subscribed. This is the concrete payoff of the discipline this whole 3-cycle thread modeled: don't rubber-stamp deploy lag as the explanation past a self-set decision point -- verify the actual data path instead of re-asserting the same hypothesis. Once #5404 merges+deploys, re-verify AAPL's play-brief one more time to close the loop end to end (source fix -> data fix -> live member-facing text).",
-  "checked_this_cycle_no_bug_found": false,
-  "findings_filed_this_cycle": [
-    "2026-09-22-swing-manageaction-add-dropped"
-  ],
+  "last_updated": "2026-09-22T01:20:00Z",
+  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications delivered 3 items -- all routine subscription-confirmation/ready-for-review events on my own PR #5404, no CI failure, no review comment, nothing actionable. git sync: fast-forwarded onto PR #5403's merge (parallel session, also touches live-plays.ts but a different function -- contractFromRow vs my manageObservablesFromEvent). Verified no real conflict with #5404 via `git merge-tree` against current main: only non-overlapping hunks reported, zero CONFLICT markers -- PR #5404's mergeable_state:'blocked' is just pending CI, same pattern every other PR this session has shown. CI for #5404 still pending (just opened ~10min ago). Observed PR #5405 (Helix print-table lowercase option_type bug, different desk, parallel session) -- not duplicated, not mine. Board unchanged: still exactly 1 live position (AAPL HOLD, positionId 40). No new forensic work needed this cycle beyond confirming PR #5404's health -- the substantive work (root-causing and fixing the ADD-action drop) already landed last cycle.",
+  "checked_this_cycle_no_bug_found": true,
+  "findings_filed_this_cycle": [],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -121,17 +119,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T01:15:00Z",
+    "as_of": "2026-09-22T01:20:00Z",
     "swing_prs": [
-      {
-        "number": 5403,
-        "title": "fix(swing): closed-plays/live-plays/play-brief-resolve no longer fabricate \"call\" for a null contract_type",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending"
-      },
       {
         "number": 5404,
         "title": "fix(swing): manageObservablesFromEvent silently dropped the ADD manage action",
-        "status": "open, non-draft, self-authored this cycle, RED->GREEN verified locally, CI pending / CARVE-OUT auto-merge expected. Re-verify AAPL's live play-brief once merged+deployed."
+        "status": "open, non-draft, self-authored, CI pending (~10min), no real merge conflict with #5403 confirmed via merge-tree"
       }
     ]
   },
