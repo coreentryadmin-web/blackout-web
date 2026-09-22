@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T03:22:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications clean. git sync: fast-forwarded onto two heartbeat commits. Observed new parallel-session PR #5413: loadSwingPlayBriefContext's meridian/meridianPeer fetches were sequenced BEFORE the shared Promise.all fan-out (up to ~24s worst-case serialized latency across the three 8s-bounded stages), despite being independent of the other six sources -- a real performance finding, not swing-narrative-correctness, tied to the documented 2026-09-09 ALB p99 latency incident. Not mine, did not duplicate. Did an independent adversarial review before moving on, since this touches shared infrastructure every play-brief request depends on: fetched the actual PR branch's post-fix source (not just the PR body's description) and specifically checked the one subtle risk this class of refactor carries -- does chaining meridianPeerPromise off meridianPromise via .then() preserve the 'never rejects' contract every other Promise.all entry in this array relies on (a single rejecting entry would fail the WHOLE Promise.all, breaking every source, not just meridian). Confirmed correct: meridianPromise carries its own .catch(()=>null), and meridianPeerPromise's inner withBriefSourceTimeout(...) call ALSO carries its own .catch(()=>null) -- both promises are safe, matching the existing six sources' pattern exactly. No regression risk found. Solid fix, no comment needed on the PR. Board unchanged (AAPL HOLD only). No new finding filed -- productive verification pass on a parallel session's PR, not idle observation.",
+  "last_updated": "2026-09-22T03:38:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5413's own merge. No new open swing PRs. WATCH bucket still empty (consistent with every prior check this session -- market closed, thin fluctuating pool, not re-litigated). Board otherwise unchanged (AAPL HOLD only). Fresh code-path review this cycle: full read-through of contract-ranker.ts's core scoring logic (swingContractTradability, swingContractThesisFit, breakevenMovePct, the delta-band 3-tier degradation pool selection, sort/tie-break chain, and the topFlowWasPicked provenance-only guarantee) -- only previously checked this file for toFixed rounding issues, never for correctness of the ranking math itself. No bug found. Confirmed the 'flow provenance never drives the pick' invariant the header promises is actually implemented correctly (topFlowStrike is compared against the already-chosen pick strictly AFTER sorting, never read inside scoring/sort). Confirmed breakevenMovePct's LONG/SHORT(=long put) formulas are directionally correct and properly floor negative headroom (already-past-breakeven) to 0. One minor, low-priority scoring-softness OBSERVATION (not filed as a bug): swingContractThesisFit's deltaClose term uses halfSpan = max(target-bandLo, bandHi-target, 1e-6) -- for an ASYMMETRIC delta band this denominator is set by the WIDER side, softening the scoring gradient on the narrower side (a contract near its narrow-side band edge scores higher than a side-specific half-span would give it). Not filed as a fix: this is explicitly evidence-only/ungraduated scoring per the file's own CALIBRATION-FIRST doctrine (SWING_CONTRACT_RANK_GRADUATED=false) -- it orders an already-mechanically-eligible pool, never gates real risk, so the imprecision has low stakes. Worth a look if/when this ranker's weights ever graduate to enforced, not before.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,14 +119,8 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T03:22:00Z",
-    "swing_prs": [
-      {
-        "number": 5413,
-        "title": "fix(swing): parallelize meridian/meridianPeer with Ask Largo's context fan-out",
-        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending -- independently verified the error-handling correctness, checks out clean"
-      }
-    ]
+    "as_of": "2026-09-22T03:38:00Z",
+    "swing_prs": []
   },
   "tickers_seen": {
     "INTC": {
