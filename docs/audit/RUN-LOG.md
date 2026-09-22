@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-22 (16:35 UTC / Tue 12:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, last RTH check before window closes
+
+Confirmed clock myself (12:35 ET, Tuesday, in-window, ~25min left). `/tools/gamma-snapshot`'s
+public API: `market_session: "OPEN"`, `degraded: false`, same ~10-12s refresh cadence as last
+cycle (not stuck — consistent with the established, already-noted pattern). Spot moved
+realistically (7761.70→7761.79) and cross-checked against Massive `/v3/snapshot/indices`
+(7760.27) — 0.02% apart, normal drift.
+
+Live CLS: purged edge, desktop **0.0012, GOOD**; mobile **0.005, GOOD**. Both clean. No PR.
+Returning to normal search/authority work after 13:00 ET.
+
 ## 2026-09-22 (15:35 UTC / Tue 11:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, refresh cadence a bit coarser than "5s" but never stale
 
 Confirmed clock myself (11:35 ET, Tuesday, in-window). `/tools/gamma-snapshot`'s public API:
