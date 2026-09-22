@@ -304,6 +304,19 @@ export interface HorizonPlay {
    * (signedExcursionPct's own honest-null convention, mirrored here).
    */
   underlyingExcursion?: { mfePct: number; maePct: number } | null;
+  /**
+   * GAP FOUND (Ask Largo standing mandate, FINDINGS.md `watch-board-stale-expired-candidates-not-
+   * pruned`, logged 2026-09-12): true when a PRE-ENTRY row's own entry-validity deadline (entry-
+   * model.ts's sub-lane-scoped window) has already lapsed — stamped by `serving.ts`'s
+   * `buildSwingSections` whenever that's WHY the row routed to RESEARCH instead of an actionable
+   * section (WATCH/WAITING_FOR_ENTRY/COMMIT_NOW), reusing the exact same computation the command-
+   * deck adapter (`terminalPlayFromHorizon`) already ran client-side for the EXPIRED pill (2026-09-
+   * 12) — never re-derived, so the two can't drift apart. Lets a consumer of the raw board JSON
+   * (Largo's tools read `sections.*` directly, not through the adapter layer) label the row
+   * honestly instead of reading a dead, months-stale name as a live candidate — live repro: META,
+   * first flagged 2026-08-26, sat #1 in `sections.WATCH` at score 84.7 with no signal it was dead.
+   * Never set true for a live position (liveStatus set) — the deadline only governs pre-entry rows. */
+  watchEntryExpired?: boolean;
 }
 
 /** The three lanes a candidate pool fans out into. */
