@@ -19,10 +19,19 @@
 // theme and their 5%+5%+5%+5% aggregates to 20% against the one 20% cap. That's why a ticker-count cap (like
 // allocation.ts's maxPerSector) is the wrong tool and this module walks a running %-aggregate instead.
 //
-// ENFORCE:FALSE — advisory ONLY. This ANNOTATES each decision with which caps it would breach; it RESIZES and
-// BLOCKS NOTHING. `proposedPct` stays the nominal per-position weight on every decision regardless of the flags,
-// and every candidate stays in the output. The caps only start sizing/blocking real risk once the portfolio
-// backtest graduates them (PR-16). `advisorySizing` is a SUGGESTION for that future, never an applied action.
+// ENFORCE:FALSE ON THIS MODULE'S OWN OUTPUT — but its `capFlags` ARE a live commit gate today (corrected
+// 2026-09-22, Ask Largo standing mandate; this section previously claimed the caps "block nothing" until
+// a future PR-16 graduation — that stopped being true once commit.ts wired Gate 2 to this module's output).
+// `allocateSwingBook` itself never mutates anything: `proposedPct` stays the nominal per-position weight on
+// every decision regardless of the flags, every candidate stays in the output, and `advisorySizing`
+// (FULL/HALF/SKIP) is a suggestion this module never applies. But `computeSwingCommitPlan`'s Gate 2
+// (commit.ts) reads `capFlags[].wouldBreach` from this exact call and pushes every breach onto `blockedBy`
+// — and `blockedBy.length === 0` is a hard prerequisite for `committable`, so a real cap breach today
+// prevents a real position from opening (the candidate gets, at best, a zero-capital SHADOW row). The
+// DEFAULT_SWING_CAPS this defaults to are the real, "operator-confirmed" 5%/20%/40%/3 limits, not a
+// disabled/placeholder set — so this is not a rare edge case, it is the live gate's actual behavior on
+// every commit pass. `advisorySizing` remains genuinely advisory (commit.ts never reads it, only
+// `capFlags`) — the field that stopped being advisory is `capFlags[].wouldBreach`.
 //
 // PURE & deterministic — no IO. Themes resolved through theme-cluster.ts (the same partition the gate flags).
 
@@ -87,7 +96,8 @@ export type SwingCapCode = "per_position" | "per_theme_sector" | "total_in_swing
 
 export interface SwingCapFlag {
   cap: SwingCapCode;
-  /** True when INCLUDING this position would breach the cap. Advisory (enforce:false) — nothing is applied. */
+  /** True when INCLUDING this position would breach the cap. This module never applies it itself, but
+   *  commit.ts's Gate 2 does — a true `wouldBreach` here blocks a real commit today (see file header). */
   wouldBreach: boolean;
   /** The cap limit (% of book, or a count for the expiry cap). */
   limit: number;
@@ -109,7 +119,7 @@ export interface SwingAllocationDecision {
   rank: number;
   /** 0–1 (1 = top of the set). */
   percentile: number;
-  /** Nominal weight this position requests — ALWAYS the per-position cap; never resized (enforce:false). */
+  /** Nominal weight this position requests — ALWAYS the per-position cap; this module never resizes it. */
   proposedPct: number;
   /** Running theme aggregate % AFTER this position (AGGREGATE_CAP). */
   themeAggregatePct: number;
@@ -117,9 +127,11 @@ export interface SwingAllocationDecision {
   bookAggregatePct: number;
   /** Monday-anchored week key of the expiry, or null. */
   expiryWeek: string | null;
-  /** Advisory cap flags — which caps this position WOULD breach. enforce:false ⇒ not applied. */
+  /** Which caps this position WOULD breach — see `wouldBreach`'s own doc: commit.ts's Gate 2 treats a
+   *  breach here as a live block, not advisory-only. */
   capFlags: SwingCapFlag[];
-  /** What sizing the caps WOULD suggest (SKIP on any breach) — a suggestion only, never applied. */
+  /** What sizing the caps WOULD suggest (SKIP on any breach) — genuinely advisory: unlike `capFlags`,
+   *  no caller reads this field to block anything, it exists only as a display suggestion. */
   advisorySizing: SwingAdvisorySizing;
   reasons: string[];
 }
@@ -139,7 +151,9 @@ export interface SwingCapsApplied {
 export interface SwingAllocationResult {
   decisions: SwingAllocationDecision[];
   capsApplied: SwingCapsApplied;
-  /** ADVISORY ONLY — the caps annotate; they resize/block nothing until PR-16 graduates them. */
+  /** True only in the narrow sense that THIS FUNCTION never resizes or blocks anything itself — it
+   *  annotates. Do not read this as "the caps are advisory system-wide": commit.ts's Gate 2 already
+   *  treats a `capFlags[].wouldBreach` in `decisions` as a live block on real commits (see file header). */
   enforce: false;
   /**
    * ADVISORY portfolio-budget verdict (whole-book capital/loss dimension, orthogonal to the % caps
@@ -267,12 +281,14 @@ export function allocateSwingBook(
       if (f.cap === "per_position") positionsOverCap.push(d.ticker.toUpperCase());
     }
 
-    // Advisory sizing only (never applied): SKIP if any cap would breach, else HALF at the weak end, else FULL.
+    // advisorySizing is a display suggestion this module never applies — but the underlying `breached`
+    // list IS a live gate one caller down (commit.ts's Gate 2), so the reason text below must not claim
+    // it goes unapplied (corrected 2026-09-22 — it used to say "advisory — enforce:false, not applied").
     let advisorySizing: SwingAdvisorySizing;
     const reasons: string[] = [];
     if (breached.length > 0) {
       advisorySizing = "SKIP";
-      reasons.push(`would breach ${breached.map((f) => f.cap).join(", ")} (advisory — enforce:false, not applied)`);
+      reasons.push(`would breach ${breached.map((f) => f.cap).join(", ")}`);
     } else if (d.percentile <= caps.halfSizeBelowPct) {
       advisorySizing = "HALF";
       reasons.push("weaker end of today's swing set — advisory half size");
