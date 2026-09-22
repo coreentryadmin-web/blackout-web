@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T15:43:00Z",
+  "updated_at": "2026-09-22T15:45:00Z",
   "watch_stage_tracking": {
     "2026-09-18T13:11:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, ~19min before RTH open)",
@@ -289,6 +289,11 @@
       "action": "New commit: SCHW short, 11:28 ET entry, Cortex PASS +0.29 conviction C (thin: 3 absent sources -- wall-trend/catalyst-news/darkpool-confluence), one active oppose (vex-charm, dealer VEX fights short). live -9.68%, peak still 0 (never went positive). Correctly weak/thin-evidence profile per design, not a bug.",
       "pattern_watch": "vex-charm oppose is a NEW oppose-source instance (1/3) -- distinct from the already-tracked gex-walls oppose pattern on MU/MRNA (still 2/3). Watching both separately.",
       "next": "continue watching SCHW for exit coherence once it resolves; continue both oppose-source pattern counts toward 3-instance threshold"
+    },
+    "2026-09-22T15:45:00Z": {
+      "stage": "OPEN",
+      "action": "SCHW deteriorated -9.68%->-32.9%, thesis-health engine correctly flipped intact->warn (VWAP side flipped wrong, confluence 2/2->1/2), advisory correctly reads weakening/tighten-management/partial-trim-prudent. Coherent real-time degradation tracking, not a bug. Still within -50% hard stop.",
+      "next": "watch SCHW resolve (stop, thesis-break exit, or recovery) for exit-coherence check"
     }
   },
   "sessions": {
