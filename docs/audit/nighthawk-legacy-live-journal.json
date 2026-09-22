@@ -4172,6 +4172,11 @@
       "at": "2026-09-22T13:21:41Z",
       "summary": "D_pull_status transitioned SKIPPED -> GREEN at 13:21 UTC (9:21am ET) -- the 9:15am ET morning-confirmation cron has now run for 2026-09-22. All 3 plays (ALAB/META/TWLO) show CONFIRMED <-> pulled=false agree: none were invalidated overnight, thesis intact heading into the 9:30am ET open. B_marks still AMBER (no live two-sided quote yet, bid=0/ask=0 -- expected, ~9min before open). A_edition/C_record steady GREEN.",
       "assessment": "Clean, expected transition -- matches the daily pattern of the morning-confirm gate flipping from SKIPPED to a real verdict once its cron fires. Nothing to escalate. B_marks should resolve to real quotes shortly after 9:30am ET open -- will confirm next cycle."
+    },
+    {
+      "at": "2026-09-22T13:36:58Z",
+      "summary": "FULL GREEN transition at 13:36 UTC (9:36am ET), ~6min after the 9:30am ET open: B_marks flipped AMBER->GREEN, live quotes now populated and every mark within its [bid,ask] band. All 3 plays showing strong early gains vs entry: ALAB 0.23->6.65 (+21.2%), META .58->0.03 (+32.3%), TWLO 2.75->0.05 (+57.3%). A_edition/C_record/D_pull_status all steady GREEN. Overall healthcheck verdict AMBER->GREEN for the first time this session.",
+      "assessment": "Clean, expected open-of-session transition -- exactly the pattern documented for prior sessions (marks resolve to live quotes shortly after 9:30 ET open). Worth watching TWLO specifically: +57.3% is approaching (not yet at) the banger scale-out 2x trigger (PR #5420s dte-aware risk_note logic applies to it -- 25 DTE, so it correctly reads \"can still spike and give the move back fast\" rather than claiming weekly). No action needed -- continuing routine cadence."
     }
   ],
   "knownOpenItems": {
