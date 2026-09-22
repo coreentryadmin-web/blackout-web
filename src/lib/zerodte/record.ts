@@ -312,17 +312,52 @@ export function readManagedExit(
 }
 
 /** Map an engine EXIT reason (exit-engine.ts) to a record outcome bucket. Only EXIT
- *  decisions stamp entry_context.exit, so the reason is always one of the exit reasons. */
+ *  decisions stamp entry_context.exit, so the reason is always one of the exit reasons.
+ *
+ *  FIXED 2026-09-22: this used to hand-roll its own ad hoc checks + a `/ratchet|runner/`
+ *  substring regex instead of reusing `categorizeExitReason` (exit-engine.ts), the module's
+ *  OWN authoritative reason→family classifier (already imported here and already trusted by
+ *  `realExitIsBarWalkReproducible` above). Two real trim-scale-mode EXIT reasons this file's
+ *  ad hoc regex never accounted for correctly:
+ *    - `trim_scale_dead_zone_floor` (the trim-scale regime dead-zone's own protective floor,
+ *      exit-engine.ts's decideTrimScale) contains neither "ratchet" nor "runner", so it fell
+ *      all the way through to the bare win/loss/breakeven-by-sign label — the ONE real,
+ *      live-stampable EXIT reason this function had no case for at all, silently missing from
+ *      every by_outcome breakdown a member/Largo reads.
+ *    - `trim_scale_runner_target` (both tranches banked AND the final third also tags the
+ *      plan target — the trim-scale analogue of ratchet mode's `plan_target_final`/"doubled")
+ *      DOES contain the substring "runner", so the old regex mislabeled a genuine, full
+ *      profit-TARGET capture as "ratchet" (a defensive floor exit) — conflating two outcome
+ *      shapes by_outcome exists specifically to keep apart. Confirmed reachable live: this
+ *      exact reason is stamped whenever a trim_scale row's real engine exit is graded without
+ *      (or ahead of) its WS-11 bar-walk reconstruction — see managedGradeView's precedence
+ *      just above, and the two live fixture reproductions from #4939/#4941-era rows in this
+ *      module's own tests that stamp `trim_scale_runner_target` as a REAL exit reason.
+ *  `categorizeExitReason`'s prefix ordering already resolves both correctly (dead-zone floor is
+ *  an exact match checked BEFORE the general `trim_scale`-prefix "target" bucket), so mapping
+ *  its four categories straight onto the record's outcome vocabulary fixes both, and keeps this
+ *  function from ever drifting out of sync with the module its own realExitIsBarWalkReproducible
+ *  already depends on for the same reason string. */
 function managedOutcomeLabel(reason: string | null, pnl: number): string {
   // Missing/unknown/future reason: bucket by sign rather than mislabel it as a known outcome.
   const bySign = pnl > 0 ? "win" : pnl < 0 ? "loss" : "breakeven";
   if (reason == null) return bySign;
-  if (reason === "plan_stop") return "stopped";
-  if (reason === "plan_target_final") return "doubled";
-  if (reason.startsWith("thesis_break")) return "thesis_break";
-  if (reason === "flat_theta_bleed") return "flat_scratch";
-  if (/ratchet|runner/.test(reason)) return "ratchet";
-  return bySign;
+  switch (categorizeExitReason(reason)) {
+    case "stop":
+      return "stopped";
+    case "target":
+      return "doubled";
+    case "ratchet":
+      return "ratchet";
+    case "thesis":
+      return "thesis_break";
+    case "flat":
+      return "flat_scratch";
+    default:
+      // categorizeExitReason fails CLOSED (null) on an unrecognized/future reason — bucket by
+      // sign rather than mislabel it as a known outcome, same discipline as the null-reason case.
+      return bySign;
+  }
 }
 
 /** MECHANICAL grade view — the fixed -50/+100/15:50 plan grade, on the OFFICIAL
