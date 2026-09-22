@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T01:20:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16 offset). ReadNotifications delivered 3 items -- all routine subscription-confirmation/ready-for-review events on my own PR #5404, no CI failure, no review comment, nothing actionable. git sync: fast-forwarded onto PR #5403's merge (parallel session, also touches live-plays.ts but a different function -- contractFromRow vs my manageObservablesFromEvent). Verified no real conflict with #5404 via `git merge-tree` against current main: only non-overlapping hunks reported, zero CONFLICT markers -- PR #5404's mergeable_state:'blocked' is just pending CI, same pattern every other PR this session has shown. CI for #5404 still pending (just opened ~10min ago). Observed PR #5405 (Helix print-table lowercase option_type bug, different desk, parallel session) -- not duplicated, not mine. Board unchanged: still exactly 1 live position (AAPL HOLD, positionId 40). No new forensic work needed this cycle beyond confirming PR #5404's health -- the substantive work (root-causing and fixing the ADD-action drop) already landed last cycle.",
+  "last_updated": "2026-09-22T01:36:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5404's own merge, plus #5405 (Helix print-table, merged) and observed #5406 (docs-only, folds #5401/#5403's findings, parallel session, CI pending) and #5407 (Vector Pulse uppercase option_type -- same bug CLASS as #5405, found by the parallel session deliberately sweeping for recurrence; not swing, not mine). PR #5404 CONFIRMED MERGED. Its own ecr-push-production deploy got cancelled (superseded by #5403's then-in_progress deploy, itself queued behind #5405's newer pending one) -- normal rapid-merge-cadence pattern this session has seen many times; the eventually-completing deploy will include #5404's fix since it builds from current main HEAD, not incrementally. No action needed, just noted for next cycle's re-verification. Found my own staged finding (2026-09-22-swing-manageaction-add-dropped.md) still un-folded alongside 3 others (2 of which #5406 is already mid-flight folding). Deliberately did NOT run findings-fold-staging.mjs myself this cycle -- doing so would race #5406's own fold and risk a duplicate/conflicting FINDINGS.md edit. Deferred: fold my own (and the Helix one, if still unfolded by then) in a later cycle once #5406 has landed. Next cycle: (1) check #5406 merged, then fold remaining staged findings; (2) check whether a deploy has completed since #5404 merged, and if so re-verify AAPL's live play-brief shows 'Consider adding' -- the final close-the-loop check for this whole investigation thread.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,12 +119,12 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T01:20:00Z",
+    "as_of": "2026-09-22T01:36:00Z",
     "swing_prs": [
       {
-        "number": 5404,
-        "title": "fix(swing): manageObservablesFromEvent silently dropped the ADD manage action",
-        "status": "open, non-draft, self-authored, CI pending (~10min), no real merge conflict with #5403 confirmed via merge-tree"
+        "number": 5406,
+        "title": "docs(audit): fold null-contract_type fabrication findings (#5401, #5403)",
+        "status": "open, non-draft, PARALLEL SESSION's own PR (not mine), CI pending -- will fold remaining staged findings after this lands"
       }
     ]
   },
