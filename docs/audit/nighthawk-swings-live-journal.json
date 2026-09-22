@@ -209,9 +209,23 @@
       "topic": "Third instance of #5362's giveback-duplication class: holdPlanSection (play-brief-intel.ts) duplicates actionNarrative's own line, visible only in the expandIntel=1 expanded view",
       "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5764180533",
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
+    },
+    {
+      "raised_at": "2026-09-22T17:40:00Z",
+      "severity": "HIGH -- architecturally significant, not a CARVE-OUT",
+      "title": "4 of 7 swing graduation wrappers (calibration.ts) can NEVER graduate anything in production -- manage_rung/gate_verdicts/contract_rank_top/allocation_breached_cap never populated by the only production row-mapper",
+      "comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-5780868689",
+      "files": [
+        "src/lib/swing/calibration.ts",
+        "src/lib/swing/legacy-calibration/gates-pr5.ts",
+        "src/lib/swing/v2/gates.ts",
+        "src/lib/swing/manage.ts"
+      ],
+      "status": "OPEN -- posted, no response yet. Not fixed: 4 distinct fixes needed (persistence design for 3, a legacy-vs-v2 redesign/retire call for the 4th), squarely architectural per the escalation policy.",
+      "summary": "graduatedEdgeRungsFromReport (feeds manage.ts's graduatedRungs, every edge exit rung's enforcement) is a PERMANENTLY empty array in production -- not a cold-book warm-up state as swing-active-refresh's own comment assumes, a structural gap that cannot resolve no matter how much data accumulates. analyzeSwingGateCalibration grades a retired concept (reward_risk_floor/entry_extended belong only to legacy-calibration/gates-pr5.ts, explicitly 'NOT production'; v2/gates.ts's real G-S1..G-S14 stack has no such names). analyzeContractRankCalibration/analyzeAllocationRecord same shape as the rung gap. Only analyzeArchetypeRecord/analyzeSubLaneRecord (score-floor wrappers) actually work -- confirmed shipping via #4685."
     }
   ],
-  "watch_next_cycle": "PR #5442 MERGED and verified live on main (5b830442a). manage.ts + roll.ts + roll-plan.ts second-pass re-sweep fully closed out. Next second-pass target: calibration.ts (583 lines, the graduation ladder commit.ts leans on) -- starting now. #4076 still unchanged, no response on the two open design questions. WATCH lane was empty as of last check (16:47 UTC) -- re-check again this cycle or next.",
+  "watch_next_cycle": "MAJOR finding this cycle: calibration.ts's 4-of-7 graduation-wrapper gap posted to #4076 (comment 5780868689) -- see escalations_pending_on_4076. Not fixed (architectural, multi-part). calibration.ts sweep otherwise complete -- the Wilson-LB math and the two working wrappers (archetype/sub-lane floors) are correct and well-tested. Second-pass re-sweep candidates remaining: none currently identified as a dedicated next target -- consider a third file class (contract-ranker.ts, swing-allocation.ts, gates.ts/v2) or resume live Ask Largo play-brief forensic audits, which haven't run the last several cycles. Still watching #4076 for responses on THREE now-open design questions (Hunt Mode DTE-range, analyzeShadowGateEvidence orphaned-consumer, this new calibration-wrapper gap).",
   "prs_this_session": [
     {
       "pr": 5439,
