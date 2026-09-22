@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T23:05:00Z",
-  "notes": "15-min-cadence trigger (:01 offset). Synced main, no new commits. #4076 unchanged (246 comments, 22:41:15Z). Board unchanged since last check (committedCount 85, watchCount 0, scanAsOf still 20:30:10Z -- no new discovery scan, consistent with post-close/OVERNIGHT-phase cadence). Genuinely quiet stretch: no new positions, no new #4076 activity, no open PRs needing attention. Staying quiet per the standing 'clean -> stay quiet' instruction rather than manufacturing work against unchanged state already audited clean this session.",
+  "last_updated": "2026-09-22T23:20:00Z",
+  "notes": "15-min-cadence trigger (:16 offset). #4076 unchanged (246 comments). Ran the swing baseline healthcheck (npm run healthcheck:swing) for the first time this session, per the mission brief's own suggestion to use judgment on frequency during a quiet stretch. Result: OVERALL AMBER, but 6 of 7 stages GREEN (CRON/PERSISTENCE/SERVING/BOARD/POSITIONS/GRADING-RECORD all clean) -- the sole AMBER is stage F (MARKS), flagging option marks at age~196min or 'age=unknown'. Traced this to expected, documented off-hours behavior, not a bug: 196 minutes almost EXACTLY matches the time elapsed since RTH close (16:00 ET / 20:00 UTC) to now (23:16 UTC = 19:16 ET, ~3h16m), and the script's own banner explicitly labels itself '(off-hours)' -- marks correctly stop refreshing when there's no live option market to quote against. The 'age=unknown' rows match GLXY:1281's earlier-audited honest 'Mark: unknown, no live price yet' state for freshly-committed positions with no live-sync history yet. GRADING/RECORD reconfirms 13/16 resolved chains, WR 15.4%, matching the record pull from earlier tonight -- no drift. Nothing new to escalate; this is a clean confirmatory baseline pass, logged here per this journal's own convention (routine GREEN-ish passes stay in this state file, not FINDINGS.md).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
