@@ -198,6 +198,19 @@ test("commit budget: unknown/zero risk contributes 0 and is never blocked (don't
   assert.equal(budgetRiskUsd(pos("X", { riskUsd: -5 })), 0, "negative risk clamps to 0");
 });
 
+test("commit budget: a small candidate is NOT blocked by an EXISTING over-cap position sharing its OWN ticker (different archetype/direction can coexist on one ticker)", () => {
+  // Per-position cap $2k. An existing NVDA position (e.g. a different archetype) is already over it at $3k —
+  // that is that position's own breach, pinned at ITS commit time. A brand-new, properly-sized $500 NVDA
+  // candidate (a different thesis: distinct archetype/direction, allowed to coexist per swingThesisKey) must
+  // clear on its own merits, not inherit a sibling same-ticker position's breach merely because the ticker
+  // string matches — the gate's own docstring states this exact invariant ("an EXISTING position's
+  // per-position breach must not block a fresh small one").
+  const book = [pos("NVDA", { riskUsd: 3000, isOvernight: true })];
+  const v = evaluateSwingCommitBudget(book, pos("NVDA", { riskUsd: 500, isOvernight: true }), PRODUCTION_PORTFOLIO_BUDGET);
+  assert.equal(v.blocked, false, "the candidate's own risk ($500) is well under the $2k cap");
+  assert.deepEqual(v.blockedDimensions, []);
+});
+
 test("commit budget: disarmed budget NEVER blocks (advisory only)", () => {
   const v = evaluateSwingCommitBudget([], pos("NVDA", { riskUsd: 999_999, isOvernight: true }), DEFAULT_PORTFOLIO_BUDGET);
   assert.equal(v.blocked, false);
