@@ -106,6 +106,23 @@ it was at commit, only the now-known-stale prose claim is caveated.
   as-was, since they're the historical record of what actually got the play committed; only the prose
   claim naming a specific (now-known-wrong) benchmark is caveated.
 
+### Correction (2026-09-22, same day, #4076 comment 5784547554)
+
+The "frozen into the dossier at commit/discovery time" framing above is **wrong** — a live check
+post-merge caught it: `sectorLeadershipFacts` disappeared from HUT:41's brief entirely (not #5451's
+caveat, not the pre-fix claim), which is inconsistent with a value permanently frozen at commit.
+Traced fully: `live-plays.ts`'s `livePlayFromSwingPosition` never sets `sectorLeadershipFacts` at
+all (zero references, grep-confirmed) — there is no commit-time-frozen value for this field. It is
+attached entirely live by `serving-lane.ts`'s `attachThesisExplanation`
+(`meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts`), where `meta` comes from a dossier read
+off `readSwingServingSnapshot()` — a Redis cache (`SWING_SERVING_CACHE_KEY`) written once per
+discovery **scan cycle** (`SWING_SCAN_PHASES`: PRE_OPEN/MIDDAY/POWER_HOUR/POST_CLOSE/OVERNIGHT), not
+per commit and not per HTTP request. The real shape is **cached-per-scan-cycle**, bounded by the scan
+cadence (worst case a few hours around a session boundary) — not permanent. The #5451 fix itself is
+still correct and did fire during that real, bounded lag window (confirmed live at 20:34Z, before the
+next scan cycle re-cached the corrected `null`); only the "frozen forever" diagnosis was wrong. No
+code change needed from this correction.
+
 ## The 2026-09-03 UW background-sweep concurrency reservation no longer absorbs current cron-fleet load — ALB tail latency has returned to pre-fix severity — OPEN
 
 > **kind:** `FINDING`
