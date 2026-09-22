@@ -4,6 +4,108 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Swing "Why this setup" repeated a pre-#5446 Industry-read claim on already-committed positions — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Night Hawk Swings — `src/lib/swing/play-brief-intel.ts` (`whyThisSetupSection`) |
+| **Severity** | P2 — a live, disclosed follow-on of #5446 (frozen decision evidence continuing to display a claim now known false) |
+| **Status** | FIXED |
+| **Found via** | Live re-verification of the #5446 fix on HUT:41's play-brief, ~40 minutes post-merge; escalated to #4076 (comment 5783714615), option chosen per collaborator response (comment 5783742597) |
+
+### Root cause
+
+#5446 (merged 2026-09-22T20:08:01Z) fixed `industry-group-rs.ts`'s `resolveGroupBenchmark` so a
+crypto-equity name (theme `"crypto-equity"` via `portfolio/sector-map.ts`'s `sectorFor()`) never
+mechanically resolves a SIC/label-derived sector ETF (e.g. HUT's real Polygon SIC 6199 "FINANCE
+SERVICES" → Financials/XLF). The fix is correct and verified live in code.
+
+But `sectorLeadershipFacts` (the facts behind `whyThisSetupSection`'s "Industry read" line and the
+"Rel. strength" score pillar) is computed once into the `SwingDossier` at commit/discovery time and
+pinned — nothing in `active-refresh.ts` (the live-price/manage-state refresh cron) or the play-brief
+read path re-runs `buildSwingDossier`/`resolveGroupBenchmark` for an already-committed position. Live
+re-check of HUT:41 (committed BEFORE #5446 shipped) ~40 minutes after the fix merged: the brief still
+read *"leading Financials (XLF) by 10.7% over 10 sessions"* in a section literally titled "Why this
+setup" — a claim #5446 itself proved false for this exact ticker/theme.
+
+### Why this wasn't folded into #5446 directly
+
+Genuine design tension, escalated to #4076 rather than picked unilaterally: rewriting the frozen
+`sectorLeadershipFacts` live at brief-read time would let score-pillar totals drift after commit for
+reasons unrelated to the actual commit decision — breaking the same "grade against what was actually
+known at commit time" principle the calibration/track-record machinery elsewhere in this engine
+already depends on. A collaborating session (comment 5783742597) recommended the narrower fix below
+rather than a general live-re-derive.
+
+### Fix
+
+`whyThisSetupSection` now checks the EXACT, narrow bug signature #5446 fixed — `sectorFor(play.ticker)`
+resolves to a theme in `NO_SECTOR_BENCHMARK_THEMES` (now exported from `industry-group-rs.ts`) AND the
+frozen `sectorLeadershipFacts` still carries a benchmark. When both hold, the line is replaced with
+*"sector benchmark evidence recorded before a classification fix — historical score unaffected"*
+instead of repeating the pre-fix claim. Every other case (including a legitimate, still-accurate
+industry read like NVDA vs SMH) is untouched.
+
+This mirrors the `statusBucket(play)==="closed"` disclosure pattern already shipped in
+`flowIntelSection` (#5444, "not what this trade traded under") — same "disclose, don't silently
+rewrite" shape, gated on a different, narrower condition. Does NOT touch `active-refresh.ts`, the
+dossier's freeze semantics, or the score-pillar point totals — the historical score stays exactly what
+it was at commit, only the now-known-stale prose claim is caveated.
+
+### Evidence
+
+- RED→GREEN: `play-brief-intel.test.ts` — new test proves the HUT/crypto-equity case rendered
+  "leading Financials (XLF)..." pre-fix (git-stash isolated), the caveat post-fix; a sibling test proves
+  a legitimate industry read (NVDA vs SMH) is completely unaffected.
+- `npx tsc --noEmit` — clean.
+- Collateral suite green: `play-brief-intel.test.ts` (198/198), `industry-group-rs.test.ts` (13/13),
+  `play-brief.test.ts` + `play-brief-intel-collapse.test.ts` (119/119 combined).
+
+### What was deliberately left unchanged
+
+- `active-refresh.ts` / the dossier's commit-time freeze semantics — per the collaborator discussion,
+  live-re-deriving the whole dossier would widen scope well past this bug and reopen a separate,
+  larger "should any of the rest of the dossier be live" question.
+- The score-pillar point totals themselves (`factors` array, "Rel. strength — +35 pts") — still shown
+  as-was, since they're the historical record of what actually got the play committed; only the prose
+  claim naming a specific (now-known-wrong) benchmark is caveated.
+
 ## The 2026-09-03 UW background-sweep concurrency reservation no longer absorbs current cron-fleet load — ALB tail latency has returned to pre-fix severity — OPEN
 
 > **kind:** `FINDING`
@@ -206,40 +308,6 @@ calls for: *"a null here means SECTOR_ROTATION simply doesn't fire — the whole
   specifically, which is the concrete, evidenced bug.
 - No change to `sectorEtfFromSic`'s 6000-6499→XLF rule itself — it's correct for genuine finance-services
   SICs; the fix scopes the exclusion to the theme, not the SIC range.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Swing manage engine: fallback HOLD reason claimed unverified premium/time facts — FIXED
 
