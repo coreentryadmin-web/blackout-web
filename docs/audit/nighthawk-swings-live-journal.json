@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T03:53:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: no new commits since last push (main unchanged, no new open swing PRs). Board unchanged (AAPL HOLD only). Continued the fresh-code-path sweep: full read-through of roll-plan.ts (buildSwingRollPlan/buildRollChild/resolveParentGradeMark/gradeParentFromMark) -- the actual roll-execution logic, previously only touched for a Date.now() check. No new bug found. Confirmed correct: parent-mark staleness bound (90min) with the documented expired-contract escape hatch (dte<0 uses a stale latch rather than deferring forever -- this is the exact fix for the 2026-09-10 'swing positions stuck 6-27 days past expiry' finding); the 'child must buy TIME' DTE check (strict > parentDte+buffer, fails closed on unknown parentDte per CTO audit #25); idempotency guard against double-rolling via commitKey lookup; budget/cap gates correctly evaluated against bookMinusParent (parent's risk excluded since it's closing in the same transaction); and the in-place book-growth fix (splice parent, push child) that keeps same-pass multi-roll risk accounting accurate (2026-08-06 P1 fix). Also noticed this file ALREADY carries a documented, live-verified fix for AAPL SWING:AAPL:40 specifically (signal_kinds not forwarded across a roll's entry_context, breaking thesis-health calibration permanently for any rolled position) -- confirms AAPL's own roll (330C->335C) was the live repro for that prior fix, consistent with everything else observed about this position this session. This file is already extensively hardened with many prior real-incident fixes; nothing new surfaced. Clean, thorough cycle -- no finding to file.",
+  "last_updated": "2026-09-22T04:07:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5414 (0DTE-lane fix, explicitly out of my swing-only scope per the mandate's own WHO-YOU-ARE boundary -- not touched). No new open swing PRs. Board unchanged (AAPL HOLD only). Closed a genuine gap in this session's coverage: exit-policy.ts (SWING_SCALE_OUT_POLICY) is explicitly named in the v3 mandate's own 'VERIFIED CORRECTIONS' section as core exit-management material, but had only ever been referenced indirectly through other files this session, never independently re-derived. Read the full (small, 21-line) file plus its source SCALE_OUT_RULES constants (zerodte/scale-out.ts) and confirmed the derivation is correct: scale_at_mult=2.0 -> target_pct=100, scale_fraction=0.5 -> 50% trim + 50% runner_fraction, hard_stop_mult=0.4 -> hard_stop_pct=-60. Cross-checked against AAPL's own real observed rails throughout this entire session ($2.09 stop / $5.225 entry = 0.4x = -60%, $10.45 target = 2.0x = +100%, '50% runner' language) -- every number matches exactly. Fully consistent, no bug. This closes the loop on 'VERIFIED CORRECTIONS' material the mandate names but that I'd never actually independently re-derived from source, rather than just trusting the mandate's own claim. Clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T03:53:00Z",
+    "as_of": "2026-09-22T04:07:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
