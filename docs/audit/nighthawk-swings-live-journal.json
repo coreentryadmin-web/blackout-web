@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T02:52:00Z",
-  "notes": "v3 mandate cycle (trigger 4 of 4, :46 offset). ReadNotifications clean. git sync: fast-forwarded onto PR #5410's merge (sub-lane track record citation, parallel session). No new open swing PRs. Board unchanged (AAPL HOLD only). Independently verified #5410's self-activation claim on AAPL's live brief: confirmed NO 'Archetype track record' section renders at all (only the separate, already-verified 'Ticker track record' feature) -- consistent with the PR's own disclosure that neither the archetype nor sub-lane bucket has graduated yet for the ~31-37-trade closed population, so the whole section correctly omits rather than partially/incorrectly rendering. Clean, independent confirmation rather than trusting the PR's claim at face value. Noticed a new 'Catalysts & news' section in AAPL's brief not seen in earlier pulls this session (12 sections now vs 11 before) -- investigated for a possible contradiction against the existing 'Meridian catalysts' section, which still says 'No catalysts in the 14-day Meridian window.' Confirmed NOT a contradiction: 'Meridian catalysts' is explicitly scoped to a 14-day window (correctly quiet -- AAPL's earnings is 38 days out per the new section), while 'Catalysts & news' is a wider, differently-scoped section (real earnings date regardless of distance + general Benzinga news headlines + peer list). Two complementary, non-overlapping sections, clean design. No bug found. This closes out a clean, thorough cycle after last cycle's major confirmed fix -- standing mandate continues, no new findings to file.",
+  "last_updated": "2026-09-22T03:08:00Z",
+  "notes": "v3 FULL STANDING MANDATE cycle (trigger 1 of 4, :01 offset). ReadNotifications clean. git sync: fast-forwarded onto #5412 (fold #5410's finding, parallel session). No new open swing PRs. No new #4076 activity (page 48 still empty). Board unchanged (AAPL HOLD only, 14 chains/13 resolved/1 open in the 30-day summary, unchanged from every prior check). Did a systematic Largo C7/C8 (provenance/evidence) audit pass on AAPL's envelope.evidence array and envelope.unavailableSources, a check not yet done this explicitly this session. Every evidence item carries source/asOf/freshness -- confirmed genuine, no placeholder/fabricated provenance. Notable good-design find: a GEX evidence line explicitly disclosed 'Computed 0s ago, but the market is CLOSED as of this read -- this reflects the last session's tape, not a live tick, however fresh the compute looks' alongside its OWN freshness:'live' tag -- correctly distinguishes 'the compute just ran' from 'the underlying market state is current,' exactly the kind of honest disclosure the Largo product contract asks for. unavailableSources lists 7 genuinely absent inputs (HELIX flow, option mark, Vector dark pool, Vector snapshot, Meridian catalysts, Night Hawk Legacy, thesis health), each with a real reason/what's-missing/retryable flag -- no silent gaps, no fabrication. Clean. AAPL has now been very thoroughly audited across nearly every angle this session (P&L math, rails, roll-chain, ticker track record, MFE capture, manage-action narrative -- found+fixed a real bug there, book-context, DTE-migration threshold, sub-lane citation self-activation, catalyst-section scoping, and now evidence/provenance). Future cycles should prioritize NEW positions/tickers or genuinely different code paths over further AAPL re-verification unless its live state changes (new manage tick, new roll, thesis break, etc.).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T02:52:00Z",
+    "as_of": "2026-09-22T03:08:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
