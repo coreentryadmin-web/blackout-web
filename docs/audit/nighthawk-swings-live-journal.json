@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T09:20:00Z",
-  "notes": "v3 mandate cycle (trigger 3 of 4, :16-offset routine firing). ReadNotifications clean. PR #5426 was already merged by the time this cycle checked (CI green, no intervention needed) -- unsubscribed, deleted local branch, cancelled the now-unneeded check-in trigger. Zero open swing PRs. Board unchanged (AAPL leg 40 still HOLD/ungraded, 14 chains total). This closes out a productive run through the swing portfolio/allocation/risk cluster of files this session: portfolio.ts (checkPortfolioOverlap, clean), swing-portfolio-budget.ts (clean, ARMED dollar-risk gate confirmed), swing-risk.ts (correct but unwired -- flagged on #4076, not fixed, architectural), swing-allocation.ts (stale enforce-claim doc bug, FIXED #5425), swing-board-allocation.ts (same stale claim repeated, FIXED #5426). The %-cap and dollar-budget gates in commit.ts are now both independently verified live and correctly documented; the one remaining known gap in this cluster (greek/beta risk math unwired) is raised for collaboration, not silently left mis-documented. No new bug found this cycle -- cleanup + confirmation of prior work.",
+  "last_updated": "2026-09-22T09:35:00Z",
+  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync: fold PR #5427 (for #5425/#5426) merged, not mine, left alone. Zero open swing PRs. Pivoted to WATCH-side forensics (mission item 1, underserved recently vs. the OPEN-side/code sweeps this session has leaned on) -- pulled the live horizons board: COMMIT_NOW/WAITING_FOR_ENTRY/WATCH are all genuinely EMPTY right now (pre-market, ~05:31 ET, no fresh discovery scan has run yet today), so no pre-entry candidates to forensically audit this cycle -- not a gap, an honest off-hours state. Chased one apparent anomaly in MANAGING (58 rows) before ruling it out: every freshly-committed banger-lane position from yesterday's 20:15 UTC discovery batch (NN, GEMI, FLY, etc., 12 new positionIds) shows livePnlPct/peakPremium/troughPremium/markAsOf all null, unlike AAPL and older Banger positions (e.g. MUU, verified with real marks earlier this session). Traced this to timing, not a bug: these committed at 20:15 UTC (4:15pm ET, right after the prior RTH close), and swing-active-refresh only runs DURING RTH -- so as of this pre-market read they genuinely have not had a single refresh cycle since commit yet. Honest null (never-fabricated) per the codebase's own null-honesty discipline, not a defect -- will self-resolve once today's RTH opens and the cron ticks. No bug found/filed this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T09:20:00Z",
+    "as_of": "2026-09-22T09:35:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
