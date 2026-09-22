@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-22T07:35:00Z",
-  "notes": "v3 mandate cycle (trigger 2 of 4, :31-offset routine firing). ReadNotifications clean. git sync: PR #5423 (ticker-history coaching, found+fixed last cycle) merged clean -- CI green throughout, merged by coreentryadmin-web at 07:31:11Z (before this cycle's own check, likely the coordinator's own merge sweep or a parallel session picking it up once green -- either way, done, no action needed). Also #5422 (fold PR for #5420) merged. Unsubscribed from #5423, deleted the local branch, cancelled the now-unneeded 1hr check-in trigger. Zero open swing PRs. Board unchanged (AAPL still the only open chain). Deferred the live post-deploy verification of #5423's narrative change (does AAPL's brief now show the 'Ticker history' coaching bullet) to next cycle -- it merged only minutes ago, deploy still needs to land, same discipline as every other deploy-lag tracking this session. No new bug found this cycle -- cleanup + confirmation, not idle.",
+  "last_updated": "2026-09-22T07:50:00Z",
+  "notes": "v3 mandate cycle (trigger 4 of 4, :46-offset routine firing). ReadNotifications clean. Zero open swing PRs. #5423's ECR deploy (run 35700010474) checked at job-step granularity: 'Roll ECS production web' step started 07:36:27, still in_progress at ~10min into that step (current cycle time ~07:47) -- within the normal ~10-30min range this step has taken on recent deploys (#5416 took ~26min end to end on that same step), not stalled. Deliberately did not re-poll the live board for the new coaching bullet yet -- deferring the post-deploy verification to next cycle once the roll actually completes, same discipline as every other deploy-lag tracking this session (checked job steps, not just run-level status, to avoid the false-negative trap from earlier in this session where run-level 'in_progress' masked an already-complete web roll). Full board re-check: still 14 chains, AAPL (root 37) unchanged -- parent ROLLED -22.3%, child leg 40 still HOLD/ungraded. No new WATCH/OPEN leads. Clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -119,7 +119,7 @@
     }
   ],
   "known_open_prs_snapshot": {
-    "as_of": "2026-09-22T07:35:00Z",
+    "as_of": "2026-09-22T07:50:00Z",
     "swing_prs": []
   },
   "tickers_seen": {
@@ -209,5 +209,5 @@
       "status": "RESOLVED -- self-fixed once fully traced (compose order allowed the exact same alreadyNoted pattern lessonsSection already uses), shipped as PR #5371 (open, CI pending). Turned out to cross the CARVE-OUT bar after all, not a genuinely open design question."
     }
   ],
-  "watch_next_cycle": "confirm PR #5423's Ticker history coaching bullet is live on AAPL's brief once its deploy completes"
+  "watch_next_cycle": "confirm PR #5423's Ticker history coaching bullet is live on AAPL's brief once its deploy (run 35700010474) completes"
 }
