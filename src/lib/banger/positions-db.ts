@@ -323,12 +323,26 @@ export async function fetchBangerOpenBookRows(limit?: number): Promise<BangerPos
  * history genuinely grows without bound and paging it is correct — this is the SAME truncation
  * `fetchBangerBoardRows` used to apply to BOTH statuses at once, kept here for the side where it's
  * actually the right call.
+ *
+ * FIX (Ask Largo standing mandate, live-verified 2026-09-23): this used to sort by `session_date
+ * DESC, id DESC` — ENTRY-time recency, not CLOSE-time recency — despite this doc comment's own
+ * claim of "newest first" meaning most recently closed. Those diverge hard: PR #5468 (this same
+ * session) fixed 41 banger_positions rows stuck OPEN/PARTIAL with an already-expired contract
+ * (oldest 40 days past expiry, session_date back in July). Once deployed, the live-sync cron's
+ * first RTH tick genuinely closed them (`fetchBangerOpenCount()` confirmed 168 -> 123, a real DB
+ * write) — but NONE appeared in this route's 60-row window, because every one of them has an OLD
+ * session_date and the old sort put September's freshly-OPENED (but not yet closed) entries ahead
+ * of July's freshly-CLOSED ones. A member reading "recently closed" saw only this week's entries
+ * and never learned a month-old zombie position had finally resolved. Sorting by `closed_at`
+ * (which `updateBangerLiveState` always stamps via `COALESCE(closed_at, NOW())` the moment a row
+ * transitions to CLOSED_RUNNER/STOPPED — see that function) fixes this directly; `id DESC` stays
+ * as the tiebreak for two rows closing in the same instant.
  */
 export async function fetchBangerClosedBoardRows(limit = 60): Promise<BangerPositionRow[]> {
   const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM banger_positions
      WHERE status IN ('CLOSED_RUNNER','STOPPED')
-     ORDER BY session_date DESC, id DESC
+     ORDER BY closed_at DESC, id DESC
      LIMIT $1`,
     [limit],
   );
