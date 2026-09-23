@@ -55,12 +55,43 @@ test("assembleSwingServingLane: provisional-floor badge + null calibrated surfac
 test("assembleSwingServingLane: committed/watch back-compat views + counts track status", () => {
   const lane = assembleSwingServingLane([
     swingPlay({ ticker: "A", status: "COMMIT" }),
-    swingPlay({ ticker: "B", status: "WATCH" }),
-    swingPlay({ ticker: "C", status: "WATCH" }),
+    swingPlay({ ticker: "B", status: "WATCH", setupState: "FORMING" }),
+    swingPlay({ ticker: "C", status: "WATCH", setupState: "FORMING" }),
   ]);
   assert.equal(lane.committedCount, 1);
   assert.equal(lane.watchCount, 2);
   assert.deepEqual(lane.watch.map((p) => p.ticker), ["B", "C"]);
+});
+
+// FIX (Ask Largo standing mandate, live-verified 2026-09-23): `watch` used to be re-derived
+// independently from raw `p.status === "WATCH"`, bypassing the router entirely. A name whose
+// entry-validity window expired routes to `sections.RESEARCH` (PR #337, 2026-09-22) but the
+// back-compat `watch` field — the field GET /api/market/nighthawk/horizons?view=swings actually
+// serves as board.lanes.SWING.watch, read directly by Largo's tools — kept including it anyway.
+// Live repro: AMZN, TACTICAL sub-lane (2-day entry window), first flagged 15 days earlier, still
+// showing in board.lanes.SWING.watch while its own play-brief correctly said "Serving section:
+// RESEARCH... entry-validity window expired".
+test("assembleSwingServingLane: watch back-compat view excludes a name whose entry-validity window expired (matches sections.RESEARCH, not stale raw status)", () => {
+  const stale = swingPlay({
+    ticker: "STALE",
+    status: "WATCH",
+    setupState: "FORMING",
+    firstSeenAt: new Date(Date.now() - 26 * 24 * 60 * 60 * 1000).toISOString(),
+    subLane: "STANDARD", // 3-day window — 26 days is unambiguously past it
+  });
+  const fresh = swingPlay({ ticker: "FRESH", status: "WATCH", setupState: "FORMING" });
+  const lane = assembleSwingServingLane([stale, fresh]);
+  assert.deepEqual(
+    lane.watch.map((p) => p.ticker),
+    ["FRESH"],
+    "an entry-window-expired name must not appear in the back-compat watch[] array",
+  );
+  assert.equal(lane.watchCount, 1);
+  assert.equal(
+    lane.sections.RESEARCH.some((p) => p.ticker === "STALE"),
+    true,
+    "the expired name must still be reachable in sections.RESEARCH — routed away, not dropped",
+  );
 });
 
 test("emptySwingServingLane: structured, empty, member-safe default", () => {

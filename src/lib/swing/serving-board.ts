@@ -46,11 +46,27 @@ export interface SwingServingLane extends HorizonLaneBoard {
  *
  * `committed`/`watch` are the derived COMMIT/WATCH back-compat views (so the pre-section renderers and the
  * board totals keep working); `sections` is the real member-facing grouping.
+ *
+ * FIX (Ask Largo standing mandate, live-verified 2026-09-23): `watch` used to be re-derived independently
+ * from raw `p.status === "WATCH"`, bypassing `buildSwingSections`/`sectionForSwingPlay` entirely — the
+ * exact router `serving.ts`'s own header says decides "what bucket does this show in" and that "nothing
+ * else in the engine" should. PR #337 (2026-09-22) taught the router to route a name whose entry-validity
+ * window has expired to RESEARCH instead of WATCH — but only fixed `sections.WATCH`; this back-compat
+ * `watch` field, independently re-filtered from raw status, never got the same fix and kept serving the
+ * stale name anyway. Live repro: AMZN (TACTICAL sub-lane, 2-day entry window) first flagged 2026-09-08,
+ * still 15 days later in `board.lanes.SWING.watch` on `GET /api/market/nighthawk/horizons?view=swings` —
+ * the exact field Largo's tools and this route serve directly — while its own play-brief narrative
+ * (which DOES read the router's verdict) correctly said "Serving section: RESEARCH... entry-validity
+ * window expired". Fix: derive `watch` FROM the already-computed `sections.WATCH` instead of re-filtering
+ * raw status, so it can never disagree with the router by construction. `committed` is left untouched —
+ * no live-position entry-window-expiry case exists for it, and narrowing scope avoids risking the
+ * correctly-tracked committed count on an unrelated change.
  */
 export function assembleSwingServingLane(plays: readonly HorizonPlay[]): SwingServingLane {
   const spec = HORIZONS.SWING;
   const committed = plays.filter((p) => p.status === "COMMIT");
-  const watch = plays.filter((p) => p.status === "WATCH");
+  const sections = buildSwingSections(plays);
+  const watch = sections.WATCH;
   return {
     horizon: "SWING",
     label: spec.label,
@@ -66,7 +82,7 @@ export function assembleSwingServingLane(plays: readonly HorizonPlay[]): SwingSe
     committedCount: committed.length,
     watchCount: watch.length,
     // The seven action-triage buckets (four pre-entry live in PR-12; three live-position empty until PR-13).
-    sections: buildSwingSections(plays),
+    sections,
     // Calibration-first: null until an archetype×sub-lane bucket graduates (PR-16). The desk renders "—".
     calibratedProbability: null,
     expectedValue: null,
