@@ -4292,6 +4292,11 @@
       "at": "2026-09-23T13:36:50Z",
       "summary": "TRANSITION: RTH opened (13:30 UTC / 9:30am ET), first live-quote flip observed ~6min post-open. DRAM260925C00063500 flipped AMBER -> GREEN with a real live mark (0.83, within [0.81,0.84]). MUU/VKTX still AMBER but reason reverted to \"mark flagged stale by the API\" (the pre-open bid=0/ask=0 phrasing is gone) -- normal early-RTH staggered quote population, not a new defect; matches the established pattern from prior trading days (2026-09-22 13:36:58Z: \"B_marks flipped AMBER->GREEN, live quotes now populated\"). D_pull_status still GREEN (all 3 confirmed). Watching next cycle for the remaining two tickers to go live.",
       "assessment": "CLEAN, expected RTH-open transition in progress. No action needed."
+    },
+    {
+      "at": "2026-09-23T13:52:05Z",
+      "summary": "FULL GREEN transition at 13:52 UTC (9:52am ET, ~22min post 9:30am ET open): B_marks flipped AMBER -> GREEN for all 3 remaining tickers (MUU 1.02 within [0.85,1.2], VKTX 0.71 within [0.55,0.87], DRAM still GREEN at 0.64 within [0.63,0.65]) -- live quotes now populated across the board. All 4 stages (A_edition/B_marks/C_record/D_pull_status) GREEN simultaneously for the first time this session -- matches the same-shape transition timing seen on prior trading days (2026-09-22 13:36:58Z ~6min post-open, 2026-09-21 14:07Z ~38min post-open -- today landed in between). No action needed.",
+      "assessment": "CLEAN. All 4 stages GREEN. Standing cadence continues."
     }
   ],
   "knownOpenItems": {
