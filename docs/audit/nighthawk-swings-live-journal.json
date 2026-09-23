@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T14:48:00Z",
-  "notes": ":46-offset cycle. #340/#341 thread fully closed (prior cycle). committedCount continuing to converge (90, down from 117) as the cron finishes the remaining backlog. watchCount still 0 at ~10:16 ET -- checked scan-cadence.ts's SWING_SCAN_PHASES to confirm this is EXPECTED, not a bug: PRE_OPEN (6:00-9:15 ET) already ran, the next phase is MIDDAY (12:00-13:00 ET) -- the 9:15-12:00 ET gap is the same documented, intentional cadence gap swing-cadence-gap-recall-probe.mjs already measured (2026-09-12) and found not to be a meaningful recall leak. No new finding here. #4076 unchanged (249 comments). main synced. Clean cycle, staying quiet.",
+  "last_updated": "2026-09-23T15:04:00Z",
+  "notes": ":01-offset v3 cycle. committedCount 88. Spot-checked NVDA:42's big intraday swing (+4.8% -> -25.7% livePnlPct) via a fresh play-brief pull -- verified NOT a bug: mark $5.05 (fresh, 11:00 ET) vs entry $6.80 = -25.7% exactly, trough -27.2% (dipped further intraday), underlying excursion only +0.6%/-1.2% (small move) -- consistent with a 9DTE near-the-money call's real theta+gamma-driven sensitivity to even a small adverse underlying move plus a day of decay, not a data/computation error. Rails/greeks/spread all internally consistent. No new bug or enhancement found this cycle. #4076 unchanged (unrelated 0DTE fix #5472 merged, not this lane). main synced. Clean, staying quiet.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window"
