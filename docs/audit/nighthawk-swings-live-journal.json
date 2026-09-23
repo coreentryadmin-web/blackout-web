@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T03:05:00Z",
-  "notes": "15-min-cadence trigger (:01 offset). #4076 unchanged. Board unchanged. Used this cycle for a different CloudWatch angle: checked swing-active-refresh (the live position-management cron, distinct from swing-discovery which was already verified) -- zero log events in the last 3 hours. Confirmed expected via cron-registry.ts: schedule_label explicitly reads 'Every 15 min (market hours)' -- this cron is market-hours-only by design, so silence through the current off-hours stretch is correct, not a gap. No action needed. Staying quiet.",
+  "last_updated": "2026-09-23T03:05:21Z",
+  "notes": "15-min-cadence trigger (:01 offset), continuing the cycle interrupted by a compaction boundary mid-commit -- prior cycle's journal update (swing-active-refresh off-hours finding) was written, validated, but not yet committed when compaction hit; committed+pushed it first this cycle (8e103933d), then continued. #4076 unchanged (246 comments, same 2026-09-22T22:41:15Z timestamp). No new commits touching src/lib/swing, src/lib/largo, or findings-staging in the last 2 hours from any lane. Still deep overnight (~23:0x ET, market opens 09:30 ET / ~10h out). Genuinely quiet -- all three HUT PRs (#5446/#5451/#5453) merged+live-verified, code sweep of the swing engine core was declared complete earlier this session, no open escalations changed state. Staying quiet.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
