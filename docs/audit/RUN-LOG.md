@@ -4,6 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-23 (16:35 UTC / Wed 12:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one non-monotonic calc_id observation (harmless)
+
+Confirmed clock myself (12:35 ET, Wednesday, in-window, ~25min left). `/tools/gamma-snapshot`'s
+public API: `market_session: "OPEN"`, `degraded: false`. First 3-poll batch showed reads 1 and 3
+sharing a `calculation_id` while read 2 (in between) carried an OLDER one — non-monotonic
+ordering across sequential HTTP calls. Re-polled 5x at 3s intervals to check: fully monotonic,
+`calculation_id` advancing every call, spot moving realistically (7713.93→7714.16). No stale or
+wrong value at any point in either batch — the one out-of-order read is consistent with a harmless
+race between two backend replicas/cache reads on a single request, not a real staleness or
+correctness defect. Cross-checked spot against Massive `/v3/snapshot/indices` (7714.42) — 0.003%
+apart, accurate.
+
+Live CLS: purged edge, desktop **0, GOOD**; mobile **0.0395, GOOD**. Both clean. No PR. Last RTH
+check before window closes; returning to normal search/authority work after 13:00 ET.
+
 ## 2026-09-23 (15:35 UTC / Wed 11:35 ET) — [SEO] Market-hours wake: gamma-snapshot live-data validation, clean
 
 Confirmed clock myself (11:35 ET, Wednesday, in-window). `/tools/gamma-snapshot`'s public API:
