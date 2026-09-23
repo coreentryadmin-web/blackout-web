@@ -29,6 +29,7 @@ import {
   gexMatrixAgeMs,
   gexMatrixStale,
   optionMarkGenuinelyUnknown,
+  optionMarkIsStale,
   playExpectsLiveOptionMark,
   resolveGammaPosture,
   trustedHelixFlow,
@@ -711,13 +712,25 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   if (ctx.play.markAsOf) {
     const markMs = Date.parse(ctx.play.markAsOf);
     const markEt = etStampFromIso(ctx.play.markAsOf);
+    // A swing option mark's only writer (swing-active-refresh) runs every 15 minutes, so a mark
+    // 10-15 minutes old is on-schedule, not stale — the generic cross-product 10-minute bucket
+    // (`freshnessFromObservedMs`) false-positives on exactly that window, which is why
+    // `optionMarkIsStale` (play-brief-absence.ts) exists with an 18-minute cadence-aware
+    // threshold. This evidence entry predates that fix and still called the generic bucket
+    // directly, so it kept mislabeling an on-schedule mark as `stale` even after every other
+    // freshness surface in this brief was corrected — live repro 2026-09-23, NVDA. Only downgrade
+    // a generic "stale" verdict (never "live"/"recent", which the cadence-aware check can't make
+    // fresher) so the future-skew fail-closed behavior (Largo C2) is untouched.
+    const genericFreshness = Number.isFinite(markMs) ? freshnessFromObservedMs(markMs, readMs) : "unknown";
+    const markFreshness =
+      genericFreshness === "stale" && !optionMarkIsStale(ctx.play, readMs) ? "recent" : genericFreshness;
     out.push({
       kind: "fact",
       text: `Option mark as of ${markEt}.`,
       provenance: {
         source: "Swing ledger",
         asOf: markEt,
-        freshness: Number.isFinite(markMs) ? freshnessFromObservedMs(markMs, readMs) : "unknown",
+        freshness: markFreshness,
       },
     });
   }

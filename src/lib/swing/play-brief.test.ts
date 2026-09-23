@@ -2084,6 +2084,40 @@ test("composeSwingPlayBrief: live Vector regime still drives dealer posture when
   assert.equal(postureEvidence?.provenance?.source, "Vector");
 });
 
+test("composeSwingPlayBrief: on-schedule 12min-old option mark evidence reads recent, not stale (mirrors optionMarkIsStale's 18min cadence fix, live repro NVDA 2026-09-23)", () => {
+  // swing-active-refresh (cron-registry.ts) is the ONLY writer of a swing option mark and runs
+  // every 15 minutes during market hours, so a mark 10-15 minutes old is exactly on schedule, not
+  // stale — play-brief-absence.ts's `optionMarkIsStale` was built 2026-09-15 specifically to stop
+  // the generic 10-minute `freshnessFromObservedMs` bucket from false-positiving on this cadence.
+  // That fix never reached `evidenceFromContext`'s own "Option mark as of" entry, which still
+  // calls `freshnessFromObservedMs` directly — confirmed live 2026-09-23 on a real NVDA swing
+  // brief: a mark exactly 12 minutes old (well inside the 18-minute cadence-aware window) was
+  // still labeled `freshness: "stale"` in the Data Freshness evidence, while the swing section
+  // itself (and every other freshness surface using `optionMarkIsStale`) correctly treats it as
+  // current — a real cross-product inconsistency, the same "mislabels an on-schedule mark" defect
+  // the code comment on `optionMarkIsStale` already documents as fixed elsewhere.
+  const twelveMinAgo = new Date(Date.now() - 12 * 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", markAsOf: twelveMinAgo, markIsSync: false }),
+    asOf: "2026-09-23 12:42 ET",
+    sessionDate: "2026-09-23",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const markEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Option mark as of"));
+  assert.ok(markEvidence, "expected an option-mark evidence entry");
+  assert.notEqual(
+    markEvidence!.provenance?.freshness,
+    "stale",
+    "a 12-minute-old mark is on-schedule for the 15-minute swing-active-refresh cadence and must not read as stale",
+  );
+});
+
 test("composeSwingPlayBrief: future-skewed option mark freshness is stale, not unknown (Largo C2)", () => {
   const futureMark = new Date(Date.now() + 30_000).toISOString();
   const ctx: SwingPlayBriefContext = {
