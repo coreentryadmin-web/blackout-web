@@ -38,6 +38,170 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Short-interest narrative block had no staleness disclosure for a genuinely lagging read
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Area** | Night Hawk Swings — `src/lib/swing/play-brief-intel.ts`, `src/lib/swing/play-brief-absence.ts` |
+| **Severity** | P3 (narrative-quality gap, not a live-trading bug) |
+| **Found by** | Night Hawk Swings audit lane, Ask Largo standing mandate — re-verification of #4076 comment 5747893411's "secondary, smaller asymmetry" |
+
+### Root cause
+
+Comment 5747893411 on #4076 (raised 2026-09-20) flagged two related gaps in how `catalystsSection`
+(`play-brief-intel.ts`) presents short-interest evidence:
+
+1. **Primary**: the evidence array's freshness *tag* used the generic cross-product
+   `freshnessFromAgeMs` bucket (`<60s live, <10min recent, else stale`), so every short-interest
+   read — 2 hours old or 59 days old — got the identical `"stale"` tag, misleading given FINRA's
+   biweekly settlement cadence.
+2. **Secondary**: `catalystsSection`'s narrative *body* only ever called `fundamentalsAncient` (the
+   omit-or-show gate) — it never disclosed staleness inline the way the headlines block a few lines
+   below it already does (`staleLead`/"Last snapshot (~Xs old)").
+
+The primary gap was fixed separately (`fundamentalsFreshnessTag()` with a 15-day
+`FUNDAMENTALS_RECENT_CEILING_MS`, already on `main` — confirmed live this cycle, see the #4076
+status-correction comment posted the same session). The secondary gap was still live: a
+short-interest read that clears the 15-day "recent" ceiling but hasn't hit the 60-day "ancient"
+omission ceiling (i.e., genuinely lagging, by this data type's own honest cadence) rendered in the
+narrative body with **zero** freshness context — worse than mislabeling, since the reader now has
+no signal at all that the figure may be a stale settlement cycle behind.
+
+### Evidence
+
+Re-read `catalystsSection` (`play-brief-intel.ts` ~973-979 pre-fix): the short-interest block built
+its two bullet fragments (`short DTC`, `short vol ratio`) and pushed them straight into `lines`
+with no freshness check, while the headlines block immediately below it (~989-993) already computes
+`newsCatalystStale`/`ageSecondsLabel` and prepends a `staleLead` sentence when stale. Confirmed via
+`grep` there was no equivalent call for the fundamentals block.
+
+### Blast radius
+
+One call site: `catalystsSection`'s short-interest bullet block. `shortInterestCoaching`
+(`play-brief-narrative-coaching.ts`) reads the same `arsenal.fundamentals` field for a different
+narrative surface and was not touched — out of scope for this finding, left as a follow-up if the
+same gap is confirmed there too.
+
+### Fix
+
+- Added `fundamentalsAgeMs(asOf, readMs)` to `play-brief-absence.ts` (mirrors `newsCatalystAgeMs`'s
+  shape, but via `fundamentalsObservedMs`'s ET-session-close-aware parser for date-only stamps).
+- Added `ageDaysLabel(ageMs)` to `play-brief-absence.ts` (mirrors `ageSecondsLabel`'s exact
+  null/clock-skew handling, day-scaled instead of second-scaled — a seconds label would read as
+  absurd precision for days/weeks-cadence data).
+- `catalystsSection`'s short-interest block now computes
+  `fundamentalsFreshnessTag(f.as_of, readMs) === "stale"` and, only when true, prepends
+  `**Last settlement**${ageLabel ? \` (~${ageLabel} old)\` : ""} — short-interest may lag the current cycle.` —
+  the exact same `staleLead` shape the headlines block already uses, so a normal few-days-old read
+  (inside the 15-day recent ceiling) still renders with zero disclosure, unchanged from before.
+
+### Fix rationale
+
+Mirrors an existing, already-shipped pattern in the same function (`newsCatalystStale`'s
+`staleLead`) rather than inventing a new disclosure mechanism — small, mechanical, matches the
+comment's own characterization ("a small, mechanical mirror of the existing headlines pattern
+rather than a new design question"). Left `shortInterestCoaching` untouched since it wasn't part of
+the original live repro and touching it would widen this PR past the one gap actually confirmed.
+
+### Tests
+
+Two new tests in `play-brief-intel.test.ts`: a ~25-day-old short-interest read (beyond the 15-day
+recent ceiling, under the 60-day ancient ceiling) carries the disclosure; a ~3-day-old read carries
+none. RED→GREEN proven via `git stash` isolation of the implementation files — 199/200 pass without
+the fix (the new "lagging read discloses" test fails as expected), 200/200 with it.
+
+## Meridian shows a generic "?"/"Abc" placeholder instead of its own mark on the public /learn pages — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Marketing site, public `/learn` Academy pages — `LearnSidebar.tsx`, `LearnHub.tsx`, `LearnSectionBlocks.tsx` |
+| **Severity** | P3 — cosmetic branding inconsistency on public marketing pages, no functional/data defect |
+| **Status** | FIXED |
+| **Found via** | Live UI screenshots through `proxy-browser.cjs` during a routine DISCOVERY sweep |
+
+### Root cause
+
+Meridian is a real, live desk product (see `/meridian`, extensively referenced throughout
+`CLAUDE.md`), but it has no entry in `ProductMark.tsx`'s `MarkProduct` union (`"spx" | "helix" |
+"heatmap" | "largo" | "nighthawk" | "vector"` — "the six product sigils", per that file's own
+comment) — it never got a hand-crafted animated SVG sigil the way the other six products did.
+Because of that, `src/lib/learn/nav.ts` classifies Meridian's `LEARN_NAV` entry as `product:
+"docs"` (the same bucket as the genuinely-docs-only "Getting Started" and "Glossary" chapters) —
+which is an accurate classification on its own, since Meridian truly has no `ProductMark` sigil to
+render.
+
+The real app's own navigation already solved this: `Nav.tsx` and `DeskSidebar.tsx` both
+special-case `href === "/meridian"` **before** falling through to `ProductMark`, rendering a
+dedicated `<span className="meridian-mark">✦</span>` sparkle glyph instead. But the three
+marketing-page components that also render `LEARN_NAV`/guide entries never got the same special
+case — they only ever branched on `item.product === "docs"` vs. `ProductMark`, so Meridian fell
+straight into the generic "this is a docs page, not a product" treatment on every one of them:
+
+- `LearnSidebar.tsx` (Academy sidebar, present on every `/learn/*` page) — rendered a bare `?` box.
+- `LearnHub.tsx` (the `/learn` hub's chapter-card grid) — rendered a bare `Abc` box.
+- `LearnSectionBlocks.tsx`'s `tool-map` and `cross-links` section renderers (used inside individual
+  guide articles) — rendered **no icon at all** for Meridian (the `item.product !== "docs"` guard
+  suppressed the icon entirely with nothing to replace it).
+
+Meanwhile every other real product (SPX Slayer, HELIX, Largo, Night Hawk, Thermal, Vector) renders
+its own distinct colored animated sigil in all of these same spots — so Meridian is the one live
+product that visibly reads as "not really a product" on the site's own Academy pages, identical in
+treatment to a meta/docs page.
+
+### Evidence
+
+Live screenshots via `node proxy-browser.cjs <url> out.png --viewport 1440x900 --desktop --wait
+6000` (repo root, `NODE_USE_ENV_PROXY=1` not needed for Chromium — see
+`docs/audit/LIVE-UI-CONNECTION.md`):
+
+- `https://blackouttrades.com/learn/dealer-gamma-options-flow-guide` — Academy sidebar entry #8
+  ("Meridian") rendered a plain `?` in a bordered box, entries #1 ("Getting Started") and #9
+  ("Glossary") rendered the identical `?` box, while entries #2–#7 (the six real products) each
+  rendered their own distinct colored animated sigil.
+- `https://blackouttrades.com/learn` — chapter card 08 ("Meridian") rendered `Abc`, identical to
+  chapter 09 ("Glossary"), while chapters 02–07 each rendered their own sigil.
+
+### Fix
+
+Added the same `item.slug === "meridian"` (`guide.slug === "meridian"` in `LearnHub.tsx`) special
+case already used in `Nav.tsx`/`DeskSidebar.tsx`, rendering the identical `meridian-mark` ✦ span,
+in all four render sites across the three files — checked **before** the `product === "docs"` /
+`product !== "docs"` branch so "Getting Started" and "Glossary" still correctly fall through to
+their existing generic-docs treatment. No new CSS needed — `meridian-mark` has no dedicated CSS
+rule anywhere in the codebase (confirmed by grep); it relies on inherited text color plus a
+Tailwind `text-[N rem]` sizing utility, exactly as it already does in the two files this pattern
+was copied from.
+
+### Blast radius
+
+Four render sites across three files, all on public, unauthenticated marketing pages
+(`/learn/[slug]`, `/learn`). No app logic, data, or authenticated desk surfaces touched — `Nav.tsx`
+and `DeskSidebar.tsx` (the real in-app navigation) already had this fix and were left unchanged.
+
+### What was deliberately left unchanged
+
+`LearnSectionBlocks.tsx`'s `tool-map`/`cross-links` sections don't currently have any live content
+referencing the `meridian` slug (the shared `meridian(...)` cross-link helper in
+`src/lib/learn/guides/shared.ts` exists but grep found zero call sites) — so those two fixes are
+currently dormant, not yet visibly reachable. Fixed anyway since it's the identical root cause and
+a future guide referencing Meridian in either section type would otherwise silently regress into
+the same no-icon gap.
+
+### Regression test
+
+`src/components/learn/learn-meridian-mark.test.ts` (4 tests, source-text assertions against the
+three fixed files plus a precedent check against `Nav.tsx`/`DeskSidebar.tsx`, matching this repo's
+existing convention for untested `.tsx` components — see `marketing-mobile-nav.test.ts`). RED→GREEN
+proof: `git stash`-ed the three component fixes with the new test active — 1 pass / 3 fail (the
+untouched Nav.tsx/DeskSidebar.tsx precedent check still passed). Restored — 4/4 pass. Full
+`src/components/learn/` + `src/lib/learn/` suite: 45/45 pass, 0 regressions. `npx tsc --noEmit`
+clean. `npx eslint` on all four changed files clean.
+
 ## Night Hawk Legacy's confluence gate structurally starves the whole-market breakout lane — SHADOW-LOG ADDED, LIVE FIX DEFERRED (operator instruction)
 
 > **kind:** `FINDING`
