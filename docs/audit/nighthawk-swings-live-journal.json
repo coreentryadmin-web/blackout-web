@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T16:49:00Z",
-  "notes": ":46-offset cycle -- PR #5474 (troughPremium rounding) FULLY VALIDATED LIVE, closing out #342. ECS converged 8/8 on :1783. Re-checked the 6 named tickers: BKKT/REPL/SLS/DKS/MRNA all now show trough<=mid<=peak cleanly (ARKG not found, likely closed since first flagged). Full re-scan of all 82 currently-committed positions: ZERO remaining trough/mid/peak violations, down from the original 6/78. Both this cycle's shipped fixes (#5470 closed-board sort, #5474 trough rounding) are now fully confirmed working in production with live data. #4076 unchanged. main synced. Clean, productive hour of the standing mandate -- two real, well-evidenced, well-tested bugs found and fixed, on top of the earlier #5468 zombie-position fix this session. Nothing new to escalate this cycle.",
+  "last_updated": "2026-09-23T17:04:00Z",
+  "notes": ":01-offset v3 cycle. Re-checked NVDA:42 (continuing to decline, now -36.8%, trough -40.1%) -- verified the premium_stop hard-stop gate math is still correct as the loss deepens: stop rail $2.72 = entry $6.80 * 0.4 (the shared SCALE_OUT_RULES.hard_stop_mult, confirmed this IS the same -60% gate the mandate brief names for native swing positions via deriveScaleOutAction, not just banger-origin ones). Current mark $4.30 is still well above the stop, so HOLD remains mechanically correct -- consistent across all 3 checks of this position this session. Positive verification, no new bug. Noted: a parallel session shipped an unrelated swing fix (#5476, option-mark-evidence staleness mislabeling) -- not duplicating that work. #4076 unchanged. main synced. Clean cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window",
