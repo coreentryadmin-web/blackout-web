@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T16:04:00Z",
-  "notes": ":01-offset v3 cycle. PR #5474 CI still running (CodeQL green, verify in_progress). committedCount 83 (continuing to converge). watchCount still 0 right at the MIDDAY phase's own start (12:00 ET / 16:00 UTC) -- too early to call a gap, the cron needs a few minutes to actually fire and populate; will check again next cycle before treating this as worth investigating. #4076 unchanged. main synced. Nothing else new this cycle.",
+  "last_updated": "2026-09-23T16:19:00Z",
+  "notes": ":16-offset cycle. PR #5474 MERGED (cce023364, 16:11:18Z -- same mirror-failure merge-ahead-of-tracking pattern as #5468/#5470, content verified correct via commit hash match). Will spot-check the 6 named tickers (BKKT/REPL/SLS/DKS/MRNA/ARKG) once deployed, lower priority than the earlier financial-correctness fixes since this is display-precision only. committedCount 82, watchCount still 0 ~15min into MIDDAY phase -- not yet conclusive either way (MIDDAY may legitimately be a narrower/lighter scan than POST_CLOSE some days), watching without flagging. #4076 unchanged. main synced.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window",
