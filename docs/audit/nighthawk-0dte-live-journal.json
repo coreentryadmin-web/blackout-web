@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-23T18:10:00Z",
+  "updated_at": "2026-09-23T19:10:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -254,6 +254,11 @@
       "stage": "infra_resolved",
       "action": "Board upstream_ok:false instance resolved (~26min, self-healed, no data loss -- /record confirmed healthy throughout). QBTS retraced 39.29%->32.14% live, floor correctly held monotonic at 15.72 (not breached, 32.14>15.72). No new commits this cycle.",
       "next": "routine monitoring"
+    },
+    "2026-09-23T19:10:00Z": {
+      "stage": "infra",
+      "action": "2nd board upstream_ok:false instance today (1st: ~17:43-18:10, ~26min; now 2nd starting ~19:10). /record confirmed healthy again. Same well-characterized self-healing pattern. 2 instances today, below yesterdays 3-instance escalation threshold -- watching for a possible 3rd before re-escalating.",
+      "next": "confirm recovery; escalate if a 3rd instance occurs today"
     }
   },
   "sessions": {
