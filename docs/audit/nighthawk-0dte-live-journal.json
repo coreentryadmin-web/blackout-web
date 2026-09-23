@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-23T14:26:00Z",
+  "updated_at": "2026-09-23T14:45:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -224,6 +224,11 @@
       "stage": "fix_in_progress",
       "action": "Built the lower-arm-tier fix on branch fix/0dte-ratchet-lower-arm-tier: EXIT_RULES.ratchet_early_arm_pnl_pct 15->5, ratchet_early_arm_floor_pct 5->2. Interaction checks (flat_theta_bleed, trim_scale dead-zone guard) both confirmed clean by code reading before implementing. Scoped tests all pass: exit-engine.test.ts 97/97 (2 new + ~13 fixture-relocated), exit-sync.test.ts+board.test.ts+exit-policy-snapshot.test.ts+strategy-version.test.ts 266/266 (golden hashes recomputed live), zerodte-service.test.ts+marks+plan.test.ts 58/58 (1 fixture relocated). tsc clean. Staged finding written. EXIT_VERSION bumped v6->v7. Full-repo npm test running in background (started 14:26Z).",
       "next": "confirm full-repo suite clean, then commit+push+open PR with the same rigor as #5382"
+    },
+    "2026-09-23T14:45:00Z": {
+      "stage": "PR_opened",
+      "action": "PR #5472 opened (draft): lower ratchet early-arm threshold 15%->5%. Full-repo suite confirmed 15335/15338 pass, 0 fail (3 skipped) before opening. Staged finding docs/audit/findings-staging/2026-09-23-zerodte-lower-arm-tier-floor.md. Subscribed to PR activity.",
+      "next": "watch #5472 CI (verify+CodeQL), undraft once green per standing pattern"
     }
   },
   "sessions": {
