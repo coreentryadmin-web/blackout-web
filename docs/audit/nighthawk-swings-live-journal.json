@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T07:03:25Z",
-  "notes": "Full v3-brief trigger (:01 offset). Synced two parallel-lane commits (4c0a4a086 nighthawk-legacy journal, 616b7cb99 heartbeat/state snapshots -- both unrelated, ff-merged clean). #4076 discovered changed on close inspection: re-verified the short-interest freshness-tag escalation (comment 5747893411, previously tracked OPEN) and found the PRIMARY fix already shipped -- fundamentalsFreshnessTag()'s 15-day cadence-scaled ceiling is live on main, correctly wired into fundamentalsFreshness(). The escalation's SECONDARY point (narrative-body disclosure asymmetry) is still genuinely open -- catalystsSection's short-interest block has no equivalent to the headlines block's staleLead disclosure. Posted a precise status-correction comment to #4076 (5790532356) so the thread reflects reality rather than sitting mislabeled as fully open, and offered to take the remaining small piece. Updated this journal's own escalation tracking to PARTIALLY RESOLVED. This is a good example of why the standing discipline says 'verify against main, never trust a status list at face value' -- this entry had gone stale on the primary half without anyone noticing.",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-23T07:21:11Z",
+  "notes": "15-min-cadence trigger (:16 offset). Synced a parallel-lane journal commit (759aef055, nighthawk-legacy, unrelated) clean. #4076 unchanged since my own last post (248 comments). Since my prior-cycle offer to take the narrative-disclosure half of the short-interest escalation (comment 5747893411) if uncontested went unanswered after ~15 min, shipped it myself per CARVE-OUT -- small, unambiguous, mirrors an existing pattern in the same function. Added fundamentalsAgeMs()/ageDaysLabel() (play-brief-absence.ts) and wired a 'Last settlement (~Nd old) -- short-interest may lag the current cycle' staleLead into catalystsSection's short-interest block, gated on fundamentalsFreshnessTag()==='stale'. Two new tests, RED->GREEN proven via git-stash isolation (199/200 without fix, 200/200 with it), tsc clean, full play-brief collateral suite (424 tests across 4 files) green. Staged finding written, branch fix/swing-short-interest-narrative-staleness-disclosure pushed, PR #5461 opened + draft released, subscribed to PR activity. This closes BOTH halves of comment 5747893411 -- updated the journal's escalation tracking to SHIPPED. Watching #5461 for CI.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-23-swing-short-interest-narrative-staleness-disclosure.md"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
@@ -199,7 +201,7 @@
         "src/lib/swing/play-brief-absence.ts",
         "(fundamentalsFreshnessTag fix confirmed 2026-09-23)"
       ],
-      "status": "PARTIALLY RESOLVED (2026-09-23) -- primary freshness-tag mislabeling FIXED: play-brief-absence.ts's fundamentalsFreshnessTag() now uses a real 15-day cadence-scaled ceiling (FUNDAMENTALS_RECENT_CEILING_MS), wired into play-brief.ts's fundamentalsFreshness() -- verified live against current main. SECONDARY still open: catalystsSection's short-interest block still has no narrative-body staleness disclosure equivalent to the headlines block's 'Last snapshot' line. Posted status update to #4076 (comment 5790532356), offered to take the remaining small mechanical piece if uncontested."
+      "status": "SHIPPED (2026-09-23) -- both halves now resolved. Primary (freshness-tag mislabeling) was already fixed and reconfirmed live earlier this cycle. Secondary (narrative-body disclosure asymmetry) fixed this cycle via PR #5461 -- catalystsSection's short-interest block now discloses staleness for a genuinely lagging read (>15d, <60d), mirroring the headlines block's existing staleLead pattern. RED->GREEN proven, tsc clean, 424/424 collateral suite green. PR open, draft released, subscribed for CI."
     },
     {
       "raised_at": "2026-09-20T16:34:00Z",
