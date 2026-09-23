@@ -9292,7 +9292,35 @@ Measured runtimes of 220s (3.67min) against a 10-min schedule with UW timeout ca
 
 ## UW dossierFetch timeout cascading to ALB tail-latency spikes
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status**: PARTIALLY ADDRESSED, symptom still observed — not a clean FIXED. Restamped 2026-09-23
+after re-verifying against current code and a fresh live CloudWatch check, rather than leaving this
+`UNRECONCILED` for 5 days on a missing status line.
+
+This entry's claimed root cause ("[the dossierFetch] request is retried, causing cascading
+delays") does not match `src/features/nighthawk/lib/fetch-timeout.ts`'s current `dossierFetch`: it
+is a single `Promise.race([fn(...).catch(() => fallback), timeout])` with **no retry** anywhere —
+on timeout it resolves to `fallback` immediately. Every call site in `dossier.ts` (all ~24 provider
+fetches, including flow-alerts) is wrapped this way. The file's own header comment documents a
+2026-09-17 fix (`dossierFetch's abort contract is unwired everywhere it's used`, FINDINGS
+2026-09-14): before that date, a timed-out call kept running in the background holding a UW
+rate-limiter slot after being given up on — genuinely matching this entry's "pile-on" description.
+As of 2026-09-17 the timeout signal is threaded down to the real `fetch()` call and actually
+aborts it. So the specific zombie-connection mechanism this entry describes was fixed the day
+before this entry was written (2026-09-18) — plausibly the 2026-09-18 CloudWatch evidence was
+captured before that fix's ECS rollout reached steady state, or the pile-on it measured had a
+different cause than the one diagnosed.
+
+Re-checked live tonight (2026-09-23, ~21:25–00:10 UTC, `AWS/ApplicationELB` on
+`blackout-production-app`'s target group): `TargetResponseTime` average stayed healthy (0.14–0.82s
+across 12 buckets), zero `HTTPCode_Target_5XX_Count`, but `Maximum` still recurs at 40–76s every
+10–30 minutes — the same low-average/high-max tail-latency SIGNATURE this entry describes, still
+present 5 days later. This matches the general pattern many other already-tracked FINDINGS entries
+describe (full-chain GEX escalations, Vector background sweeps blocking the event loop, uncoordinated
+warm-cron overlap) rather than being uniquely diagnostic of a live dossierFetch defect — no new
+`dossierFetch 8000ms local timeout` CloudWatch Logs lines were checked tonight to confirm or rule out
+this specific mechanism recurring. Left OPEN rather than closed: the originally-diagnosed mechanism
+is fixed, but the symptom this entry exists to track is not yet proven gone.
 
 ### Summary
 
@@ -39623,7 +39651,20 @@ Both modes were checked against a SECOND independent run (different date, differ
 
 ## 2026-09-13 — [ANALYSIS, DECISION REQUIRED] Mode 2 honesty-no-grounded-numbers root cause and remediation options
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status**: OPEN — decision required, not a mechanical fix. Restamped 2026-09-23 (was
+`UNRECONCILED` for 10 days because this entry never carried a parseable status line, not because
+no status exists — its own "Why write-up, not direct fix" section below explains this is a genuine
+three-way product/scoring judgment call between improving Largo's answer generation, recalibrating
+the stress scorer, or loosening the CI gate's zero-tolerance threshold). Checked whether any of the
+three options shipped since 2026-09-13: the `honesty-no-grounded-numbers` check now actually lives
+at `src/lib/bie/professional-tone.ts:133` (this entry's own text below cited
+`professional-tone.ts` without a path; confirmed the real file, not `src/lib/largo/...`), and its
+exemption phrases ("none"/"flat"/"inactive"/"scanning") are byte-identical to what this entry
+describes — unchanged. `scripts/largo-stress-run.mjs`'s zero-tolerance gate (`if (summary.live_bad
+> 0) process.exit(1)`, line 331) is also unchanged. None of the three remediation options has been
+picked yet. Left for whoever owns the Largo stress harness's design, per this entry's own scope
+note.
 
 ### Root cause identified
 
@@ -42664,7 +42705,14 @@ assumed.
 
 ## 2026-09-11 — [FINDING, P3 tooling/dependency-hygiene] `tsx` >=4.23.10 breaks the test suite on Node 20 — third independent recurrence, dependabot never got an `ignore` rule to stop re-proposing it
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status**: FIXED (`014c4a9ba`, PR #4814, same day as this finding). Restamped 2026-09-23 — this
+entry's own "Fix" section already described the ignore rule as applied at write time but never
+carried a parseable status line, so `findings-reconcile.mjs` flagged it `UNRECONCILED` for 12 days
+despite being done. Re-verified live: `.github/dependabot.yml` still carries the `tsx` ignore entry
+(`versions: [">4.23.1"]`) unchanged, and `git log -S'dependency-name: "tsx"' -- .github/dependabot.yml`
+shows exactly one commit, `014c4a9ba`, whose message ("pin dependabot away from tsx>=4.23.10 — third
+recurrence of the same ERR_INVALID_URL break (#4814)") matches this finding's title.
 
 | | |
 |---|---|
