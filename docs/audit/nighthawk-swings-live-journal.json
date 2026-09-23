@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T14:19:00Z",
-  "notes": ":16-offset cycle. Confirmed PR #5470's deploy is genuinely progressing (not stuck): ecr-push-production run 35870983731's 'Roll ECS production web' step in_progress since 14:00:00Z, and ECS directly shows a real NEW task def :1781 rolling out (4/5 up, old :1780 down to 4 remaining) -- normal ~20-30min rollout pace, on track. The already-scheduled 14:24 check-in should catch full convergence and do the real combined #340/#341 re-verify. #4076 unchanged (249 comments). main synced. Nothing new this cycle -- staying quiet, no redundant re-scheduling.",
+  "last_updated": "2026-09-23T14:26:00Z",
+  "notes": "Scheduled check-in for PR #5470's deploy. Still not fully converged: ECS shows task def :1781 at 7/8 (up from 4/5 ~7 min ago), old :1780 down to 2 -- genuinely progressing, on track, not stuck. Per the check-in's own instruction, not re-scheduling redundantly -- letting the next 15-min mandate cycle (:31 offset, ~5 min out) pick up the final convergence check and the real combined #340/#341 re-verify once desiredCount==runningCount on :1781 alone.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window"
