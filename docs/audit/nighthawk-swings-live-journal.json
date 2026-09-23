@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T17:04:00Z",
-  "notes": ":01-offset v3 cycle. Re-checked NVDA:42 (continuing to decline, now -36.8%, trough -40.1%) -- verified the premium_stop hard-stop gate math is still correct as the loss deepens: stop rail $2.72 = entry $6.80 * 0.4 (the shared SCALE_OUT_RULES.hard_stop_mult, confirmed this IS the same -60% gate the mandate brief names for native swing positions via deriveScaleOutAction, not just banger-origin ones). Current mark $4.30 is still well above the stop, so HOLD remains mechanically correct -- consistent across all 3 checks of this position this session. Positive verification, no new bug. Noted: a parallel session shipped an unrelated swing fix (#5476, option-mark-evidence staleness mislabeling) -- not duplicating that work. #4076 unchanged. main synced. Clean cycle.",
+  "last_updated": "2026-09-23T17:19:00Z",
+  "notes": ":16-offset cycle. bangerOpens continuing to converge (70, down from 79 last check) -- normal ongoing cron activity. watchCount still 0 (already explained via CloudWatch two cycles ago -- gate-compounding behavior, not a bug). No native chains closed today, nothing new to grade-check. #4076 unchanged. main synced. Genuinely clean cycle, staying quiet.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window",
