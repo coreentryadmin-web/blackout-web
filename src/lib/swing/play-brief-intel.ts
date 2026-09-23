@@ -7,9 +7,12 @@ import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-mon
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
+  ageDaysLabel,
   ageSecondsLabel,
   confluenceZoneKindsLabel,
+  fundamentalsAgeMs,
   fundamentalsAncient,
+  fundamentalsFreshnessTag,
   gexMatrixAgeMs,
   gexMatrixStale,
   meridianCatalystAgeMs,
@@ -975,7 +978,19 @@ export function catalystsSection(
     const parts: string[] = [];
     if (f.days_to_cover != null) parts.push(`short DTC **${f.days_to_cover.toFixed(1)}d**`);
     if (f.short_volume_ratio != null) parts.push(`short vol ratio **${(f.short_volume_ratio * 100).toFixed(0)}%**`);
-    if (parts.length) lines.push(parts.join(" · "));
+    if (parts.length) {
+      // Mirrors the headlines block's staleLead just below (#4076 comment 5747893411's secondary
+      // point): short-interest is cadence-scaled to ~biweekly FINRA settlement, not the generic
+      // market-tick bucket, so only genuinely LAGGING reads (beyond FUNDAMENTALS_RECENT_CEILING_MS,
+      // still under the ancient omission ceiling above) get a disclosure — a normal few-days-old
+      // read renders with none, same as before.
+      const fundamentalsStale = fundamentalsFreshnessTag(f.as_of, readMs) === "stale";
+      const fundamentalsAgeLabel = fundamentalsStale ? ageDaysLabel(fundamentalsAgeMs(f.as_of, readMs)) : null;
+      const fundamentalsStaleLead = fundamentalsStale
+        ? `**Last settlement**${fundamentalsAgeLabel != null ? ` (~${fundamentalsAgeLabel} old)` : ""} — short-interest may lag the current cycle.\n\n`
+        : "";
+      lines.push(fundamentalsStaleLead + parts.join(" · "));
+    }
   }
 
   if (arsenal.news?.headlines?.length) {

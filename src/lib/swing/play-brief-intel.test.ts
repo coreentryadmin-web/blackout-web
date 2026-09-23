@@ -1575,6 +1575,69 @@ test("catalystsSection: ancient short-interest as_of is omitted, not presented a
   assert.equal(section, null);
 });
 
+test("catalystsSection: a genuinely lagging short-interest read carries a staleness disclosure (#4076 comment 5747893411's secondary point)", () => {
+  // Beyond FUNDAMENTALS_RECENT_CEILING_MS (15d) but well under FUNDAMENTALS_ANCIENT_CEILING_MS
+  // (60d) — the exact "lagging but not omitted" band the fundamentalsFreshnessTag fix carved out.
+  // Mirrors the headlines block's own staleLead test just below.
+  const laggingAsOf = new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 2.2, short_volume_ratio: 0.6, price_target: null, as_of: laggingAsOf },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Last settlement\*\*.*old.*short-interest may lag/s);
+});
+
+test("catalystsSection: a normal few-days-old short-interest read carries NO staleness disclosure", () => {
+  const recentAsOf = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 2.2, short_volume_ratio: 0.6, price_target: null, as_of: recentAsOf },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Last settlement/);
+});
+
 test("catalystsSection: headlines from a stale news read carry a staleness disclosure (Largo C2, 2026-09-18)", () => {
   // Live gap: `arsenal.news.as_of` (NewsResult.asOf, stamped once inside serverCache's cached
   // builder at true fetch time) can legitimately stay minutes stale under stale-while-revalidate
