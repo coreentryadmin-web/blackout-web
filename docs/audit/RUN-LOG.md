@@ -4,6 +4,16 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-23 (13:35 UTC / Wed 09:35 ET) — [SEO] Market-hours wake: gamma-snapshot live-data validation, clean
+
+Confirmed clock myself (09:35 ET, Wednesday, in-window). `/tools/gamma-snapshot`'s public API:
+`market_session: "OPEN"`, `degraded: false`, spot genuinely moving tick-to-tick
+(7754.49→7751.56→7751.42 across 3 polls), `calculation_id` advancing. Cross-checked against Massive
+`/v3/snapshot/indices` (7752.21) — 0.01% apart, normal tick drift.
+
+Live CLS: purged edge, desktop **0.0001, GOOD**; mobile **0.005, GOOD**. Both clean. No PR —
+nothing broken. Returning to normal search/authority work after 13:00 ET.
+
 ## 2026-09-23 (12:17 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (Wednesday pre-open)
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0003, GOOD**. `/api/og` —
