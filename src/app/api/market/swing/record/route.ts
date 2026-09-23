@@ -9,6 +9,8 @@ import {
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { buildSwingRecord, buildSwingRecordSummary, selectSwingRecordRootIds } from "@/lib/swing/record";
+import { fetchBangerOpenCount } from "@/lib/banger/positions-db";
+import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { closedDeckSourcesFromChains } from "@/lib/swing/closed-plays";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { roundFloats } from "@/lib/round-floats";
@@ -46,7 +48,22 @@ export async function GET(req: NextRequest) {
     const rootIds = selectSwingRecordRootIds(rows).slice(0, MAX_CHAINS);
     const chains = await Promise.all(rootIds.map((id) => fetchSwingPositionChain(id)));
     const records = chains.map((chain) => buildSwingRecord(chain));
-    const summary = buildSwingRecordSummary(records, { since, through, days });
+    const nativeSummary = buildSwingRecordSummary(records, { since, through, days });
+    // Engine B (Banger) open positions live in a separate table (banger_positions) and are
+    // structurally invisible to fetchSwingPositionsRange/fetchSwingPositionChain above — the
+    // same split already fixed for bookContextSection's live-book read (docs/audit/FINDINGS.md,
+    // "Ask Largo swing Book context... blind to 94% of the live open book"). Without this,
+    // `opens` (and the member-facing SwingAnalyticsPanel "Open" tile) undercounts the real open
+    // book by ~96% on a book dominated by banger-origin positions. Fail-soft: a banger DB hiccup
+    // falls back to 0 rather than failing the whole route, matching the existing per-source
+    // fail-soft discipline in play-brief-context.ts's loadOpenBook().
+    const bangerOpens = isBangerEngineEnabled() ? await fetchBangerOpenCount().catch(() => 0) : 0;
+    const summary = {
+      ...nativeSummary,
+      opens: nativeSummary.opens + bangerOpens,
+      nativeOpens: nativeSummary.opens,
+      bangerOpens,
+    };
     const closedDeck = closedDeckSourcesFromChains(chains);
     return NextResponse.json(
       roundFloats({
