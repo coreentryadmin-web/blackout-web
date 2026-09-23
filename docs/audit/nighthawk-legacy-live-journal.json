@@ -4322,6 +4322,11 @@
       "at": "2026-09-23T19:37:07Z",
       "summary": "VKTX crossed the 3-instance threshold a THIRD time today: 3 consecutive cycles (19:06, 19:21, 19:37 UTC), with a GREEN read in between each onset (14:52Z, 15:39Z, 18:22Z, 19:06Z were all GREEN) -- three independent onsets, not one continuous outage. All 3 tickers read AMBER simultaneously this cycle (same shape as 17:37Z); verified live via direct /legacy-marks retry rather than assuming: DRAM had already refreshed by check time (asof 19:37:20Z, stale=false -- the same polling-boundary artifact as the ALAB precedent), MUU asof 19:36:01Z and VKTX asof 19:34:56Z were genuinely 1-3 min old but with sane mark/bid/ask (mark within [bid,ask], no sign errors, no NaN) -- consistent with the already-established thin-liquidity quote-cadence explanation for both names, not a new defect. Applying the same VKTX/MUU/TWLO precedent (14:36:45Z, 18:07:09Z, 16:37:11Z entries) without re-investigating from scratch. Not escalating further -- the pattern of intermittent, self-resolving, multi-onset staleness on the two smaller-cap names (VKTX, MUU) alongside a consistently-clean DRAM is now well-established for this trading day and requires no code change.",
       "assessment": "CLEAN -- third onset of an already-resolved pattern, directly re-verified against live data this cycle. No action needed."
+    },
+    {
+      "at": "2026-09-23T19:51:41Z",
+      "summary": "MUU crossed the 3-instance threshold a second time today: 3 consecutive cycles (19:21, 19:37, 19:51 UTC). DRAM and VKTX both GREEN this cycle. Same already-established thin-liquidity precedent applies (16:37:11Z entry today, plus the shared 19:37:07Z multi-ticker entry) -- not re-investigating. Noting for the record per the standing \"3rd instance always gets an entry\" rule, but this is now a well-worn, fully-explained pattern for MUU/VKTX today; no new information, no action.",
+      "assessment": "CLEAN -- repeat of an already-resolved, already-journaled pattern. No action needed."
     }
   ],
   "knownOpenItems": {
