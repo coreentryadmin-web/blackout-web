@@ -136,6 +136,15 @@ export async function GET(req: NextRequest) {
     // override rather than re-discovering the bug field-by-field. `delta` is left at the 2dp
     // default deliberately — it is already served at native precision from `row.contract_delta`
     // pinned at commit (0.30-0.70 range), so 2dp does not destroy it the way gamma/theta/vega do.
+    //
+    // `troughPremium` ALSO needs the override — found live 2026-09-23 (BKKT SWING:BKKT:1310):
+    // `peakPremium`/`mid` were already 4dp-overridden but their sibling `troughPremium`
+    // (updateBangerLiveState's LEAST-latched low, banger-lane-merge.ts) fell through to the 2dp
+    // default, so a real trough tick of 0.328 rounded to 0.33 — ABOVE a mid/peak of 0.325 that
+    // stayed unrounded at 4dp. A trough is defined as the LEAST mark ever observed, so it must
+    // never read higher than the current mark; the mismatched precision made an honest, correct
+    // value look like a data-integrity bug. Same "every fractional-scale field in the family
+    // shares the override" principle the comment above already states for gamma/theta/vega/iv.
     return NextResponse.json(
       roundFloats(
         {
@@ -144,7 +153,7 @@ export async function GET(req: NextRequest) {
           session: payload?.session ?? null,
         },
         2,
-        { mid: 4, entryPremium: 4, peakPremium: 4, gamma: 4, theta: 4, vega: 4, iv: 4 }
+        { mid: 4, entryPremium: 4, peakPremium: 4, troughPremium: 4, gamma: 4, theta: 4, vega: 4, iv: 4 }
       ),
       {
         headers: NO_STORE_HEADERS,
