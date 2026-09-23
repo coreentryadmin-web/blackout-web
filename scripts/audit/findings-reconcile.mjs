@@ -108,6 +108,22 @@ const HEADING_NOT_AN_OUTCOME =
   /\b(?:NOT|never|un)\s*(?:FIXED|RESOLVED|SHIPPED|MERGED)\b|\b(?:HOLD|pending|draft|partially|partial)\b/i;
 
 /**
+ * A status claiming FIXED/RESOLVED/SHIPPED but negated ("NOT FIXED", "never resolved") must never
+ * count as resolved in the summary tally below — the same negation-blindness class
+ * HEADING_NOT_AN_OUTCOME already guards against, but only for heading-derived statuses. The final
+ * "resolved" count (the `fixed` filter) re-tests `r.status` with a bare substring match regardless
+ * of which of the three extraction paths (table row / heading / prose) produced it, so a table-row
+ * or prose status like "SHADOW-LOGGED, NOT FIXED" or "Flagged, not fixed" slipped through uncaught.
+ * Found 2026-09-23 folding a shadow-log entry whose own status explicitly says NOT FIXED yet was
+ * tallied as resolved. Deliberately narrower than HEADING_NOT_AN_OUTCOME (no HOLD/pending/draft/
+ * partial): those describe a heading's own outcome-in-progress, but inside a longer status PROSE
+ * string they can legitimately co-occur with an unrelated, genuinely-resolved primary claim (e.g.
+ * "FIXED — ...; a separate, larger backlog item flagged not fixed") — only a direct negation of the
+ * outcome word itself is unambiguous enough to exclude here.
+ */
+const OUTCOME_NEGATED = /\b(?:NOT|never|un)\s*(?:FIXED|RESOLVED|SHIPPED|MERGED)\b/i;
+
+/**
  * A prose status line: `**Status.** FIXED on \`cursor/rth-stale-cron-4002\`.`
  *
  * The THIRD place this file records an outcome, after the `| **Status** |` table row and the
@@ -176,7 +192,9 @@ const rows = blocks.map((b) => {
 const findings = rows.filter((r) => r.kind === "FINDING");
 const noStatus = findings.filter((r) => r.status == null);
 const staleStatus = findings.filter((r) => r.stale);
-const fixed = findings.filter((r) => r.status && /FIXED|RESOLVED|SHIPPED/i.test(r.status) && !r.stale);
+const fixed = findings.filter(
+  (r) => r.status && /FIXED|RESOLVED|SHIPPED/i.test(r.status) && !OUTCOME_NEGATED.test(r.status) && !r.stale
+);
 
 console.log("=== classification ===");
 for (const [k, v] of Object.entries(counts).sort((a, b) => b[1] - a[1])) console.log(`  ${String(v).padStart(4)}  ${k}`);

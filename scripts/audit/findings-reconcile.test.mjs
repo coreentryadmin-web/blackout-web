@@ -90,6 +90,74 @@ Some real root-cause prose with no Status row at all.
   assert.match(out, /> \*\*kind:\*\* `FINDING`\n> \*\*status:\*\* `UNRECONCILED`/);
 });
 
+/**
+ * Regression coverage for the "resolved" summary count miscounting a NEGATED outcome claim as
+ * resolved (found 2026-09-23): the bare `/FIXED|RESOLVED|SHIPPED/i` substring test used for the
+ * printed "resolved" tally matched "SHADOW-LOGGED, NOT FIXED" and "Flagged, not fixed" — both
+ * explicitly NOT resolved — because it never excluded a directly-negated outcome word the way
+ * HEADING_NOT_AN_OUTCOME already does for heading-derived statuses. Captures stdout (the printed
+ * classification summary), not FINDINGS.md content — this bug never touched the file itself, only
+ * the diagnostic counts `--apply` prints.
+ */
+function runReconcileCapturingStdout(findingsBody) {
+  const dir = mkdtempSync(join(tmpdir(), "findings-reconcile-unit-"));
+  const f = join(dir, "FINDINGS.md");
+  const r = join(dir, "RUN-LOG.md");
+  writeFileSync(f, findingsBody);
+  const env = { ...process.env, FINDINGS_RECONCILE_FINDINGS: f, FINDINGS_RECONCILE_RUNLOG: r };
+  const stdout = execFileSync("node", ["scripts/audit/findings-reconcile.mjs", "--apply"], { env, encoding: "utf8" });
+  rmSync(dir, { recursive: true, force: true });
+  return stdout;
+}
+
+test("a table-row status explicitly saying NOT FIXED is never counted in the 'resolved' tally", () => {
+  const body = `## How to read this file
+
+Legend.
+
+## A shadow-logged fix, deliberately not shipped live
+
+> **kind:** \`FINDING\`
+
+| **Status** | SHADOW-LOGGED, NOT FIXED |
+|---|---|
+`;
+  const stdout = runReconcileCapturingStdout(body);
+  assert.match(stdout, /^\s*0\s+resolved \(FIXED\/RESOLVED\/SHIPPED\)/m);
+});
+
+test("a prose status saying 'not fixed' is never counted in the 'resolved' tally, even mid-sentence", () => {
+  const body = `## How to read this file
+
+Legend.
+
+## Shared cron infrastructure needs a real design decision
+
+> **kind:** \`FINDING\`
+
+| **Status** | Flagged, not fixed — shared cron infrastructure, real design decision needed. |
+|---|---|
+`;
+  const stdout = runReconcileCapturingStdout(body);
+  assert.match(stdout, /^\s*0\s+resolved \(FIXED\/RESOLVED\/SHIPPED\)/m);
+});
+
+test("a genuinely resolved status is still counted, unaffected by the negation guard", () => {
+  const body = `## How to read this file
+
+Legend.
+
+## A play generator regressed after the last deploy
+
+> **kind:** \`FINDING\`
+
+| **Status** | FIXED (abc1234) |
+|---|---|
+`;
+  const stdout = runReconcileCapturingStdout(body);
+  assert.match(stdout, /^\s*1\s+resolved \(FIXED\/RESOLVED\/SHIPPED\)/m);
+});
+
 test("running --apply twice on the same already-reconciled-with-a-gap output is a fixed point", () => {
   const body = `## How to read this file
 
