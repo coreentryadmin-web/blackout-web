@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T16:19:00Z",
-  "notes": ":16-offset cycle. PR #5474 MERGED (cce023364, 16:11:18Z -- same mirror-failure merge-ahead-of-tracking pattern as #5468/#5470, content verified correct via commit hash match). Will spot-check the 6 named tickers (BKKT/REPL/SLS/DKS/MRNA/ARKG) once deployed, lower priority than the earlier financial-correctness fixes since this is display-precision only. committedCount 82, watchCount still 0 ~15min into MIDDAY phase -- not yet conclusive either way (MIDDAY may legitimately be a narrower/lighter scan than POST_CLOSE some days), watching without flagging. #4076 unchanged. main synced.",
+  "last_updated": "2026-09-23T16:34:00Z",
+  "notes": ":31-offset cycle. Resolved the watchCount:0 question definitively via CloudWatch: swing-discovery cron IS firing normally this MIDDAY window (multiple ticks in the last hour, one transient TimeoutError followed by clean runs) and finding real candidates (tier0 pool 194-199, tier1 88-90 post-dynamic-cap) -- but consistently logs 'commit gate: 0 graduated-eligible / 0 opened / 4 shadow-eligible / 4 shadowed'. This matches the ALREADY-DOCUMENTED swing-gate-compound-funnel finding (INTENTIONAL-DESIGN.md item #8: G-S3+G-S4+G-S6 compounding gates historically cleared 0/80 jointly) -- zero graduated candidates on a given scan is expected, known gate behavior, not a new bug. watchCount:0 is fully explained. PR #5474's finding folded to FINDINGS.md (#5475). ECS mid-rollout on :1783 (5/6) for the troughPremium fix -- will spot-check the 6 named tickers once converged. #4076 unchanged. main synced.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window",
