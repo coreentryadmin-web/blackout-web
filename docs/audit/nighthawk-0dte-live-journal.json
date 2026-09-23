@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-22T20:10:00Z",
+  "updated_at": "2026-09-23T14:11:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -205,6 +205,14 @@
         "Continue MU/MRNA gex-walls oppose watch (2/3) and vex-charm oppose watch (1/3)",
         "Watch for a 2nd instance of peak-round-trip-below-arm-threshold (SPXW pattern) before considering it worth investigating"
       ]
+    },
+    "2026-09-23T14:11:00Z": {
+      "stage": "research_finding",
+      "action": "UPSIDE-HUNT FINDING (substantial, next natural step after #5382 arm-tier fix): positions whose peak never exceeds the current +15% ratchet arm threshold get ZERO floor protection today, and 90-day data shows this gives back real gains at scale.",
+      "evidence": "90-day /record pull, population = every play with peak_pnl_pct in [3%,15%) (n=83): current actual mean close -9.92%. Counterfactual (same monotonic-decline-from-peak assumption used throughout this toolkit, floor=peak*fraction once peak crosses a lower arm threshold): thresh=3%/frac=0.4 -> cf_mean +4.10% (58/83 win, delta +14.02pp); thresh=5%/frac=0.4 -> n=67, cf_mean +4.56% (46/67 win, delta +15.85pp); thresh=8%/frac=0.4 -> n=38, cf_mean +5.26% (29/38 win, delta +21.03pp). Consistent, large improvement across every threshold(3/5/8%) x fraction(0.3/0.4/0.5) combination tested -- not a cherry-picked parameter.",
+      "why_the_analysis_is_sound": "peak_pnl_pct is BY CONSTRUCTION each trades all-time maximum, so filtering to peak<15% means these real trades definitively never exceeded 15% at any point in their actual life -- a lower floor tier could never have capped a bigger real win that already happened, since none of these trades had one. The existing ratchet mechanism (proven in production) only exits on a PULLBACK from peak, never caps upside while price keeps climbing -- so this is not a hypothetical risk of truncating future winners, it is a mechanical property of how ratchet floors already work.",
+      "why_holding_not_shipping": "This is a NEW THRESHOLD (when a floor first arms), not a VALUE change within existing thresholds like #5382 shipped (#5382s own fix rationale explicitly drew this exact distinction and deliberately stayed a value change). A new lower arm tier is more architecturally significant -- introducing a floor as low as 3-8% needs to be checked against interaction with flat_theta_bleed (7 of the 37 negative-close giveback candidates exit via that 25-min-timeout mechanism, not a floor breach -- need to confirm a new low floor and the timeout dont fight each other) and against whether real bid/ask noise near a low premium could cause spurious floor breaches on otherwise-fine trades. Per the ambiguous/live-trading-path escalation policy, reporting with full evidence and holding rather than shipping this cycle.",
+      "next_step_scoped": "Before drafting a fix: (1) check flat_theta_bleed interaction specifically, (2) decide the right threshold/fraction from evidence (5%/0.4 looks like a reasonable middle ground -- n=67, +15.85pp, matches the precedent 0.4 fraction already used at the other two tiers), (3) build the same rigor staged-finding + RED-GREEN test + PR as #5382 once the interaction question is answered."
     }
   },
   "sessions": {
