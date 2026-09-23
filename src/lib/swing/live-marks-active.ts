@@ -129,7 +129,7 @@ export async function fetchActiveSwingPlaysForMarks(): Promise<ActiveZeroDtePlay
   }
   if (isBangerEngineEnabled()) {
     try {
-      const bangers = await fetchBangerOpenBookRows(80);
+      const bangers = await fetchBangerOpenBookRows();
       for (const row of bangers) {
         const p = bangerRowToActivePlay(row, today);
         if (p) out.push(p);

@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     // was dropping. Fetching open and closed as two separately-limited queries means the closed
     // backlog can never crowd a real open position out of the board.
     const [open, closed] = await Promise.all([
-      fetchBangerOpenBookRows(80),
+      fetchBangerOpenBookRows(),
       fetchBangerClosedBoardRows(60),
     ]);
     return NextResponse.json(

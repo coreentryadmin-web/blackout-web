@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
       fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       fetchBangerPositions: isBangerEngineEnabled()
-        ? () => fetchBangerOpenBookRows(80).catch(() => [])
+        ? () => fetchBangerOpenBookRows().catch(() => [])
         : undefined,
       vectorLeaders,
       bangerWatchPlays: bangerWatchSnap?.plays ?? [],
