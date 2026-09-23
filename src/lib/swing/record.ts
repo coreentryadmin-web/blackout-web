@@ -229,7 +229,27 @@ export type SwingRecordSummary = {
    * (a negative min would report the real loss, not 0), so this is a precise, not approximate, count.
    */
   breakevens: number;
+  /**
+   * `opens` counts committed, still-live positions and is ADDITIVE across both live-trading
+   * engines this lane displays (Largo Product Contract: wrap, don't flatten). `buildSwingRecordSummary`
+   * itself only ever sees `swing_positions` chains, so it can only ever populate the native half
+   * (`nativeOpens`); the route layer (`@/app/api/market/swing/record/route.ts`) adds the Engine B
+   * (Banger) open count on top via `fetchBangerOpenCount()` — the same accessor
+   * `bookContextSection`'s live-book read already uses for this exact banger/swing split
+   * (`docs/audit/FINDINGS.md`, "Ask Largo swing Book context... blind to 94% of the live open
+   * book"). Without this, `opens` (and this panel's member-facing "Open" tile) undercounts by
+   * ~96% on a live book dominated by banger-origin positions — confirmed live 2026-09-23: 3
+   * native swing_positions opens vs 82 real committed positions on the board.
+   */
   opens: number;
+  /** Native `swing_positions`-only open count — exactly what `buildSwingRecordSummary` computes,
+   *  before the route layer adds banger opens into `opens` above. Kept for transparency per the
+   *  Largo Product Contract's additive principle. */
+  nativeOpens: number;
+  /** Engine B (Banger) open position count folded into `opens` above. 0 when the banger engine is
+   *  disabled (`BANGER_ENGINE_ENABLED=0`) or when `buildSwingRecordSummary` is called directly
+   *  (unit tests) rather than through the route. */
+  bangerOpens: number;
   win_rate_pct: number | null;
   avg_compounded_return_pct: number | null;
   low_n: boolean;
@@ -302,6 +322,8 @@ export function buildSwingRecordSummary(
     losses,
     breakevens,
     opens,
+    nativeOpens: opens,
+    bangerOpens: 0,
     win_rate_pct: decided > 0 ? Math.round((wins / decided) * 1000) / 10 : null,
     avg_compounded_return_pct: avgCompounded,
     low_n: decided < LOW_N_THRESHOLD,
