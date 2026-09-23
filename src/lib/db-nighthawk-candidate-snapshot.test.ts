@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { mapNighthawkCandidateSnapshotRow } from "./db";
+import { mapNighthawkCandidateSnapshotRow, mapNighthawkCandidateCoverageRow } from "./db";
 
 // nighthawk_candidate_snapshot (Night Hawk Legacy Signal Intelligence, Phase 1 foundation) is
 // schema-only and Postgres is NOT exercised in CI (same constraint as db.test.ts /
@@ -143,6 +143,70 @@ test("mapNighthawkCandidateSnapshotRow: snapshot_json defaults to {} rather than
     snapshot_json: null as unknown as Record<string, unknown>,
   });
   assert.deepEqual(row.snapshot_json, {});
+});
+
+// ─── mapNighthawkCandidateCoverageRow (Phase 3 coverage-by-stage aggregate) ────────────────
+
+test("mapNighthawkCandidateCoverageRow: counts arrive as Postgres bigint/int and become real numbers", () => {
+  const row = mapNighthawkCandidateCoverageRow({
+    stage: "rank_final",
+    rejection_reason: null,
+    n: "12",
+    n_graded: "9",
+    n_editions: "2",
+    first_edition: "2026-09-21",
+    last_edition: "2026-09-22",
+  });
+  assert.equal(row.n, 12);
+  assert.equal(typeof row.n, "number");
+  assert.equal(row.n_graded, 9);
+  assert.equal(row.n_editions, 2);
+  assert.equal(row.first_edition, "2026-09-21");
+  assert.equal(row.last_edition, "2026-09-22");
+});
+
+test("mapNighthawkCandidateCoverageRow: null rejection_reason and null date bounds stay null, never coerced", () => {
+  const row = mapNighthawkCandidateCoverageRow({
+    stage: "discovery",
+    rejection_reason: null,
+    n: "0",
+    n_graded: "0",
+    n_editions: "0",
+    first_edition: null,
+    last_edition: null,
+  });
+  assert.equal(row.rejection_reason, null);
+  assert.equal(row.first_edition, null);
+  assert.equal(row.last_edition, null);
+});
+
+test("mapNighthawkCandidateCoverageRow: rejection_reason read verbatim when present", () => {
+  const row = mapNighthawkCandidateCoverageRow({
+    stage: "geometry",
+    rejection_reason: "geometry",
+    n: "5",
+    n_graded: "5",
+    n_editions: "1",
+    first_edition: "2026-09-22",
+    last_edition: "2026-09-22",
+  });
+  assert.equal(row.stage, "geometry");
+  assert.equal(row.rejection_reason, "geometry");
+});
+
+test("fetchNighthawkCandidateSnapshotCoverage: date range is parameterized, aggregated by (stage, rejection_reason), never string-concatenated", () => {
+  const src = readDbSource();
+  const start = src.indexOf("export async function fetchNighthawkCandidateSnapshotCoverage(");
+  const end = src.indexOf("\n}\n", start);
+  const body = src.slice(start, end);
+
+  assert.match(body, /edition_for >= \$1::date AND edition_for <= \$2::date/);
+  assert.match(body, /\[startDate, endDate\]/);
+  assert.match(body, /GROUP BY stage, rejection_reason/);
+  // COUNT(forward_returns) relies on the column being NULL until graded -- COUNT skips NULLs,
+  // so this is a genuine graded-row count, not a total-row count under a different name.
+  assert.match(body, /COUNT\(forward_returns\)::int AS n_graded/);
+  assert.match(body, /COUNT\(DISTINCT edition_for\)::int AS n_editions/);
 });
 
 // ─── Source-inspection: table shape + parameterization ─────────────────────────────────────

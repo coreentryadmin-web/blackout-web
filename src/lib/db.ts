@@ -10808,6 +10808,70 @@ export async function fetchNighthawkCandidateSnapshotsMissingForwardGrade(
   }));
 }
 
+/** One (stage, rejection_reason) bucket of the coverage aggregate below. `stage` is free-text
+ *  (no CHECK constraint on the column, see the table's own migration comment) and
+ *  `rejection_reason` is only ever non-null for rejection-shaped rows -- both are reported
+ *  exactly as stored, never coerced into a fixed enum the write side doesn't actually promise. */
+export type NighthawkCandidateCoverageRow = {
+  stage: string;
+  rejection_reason: string | null;
+  n: number;
+  n_graded: number;
+  n_editions: number;
+  first_edition: string | null;
+  last_edition: string | null;
+};
+
+/**
+ * Phase 3 (2026-09-23, operator directive: "determine how we can automatically accumulate a
+ * larger, trustworthy dataset of completed trade outcomes"): the coverage-by-stage read that
+ * turned out to be genuinely missing when a Phase 3 evidence survey checked for one -- every
+ * existing candidate_snapshot reader (rank-bucket-analysis.ts, candidate-leaderboard.ts,
+ * score-signal-analysis.ts) answers a narrower question over a fixed stage subset; none report
+ * how many rows exist and how many are forward-graded, broken out by EVERY real stage/reason the
+ * table actually holds. A GROUP BY aggregate in Postgres, rather than fetching every row and
+ * counting in JS, both scales better as the table grows and sidesteps having to maintain a
+ * hand-enumerated list of "every stage the write side might use" in application code (the stage
+ * column is intentionally unconstrained free-text -- see the table's own migration comment -- so
+ * a JS-side allowlist would silently under-report the moment a new stage tag ships).
+ */
+export async function fetchNighthawkCandidateSnapshotCoverage(
+  startDate: string,
+  endDate: string
+): Promise<NighthawkCandidateCoverageRow[]> {
+  await ensureSchema();
+  const res = await dbQuery(
+    `
+    SELECT stage, rejection_reason,
+           COUNT(*)::int AS n,
+           COUNT(forward_returns)::int AS n_graded,
+           COUNT(DISTINCT edition_for)::int AS n_editions,
+           MIN(edition_for) AS first_edition,
+           MAX(edition_for) AS last_edition
+    FROM nighthawk_candidate_snapshot
+    WHERE edition_for >= $1::date AND edition_for <= $2::date
+    GROUP BY stage, rejection_reason
+    ORDER BY stage ASC, rejection_reason ASC NULLS FIRST
+    `,
+    [startDate, endDate]
+  );
+  return res.rows.map(mapNighthawkCandidateCoverageRow);
+}
+
+/** Pure row mapper for the coverage aggregate -- separated from the query for the same
+ *  raw-PG-is-blocked-here unit-testing reason every other mapper in this file is. */
+export function mapNighthawkCandidateCoverageRow(r: Record<string, unknown>): NighthawkCandidateCoverageRow {
+  return {
+    stage: String(r.stage),
+    rejection_reason: r.rejection_reason != null ? String(r.rejection_reason) : null,
+    n: Number(r.n),
+    n_graded: Number(r.n_graded),
+    n_editions: Number(r.n_editions),
+    first_edition: r.first_edition != null ? isoDateString(r.first_edition) : null,
+    last_edition: r.last_edition != null ? isoDateString(r.last_edition) : null,
+  };
+}
+
 /**
  * Phase 1.8: pin one candidate_snapshot row's forward-return grade, FIRST-WRITE-WINS (same
  * COALESCE + WHERE-IS-NULL discipline as pinNighthawkScaleOutGrade) -- the grade is frozen once
