@@ -4282,6 +4282,11 @@
       "at": "2026-09-23T12:08:00Z",
       "summary": "MINOR: B_marks AMBER evidence text changed this cycle, same 3 tickers still AMBER (DRAM/MUU/VKTX), but reason detail flipped from every prior cycle since 05:36Z's \"mark flagged stale by the API\" to \"no live two-sided quote (bid=0, ask=0) -- mark sourced from last trade/close\". Overall verdict unchanged (AMBER), not escalating -- this reads as the expected pre-market state as RTH open (13:30 UTC) approaches (~80min out), not a new defect. Noting for continuity in case the bid=0/ask=0 condition persists past open, which WOULD be worth investigating (a real two-sided quote should populate once market makers are active).",
       "assessment": "CLEAN, informational only. Watching for whether marks flip GREEN at RTH open as expected."
+    },
+    {
+      "at": "2026-09-23T13:22:30Z",
+      "summary": "TRANSITION: D_pull_status flipped SKIPPED -> GREEN at 13:22 UTC (9:22am ET, ~8min post 9:15am ET morning-confirmation cron window) -- the 9:15am ET morning-confirmation cron has now run for 2026-09-23 and all 3 today's plays (DRAM/MUU/VKTX) show CONFIRMED <-> pulled=false agreement. Matches the same-shape transition seen on prior trading days this week (2026-09-22 13:21:41Z). B_marks still AMBER (all 3 same bid=0/ask=0 -- no live two-sided quote yet), expected to flip once RTH opens at 13:30 UTC and live quotes populate -- watching next cycle.",
+      "assessment": "CLEAN, expected daily transition. Watching for B_marks GREEN flip at/after RTH open."
     }
   ],
   "knownOpenItems": {
