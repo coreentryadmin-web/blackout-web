@@ -4,6 +4,169 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Authenticated live-UI captures via `proxy-browser.cjs` are broken — a `__session` cookie makes every navigation fail with `ERR_CERT_AUTHORITY_INVALID` — WRITE-UP, NOT FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Audit tooling infrastructure — `scripts/audit/lib/proxy-tunnel-context.cjs` (`applyCookieToContext`), used by `proxy-browser.cjs` and 100+ audit scripts that import `mintClerkPremiumSession` for authenticated live-UI validation |
+| **Severity** | P2 — tooling-only, no member-facing impact, but it silently breaks every authenticated live-UI screenshot/interaction audit this repo's own culture leans on heavily (e.g. `meridian-earnings-ui-audit.mjs`, `helix-interaction-audit.mjs`, `vector-ui-comprehensive-audit.mjs`, dozens more) |
+| **Status** | WRITE-UP, NOT FIXED — root cause narrowed precisely, but the actual fix requires a judgment call (see "Why write-up, not direct fix") |
+| **Found via** | DISCOVERY-lane live-UI sweep, attempting an authenticated desk-page screenshot for the first time this session |
+
+### Symptom
+
+`node proxy-browser.cjs <url> out.png --cookie "$CK"` — where `$CK` is a real, valid `__session`
+cookie minted via `mintClerkPremiumSession()` — fails on the **very first navigation** with:
+
+```
+nav: page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://blackouttrades.com/
+Routed: 1 ok, 0 fail
+```
+
+The same exact command, same URL, same tunnel, with the `--cookie` flag omitted (or any cookie
+whose name is not `__session`) works cleanly (`Routed: 54 ok, 0 fail`, correct render).
+
+### Root cause narrowed by elimination (all reproduced live today)
+
+1. Homepage, no cookie → **works** (54/54 routed).
+2. Homepage, `--cookie "foo=bar"` (trivial, short, non-`__session`) → **works** (54/54 routed).
+3. Homepage, `--cookie "foo=<900-char string>"` (long value, non-`__session` name) → **works**.
+4. Homepage, `--cookie "__session=short"` (short value, real cookie **name**) → **fails**, identical
+   `ERR_CERT_AUTHORITY_INVALID`.
+5. Homepage, `--cookie "__session=<900 A's>"` (fake value, real name) → **fails**, identical.
+6. Homepage, the real minted Clerk `__session` JWT → **fails**, identical.
+7. `/nighthawk` (an authenticated desk route) with the real cookie → **fails**, identical.
+
+This isolates the trigger precisely: **length and content of the cookie value are irrelevant — the
+cookie *name* being `__session` is what breaks navigation**, because `applyCookieToContext`
+(`proxy-tunnel-context.cjs`) sets `httpOnly: true` specifically and only for a cookie named
+`__session`:
+
+```js
+httpOnly: name === "__session",
+```
+
+`ctx.addCookies()` with `httpOnly: true` appears to make Chromium attempt the main-frame navigation
+through its own real network stack instead of routing through the `ctx.route("**/*")` interceptor
+that this whole tunnel architecture depends on (`docs/audit/LIVE-UI-CONNECTION.md`: "Chromium
+in this sandbox cannot reach the network at all... direct, proxy:{server}, and --proxy-server all
+fail identically with ERR_CONNECTION_RESET" — a genuine direct-network attempt from this sandbox is
+exactly what `ERR_CERT_AUTHORITY_INVALID` looks like when something intercepts/terminates TLS with
+an untrusted cert instead of resetting the connection outright).
+
+### Ruled out: stale `node_modules`
+
+`package-lock.json` pins `playwright-core` at `1.63.0`; this container's `node_modules` had a stale
+`1.62.1` (last `npm ci` predates a dependency bump). Ran `npm ci` to correct this — **the bug
+reproduced identically after the fix**, with the exact pinned Chromium build
+(`/opt/pw-browsers/chromium-1194`, unchanged throughout). This is not an artifact of this
+container's dependency drift.
+
+### Strong correlation: the Playwright dependency bump that likely introduced this
+
+`docs/audit/FINDINGS.md`'s own history shows the last **confirmed-successful** authenticated
+`proxy-browser.cjs` capture (`mintClerkPremiumSession` + real `__session` cookie + live screenshot)
+was **2026-08-02** (the Helix Tier 1 visual-hierarchy finding). `package.json`'s `playwright` was
+bumped `^1.62.1` → `^1.63.0` in **PR #4817** ("Bump the minor-and-patch group... 13 updates"),
+merged **2026-09-12** — 11 days before this finding, and squarely between the last known-good
+capture and today. No other `playwright`/`playwright-core` version changes landed in that window
+(`git log -S -- package.json` shows exactly these two version strings in the whole range). This is
+circumstantial, not proven (nobody ran this exact authenticated-capture path in the 6 intervening
+weeks to bisect it precisely), but it is the single most likely candidate: a `playwright-core`
+1.62.1 → 1.63.0 change in how `context.addCookies({ httpOnly: true })` interacts with
+context-level `route()` interception for the cookie-bearing navigation.
+
+### Why write-up, not direct fix
+
+- The actual fix requires deciding **how** to keep `__session` httpOnly (a deliberate security
+  property, not incidental — production's own Clerk cookie is httpOnly, and a past finding
+  (`docs/audit/FINDINGS.md`, "Two harness bugs fixed before they became false findings") already
+  documents that making `__session` **non**-httpOnly-by-accident previously caused a *different*,
+  worse false positive elsewhere. Reflexively dropping `httpOnly: true` to work around today's bug
+  risks reintroducing that exact regression.
+- Plausible fix directions, none obviously correct without more investigation: (a) pin
+  `playwright`/`playwright-core` back to `1.62.1` in `package.json` + regenerate the lockfile
+  (blast radius: affects every consumer of the `playwright` package, not just audit tooling —
+  needs checking against `desktop-ui-e2e.yml`/other CI Playwright consumers first); (b) find a
+  different Playwright API/sequencing that achieves the same httpOnly-from-JS-but-visible-to-the-
+  tunnel effect (e.g. setting the cookie via a CDP `Network.setExtraHTTPHeaders`-style header
+  injection instead of `addCookies`, or applying the cookie via `route.continue({ headers })` on
+  the request itself rather than the browser's own cookie jar); (c) file/search for an upstream
+  Playwright issue and wait for a fix release, re-pinning once confirmed. Each is a real design
+  decision with its own risk, not a one-line patch — exactly the "write up, don't unilaterally
+  build" case per this repo's standing policy.
+- Blast radius is broad (100+ scripts import `mintClerkPremiumSession`) but ALL authenticated-HTTP
+  (non-browser) uses are unaffected — this bug is specific to the browser/CDP cookie path, not the
+  Clerk session-minting itself. Scripts that only fetch JSON via `authorizeCronOrTierApi` +
+  `mintClerkPremiumSession`'s `cookieHeader` in a plain HTTP header (not through
+  `proxy-browser.cjs`/`createTunneledContext`'s browser cookie jar) are unaffected — confirmed by
+  reading `applyCookieToContext`'s call site: it only runs inside `createTunneledContext`, which
+  only browser-driving scripts use.
+
+### Evidence
+
+- 7 isolation runs above, each showing `Routed: N ok, 0 fail` and the exact failing/passing
+  command.
+- `node -e "console.log(require('./node_modules/playwright-core/package.json').version)"` — before
+  `npm ci`: `1.62.1`; after: `1.63.0` (matches `package-lock.json`'s pin). Bug reproduced
+  identically both before and after.
+- `git log --oneline -S'"playwright": "^1.63.0"' -- package.json` → `947dfea24` ("Bump the
+  minor-and-patch group across 1 directory with 13 updates (#4817)"), dated 2026-09-12.
+- `docs/audit/FINDINGS.md` grep for `mintClerkPremiumSession`/`proxy-browser.cjs` authenticated
+  captures — last confirmed success dated 2026-08-02.
+- Temp Clerk user (`user_3Jj6gpXys7x2ixPrUP6MylBAjrU`) minted for this investigation deleted via
+  `deleteAuditClerkUser` in a cleanup step, not left leaked.
+
+### Suggested next steps
+
+1. Whoever picks this up: try reproducing on a FRESH container (this session's own container has
+   been running many hours; rule out anything session-specific before trusting the Playwright-bump
+   correlation as causal).
+2. If reproduced fresh: try pinning `playwright`/`playwright-core` back to `1.62.1` in an isolated
+   branch and re-run the exact 7-step isolation above to confirm/deny the correlation directly.
+3. If confirmed, decide the fix direction (revert-pin vs. alternate cookie-injection technique vs.
+   wait-for-upstream) — a genuine design call, not something to pick unilaterally here.
+4. Until fixed, any live-UI audit that needs an AUTHENTICATED capture should note this limitation
+   explicitly rather than silently reporting a signed-out/broken page as a product defect — the
+   exact "harness failure read as a product fault" trap this repo's own `docs/audit/
+   LIVE-UI-CONNECTION.md` and `FINDINGS.md` warn about repeatedly for unrelated reasons.
+
 ## `fetchBangerOpenBookRows`'s hardcoded `limit=80` silently truncated the real open banger book across 5 consumers — FIXED
 
 > **kind:** `FINDING`
@@ -259,40 +422,6 @@ reads as a broader (and false) one.
 Comment-only fix, no code change needed or warranted — the actual gating logic is correct and
 already tested (`commit.test.ts`'s "an ARMED budget..." tests already cover Gate 1's real behavior).
 `tsc --noEmit` clean; `swing-allocation.test.ts` + `commit.test.ts` (54 tests) pass unchanged.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Short-interest narrative block had no staleness disclosure for a genuinely lagging read
 
