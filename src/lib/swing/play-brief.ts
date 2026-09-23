@@ -983,6 +983,20 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   return out;
 }
 
+// SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION (Ask Largo standing mandate, aggressive-improvement-
+// hunting pass, 2026-09-23): before this, every OPEN play got the identical five followups
+// regardless of state — a position sitting right on its stop and a winner already trimming got
+// the same generic chips. Live spot-check that day: SKHY at -48.4% (HOLD, thesis intact) and
+// RBRK at +124.4% (TAKE_PARTIAL, ladder already firing) both rendered byte-identical followups[].
+// The manage-engine verdict (`play.manageAction`) is already computed and already rendered in the
+// brief's own Management section, so surfacing it here as a targeted suggestion chip is a read
+// of data the brief already has, not a new dependency.
+const SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION: Partial<Record<NonNullable<TerminalPlay["manageAction"]>, string>> = {
+  TAKE_PARTIAL: "Should I trim more?",
+  EXIT_RUNNER: "Why exit the runner now?",
+  STOP_OUT: "Why is this at its stop?",
+};
+
 function followupsFor(play: TerminalPlay): string[] {
   const t = play.ticker;
   const bucket = statusBucket(play);
@@ -994,6 +1008,10 @@ function followupsFor(play: TerminalPlay): string[] {
   if (bucket === "open") base.unshift(`What changed on ${t} since entry?`);
   if (bucket === "watch") base.unshift(`When does ${t} entry trigger?`);
   if (bucket === "closed") base.unshift(`What did we learn from ${t}?`);
+  if (bucket === "open" && play.manageAction) {
+    const situational = SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION[play.manageAction];
+    if (situational) base.push(`${situational} (${t})`);
+  }
   base.push(`Open full Largo for ${t}`);
   return base;
 }
