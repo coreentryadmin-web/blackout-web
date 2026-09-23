@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-23T16:45:00Z",
+  "updated_at": "2026-09-23T17:43:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -244,6 +244,11 @@
       "stage": "mid_session_summary",
       "action": "Board unchanged since 16:43Z. Mid-session tally: 9 committed today, 7 closed (QQQ -49.73%, SPXW -50%, RGTI -6.06%, MCD +100.89% WIN at plan target, SPY +4.31% WIN floor-protected, CRML flat_theta_bleed scratch, TSLA thesis_break scratch), 2 open (QBTS +25% holding with floor 13.57 tracking peak 33.93 correctly, BYND -5.88%). MCD floor correctly shows flat 50% post-trim (runner-floor rule dominates once trimmed, independent of peak -- verified not a bug). All floor values across QBTS/MCD/SPY continue to exactly match round2(peak*0.4) at every check this session -- PR #5472 fix confirmed solid under real, varied conditions (multiple tickers, multiple peak ranges, TRIM transition).",
       "next": "continue routine monitoring"
+    },
+    "2026-09-23T17:43:00Z": {
+      "stage": "infra",
+      "action": "1st board upstream_ok:false instance today (2026-09-23). /record confirmed healthy. Same self-healing pattern as yesterday (3 instances that day, already escalated 2026-09-22 for ops CloudWatch follow-up). This is a fresh day, 1st instance -- not yet re-escalating, watching for recurrence.",
+      "next": "confirm recovery next cycle"
     }
   },
   "sessions": {
