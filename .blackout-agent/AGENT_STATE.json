@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-23T08:39:33.025Z",
+  "updated_at": "2026-09-23T08:47:37.561Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "45508591cf2ce689127e609044a7bfd743412405",
+    "last_main_sha": "8e8384ea1d8e9352f32098c32c7739327ff4227e",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-21T03:37:09.646Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-21T03:37:09.898Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-21T04:07:10.680Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-21T04:07:11.279Z",
       "type": "context_sync",
@@ -1255,19 +1237,37 @@
       "open_pr_count": 4
     },
     {
-      "at": "2026-09-23T08:39:30.866Z",
+      "at": "2026-09-23T08:47:20.775Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-23T08:47:22.131Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-23T08:39:32.185Z",
+      "at": "2026-09-23T08:47:22.755Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-23T08:39:33.025Z",
+      "at": "2026-09-23T08:47:35.209Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-23T08:47:36.621Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-23T08:47:37.561Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
