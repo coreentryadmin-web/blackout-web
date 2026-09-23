@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T07:32:06Z",
-  "notes": "15-min-cadence trigger (:31 offset). PR #5461 confirmed MERGED (a106c04cd on main) -- all required checks (verify, CodeQL) passed green, merged automatically (not by me -- likely automerge.yml or a parallel session per CARVE-OUT). Unsubscribed from PR activity (subscription had already auto-ended on merge). Synced local main to the merge commit, confirmed the fix is live in the checked-out tree. #4076 unchanged since my last post (248 comments, same 07:03:08Z timestamp). This fully closes the short-interest freshness escalation (comment 5747893411) -- both primary and secondary halves now shipped and verified on main. Staying quiet this cycle, no new work surfaced.",
+  "last_updated": "2026-09-23T07:47:44Z",
+  "notes": "Full v3-brief trigger (:46 offset). Synced two parallel-lane commits (55bdca729 nighthawk-legacy journal + 32e3fe7ee 'fix(learn): Meridian /learn placeholder' -- both unrelated to swing, ff-merged clean). #4076 unchanged (248 comments, same timestamp). This cycle's forensic angle: fresh live pull of MRNA's play-brief (a Banger-origin TRIM position, appeared in both today's banger scan and the swing committed book -- cross-referenced from earlier cycles' data). Did hand math verification (not just eyeballing): Blended P&L (realized trim + open runner) stated as +107.2% -- computed independently as 0.5*100% (banked @+100%) + 0.5*114.4% (open runner P&L from entry $2.60 to mark $5.58) = 107.2%, EXACT match. 'Gave back 50% of peak' verified: (228.8-114.4)/228.8 = 50.0%, exact match. Thesis health correctly withheld (Banger-origin, 'Inputs not wired for committed positions' -- honest C6 omission, not a bug). 'Other concurrent position(s)' section correctly discloses MRNA's second live position (192.5C 10/2) with a note to pass a specific strike/expiry -- a solid, already-shipped design feature. No bug found. Staying quiet.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
