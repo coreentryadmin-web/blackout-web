@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-23T19:10:00Z",
+  "updated_at": "2026-09-23T20:10:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -259,6 +259,21 @@
       "stage": "infra",
       "action": "2nd board upstream_ok:false instance today (1st: ~17:43-18:10, ~26min; now 2nd starting ~19:10). /record confirmed healthy again. Same well-characterized self-healing pattern. 2 instances today, below yesterdays 3-instance escalation threshold -- watching for a possible 3rd before re-escalating.",
       "next": "confirm recovery; escalate if a 3rd instance occurs today"
+    },
+    "2026-09-23T20:10:00Z_session_closed_summary": {
+      "stage": "session_closed_summary",
+      "headline": "Session closed. 10 committed, 10 closed, 5 wins (MCD +100.89% plan target, SPY +4.31% floor-protected NEW LOWER TIER, QBTS +25% thesis exit, and 2 flat scratches CRML/TSLA effectively breakeven) vs 5 losses (QQQ -49.73%, SPXW -50%, RGTI -6.06%, BYND -5.88%, MU -0.21%). Major win: shipped and validated the arm-tier floor lower-threshold fix (PR #5472) same day it was researched.",
+      "shipped_and_validated_live": [
+        "PR #5472 (ratchet early-arm threshold lowered 15%->5%, EXIT_VERSION v6->v7) -- merged 14:58Z, verified live on main. FIRST LIVE VALIDATION same day: SPY closed peak 9.91% (in the newly-protected [5,15) window), floor 3.96=round2(9.91*0.4) exact match, exit_mark_honored:true, closed +4.31% instead of round-tripping toward zero like QQQ/SPXW did. Also confirmed formula correctness at higher tiers as peaks grew: QBTS (peak 39.29%, floor 15.72), MCD (peak 100.89%, floor 50 flat post-trim -- correctly NOT peak-scaled once trimmed)."
+      ],
+      "research_methodology_note": "This finding followed the exact same rigor as #5382 (24hrs earlier): 90-day counterfactual backtest (n=83 population, consistent positive result across 9 threshold x fraction combinations), explicit interaction-safety proof (flat_theta_bleed strictly disjoint via priority ordering, trim_scale dead-zone guard is general not threshold-specific) BEFORE writing code, full local + full-repo test suites (15335/15338) before opening PR. Two consecutive days, two consecutive ratchet-tier fixes, same methodology, same-day live validation both times.",
+      "infra_notes": "Board upstream_ok:false fired 2 distinct times today (17:43-18:10 ~26min, 19:10-19:15 ~5min), both self-healed, /record confirmed healthy both times, zero data loss. Lower frequency than yesterdays 3x -- not re-escalating, but the underlying root cause (flagged 2026-09-22, needs ops CloudWatch review) is presumably still unresolved.",
+      "session_pnl_summary": "QQQ -49.73%, QBTS +25% (thesis exit off 39.29% peak), BYND -5.88%, CRML ~0% (flat scratch), SPXW -50%, RGTI -6.06%, MCD +100.89% (plan target, WIN), SPY +4.31% (floor-protected WIN, first live #5472 validation), MU -0.21%, TSLA ~0% (thesis scratch).",
+      "next_session_priorities": [
+        "Watch for board upstream_ok:false frequency trend (2/day today vs 3/day yesterday -- still not fully resolved server-side)",
+        "Continue MU/MRNA gex-walls oppose watch (2/3) and vex-charm oppose watch (1/3) -- no new instances this session",
+        "Watch for more live confirmations of the #5472 fix across a wider variety of peaks in the [5,15) range"
+      ]
     }
   },
   "sessions": {
