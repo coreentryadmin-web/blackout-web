@@ -38,6 +38,125 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## `board.lanes.SWING.watch` back-compat array served entry-window-expired names PR #337 was supposed to demote — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo / Night Hawk Swings board |
+| **Severity** | P2 (correctness — member/Largo-facing stale actionable candidate, not a data-availability bug) |
+| **Status** | FIXED |
+| **File** | `src/lib/swing/serving-board.ts` (`assembleSwingServingLane`) |
+
+### Root cause
+
+PR #337 (2026-09-22, `docs/audit/MARKET-OPEN-VALIDATION.md` entry #337) taught `sectionForSwingPlay`
+to route a pre-entry name whose own entry-validity deadline has already passed to `RESEARCH`
+instead of leaving it in `WATCH` — closing a gap where a stale, no-longer-enterable name (the
+PR's own repro: META, 26+ days past its window) sat #1 in `sections.WATCH` at full prominence.
+
+That fix only touched `sections.WATCH` (the seven-bucket grouping `buildSwingSections` computes).
+`assembleSwingServingLane` ALSO derives a separate, independent `watch` field — the flat
+back-compat array `GET /api/market/nighthawk/horizons?view=swings` actually serves as
+`board.lanes.SWING.watch`, the field this repo's own audit tooling and (per `serving.ts`'s own
+header comment) Largo's simpler tool calls read directly. That field was derived with
+`plays.filter((p) => p.status === "WATCH")` — a raw status filter that never consulted
+`sectionForSwingPlay`/`entryWindowExpiredFromPlay` at all, so it kept serving an expired name at
+full prominence exactly the way PR #337 was supposed to stop.
+
+### Evidence
+
+Live repro, 2026-09-23: `GET /api/market/nighthawk/horizons?view=swings` returned exactly one
+WATCH candidate, AMZN — `firstSeenAt: "2026-09-08T16:04:33.000Z"` (15 days earlier), `subLane:
+"TACTICAL"` (a 2-trading-day entry-validity window, per PR #337's own sub-lane table — 15 days is
+unambiguously past it). Pulling `GET /api/market/swing/play-brief?playId=SWING:AMZN&ticker=AMZN&status=WATCH`
+for the SAME position showed the play-brief's own Entry section (which reads the router's verdict,
+not the back-compat field) correctly said:
+
+```
+Serving section: RESEARCH
+...
+Also gate-blocked (moot — entry-validity window expired):
+• research_review: Desk is passing this name — thesis needs more work before it can be served.
+```
+
+Two surfaces backed by the same underlying data disagreeing on whether the exact same name is a
+live, actionable WATCH candidate or a dead RESEARCH-only one — the classic Largo-contract
+consistency violation this toolkit exists to catch.
+
+### Fix
+
+`assembleSwingServingLane` now computes `sections` first and derives the back-compat `watch` field
+as `sections.WATCH` directly, instead of independently re-filtering raw `p.status`. This makes it
+structurally impossible for the two to disagree — any future router change (a new exclusion
+reason, a new section) automatically applies to both surfaces at once. `committed` is deliberately
+left untouched (`plays.filter((p) => p.status === "COMMIT")`) — no live-position entry-window-expiry
+case exists (the router short-circuits on `liveStatus` before ever consulting entry-window state),
+and narrowing the fix's scope avoids risking the correctly-tracked committed count on an unrelated
+change.
+
+Regression test added (`src/lib/swing/serving-board.test.ts`): a stale (26-days-past-window,
+STANDARD sub-lane) WATCH-status play confirmed RED before the fix (appeared in `lane.watch`) /
+GREEN after (excluded from `lane.watch`, still reachable in `lane.sections.RESEARCH` — routed
+away, not dropped). An existing test's fixture (`B`/`C` tickers) also needed a `setupState:
+"FORMING"` addition — without any setupState at all they route to RESEARCH by the router's own
+"unclassified → RESEARCH" rule, so the old fixture was unknowingly exercising a shape the fix
+changes; the intent (checking committed/watch counts track real WATCH-routed populations) is
+preserved, just with a fixture that genuinely routes to WATCH.
+
+### Blast radius
+
+Single function (`assembleSwingServingLane`), one internal duplicate-computation cleanup
+(`sections: buildSwingSections(plays)` called twice in the original — now computed once and
+reused). No other call site of `assembleSwingServingLane`/`emptySwingServingLane` changes shape;
+`committed` is bit-for-bit unchanged.
+
+## Situational followups (#5478) covered only Banger-lineage manage actions, missing native EXIT/ADD — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo / Night Hawk Swings play-brief |
+| **Severity** | P3 (product enhancement — coverage gap in a same-day enhancement, not a correctness regression) |
+| **Status** | FIXED |
+| **File** | `src/lib/swing/play-brief.ts` (`SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION`) |
+
+### Root cause
+
+Earlier the same day, PR #5478 added `SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION`, a lookup from
+`play.manageAction` to a targeted followup chip. That first cut mapped only the three
+`ScaleOutAction` values (`TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT` — the Banger-lineage verdicts
+computed by `deriveScaleOutAction`). But `SwingManageAction` (`manage.ts`) is
+`ScaleOutAction | "EXIT" | "ADD"` — `EXIT` and `ADD` are the **native** `swing_positions` verdicts
+(`live-plays.ts`'s `manageObservablesFromEvent`: `EXIT` on a broken/invalidated thesis, `ADD` as an
+advisory add signal). Neither was in the map, so a native position with a broken thesis
+(`manageAction: "EXIT"`) — arguably the state most worth a targeted followup — got nothing extra.
+
+### Evidence
+
+Found while spot-checking #5478's live deploy this cycle: sampling committed positions'
+`manageAction` distribution showed native positions (NVDA, HUT, AAPL) reading `undefined`
+manageAction while HOLD (expected, no chip needed either way), which prompted checking the full
+`SwingManageAction` type rather than assuming the three `ScaleOutAction` values were exhaustive.
+Reading `manage.ts:53`'s own type definition and doc comment confirmed `EXIT`/`ADD` are real,
+distinct, meaningfully different verdicts the map didn't cover. No live position happened to be in
+`EXIT`/`ADD` state at spot-check time, so this is a coverage gap found by reading the type, not a
+live repro of a wrong answer — verified directly via unit test rather than inferred as fixed.
+
+### Fix
+
+Added `EXIT: "Why exit now?"` and `ADD: "Should I add to this?"` to the lookup map. Same additive
+shape as the original fix — nothing else changes.
+
+Regression tests added: EXIT and ADD manage actions each confirmed RED before the fix (generic five
+chips only) / GREEN after (situational chip present), via `git stash`.
+
+### Blast radius
+
+Same single call site as #5478 (`followupsFor`). No other product surface reads this function.
+
 ## Swing play-brief `followups[]` chips were identical for every OPEN play regardless of state — FIXED
 
 > **kind:** `FINDING`
