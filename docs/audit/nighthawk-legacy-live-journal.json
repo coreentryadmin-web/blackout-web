@@ -4297,6 +4297,11 @@
       "at": "2026-09-23T13:52:05Z",
       "summary": "FULL GREEN transition at 13:52 UTC (9:52am ET, ~22min post 9:30am ET open): B_marks flipped AMBER -> GREEN for all 3 remaining tickers (MUU 1.02 within [0.85,1.2], VKTX 0.71 within [0.55,0.87], DRAM still GREEN at 0.64 within [0.63,0.65]) -- live quotes now populated across the board. All 4 stages (A_edition/B_marks/C_record/D_pull_status) GREEN simultaneously for the first time this session -- matches the same-shape transition timing seen on prior trading days (2026-09-22 13:36:58Z ~6min post-open, 2026-09-21 14:07Z ~38min post-open -- today landed in between). No action needed.",
       "assessment": "CLEAN. All 4 stages GREEN. Standing cadence continues."
+    },
+    {
+      "at": "2026-09-23T14:07:25Z",
+      "summary": "Transient RTH mark-staleness blip (instance 1 of today): MUU and VKTX reverted GREEN -> AMBER (\"mark flagged stale by the API\") one cycle after the first full-GREEN read (13:52Z). DRAM stayed GREEN (0.70 within [0.68,0.71]). Matches the well-documented transient multi-ticker RTH mark-staleness pattern from prior trading days (already root-caused historically, see 2026-09-22 15:52:30Z entry) -- not escalating per the 3-instance noise threshold. Watching for a 2nd/3rd consecutive instance.",
+      "assessment": "CLEAN, likely transient. Watching per noise discipline."
     }
   ],
   "knownOpenItems": {
