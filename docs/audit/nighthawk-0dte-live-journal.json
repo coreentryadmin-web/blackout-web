@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-23T14:45:00Z",
+  "updated_at": "2026-09-23T15:10:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -229,6 +229,11 @@
       "stage": "PR_opened",
       "action": "PR #5472 opened (draft): lower ratchet early-arm threshold 15%->5%. Full-repo suite confirmed 15335/15338 pass, 0 fail (3 skipped) before opening. Staged finding docs/audit/findings-staging/2026-09-23-zerodte-lower-arm-tier-floor.md. Subscribed to PR activity.",
       "next": "watch #5472 CI (verify+CodeQL), undraft once green per standing pattern"
+    },
+    "2026-09-23T15:10:00Z": {
+      "stage": "PR_merged",
+      "action": "PR #5472 MERGED (14:58:01Z, ~12s after undraft -- mirror-failure pattern again). Verified live on main: ratchet_early_arm_pnl_pct=5, ratchet_early_arm_floor_pct=2. The ratchet floor curve is now continuous from +5% peak all the way through the lock tier (+50%), one fraction (0.4) the whole way. Board activity this cycle: QQQ closed -49.73% (peak 3.55%, below new threshold, no floor change), SPXW closed -50% (peak -0.55%, never positive), QBTS open -3.57% (peak 1.79%) -- none crossed the new 5% threshold yet, no live validation of THIS fix seen yet (unlike BTU for #5382 yesterday). Watching for the first live play to cross +5% peak.",
+      "next": "watch for first live confirmation of the new lower-arm floor engaging on a real peak in [5%,15%)"
     }
   },
   "sessions": {
