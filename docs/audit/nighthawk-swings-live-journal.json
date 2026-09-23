@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T15:04:00Z",
-  "notes": ":01-offset v3 cycle. committedCount 88. Spot-checked NVDA:42's big intraday swing (+4.8% -> -25.7% livePnlPct) via a fresh play-brief pull -- verified NOT a bug: mark $5.05 (fresh, 11:00 ET) vs entry $6.80 = -25.7% exactly, trough -27.2% (dipped further intraday), underlying excursion only +0.6%/-1.2% (small move) -- consistent with a 9DTE near-the-money call's real theta+gamma-driven sensitivity to even a small adverse underlying move plus a day of decay, not a data/computation error. Rails/greeks/spread all internally consistent. No new bug or enhancement found this cycle. #4076 unchanged (unrelated 0DTE fix #5472 merged, not this lane). main synced. Clean, staying quiet.",
+  "last_updated": "2026-09-23T15:19:00Z",
+  "notes": ":16-offset cycle. Spot-checked HUT:41's Book context section post banger-cleanup -- confirmed the #4700 banger-blindspot fix is genuinely live and working well under real conditions: correctly flags 17 same-direction 'crypto-equity' positions (BKKT/CLSK/RIOT/HUT/GLXY/ABTC/BLSH/GLXY+9 more), each distinct banger-origin position correctly identified by its own bangerId ('separate, cross-engine position #XXXX') rather than collapsing into one generic line. Positive verification, no new bug. #4076 unchanged. main synced. Clean cycle, staying quiet.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window"
