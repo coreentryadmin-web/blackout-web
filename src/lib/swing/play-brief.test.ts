@@ -3891,3 +3891,47 @@ test("composeSwingPlayBrief: OPEN play with plain HOLD manage action gets no sit
     `plain HOLD must not add a situational chip — expected the generic 5, got: ${JSON.stringify(brief.envelope.followups)}`,
   );
 });
+
+// COVERAGE FIX (Ask Largo standing mandate, aggressive-improvement-hunting pass, 2026-09-23,
+// same day as the followups fix above): SwingManageAction is ScaleOutAction | "EXIT" | "ADD" —
+// EXIT and ADD are the native swing_positions verdicts (live-plays.ts), not Banger-lineage
+// ScaleOutAction values, and the first cut of SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION only covered
+// the three ScaleOutAction values. A native position with a broken thesis (manageAction: "EXIT")
+// got no situational chip at all.
+test("composeSwingPlayBrief: OPEN play with EXIT manage action (native broken-thesis verdict) gets a situational exit followup", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "NVDA", status: "OPEN", manageAction: "EXIT" }),
+    asOf: "2026-09-23T19:00:00.000Z",
+    sessionDate: "2026-09-23",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.ok(
+    brief.envelope.followups?.some((f) => /why exit now/i.test(f)),
+    `expected an exit-specific followup for an EXIT manage action, got: ${JSON.stringify(brief.envelope.followups)}`,
+  );
+});
+
+test("composeSwingPlayBrief: OPEN play with ADD manage action gets a situational add followup", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "HUT", status: "OPEN", manageAction: "ADD" }),
+    asOf: "2026-09-23T19:00:00.000Z",
+    sessionDate: "2026-09-23",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.ok(
+    brief.envelope.followups?.some((f) => /should i add to this/i.test(f)),
+    `expected an add-specific followup for an ADD manage action, got: ${JSON.stringify(brief.envelope.followups)}`,
+  );
+});
