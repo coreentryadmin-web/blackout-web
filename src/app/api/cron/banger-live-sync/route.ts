@@ -16,6 +16,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { runBangerLiveSync } from "@/lib/banger/live-sync";
 import { fetchOpenBangerPositions, updateBangerLiveState } from "@/lib/banger/positions-db";
 import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
+import { fetchOpenClose } from "@/lib/providers/polygon-largo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,17 @@ export async function GET(req: NextRequest) {
           }
         }
         return marks;
+      },
+      // OCC-style settlement close for an ALREADY-EXPIRED contract's underlying — see
+      // `fetchExpiryClose`'s doc comment on `BangerLiveSyncDeps` (live-sync.ts) for why this is
+      // needed at all: the provider stops quoting an expired option, so without this a row whose
+      // contract has settled would sit in OPEN/PARTIAL forever (measured live 2026-09-23: 41/168
+      // open rows, one 40 days past expiry). `null` (no data yet, e.g. a holiday) leaves the row
+      // untouched this tick rather than guessing.
+      fetchExpiryClose: async (ticker, expiryYmd) => {
+        const oc = await fetchOpenClose(ticker, expiryYmd);
+        const close = oc && typeof oc.close === "number" ? oc.close : null;
+        return close != null && Number.isFinite(close) ? close : null;
       },
       updateLiveState: updateBangerLiveState,
     });
