@@ -99,8 +99,12 @@ export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
  *  v6 (2026-09-21): the early-arm (+15%) and arm (+20%) floors now scale the SAME way
  *  (peak * 0.4) instead of staying flat at +5%/+0% — see EXIT_RULES.ratchet_early_arm_floor_pct
  *  and ratchet_arm_floor_pct's own comments for the measurement. The whole ratchet floor
- *  curve from +15% up is now one continuous rule instead of three independently-flat tiers. */
-export const EXIT_VERSION = "v6";
+ *  curve from +15% up is now one continuous rule instead of three independently-flat tiers.
+ *  v7 (2026-09-23): the early-arm threshold itself LOWERED from +15% to +5% — before this,
+ *  any peak below +15% got ZERO floor protection; see EXIT_RULES.ratchet_early_arm_pnl_pct's
+ *  own comment for the 90-day n=67 measurement. The continuous peak*0.4 curve now starts at
+ *  +5% instead of +15%. */
+export const EXIT_VERSION = "v7";
 /** Grader — how a committed play is turned into a WIN/LOSS + PnL (−50/+100 directional,
  *  condor breach, time-stop rules). Bump when the grading rule changes (it re-labels
  *  the very outcomes calibration counts). */

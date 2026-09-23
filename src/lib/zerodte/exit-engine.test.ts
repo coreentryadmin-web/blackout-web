@@ -56,14 +56,21 @@ function evidence(items: Array<Partial<EvidenceItem>>): EvidenceItem[] {
 
 // ── 1. Profit ratchet — never let green turn red ──────────────────────────────────
 
-test("ratchet: below +15% peak nothing is armed — the trade keeps its room", () => {
-  const d = evaluateExitState(input({ peakPremium: 4.56, currentMark: 3.92 })); // peak +14%, now −2%
+test("ratchet: below +5% peak nothing is armed — the trade keeps its room", () => {
+  const d = evaluateExitState(input({ peakPremium: 4.16, currentMark: 3.92 })); // peak +4%, now −2%
   assert.equal(d.action, "HOLD");
   assert.equal(d.floorPnlPct, null);
   assert.equal(d.reason, "hold");
 });
 
-test("ratchet: +15% peak arms the early floor at 40% of peak (+6%, was a flat +5%)", () => {
+test("ratchet: +5% peak arms the early floor at 40% of peak (+2%, lowered from +15% 2026-09-23)", () => {
+  const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.2, currentMark: 4.1 })); // peak +5%, now +2.5%
+  assert.equal(d.action, "RAISE_FLOOR");
+  assert.equal(d.floorPnlPct, 2);
+  assert.equal(d.reason, "ratchet_early_profit_floor_set");
+});
+
+test("ratchet: +15% peak arms the floor at 40% of peak (+6%, the OLD arm threshold, still on the same continuous curve)", () => {
   const d = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.6, currentMark: 4.3 })); // peak +15%, now +7.5%
   assert.equal(d.action, "RAISE_FLOOR");
   assert.equal(d.floorPnlPct, 6);
@@ -111,12 +118,14 @@ test("ratchet: the floor is MONOTONIC — a deep retrace never lowers +20% back 
   assert.equal(d.floorPnlPct, 20, "floor derives from the latched peak, never the retraced mark");
 });
 
-test("ratchetFloorPct: pure floor table — one continuous peak*0.4 rule from +15% up (2026-09-21: early/arm tiers no longer flat)", () => {
+test("ratchetFloorPct: pure floor table — one continuous peak*0.4 rule from +5% up (2026-09-23: lower-arm tier)", () => {
   assert.equal(ratchetFloorPct(null, false), null);
-  assert.equal(ratchetFloorPct(14.99, false), null, "below the early-arm threshold, no floor at all");
-  assert.equal(ratchetFloorPct(15, false), 6, "0.4 * 15 -- was a flat 5 before this fix");
+  assert.equal(ratchetFloorPct(4.99, false), null, "below the lower-arm threshold, no floor at all");
+  assert.equal(ratchetFloorPct(5, false), 2, "0.4 * 5 -- new lower-arm tier added 2026-09-23, was null before this fix");
+  assert.equal(ratchetFloorPct(14.99, false), 6); // 0.4 * 14.99 == 5.996, round2 -> 6
+  assert.equal(ratchetFloorPct(15, false), 6, "0.4 * 15 -- was the old arm threshold, still on the same continuous curve");
   assert.equal(ratchetFloorPct(19.99, false), 8); // 0.4 * 19.99 == 7.996, round2 -> 8
-  assert.equal(ratchetFloorPct(20, false), 8, "0.4 * 20 -- was a flat 0 before this fix");
+  assert.equal(ratchetFloorPct(20, false), 8, "0.4 * 20 -- was a flat 0 before the 2026-09-21 fix");
   assert.equal(ratchetFloorPct(49.99, false), 20); // 0.4 * 49.99 == 19.996, round2 -> 20
   assert.equal(ratchetFloorPct(50, false), 20, "0.4 * 50 -- unchanged, continuous across the lock boundary since v5");
   assert.equal(ratchetFloorPct(400, false), 160, "scales with peak at every armed tier now, not just the old lock tier");
@@ -221,23 +230,29 @@ test("missing evidence NEVER exits: null cortexEvidence skips the thesis check o
 // ── 3. Flat timeout — theta bleed ─────────────────────────────────────────────────
 
 test("flat timeout: 25min inside the ±10% band exits as a scratch", () => {
-  const d = evaluateExitState(input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8 })); // peak +7.5%, now −5%
+  const d = evaluateExitState(input({ ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8 })); // peak +4% (below the early-arm floor), now −5%
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "flat_theta_bleed");
 });
 
 test("flat timeout does NOT fire at 24 minutes", () => {
-  const d = evaluateExitState(input({ ageMinutes: 24, peakPremium: 4.3, currentMark: 3.8 }));
+  const d = evaluateExitState(input({ ageMinutes: 24, peakPremium: 4.16, currentMark: 3.8 }));
   assert.equal(d.action, "HOLD");
 });
 
 test("flat timeout does NOT fire when the peak escaped the band (+12% had a pulse)", () => {
-  const d = evaluateExitState(input({ ageMinutes: 90, peakPremium: 4.48, currentMark: 4.0 })); // peak +12%
+  // peak +12% now ALSO arms the early floor (0.4*12=4.8), but `input()`'s default
+  // trim_scale mode doesn't surface a merely-armed (not breached, no tranche taken
+  // yet) floor via RAISE_FLOOR — that reporting is ratchet-mode-only architecture,
+  // unrelated to this fix. Staying comfortably above the floor (+7.5% pnl vs a +4.8%
+  // floor) still correctly falls through to plain HOLD; the timeout itself never
+  // fires either way since peak (12%) already escaped the ±10% band.
+  const d = evaluateExitState(input({ ageMinutes: 90, peakPremium: 4.48, currentMark: 4.3 })); // peak +12%, now +7.5%
   assert.equal(d.action, "HOLD");
 });
 
 test("flat timeout does NOT fire below the band — the stop rules own the losing tail", () => {
-  const d = evaluateExitState(input({ ageMinutes: 90, peakPremium: 4.2, currentMark: 3.5 })); // −12.5%
+  const d = evaluateExitState(input({ ageMinutes: 90, peakPremium: 4.12, currentMark: 3.5 })); // peak +3% (below the early-arm floor), now −12.5%
   assert.equal(d.action, "HOLD");
 });
 
@@ -250,7 +265,7 @@ test("flat timeout does NOT fire below the band — the stop rules own the losin
 
 test("trim_scale flat timeout: narrative unchanged when the trough never actually breached the band", () => {
   const d = evaluateExitState(
-    input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.7 }) // trough −7.5%, inside band
+    input({ ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8, troughPremium: 3.7 }) // trough −7.5%, inside band
   );
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "flat_theta_bleed");
@@ -260,7 +275,7 @@ test("trim_scale flat timeout: narrative unchanged when the trough never actuall
 
 test("trim_scale flat timeout: narrative corrects to a recovery sentence when the trough DID breach the band", () => {
   const d = evaluateExitState(
-    input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.5 }) // trough −12.5%, breached
+    input({ ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8, troughPremium: 3.5 }) // trough −12.5%, breached
   );
   assert.equal(d.action, "EXIT", "narrative-only fix — the exit still fires on the same condition");
   assert.equal(d.reason, "flat_theta_bleed");
@@ -269,14 +284,14 @@ test("trim_scale flat timeout: narrative corrects to a recovery sentence when th
 });
 
 test("trim_scale flat timeout: missing troughPremium falls back to the old unconditional claim (no regression for rows without the field)", () => {
-  const d = evaluateExitState(input({ ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8 })); // troughPremium omitted
+  const d = evaluateExitState(input({ ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8 })); // troughPremium omitted
   assert.equal(d.action, "EXIT");
   assert.match(d.detail, /never left the ±10% band/);
 });
 
 test("ratchet flat timeout: narrative unchanged when the trough never actually breached the band", () => {
   const d = evaluateExitState(
-    input({ exitMode: "ratchet", ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.7 })
+    input({ exitMode: "ratchet", ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8, troughPremium: 3.7 })
   );
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "flat_theta_bleed");
@@ -285,7 +300,7 @@ test("ratchet flat timeout: narrative unchanged when the trough never actually b
 
 test("ratchet flat timeout: narrative corrects to a recovery sentence when the trough DID breach the band", () => {
   const d = evaluateExitState(
-    input({ exitMode: "ratchet", ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, troughPremium: 3.5 })
+    input({ exitMode: "ratchet", ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8, troughPremium: 3.5 })
   );
   assert.equal(d.action, "EXIT", "narrative-only fix — the exit still fires on the same condition");
   assert.equal(d.reason, "flat_theta_bleed");
@@ -296,7 +311,7 @@ test("ratchet flat timeout: narrative corrects to a recovery sentence when the t
 // ── 4. Plan stop/target stay authoritative ────────────────────────────────────────
 
 test("plan stop: mark at/below the printed stop exits with plan_stop when no floor is armed", () => {
-  const d = evaluateExitState(input({ currentMark: 2.0, peakPremium: 4.2 }));
+  const d = evaluateExitState(input({ currentMark: 2.0, peakPremium: 4.16 })); // peak +4%, below the early-arm floor
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "plan_stop");
 });
@@ -353,7 +368,7 @@ test("precedence: thesis break outranks the flat timeout", () => {
   const d = evaluateExitState(
     input({
       ageMinutes: 60,
-      peakPremium: 4.2,
+      peakPremium: 4.16, // peak +4%, below the early-arm floor — isolates thesis-vs-timeout precedence
       currentMark: 4.0,
       cortexEvidence: evidence([{ stance: "veto", source: "sector-heat" }]),
     })
@@ -685,7 +700,7 @@ test("trim_scale regime: TREND lets it run (+20% does NOT trim; +40% arms the fi
 
 test("trim_scale: the plan stop still exits when no protective floor is armed", () => {
   const d = evaluateExitState(
-    input({ exitMode: "trim_scale", currentMark: 2.0, peakPremium: 4.2, trimsTaken: 0 })
+    input({ exitMode: "trim_scale", currentMark: 2.0, peakPremium: 4.16, trimsTaken: 0 }) // peak +4%, below the early-arm floor
   );
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "plan_stop");
@@ -740,7 +755,7 @@ test("trim_scale: a thesis break with no tranche banked says nothing about banke
 
 test("trim_scale: a play that never armed a tranche still scratches on the flat timeout", () => {
   const d = evaluateExitState(
-    input({ exitMode: "trim_scale", ageMinutes: 25, peakPremium: 4.3, currentMark: 3.8, trimsTaken: 0 })
+    input({ exitMode: "trim_scale", ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8, trimsTaken: 0 }) // peak +4%, below the early-arm floor
   );
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "flat_theta_bleed");
@@ -976,10 +991,19 @@ test("trim_scale DEAD ZONE per regime — NEUTRAL: ratchet_arm_pnl_pct (breakeve
   assert.equal(d.reason, "trim_scale_first");
 });
 
-test("trim_scale DEAD ZONE per regime — RANGE: ratchet_early_arm_pnl_pct EQUALS the first tranche trigger", () => {
-  // Range's first tranche (+15%) coincides with the ratchet's EARLY arm (+15%/+5%),
-  // not the breakeven arm — a different collision than neutral's, same class of bug.
-  assert.equal(EXIT_RULES.ratchet_early_arm_pnl_pct, TRIM_SCALE_RULES.tranches_by_regime.range[0]);
+test("trim_scale DEAD ZONE per regime — RANGE: a floor-armed peak that also armed the first tranche still banks, not dumps", () => {
+  // Historically (pre-2026-09-23) range's first tranche (+15%) exactly COINCIDED
+  // with the ratchet's early-arm threshold (also +15% then) — that literal equality
+  // is gone now that the early-arm threshold lowered to +5% (EXIT_RULES.ratchet_early_arm_pnl_pct
+  // !== TRIM_SCALE_RULES.tranches_by_regime.range[0] any more), but the guard this
+  // test exercises (`trimAvailable = armed > taken`) was never keyed to that specific
+  // numeric coincidence — it is general: ANY peak that has armed both a floor AND a
+  // tranche picks TRIM over a floor-dump, regardless of which floor tier fired. This
+  // reasserts that behavior at range's own +15% tranche trigger.
+  assert.ok(
+    EXIT_RULES.ratchet_early_arm_pnl_pct < TRIM_SCALE_RULES.tranches_by_regime.range[0],
+    "the early-arm floor must still arm strictly before range's own first tranche, or this test's premise changes shape"
+  );
   const d = evaluateExitState(
     input({ exitMode: "trim_scale", regime: "range", peakPremium: 4.6, currentMark: 4.2, trimsTaken: 0 }) // peak +15%, now +5%
   );
@@ -1106,7 +1130,7 @@ test("categorizeExitReason: every persisted reason maps to its coarse family; no
 });
 
 test("categorizeExitReason: a real EXIT decision's reason round-trips to a family", () => {
-  const stop = evaluateExitState(input({ exitMode: "ratchet", currentMark: 2.0, peakPremium: 4.2 }));
+  const stop = evaluateExitState(input({ exitMode: "ratchet", currentMark: 2.0, peakPremium: 4.16 })); // peak +4%, below the early-arm floor
   assert.equal(categorizeExitReason(stop.reason), "stop");
   const floor = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 5.0, currentMark: 4.0 }));
   assert.equal(categorizeExitReason(floor.reason), "ratchet");

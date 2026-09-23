@@ -48,8 +48,14 @@ import {
 // collapsed into one `arm@+15%->floor=peak*0.4` clause now that all three tiers share the
 // same formula); TRIM_SCALE's trailing_rule text is unchanged, so only its embedded
 // `version` field moved. Both hashes recomputed live from the real source (not guessed).
-const GOLDEN_RATCHET_HASH = "exitcfg-0d350b9d";
-const GOLDEN_TRIM_SCALE_HASH = "exitcfg-45095a05";
+// Bumped again 2026-09-23 (EXIT_VERSION v6->v7): the early-arm threshold itself LOWERED
+// from +15% to +5% — before this, any peak below +15% got zero floor protection at all;
+// see EXIT_RULES.ratchet_early_arm_pnl_pct's own comment for the 90-day n=67 measurement.
+// RATCHET's trailing_rule text changes again (now reads `arm@+5%->floor=peak*0.4`);
+// TRIM_SCALE's trailing_rule text still doesn't mention the early-arm constant, so only
+// its embedded `version` field moved. Both hashes recomputed live from the real source.
+const GOLDEN_RATCHET_HASH = "exitcfg-f8375eb9";
+const GOLDEN_TRIM_SCALE_HASH = "exitcfg-b2852c1e";
 
 test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from the sources of truth", () => {
   const r = buildResolvedExitPolicy("ratchet");

@@ -54,18 +54,31 @@ export const EXIT_RULES = {
   /** Peak P&L % that ARMS the first early floor. Captures modest winners that never
    *  reach the breakeven tier (FINDINGS 2026-08-04: GOOGL +22%, RDDT +12%). Floor
    *  SCALES with the peak (same `ratchet_lock_floor_fraction` the lock tier already
-   *  uses) instead of staying flat at +5% — see that constant's own comment for why a
-   *  flat floor giving back a fixed-fraction-of-peak's worth of a real run is the same
-   *  bug shape one tier down. Measured 2026-09-21 (90-day window, both arm sub-tiers
-   *  together): 26 `ratchet_early_profit_floor` exits, current flat +5% mean close
-   *  4.91% vs peaks 15.3%-19.6%; scaling at 40% of peak wins on EVERY case (26/26,
-   *  mean +1.88pp) — 20%/25% of peak both net WORSE (undercuts small peaks the flat +5
-   *  already protected), 30% is a coin flip (16/26), 35%/40% both clean sweeps.
+   *  uses) instead of staying flat — see that constant's own comment for why a flat
+   *  floor giving back a fixed-fraction-of-peak's worth of a real run is the same bug
+   *  shape one tier down. Measured 2026-09-21 (90-day window, then-flat +5% tier,
+   *  peaks 15.3%-19.6%): scaling at 40% of peak won on EVERY case (26/26). LOWERED
+   *  2026-09-23 from 15% to 5%: before this fix, ANY peak below 15% got zero floor
+   *  protection at all — measured 90-day population with peak in [3%,15%) (n=83):
+   *  actual mean close -9.92%. Counterfactual at threshold=5%/fraction=0.4 (same
+   *  fraction already shipped at every other tier, extended one tier further down
+   *  rather than tuning a fourth separate constant): n=67, 46/67 win, counterfactual
+   *  mean +4.56% (delta +15.85pp) — the largest-sample, most consistent result of any
+   *  arm-tier measurement in this file's history (held across thresh=3/5/8% x
+   *  frac=0.3/0.4/0.5, every combination net-positive). Because `peak_pnl_pct` is BY
+   *  CONSTRUCTION a trade's all-time maximum, this population definitionally never
+   *  exceeded 15% at any point in its real life — a lower floor could never have
+   *  capped a bigger win that already happened. Checked against `flat_theta_bleed`
+   *  (evaluateExitState step 4, only reached if the floor/stop check in step 1 does
+   *  NOT fire): the two conditions are structurally disjoint — floor-breach only
+   *  fires after a real favorable move (peak >= arm) then a pullback, while
+   *  flat_theta_bleed only fires when peak never left the ±10% band at all — so a
+   *  lower arm tier preempts the timeout exactly when it should, never fights it.
    *  `ratchet_early_arm_floor_pct` is kept only as the value the fraction produces AT
    *  this tier's own arm threshold — see `ratchet_lock_floor_pct`'s comment for the
    *  identical reasoning at the lock tier. */
-  ratchet_early_arm_pnl_pct: 15,
-  ratchet_early_arm_floor_pct: 5,
+  ratchet_early_arm_pnl_pct: 5,
+  ratchet_early_arm_floor_pct: 2,
   /** Peak P&L % that ARMS breakeven — a trade that reached +20% may never finish red.
    *  Floor SCALES with the peak (same fraction) rather than staying flat at 0% — same
    *  2026-09-21 measurement, 40 `ratchet_breakeven_floor` exits, peaks 20.4%-48.6%,
@@ -75,9 +88,10 @@ export const EXIT_RULES = {
    *  finishing red" this floor exists to prevent). 40% of peak wins on EVERY one of the
    *  40 cases (mean +12.07pp) — the same fraction that won cleanly on both this tier
    *  AND the early-arm tier above, so one constant now covers the whole curve from
-   *  +15% up through the lock tier, continuous at every boundary (0.4*15=6 > the old
-   *  flat 5; 0.4*20=8 > the old flat 0; 0.4*50=20, unchanged at the lock threshold —
-   *  see `ratchet_lock_floor_fraction`'s own comment for that boundary). */
+   *  the lower-arm threshold up through the lock tier, continuous at every boundary
+   *  (0.4*5=2, the 2026-09-23 lower-arm floor; 0.4*20=8 > the old flat 0; 0.4*50=20,
+   *  unchanged at the lock threshold — see `ratchet_lock_floor_fraction`'s own
+   *  comment for that boundary). */
   ratchet_arm_pnl_pct: 20,
   ratchet_arm_floor_pct: 0,
   /** Peak P&L % that LOCKS profit: floor SCALES with the peak instead of staying flat.
