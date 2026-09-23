@@ -3828,3 +3828,66 @@ test("composeSwingPlayBrief: Thesis health section carries no bias for a healthy
   );
 });
 
+
+// FIX (Ask Largo standing mandate, aggressive-improvement-hunting pass, 2026-09-23): followupsFor
+// used to emit the identical five suggestion chips for every OPEN play regardless of state — a
+// live spot-check that day found SKHY at -48.4% (HOLD) and RBRK at +124.4% (TAKE_PARTIAL) both
+// rendering byte-identical followups[]. Now a live manage-engine verdict worth surfacing (partial
+// already firing, runner exiting, or sitting at the hard stop) adds one targeted chip.
+test("composeSwingPlayBrief: OPEN play with TAKE_PARTIAL manage action gets a situational trim followup, not just the generic five", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "RBRK", status: "OPEN", manageAction: "TAKE_PARTIAL" }),
+    asOf: "2026-09-23T18:00:00.000Z",
+    sessionDate: "2026-09-23",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.ok(
+    brief.envelope.followups?.some((f) => /trim more/i.test(f)),
+    `expected a trim-specific followup for a TAKE_PARTIAL play, got: ${JSON.stringify(brief.envelope.followups)}`,
+  );
+});
+
+test("composeSwingPlayBrief: OPEN play with STOP_OUT manage action gets a situational stop followup", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "BTDR", status: "OPEN", manageAction: "STOP_OUT" }),
+    asOf: "2026-09-23T18:00:00.000Z",
+    sessionDate: "2026-09-23",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.ok(
+    brief.envelope.followups?.some((f) => /at its stop/i.test(f)),
+    `expected a stop-specific followup for a STOP_OUT play, got: ${JSON.stringify(brief.envelope.followups)}`,
+  );
+});
+
+test("composeSwingPlayBrief: OPEN play with plain HOLD manage action gets no situational followup appended (only the generic set)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "SKHY", status: "OPEN", manageAction: "HOLD" }),
+    asOf: "2026-09-23T18:00:00.000Z",
+    sessionDate: "2026-09-23",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.followups?.length,
+    5,
+    `plain HOLD must not add a situational chip — expected the generic 5, got: ${JSON.stringify(brief.envelope.followups)}`,
+  );
+});
