@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T02:50:00Z",
-  "notes": "15-min-cadence trigger (:46 offset). No changes anywhere. Staying quiet.",
+  "last_updated": "2026-09-23T03:05:00Z",
+  "notes": "15-min-cadence trigger (:01 offset). #4076 unchanged. Board unchanged. Used this cycle for a different CloudWatch angle: checked swing-active-refresh (the live position-management cron, distinct from swing-discovery which was already verified) -- zero log events in the last 3 hours. Confirmed expected via cron-registry.ts: schedule_label explicitly reads 'Every 15 min (market hours)' -- this cron is market-hours-only by design, so silence through the current off-hours stretch is correct, not a gap. No action needed. Staying quiet.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
