@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T00:35:00Z",
-  "notes": "15-min-cadence trigger (:31 offset). Synced main (0964f6401, a Legacy-lane journal entry, no conflict). #4076 unchanged. Board unchanged since the OVERNIGHT scan (committedCount 85, watchCount 0, record chains/opens unchanged 5/3) -- the scan ran but produced no new commits, consistent with thin off-hours discovery. Nothing new to audit. Staying quiet.",
+  "last_updated": "2026-09-23T00:50:00Z",
+  "notes": "15-min-cadence trigger (:46 offset). Synced main (81e23982e, Legacy-lane docs fold, no conflict). #4076 unchanged. Board unchanged (scanAsOf/committedCount/watchCount all same as last cycle). Genuinely quiet, deep overnight hours -- nothing actionable. Staying quiet.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
