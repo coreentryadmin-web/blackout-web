@@ -991,10 +991,21 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
 // The manage-engine verdict (`play.manageAction`) is already computed and already rendered in the
 // brief's own Management section, so surfacing it here as a targeted suggestion chip is a read
 // of data the brief already has, not a new dependency.
+//
+// COVERAGE FIX (same mandate, later the same day): the first cut only mapped the three
+// ScaleOutAction values (Banger-lineage — TAKE_PARTIAL/EXIT_RUNNER/STOP_OUT). `SwingManageAction`
+// is `ScaleOutAction | "EXIT" | "ADD"` (manage.ts) — EXIT and ADD are the NATIVE swing_positions
+// verdicts (`live-plays.ts`'s `manageObservablesFromEvent`), so a native position with a broken
+// thesis (manageAction: "EXIT") got no situational chip at all — arguably the state most worth
+// one. Confirmed live: NVDA/HUT/AAPL (native, HOLD) correctly get nothing, but nothing in the
+// live sample happened to be in EXIT/ADD at spot-check time — added from reading the type, not a
+// live repro of the miss, so tested directly rather than inferred as fixed.
 const SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION: Partial<Record<NonNullable<TerminalPlay["manageAction"]>, string>> = {
   TAKE_PARTIAL: "Should I trim more?",
   EXIT_RUNNER: "Why exit the runner now?",
   STOP_OUT: "Why is this at its stop?",
+  EXIT: "Why exit now?",
+  ADD: "Should I add to this?",
 };
 
 function followupsFor(play: TerminalPlay): string[] {
