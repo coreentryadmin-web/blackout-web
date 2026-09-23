@@ -121,6 +121,15 @@ const PENNY_ENTRY = 0.15;
 const PENNY_MARK = 0.125; // rounds to 0.13 at 2dp — a live-repro value (RBLU 2026-09-15)
 const PENNY_LIVE_PNL_PCT = -16.7; // Math.round(((0.125/0.15 - 1) * 100) * 10) / 10, computed pre-rounding
 
+// Live-repro trough/mid mismatch (Ask Largo standing mandate, flagged live 2026-09-23, BKKT
+// SWING:BKKT:1310): trough_premium (updateBangerLiveState's LEAST-latched low) sits fractionally
+// BELOW the current mark — real, honest data, since a mark can dip and partially recover — but
+// this route's keyDp map rounds `mid`/`peakPremium` to 4dp while `troughPremium` falls through to
+// the 2dp default. 0.3225 (a real trough tick) rounds to 0.32 at 2dp; a nearby mid of 0.325 stays
+// 0.325 at 4dp. Pick values where that asymmetry inverts trough ABOVE mid — the live symptom.
+const TROUGH_MARK = 0.329; // current mid — 4dp override, unchanged
+const TROUGH_RAW = 0.326; // real trough tick, honestly BELOW mid — rounds to 0.33 at 2dp (the bug)
+
 // Deep-ITM near-expiry swing contract greeks (AAPL 1DTE 330C shape flagged live 2026-09-20): real,
 // honestly-computed small-but-nonzero values that the OLD 2dp default rounding destroyed to 0.00 —
 // see the "gamma/theta/vega ALSO need the override" test below.
@@ -151,6 +160,13 @@ mock.module("../../../../../lib/swing/serving-lane", {
             vega: REAL_VEGA,
             iv: REAL_IV,
           },
+        },
+        {
+          ticker: "TROUGH",
+          entryPremium: 0.45,
+          peakPremium: TROUGH_MARK,
+          troughPremium: TROUGH_RAW,
+          contract: { mid: TROUGH_MARK },
         },
       ],
     }),
@@ -249,5 +265,24 @@ describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
     assert.equal(play.contract.theta, REAL_THETA, "theta must not be destroyed to 0.00");
     assert.equal(play.contract.vega, REAL_VEGA, "vega must not be destroyed to 0.00");
     assert.equal(play.contract.iv, REAL_IV, "iv must keep 4dp precision");
+  });
+
+  // BUG (Ask Largo standing mandate, live repro 2026-09-23, BKKT SWING:BKKT:1310): troughPremium
+  // was missing from the keyDp override map even though its sibling peakPremium/mid were already
+  // in it, so trough rounded at the coarser 2dp default. Live symptom: a real trough tick of
+  // 0.328 rounded to 0.33, ending up ABOVE a mid/peak of 0.325 (unchanged at 4dp) — a trough must
+  // never read higher than the current mark, by definition (it is the LEAST mark ever observed).
+  test("troughPremium keeps 4dp precision, staying consistent with mid/peak (Ask Largo audit, 2026-09-23)", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings")
+    );
+    const body = await res.json();
+    const play = body.board.lanes.SWING.committed[1];
+    assert.equal(play.ticker, "TROUGH");
+    assert.equal(play.troughPremium, TROUGH_RAW, "trough must not be quantized to 2dp");
+    assert.ok(
+      play.troughPremium <= play.contract.mid,
+      `trough ${play.troughPremium} must never read above mid ${play.contract.mid} — a trough is the LEAST mark ever observed`,
+    );
   });
 });
