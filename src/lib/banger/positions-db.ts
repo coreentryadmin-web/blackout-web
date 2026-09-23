@@ -273,15 +273,47 @@ export async function fetchBangerBoardRows(limit = 60): Promise<BangerPositionRo
   return res.rows.map(mapBangerPositionRow);
 }
 
-/** Open-book rows only — use for live marks and horizon merge (not page-limited all-status scans). */
-export async function fetchBangerOpenBookRows(limit = 80): Promise<BangerPositionRow[]> {
-  const res = await dbQuery<QueryResultRow>(
-    `SELECT * FROM banger_positions
-     WHERE status IN ('OPEN','PARTIAL')
-     ORDER BY session_date DESC, id DESC
-     LIMIT $1`,
-    [limit],
-  );
+/**
+ * Open-book rows only — use for live marks, horizon merge, book-context concentration, and
+ * identity resolution (not page-limited all-status scans).
+ *
+ * `limit` is OPTIONAL and, when omitted, the query carries NO `LIMIT` clause at all — every
+ * real OPEN/PARTIAL row is returned. Unlike `fetchBangerBoardRows`'s closed history (unbounded
+ * lifetime, genuinely needs paging), the open set is a fixed-in-time snapshot of currently-live
+ * positions — the exact same "must never page out from under a live holding" principle
+ * `fetchBangerClosedBoardRows`'s own doc comment already states for this side of the split.
+ *
+ * FIX (Ask Largo standing mandate, live-verified 2026-09-23): every call site previously passed
+ * a hardcoded `limit=80`, which silently truncated the real open book the moment true open
+ * positions exceeded 80 — measured live at 168 real open banger_positions rows (`ORDER BY
+ * session_date DESC, id DESC` means the OLDEST ~88 positions, the ones open longest, were the
+ * ones dropped). This is the exact same page-limited-truncation shape already fixed once for
+ * `fetchBangerBoardRows` (FINDINGS.md, "GET /api/banger/board hardcodes limit=60... an
+ * older-but-still-OPEN position ages out of the shared window and silently vanishes from the
+ * board, even though it is a real, live holding") — this function's own OPEN-only filter meant
+ * it looked immune to that class of bug, but a hardcoded LIMIT truncates just as surely as a
+ * mixed-status page does once the open count grows past it. Confirmed impact: the Swing Command
+ * board (`horizons/route.ts`), live marks (`live-marks-active.ts`), book-context concentration
+ * (`play-brief-context.ts`), identity resolution (`play-brief-resolve.ts`), and the Banger board
+ * itself (`banger/board/route.ts`) all silently dropped ~85-88 real, currently-open member
+ * positions — the Swing lane board reported 85 committed positions where 171 (3 native + 168
+ * banger) actually exist.
+ */
+export async function fetchBangerOpenBookRows(limit?: number): Promise<BangerPositionRow[]> {
+  const res =
+    limit != null
+      ? await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL')
+           ORDER BY session_date DESC, id DESC
+           LIMIT $1`,
+          [limit],
+        )
+      : await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL')
+           ORDER BY session_date DESC, id DESC`,
+        );
   return res.rows.map(mapBangerPositionRow);
 }
 
