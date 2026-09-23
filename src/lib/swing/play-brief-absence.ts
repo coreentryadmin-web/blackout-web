@@ -105,6 +105,19 @@ export function fundamentalsFreshnessTag(
   return "stale";
 }
 
+/** Age of `arsenal.fundamentals.as_of` in ms — the `fundamentalsFreshnessTag`/`fundamentalsAncient`
+ *  companion for callers (e.g. `catalystsSection`'s stale-lead disclosure) that need the raw span,
+ *  not just the bucketed tag. Mirrors `newsCatalystAgeMs`'s shape but via `fundamentalsObservedMs`
+ *  (the ET-session-close-aware parser date-only stamps need — see that function's own doc comment). */
+export function fundamentalsAgeMs(
+  asOf: string | null | undefined,
+  readMs: number = Date.now(),
+): number | null {
+  if (!asOf) return null;
+  const observedMs = fundamentalsObservedMs(asOf);
+  return observedMs == null ? null : readMs - observedMs;
+}
+
 /** Age of the shared GEX matrix in ms — prefers matrix_age_sec, else asof vs read time. */
 export function gexMatrixAgeMs(
   gex: GexPositioning | null | undefined,
@@ -176,6 +189,19 @@ export function ageSecondsLabel(ageMs: number | null | undefined): string | null
   if (ageMs == null) return null;
   if (!Number.isFinite(ageMs) || ageMs < 0) return "clock-skewed";
   return `${Math.round(ageMs / 1000)}s`;
+}
+
+/**
+ * `ageSecondsLabel`'s day-scale sibling ("12d") — for data whose own honest cadence is days/weeks,
+ * not seconds/minutes, where a seconds label would read as absurd precision ("1036800s old"). Same
+ * null/clock-skew handling as `ageSecondsLabel`, same reason: `fundamentalsFreshnessTag`'s stale
+ * lead (short-interest data, ~biweekly FINRA cadence — see that function's own doc comment) is the
+ * first caller.
+ */
+export function ageDaysLabel(ageMs: number | null | undefined): string | null {
+  if (ageMs == null) return null;
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "clock-skewed";
+  return `${Math.round(ageMs / (24 * 60 * 60 * 1000))}d`;
 }
 
 /**
