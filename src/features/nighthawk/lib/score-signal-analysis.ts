@@ -10,7 +10,7 @@
 //    {target, stop}, not pulled). This is the only population that can honestly be called
 //    "realized trade profitability". At n≈9 over 90 days, every output here is explicitly labeled
 //    low-sample/directional-only — this function refuses to compute a bucketed win-rate verdict at
-//    that n (see LOW_N_FLOOR_PHASE1) and reports raw per-row evidence instead, exactly the shape
+//    that n (n < 10) and reports raw per-row evidence instead, exactly the shape
 //    the operator asked for ("do not make production changes based on these 9 trades").
 //  - PHASE 2 (`analyzePhase2EarlyRead`): the broader ONE-SESSION DIRECTIONAL READ population —
 //    every row that received a real debrief classification of "did the tape move with or against
@@ -237,14 +237,12 @@ export type Phase1Report = {
   methodology: string;
   window_days: number;
   n_decided: number;
-  low_n: true; // structurally always true at this population size — see LOW_N_FLOOR_PHASE1
+  low_n: true; // structurally always true at this population size (n well under 10)
   wins: ScoreSignalEvidence[];
   losses: ScoreSignalEvidence[];
   win_mean: { total_score: number | null; flow_score: number | null; tech_score: number | null; flow_dominance_pct: number | null };
   loss_mean: { total_score: number | null; flow_score: number | null; tech_score: number | null; flow_dominance_pct: number | null };
 };
-
-const LOW_N_FLOOR_PHASE1 = 10;
 
 function meanOf(values: Array<number | null>): number | null {
   const usable = values.filter((v): v is number => v != null);
@@ -253,7 +251,7 @@ function meanOf(values: Array<number | null>): number | null {
 }
 
 /** PHASE 1: the true decided (outcome IN {target, stop}, not pulled) population only. Never
- *  computes a bucketed verdict — at n well under LOW_N_FLOOR_PHASE1 that would fabricate
+ *  computes a bucketed verdict — at n well under 10 that would fabricate
  *  precision the sample cannot support — reports raw per-row evidence and simple two-group means
  *  instead, explicitly labeled low_n: true always. */
 export function analyzePhase1CompletedTrades(rows: DebriefAggregateRow[], windowDays: number): Phase1Report {
