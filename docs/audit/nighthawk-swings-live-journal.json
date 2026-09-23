@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T13:19:00Z",
-  "notes": ":16-offset cycle. 09:17 ET, ~13 min to open. main synced (a6463c8d5), #4076 unchanged (249 comments). Nothing new to check beyond what the last two cycles already covered thoroughly (deploy converged, #4700/mfe-capture re-verified clean). Next cycle (:31, ~09:32 ET) should be the first one where the banger-live-sync cron has had a real chance to fire against the new expiry-settlement code -- that's when the real MARKET-OPEN-VALIDATION.md #340 re-verify (19 tickers, summary.bangerOpens 168->~127) becomes meaningful, not before. Staying quiet.",
+  "last_updated": "2026-09-23T13:45:00Z",
+  "notes": ":31-offset cycle -- market opened (9:30 ET), real post-deploy re-verify window for #5468. STRONG positive DB-level evidence the fix works: fetchBangerOpenCount() (unpaged, ground truth) confirmed 168->123, a real 45-row drop, right at the 9:30 cron tick. BUT the intended display-level re-verify (checking the 19 stuck tickers actually show in closed[] with an 'expired' reason) turned up a SECOND, genuine, SEPARATE bug: fetchBangerClosedBoardRows sorts ORDER BY session_date DESC (entry time), not close time, despite its own doc comment claiming 'newest first' = most recently closed. All 45 freshly-closed rows have OLD session_date (July/August entries), so they rank below the 60-row cutoff behind this week's entries no matter how recently they actually closed -- confirmed by printing id/session_date/closed_at for the full window and finding closed_at scattered non-monotonically. SHIPPED FIX: PR #5470 (fix/banger-closed-board-sort-order), ORDER BY changed to closed_at DESC, id DESC. RED->GREEN test (positions-db-closed-board-sort.test.ts, 2/2), tsc clean, full npm test 15334/15337 pass. Staged finding + MARKET-OPEN-VALIDATION.md #341 (re-runs #340's own checklist, which literally could not complete before this fix because the sort bug hid the evidence). PR opened as draft, subscribed. Once #5470 merges+deploys, re-check closed[] to confirm the 19 tickers now actually appear with the expired-settlement reason -- that's the real, final close-out of the #340/#341 validation thread. main synced. #4076 unchanged.",
   "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "findings_filed_this_cycle": [
+    "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
