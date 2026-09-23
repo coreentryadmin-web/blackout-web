@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T00:10:00Z",
-  "notes": "First cycle of 2026-09-23 (15-min-cadence :01 offset). Synced main (ccf9c8372, a Legacy-lane code PR -- shadow-only structure-exemption fix for Legacy's confluence gate, different subsystem, no conflict). #4076 unchanged (246 comments). Board: scanAsOf still 20:30:10Z (2026-09-22), only 2min past the 00:00 UTC OVERNIGHT-phase boundary -- too early to treat as a gap given cron schedules don't fire exactly on the boundary; watching for the first real OVERNIGHT scan of the new session day next cycle or two before any concern. Nothing else actionable. Staying quiet.",
+  "last_updated": "2026-09-23T00:20:00Z",
+  "notes": "15-min-cadence trigger (:16 offset). Synced main (ff9aaf86f, a Legacy-lane journal entry re: PR #5454, no conflict). #4076 unchanged.\n\nCONFIRMED the CloudWatch-based OVERNIGHT-phase prediction from ~2 cycles ago exactly: scanAsOf jumped from 2026-09-22T20:30:10Z to 2026-09-23T00:00:14Z -- fired right at the phase boundary (00:00 UTC = 20:00 ET), matching predicted timing almost to the second. scanSessionDay still reads '2026-09-22' (not '2026-09-23') -- correct, not a bug: OVERNIGHT (20:00-24:00 ET) is the tail of the PRIOR trading session day's cycle, not the start of a new one (the new session day begins at PRE_OPEN). committedCount/watchCount unchanged (85/0) -- the scan ran but found nothing new to commit, consistent with genuinely thin off-hours discovery.\n\nThis closes the loop on the scan-cadence investigation with full round-trip confirmation: predicted from logs -> verified live at the predicted moment. Nothing new to escalate. Continuing to watch for fresh live material or #4076 responses.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
