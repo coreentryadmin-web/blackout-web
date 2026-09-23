@@ -4302,6 +4302,11 @@
       "at": "2026-09-23T14:07:25Z",
       "summary": "Transient RTH mark-staleness blip (instance 1 of today): MUU and VKTX reverted GREEN -> AMBER (\"mark flagged stale by the API\") one cycle after the first full-GREEN read (13:52Z). DRAM stayed GREEN (0.70 within [0.68,0.71]). Matches the well-documented transient multi-ticker RTH mark-staleness pattern from prior trading days (already root-caused historically, see 2026-09-22 15:52:30Z entry) -- not escalating per the 3-instance noise threshold. Watching for a 2nd/3rd consecutive instance.",
       "assessment": "CLEAN, likely transient. Watching per noise discipline."
+    },
+    {
+      "at": "2026-09-23T14:36:45Z",
+      "summary": "VKTX crossed the 3-instance noise threshold: flagged stale 3 CONSECUTIVE 15-min cycles (14:07, 14:21, 14:36 UTC) while DRAM/MUU cycled GREEN in between. Checked legacy-option-mark-row.ts directly before escalating: this module already uses the correct LEGACY_QUOTE_STALE_MS (30s) bar, not the tighter 5s ZERODTE one that caused the documented RIG false-staleness bug -- that fix is already live here, so this is not a re-occurrence of it. Applying the exact precedent already established for this same pattern on TWLO (2026-09-22T18:53:02Z entry): a single ticker repeatedly hitting the 30s staleness bar at 15-min-apart checkpoints reflects that specific contract's own thinner real-world quote-update cadence (VKTX is a smaller-cap biotech name, plausibly lower options liquidity than DRAM/MUU), not a bug -- the staleness flag is correctly identifying a genuinely aging quote between real ticks. No code fix warranted, same conclusion as the TWLO case. Not escalating further.",
+      "assessment": "CLEAN -- matches an already-resolved pattern (TWLO precedent). No action needed."
     }
   ],
   "knownOpenItems": {
