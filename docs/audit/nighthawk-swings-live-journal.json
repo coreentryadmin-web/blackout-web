@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T15:52:00Z",
-  "notes": ":46-offset cycle. Genuine new finding + shipped fix: while spot-checking a fresh pure Banger-origin play (BKKT SWING:BKKT:1310), noticed troughPremium (0.33) read ABOVE peakPremium/mid (0.325) -- definitionally impossible (a trough is the LEAST mark ever observed). Root cause: horizons/route.ts's roundFloats keyDp override covers mid/entryPremium/peakPremium/gamma/theta/vega/iv but never troughPremium, so it fell through to the coarser 2dp default while its sibling peakPremium stayed at 4dp -- a real trough tick a few thousandths below its true value rounds up past an unrounded mid. Widened the check across all 78 open Banger-origin positions live: 6/78 carried the exact same violation (BKKT, REPL, SLS, DKS, MRNA, ARKG). SHIPPED PR #5474 (fix/horizons-trough-premium-rounding-precision, draft, CI running): one-line fix (added troughPremium:4 to the existing keyDp map, same precedent already established for gamma/theta/vega/iv). RED->GREEN test (fixture built so the raw trough is honestly below mid, isolating the rounding bug from a data question), tsc clean, full npm test 15336/15339 pass. Staged finding + MARKET-OPEN-VALIDATION.md #342 (names the 6 confirmed-live violations to spot-check post-deploy). #4076 unchanged. main synced.",
+  "last_updated": "2026-09-23T16:04:00Z",
+  "notes": ":01-offset v3 cycle. PR #5474 CI still running (CodeQL green, verify in_progress). committedCount 83 (continuing to converge). watchCount still 0 right at the MIDDAY phase's own start (12:00 ET / 16:00 UTC) -- too early to call a gap, the cron needs a few minutes to actually fire and populate; will check again next cycle before treating this as worth investigating. #4076 unchanged. main synced. Nothing else new this cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [
     "PR #5470 -- fetchBangerClosedBoardRows sorted by entry-time (session_date) not close-time (closed_at), hiding freshly-closed old positions from the 60-row closed board window",
