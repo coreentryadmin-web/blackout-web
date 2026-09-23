@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T06:47:25Z",
-  "notes": "Full v3-brief trigger (:46 offset, last of this 4-trigger cycle). Synced a parallel-lane journal commit (7fa20d41d, nighthawk-legacy, unrelated) clean. #4076 unchanged (247 comments, same timestamp). This cycle's re-verification angle: the narrative-dedup string-matching escalation (comment 5734128257) -- the last major still-OPEN escalation from earlier this session not yet re-checked against current code. Re-read buildIntelSections (play-brief-intel.ts 2120-2155): confirmed byte-for-byte unchanged -- roundTripAlreadyNoted/captureAlreadyNoted/tightenAlreadyNoted (OPEN bucket) and roundTripAlreadyNoted/adviceAlreadyNoted/stopAdviceAlreadyNoted/captureAlreadyNoted (CLOSED bucket) are all still narrative?.body?.includes(<fixed literal string>) checks against sibling rendered prose, exactly the brittle pattern escalated. No fix shipped, no reply, nothing new to add -- did not re-comment (would be noise). Correctly still an open design question (needs a structured-fact registry per the comment's own proposal, not a quick patch). This closes out re-verification of essentially every major escalation raised earlier this session (per-position cap, thesis-health pillars, calibration wrappers, entry_underlying_px, #4700 blindspot, now narrative-dedup) -- all confirmed still accurate against current main, none need re-filing. Staying quiet.",
+  "last_updated": "2026-09-23T07:03:25Z",
+  "notes": "Full v3-brief trigger (:01 offset). Synced two parallel-lane commits (4c0a4a086 nighthawk-legacy journal, 616b7cb99 heartbeat/state snapshots -- both unrelated, ff-merged clean). #4076 discovered changed on close inspection: re-verified the short-interest freshness-tag escalation (comment 5747893411, previously tracked OPEN) and found the PRIMARY fix already shipped -- fundamentalsFreshnessTag()'s 15-day cadence-scaled ceiling is live on main, correctly wired into fundamentalsFreshness(). The escalation's SECONDARY point (narrative-body disclosure asymmetry) is still genuinely open -- catalystsSection's short-interest block has no equivalent to the headlines block's staleLead disclosure. Posted a precise status-correction comment to #4076 (5790532356) so the thread reflects reality rather than sitting mislabeled as fully open, and offered to take the remaining small piece. Updated this journal's own escalation tracking to PARTIALLY RESOLVED. This is a good example of why the standing discipline says 'verify against main, never trust a status list at face value' -- this entry had gone stale on the primary half without anyone noticing.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": [],
   "loss_taxonomy": {
@@ -196,9 +196,10 @@
         "src/lib/swing/play-brief-intel.ts",
         "src/lib/swing/play-brief.ts",
         "src/lib/largo/answer-envelope.ts",
-        "src/lib/swing/play-brief-absence.ts"
+        "src/lib/swing/play-brief-absence.ts",
+        "(fundamentalsFreshnessTag fix confirmed 2026-09-23)"
       ],
-      "status": "OPEN -- posted, no response yet as of 09-20T09:31Z. Deliberately not shipped as a unilateral fix since it needs a real threshold decision (days? matching the ~biweekly reporting cycle?), not a guessed number."
+      "status": "PARTIALLY RESOLVED (2026-09-23) -- primary freshness-tag mislabeling FIXED: play-brief-absence.ts's fundamentalsFreshnessTag() now uses a real 15-day cadence-scaled ceiling (FUNDAMENTALS_RECENT_CEILING_MS), wired into play-brief.ts's fundamentalsFreshness() -- verified live against current main. SECONDARY still open: catalystsSection's short-interest block still has no narrative-body staleness disclosure equivalent to the headlines block's 'Last snapshot' line. Posted status update to #4076 (comment 5790532356), offered to take the remaining small mechanical piece if uncontested."
     },
     {
       "raised_at": "2026-09-20T16:34:00Z",
