@@ -1,10 +1,12 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-23T08:32:22Z",
-  "notes": "15-min-cadence trigger (:31 offset). Synced #5463 (coordinator's fold of staged findings into FINDINGS.md, includes my own short-interest staleness disclosure finding from a few cycles ago -- confirmed folded correctly: kind:FINDING line present, Status:FIXED row present, ran src/findings-hygiene.test.ts to double-check compliance, 9/9 pass). #4076 unchanged (248 comments, same timestamp). No new mandate work this cycle beyond confirming the fold -- given the depth of coverage already logged this session (per-position cap, thesis-health, calibration wrappers, narrative-dedup, entry_underlying_px investigation + #4076 update, #4700 blindspot confirmation, vol_collapse wiring, manage.ts rung precedence, 5-truth-grader retrace, roll.ts full read, MRNA math verification, technicalsBias macd check, and the shipped+merged PR #5461), staying genuinely quiet this cycle rather than manufacturing a new thread. Still deep pre-market (market opens 09:30 ET, still ~4.7h out).",
-  "checked_this_cycle_no_bug_found": true,
-  "findings_filed_this_cycle": [],
+  "last_updated": "2026-09-23T08:50:20Z",
+  "notes": "Full v3-brief trigger (:46 offset). Synced an unrelated parallel-lane heartbeat commit. #4076 unchanged (248 comments). This cycle's fresh angle: read swing-portfolio-budget.ts in full (300 lines, not yet read this session) -- discovered it has a REAL, ARMED PRODUCTION_PORTFOLIO_BUDGET constant (go-live 2026-07-24, enforce:true), contradicting swing-allocation.ts's own doc comment which claimed 'even then nothing in the live path consults it yet'. Traced commit.ts to confirm: Gate 1 (ARMED BUDGET) genuinely calls evaluateSwingCommitBudget with the real armed budget as one of three gates every commit candidate must clear -- the stale comment was actively misleading (exactly the staleness trap CLAUDE.md warns about), though narrowly correct about THIS specific field (Gate 2's allocateSwingBook call, which never receives a real budget and stays a no-op). Shipped a comment-only fix (PR #5465): rewrote the doc comment to distinguish the two separate budget-consulting paths accurately. tsc clean, swing-allocation.test.ts + commit.test.ts (54 tests) pass unchanged. Staged finding written, branch pushed, PR opened + draft released, subscribed to PR activity. Watching #5465 for CI.",
+  "checked_this_cycle_no_bug_found": false,
+  "findings_filed_this_cycle": [
+    "2026-09-23-swing-allocation-stale-portfolio-budget-comment.md"
+  ],
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
     "window": "90d, 31 closed chains",
