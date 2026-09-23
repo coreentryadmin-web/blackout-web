@@ -156,11 +156,23 @@ export interface SwingAllocationResult {
    *  treats a `capFlags[].wouldBreach` in `decisions` as a live block on real commits (see file header). */
   enforce: false;
   /**
-   * ADVISORY portfolio-budget verdict (whole-book capital/loss dimension, orthogonal to the % caps
-   * above). With `DEFAULT_PORTFOLIO_BUDGET` (all-null limits, enforce:false) this is a clean no-op —
-   * every dimension unconstrained, no breaches — and `decisions`/`capsApplied` are IDENTICAL to a run
-   * without a budget. It arms only when the operator supplies real capital + loss limits + enforce:true;
-   * even then nothing in the live path consults it yet. See swing-portfolio-budget.ts.
+   * ADVISORY portfolio-budget verdict for THIS `allocateSwingBook` call specifically (whole-book
+   * capital/loss dimension, orthogonal to the % caps above). `commit.ts`'s Gate 2 call site (the
+   * ONLY production caller) never passes a `budget` argument, so this field always resolves against
+   * the function's own `DEFAULT_PORTFOLIO_BUDGET` default (all-null limits, enforce:false) — a clean
+   * no-op, every dimension unconstrained, `decisions`/`capsApplied` IDENTICAL to a run without a
+   * budget.
+   *
+   * CORRECTED (2026-09-23, Ask Largo standing mandate — this comment previously claimed "even then
+   * nothing in the live path consults it yet", which stopped being true and was actively misleading
+   * once commit.ts's Gate 1 armed): the whole-portfolio-budget MECHANISM is genuinely live and
+   * enforced — `commit.ts`'s own file header documents Gate 1 ("ARMED BUDGET", go-live 2026-07-24) as
+   * one of three gates every candidate must clear, calling `evaluateSwingCommitBudget` with the REAL
+   * `PRODUCTION_PORTFOLIO_BUDGET` (2%/6%/3%/4% of a $100k reference account, `enforce:true`) — a
+   * SEPARATE call, independent of this field. Only THIS specific field (Gate 2's own
+   * `allocateSwingBook` result) stays disarmed; the mechanism as a whole is not inert. See
+   * swing-portfolio-budget.ts's file header for the armed constant and commit.ts's Gate 1 for where
+   * it actually blocks.
    */
   portfolioBudget: PortfolioBudgetVerdict;
 }
