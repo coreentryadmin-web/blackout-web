@@ -127,3 +127,14 @@ test("quantum-computing pure-plays cluster together, not each in its own isolate
   // Not merged into an unrelated theme (e.g. semis) just because both are "tech".
   assert.equal(sameThesis("RGTI", "NVDA"), false);
 });
+
+test("AI-datacenter connectivity chips + semis-equipment names cluster into semis, not their own isolated clusters (2026-09-25 live finding: ALAB+CRDO+KLAC+LRCX+INTC concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("ALAB"), "semis");
+  assert.equal(resolveTheme("CRDO"), "semis");
+  assert.equal(resolveTheme("KLAC"), "semis");
+  assert.equal(sameThesis("ALAB", "CRDO"), true);
+  assert.equal(sameThesis("ALAB", "NVDA"), true);
+  assert.equal(sameThesis("KLAC", "LRCX"), true);
+  // Not merged into an unrelated theme just because both are "tech".
+  assert.equal(sameThesis("ALAB", "AAPL"), false);
+});

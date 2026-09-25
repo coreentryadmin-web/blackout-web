@@ -14,7 +14,17 @@
 
 const SECTORS: Record<string, string[]> = {
   "index-etf": ["SPY", "QQQ", "IWM", "DIA", "SPX", "SPXW", "NDX", "RUT"],
-  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI"],
+  // Added 2026-09-25 (Ask Largo standing mandate, live finding): a real committed book held ALAB
+  // (x3) + CRDO (x2) concurrently LONG alongside KLAC/LRCX/INTC — same real semis/AI-datacenter-
+  // infra concentration checkPortfolioOverlap should catch but couldn't, since ALAB/CRDO/KLAC had
+  // no entry here. ALAB (Astera Labs) and CRDO (Credo Technology) are AI-datacenter connectivity-
+  // chip plays (PCIe/CXL retimers, SerDes/optical DSP) — same risk bucket as the AI-infra names
+  // already listed (NVDA/AVGO/MRVL). KLAC (KLA Corp) is semis-equipment/process-control — the
+  // identical subsector as the already-listed LRCX/AMAT. Live-verified: ALAB#1139's and CRDO#1136's
+  // Book-context sections reported only same-ticker concentration, never the cross-ticker basket.
+  // Same gap shape/fix pattern as the 2026-09-20 crypto-equity and 2026-09-25 quantum-computing
+  // extensions above.
+  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC"],
   megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META"],
   // PLTU is a leveraged single-stock ETF tracking PLTR itself — same bet, different wrapper.
   software: ["PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
