@@ -229,6 +229,7 @@ export function HorizonDeck({
           direction: p.direction,
           horizon,
           score: p.score,
+          scoreWithheld: p.scoreWithheld,
           status: p.status,
           reason: p.reason,
           contract: {

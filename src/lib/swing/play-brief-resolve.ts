@@ -64,6 +64,7 @@ export function horizonRowToDeckSource(
     direction: p.direction,
     horizon: "SWING",
     score: p.score,
+    scoreWithheld: p.scoreWithheld,
     status: p.status,
     reason: p.reason,
     contract: {
