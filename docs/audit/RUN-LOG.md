@@ -4,6 +4,28 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-25 (06:21 UTC / Fri 02:21 ET) — [SEO] Consolidated catch-up after ~30h notification gap
+
+Session lost connectivity for a stretch (10 scheduled-trigger notifications queued 09-24 00:16
+UTC → 09-25 06:17 UTC: heartbeats, market-hours wakes, one daily growth cycle). Replaying each
+stale one individually wouldn't add signal — several were already past their RTH window by
+delivery time — so ran one consolidated pass instead. Being explicit about the gap: production
+was **not** actively checked during those ~30h; this entry covers only what was verified now.
+
+Restart-recovery: repo intact, clean tree, synced to `origin/main` (`7ac3b70`). Current time
+02:21 ET — outside RTH, so no live gamma-snapshot poll this cycle.
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `image/png`, 50591 bytes**. Both fixes still holding. Step 2: `agent-pr-sweep.mjs` →
+1 open agent PR, #5491 (docs, not SEO-lane), CI-running, not stuck — nothing to flag. Step 3:
+opportunity scan — avgpos continues improving (23.4 → 22.4 → **20.7** over the last three
+readings). Two new striking-distance queries since last scan: "gamma three trading" (pos 12.7,
+20imp) matches the existing "three-part framework for gamma trading" section in the dealer-gamma
+pillar guide; "is 0dte gambling" (pos 11.5, 4imp) already has a dedicated, well-optimized article
+at `/learn/is-0dte-gambling` (targetKeyword exact match). Both already-covered, thin/early —
+no on-page work warranted. "spx slayers" CTR-gap and "what is dealer gamma" striking-distance
+remain the same already-optimized, thin-sample entries logged before. Nothing to ship this cycle.
+
 ## 2026-09-23 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (post-RTH)
 
 Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
