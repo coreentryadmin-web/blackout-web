@@ -348,3 +348,30 @@ export async function fetchBangerClosedBoardRows(limit = 60): Promise<BangerPosi
   );
   return res.rows.map(mapBangerPositionRow);
 }
+
+/**
+ * FULL closed-position history for offline analysis (Ask Largo standing mandate, 2026-09-25 —
+ * operator directive to build discovery-edge instrumentation for Engine B before touching any
+ * selection threshold). `fetchBangerClosedBoardRows` is deliberately page-limited for the member
+ * board (60 rows is the right UI window); an edge study needs EVERY closed row since a `since`
+ * date, not a recency-truncated page — same "unbounded when the caller needs the whole population"
+ * principle `fetchBangerOpenBookRows`'s own doc comment already states for the open side, applied
+ * here to the closed side for the one legitimate reason to want it unbounded: research, not display.
+ * `since` filters on `closed_at` (when the OUTCOME was known), not `session_date` (when the position
+ * was entered) — a position entered near the study's start but held for weeks would otherwise be
+ * silently excluded even though its outcome landed well inside the window.
+ */
+export async function fetchBangerClosedExportRows(
+  since: string,
+  limit = 5000,
+): Promise<BangerPositionRow[]> {
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM banger_positions
+     WHERE status IN ('CLOSED_RUNNER','STOPPED')
+       AND closed_at >= $1
+     ORDER BY closed_at ASC, id ASC
+     LIMIT $2`,
+    [since, limit],
+  );
+  return res.rows.map(mapBangerPositionRow);
+}
