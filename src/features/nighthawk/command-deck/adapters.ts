@@ -650,6 +650,10 @@ export interface HorizonDeckSource {
   direction: DeckDirection;
   horizon: "SWING" | "LEAPS";
   score: number;
+  /** Mirrors `HorizonPlay.scoreWithheld` (live-plays.ts) — `score` above is a `0` FALLBACK, not a
+   *  real measured value, when true. See `TerminalPlay.scoreWithheld`'s own doc comment (types.ts)
+   *  for the full history/live repro this closes. */
+  scoreWithheld?: boolean;
   status?: string;
   reason?: string;
   /** The play's contract. The greek fields are OPTIONAL and ADDITIVE (FINDINGS 2026-08-06): the SWING
@@ -1026,6 +1030,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     direction: src.direction,
     contract: `${src.contract.strike}${src.contract.right} · ${src.contract.dte}DTE`,
     score: Math.round(src.score),
+    scoreWithheld: src.scoreWithheld,
     status,
     horizon: src.horizon,
     exitModel: "SCALE_OUT",

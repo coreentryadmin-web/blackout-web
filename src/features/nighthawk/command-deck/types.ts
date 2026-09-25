@@ -83,6 +83,18 @@ export interface TerminalPlay {
   /** OCC symbol for the live greeks/marks subscription, when known. */
   occ?: string | null;
   score: number;
+  /** True when `score` is a `0` FALLBACK (the pinned `feature_vector.evidence_score` was missing
+   *  at read time), never a real measured value — see `HorizonPlay.scoreWithheld`'s own doc comment
+   *  (horizon-plays.ts) for the full history. A consumer of `score` must check this before treating
+   *  `0` as "the lowest real score" — a live repro (SWING:AAPL:40, 2026-09-21/2026-09-25, #4076)
+   *  showed this window is real: `factors` can independently re-derive non-zero pillar contributions
+   *  from the same `feature_vector`'s other fields while `evidence_score` itself is transiently
+   *  missing, producing a `score:0` next to non-trivial `factors` with no disclosure that either was
+   *  ever surfaced this far. `play-brief-lane-rank.ts` already reads the upstream `HorizonPlay` flag
+   *  directly and excludes withheld rows from peer comparison; this field is the same signal, just
+   *  threaded one layer further so `adapters.ts`'s OWN callers (Command Deck, any future consumer of
+   *  `TerminalPlay.score`) can do the same defensive check without reaching back into `HorizonPlay`. */
+  scoreWithheld?: boolean;
   /** Edition funnel rank (1–5 on Legacy). */
   rank?: number | null;
   status: DeckStatus;

@@ -287,7 +287,7 @@ export function PlayTerminal({
         <span className="tk">{play.ticker} · {play.direction}</span>
         <span className="ct">{play.contract}<OccCopy occ={play.occ} /></span>
         <span className="nh-deck-cursor" aria-hidden />
-        <span className="big"><div className="nh-deck-score">{play.score}</div><div className="lab">SCORE</div></span>
+        <span className="big"><div className="nh-deck-score">{play.scoreWithheld ? "—" : play.score}</div><div className="lab">SCORE</div></span>
       </div>
 
       <HeaderBadges play={play} />
@@ -535,7 +535,11 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           )}
         </summary>
         {play.factors.length === 0 && (
-          <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}.</div>
+          <div className="nh-deck-recnote">
+            {play.scoreWithheld
+              ? "No pillar breakdown on this row — grade is from lane score only."
+              : `Component breakdown not served for this lane yet — score ${play.score}.`}
+          </div>
         )}
         {topFactors.map((f) => (
           <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>

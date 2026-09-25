@@ -105,6 +105,27 @@ test("horizon adapter (PR-12 de-hardcode): real factors/regime/thesisBreak flow 
   assert.equal(play.thesisBreak!.level, "warn"); // no longer a hardcoded 'intact'
 });
 
+// Live repro (SWING:AAPL:40, #4076): a row whose feature_vector.evidence_score was transiently
+// missing while pil_* factors survived showed score:0 next to real non-zero factors with no
+// disclosure anywhere outside HorizonPlay/play-brief-lane-rank.ts's own scoreWithheld handling —
+// adapters.ts never received the flag at all. Threaded through so any TerminalPlay consumer
+// (Command Deck score badge, "Why this play" fallback) can tell a withheld 0 from a real one.
+test("horizon adapter: scoreWithheld threads through from HorizonDeckSource to TerminalPlay", () => {
+  const withheld = terminalPlayFromHorizon({
+    ticker: "aapl", direction: "LONG", horizon: "SWING", score: 0, scoreWithheld: true, status: "HOLD",
+    contract: { strike: 335, right: "C", expiry: "2026-09-25", dte: 5 },
+  });
+  assert.equal(withheld.score, 0);
+  assert.equal(withheld.scoreWithheld, true);
+
+  const real = terminalPlayFromHorizon({
+    ticker: "msft", direction: "LONG", horizon: "SWING", score: 0, status: "WATCH",
+    contract: { strike: 500, right: "C", expiry: "2026-09-25", dte: 5 },
+  });
+  assert.equal(real.score, 0);
+  assert.equal(real.scoreWithheld, undefined, "a genuinely-scored 0 must not be flagged withheld");
+});
+
 test("horizon adapter (PR-12): thesisBreak DERIVES from setupState; INVALIDATED → break", () => {
   const invalid = terminalPlayFromHorizon({
     ticker: "x", direction: "LONG", horizon: "SWING", score: 61, setupState: "INVALIDATED",
