@@ -54,7 +54,11 @@ test("assembleSwingServingLane: provisional-floor badge + null calibrated surfac
 
 test("assembleSwingServingLane: committed/watch back-compat views + counts track status", () => {
   const lane = assembleSwingServingLane([
-    swingPlay({ ticker: "A", status: "COMMIT" }),
+    // A real COMMIT_NOW candidate (triggered + at-trigger), not just a bare status:"COMMIT" — see the
+    // FIX comment above assembleSwingServingLane: an unclassified play (no setupState) with status:"COMMIT"
+    // is a gate-blocked/non-actionable thesis, not a committed one, and the router correctly sends it to
+    // RESEARCH rather than counting it here.
+    swingPlay({ ticker: "A", status: "COMMIT", setupState: "TRIGGERED", entryStatus: "AT_TRIGGER" }),
     swingPlay({ ticker: "B", status: "WATCH", setupState: "FORMING" }),
     swingPlay({ ticker: "C", status: "WATCH", setupState: "FORMING" }),
   ]);
@@ -91,6 +95,44 @@ test("assembleSwingServingLane: watch back-compat view excludes a name whose ent
     lane.sections.RESEARCH.some((p) => p.ticker === "STALE"),
     true,
     "the expired name must still be reachable in sections.RESEARCH — routed away, not dropped",
+  );
+});
+
+// FIX (Ask Largo standing mandate, live-verified 2026-09-25): `committed` had the same bug class as the
+// `watch` fix above — re-derived from raw `p.status === "COMMIT"`, which is only the mechanical floor-gate
+// result, not "this is an actionable or live position." A gate-blocked pre-entry thesis (real
+// `commitGateBlockedBy`, no `positionId`) still carries `status:"COMMIT"` but the router correctly places
+// it in WATCH/RESEARCH, never COMMIT_NOW. Live repro: board.lanes.SWING.committedCount read 91 while
+// GET /api/market/swing/record's real open-position count was 82 — gate-blocked theses double-counted.
+test("assembleSwingServingLane: committed back-compat view excludes a gate-blocked thesis with no live position (matches sections.COMMIT_NOW/MANAGING/SCALING_OUT/EXITING, not stale raw status)", () => {
+  const gateBlocked = swingPlay({
+    ticker: "BLOCKED",
+    status: "COMMIT", // mechanical floor-gate result only — aboveFloor:true
+    setupState: "FORMING", // router places a FORMING name in WATCH regardless of aboveFloor
+    commitGateBlockedBy: ["gate:G-S12:halt_feed_stale"],
+  });
+  const realCommitNow = swingPlay({
+    ticker: "REAL",
+    status: "COMMIT",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+  });
+  const livePosition = swingPlay({
+    ticker: "OPEN",
+    status: "COMMIT",
+    liveStatus: "OPEN",
+  });
+  const lane = assembleSwingServingLane([gateBlocked, realCommitNow, livePosition]);
+  assert.deepEqual(
+    lane.committed.map((p) => p.ticker).sort(),
+    ["OPEN", "REAL"],
+    "a gate-blocked, no-position thesis must not appear in the back-compat committed[] array",
+  );
+  assert.equal(lane.committedCount, 2);
+  assert.equal(
+    lane.sections.WATCH.some((p) => p.ticker === "BLOCKED"),
+    true,
+    "the gate-blocked name must still be reachable in sections.WATCH — routed away, not dropped",
   );
 });
 
