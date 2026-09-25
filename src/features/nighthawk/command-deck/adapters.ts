@@ -889,6 +889,10 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
         subLane: src.subLane,
         anchoredAt: src.committedAt ?? src.firstSeenAt ?? null,
         deskCommitted,
+        // Same `watchEntryExpired` computed above for the pill display — RESEARCH-bucket rows need
+        // it too, so `researchGateBlocks` can tell a lapsed-but-real setup from a genuinely thin one
+        // instead of falling through to the generic "thesis needs more work" reason.
+        entryWindowExpired: watchEntryExpired,
       })
     : null;
   const status = entryVerdict?.deckStatus ?? baseStatus;
