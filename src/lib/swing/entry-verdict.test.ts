@@ -82,6 +82,33 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.match(v?.gateBlocks?.[0]?.reason ?? "", /1 more session/);
   });
 
+  // Live repro (2026-09-25): AMD (score 81.3, TRIGGERED+AT_TRIGGER, first seen 2026-07-30) routes to
+  // RESEARCH solely because its entry window lapsed — not because the thesis is thin. Before this fix,
+  // researchGateBlocks had no case for entryWindowExpired, so it fell through to the generic
+  // "thesis needs more work" reason, misrepresenting a real, still-scoring setup as a rejected one.
+  it("RESEARCH + expired entry window (real triggered setup) → SKIP with the expiry reason, not the generic fallback", () => {
+    const v = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      entryWindowExpired: true,
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.gateBlocks?.[0]?.code, "entry_window_expired");
+    assert.match(v?.gateBlocks?.[0]?.reason ?? "", /entry window already lapsed/);
+    assert.doesNotMatch(v?.gateBlocks?.[0]?.reason ?? "", /needs more work/);
+  });
+
+  it("RESEARCH with no expiry/persistence/invalidation signal still falls through to the generic reason", () => {
+    const v = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      entryWindowExpired: false,
+    });
+    assert.equal(v?.gateBlocks?.[0]?.code, "research_review");
+  });
+
   it("infers COMMIT_NOW from observables when serving is absent", () => {
     const section = resolveSwingServingSection({
       setupState: "TRIGGERED",

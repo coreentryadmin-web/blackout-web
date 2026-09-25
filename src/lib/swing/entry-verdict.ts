@@ -46,6 +46,10 @@ export type SwingEntryVerdictInput = {
   anchoredAt?: string | null;
   deskCommitted?: boolean;
   nowMs?: number;
+  /** Entry-validity deadline already passed (evaluateSwingEntryEnterability's `expired` flag) —
+   *  the same reason `sectionForSwingPlay` (serving.ts) routes a stale-but-triggered setup to
+   *  RESEARCH. See `researchGateBlocks`'s own doc comment for why this needs its own case. */
+  entryWindowExpired?: boolean | null;
 };
 
 /** Resolve the serving section when the play was not stamped (tests / partial payloads). */
@@ -168,6 +172,24 @@ function researchGateBlocks(input: SwingEntryVerdictInput): SwingEntryGateBlock[
       {
         code: "unclassified",
         reason: "No setup maturity read attached — needs classification before entry.",
+      },
+    ];
+  }
+  // Same live repro `watchEntryExpired` (adapters.ts) was built to fix for the WATCH-pill display
+  // (2026-09-12: MU/AMD sat 46-49 days past their own 2-5 day entry window) — this is the sibling
+  // gap for the RESEARCH-bucket verdict's own reason text. A row only reaches this branch once the
+  // three checks above have all passed, so it is never a thin/invalidated/unclassified thesis —
+  // it's a real, mature setup whose clean-fill window already lapsed. The prior fallback
+  // ("thesis needs more work") misrepresented that as a weak thesis rather than a stale entry
+  // opportunity — a real, still-scoring setup (live repro: AMD score 81.3, TRIGGERED+AT_TRIGGER,
+  // first seen 2026-07-30, still routed RESEARCH via entryWindowExpired) read as if it had been
+  // rejected on the merits.
+  if (input.entryWindowExpired === true) {
+    return [
+      {
+        code: "entry_window_expired",
+        reason:
+          "This setup triggered, but its entry window already lapsed — the thesis wasn't rejected, the clean-fill opportunity closed.",
       },
     ];
   }
