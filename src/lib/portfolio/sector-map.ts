@@ -42,6 +42,14 @@ const SECTORS: Record<string, string[]> = {
     "ETH", "ETHE", "ETHU", "ETHA", "IBIT", "GBTC", "BITO", "BITX",
   ],
   "china-adr": ["BABA", "PDD", "NIO", "JD", "BIDU", "LI", "XPEV", "FUTU"],
+  // Added 2026-09-25 (Ask Largo standing mandate, live finding): a real committed book held RGTI+QBTS+IONQ
+  // concurrently LONG (same TACTICAL/BREAKOUT batch) — all unmapped, so checkPortfolioOverlap reported no
+  // concentration for a genuinely correlated 3-name basket (each resolved to its own isolated cluster).
+  // Same gap shape/fix as the 2026-09-20 crypto-equity extension above. RGTI (Rigetti), QBTS (D-Wave),
+  // IONQ (IonQ) and QUBT (Quantum Computing Inc) are the four liquid, options-active pure-play quantum-
+  // computing names that trade as one basket-level bet — deliberately conservative (per the crypto-equity
+  // precedent's own note), leaving out names with only partial/ambiguous quantum exposure.
+  "quantum-computing": ["RGTI", "QBTS", "IONQ", "QUBT"],
   consumer: ["NKE", "SBUX", "MCD", "DIS", "WMT", "COST", "TGT", "LULU", "CMG"],
   healthcare: ["LLY", "UNH", "PFE", "JNJ", "MRNA", "ABBV", "TMO", "AMGN"],
   "ai-power": ["VST", "CEG", "NEE", "GEV", "OKLO", "SMR", "ASTS"],

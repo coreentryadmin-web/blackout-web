@@ -115,3 +115,15 @@ test("crypto exchanges, miners, and BTC/ETH trust/ETF wrappers cluster with cryp
   assert.equal(sameThesis("ETH", "IBIT"), true);
   assert.equal(sameThesis("ETHE", "MSTR"), true);
 });
+
+test("quantum-computing pure-plays cluster together, not each in its own isolated cluster (2026-09-25 live finding: RGTI+QBTS+IONQ concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("RGTI"), "quantum-computing");
+  assert.equal(resolveTheme("QBTS"), "quantum-computing");
+  assert.equal(resolveTheme("IONQ"), "quantum-computing");
+  assert.equal(resolveTheme("QUBT"), "quantum-computing");
+  assert.equal(sameThesis("RGTI", "QBTS"), true);
+  assert.equal(sameThesis("RGTI", "IONQ"), true);
+  assert.equal(sameThesis("QBTS", "QUBT"), true);
+  // Not merged into an unrelated theme (e.g. semis) just because both are "tech".
+  assert.equal(sameThesis("RGTI", "NVDA"), false);
+});
