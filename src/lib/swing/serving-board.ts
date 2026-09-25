@@ -58,14 +58,45 @@ export interface SwingServingLane extends HorizonLaneBoard {
  * the exact field Largo's tools and this route serve directly — while its own play-brief narrative
  * (which DOES read the router's verdict) correctly said "Serving section: RESEARCH... entry-validity
  * window expired". Fix: derive `watch` FROM the already-computed `sections.WATCH` instead of re-filtering
- * raw status, so it can never disagree with the router by construction. `committed` is left untouched —
- * no live-position entry-window-expiry case exists for it, and narrowing scope avoids risking the
- * correctly-tracked committed count on an unrelated change.
+ * raw status, so it can never disagree with the router by construction.
+ *
+ * FIX 2 (Ask Largo standing mandate, live-verified 2026-09-25): `committed` had the exact same bug class —
+ * re-derived independently from raw `p.status === "COMMIT"`, which is only the mechanical COMMIT/WATCH
+ * floor-gate result (`aboveFloor`), not "this is an actionable-or-live thesis." The INTENDED semantics
+ * (per two existing product-reads.ts regression tests from earlier live incidents —
+ * `product-reads-swing-open-count.test.ts`, 2026-09-08, and `product-reads-swing-sample-gate-blocked
+ * .test.ts`, 2026-09-22) are: `committed`/`committedCount` = every "floor cleared" thesis, i.e. everything
+ * the router does NOT place in WATCH or RESEARCH (COMMIT_NOW ∪ WAITING_FOR_ENTRY ∪ the three live sections)
+ * — INCLUDING a score-qualified thesis that is real-time-gate-blocked (`commitGateBlockedBy` non-empty,
+ * e.g. `gate:G-S12:halt_feed_stale`) or hasn't reached the ledger yet (no `positionId`), which
+ * `swingHorizonForLargo` deliberately keeps in the count and instead discloses via a separate
+ * `open_position_count`/per-row `commit_gate_blocked`/`open_position` — that disambiguation lives at the
+ * Largo product-read layer on purpose, not by filtering the board's own `committed` array.
+ *
+ * What was actually broken: an UNCLASSIFIED or FORMING pre-entry play (no real setup-maturity read, or a
+ * thesis still building) can carry `status:"COMMIT"` from the mechanical floor gate alone, and the router
+ * correctly places THAT in WATCH or RESEARCH — those plays were being wrongly counted as committed too.
+ * Live repro: `board.lanes.SWING.committedCount` read 91 while `GET /api/market/swing/record`'s
+ * `summary.opens` (the real tracked-position count) was 82; live-verified that every one of the 9
+ * overcounted names had landed in `sections.WATCH`/`sections.RESEARCH` (FORMING/unclassified, not
+ * COMMIT_NOW/WAITING_FOR_ENTRY), 6 of them byte-identical duplicate objects appearing in BOTH `committed`
+ * and `watch`. The comment that used to sit here ("no live-position entry-window-expiry case exists for
+ * `committed`, narrowing scope avoids risk") was itself the exact same staleness trap this file's own
+ * #4076 corrections warn about — it was never re-verified against a live board. Fix: derive `committed`
+ * FROM the router's own non-WATCH/RESEARCH sections instead of re-filtering raw status, so — like `watch`
+ * — it can never disagree with the router by construction, while still matching the product-reads.ts
+ * layer's documented "floor cleared, not necessarily open" semantics.
  */
 export function assembleSwingServingLane(plays: readonly HorizonPlay[]): SwingServingLane {
   const spec = HORIZONS.SWING;
-  const committed = plays.filter((p) => p.status === "COMMIT");
   const sections = buildSwingSections(plays);
+  const committed = [
+    ...sections.COMMIT_NOW,
+    ...sections.WAITING_FOR_ENTRY,
+    ...sections.MANAGING,
+    ...sections.SCALING_OUT,
+    ...sections.EXITING,
+  ];
   const watch = sections.WATCH;
   return {
     horizon: "SWING",
