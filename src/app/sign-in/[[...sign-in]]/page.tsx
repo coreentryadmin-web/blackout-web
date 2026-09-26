@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = noindexPageMetadata("Sign in · BlackOut", "/sign-in");
 
 type Props = {
-  searchParams: Promise<{ redirect_url?: string }>;
+  searchParams: Promise<{ redirect_url?: string | string[] }>;
 };
 
 export default async function SignInPage({ searchParams }: Props) {
