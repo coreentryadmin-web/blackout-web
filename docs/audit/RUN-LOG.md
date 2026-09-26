@@ -4,6 +4,24 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-26 (12:17 UTC / Sat 08:17 ET) — [SEO] Consolidated catch-up after ~23h notification gap
+
+Session lost connectivity again (8 scheduled-trigger notifications queued 09-25 13:35 UTC →
+09-26 12:16 UTC: 3 market-hours wakes, 1 daily growth cycle, 4 lane heartbeats). Now Saturday —
+markets closed, so the queued RTH wakes are moot regardless of when they fired; ran one
+consolidated pass instead of replaying each.
+
+Synced to `origin/main` (`f3b298a`). Purged Cloudflare edge, measured homepage desktop CLS twice:
+first read **0.0399** (still GOOD but higher than the recent ~0-0.03 baseline), re-measured
+immediately — **0.0003, GOOD** — confirmed transient noise, not a regression. `/api/og` —
+**HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`**. Both
+fixes holding. `agent-pr-sweep.mjs` → 2 open agent PRs (#5503, #5501, both docs/CI-running, not
+SEO-lane, not stuck) — nothing to unblock. Opportunity scan + 28-day trend: avgpos continues
+improving (23.4 → 22.4 → 20.7 → **19.4**). No new striking-distance/CTR-gap queries beyond the
+same already-optimized set logged in prior cycles ("dealer gamma", "gamma three trading",
+"is 0dte gambling", "what is dealer gamma", "spx slayers") — all already covered by existing
+content/FAQs, still too thin to warrant fresh on-page work. Nothing to ship this cycle.
+
 ## 2026-09-25 (12:17 UTC / Fri 08:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
 
 Synced to `origin/main` (`5e8f083`). Purged Cloudflare edge, re-measured homepage desktop CLS —
