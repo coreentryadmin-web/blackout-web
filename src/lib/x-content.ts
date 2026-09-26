@@ -83,11 +83,6 @@ export function marketDataReady(
 export const X_ACCOUNT_USERNAME = "BlackOutTrade";
 export const WHOP_URL = "whop.com/blackout-2d9c";
 
-/** @deprecated use xPostFooterLine(postType) from x-whop-link */
-export function xPostFooter(): string {
-  return xPostFooterLine();
-}
-
 const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story, not a bullet list):
 • Vector — live GEX ladder, animated wall beads, gamma flip line
 • Helix — whale options flow tape, premium prints as they hit
