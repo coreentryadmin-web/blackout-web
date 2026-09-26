@@ -6,6 +6,8 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import { computeSwingThesisHealth } from "./thesis-health";
+import { swingPlayBriefConfidence } from "./play-brief-confidence";
+import { collectBriefUnavailableSources } from "./play-brief-absence";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -881,7 +883,18 @@ test("composeSwingPlayBrief: regime read is labeled as TODAY's read, distinct fr
   assert.doesNotMatch(why!.body, /\*\*Discovery read:\*\*/, "old unqualified label must not reappear");
 });
 
-test("composeSwingPlayBrief: omits envelope.confidence (Largo C6 — no uncalibrated score)", () => {
+// UPDATED 2026-09-26 (Ask Largo standing mandate, operator directive): this test used to assert
+// confidence was ALWAYS omitted, because at the time swing had no calibrated evidence-coverage
+// signal to report and C6 correctly says omit rather than fabricate. That is no longer true —
+// `swingPlayBriefConfidence` (play-brief-confidence.ts) now derives a genuinely calibrated
+// evidence-coverage read from already-existing, already-thresholded fields (entryPresentPillars'
+// dossier.ts degraded gate, collectBriefUnavailableSources' own absence list) — the SAME kind of
+// evidence-coverage calibration verdict-core.ts/cortex-read.ts already use elsewhere for this exact
+// field. C6 is still honored: this fixture (a clean WATCH candidate with no thin-entry flag and no
+// unavailable sources) has a real, full evidence read, so a real "high" confidence is correct here,
+// not an omission — omission remains correct only for a genuine build failure (safeCompose's own
+// fallback), never for "we have nothing to say."
+test("composeSwingPlayBrief: populates envelope.confidence with a real evidence-coverage read (Largo C6)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-05T20:00:00.000Z",
@@ -894,7 +907,10 @@ test("composeSwingPlayBrief: omits envelope.confidence (Largo C6 — no uncalibr
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
-  assert.equal(brief.envelope.confidence, undefined);
+  assert.ok(brief.envelope.confidence, "expected a populated confidence — this fixture has full coverage, nothing to omit");
+  assert.equal(brief.envelope.confidence!.level, "high");
+  assert.equal(typeof brief.envelope.confidence!.why, "string");
+  assert.ok(brief.envelope.confidence!.why.length > 0, "why must never be an empty placeholder");
 });
 
 test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavailableSources (BIE absence contract)", () => {
@@ -3934,4 +3950,137 @@ test("composeSwingPlayBrief: OPEN play with ADD manage action gets a situational
     brief.envelope.followups?.some((f) => /should i add to this/i.test(f)),
     `expected an add-specific followup for an ADD manage action, got: ${JSON.stringify(brief.envelope.followups)}`,
   );
+});
+
+// ── Largo C6 confidence field (Ask Largo standing mandate, operator directive 2026-09-26) ──
+// These tests prove: (1) the `confidence` shown in the composed envelope always matches an
+// independent recomputation from the same inputs (no drift between "what's shown" and "what's
+// calculated"), and (2) adding it changes NOTHING else — not direction, not entry/stop/target
+// fields, not `liveStatus`/`manageAction`, not the play object itself (never mutated).
+
+/** Mirrors play-brief.ts's own (private, duplicated) statusBucket — same 3-line mapping, not a
+ *  new concept. See play-brief-confidence.ts's header for why bucket is an input, not re-derived. */
+function testStatusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
+  if (play.status === "CLOSED") return "closed";
+  if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") return "open";
+  return "watch";
+}
+
+test("composeSwingPlayBrief: confidence shown to members always matches an independent recomputation (OPEN, thin entry)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", entryPresentPillars: 2 }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const expected = swingPlayBriefConfidence(
+    ctx.play,
+    testStatusBucket(ctx.play),
+    collectBriefUnavailableSources(ctx)
+  );
+  assert.deepEqual(brief.envelope.confidence, expected);
+  assert.equal(brief.envelope.confidence?.level, "low");
+});
+
+test("composeSwingPlayBrief: confidence shown to members always matches an independent recomputation (OPEN, full entry)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", entryPresentPillars: null }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const expected = swingPlayBriefConfidence(
+    ctx.play,
+    testStatusBucket(ctx.play),
+    collectBriefUnavailableSources(ctx)
+  );
+  assert.deepEqual(brief.envelope.confidence, expected);
+  assert.ok(brief.envelope.confidence?.level === "high" || brief.envelope.confidence?.level === "moderate");
+});
+
+test("composeSwingPlayBrief: CLOSED play confidence is always high, matching the pure function directly", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.confidence?.level, "high");
+  assert.deepEqual(
+    brief.envelope.confidence,
+    swingPlayBriefConfidence(ctx.play, "closed", collectBriefUnavailableSources(ctx))
+  );
+});
+
+test("composeSwingPlayBrief: adding confidence does not alter direction, invalidation, structureLadder, or the play object itself", () => {
+  const basePlay = {
+    status: "OPEN" as const,
+    recommendation: "HOLD" as const,
+    direction: "LONG" as const,
+    entryTriggerUnderlyingPx: 100,
+    invalidationUnderlyingPx: 90,
+    liveStatus: "HOLD",
+    manageAction: undefined,
+    entry: 5,
+    mark: 6,
+  };
+  const ctxThin: SwingPlayBriefContext = {
+    play: fixturePlay({ ...basePlay, entryPresentPillars: 2 }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const ctxFull: SwingPlayBriefContext = {
+    ...ctxThin,
+    play: fixturePlay({ ...basePlay, entryPresentPillars: null }),
+  };
+
+  const playThinBefore = JSON.stringify(ctxThin.play);
+  const playFullBefore = JSON.stringify(ctxFull.play);
+
+  const briefThin = composeSwingPlayBrief(ctxThin);
+  const briefFull = composeSwingPlayBrief(ctxFull);
+
+  // Confidence itself legitimately differs (that's the feature) ...
+  assert.notEqual(briefThin.envelope.confidence?.level, briefFull.envelope.confidence?.level);
+
+  // ... but every trade-relevant field is untouched by which branch confidence took.
+  assert.equal(briefThin.envelope.bias, briefFull.envelope.bias, "direction/bias must not depend on confidence");
+  assert.equal(briefThin.envelope.invalidation, briefFull.envelope.invalidation, "invalidation (stop) must not depend on confidence");
+  assert.equal(briefThin.envelope.structureLadder, briefFull.envelope.structureLadder, "structure ladder (targets/levels) must not depend on confidence");
+
+  // Neither compose call mutated its own input play object.
+  assert.equal(JSON.stringify(ctxThin.play), playThinBefore, "composeSwingPlayBrief must not mutate ctx.play (thin case)");
+  assert.equal(JSON.stringify(ctxFull.play), playFullBefore, "composeSwingPlayBrief must not mutate ctx.play (full case)");
+
+  // The play's own liveStatus/manageAction/entry/stop fields survive unchanged on the object itself
+  // (composeSwingPlayBrief reads them, never rewrites them) — confidence is a pure addition to the
+  // envelope, not a rewrite of the position's own management state.
+  assert.equal(ctxThin.play.liveStatus, "HOLD");
+  assert.equal(ctxFull.play.liveStatus, "HOLD");
+  assert.equal(ctxThin.play.entryTriggerUnderlyingPx, 100);
+  assert.equal(ctxThin.play.invalidationUnderlyingPx, 90);
 });
