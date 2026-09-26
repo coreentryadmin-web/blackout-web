@@ -20,6 +20,7 @@ import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-di
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
 import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
 import { graduatedArchetypeEntry } from "./calibration-cache";
+import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import {
   collectBriefUnavailableSources,
   confluenceZoneKindsLabel,
@@ -1160,6 +1161,11 @@ export function composeSwingPlayBrief(
               ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
               : null);
 
+  // Computed once and shared by the envelope's own `unavailableSources` chips AND `confidence`
+  // below, so the two can never drift apart (the same class of narrative-vs-chip disagreement
+  // this file has already fixed elsewhere for readMs — see collectBriefUnavailableSources's header).
+  const unavailableSources = collectBriefUnavailableSources(ctx);
+
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
       headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
@@ -1170,7 +1176,17 @@ export function composeSwingPlayBrief(
       levels: safeCompose("levels", () => levelsFromContext(ctx, readMs), []),
       invalidation,
       followups: followupsFor(play),
-      unavailableSources: collectBriefUnavailableSources(ctx),
+      unavailableSources,
+      // Largo C6 (Ask Largo standing mandate, 2026-09-26 — see play-brief-confidence.ts's header
+      // for why this is NOT computeSwingThesisHealth's %): evidence-coverage confidence, never a
+      // directional/win-probability read. Never throws by construction (pure, total function over
+      // already-validated inputs), but routed through safeCompose for the same defensive
+      // consistency every other envelope field in this composer gets.
+      confidence: safeCompose(
+        "confidence",
+        () => swingPlayBriefConfidence(play, bucket, unavailableSources),
+        undefined
+      ),
     }),
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,
