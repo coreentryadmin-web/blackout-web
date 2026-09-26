@@ -3,6 +3,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { activeVectorFullStateTickers } from "@/features/vector/lib/vector-full-state-warm-universe";
 import { VECTOR_DTE_HORIZONS } from "@/features/vector/lib/vector-dte-horizon";
 import { computeVectorFullState } from "@/lib/bie/vector-full-state";
 import { writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
@@ -50,7 +51,10 @@ const OVERLAP_LOCK_TTL_SEC = 900;
 
 async function runVectorFullStateSnapshot(started: number): Promise<void> {
   try {
-    const tickers = vectorUniverseTickers();
+    // Static allowlist ∪ dynamic (member-viewed) ∪ real open swing positions — see
+    // vector-full-state-warm-universe.ts's header for the gap this closes (a committed swing
+    // position outside the static allowlist previously never got its full-state cache warmed).
+    const tickers = await activeVectorFullStateTickers();
     let written = 0;
     let skippedNoSpot = 0;
     let failed = 0;
