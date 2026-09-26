@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = noindexPageMetadata("Create account · BlackOut", "/sign-up");
 
 type Props = {
-  searchParams: Promise<{ redirect_url?: string }>;
+  searchParams: Promise<{ redirect_url?: string | string[] }>;
 };
 
 export default async function SignUpPage({ searchParams }: Props) {
