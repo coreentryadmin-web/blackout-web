@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-26T11:51:30Z",
+  "lastUpdated": "2026-09-26T12:22:13Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -4342,6 +4342,11 @@
       "at": "2026-09-25T11:37:24Z",
       "summary": "A_edition flipped GREEN -> AMBER for one cycle: \"edition served from degraded fallback source\", with editionFor read as 2026-09-28 (next Monday, the correct next-trading-day target on a Friday) instead of the expected 2026-09-25, and B_marks correspondingly read GREEN via \"no open plays with a resolvable OCC\" (the fallback payload carries no plays). Investigated against source rather than assuming a new bug: legacy-healthcheck-eval.mjs's verdictForEdition() header comment documents this exact mechanism already, from a 2026-09-16 live incident -- the route's own timeoutFallbackEdition (edition/route.ts) serves emptyEdition(editionFor) with degraded:true when the real computation blows past its time budget, a transient read failure, not a confirmed empty day. Re-ran the healthcheck immediately (11s later): reverted cleanly to editionFor=2026-09-25, A_edition GREEN, 5 real plays (MU/NBIS/NVDA/NET/SOXX unchanged) -- the classic self-resolving transient-timeout signature this eval was specifically built to label correctly rather than misread as \"nothing published.\" First occurrence today, not yet a 3-instance pattern -- logged once because it is a genuinely different state than 40+ identical clean cycles, and because it is a live confirmation the documented guard is working as designed. No code change warranted.",
       "assessment": "CLEAN -- one-off degraded-fallback transient, self-resolved on immediate re-check, matches an already-documented mechanism. No action needed."
+    },
+    {
+      "at": "2026-09-26T12:21:19Z",
+      "summary": "A_edition flipped GREEN -> AMBER for one cycle again: \"edition served from degraded fallback source\", editionFor read as 2026-09-28 (next Monday), B_marks correspondingly GREEN via \"no open plays with a resolvable OCC\" -- byte-for-byte the same shape as the 2026-09-25T11:37:24Z occurrence (also a weekend/off-hours read, also self-resolved). Re-ran immediately (59s later): reverted cleanly to editionFor=2026-09-28, A_edition GREEN, same 5 plays, not degraded. This is the SECOND confirmed instance of this exact transient (documented mechanism: legacy-healthcheck-eval.mjs verdictForEdition()'s timeoutFallbackEdition path, edition/route.ts). Still below this lane's 3-instance threshold for escalating a recurrence as a calibration issue -- logging per the discipline that already correctly predicted this would recur, and to make the 3rd instance (if/when it happens) easy to recognize without re-deriving the root cause.",
+      "assessment": "CLEAN -- 2nd instance of an already-documented self-resolving transient, re-verified live. Watching for a 3rd before escalating; no action needed yet."
     }
   ],
   "knownOpenItems": {
