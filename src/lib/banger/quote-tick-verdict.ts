@@ -67,7 +67,6 @@ export function replayTickState(ticks: ReplayTick[], entryPremium: number, rules
         const execFill = Math.min(bid, modelFill);
         modelRealized += remaining * modelFill;
         execRealized += remaining * execFill;
-        remaining = 0;
         return finalize({ exitCause: "hard_stop", scaled: false, peakAtExit: newPeak, exitTickIndex: i, exitTickT: tick.t });
       }
       if (mark >= entryPremium * scale_at_mult) {
@@ -83,7 +82,6 @@ export function replayTickState(ticks: ReplayTick[], entryPremium: number, rules
       const execFill = Math.min(bid, modelFill);
       modelRealized += remaining * modelFill;
       execRealized += remaining * execFill;
-      remaining = 0;
       return finalize({ exitCause: "trail_stop", scaled: true, peakAtExit: newPeak, exitTickIndex: i, exitTickT: tick.t });
     }
     peak = newPeak;
