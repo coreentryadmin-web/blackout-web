@@ -41,17 +41,27 @@ mock.module("../db.ts", {
     dbQuery: async (sql: string, params: unknown[] = []) => {
       lastQuery = { sql, params };
       if (shouldReject) throw new Error("simulated DB failure");
-      return { rows: [] };
+      return { rows: queuedRows };
     },
+    isoTimestampString: (v: unknown) => (v == null ? null : new Date(v as string).toISOString()),
   },
 });
+
+let queuedRows: Record<string, unknown>[] = [];
 
 describe("banger quote-tick-log", () => {
   let buildBangerQuoteTickRow: typeof import("./quote-tick-log.ts").buildBangerQuoteTickRow;
   let persistBangerQuoteTick: typeof import("./quote-tick-log.ts").persistBangerQuoteTick;
+  let fetchBangerQuoteTicksForContract: typeof import("./quote-tick-log.ts").fetchBangerQuoteTicksForContract;
+  let fetchBangerQuoteTickCoverage: typeof import("./quote-tick-log.ts").fetchBangerQuoteTickCoverage;
 
   before(async () => {
-    ({ buildBangerQuoteTickRow, persistBangerQuoteTick } = await import("./quote-tick-log.ts"));
+    ({
+      buildBangerQuoteTickRow,
+      persistBangerQuoteTick,
+      fetchBangerQuoteTicksForContract,
+      fetchBangerQuoteTickCoverage,
+    } = await import("./quote-tick-log.ts"));
   });
 
   describe("buildBangerQuoteTickRow", () => {
@@ -102,6 +112,51 @@ describe("banger quote-tick-log", () => {
       const row = buildBangerQuoteTickRow("O:TEST260814C00010000", snap({ bid: 1, ask: 2 }), new Date());
       await assert.rejects(() => persistBangerQuoteTick(row), /simulated DB failure/);
       shouldReject = false;
+    });
+  });
+
+  describe("fetchBangerQuoteTicksForContract", () => {
+    test("queries by occ + time window, ordered oldest-first, and maps rows including the DB id", async () => {
+      lastQuery = null;
+      shouldReject = false;
+      queuedRows = [
+        { id: 7, contract_occ: "O:TEST260814C00010000", polled_at: "2026-08-05T14:00:00.000Z", bid: 1, ask: 2, last_trade: 1.4, raw_mark: 1.5, reliable_mark: 1.5 },
+        { id: 8, contract_occ: "O:TEST260814C00010000", polled_at: "2026-08-05T14:05:00.000Z", bid: "1.1", ask: "2.1", last_trade: null, raw_mark: "1.6", reliable_mark: "1.6" },
+      ];
+      const rows = await fetchBangerQuoteTicksForContract("O:TEST260814C00010000", "2026-08-05T00:00:00.000Z", "2026-08-06T00:00:00.000Z", 100);
+      assert.match(lastQuery!.sql, /FROM banger_quote_tick_log/);
+      assert.match(lastQuery!.sql, /ORDER BY polled_at ASC, id ASC/);
+      assert.deepEqual(lastQuery!.params, ["O:TEST260814C00010000", "2026-08-05T00:00:00.000Z", "2026-08-06T00:00:00.000Z", 100]);
+      assert.equal(rows.length, 2);
+      assert.equal(rows[0]!.id, 7);
+      // NUMERIC columns arrive from pg as strings -- must be coerced to numbers, not passed through.
+      assert.equal(rows[1]!.bid, 1.1);
+      assert.equal(typeof rows[1]!.bid, "number");
+    });
+
+    test("a null reliable_mark (never a usable tick) is preserved as null, never coerced to 0 or fabricated", async () => {
+      queuedRows = [
+        { id: 1, contract_occ: "O:X", polled_at: "2026-08-05T14:00:00.000Z", bid: null, ask: null, last_trade: null, raw_mark: null, reliable_mark: null },
+      ];
+      const rows = await fetchBangerQuoteTicksForContract("O:X", "2026-08-05T00:00:00.000Z", "2026-08-06T00:00:00.000Z");
+      assert.equal(rows[0]!.reliable_mark, null);
+    });
+  });
+
+  describe("fetchBangerQuoteTickCoverage", () => {
+    test("groups by contract, returning tick_count/first_tick_at/last_tick_at per contract", async () => {
+      lastQuery = null;
+      queuedRows = [
+        { contract_occ: "O:AAA", tick_count: 42, first_tick_at: "2026-09-27T13:30:00.000Z", last_tick_at: "2026-09-27T19:55:00.000Z" },
+        { contract_occ: "O:BBB", tick_count: "3", first_tick_at: "2026-09-27T14:00:00.000Z", last_tick_at: "2026-09-27T14:10:00.000Z" },
+      ];
+      const rows = await fetchBangerQuoteTickCoverage("2026-09-20T00:00:00.000Z", 500);
+      assert.match(lastQuery!.sql, /GROUP BY contract_occ/);
+      assert.deepEqual(lastQuery!.params, ["2026-09-20T00:00:00.000Z", 500]);
+      assert.equal(rows.length, 2);
+      assert.equal(rows[0]!.tick_count, 42);
+      assert.equal(rows[1]!.tick_count, 3);
+      assert.equal(typeof rows[1]!.tick_count, "number");
     });
   });
 });
