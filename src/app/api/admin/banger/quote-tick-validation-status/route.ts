@@ -41,6 +41,7 @@ import {
   type CoverageBucket,
 } from "@/lib/banger/quote-tick-readiness";
 import { replayPairTick, crossCheckScaledFlag, aggregateVerdict, CONTROL_RULES, CANDIDATE_RULES, type TradeRow } from "@/lib/banger/quote-tick-verdict";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { requireAdminApi } from "@/lib/admin-access";
 import { recordAdminRouteError } from "@/lib/admin-route-errors";
 import { roundFloats } from "@/lib/round-floats";
@@ -154,9 +155,13 @@ export async function GET(req: NextRequest) {
     const eligiblePositions = statusRows.filter((r) => r.eligible);
     const rejectedPositions = statusRows.filter((r) => !r.eligible);
 
+    const nowMs = Date.now();
     return NextResponse.json(
       roundFloats({
-        as_of: new Date().toISOString(),
+        // Largo contract C1: a UTC instant alone resolves the wrong ET session after ~20:00 ET --
+        // keep the instant, add the ET wall-clock anchor beside it (session-anchor.test.ts).
+        as_of: etStamp(nowMs),
+        session_date: etSessionDate(nowMs),
         window: { since: windowSinceIso, days },
         study: {
           ready,
