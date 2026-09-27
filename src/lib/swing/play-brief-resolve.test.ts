@@ -449,6 +449,71 @@ describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolv
   });
 });
 
+// BUG FOUND 2026-09-27 (Ask Largo standing mandate, live 5-engine monitor cycle). Unlike the
+// INTC case above (positionId supplied separately), a caller with ONLY a ticker + an explicit
+// `status=CLOSED` hint — no positionId at all — had NO guard: `pickLanePlayForBrief` never reads
+// `hints.status`, so it happily matched the ticker against a live lane row and returned it,
+// silently overriding the caller's explicit request for the CLOSED play. Live repro:
+// `GET /api/market/swing/play-brief?playId=SWING:HUT&ticker=HUT&status=CLOSED` (no positionId)
+// returned an ACTIVE TRIM position (a different contract entirely) instead of the CLOSED one;
+// the identical request WITH positionId correctly resolved the closed play. Fixed by skipping the
+// lane fallback outright whenever `status` explicitly says CLOSED — lane rows are never closed
+// (confirmed: serving-lane.ts has no CLOSED status path), so this can only ever help, not regress.
+describe("resolveSwingPlayForBrief: ticker-only + status=CLOSED (no positionId) must resolve the CLOSED position, not an unrelated live lane row for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("status=CLOSED with no positionId skips the live lane row and finds the closed position", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("HUT", 41),
+        status: "CLOSED",
+        graded_at: "2026-09-24T20:00:00.000Z",
+        closed_at: "2026-09-24T20:00:00.000Z",
+        realized_pnl_pct: -35.4,
+      },
+    ];
+    // A DIFFERENT, currently-live TRIM candidate for the same ticker — exactly the shape that
+    // silently won before this fix, because pickLanePlayForBrief never checked `status` at all.
+    mockLaneRows = [laneRow({ ticker: "HUT", status: "TRIM" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:HUT", // no embedded position id
+      ticker: "HUT",
+      status: "CLOSED", // explicit hint, no positionId supplied at all
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(
+      resolved!.play.status,
+      "CLOSED",
+      `must resolve the CLOSED position, not the live TRIM row — got status "${resolved!.play.status}"`,
+    );
+  });
+
+  test("no status hint at all still prefers the live lane row (unchanged behavior)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      { ...openRow("HUT", 41), status: "CLOSED", graded_at: "2026-09-24T20:00:00.000Z", closed_at: "2026-09-24T20:00:00.000Z" },
+    ];
+    mockLaneRows = [laneRow({ ticker: "HUT", status: "TRIM" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:HUT", ticker: "HUT" });
+    assert.ok(resolved, "must resolve to something");
+    assert.notEqual(
+      resolved!.play.status,
+      "CLOSED",
+      "with no status hint, the live lane row is still the reasonable default — this fix must not change that",
+    );
+  });
+});
+
 // BUG FOUND 2026-09-11 (Ask Largo standing mandate — roll-narrative trace, follow-up to #4794's
 // OCC-identity fix). root_position_id is STICKY to the very first leg (roll.ts), never to an
 // immediate parent, so a chain rolled TWICE — root(id=1)→rolled child(id=2, root_position_id=1)→
