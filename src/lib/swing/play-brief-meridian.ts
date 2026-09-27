@@ -37,8 +37,16 @@ export async function fetchMeridianForTicker(ticker: string): Promise<SwingMerid
       () => loadMeridianTimelineResponse(MERIDIAN_LARGO_WINDOW_DAYS),
     );
   } catch {
+    // `etStamp(Date.now())` cannot return null -- Date.now() is always a positive finite number,
+    // the only input `etDateParts` ever refuses -- so this is a real ET-anchored stamp, never a
+    // raw UTC fallback. Written this way (not `?? new Date().toISOString()`) so this line can't
+    // textually match the Largo C1 ratchet's "constructs as_of from a UTC ISO string" pattern
+    // (session-anchor.test.ts) -- that ratchet checks for an anchor call ANYWHERE in the file, so
+    // a `new Date().toISOString()` fallback here would have silently passed today only because
+    // the primary `etStamp` call above happens to exist in the same file, not because this exact
+    // site is actually protected.
     return {
-      as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+      as_of: etStamp(Date.now()) as string,
       items: [],
       total_matched: 0,
       unavailable: true,
