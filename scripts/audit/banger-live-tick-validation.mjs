@@ -83,7 +83,11 @@ async function fetchWithConcurrency(items, worker, concurrency) {
       results[i] = await worker(items[i], i);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runner));
+  // `() => runner()` (not bare `runner`): Array.from's map callback invokes with (element, index),
+  // which `runner` ignores by design (it pulls work via its own closured `next` counter, not the
+  // index Array.from would pass) -- CodeQL's superfluous-arguments check flags the bare form as a
+  // likely mistake, so we call explicitly with zero args to match runner's real, zero-arg signature.
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runner()));
   return results;
 }
 
