@@ -79,7 +79,7 @@ function maxDrawdownAfterProfit(entry, ticks, exitIdx) {
  * with a tiny +2% peak that round-trips to -80% would otherwise report "captured -4000%", which
  * is noise, not a signal, and would silently dominate any average taken across a population).
  */
-function mfeCapturedPct(realizedPnlPct, entry, peakPremium) {
+export function mfeCapturedPct(realizedPnlPct, entry, peakPremium) {
   if (realizedPnlPct == null || realizedPnlPct < 0 || !(entry > 0) || !finite(peakPremium) || peakPremium <= entry) return null;
   const mfePct = ((peakPremium / entry) - 1) * 100;
   if (!(mfePct > 0)) return null;
