@@ -17,6 +17,7 @@ import { runBangerLiveSync } from "@/lib/banger/live-sync";
 import { fetchOpenBangerPositions, updateBangerLiveState } from "@/lib/banger/positions-db";
 import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchOpenClose } from "@/lib/providers/polygon-largo";
+import { buildBangerQuoteTickRow, persistBangerQuoteTick } from "@/lib/banger/quote-tick-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,11 +60,20 @@ export async function GET(req: NextRequest) {
       fetchMarks: async (occs) => {
         const snaps = await fetchOptionsUnifiedSnapshot(occs);
         const marks = new Map<string, number>();
+        const polledAt = new Date();
         for (const [occ, snap] of snaps) {
           const resolved = reliableMarkFromSnapshot(snap);
           if (typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0) {
             marks.set(occ, resolved);
           }
+          // Prospective quote-tick log (docs/audit/BANGER-EXIT-QUOTE-TICK-VALIDATION-2026-09-27.md) —
+          // fire-and-forget, never on the decision path: persists the SAME snapshot data already
+          // fetched above (zero extra Polygon calls) so a future exit-rule validation has real,
+          // historically-faithful ground truth instead of Polygon's archived quote tape, which a real
+          // validation attempt found does not always agree with this live snapshot.
+          void persistBangerQuoteTick(buildBangerQuoteTickRow(occ, snap, polledAt)).catch((err) => {
+            console.warn(`[banger-quote-tick-log] persist failed for ${occ}:`, err);
+          });
         }
         return marks;
       },

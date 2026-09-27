@@ -2489,6 +2489,31 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS trough_premium NUMERIC;
   `);
+  // Prospective NBBO quote-tick log (015_banger_quote_tick_log.sql), inlined for ECS standalone cold
+  // starts. Persists the SAME options-unified-snapshot data banger-live-sync already fetches every
+  // tick (zero additional Polygon calls) so a future exit-rule validation can replay production's own
+  // real, historically-faithful polling tape instead of Polygon's archived /v3/quotes tape, which a
+  // real validation attempt found does not always agree with the live snapshot service at the exact
+  // instant that matters (docs/audit/BANGER-EXIT-QUOTE-TICK-VALIDATION-2026-09-27.md). Purely
+  // additive: never read by the live exit-decision path, only written to (best-effort, fire-and-forget
+  // — see src/lib/banger/quote-tick-log.ts).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS banger_quote_tick_log (
+      id BIGSERIAL PRIMARY KEY,
+      contract_occ TEXT NOT NULL,
+      polled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      bid NUMERIC,
+      ask NUMERIC,
+      last_trade NUMERIC,
+      raw_mark NUMERIC,
+      reliable_mark NUMERIC
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_banger_quote_tick_log_occ_time
+    ON banger_quote_tick_log(contract_occ, polled_at);
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_quote_tick_log_polled_at ON banger_quote_tick_log(polled_at)`);
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS email_captures (
