@@ -32,7 +32,15 @@
  * USAGE
  *   node --import tsx scripts/audit/banger-live-tick-validation.mjs \
  *     [--days=180] [--lookback-days=400] [--base=https://blackouttrades.com] [--min-n=30] \
- *     [--cadence-minutes=20] [--concurrency=12] [--json]
+ *     [--cadence-minutes=5] [--concurrency=12] [--json]
+ *
+ * SECONDARY TOOL as of the 2026-09-27 phase-4 audit: `GET /api/admin/banger/quote-tick-
+ * validation-status` (src/lib/banger/quote-tick-readiness.ts + quote-tick-verdict.ts) is now the
+ * AUTHORITATIVE, always-live, in-process computation this framework runs on -- no manual run
+ * required to check readiness. This script remains a useful independent, offline re-verification
+ * path, but its own RTH-gap handling (banger-live-tick-coverage-eval.mjs's
+ * `isLegitimateWeekendOrOvernightGap`) is a deliberately narrower, non-holiday-aware approximation
+ * of the TS port's real `isTradingDayEt` -- see that function's own header.
  */
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 import { replayPairTick } from "./lib/banger-quote-tick-replay-eval.mjs";
@@ -54,7 +62,9 @@ const DAYS = Math.min(365, Math.max(1, Number(flag("days", "180")) || 180));
 const LOOKBACK_DAYS = Math.max(1, Number(flag("lookback-days", "400")) || 400);
 const BASE = flag("base", "https://blackouttrades.com");
 const MIN_N = Math.max(1, Number(flag("min-n", "30")) || 30);
-const CADENCE_MINUTES = Math.max(1, Number(flag("cadence-minutes", "20")) || 20);
+// Confirmed via cron-registry.ts's schedule_cron_utc (2026-09-27 phase-4 audit): banger-live-sync
+// fires every 5 minutes, market hours only. The prior default of 20 was an unverified guess.
+const CADENCE_MINUTES = Math.max(1, Number(flag("cadence-minutes", "5")) || 5);
 const CONCURRENCY = Math.max(1, Number(flag("concurrency", "12")) || 12);
 const JSON_OUT = args.includes("--json");
 const VERIFY_TOLERANCE_PP = 0.5; // tight: these are the EXACT ticks production computed, not a reconstruction.

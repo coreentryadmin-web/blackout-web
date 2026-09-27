@@ -18,11 +18,77 @@
  * its committed→closed window, or it did not. The framework this feeds is explicitly a readiness
  * gate, not an accuracy dial.
  *
+ * NOW A SECONDARY TOOL (phase 4, 2026-09-27): `GET /api/admin/banger/quote-tick-validation-status`
+ * (`src/lib/banger/quote-tick-readiness.ts`) is the AUTHORITATIVE, in-process, always-live
+ * computation this framework now runs on. That TS port found and fixed TWO real bugs this module
+ * still carries:
+ *   1. RTH-UNAWARE INTERIOR-GAP CHECK. `banger-live-sync`'s real deployed schedule fires every 5
+ *      minutes, market hours only (never overnight, never weekends) — so a multi-day position has a
+ *      genuine ~17.5h overnight gap (and a ~65h weekend gap) between every session, which the raw
+ *      wall-clock check below flags as an abnormal outage on EVERY multi-day position. The TS port
+ *      fixed this with a holiday-aware ET session-boundary exemption (`isTradingDayEt`). This
+ *      module gets a DELIBERATELY NARROWER fix below (weekend/overnight only, not holiday-aware) —
+ *      see `isLegitimateWeekendOrOvernightGap`'s own header for why duplicating a multi-year NYSE
+ *      holiday calendar into a standalone script isn't worth the permanent-sync burden for a tool
+ *      that is no longer the primary computation.
+ *   2. `cadenceMinutes` defaulted to 20 here, an early guess. The confirmed REAL deployed cadence
+ *      (cron-registry.ts's `schedule_cron_utc` for `banger-live-sync`) is every 5 minutes — kept
+ *      as 20 below ONLY for backward-compat with any caller already passing explicit options; the
+ *      default is corrected to 5 to match production.
+ * This module is kept only as an independent, offline re-verification tool (same "oracle-tested
+ * clone, not shared import" reasoning `banger-quote-tick-replay-eval.mjs` already established for
+ * its own relationship to the real `deriveScaleOutAction`) — it is NOT fixed to full parity with
+ * the TS port, and its weekend-only gap exemption is intentionally conservative (see below).
+ *
  * PURE AND TOTAL: no IO, no clock (every timestamp is a caller-supplied epoch-ms number), no throw.
  */
 
 function finite(x) {
   return typeof x === "number" && Number.isFinite(x);
+}
+
+function etYmd(ms) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(ms));
+}
+
+function addDaysToYmd(ymd, n) {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function isWeekendYmd(ymd) {
+  const day = new Date(`${ymd}T00:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+/**
+ * WEEKEND/OVERNIGHT-ONLY approximation of the authoritative, holiday-aware
+ * `isLegitimateSessionBoundaryGap` in `src/lib/banger/quote-tick-readiness.ts`. This standalone
+ * script has no path-alias access to that app-side module's real `isTradingDayEt`/NYSE holiday
+ * table, and copying a multi-year holiday calendar here would be a second copy to silently drift
+ * out of sync — unlike the small, already-duplicated `EARLY_CLOSE_ET_MINUTES` table elsewhere in
+ * this codebase, a 5+ year holiday list is not a "keep two tables in sync" burden worth taking on
+ * for a tool that is no longer the primary computation (see this file's header).
+ *
+ * Recognizes an ordinary weekday-to-weekday overnight gap and a Friday-close-to-Monday-open weekend
+ * gap. Does NOT recognize a mid-week market holiday (Thanksgiving, July 4th, Christmas, etc.) — on
+ * a holiday week this still (wrongly) flags a legitimate one-day skip as GAPPY. That is the SAFE
+ * direction for a secondary/offline tool: it can only exclude possibly-good data on ~9 holiday
+ * weeks a year, never admit contaminated data by exempting a real multi-day outage.
+ */
+export function isLegitimateWeekendOrOvernightGap(tickAMs, tickBMs, maxDaysToWalk = 30) {
+  if (!finite(tickAMs) || !finite(tickBMs) || tickBMs < tickAMs) return false;
+  const dayA = etYmd(tickAMs);
+  const dayB = etYmd(tickBMs);
+  if (dayA === dayB) return false;
+  let cursor = dayA;
+  for (let i = 0; i < maxDaysToWalk; i++) {
+    cursor = addDaysToYmd(cursor, 1);
+    if (cursor >= dayB) break;
+    if (!isWeekendYmd(cursor)) return false; // a real weekday was skipped -- conservatively not exempt
+  }
+  return true;
 }
 
 /** Maps one `banger_quote_tick_log` row (as returned by the admin export route) to the
@@ -49,10 +115,10 @@ export function ticksToReplaySeries(rows) {
  * `ticks`: this position's own `{t, mark, bid}` series, already windowed to its contract (the
  *   caller fetches per-contract via `fetchBangerQuoteTicksForContract`/the detail export mode —
  *   this function does no filtering by contract itself).
- * `cadenceMinutes`: the cron's real polling cadence during RTH (banger-live-sync fires on the
- *   ~15-20min zerodte-warm/desk-warm cadence per that route's own header) — used only to size what
- *   counts as an abnormal interior gap (a missed tick or two is tolerated; a long silent stretch
- *   is not).
+ * `cadenceMinutes`: the cron's real polling cadence during RTH — CONFIRMED via cron-registry.ts's
+ *   `schedule_cron_utc` (2026-09-27 phase-4 audit): `banger-live-sync` fires every 5 minutes, market
+ *   hours only. Defaults to 5 below to match; the earlier 20min default here was an unverified
+ *   guess, corrected once the real schedule was actually checked.
  * `edgeToleranceMinutes`: how close to the true entry/exit instant the first/last tick must land
  *   to count as "covering the edge" — generous by design (a position can commit/close between
  *   polling cadences with no coverage gap implied), NOT tightened over time to manufacture a
@@ -60,7 +126,7 @@ export function ticksToReplaySeries(rows) {
  */
 export function assessPositionCoverage(
   { committedAtMs, closedAtMs, ticks },
-  { cadenceMinutes = 20, edgeToleranceMinutes = 25, interiorGapMultiple = 3 } = {},
+  { cadenceMinutes = 5, edgeToleranceMinutes = 25, interiorGapMultiple = 3 } = {},
 ) {
   const series = (ticks ?? []).filter((t) => t && finite(t.t) && finite(t.mark));
   const reasons = [];
@@ -78,13 +144,14 @@ export function assessPositionCoverage(
   const startGapMinutes = Math.max(0, (firstTickAtMs - committedAtMs) / 60_000);
   const endGapMinutes = Math.max(0, (closedAtMs - lastTickAtMs) / 60_000);
 
+  const interiorGapCeiling = cadenceMinutes * interiorGapMultiple;
   let maxInteriorGapMinutes = 0;
   for (let i = 1; i < series.length; i++) {
     const gap = (series[i].t - series[i - 1].t) / 60_000;
+    if (gap <= interiorGapCeiling) continue;
+    if (isLegitimateWeekendOrOvernightGap(series[i - 1].t, series[i].t)) continue; // ordinary overnight/weekend -- not counted
     if (gap > maxInteriorGapMinutes) maxInteriorGapMinutes = gap;
   }
-
-  const interiorGapCeiling = cadenceMinutes * interiorGapMultiple;
   const startOk = startGapMinutes <= edgeToleranceMinutes;
   const endOk = endGapMinutes <= edgeToleranceMinutes;
   const interiorOk = maxInteriorGapMinutes <= interiorGapCeiling;
