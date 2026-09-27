@@ -33,6 +33,24 @@ test("cumulativeGammaFlip: rejects a crossing outside the ±12% plausibility ban
   assert.equal(cumulativeGammaFlip({ "45": -10, "55": 30, "150": -1 }, 100), null);
 });
 
+// ── zeroGammaFlip: VEX/DEX/CHARM zero-level — same thin-far-strike-artifact class as gamma ──
+test("zeroGammaFlip: rejects the only per-strike crossing when it is far outside the ±12% band", () => {
+  // MEASURED live 2026-09-27 (AMZN /api/market/vector/universe): spot 249.98, only per-strike
+  // sign crossing sat at 102.98 (58.8% away) — a sparse strike book far from spot with no real
+  // crossing near ATM. Before this fix, "nearest of the crossings we found" picked it anyway
+  // because it was the ONLY crossing, surfacing an implausible vanna flip as if real. A sparse
+  // ladder with one distant crossing and nothing near spot must report null, not that crossing.
+  const ladder = { "80": -50, "120": 40, "500": -10 };
+  assert.equal(zeroGammaFlip(ladder, 250), null);
+});
+
+test("zeroGammaFlip: still picks the nearest-to-spot crossing when it is within the ±12% band", () => {
+  // Regression guard for the existing per-strike behavior — the fix must not reject a genuine
+  // near-spot crossing just because a farther one also exists in the ladder.
+  const ladder = { "95": -10, "105": 10, "400": -5, "410": 5 };
+  assert.equal(zeroGammaFlip(ladder, 100), 100);
+});
+
 test("cumulativeGammaFlip: fewer than 2 strikes → null", () => {
   assert.equal(cumulativeGammaFlip({ "100": 50 }, 100), null);
 });
