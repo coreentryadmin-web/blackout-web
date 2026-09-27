@@ -149,9 +149,25 @@ export function zeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): n
     }
   }
   if (crossings.length) {
-    return spot > 0
-      ? crossings.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best))
-      : crossings[crossings.length - 1];
+    if (spot > 0) {
+      // Same "thin-far-strike artifact of the banded chain snapshot" reasoning as
+      // cumulativeGammaFlipDetail's own ±FLIP_MAX_DIST_PCT guard below — a per-strike sign
+      // crossing can exist far from spot on a sparse/banded chain (few contracts near ATM,
+      // real crossings only out at the edges) and "nearest of the crossings we found" still
+      // picks it when it is the ONLY one, presenting an implausible level as if it were real.
+      // MEASURED live 2026-09-27: AMZN vexFlip=102.98 vs spot=249.98 (58.8% away, ~5x this
+      // band) via this exact reduce — every other ticker in the same /vector/universe pull
+      // landed within a few percent of spot. Reject anything beyond the band rather than
+      // silently surfacing it; an honest null beats a wrong number a member could trade on.
+      const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
+      if (plausible.length) {
+        return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
+      }
+      // No plausible per-strike crossing — fall through to the cumulative fallback below
+      // rather than returning a far-strike artifact.
+    } else {
+      return crossings[crossings.length - 1]!;
+    }
   }
 
   // Fallback: cumulative-sum crossing for profiles with no clean per-strike sign flip.
@@ -167,7 +183,9 @@ export function zeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): n
     if (prevCum !== 0 && nextCum !== 0 && Math.sign(nextCum) !== Math.sign(prevCum)) {
       const span = rows[i]!.strike - rows[i - 1]!.strike;
       const frac = prevCum / (prevCum - nextCum);
-      return Number((rows[i - 1]!.strike + span * frac).toFixed(2));
+      const level = Number((rows[i - 1]!.strike + span * frac).toFixed(2));
+      if (spot > 0 && Math.abs(level - spot) > spot * FLIP_MAX_DIST_PCT) continue;
+      return level;
     }
   }
   return null;
