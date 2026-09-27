@@ -80,7 +80,7 @@ async function fetchWithConcurrency(items, worker, concurrency) {
     for (;;) {
       const i = next++;
       if (i >= items.length) return;
-      results[i] = await worker(items[i], i);
+      results[i] = await worker(items[i]); // the sole caller's worker takes one destructured arg -- passing `i` too was superfluous (CodeQL)
     }
   }
   // `() => runner()` (not bare `runner`): Array.from's map callback invokes with (element, index),
