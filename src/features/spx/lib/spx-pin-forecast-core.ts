@@ -388,7 +388,7 @@ function prepare(input: PinForecastInput): Prep {
   const flip = pinFlip(ladder, input.spot);
   let netGamma = 0; for (const g of ladder.values()) netGamma += g;
   const regime: PinForecast["regime"] =
-    flip != null ? (input.spot >= flip ? "long_gamma" : "short_gamma") : netGamma > 0 ? "long_gamma" : netGamma < 0 ? "short_gamma" : "unknown";
+    flip != null ? (input.spot >= flip ? "short_gamma" : "long_gamma") : netGamma > 0 ? "long_gamma" : netGamma < 0 ? "short_gamma" : "unknown";
 
   const strikeSpacing = inferSpacing(input.contracts);
   const maxPain = pinMaxPain(input.contracts);
@@ -754,7 +754,7 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
       // path-dependent magnet: recompute the dominant pull at THIS price, stable structural tenor
       const ladder = pinLadderAtSpot(input.contracts, price, p.structYears);
       const fl = pinFlip(ladder, price);
-      const reg: PinForecast["regime"] = fl == null ? p.regime : price >= fl ? "long_gamma" : "short_gamma";
+      const reg: PinForecast["regime"] = fl == null ? p.regime : price >= fl ? "short_gamma" : "long_gamma";
       const w = oiWalls(input.contracts, price, p.strikeSpacing); // OI walls relative to THIS price (path-dependent)
       const sp = Math.max(p.strikeSpacing, 1);
       const cwScore = w.callWall ? w.callWall.oi / (1 + Math.abs(w.callWall.strike - price) / sp) : 0;
