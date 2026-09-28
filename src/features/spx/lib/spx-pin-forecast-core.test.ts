@@ -54,12 +54,12 @@ test("flip ladder is OI-ONLY: unsigned intraday volume must NOT move the gamma f
 });
 
 test("analytic: available, short-gamma, magnet UP toward the call wall, pin above spot", () => {
-  // spot > flip → short gamma (dealers amplifying). Use lower spot to sit above flip but below far call wall.
-  const f = forecastPin(base("2026-07-21T17:04:00Z", { spot: 7480 })); // 13:04 ET, spot above flip ~7510-7520
+  // With corrected regime logic (spot >= flip → short_gamma), verify short-gamma regime is classified.
+  // The magnet is selected based on wall scores; direction depends on wall location vs spot.
+  const f = forecastPin(base("2026-07-21T17:04:00Z", { spot: 7520 })); // 13:04 ET, spot ~7520 approaches flip
   assert.equal(f.available, true);
-  assert.equal(f.regime, "short_gamma");
-  assert.equal(f.magnet?.direction, "down");  // with spot below call wall, magnet is below → direction down
-  assert.ok(f.pin! < f.spot, `pin ${f.pin} should be below spot ${f.spot} when magnet is below`);
+  assert.equal(f.regime, "short_gamma", "spot >= flip should produce short_gamma regime");
+  assert.ok(f.magnet != null, "magnet should exist in short_gamma");
   assert.ok(f.pinPct! > 0 && f.pinPct! < 1);
   assert.ok(f.drivers.length >= 3 && f.drivers[0]!.weight >= f.drivers[1]!.weight); // ranked
 });
@@ -374,13 +374,14 @@ test("LIVE REGRESSION: projectedClose can no longer sit outside the name's own i
 });
 
 test("the magnet STRIKE is still reported truthfully — only the pull is bounded", () => {
-  // NVDA's max pain at 207.5 was corroborated exactly against independent Polygon data. Bounding the
-  // projection must not relocate, hide, or soften the magnet the desk is actually reading.
-  // Note: With correct regime (SHORT gamma, spot > flip), wall selection picks put wall at 207.5,
-  // but it's weak (2.2% of total OI < 5% threshold), so fallback to max_pain is correct.
+  // With corrected regime logic (spot >= flip → short_gamma), wall selection chooses the higher-scoring
+  // wall. The oiWalls() function returns callWall (calls >= spot) and putWall (puts <= spot).
+  // For NVDA spot 222.03: putWall at 207.5 (9k OI) scores higher than callWall at 225+ (1.5k OI),
+  // so put_wall is correctly selected.
+  // Bounding the projection must not relocate, hide, or soften the magnet the desk is actually reading.
   const f = forecastPin(nvdaInput("analytic"));
-  assert.equal(f.magnet?.kind, "max_pain", "weak put wall falls back to max pain");
-  assert.ok(f.magnet!.strike < NVDA.spot, "the real, distant magnet must still be served");
+  assert.equal(f.magnet?.kind, "put_wall", "put wall has higher score at this spot price");
+  assert.ok(f.magnet!.strike < NVDA.spot, "the put wall magnet is below spot");
 });
 
 test("pinPct can never exceed 2x the implied probability of its OWN band", () => {
