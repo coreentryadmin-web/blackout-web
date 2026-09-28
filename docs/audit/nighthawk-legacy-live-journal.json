@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-28T16:21:43Z",
+  "lastUpdated": "2026-09-28T17:07:27Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -365,6 +365,11 @@
       "at": "2026-09-28T16:07:49Z",
       "summary": "4TH instance of transient stale-mark-during-RTH this session, but a NEW shape: for the first time TWO OCCs (DELL261002C00600000, VOO261002C00710000) flagged \"mark flagged stale by the API\" SIMULTANEOUSLY in the same cycle, rather than the single-ticker rotation seen in instances 1-3 (VOO@14:24, MSFT@14:51, VOO@15:36, all logged at 2026-09-28T15:36:59Z). Self-resolved within one cycle: re-ran at 16:21:43Z, all 5 marks GREEN again (DELL 1.63 in [1.53,1.73], VOO 2.08 in [1.65,2.5]), same ~14min self-heal window as every prior instance. A_edition/C_record/D_pull_status stayed GREEN throughout, unaffected.",
       "assessment": "WATCH -- this instance is evidence AGAINST the working VOO-specific-thin-liquidity hypothesis from the 3rd-instance entry: DELL (a large, liquid name) going stale in the SAME cycle as VOO argues for a shared/systemic transient (e.g. a brief upstream quote-feed gap affecting multiple names at once) rather than a per-ticker liquidity explanation. VOO still accounts for 3 of 4 total instances (still the most-affected single name), but the simultaneous-multi-ticker shape is new information. Still below the bar for a code change -- the staleness guard (flag stale, serve safe fallback, self-heal on next refresh) continues to work exactly as designed. No action taken; continue watching for whether future instances cluster (multi-ticker, systemic) or stay single-ticker (idiosyncratic)."
+    },
+    {
+      "at": "2026-09-28T17:07:27Z",
+      "summary": "DELL261002C00600000 crosses its OWN 3-instance threshold for the transient stale-mark-during-RTH pattern: DELL stale at 16:07Z (simultaneous with VOO, logged), 16:36Z (solo, self-resolved by 16:53Z), and again now at 17:07Z (solo). Combined with VOO's own 4 instances (14:24/15:36/16:07/16:53, all self-resolved), DELL+VOO together account for 5 of 7 total stale-mark instances this session -- MSFT has 1 (14:51), NVDA and SPCX have 0. Every instance continues to self-resolve within 1 cycle (~15min), never persists, never affects A_edition/C_record/D_pull_status.",
+      "assessment": "WATCH -- the concentration in DELL+VOO specifically (not a uniform rotation across all 5 tracked names) is now the more precise pattern than either the original single-ticker-rotation framing or the pure-systemic framing from the 4th-instance entry. Working hypothesis, still unconfirmed: DELL261002C00600000 and VOO261002C00710000 may share a quote-source characteristic (e.g. thinner NBBO update frequency for these specific strikes/expiries) that the other 3 OCCs don't have -- MSFT/NVDA/SPCX are large, heavily-quoted options chains, while DELL's $600 strike and VOO's $710 strike may sit further from the money or trade lower relative volume at those specific strikes. Still below the bar for a code change: the staleness guard (flag stale, serve safe fallback from last trade/close, self-heal on next refresh) is working exactly as designed in every instance, and no play has ever shown a wrong/frozen/NaN mark. No action taken. Re-evaluate if a 3rd ticker starts recurring, or if any instance fails to self-resolve within 2 cycles (would indicate the fallback itself is breaking, not just upstream quote gaps)."
     }
   ],
   "knownOpenItems": {
