@@ -62,6 +62,13 @@ export type SwingClosedDeckSource = {
   exitAt?: string | null;
   exitPnlPct?: number | null;
   closedReason?: string | null;
+  /** Underlying-terms entry trigger / structural invalidation levels pinned at commit
+   *  (SwingPositionRow.entry_underlying_px/thesis_invalidation_px) — static, never depend on
+   *  live state, so they stay valid after close. Lets closedCoaching's "check if entry was
+   *  extended past invalidation" prompt (play-brief-narrative-coaching.ts) actually answer the
+   *  question instead of just asking it. */
+  entryTriggerUnderlyingPx?: number | null;
+  invalidationUnderlyingPx?: number | null;
   /** Raw entry_context.cortex JSONB — parsed structurally by the adapter (readCortexView),
    *  never trusted here. Carries the Cortex evidence pinned at commit, when one exists. */
   cortex?: unknown;
@@ -162,6 +169,8 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     exitPnlPct: exitPnl,
     closedReason: closedReasonFromRow(row),
     cortex: row.entry_context?.cortex ?? null,
+    entryTriggerUnderlyingPx: fin(row.entry_underlying_px),
+    invalidationUnderlyingPx: fin(row.thesis_invalidation_px),
   };
 }
 

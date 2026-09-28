@@ -1601,6 +1601,64 @@ test("closedCoaching: outcome + exit-reason are separate bullet points, not one 
   assert.match(points[2], /^\*\*Stop fired\*\* \(stopped\)/);
 });
 
+// GAP FOUND (2026-09-28, Ask Largo standing mandate): the "Stop fired — check if entry was
+// extended past invalidation" line only ever posed the question; entryTriggerUnderlyingPx and
+// invalidationUnderlyingPx (both pinned at commit, static, valid post-close) are now threaded
+// through closed-plays.ts/adapters.ts onto TerminalPlay, so closedCoaching can answer it.
+test("closedCoaching: stopped LONG with entry/invalidation levels reports the real cushion", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+  );
+  assert.ok(line);
+  assert.match(
+    line!,
+    /\*\*Stop fired\*\* \(stopped\) — entry \*\*100\.00\*\* vs invalidation \*\*90\.00\*\*, a \*\*\+10\.0%\*\* cushion at commit/,
+  );
+});
+
+test("closedCoaching: stopped SHORT with entry/invalidation levels reports the real cushion", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "SHORT",
+      peak: 0,
+      exitPnlPct: -40,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 110,
+    }),
+  );
+  assert.ok(line);
+  assert.match(
+    line!,
+    /\*\*Stop fired\*\* \(stopped\) — entry \*\*100\.00\*\* vs invalidation \*\*110\.00\*\*, a \*\*\+10\.0%\*\* cushion at commit/,
+  );
+});
+
+test("closedCoaching: stopped play missing either level falls back to the generic prompt", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 0,
+      exitPnlPct: -30,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: null,
+    }),
+  );
+  assert.ok(line);
+  const points = line!.split("\n• ");
+  assert.match(points[points.length - 1], /^\*\*Stop fired\*\* \(stopped\) — check if entry was extended past invalidation\.$/);
+});
+
 test("closedCoaching: discloses a real drawdown before outcome (gap fix 2026-09-18)", () => {
   // Live repro shape: CRWD-style position that dipped hard before eventually closing — the raw
   // trough was computed (adapters.ts) but never reached any CLOSED-bucket narrative section.

@@ -1072,6 +1072,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     trackPct,
     flagUnderlyingPx: flagPx,
     entryTriggerUnderlyingPx: fin(src.entryTriggerUnderlyingPx),
+    invalidationUnderlyingPx: fin(src.invalidationUnderlyingPx),
     peak: peakDisplay,
     trough: troughDisplay,
     // FINDINGS 2026-08-06 (SEV-3, greeks never reached the desk): this was a hardcoded `null`, so the
@@ -1413,5 +1414,7 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     exitPnlPct: src.exitPnlPct ?? null,
     closedReason: src.closedReason ?? null,
     cortex: src.cortex ?? null,
+    entryTriggerUnderlyingPx: src.entryTriggerUnderlyingPx ?? null,
+    invalidationUnderlyingPx: src.invalidationUnderlyingPx ?? null,
   });
 }
