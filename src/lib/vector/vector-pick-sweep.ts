@@ -268,7 +268,13 @@ export async function sweepVectorPickForTicker(
   };
 }
 
-const SWEEP_CONCURRENCY = 4;
+// Increased from 4→8 (2026-09-28) as a follow-up to the TICKER_CONCURRENCY reduction in
+// vector-full-state-snapshot. The reduced cache warmer frees rate-limiter headroom, allowing
+// pick-sweep to run more tickers in parallel. 4 tickers per batch = 16 batches over 64 tickers
+// = 250-560s observed. 8 tickers per batch = 8 batches, expected to halve the batch latency
+// while staying within the freed rate-limiter budget (8 concurrent full-state fetches << 120
+// original per-batch at TICKER_CONCURRENCY=3).
+const SWEEP_CONCURRENCY = 8;
 
 /** Night Hawk 0DTE discovery names for today — prioritize tickers the commit engine already surfaced. */
 export async function fetchZerodteDiscoveryTickers(sessionDate: string, limit = 20): Promise<string[]> {
