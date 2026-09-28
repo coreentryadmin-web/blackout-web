@@ -362,6 +362,13 @@
       "summary": "12th trade of the session opened: ZS long, tier B, exit_policy_at_commit trim_scale, entry 4.00, currently OPEN at last_mark 4.18 (live_pnl_pct +4.50%, peak_pnl_pct +4.37%). floor_pnl_pct correctly still null \u2014 peak has not yet cleared the #5472 ratchet_early_arm_pnl_pct=5% threshold, so no floor should be armed yet per the fixed formula. All 11 prior trades remain CLOSED and unchanged from the 17:11-17:15 checks (6 ratchet wins, 1 stop, 3 flat-timeout, 1 thesis-break). Nothing anomalous; watching ZS next cycle to see if peak clears 5% and arms the floor at peak*0.4 as the now-repeatedly-confirmed #5472 formula predicts.",
       "action": "none \u2014 routine watch, logging the new position for continuity",
       "escalation": "none"
+    },
+    "2026-09-28T18:10:00Z_zs_thesis_at_peak_12for12_closed": {
+      "cycle_time": "2026-09-28T18:08:59.929Z",
+      "trigger": "18:10 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "ZS (12th trade) resolved via thesis-break, not the ratchet floor: peak cleared +5.62% (floor correctly armed at peak*0.4=+2.25% per #5472), but the gex-walls thesis (long target crossing dominant call wall, inside 0.5x expected move) broke and exited the SAME instant at +5.62% -- i.e. thesis-break fired essentially exactly at the peak, banking the full move before the floor was ever tested. This is the 2nd thesis-break instance today (PANW earlier was an instant breakeven scratch at -0.05%, thesis broke before any real move happened) -- still below the 3-instance noise threshold, but both observed instances show thesis-break behaving well: either catching a fast invalidation early (PANW) or catching a reversal right at the top (ZS), never observed lagging behind a round-trip. All 12 trades today now CLOSED, no open positions. Aggressive-mode enhancement scan this cycle: nothing new found worth flagging below the 3-instance bar -- exit-mechanism priority order (floor > thesis > target > flat-timeout) continues to look correctly tuned across every category observed today (6 ratchet, 1 stop, 3 flat, 2 thesis).",
+      "action": "none -- clean, positive confirmation, watching for more thesis-break instances to reach the 3-instance bar on the 'fires at/near peak' pattern",
+      "escalation": "none"
     }
   },
   "sessions": {
