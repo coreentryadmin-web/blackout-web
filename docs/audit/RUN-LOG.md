@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-28 (06:18 UTC / Mon 02:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`3cd63f3`). Purged Cloudflare edge, measured homepage desktop CLS twice:
+first read **0.0403** (still GOOD but above the ~0 baseline), re-measured — **0.0002, GOOD** —
+transient noise, not a regression. `/api/og` — **HTTP 200, `image/png`,
+`x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`**. Both fixes holding.
+`agent-pr-sweep.mjs` → 3 open agent PRs, none SEO-lane. #5536 (coordinator branch, green-CI
+draft) already has a substantive review comment from another session ~2h prior flagging a real
+gap in `buildPlay`'s dte computation — not re-flagging, nothing to add. Opportunity scan —
+identical to the prior cycle, same thin "what is spx am settlement" (3imp). Nothing to ship.
+
 ## 2026-09-28 (00:17 UTC / Sun 20:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, one new thin CTR-gap query
 
 Synced to `origin/main` (`ad4d7b3`). Purged Cloudflare edge, re-measured homepage desktop CLS —
