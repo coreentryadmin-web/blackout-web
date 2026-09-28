@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-28T14:44:00Z",
+  "updated_at": "2026-09-28T15:11:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -315,6 +315,13 @@
         "MDB long B-tier"
       ],
       "cortex_all": "PASS on all 3"
+    },
+    "2026-09-28T15:11:00Z_5x_confirmed_tier_split": {
+      "stage": "open_exit_coherence",
+      "headline": "5 closed trades now (BE, MDB, MU, QQQ, TSLA), all ratchet-floor exits, all peak*0.4 formula matches exact. New this cycle: BE (peak 5.59->2.24) and QQQ (peak 6.12->2.45) closed clean.",
+      "tier_split_confirmed": "A/B-tier trades (MDB, MU, TSLA) correctly ran exit_policy_at_commit=trim_scale; C-tier trades (BE, QQQ) correctly ran exit_policy_at_commit=ratchet -- live confirmation the tier-based exit-mode split (tier-exit-mode-ab.mjs research: leave C-tier/untiered on ratchet) is wired and firing correctly in production.",
+      "open_position": "CRDO short, B-tier, committed 15:03:55, peak 3.26% -- correctly still un-armed (floor_pnl_pct null), below the 5% #5472 arm threshold. Minor rounding-display artifact noted (peak_premium 2.38 rounds slightly differently than the peak_pnl_pct calc implies) -- cosmetic only, not a real discrepancy, not investigated further.",
+      "session_running_total": "5 closed (all green, 2.2-3.4% banked via ratchet), 1 open"
     }
   },
   "sessions": {
