@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-28 (00:17 UTC / Sun 20:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, one new thin CTR-gap query
+
+Synced to `origin/main` (`ad4d7b3`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 0 open agent PRs.
+Opportunity scan — new CTR-gap entry: "what is spx am settlement" (pos 7.7, page 1, **3imp**
+0cl) — extremely thin sample, tangentially touched by an existing SPX-vs-SPXW FAQ
+(`article-faqs.ts`) but no dedicated answer. Consistent with the standing "don't churn on thin
+signals" rule (same treatment as the 3-4imp "spx slayers"/"what is dealer gamma" entries) — noting
+it, not acting; will revisit if impressions grow. Nothing else new.
+
 ## 2026-09-27 (18:16 UTC / Sun 14:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
 
 Synced to `origin/main` (`a2023cd`). Purged Cloudflare edge, re-measured homepage desktop CLS —
