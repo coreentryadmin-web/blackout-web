@@ -383,6 +383,13 @@
       "summary": "2nd live instance today of the documented upstream_ok:false self-healing board degradation (1st was 15:44 UTC): board.ledger transiently returned empty (ledger_len: 0, upstream_ok: false), persisted across 2 consecutive fetches ~18s apart (same as_of, cache stuck mid-degradation). Cross-checked immediately per the standing protocol: GET /api/market/zerodte/record?days=1 shows graded:12, wins:8, losses:4, breakeven:0, rows/plays.length:12 -- exactly matching today's known tally (6 ratchet + CRWD + ZS = 8 wins; SPXW stop + TWLO flat + CVNA flat + PANW thesis-scratch = 4 losses). No data loss -- the Postgres-backed /record path is unaffected, only the board's own live snapshot cache is transiently empty. Not escalating: this is the same recurring, self-healing pattern already documented in CLAUDE.md and in this journal's 15:44 entry today.",
       "action": "none -- verified via /record cross-check, will re-poll board next cycle to confirm self-heal",
       "escalation": "none"
+    },
+    "2026-09-28T19:15:00Z_upstream_self_healed": {
+      "cycle_time": "2026-09-28T19:14:03.663Z",
+      "trigger": "19:15 UTC (trigger 2/4 offset :15)",
+      "summary": "Board self-healed: upstream_ok back to true, ledger_len back to 12, matching the /record cross-check from the prior cycle exactly. Confirms the 19:11 degradation was transient/self-healing as expected, no lasting issue. Still 12/12 closed, no new trades.",
+      "action": "none -- confirms prior cycle's clean read",
+      "escalation": "none"
     }
   },
   "sessions": {
