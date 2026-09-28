@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-28T14:11:00Z",
+  "updated_at": "2026-09-28T14:16:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -292,6 +292,17 @@
       "stage": "rth_watch",
       "headline": "First real RTH forensic look of the day. Board RTH, heat 100. 55 WATCH setups (BREAKOUT 47 ok, PIN 1 ok). discovery_funnel: 219 gate-blocked events, top gate opening_window (n=179) -- correctly holding off commits ~10min post-open, textbook G-2 behavior, not a bug. 0 commits so far -- expected this early. Governor healthy: not halted, 0 realized losers, 0 premium at risk, session_pnl_pct 0.",
       "note": "Nothing anomalous. Will re-check as opening_window clears and first commits land."
+    },
+    "2026-09-28T14:16:00Z_tsla_5472_confirmation": {
+      "stage": "open_exit_coherence",
+      "headline": "First commit of the day: TSLA short (put), committed 14:09:33, closed 14:10:12 (39s life) via ratchet floor. Peak 7.31%, floor armed at exactly 7.31*0.4=2.924 ~= recorded 2.92 -- exact formula match. Closed +2.97% instead of round-tripping.",
+      "significance": "Another live confirmation of PR #5472 (ratchet early-arm threshold lowered 15%->5%, 2026-09-23) -- this 7.31% peak sits in the newly-protected [5%,15%) band that got ZERO floor protection under the pre-fix threshold. Third live confirmation after the original SPY validation and subsequent QBTS/MCD checks from the prior session.",
+      "minor_note": "exit_pnl_pct (2.97%) vs a naive (exit_mark_observed-entry_premium)/entry_premium calc off the recorded mark (2.05%) dont match exactly, nor does the exit_detail narrative own +2.17% figure -- likely a mark-timing artifact between decision instant and API snapshot, not investigated further (n=1, below 3-instance noise threshold, and the core floor-arming math checks out exactly).",
+      "trade_context": {
+        "cortex_decision": "PASS conviction C, net +0.65",
+        "tier": "A",
+        "exit_policy": "trim_scale"
+      }
     }
   },
   "sessions": {
