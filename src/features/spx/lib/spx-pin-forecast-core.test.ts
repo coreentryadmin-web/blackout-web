@@ -376,8 +376,10 @@ test("LIVE REGRESSION: projectedClose can no longer sit outside the name's own i
 test("the magnet STRIKE is still reported truthfully — only the pull is bounded", () => {
   // NVDA's max pain at 207.5 was corroborated exactly against independent Polygon data. Bounding the
   // projection must not relocate, hide, or soften the magnet the desk is actually reading.
+  // Note: With correct regime (SHORT gamma, spot > flip), wall selection picks put wall at 207.5,
+  // but it's weak (2.2% of total OI < 5% threshold), so fallback to max_pain is correct.
   const f = forecastPin(nvdaInput("analytic"));
-  assert.equal(f.magnet?.kind, "max_pain");
+  assert.equal(f.magnet?.kind, "max_pain", "weak put wall falls back to max pain");
   assert.ok(f.magnet!.strike < NVDA.spot, "the real, distant magnet must still be served");
 });
 
