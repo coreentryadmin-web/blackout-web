@@ -1676,3 +1676,48 @@ test("buildDeterministicEditionPlays: overnight swing mode (maxDte=null) builds 
   assert.equal(plays.length, 1, "overnight swing builds the 7-DTE contract");
   assert.equal(plays[0]!.ticker, "AAA");
 });
+
+// ── Legacy edition DTE weekend gap fix ──────────────────────────────────────────
+// Regression (2026-09-28): pickChainContract anchored contract DTE on wall-clock
+// build date (todayEtYmd) instead of the edition's target date (edition_for).
+// On a Friday-built edition for Monday, a Monday-expiring contract would pass the
+// 2-day minimum (measured from Friday) and ship as a normal swing — but by Monday
+// morning when members read/trade it, it's actually 0-DTE. Fix: thread edition_for
+// through and use it instead of todayEtYmd for DTE anchoring in pickChainContract.
+
+test("pickChainContract: Friday edition for Monday respects edition_for for DTE anchoring", () => {
+  // Simulate: Friday today, Monday edition target.
+  const friday = "2026-09-25"; // arbitrary Friday
+  const monday = "2026-09-28"; // 3 days later
+  
+  // Chain with a Monday-expiring contract (would be 2-DTE from Friday, 0-DTE from Monday).
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      // Monday expiry: passes 2-day minimum from Friday (2 days out), fails from Monday (0 days out).
+      row(100, { expiry: monday, callAsk: 4.2, callBid: 3.8, oi: 5000 }),
+      // Friday + 7 days (far dated, always passes).
+      row(100, { expiry: "2026-10-02", callAsk: 4.2, callBid: 3.8, oi: 5000 }),
+    ],
+  };
+
+  // WITHOUT edition_for (legacy behavior): Monday contract passes 2-day filter from Friday.
+  const legacyPick = pickChainContract(chain, "long", null, undefined, true, friday);
+  assert.ok(legacyPick, "legacy: Monday contract accepted with Friday as anchor");
+  assert.equal(legacyPick!.expiry, monday, "legacy: picks the Monday contract");
+
+  // WITH edition_for=Monday (fixed behavior): Monday contract is 0-DTE, rejected; falls through to shortDated pool.
+  // The short-dated pool accepts Monday's Monday contract only if premium ≤ cap, so it still appears here,
+  // but marked as a last-resort pick. Actually, let me reconsider: the logic is:
+  // - If maxDte is null/undefined (swing mode), contracts must have expiry > today (> Monday).
+  // - Monday = Monday fails this check, so it's skipped entirely.
+  // - Only the Friday+7 contract passes. Let me verify the logic in pickChainContract...
+  
+  // Actually, looking at the code: when dayMode is false and maxDte is null:
+  // - row.expiry <= today → skip (line 301 says "Swing never trades a same-day expiry")
+  // - So Monday (today) gets skipped, and only the far-dated contract is considered.
+  
+  const fixedPick = pickChainContract(chain, "long", null, undefined, true, monday);
+  assert.ok(fixedPick, "fixed: still picks a contract (the far-dated one)");
+  assert.equal(fixedPick!.expiry, "2026-10-02", "fixed: rejects Monday (0-DTE), picks far-dated");
+});

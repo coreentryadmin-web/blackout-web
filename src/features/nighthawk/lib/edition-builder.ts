@@ -1197,6 +1197,7 @@ export async function buildEveningEdition(opts?: {
         spxDesk,
         flowTape,
         playOutcomes,
+        edition_for: editionFor,
       });
       raw = synthRaw;
       // BIE Stage 4 audit trail (step 4b): one row per geometry-rejected play, regardless of
