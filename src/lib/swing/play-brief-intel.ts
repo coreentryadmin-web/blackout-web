@@ -1006,10 +1006,27 @@ export function catalystsSection(
     const staleLead = stale
       ? `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — headlines may lag.\n\n`
       : "";
+    // GAP FOUND (2026-09-28, Ask Largo standing mandate): arsenal.news.headlines can carry the
+    // SAME headline text twice (live repro U/WATCH, 2026-09-28: "10 Information Technology Stocks
+    // Whale Activity In Today's Session" appeared as both item 1 and item 3) — upstream Benzinga
+    // re-publishes near-identical wire items with identical titles, and this section rendered the
+    // raw array with no dedup, burning one of only 4 shown slots on a repeat with zero new
+    // information. Dedup BEFORE slicing to 4 (not after) so a duplicate never displaces a real,
+    // distinct headline that would otherwise have made the cut. Case/whitespace-insensitive,
+    // first-occurrence order preserved. Scoped to this render only — the two other readers of
+    // arsenal.news.headlines (ecosystem-narrative.ts, ticker-verdict.ts) only ever take headlines[0]
+    // and are unaffected either way.
+    const seenHeadlines = new Set<string>();
+    const dedupedHeadlines = arsenal.news.headlines.filter((h) => {
+      const key = h.trim().toLowerCase();
+      if (seenHeadlines.has(key)) return false;
+      seenHeadlines.add(key);
+      return true;
+    });
     lines.push(
       staleLead +
         "**Headlines:**\n" +
-        arsenal.news.headlines
+        dedupedHeadlines
           .slice(0, 4)
           .map((h) => `• ${h}`)
           .join("\n"),
