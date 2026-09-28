@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-28T15:44:00Z",
+  "updated_at": "2026-09-28T16:11:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -328,6 +328,13 @@
       "headline": "Board upstream_ok flipped false, ledger showed 0 (was 6). Verified against /record: graded=6, wins=6, losses=0, breakeven=0 -- exact match to the prior 6-item ledger, no data loss. Self-healing board-side degradation only, same documented pattern as 2026-09-22 (3x)/2026-09-23 (2x).",
       "session_pnl_so_far": "6/6 graded WINS today (100% win rate this session so far) -- all via ratchet-floor exits banking 2.2-3.4% each, per the earlier tier-split confirmation entry.",
       "note": "Not re-escalating the upstream pattern yet (below the 3-instance-in-one-day threshold that triggered the original 2026-09-22 escalation) -- logging for frequency tracking only."
+    },
+    "2026-09-28T16:11:00Z_first_drawdowns": {
+      "stage": "open_exit_coherence",
+      "headline": "CRDO closed clean (6th #5472 confirmation: peak 5.43*0.4=2.172 -> floor 2.17 exact). Streak broken by two live drawdowns: SPXW (status HOLD, entry 12.05, peak only reached 2.9% -- never cleared the 5% arm threshold so correctly NO floor armed, now live_pnl_pct -36.51% after round-tripping from near-entry to trough_premium 7.4) and CVNA (status OPEN, entry 1.75, peak_pnl_pct -0.29% -- never even went positive, currently -5.14%).",
+      "assessment": "Neither is a bug. Ratchet-floor protection is peak-triggered by design -- a trade that never builds a meaningful peak (both here stayed well under 5%) gets no floor, full stop-loss exposure applies instead (hard_stop_pct -50%). SPXW at -36.51% is a real, sizeable drawdown but still inside the -50% hard stop; watching for resolution next cycle (stop-out vs recovery vs thesis-break exit).",
+      "session_running_total": "6 closed (all wins, 2.2-3.4% each via ratchet), 2 open/hold (both currently red, no floor armed on either)",
+      "watch_next": "SPXW resolution -- confirm exit_reason coheres with the actual mark trajectory when it closes (stop vs thesis_break vs time_stop)."
     }
   },
   "sessions": {
