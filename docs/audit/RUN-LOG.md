@@ -4,6 +4,13 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-28 (14:15 UTC / Mon 10:15 ET) — [SEO] Daily growth cycle: no new opportunities, avgpos trend continues improving
+
+Live re-verify skipped (done <1h ago, RTH cycle). Opportunity scan — same striking-distance/CTR-gap
+set as prior cycles, nothing new, no on-page work warranted. 28-day totals: avgpos continues
+improving (20.7 → 19.4 → 18.2 → **16.4**), clicks ticked up 19→20. `agent-pr-sweep.mjs` → 1 open
+agent PR, #5537 (CI-failed, not SEO-lane), nothing to unblock.
+
 ## 2026-09-28 (13:36 UTC / Mon 09:39 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one non-monotonic calc_id observation (harmless)
 
 RTH window confirmed (09:39 ET, trading day). Note: the Bash tool's safety classifier had a
