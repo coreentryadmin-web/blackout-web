@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-28T13:23:08Z",
+  "lastUpdated": "2026-09-28T13:37:41Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -350,6 +350,11 @@
       "at": "2026-09-28T13:23:08Z",
       "summary": "D_pull_status transitioned SKIPPED -> GREEN for editionFor=2026-09-28: morning confirmation has now run for today, all 5 tickers (DELL/MSFT/NVDA/SPCX/VOO) show CONFIRMED <-> pulled=false agreement (no overnight pulls/invalidations). A_edition GREEN (5 plays, fresh), B_marks still AMBER on the same 5 OCCs pre-market (no live two-sided quote, bid=0/ask=0 -- mark sourced from last trade/close, expected pre-RTH), C_record GREEN (resolved=33). Logged as the routine transition to GREEN once morning confirmation runs each session day, not a bug.",
       "assessment": "CLEAN -- expected daily state transition (D_pull_status SKIPPED pre-confirmation -> GREEN post-confirmation). No action needed."
+    },
+    {
+      "at": "2026-09-28T13:37:41Z",
+      "summary": "Overall flipped AMBER -> GREEN for editionFor=2026-09-28: market open (9:37 ET), all 5 marks now carry live two-sided quotes within expected ranges (DELL 3.35 in [3.15,3.55], MSFT 0.2 in [0.18,0.21], NVDA 7.7 in [7.55,7.85], SPCX 3.75 in [3.7,3.8], VOO 2.65 in [2,3.3]) -- resolves the pre-market bid=0/ask=0 staleness seen every cycle since ~02:00Z. A_edition/B_marks/C_record/D_pull_status all GREEN simultaneously for the first time this session.",
+      "assessment": "CLEAN -- expected transition at RTH open. No action needed."
     }
   ],
   "knownOpenItems": {
