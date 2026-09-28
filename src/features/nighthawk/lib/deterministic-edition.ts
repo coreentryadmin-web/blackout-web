@@ -800,7 +800,7 @@ function buildPlay(
   // Workstream C / #20's D1 (2026-09-21) — observational only, never read by selection/scoring.
   // Absent (not 0) when no contract was picked, so a stock-only/caveated fallback never reads as
   // same-day DTE.
-  const dte = contract ? calendarDteBetween(todayEtYmd(), contract.expiry) : null;
+  const dte = contract ? calendarDteBetween(asOfEtYmd ?? todayEtYmd(), contract.expiry) : null;
   const base: PlaybookPlay = {
     rank,
     ticker: scored.ticker,

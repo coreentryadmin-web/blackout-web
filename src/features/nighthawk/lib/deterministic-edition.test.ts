@@ -1721,3 +1721,29 @@ test("pickChainContract: Friday edition for Monday respects edition_for for DTE 
   assert.ok(fixedPick, "fixed: still picks a contract (the far-dated one)");
   assert.equal(fixedPick!.expiry, "2026-10-02", "fixed: rejects Monday (0-DTE), picks far-dated");
 });
+
+// GAP FOUND (2026-09-28, nighthawk lane, PR #5536 follow-up): the fix above corrected contract
+// SELECTION (pickChainContract) to anchor on edition_for, but buildPlay's own displayed `dte` field
+// still read raw todayEtYmd() -- unaffected by the fix even though buildPlay already accepted
+// asOfEtYmd as a parameter and every call site already passed params.edition_for. A Friday-built
+// Monday edition would therefore show a materially overstated dte on any surviving pick, even after
+// the 0-DTE-by-target-day contracts were correctly filtered out of selection. Anchors the far-future
+// edition_for used here well outside any plausible real "today" at test-run time, so a regression
+// back to todayEtYmd() would produce a wildly different (and wrong) dte instead of matching by luck.
+test("buildDeterministicEditionPlays: displayed dte anchors on edition_for, not build-time today", () => {
+  const editionFor = "2030-01-04"; // arbitrary far-future date, never the real "today" at test-run time
+  const expiry = "2030-01-14"; // editionFor + 10 days
+  const ranked = [scored("FUT", "long", 68)];
+  const chains = { FUT: chainAround(120, { expiry }) };
+  const dossierMap = { FUT: dossier("FUT", 120) };
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    edition_for: editionFor,
+  });
+  const p = plays.find((pl) => pl.ticker === "FUT")!;
+  assert.ok(p, "play built for FUT");
+  assert.equal(p.dte, 10, "dte anchored on edition_for, not real build-time today");
+});
