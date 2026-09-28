@@ -27,8 +27,15 @@ export const maxDuration = 60;
 
 /** Stop composing new snapshots past this so we always return + log under maxDuration. */
 const TIME_BUDGET_MS = 50_000;
-/** Tickers processed concurrently — bounded so we never fan a burst of provider calls at once. */
-const TICKER_CONCURRENCY = 3;
+/** Tickers processed concurrently — bounded so we never fan a burst of provider calls at once.
+ *  Reduced from 3→2 on 2026-09-28 after measuring 395-448s runs against a 5min (300s) schedule
+ *  during RTH-open. At concurrency=3 × 4 horizons × ~10 fetches per horizon = ~120 concurrent
+ *  upstream requests, saturating cluster-wide Polygon/UW rate limiters (2-6 req/s cap) and
+ *  blocking concurrent crons (vector-pick-sweep also hitting cold cache on rate-limit stalls).
+ *  Reducing to 2 trades slightly slower cache-warm (partial completion is fine per TIME_BUDGET_MS)
+ *  for restored rate-limiter headroom, letting both this warm + member traffic coexist.
+ */
+const TICKER_CONCURRENCY = 2;
 
 /**
  * Cross-replica overlap guard. Measured live on prod 2026-09-02: TIME_BUDGET_MS only checks
