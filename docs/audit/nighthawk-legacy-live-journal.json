@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-28T13:37:41Z",
+  "lastUpdated": "2026-09-28T15:36:59Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -355,6 +355,11 @@
       "at": "2026-09-28T13:37:41Z",
       "summary": "Overall flipped AMBER -> GREEN for editionFor=2026-09-28: market open (9:37 ET), all 5 marks now carry live two-sided quotes within expected ranges (DELL 3.35 in [3.15,3.55], MSFT 0.2 in [0.18,0.21], NVDA 7.7 in [7.55,7.85], SPCX 3.75 in [3.7,3.8], VOO 2.65 in [2,3.3]) -- resolves the pre-market bid=0/ask=0 staleness seen every cycle since ~02:00Z. A_edition/B_marks/C_record/D_pull_status all GREEN simultaneously for the first time this session.",
       "assessment": "CLEAN -- expected transition at RTH open. No action needed."
+    },
+    {
+      "at": "2026-09-28T15:36:59Z",
+      "summary": "3RD INSTANCE of single-ticker transient stale-mark-during-RTH pattern this session, crossing the 3-instance threshold: VOO261002C00710000 stale at 14:24Z (self-resolved by 14:36Z), MSFT260928C00515000 stale at 14:51Z (self-resolved by 15:08Z), VOO261002C00710000 stale AGAIN at 15:36Z (this cycle). All 3 instances share the same shape: exactly 1 of 5 OCCs flagged \"mark flagged stale by the API\" while the other 4 price live and correctly, and each has self-resolved within 1-2 cycles (~15-30min) without intervention -- never persisted, never affected A_edition/C_record/D_pull_status, never blocked a v2 mark from eventually refreshing. VOO now accounts for 2 of the 3 instances, which is enough to name it as the more affected name but not enough (n=2 for VOO specifically) to conclude a VOO-specific issue distinct from the general transient. Per this lane's 3-instance discipline this now crosses the threshold to log as a real (if minor) pattern rather than continuing to treat each occurrence as isolated noise -- but NOT escalating as a code fix: the behavior (flag stale, serve from last trade/close as a safe fallback, self-heal next refresh) is exactly what a staleness guard is supposed to do, and 15-30min self-resolution during active RTH for a handful of single-name option quotes is consistent with normal upstream quote-feed gaps, not a Legacy-side defect. Logging per the noise-discipline instruction (3rd instance of a pattern needs an entry) as a WATCH item: if this recurs again with a 4th/5th instance AND disproportionately on VOO specifically, that would start to look like a per-symbol upstream issue worth a live root-cause dig (VOO leaps/wide-strike liquidity vs the other 4 more actively quoted names is the working hypothesis, unconfirmed).",
+      "assessment": "WATCH -- 3rd instance of a self-resolving single-ticker staleness pattern, correctly below the bar for a code change (the staleness guard is working as designed) but now named as a real recurring shape rather than isolated noise. No action taken. Re-evaluate if VOO specifically recurs a 3rd time on its own."
     }
   ],
   "knownOpenItems": {
