@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-23T20:10:00Z",
+  "updated_at": "2026-09-28T13:15:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -274,6 +274,14 @@
         "Continue MU/MRNA gex-walls oppose watch (2/3) and vex-charm oppose watch (1/3) -- no new instances this session",
         "Watch for more live confirmations of the #5472 fix across a wider variety of peaks in the [5,15) range"
       ]
+    },
+    "2026-09-28T13:15:00Z_week_catchup": {
+      "stage": "week_catchup",
+      "headline": "New trading week cold start (Mon 2026-09-28) after a multi-day gap in journal updates -- session was tied up processing a benign MCP-connectivity notification storm Thu 2026-09-24 through Fri 2026-09-25, drained 65 backlogged identical scheduled-trigger notifications on resume rather than retroactively replaying each one.",
+      "board_state": "PRE_MARKET, heat_pct 34, upstream_ok true, ledger empty -- healthy fresh-week cold start, nothing to audit yet.",
+      "main_since_last_entry": "main advanced with unrelated swing/deps/legacy fixes (PRs #5536-5550) -- no 0DTE-specific changes landed in the gap, nothing to reconcile.",
+      "pr_queue_status": "sweep dispatched in parallel, result pending as of this entry -- will fold into next cycle if it surfaces anything actionable.",
+      "note": "No live plays existed during the gap window (evenings/weekend), so no forensic WATCH/OPEN story was missed -- the gap is purely a journal-continuity note, not a monitoring gap on real trading activity."
     }
   },
   "sessions": {
