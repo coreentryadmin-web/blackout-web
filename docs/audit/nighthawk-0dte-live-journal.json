@@ -355,6 +355,13 @@
       "headline": "TWLO and CRWD both resolved via flat-timeout (25min, never escaped +/-10% band) -- TWLO -6.32% (peak 1.72%), CRWD +1.53% (peak 3.71%). 3rd/4th flat-timeout closes today (after CVNA), all correctly narrated, consistent mechanism.",
       "session_running_total_all_11_closed": "6 ratchet wins (2.2-3.4%), 1 stop loss (SPXW -51.04%), 3 flat-timeout closes (CVNA -7.14%, TWLO -6.32%, CRWD +1.53%), 1 thesis-break flat scratch (PANW -0.05%). Net session so far: mix of clean wins + correctly-managed small losses, nothing anomalous across 11 trades.",
       "note": "All-CLOSED moment -- no open positions right now. Will pick up new commits as they land."
+    },
+    "2026-09-28T17:44:00Z_zs_12th_trade_opened": {
+      "cycle_time": "2026-09-28T17:44:55.593Z",
+      "trigger": "17:44 UTC (trigger 3/4 offset :30)",
+      "summary": "12th trade of the session opened: ZS long, tier B, exit_policy_at_commit trim_scale, entry 4.00, currently OPEN at last_mark 4.18 (live_pnl_pct +4.50%, peak_pnl_pct +4.37%). floor_pnl_pct correctly still null \u2014 peak has not yet cleared the #5472 ratchet_early_arm_pnl_pct=5% threshold, so no floor should be armed yet per the fixed formula. All 11 prior trades remain CLOSED and unchanged from the 17:11-17:15 checks (6 ratchet wins, 1 stop, 3 flat-timeout, 1 thesis-break). Nothing anomalous; watching ZS next cycle to see if peak clears 5% and arms the floor at peak*0.4 as the now-repeatedly-confirmed #5472 formula predicts.",
+      "action": "none \u2014 routine watch, logging the new position for continuity",
+      "escalation": "none"
     }
   },
   "sessions": {
