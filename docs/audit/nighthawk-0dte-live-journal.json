@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-28T16:43:00Z",
+  "updated_at": "2026-09-28T17:11:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -349,6 +349,12 @@
       "CORRECTION_to_prior_entry": "My 16:17 entry incorrectly concluded exit_reason/exit_detail are ratchet-exit-only narrative fields (based on CVNA showing exit_reason=null at that moment). Re-checked CVNA now (26min later): exit_reason is populated as \"flat\" with a full narrative (\"26min in and the play dipped to -11.43% intraday but recovered back inside the +/-10% band... on 0DTE flat is losing; a small scratch beats theta decay\"). CVNA status was already CLOSED when I observed the null fields at 16:16 -- this means exit_reason/exit_detail can lag the CLOSED status transition by at least a couple minutes (narrative appears to backfill asynchronously). WITHDRAWING the prior field-usage theory. Correct guidance for future audits: a freshly-closed row (exit_at within the last few minutes) may show a temporarily-null exit_reason/exit_detail even on non-ratchet closes -- re-check a bit later before treating it as a real gap.",
       "new_opens": "TWLO long B-tier (peak 1.72%, now -5.17%, correctly no floor) and CRWD long A-tier (peak 3.71%, now -0.66%, correctly no floor) -- both below the 5% arm threshold, expected.",
       "session_running_total": "9 closed (6 wins via ratchet ~2.2-3.4%, 1 loss via stop -51.04% [SPXW], 1 loss via flat-timeout -7.14% [CVNA], 1 flat via thesis-break -0.05% [PANW]), 2 open (TWLO red, CRWD slightly red)"
+    },
+    "2026-09-28T17:11:00Z_twlo_crwd_flat_closes": {
+      "stage": "open_exit_coherence",
+      "headline": "TWLO and CRWD both resolved via flat-timeout (25min, never escaped +/-10% band) -- TWLO -6.32% (peak 1.72%), CRWD +1.53% (peak 3.71%). 3rd/4th flat-timeout closes today (after CVNA), all correctly narrated, consistent mechanism.",
+      "session_running_total_all_11_closed": "6 ratchet wins (2.2-3.4%), 1 stop loss (SPXW -51.04%), 3 flat-timeout closes (CVNA -7.14%, TWLO -6.32%, CRWD +1.53%), 1 thesis-break flat scratch (PANW -0.05%). Net session so far: mix of clean wins + correctly-managed small losses, nothing anomalous across 11 trades.",
+      "note": "All-CLOSED moment -- no open positions right now. Will pick up new commits as they land."
     }
   },
   "sessions": {
