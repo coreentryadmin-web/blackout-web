@@ -390,6 +390,13 @@
       "summary": "Board self-healed: upstream_ok back to true, ledger_len back to 12, matching the /record cross-check from the prior cycle exactly. Confirms the 19:11 degradation was transient/self-healing as expected, no lasting issue. Still 12/12 closed, no new trades.",
       "action": "none -- confirms prior cycle's clean read",
       "escalation": "none"
+    },
+    "2026-09-28T19:43:00Z_post_commit_transition": {
+      "cycle_time": "2026-09-28T19:40:42.042Z",
+      "trigger": "19:43 UTC (trigger 3/4 offset :30)",
+      "summary": "Board transitioned RTH -> POST_COMMIT (heat_pct 70, 'No new 0DTE commits after 3:30 PM ET -- managing open risk to the 3:50 PM hard exit'). Nothing to manage: all 12 of today's trades were already CLOSED well before the 3:30 PM ET cutoff (last close was ZS at 17:53 UTC = 13:53 ET). No open positions carrying into the hard-exit window. Clean, unremarkable transition -- watching for the eventual CLOSED state later today for the natural end-of-day summary.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
