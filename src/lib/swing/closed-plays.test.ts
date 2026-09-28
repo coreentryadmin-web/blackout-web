@@ -59,6 +59,23 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.positionId, 1);
   });
 
+  // GAP FOUND (2026-09-28, Ask Largo standing mandate): entry_underlying_px/thesis_invalidation_px
+  // are static (pinned at commit, never depend on live state) so they stay valid post-close, but
+  // this mapper never carried them onto SwingClosedDeckSource — silently withholding the two
+  // numbers closedCoaching's "check if entry was extended past invalidation" line needs to answer
+  // its own question (play-brief-narrative-coaching.ts).
+  it("carries entry-trigger/invalidation underlying levels onto the closed deck source", () => {
+    const src = closedDeckSourceFromRow(row({ entry_underlying_px: 175, thesis_invalidation_px: 170 }));
+    assert.equal(src?.entryTriggerUnderlyingPx, 175);
+    assert.equal(src?.invalidationUnderlyingPx, 170);
+  });
+
+  it("reports null levels honestly when the row itself has none", () => {
+    const src = closedDeckSourceFromRow(row({ entry_underlying_px: null, thesis_invalidation_px: null }));
+    assert.equal(src?.entryTriggerUnderlyingPx, null);
+    assert.equal(src?.invalidationUnderlyingPx, null);
+  });
+
   it("skips open rows and ungraded closes", () => {
     assert.equal(closedDeckSourceFromRow(row({ status: "OPEN" })), null);
     assert.equal(closedDeckSourceFromRow(row({ graded_at: null })), null);
