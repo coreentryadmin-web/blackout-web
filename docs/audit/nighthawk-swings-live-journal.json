@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-28T03:03:04.615Z",
-  "notes": "Cycle check 2026-09-28 03:01Z (trig :01 offset, new hour). Widened last cycle's expired-banger-row finding rather than starting a new investigation from scratch.\n\nChecked GET /api/market/swing/record's summary.bangerOpens: reads 61, an exact match to the raw unfiltered open-banger row count from last cycle's scan (same 61, same 4 expired zombies included). Confirms the blast radius is broader than just Book Context concentration -- the member-facing \"open positions\" headline count itself is transiently inflated by the same mechanism (any status IN ('OPEN','PARTIAL') consumer that doesn't independently check contract_expiry). Posted a short scope-addendum on #4076 (comment 5862505398) rather than a full new writeup -- same root cause, same \"report don't fix solo\" stance, just correcting the known blast radius before whoever picks it up scopes a fix.\n\nNo code change. No new findings-staging entry. Still no replies on the #4076 thread (7 comments now across the session, oldest ~3h). Board still weekend-quiescent -- next genuinely new data won't arrive until Monday RTH opens.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-09-28T03:17:19.297Z",
+  "notes": "Cycle check 2026-09-28 03:16Z (trig :16 offset). No new PRs, no replies yet on #4076 (7 comments this session, oldest ~3.5h). Deliberately not forcing a new deep-dive this cycle -- the weekend-quiescent board has now been examined from many angles this session (WATCH forensics x2, OPEN thesis health, MFE capture math, 5-truth grader at two window sizes with full quantification, Largo contract audit finding a real tool gap, book-context concentration finding expired-row inflation + its broader blast radius, data-freshness C2/C3 split resolved) and repeating the same checks against the same unchanged data would manufacture findings rather than discover them. Genuinely clean/light cycle by judgment call, not by lack of effort.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
