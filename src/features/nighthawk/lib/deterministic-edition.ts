@@ -274,12 +274,13 @@ export function pickChainContract(
   direction: "long" | "short",
   maxDte?: number | null,
   targetStrike?: number | null,
-  preferAffordable?: boolean
+  preferAffordable?: boolean,
+  asOfEtYmd?: string
 ): PickedContract | null {
   const side: "call" | "put" = direction === "long" ? "call" : "put";
   const spot = chain.spot;
   const minOi = spot > 0 ? tieredMinOi(spot) : GROUNDING_MIN_OI;
-  const today = todayEtYmd();
+  const today = asOfEtYmd ?? todayEtYmd();
   const dayMode = maxDte != null && maxDte <= 1;
   const dayMaxExpiry = dayMode ? addCalendarDaysYmd(today, Math.max(0, Math.floor(maxDte!))) : null;
   const minExpiry = minExpiryDate(today);
@@ -753,7 +754,8 @@ function buildPlay(
   contract: PickedContract | null,
   levels: { entry_range: string; target: string; stop: string },
   rank: number,
-  bangerTickers?: Set<string>
+  bangerTickers?: Set<string>,
+  asOfEtYmd?: string
 ): PlaybookPlay {
   // PR-N29: ensure the stock target makes the option profitable — a LONG target below
   // the call strike means the option expires worthless at "target", which is incoherent.
@@ -798,7 +800,7 @@ function buildPlay(
   // Workstream C / #20's D1 (2026-09-21) — observational only, never read by selection/scoring.
   // Absent (not 0) when no contract was picked, so a stock-only/caveated fallback never reads as
   // same-day DTE.
-  const dte = contract ? calendarDteBetween(todayEtYmd(), contract.expiry) : null;
+  const dte = contract ? calendarDteBetween(asOfEtYmd ?? todayEtYmd(), contract.expiry) : null;
   const base: PlaybookPlay = {
     rank,
     ticker: scored.ticker,
@@ -866,6 +868,9 @@ export function buildDeterministicEditionPlays(params: {
   maxDte?: number | null;
   /** Tickers surfaced by the whole-market breakout lane — these get the scale-out exit risk_note. */
   bangerTickers?: Set<string>;
+  /** Edition's target trading day (YYYY-MM-DD), used for contract DTE anchoring. Critical for weekly
+   *  editions built on Friday for Monday: the 2-day minimum is measured from edition_for, not build date. */
+  edition_for?: string;
 }): {
   plays: PlaybookPlay[];
   funnel: { candidates: number; score_below_floor: number; contract_ok: number; stock_only: number; no_chain: number; no_spot: number; premium_capped: number; geometry_fail: number; geometry_ok: number; premium_ok: number; grounded: number; dropped_ungrounded: number };
@@ -911,7 +916,7 @@ export function buildDeterministicEditionPlays(params: {
     // preferAffordable=true: see pickChainContract's own doc comment — every Legacy call site opts
     // in so an expensive underlying's ATM strike doesn't default to a wildly costlier contract than
     // the rest of that night's book for no reason other than "closest to spot."
-    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true) : null;
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true, params.edition_for) : null;
     if (contract && !contract.caveat) {
       contractOk += 1;
     } else if (contract && contract.caveat) {
@@ -932,7 +937,7 @@ export function buildDeterministicEditionPlays(params: {
     }
 
     const levels = resolveLevels(dossier, scored.direction, spot);
-    const play = buildPlay(scored, dossier, contract, levels, built.length + 1, params.bangerTickers);
+    const play = buildPlay(scored, dossier, contract, levels, built.length + 1, params.bangerTickers, params.edition_for);
 
     if (contract && !contract.caveat && play.premium_cap_ok === false) {
       premiumCapCount += 1;
@@ -1015,9 +1020,9 @@ export function buildDeterministicEditionPlays(params: {
         const dos = params.dossierMap[t] ?? params.dossierMap[scored.ticker];
         const sp = ch?.spot ?? dos?.tech?.price ?? null;
         if (sp == null || !Number.isFinite(sp) || sp <= 0) continue;
-        const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte, undefined, true) : null;
+        const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte, undefined, true, params.edition_for) : null;
         const lvl = resolveLevels(dos, scored.direction, sp);
-        const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers);
+        const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers, params.edition_for);
         if (!validatePlayGeometry(p).ok) continue;
         const hedgeWarnings = p.gate_warnings ? [...p.gate_warnings] : [];
         hedgeWarnings.push(`Hedge/contrarian play (score ${scored.score}) — minority-view balance against ${dominant} book`);
@@ -1055,9 +1060,9 @@ export function buildDeterministicEditionPlays(params: {
           );
           if (contrarian.score < FORCED_CONTRARIAN_FLOOR) continue;
 
-          const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte, undefined, true) : null;
+          const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte, undefined, true, params.edition_for) : null;
           const lvl = resolveLevels(dos, contrarian.direction, sp);
-          const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers);
+          const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers, params.edition_for);
           if (!validatePlayGeometry(p).ok) { contrarianScores[contrarianScores.length - 1] += ":geom-fail"; continue; }
 
           if (!bestContrarian || contrarian.score > bestContrarian.scored.score) {
@@ -1126,6 +1131,8 @@ export function buildRescuePlays(params: {
   target?: number;
   /** 0 or 1 → select a same-day/1-DTE contract (intraday day-trade path). null/undefined → overnight swing. */
   maxDte?: number | null;
+  /** Edition's target trading day (YYYY-MM-DD), used for contract DTE anchoring. */
+  edition_for?: string;
   // NB: no bangerTickers here — rescue plays are stock-only fallbacks (no option contract), so the
   // scale-out option exit doesn't apply; the note is attached only in buildDeterministicEditionPlays.
 }): PlaybookPlay[] {
@@ -1152,12 +1159,13 @@ export function buildRescuePlays(params: {
     const geom = validatePlayGeometry({ ...levels, direction } as Parameters<typeof validatePlayGeometry>[0]);
     if (!geom.ok) continue;
 
-    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true) : null;
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true, params.edition_for) : null;
     const options_play = formatOptionsPlay(ticker, contract);
     if (!contract) {
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
-    const dte = contract ? calendarDteBetween(todayEtYmd(), contract.expiry) : null;
+    const asOf = params.edition_for ?? todayEtYmd();
+    const dte = contract ? calendarDteBetween(asOf, contract.expiry) : null;
 
     plays.push({
       rank: plays.length + 1,

@@ -95,6 +95,7 @@ export async function generateEditionPlays(params: {
   spxDesk?: SpxDeskSummary | null;
   flowTape?: FlowTapeSummary | null;
   playOutcomes?: PlayOutcomeStats | null;
+  edition_for?: string;
 }): Promise<{
   plays: PlaybookPlay[];
   recap: ReturnType<typeof buildMarketRecap>;
@@ -131,6 +132,7 @@ export async function generateEditionPlays(params: {
     // same-day/1-DTE contract instead of the overnight ≥5-DTE swing default. Was dropped here.
     maxDte: params.maxDte ?? null,
     bangerTickers,
+    edition_for: params.edition_for,
   });
 
   // PR-N13: when normal synthesis produces zero plays (all candidates failed geometry,
@@ -143,6 +145,7 @@ export async function generateEditionPlays(params: {
       chains: detChains,
       target: EDITION_SYNTHESIS_OVERSHOOT,
       maxDte: params.maxDte ?? null,
+      edition_for: params.edition_for,
     });
     if (rescue.length) {
       detPlays = rescue;
