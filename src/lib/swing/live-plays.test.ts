@@ -125,6 +125,22 @@ test("livePlayFromSwingPosition: add_eligible manage snapshot (action: ADD) surf
   assert.equal(play.thesisLevel, "intact");
 });
 
+test("livePlayFromSwingPosition: ADD manageAction produces a grammatically complete reason string (live AAPL repro, 2026-09-28)", () => {
+  // GAP FOUND (Ask Largo standing mandate): REASON_VERB_BY_MANAGE_ACTION mapped ADD to "add to",
+  // which the `live ${verb} — ${archetype} thesis` template turned into the dangling
+  // "live add to — SECTOR_ROTATION thesis" (a preposition with no object) — confirmed live on a
+  // real AAPL position's Verdict/Management sections. Every other verb (exit, stop out, trim)
+  // reads fine standalone in the same template; ADD now does too.
+  const play = livePlayFromSwingPosition(row(), 178, {
+    action: "ADD",
+    rung: "add_eligible",
+    reason: "position qualifies to add (advisory)",
+    enforced: false,
+  })!;
+  assert.equal(play.reason, "live add — BREAKOUT thesis");
+  assert.ok(!play.reason.includes("add to"), `reason must not carry the dangling "add to", got: ${play.reason}`);
+});
+
 test("livePlayFromSwingPosition: structural break stamps EXIT + thesis break", () => {
   const play = livePlayFromSwingPosition(row(), 160)!; // below 165 invalidation
   assert.equal(play.manageAction, "EXIT");
