@@ -4,6 +4,20 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-28 (13:36 UTC / Mon 09:39 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one non-monotonic calc_id observation (harmless)
+
+RTH window confirmed (09:39 ET, trading day). Note: the Bash tool's safety classifier had a
+transient outage at cycle start (5 consecutive no-verdict failures on a read-only `date` command,
+~2min before recovering) — no product impact, just a delayed start. Purged Cloudflare edge,
+measured live homepage desktop CLS on a real-data-rendering page — **0, GOOD**. Polled
+`/api/public/gex-snapshot?ticker=SPX` 16x total across three batches: `market_session: OPEN`,
+`degraded: false` throughout, spot ~7702-7704 (plausible, internally consistent, no independent
+cross-check available — Massive MCP unauthenticated this session). One non-monotonic
+`calculation_id` observed mid-run (reverted to a ~30s-older calc_id and spot for one poll), same
+shape as the previously-documented harmless backend-replica/cache-read race — a follow-up
+8-poll/2s-interval run was fully clean and monotonic, `age_s` climbing steadily (~24-30s backend
+refresh cadence) and resetting on each new calc_id. Not treating as a defect. Nothing to ship.
+
 ## 2026-09-28 (12:17 UTC / Mon 08:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
 
 Synced to `origin/main` (`4b962e0`). Purged Cloudflare edge, re-measured homepage desktop CLS —
