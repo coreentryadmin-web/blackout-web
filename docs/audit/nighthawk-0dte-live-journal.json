@@ -397,6 +397,13 @@
       "summary": "Board transitioned RTH -> POST_COMMIT (heat_pct 70, 'No new 0DTE commits after 3:30 PM ET -- managing open risk to the 3:50 PM hard exit'). Nothing to manage: all 12 of today's trades were already CLOSED well before the 3:30 PM ET cutoff (last close was ZS at 17:53 UTC = 13:53 ET). No open positions carrying into the hard-exit window. Clean, unremarkable transition -- watching for the eventual CLOSED state later today for the natural end-of-day summary.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-28T20:10:00Z_session_closed_eod_summary": {
+      "cycle_time": "2026-09-28T20:10:00.442Z",
+      "trigger": "20:10 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "Session CLOSED (heat.state=CLOSED, 'Night Hawk builds tomorrow's playbook after the close'). Final confirmed tally via /record: 12 graded, 8 wins, 4 losses, 0 breakeven (66.7% win rate) -- matches the running tally tracked all day. EOD recap: 6 ratchet-floor wins (TSLA +2.97%, MU +2.56%, MDB +3.36%, BE +2.23%, CRDO +2.17%, QQQ +2.33%), all 6 in the #5472 [5%,15%) peak band with exact peak*0.4 floor-arming confirmations -- now a robust, repeated, multi-instance live-production confirmation of that fix. 2 thesis-break exits (PANW -0.05% instant scratch pre-move, ZS +5.62% catching a reversal essentially at the exact peak before the floor was ever tested -- both coherent, no lagging round-trips observed). 3 flat-timeout scratches (CVNA -7.14%, TWLO -6.32%, CRWD +1.53%). 1 hard stop (SPXW -51.04%, normal stop-slippage past the printed 6.025 stop). Aggregate governor.session_pnl_pct=-40.52% (verified as an intentional, well-tested equal-weighted sum-of-pct metric, not dollar P&L) -- one outsized stop currently dominates six-plus small wins on that specific metric despite the 66.7% win rate by trade count; flagged as a session-level observation for trend-watching, not a defect. 2 clean upstream_ok:false self-healing degradations observed and cross-checked clean against /record both times, no real data loss either time. Zero bugs found and zero PRs opened this session -- pure forensic monitoring, everything observed was coherent with documented design (tier-based exit-mode split, exit-priority ordering, gate correctness on WATCH candidates). WATCHING: next session's cold-start tomorrow will be the next opportunity to look for genuinely new signal.",
+      "action": "none -- clean session end",
+      "escalation": "none"
     }
   },
   "sessions": {
