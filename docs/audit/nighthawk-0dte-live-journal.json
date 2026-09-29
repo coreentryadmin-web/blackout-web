@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-23T20:10:00Z",
+  "updated_at": "2026-09-28T17:11:00Z",
   "watch_stage_tracking": {
     "2026-09-21T13:12:00Z": {
       "session_state": "PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), fresh Monday trading day, weekend gap since last cycle (Fri 2026-09-18 20:48Z)",
@@ -274,6 +274,136 @@
         "Continue MU/MRNA gex-walls oppose watch (2/3) and vex-charm oppose watch (1/3) -- no new instances this session",
         "Watch for more live confirmations of the #5472 fix across a wider variety of peaks in the [5,15) range"
       ]
+    },
+    "2026-09-28T13:15:00Z_week_catchup": {
+      "stage": "week_catchup",
+      "headline": "New trading week cold start (Mon 2026-09-28) after a multi-day gap in journal updates -- session was tied up processing a benign MCP-connectivity notification storm Thu 2026-09-24 through Fri 2026-09-25, drained 65 backlogged identical scheduled-trigger notifications on resume rather than retroactively replaying each one.",
+      "board_state": "PRE_MARKET, heat_pct 34, upstream_ok true, ledger empty -- healthy fresh-week cold start, nothing to audit yet.",
+      "main_since_last_entry": "main advanced with unrelated swing/deps/legacy fixes (PRs #5536-5550) -- no 0DTE-specific changes landed in the gap, nothing to reconcile.",
+      "pr_queue_status": "sweep dispatched in parallel, result pending as of this entry -- will fold into next cycle if it surfaces anything actionable.",
+      "note": "No live plays existed during the gap window (evenings/weekend), so no forensic WATCH/OPEN story was missed -- the gap is purely a journal-continuity note, not a monitoring gap on real trading activity."
+    },
+    "2026-09-28T13:43:00Z_opening_drive": {
+      "stage": "opening_drive",
+      "headline": "Session opened for the day -- board transitioned PRE_MARKET -> OPENING_DRIVE at 13:43 UTC, heat_pct 70, ledger still empty (expected, best entries typically after 9:50 ET per board note). upstream_ok true.",
+      "note": "Nothing to audit yet -- no committed plays. Will pick up WATCH/OPEN forensic story as candidates start populating."
+    },
+    "2026-09-28T14:11:00Z_rth_first_look": {
+      "stage": "rth_watch",
+      "headline": "First real RTH forensic look of the day. Board RTH, heat 100. 55 WATCH setups (BREAKOUT 47 ok, PIN 1 ok). discovery_funnel: 219 gate-blocked events, top gate opening_window (n=179) -- correctly holding off commits ~10min post-open, textbook G-2 behavior, not a bug. 0 commits so far -- expected this early. Governor healthy: not halted, 0 realized losers, 0 premium at risk, session_pnl_pct 0.",
+      "note": "Nothing anomalous. Will re-check as opening_window clears and first commits land."
+    },
+    "2026-09-28T14:16:00Z_tsla_5472_confirmation": {
+      "stage": "open_exit_coherence",
+      "headline": "First commit of the day: TSLA short (put), committed 14:09:33, closed 14:10:12 (39s life) via ratchet floor. Peak 7.31%, floor armed at exactly 7.31*0.4=2.924 ~= recorded 2.92 -- exact formula match. Closed +2.97% instead of round-tripping.",
+      "significance": "Another live confirmation of PR #5472 (ratchet early-arm threshold lowered 15%->5%, 2026-09-23) -- this 7.31% peak sits in the newly-protected [5%,15%) band that got ZERO floor protection under the pre-fix threshold. Third live confirmation after the original SPY validation and subsequent QBTS/MCD checks from the prior session.",
+      "minor_note": "exit_pnl_pct (2.97%) vs a naive (exit_mark_observed-entry_premium)/entry_premium calc off the recorded mark (2.05%) dont match exactly, nor does the exit_detail narrative own +2.17% figure -- likely a mark-timing artifact between decision instant and API snapshot, not investigated further (n=1, below 3-instance noise threshold, and the core floor-arming math checks out exactly).",
+      "trade_context": {
+        "cortex_decision": "PASS conviction C, net +0.65",
+        "tier": "A",
+        "exit_policy": "trim_scale"
+      }
+    },
+    "2026-09-28T14:44:00Z_3x_5472_confirmed": {
+      "stage": "open_exit_coherence",
+      "headline": "3-INSTANCE CONFIRMATION (threshold cleared): all 3 commits of the day so far (TSLA, MU, MDB) exited via ratchet floor with exact peak*0.4 formula match -- MDB peak 8.41 -> floor 3.36 (calc 3.364), MU peak 6.35 -> floor 2.54 (calc 2.54), TSLA peak 7.31 -> floor 2.92 (calc 2.924). All three peaks sit in the newly-protected [5%,15%) band from PR #5472 (2026-09-23) that got ZERO floor protection under the pre-fix 15% threshold -- all three banked green (2.5-3.4%) instead of risking a round-trip to flat/red.",
+      "resolved_prior_note": "Resolves the minor TSLA pnl_pct discrepancy flagged in the 14:16 entry: exit_detail quotes the DECISION-INSTANT mark (necessarily at/below the floor, that is the trigger condition) while exit_pnl_pct is the actual banked P&L a moment later, essentially at-or-just-above the floor. Not a bug -- two different mark readings by design, confirmed consistent across all 3 trades.",
+      "pattern_note": "All 3 trades peaked in the 6-8% range then immediately reverted to floor within minutes of commit -- consistent with the #5472 research finding (n=67 backtest) that this band benefits from tight floor protection rather than being given more room to run. No new signal to add; this is the fix working as designed, not a case for loosening it on n=3 anecdote.",
+      "tickers": [
+        "TSLA short A-tier",
+        "MU short B-tier",
+        "MDB long B-tier"
+      ],
+      "cortex_all": "PASS on all 3"
+    },
+    "2026-09-28T15:11:00Z_5x_confirmed_tier_split": {
+      "stage": "open_exit_coherence",
+      "headline": "5 closed trades now (BE, MDB, MU, QQQ, TSLA), all ratchet-floor exits, all peak*0.4 formula matches exact. New this cycle: BE (peak 5.59->2.24) and QQQ (peak 6.12->2.45) closed clean.",
+      "tier_split_confirmed": "A/B-tier trades (MDB, MU, TSLA) correctly ran exit_policy_at_commit=trim_scale; C-tier trades (BE, QQQ) correctly ran exit_policy_at_commit=ratchet -- live confirmation the tier-based exit-mode split (tier-exit-mode-ab.mjs research: leave C-tier/untiered on ratchet) is wired and firing correctly in production.",
+      "open_position": "CRDO short, B-tier, committed 15:03:55, peak 3.26% -- correctly still un-armed (floor_pnl_pct null), below the 5% #5472 arm threshold. Minor rounding-display artifact noted (peak_premium 2.38 rounds slightly differently than the peak_pnl_pct calc implies) -- cosmetic only, not a real discrepancy, not investigated further.",
+      "session_running_total": "5 closed (all green, 2.2-3.4% banked via ratchet), 1 open"
+    },
+    "2026-09-28T15:44:00Z_upstream_degradation_and_6for6": {
+      "stage": "infra_and_session_pnl",
+      "headline": "Board upstream_ok flipped false, ledger showed 0 (was 6). Verified against /record: graded=6, wins=6, losses=0, breakeven=0 -- exact match to the prior 6-item ledger, no data loss. Self-healing board-side degradation only, same documented pattern as 2026-09-22 (3x)/2026-09-23 (2x).",
+      "session_pnl_so_far": "6/6 graded WINS today (100% win rate this session so far) -- all via ratchet-floor exits banking 2.2-3.4% each, per the earlier tier-split confirmation entry.",
+      "note": "Not re-escalating the upstream pattern yet (below the 3-instance-in-one-day threshold that triggered the original 2026-09-22 escalation) -- logging for frequency tracking only."
+    },
+    "2026-09-28T16:11:00Z_first_drawdowns": {
+      "stage": "open_exit_coherence",
+      "headline": "CRDO closed clean (6th #5472 confirmation: peak 5.43*0.4=2.172 -> floor 2.17 exact). Streak broken by two live drawdowns: SPXW (status HOLD, entry 12.05, peak only reached 2.9% -- never cleared the 5% arm threshold so correctly NO floor armed, now live_pnl_pct -36.51% after round-tripping from near-entry to trough_premium 7.4) and CVNA (status OPEN, entry 1.75, peak_pnl_pct -0.29% -- never even went positive, currently -5.14%).",
+      "assessment": "Neither is a bug. Ratchet-floor protection is peak-triggered by design -- a trade that never builds a meaningful peak (both here stayed well under 5%) gets no floor, full stop-loss exposure applies instead (hard_stop_pct -50%). SPXW at -36.51% is a real, sizeable drawdown but still inside the -50% hard stop; watching for resolution next cycle (stop-out vs recovery vs thesis-break exit).",
+      "session_running_total": "6 closed (all wins, 2.2-3.4% each via ratchet), 2 open/hold (both currently red, no floor armed on either)",
+      "watch_next": "SPXW resolution -- confirm exit_reason coheres with the actual mark trajectory when it closes (stop vs thesis_break vs time_stop)."
+    },
+    "2026-09-28T16:17:00Z_cvna_time_stop_resolved": {
+      "stage": "open_exit_coherence",
+      "headline": "CVNA closed via closed_reason=time_stop (flat-timeout, ~28min after entry, peak never escaped -0.29%, matches the exit-engine step-4 flat-timeout mechanism). exit_reason/exit_detail stayed null -- resolved as NOT a bug: those two fields are ratchet-exit-only narrative fields, closed_reason is the general field covering every exit path. Final: -6.86%.",
+      "audit_technique_note": "For future WATCH/OPEN passes on this board: check closed_reason (always populated on any CLOSED row) rather than exit_reason (only populated for ratchet-floor exits) when auditing non-ratchet closures -- avoids a false-positive coherence-gap flag.",
+      "spxw_update": "SPXW still HOLD, drawdown widened slightly to -37.34% (from -36.51% last cycle), still well inside the -50% hard stop. Watching for resolution.",
+      "session_running_total": "7 closed (6 wins via ratchet + 1 CVNA loss via time_stop), 1 open/hold (SPXW, red)"
+    },
+    "2026-09-28T16:43:00Z_spxw_stop_and_cvna_correction": {
+      "stage": "open_exit_coherence",
+      "headline": "SPXW stopped out: exit_reason=stop, exit_pnl_pct -51.04% vs plan stop line -50% (mark 5.9 vs stop-trigger premium 6.025) -- normal execution slippage past a printed stop level, not a bug (n=1, not escalating). PANW: clean instant thesis-break exit (thesis veto fired same second as entry, -0.05%, exactly the step-2 unconditional-at-any-pnl behavior).",
+      "CORRECTION_to_prior_entry": "My 16:17 entry incorrectly concluded exit_reason/exit_detail are ratchet-exit-only narrative fields (based on CVNA showing exit_reason=null at that moment). Re-checked CVNA now (26min later): exit_reason is populated as \"flat\" with a full narrative (\"26min in and the play dipped to -11.43% intraday but recovered back inside the +/-10% band... on 0DTE flat is losing; a small scratch beats theta decay\"). CVNA status was already CLOSED when I observed the null fields at 16:16 -- this means exit_reason/exit_detail can lag the CLOSED status transition by at least a couple minutes (narrative appears to backfill asynchronously). WITHDRAWING the prior field-usage theory. Correct guidance for future audits: a freshly-closed row (exit_at within the last few minutes) may show a temporarily-null exit_reason/exit_detail even on non-ratchet closes -- re-check a bit later before treating it as a real gap.",
+      "new_opens": "TWLO long B-tier (peak 1.72%, now -5.17%, correctly no floor) and CRWD long A-tier (peak 3.71%, now -0.66%, correctly no floor) -- both below the 5% arm threshold, expected.",
+      "session_running_total": "9 closed (6 wins via ratchet ~2.2-3.4%, 1 loss via stop -51.04% [SPXW], 1 loss via flat-timeout -7.14% [CVNA], 1 flat via thesis-break -0.05% [PANW]), 2 open (TWLO red, CRWD slightly red)"
+    },
+    "2026-09-28T17:11:00Z_twlo_crwd_flat_closes": {
+      "stage": "open_exit_coherence",
+      "headline": "TWLO and CRWD both resolved via flat-timeout (25min, never escaped +/-10% band) -- TWLO -6.32% (peak 1.72%), CRWD +1.53% (peak 3.71%). 3rd/4th flat-timeout closes today (after CVNA), all correctly narrated, consistent mechanism.",
+      "session_running_total_all_11_closed": "6 ratchet wins (2.2-3.4%), 1 stop loss (SPXW -51.04%), 3 flat-timeout closes (CVNA -7.14%, TWLO -6.32%, CRWD +1.53%), 1 thesis-break flat scratch (PANW -0.05%). Net session so far: mix of clean wins + correctly-managed small losses, nothing anomalous across 11 trades.",
+      "note": "All-CLOSED moment -- no open positions right now. Will pick up new commits as they land."
+    },
+    "2026-09-28T17:44:00Z_zs_12th_trade_opened": {
+      "cycle_time": "2026-09-28T17:44:55.593Z",
+      "trigger": "17:44 UTC (trigger 3/4 offset :30)",
+      "summary": "12th trade of the session opened: ZS long, tier B, exit_policy_at_commit trim_scale, entry 4.00, currently OPEN at last_mark 4.18 (live_pnl_pct +4.50%, peak_pnl_pct +4.37%). floor_pnl_pct correctly still null \u2014 peak has not yet cleared the #5472 ratchet_early_arm_pnl_pct=5% threshold, so no floor should be armed yet per the fixed formula. All 11 prior trades remain CLOSED and unchanged from the 17:11-17:15 checks (6 ratchet wins, 1 stop, 3 flat-timeout, 1 thesis-break). Nothing anomalous; watching ZS next cycle to see if peak clears 5% and arms the floor at peak*0.4 as the now-repeatedly-confirmed #5472 formula predicts.",
+      "action": "none \u2014 routine watch, logging the new position for continuity",
+      "escalation": "none"
+    },
+    "2026-09-28T18:10:00Z_zs_thesis_at_peak_12for12_closed": {
+      "cycle_time": "2026-09-28T18:08:59.929Z",
+      "trigger": "18:10 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "ZS (12th trade) resolved via thesis-break, not the ratchet floor: peak cleared +5.62% (floor correctly armed at peak*0.4=+2.25% per #5472), but the gex-walls thesis (long target crossing dominant call wall, inside 0.5x expected move) broke and exited the SAME instant at +5.62% -- i.e. thesis-break fired essentially exactly at the peak, banking the full move before the floor was ever tested. This is the 2nd thesis-break instance today (PANW earlier was an instant breakeven scratch at -0.05%, thesis broke before any real move happened) -- still below the 3-instance noise threshold, but both observed instances show thesis-break behaving well: either catching a fast invalidation early (PANW) or catching a reversal right at the top (ZS), never observed lagging behind a round-trip. All 12 trades today now CLOSED, no open positions. Aggressive-mode enhancement scan this cycle: nothing new found worth flagging below the 3-instance bar -- exit-mechanism priority order (floor > thesis > target > flat-timeout) continues to look correctly tuned across every category observed today (6 ratchet, 1 stop, 3 flat, 2 thesis).",
+      "action": "none -- clean, positive confirmation, watching for more thesis-break instances to reach the 3-instance bar on the 'fires at/near peak' pattern",
+      "escalation": "none"
+    },
+    "2026-09-28T18:43:00Z_session_pnl_pct_check_no_new_commits": {
+      "cycle_time": "2026-09-28T18:41:40.290Z",
+      "trigger": "18:43 UTC (trigger 3/4 offset :30)",
+      "summary": "Ledger unchanged at 12/12 closed for 3 consecutive cycles (18:10/18:15/18:43). Used the quiet stretch for aggressive-mode digging on the WATCH-stage setups (6 candidates) + governor snapshot rather than just re-polling the ledger. Findings, none rising above a bug: (1) TSLA/QQQ new WATCH candidates correctly gated -- TSLA rank_tier REJECT via thesis_rank_reject+flow_score_floor (weak flow_quality.score=47, factor_breakdown.flow=0 despite 84% put dominance), QQQ rank_tier A/PASS but still sitting at 'weak' confluence, not yet committed. NVDA candidate shows a genuine, correctly-surfaced cross-signal conflict (intraday_conflict:true, flow_accumulation.direction='bear'/aligned:false against the single-session call-dominant flow driving the long setup) -- exactly the Largo-contract 'disagreement represented, never reconciled' pattern, not a bug. (2) discovery_health.BREAKOUT.status='empty_market' -- matches the documented intentional pattern (Polygon grouped-daily has no qualifying movers right now), not a defect. (3) governor.session_pnl_pct=-40.52% -- verified against source (governor.ts/governor.test.ts, extensively unit-tested, rendered live on ZeroDteBoard.tsx:562 as its own UI pill) before journaling: this is the REAL, intentional equal-weighted sum of realized pnl_pct across today's 12 closed plays, not dollar-weighted P&L, and not a bug. Today's real picture: one outsized SPXW stop (-51.04%) currently outweighs six ratchet wins (+2.17% to +3.36% each) plus CRWD/ZS gains on this sum-of-pct metric, despite 8/12 trades being wins or scratches by trade count. This is inherent to single-stop-loss-vs-many-small-wins asymmetry on 0DTE premium selling/buying, already correctly computed and surfaced -- logging as a session-level data point to watch trend on, not escalating (1 session, not a repeated pattern).",
+      "action": "none -- verified-clean digging pass, nothing to fix",
+      "escalation": "none"
+    },
+    "2026-09-28T19:11:00Z_upstream_degradation_2nd_instance_verified_clean": {
+      "cycle_time": "2026-09-28T19:11:25.963Z",
+      "trigger": "19:11 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "2nd live instance today of the documented upstream_ok:false self-healing board degradation (1st was 15:44 UTC): board.ledger transiently returned empty (ledger_len: 0, upstream_ok: false), persisted across 2 consecutive fetches ~18s apart (same as_of, cache stuck mid-degradation). Cross-checked immediately per the standing protocol: GET /api/market/zerodte/record?days=1 shows graded:12, wins:8, losses:4, breakeven:0, rows/plays.length:12 -- exactly matching today's known tally (6 ratchet + CRWD + ZS = 8 wins; SPXW stop + TWLO flat + CVNA flat + PANW thesis-scratch = 4 losses). No data loss -- the Postgres-backed /record path is unaffected, only the board's own live snapshot cache is transiently empty. Not escalating: this is the same recurring, self-healing pattern already documented in CLAUDE.md and in this journal's 15:44 entry today.",
+      "action": "none -- verified via /record cross-check, will re-poll board next cycle to confirm self-heal",
+      "escalation": "none"
+    },
+    "2026-09-28T19:15:00Z_upstream_self_healed": {
+      "cycle_time": "2026-09-28T19:14:03.663Z",
+      "trigger": "19:15 UTC (trigger 2/4 offset :15)",
+      "summary": "Board self-healed: upstream_ok back to true, ledger_len back to 12, matching the /record cross-check from the prior cycle exactly. Confirms the 19:11 degradation was transient/self-healing as expected, no lasting issue. Still 12/12 closed, no new trades.",
+      "action": "none -- confirms prior cycle's clean read",
+      "escalation": "none"
+    },
+    "2026-09-28T19:43:00Z_post_commit_transition": {
+      "cycle_time": "2026-09-28T19:40:42.042Z",
+      "trigger": "19:43 UTC (trigger 3/4 offset :30)",
+      "summary": "Board transitioned RTH -> POST_COMMIT (heat_pct 70, 'No new 0DTE commits after 3:30 PM ET -- managing open risk to the 3:50 PM hard exit'). Nothing to manage: all 12 of today's trades were already CLOSED well before the 3:30 PM ET cutoff (last close was ZS at 17:53 UTC = 13:53 ET). No open positions carrying into the hard-exit window. Clean, unremarkable transition -- watching for the eventual CLOSED state later today for the natural end-of-day summary.",
+      "action": "none",
+      "escalation": "none"
+    },
+    "2026-09-28T20:10:00Z_session_closed_eod_summary": {
+      "cycle_time": "2026-09-28T20:10:00.442Z",
+      "trigger": "20:10 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "Session CLOSED (heat.state=CLOSED, 'Night Hawk builds tomorrow's playbook after the close'). Final confirmed tally via /record: 12 graded, 8 wins, 4 losses, 0 breakeven (66.7% win rate) -- matches the running tally tracked all day. EOD recap: 6 ratchet-floor wins (TSLA +2.97%, MU +2.56%, MDB +3.36%, BE +2.23%, CRDO +2.17%, QQQ +2.33%), all 6 in the #5472 [5%,15%) peak band with exact peak*0.4 floor-arming confirmations -- now a robust, repeated, multi-instance live-production confirmation of that fix. 2 thesis-break exits (PANW -0.05% instant scratch pre-move, ZS +5.62% catching a reversal essentially at the exact peak before the floor was ever tested -- both coherent, no lagging round-trips observed). 3 flat-timeout scratches (CVNA -7.14%, TWLO -6.32%, CRWD +1.53%). 1 hard stop (SPXW -51.04%, normal stop-slippage past the printed 6.025 stop). Aggregate governor.session_pnl_pct=-40.52% (verified as an intentional, well-tested equal-weighted sum-of-pct metric, not dollar P&L) -- one outsized stop currently dominates six-plus small wins on that specific metric despite the 66.7% win rate by trade count; flagged as a session-level observation for trend-watching, not a defect. 2 clean upstream_ok:false self-healing degradations observed and cross-checked clean against /record both times, no real data loss either time. Zero bugs found and zero PRs opened this session -- pure forensic monitoring, everything observed was coherent with documented design (tier-based exit-mode split, exit-priority ordering, gate correctness on WATCH candidates). WATCHING: next session's cold-start tomorrow will be the next opportunity to look for genuinely new signal.",
+      "action": "none -- clean session end",
+      "escalation": "none"
     }
   },
   "sessions": {

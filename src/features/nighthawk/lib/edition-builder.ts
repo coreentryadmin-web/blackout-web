@@ -46,6 +46,7 @@ import {
 } from "./edition-stale";
 import {
   anyRankedClearsScoreFloor,
+  computeQualityFloorNote,
   countRankedClearingMerit,
   criticRescueEnabled,
   effectiveMinPublishPlays,
@@ -321,7 +322,7 @@ export function buildRankFinalSnapshotRows(
     rejection_reason: null,
     selected_for_publish: true,
     snapshot_json: {
-      schema_version: 3,
+      schema_version: 4,
       direction: p.direction,
       conviction: p.conviction,
       levels: parsePlayLevels(p),
@@ -331,6 +332,11 @@ export function buildRankFinalSnapshotRows(
       // dte is null (not 0) whenever the play never had a real contract picked (stock-only).
       setup_type: p.factor_breakdown ? classifySetupType(p.factor_breakdown) : "unknown",
       dte: p.dte ?? null,
+      // v4 (2026-09-28 backfill redesign, operator-directed): "QUALIFIED" vs "BACKFILL" so every
+      // published play's selection reason is auditable from the snapshot alone, not just from the
+      // in-memory PlaybookPlay. Defaults to QUALIFIED — the caller stamps this on every finalPlays
+      // entry before this row-builder runs, so absence here would only mean a pre-v4 caller.
+      selection_tier: p.selection_tier ?? "QUALIFIED",
     },
   }));
 }
@@ -1047,30 +1053,33 @@ export async function buildEveningEdition(opts?: {
 
     // Pre-synthesis merit-floor check (2026-08-05, moved earlier — Lever 5 of the discovery-
     // architecture redesign). This is a PURE OPTIMIZATION, not a new gate. The organic path
-    // (filterPlaysByMerit) and the strict rescue path (rankedCandidateMeritEligible in
-    // play-backfill.ts) both require score+tier — countRankedClearingMerit logs that number for
-    // diagnostics. But the LOOSEST downstream rescue, promoteTopBlocked's gate-promote
-    // (publish-gates.ts), admits on `score >= gatePromoteMinScore()` ALONE, no tier check — so the
-    // only condition under which NOTHING anywhere downstream could possibly publish is "no
-    // candidate clears the score floor at all" (anyRankedClearsScoreFloor). Nothing between here
-    // and there can raise a candidate's score (buildDeterministicEditionPlays/critiquePlays only
-    // narrow/format; Phase 3 removed the LLM synthesis stage entirely, per claude-edition.ts's own
-    // doc comment — this pipeline is fully deterministic), so that condition is stable once
-    // computed here. Short-circuiting here saves a real night's worth of API calls (chain
-    // prefetch, dossier re-fetch for index/flow-tape context) on a night that was always going to
-    // end in recap-only, without changing which nights publish plays.
+    // (filterPlaysByMerit) requires score+tier — countRankedClearingMerit logs that number for
+    // diagnostics.
+    //
+    // CORRECTED 2026-09-28 (backfill redesign): this short-circuit previously relied on
+    // anyRankedClearsScoreFloor being "the loosest bar anywhere downstream" — true before this
+    // date, no longer true. backfillCandidateEligible (play-backfill.ts) now admits a candidate on
+    // trading-halt status ALONE, no score/tier requirement, specifically so a thin-quality night
+    // can still reach the configured minimum play count. Skipping synthesis here whenever
+    // anyRankedClearsScoreFloor is false would now incorrectly recap-only a night backfill could
+    // have rescued. So the short-circuit is now gated on backfill being OFF: with backfill
+    // disabled, the old reasoning holds exactly as before (gate-promote's score-only bar is once
+    // again the loosest path, so the score-floor check alone is sufficient); with backfill on
+    // (the default), this optimization is foregone and synthesis always runs when any candidate
+    // is ranked, trading a real night's worth of saved API calls on a hopeless-organic night for
+    // correctness on a backfill-rescuable one.
     console.info(
       `[nighthawk/edition] pre-synthesis merit check: ${countRankedClearingMerit(ranked)}/${ranked.length} ` +
       `ranked candidate(s) already clear score>=${effectiveMinPublishScore()} + tier>=${legacyMinPublishTier()} ` +
       `before synthesis/critic/gates run`
     );
 
-    if (ranked.length > 0 && !anyRankedClearsScoreFloor(ranked)) {
+    if (ranked.length > 0 && !thinEditionBackfillEnabled() && !anyRankedClearsScoreFloor(ranked)) {
       const reason =
         `No ranked candidate clears even the score-only rescue floor pre-synthesis (${ranked.length} ` +
-        `ranked, 0 with score>=${effectiveMinPublishScore()}) — every downstream rescue/backfill/` +
-        `gate-promote path requires at least this score floor, so synthesis was skipped rather ` +
-        `than spending API calls on a guaranteed recap-only night.`;
+        `ranked, 0 with score>=${effectiveMinPublishScore()}) — every downstream rescue/gate-promote ` +
+        `path requires at least this score floor, and backfill is disabled, so synthesis was ` +
+        `skipped rather than spending API calls on a guaranteed recap-only night.`;
       console.warn(`[nighthawk/edition] stage_synthesis short-circuit — recap-only fallback: ${reason}`);
       funnel.dossiers = 0;
       funnel.synthesized = 0;
@@ -1197,6 +1206,7 @@ export async function buildEveningEdition(opts?: {
         spxDesk,
         flowTape,
         playOutcomes,
+        edition_for: editionFor,
       });
       raw = synthRaw;
       // BIE Stage 4 audit trail (step 4b): one row per geometry-rejected play, regardless of
@@ -1483,20 +1493,12 @@ export async function buildEveningEdition(opts?: {
       finalPlays.forEach((p, i) => { p.rank = i + 1; });
     }
 
-    // rank_final capture (Night Hawk Legacy Signal Intelligence, Phase 1): the order members
-    // ACTUALLY see, published or not — every finalPlays entry that survived to here is getting
-    // published (a finalPlays candidate that gets gated out never reaches this line). gov_penalty
-    // is looked up from the STAGE-4b snapshot (govPenaltyByTicker) since PlaybookPlay itself never
-    // carries it — this is deliberately the same real gap the governor-blind-sort bug lives in:
-    // the play object members see has no govPenalty field to consult, which is *why* PR-N26 can
-    // silently ignore it.
-    const rankFinalRows = buildRankFinalSnapshotRows(editionFor, finalPlays, govPenaltyByTicker);
-    if (rankFinalRows.length) {
-      void insertNighthawkCandidateSnapshots(rankFinalRows).catch((err) => {
-        console.warn("[nighthawk/edition] failed to write rank_final candidate snapshots:", err);
-        alertCandidateSnapshotWriteFailure("rank_final", editionFor, err);
-      });
-    }
+    // rank_final capture MOVED (2026-09-28 backfill redesign) — see the single capture point
+    // right before publish, after the write-side-invariant guard. That guard's own last-resort
+    // backfill (below) can still add plays to finalPlays AFTER this point, and capturing here
+    // unconditionally would have produced a rank_final snapshot missing exactly those plays —
+    // capturing once, after every path that can mutate finalPlays has run, is the only place
+    // that is guaranteed complete.
 
     // Stamp G-N2's ALREADY-COMPUTED target distance onto each published play so members and
     // admin read the same number the gate judged. Read from `gateResults` (the in-memory
@@ -1559,6 +1561,39 @@ export async function buildEveningEdition(opts?: {
       };
     }
 
+    // Default every play that reaches here to QUALIFIED — backfillThinEditionPlays already
+    // stamps BACKFILL on its own additions, so this only fills in the organic-path plays that
+    // never had a reason to carry the field themselves.
+    finalPlays = finalPlays.map((p) => ({ ...p, selection_tier: p.selection_tier ?? "QUALIFIED" }));
+
+    // QUALITY FLOOR reporting (2026-09-28, operator-directed): null on the common case (minimum
+    // reached, whether organically or via backfill). Non-null only when even backfill could not
+    // reach the configured minimum — the case where publishing fewer than the minimum is the
+    // correct, honest outcome and must say so explicitly rather than reading as an unexplained
+    // short count.
+    const qualityFloorNote = computeQualityFloorNote(finalPlays, effectiveMinPublishPlays());
+    if (qualityFloorNote) {
+      console.warn(`[nighthawk/edition] ${qualityFloorNote}`);
+    }
+
+    // rank_final capture (Night Hawk Legacy Signal Intelligence, Phase 1): the order members
+    // ACTUALLY see, published or not — every finalPlays entry that survived to here is getting
+    // published. gov_penalty is looked up from the STAGE-4b snapshot (govPenaltyByTicker) since
+    // PlaybookPlay itself never carries it — this is deliberately the same real gap the
+    // governor-blind-sort bug lives in: the play object members see has no govPenalty field to
+    // consult, which is *why* PR-N26 can silently ignore it. MOVED to this single point
+    // (2026-09-28) — after every merit-filter/geometry-gate/publish-gate/backfill path (including
+    // the last-resort write-side-invariant backfill just above) has had its chance to mutate
+    // finalPlays, so this is the only place a capture is guaranteed complete for every play that
+    // actually publishes, backfilled or not.
+    const rankFinalRows = buildRankFinalSnapshotRows(editionFor, finalPlays, govPenaltyByTicker);
+    if (rankFinalRows.length) {
+      void insertNighthawkCandidateSnapshots(rankFinalRows).catch((err) => {
+        console.warn("[nighthawk/edition] failed to write rank_final candidate snapshots:", err);
+        alertCandidateSnapshotWriteFailure("rank_final", editionFor, err);
+      });
+    }
+
     funnel.published = finalPlays.length;
     logFunnel(editionFor, funnel);
     console.info("[nighthawk/edition] publish edition");
@@ -1605,6 +1640,10 @@ export async function buildEveningEdition(opts?: {
         play_explanations: {},
         critic_notes: finalCriticNotes,
         critic_applied: Boolean(finalCriticNotes.length),
+        // 2026-09-28 backfill redesign (operator-directed): null on the common case, explicit
+        // "QUALITY FLOOR — ONLY N QUALIFIED"-style text whenever the published count fell short
+        // of the configured minimum even after backfill — a genuinely thin night, not a bug.
+        quality_floor_note: qualityFloorNote,
         funnel: {
           candidates: funnel.candidates ?? candidates.length,
           ranked: funnel.ranked ?? ranked.length,

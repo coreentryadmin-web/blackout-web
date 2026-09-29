@@ -1704,6 +1704,60 @@ test("catalystsSection: headlines from a fresh news read carry NO staleness disc
   assert.match(section!.body, /CrowdStrike stock moves higher/);
 });
 
+// GAP FOUND (2026-09-28, Ask Largo standing mandate): live repro U/WATCH — arsenal.news.headlines
+// carried the SAME headline text twice ("10 Information Technology Stocks Whale Activity In
+// Today's Session" at both index 0 and 2), burning one of only 4 shown slots on a repeat.
+test("catalystsSection: duplicate headline text is deduped, never burning one of the 4 shown slots", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString();
+  const section = catalystsSection({
+    ticker: "U",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: {
+        count: 5,
+        newest: freshAsOf,
+        headlines: [
+          "10 Information Technology Stocks Whale Activity In Today's Session",
+          "10 Information Technology Stocks With Whale Alerts In Today's Session",
+          "10 Information Technology Stocks Whale Activity In Today's Session",
+          "Is Fortnite Down? Here's Why Servers Are Offline",
+          "A genuinely distinct fifth headline",
+        ],
+        as_of: freshAsOf,
+      },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  const bulletLines = section!.body.split("\n").filter((l) => l.startsWith("• "));
+  assert.equal(bulletLines.length, 4, "still shows 4 headlines, not 3");
+  const occurrences = bulletLines.filter(
+    (l) => l === "• 10 Information Technology Stocks Whale Activity In Today's Session",
+  );
+  assert.equal(occurrences.length, 1, "the duplicate headline appears only once");
+  assert.match(
+    section!.body,
+    /A genuinely distinct fifth headline/,
+    "dedup happens BEFORE the top-4 slice, so the real 4th distinct headline still makes the cut",
+  );
+});
+
 // Ask Largo standing mandate, same #5351/#5392-class readMs-anchor sweep — catalystsSection was
 // NOT among the 9 sites #5392 fixed (confirmed against #5392's own diff, which never touched this
 // function) even though it reads TWO freshness-bearing fields (fundamentals.as_of, news.as_of) and

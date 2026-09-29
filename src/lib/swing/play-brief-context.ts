@@ -213,11 +213,19 @@ export async function loadSwingPlayBriefContext(
   ] = await Promise.all([
     meridianPromise,
     meridianPeerPromise,
-    withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch(() => {
+    withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch((err) => {
+      // BUG FIX (2026-09-28, Ask Largo standing mandate, live repro AMZN play-brief): this catch
+      // swallowed the actual error with no log line at all — the member-facing envelope correctly
+      // surfaces "ecosystem context ... fetch failed" via unavailableSources, but nobody could ever
+      // tell WHY from CloudWatch (timeout vs a real provider error vs which upstream). Identical bug
+      // shape to swing-discovery.ts's Tier-0 origin fetch, already fixed there (its own comment:
+      // "invisible in CloudWatch... distinguishable... only by reading a field nobody was tailing").
+      console.warn(`[swing-play-brief] ecosystem context fetch failed for ${ticker}:`, err);
       ecosystemFetchFailed = true;
       return null;
     }),
-    withBriefSourceTimeout(fetchVectorFullState(ticker, normalizeDteHorizon("all"))).catch(() => {
+    withBriefSourceTimeout(fetchVectorFullState(ticker, normalizeDteHorizon("all"))).catch((err) => {
+      console.warn(`[swing-play-brief] Vector full-state fetch failed for ${ticker}:`, err);
       vectorFetchFailed = true;
       return null;
     }),

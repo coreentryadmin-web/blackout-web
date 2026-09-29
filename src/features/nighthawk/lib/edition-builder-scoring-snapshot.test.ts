@@ -133,7 +133,10 @@ test("buildRankFinalSnapshotRows: schema v3 -- snapshot_json carries the play's 
     new Map()
   );
   const payload = rows[0]!.snapshot_json as any;
-  assert.equal(payload.schema_version, 3);
+  // v4 as of the 2026-09-28 backfill redesign (adds selection_tier) — see the dedicated v4 test
+  // block below. Still bumped here since schema_version is a single top-level field, not
+  // per-version-added-field, so every row now reports the CURRENT version.
+  assert.equal(payload.schema_version, 4);
   assert.equal(payload.levels.entry_range_low, 100);
   assert.equal(payload.levels.entry_range_high, 104);
   assert.equal(payload.levels.target, 112.5);
@@ -150,6 +153,37 @@ test("buildRankFinalSnapshotRows: v3 additive fields -- setup_type derives from 
   const payload = rows[0]!.snapshot_json as any;
   assert.equal(payload.setup_type, "flow_led");
   assert.equal(payload.dte, 5);
+});
+
+// ---------------------------------------------------------------------------
+// v4 additive field: selection_tier (2026-09-28 backfill redesign, operator-directed —
+// "Persist this in the candidate snapshot so we can audit exactly why every play was selected")
+// ---------------------------------------------------------------------------
+
+test("buildRankFinalSnapshotRows: v4 -- a play explicitly stamped QUALIFIED persists it as-is", async () => {
+  const { buildRankFinalSnapshotRows } = await import("./edition-builder");
+  const rows = buildRankFinalSnapshotRows(
+    "2026-09-17",
+    [play({ ticker: "AMD", selection_tier: "QUALIFIED" })],
+    new Map()
+  );
+  assert.equal((rows[0]!.snapshot_json as any).selection_tier, "QUALIFIED");
+});
+
+test("buildRankFinalSnapshotRows: v4 -- a play explicitly stamped BACKFILL persists it as-is", async () => {
+  const { buildRankFinalSnapshotRows } = await import("./edition-builder");
+  const rows = buildRankFinalSnapshotRows(
+    "2026-09-17",
+    [play({ ticker: "WAT", selection_tier: "BACKFILL" })],
+    new Map()
+  );
+  assert.equal((rows[0]!.snapshot_json as any).selection_tier, "BACKFILL");
+});
+
+test("buildRankFinalSnapshotRows: v4 -- a play with no selection_tier defaults to QUALIFIED, never fabricates BACKFILL", async () => {
+  const { buildRankFinalSnapshotRows } = await import("./edition-builder");
+  const rows = buildRankFinalSnapshotRows("2026-09-17", [play({ ticker: "NVDA" })], new Map());
+  assert.equal((rows[0]!.snapshot_json as any).selection_tier, "QUALIFIED");
 });
 
 test("buildRankFinalSnapshotRows: v3 additive fields are honestly absent/unknown, never fabricated, when the play carries neither", async () => {

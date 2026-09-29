@@ -1296,7 +1296,28 @@ export function closedCoaching(play: TerminalPlay): string | null {
   if (play.closedReason) {
     const r = play.closedReason.replace(/_/g, " ");
     if (play.closedReason === "thesis") lines.push(`Exit on **thesis break** — note which pillar failed first in playbook review.`);
-    else if (play.closedReason === "stopped" || play.closedReason === "stop") lines.push(`**Stop fired** (${r}) — check if entry was extended past invalidation.`);
+    else if (play.closedReason === "stopped" || play.closedReason === "stop") {
+      // GAP FOUND (2026-09-28, Ask Largo standing mandate): this line asked the member to "check"
+      // something the brief itself already had the two numbers for — entryTriggerUnderlyingPx and
+      // invalidationUnderlyingPx are both pinned at commit (static, no live dependency, so they stay
+      // valid after close), but TerminalPlay never carried invalidationUnderlyingPx at all until now,
+      // so every closed-play brief could only ever pose the question, never answer it. When both are
+      // present, report the actual cushion between entry and the structural invalidation level so the
+      // member can judge for themselves rather than re-deriving it from scratch (or not being able to
+      // at all, once the position is closed and the live dossier is gone).
+      const trig = play.entryTriggerUnderlyingPx;
+      const inval = play.invalidationUnderlyingPx;
+      if (typeof trig === "number" && Number.isFinite(trig) && trig !== 0 &&
+          typeof inval === "number" && Number.isFinite(inval)) {
+        const cushionPct =
+          (play.direction === "SHORT" ? (inval - trig) / trig : (trig - inval) / trig) * 100;
+        lines.push(
+          `**Stop fired** (${r}) — entry **${fmtPriceLevel(trig)}** vs invalidation **${fmtPriceLevel(inval)}**, a **${fmtPct(cushionPct)}** cushion at commit; a thin cushion here means the entry was already extended, not that the stop was wrong.`,
+        );
+      } else {
+        lines.push(`**Stop fired** (${r}) — check if entry was extended past invalidation.`);
+      }
+    }
     else lines.push(`Exit reason: **${r}**`);
   }
 

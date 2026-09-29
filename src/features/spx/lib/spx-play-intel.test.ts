@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildPlayIdea } from "@/features/spx/lib/spx-play-intel";
+import { buildPlayIdea, humanizeGateBlocks } from "@/features/spx/lib/spx-play-intel";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxConfluence } from "@/features/spx/lib/spx-signals";
 
@@ -54,6 +54,31 @@ function fixture(score: number, aboveVwap: boolean): { desk: SpxDeskPayload; con
 
   return { desk, confluence };
 }
+
+test("humanizeGateBlocks: two unrelated raw gates (grade-below-minimum, score-too-low) that both humanize via the same buildPlayIdeaIntel() line are deduped, not shown twice (live repro SPX play 2026-09-28)", () => {
+  // BUG: humanizeGateBlock replaces several structurally different raw gate reasons with the
+  // SAME buildPlayIdeaIntel(desk, confluence) line (a pure function of desk+confluence), each
+  // appending its own trailing suffix. A weak setup commonly fails both the grade gate AND the
+  // score gate at once, so a plain .map() over raw blocks let the same idea line through twice —
+  // live repro: "...· waiting for grade confirmation" and the identical line without the suffix,
+  // back to back in the same gates.blocks array.
+  const { desk, confluence } = fixture(8, false);
+  const rawBlocks = [
+    "Tape's mixed — too many conflicting signals for clean entry",
+    "Grade D below minimum (need B or better)", // -> idea + "· waiting for grade confirmation"
+    "Cold BUY needs score ≥78 (have 33) — WATCH→ENTRY path preferred",
+    "Cold BUY requires grade A or better — B setups need WATCH→ENTRY",
+    "Score 33 too low — quality setups only", // -> idea line, no suffix — the duplicate
+  ];
+  const out = humanizeGateBlocks(rawBlocks, desk, confluence);
+  const ideaLines = out.filter((b) => /Tape's mixed, but/.test(b));
+  assert.equal(ideaLines.length, 1, `expected exactly one humanized idea line, got: ${JSON.stringify(out)}`);
+  assert.match(ideaLines[0], /waiting for grade confirmation/, "the more informative (suffixed) variant should win");
+  // Everything that never matched a humanize branch must survive untouched.
+  assert.ok(out.some((b) => b.includes("too many conflicting signals")));
+  assert.ok(out.some((b) => b.includes("Cold BUY needs score")));
+  assert.ok(out.some((b) => b.includes("Cold BUY requires grade")));
+});
 
 test("buildPlayIdea leans with the score's own sign in the neutral zone, not an unrelated VWAP proxy that can disagree with it", () => {
   // Net score +8 (weakly bullish) but price below VWAP (above_vwap=false) — the exact live

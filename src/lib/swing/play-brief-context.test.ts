@@ -26,6 +26,8 @@ let bangerFetchShouldThrow = false;
 const SOURCE_DELAY_MS = 150;
 let meridianDelayMs = 0;
 let ecosystemDelayMs = 0;
+let ecosystemShouldThrow = false;
+let vectorShouldThrow = false;
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -139,6 +141,7 @@ mock.module("../banger/flag", {
 mock.module("../bie/ecosystem-context", {
   namedExports: {
     fetchEcosystemContext: async () => {
+      if (ecosystemShouldThrow) throw new Error("ecosystem fetch failed");
       if (ecosystemDelayMs > 0) await delay(ecosystemDelayMs);
       return null;
     },
@@ -146,7 +149,12 @@ mock.module("../bie/ecosystem-context", {
 });
 
 mock.module("../bie/vector-full-state", {
-  namedExports: { fetchVectorFullState: async () => null },
+  namedExports: {
+    fetchVectorFullState: async () => {
+      if (vectorShouldThrow) throw new Error("vector fetch failed");
+      return null;
+    },
+  },
 });
 
 mock.module("./play-brief-meridian", {
@@ -329,5 +337,77 @@ describe("loadSwingPlayBriefContext: independent sources fan out concurrently, n
         `meridian/meridianPeer are still being awaited BEFORE the rest of the sources start, ` +
         `serializing their delays instead of racing them`,
     );
+  });
+});
+
+// REGRESSION (Ask Largo standing mandate, 2026-09-28, live repro: GET /api/market/swing/play-brief
+// for AMZN showed "2 sources unavailable this cycle (ecosystem context, Vector state)" with ZERO
+// matching CloudWatch log line for either failure — the .catch() handlers swallowed the thrown
+// error entirely, so an ops session reading logs could see the member-facing SYMPTOM but never the
+// CAUSE (timeout vs a real provider error vs which upstream). Same bug shape swing-discovery.ts's
+// Tier-0 origin fetch already had to fix (its own comment: "invisible in CloudWatch... only by
+// reading a field nobody was tailing"). Fix: log the real caught error via console.warn before
+// setting the *FetchFailed flag, same pattern tier0-origin-fetch.ts already uses.
+describe("loadSwingPlayBriefContext: a genuine ecosystem/vector fetch failure is logged, not swallowed", () => {
+  let mod: typeof import("./play-brief-context");
+
+  before(async () => {
+    mod = await import("./play-brief-context");
+  });
+
+  it("logs the ecosystem context fetch error via console.warn (not silently swallowed)", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+    ecosystemShouldThrow = true;
+    vectorShouldThrow = false;
+
+    const warnCalls: unknown[][] = [];
+    const restore = mock.method(console, "warn", (...args: unknown[]) => {
+      warnCalls.push(args);
+    });
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+      assert.ok(ctx, "context must still resolve despite the fetch failure");
+      assert.equal(ctx!.ecosystemFetchFailed, true);
+      const match = warnCalls.find((args) =>
+        String(args[0]).includes("ecosystem context fetch failed"),
+      );
+      assert.ok(match, `expected a console.warn naming the ecosystem failure, got: ${JSON.stringify(warnCalls)}`);
+      assert.ok(String(match![0]).includes("TEST"), "must name the ticker");
+      assert.ok(match![1] instanceof Error, "must pass the real caught error through, not swallow it");
+    } finally {
+      ecosystemShouldThrow = false;
+      restore.mock.restore();
+    }
+  });
+
+  it("logs the Vector full-state fetch error via console.warn (not silently swallowed)", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+    ecosystemShouldThrow = false;
+    vectorShouldThrow = true;
+
+    const warnCalls: unknown[][] = [];
+    const restore = mock.method(console, "warn", (...args: unknown[]) => {
+      warnCalls.push(args);
+    });
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+      assert.ok(ctx, "context must still resolve despite the fetch failure");
+      assert.equal(ctx!.vectorFetchFailed, true);
+      const match = warnCalls.find((args) =>
+        String(args[0]).includes("Vector full-state fetch failed"),
+      );
+      assert.ok(match, `expected a console.warn naming the Vector failure, got: ${JSON.stringify(warnCalls)}`);
+      assert.ok(String(match![0]).includes("TEST"), "must name the ticker");
+      assert.ok(match![1] instanceof Error, "must pass the real caught error through, not swallow it");
+    } finally {
+      vectorShouldThrow = false;
+      restore.mock.restore();
+    }
   });
 });
