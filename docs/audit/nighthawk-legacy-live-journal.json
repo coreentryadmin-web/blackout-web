@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-29T17:07:33Z",
+  "lastUpdated": "2026-09-29T21:51:40Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -439,6 +439,10 @@
     {
       "at": "2026-09-29T17:07:33Z",
       "summary": "AGGRESSIVE MODE dig-deeper pass after several quiet cycles: cross-checked tonights edition payload directly (not just the healthcheck summary) and confirmed the PR #5569/#5571 fix is correct end-to-end -- pulled/pulled_reason fields on the real /api/market/nighthawk/edition response now match D_pull_status exactly for all 3 tickers. Separately noticed AMD and BB were both pulled by the IDENTICAL gex-walls mechanism -- recognized this as NOT a new finding but the 2nd distinct trading day corroborating the already-escalated legacyGexWallsHorizonMismatch_2026_09_21 item (which explicitly asked for a 2nd/3rd day at >=50% same-mechanism invalidation before treating it as reinforced -- today is 2/3=67%, 2026-09-21 was 3/4=75%). Added a corroborating addendum to the existing item rather than opening a duplicate. Still held per the standing escalation rule (live-picks-logic design decision, not CARVE-OUT-eligible) -- not self-fixed."
+    },
+    {
+      "at": "2026-09-29T21:51:40Z",
+      "summary": "Expected post-close transition: 2026-09-29 edition (AMD/BB/ZS) went AMBER (A_edition stale, B_marks all 3 stale) at ~20:08 UTC -- matched the already-documented legacyPostCloseStaleEditionExpected pattern exactly, so no new entry was written for that leg. Now (21:51 UTC) the 2026-09-30 edition has published: A_edition flipped back to GREEN (2 fresh plays -- BE, SHOP), D_pull_status correctly SKIPPED (morning-confirm cron not due until ~9:15am ET tomorrow), B_marks AMBER on both new tickers (expected -- freshly-published overnight, no live RTH quotes yet). This confirms legacyPostCloseStaleEditionExpected's own resolution clause held exactly as documented -- closing the loop on that pattern for today. Continuing the standing cadence into the new edition; will watch BE/SHOP through the next morning-confirm run for the first D_pull_status read on this edition."
     }
   ],
   "knownOpenItems": {
