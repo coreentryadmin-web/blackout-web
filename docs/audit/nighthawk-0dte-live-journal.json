@@ -411,6 +411,13 @@
       "summary": "New trading day. Clean cold start: heat.state=PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), ledger_len=0 (correctly empty -- no positions committed yet today), upstream_ok=true. Yesterday's (2026-09-28) session closed cleanly at 12 trades, 66.7% win rate, zero bugs found -- full recap in this journal's 2026-09-28T20:10:00Z entry. Watching for the PRE_MARKET->OPENING_DRIVE->RTH transition and first commits of the day.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-29T13:44:00Z_opening_drive": {
+      "cycle_time": "2026-09-29T13:43:57.433Z",
+      "trigger": "13:44 UTC (trigger 3/4 offset :30)",
+      "summary": "Transitioned PRE_MARKET -> OPENING_DRIVE (heat_pct 70, 'Ranges forming -- engines arming. Best entries usually come after 9:50.'). ledger_len still 0 -- correctly empty, G-2 opening_window gate expected to hold commits for the first ~10 min of RTH per documented design. Normal progression.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
