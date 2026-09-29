@@ -404,6 +404,13 @@
       "summary": "Session CLOSED (heat.state=CLOSED, 'Night Hawk builds tomorrow's playbook after the close'). Final confirmed tally via /record: 12 graded, 8 wins, 4 losses, 0 breakeven (66.7% win rate) -- matches the running tally tracked all day. EOD recap: 6 ratchet-floor wins (TSLA +2.97%, MU +2.56%, MDB +3.36%, BE +2.23%, CRDO +2.17%, QQQ +2.33%), all 6 in the #5472 [5%,15%) peak band with exact peak*0.4 floor-arming confirmations -- now a robust, repeated, multi-instance live-production confirmation of that fix. 2 thesis-break exits (PANW -0.05% instant scratch pre-move, ZS +5.62% catching a reversal essentially at the exact peak before the floor was ever tested -- both coherent, no lagging round-trips observed). 3 flat-timeout scratches (CVNA -7.14%, TWLO -6.32%, CRWD +1.53%). 1 hard stop (SPXW -51.04%, normal stop-slippage past the printed 6.025 stop). Aggregate governor.session_pnl_pct=-40.52% (verified as an intentional, well-tested equal-weighted sum-of-pct metric, not dollar P&L) -- one outsized stop currently dominates six-plus small wins on that specific metric despite the 66.7% win rate by trade count; flagged as a session-level observation for trend-watching, not a defect. 2 clean upstream_ok:false self-healing degradations observed and cross-checked clean against /record both times, no real data loss either time. Zero bugs found and zero PRs opened this session -- pure forensic monitoring, everything observed was coherent with documented design (tier-based exit-mode split, exit-priority ordering, gate correctness on WATCH candidates). WATCHING: next session's cold-start tomorrow will be the next opportunity to look for genuinely new signal.",
       "action": "none -- clean session end",
       "escalation": "none"
+    },
+    "2026-09-29T13:11:00Z_new_day_pre_market_cold_start": {
+      "cycle_time": "2026-09-29T13:10:32.593Z",
+      "trigger": "13:11 UTC (trigger 1/4 offset :00, new trading day 2026-09-29)",
+      "summary": "New trading day. Clean cold start: heat.state=PRE_MARKET (heat_pct 33, 'feeds warming, overnight plays confirming, lotto scan pending'), ledger_len=0 (correctly empty -- no positions committed yet today), upstream_ok=true. Yesterday's (2026-09-28) session closed cleanly at 12 trades, 66.7% win rate, zero bugs found -- full recap in this journal's 2026-09-28T20:10:00Z entry. Watching for the PRE_MARKET->OPENING_DRIVE->RTH transition and first commits of the day.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
