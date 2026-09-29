@@ -495,6 +495,13 @@
       "summary": "Board self-healed: upstream_ok back to true after the extended (~30+min) degradation logged in the prior two cycles -- longest-duration instance today but resolved without any data loss (consistent with every /record cross-check during the outage). Board transitioned RTH -> POST_COMMIT (no new commits after 3:30 PM ET). 11th trade of the day: CSIQ, still OPEN/HOLD, live -6.98%, peak 4.65% (never cleared the 5% arm threshold, correctly unarmed). This is the only open position heading into the 3:50 PM hard exit -- all other 10 trades already closed.",
       "action": "none -- watching CSIQ resolve at or before the 3:50 PM hard exit",
       "escalation": "none"
+    },
+    "2026-09-29T19:45:00Z_session_11for11_eod_summary": {
+      "cycle_time": "2026-09-29T19:45:29Z",
+      "trigger": "19:45 UTC (trigger 4/4 offset :45)",
+      "summary": "All 11 trades today CLOSED. CSIQ (final trade) resolved via thesis-break at -6.98% -- the 3rd thesis-break instance today (MSTR 0% instant, NVTS -5.36% ~1.75min, CSIQ -6.98%), now meeting the 3-instance noise-discipline threshold. Synthesizing across all 3: every instance fired fast (seconds to ~2min after commit), cited a specific gex-walls/oppose_cluster veto reason, and exited cleanly with no lagging round-trips observed -- a positive, confirmed pattern (thesis-break behaving coherently), not a bug, so not escalating. EOD tally, 11 trades: 3 ratchet/trim_scale wins (BE +40% textbook ladder, QQQ +3.51%, SPXW +2.57%), 1 stop (ORCL -51.09%), 4 flat-timeout scratches (ASTS -6.01%, SPY -9.54% recovered from a -38.92% dip, PL -7.89%, AMD -9.38%), 3 thesis-break exits (MSTR 0%, NVTS -5.36%, CSIQ -6.98%) = 3W/7L/1BE by trade classification (win_rate lower than yesterday's 66.7%, but no bugs found -- exit mechanisms behaved coherently across every category all day, including the notable BE textbook trim_scale ladder and SPY's flat-timeout save). One extended upstream_ok:false degradation (~30min) resolved with zero data loss throughout, cross-checked repeatedly via /record. Zero bugs found, zero PRs opened today -- pure forensic monitoring, everything observed coherent with documented design.",
+      "action": "none -- clean session end",
+      "escalation": "none"
     }
   },
   "sessions": {
