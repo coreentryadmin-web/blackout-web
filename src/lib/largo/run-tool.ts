@@ -2079,6 +2079,28 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         };
       };
 
+      // Sibling pruner for the ARCHIVED (nighthawk_scoring_history) dossier shape, found live
+      // 2026-09-28: that row's `dossier_json` is the raw, unpruned TickerDossier (tech + a per-
+      // alert `flows` array) — pruneDossier above never touches it, because its guard
+      // (`!plays || !Array.isArray(plays)`) only fires on the LIVE-STAGING position shape, and an
+      // archived scoring dossier has no `plays` field at all, so pruneDossier returns it verbatim.
+      // On a ticker with many historical flow alerts (confirmed live for BB, 2026-09-29 edition)
+      // that raw `flows` array alone pushed the serialized tool_result past
+      // MAX_TOOL_RESULT_CHARS, truncating the payload before the much smaller, higher-value
+      // `scored` object was ever reached — so Largo saw tech/flows but never scored.direction or
+      // scored.score. Two independent mitigations, since either alone leaves a gap: (1) drop the
+      // raw `flows` array (Largo already gets the same signal by working with the entry-time
+      // dossier's other pre-aggregated fields — flow_streak, oi_change, dark_pool, positioning
+      // — a raw per-alert list was never in fact needed to explain why a ticker was scored the
+      // way it was, only to reconstruct a live prompt), (2) return `scored` BEFORE `dossier` in
+      // the object literal below, since JSON key order follows insertion order — a still-too-large
+      // dossier truncates its own tail, never the compact `scored` object ahead of it.
+      const pruneArchivedDossier = (d: Record<string, unknown>): Record<string, unknown> => {
+        if (!("flows" in d)) return d;
+        const { flows, ...rest } = d;
+        return rest;
+      };
+
       let editionFor = input.date ? String(input.date) : null;
       if (!editionFor) {
         const latest = await marketPlatform.nighthawk.getLatestNightHawkEdition();
@@ -2097,7 +2119,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         const history = await fetchNighthawkScoringHistory(editionFor, tickerFilter);
         const archivedRow = history[0];
         const dossier = archivedRow
-          ? { ticker: archivedRow.ticker, dossier: pruneDossier(archivedRow.dossier), scored: archivedRow.scored }
+          ? { ticker: archivedRow.ticker, scored: archivedRow.scored, dossier: pruneArchivedDossier(archivedRow.dossier) }
           : null;
         return { edition_for: editionFor, ticker: tickerFilter, dossier, archived: Boolean(archivedRow) };
       }

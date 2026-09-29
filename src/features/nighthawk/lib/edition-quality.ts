@@ -157,15 +157,19 @@ export function countRankedClearingMerit(ranked: ScoredCandidate[]): number {
 
 /**
  * True when AT LEAST ONE candidate in the ranked pool clears the SCORE floor alone (tier not
- * required). This is the correct guard for a "skip synthesis, nothing can publish" short-circuit
- * — deliberately looser than {@link countRankedClearingMerit}'s score+tier check, because
- * `promoteTopBlocked` (publish-gates.ts's gate-promote rescue) admits a blocked play on
- * `play.score >= gatePromoteMinScore()` ALONE, with NO tier check — it is the loosest merit bar
- * anywhere in the downstream pipeline. `filterPlaysByMerit`/`rankedCandidateMeritEligible`
- * (play-backfill.ts) both require score+tier, but gate-promote's score-only bar means a
- * score-clears/tier-fails candidate is NOT guaranteed to fail every rescue path — only a
- * score-fails candidate is. Short-circuiting on the stricter score+tier check would risk skipping
- * synthesis on a night gate-promote could still have rescued something from.
+ * required). Originally the loosest merit bar in the pipeline and thus the correct "skip
+ * synthesis, nothing can publish" short-circuit guard on its own — `promoteTopBlocked`
+ * (publish-gates.ts's gate-promote rescue) admits a blocked play on `play.score >=
+ * gatePromoteMinScore()` ALONE, with NO tier check, so a score-clears/tier-fails candidate is
+ * NOT guaranteed to fail every rescue path, only a score-fails candidate is.
+ *
+ * NO LONGER the loosest bar as of the 2026-09-28 backfill redesign: `backfillCandidateEligible`
+ * (play-backfill.ts) checks only trading-halt status, no score/tier at all, specifically so a
+ * thin-quality night (not just a gate-rejection night) can still reach the configured minimum
+ * play count. This function's OWN correctness is unchanged — it still answers exactly "does any
+ * candidate clear the organic score floor" — but a caller using it as a synthesis short-circuit
+ * must now ALSO check whether backfill is enabled; see edition-builder.ts's own guard at the
+ * pre-synthesis check for the corrected condition.
  */
 export function anyRankedClearsScoreFloor(ranked: ScoredCandidate[]): boolean {
   const minScore = effectiveMinPublishScore();
@@ -230,4 +234,32 @@ export function filterPlaysByMerit(
   });
 
   return { plays: kept.slice(0, effectiveTargetPlays()), dropped };
+}
+
+/**
+ * Explicit, member/operator-visible "we did not reach the configured minimum" signal
+ * (2026-09-28 backfill redesign, operator-directed — "if only one candidate genuinely qualifies,
+ * Legacy should be allowed to publish one — but it must explicitly report QUALITY FLOOR — ONLY 1
+ * QUALIFIED"). Pure and stamped into publish meta so it survives independently of the funnel's
+ * internal counters. Returns null whenever the published count already meets the configured
+ * minimum (the common case — no note, nothing to explain), even if some of those plays are
+ * BACKFILL: reaching the minimum via backfill is expected, normal behavior, not a floor breach —
+ * the floor is breached only when even backfill could not reach it.
+ */
+export function computeQualityFloorNote(
+  finalPlays: Pick<PlaybookPlay, "selection_tier">[],
+  minPublishPlays: number = effectiveMinPublishPlays()
+): string | null {
+  if (finalPlays.length >= minPublishPlays) return null;
+  const qualified = finalPlays.filter((p) => p.selection_tier !== "BACKFILL").length;
+  const backfill = finalPlays.length - qualified;
+  const headline =
+    backfill > 0
+      ? `QUALITY FLOOR — ONLY ${qualified} QUALIFIED + ${backfill} BACKFILL (${finalPlays.length} total)`
+      : `QUALITY FLOOR — ONLY ${finalPlays.length} QUALIFIED`;
+  return (
+    `${headline} — below the configured minimum of ${minPublishPlays}. No further candidates ` +
+    `cleared even the structural backfill safety checks (completed scoring, not halted, real ` +
+    `liquid contract, valid geometry) tonight.`
+  );
 }

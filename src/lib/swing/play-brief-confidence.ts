@@ -69,8 +69,18 @@ export function swingPlayBriefConfidence(
     };
   }
 
+  // BUG FIX (2026-09-28, Ask Largo standing mandate, live repro NVDA/MSTR WATCH+CLOSED briefs):
+  // this used to say "see Data freshness" — but the actual detail behind these unavailableSources
+  // entries (ecosystem-context/Vector-state fetch failures, etc.) is never rendered inside the
+  // "Data freshness" section (dataFreshnessSection only covers option-mark/scan/Vector-age/GEX-
+  // age/HELIX-pipeline staleness, an entirely disjoint set of checks from collectBriefUnavailable
+  // Sources' fetch-failure/absence entries). Worse: dataFreshnessSection can return null (no lines
+  // to show) even while unavailableSources is non-empty, so the pointer could name a section that
+  // isn't even present in the rendered brief. The real detail is the envelope's own
+  // `unavailableSources` chips, rendered as the "_Unavailable this turn:_" line — name the actual
+  // sources inline instead of pointing at a section that may not have them, or may not exist.
   return {
     level: "moderate",
-    why: `${unavailableSources.length} source${unavailableSources.length === 1 ? "" : "s"} unavailable this cycle — see Data freshness.`,
+    why: `${unavailableSources.length} source${unavailableSources.length === 1 ? "" : "s"} unavailable this cycle (${unavailableSources.map((s) => s.source).join(", ")}) — see below.`,
   };
 }
