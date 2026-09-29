@@ -1413,6 +1413,57 @@ test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Tr
   assert.match(suppressed!.body, /sector rotation leadership/i);
 });
 
+test("buildIntelSections: Lessons omits the generic invalidation-check ask when Trade manager read already answered it with the computed cushion", () => {
+  // GAP FOUND (2026-09-29, Ask Largo standing mandate, live repro HUT:43 CLOSED/stopped, real
+  // production play-brief): closedCoaching's 2026-09-28 fix (play-brief-narrative-coaching.ts)
+  // replaced its generic "check if entry was extended past invalidation" ask with a computed
+  // cushion answer ("entry X vs invalidation Y, a Z% cushion at commit...") whenever
+  // entryTriggerUnderlyingPx/invalidationUnderlyingPx are both pinned — but the call site's
+  // stopAdviceAlreadyNoted dedup flag (buildIntelSections, this file) still only string-matched
+  // the OLD generic phrasing, which the new cushion answer no longer contains. Live response
+  // rendered BOTH: "Trade manager read" — "**Stop fired** (stopped) — entry 100.97 vs
+  // invalidation 94.01, a +6.9% cushion at commit..." — and, one section below in the same
+  // response, "Lessons" — "Stop loss — check if invalidation level was respected or entry was
+  // extended." — independently re-asking the exact question just answered.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 8.5,
+    exitPnlPct: -50.9,
+    closedReason: "stopped",
+    archetype: "PULLBACK_CONTINUATION",
+    entryTriggerUnderlyingPx: 100.97,
+    invalidationUnderlyingPx: 94.01,
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-28T16:00:00.000Z",
+    sessionDate: "2026-09-28",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const sections = buildIntelSections(ctx, "closed");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  const lessons = sections.find((s) => s.title === "Lessons");
+
+  assert.ok(narrative, "Trade manager read must render");
+  assert.match(narrative!.body, /cushion at commit/i);
+
+  assert.ok(lessons, "Lessons must still render (independent evidence survives)");
+  assert.doesNotMatch(
+    lessons!.body,
+    /check if invalidation level was respected or entry was extended/i,
+    "Lessons must not re-ask a question Trade manager read already answered with the real cushion",
+  );
+  // Independent evidence must survive — only the answered-question line is suppressed.
+  assert.match(lessons!.body, /Peak was/i);
+  assert.match(lessons!.body, /pullback continuation/i);
+});
+
 test("lessonsSection: a small peak (<=20%) with weak capture (<35%) still gets a verdict line, not just the bare fact", () => {
   // FINDINGS 2026-09-20 (Ask Largo × Night Hawk Swings mandate): the capture<35 branch only had a
   // verdict line when `play.peak > 20` ("Gave back the move ... tighten at first trim rail") — for
