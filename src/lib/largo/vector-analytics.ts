@@ -26,6 +26,7 @@ import "server-only";
 import { roundFloats } from "@/lib/round-floats";
 import { fitVectorAnalyticsForModel } from "@/lib/largo/vector-analytics-fit";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
+import { effectiveUniverseAsOf } from "@/features/vector/lib/vector-age-format";
 import { computeVectorBarAnalytics, opexContext } from "@/lib/largo/vector-analytics-core";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 // Type-only: erased at build time, so this does NOT pull the screener into the module graph — the
@@ -171,14 +172,25 @@ export async function vectorAnalyticsForLargo(
       // measured at zero" are the same number to the sorter. Test the inputs, not the metric.
       const hasWall = (r: VectorUniverseRow) => r.topCallPct != null || r.topPutPct != null;
 
+      // BUG FIX (2026-09-14): this block used to report the snapshot's own `updatedAt`, which is
+      // stamped to Date.now() on EVERY write — including a single-ticker append
+      // (ensureTickerInUniverseSnapshot, vector-universe.ts) that refreshes exactly ONE row. Any
+      // member opening any single Vector ticker anywhere bumps it, so it read "just updated"
+      // almost continuously during market hours regardless of whether the bulk of the roster
+      // actually refreshed — measured live: `updatedAt` 2.1min old while the MEDIAN row was
+      // 71.4min old across 57 tickers. Largo told members the screener was fresher than it was.
+      // `effectiveUniverseAsOf` uses the median row `asOf` instead — see its own comment for why
+      // median (resistant to both a freshly-appended outlier and a never-resolving one).
+      const screenerAsOf = effectiveUniverseAsOf(universe);
+
       screener = {
         universe_size: universe.rows.length,
-        updated_at: new Date(universe.updatedAt).toISOString(),
+        updated_at: screenerAsOf != null ? new Date(screenerAsOf).toISOString() : null,
         // The sweep's own age, in the market's clock. A scanner list is only as current as the
         // sweep behind it, and "how stale is this" is not answerable from two ISO instants a
         // reader has to subtract — see the note on `as_of` above.
-        updated_at_et: etStamp(universe.updatedAt),
-        updated_at_session_date: etSessionDate(universe.updatedAt),
+        updated_at_et: screenerAsOf != null ? etStamp(screenerAsOf) : null,
+        updated_at_session_date: screenerAsOf != null ? etSessionDate(screenerAsOf) : null,
         /** The three curated desk presets the scanner ships — each is a different question, so all
          *  three are returned rather than one default that silently answers only one of them.
          *  Each carries its OWN denominators; `universe_size` above is the sweep's size and is not

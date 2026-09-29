@@ -143,7 +143,7 @@ test("multi-source: flow-only candidates are discovered", async () => {
     { ticker: "NVDA", total_premium: 5_000_000, underlying_price: 150, has_sweep: true },
     { ticker: "AMD", total_premium: 2_000_000, underlying_price: 120 },
   ];
-  const out = await extractMultiSourceCandidates(ctx, 10);
+  const out = await extractMultiSourceCandidates(ctx, 10, "2026-09-17");
   assert.ok(out.includes("NVDA"));
   assert.ok(out.includes("AMD"));
 });
@@ -154,7 +154,7 @@ test("multi-source: OI-change lane adds new tickers", async () => {
     { ticker: "TSLA", oi_change: 50000 },
     { ticker: "MSFT", oi_change: 30000 },
   ];
-  const out = await extractMultiSourceCandidates(ctx, 10);
+  const out = await extractMultiSourceCandidates(ctx, 10, "2026-09-17");
   assert.ok(out.includes("TSLA"));
   assert.ok(out.includes("MSFT"));
 });
@@ -167,7 +167,7 @@ test("multi-source: corroboration boosts multi-lane tickers", async () => {
   ];
   ctx.market_oi_change = [{ ticker: "NVDA", oi_change: 30000 }];
   ctx.market_movers = [{ ticker: "NVDA", change_pct: 3.5, price: 150 }];
-  const out = await extractMultiSourceCandidates(ctx, 2);
+  const out = await extractMultiSourceCandidates(ctx, 2, "2026-09-17");
   assert.equal(out[0], "NVDA", "NVDA should rank first due to 3-lane corroboration (1.3x)");
 });
 
@@ -176,7 +176,7 @@ test("multi-source: excluded instruments are filtered across all lanes", async (
   ctx.stock_flows = [{ ticker: "TQQQ", total_premium: 10_000_000 }];
   ctx.market_oi_change = [{ ticker: "SQQQ", oi_change: 100000 }];
   ctx.market_movers = [{ ticker: "UVXY", change_pct: 15, price: 30 }];
-  const out = await extractMultiSourceCandidates(ctx, 10);
+  const out = await extractMultiSourceCandidates(ctx, 10, "2026-09-17");
   assert.equal(out.length, 0);
 });
 
@@ -186,7 +186,7 @@ test("multi-source: predictions lane contributes directional tickers", async () 
     { ticker: "META", direction: "bullish", confidence_pct: 85, sources: ["a", "b"], headline: "test" },
     { ticker: "NFLX", direction: "neutral", confidence_pct: 50, sources: ["c"], headline: "test" },
   ];
-  const out = await extractMultiSourceCandidates(ctx, 10);
+  const out = await extractMultiSourceCandidates(ctx, 10, "2026-09-17");
   assert.ok(out.includes("META"));
   assert.ok(!out.includes("NFLX"), "neutral predictions should be excluded");
 });
@@ -197,12 +197,12 @@ test("multi-source: penny stocks filtered from movers lane", async () => {
     { ticker: "CHEAP", change_pct: 50, price: 1.50 },
     { ticker: "GOOD", change_pct: 8, price: 45 },
   ];
-  const out = await extractMultiSourceCandidates(ctx, 10);
+  const out = await extractMultiSourceCandidates(ctx, 10, "2026-09-17");
   assert.ok(!out.includes("CHEAP"));
   assert.ok(out.includes("GOOD"));
 });
 
 test("multi-source: empty context returns empty list", async () => {
-  const out = await extractMultiSourceCandidates(emptyCtx(), 10);
+  const out = await extractMultiSourceCandidates(emptyCtx(), 10, "2026-09-17");
   assert.equal(out.length, 0);
 });

@@ -44,6 +44,41 @@ live by-ToD ledger (`record.ts by_time_of_day`).
   confirmation, `timeOfDayFactor` ≈ timing. The system scores these **additively** today; the win is
   to require their **CONFLUENCE** as a premium tier.
 
+**Update 2026-09-17 — independent re-check (`zerodte-confluence-floor-outcome-backtest.mjs`),
+G-12's own live `confluence_floor` gate. Entry-time sensitivity confirmed real; the 2-conf "edge
+bucket" claim does NOT reproduce at either entry time. No gate changed.** Built the confluence-floor
+sibling of the score-floor re-check (same shape: real `deriveZeroDteSetups` per historical session
+day, a REAL confluence read via `computeIntradayRead`/`marketBias`/`computeConfluence` — the exact
+functions `scan.ts`'s own `attachConfluence` calls — computed AS-OF a fixed entry time, graded on
+real Polygon minute bars with the favorable-first underlying-continuation proxy). First run used
+10:00 ET (matching the score-floor script's own default, chosen for G-2's unlock, not E3's own entry
+time) and came back **INVERTED** (18 sessions, n=415: 0-conf 32.7% WR, 1-conf 17.9%, 2-conf 13.4%,
+ρ=−1.00) — but re-running at **11:00 ET (E3's own actual entry time)** materially changed the
+picture:
+
+```
+                              0-conf   1-conf (standard)   2-conf (early-window/E3 edge)
+@10:00 ET (n=415):            32.7%        17.9%                 13.4%    -> INVERTED, rho=-1.00
+@11:00 ET (n=415):             24.3%        24.8%                  9.6%    -> SPREAD WITHOUT ORDER, rho=-0.50
+```
+
+Two distinct findings fall out of comparing the two runs:
+1. **The 2026-09-08 loosening's own justification (1-conf should be ~flat vs 0-conf, not negative)
+   HOLDS UP at the correct entry time** — at 11:00 ET the delta is +0.6pp (vs a concerning −14.7pp
+   at the mistimed 10:00 ET run). Grading from a fixed 10:00 ET entry — a documented negative-EV
+   entry point per E2 above, independent of any gate — measurably distorts this specific comparison.
+2. **The 2-conf bucket (E3's own claimed +15.9% EV edge, also today's `ZERODTE_CONFLUENCE_MIN_EARLY`
+   requirement) grades WORST at BOTH entry times** (13.4% @10:00, 9.6% @11:00) — this part is
+   entry-time-INDEPENDENT and does not reproduce E3's original edge claim under this proxy at all.
+
+**Same scope caveats as the score_floor re-check apply**: favorable-first underlying-continuation
+proxy, not real option premium P&L (E3's own methodology); FLOW-origin setups only. **No gate
+changed** — same single-sample-caution discipline as every other calibration A/B in this toolkit.
+This also raises an open, not-yet-answered question for the score_floor INVERTED result logged in
+this doc's E6 section below (also graded from a 10:00 ET entry): does IT also partly resolve at
+11:00 ET? A re-run is in progress; results will be appended to E6 once it lands. Full write-up:
+`docs/audit/findings-staging/2026-09-17-zerodte-confluence-floor-entry-time-sensitivity.md`.
+
 ### 0DTE decision
 Take fewer, **triple-confirmed** trades (post-open timing + VWAP-side + market-aligned), +1 OTM, on the
 **let-it-run −50/+100** geometry → ~40% win / +16% EV. Gate the rest out. Ship the confluence tier
@@ -159,6 +194,20 @@ make up the difference even with 29 `doubled` hits. See
 **No gate changed** — `resolveExitModeForTier`'s C-tier/untiered→ratchet default is now empirically
 supported rather than merely inherited, and a single 90-day sample argues to LEAVE IT, not flip it.
 
+**Update 2026-09-17 — RE-OPENED, ordering REVERSED on a fresh re-run, no gate changed.** Re-ran
+`tier-exit-mode-ab.mjs --days=90 --json` live (90-day window, n=100 graded, population=115 — the
+same tool, same mechanics as the 2026-08-29 run above). The win-rate ordering flipped: **ratchet
+31.0% WR / −7.0% avg P&L vs trim_scale 38.0% WR / −7.7% avg P&L** — trim_scale is now +7.0pp ahead
+on win rate (was −7.1pp), and the avg-P&L gap that was ratchet's main justification (+12.8pp)
+collapsed to a noise-level +0.7pp. Driver: ratchet reached a true `doubled` close on only 12/100
+rows this run (vs 29/100 for trim_scale banking a `runner_close` partial), with 35/100 rows giving
+back gains via the trailing-stop `ratchet` exit instead. **Still no gate changed** — n=100 with a
+near-zero P&L gap cannot separate either ordering from noise on its own, same single-sample-caution
+discipline as the 2026-08-29 update above; this is a re-opened question, not a reversed decision.
+See `docs/audit/findings-staging/2026-09-17-zerodte-tier-exit-mode-ab-reversed.md`. Next step: a
+third re-run in a few more weeks — if the reversal holds or deepens, that's the trigger to revisit
+`resolveExitModeForTier`'s default, not this run alone.
+
 **Follow-up (2026-09-04): the regime-conditioned trend dead-zone — MEASURED, INSUFFICIENT DATA, no
 gate changed.** `decideTrimScale`'s own dead-zone-guard comment (`exit-engine.ts`, ~line 300) names a
 residual gap its 2026-08-27 fix (`trimAvailable = armed > taken`) does not close: the shared
@@ -199,6 +248,34 @@ item above already establishes for this exact file) and per this repo's own evid
 than 0-3 real trend samples. **Re-run `npm run ab:regime-dead-zone -- --days=90` in 2-3 weeks** once
 `session_regime`-stamped trend rows have accumulated — the script is built, live-auth-tested, and ready;
 it just needs a population that doesn't exist yet.
+
+### Range-regime sub-+15%-peak dead zone — live same-day observation, 2026-09-17, NOT YET MEASURED
+
+Distinct from the trend-regime dead zone above (that one is about peaks in [20%, 40%) that armed
+the shared breakeven floor but not trend's own +40% first tranche). This is the analogous gap for
+**range regime's own +15% first-tranche trigger**: for range, +15% sits BELOW the shared ratchet
+arm point (+20%), so per `inTrimScaleDeadZone`'s own doc, "range... crosses AT OR BEFORE the arm
+point" — meaning a range peak that never clears +15% gets **zero protection of any kind**, not
+even the half-of-peak dead-zone floor `trimScaleFloorPct` gives trend. By design, not a bug: a
+peak below the tranche trigger simply hasn't earned a floor.
+
+Live same-day forensic pass on 2026-09-17's ledger (Night Hawk 0DTE 15-min audit cadence) found
+all 3 of the day's `thesis_break`-exited plays (TEM, SMCI, CMPS — the 4th, SNDK, was a plain
+`plan_stop`) shared the identical shape: real double-digit peaks (TEM +14.32%, SMCI +12.67%, CMPS
++11.84%) — all clustered just under range's +15% trigger, none reached it, none armed anything —
+followed by a `thesis_break:gex-walls` veto that exited the remaining position at a materially
+worse mark (TEM -25.95%, SMCI -26%, CMPS -27.63%), a 38-40pp round-trip from peak to exit on every
+one. 3/3 same shape, same session — clears the standing 3-instance noise threshold for *naming*
+the pattern, but is a single session day and cannot itself justify a threshold change (exactly the
+caution the trend dead-zone item above already states for its own, better-populated case).
+
+**Open question, not yet measured:** would a lower first-tranche trigger for range (or a
+trend-style partial dead-zone floor extended below +15%) have banked something on these three
+without materially hurting range-regime plays that go on to hit their real target? Needs the same
+rigor as `regime-dead-zone-ab.mjs` above — real historical range-regime rows via
+`GET /api/admin/zerodte/tier-export`, re-graded through the shipped `evaluateExitState` at a
+candidate lower trigger, over enough sessions to separate signal from one day's regime. **No gate
+changed.** Re-check as the range-regime population accumulates; do not act on this single day.
 
 ### E6 — thesis-first `thesis_rank_reject` outcome A/B (whole-market BREAKOUT/BREAKDOWN, 2026-09-10)
 
@@ -336,7 +413,7 @@ stays advisory and accrues evidence.
   ENFORCE_MIN_DELTA) before it sizes or gates real risk. The measurement loop — not any single parameter —
   is the moat.
 
-### Gate-overlap ablation, PRIMARY-CODE ONLY (G-1/G-4/G-10/G-12/G-13) — built 2026-09-09/10, still INSUFFICIENT DATA
+### Gate-overlap ablation, PRIMARY-CODE ONLY (G-1/G-4/G-10/G-12/G-13) — built 2026-09-09/10, re-run 2026-09-17 (G-13 now MEASURABLE)
 
 **Why this was built.** The operator's CTO review (2026-09-09) asked whether G-1 (tape alignment), G-4
 (VIX regime), G-10 (intraday structure), G-12 (confluence floor) and G-13 (flow-accumulation conflict)
@@ -398,21 +475,81 @@ message** — every one reads the generic reason — which means, per that funct
 reporting a SUCCESSFUL response with no matching bars for essentially every rejected candidate's session
 date, or the block timestamp being compared against those bars is systematically landing outside the
 range that exists. Neither of those was verified further here (out of scope for this measurement task —
-flagged as a follow-up rather than root-caused blind). **A plausible, NOT YET VERIFIED, hypothesis worth
-checking first:** `runSkipGrading` derives `blockedAtMs` via `Date.parse(row.observed_at)` — if
+flagged as a follow-up rather than root-caused blind). ~~A plausible, NOT YET VERIFIED, hypothesis worth
+checking first: `runSkipGrading` derives `blockedAtMs` via `Date.parse(row.observed_at)` — if
 `observed_at` round-trips through Postgres/pg without an explicit UTC marker, a timezone
 misinterpretation would systematically push `blockedAtMs` outside every session's available minute-bar
 range, producing exactly this "bars exist for the day, but none at/after the (wrong) block instant"
-signature. This is a hypothesis to check, not a diagnosis — verify against a real `observed_at` value
-before touching anything.
+signature.~~ **UPDATE (2026-09-12): this specific hypothesis was traced against the real code and
+REFUTED** — `observed_at` is a genuine `TIMESTAMPTZ`, no `setTypeParser` override exists anywhere in
+this repo, and `String(Date) → Date.parse(string)` round-trips to the exact same epoch millisecond
+regardless of process `TZ` (verified empirically under `UTC`/`America/New_York`/`Asia/Kolkata`) — V8's
+`Date.parse` is the literal inverse of its own `toString()` format, offset and all. **The real bug was
+one field over and now FIXED**: `session_date` (a plain `DATE` column, no timezone) round-trips through
+node-postgres as a JS `Date` at UTC MIDNIGHT for that calendar day, and the OLD code ran that
+midnight-UTC instant through `etYmd()` — built for converting a REAL epoch instant to its ET calendar
+day, not for reading a `DATE` column — which, because America/New_York sits behind UTC, silently
+returned the day BEFORE the row's real, stored `session_date` on every single row, every day of the
+year (deterministic, not occasional). That wrong date drove the underlying-bar fetch to the WRONG
+session's minute bars, so no bar ever landed at/after the (correctly-computed) `blockedAtMs` — exactly
+this section's observed "bars exist for the day, but none at/after the block instant" signature, just
+off the DATE column rather than the TIMESTAMPTZ one. Fixed in
+`docs/audit/findings-staging/2026-09-12-skip-grading-session-date-utc-midnight.md` by reading the UTC
+Y-M-D through `db.ts`'s own `isoDateString` helper (the established idiom for every other `DATE` column
+in this codebase) instead of `etYmd()`. **Re-run
+`scripts/audit/zerodte-gate-primary-ablation.mjs --days=90` once a fresh population of rows has been
+graded under the fix** — the primary-gate-only ablation below should now produce real Blocked-side
+numbers instead of `n=0` across the board.
 
-**No gate changed, nothing fixed.** This is evidence-gathering only, same discipline as every other A/B
-tool in this file. **Status: the primary-gate-only ablation the CTO review asked for is now BUILT and
-RUNNABLE, but currently returns INSUFFICIENT DATA for all five gates because of this separate,
-platform-wide skip-grading gap — re-run `node --import tsx scripts/audit/zerodte-gate-primary-ablation.mjs
+**No gate changed by THIS measurement pass** (the skip-grading plumbing fix above is a separate,
+already-shipped fix, not a gate change) — the ablation study itself remains evidence-gathering only,
+same discipline as every other A/B tool in this file. **Status: the primary-gate-only ablation the CTO
+review asked for is now BUILT and RUNNABLE — previously blocked by the platform-wide skip-grading gap
+above, now fixed; re-run `node --import tsx scripts/audit/zerodte-gate-primary-ablation.mjs
 --days=90` once that gap is investigated/fixed** (a distinct piece of work, flagged as a follow-up
 suggestion rather than attempted inline here). Until it is, neither the primary-gate-only nor a future
 full `blocks_json`-based ablation can produce a real Blocked WR/EV number for any gate.
+
+**RE-RUN 2026-09-17 (0DTE nonstop-focus session) — the skip-grading fix unblocked real numbers for
+the first time, and G-13's is a genuine flag worth reading carefully.** `node --import tsx
+scripts/audit/zerodte-gate-primary-ablation.mjs --days=90` (90-day window, committed-ledger baseline
+n=400, WR=30.8%, EV=−11.7%, all real premium P&L):
+```
+G-1   (no_market_bias/tape_alignment):   BLOCKED n=7   WR=42.9%  — verdict LOW_N (below the 10-floor, hint only)
+G-4   (vix_extreme/.../unavailable):     BLOCKED n=0                — NO_REJECTIONS_IN_WINDOW
+G-10  (score-only since 2026-07-27):     structurally 0 codes       — NOT_MEASURABLE (unchanged, expected)
+G-12  (confluence_floor):                BLOCKED n=0                — NO_REJECTIONS_IN_WINDOW
+G-13  (flow_accumulation_conflict):      BLOCKED n=12  WR=75.0% (95% CI [46.8%, 91.1%]) — verdict MEASURABLE
+```
+**G-13 clears the min-n floor for the first time and the number is striking:** the population G-13
+BLOCKED (flow accumulation opposing the setup's direction) would have won **75.0%** of the time
+(modeled EV +62.5% through the fixed −50/+100 payoff) — more than DOUBLE the 30.8% WR of what the desk
+actually committed over the same 90 days. That is a −44.2pt gap in the WRONG direction for a gate that
+exists specifically to filter out weak setups: on this sample, G-13 is disproportionately blocking
+setups that would have WON, not setups that would have lost.
+
+**Read this with the same caution the script's own header insists on, not as grounds to touch the
+gate:**
+- n=12 is thin — above the 10-floor so it clears `MEASURABLE` rather than `LOW_N`, but still a small
+  sample; a 95% CI of [46.8%, 91.1%] is wide enough that "75%" could easily regress toward the mean on
+  a larger pull.
+- This is a MODELED win/lose call off the underlying's direction only (rejection rows carry no OCC, so
+  there is no real option-premium P&L for the blocked side) against the REAL mechanical-plan premium
+  P&L on the passed side — not an apples-to-apples EV comparison, exactly as the script's own "never
+  blend the two" note says.
+- Primary-gate-only attribution: G-13 evaluates AFTER G-1/G-4/G-10/G-12 in `evaluateZeroDteGates`, so
+  its n=12 is already the UNDERCOUNTED tail (any candidate that also failed an earlier gate is
+  attributed there instead) — the true G-13-blocked population is at least 12, likely larger.
+- G-1's n moved 5→7 and G-13's moved 9(all-ungradeable)→12(all-gradeable) since the 2026-09-12
+  `session_date`/`etYmd()` fix, confirming the fix is doing its job — grading was the blocker, not gate
+  behavior — but the underlying rejection VOLUME for these gates is still small over 90 days, so this
+  remains a first real look, not a settled verdict.
+
+**No gate changed by this run.** The G-13 number is exactly the kind of signal this tool was built to
+surface (INTENTIONAL-DESIGN.md discipline: evidence first, gate calibration only after a real sample
+says so) — worth a dedicated re-run as the window's rejection volume grows and/or a widened window,
+before any decision on G-13's flow-accumulation-conflict threshold. Flagging here rather than opening a
+gate-change PR on n=12.
 ### E6 — does `score_floor` (65) actually rank forward outcome? An independent re-check (2026-09-10)
 
 **The open question.** `zerodte-gate-compound-funnel.mjs` measured twice (2026-09-08 off-hours n=15,
@@ -484,6 +621,101 @@ own methodology at today's larger achievable sample size before anyone touches t
 **No gate changed.** Evidence-gathering only, same discipline as every other calibration A/B in this
 toolkit (`cortex-oppose-magnitude-ab.mjs`, `tier-exit-mode-ab.mjs`, etc.) — this reports a verdict and
 leaves the decision to a human reading it.
+
+**Update 2026-09-17 — RE-RUN with the buckets split to match G-17's real live boundary, verdict
+ESCALATED from `SPREAD WITHOUT ORDER` to `INVERTED`. No gate changed.** G-17 was restructured
+2026-09-09 (the day AFTER this backtest's last graded session, 2026-09-08) from a flat 65-74
+admission rule into two sub-bands with different real admission paths — 65-69 now rejects
+UNCONDITIONALLY (`single_rail_corroboration`), 70-74 is CONDITIONAL (needs confluence≥2 + clean
+tape/VIX/execution) — so the old merged "65-74 (clears today)" bucket could no longer say whether
+an ordering problem sits in 65-69, in 70-74, or both. Split `SCORE_BUCKETS` in
+`scripts/audit/lib/score-floor-backtest-eval.mjs` to match (`65-69 (G-17 unconditional reject)` /
+`70-74 (G-17 conditional admission)`), then re-ran with `--sessions=28` (up from 18) to include
+sessions after the 2026-09-09 restructure:
+
+```
+score band                              n     win%      avg maxRet%
+0-39                                    60    25.0%      0.79%
+40-54                                  223    23.3%      0.75%
+55-64 (blocked today)                   88    20.5%      0.69%
+65-69 (G-17 unconditional reject)       49    14.3%      0.63%
+70-74 (G-17 conditional admission)      13     7.7%      0.38%   (excluded from verdict, n<30)
+75-84                                    3    66.7%      1.46%   (excluded, n<30)
+```
+
+**Headline comparison (55-64 blocked vs 70-74, the band that actually clears live today):**
+70-74 graded **7.7%** vs 55-64's **20.5%** — a **−12.8pp delta AGAINST the floor's implied
+ordering**, similar direction to the 2026-09-10 run but now measured against the population G-17
+ACTUALLY admits (not the old merged 65-74 mix). Thin at n=13 — read as directional, not conclusive,
+on this comparison alone.
+
+**G-17 band-split check — does 70-74 (conditional admission) actually grade better than 65-69
+(unconditional reject), justifying treating them differently?** No: 70-74 graded **7.7%** vs
+65-69's **14.3%** — a further **−6.6pp**, the OPPOSITE of what G-17's own 2026-09-09 restructuring
+comment argues ("a genuinely well-confirmed 70-74 setup should NOT be equally weak EV as an
+unconfirmed 65-69 one"). Both bands thin (n=13, n=49) but the direction is consistent with the
+rest of this run, not a one-off.
+
+**Verdict (same RANKS / SPREAD WITHOUT ORDER / INVERTED / FLAT discipline, minN=30): `INVERTED`**
+— among the four bands with n≥30 (0-39 n=60, 40-54 n=223, 55-64 n=88, 65-69 n=49), win rate falls
+monotonically as score rises: 25.0% → 23.3% → 20.5% → 14.3%. Spread 10.7pp, **rank correlation
+ρ = −1** (perfect negative rank agreement across the four usable bands — the strongest, cleanest
+signal this backtest has produced, an escalation from the 2026-09-10 run's ρ = −0.20 `SPREAD
+WITHOUT ORDER`). This is no longer "the bands differ but don't trend" — the trend is real, and it
+runs backwards.
+
+**Still no gate changed** — same scope caveats as the 2026-09-10 entry above apply unchanged
+(favorable-first underlying proxy, not real premium P&L; `score` alone, not jointly gated with
+VIX/confluence/governor/Cortex), and the two bands nearest the live floor boundary (70-74, 75-84)
+are both n<30 and excluded from the ρ calculation — so this does NOT by itself prove the 70-74
+conditional-admission path is wrong, only that the broader trend across the well-powered bands
+(n=49 to n=223) now runs the opposite direction from what the floor assumes, more cleanly than
+before. See `docs/audit/findings-staging/2026-09-17-zerodte-score-floor-inverted.md` for the full
+write-up and recommended follow-up (grow the 70-74/75-84 samples past n=30, and — per this run's
+own stated scope limit — a real-premium re-run of F-2's original methodology at today's larger
+sample size, still the standing open item from the 2026-09-10 entry above).
+
+**Update 2026-09-17 (same day) — the open entry-time question above IS answered: partially resolves,
+same shape as confluence-floor's own finding, but the G-17-specific comparison gets WORSE, not
+better. No gate changed.** Re-ran with `--entry=11:00` (E3's own entry time, the same correction
+applied to the confluence-floor sibling above) on the identical 28-session population:
+
+```
+score band                              @10:00 ET   @11:00 ET
+0-39            (n=60)                    25.0%       15.0%
+40-54           (n=224)                   23.3%       25.4%
+55-64 (blocked) (n=88)                    20.5%       11.4%
+65-69 (reject)  (n=49)                    14.3%       22.4%
+70-74 (admit)   (n=13, excluded)           7.7%        7.7%
+75-84           (n=3,  excluded)          66.7%       33.3%
+```
+
+**Overall verdict changes, same direction as confluence-floor:** `INVERTED` (ρ=−1) at 10:00 →
+`SPREAD WITHOUT ORDER` (ρ=0) at 11:00 — the clean monotonic decline does not survive grading from
+the correct entry time; 40-54 and 65-69 both grade BETTER at 11:00 than 55-64 does, breaking the
+monotonic ordering. Same as the confluence-floor finding: **grading from a fixed 10:00 ET entry — a
+documented negative-EV entry point per E2, independent of any gate — measurably distorts this
+comparison too.**
+
+But unlike confluence-floor, where the specific concerning sub-comparison (1-conf vs 0-conf)
+resolved favorably at 11:00, **this backtest's two specific sub-comparisons split**:
+- **Cross-floor (55-64 blocked vs. 70-74 admitted) narrows substantially**: −12.8pp at 10:00 →
+  **−3.7pp** at 11:00 (n=13 both times, thin) — the "blocked setups beat admitted ones" concern
+  shrinks a lot at the correct entry time, similar in direction to confluence-floor's narrowing.
+- **G-17's own band-split rationale (70-74 vs. 65-69) gets WORSE, not better**: −6.6pp at 10:00 →
+  **−14.8pp** at 11:00 (n=13 vs n=49) — the conditional-admission band (70-74) now underperforms
+  the unconditional-reject band (65-69) by an even wider margin at the timing G-17's own gate logic
+  is supposed to matter for. This is the opposite of what a pure mistimed-entry explanation would
+  predict for this specific comparison.
+
+**Reading, per this toolkit's single-sample-caution discipline:** the OVERALL score-outcome trend
+was likely inflated by the same 10:00-ET mistiming that affected confluence-floor — real evidence
+this is at least partly a backtest-methodology artifact, not proof the score formula itself ranks
+backwards. But the G-17-specific 70-74-vs-65-69 comparison is NOT explained away by entry timing —
+if anything it strengthens — so the standing recommendation to re-run this specific comparison with
+real option premium at a larger 70-74 sample (rather than dismissing it as a timing artifact) still
+stands. Full write-up appended to
+`docs/audit/findings-staging/2026-09-17-zerodte-score-floor-inverted.md`.
 
 ---
 
@@ -626,6 +858,33 @@ node --import tsx scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --sin
 ```
 No gate/ranking changed by this entry — this is a measurement blocked on its own enabling plumbing,
 not evidence for or against the current ranking either way.
+
+**UNBLOCKED, MEASURED 2026-09-15 — the enabling PR is live, this is the originally-recommended
+validation, finally run.** `discovery_origin` is confirmed forwarded on `tier-export.ts` (`GET
+/api/admin/zerodte/tier-export`) in the current `main`. Ran
+`scripts/audit/breakout-gain-over-range-option-pnl-ab.mjs --json` against live production (21
+trading days since the 2026-08-25 PR #2846 merge, `thin_sample: false` — the overall population
+clears the script's own `--min-n=15` bar):
+
+- **Part A (directly observed, pure-BREAKOUT-only real committed plays):** n=74, win rate 47.3%,
+  avg P&L **−1.3%**.
+- **Part B (counterfactual split — MOMENTUM_ALSO vs GAIN_OVER_RANGE_EXCLUSIVE):**
+  `MOMENTUM_ALSO` (both rankings would have kept this ticker — the swap isn't why it's on the
+  board): n=62, WR 51.6%, avg P&L **+2.0%**. `GAIN_OVER_RANGE_EXCLUSIVE` (exists on the board only
+  *because of* the ranking swap — the swap's own doing): n=9, WR 33.3%, avg P&L **−10.3%**.
+
+Read with the same single-sample caution this repo applies to every other first-look A/B here
+(n=9 on the exclusive cohort is thin, well under the script's own 15-play bar for that SPECIFIC
+split even though the overall population clears it) — but the direction is consistent and not
+small: the names gain_over_range adds that momentum would not have picked are underperforming the
+shared cohort by a wide margin (18.3pp WR, 12.3pt avg P&L), which is exactly the failure shape the
+original 2026-08-07 finding's own proxy measurement could not see (it graded underlying
+continuation, not option P&L, spread, or contract-build failure). **No gate/ranking changed by
+this update** — this is now real evidence where before there was only a blocked premise, but n=9
+on the specific cohort that matters is not enough to act on unilaterally. Flagging for the
+0DTE-owning lane to weigh alongside the rest of this file's evidence; re-run as the population
+grows (`--since=2026-08-25 --json`, no flags needed — it re-derives the window from live data
+every run) before treating either number as settled.
 
 ## Edge cases / scenarios still to simulate
 VIX-regime buckets; trend-day vs range-day; fade-the-open vs follow; gamma-regime (trade toward the

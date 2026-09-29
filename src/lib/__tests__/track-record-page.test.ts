@@ -303,6 +303,21 @@ describe("track-record-page", () => {
     );
   });
 
+  it("REGRESSION: nhFromRows excludes a row missing only ONE of session_high/session_low as stop-data-unavailable", () => {
+    // BUG FIX (2026-09-17): nhStopDataUnavailable required BOTH fields null (AND), but
+    // play-outcomes.ts's resolveOutcome (the canonical grader) treats EITHER missing as
+    // making the row's intraday-based verdict untrustworthy — see analytics.ts's matching
+    // fix for the full derivation. Same predicate, kept in lockstep per this file's own
+    // "Same filter as aggregate Night Hawk stats" comment on isNighthawkOutcomeScoreable.
+    const partialHighOnly = nhRow({ id: 1, stop: 90, outcome: "target", session_high: 105, session_low: null });
+    const partialLowOnly = nhRow({ id: 2, stop: 90, outcome: "stop", session_high: null, session_low: 88 });
+    const clean = nhRow({ id: 3, stop: 90, outcome: "target", session_high: 105, session_low: 95, entry_range_low: 98, entry_range_high: 102, next_day_close: 106 });
+    const stats = nhFromRows([partialHighOnly, partialLowOnly, clean]);
+    assert.equal(stats.total, 1, "only the fully-graded row is scoreable");
+    assert.equal(stats.wins, 1);
+    assert.equal(stats.losses, 0);
+  });
+
   it("nhFromRows quarantines legacy-methodology grades out of the public record (PR-N2 anti-blend)", () => {
     // The N-2 phantom-win shape: a legacy 'target' graded before the fillability rule.
     // It must not enter total/wins on any headline surface until the honest regrade

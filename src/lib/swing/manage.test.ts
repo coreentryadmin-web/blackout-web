@@ -108,6 +108,78 @@ test("structural_stop fires at ANY premium P&L — even +30% green — because t
   assert.equal(v.enforced, true, "structural stop is capital preservation — always enforced");
 });
 
+// BUG FIX (2026-09-18, peer-review finding on PR #5190): structuralStopBroken() interpolated
+// comparePx/stop into verdict.reason with no rounding. On an ex-dividend session,
+// underlyingPriceForStructuralStop() computes `price + cash` via raw floating-point addition, so a
+// real (price, cash) pair can produce a visible artifact like 10.790000000000001. Was write-only
+// (never displayed) until PR #5190 wired verdict.reason into the member-facing narrative via
+// manageReasonDetail — must render as a clean 2dp string, never a raw float.
+test("structural_stop reason: ex-div LONG adjustment (price+cash) renders a clean 2dp string, no floating-point artifact", () => {
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 10.74,
+    structuralStopLevel: 148,
+    exDividendSession: true,
+    exDividendCash: 0.05, // 10.74 + 0.05 = 10.790000000000001 raw
+  });
+  assert.equal(v.rung, "structural_stop");
+  assert.match(v.reason, /underlying 10\.79 ≤ structural stop 148\.00/);
+  assert.doesNotMatch(v.reason, /\d\.\d{3,}/, "no more than 2 decimal digits anywhere in the reason string");
+});
+
+test("structural_stop reason: plain (non-ex-div) LONG/SHORT breach also renders a clean 2dp string", () => {
+  const longV = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94,
+    structuralStopLevel: 95,
+  });
+  assert.match(longV.reason, /underlying 94\.00 ≤ structural stop 95\.00/);
+
+  const shortV = evaluateSwingManagement({
+    dossier: SHORT_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 101,
+    structuralStopLevel: 100,
+  });
+  assert.match(shortV.reason, /underlying 101\.00 ≥ structural stop 100\.00/);
+});
+
+// BUG FIX (2026-09-21, Ask Largo standing mandate — 7th instance of the toFixed-vs-roundFloats
+// price-level bug class this session already fixed across #5380/#5383/#5384/#5385/#5387). PR
+// #5190's own fix above collapsed structuralStopBroken()'s reason to exactly 2 decimal digits
+// (`n.toFixed(2)`) to kill many-digit floating-point artifacts — correct for THAT problem, but
+// `.toFixed(2)` and roundFloats' own `Math.round(n*100)/100` can disagree by a full cent on a
+// value sitting exactly on a half-cent boundary (e.g. `(95.175).toFixed(2) === "95.17"` while
+// `Math.round(95.175*100)/100 === 95.18`). This reason string is PERSISTED verbatim every tick
+// (manage-sync.ts's event_json.reason) and rendered member-facing via manageReasonDetail
+// (play-brief-narrative.ts's sellReasonClause, "**Exit now** — underlying X <= structural stop
+// Y ...") — while the SAME underlying spot / structural-stop level (a call/put wall or gamma
+// flip) is ALSO shown as a raw, roundFloats()'d number in envelope.levels for the same brief, so
+// the two can silently disagree for a real EXIT/structural_stop verdict, the same shape as this
+// session's other 6 fixes just in a persisted decision-trail string rather than a live-request
+// narration function.
+test("structural_stop reason matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary", () => {
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 94, // <= stop 95.175 -> broken
+    structuralStopLevel: 95.175,
+  });
+  assert.equal(v.rung, "structural_stop");
+  assert.match(v.reason, /structural stop 95\.18/, "must round like roundFloats (95.18), not plain toFixed(2) (95.17)");
+  assert.doesNotMatch(v.reason, /95\.17\b/);
+});
+
 test("structural_stop: ex-div LONG adjustment prevents false breach on mechanical gap (Q39)", () => {
   const breached = evaluateSwingManagement({
     dossier: LONG_STD,
@@ -259,6 +331,33 @@ test("DTE migration + roll intent: 3 DTE Tactical with theta disproportion signa
   assert.equal(v.rollIntent.roll, true);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): detectRollCandidate's own reason string used
+// to end "(INTENT ONLY; execution deferred to PR-15)" -- accurate when this function predated the
+// roll executor, false now that roll.ts (PR-15) is shipped and live (it reads rollIntent.roll on
+// every management tick to decide ROLL vs CLOSE). No member ever saw the stale text directly
+// (live-plays.ts/horizon-plays.ts both route member-facing prose through dteMigration.reason
+// instead), but the string itself -- and roll.ts's own decideRollAction, which still embeds it
+// verbatim in its ROLL action's internal reason -- both asserted something false. Fixed at the
+// source.
+test("detectRollCandidate: reason string no longer claims execution is deferred (PR-15 shipped)", () => {
+  const input: SwingManageInput = {
+    dossier: dossier("bull", 5),
+    dte: 3,
+    entryPremium: 2,
+    lastMark: 1.4,
+    thesisProgress01: 0.1,
+    underlyingPrice: 110,
+    structuralStopLevel: 95,
+  };
+  const roll = detectRollCandidate(input);
+  assert.equal(roll.roll, true);
+  assert.doesNotMatch(
+    roll.reason,
+    /INTENT ONLY|deferred to PR-15/,
+    `roll.ts (PR-15) is shipped and live -- this reason string must not claim execution is still deferred, got: ${roll.reason}`,
+  );
+});
+
 test("roll intent is vetoed by a broken thesis (a broken thesis is a CLOSE, not a roll)", () => {
   const input: SwingManageInput = {
     dossier: dossier("bull", 5),
@@ -296,6 +395,39 @@ test("genuine HOLD (not insufficient) when data IS present and nothing fires", (
   });
   assert.equal(v.action, "HOLD");
   assert.equal(v.rung, "hold");
+});
+
+test("hold reason is HONEST about what was evaluated — never claims premium/time were checked when they weren't", () => {
+  // Only sessionsHeld is known (making anyEvaluable true) -- premium (no entry/mark), structural (no
+  // underlyingPrice/structuralStopLevel), and DTE/lane are all unusable/unknown this tick (e.g. a live
+  // mark+spot-price fetch outage, a documented recurring pattern in this repo). The verdict must still
+  // be a HOLD (nothing indicates an exit), but its reason must not claim "premium above the backstop"
+  // or "ample time" -- neither was ever actually checked this tick. This is the same null-honesty
+  // discipline the file's header promises for every gate/rung above; the old hardcoded reason string
+  // violated it for this one fallback path.
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    sessionsHeld: 2, // STANDARD's own timeStopSessions floor is 8, so this alone doesn't fire time_stop
+  });
+  assert.equal(v.action, "HOLD");
+  assert.equal(v.rung, "hold");
+  assert.doesNotMatch(v.reason, /premium above the/, "premium was never evaluated (no entry/mark) -- must not claim it");
+  assert.doesNotMatch(v.reason, /ample time/, "DTE/lane was never evaluated -- must not claim ample time");
+});
+
+test("hold reason still asserts every dimension when all three ARE evaluable (unchanged from before)", () => {
+  const v = evaluateSwingManagement({
+    dossier: LONG_STD,
+    dte: 14,
+    entryPremium: 2,
+    lastMark: 2.2,
+    underlyingPrice: 108,
+    structuralStopLevel: 95,
+  });
+  assert.equal(v.rung, "hold");
+  assert.match(v.reason, /thesis intact/);
+  assert.match(v.reason, /premium above the/);
+  assert.match(v.reason, /ample time/);
 });
 
 test("enforce split: all four capital-preservation rungs enforce; every edge rung is advisory until graduated", () => {

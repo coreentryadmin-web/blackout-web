@@ -1,13 +1,18 @@
 // PR-N4: the read-time PULLED overlay for the member edition payload.
 //
-// An INVALIDATED morning-confirm verdict latches `pulled` on the play's outcome row
-// (morning-verdict-persist.ts / recordNighthawkMorningVerdict). The published edition row
-// itself is never mutated — this module merges the latch onto the payload the member
-// actually receives, so a pulled play is EXCLUDED from the actionable surface by being
-// PRESENTED as pulled (badge + reason + de-emphasized levels), never deleted or hidden.
-// Pulled plays staying visible as pulled is the honesty: the record of what was published
-// stays intact, and the member sees exactly why the desk pulled it (same honest-labeling
-// spirit as the 0DTE WATCH badge).
+// A morning-confirm verdict latches `pulled` on the play's outcome row
+// (morning-verdict-persist.ts / recordNighthawkMorningVerdict) for TWO distinct reasons,
+// not just one: an INVALIDATED verdict, or (PR-N6) a DEGRADED verdict severe enough to
+// trip `isDegradedSevere` — a gap-away entry, or >= DEGRADED_SEVERE_REASON_COUNT distinct
+// stacked reasons. Both paths always write a real, specific `pull_reason` string
+// (morning-verdict-persist.ts's `shouldPull` branch never passes a null reason), so the
+// generic fallback text below is a pure defensive backstop, not the common case. The
+// published edition row itself is never mutated — this module merges the latch onto the
+// payload the member actually receives, so a pulled play is EXCLUDED from the actionable
+// surface by being PRESENTED as pulled (badge + reason + de-emphasized levels), never
+// deleted or hidden. Pulled plays staying visible as pulled is the honesty: the record of
+// what was published stays intact, and the member sees exactly why the desk pulled it
+// (same honest-labeling spirit as the 0DTE WATCH badge).
 //
 // Dependency-free leaf (no db/provider imports) so it stays client-bundle-safe and the
 // merge semantics are unit-testable with plain fixtures.

@@ -160,3 +160,81 @@ test("emptySwingSections has all seven keys present", () => {
   for (const s of SWING_SERVING_SECTIONS) assert.ok(Array.isArray(empty[s]), s);
   assert.equal(SWING_SERVING_SECTIONS.length, 7);
 });
+
+// ── stale WATCH candidates whose entry-validity deadline lapsed (FINDINGS.md
+//    `watch-board-stale-expired-candidates-not-pruned`, logged 2026-09-12, live repro: META, first
+//    flagged 2026-08-26, sat #1 in `sections.WATCH` at score 84.7, 26+ days past its own entry
+//    window) — the router must route these to RESEARCH, overriding whatever setup/entry geometry
+//    happens to read, and never for a live position. ───────────────────────────────────────────────
+
+test("entryWindowExpired overrides setup maturity → RESEARCH even from what would otherwise be COMMIT_NOW/WATCH/WAITING_FOR_ENTRY", () => {
+  assert.equal(
+    sectionForSwingPlay({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true, entryWindowExpired: true }),
+    "RESEARCH",
+    "would otherwise be COMMIT_NOW",
+  );
+  assert.equal(
+    sectionForSwingPlay({ setupState: "FORMING", aboveFloor: true, entryWindowExpired: true }),
+    "RESEARCH",
+    "would otherwise be WATCH",
+  );
+  assert.equal(
+    sectionForSwingPlay({ setupState: "TRIGGERED", entryStatus: "PRE_TRIGGER", aboveFloor: true, entryWindowExpired: true }),
+    "RESEARCH",
+    "would otherwise be WAITING_FOR_ENTRY",
+  );
+});
+
+test("entryWindowExpired absent/false → normal routing unaffected (no regression on the common case)", () => {
+  assert.equal(
+    sectionForSwingPlay({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true, entryWindowExpired: false }),
+    "COMMIT_NOW",
+  );
+  assert.equal(sectionForSwingPlay({ setupState: "FORMING", aboveFloor: true }), "WATCH");
+});
+
+test("live position ignores entryWindowExpired entirely (liveStatus routes first)", () => {
+  assert.equal(
+    sectionForSwingPlay({ liveStatus: "OPEN", manageAction: "HOLD", thesisLevel: "intact", entryWindowExpired: true }),
+    "MANAGING",
+  );
+});
+
+function stalePlay(over: Partial<HorizonPlay> = {}): HorizonPlay {
+  return swingPlay({
+    ticker: "META",
+    setupState: "FORMING",
+    status: "WATCH",
+    score: 84.7,
+    firstSeenAt: new Date(Date.now() - 26 * 24 * 60 * 60 * 1000).toISOString(),
+    subLane: "STANDARD", // 3-day window — 26 days is unambiguously past it
+    ...over,
+  });
+}
+
+test("observablesFromHorizonPlay: a WATCH play 26 days past its (STANDARD) 3-day entry window reads entryWindowExpired", () => {
+  const observables = observablesFromHorizonPlay(stalePlay());
+  assert.equal(observables.entryWindowExpired, true);
+});
+
+test("observablesFromHorizonPlay: a fresh WATCH play (1 hour old) does NOT read entryWindowExpired", () => {
+  const observables = observablesFromHorizonPlay(
+    stalePlay({ firstSeenAt: new Date(Date.now() - 60 * 60 * 1000).toISOString() }),
+  );
+  assert.notEqual(observables.entryWindowExpired, true);
+});
+
+test("observablesFromHorizonPlay: a live position never reads entryWindowExpired, even with a stale firstSeenAt", () => {
+  const observables = observablesFromHorizonPlay(
+    stalePlay({ liveStatus: "OPEN", committedAt: new Date(Date.now() - 26 * 24 * 60 * 60 * 1000).toISOString() }),
+  );
+  assert.notEqual(observables.entryWindowExpired, true);
+});
+
+test("buildSwingSections: the live META repro (26 days stale, score 84.7) lands in RESEARCH, stamped watchEntryExpired, not #1 in WATCH", () => {
+  const sections = buildSwingSections([stalePlay(), swingPlay({ ticker: "FRESH", setupState: "FORMING", status: "WATCH" })]);
+  assert.deepEqual(sections.WATCH.map((p) => p.ticker), ["FRESH"], "the stale row must not occupy WATCH at all");
+  assert.deepEqual(sections.RESEARCH.map((p) => p.ticker), ["META"]);
+  assert.equal(sections.RESEARCH[0]!.watchEntryExpired, true);
+  assert.equal(sections.RESEARCH[0]!.serving, "RESEARCH");
+});

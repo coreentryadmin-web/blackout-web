@@ -276,8 +276,20 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_swing_horizon",
-    `Night Hawk Swings lane — ${SWING_DTE_RANGE} multi-day discovery board with seven action sections (COMMIT_NOW, WAITING_FOR_ENTRY, WATCH, RESEARCH, MANAGING, SCALING_OUT, EXITING). Returns committed/watch counts, section counts, and sample plays with scores. Use for swing-specific questions — NOT the evening Legacy edition (get_nighthawk_edition) and NOT 0DTE Command (get_zerodte_plays).`,
+    `Night Hawk Swings lane — ${SWING_DTE_RANGE} multi-day discovery board with seven action sections (COMMIT_NOW, WAITING_FOR_ENTRY, WATCH, RESEARCH, MANAGING, SCALING_OUT, EXITING). Returns committed/watch counts, section counts, and sample plays with scores. Use for swing-specific questions — NOT the evening Legacy edition (get_nighthawk_edition) and NOT 0DTE Command (get_zerodte_plays). For full detail on ONE specific position or candidate (thesis, book context, dealer/dark-pool read, catalysts, hold plan), use get_swing_play_brief instead.`,
     {}
+  ),
+  t(
+    "get_swing_play_brief",
+    "Full Ask Largo intelligence brief for ONE specific Night Hawk Swings position or candidate — the same composed read the Command Deck panel shows: verdict, entry/management/position, why this setup, book-context concentration (does this overlap the member's other open positions), dealer & dark-pool read, flow & positioning, catalysts, hold plan/watch levels, and data freshness. Use this (not get_swing_horizon, which only returns board counts) whenever a member asks about a SPECIFIC ticker's swing thesis, position, or trade management — e.g. 'what's your read on my NRG position', 'is the thesis still good on CRWD', 'why did we pick this swing trade'. Requires `ticker`. Optional `positionId`/`strike`/`right`/`status` disambiguate when a ticker has more than one live position or candidate (e.g. an open position AND a separate watch candidate) — omit them for the single obvious match. Returns `available:false` with `error:\"play_not_found\"` when no open, watch, or recently closed position exists for the ticker — never fabricate a brief when this happens.",
+    {
+      ticker: { type: "string", description: "e.g. NRG, CRWD" },
+      positionId: { type: "integer", description: "Disambiguates when a ticker has more than one position or candidate." },
+      strike: { type: "number" },
+      right: { type: "string", description: "call or put" },
+      status: { type: "string", description: "e.g. OPEN, WATCH, CLOSED" },
+    },
+    ["ticker"]
   ),
   t(
     "get_nighthawk_horizons",
@@ -687,7 +699,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_cross_product_read",
-    "CROSS-PRODUCT read for one ticker — the ONLY tool that answers questions spanning several BLACKOUT products at once: \"where do Helix and Vector disagree\", \"what matters right now on SPX\", \"do the products agree\". Fans out to Helix (tape), Thermal (dealer gamma), Vector (differential pulse), Meridian (earnings/catalyst), Night Hawk (committed 0DTE plays), and SPX Slayer (SPX/SPXW play-engine direction when the ticker is SPX), then JOINS their readings. Returns `verdict` (aligned | split | insufficient), `camps` (each direction with the products holding it and their evidence), `reporting`, `missing` (every product that did NOT report, each with a specific reason), `coverage` (e.g. \"2/6 products reporting\") and `reading_note`. RULES: when `verdict` is `split` the products GENUINELY DISAGREE — report BOTH readings with their evidence and do NOT resolve it, pick a side, or present the larger camp as the answer; the disagreement is the finding. When `aligned`, always state the coverage, because agreement among two products is not agreement among six. When `insufficient`, say so rather than presenting one product's read as a cross-product conclusion. Thermal deliberately casts NO directional vote — dealer gamma is not a directional measurement (short gamma amplifies moves in BOTH directions), so it appears in `missing` with its posture and volatility regime in the reason. SPX Slayer appears in `missing` with an explicit reason for non-SPX tickers. `session_date` is the ET session this read is scored against.",
+    "CROSS-PRODUCT read for one ticker — the ONLY tool that answers questions spanning several BLACKOUT products at once: \"where do Helix and Vector disagree\", \"what matters right now on SPX\", \"do the products agree\". Fans out to Helix (tape), Thermal (dealer gamma), Vector (differential pulse), Meridian (earnings/catalyst), Night Hawk 0DTE (committed same-day plays), Night Hawk Swings (multi-day discovery/position lane, via the same play-brief `get_swing_play_brief` uses), and SPX Slayer (SPX/SPXW play-engine direction when the ticker is SPX), then JOINS their readings. Returns `verdict` (aligned | split | insufficient), `camps` (each direction with the products holding it and their evidence), `reporting`, `missing` (every product that did NOT report, each with a specific reason), `coverage` (e.g. \"2/7 products reporting\") and `reading_note`. RULES: when `verdict` is `split` the products GENUINELY DISAGREE — report BOTH readings with their evidence and do NOT resolve it, pick a side, or present the larger camp as the answer; the disagreement is the finding. When `aligned`, always state the coverage, because agreement among two products is not agreement among seven. When `insufficient`, say so rather than presenting one product's read as a cross-product conclusion. Thermal deliberately casts NO directional vote — dealer gamma is not a directional measurement (short gamma amplifies moves in BOTH directions), so it appears in `missing` with its posture and volatility regime in the reason. SPX Slayer appears in `missing` with an explicit reason for non-SPX tickers; Night Hawk Swings appears in `missing` with an honest reason when there is no open/watch/recently-closed swing position on that ticker. `session_date` is the ET session this read is scored against.",
     { ...T },
     ["ticker"]
   ),
@@ -891,6 +903,7 @@ export const TOOL_GROUPS = {
     "get_zerodte_record",
     "get_banger_board",
     "get_swing_horizon",
+    "get_swing_play_brief",
     "get_nighthawk_horizons",
     "get_horizon_outcomes",
     "get_nighthawk_edition",
@@ -1211,7 +1224,7 @@ export const MARKET_ENGINE_TOOL_NAMES = ["get_market_context"];
 /**
  * REMOVED 2026-08-10: `CORE_TOOLS`, `mentionsTicker()` and `getToolsForIntent()`.
  *
- * They implemented a per-question regex ALLOWLIST that decided which of these 137 tools Claude was
+ * They implemented a per-question regex ALLOWLIST that decided which of these 138 tools Claude was
  * shown on a given turn. Measured over 20 realistic member questions it exposed a mean of 21.9
  * tools (19%), and it failed silently rather than loudly — see the block comment at the
  * `filteredTools` assignment in largo-terminal.ts for the full root cause, the measurements, and

@@ -17,6 +17,8 @@
 // catalyst AND no earnings-in-window ⇒ `catalystStrength01` is null (the CATALYST pillar drops from the
 // score), NOT a measured 0. A name outside the post-earnings drift window carries null drift extras, not 0.
 
+import { todayEt } from "@/lib/et-date";
+
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 const isNum = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
 
@@ -141,6 +143,22 @@ function surprisePctOf(row: Record<string, unknown>): number | null {
  * it carries BOTH the upcoming estimated print and past reports) into the next/last earnings windows,
  * relative to `asOfMs`. PURE. One feed call grounds both the CATALYST hazard (earnings-in-window) and the
  * POST_EARNINGS_DRIFT extras (a recent print), so the shell never needs a second earnings fetch.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-09-20): `todayYmd` used to be derived via
+ * `new Date(asOfMs).toISOString().slice(0, 10)` — the UTC calendar date of the instant, not the ET
+ * trading-day date the earnings rows' own `earnings_date`/`report_date` strings are stamped in.
+ * `swing-ingest.ts`'s caller passes `asOfMs = Date.parse(args.asOf)`, the real scan/ingest instant,
+ * which this codebase's own live repros elsewhere confirm regularly runs well into evening ET (e.g.
+ * "2026-09-14 20:36 ET", `play-brief-narrative-coaching.ts`'s own printAlreadyLandedThresholdMs fix).
+ * Past ~20:00 ET (EDT) / ~19:00 ET (EST), the UTC calendar date is already the NEXT day — so
+ * `todayYmd` silently ran one day ahead of the real ET trading day, shifting every `daysBetweenYmd`
+ * comparison below by one: a same-day (ET) earnings print could misclassify as `lastEarnings`
+ * (already happened, `daysAgo=1`) instead of `nextEarnings` (`daysUntil=0`), corrupting the
+ * CATALYST pillar's `earningsInWindow` hazard and the EVENT_DRIVEN archetype's `catalystInWindow01`
+ * fit for any name that reports on a day this function is evaluated for during evening ET hours.
+ * `todayEt()` (`@/lib/et-date`, this codebase's single source of truth for the ET session-calendar
+ * date, already used by `spx-session.ts`/every other ET-anchored comparison) accepts an injectable
+ * `Date` for exactly this non-"now" case — used here instead of the raw UTC slice.
  */
 export function parseEarningsWindows(
   rows: ReadonlyArray<Record<string, unknown>> | null | undefined,
@@ -148,7 +166,7 @@ export function parseEarningsWindows(
 ): SwingEarningsWindows {
   const empty: SwingEarningsWindows = { nextEarnings: null, lastEarnings: null };
   if (!Array.isArray(rows) || !Number.isFinite(asOfMs)) return empty;
-  const todayYmd = new Date(asOfMs).toISOString().slice(0, 10);
+  const todayYmd = todayEt(new Date(asOfMs));
 
   let next: { daysUntil: number; isConfirmed: boolean | null } | null = null;
   let last: { daysAgo: number; surprisePct: number | null } | null = null;

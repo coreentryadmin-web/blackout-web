@@ -34,7 +34,6 @@ describe("robots.ts", () => {
       "/nighthawk",
       "/flows",
       "/heatmap",
-      "/grid",
       "/account",
       "/sign-in",
       "/sign-up",
@@ -47,6 +46,14 @@ describe("robots.ts", () => {
       assert.ok(disallowed.includes(root), `expected disallow list to include bare route ${root}`);
       assert.ok(disallowed.includes(`${root}/`), `expected disallow list to include ${root}/`);
     }
+  });
+
+  it("does not disallow /grid — the Grid page was removed (#648) and the route 404s", () => {
+    const config = robots();
+    const wildcard = config.rules.find((rule) => rule.userAgent === "*");
+    const disallowed = wildcard?.disallow ?? [];
+    assert.ok(!disallowed.includes("/grid"));
+    assert.ok(!disallowed.includes("/grid/"));
   });
 
   it("applies the same bare-route + sub-path disallow list to AI crawler rules", () => {

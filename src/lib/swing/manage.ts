@@ -38,6 +38,7 @@ import type { SwingDossier } from "./dossier";
 import type { SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { underlyingPriceForStructuralStop } from "./ex-dividend-adjustment";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 import {
   deriveScaleOutAction,
   SCALE_OUT_RULES,
@@ -196,21 +197,21 @@ function structuralStopBroken(input: SwingManageInput): { broken: boolean; reaso
       return {
         broken: false,
         reason:
-          `ex-dividend data unavailable this cycle — cannot confirm underlying ${comparePx} ≤ ` +
-          `structural stop ${stop} isn't a mechanical ex-div gap; skipping structural stop for LONG ` +
+          `ex-dividend data unavailable this cycle — cannot confirm underlying ${fmtPriceLevel(comparePx)} ≤ ` +
+          `structural stop ${fmtPriceLevel(stop)} isn't a mechanical ex-div gap; skipping structural stop for LONG ` +
           `this cycle (fail-safe, Q39)`,
       };
     }
-    const adj = adjusted.adjusted ? ` (ex-div adjusted from ${price})` : "";
+    const adj = adjusted.adjusted ? ` (ex-div adjusted from ${fmtPriceLevel(price)})` : "";
     return {
       broken: true,
-      reason: `underlying ${comparePx} ≤ structural stop ${stop} — LONG thesis broken in underlying terms${adj}`,
+      reason: `underlying ${fmtPriceLevel(comparePx)} ≤ structural stop ${fmtPriceLevel(stop)} — LONG thesis broken in underlying terms${adj}`,
     };
   }
   if (dir === "SHORT" && comparePx >= stop) {
     return {
       broken: true,
-      reason: `underlying ${comparePx} ≥ structural stop ${stop} — SHORT thesis broken in underlying terms`,
+      reason: `underlying ${fmtPriceLevel(comparePx)} ≥ structural stop ${fmtPriceLevel(stop)} — SHORT thesis broken in underlying terms`,
     };
   }
   if (adjusted.adjusted) {
@@ -260,9 +261,21 @@ export function evaluateDteMigration(input: SwingManageInput): { migrate: boolea
 }
 
 /**
- * Roll candidate — INTENT ONLY (execution is PR-15). A roll only makes sense for a still-valid
- * thesis at low DTE with theta disproportion; a broken thesis or a hit structural stop is a CLOSE,
- * not a roll, so those veto the intent.
+ * Roll candidate — the intent this file's own caller (`evaluateSwingManagement`) attaches to a
+ * verdict; `roll.ts`'s executor (PR-15, shipped) is the live caller that acts on it, deciding
+ * ROLL vs CLOSE for a gating rung. A roll only makes sense for a still-valid thesis at low DTE
+ * with theta disproportion; a broken thesis or a hit structural stop is a CLOSE, not a roll, so
+ * those veto the intent.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-09-20): the returned `reason` string used to read
+ * "... (INTENT ONLY; execution deferred to PR-15)" — accurate when this function predated the
+ * executor, false now that `roll.ts` is shipped and live (it reads/acts on `rollIntent.roll` on
+ * every management tick). `live-plays.ts`/`horizon-plays.ts` already both carry their own comments
+ * documenting this exact staleness and deliberately routing member-facing prose through
+ * `dteMigration.reason` instead of this string for that reason — so no member ever saw the stale
+ * text — but the string itself, `roll.ts`'s own `decideRollAction` (which still embeds it verbatim
+ * in its ROLL action's internal `reason`), and this docstring all still asserted something false.
+ * Fixed at the source so nothing downstream needs a workaround for new false info to fix around.
  */
 export function detectRollCandidate(input: SwingManageInput): { roll: boolean; reason: string } {
   const migration = evaluateDteMigration(input);
@@ -270,7 +283,7 @@ export function detectRollCandidate(input: SwingManageInput): { roll: boolean; r
   if (input.thesisBroken === true) return { roll: false, reason: "thesis broken — close, do not roll" };
   const sb = structuralStopBroken(input);
   if (sb.broken) return { roll: false, reason: "underlying structural stop hit — close, do not roll" };
-  return { roll: true, reason: `roll intent — ${migration.reason} (INTENT ONLY; execution deferred to PR-15)` };
+  return { roll: true, reason: `roll intent — ${migration.reason}` };
 }
 
 /**
@@ -383,5 +396,27 @@ export function evaluateSwingManagement(input: SwingManageInput): SwingManageVer
   if (!anyEvaluable) {
     return mk("HOLD", "insufficient_data", "no usable management read — holding (null-honesty)");
   }
-  return mk("HOLD", "hold", `thesis intact, premium above the ${SCALE_OUT_RULES.hard_stop_mult}× backstop, ample time — hold`);
+
+  // Build the hold reason from ONLY the dimensions actually evaluated this tick. The old reason string
+  // was hardcoded to assert all three claims ("thesis intact", "premium above the backstop", "ample
+  // time") whenever ANY single input was present — e.g. only `sessionsHeld` known, with premium (no
+  // entry/mark), structural (no underlyingPrice/structuralStopLevel/direction) and DTE/lane all
+  // unusable/unknown (a live mark+spot fetch outage, a documented recurring pattern in this repo). That
+  // fabricated confidence on the two unverified claims directly contradicted this file's own
+  // NULL-HONESTY principle, and the reason string is durably written into every management snapshot's
+  // event_json for the desk/grader to read as WHY the position held.
+  const structuralEvaluable =
+    numOrNull(input.underlyingPrice) != null &&
+    numOrNull(input.structuralStopLevel) != null &&
+    input.dossier.direction != null;
+  const timeEvaluable = spec != null && dte != null;
+  const holdParts: string[] = [];
+  if (structuralEvaluable || input.thesisBroken === false) holdParts.push("thesis intact");
+  if (premiumUsable) holdParts.push(`premium above the ${SCALE_OUT_RULES.hard_stop_mult}× backstop`);
+  if (timeEvaluable) holdParts.push("ample time");
+  const holdReason =
+    holdParts.length > 0
+      ? `${holdParts.join(", ")} — hold`
+      : "no gate/edge rung fired this tick on a partial read — hold (null-honesty)";
+  return mk("HOLD", "hold", holdReason);
 }

@@ -34,8 +34,28 @@ import {
 // (PLAN_RULES stop/target/time-stop, EXIT_RULES arm/lock/runner floors, TRIM_SCALE tranches)
 // changes config_hash; if that edit is NOT accompanied by an EXIT_VERSION bump, THIS test
 // fails, forcing the deliberate version bump the calibration cohort relies on.
-const GOLDEN_RATCHET_HASH = "exitcfg-26da6211";
-const GOLDEN_TRIM_SCALE_HASH = "exitcfg-1ace50c7";
+// Bumped 2026-09-14 (EXIT_VERSION v4->v5): the ratchet "locked" floor (peak >= +50%) now
+// scales with the peak instead of a flat +20% — see EXIT_RULES.ratchet_lock_floor_fraction
+// in exit-engine.ts. Only the RATCHET hash moved (its trailing_rule text encodes the lock
+// tier); TRIM_SCALE's trailing_rule doesn't mention the lock tier's constants at all, so its
+// hash is unchanged except for the version-string bump baked into `version` itself — verified
+// by hand-deriving both hashes from the real stableStringify/fnv1a32 source.
+// Bumped again 2026-09-21 (EXIT_VERSION v5->v6): the early-arm (+15%) and arm (+20%) ratchet
+// floors now scale the same way (peak * 0.4) instead of staying flat at +5%/+0% — same
+// measurement discipline as the v5 bump, see EXIT_RULES.ratchet_early_arm_floor_pct /
+// ratchet_arm_floor_pct in exit-engine.ts. Both goldens move this time: RATCHET's
+// trailing_rule text was rewritten (the three separate `early@.../arm@.../lock@...` clauses
+// collapsed into one `arm@+15%->floor=peak*0.4` clause now that all three tiers share the
+// same formula); TRIM_SCALE's trailing_rule text is unchanged, so only its embedded
+// `version` field moved. Both hashes recomputed live from the real source (not guessed).
+// Bumped again 2026-09-23 (EXIT_VERSION v6->v7): the early-arm threshold itself LOWERED
+// from +15% to +5% — before this, any peak below +15% got zero floor protection at all;
+// see EXIT_RULES.ratchet_early_arm_pnl_pct's own comment for the 90-day n=67 measurement.
+// RATCHET's trailing_rule text changes again (now reads `arm@+5%->floor=peak*0.4`);
+// TRIM_SCALE's trailing_rule text still doesn't mention the early-arm constant, so only
+// its embedded `version` field moved. Both hashes recomputed live from the real source.
+const GOLDEN_RATCHET_HASH = "exitcfg-f8375eb9";
+const GOLDEN_TRIM_SCALE_HASH = "exitcfg-b2852c1e";
 
 test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from the sources of truth", () => {
   const r = buildResolvedExitPolicy("ratchet");

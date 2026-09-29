@@ -573,6 +573,49 @@ test("FINDINGS 2026-08-27: a real RATCHET-FLOOR exit (exactly breakeven) outrank
   assert.equal(rec.breakeven, 1, "breakeven, neither win nor loss — not the fictitious +56% the reconstruction alone would report");
 });
 
+test("managedOutcomeLabel: a real trim_scale_runner_target exit (no reconstruction) buckets as 'doubled', not 'ratchet'", () => {
+  // trim_scale_runner_target fires when BOTH tranches are already banked and the LAST third
+  // also tags the plan target (exit-engine.ts decideTrimScale, action EXIT reason
+  // "trim_scale_runner_target") — the trim-scale-mode analogue of ratchet mode's
+  // "plan_target_final" ("doubled"): the position captured its full bullish target, just via
+  // banked tranches instead of one lump. The OLD code bucketed it under "ratchet" purely
+  // because its own ad hoc /ratchet|runner/ regex substring-matched "runner" inside
+  // "trim_scale_runner_target" — conflating a profit-TARGET hit with a defensive ratchet
+  // FLOOR exit, two economically different outcome shapes the by_outcome breakdown exists
+  // specifically to keep apart (see BUCKET_ORDER's own doc comment). Reachable live any time
+  // a trim_scale row's WS-11 reconstruction is absent/degenerate (readReconstructedTrimScale
+  // returns null, or reconstructionShowsGenuinePartialBank is false) so managedGradeView falls
+  // through to the real engine exit stamp instead of the reconstruction.
+  const r = withExit(
+    { ticker: "AAPL", plan_outcome: "time_stop", plan_pnl_pct: 60 },
+    { reason: "trim_scale_runner_target", pnl_pct: 60 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "doubled");
+  assert.equal(rec.wins, 1);
+});
+
+test("managedOutcomeLabel: a real trim_scale_dead_zone_floor exit (no reconstruction) buckets as 'ratchet', not a bare win/loss/breakeven sign", () => {
+  // trim_scale_dead_zone_floor is the trim-scale-mode protective floor for the regime-
+  // conditioned dead zone (exit-engine.ts's decideTrimScale, floored at HALF the peak when no
+  // tranche has armed yet) — the trim-scale analogue of ratchet mode's
+  // "ratchet_breakeven_floor"/"ratchet_early_profit_floor"/"ratchet_profit_floor" (all bucket
+  // "ratchet"). The OLD code's ad hoc /ratchet|runner/ regex does not match this exact string
+  // at all (no "ratchet" or "runner" substring), so it silently fell through to the bare
+  // win/loss/breakeven-by-sign label instead of the named "ratchet" bucket every other
+  // protective-floor exit gets — the ONE real EXIT reason exit-engine.ts can stamp that this
+  // record.ts label function had no case for at all.
+  const r = withExit(
+    { ticker: "META", plan_outcome: "time_stop", plan_pnl_pct: 30 },
+    { reason: "trim_scale_dead_zone_floor", pnl_pct: 5 }
+  );
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "ratchet");
+  assert.equal(rec.wins, 1);
+});
+
 test("FINDINGS 2026-08-27: a real FLAT-TIMEOUT exit outranks a genuine reconstruction (live-only reason, unreproducible by the bar-walk)", () => {
   const r = row({
     ticker: "MU",

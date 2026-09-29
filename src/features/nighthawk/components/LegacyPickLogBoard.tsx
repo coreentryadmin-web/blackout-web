@@ -28,6 +28,7 @@ import {
   filterVectorBoardRowsAdvanced,
   parseVectorBoardSort,
   sortVectorBoardRows,
+  stepBoardSelectionIndex,
   type VectorBoardSort,
   type VectorBoardStatusFilter,
   type VectorBoardTierFilter,
@@ -254,14 +255,14 @@ export function LegacyPickLogBoard({
       if (typing) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        const next = Math.min(visibleRows.length - 1, selectedIndex + 1);
+        const next = stepBoardSelectionIndex(selectedIndex, visibleRows.length, 1);
         setSelectedIndex(next);
         const row = visibleRows[next];
         if (row) setSelectedRow(row);
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        const next = Math.max(0, selectedIndex - 1);
+        const next = stepBoardSelectionIndex(selectedIndex, visibleRows.length, -1);
         setSelectedIndex(next);
         const row = visibleRows[next];
         if (row) setSelectedRow(row);

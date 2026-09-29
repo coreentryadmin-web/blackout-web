@@ -35,6 +35,7 @@ import {
   parseSwingPlayId,
   pickLanePlayForBrief,
   resolveBriefIvRank,
+  rightFromContractType,
   type ParsedSwingPlayId,
 } from "./play-brief-resolve-pure";
 import { occSymbolFromSwingRow } from "./occ-from-row";
@@ -63,6 +64,7 @@ export function horizonRowToDeckSource(
     direction: p.direction,
     horizon: "SWING",
     score: p.score,
+    scoreWithheld: p.scoreWithheld,
     status: p.status,
     reason: p.reason,
     contract: {
@@ -80,6 +82,9 @@ export function horizonRowToDeckSource(
       iv: p.contract.iv,
     },
     factors: p.factors,
+    entryPresentPillars: p.entryPresentPillars ?? null,
+    archetypeNearTie: p.archetypeNearTie ?? null,
+    topFlowProvenance: p.topFlowProvenance ?? null,
     regime: p.regime ?? null,
     setupState: p.setupState ?? null,
     entryStatus: p.entryStatus ?? null,
@@ -94,6 +99,9 @@ export function horizonRowToDeckSource(
     commitGateBlockedBy: p.commitGateBlockedBy ?? null,
     liveStatus: p.liveStatus ?? null,
     flagUnderlyingPx: p.flagUnderlyingPx ?? null,
+    entryTriggerUnderlyingPx: p.entryTriggerUnderlyingPx ?? null,
+    invalidationUnderlyingPx: p.invalidationUnderlyingPx ?? null,
+    liveSpot: p.liveSpot ?? null,
     entryPremium: p.entryPremium ?? null,
     livePnlPct: p.livePnlPct ?? null,
     peakPremium: p.peakPremium ?? null,
@@ -101,6 +109,10 @@ export function horizonRowToDeckSource(
     markAsOf: p.markAsOf ?? null,
     manageAction: p.manageAction ?? null,
     manageReason: p.manageReason ?? null,
+    manageReasonDetail: p.manageReasonDetail ?? null,
+    manageEnforced: p.manageEnforced ?? null,
+    rollCandidate: p.rollCandidate ?? null,
+    underlyingExcursion: p.underlyingExcursion ?? null,
     thesisBreak:
       p.thesisLevel != null ? { level: p.thesisLevel, note: p.thesisNote ?? undefined } : undefined,
     sectorLeadershipFacts: p.sectorLeadershipFacts ?? null,
@@ -130,7 +142,16 @@ function rowContractMatches(row: SwingPositionRow, strike: number | null, right:
   if (strike == null) return true;
   if (row.contract_strike !== strike) return false;
   if (right == null) return true;
-  const rowRight = row.contract_type === "put" ? "P" : "C";
+  // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+  // roll-history fix and this cycle's closed-plays.ts/live-plays.ts sibling fixes). `contract_type`
+  // is a genuinely nullable DB column; the old `row.contract_type === "put" ? "P" : "C"` ternary
+  // fabricated "C" for a row whose real contract type was never recorded — which meant a hint
+  // asking for a specific "C" leg could FALSELY MATCH a row of unknown type (an identity bug, not
+  // just a display one: this function exists specifically to fix ticker-collision misidentification,
+  // per the file header). An unrecorded right can't confidently be declared EITHER "C" or "P", so
+  // it now stays `null` and fails the match rather than guessing — fail-closed, consistent with
+  // `normalizeRight` just above already returning `null` for anything it can't parse.
+  const rowRight = rightFromContractType(row.contract_type);
   return rowRight === right;
 }
 
@@ -211,7 +232,7 @@ async function loadLaneRows(ticker: string): Promise<{
     fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
     fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
     fetchBangerPositions: isBangerEngineEnabled()
-      ? () => fetchBangerOpenBookRows(80).catch(() => [])
+      ? () => fetchBangerOpenBookRows().catch(() => [])
       : undefined,
     vectorLeaders,
     bangerWatchPlays: bangerWatchSnap?.plays ?? [],
@@ -349,7 +370,22 @@ export async function resolveSwingPlayForBrief(
     }
   }
 
-  const lanePlay = pickLanePlayForBrief(rows, ticker, { status, strike, right });
+  // Lane rows (`rows`, from `loadLaneRows`) are WATCH/COMMIT/live-candidate reads — the serving
+  // lane never carries a CLOSED status (confirmed: `serving-lane.ts` has no CLOSED status path).
+  // `pickLanePlayForBrief` also never consults `hints.status` — it matches on ticker (+ optional
+  // positionId/strike/right) alone. So a caller explicitly asking for the CLOSED play via
+  // `status=CLOSED` with no `positionId` (Largo's own tool-call shape when it only has a ticker)
+  // used to fall into this branch and silently get whichever ACTIVE lane play shares the ticker
+  // instead — a different contract, a different outcome, presented as if it were the requested
+  // closed play. Live repro 2026-09-27: `?playId=SWING:HUT&ticker=HUT&status=CLOSED` (no
+  // positionId) returned the live TRIM 100C play instead of the closed STOPPED 106C play; the
+  // identical request WITH `positionId` correctly resolved the closed play (confidence: high).
+  // Same ticker-collision failure class the positionId-based fixes above and in
+  // `loadOpenTerminalPlay`/`resolveChainRootId` already guard against — this was the one path
+  // that never checked `status` at all. Skip the lane fallback outright for an explicit CLOSED
+  // request so it falls through to the closed-lookup fallbacks below instead.
+  const wantsClosed = status != null && status.toUpperCase() === "CLOSED";
+  const lanePlay = wantsClosed ? null : pickLanePlayForBrief(rows, ticker, { status, strike, right, positionId });
   if (lanePlay) {
     const discovery = await discoverSwingFromPersisted().catch(() => null);
     const dossier = discovery?.dossiers?.find((d) => d.ticker.toUpperCase() === ticker);

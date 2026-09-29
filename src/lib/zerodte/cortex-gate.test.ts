@@ -21,6 +21,7 @@ import { QQQ_SHORT_2026_07_13, SPY_LONG_2026_07_13 } from "@/lib/nighthawk/corte
 import { baseInputs } from "@/lib/nighthawk/cortex/test-helpers";
 import {
   assessCortexVerdict,
+  cortexAbstainForCondor,
   cortexEntryContextFor,
   cortexGateBlocks,
   cortexSummaryFor,
@@ -278,6 +279,34 @@ test("ABSTAIN: an all-absent composition (total outage) passes through with zero
     assert.match(a.reason, /commit proceeds on the hard gates alone/);
   }
   assert.deepEqual(cortexGateBlocks(a), []);
+});
+
+// ── CONDOR bypass (2026-09-17): a condor's direction is nominal fade provenance
+// only (delta-neutral) — Cortex's directional evidence model must never judge a
+// condor by it. scan.ts now short-circuits to cortexAbstainForCondor() instead of
+// calling evaluateCortexForCommit with the condor's nominal direction. Regression
+// coverage: the ABSTAIN it returns is honest (never a fabricated PASS/clean-evidence
+// claim), produces zero gate blocks (never blocks a condor on directional evidence),
+// and cortexEntryContextFor round-trips it the same way any other ABSTAIN persists.
+
+test("cortexAbstainForCondor: honest ABSTAIN, not a fabricated PASS — carries a reason naming the nominal-direction mismatch", () => {
+  const a = cortexAbstainForCondor();
+  assert.equal(a.decision, "ABSTAIN");
+  assert.equal(a.abstained, true);
+  if (a.abstained) {
+    assert.match(a.reason, /nominal fade provenance/);
+    assert.match(a.reason, /delta-neutral/);
+    assert.match(a.reason, /does not evaluate condor setups/);
+  }
+});
+
+test("cortexAbstainForCondor: never blocks — cortexGateBlocks is empty, same as any other ABSTAIN", () => {
+  assert.deepEqual(cortexGateBlocks(cortexAbstainForCondor()), []);
+});
+
+test("cortexAbstainForCondor: entry_context blob round-trips the abstain reason, same shape as a real all-absent outage", () => {
+  const ec = cortexEntryContextFor(cortexAbstainForCondor());
+  assert.deepEqual(ec, { abstained: true, reason: cortexAbstainForCondor().reason });
 });
 
 // ── Veto-blind fail-CLOSED (restored 2026-07-29; was ABSTAIN 2026-07-27) ──

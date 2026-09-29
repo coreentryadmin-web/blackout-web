@@ -59,6 +59,16 @@ test("clerkPostAuthReturnPath: rejects protocol-relative URL", () => {
   assert.equal(clerkPostAuthReturnPath("//evil.com/phish"), CLERK_DEFAULT_POST_AUTH_PATH);
 });
 
+test("clerkPostAuthReturnPath: a repeated redirect_url query key (Next.js yields string[]) does not crash", () => {
+  // Live production TypeError, 2026-09-26: "a?.trim is not a function" on /sign-up and
+  // /sign-in — `searchParams.redirect_url` is `string | string[]` at runtime for a repeated
+  // query key even though the route Props type only declared `string`. Must take the first
+  // value, exactly like URLSearchParams.get() already does for the middleware caller.
+  assert.equal(clerkPostAuthReturnPath(["/flows", "/dashboard"]), "/flows");
+  assert.equal(clerkPostAuthReturnPath(["https://evil.com/phish"]), CLERK_DEFAULT_POST_AUTH_PATH);
+  assert.equal(clerkPostAuthReturnPath([]), CLERK_DEFAULT_POST_AUTH_PATH);
+});
+
 test("isSafeAppRelativePath: only same-app paths", () => {
   assert.equal(isSafeAppRelativePath("/dashboard"), true);
   assert.equal(isSafeAppRelativePath("/flows?x=1"), true);

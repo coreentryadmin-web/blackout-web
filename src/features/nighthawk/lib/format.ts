@@ -251,6 +251,13 @@ export function buildMarketRecap(ctx: MarketWideContext): {
   sector_strength: string;
   sector_weakness: string;
   catalysts: string;
+  /** The GEX/trend composite regime's own authored strategy line (deriveComposite's `playbook`,
+   *  market-regime-detector cron, pinned onto ctx.platform_intel). Already computed and already fed
+   *  into the Claude edition prompt as advisory context (formatPlatformIntelForPrompt) so the LLM
+   *  MAY mention it — but nothing guaranteed it reached the member-facing recap deterministically.
+   *  Empty string (never null) so callers can use the same "only non-empty strings render"
+   *  convention as every other field here. */
+  desk_playbook: string;
 } {
   const sectorsWithChange = ctx.sector_performance.filter(
     (s): s is typeof s & { change_pct: number } => s.change_pct != null
@@ -335,7 +342,20 @@ export function buildMarketRecap(ctx: MarketWideContext): {
     sector_strength: leaders.map((s) => `${s.name} ${s.change_pct.toFixed(2)}%`).join(" · ") || "n/a",
     sector_weakness: laggards.map((s) => `${s.name} ${s.change_pct.toFixed(2)}%`).join(" · ") || "n/a",
     catalysts: catalysts || "No major macro/earnings flagged.",
+    desk_playbook: ctx.platform_intel?.playbook ?? "",
   };
+}
+
+// Real UW `/api/stock/{ticker}/flow-per-expiry` rows carry `call_premium`/`put_premium`
+// (separate string fields) — there is no single `premium`/`total_premium` field on this shape
+// (live-verified 2026-09-12). The old guess always evaluated to 0, so every "Flow by expiry"
+// line in the dossier text below (fed straight into the Legacy edition's Claude prompt via
+// buildClaudePrompt) silently read "$0" for every expiry regardless of real flow.
+export function flowByExpiryPremium(row: Record<string, unknown>): number {
+  return (
+    Number(row.call_premium ?? 0) + Number(row.put_premium ?? 0) ||
+    Number(row.premium ?? row.total_premium ?? 0)
+  );
 }
 
 export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCandidate): string {
@@ -398,8 +418,7 @@ export function formatTickerDossierText(dossier: TickerDossier, scored: ScoredCa
   if (dossier.flow_by_expiry.length) {
     const expLines = dossier.flow_by_expiry.slice(0, 4).map((r) => {
       const exp = String(r.expiry ?? r.expiration ?? "").slice(0, 10);
-      const prem = Number(r.premium ?? r.total_premium ?? 0);
-      return `${exp}: ${fmtPremium(prem)}`;
+      return `${exp}: ${fmtPremium(flowByExpiryPremium(r))}`;
     });
     if (expLines.length) lines.push(`Flow by expiry: ${expLines.join(" · ")}`);
   }

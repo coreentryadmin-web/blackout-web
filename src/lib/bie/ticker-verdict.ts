@@ -2,6 +2,7 @@
 
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import { findSimilarPrecedents } from "@/lib/bie/precedent-search";
+import { parsePrecedentOutcome, type PrecedentOutcome } from "@/features/spx/lib/spx-signals-shadow-precedents";
 
 const fmt = (n: number | null | undefined, d = 0): string =>
   typeof n === "number" && Number.isFinite(n)
@@ -28,7 +29,12 @@ function structuralBias(ctx: EcosystemContext): "bullish" | "bearish" | "neutral
     if (nh.conviction === "A" || nh.conviction === "B") score += score > 0 ? 1 : -1;
   }
   const z = ctx.zerodte_today;
-  if (z) {
+  // A committed CONDOR's `direction` is NOMINAL provenance only (the fade side of the pin it
+  // came from) — the structure is delta-neutral, so folding it into a directional score would
+  // fabricate a signal the 0DTE desk never actually took. Same gate ecosystem-context.ts's own
+  // doc comment on `is_condor` requires and play-brief-intel.ts/play-brief-narrative-coaching.ts
+  // already apply — skip the directional read entirely when this row is a condor.
+  if (z && z.is_condor !== true) {
     if (/long|bull/i.test(z.direction)) score += 1;
     if (/short|bear/i.test(z.direction)) score -= 1;
   }
@@ -79,7 +85,11 @@ export async function synthesizeTickerVerdict(
   }
   if (ctx.zerodte_today) {
     const z = ctx.zerodte_today;
-    align.push(`0DTE ${z.direction.toUpperCase()} score ${fmt(z.score)}`);
+    align.push(
+      z.is_condor === true
+        ? `0DTE condor (structure-neutral) score ${fmt(z.score)}`
+        : `0DTE ${z.direction.toUpperCase()} score ${fmt(z.score)}`
+    );
   }
   if (ctx.recent_flow) {
     const f = ctx.recent_flow;
@@ -158,10 +168,26 @@ export async function synthesizeTickerVerdict(
   let precedentLine: string | null = null;
   try {
     const prec = await findSimilarPrecedents(`${t} ${bias} ${ctx.nighthawk_recent?.direction ?? ""} setup`, 3);
-    if (prec.length >= 2) {
-      const wins = prec.filter((p) => /win|hit target|target/i.test(p.chunk)).length;
-      const pct = Math.round((wins / prec.length) * 100);
-      precedentLine = `PRECEDENT  ${prec.length} similar ${t} setups in corpus — ~${pct}% positive outcomes (BIE audit log).`;
+    // Tally only cleanly-resolved target/stop outcomes as win/loss evidence — "ambiguous" and
+    // "unfilled" are real precedent hits but are NOT directionally informative (the alert never
+    // hit a profit target OR a stop; see db.ts's TERMINAL_ALERT_OUTCOMES and describeAuditRow's
+    // "Outcome: <target|stop|ambiguous|unfilled>." trailer). This mirrors the ONLY other consumer
+    // of this exact alert_audit_log precedent corpus, spx-signals-shadow-precedents.ts's
+    // computePrecedentShadowFactor, which explicitly excludes ambiguous/unfilled from its own
+    // for/against tally rather than let them dilute a percentage (see that file's doc comment).
+    //
+    // The prior version here counted EVERY returned precedent (ambiguous/unfilled included) in the
+    // denominator while the win regex (`/win|hit target|target/i`) could only ever match the
+    // literal "Outcome: target." string — so a corpus of e.g. 1 target + 2 unfilled reported
+    // "~33% positive outcomes" when the one directionally-informative precedent was actually a
+    // clean win (100% of usable evidence), sometimes flipping the printed sign of the read.
+    const resolved = prec
+      .map((p) => parsePrecedentOutcome(p.chunk))
+      .filter((o): o is PrecedentOutcome => o === "target" || o === "stop");
+    if (resolved.length >= 2) {
+      const wins = resolved.filter((o) => o === "target").length;
+      const pct = Math.round((wins / resolved.length) * 100);
+      precedentLine = `PRECEDENT  ${resolved.length} similar ${t} setups cleanly resolved in corpus — ~${pct}% hit target (BIE audit log).`;
       lines.push(precedentLine);
     }
   } catch {

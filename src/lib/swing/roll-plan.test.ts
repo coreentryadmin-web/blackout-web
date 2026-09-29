@@ -206,6 +206,34 @@ test("ROLL: grades the parent + builds a gated, further-out child leg", async ()
   assert.equal((child.entry_context as Record<string, unknown>).roll_seq, 1);
 });
 
+// Ask Largo standing mandate (#4076): the roll child's entry_context must carry the parent's
+// discovery-provenance signal_kinds forward, or computeSwingThesisHealth's flow_corroboration
+// pillar permanently falls back to its "no signals" default for the rest of that position's life
+// (thesisHealthUncalibrated() is an OR across all five pillars) — live-verified 2026-09-21 on
+// AAPL SWING:AAPL:40 (rolled 330C→335C), which still showed the withheld-aggregate degrade
+// despite both sibling pillars (entry-geometry #5336, persistence #5334) already being wired.
+// Before the fix this field was entirely absent from the roll child's entry_context (see the
+// pre-fix childSpec.entry_context literal in roll-plan.ts, which never referenced signal_kinds
+// at all) — reproduced here by asserting on the PARENT row's own real signal_kinds, not a fixture
+// only this test invented, so a regression back to "field is missing" fails RED again.
+test("ROLL: forwards the parent's signal_kinds into the child's entry_context (flow_corroboration pillar survives a roll)", async () => {
+  const plan = await buildSwingRollPlan(
+    parentRow({ entry_context: { risk_usd: 500, signal_kinds: ["FLOW", "CATALYST"] } }),
+    verdict(),
+    reads(),
+    deps(),
+  );
+  assert.ok(plan?.childSpec, "a ROLL carries a child spec");
+  const ctx = plan!.childSpec!.entry_context as Record<string, unknown>;
+  assert.deepEqual(ctx.signal_kinds, ["FLOW", "CATALYST"]);
+});
+
+test("ROLL: parent with no signal_kinds forwards null (honest absence, never fabricated)", async () => {
+  const plan = await buildSwingRollPlan(parentRow({ entry_context: { risk_usd: 500 } }), verdict(), reads(), deps());
+  const ctx = plan!.childSpec!.entry_context as Record<string, unknown>;
+  assert.equal(ctx.signal_kinds, null);
+});
+
 test("ROLL uses the latched last_mark when the live reads carry no mark (mark is FRESH)", async () => {
   // FIX (B): the fallback is only trusted when last_mark_at is fresh — supply a recent timestamp
   // (5 minutes old, well under MAX_LATCHED_MARK_AGE_MS) so this happy path keeps working.

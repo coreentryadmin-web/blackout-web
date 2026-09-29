@@ -57,3 +57,84 @@ test("themed sectors resolve via sectorFor (crypto-equity, china-adr)", () => {
   assert.equal(resolveTheme("BABA"), "china-adr");
   assert.equal(sameThesis("BABA", "COIN"), false);
 });
+
+test("leveraged MSTR ETFs + Galaxy Digital + SBET cluster with crypto-equity (#4076 live finding: MSTU+MSTX book, no flag)", () => {
+  assert.equal(resolveTheme("MSTU"), "crypto-equity");
+  assert.equal(resolveTheme("MSTX"), "crypto-equity");
+  assert.equal(resolveTheme("GLXY"), "crypto-equity");
+  assert.equal(resolveTheme("SBET"), "crypto-equity");
+  assert.equal(sameThesis("MSTU", "MSTX"), true);
+  assert.equal(sameThesis("MSTU", "MSTR"), true);
+  assert.equal(sameThesis("GLXY", "COIN"), true);
+  assert.equal(sameThesis("SBET", "MSTR"), true);
+});
+
+test("single-stock leveraged ETFs cluster with their own underlying only, never each other (#4076 batch 26: RBLU/GMEU/SOFX live)", () => {
+  assert.equal(sameThesis("RBLU", "RBLX"), true);
+  assert.equal(sameThesis("GMEU", "GME"), true);
+  assert.equal(sameThesis("SOFX", "SOFI"), true);
+  assert.equal(sameThesis("RBLU", "GMEU"), false);
+  assert.equal(sameThesis("GMEU", "SOFX"), false);
+  // PLTU joins PLTR's existing software cluster.
+  assert.equal(sameThesis("PLTU", "PLTR"), true);
+  assert.equal(sameThesis("PLTU", "CRM"), true); // same "software" cluster as PLTR
+});
+
+test("XRP wrapper tickers cluster with each other, not with crypto-equity mining/holding names (#4076: XRP+XRPZ+XXRP book, no flag)", () => {
+  assert.equal(ETF_PROXY_THEMES.XRP, "crypto-xrp");
+  assert.equal(resolveTheme("XRP"), "crypto-xrp");
+  assert.equal(resolveTheme("xrpz"), "crypto-xrp"); // case-insensitive
+  assert.equal(sameThesis("XRP", "XRPZ"), true);
+  assert.equal(sameThesis("XRPZ", "XXRP"), true);
+  // Deliberately NOT the same cluster as equity crypto proxies — a token's own price is a different
+  // risk driver than mining/holding-company equity beta.
+  assert.equal(sameThesis("XRP", "COIN"), false);
+});
+
+test("crypto exchanges, miners, and BTC/ETH trust/ETF wrappers cluster with crypto-equity (2026-09-20 live finding: 2026-09-18 Banger batch undercounted real book concentration 11 vs ~25 same-direction positions)", () => {
+  // Exchanges/custodians — same risk bucket as COIN.
+  assert.equal(resolveTheme("GEMI"), "crypto-equity");
+  assert.equal(resolveTheme("BKKT"), "crypto-equity");
+  assert.equal(resolveTheme("ABTC"), "crypto-equity");
+  assert.equal(resolveTheme("BLSH"), "crypto-equity");
+  // Miners — same risk bucket as MARA/RIOT/CLSK/HUT/IREN.
+  assert.equal(resolveTheme("BMNR"), "crypto-equity");
+  assert.equal(resolveTheme("BTDR"), "crypto-equity");
+  // Direct BTC/ETH trust/ETF wrappers — not equities, but an even more direct crypto-price read than
+  // the mining/holding equities already in the bucket.
+  assert.equal(resolveTheme("ETH"), "crypto-equity");
+  assert.equal(resolveTheme("ETHE"), "crypto-equity");
+  assert.equal(resolveTheme("ETHU"), "crypto-equity");
+  assert.equal(resolveTheme("ETHA"), "crypto-equity");
+  assert.equal(resolveTheme("IBIT"), "crypto-equity");
+  assert.equal(resolveTheme("GBTC"), "crypto-equity");
+  assert.equal(resolveTheme("BITO"), "crypto-equity");
+  assert.equal(resolveTheme("BITX"), "crypto-equity");
+  assert.equal(sameThesis("GEMI", "COIN"), true);
+  assert.equal(sameThesis("BMNR", "RIOT"), true);
+  assert.equal(sameThesis("ETH", "IBIT"), true);
+  assert.equal(sameThesis("ETHE", "MSTR"), true);
+});
+
+test("quantum-computing pure-plays cluster together, not each in its own isolated cluster (2026-09-25 live finding: RGTI+QBTS+IONQ concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("RGTI"), "quantum-computing");
+  assert.equal(resolveTheme("QBTS"), "quantum-computing");
+  assert.equal(resolveTheme("IONQ"), "quantum-computing");
+  assert.equal(resolveTheme("QUBT"), "quantum-computing");
+  assert.equal(sameThesis("RGTI", "QBTS"), true);
+  assert.equal(sameThesis("RGTI", "IONQ"), true);
+  assert.equal(sameThesis("QBTS", "QUBT"), true);
+  // Not merged into an unrelated theme (e.g. semis) just because both are "tech".
+  assert.equal(sameThesis("RGTI", "NVDA"), false);
+});
+
+test("AI-datacenter connectivity chips + semis-equipment names cluster into semis, not their own isolated clusters (2026-09-25 live finding: ALAB+CRDO+KLAC+LRCX+INTC concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("ALAB"), "semis");
+  assert.equal(resolveTheme("CRDO"), "semis");
+  assert.equal(resolveTheme("KLAC"), "semis");
+  assert.equal(sameThesis("ALAB", "CRDO"), true);
+  assert.equal(sameThesis("ALAB", "NVDA"), true);
+  assert.equal(sameThesis("KLAC", "LRCX"), true);
+  // Not merged into an unrelated theme just because both are "tech".
+  assert.equal(sameThesis("ALAB", "AAPL"), false);
+});

@@ -144,3 +144,58 @@ test("a recap-only edition keeps its recap_only flags", () => {
   assert.equal(out.recap_only_reason, "no_plays_survived_funnel");
   assert.equal(out.play_count, 0);
 });
+
+// 2026-09-18 audit: `resolveNighthawkEdition` (the member route's fallback ladder) computes
+// degraded/stale/served_for/carry_until_close/no_plays — real freshness/absence state — and the
+// Largo composer used to drop all five silently (they weren't even in EditionLike's type). A
+// degraded or carried-forward edition must never reach the model looking like an ordinary fresh
+// one; these tests pin that each flag survives AND is narrated in freshness_note.
+
+test("a degraded (legacy fallback) edition is forwarded and narrated", () => {
+  const out = compactNightHawkEditionForModel({
+    available: true, plays: [], edition_for: "2026-09-18", degraded: true,
+  });
+  assert.equal(out.degraded, true);
+  assert.match(String(out.freshness_note), /DEGRADED/);
+});
+
+test("a carried-forward prior session's edition is forwarded and narrated with its real date", () => {
+  const out = compactNightHawkEditionForModel({
+    available: true, plays: [{ ticker: "AAPL" }], edition_for: "2026-09-17",
+    carry_until_close: true, served_for: "2026-09-17",
+  });
+  assert.equal(out.carry_until_close, true);
+  assert.equal(out.served_for, "2026-09-17");
+  assert.match(String(out.freshness_note), /CARRIED FORWARD/);
+  assert.match(String(out.freshness_note), /2026-09-17/);
+});
+
+test("a stale bounded-age fallback edition is forwarded and narrated with its real date", () => {
+  const out = compactNightHawkEditionForModel({
+    available: true, plays: [{ ticker: "MSFT" }], edition_for: "2026-09-14",
+    stale: true, served_for: "2026-09-14",
+  });
+  assert.equal(out.stale, true);
+  assert.equal(out.served_for, "2026-09-14");
+  assert.match(String(out.freshness_note), /STALE/);
+});
+
+test("a real zero-play publish is forwarded and narrated distinctly from a missing edition", () => {
+  const out = compactNightHawkEditionForModel({
+    available: true, plays: [], edition_for: "2026-09-18", no_plays: true,
+  });
+  assert.equal(out.no_plays, true);
+  assert.match(String(out.freshness_note), /NO PLAYS/);
+});
+
+test("an ordinary fresh edition carries no freshness note and all flags default false", () => {
+  const out = compactNightHawkEditionForModel({
+    available: true, plays: [{ ticker: "NVDA" }], edition_for: "2026-09-18",
+  });
+  assert.equal(out.degraded, false);
+  assert.equal(out.stale, false);
+  assert.equal(out.carry_until_close, false);
+  assert.equal(out.no_plays, false);
+  assert.equal(out.served_for, null);
+  assert.equal(out.freshness_note, null);
+});

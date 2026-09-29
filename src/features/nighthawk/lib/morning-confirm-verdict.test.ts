@@ -93,6 +93,19 @@ test("SPX gap against direction degrades (not invalidates) when single-name prem
   assert.ok(v.reason.includes("treat as caution"));
 });
 
+// Regression (Night Hawk Legacy aggressive-improvement mandate, 2026-09-13): check 1
+// (hard gap-against-direction) and check 4 (any large gap, same-direction catch-all) both key off
+// the exact same `Math.abs(gapPts) > GAP_PTS_THRESHOLD` condition. When gapAgainst is true AND the
+// stock's own premarket still confirms (the "treat as caution" DEGRADED path above), status never
+// reaches INVALIDATED, so check 4 ALSO fires for the identical gap event and appends a second,
+// redundant reason describing the same SPX gap — a member reading the DEGRADED tooltip sees the
+// same number quoted twice back to back instead of one clean sentence.
+test("SPX gap-against-direction reason is not duplicated by the generic large-gap catch-all", () => {
+  const v = computePlayVerdict(play(), { ...NO_CONTEXT, gapPts: -25, stockPremarket: 102 });
+  const gapMentions = v.reason.split(";").filter((r) => r.includes("SPX gapped")).length;
+  assert.equal(gapMentions, 1, `expected exactly one SPX-gap reason, got: ${v.reason}`);
+});
+
 test("SPX gap against direction still INVALIDATES index plays without stock override", () => {
   const v = computePlayVerdict(play({ ticker: "SPY", play_type: "etf" }), { ...NO_CONTEXT, gapPts: -25 });
   assert.equal(v.status, "INVALIDATED");

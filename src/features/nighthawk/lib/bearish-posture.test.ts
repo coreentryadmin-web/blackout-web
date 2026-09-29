@@ -91,7 +91,8 @@ describe("applyBearishPosture", () => {
     const candidates = [scored({ ticker: "AMD", score: 50 }), scored({ ticker: "TSLA", score: 40 })];
     const result = applyBearishPosture(candidates, regime());
     assert.equal(result.posture, "NEUTRAL");
-    assert.equal(result.flipped, 0);
+    assert.equal(result.shortsBoosted, 0);
+    assert.equal(result.longsPenalized, 0);
     assert.deepEqual(result.ranked, candidates);
   });
 
@@ -104,6 +105,8 @@ describe("applyBearishPosture", () => {
     const result = applyBearishPosture(candidates, bearish);
 
     assert.equal(result.posture, "SHORT");
+    assert.equal(result.shortsBoosted, 1);
+    assert.equal(result.longsPenalized, 1);
     // TSLA (short) should now rank above AMD (long) after boost/penalty
     assert.equal(result.ranked[0].ticker, "TSLA");
     assert.equal(result.ranked[0].score, 48); // 40 + 8 bonus
@@ -118,7 +121,8 @@ describe("applyBearishPosture", () => {
     const bearish = regime({ tide_bias: "BEARISH", advance_pct: 25 });
     const result = applyBearishPosture(candidates, bearish);
 
-    assert.equal(result.flipped, 0);
+    assert.equal(result.longsPenalized, 1);
+    assert.equal(result.shortsBoosted, 0);
     assert.equal(result.ranked[0].direction, "long");
     assert.equal(result.ranked[0].score, 39); // 45 - 6 penalty
   });
@@ -130,7 +134,7 @@ describe("applyBearishPosture", () => {
     const bearish = regime({ tide_bias: "BEARISH", advance_pct: 25 });
     const result = applyBearishPosture(candidates, bearish);
 
-    assert.equal(result.flipped, 0);
+    assert.equal(result.longsPenalized, 1);
     assert.equal(result.ranked[0].direction, "long");
     assert.equal(result.ranked[0].score, 44); // 50 - 6
   });
@@ -145,7 +149,8 @@ describe("applyBearishPosture", () => {
     const result = applyBearishPosture(candidates, bearish);
 
     assert.equal(result.posture, "SHORT");
-    assert.equal(result.flipped, 0);
+    assert.equal(result.shortsBoosted, 1);
+    assert.equal(result.longsPenalized, 2);
     // TSLA 42+8=50, AMD 55-6=49, WFC 40-6=34
     assert.equal(result.ranked[0].ticker, "TSLA");
     assert.equal(result.ranked[0].score, 50);

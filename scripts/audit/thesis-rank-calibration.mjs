@@ -10,7 +10,7 @@ const BASE = (process.env.VALIDATE_BASE ?? "https://blackouttrades.com").replace
 const OUT = process.env.OUT ?? "/opt/cursor/artifacts/thesis-rank-calibration";
 const DAYS = Number(process.env.DAYS ?? 90);
 
-function isGradedWin(row: Record<string, unknown>): boolean {
+function isGradedWin(row) {
   const outcome = String(row.plan_outcome ?? "");
   if (outcome === "win" || outcome === "doubled" || outcome === "trim") return true;
   if (outcome === "loss" || outcome === "stopped" || outcome === "time_stop_loss") return false;
@@ -19,8 +19,8 @@ function isGradedWin(row: Record<string, unknown>): boolean {
   return false;
 }
 
-function bucket(rows: Record<string, unknown>[], key: (r: Record<string, unknown>) => string) {
-  const map = new Map<string, { n: number; wins: number }>();
+function bucket(rows, key) {
+  const map = new Map();
   for (const r of rows) {
     const k = key(r) || "?";
     const b = map.get(k) ?? { n: 0, wins: 0 };
@@ -40,7 +40,7 @@ function bucket(rows: Record<string, unknown>[], key: (r: Record<string, unknown
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  const report = { base: BASE, days: DAYS, at: new Date().toISOString(), graded: 0, buckets: {} as Record<string, unknown> };
+  const report = { base: BASE, days: DAYS, at: new Date().toISOString(), graded: 0, buckets: {} };
 
   try {
     const record = await fetchAuditJson(BASE, `/api/market/zerodte/record?days=${DAYS}`);
@@ -51,11 +51,11 @@ async function main() {
       process.exit(1);
     }
     const rows = (record.json?.rows ?? record.json?.record ?? []).filter(
-      (r: Record<string, unknown>) => r.plan_outcome && r.plan_outcome !== "open"
+      (r) => r.plan_outcome && r.plan_outcome !== "open"
     );
     report.graded = rows.length;
 
-    const withThesis = rows.filter((r: Record<string, unknown>) => r.entry_context?.thesis_first);
+    const withThesis = rows.filter((r) => r.entry_context?.thesis_first);
     report.buckets = {
       rank_tier: bucket(withThesis, (r) => String(r.entry_context?.thesis_first?.rank_tier ?? "?")),
       systems_aligned: bucket(withThesis, (r) =>

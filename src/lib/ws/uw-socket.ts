@@ -29,6 +29,7 @@ import {
   UW_SOCKET_STALL_MS,
   UW_SOCKET_STALL_OFFHOURS_MS,
   UW_SOCKET_FIRST_MSG_GRACE_MS,
+  UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS,
   freshestMessageAt as freshestFromMap,
   isUwSocketStalled,
   mergeFreshestTimestamps,
@@ -1138,9 +1139,10 @@ const optionTradeDedup = makeFlowDedup();
 // Event-driven 0DTE scan: a big swept short-dated print wakes the scanner out-of-band (react to the
 // tape, not just the 5-min cron). Throttled so a burst can't spam it; the scan self-skips off-hours.
 const eventScanDebouncer = createScanDebouncer();
-// Event-driven SWING accumulation advance: a big DIRECTIONAL 2–30 DTE print ADVANCES the cross-session
-// accumulation memory out-of-band (never commits — see swing/event-trigger.ts). Keyed by (ticker,direction)
-// so a burst on one name collapses to one advance while distinct names still advance in the same tick.
+// Event-driven SWING accumulation advance: a big DIRECTIONAL swing-dated print (see event-trigger.ts's
+// SWING_EVENT_MIN_DTE/MAX_DTE, derived from HORIZONS.SWING) ADVANCES the cross-session accumulation memory
+// out-of-band (never commits — see swing/event-trigger.ts). Keyed by (ticker,direction) so a burst on one
+// name collapses to one advance while distinct names still advance in the same tick.
 const swingFlowDebouncer = createSwingFlowDebouncer();
 let uwSocketInitialized = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -1380,9 +1382,10 @@ export function initUwSocket() {
             void import("@/lib/zerodte/scan").then((m) => m.warmZeroDteBoard()).catch(() => {});
           });
         }
-        // A big DIRECTIONAL swing-dated (2–30 DTE) print ADVANCES the swing accumulation memory out-of-band —
-        // throttled per (ticker,direction), fire-and-forget, fail-soft. This ONLY accretes an observation; it
-        // has no commit path, so a live event can never open a trade (persistence still needs ≥2 sessions).
+        // A big DIRECTIONAL swing-dated print (SWING_EVENT_MIN_DTE-MAX_DTE, derived from HORIZONS.SWING)
+        // ADVANCES the swing accumulation memory out-of-band — throttled per (ticker,direction),
+        // fire-and-forget, fail-soft. This ONLY accretes an observation; it has no commit path, so a live
+        // event can never open a trade (persistence still needs ≥2 sessions).
         // db + et-date are dynamic-imported inside the debounced callback to keep the hot socket path light.
         if (isMaterialSwingFlow(flow, now)) {
           const swingDir = swingDirectionOf(flow.option_type);
@@ -1610,8 +1613,14 @@ async function runUwReconcileTick(): Promise<void> {
   uwSocket.heartbeat();
   // Off-hours: price channel still delivers but options channels go quiet —
   // use a wider stall window so expected AH silence doesn't trigger reconnects.
-  const stallMs = inOptionsMarketHours() ? UW_SOCKET_STALL_MS : UW_SOCKET_STALL_OFFHOURS_MS;
-  uwSocket.reconnectIfStalled(freshestUwMessageAt(), stallMs, Date.now(), UW_SOCKET_FIRST_MSG_GRACE_MS);
+  const rth = inOptionsMarketHours();
+  const stallMs = rth ? UW_SOCKET_STALL_MS : UW_SOCKET_STALL_OFFHOURS_MS;
+  // Same widening for the "never delivered ANY message yet" first-connect grace —
+  // without this, a freshly (re)connected socket that legitimately sees zero
+  // traffic off-hours (nights, weekends) gets torn down every ~30s forever. See
+  // UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS's own comment for the live incident.
+  const firstMsgGraceMs = rth ? UW_SOCKET_FIRST_MSG_GRACE_MS : UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS;
+  uwSocket.reconnectIfStalled(freshestUwMessageAt(), stallMs, Date.now(), firstMsgGraceMs);
   pruneIdleDynamicGexTickers();
 }
 

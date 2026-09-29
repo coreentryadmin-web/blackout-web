@@ -93,3 +93,41 @@ test("no direction → PRE_TRIGGER, null limit, still null fill", () => {
   assert.equal(plan.entryLimitPx, null);
   assert.equal(plan.actualFill, null);
 });
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): deriveEntryState never checks the contract's
+// own expiry -- it only reasons about price vs. the entry trigger. So a stale WATCH candidate whose
+// underlying contract has actually expired (a real, live scenario per the standing
+// "watch-board-stale-expired-candidates-not-pruned" gap -- nothing prunes stale WATCH rows, and
+// entry-validity deadlines already run 40+ days stale on real board rows) would still report a
+// live-looking entryState (PRE_TRIGGER/AT_TRIGGER/PULLBACK_TO_ENTRY/EXTENDED_CHASE) instead of
+// "EXPIRED" -- even though entry-model.ts's own `entryReason` switch and TWO separate downstream
+// consumers (entry-enterability.ts's `deadPlayReason` and `evaluateSwingEntryEnterability`) already
+// have dedicated handling for `entryStatus === "EXPIRED"`, unreachable because nothing ever produced
+// it. `watchEntrySection`/play-brief.ts render this field directly as "Entry geometry:
+// **${entryStatus}**" -- a member could see a live-sounding "AT_TRIGGER" label for a dead contract.
+test("EXPIRED: an already-expired contract reports EXPIRED, not a live price-vs-trigger geometry", () => {
+  const expired: ChainContract = { ...contract, expiry: "2026-07-20", dte: -4 };
+  // Price sits exactly AT the trigger -- absent the fix this would read AT_TRIGGER, the most
+  // misleading case (implying the setup is live and enterable right now).
+  const plan = deriveEntryPlan(dossier("LONG"), expired, { price: 100, triggerPx: 100, atr: 5 }, asOf);
+  assert.equal(plan.entryState, "EXPIRED");
+  assert.equal(plan.entryLimitPx, null);
+  assert.equal(plan.actualFill, null);
+});
+
+test("EXPIRED: fires exactly at the expiry boundary (asOf === expiry midnight UTC)", () => {
+  const expiresToday: ChainContract = { ...contract, expiry: "2026-07-24", dte: 0 };
+  const plan = deriveEntryPlan(
+    dossier("LONG"),
+    expiresToday,
+    { price: 100, triggerPx: 100, atr: 5 },
+    "2026-07-24T00:00:00.000Z",
+  );
+  assert.equal(plan.entryState, "EXPIRED");
+});
+
+test("not yet EXPIRED: a contract still (barely) alive keeps normal entry-state geometry", () => {
+  const stillAlive: ChainContract = { ...contract, expiry: "2026-07-25", dte: 1 };
+  const plan = deriveEntryPlan(dossier("LONG"), stillAlive, { price: 100, triggerPx: 100, atr: 5 }, asOf);
+  assert.equal(plan.entryState, "AT_TRIGGER");
+});

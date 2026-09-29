@@ -597,6 +597,28 @@ test("computeSwingCommitPlan: pins cortex assessment into entry_context when pro
   assert.equal((ctx.cortex as { decision?: string }).decision, "PASS");
 });
 
+test("computeSwingCommitPlan: pins discoveryPaths into entry_context.signal_kinds so the committed row survives", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ discoveryPaths: ["FLOW", "CATALYST"] })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const ctx = plan.decisions[0]!.insert?.entry_context as Record<string, unknown>;
+  assert.deepEqual(ctx?.signal_kinds, ["FLOW", "CATALYST"]);
+});
+
+test("computeSwingCommitPlan: entry_context.signal_kinds is null when no discovery paths were resolved", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ discoveryPaths: undefined })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const ctx = plan.decisions[0]!.insert?.entry_context as Record<string, unknown>;
+  assert.equal(ctx?.signal_kinds, null);
+});
+
 // ─── small helpers ────────────────────────────────────────────────────────────
 
 test("helpers: event archetype set + commit_key formats", () => {

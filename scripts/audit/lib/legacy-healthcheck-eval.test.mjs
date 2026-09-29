@@ -38,6 +38,24 @@ test("verdictForEdition: degraded and stale are both AMBER", () => {
   assert.equal(verdictForEdition({ fetchOk: true, available: true, stale: true, playsCount: 3 }).verdict, "AMBER");
 });
 
+// 2026-09-16 finding: timeoutFallbackEdition (edition/route.ts) returns
+// { ...emptyEdition(editionFor), degraded: true } on a transient read timeout — available:false
+// AND degraded:true together, not one or the other. That shape must report as "degraded fallback",
+// not be swallowed by the available:false check into the genuinely-different "honest empty state"
+// message, or a transient read failure becomes permanently indistinguishable from a real quiet day.
+test("verdictForEdition: a timeout-fallback payload (available:false AND degraded:true together) reports degraded, not honest-empty", () => {
+  const result = verdictForEdition({ fetchOk: true, available: false, degraded: true, playsCount: 0 });
+  assert.equal(result.verdict, "AMBER");
+  assert.match(result.evidence, /degraded fallback/);
+  assert.doesNotMatch(result.evidence, /honest empty state/);
+});
+
+test("verdictForEdition: available:false WITHOUT degraded still reports the genuine honest-empty-state message", () => {
+  const result = verdictForEdition({ fetchOk: true, available: false, playsCount: 0 });
+  assert.equal(result.verdict, "AMBER");
+  assert.match(result.evidence, /honest empty state/);
+});
+
 test("verdictForEdition: honest no_plays is GREEN, not a defect", () => {
   assert.equal(
     verdictForEdition({ fetchOk: true, available: true, playsCount: 0, noPlays: true }).verdict,
@@ -110,6 +128,22 @@ test("verdictForMarkRow: bid=0 with a real positive ask (deep-OTM, genuinely quo
   assert.equal(verdictForMarkRow({ mark: 5, bid: 0, ask: 0.1 }).verdict, "RED");
 });
 
+test("verdictForMarkRow: bid=null/ask=null (no quote object at all) with a real mark is AMBER, not a false GREEN", () => {
+  // Same underlying "no live two-sided quote" state as the bid=0/ask=0 case above, just produced by
+  // a different upstream path (legacy-option-mark-row.ts's WS branch after a trade-print-only update
+  // with no prior quote on file, or options-snapshot.ts's REST parse when the provider returns no
+  // last_quote object at all) — before the fix this fell through the `bid != null && ask != null`
+  // guard entirely and reported a bare GREEN "within [?, ?]", claiming a validation that never
+  // happened for the exact risk category this stage exists to catch.
+  const result = verdictForMarkRow({ mark: 5.01, bid: null, ask: null });
+  assert.equal(result.verdict, "AMBER");
+});
+
+test("verdictForMarkRow: one side null (bid present, ask missing) is also AMBER — can't check a band with only one side", () => {
+  assert.equal(verdictForMarkRow({ mark: 1.5, bid: 1, ask: null }).verdict, "AMBER");
+  assert.equal(verdictForMarkRow({ mark: 1.5, bid: null, ask: 2 }).verdict, "AMBER");
+});
+
 test("verdictForMarks: fetch failure is RED", () => {
   assert.equal(verdictForMarks({ fetchOk: false, requestedOccs: ["A"], rows: [] }).verdict, "RED");
 });
@@ -173,6 +207,31 @@ test("verdictForRecord: buckets NOT summing to resolved is RED (a real payload d
     segment: { resolved: 10, wins: 2, losses: 3, opens: 4, ambiguous: 0, unfilled: 0, pulled: 0, stop_data_unavailable: 0 },
   });
   assert.equal(res.verdict, "RED");
+});
+
+// unfilled/pulled OVERLAP by design (analytics.ts's NighthawkRecordSegment doc comment) -- a play
+// can be both pulled AND never filled. Live-caught 2026-09-14: resolved=28 with unfilled=4,
+// unfilled_not_pulled=3, pulled=8 (1 row counted in both unfilled and pulled) -- the old flat sum
+// (wins+losses+opens+ambiguous+unfilled+pulled+stop_data_unavailable = 0+1+16+0+4+8+0 = 29)
+// overshot resolved by exactly that 1-row overlap and reported a false RED on genuinely
+// self-consistent production data.
+test("verdictForRecord: a real unfilled/pulled overlap is GREEN, not a false RED (live 2026-09-14 case)", () => {
+  const res = verdictForRecord({
+    fetchOk: true,
+    segment: {
+      resolved: 28, wins: 0, losses: 1, opens: 16, ambiguous: 0,
+      unfilled: 4, unfilled_not_pulled: 3, pulled: 8, stop_data_unavailable: 0,
+    },
+  });
+  assert.equal(res.verdict, "GREEN", res.evidence);
+});
+
+test("verdictForRecord: without unfilled_not_pulled in the payload, falls back to the flat unfilled count (older/partial payload shape)", () => {
+  const res = verdictForRecord({
+    fetchOk: true,
+    segment: { resolved: 10, wins: 2, losses: 3, opens: 4, ambiguous: 0, unfilled: 1, pulled: 0, stop_data_unavailable: 0 },
+  });
+  assert.equal(res.verdict, "GREEN");
 });
 
 test("verdictForPullConsistency: fetch failure is RED, never silently skipped", () => {

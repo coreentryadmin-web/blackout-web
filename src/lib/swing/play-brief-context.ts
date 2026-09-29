@@ -5,6 +5,9 @@
 import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { fetchOpenSwingPositions, fetchSwingPositionById, fetchSwingPositionChain } from "@/lib/db";
+import { buildSwingRecord } from "./record";
+import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
+import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext, SwingRollHistory } from "./play-brief-types";
@@ -15,6 +18,7 @@ import type { PortfolioPosition } from "./portfolio";
 import { readSwingArchetypeTrackRecord } from "./calibration-cache";
 import { withBriefSourceTimeout } from "./brief-source-timeout";
 import { swingRollHistoryLegFromRow } from "./play-brief-roll-history";
+import { loadTickerTrackRecord } from "./play-brief-ticker-history";
 
 /**
  * The network-bound reads below (Meridian timeline/peer-cohort, ecosystem context, Vector
@@ -37,15 +41,58 @@ import { swingRollHistoryLegFromRow } from "./play-brief-roll-history";
  * under review is NOT filtered out here — `bookContextSection` passes the reviewed play's ledger
  * id into `checkPortfolioOverlap` so the correct row is excluded even when multiple independent
  * positions share ticker+direction.
+ *
+ * FIX (Ask Largo standing mandate, 2026-09-12): this used to return ONLY `swing_positions` rows.
+ * Engine B (Banger) open positions live in the entirely separate `banger_positions` table and are
+ * merged into the Swing lane's DISPLAY by banger-lane-merge.ts, but nothing merged them into THIS
+ * book — so `bookContextSection`'s theme/direction overlap check was blind to them. Confirmed live
+ * 2026-09-12 (GET /api/market/nighthawk/horizons?view=swings): of 85 open SWING-lane positions, 80
+ * (94%) are banger-origin — and since the 5 remaining swing-ledger-native positions independently
+ * share no theme/direction with each other right now, "Book context" was not merely under-firing,
+ * it never fired for ANY reviewed play at all (verified across every open position sampled: AAPL,
+ * NRG, NN, CG, CRWD, plus several banger-origin tickers). This is the same fail-soft,
+ * flag-gated (`isBangerEngineEnabled`) merge pattern `fetchActiveSwingPlaysForMarks`
+ * (live-marks-active.ts) already uses for the live-marks lane — mirrored here rather than
+ * reinvented, so a disabled Engine B (`BANGER_ENGINE_ENABLED=0`) correctly leaves this book
+ * swing-only, same as it already leaves the marks lane and the horizons board swing-only.
  */
 async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
   try {
     const rows = await fetchOpenSwingPositions();
-    return rows.map((r) => ({
+    const swingPositions: PortfolioPosition[] = rows.map((r) => ({
       ticker: r.ticker,
       direction: r.direction === "short" ? ("SHORT" as const) : ("LONG" as const),
       positionId: r.id,
     }));
+
+    let bangerPositions: PortfolioPosition[] = [];
+    if (isBangerEngineEnabled()) {
+      try {
+        const bangerRows = await fetchBangerOpenBookRows();
+        // `positionId` is deliberately left UNSET here (never `bangerRow.id`) — banger_positions
+        // and swing_positions are separate DB sequences that CAN collide on numeric id, and
+        // `checkPortfolioOverlap`'s `excludePositionId` trusts that id as an exact identity match;
+        // stamping a banger row's id as a swing positionId risks excluding (or wrongly matching)
+        // an unrelated row on a coincidental collision — the same risk play-brief.ts's
+        // `siblingPositionsNote` (2026-09-11) already documented for this exact pair of tables.
+        // Leaving it unset falls back to `checkPortfolioOverlap`'s ticker+direction self-exclusion,
+        // which is exact here: every banger position is a long call (banger-lane-merge.ts hardcodes
+        // `direction: "LONG"` — `banger_positions` has no `direction` column at all), so there is no
+        // per-row direction to get wrong.
+        //
+        // `bangerId` (distinct from `positionId` above, never read by the exclude/match logic) DOES
+        // carry the real banger_positions row id — display-only, so two genuinely separate Banger
+        // positions on the same ticker (a real, live case: two independently-committed CRWD LONGs)
+        // can be told apart in the rendered concentration list instead of both showing the identical
+        // bare "CRWD LONG (separate, cross-engine position)" text. See `PortfolioPosition.bangerId`'s
+        // own doc comment (portfolio.ts) for why this is a new field, not a reuse of `positionId`.
+        bangerPositions = bangerRows.map((r) => ({ ticker: r.ticker, direction: "LONG" as const, bangerId: r.id }));
+      } catch {
+        /* fail-soft — the swing-ledger book still renders without the banger merge */
+      }
+    }
+
+    return [...swingPositions, ...bangerPositions];
   } catch {
     return null;
   }
@@ -83,10 +130,34 @@ async function loadRollHistory(positionId: number | null | undefined): Promise<S
     const rootId = row.root_position_id ?? row.id;
     const chain = await fetchSwingPositionChain(rootId);
     if (chain.length < 2) return null; // never rolled — nothing to disclose
+    // Same function record.ts's own route (/api/market/swing/record) and the Closed-tab list view
+    // (closedDeckSourcesFromChains) use — never recomputed here, so this can't drift from either.
+    // Only cite the composite once the chain has actually closed; a still-rolling chain's "worst
+    // leg so far" isn't the chain's real result yet.
+    const { composite } = buildSwingRecord(chain);
     return {
       rollCount: chain.length - 1,
       legs: chain.map((r) => swingRollHistoryLegFromRow(r)),
+      chainComposite: composite.chainResolved ? composite : null,
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Root position id for the chain backing `positionId`, when it has a ledger row — used to
+ * self-exclude the reviewed play's own chain from its ticker-scoped "prior trades" citation
+ * (play-brief-ticker-history.ts). A WATCH/lane-only candidate has no `positionId` at all (nothing
+ * to exclude — every closed chain on the ticker is genuinely "prior"). Best-effort like every
+ * other context read here: a DB hiccup returns `null` (no exclusion applied) rather than failing.
+ */
+async function resolveRootPositionId(positionId: number | null): Promise<number | null> {
+  if (positionId == null) return null;
+  try {
+    const row = await fetchSwingPositionById(positionId);
+    if (!row) return null;
+    return row.root_position_id ?? row.id;
   } catch {
     return null;
   }
@@ -105,8 +176,23 @@ export async function loadSwingPlayBriefContext(
   if (!resolved) return null;
 
   const ticker = resolved.play.ticker.toUpperCase();
-  const meridian = await withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() => null);
-  const meridianPeer = await withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() => null);
+
+  // PERFORMANCE FIX (standing latency mandate, 2026-09-22): `meridian` and `meridianPeer` used to
+  // be `await`ed one after another BEFORE the `Promise.all` below ever started — meridianPeer
+  // genuinely depends on meridian's own result (it reads `meridian.items` to find an earnings
+  // catalyst to fetch peers for), but nothing about the OTHER six sources depends on either of
+  // them. Sequencing them ahead of the fan-out serialized up to 3 full `withBriefSourceTimeout`
+  // budgets (meridian 8s + meridianPeer 8s + the Promise.all's own up-to-8s) into a ~24s worst
+  // case, on the exact request this file's own header comment already documents as having hung
+  // past a 120s client timeout under real upstream stalls (2026-09-09). Chaining meridianPeer off
+  // meridian with `.then()` and folding both into the SAME `Promise.all` as the other six reads
+  // keeps the real dependency (meridianPeer still only starts once meridian resolves) while
+  // letting every independent source race concurrently — worst case drops to ~16s (the
+  // meridian→meridianPeer chain, still the tallest single path) instead of ~24s.
+  const meridianPromise = withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() => null);
+  const meridianPeerPromise = meridianPromise.then((meridian) =>
+    withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() => null),
+  );
 
   // Distinguish a genuine "no data" null from a thrown fetch — FINDINGS 2026-09-06 (#11): an
   // ecosystem/vector fetch that THROWS must not read the same as one that legitimately returned
@@ -114,12 +200,32 @@ export async function loadSwingPlayBriefContext(
   // rejection is just another throw here, so it flows through the same failed-flag path.
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
-  const [ecosystem, vector, openBook, archetypeTrackRecord, rollHistory] = await Promise.all([
-    withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch(() => {
+  const positionId = positionIdFromPlayId(resolved.play.id);
+  const [
+    meridian,
+    meridianPeer,
+    ecosystem,
+    vector,
+    openBook,
+    archetypeTrackRecord,
+    rollHistory,
+    tickerTrackRecord,
+  ] = await Promise.all([
+    meridianPromise,
+    meridianPeerPromise,
+    withBriefSourceTimeout(fetchEcosystemContext(ticker)).catch((err) => {
+      // BUG FIX (2026-09-28, Ask Largo standing mandate, live repro AMZN play-brief): this catch
+      // swallowed the actual error with no log line at all — the member-facing envelope correctly
+      // surfaces "ecosystem context ... fetch failed" via unavailableSources, but nobody could ever
+      // tell WHY from CloudWatch (timeout vs a real provider error vs which upstream). Identical bug
+      // shape to swing-discovery.ts's Tier-0 origin fetch, already fixed there (its own comment:
+      // "invisible in CloudWatch... distinguishable... only by reading a field nobody was tailing").
+      console.warn(`[swing-play-brief] ecosystem context fetch failed for ${ticker}:`, err);
       ecosystemFetchFailed = true;
       return null;
     }),
-    withBriefSourceTimeout(fetchVectorFullState(ticker, normalizeDteHorizon("all"))).catch(() => {
+    withBriefSourceTimeout(fetchVectorFullState(ticker, normalizeDteHorizon("all"))).catch((err) => {
+      console.warn(`[swing-play-brief] Vector full-state fetch failed for ${ticker}:`, err);
       vectorFetchFailed = true;
       return null;
     }),
@@ -135,7 +241,24 @@ export async function loadSwingPlayBriefContext(
     withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch(() => null),
     // Best-effort like the read above — a DB hiccup degrades to "no roll history cited" rather
     // than failing the whole brief; loadRollHistory already wraps its own try/catch.
-    withBriefSourceTimeout(loadRollHistory(positionIdFromPlayId(resolved.play.id))).catch(() => null),
+    withBriefSourceTimeout(loadRollHistory(positionId)).catch(() => null),
+    // Ask Largo C10 (historical context, TICKER-scoped) — see play-brief-ticker-history.ts's
+    // header for why this is a plain, best-effort live read rather than a cron-distilled cache
+    // like archetypeTrackRecord above. Self-excludes the reviewed play's own chain (resolved via
+    // resolveRootPositionId, a second small best-effort DB read) so a CLOSED/OPEN position never
+    // cites itself as "prior" evidence. Also passes the reviewed play's own resolution instant
+    // (`exitAt`, null for a still-open play) so a chain that resolved AT OR AFTER this play can
+    // never be cited as "traded before this play" — see play-brief-ticker-history.ts's TEMPORAL
+    // ORDERING note for the live future-leak this closes.
+    withBriefSourceTimeout(
+      resolveRootPositionId(positionId).then((rootId) =>
+        loadTickerTrackRecord(
+          resolved.play.ticker,
+          rootId,
+          resolved.play.exitAt ? (Date.parse(resolved.play.exitAt) || null) : null,
+        ),
+      ),
+    ).catch(() => null),
   ]);
 
   const nowMs = Date.now();
@@ -157,5 +280,6 @@ export async function loadSwingPlayBriefContext(
     vectorFetchFailed,
     archetypeTrackRecord,
     rollHistory,
+    tickerTrackRecord,
   };
 }

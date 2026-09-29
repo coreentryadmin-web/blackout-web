@@ -26,6 +26,15 @@
  * Everything genuinely edition-specific stays: the recap headline/summary, catalysts,
  * after-hours catalysts, sector strength/weakness and tides, index flows, hot chains,
  * VIX term and IV rank, index dossiers, top net impact.
+ *
+ * ADDED (2026-09-18 audit): `run-tool.ts`'s caller used to feed this composer a BARE DB row
+ * (`marketPlatform.nighthawk.getLatestNightHawkEdition()`/`getNightHawkEditionForDate()` —
+ * `rowToNightHawkEdition` with no overlays), so `degraded`/`stale`/`served_for`/
+ * `carry_until_close`/`no_plays` were never even computed on this path, let alone forwarded —
+ * a silent absence-disclosure gap (a stale or carried-forward edition read as an ordinary fresh
+ * one). The caller now runs the same `resolveNighthawkEdition` fallback ladder the member route
+ * uses (`src/features/nighthawk/lib/resolve-edition.ts`), so these fields are real; this composer
+ * forwards them plus a synthesized `freshness_note` so the model can actually pass the caveat on.
  */
 
 /** Recap sub-blobs that are live snapshots owned by another tool, not edition content.
@@ -48,6 +57,21 @@ type EditionLike = {
   recap_only?: boolean;
   recap_only_reason?: unknown;
   funnel?: unknown;
+  /** True when this edition came from a degraded/legacy fallback rather than the first-class
+   *  published pipeline (see `NightHawkEdition.degraded`'s own doc). Must reach the model — a
+   *  degraded answer presented as an ordinary one is exactly the absence-disclosure gap the Largo
+   *  product contract exists to prevent. */
+  degraded?: boolean;
+  /** True when the served edition is an OLDER stored edition than the one requested — the
+   *  bounded-age "latest" fallback (see `NightHawkEdition.stale`'s own doc). */
+  stale?: boolean;
+  /** The edition_for date that was actually served when `stale` or `carry_until_close` is true. */
+  served_for?: string | null;
+  /** True when a still-open prior session's playable edition is being carried forward because
+   *  tonight's hasn't published yet and the prior session hasn't closed. */
+  carry_until_close?: boolean;
+  /** True when a REAL, published edition carries zero plays — distinct from `available: false`. */
+  no_plays?: boolean;
 };
 
 /**
@@ -81,6 +105,34 @@ export function compactNightHawkEditionForModel(edition: EditionLike | null): Mo
 
   const plays = Array.isArray(edition.plays) ? edition.plays : [];
 
+  // FIXED (2026-09-18): these five fields are real freshness/absence state the member route
+  // computes (carry-forward of a still-open prior session, a bounded-age "latest" fallback, a
+  // degraded legacy-engine source, a real publish with zero surviving plays) — omitting them here
+  // is exactly the "absence must be disclosed, never silent" violation the Largo product contract
+  // names. A degraded/stale/carried-forward edition must never be reported as an ordinary fresh one.
+  const freshnessNotes: string[] = [];
+  if (edition.degraded) {
+    freshnessNotes.push(
+      "DEGRADED: this came from a fallback source, not the first-class published pipeline — treat it as lower-confidence."
+    );
+  }
+  if (edition.carry_until_close) {
+    freshnessNotes.push(
+      `CARRIED FORWARD: tonight's edition has not published yet, so this is the still-open prior ` +
+        `session's edition (for ${edition.served_for ?? "an earlier date"}), not a fresh one.`
+    );
+  } else if (edition.stale) {
+    freshnessNotes.push(
+      `STALE: no edition exists for the requested/current date — this is the most recent ` +
+        `edition actually published, for ${edition.served_for ?? "an earlier date"}.`
+    );
+  }
+  if (edition.no_plays) {
+    freshnessNotes.push(
+      "NO PLAYS: this edition genuinely published with zero plays surviving the funnel — not a missing/unpublished edition."
+    );
+  }
+
   return {
     available: edition.available ?? plays.length > 0,
     edition_for: edition.edition_for ?? null,
@@ -93,6 +145,14 @@ export function compactNightHawkEditionForModel(edition: EditionLike | null): Mo
     recap_only: edition.recap_only ?? false,
     recap_only_reason: edition.recap_only_reason ?? null,
     funnel: edition.funnel ?? null,
+    // Named, not silent — same discipline as market_recap_omitted_note below. A model that never
+    // sees these flags cannot pass the freshness caveat on to the member.
+    degraded: edition.degraded ?? false,
+    stale: edition.stale ?? false,
+    served_for: edition.served_for ?? null,
+    carry_until_close: edition.carry_until_close ?? false,
+    no_plays: edition.no_plays ?? false,
+    freshness_note: freshnessNotes.length ? freshnessNotes.join(" ") : null,
     market_recap: keptRecap,
     // Named, not silent — see rule 2. Absence of a field must never read as absence
     // of the data; it means "that data lives behind another tool".

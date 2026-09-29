@@ -242,9 +242,20 @@ export async function closeAndRollSwingPosition(
     }
 
     // Append the management snapshot documenting the roll/close tick (append-only) — outside the terminal tx,
-    // as it is evidence, not part of the all-or-nothing close.
-    const snapshotId = req.snapshot ? await deps.insertSnapshot(req.snapshot) : null;
-    return { ...base, childId, parentGraded: true, snapshotId };
+    // as it is evidence, not part of the all-or-nothing close. The terminal write above already committed
+    // (parent graded, and on a ROLL the child inserted), so a failure HERE must not be reported as a roll/close
+    // failure — that would falsely tell the caller the parent is still OPEN when it is already terminal. A real
+    // caller (swing-active-refresh/route.ts) gates its member-facing terminal Discord notification on
+    // `parentGraded`, so collapsing this into the outer catch silently drops that notification for a roll/close
+    // that genuinely happened, just because the trailing evidence write hiccuped.
+    let snapshotId: number | null = null;
+    let snapshotError: string | undefined;
+    try {
+      snapshotId = req.snapshot ? await deps.insertSnapshot(req.snapshot) : null;
+    } catch (err) {
+      snapshotError = err instanceof Error ? err.message : String(err);
+    }
+    return { ...base, childId, parentGraded: true, snapshotId, error: snapshotError };
   } catch (err) {
     // Fail-soft. On a ROLL, a child-insert failure (or a rolled-back atomic roll) leaves parentGraded false →
     // the parent is still OPEN, so the position is never half-closed.

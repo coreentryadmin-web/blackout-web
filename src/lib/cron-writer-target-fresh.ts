@@ -112,29 +112,27 @@ export async function probeWriterTargetFresh(jobKey: string): Promise<WriterTarg
       }
     }
     case "zerodte-warm": {
-      // Renamed from "grid-warm" when classic Grid was deleted (2026-07-07). That cron used to
-      // warm 8 classic-Grid panels + this probe checked the Analyst Actions panel's cache key as
-      // a proxy for "the cron ran." The panel (and its cache key) are gone; the cron now warms
-      // 0DTE Command's earnings-match cache instead, so probe THAT key.
-      const { ZERODTE_EARNINGS_KEY } = await import("@/lib/zerodte/earnings");
-      const { getUwCacheRedis } = await import("@/lib/providers/uw-shared-cache");
-      const redis = await getUwCacheRedis();
-      if (!redis) return null;
-      try {
-        const raw = await redis.get(`uw_cache:${ZERODTE_EARNINGS_KEY}`);
-        if (!raw) return { fresh: false, detail: "zerodte-earnings cache miss" };
-        const parsed = JSON.parse(raw) as { as_of?: string };
-        const ageMin = ageMinFromIso(parsed.as_of);
-        const ttl = await uwCacheRemainingTtlSec(ZERODTE_EARNINGS_KEY);
-        const fresh =
-          (ageMin != null && ageMin <= 15) || (ttl != null && ttl > 0 && ttl <= 900);
-        return {
-          fresh,
-          detail: `zerodte-earnings asof ${ageMin != null ? `${ageMin.toFixed(1)}m` : "?"} ago${ttl != null ? `, ttl ${ttl}s` : ""}`,
-        };
-      } catch {
-        return { fresh: false, detail: "zerodte-earnings probe failed" };
-      }
+      // Was: probe the Analyst Actions panel cache key (pre-2026-07-07 classic Grid), then the
+      // 0DTE earnings-match cache key after the rename. BOTH are wrong proxies
+      // for the same reason: they reflect the route's FAST synchronous sub-task (warmGridEarnings,
+      // awaited before the 202 response), which keeps succeeding even when the route's HEAVY
+      // background chain (warmZeroDteBoard -> scanZeroDteBoard -> persistZeroDteScan ->
+      // discovery-events, dispatched fire-and-forget) silently stalls for tens of minutes —
+      // exactly the failure this override exists to catch. Measured live 2026-09-16: the earnings
+      // cache stayed fresh throughout a real ~35min scanner stall, so this probe would have
+      // reported "target fresh" and suppressed the stale flag the whole time. Probe the scanner's
+      // OWN heartbeat instead (recordZeroDteScanTick, ticked only after scanZeroDteBoard()
+      // actually returns inside warmZeroDteBoard) — the same signal admin-cron-health.ts's
+      // zerodte-warm cross-check now reads directly, so this override can no longer contradict it.
+      const { loadZeroDteScanHeartbeat } = await import("@/lib/play-engine-heartbeat");
+      const hb = await loadZeroDteScanHeartbeat();
+      if (!hb.last_tick_at) return { fresh: false, detail: "zerodte-scan heartbeat never ticked" };
+      const ageMin = hb.age_ms != null ? hb.age_ms / 60_000 : null;
+      const fresh = !hb.stale && !hb.critical_stale;
+      return {
+        fresh,
+        detail: `zerodte-scan tick ${ageMin != null ? `${ageMin.toFixed(1)}m` : "?"} ago`,
+      };
     }
     case "uw-cache-refresh": {
       const { UW_KEYS } = await import("@/lib/providers/uw-shared-cache");

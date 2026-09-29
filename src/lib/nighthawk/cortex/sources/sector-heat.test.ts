@@ -30,6 +30,29 @@ describe("sector-heat: single-name sector alignment", () => {
     assert.equal(deriveSectorHeatEvidence(short)[0].stance, "supports");
   });
 
+  test("a ticker diverging positively from a falling sector shows a visible + sign", () => {
+    // Regression: the ticker's own change used to render via fmtNum, which prints
+    // a leading "-" for negatives but never a "+" for positives — so "(TEST 2.94%)"
+    // right next to "-1.9%" read as same-signed when TEST was actually UP while its
+    // sector was DOWN, exactly the decoupling case this source exists to surface.
+    const input = baseInputs({
+      direction: "long",
+      sector: sector({ sectorChangePct: -1.9, tickerChangePct: 2.94 }),
+    });
+    const item = deriveSectorHeatEvidence(input)[0];
+    assert.match(item.detail, /TEST \+2\.94%/);
+    assert.doesNotMatch(item.detail, /TEST -?2\.94%\)/); // never bare or double-signed
+  });
+
+  test("a ticker also falling with its sector still shows its own minus sign", () => {
+    const input = baseInputs({
+      direction: "long",
+      sector: sector({ sectorChangePct: -1.9, tickerChangePct: -0.8 }),
+    });
+    const item = deriveSectorHeatEvidence(input)[0];
+    assert.match(item.detail, /TEST -0\.8%/);
+  });
+
   test("a flat sector (<0.5%) is absent, not a fabricated lean", () => {
     const input = baseInputs({ direction: "long", sector: sector({ sectorChangePct: 0.3 }) });
     const item = deriveSectorHeatEvidence(input)[0];

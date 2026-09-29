@@ -359,6 +359,25 @@ async function buildRollChild(
       model_contracts: 1,
       is_event: isEventArchetype(archetype),
       is_overnight: true,
+      // Ask Largo standing mandate (#4076): forward the parent's discovery provenance so
+      // computeSwingThesisHealth's flow_corroboration pillar stays calibrated across a roll.
+      // Same structural-loss shape as the WATCH→COMMIT gap #5336/#5334 already fixed for
+      // entryStatus/setupState (a row shape built at a transition boundary silently drops a
+      // field the ORIGINAL commit had) — this is the sibling gap at the COMMIT→ROLL-CHILD
+      // boundary instead. Before this fix `entry_context` here never carried `signal_kinds` at
+      // all, so `livePlayFromSwingPosition`'s array-shape read (live-plays.ts) always produced
+      // `undefined` for a rolled position, which by itself trips `thesisHealthUncalibrated()`
+      // (an OR across all five pillars) — PERMANENTLY, for the rest of that position's life,
+      // regardless of the entry-geometry/persistence fixes, since a roll child never re-derives
+      // this pillar from anywhere else. Live-verified 2026-09-21: AAPL SWING:AAPL:40 (rolled
+      // 330C→335C this morning) still showed "Inputs not wired for committed positions" despite
+      // both sibling pillars being wired — traced to this exact omission. Read with the same
+      // array-shape guard live-plays.ts uses (never trust an unknown JSONB blob's shape blindly).
+      signal_kinds: Array.isArray((row.entry_context as { signal_kinds?: unknown } | null)?.signal_kinds)
+        ? (row.entry_context as { signal_kinds: unknown[] }).signal_kinds.filter(
+            (k): k is string => typeof k === "string",
+          )
+        : null,
     },
     status: "OPEN",
   };

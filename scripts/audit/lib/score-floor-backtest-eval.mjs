@@ -29,13 +29,21 @@
 export { scoreSeparation } from "./helix-score-eval.mjs";
 
 /** Straddles ZERODTE_SCORE_FLOOR=65 exactly: "55-64" is the population score_floor blocks today,
- *  "65-74" is the population it lets straight through. Every other band brackets the rest of the
+ *  "65-74" used to be the population it lets straight through in one piece — but G-17
+ *  (gates.ts) was RESTRUCTURED 2026-09-09 (the day after this backtest's last graded session,
+ *  2026-09-08) from a flat 65-74 admission rule into two sub-bands with different real
+ *  admission paths: 65-69 now REJECTS UNCONDITIONALLY (`single_rail_corroboration`, no
+ *  admission path at all), while 70-74 is CONDITIONAL (needs confluence>=2 AND clean
+ *  tape/VIX/execution — `conditional_band_unmet`). The old merged "65-74 (clears today)" bucket
+ *  could never tell whether an ordering problem sits in 65-69, in 70-74, or both — split to map
+ *  directly onto G-17's real admission boundary. Every other band brackets the rest of the
  *  0-100 range the real score formula (board.ts) can produce. */
 export const SCORE_BUCKETS = [
   { label: "0-39", min: 0, max: 39.999 },
   { label: "40-54", min: 40, max: 54.999 },
   { label: "55-64 (blocked today)", min: 55, max: 64.999 },
-  { label: "65-74 (clears today)", min: 65, max: 74.999 },
+  { label: "65-69 (G-17 unconditional reject)", min: 65, max: 69.999 },
+  { label: "70-74 (G-17 conditional admission)", min: 70, max: 74.999 },
   { label: "75-84", min: 75, max: 84.999 },
   { label: "85-100", min: 85, max: 100 },
 ];
@@ -123,13 +131,32 @@ export function summarizeByBucket(rows) {
 }
 
 /**
- * The headline comparison this whole backtest exists to answer: does the population score_floor
- * lets through today (65-74) actually grade better than the population it blocks (55-64)? Returns
- * null when either band is absent (n=0) — never fabricates a delta from a missing side.
+ * The headline comparison this whole backtest exists to answer: does the population that
+ * actually clears live today (70-74, G-17's conditional-admission band — 65-69 is ALSO blocked
+ * live, by G-17, so it no longer represents "clears") grade better than the population G-3 blocks
+ * outright (55-64)? Returns null when either band is absent (n=0) — never fabricates a delta from
+ * a missing side. Named/shaped to stay a drop-in successor to the pre-2026-09-17 "65-74 (clears
+ * today)" comparison this replaces.
  */
 export function crossFloorComparison(summary) {
   const below = summary.find((s) => s.bucket.startsWith("55-64"));
-  const above = summary.find((s) => s.bucket.startsWith("65-74"));
+  const above = summary.find((s) => s.bucket.startsWith("70-74"));
   if (!below || !above || below.winRate == null || above.winRate == null) return null;
   return { below, above, deltaPp: above.winRate - below.winRate };
+}
+
+/**
+ * G-17's own justification for treating 65-69 and 70-74 differently (gates.ts's 2026-09-09
+ * comment): a genuinely well-confirmed 70-74 setup should NOT be equally weak EV as an
+ * unconfirmed 65-69 one — that is the entire premise of giving 70-74 a conditional admission
+ * path while 65-69 gets none. This is the direct test: does 70-74 actually grade better than
+ * 65-69 in this population? Returns null when either band is absent (n=0).
+ */
+export function g17BandSeparation(summary) {
+  const rejectBand = summary.find((s) => s.bucket.startsWith("65-69"));
+  const conditionalBand = summary.find((s) => s.bucket.startsWith("70-74"));
+  if (!rejectBand || !conditionalBand || rejectBand.winRate == null || conditionalBand.winRate == null) {
+    return null;
+  }
+  return { rejectBand, conditionalBand, deltaPp: conditionalBand.winRate - rejectBand.winRate };
 }

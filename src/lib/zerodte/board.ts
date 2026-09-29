@@ -744,6 +744,24 @@ export type ZeroDteSetup = {
    * gate stack still judges `score`. Null only if the tape produced no usable prints.
    */
   flow_quality: FlowQuality | null;
+  /**
+   * Real intraday day % change magnitude (e.g. 8.2 for an 8.2% move), from the SAME grouped-daily
+   * bar already fetched for the whole-market BREAKOUT/BREAKDOWN screen (`mover.gain × 100` —
+   * screenBreakoutMovers/screenBreakdownMovers, candidates.ts). Populated ONLY by
+   * buildBreakoutSetup (breakout-source.ts) for BREAKOUT-origin setups: FLOW/PIN-origin setups
+   * have no equivalent already-fetched change% source (their dossier's `tech` carries
+   * rel_volume, not a day-change field), and fabricating one there would violate the
+   * never-invent-an-input discipline (docs/audit/LARGO-PRODUCT-CONTRACT.md). Feeds
+   * scoreMomentumRail's `change_pct` input (rails/momentum.ts, wired via
+   * rails/legacy-bridge.ts's `railHitsFromLegacySetup`) — see that rail's own comment for why
+   * this field existing matters: without it, a BREAKOUT-origin setup's MOMENTUM rail score was
+   * structurally capped near 62 (no rel_volume either, since enrichSetup runs with a null
+   * dossier for this origin — breakout-source.ts's own comment), which tripped
+   * archetype-gates.ts's `momentum_abs_floor` (>=60) on real, tradeable breakout continuations
+   * that simply lacked a corroborating input the origin was never given a chance to supply.
+   * null/absent for every other origin — never fabricated.
+   */
+  change_pct?: number | null;
 };
 
 // Exported so the audit trail (buildZeroDteAuditRow below) can cite the actual

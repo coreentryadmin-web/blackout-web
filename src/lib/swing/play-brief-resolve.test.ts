@@ -1,8 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { before, describe, mock } from "node:test";
+import { before, describe, it, mock } from "node:test";
 import type { HorizonPlay } from "@/lib/horizon-plays";
-import { pickLanePlayForBrief, parseSwingPlayId, resolveBriefIvRank } from "./play-brief-resolve-pure";
+import {
+  pickLanePlayForBrief,
+  parseSwingPlayId,
+  resolveBriefIvRank,
+  rightFromContractType,
+} from "./play-brief-resolve-pure";
 import { attachThesisExplanation, dossiersByTicker } from "./serving-lane";
 import { buildSwingDossier, type SwingDossierInput } from "./dossier";
 import type { SwingReads } from "../swing-signals";
@@ -34,6 +39,30 @@ function laneRow(overrides: Partial<HorizonPlay> & { ticker: string }): HorizonP
     ...overrides,
   };
 }
+
+// BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
+// roll-history fix and this cycle's closed-plays.ts/live-plays.ts sibling fixes).
+// `rightFromContractType` backs `rowContractMatches` in play-brief-resolve.ts, a function that
+// exists specifically to fix ticker-collision identity bugs (file header: "NRG OPEN 110C vs WATCH
+// 115C"). The old inline `contract_type === "put" ? "P" : "C"` ternary made a row whose real
+// contract_type was never recorded FALSELY MATCH a hint asking for "C" — a correctness bug in
+// WHICH position resolves, not just cosmetic narrative. (Tested here via the pure helper rather
+// than `rowContractMatches` itself, since play-brief-resolve.ts pulls in the server-only-guarded
+// DB/Vector import chain and cannot be imported from a plain node:test file.)
+describe("rightFromContractType — absence must not resolve to either side", () => {
+  it("null contract_type maps to null, not a fabricated 'C'", () => {
+    assert.equal(rightFromContractType(null), null);
+  });
+
+  it("an unrecognized contract_type value also maps to null, same fail-closed rule", () => {
+    assert.equal(rightFromContractType("unknown"), null);
+  });
+
+  it("a real 'call' maps to 'C' and a real 'put' maps to 'P'", () => {
+    assert.equal(rightFromContractType("call"), "C");
+    assert.equal(rightFromContractType("put"), "P");
+  });
+});
 
 test("parseSwingPlayId: extracts ticker and position id", () => {
   assert.deepEqual(parseSwingPlayId("SWING:NRG"), { ticker: "NRG", positionId: null });
@@ -114,6 +143,44 @@ test("pickLanePlayForBrief: contract strike disambiguates same ticker", () => {
   ];
   const picked = pickLanePlayForBrief(rows, "META", { strike: 580, right: "C" });
   assert.equal(picked?.contract.strike, 580);
+});
+
+// BANGER-ORIGIN IDENTITY FIX (Ask Largo standing mandate, 2026-09-21). Live-repro'd on ABTC
+// 2026-09-21: two concurrent banger-origin swing positions (9.5C TRIM +200%, 10.5C OPEN +25%),
+// each carrying its own real `positionId` (banger_positions.id — see banger-lane-merge.ts).
+// `?playId=SWING:ABTC:1220` and `?playId=SWING:ABTC:1185` (and the equivalent `&positionId=`
+// query-param forms) both resolved to the IDENTICAL 9.5C brief before this fix — the positionId
+// hint was silently dropped by `pickLanePlayForBrief` (it only ever checked strike/right/status),
+// so with neither given, resolution fell to the highest-live-P&L tiebreak regardless of which
+// position was actually asked about.
+test("pickLanePlayForBrief: exact positionId hint resolves the SPECIFIC banger-origin leg, not the highest-P&L one", () => {
+  const rows = [
+    laneRow({
+      ticker: "ABTC",
+      score: 62,
+      positionId: 1185,
+      liveStatus: "TRIM",
+      livePnlPct: 200,
+      contract: { ticker: "ABTC", strike: 9.5, right: "C", expiry: "2026-09-25", dte: 4, mid: 1.05, bid: null, ask: null, delta: null, openInterest: 0 },
+    }),
+    laneRow({
+      ticker: "ABTC",
+      score: 65,
+      positionId: 1220,
+      liveStatus: "OPEN",
+      livePnlPct: 25,
+      contract: { ticker: "ABTC", strike: 10.5, right: "C", expiry: "2026-09-25", dte: 4, mid: 0.5, bid: null, ask: null, delta: null, openInterest: 0 },
+    }),
+  ];
+  // Without the fix, no strike/right/status hint means the sort-by-livePnlPct fallback always wins
+  // — asking for 1220 (the LOWER P&L leg) must still return 1220, not silently swap to 1185.
+  const pickedLowerPnl = pickLanePlayForBrief(rows, "ABTC", { positionId: 1220 });
+  assert.equal(pickedLowerPnl?.positionId, 1220);
+  assert.equal(pickedLowerPnl?.contract.strike, 10.5);
+
+  const pickedHigherPnl = pickLanePlayForBrief(rows, "ABTC", { positionId: 1185 });
+  assert.equal(pickedHigherPnl?.positionId, 1185);
+  assert.equal(pickedHigherPnl?.contract.strike, 9.5);
 });
 
 // ── loadOpenTerminalPlay: Ask Largo must restore factors/regime the same way the main board does ──
@@ -378,6 +445,71 @@ describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolv
       resolved!.play.status,
       "CLOSED",
       `must resolve the CLOSED position (id 30), not the live WATCH row — got status "${resolved!.play.status}"`,
+    );
+  });
+});
+
+// BUG FOUND 2026-09-27 (Ask Largo standing mandate, live 5-engine monitor cycle). Unlike the
+// INTC case above (positionId supplied separately), a caller with ONLY a ticker + an explicit
+// `status=CLOSED` hint — no positionId at all — had NO guard: `pickLanePlayForBrief` never reads
+// `hints.status`, so it happily matched the ticker against a live lane row and returned it,
+// silently overriding the caller's explicit request for the CLOSED play. Live repro:
+// `GET /api/market/swing/play-brief?playId=SWING:HUT&ticker=HUT&status=CLOSED` (no positionId)
+// returned an ACTIVE TRIM position (a different contract entirely) instead of the CLOSED one;
+// the identical request WITH positionId correctly resolved the closed play. Fixed by skipping the
+// lane fallback outright whenever `status` explicitly says CLOSED — lane rows are never closed
+// (confirmed: serving-lane.ts has no CLOSED status path), so this can only ever help, not regress.
+describe("resolveSwingPlayForBrief: ticker-only + status=CLOSED (no positionId) must resolve the CLOSED position, not an unrelated live lane row for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("status=CLOSED with no positionId skips the live lane row and finds the closed position", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("HUT", 41),
+        status: "CLOSED",
+        graded_at: "2026-09-24T20:00:00.000Z",
+        closed_at: "2026-09-24T20:00:00.000Z",
+        realized_pnl_pct: -35.4,
+      },
+    ];
+    // A DIFFERENT, currently-live TRIM candidate for the same ticker — exactly the shape that
+    // silently won before this fix, because pickLanePlayForBrief never checked `status` at all.
+    mockLaneRows = [laneRow({ ticker: "HUT", status: "TRIM" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:HUT", // no embedded position id
+      ticker: "HUT",
+      status: "CLOSED", // explicit hint, no positionId supplied at all
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(
+      resolved!.play.status,
+      "CLOSED",
+      `must resolve the CLOSED position, not the live TRIM row — got status "${resolved!.play.status}"`,
+    );
+  });
+
+  test("no status hint at all still prefers the live lane row (unchanged behavior)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      { ...openRow("HUT", 41), status: "CLOSED", graded_at: "2026-09-24T20:00:00.000Z", closed_at: "2026-09-24T20:00:00.000Z" },
+    ];
+    mockLaneRows = [laneRow({ ticker: "HUT", status: "TRIM" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:HUT", ticker: "HUT" });
+    assert.ok(resolved, "must resolve to something");
+    assert.notEqual(
+      resolved!.play.status,
+      "CLOSED",
+      "with no status hint, the live lane row is still the reasonable default — this fix must not change that",
     );
   });
 });

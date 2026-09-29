@@ -26,6 +26,18 @@ import type { BangerMover } from "../banger/discovery";
 const BANGER_SIGNAL = "BANGER";
 const LIVE_BANGER = new Set(["OPEN", "PARTIAL"]);
 
+/**
+ * Fixed `regime` sentinel stamped on EVERY banger_positions ledger row (see the two literal call
+ * sites below) — there is no real per-position 7-pillar dossier for this lane, so this string marks
+ * "no calibrated regime read exists for this play" rather than a real market-regime fact.
+ * `thesis-health.ts`'s `thesisHealthUncalibrated()` matches on this EXACT string to correctly OMIT
+ * (never fabricate) an aggregate thesis-health score for a banger-origin position — see its own doc
+ * comment. Exported (not a private literal duplicated in two files) so every reader of this sentinel
+ * shares one definition instead of independently re-typing the string, which is exactly what let it
+ * drift undetected in the first place (see `serving-lane.ts`'s `attachThesisExplanation` guard).
+ */
+export const BANGER_LEDGER_REGIME_LABEL = "BREAKOUT · BANGER";
+
 function etYmd(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
 }
@@ -56,12 +68,34 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
       : row.scale_out_action === "EXIT"
         ? "EXIT"
         : "HOLD";
+  // score IS the whole banger read (there is no separate 7-pillar dossier for this lane), so the
+  // "factors" breakdown below must attribute the ENTIRE score to this one signal — see the
+  // FINDINGS 2026-09-12 note on `factors` a few lines down for why this must equal `score` exactly.
+  const score =
+    gainPct != null ? Math.min(99, Math.max(60, 60 + Math.round(gainPct / 2))) : HORIZONS.SWING.scoreFloor;
 
   return {
     ticker: row.ticker.toUpperCase(),
+    // Banger's own primary key, doubling as the swing HorizonPlay's `positionId`. WITHOUT this,
+    // CommandDeck's row identity — `id: ${horizon}:${ticker}${positionId ? `:${positionId}` : ""}`
+    // (adapters.ts terminalPlayFromHorizon) — collapses to the bare `SWING:TICKER` for every
+    // banger-origin row, because this function used to omit positionId entirely. Two banger
+    // legs on the same ticker (e.g. one MANAGING, one already SCALING_OUT after a partial) then
+    // share ONE React key, and React's reconciliation does not "double render" on a key
+    // collision — it silently reuses/misattributes DOM state across re-renders (confirmed live
+    // 2026-09-20: searching the Swings desk's ticker box for one real position returned SEVEN
+    // unrelated tickers alongside it, all of them banger-origin MANAGING/SCALING_OUT rows sharing
+    // this same collapsed id, and the extraneous rows kept accumulating across successive
+    // searches in one session — a live symptom of the identity collision, not a filter-logic
+    // bug in DeckSearchBox itself, which was independently verified correct against ordinary
+    // non-colliding tickers). `row.id` is banger_positions' own auto-increment primary key, so it
+    // is unique per banger row the same way swing_positions.id already is for
+    // livePlaysFromOpenPositions (live-plays.ts) — the two id spaces are namespaced by `ticker`
+    // in the same template, so a numeric coincidence across the two tables still cannot collide.
+    positionId: row.id,
     direction: "LONG",
     horizon: "SWING",
-    score: gainPct != null ? Math.min(99, Math.max(60, 60 + Math.round(gainPct / 2))) : HORIZONS.SWING.scoreFloor,
+    score,
     status: "COMMIT",
     scoreFloor: HORIZONS.SWING.scoreFloor,
     reason: `Banger breakout +${gainPct ?? "—"}% · ${row.contract_strike}C ${row.contract_expiry}${closingSoon ? " · closing soon" : ""}`,
@@ -91,14 +125,35 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     entryPremium: entry,
     livePnlPct: livePnlPct(entry, mark),
     peakPremium: row.peak_premium,
+    // FINDINGS 2026-09-21: banger_positions never carried a trough_premium column at all (only
+    // peak), so this field was previously omitted here — not merely null, ABSENT from the
+    // object — which read to the play-brief as "field never wired" and rendered "Trough: —" on
+    // every BANGER-origin swing play regardless of whether the position had genuinely dipped
+    // below entry. Now that the column + latch exist (db.ts / positions-db.ts), forward it
+    // through same as peakPremium.
+    troughPremium: row.trough_premium,
     signalKinds: [BANGER_SIGNAL],
     bucketGraduated: false,
     liveStatus,
     manageAction,
     thesisLevel: "intact",
     thesisNote: row.scale_out_reason ?? "Engine B scale-out — whole-market breakout",
-    regime: "BREAKOUT · BANGER",
-    factors: gainPct != null ? [{ label: "Discovery gain", points: Math.round(gainPct) }] : [],
+    regime: BANGER_LEDGER_REGIME_LABEL,
+    // FINDINGS 2026-09-12: this used to be `points: Math.round(gainPct)` — the RAW underlying %
+    // gain since discovery, a completely different quantity (and roughly half the magnitude, since
+    // `score` above compounds it as `60 + gainPct/2`) from what every OTHER lane's `factors[].points`
+    // means (swing-pillars.ts: "points actually contributed" to `score`, where the two always sum
+    // exactly — see SwingPillarContribution). Both PlayTerminal.tsx's "Why this play was picked"
+    // panel and Ask Largo's play-brief `whyThisSetupSection` ("**Score pillars:**") render this
+    // array as if it explains `score` (a bar sized by `points`, a running "N factors" count) — so a
+    // live banger-origin commit rendered e.g. "SCORE 66" next to "Discovery gain +13 pts", which
+    // reads as "53 of the 66 points are unexplained". Live prod snapshot 2026-09-12 (`?view=swings`,
+    // committed SWING lane): ~85 of ~90 committed rows are this exact BREAKOUT/Banger pattern, every
+    // one short by roughly half its own score (e.g. ODD 66 vs 13pt, HPE 65 vs 10pt, DLLL 69 vs 18pt).
+    // Fix: attribute the WHOLE score to this one signal — there is no second pillar in this lane, so
+    // that is also the honest read, not just an arithmetic patch. Raw gain% stays visible via
+    // `reason` ("Banger breakout +N% · ...") a few lines above, so no information is lost.
+    factors: gainPct != null ? [{ label: "Discovery gain", points: score }] : [],
     // FINDINGS 2026-09-11: this was omitted entirely, so every banger-origin Swing position (the
     // majority of the live MANAGING/SCALING_OUT book once Engine B is merged in) served NO mark
     // freshness signal at all — indistinguishable from "genuinely unknown" to both the
@@ -125,11 +180,14 @@ export function horizonPlayFromBangerWatch(
   const dte = calendarDte(sessionDay, pick.expiry);
   if (!Number.isFinite(dte) || dte < HORIZONS.SWING.dteMin || dte > HORIZONS.SWING.dteMax) return null;
   const gainPct = Math.round(mover.gain * 1000) / 10;
+  // See horizonPlayFromBangerPosition's matching comment: `factors[].points` must equal `score`
+  // (the whole banger read IS this one signal), not the raw gain% — a different, smaller quantity.
+  const score = Math.min(99, Math.max(58, 58 + Math.round(gainPct / 3)));
   return {
     ticker: mover.ticker.toUpperCase(),
     direction: "LONG",
     horizon: "SWING",
-    score: Math.min(99, Math.max(58, 58 + Math.round(gainPct / 3))),
+    score,
     status: "WATCH",
     scoreFloor: HORIZONS.SWING.scoreFloor,
     reason: `Banger screen +${gainPct}% · ${pick.strike}C ${pick.expiry}`,
@@ -156,8 +214,8 @@ export function horizonPlayFromBangerWatch(
     serving: "WATCH",
     signalKinds: [BANGER_SIGNAL],
     bucketGraduated: false,
-    regime: "BREAKOUT · BANGER",
-    factors: [{ label: "Discovery gain", points: Math.round(gainPct) }],
+    regime: BANGER_LEDGER_REGIME_LABEL,
+    factors: [{ label: "Discovery gain", points: score }],
   };
 }
 

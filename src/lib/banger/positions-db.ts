@@ -49,6 +49,14 @@ export type BangerPositionRow = {
    *  so every banger-origin position served markAsOf=null forever regardless of true freshness). */
   last_mark_at: string | null;
   peak_premium: number | null;
+  /** Running MINIMUM mark since entry (MAE — max adverse excursion), latched the same
+   *  GREATEST/LEAST way swing_positions.trough_premium is (see FINDINGS 2026-09-21). Was
+   *  absent from this table entirely until that fix — banger_positions only ever tracked
+   *  peak_premium, so every banger-origin swing position (BANGER-origin rows merged into the
+   *  Swing lane by banger-lane-merge.ts) could never show a Position-card "Trough" or a
+   *  closed-play "Drawdown before outcome" line even when the DB genuinely had the data,
+   *  because the column to hold it never existed upstream. */
+  trough_premium: number | null;
   scaled_already: boolean;
   scale_out_action: string | null;
   scale_out_reason: string | null;
@@ -96,6 +104,7 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
     last_mark: num(r.last_mark),
     last_mark_at: isoTimestampString(r.last_mark_at),
     peak_premium: num(r.peak_premium),
+    trough_premium: num(r.trough_premium),
     scaled_already: Boolean(r.scaled_already),
     scale_out_action: r.scale_out_action != null ? String(r.scale_out_action) : null,
     scale_out_reason: r.scale_out_reason != null ? String(r.scale_out_reason) : null,
@@ -196,6 +205,11 @@ export async function updateBangerLiveState(id: number, s: BangerLiveStateUpdate
        -- write — otherwise "last touched" would masquerade as "last quoted" (FINDINGS 2026-09-11).
        last_mark_at = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE last_mark_at END,
        peak_premium = CASE WHEN $3 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $3), $3) ELSE peak_premium END,
+       -- FINDINGS 2026-09-21 (Ask Largo/swing audit): peak_premium ratcheted up on every mark but
+       -- there was no LEAST-latched counterpart, so banger_positions could never answer "how far
+       -- underwater did this position get" — mirrors updateSwingLiveState's identical
+       -- peak/trough pair in db.ts.
+       trough_premium = CASE WHEN $3 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $3), $3) ELSE trough_premium END,
        scaled_already = scaled_already OR COALESCE($4, FALSE),
        scale_out_action = COALESCE($5, scale_out_action),
        scale_out_reason = COALESCE($6, scale_out_reason),
@@ -259,14 +273,105 @@ export async function fetchBangerBoardRows(limit = 60): Promise<BangerPositionRo
   return res.rows.map(mapBangerPositionRow);
 }
 
-/** Open-book rows only — use for live marks and horizon merge (not page-limited all-status scans). */
-export async function fetchBangerOpenBookRows(limit = 80): Promise<BangerPositionRow[]> {
+/**
+ * Open-book rows only — use for live marks, horizon merge, book-context concentration, and
+ * identity resolution (not page-limited all-status scans).
+ *
+ * `limit` is OPTIONAL and, when omitted, the query carries NO `LIMIT` clause at all — every
+ * real OPEN/PARTIAL row is returned. Unlike `fetchBangerBoardRows`'s closed history (unbounded
+ * lifetime, genuinely needs paging), the open set is a fixed-in-time snapshot of currently-live
+ * positions — the exact same "must never page out from under a live holding" principle
+ * `fetchBangerClosedBoardRows`'s own doc comment already states for this side of the split.
+ *
+ * FIX (Ask Largo standing mandate, live-verified 2026-09-23): every call site previously passed
+ * a hardcoded `limit=80`, which silently truncated the real open book the moment true open
+ * positions exceeded 80 — measured live at 168 real open banger_positions rows (`ORDER BY
+ * session_date DESC, id DESC` means the OLDEST ~88 positions, the ones open longest, were the
+ * ones dropped). This is the exact same page-limited-truncation shape already fixed once for
+ * `fetchBangerBoardRows` (FINDINGS.md, "GET /api/banger/board hardcodes limit=60... an
+ * older-but-still-OPEN position ages out of the shared window and silently vanishes from the
+ * board, even though it is a real, live holding") — this function's own OPEN-only filter meant
+ * it looked immune to that class of bug, but a hardcoded LIMIT truncates just as surely as a
+ * mixed-status page does once the open count grows past it. Confirmed impact: the Swing Command
+ * board (`horizons/route.ts`), live marks (`live-marks-active.ts`), book-context concentration
+ * (`play-brief-context.ts`), identity resolution (`play-brief-resolve.ts`), and the Banger board
+ * itself (`banger/board/route.ts`) all silently dropped ~85-88 real, currently-open member
+ * positions — the Swing lane board reported 85 committed positions where 171 (3 native + 168
+ * banger) actually exist.
+ */
+export async function fetchBangerOpenBookRows(limit?: number): Promise<BangerPositionRow[]> {
+  const res =
+    limit != null
+      ? await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL')
+           ORDER BY session_date DESC, id DESC
+           LIMIT $1`,
+          [limit],
+        )
+      : await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL')
+           ORDER BY session_date DESC, id DESC`,
+        );
+  return res.rows.map(mapBangerPositionRow);
+}
+
+/**
+ * Closed rows only, newest first — the member board's "recently closed" section. Unlike open
+ * positions (unbounded lifetime, must never be paged out from under a live holding), the closed
+ * history genuinely grows without bound and paging it is correct — this is the SAME truncation
+ * `fetchBangerBoardRows` used to apply to BOTH statuses at once, kept here for the side where it's
+ * actually the right call.
+ *
+ * FIX (Ask Largo standing mandate, live-verified 2026-09-23): this used to sort by `session_date
+ * DESC, id DESC` — ENTRY-time recency, not CLOSE-time recency — despite this doc comment's own
+ * claim of "newest first" meaning most recently closed. Those diverge hard: PR #5468 (this same
+ * session) fixed 41 banger_positions rows stuck OPEN/PARTIAL with an already-expired contract
+ * (oldest 40 days past expiry, session_date back in July). Once deployed, the live-sync cron's
+ * first RTH tick genuinely closed them (`fetchBangerOpenCount()` confirmed 168 -> 123, a real DB
+ * write) — but NONE appeared in this route's 60-row window, because every one of them has an OLD
+ * session_date and the old sort put September's freshly-OPENED (but not yet closed) entries ahead
+ * of July's freshly-CLOSED ones. A member reading "recently closed" saw only this week's entries
+ * and never learned a month-old zombie position had finally resolved. Sorting by `closed_at`
+ * (which `updateBangerLiveState` always stamps via `COALESCE(closed_at, NOW())` the moment a row
+ * transitions to CLOSED_RUNNER/STOPPED — see that function) fixes this directly; `id DESC` stays
+ * as the tiebreak for two rows closing in the same instant.
+ */
+export async function fetchBangerClosedBoardRows(limit = 60): Promise<BangerPositionRow[]> {
   const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM banger_positions
-     WHERE status IN ('OPEN','PARTIAL')
-     ORDER BY session_date DESC, id DESC
+     WHERE status IN ('CLOSED_RUNNER','STOPPED')
+     ORDER BY closed_at DESC, id DESC
      LIMIT $1`,
     [limit],
+  );
+  return res.rows.map(mapBangerPositionRow);
+}
+
+/**
+ * FULL closed-position history for offline analysis (Ask Largo standing mandate, 2026-09-25 —
+ * operator directive to build discovery-edge instrumentation for Engine B before touching any
+ * selection threshold). `fetchBangerClosedBoardRows` is deliberately page-limited for the member
+ * board (60 rows is the right UI window); an edge study needs EVERY closed row since a `since`
+ * date, not a recency-truncated page — same "unbounded when the caller needs the whole population"
+ * principle `fetchBangerOpenBookRows`'s own doc comment already states for the open side, applied
+ * here to the closed side for the one legitimate reason to want it unbounded: research, not display.
+ * `since` filters on `closed_at` (when the OUTCOME was known), not `session_date` (when the position
+ * was entered) — a position entered near the study's start but held for weeks would otherwise be
+ * silently excluded even though its outcome landed well inside the window.
+ */
+export async function fetchBangerClosedExportRows(
+  since: string,
+  limit = 5000,
+): Promise<BangerPositionRow[]> {
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM banger_positions
+     WHERE status IN ('CLOSED_RUNNER','STOPPED')
+       AND closed_at >= $1
+     ORDER BY closed_at ASC, id ASC
+     LIMIT $2`,
+    [since, limit],
   );
   return res.rows.map(mapBangerPositionRow);
 }

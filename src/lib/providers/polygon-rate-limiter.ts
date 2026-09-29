@@ -36,7 +36,7 @@ import {
 // Hooked in alongside notePolygon429/notePolygonOk below since those are already the ONE place every
 // Polygon REST call's success/failure is observed; this does not change any control flow or throw path.
 import { polygonUpstreamHealth, type PolygonUpstreamHealthSnapshot } from "./polygon-rest-health";
-import { QueueBudget, resolveQueueBudgetMs } from "./queue-budget";
+import { QueueBudget, resolveQueueBudgetMs, isQueueTimeout } from "./queue-budget";
 
 export { computeDegradedLocalRps } from "./provider-rate-limiter-shared";
 
@@ -182,6 +182,37 @@ function waitMsForToken(): number {
   return Math.max(25, Math.ceil((deficit / rate) * 1000));
 }
 
+/** DOMException a caller sees when its own signal aborts while queued for admission --
+ *  distinct from RateLimiterQueueTimeoutError (the budget itself expiring). Mirrors
+ *  uw-rate-limiter.ts's identically-named helper. */
+function abortedWhileQueuedError(signal: AbortSignal): DOMException {
+  return signal.reason instanceof DOMException
+    ? signal.reason
+    : new DOMException("Aborted while waiting for Polygon admission", "AbortError");
+}
+
+/**
+ * Sleep that resolves early -- REJECTING, not silently resolving -- the instant `signal`
+ * aborts, instead of only being checked at the top of the NEXT loop iteration. Mirrors
+ * uw-rate-limiter.ts's identically-named helper exactly (see that file's doc comment and
+ * uw-rate-limiter-abort-latency.test.ts for the deterministic bound this gives; the same
+ * bound is proven here in polygon-rate-limiter-abort-latency.test.ts).
+ */
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortedWhileQueuedError(signal));
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(abortedWhileQueuedError(signal!));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function acquireGlobalRedisSlot(): Promise<boolean> {
   const client = await getSharedRedis();
   if (!client) return true; // FAIL-OPEN: no Redis → no global ceiling.
@@ -209,29 +240,29 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   }
 }
 
-async function waitForCircuit(budget: QueueBudget): Promise<void> {
+async function waitForCircuit(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     const now = Date.now();
     if (now >= circuitOpenUntil) return;
     // Bounded: the breaker pause is 60s, so an unbudgeted wait here alone could
     // consume half the ALB's 120s before the 15s fetch timeout even starts.
     budget.assertWithinBudget("circuit");
-    await new Promise((r) =>
-      setTimeout(r, budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)))
-    );
+    await sleepAbortable(budget.clampSleepMs(Math.min(500, circuitOpenUntil - now)), signal);
   }
 }
 
-async function waitMinSpacing(): Promise<void> {
+async function waitMinSpacing(signal?: AbortSignal): Promise<void> {
   if (MIN_SPACING_MS <= 0) return;
   const now = Date.now();
   const wait = MIN_SPACING_MS - (now - lastStartMs);
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  if (wait > 0) await sleepAbortable(wait, signal);
   lastStartMs = Date.now();
 }
 
-async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
+async function acquireLocalSlot(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
+    if (signal?.aborted) throw abortedWhileQueuedError(signal);
     // Checked BEFORE the admission test, never after reserving, so a caller that
     // would have been admitted this iteration still is -- the budget only ever
     // truncates waiting, never a successful acquisition.
@@ -243,7 +274,7 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
       tokens -= 1;
       inFlight += 1;
       try {
-        await waitMinSpacing();
+        await waitMinSpacing(signal);
       } catch (err) {
         // Release concurrency on failure; do NOT refund the token (rate budget is
         // consumed per admitted call, mirroring releaseSlot which never refunds tokens).
@@ -253,7 +284,7 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
       return;
     }
     const delay = inFlight >= MAX_CONCURRENCY ? 50 : waitMsForToken();
-    await new Promise((r) => setTimeout(r, budget.clampSleepMs(delay)));
+    await sleepAbortable(budget.clampSleepMs(delay), signal);
   }
 }
 
@@ -274,22 +305,30 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
  * On the uncontended path this adds one Date.now() and changes nothing.
  *
  * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
+ * @throws {DOMException} named "AbortError" when `signal` fires while still queued --
+ *   checked at the top of every loop iteration AND races every sleep inside them
+ *   (`sleepAbortable`), mirroring uw-rate-limiter.ts's acquireSlot exactly.
  */
-export async function acquirePolygonSlot(_lane?: "default" | "nights-watch"): Promise<void> {
+export async function acquirePolygonSlot(
+  _lane?: "default" | "nights-watch",
+  signal?: AbortSignal
+): Promise<void> {
   ensureBreakerSubscription();
+  if (signal?.aborted) throw abortedWhileQueuedError(signal);
   const budget = new QueueBudget("polygon", queueBudgetMs());
-  await waitForCircuit(budget);
+  await waitForCircuit(budget, signal);
   if (process.env.REDIS_URL?.trim()) {
     for (;;) {
+      if (signal?.aborted) throw abortedWhileQueuedError(signal);
       if (await acquireGlobalRedisSlot()) {
-        await acquireLocalSlot(budget);
+        await acquireLocalSlot(budget, signal);
         return;
       }
       budget.assertWithinBudget("global_rps");
-      await new Promise((r) => setTimeout(r, budget.clampSleepMs(40)));
+      await sleepAbortable(budget.clampSleepMs(40), signal);
     }
   }
-  await acquireLocalSlot(budget);
+  await acquireLocalSlot(budget, signal);
 }
 
 function releaseSlot(): void {
@@ -374,6 +413,88 @@ export function resetPolygonCircuitForTest(): void {
  *
  * FAIL-OPEN: acquirePolygonSlot never throws; if Redis is down it degrades to local pacing.
  */
+/**
+ * Rolling window for detecting a SUSTAINED queue-timeout surge — mirrors
+ * uw-rate-limiter.ts's own alert (added 2026-09-15/16 after that limiter's own sustained-surge
+ * incident) exactly, ported here after live evidence this limiter needs it too: a 2026-09-16 RTH
+ * P0 (`zerodte-warm` reported stale by the cron watchdog) traced to `[polygon-gex]` chain fetches
+ * failing at the `global_rps` admission stage across 450+ distinct tickers within a single hour —
+ * a real, sustained surge on a "generous, not provider-limited" 150 RPS self-cap, with no alert
+ * anywhere to page ops about it. A single isolated timeout is normal/expected burst behavior (per
+ * queue-budget.ts's own framing) and must never page on its own.
+ */
+const QUEUE_TIMEOUT_ALERT_WINDOW_MS = 60_000;
+/** Timeouts within the window before paging. */
+const QUEUE_TIMEOUT_ALERT_THRESHOLD = 5;
+
+let queueTimeoutTimestamps: number[] = [];
+let queueTimeoutAlerted = false;
+
+/** Pure: drop timestamps outside the window. Unit-testable without a real clock. */
+export function pruneQueueTimeoutWindow(
+  timestamps: readonly number[],
+  nowMs: number,
+  windowMs: number = QUEUE_TIMEOUT_ALERT_WINDOW_MS
+): number[] {
+  return timestamps.filter((t) => nowMs - t < windowMs);
+}
+
+/** True once the sustained-surge alert is latched. Exported for tests only. */
+export function isQueueTimeoutAlertLatched(): boolean {
+  return queueTimeoutAlerted;
+}
+
+/** Test-only reset of the rolling window + latch. */
+export function resetQueueTimeoutAlertForTest(): void {
+  queueTimeoutTimestamps = [];
+  queueTimeoutAlerted = false;
+}
+
+/** Page ops once when the rolling queue-timeout count crosses the sustained-surge threshold.
+ *  Fire-once latch: pages once on the transition INTO surge, then stays silent until
+ *  noteQueueAdmissionRecoveryForAlert observes the rolling count has dropped back under
+ *  threshold. */
+function alertQueueTimeoutSurgeOnce(countInWindow: number): void {
+  if (queueTimeoutAlerted) return;
+  queueTimeoutAlerted = true;
+  void import("@/features/spx/lib/spx-play-notify")
+    .then(({ notifyOpsDiscord }) =>
+      notifyOpsDiscord({
+        title: "Polygon rate-limiter queue timeouts surging",
+        body:
+          `${countInWindow} callers exceeded the ${queueBudgetMs()}ms admission queue budget within the ` +
+          `last ${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s (GLOBAL_MAX_RPS=${GLOBAL_MAX_RPS}). Real ` +
+          `demand is exceeding the shared Polygon rate-limiter ceiling — requests are being DROPPED, not just ` +
+          `slow. Re-arms once the rate drops back under ${QUEUE_TIMEOUT_ALERT_THRESHOLD} in a ` +
+          `${Math.round(QUEUE_TIMEOUT_ALERT_WINDOW_MS / 1000)}s window.`,
+        severity: "warning",
+      })
+    )
+    .catch(() => {
+      queueTimeoutAlerted = false; // alert never delivered — allow a later retry
+    });
+}
+
+/** Record one queue-timeout occurrence; pages ops once the rolling window crosses the sustained
+ *  threshold. Called from polygonTrackedFetch's catch — never changes admission behavior itself. */
+export function noteQueueTimeoutForAlert(now: () => number = Date.now): void {
+  const nowMs = now();
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow([...queueTimeoutTimestamps, nowMs], nowMs);
+  if (queueTimeoutTimestamps.length >= QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    alertQueueTimeoutSurgeOnce(queueTimeoutTimestamps.length);
+  }
+}
+
+/** Re-arm the surge latch once the rolling count has genuinely dropped back under threshold.
+ *  Cheap no-op on the common healthy path. */
+export function noteQueueAdmissionRecoveryForAlert(now: () => number = Date.now): void {
+  if (!queueTimeoutAlerted) return;
+  queueTimeoutTimestamps = pruneQueueTimeoutWindow(queueTimeoutTimestamps, now());
+  if (queueTimeoutTimestamps.length < QUEUE_TIMEOUT_ALERT_THRESHOLD) {
+    queueTimeoutAlerted = false;
+  }
+}
+
 export async function polygonTrackedFetch(
   endpointKey: string,
   url: string,
@@ -384,7 +505,19 @@ export async function polygonTrackedFetch(
     throw new Error(`[polygon] Circuit open — rate limited, pausing ${waitSec}s`);
   }
 
-  await acquirePolygonSlot();
+  // A caller's own signal (if any) also governs admission-queue waiting, not just the
+  // eventual fetch() call — mirrors polygonTrackedFetch's UW sibling (uw-rate-limiter.ts's
+  // throttleUw), fixed there in PR #5111 for the identical reason: without this, aborting
+  // during a contended admission wait only stopped the CALLER from waiting, never actually
+  // freed the slot machinery or avoided the (still-forthcoming) real HTTP request.
+  const signal = init?.signal ?? undefined;
+  try {
+    await acquirePolygonSlot(undefined, signal);
+  } catch (err) {
+    if (isQueueTimeout(err)) noteQueueTimeoutForAlert();
+    throw err;
+  }
+  noteQueueAdmissionRecoveryForAlert();
   try {
     // RT-2 resilience: retry TRANSIENT failures (connect errors like UND_ERR_CONNECT_TIMEOUT /
     // EHOSTUNREACH, plus 5xx and 429) once with a short backoff, so a momentary api.massive.com

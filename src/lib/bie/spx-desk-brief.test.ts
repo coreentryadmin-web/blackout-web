@@ -158,4 +158,26 @@ describe("composeSpxDeskBrief", () => {
     assert.ok(result.body.includes(SPX_DESK_MAX_PAIN_LABEL.toLowerCase()));
     assert.doesNotMatch(result.body, /toward pin \{\{/);
   });
+
+  test("unresolved gamma flip never reads as a confident neg-gamma call", () => {
+    // `above_gamma_flip` defaults to `false` (never null) whenever `gamma_flip` itself is
+    // unknown (spx-desk.ts's several `flip != null ? spot > flip : false` sites) — before
+    // this fix, gammaTag/buildWhy/the NEXT-5M ternary all read `!above_gamma_flip` as a
+    // confirmed short-gamma regime instead of checking `gamma_flip != null` first, so a
+    // genuinely unresolved flip surfaced a false "neg-γ (trend fuel)" claim to members —
+    // exactly the plausible-wrong-number-over-honest-absence trap the Largo product
+    // contract's C3 section warns about.
+    const desk = fakeDesk();
+    desk.gamma_flip = undefined;
+    desk.gamma_regime = "unknown";
+    desk.above_gamma_flip = false; // the real server default when flip is unresolved
+
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "midday-grind");
+
+    assert.doesNotMatch(result.body, /neg-γ/);
+    assert.match(result.body, /γ regime unresolved/);
+  });
 });

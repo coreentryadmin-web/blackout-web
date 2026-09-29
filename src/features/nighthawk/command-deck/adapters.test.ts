@@ -105,6 +105,27 @@ test("horizon adapter (PR-12 de-hardcode): real factors/regime/thesisBreak flow 
   assert.equal(play.thesisBreak!.level, "warn"); // no longer a hardcoded 'intact'
 });
 
+// Live repro (SWING:AAPL:40, #4076): a row whose feature_vector.evidence_score was transiently
+// missing while pil_* factors survived showed score:0 next to real non-zero factors with no
+// disclosure anywhere outside HorizonPlay/play-brief-lane-rank.ts's own scoreWithheld handling —
+// adapters.ts never received the flag at all. Threaded through so any TerminalPlay consumer
+// (Command Deck score badge, "Why this play" fallback) can tell a withheld 0 from a real one.
+test("horizon adapter: scoreWithheld threads through from HorizonDeckSource to TerminalPlay", () => {
+  const withheld = terminalPlayFromHorizon({
+    ticker: "aapl", direction: "LONG", horizon: "SWING", score: 0, scoreWithheld: true, status: "HOLD",
+    contract: { strike: 335, right: "C", expiry: "2026-09-25", dte: 5 },
+  });
+  assert.equal(withheld.score, 0);
+  assert.equal(withheld.scoreWithheld, true);
+
+  const real = terminalPlayFromHorizon({
+    ticker: "msft", direction: "LONG", horizon: "SWING", score: 0, status: "WATCH",
+    contract: { strike: 500, right: "C", expiry: "2026-09-25", dte: 5 },
+  });
+  assert.equal(real.score, 0);
+  assert.equal(real.scoreWithheld, undefined, "a genuinely-scored 0 must not be flagged withheld");
+});
+
 test("horizon adapter (PR-12): thesisBreak DERIVES from setupState; INVALIDATED → break", () => {
   const invalid = terminalPlayFromHorizon({
     ticker: "x", direction: "LONG", horizon: "SWING", score: 61, setupState: "INVALIDATED",
@@ -127,6 +148,32 @@ test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legac
   assert.deepEqual(play.factors, []);
   assert.equal(play.regime, null);
   assert.equal(play.thesisBreak!.level, "intact");
+});
+
+test("horizon adapter: tierLabel is honestly null, never the documented-backwards convictionFromScore mapping — SWING and LEAPS, any score", () => {
+  // SWING/LEAPS (HorizonDeckSource) carries no pinned tier/conviction field, unlike 0DTE/Legacy.
+  // This used to fall back to convictionFromScore — the exact score->letter mapping
+  // nighthawk-tiers.ts's own header documents as empirically INVERTED for the product it was
+  // calibrated on (A+ >=70 scored worst, B 40-54 scored best) — never validated for swing's own,
+  // differently-shaped score distribution. Regression: no score, however high or low, should ever
+  // produce a computed tierLabel here; it must stay null.
+  const highScoreSwing = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 92, status: "WATCH",
+    contract: { strike: 200, right: "C", expiry: "2026-10-16", dte: 14, mid: 5 },
+  });
+  assert.equal(highScoreSwing.tierLabel, null);
+
+  const lowScoreSwing = terminalPlayFromHorizon({
+    ticker: "xyz", direction: "SHORT", horizon: "SWING", score: 3, status: "COMMIT",
+    contract: { strike: 10, right: "P", expiry: "2026-10-16", dte: 14, mid: 1 },
+  });
+  assert.equal(lowScoreSwing.tierLabel, null);
+
+  const leapsPlay = terminalPlayFromHorizon({
+    ticker: "aapl", direction: "LONG", horizon: "LEAPS", score: 70,
+    contract: { strike: 200, right: "C", expiry: "2026-10-16", dte: 84, mid: 12.5 },
+  });
+  assert.equal(leapsPlay.tierLabel, null);
 });
 
 test("edition adapter: dossier factors, PLAN model, WATCH status (no morning confirm)", () => {
@@ -1131,6 +1178,45 @@ test("horizon adapter: WAITING_FOR_ENTRY → WATCH + HOLD (WAIT action)", () => 
   assert.match(wait.recNote, /trigger/i);
 });
 
+test("horizon adapter: WATCH row past its own entry-validity deadline → watchEntryExpired true + EXPIRED action pill (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window)", () => {
+  const staleFirstSeenAt = new Date(Date.now() - 46 * 24 * 60 * 60 * 1000).toISOString();
+  const stale = terminalPlayFromHorizon({
+    ticker: "mu",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 72,
+    status: "COMMIT",
+    servingSection: "WAITING_FOR_ENTRY",
+    setupState: "TRIGGERED",
+    entryStatus: "PRE_TRIGGER",
+    subLane: "TACTICAL",
+    firstSeenAt: staleFirstSeenAt,
+    contract: { strike: 100, right: "C", expiry: "2026-09-19", dte: 14, mid: 3.2 },
+  });
+  assert.equal(stale.status, "WATCH");
+  assert.equal(stale.watchEntryExpired, true);
+  assert.equal(swingActionDisplay(stale)?.label, "EXPIRED");
+});
+
+test("horizon adapter: fresh WATCH row inside its entry-validity window → watchEntryExpired not true", () => {
+  const fresh = terminalPlayFromHorizon({
+    ticker: "amd",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 75,
+    status: "COMMIT",
+    servingSection: "WAITING_FOR_ENTRY",
+    setupState: "TRIGGERED",
+    entryStatus: "PRE_TRIGGER",
+    subLane: "TACTICAL",
+    firstSeenAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    contract: { strike: 160, right: "C", expiry: "2026-09-19", dte: 14, mid: 4.1 },
+  });
+  assert.equal(fresh.status, "WATCH");
+  assert.notEqual(fresh.watchEntryExpired, true);
+  assert.equal(swingActionDisplay(fresh)?.label, "WAIT");
+});
+
 test("horizon adapter: RESEARCH + INVALIDATED → SKIP with gate blocks", () => {
   const skip = terminalPlayFromHorizon({
     ticker: "tsla",
@@ -1259,6 +1345,101 @@ test("refreshSwingManagement: uncalibrated thesis health (committed-position inp
   );
 });
 
+test("horizon adapter: committed row with liveSpot/entryTriggerUnderlyingPx/invalidationUnderlyingPx derives a real (non-'unknown') persistence pillar (Ask Largo #4076)", () => {
+  // Same fixture shape as the "uncalibrated" test above, but with the three fields live-plays.ts
+  // now threads through for a real committed swing position — price above the trigger and well
+  // clear of invalidation should derive TRIGGERED, not fall back to the "unknown" sentinel that
+  // previously fired unconditionally for every committed row (setupState was structurally null).
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+    entryTriggerUnderlyingPx: 170,
+    invalidationUnderlyingPx: 160,
+    liveSpot: 182,
+  });
+  assert.ok(play.thesisHealth);
+  const persistence = play.thesisHealth!.pillars.find((p) => p.label === "Persistence");
+  assert.ok(persistence, "persistence pillar must be present");
+  assert.equal(persistence!.currentLabel, "triggered");
+});
+
+test("horizon adapter: committed row missing liveSpot/entryTriggerUnderlyingPx falls back to the existing uncalibrated persistence read (no regression)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+  });
+  const persistence = play.thesisHealth!.pillars.find((p) => p.label === "Persistence");
+  assert.equal(persistence!.currentLabel, "unknown");
+});
+
+// Ask Largo standing mandate (#4076), 2026-09-21: the SIBLING gap to the persistence-pillar fix two
+// tests above. `src.entryStatus` (the "Entry geometry" pillar's input) was NEVER threaded through for
+// committed SWING positions — unlike setupState/signalKinds, no live-derivation existed for it at all
+// — so `entryGeometryScore` always fell through to its "n/a" default, which by itself kept tripping
+// `thesisHealthUncalibrated()` (an OR across pillars) even once persistence/flow_corroboration were
+// fixed. Live-verified 2026-09-21: HOOD/SNOW/SMCI play-briefs all still showed "Inputs not wired for
+// committed positions" despite carrying real setupState/signalKinds data. Reuses the exact same two
+// legs (direction, live price, trigger price) the persistence fix already threads through.
+test("horizon adapter: committed row with liveSpot/entryTriggerUnderlyingPx derives a real (non-'n/a') entry-geometry pillar (Ask Largo #4076)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+    entryTriggerUnderlyingPx: 170,
+    invalidationUnderlyingPx: 160,
+    liveSpot: 170, // exactly at the trigger, no ATR supplied → AT_TRIGGER (chaseDist collapses to 0)
+  });
+  assert.ok(play.thesisHealth);
+  const entryGeometry = play.thesisHealth!.pillars.find((p) => p.label === "Entry geometry");
+  assert.ok(entryGeometry, "entry geometry pillar must be present");
+  assert.equal(entryGeometry!.currentLabel, "at trigger");
+  assert.notEqual(entryGeometry!.currentLabel, "n/a");
+});
+
+test("horizon adapter: committed row missing liveSpot/entryTriggerUnderlyingPx falls back to the existing uncalibrated entry-geometry read (no regression)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 5.5 },
+    entryPremium: 5.0,
+    livePnlPct: 10,
+    peakPremium: 5.5,
+    troughPremium: 4.8,
+  });
+  const entryGeometry = play.thesisHealth!.pillars.find((p) => p.label === "Entry geometry");
+  assert.equal(entryGeometry!.currentLabel, "n/a");
+});
+
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
   const p = terminalPlayFromEdition({
     ticker: "NVDA",
@@ -1271,6 +1452,25 @@ test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () 
   assert.equal(p.status, "WATCH");
   assert.equal(p.thesisBreak?.level, "unknown");
   assert.match(p.regime ?? "", /unverified/i);
+});
+
+// Regression (Night Hawk Legacy aggressive-improvement mandate, 2026-09-13): the Legacy edition
+// calendar strip (legacy-board-calendar.ts) lets a member reopen an OLD edition, and
+// terminalPlayFromEdition re-parses that edition's options_play text fresh on every view. Anchoring
+// OCC year-inference on real wall-clock "now" (whenever the test/request runs) instead of the
+// edition's own `published_at` rolled an already-expired play's bare "Mon DD" label a full year
+// forward — resolving a completely different, never-traded contract. published_at must anchor it.
+test("legacy adapter: occ year-inference anchors on the edition's published_at, not real now", () => {
+  const p = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 85,
+    options_play: "NVDA $180 CALL @ $4.00 — Aug 28",
+    published_at: "2026-08-24T20:00:00Z",
+  });
+  assert.ok(p.occ);
+  assert.match(p.occ!, /^NVDA260828C/, "must resolve 2026-08-28 from published_at, not roll to 2027");
 });
 
 test("0DTE adapter (Wave 3): absent why_now → whyNow null (ribbon omitted, no fabrication)", () => {

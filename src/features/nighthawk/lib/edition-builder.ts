@@ -12,6 +12,7 @@ import {
   upsertNighthawkJob,
   failStaleNighthawkJobs,
   fetchRecentNighthawkOutcomesForGovernor,
+  insertNighthawkCandidateSnapshots,
 } from "@/lib/db";
 import { marketPlatform } from "@/lib/platform";
 import { uwConfigured } from "@/lib/providers/config";
@@ -20,7 +21,11 @@ import {
   recordNighthawkRejectedAuditTrail,
   recordNighthawkStageRejectedAuditTrail,
   syncNighthawkPlayOutcomes,
+  confluenceSnapshot,
+  type NighthawkRejectionDetail,
 } from "./play-outcomes";
+import { parsePlayLevels } from "./play-levels";
+import { alertCandidateSnapshotWriteFailure } from "./candidate-snapshot-alert";
 import { extractMultiSourceCandidates } from "./candidates";
 import { fetchAllDossiers, resetEditionCongressCache, type TickerDossier } from "./dossier";
 import { generateEditionPlays } from "./claude-edition";
@@ -29,7 +34,9 @@ import { buildMarketRecap, formatTickerDossierText } from "./format";
 import { fetchIndexDossiers } from "./index-dossier";
 import { fetchMarketWideContext, type MarketWideContext } from "./market-wide";
 import { critiquePlays } from "./play-critic";
-import { rankCandidates, regimeContextFromMarket, type ScoredCandidate } from "./scorer";
+import { rankCandidates, regimeContextFromMarket, scoredCandidateSnapshotPayload, type ScoredCandidate } from "./scorer";
+import { classifySetupType, setupTypeInputFromScored } from "./setup-classification";
+import { buildRawFeatureSnapshot } from "./raw-feature-snapshot";
 import { rescoreDossier } from "./hunt-builder";
 import { DOSSIER_BATCH_SIZE, MAX_CANDIDATES, MAX_DOSSIER_STOCKS } from "./constants";
 import {
@@ -39,6 +46,7 @@ import {
 } from "./edition-stale";
 import {
   anyRankedClearsScoreFloor,
+  computeQualityFloorNote,
   countRankedClearingMerit,
   criticRescueEnabled,
   effectiveMinPublishPlays,
@@ -69,6 +77,7 @@ import { partitionPlaysByGeometry } from "./play-constraints";
 import { applyCrossEditionGovernor, GOV_LOOKBACK_EDITIONS } from "./cross-edition-governor";
 import type { RecentOutcomeRow } from "./cross-edition-governor";
 import { applyBearishPosture, BEARISH_RECAP_REASON } from "./bearish-posture";
+import { compareBearishPosture, buildBearishPostureShadowSnapshotRow } from "./bearish-posture-shadow";
 import { nextTradingDayEt, todayEt } from "./session";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import type { NightHawkEdition, PlaybookPlay } from "./types";
@@ -217,6 +226,266 @@ export async function archiveAndClearNighthawkStaging(editionFor: string): Promi
 }
 
 /**
+ * Fire-and-forget capture of a batch of scored/ranked candidates into
+ * nighthawk_candidate_snapshot (Night Hawk Legacy Signal Intelligence, Phase 1) at one of
+ * STAGE 4/5's sort passes. Never awaited by the caller and never throws — a write failure is
+ * logged and swallowed, same contract as recordDiscoveryStageSnapshots (candidates.ts) and
+ * recordNighthawkStageRejectedAuditTrail (play-outcomes.ts). `rank` is 1-based position in the
+ * ARRAY AS PASSED — callers must pass candidates already in the order that stage actually
+ * produced (e.g. `ranked` after applyCrossEditionGovernor's own internal effective-score sort),
+ * never re-sorted here, so a captured rank always matches what that stage's real output order was.
+ */
+export type ScoringStageSnapshotRow = {
+  edition_for: string;
+  ticker: string;
+  stage: string;
+  rank: number | null;
+  score: number | null;
+  gov_penalty: number | null;
+  rejection_reason: string | null;
+  selected_for_publish: boolean | null;
+  snapshot_json: Record<string, unknown>;
+};
+
+/**
+ * Pure row-builder for a STAGE-4/5 scoring/ranking capture — separated from the DB write below
+ * (and exported) for the same reason candidates.ts's buildDiscoveryStageSnapshotRows is: testing
+ * this through the full edition-build integration with a mocked "@/lib/db" is not viable in this
+ * repo's test environment (tsx stops resolving the "@/" alias across the WHOLE loaded graph once
+ * any mock.module() is active, and edition-builder.ts's dependency graph is far larger than
+ * candidates.ts's — see FINDINGS.md's thermalCompareForLargo entry). `rank` is 1-based position
+ * in `candidates` AS PASSED — this function never re-sorts, so a caller must pass candidates
+ * already in the order that stage actually produced.
+ */
+export function buildScoringStageSnapshotRows(
+  editionFor: string,
+  stage: string,
+  candidates: ScoredCandidate[],
+  dossierMap: Record<string, TickerDossier> = {}
+): ScoringStageSnapshotRow[] {
+  return candidates.map((c, i) => ({
+    edition_for: editionFor,
+    ticker: c.ticker,
+    stage,
+    rank: i + 1,
+    score: c.score,
+    gov_penalty: c.govPenalty ?? null,
+    rejection_reason: null,
+    selected_for_publish: null,
+    // raw_features additive (Workstream C / #20's D3, 2026-09-21) — observational only, built
+    // straight from the already-populated TickerDossier, no new fetch. null when the caller
+    // doesn't pass a dossierMap (existing callers/tests are unaffected — default {}), never
+    // fabricated when a ticker's dossier is genuinely missing from the map.
+    snapshot_json: { ...scoredCandidateSnapshotPayload(c), raw_features: buildRawFeatureSnapshot(dossierMap[c.ticker]) },
+  }));
+}
+
+export function recordScoringStageSnapshots(
+  editionFor: string,
+  stage: string,
+  candidates: ScoredCandidate[],
+  dossierMap: Record<string, TickerDossier> = {}
+): void {
+  if (!candidates.length) return;
+  const rows = buildScoringStageSnapshotRows(editionFor, stage, candidates, dossierMap);
+  void insertNighthawkCandidateSnapshots(rows).catch((err) => {
+    console.warn(`[nighthawk/edition] failed to write ${stage}-stage candidate snapshots:`, err);
+    alertCandidateSnapshotWriteFailure(stage, editionFor, err);
+  });
+}
+
+/**
+ * Pure row-builder for the rank_final capture (the PR-N26-sorted order members actually see).
+ * Same "extract for testability without mocking @/lib/db" rationale as buildScoringStageSnapshotRows
+ * above. `plays` must already carry the rank the caller's own sort stamped — never re-derived here.
+ *
+ * SCHEMA v2 (Night Hawk Legacy Signal Intelligence, operator priority #4 — "realized R and
+ * hypothetical R for every candidate"): adds the play's own parsed trade-geometry levels
+ * (entry_range_low/high, target, stop — parsePlayLevels, the same parser publish-time gating and
+ * grading already use) so a downstream reader can combine them with the ticker's already-pinned
+ * forward_returns (candidate-forward-grade.ts) to compute R-multiples without a second DB write —
+ * see candidate-r-multiple.ts. v1 rows (direction/conviction only) simply predate this and read as
+ * "no levels captured", never a fabricated risk distance.
+ */
+export function buildRankFinalSnapshotRows(
+  editionFor: string,
+  plays: PlaybookPlay[],
+  govPenaltyByTicker: Map<string, number>
+): ScoringStageSnapshotRow[] {
+  return plays.map((p) => ({
+    edition_for: editionFor,
+    ticker: p.ticker,
+    stage: "rank_final",
+    rank: p.rank,
+    score: p.score ?? null,
+    gov_penalty: govPenaltyByTicker.get(p.ticker) ?? null,
+    rejection_reason: null,
+    selected_for_publish: true,
+    snapshot_json: {
+      schema_version: 4,
+      direction: p.direction,
+      conviction: p.conviction,
+      levels: parsePlayLevels(p),
+      // Workstream C / #20's D1/D2 (2026-09-21), additive over v2 — observational only.
+      // setup_type derives straight from the play's own factor_breakdown (already persisted for
+      // the member-facing factor bars) rather than needing a separate ScoredCandidate lookup.
+      // dte is null (not 0) whenever the play never had a real contract picked (stock-only).
+      setup_type: p.factor_breakdown ? classifySetupType(p.factor_breakdown) : "unknown",
+      dte: p.dte ?? null,
+      // v4 (2026-09-28 backfill redesign, operator-directed): "QUALIFIED" vs "BACKFILL" so every
+      // published play's selection reason is auditable from the snapshot alone, not just from the
+      // in-memory PlaybookPlay. Defaults to QUALIFIED — the caller stamps this on every finalPlays
+      // entry before this row-builder runs, so absence here would only mean a pre-v4 caller.
+      selection_tier: p.selection_tier ?? "QUALIFIED",
+    },
+  }));
+}
+
+/**
+ * Pure row-builder for candidates the cross-edition governor CUT entirely (loss-streak halt,
+ * repeat-ticker cooldown, sector-concentration cap) — Night Hawk Legacy Signal Intelligence,
+ * Phase 1. Complements, does not duplicate, the existing recordNighthawkStageRejectedAuditTrail
+ * write at this same call site: that one is the durable alert_audit_log row (rich decision_trace,
+ * queryable by the get_nighthawk_dossier Largo tool); this is the nighthawk_candidate_snapshot
+ * row, so a query against that ONE table sees every candidate at every stage, cut ones included,
+ * without needing to join across two different tables. Same "extract for testability" rationale
+ * as the other builders in this file.
+ */
+export function buildGovernorCutSnapshotRows(
+  editionFor: string,
+  cut: Array<{ ticker: string; scored: ScoredCandidate; reasons: string[] }>
+): ScoringStageSnapshotRow[] {
+  return cut.map((c) => ({
+    edition_for: editionFor,
+    ticker: c.ticker,
+    stage: "rejected",
+    rank: null,
+    score: c.scored.score,
+    gov_penalty: null,
+    rejection_reason: `cross_edition_governor: ${c.reasons.join("; ")}`,
+    selected_for_publish: false,
+    snapshot_json: scoredCandidateSnapshotPayload(c.scored),
+  }));
+}
+
+/**
+ * Pure row-builder for candidates rejected at any of STAGE-6's OTHER later-funnel rejection
+ * reasons — geometry, premium_cap, illiquid_strike, ungrounded, sector_concentration,
+ * publish_gate (play-outcomes.ts's NighthawkRejectionDetail union, minus cross_edition_governor,
+ * which buildGovernorCutSnapshotRows above already covers). Night Hawk Legacy Signal
+ * Intelligence — closes a real gap found while verifying the operator's "does shadow tracking
+ * capture every rejected/pulled/expired/unfilled/accepted candidate" mandate item (2026-09-18):
+ * nighthawk_candidate_snapshot's own table-header doc comment (db.ts) has claimed since Phase 1.1
+ * that "'rejected' (STAGE 2 confluence gate or STAGE 6 geometry/premium-cap/illiquid/ungrounded/
+ * sector/publish-gate/governor rejection)" was captured, but Phase 1.5 only ever wired 2 of those
+ * 7 reasons (confluence_gate at STAGE 2, cross_edition_governor here) — the other 6 wrote ONLY to
+ * the older `alert_audit_log` table (recordNighthawkStageRejectedAuditTrail /
+ * recordNighthawkRejectedAuditTrail), which has no forward_returns column and is never fed to
+ * candidate-forward-grade.ts's shadow-return grading pass. A play rejected for premium-cap or a
+ * failed geometry check was therefore NEVER shadow-graded for what it actually did afterward —
+ * directly contradicting "pulled_wrongly means our filters may be removing winners" applied to
+ * the analogous REJECTED case, which the operator's mandate explicitly also asks about.
+ *
+ * Same "complements, does not duplicate, the existing alert_audit_log write" relationship
+ * buildGovernorCutSnapshotRows's own doc already establishes for the governor case — this is
+ * that exact treatment, generalized to the other 6 reasons, at the SAME two call sites that
+ * already build the richer alert_audit_log row (so no new rejection-collection logic, just an
+ * additional write of the same already-computed data to the newer table).
+ *
+ * SCHEMA v2 (Night Hawk Legacy Signal Intelligence, operator priority #4): `play`, when the
+ * caller has one, is parsed the same way buildRankFinalSnapshotRows now does (parsePlayLevels)
+ * and stamped into `snapshot_json.levels` — every one of the 3 real call sites (geometryRejected,
+ * stageRejected, publishGateRejections in edition-builder.ts) already carries a full PlaybookPlay
+ * for this exact rejection, so this is free: no new candidate-geometry computation, just threading
+ * data the caller already has. `play` is optional because a future rejection stage might not
+ * carry one; a v1 row (pre-#25) or an omitted `play` simply has `levels: null`, read the same way
+ * candidate-r-multiple.ts already treats any other missing-geometry row — never a fabricated risk
+ * distance. Geometry-stage rejections in particular can still carry a partially-parseable stop/
+ * target even though the OVERALL plan failed validation (e.g. a target that cleared but an
+ * unreachable stop) — parsePlayLevels is null-safe per-field, so this stays honest either way.
+ */
+export function buildStageRejectionSnapshotRows(
+  editionFor: string,
+  rejected: Array<{
+    ticker: string;
+    detail: NighthawkRejectionDetail;
+    scored?: ScoredCandidate | null;
+    play?: PlaybookPlay | null;
+  }>
+): ScoringStageSnapshotRow[] {
+  return rejected.map((r) => ({
+    edition_for: editionFor,
+    ticker: r.ticker,
+    stage: "rejected",
+    rank: null,
+    score: r.scored?.score ?? null,
+    gov_penalty: null,
+    rejection_reason: r.detail.stage,
+    selected_for_publish: false,
+    snapshot_json: {
+      schema_version: 3,
+      detail: r.detail,
+      confluence: confluenceSnapshot(r.scored ?? null),
+      levels: r.play ? parsePlayLevels(r.play) : null,
+      direction: r.play ? r.play.direction : null,
+      // Workstream C / #20's D1/D2 (2026-09-21), additive over v2 — observational only. dte comes
+      // from r.play (only populated once a contract was picked, i.e. sector_concentration/
+      // publish_gate/the rare STAGE-6 geometry-safety-net reasons — never confluence_gate, which
+      // predates contract selection). setup_type falls back to the play's own factor_breakdown
+      // when the raw scored candidate isn't passed in, so this stays populated wherever the
+      // caller can supply either.
+      setup_type: r.scored
+        ? classifySetupType(setupTypeInputFromScored(r.scored))
+        : r.play?.factor_breakdown
+          ? classifySetupType(r.play.factor_breakdown)
+          : "unknown",
+      dte: r.play?.dte ?? null,
+    },
+  }));
+}
+
+export function recordStageRejectionSnapshots(
+  editionFor: string,
+  rejected: Array<{
+    ticker: string;
+    detail: NighthawkRejectionDetail;
+    scored?: ScoredCandidate | null;
+    play?: PlaybookPlay | null;
+  }>
+): void {
+  if (!rejected.length) return;
+  const rows = buildStageRejectionSnapshotRows(editionFor, rejected);
+  void insertNighthawkCandidateSnapshots(rows).catch((err) => {
+    console.warn(`[nighthawk/edition] failed to write rejected-stage candidate snapshots:`, err);
+    alertCandidateSnapshotWriteFailure("rejected", editionFor, err);
+  });
+}
+
+/**
+ * Pure row-shaper for the "final geometry gate" safety net (task #24/#146/ops #519) — plays
+ * thin-edition backfill or checkpoint-resume introduced fresh, bypassing generateEditionPlays'
+ * own geometry check, caught here right before publish. `partitionPlaysByGeometry`'s `failing`
+ * (play-constraints.ts) carries only `{play, drops}` — no `ticker` at the top level and no
+ * `scored` breakdown (this far downstream, `finalPlays` no longer carries a scored-candidate
+ * reference, so it's honestly omitted here, never guessed) — this reshapes that into the common
+ * `{ticker, drops, play, scored}` / `{ticker, detail, scored, play}` shapes
+ * recordNighthawkRejectedAuditTrail and recordStageRejectionSnapshots both already expect,
+ * separated out purely so the mapping itself is directly unit-testable (same "extract for
+ * testability without mocking @/lib/db" rationale as every other builder in this file).
+ */
+export function buildFinalGeometryGateRejections(
+  failing: Array<{ play: PlaybookPlay; drops: string[] }>
+): Array<{ ticker: string; drops: string[]; detail: NighthawkRejectionDetail; scored: null; play: PlaybookPlay }> {
+  return failing.map((f) => ({
+    ticker: f.play.ticker,
+    drops: f.drops,
+    detail: { stage: "geometry" as const, drops: f.drops },
+    scored: null,
+    play: f.play,
+  }));
+}
+
+/**
  * RECAP-ONLY FALLBACK (audit P0 / #77). When the candidate→play funnel legitimately collapses to
  * zero (no flow candidates, no scored dossiers, all candidates fundamentally blocked, Claude/critic
  * returns nothing), we STILL publish a real edition row — a genuine market recap with `plays: []` —
@@ -259,6 +528,7 @@ async function publishRecapOnlyEdition(params: {
       sector_strength: recap.sector_strength,
       sector_weakness: recap.sector_weakness,
       catalysts: recap.catalysts,
+      desk_playbook: recap.desk_playbook,
       hot_chains: ctx.hot_chains.slice(0, 10),
       sector_tides: ctx.sector_tides,
       index_flows: ctx.index_flows,
@@ -520,7 +790,7 @@ export async function buildEveningEdition(opts?: {
     if (!candidates?.length) {
       if (checkpointing) await upsertNighthawkJob(editionFor, { status: "running", current_stage: "stage_candidates" });
       console.info("[nighthawk/edition] stage_candidates: selection");
-      candidates = await extractMultiSourceCandidates(ctx, MAX_CANDIDATES);
+      candidates = await extractMultiSourceCandidates(ctx, MAX_CANDIDATES, editionFor);
       if (!candidates.length) {
         const reason = `No candidates from any source (flows ${ctx.stock_flows.length}, OI ${ctx.market_oi_change.length}, unusual ${ctx.unusual_trades.length}, movers ${ctx.market_movers.length}).`;
         console.warn(`[nighthawk/edition] stage_candidates zeroed — recap-only fallback: ${reason}`);
@@ -571,6 +841,7 @@ export async function buildEveningEdition(opts?: {
         let completed = alreadyDone.length;
         const total = candidates.length;
 
+        const dossierSessionCtx = { today: ctx.today, tomorrow: ctx.tomorrow, tomorrow_earnings: ctx.tomorrow_earnings ?? [] };
         await fetchAllDossiers(remaining, DOSSIER_BATCH_SIZE, regime, async (dossier) => {
           completed += 1;
           await saveDossierStaging(
@@ -585,20 +856,31 @@ export async function buildEveningEdition(opts?: {
             "stage_dossiers",
             `Dossier ${dossier.ticker} done (${completed}/${total})`
           );
-        });
+        }, dossierSessionCtx);
       }
 
       dossiers = stagedToDossierMap(await fetchStagedDossiers(editionFor));
     } else {
       console.info(`[nighthawk/edition] dossiers for ${candidates.length} tickers (no checkpointing)`);
-      dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime);
+      dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime, undefined, {
+        today: ctx.today,
+        tomorrow: ctx.tomorrow,
+        tomorrow_earnings: ctx.tomorrow_earnings ?? [],
+      });
     }
 
-    // Session-aware re-score (audit fix): buildTickerDossier scores WITHOUT the session
-    // context, so the earnings-proximity −6 penalty ("expiry into earnings") and the
-    // analyst-PT nudge were dead code on the edition path — only the hunt path passed
-    // earnings_date/today/tomorrow. Re-score every dossier with the same helper the
-    // hunt uses (deterministic + idempotent, safe on checkpoint-resumed dossiers too).
+    // Session-aware re-score (audit fix, historical + belt-and-suspenders): fetchAllDossiers
+    // above now ALSO threads sessionCtx into its own initial scoreCandidate pass (Night Hawk
+    // Legacy Signal Intelligence Phase 1 — dossier.ts's fetchTickerDossier gained an optional
+    // 4th sessionCtx param specifically so ANY caller of buildTickerDossier/fetchAllDossiers,
+    // not just the edition path, gets a correct earnings_date/today_ymd/tomorrow_ymd, since two
+    // real non-edition callers — zerodte/scan.ts's own dossier borrow and play-explainer.ts's
+    // fallback narrative path — read dossier.scored straight from that first pass with no
+    // subsequent rescore at all). This loop is now redundant FOR THE EDITION PATH SPECIFICALLY
+    // (both passes compute the identical correct value) but is kept exactly as-is rather than
+    // removed: it's still the one deterministic, idempotent, checkpoint-resume-safe re-score
+    // this path has always relied on, and removing it is an unrelated optimization, not part of
+    // this data-completeness fix.
     for (const d of Object.values(dossiers)) {
       try {
         rescoreDossier(d, regime, 1, {
@@ -614,6 +896,7 @@ export async function buildEveningEdition(opts?: {
     const scoredList = Object.values(dossiers)
       .filter((d) => d.scored != null)
       .map((d) => d.scored!);
+    recordScoringStageSnapshots(editionFor, "scored", scoredList, dossiers);
 
     if (!scoredList.length) {
       // Funnel collapsed at stage_dossiers — candidates existed but none produced a scored dossier
@@ -708,6 +991,14 @@ export async function buildEveningEdition(opts?: {
             console.warn("[nighthawk/edition] governor audit-trail write failed:", err);
           }
         }
+        if (govResult.cut.length) {
+          void insertNighthawkCandidateSnapshots(buildGovernorCutSnapshotRows(editionFor, govResult.cut)).catch(
+            (err) => {
+              console.warn("[nighthawk/edition] governor-cut candidate snapshot write failed:", err);
+              alertCandidateSnapshotWriteFailure("rejected:cross_edition_governor", editionFor, err);
+            }
+          );
+        }
 
         if (govResult.notes.length) {
           for (const note of govResult.notes) console.info(`[nighthawk/edition] ${note}`);
@@ -717,46 +1008,78 @@ export async function buildEveningEdition(opts?: {
       console.warn("[nighthawk/edition] cross-edition governor skipped (DB read failed):", err);
     }
     funnel.governor_passed = ranked.length;
+    // Captured here (not earlier) because `ranked` at this point IS applyCrossEditionGovernor's
+    // own effective-score-sorted survivor list — the govPenalty every surviving candidate carries
+    // going forward. Kept alongside the ranking array itself (not re-derived later) specifically
+    // because deterministic-edition.ts's own grounding-merge sort and edition-builder's later
+    // PR-N26 final sort both mutate/rebuild the candidate list further downstream, and this is
+    // the exact govPenalty a signal-intelligence-corrections.ts shadow_bugfix pass needs to
+    // recompute what the FINAL sort should have used.
+    const govPenaltyByTicker = new Map(ranked.map((c) => [c.ticker, c.govPenalty ?? 0]));
+    recordScoringStageSnapshots(editionFor, "rank_governor", ranked, dossiers);
 
     // STAGE 4c — Bearish-tape posture (PR-N9): when ≥2 of tide/breadth/regime signal
-    // bearish, re-rank to prefer SHORT candidates. Thin-flow longs get flipped to short;
-    // strong-flow longs are penalized but kept for downstream gates to decide.
+    // bearish, re-rank to prefer SHORT candidates via a score bonus/penalty. Candidates
+    // are NEVER flipped from long to short — bearish-posture.ts's own comment explains
+    // why (a long's sub-scores are direction-specific and would be wrong on a flipped
+    // short) — so this log reports the real re-ranking effect (boosted/penalized counts),
+    // not a "flipped" count that this stage structurally can never produce.
+    // Captured BEFORE applyBearishPosture potentially reassigns `ranked` below — the shadow
+    // comparison (and its own internal re-derivation of both the actual and corrected postures)
+    // needs the PRE-posture-adjustment list, exactly like applyBearishPosture(ranked, regime)
+    // itself is about to be called with, never the already-adjusted result.
+    const prePostureRanked = ranked;
     const postureResult = applyBearishPosture(ranked, regime);
     if (postureResult.posture === "SHORT") {
       ranked = postureResult.ranked;
       console.info(
         `[nighthawk/edition] bearish-posture: SHORT posture engaged (${postureResult.reasons.join("; ")}), ` +
-        `${postureResult.flipped} candidate(s) flipped to short`
+        `${postureResult.shortsBoosted} short(s) boosted, ${postureResult.longsPenalized} long(s) penalized`
       );
     }
     funnel.posture_applied = ranked.length;
 
+    // #30 shadow-log (observational only, never feeds back into ranked/postureResult): compares
+    // the LIVE (buggy) composite_regime gate against the corrected comp.includes("DOWN") gate.
+    // Same pre-adjustment ranked/regime objects applyBearishPosture was just called with above.
+    // Fire-and-forget, matching every other snapshot-write call site in this file exactly.
+    const bearishPostureShadow = compareBearishPosture(prePostureRanked, regime);
+    void insertNighthawkCandidateSnapshots([
+      buildBearishPostureShadowSnapshotRow(editionFor, bearishPostureShadow),
+    ]).catch((err) => {
+      console.warn("[nighthawk/edition] failed to write bearish-posture-shadow candidate snapshot:", err);
+      alertCandidateSnapshotWriteFailure("bearish_posture_shadow", editionFor, err);
+    });
+
     // Pre-synthesis merit-floor check (2026-08-05, moved earlier — Lever 5 of the discovery-
     // architecture redesign). This is a PURE OPTIMIZATION, not a new gate. The organic path
-    // (filterPlaysByMerit) and the strict rescue path (rankedCandidateMeritEligible in
-    // play-backfill.ts) both require score+tier — countRankedClearingMerit logs that number for
-    // diagnostics. But the LOOSEST downstream rescue, promoteTopBlocked's gate-promote
-    // (publish-gates.ts), admits on `score >= gatePromoteMinScore()` ALONE, no tier check — so the
-    // only condition under which NOTHING anywhere downstream could possibly publish is "no
-    // candidate clears the score floor at all" (anyRankedClearsScoreFloor). Nothing between here
-    // and there can raise a candidate's score (buildDeterministicEditionPlays/critiquePlays only
-    // narrow/format; Phase 3 removed the LLM synthesis stage entirely, per claude-edition.ts's own
-    // doc comment — this pipeline is fully deterministic), so that condition is stable once
-    // computed here. Short-circuiting here saves a real night's worth of API calls (chain
-    // prefetch, dossier re-fetch for index/flow-tape context) on a night that was always going to
-    // end in recap-only, without changing which nights publish plays.
+    // (filterPlaysByMerit) requires score+tier — countRankedClearingMerit logs that number for
+    // diagnostics.
+    //
+    // CORRECTED 2026-09-28 (backfill redesign): this short-circuit previously relied on
+    // anyRankedClearsScoreFloor being "the loosest bar anywhere downstream" — true before this
+    // date, no longer true. backfillCandidateEligible (play-backfill.ts) now admits a candidate on
+    // trading-halt status ALONE, no score/tier requirement, specifically so a thin-quality night
+    // can still reach the configured minimum play count. Skipping synthesis here whenever
+    // anyRankedClearsScoreFloor is false would now incorrectly recap-only a night backfill could
+    // have rescued. So the short-circuit is now gated on backfill being OFF: with backfill
+    // disabled, the old reasoning holds exactly as before (gate-promote's score-only bar is once
+    // again the loosest path, so the score-floor check alone is sufficient); with backfill on
+    // (the default), this optimization is foregone and synthesis always runs when any candidate
+    // is ranked, trading a real night's worth of saved API calls on a hopeless-organic night for
+    // correctness on a backfill-rescuable one.
     console.info(
       `[nighthawk/edition] pre-synthesis merit check: ${countRankedClearingMerit(ranked)}/${ranked.length} ` +
       `ranked candidate(s) already clear score>=${effectiveMinPublishScore()} + tier>=${legacyMinPublishTier()} ` +
       `before synthesis/critic/gates run`
     );
 
-    if (ranked.length > 0 && !anyRankedClearsScoreFloor(ranked)) {
+    if (ranked.length > 0 && !thinEditionBackfillEnabled() && !anyRankedClearsScoreFloor(ranked)) {
       const reason =
         `No ranked candidate clears even the score-only rescue floor pre-synthesis (${ranked.length} ` +
-        `ranked, 0 with score>=${effectiveMinPublishScore()}) — every downstream rescue/backfill/` +
-        `gate-promote path requires at least this score floor, so synthesis was skipped rather ` +
-        `than spending API calls on a guaranteed recap-only night.`;
+        `ranked, 0 with score>=${effectiveMinPublishScore()}) — every downstream rescue/gate-promote ` +
+        `path requires at least this score floor, and backfill is disabled, so synthesis was ` +
+        `skipped rather than spending API calls on a guaranteed recap-only night.`;
       console.warn(`[nighthawk/edition] stage_synthesis short-circuit — recap-only fallback: ${reason}`);
       funnel.dossiers = 0;
       funnel.synthesized = 0;
@@ -883,6 +1206,7 @@ export async function buildEveningEdition(opts?: {
         spxDesk,
         flowTape,
         playOutcomes,
+        edition_for: editionFor,
       });
       raw = synthRaw;
       // BIE Stage 4 audit trail (step 4b): one row per geometry-rejected play, regardless of
@@ -902,6 +1226,18 @@ export async function buildEveningEdition(opts?: {
       if (stageRejected?.length) {
         recordNighthawkStageRejectedAuditTrail(stageRejected, editionFor);
       }
+      // Signal Intelligence: same rejections, ALSO written to nighthawk_candidate_snapshot so
+      // candidate-forward-grade.ts's shadow MFE/MAE/multi-horizon grading reaches them too — see
+      // buildStageRejectionSnapshotRows' own doc for the gap this closes (2026-09-18).
+      recordStageRejectionSnapshots(editionFor, [
+        ...(geometryRejected ?? []).map((r) => ({
+          ticker: r.ticker,
+          detail: { stage: "geometry" as const, drops: r.drops },
+          scored: r.scored ?? null,
+          play: r.play ?? null,
+        })),
+        ...(stageRejected ?? []),
+      ]);
       // Stamp grounding counts onto the funnel so EVERY exit (incl. recap-only fallbacks below)
       // reports them. The checks already ran inside generateEditionPlays before any drop took effect.
       groundingSummary = synthGrounding ?? null;
@@ -1009,6 +1345,17 @@ export async function buildEveningEdition(opts?: {
           "[nighthawk/edition] final geometry gate rejected:",
           failing.map((f) => `${f.play.ticker}: ${f.drops.join("; ")}`)
         );
+        // Durable record (task #24, found while auditing the operator's "verify shadow tracking
+        // captures every rejected candidate" mandate): this gate previously had ZERO durable
+        // record anywhere, not even the older alert_audit_log — the ONLY trace was the
+        // console.warn above, invisible by the next morning. A play dropped here reached this
+        // point specifically because it bypassed generateEditionPlays' own geometry check
+        // (backfill/checkpoint-resume introduced it fresh), so it is otherwise indistinguishable
+        // from a normal geometry rejection to any downstream reader — same fire-and-forget
+        // treatment as every other rejection stage in this file.
+        const geometryGateRejections = buildFinalGeometryGateRejections(failing);
+        recordNighthawkRejectedAuditTrail(geometryGateRejections, editionFor);
+        recordStageRejectionSnapshots(editionFor, geometryGateRejections);
         finalPlays = passing.map((p, i) => ({ ...p, rank: i + 1 }));
         funnel.published = finalPlays.length;
         funnel.critic_passed = finalPlays.length;
@@ -1038,15 +1385,16 @@ export async function buildEveningEdition(opts?: {
         );
         // Durable rejection rows FIRST — recorded regardless of whether anything publishes
         // below (same unconditional/fire-and-forget semantics as the synthesis-stage rows).
-        recordNighthawkStageRejectedAuditTrail(
-          blocked.map((b) => ({
-            ticker: b.ticker,
-            play: b.play,
-            detail: { stage: "publish_gate" as const, blocks: b.result.blocks },
-            scored: b.scored,
-          })),
-          editionFor
-        );
+        const publishGateRejections = blocked.map((b) => ({
+          ticker: b.ticker,
+          play: b.play,
+          detail: { stage: "publish_gate" as const, blocks: b.result.blocks },
+          scored: b.scored,
+        }));
+        recordNighthawkStageRejectedAuditTrail(publishGateRejections, editionFor);
+        // Signal Intelligence: same rejections, ALSO written to nighthawk_candidate_snapshot —
+        // see buildStageRejectionSnapshotRows' own doc for why (2026-09-18).
+        recordStageRejectionSnapshots(editionFor, publishGateRejections);
         finalPlays = passing;
         funnel.critic_passed = finalPlays.length;
       }
@@ -1145,6 +1493,13 @@ export async function buildEveningEdition(opts?: {
       finalPlays.forEach((p, i) => { p.rank = i + 1; });
     }
 
+    // rank_final capture MOVED (2026-09-28 backfill redesign) — see the single capture point
+    // right before publish, after the write-side-invariant guard. That guard's own last-resort
+    // backfill (below) can still add plays to finalPlays AFTER this point, and capturing here
+    // unconditionally would have produced a rank_final snapshot missing exactly those plays —
+    // capturing once, after every path that can mutate finalPlays has run, is the only place
+    // that is guaranteed complete.
+
     // Stamp G-N2's ALREADY-COMPUTED target distance onto each published play so members and
     // admin read the same number the gate judged. Read from `gateResults` (the in-memory
     // objects this build gated on, also pinned into publish_context.gates below) — never
@@ -1206,6 +1561,39 @@ export async function buildEveningEdition(opts?: {
       };
     }
 
+    // Default every play that reaches here to QUALIFIED — backfillThinEditionPlays already
+    // stamps BACKFILL on its own additions, so this only fills in the organic-path plays that
+    // never had a reason to carry the field themselves.
+    finalPlays = finalPlays.map((p) => ({ ...p, selection_tier: p.selection_tier ?? "QUALIFIED" }));
+
+    // QUALITY FLOOR reporting (2026-09-28, operator-directed): null on the common case (minimum
+    // reached, whether organically or via backfill). Non-null only when even backfill could not
+    // reach the configured minimum — the case where publishing fewer than the minimum is the
+    // correct, honest outcome and must say so explicitly rather than reading as an unexplained
+    // short count.
+    const qualityFloorNote = computeQualityFloorNote(finalPlays, effectiveMinPublishPlays());
+    if (qualityFloorNote) {
+      console.warn(`[nighthawk/edition] ${qualityFloorNote}`);
+    }
+
+    // rank_final capture (Night Hawk Legacy Signal Intelligence, Phase 1): the order members
+    // ACTUALLY see, published or not — every finalPlays entry that survived to here is getting
+    // published. gov_penalty is looked up from the STAGE-4b snapshot (govPenaltyByTicker) since
+    // PlaybookPlay itself never carries it — this is deliberately the same real gap the
+    // governor-blind-sort bug lives in: the play object members see has no govPenalty field to
+    // consult, which is *why* PR-N26 can silently ignore it. MOVED to this single point
+    // (2026-09-28) — after every merit-filter/geometry-gate/publish-gate/backfill path (including
+    // the last-resort write-side-invariant backfill just above) has had its chance to mutate
+    // finalPlays, so this is the only place a capture is guaranteed complete for every play that
+    // actually publishes, backfilled or not.
+    const rankFinalRows = buildRankFinalSnapshotRows(editionFor, finalPlays, govPenaltyByTicker);
+    if (rankFinalRows.length) {
+      void insertNighthawkCandidateSnapshots(rankFinalRows).catch((err) => {
+        console.warn("[nighthawk/edition] failed to write rank_final candidate snapshots:", err);
+        alertCandidateSnapshotWriteFailure("rank_final", editionFor, err);
+      });
+    }
+
     funnel.published = finalPlays.length;
     logFunnel(editionFor, funnel);
     console.info("[nighthawk/edition] publish edition");
@@ -1221,6 +1609,7 @@ export async function buildEveningEdition(opts?: {
         sector_strength: recap.sector_strength,
         sector_weakness: recap.sector_weakness,
         catalysts: recap.catalysts,
+        desk_playbook: recap.desk_playbook,
         hot_chains: ctx.hot_chains.slice(0, 10),
         sector_tides: ctx.sector_tides,
         index_flows: ctx.index_flows,
@@ -1251,6 +1640,10 @@ export async function buildEveningEdition(opts?: {
         play_explanations: {},
         critic_notes: finalCriticNotes,
         critic_applied: Boolean(finalCriticNotes.length),
+        // 2026-09-28 backfill redesign (operator-directed): null on the common case, explicit
+        // "QUALITY FLOOR — ONLY N QUALIFIED"-style text whenever the published count fell short
+        // of the configured minimum even after backfill — a genuinely thin night, not a bug.
+        quality_floor_note: qualityFloorNote,
         funnel: {
           candidates: funnel.candidates ?? candidates.length,
           ranked: funnel.ranked ?? ranked.length,

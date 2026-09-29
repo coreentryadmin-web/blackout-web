@@ -122,7 +122,12 @@ import {
   exitPolicyGraderParams,
 } from "./strategy-version";
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
-import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
+import {
+  cortexAbstainForCondor,
+  cortexEntryContextFor,
+  cortexGateBlocks,
+  evaluateCortexForCommit,
+} from "./cortex-gate";
 import { applyCortexCommitRelief, gexWallsVetoWasRelieved } from "./cortex-vector-relief";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
@@ -174,7 +179,7 @@ import {
   ensureChainsForSetups,
   type LiquidStrikeCandidate,
 } from "./liquid-strike-fallback";
-import { computeVectorGateBoost } from "./vector-commit-boost";
+import { computeVectorGateBoost, computeVectorGateBoostForPlayType } from "./vector-commit-boost";
 import {
   effectiveChasePct,
   planChaseExempt,
@@ -335,7 +340,13 @@ export async function scanZeroDteBoard(flags?: {
     // ingestion admits 0-1DTE prints down to MIN_PREMIUM_NEAR_DATED, this query must not
     // re-exclude them, or the lower ingestion floor accomplishes nothing for FLOW discovery).
     fetchRecentFlows({ since_hours: 7, min_premium: MIN_PREMIUM_NEAR_DATED, order: "premium", limit: 500, max_dte: 1 }).catch(
-      () => {
+      (err) => {
+        // upstream_ok surfaces this on the board payload (health check consumes it), but that
+        // alone leaves CloudWatch with no trace of WHY — unlike the sibling BREAKOUT/PIN
+        // discovery-source catches below (~L515-524, L565-568), which log a reason even though
+        // they too set a health flag. This is the primary FLOW fetch (feeds deriveZeroDteSetups
+        // directly), so a recurring failure here is at least as worth a log line as those.
+        console.warn("[zerodte-scan] primary flow fetch failed — board degrades to empty FLOW origin this cycle:", err);
         upstreamOk = false;
         return [];
       }
@@ -753,10 +764,15 @@ export async function scanZeroDteBoard(flags?: {
             governorPremiumAtRisk,
             governorShortGammaOpen,
             committedThisCycle: governorAccurate,
+            play_type: s.play_type,
           });
         }
         if (s.gate.verdict === "COMMIT") {
-          governorAccurate.push({ ticker: s.ticker.toUpperCase(), direction: s.direction });
+          governorAccurate.push({
+            ticker: s.ticker.toUpperCase(),
+            direction: s.direction,
+            is_condor: s.play_type === "CONDOR",
+          });
         }
       }
     }
@@ -789,8 +805,31 @@ export async function scanZeroDteBoard(flags?: {
   };
 }
 
-/** Cached (3-min) intraday read from a name's own minute bars. */
-async function intradayReadFor(ticker: string, today: string): Promise<IntradayRead | null> {
+/** Per-ticker intraday read timeout — a miss here only softens ONE setup's score
+ *  adjustment (best-effort), so a tight budget is fine. */
+const TICKER_INTRADAY_FETCH_TIMEOUT_MS = 2_500;
+/** SPY's own read timeout — deliberately more generous than the per-ticker one above.
+ *  Unlike a per-ticker miss, a SPY miss nulls `bias`/`biasAsOfMs` for the WHOLE scan
+ *  cycle, which G-1 (no_market_bias, gates.ts) reads as "tape unreadable" and hard-
+ *  blocks EVERY index-ETF/SPX-family setup (QQQ/SPY/SPXW/SPX/DIA) at once — a single
+ *  slow Polygon response (SPY's minute-bar payload is larger than a single name's) was
+ *  measured live 2026-09-16 concentrating 94% of all `no_market_bias` rejections onto
+ *  exactly these 5 tickers, including simultaneous same-cycle blocks on QQQ(84)/SPY(78)/
+ *  SPXW(68)/SPX(66) — the four highest-scoring setups in the whole pool. Giving SPY's
+ *  read room to finish (still well under MARKET_BIAS_MAX_AGE_MS's 15-min staleness
+ *  ceiling, gates.ts) trades a slightly slower scan cycle for not needlessly vetoing
+ *  the market's most-watched, highest-scoring names on a transient response-time blip
+ *  that has nothing to do with whether the tape is actually readable. */
+export const SPY_BIAS_FETCH_TIMEOUT_MS = 6_000;
+
+/** Cached (3-min) intraday read from a name's own minute bars. `timeoutMs` lets the
+ *  SPY-bias caller (attachIntradayEdge) opt into a longer budget than the default
+ *  per-ticker one — see SPY_BIAS_FETCH_TIMEOUT_MS's doc for why the two must differ. */
+export async function intradayReadFor(
+  ticker: string,
+  today: string,
+  timeoutMs: number = TICKER_INTRADAY_FETCH_TIMEOUT_MS
+): Promise<IntradayRead | null> {
   return within(
     withServerCache<IntradayRead>(`zerodte:intraday:${ticker}:${today}`, 3 * 60 * 1000, async () => {
       // Index roots (SPXW/SPX/NDX…) only price under Polygon's I: namespace —
@@ -802,7 +841,7 @@ async function intradayReadFor(ticker: string, today: string): Promise<IntradayR
           .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c, v: b.v }))
       );
     }),
-    2_500
+    timeoutMs
   );
 }
 
@@ -834,7 +873,7 @@ export function applyIntradayEdgeToBreakdown(
  *  conflicts flagged for the A-tier gate. Best-effort: missing bars = no adjust.
  *  Returns the SPY bias (+ its freshness) so the hard-gate layer judges the SAME
  *  tape read the scores were adjusted with. */
-async function attachIntradayEdge(
+export async function attachIntradayEdge(
   setups: EnrichedZeroDteSetup[]
 ): Promise<{ bias: MarketBias | null; biasAsOfMs: number | null }> {
   if (setups.length === 0) return { bias: null, biasAsOfMs: null };
@@ -850,7 +889,7 @@ async function attachIntradayEdge(
   // the light per-ticker read; the heavy DOSSIER enrichment (Redis single-flight) still stays at top-N.
   const edged = setups;
   const [spyRead, ...reads] = await Promise.all([
-    intradayReadFor("SPY", today),
+    intradayReadFor("SPY", today, SPY_BIAS_FETCH_TIMEOUT_MS),
     ...edged.map((s) => intradayReadFor(s.ticker, today)),
   ]);
   const bias = marketBias(spyRead ?? null);
@@ -1090,11 +1129,16 @@ async function attachGateVerdicts(
   // Setups arrive score-ranked, so the concurrency budget goes to the best finds:
   // committedThisCycle carries earlier accepted fresh commits within this same pass
   // (both for the cap and the correlated-conflict check).
-  const committedThisCycle: Array<{ ticker: string; direction: "long" | "short" }> = [];
+  const committedThisCycle: Array<{ ticker: string; direction: "long" | "short"; is_condor?: boolean }> = [];
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
     const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
-    const boost = computeVectorGateBoost(s.direction, s.score, pulse);
+    // CONDOR BYPASS: see computeVectorGateBoostForPlayType's doc (vector-commit-boost.ts) — a
+    // CONDOR's `direction` is nominal fade provenance only (delta-neutral), so Vector's
+    // directional-alignment boost must not inflate the score fed to G-3/G-18 (neither is
+    // condor-exempt) or grant a directional gate exemption. Same root-cause family as the
+    // Cortex layer's own condor-direction misread fixed alongside this in the same audit pass.
+    const boost = computeVectorGateBoostForPlayType(s.play_type, s.direction, s.score, pulse);
     let gateScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
     if (boost.score_bump > 0) s.score = gateScore;
     const reliefCtx = planChaseContextFromSetup({
@@ -1113,7 +1157,7 @@ async function attachGateVerdicts(
       s.score = gateScore;
       reliefCtx.score = gateScore;
     }
-    const postBoost = computeVectorGateBoost(s.direction, gateScore, pulse);
+    const postBoost = computeVectorGateBoostForPlayType(s.play_type, s.direction, gateScore, pulse);
     const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, gateScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
@@ -1247,9 +1291,18 @@ async function attachGateVerdicts(
     // evaluateCortexForCommit never throws. failClosedOnVetoBlind:true detects when BOTH
     // veto-capable sources (gex-walls + flow-quality) failed to read → VETO_BLIND hard HOLD
     // (fresh commit blocked with cortex_veto_blind) — see cortex-gate.ts for the WHY.
-    s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
-      failClosedOnVetoBlind: true,
-    });
+    //
+    // CONDOR BYPASS: a CONDOR's `direction` is nominal fade provenance only (delta-neutral,
+    // condor.ts) — Cortex's whole evidence model is directional, so feeding it a condor's
+    // nominal direction would let it VETO/block a neutral structure on evidence that argues
+    // about a direction the condor never actually bet on. Same defect already fixed for the
+    // Largo read, governor, Thesis Health and confluence — see cortexAbstainForCondor's doc.
+    s.cortex =
+      s.play_type === "CONDOR"
+        ? cortexAbstainForCondor()
+        : await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
+            failClosedOnVetoBlind: true,
+          });
     s.cortex = await applyCortexVetoDwell(today, s.ticker, s.cortex);
     s.cortex = applyCortexCommitRelief(
       s.cortex,
@@ -1269,7 +1322,7 @@ async function attachGateVerdicts(
       s.gate = { ...s.gate, verdict: "BLOCKED", blocks: cortexBlocks };
       continue;
     }
-    committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
+    committedThisCycle.push({ ticker: s.ticker, direction: s.direction, is_condor: s.play_type === "CONDOR" });
   }
   return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
 }
@@ -1982,6 +2035,45 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         },
         committedAtMs
       ),
+      // G-23 dislocation TELEMETRY (2026-09-12, evidence only — never gates, mirrors the
+      // input_age_manifest role above). qualificationDislocationGateBlocks (gates.ts) already
+      // computes elapsed-ms/move-pct from these same four fields to decide whether to BLOCK a
+      // commit, but that verdict only ever exposes a formatted `reason` string on a real trip —
+      // there was no way to ask, after the fact, how large the real qualify-to-commit gap is for
+      // the population of commits that DIDN'T trip it (the population the gate is calibrated
+      // against). This pins the raw inputs and the same derived elapsedMs/movePct math on every
+      // committed row, tripped or not, so a future measurement (an audit script reading
+      // GET /api/market/zerodte/record) can build the real distribution before considering
+      // whether the gate's threshold/window need retuning, instead of guessing from anecdotes.
+      // Deliberately recomputed from s.qualification_underlying_price(_as_of)/s.underlying_price
+      // (_as_of) — the SAME fields and the SAME formula qualificationDislocationGateBlocks uses —
+      // rather than reading the gate verdict, so the telemetry can never disagree with what
+      // actually decided the block. Omitted (not zero-filled) when either snapshot is missing,
+      // same "never fabricate" discipline as origin_direction_conflict/session_gap_days above.
+      ...((): Record<string, unknown> => {
+        const qp = s.qualification_underlying_price;
+        const qAt = parseIsoMs(s.qualification_underlying_price_as_of);
+        const cp = s.underlying_price;
+        const cAt = parseIsoMs(s.underlying_price_as_of);
+        if (
+          qp == null || !Number.isFinite(qp) || qp <= 0 ||
+          cp == null || !Number.isFinite(cp) || cp <= 0 ||
+          qAt == null || !Number.isFinite(qAt) ||
+          cAt == null || !Number.isFinite(cAt)
+        ) {
+          return {};
+        }
+        return {
+          qualification_dislocation_telemetry: {
+            qualification_underlying_price: qp,
+            qualification_underlying_price_as_of: s.qualification_underlying_price_as_of,
+            current_underlying_price: cp,
+            current_underlying_price_as_of: s.underlying_price_as_of,
+            elapsed_ms: cAt - qAt,
+            move_pct: Math.round((Math.abs((cp - qp) / qp) * 100) * 10_000) / 10_000,
+          },
+        };
+      })(),
     } as unknown as Record<string, unknown>,
     flags_json: {
       ...(s.earnings ? { earnings: s.earnings } : {}),
@@ -2079,6 +2171,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
             direction: setup.direction,
             entry_premium: row.entry_premium ?? setup.plan?.entry_max ?? setup.plan?.mark ?? null,
             gamma_regime: setup.gamma_regime ?? null,
+            is_condor: setup.play_type === "CONDOR",
           },
           snap,
           committedAtMs,
@@ -2093,7 +2186,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
           );
           continue;
         }
-        acceptedThisTxn.push({ ticker: setup.ticker.toUpperCase(), direction: setup.direction });
+        acceptedThisTxn.push({
+          ticker: setup.ticker.toUpperCase(),
+          direction: setup.direction,
+          is_condor: setup.play_type === "CONDOR",
+        });
         survivors.push(row);
       }
       return survivors;

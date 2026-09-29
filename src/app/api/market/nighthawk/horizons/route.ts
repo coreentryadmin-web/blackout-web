@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
       fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       fetchBangerPositions: isBangerEngineEnabled()
-        ? () => fetchBangerOpenBookRows(80).catch(() => [])
+        ? () => fetchBangerOpenBookRows().catch(() => [])
         : undefined,
       vectorLeaders,
       bangerWatchPlays: bangerWatchSnap?.plays ?? [],
@@ -112,12 +112,49 @@ export async function GET(req: NextRequest) {
     // 7499.360000000001) could leak into the horizon board once swings ship. Rounding the whole
     // payload at the response edge is the same backstop every sibling market route applies and
     // touches no computed value (roundFloats only trims IEEE float noise on numbers).
+    //
+    // keyDp override for option-premium fields: the plain 2dp default destroys precision for
+    // sub-$1 contracts (Banger-origin penny positions routinely price at $0.10-$0.30), and
+    // `livePnlPct` is computed upstream (banger-lane-merge.ts) from the RAW unrounded
+    // entry/mark BEFORE this rounding runs — so a 2dp-rounded mid can visibly disagree with the
+    // already-computed percentage sitting right next to it (live repro: RBLU 2026-09-15, raw
+    // mark 0.125 → displayed 0.13, but livePnlPct -16.7% only matches the raw 0.125). Same
+    // per-key-precision pattern round-floats.ts's own docs establish for gamma (0.0008-0.05
+    // needs 4dp or it quantizes to 0.00) — option premiums need the same treatment.
+    //
+    // gamma/theta/vega ALSO need the override, not just a citation of it: this comment already
+    // named round-floats.ts's own gamma-quantization warning as precedent but the keyDp map below
+    // never actually added gamma/theta/vega, so `contract.gamma`/`.theta`/`.vega` from
+    // live-plays.ts's honest `quote?.gamma ?? null` (never fabricated) were being served as a
+    // real number then DESTROYED to 0.00 at this 2dp boundary — a genuine small live greek (e.g.
+    // gamma 0.003 on a deep-ITM near-expiry swing contract) renders as a confident "0", which is
+    // exactly the Largo-contract precision violation (fabricated certainty via lossy rounding,
+    // not an honest omission) the standing Ask Largo mandate exists to catch. `iv` is included too
+    // (same round-floats.ts precedent: "delta/theta/IV are perfectly readable at 4dp") even though
+    // IV rarely quantizes to zero at 2dp, for the same reason vector-response-rounding.ts documents:
+    // once a payload mixes scales, every fractional-scale field in that family should share the
+    // override rather than re-discovering the bug field-by-field. `delta` is left at the 2dp
+    // default deliberately — it is already served at native precision from `row.contract_delta`
+    // pinned at commit (0.30-0.70 range), so 2dp does not destroy it the way gamma/theta/vega do.
+    //
+    // `troughPremium` ALSO needs the override — found live 2026-09-23 (BKKT SWING:BKKT:1310):
+    // `peakPremium`/`mid` were already 4dp-overridden but their sibling `troughPremium`
+    // (updateBangerLiveState's LEAST-latched low, banger-lane-merge.ts) fell through to the 2dp
+    // default, so a real trough tick of 0.328 rounded to 0.33 — ABOVE a mid/peak of 0.325 that
+    // stayed unrounded at 4dp. A trough is defined as the LEAST mark ever observed, so it must
+    // never read higher than the current mark; the mismatched precision made an honest, correct
+    // value look like a data-integrity bug. Same "every fractional-scale field in the family
+    // shares the override" principle the comment above already states for gamma/theta/vega/iv.
     return NextResponse.json(
-      roundFloats({
-        board,
-        upstream_ok: payload?.upstream_ok ?? true,
-        session: payload?.session ?? null,
-      }),
+      roundFloats(
+        {
+          board,
+          upstream_ok: payload?.upstream_ok ?? true,
+          session: payload?.session ?? null,
+        },
+        2,
+        { mid: 4, entryPremium: 4, peakPremium: 4, troughPremium: 4, gamma: 4, theta: 4, vega: 4, iv: 4 }
+      ),
       {
         headers: NO_STORE_HEADERS,
       }

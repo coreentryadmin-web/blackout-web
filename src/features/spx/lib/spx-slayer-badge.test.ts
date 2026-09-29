@@ -102,8 +102,27 @@ test("mapSpxPlayToBadge: available:false derives unavailable_reason from idle_me
   assert.equal(badge.unavailable_reason, "Desk warming — play state unavailable");
 });
 
-test("mapSpxPlayToBadge: available:false with no idle_message falls back to a generic reason", () => {
-  const badge = mapSpxPlayToBadge(basePayload({ available: false, idle_message: null }));
+// BUG FIX (Ask Largo × Night Hawk standing mandate, 2026-09-12): the real "Session closed"
+// terminal payload (spx-play-engine.ts's evaluateSpxPlayCore, the `!market_open && !premarket`
+// branch — i.e. every evening and all weekend) sets `idle_message: null` while ALSO setting a
+// perfectly good, specific `headline: "Session closed"` right next to it. The old fallback threw
+// that headline away and showed the generic "SPX Slayer desk unavailable" instead — which reads
+// like an outage on every single routine market-closed render. `headline` must be preferred over
+// the generic string whenever it's the real, informative reason.
+test("mapSpxPlayToBadge: available:false with no idle_message falls back to the payload's own headline (the real 'Session closed' shape), never the generic string", () => {
+  const badge = mapSpxPlayToBadge(
+    basePayload({ available: false, idle_message: null, headline: "Session closed" })
+  );
+  assert.equal(badge.available, false);
+  assert.equal(badge.unavailable_reason, "Session closed");
+});
+
+// The generic fallback is now a true last resort — only reached when NEITHER idle_message NOR
+// headline carries a real reason (not a shape any production payload builder actually produces,
+// since SpxPlayPayload.headline is a required string in every real branch, but kept as a
+// defensive floor so the tooltip is never blank).
+test("mapSpxPlayToBadge: available:false with no idle_message AND no headline falls back to a generic reason", () => {
+  const badge = mapSpxPlayToBadge(basePayload({ available: false, idle_message: null, headline: "" }));
   assert.equal(badge.available, false);
   assert.equal(badge.unavailable_reason, "SPX Slayer desk unavailable");
 });

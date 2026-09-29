@@ -8,7 +8,11 @@ import {
   type ScreenerPreset,
 } from "@/features/vector/lib/vector-screener";
 import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
-import { formatVectorAge, isVectorUniverseSnapshotStale } from "@/features/vector/lib/vector-age-format";
+import {
+  effectiveUniverseAsOf,
+  formatVectorAge,
+  isVectorUniverseSnapshotStale,
+} from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   activeTicker: string;
@@ -69,8 +73,12 @@ export function VectorScanner({ activeTicker, onSelect }: Props) {
 
   const activePreset = PRESETS.find((p) => p.key === preset) ?? PRESETS[0]!;
   const displayRows = screenUniverse(data.rows, { preset });
-  const age = formatVectorAge(data.updatedAt, now);
-  const isStale = isVectorUniverseSnapshotStale(data.updatedAt, now);
+  // Use the median ROW asOf, not the wrapper's `updatedAt` — see effectiveUniverseAsOf's own
+  // comment: `updatedAt` is bumped by a single-ticker append that refreshes just one row, so it
+  // reads "just updated" even when the bulk of the roster hasn't actually refreshed in a while.
+  const effectiveAsOf = effectiveUniverseAsOf(data);
+  const age = formatVectorAge(effectiveAsOf, now);
+  const isStale = isVectorUniverseSnapshotStale(effectiveAsOf, now);
 
   return (
     <div className="vector-scanner-table-wrap">

@@ -38,12 +38,69 @@
  * to lose.
  */
 
-/** Split a FINDINGS-shaped document into whole entries at `^## ` boundaries. */
+/**
+ * Line-index boundaries where a real (non-fenced) `## ` heading starts. A `## ` line quoted inside
+ * a ``` fenced code block — a normal evidence pattern, e.g. a finding quoting a live product's own
+ * markdown output — is not a real document-structure boundary and must not split an entry in two.
+ *
+ * BUG FIX (2026-09-17, Ask Largo standing mandate): every heading-boundary split in this file's
+ * consumers (this module's own `splitEntries`, plus four independent `src.split(/\n(?=## )/)`
+ * reimplementations across `findings-hygiene.test.ts`, `findings-reconcile.mjs` (x2),
+ * `findings-verify-stale.mjs`, `findings-resolve-prs.mjs` — none of which import this "shared
+ * entry-level reasoning" module despite its own header comment, so the same bug shipped four times
+ * independently) used to count/split on every `## `-starting line unconditionally. A finding whose
+ * Evidence section quotes a live Ask Largo brief's own markdown (containing real `## Why this
+ * setup` / `## Entry` headings inside a fence) folded cleanly through the ALREADY-FIXED
+ * `findings-fold-staging.mjs` (2026-09-17, same mandate) but then fragmented into fake headless
+ * sub-entries here — the exact defect the fold script's own multi-heading guard exists to prevent,
+ * just relocated one step downstream instead of eliminated. Live repro: folding
+ * `2026-09-17-lane-rank-score-precision-mismatch.md` /
+ * `2026-09-17-watch-entry-geometry-duplication.md` (each fence-quotes a real play-brief) broke
+ * `findings-hygiene.test.ts`'s "every entry declares a kind" and "the reconciler is idempotent"
+ * tests, caught before ever reaching `main`.
+ */
+function headingBoundaryLineIndexes(lines) {
+  let inFence = false;
+  const idxs = [];
+  lines.forEach((l, i) => {
+    if (l.trim().startsWith("```")) {
+      inFence = !inFence;
+      return;
+    }
+    if (!inFence && l.startsWith("## ")) idxs.push(i);
+  });
+  return idxs;
+}
+
+/**
+ * Fence-aware drop-in replacement for `text.split(/\n(?=## )/)` — same output shape (an array of
+ * string chunks, each chunk starting at a real `## ` heading except possibly the first, which is
+ * the preamble when the document doesn't open on a heading), but a `## ` line inside a ``` fence
+ * is never treated as a split point. See `headingBoundaryLineIndexes` above for why this exists.
+ */
+export function splitAtHeadingBoundaries(text) {
+  const lines = String(text ?? "").split("\n");
+  const boundaries = headingBoundaryLineIndexes(lines);
+  if (boundaries.length === 0) return [lines.join("\n")];
+  const chunks = [];
+  let start = 0;
+  for (const b of boundaries) {
+    if (b > start) chunks.push(lines.slice(start, b).join("\n"));
+    start = b;
+  }
+  chunks.push(lines.slice(start).join("\n"));
+  return chunks;
+}
+
+/** Split a FINDINGS-shaped document into whole entries at real (non-fenced) `^## ` boundaries. */
 export function splitEntries(text) {
   const out = [];
   let current = null;
+  let inFence = false;
   for (const line of String(text ?? "").split("\n")) {
-    if (line.startsWith("## ")) {
+    const isFenceMarker = line.trim().startsWith("```");
+    if (isFenceMarker) inFence = !inFence;
+    if (!isFenceMarker && !inFence && line.startsWith("## ")) {
       if (current) out.push(current);
       current = { heading: line, lines: [line] };
     } else if (current) {

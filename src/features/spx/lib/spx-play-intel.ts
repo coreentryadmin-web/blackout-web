@@ -160,5 +160,27 @@ export function humanizeGateBlocks(
   desk: SpxDeskPayload,
   confluence: SpxConfluence
 ): string[] {
-  return blocks.map((b) => humanizeGateBlock(b, desk, confluence));
+  // BUG FIX (2026-09-28, Ask Largo/5-engine standing mandate, live repro): humanizeGateBlock
+  // replaces several UNRELATED raw gate reasons (grade-below-minimum, score-too-low, confirmations-
+  // too-weak, generic conflicts) with the SAME buildPlayIdeaIntel(desk, confluence) line, appending
+  // a different trailing clause per branch. Since it's a pure function of desk+confluence, any two
+  // raw gates that both blocked (a very common case — a weak setup usually fails grade AND score
+  // together) humanize to near-identical text, differing only by a trailing suffix — live repro:
+  // "Tape's mixed, but Calls lean — 7695 Call on watch · At 0DTE support node 7695 (+1 pts) ·
+  // waiting for grade confirmation" AND the same line without the suffix, back to back in the same
+  // gates.blocks array. A plain .map() had no way to notice the two calls converged on the same
+  // idea. Dedup by the idea line's own prefix (before any trailing " · ..." clause) rather than by
+  // the full humanized string, since the suffix carries no distinguishing information here — the
+  // FIRST occurrence is kept (raw gates are pushed in the order spx-play-gates.ts evaluates them,
+  // so the first one to reach this idea line is whichever gate rule ran first, not an arbitrary pick).
+  const seenIdeaPrefixes = new Set<string>();
+  const out: string[] = [];
+  for (const b of blocks) {
+    const humanized = humanizeGateBlock(b, desk, confluence);
+    const prefix = humanized.split(" · ")[0];
+    if (humanized !== b && seenIdeaPrefixes.has(prefix)) continue;
+    if (humanized !== b) seenIdeaPrefixes.add(prefix);
+    out.push(humanized);
+  }
+  return out;
 }

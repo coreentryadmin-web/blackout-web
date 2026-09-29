@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   anyRankedClearsScoreFloor,
+  computeQualityFloorNote,
   countRankedClearingMerit,
   effectiveMinPublishPlays,
   effectiveSynthesisPool,
@@ -10,6 +11,7 @@ import {
   gatePromoteEnabled,
   gatePromoteMinScore,
   legacyGlobalStrongest,
+  mainLoopRejectionCaptureEnabled,
   thinEditionBackfillEnabled,
 } from "./edition-quality";
 import { MAX_DOSSIER_STOCKS } from "./constants";
@@ -201,5 +203,84 @@ test("anyRankedClearsScoreFloor is intentionally LOOSER than countRankedClearing
     if (countRankedClearingMerit(ranked) > 0) {
       assert.equal(anyRankedClearsScoreFloor(ranked), true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mainLoopRejectionCaptureEnabled (Workstream C / #20's D4-extra, 2026-09-21 —
+// INSTRUMENTATION ONLY, default OFF)
+// ---------------------------------------------------------------------------
+
+test("mainLoopRejectionCaptureEnabled defaults OFF (unlike most flags in this file, which default ON)", () => {
+  const prev = process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+  delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+  try {
+    assert.equal(mainLoopRejectionCaptureEnabled(), false);
+  } finally {
+    if (prev === undefined) delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+    else process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED = prev;
+  }
+});
+
+test("mainLoopRejectionCaptureEnabled reads NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED=1", () => {
+  withEnv({ NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED: "1" }, () => {
+    assert.equal(mainLoopRejectionCaptureEnabled(), true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeQualityFloorNote (2026-09-28 backfill redesign, operator-directed:
+// "if only one candidate genuinely qualifies... it must explicitly report
+// QUALITY FLOOR — ONLY 1 QUALIFIED")
+// ---------------------------------------------------------------------------
+
+test("computeQualityFloorNote: null when the published count already meets the minimum", () => {
+  const plays = [{ selection_tier: "QUALIFIED" as const }, { selection_tier: "QUALIFIED" as const }, { selection_tier: "QUALIFIED" as const }];
+  assert.equal(computeQualityFloorNote(plays, 3), null);
+});
+
+test("computeQualityFloorNote: null when the minimum was reached via backfill — that is expected, normal behavior", () => {
+  const plays = [
+    { selection_tier: "QUALIFIED" as const },
+    { selection_tier: "BACKFILL" as const },
+    { selection_tier: "BACKFILL" as const },
+  ];
+  assert.equal(computeQualityFloorNote(plays, 3), null);
+});
+
+test("computeQualityFloorNote: the operator's own exact scenario — a single qualified play, nothing else available", () => {
+  const plays = [{ selection_tier: "QUALIFIED" as const }];
+  const note = computeQualityFloorNote(plays, 3);
+  assert.ok(note);
+  assert.match(note!, /QUALITY FLOOR — ONLY 1 QUALIFIED/);
+});
+
+test("computeQualityFloorNote: below minimum with a mix of qualified and backfill breaks down the count", () => {
+  const plays = [{ selection_tier: "QUALIFIED" as const }, { selection_tier: "BACKFILL" as const }];
+  const note = computeQualityFloorNote(plays, 3);
+  assert.ok(note);
+  assert.match(note!, /QUALITY FLOOR — ONLY 1 QUALIFIED \+ 1 BACKFILL \(2 total\)/);
+});
+
+test("computeQualityFloorNote: an absent selection_tier is treated as QUALIFIED (pre-field rows)", () => {
+  const plays = [{ selection_tier: undefined }];
+  const note = computeQualityFloorNote(plays, 3);
+  assert.ok(note);
+  assert.match(note!, /ONLY 1 QUALIFIED/);
+});
+
+test("computeQualityFloorNote: zero published plays still reports honestly (defensive — recap-only is the normal path for this)", () => {
+  const note = computeQualityFloorNote([], 3);
+  assert.ok(note);
+  assert.match(note!, /ONLY 0 QUALIFIED/);
+});
+
+test("computeQualityFloorNote: defaults minPublishPlays to effectiveMinPublishPlays() when omitted", () => {
+  withEnv({ NH_LEGACY_MIN_PLAYS: "2" }, () => {
+    assert.equal(computeQualityFloorNote([{ selection_tier: "QUALIFIED" as const }]) !== null, true);
+    assert.equal(
+      computeQualityFloorNote([{ selection_tier: "QUALIFIED" as const }, { selection_tier: "QUALIFIED" as const }]),
+      null
+    );
   });
 });

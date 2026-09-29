@@ -8,6 +8,7 @@ import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import { ZeroDteCommandPanel } from "./ZeroDteCommandPanel";
+import { SwingLargoInsightsPanel } from "./SwingLargoInsightsPanel";
 import { LegacyPlayDetailPanel } from "./LegacyPlayDetailPanel";
 import { LegacyManageGeometry } from "./legacy-play-geometry";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
@@ -42,9 +43,26 @@ const GLAB: Record<string, string> = {
   delta: "Δ DELTA", gamma: "Γ GAMMA", theta: "Θ THETA", vega: "V VEGA", iv: "IV",
 };
 
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): mirrors `normalizeImpliedVol`
+// (`src/lib/providers/options-snapshot.ts`) — that server-side helper exists specifically to
+// catch a real provider placeholder (some expired/edge-row option snapshots return
+// `implied_volatility` on the PERCENT scale, e.g. 20 = 2000%, instead of the normal DECIMAL
+// scale, e.g. 0.20 = 20%) but had ZERO call sites anywhere in the app, including here: this
+// greek strip formatted the raw `iv` straight through `Math.round(v * 100)`, so a placeholder
+// would have rendered as "IV 2000%" on a live position. `options-snapshot.ts` is a heavy
+// server-only module (Polygon fetch/rate-limiter chain) unsafe to import into this client
+// component, so the guard is duplicated here — same small pure rule, same threshold, no
+// import — rather than pulling server code into the client bundle. A real IV reading
+// (including a genuine near-0% one) passes through completely unchanged.
+const IV_DECIMAL_MAX = 5; // 500% — safely above any real decimal-scale option IV; see options-snapshot.ts's own constant.
+function normalizeIvForDisplay(iv: number): number {
+  if (iv <= 0) return iv;
+  return iv >= IV_DECIMAL_MAX ? iv / 100 : iv;
+}
+
 function fmtGreek(k: string, v: number | null): string {
   if (v == null) return "—";
-  if (k === "iv") return `${Math.round(v * 100)}%`;
+  if (k === "iv") return `${Math.round(normalizeIvForDisplay(v) * 100)}%`;
   if (k === "theta") return v.toFixed(2);
   return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 }
@@ -269,7 +287,7 @@ export function PlayTerminal({
         <span className="tk">{play.ticker} · {play.direction}</span>
         <span className="ct">{play.contract}<OccCopy occ={play.occ} /></span>
         <span className="nh-deck-cursor" aria-hidden />
-        <span className="big"><div className="nh-deck-score">{play.score}</div><div className="lab">SCORE</div></span>
+        <span className="big"><div className="nh-deck-score">{play.scoreWithheld ? "—" : play.score}</div><div className="lab">SCORE</div></span>
       </div>
 
       <HeaderBadges play={play} />
@@ -361,6 +379,19 @@ export function PlayTerminal({
         </div>
       ))}
 
+      {play.horizon === "SWING" && (
+        // Desktop already shows this in the dedicated 3-column `.nh-deck-largo` rail
+        // (CommandDeck.tsx) — that rail is CSS-hidden below the 1100px 3-column breakpoint with
+        // no fallback, so a member on a phone or narrow tablet who taps a Swing play into this
+        // mobile detail overlay never saw the Structure Ladder / Ask Largo read at all. This
+        // second mount is CSS-gated the opposite way (`.nh-deck-right-largo-mobile`, hidden above
+        // 1100px) so it fills exactly that gap without duplicating the desktop rail. Same
+        // component + same useSwingPlayBrief SWR key as the desktop copy, so mounting it here
+        // costs no extra fetch when both are visible during a resize.
+        <div className="nh-deck-right-largo-mobile">
+          <SwingLargoInsightsPanel play={play} />
+        </div>
+      )}
       {commandSinglePanel ? (
         <ZeroDteCommandPanel play={play} nowMs={nowMs} sessionClosed={sessionClosed} />
       ) : legacySinglePanel ? (
@@ -504,7 +535,11 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           )}
         </summary>
         {play.factors.length === 0 && (
-          <div className="nh-deck-recnote">Component breakdown not served for this lane yet — score {play.score}.</div>
+          <div className="nh-deck-recnote">
+            {play.scoreWithheld
+              ? "No pillar breakdown on this row — grade is from lane score only."
+              : `Component breakdown not served for this lane yet — score ${play.score}.`}
+          </div>
         )}
         {topFactors.map((f) => (
           <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
@@ -558,7 +593,12 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
           <div>
             <span className="k">Risk : Reward</span>
             <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
-              {play.rrRatio.toFixed(1)}:1
+              {/* Floor to 1 decimal, same fix/rationale as ZeroDtePreEntryContext below and
+                  deterministic-edition.ts's R:R line (PR #4813) — toFixed(1) rounds e.g. 1.95 up
+                  to "2.0" while the color class still reads the raw (uncolored) rr < 2, so a
+                  member would see "2.0" printed in the neutral color instead of the green the
+                  number implies. Flooring keeps the printed number and its color consistent. */}
+              {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
             </span>
           </div>
         )}
@@ -873,7 +913,14 @@ function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
         <div>
           <span className="k">Risk : Reward</span>
           <span className={clsx("v", rr >= 2 && "nh-deck-pos", rr < 1 && "nh-deck-neg")}>
-            {rr.toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
+            {/* Round DOWN to 1 decimal for display, never to-nearest: rr.toFixed(1) rounds 0.49
+                up to "0.5", printing "0.5:1 (tight)" — a member reads 0.5 against the very
+                threshold ladder the label uses (0.5 is the "acceptable" cutoff) and sees an
+                apparent contradiction. Flooring means the shown number can never read at-or-above
+                a threshold the true rr hasn't reached. Same fix as deterministic-edition.ts's
+                R:R line (PR #4813); the epsilon guards a clean multiple of 0.1 from landing on
+                the wrong side of Math.floor due to binary floating-point representation. */}
+            {(Math.floor(rr * 10 + 1e-9) / 10).toFixed(1)}:1{rr >= 2 ? " (strong)" : rr >= 1 ? " (favorable)" : rr >= 0.5 ? " (acceptable)" : " (tight)"}
           </span>
         </div>
       )}
@@ -942,7 +989,10 @@ function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
           <div>
             <span className="k">R:R</span>
             <span className={clsx("v", play.rrRatio >= 2 && "nh-deck-pos", play.rrRatio < 1 && "nh-deck-neg")}>
-              {play.rrRatio.toFixed(1)}:1
+              {/* Floor to 1 decimal, same fix/rationale as this file's other R:R rows above and
+                  deterministic-edition.ts's (PR #4813) — toFixed(1) rounds up past a color
+                  threshold the raw value hasn't reached. */}
+              {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
             </span>
           </div>
         )}

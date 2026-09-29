@@ -118,6 +118,7 @@ const {
   gradeDirection,
   summarizeByBucket,
   crossFloorComparison,
+  g17BandSeparation,
   scoreSeparation,
 } = await import("./lib/score-floor-backtest-eval.mjs");
 
@@ -338,6 +339,7 @@ for (const d of testDays) {
 const summary = summarizeByBucket(allGraded);
 const sep = scoreSeparation(summary);
 const cross = crossFloorComparison(summary);
+const g17Split = g17BandSeparation(summary);
 const dead = ungradedTickers(allGraded);
 
 console.log(`\n${line()}`);
@@ -360,15 +362,29 @@ const missingBands = SCORE_BUCKETS.map((b) => b.label).filter((l) => !summary.so
 if (missingBands.length) console.log(`  (no graded setups landed in: ${missingBands.join(", ")})`);
 
 console.log(`\n${line()}`);
-console.log(`  THE HEADLINE COMPARISON — does the population score_floor lets through (65-74) beat`);
-console.log(`  the population it blocks today (55-64)?`);
+console.log(`  THE HEADLINE COMPARISON — does the population that actually clears live today (70-74,`);
+console.log(`  G-17's conditional-admission band) beat the population G-3 blocks outright (55-64)?`);
+console.log(`  (65-69 is ALSO blocked live, by G-17, not by G-3 — see the band split below.)`);
 console.log(line());
 if (cross) {
-  console.log(`    55-64 (blocked today): n=${cross.below.n}  win rate ${cross.below.winRate.toFixed(1)}%`);
-  console.log(`    65-74 (clears today):  n=${cross.above.n}  win rate ${cross.above.winRate.toFixed(1)}%`);
+  console.log(`    55-64 (blocked today):          n=${cross.below.n}  win rate ${cross.below.winRate.toFixed(1)}%`);
+  console.log(`    70-74 (G-17 conditional admit): n=${cross.above.n}  win rate ${cross.above.winRate.toFixed(1)}%`);
   console.log(`    delta: ${cross.deltaPp >= 0 ? "+" : ""}${cross.deltaPp.toFixed(1)}pp`);
 } else {
-  console.log(`    INSUFFICIENT DATA — one or both of the 55-64 / 65-74 bands had zero graded setups`);
+  console.log(`    INSUFFICIENT DATA — one or both of the 55-64 / 70-74 bands had zero graded setups`);
+  console.log(`    this run. Widen --sessions or --fetch-calendar-days.`);
+}
+
+console.log(`\n${line()}`);
+console.log(`  G-17 BAND SPLIT — does 70-74 (conditional admission) actually grade better than`);
+console.log(`  65-69 (unconditional reject), justifying treating them differently?`);
+console.log(line());
+if (g17Split) {
+  console.log(`    65-69 (unconditional reject):   n=${g17Split.rejectBand.n}  win rate ${g17Split.rejectBand.winRate.toFixed(1)}%`);
+  console.log(`    70-74 (conditional admission):  n=${g17Split.conditionalBand.n}  win rate ${g17Split.conditionalBand.winRate.toFixed(1)}%`);
+  console.log(`    delta: ${g17Split.deltaPp >= 0 ? "+" : ""}${g17Split.deltaPp.toFixed(1)}pp`);
+} else {
+  console.log(`    INSUFFICIENT DATA — one or both of the 65-69 / 70-74 bands had zero graded setups`);
   console.log(`    this run. Widen --sessions or --fetch-calendar-days.`);
 }
 
@@ -403,6 +419,7 @@ if (EMIT_JSON) {
     ungradedTickers: dead,
     summary,
     crossFloorComparison: cross,
+    g17BandSeparation: g17Split,
     separation: sep,
     params: { SESSIONS, LOOKBACK_DAYS, MIN_PREMIUM, MAX_SETUPS_PER_DAY, FAV, ADV, entry: argv.entry ?? "10:00" },
   }, null, 2));

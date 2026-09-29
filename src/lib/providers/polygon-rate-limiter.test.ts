@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // Regression for the vector-universe-snapshot unbounded fan-out (measured live 2026-09-04:
 // firing all ~85-100 universe tickers' fetchGexHeatmap calls via Promise.allSettled at once left
@@ -45,6 +46,69 @@ test("runPolygonPool tolerates an unbounded task count without ever exceeding it
   await runPolygonPool(tasks, 8);
 
   assert.ok(maxInFlight <= 8, `100-task fan-out must still respect the concurrency cap, saw ${maxInFlight}`);
+});
+
+// Regression for the alerting gap found live 2026-09-16: a P0 (`zerodte-warm` reported stale
+// during RTH by cron-staleness-watchdog) traced to `[polygon-gex]` chain fetches failing at the
+// `global_rps` admission stage across 450+ distinct tickers within a single hour — a real,
+// sustained surge on this limiter's own 150 RPS self-cap, with no alert anywhere to page ops
+// about it (only uw-rate-limiter.ts had one, added 2026-09-15/16). Ported the same pattern here.
+test("pruneQueueTimeoutWindow drops timestamps outside the window, keeps the ones inside it", async () => {
+  const { pruneQueueTimeoutWindow } = await import("./polygon-rate-limiter");
+  const now = 100_000;
+  const kept = pruneQueueTimeoutWindow([now - 70_000, now - 61_000, now - 59_999, now - 1_000, now], now, 60_000);
+  assert.deepEqual(kept, [now - 59_999, now - 1_000, now]);
+});
+
+test("pruneQueueTimeoutWindow: an empty or fully-stale window prunes to empty, never throws", async () => {
+  const { pruneQueueTimeoutWindow } = await import("./polygon-rate-limiter");
+  assert.deepEqual(pruneQueueTimeoutWindow([], 100_000, 60_000), []);
+  assert.deepEqual(pruneQueueTimeoutWindow([1_000, 2_000], 100_000, 60_000), []);
+});
+
+test("queue-timeout surge alert fires only at the sustained threshold, not on a single timeout — and re-arms once the rolling count recovers", async () => {
+  const {
+    noteQueueTimeoutForAlert,
+    noteQueueAdmissionRecoveryForAlert,
+    isQueueTimeoutAlertLatched,
+    resetQueueTimeoutAlertForTest,
+  } = await import("./polygon-rate-limiter");
+  resetQueueTimeoutAlertForTest();
+
+  let t = 0;
+  const now = () => t;
+
+  for (let i = 0; i < 4; i++) {
+    noteQueueTimeoutForAlert(now);
+    t += 1_000;
+  }
+  assert.equal(isQueueTimeoutAlertLatched(), false, "must not page below the sustained threshold");
+
+  noteQueueTimeoutForAlert(now);
+  assert.equal(isQueueTimeoutAlertLatched(), true, "must page once the sustained threshold is crossed");
+
+  noteQueueTimeoutForAlert(now);
+  assert.equal(isQueueTimeoutAlertLatched(), true);
+
+  t += 120_000;
+  noteQueueAdmissionRecoveryForAlert(now);
+  assert.equal(isQueueTimeoutAlertLatched(), false, "must re-arm once the rolling count drops back under threshold");
+});
+
+test("noteQueueAdmissionRecoveryForAlert is a no-op while not latched (the common healthy-admission path)", async () => {
+  const { noteQueueAdmissionRecoveryForAlert, isQueueTimeoutAlertLatched, resetQueueTimeoutAlertForTest } =
+    await import("./polygon-rate-limiter");
+  resetQueueTimeoutAlertForTest();
+  assert.doesNotThrow(() => noteQueueAdmissionRecoveryForAlert());
+  assert.equal(isQueueTimeoutAlertLatched(), false);
+});
+
+test("polygonTrackedFetch records a queue timeout via isQueueTimeout before re-throwing, and calls the recovery hook on success", () => {
+  const src = readFileSync(fileURLToPath(new URL("./polygon-rate-limiter.ts", import.meta.url)), "utf8");
+  const fn = src.match(/export async function polygonTrackedFetch[\s\S]*?\n}/)?.[0];
+  assert.ok(fn, "polygonTrackedFetch() not found");
+  assert.match(fn!, /catch \(err\) \{\s*if \(isQueueTimeout\(err\)\) noteQueueTimeoutForAlert\(\);\s*throw err;/);
+  assert.match(fn!, /noteQueueAdmissionRecoveryForAlert\(\);/);
 });
 
 test("runPolygonPool defaults to a concurrency well below the raw admission ceiling (source scan)", () => {

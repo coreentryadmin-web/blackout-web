@@ -25,9 +25,10 @@ import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
-import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { isEtCashRth, isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +71,30 @@ const RERUN_COOLDOWN_SEC = 60;
 /** Wider floor for repeated `?force=1` calls outside the extended warm window — same gap #4558 fixed on desk-warm. */
 const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
 
+/**
+ * WEDGED-LOCK BREAKER (2026-09-18, issue #5213 P0).
+ *
+ * The cooldown + overlap lock above stop legitimate overlapping runs, but neither has any
+ * judgment about whether the background work they protect ever actually FINISHES. If
+ * `dispatchWarm()`'s background chain dies mid-flight — its own comment above documents the
+ * exact live mechanism: the chain takes ~4-5 minutes, and this ECS task can be recycled for a
+ * deploy well inside that window — `OVERLAP_LOCK_KEY`'s `.finally()` release never runs, and the
+ * cooldown/lock pair then silently blocks every subsequent attempt for up to
+ * `OVERLAP_LOCK_TTL_SEC` (900s), regardless of how stale the scan heartbeat gets. Measured live:
+ * `zerodte_scan_heartbeat` stuck 50+ minutes while `cron_job_runs` kept logging "ok"/"skipped"
+ * every cycle — the synchronous handshake has zero visibility into whether the one thing this
+ * cron exists to do (`recordZeroDteScanTick`) is actually advancing.
+ *
+ * Gated to cash RTH only — off-hours staleness is expected and harmless (`market_hours_stale`
+ * itself is already suppressed off-window in `admin-cron-health.ts`), so there is nothing to
+ * break there. `STEAL_ATTEMPT_KEY` is its own short-TTL NX claim so exactly one concurrent
+ * invocation performs the clear even if many replicas observe `critical_stale` at once — it
+ * never changes the cooldown/overlap claim logic itself, only pre-empties a wedge that would
+ * otherwise persist for the rest of the lock's TTL.
+ */
+const STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt";
+const STEAL_ATTEMPT_TTL_SEC = 30;
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -86,6 +111,23 @@ export async function GET(req: NextRequest) {
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
+  }
+
+  if (isEtCashRth()) {
+    const heartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
+    if (heartbeat?.critical_stale) {
+      const wonSteal = await sharedCacheSetNx(
+        STEAL_ATTEMPT_KEY,
+        { startedAt: started },
+        STEAL_ATTEMPT_TTL_SEC
+      ).catch(() => false);
+      if (wonSteal) {
+        await Promise.all([
+          sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined),
+          sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined),
+        ]);
+      }
+    }
   }
 
   const effectiveCooldownSec = isEtExtendedWarmHours()

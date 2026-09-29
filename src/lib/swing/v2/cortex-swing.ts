@@ -92,6 +92,16 @@ export async function evaluateSwingCortexForCommit(
     return swingCortexBlockedByFromAssessment(assessment);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Observability gap fix: this fail-closed branch previously returned a G-S14
+    // cortex_unavailable block with zero CloudWatch trace — the sibling catch in
+    // v2/tier0-origin-fetch.ts logs via console.warn on the same kind of upstream
+    // failure, but this one didn't, so an operator could not tell "Cortex is genuinely
+    // vetoing" from "Cortex preflight is throwing" without reading DB-pinned reasons
+    // per-candidate. Same class of bug as #5249/#5250 (zerodte/scan.ts, swing/discovery.ts).
+    console.warn(
+      `[swing-cortex] Preflight error for ${ticker} ${direction} — commit blocked (G-S14 fail-closed):`,
+      err,
+    );
     return swingCortexUnavailableResult(`Cortex preflight error — commit blocked (G-S14 fail-closed): ${msg}`);
   }
 }

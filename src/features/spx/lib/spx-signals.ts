@@ -177,6 +177,64 @@ function scoreToGrade(absScore: number, conflicts: number): SpxConfluenceGrade {
   return "D";
 }
 
+/**
+ * BUG FIX (2026-09-22): re-derive bias/action/grade/direction/agreeing/conflicts from a
+ * (score, factors) pair using the EXACT same thresholds `computeSpxConfluence` uses below.
+ *
+ * Root cause this closes: spx-play-engine.ts applies the Night Hawk "morning prior" bonus by
+ * mutating an already-built `SpxConfluence` in place — `confluence.score += nhBonus.bonus` and
+ * `confluence.factors.push({...})` — but never recomputed `grade`/`direction`/`agreeing`/
+ * `conflicts`/`weighted_conflicts`, which were derived from the PRE-bonus score/factors inside
+ * `computeSpxConfluence` and then frozen into the object. Downstream, `evaluatePlayGates` and
+ * `evaluateMtfHybrid` both read `confluence.grade`/`confluence.direction` directly (not
+ * re-derived from score), so a play could be gated/soft-passed against a stale grade or a stale
+ * null direction while `confluence.score` itself already reflects the bonus. `agreeing` alone
+ * was accidentally shielded (spx-play-gates.ts recomputes it from `confluence.factors`), but
+ * grade/direction/conflicts were not. Grade thresholds sit at abs 30/45/58/72 and the bonus is
+ * bounded at ±3 (getNhConfluenceBonus's own contract), so a boundary score (e.g. 57→60, crossing
+ * the 58 A threshold) is a real, reachable case, not a hypothetical one.
+ *
+ * Call this any time `score`/`factors` are mutated on an already-built SpxConfluence, and
+ * reassign every field it returns — never just `score` alone.
+ */
+export function reclassifyConfluenceScore(
+  desk: SpxDeskPayload,
+  score: number,
+  factors: SpxSignalFactor[]
+): Pick<
+  SpxConfluence,
+  "score" | "bias" | "action" | "grade" | "direction" | "agreeing" | "conflicts" | "weighted_conflicts"
+> {
+  const clamped = clamp(score, -100, 100);
+  const abs = Math.abs(clamped);
+  const bullFactors = factors.filter((f) => f.weight > 0).length;
+  const bearFactors = factors.filter((f) => f.weight < 0).length;
+  const { conflicts, weighted_conflicts } = computeWeightedConflicts(desk, clamped, factors);
+
+  let action: SpxSignalAction;
+  let bias: "bullish" | "bearish" | "neutral";
+  if (clamped >= 22) {
+    action = "BUY_CALL";
+    bias = "bullish";
+  } else if (clamped <= -22) {
+    action = "BUY_PUT";
+    bias = "bearish";
+  } else if (abs >= 10) {
+    action = "HOLD";
+    bias = clamped > 0 ? "bullish" : "bearish";
+  } else {
+    action = "WAIT";
+    bias = "neutral";
+  }
+
+  const grade = scoreToGrade(abs, conflicts);
+  const direction: SpxPlayDirection | null =
+    bias === "bullish" ? "long" : bias === "bearish" ? "short" : null;
+  const agreeing = direction === "long" ? bullFactors : direction === "short" ? bearFactors : 0;
+
+  return { score: clamped, bias, action, grade, direction, agreeing, conflicts, weighted_conflicts };
+}
+
 function buildLevels(
   desk: SpxDeskPayload,
   price: number,

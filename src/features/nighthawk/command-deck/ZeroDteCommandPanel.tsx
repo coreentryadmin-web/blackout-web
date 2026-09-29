@@ -11,7 +11,7 @@ import { showsTimeStopClock, showsTrimScaleLadder, showsRatchetTrack } from "./t
 import { etClock } from "./PlayTerminal";
 import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useFlash } from "./use-deck-live";
-import { isZeroDtePremiumTerminal } from "./terminal-display";
+import { isZeroDtePremiumTerminal, healthIsCalibrated } from "./terminal-display";
 import {
   ManagementActionCard,
   ThesisExpectedMove,
@@ -365,7 +365,14 @@ export function ZeroDteCommandPanel({
                         play.rrRatio < 1 && "nh-deck-neg",
                       )}
                     >
-                      {play.rrRatio.toFixed(1)}:1
+                      {/* Floor to 1 decimal, not round-to-nearest: toFixed(1) rounds e.g. 1.96 up
+                          to "2.0" while the color class still reads the raw (uncolored) rr < 2, so
+                          a member would see "2.0" printed in the neutral color instead of the
+                          green the number implies. Same fix/rationale as PlayTerminal.tsx's R:R
+                          rows and deterministic-edition.ts's (PR #4813); the epsilon guards a
+                          clean multiple of 0.1 from landing on the wrong side of Math.floor due to
+                          binary floating-point representation. */}
+                      {(Math.floor(play.rrRatio * 10 + 1e-9) / 10).toFixed(1)}:1
                     </span>
                   </div>
                 )}
@@ -398,8 +405,19 @@ export function ZeroDteCommandPanel({
               false for 0DTE plays (see the PlayTerminal.tsx comment where it was removed) and no
               live-panel replacement was ever wired in. `play.thesisHealth` itself is unaffected
               by that dead branch — it's computed server-side (thesis-health.ts) for every
-              OPEN/HOLD/TRIM 0DTE play with a frozen entry_context, independent of any UI path. */}
-          {play.thesisHealth && (
+              OPEN/HOLD/TRIM 0DTE play with a frozen entry_context, independent of any UI path.
+
+              `healthIsCalibrated` guard added 2026-09-15 (live repro RBLU, a Banger-origin SWING
+              position): this block previously gated on `play.thesisHealth != null` ALONE, so a
+              Banger-stamped uncalibrated payload (always non-null, just built from fixed
+              constants — see thesis-health.ts's `thesisHealthUncalibrated`) still rendered the
+              full per-pillar SwingThesisHealthPanel breakdown here, even after that same guard
+              was fixed to correctly withhold the Ask Largo brief narrative and the
+              `thesisStrengthPct`/Management-overlay numbers elsewhere on this exact page — one
+              honesty gate, applied everywhere else it needed to be except this one render site.
+              Scoped like `healthIsCalibrated` itself (SWING horizon only) so 0DTE's
+              always-calibrated `ThesisHealthPanel` is never affected. */}
+          {play.thesisHealth && healthIsCalibrated(play) && (
             <section className="nh-deck-command-section" aria-labelledby="nh-cmd-thesis-health">
               <h3 id="nh-cmd-thesis-health" className="nh-deck-command-heading">
                 {play.horizon === "SWING" ? "Swing thesis health" : "Thesis integrity"}

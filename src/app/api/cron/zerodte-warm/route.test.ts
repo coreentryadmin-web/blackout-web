@@ -144,17 +144,23 @@ test("force=1 is rate-limited by a minimum re-run cooldown, independent of the h
     "a Redis error on the cooldown claim must not permanently block every future warm"
   );
 
-  assert.doesNotMatch(
-    routeSrc,
-    /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/,
-    "the cooldown must expire on its own TTL, not be released early like the overlap lock"
+  // Narrowed 2026-09-18 (issue #5213): the cooldown now CAN be released early, but only from
+  // inside the STEAL_ATTEMPT_KEY-guarded wedged-lock breaker below — never from the routine
+  // cooldown-check path itself. Assert the del call exists only within that guarded block.
+  const dels = [...routeSrc.matchAll(/sharedCacheDel\(RERUN_COOLDOWN_KEY\)/g)];
+  assert.equal(dels.length, 1, "exactly one early-release site — the wedged-lock steal, not a routine path");
+  const delIdx = dels[0].index!;
+  const wonStealIdx = routeSrc.indexOf("if (wonSteal) {");
+  assert.ok(
+    wonStealIdx > 0 && delIdx > wonStealIdx && delIdx < wonStealIdx + 300,
+    "the cooldown may only be released early from inside the guarded steal block"
   );
 });
 
 test("a force=1 call OUTSIDE the extended warm window is throttled at a much wider floor than one made inside it", () => {
   assert.match(
     routeSrc,
-    /import \{ isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
+    /import \{ isEtCashRth, isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
     "must check the SAME holiday-aware window the in-app dispatchers already gate on"
   );
   assert.match(
@@ -172,6 +178,48 @@ test("a force=1 call OUTSIDE the extended warm window is throttled at a much wid
     /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,\s*\{ startedAt: started \},\s*effectiveCooldownSec\s*\)/,
     "the cooldown claim must use effectiveCooldownSec, not the flat RERUN_COOLDOWN_SEC"
   );
+});
+
+// Regression (2026-09-18 live P0, issue #5213): the cooldown/overlap-lock pair has no
+// visibility into whether the background work they protect ever actually completes. If
+// dispatchWarm()'s ~4-5min background chain dies mid-flight (e.g. its hosting ECS task is
+// recycled for a deploy before OVERLAP_LOCK_KEY's .finally() release runs), every subsequent
+// attempt is silently blocked for up to the lock's 900s TTL regardless of how stale the scan
+// heartbeat gets. Measured live: zerodte_scan_heartbeat stuck 50+ minutes while cron_job_runs
+// kept logging ok/skipped every cycle.
+test("a critical_stale scan heartbeat during cash RTH steals and clears both wedged locks before the normal claim", () => {
+  assert.match(
+    routeSrc,
+    /import \{ isEtCashRth, isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
+    "must gate on cash RTH specifically — off-hours staleness is expected and already suppressed elsewhere"
+  );
+  assert.match(
+    routeSrc,
+    /import \{ loadZeroDteScanHeartbeat \} from "@\/lib\/play-engine-heartbeat"/
+  );
+  assert.match(routeSrc, /if \(isEtCashRth\(\)\) \{/);
+  assert.match(routeSrc, /heartbeat\?\.critical_stale/);
+
+  // The steal attempt must itself be NX-atomic (STEAL_ATTEMPT_KEY) so exactly one concurrent
+  // invocation performs the clear, even if many replicas observe critical_stale at once.
+  assert.match(routeSrc, /STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt"/);
+  assert.match(
+    routeSrc,
+    /const wonSteal = await sharedCacheSetNx\(\s*STEAL_ATTEMPT_KEY,/,
+    "the steal attempt itself must be an atomic NX claim, not a read-then-write race"
+  );
+
+  // Only the winner clears both keys — RERUN_COOLDOWN_KEY and OVERLAP_LOCK_KEY.
+  const wonStealIdx = routeSrc.indexOf("if (wonSteal) {");
+  const clearBlock = routeSrc.slice(wonStealIdx, wonStealIdx + 300);
+  assert.match(clearBlock, /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/);
+  assert.match(clearBlock, /sharedCacheDel\(OVERLAP_LOCK_KEY\)/);
+
+  // The steal-and-clear must happen BEFORE the normal cooldown claim, not after — otherwise a
+  // wedged cooldown would already have rejected the run before the steal ever ran.
+  const stealBlockIdx = routeSrc.indexOf("if (isEtCashRth()) {");
+  const cooldownClaimIdx = routeSrc.indexOf("const withinCooldown = !(await sharedCacheSetNx(");
+  assert.ok(stealBlockIdx > 0 && cooldownClaimIdx > 0 && stealBlockIdx < cooldownClaimIdx);
 });
 
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {

@@ -87,6 +87,33 @@ test("repairGlued restores a fused heading to line start", () => {
   assert.equal(splitEntries(repairGlued(damaged)).entries.length, 2);
 });
 
+// A LEGITIMATE mid-line, backtick-quoted heading -- e.g. an entry citing a prior entry's exact
+// stale heading as evidence ("The stale entry | `## 2026-09-02 — [FINDING, ...] ... — OPEN`.") --
+// is not glued: a genuinely fused heading (the fixture above) is raw adjacent markdown from a
+// dropped newline, never wrapped in a code span. Found 2026-09-17 folding a real staged-findings
+// backlog: countGlued flagged four such quotes as damage, and repairGlued would have corrupted
+// each one by splicing a blank line + new heading into the middle of a markdown table cell,
+// silently fragmenting the quoting entry into a headless orphan the same way real gluing does.
+test("countGlued does not flag a heading quoted verbatim in backticks as glued", () => {
+  const quoting = file(
+    entry("A", "citing `## 2026-08-29 — [FINDING, P1 test] Old` as the stale entry")
+  );
+  assert.equal(countGlued(quoting), 0);
+  assert.equal(repairGlued(quoting), quoting, "repairGlued must leave a backtick-quoted heading untouched");
+});
+
+// A narrower first attempt at the fix above (checking only whether the character immediately
+// before "##" is a backtick) missed this case: the heading text is not the FIRST thing inside the
+// code span -- e.g. quoting this test suite's own illustrative "glued" example, prefixed by other
+// text, inside one open span. Found 2026-09-17 writing up the first fix's own staged finding.
+test("countGlued does not flag a heading quoted mid-span, not at the span's own start", () => {
+  const quoting = file(
+    entry("A", 'the shape is `"FIXED. |## 2026-08-21 — [FINDING, P1 test] Old..."` verbatim')
+  );
+  assert.equal(countGlued(quoting), 0);
+  assert.equal(repairGlued(quoting), quoting, "repairGlued must leave a mid-span quoted heading untouched");
+});
+
 test("damaged input is repaired before it is split, and the repair is reported", () => {
   const base = file(entry("A"));
   const clean = file(entry("A"), entry("B"));

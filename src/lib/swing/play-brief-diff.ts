@@ -6,13 +6,26 @@ import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { roundFloats } from "@/lib/round-floats";
+import { fmtPriceLevel } from "@/lib/fmt-money";
 
 export type BriefSnapshot = {
   headline: string;
   recommendation: string | null;
-  /** LONG/SHORT — carried through only so the diff engine can tell an "adverse" spot move
-   *  (toward the put wall for a LONG, toward the call wall for a SHORT) from a favorable one.
-   *  Not itself diffed (a play's direction doesn't change mid-life). */
+  /** LONG/SHORT — used both to tell an "adverse" spot move (toward the put wall for a LONG,
+   *  toward the call wall for a SHORT) from a favorable one, AND diffed directly below.
+   *  BUG FIXED 2026-09-18 (Ask Largo round 20): this field used to be documented "not itself
+   *  diffed (a play's direction doesn't change mid-life)" — true for a COMMITTED position (once
+   *  committed, direction is locked to the position, per commit.ts), but false for a WATCH
+   *  candidate: `TerminalPlay.id` for an uncommitted row is `${horizon}:${ticker}` with no
+   *  positionId suffix (adapters.ts ~line 983 — positionId is only appended `if (src.positionId
+   *  != null)`), so the SAME play.id persists across discovery cycles while `src.direction`
+   *  (freshly derived from that cycle's net flow read) can genuinely flip — a ticker's
+   *  accumulated flow can turn from net-bullish to net-bearish (or vice versa) session to
+   *  session before it is ever committed. `diffBriefSnapshots` is keyed by that stable play.id
+   *  (see useSwingPlayBrief.ts's `prevSnapRef`/`briefSnapshotStorageKey`), so a real directional
+   *  reversal on a WATCH ticker was silently un-narrated by "What changed" even though it is the
+   *  single most material fact possible — every other diffed field (thesis health, spot, walls)
+   *  is only meaningful relative to a direction that the diff engine was assuming was constant. */
   direction: TerminalPlay["direction"] | null;
   thesisHealth: number | null;
   pnlPct: number | null;
@@ -24,11 +37,37 @@ export type BriefSnapshot = {
   flowCallPremium: number | null;
   flowPutPremium: number | null;
   trimsFired: number | null;
+  /**
+   * `play.rollCandidate`'s reason string when the manage engine is CURRENTLY weighing a roll
+   * (theta outpacing thesis inside the migration-DTE window — the same per-tick check
+   * `roll.ts`'s live executor runs before it actually rolls). Null when no roll is being
+   * weighed this tick. GAP FOUND (Ask Largo standing mandate, 2026-09-18): `play-brief.ts`'s
+   * Management section already renders this as a static "Roll watch" line every refresh once
+   * present (#5163), but the diff engine — whose entire job is to narrate what changed since
+   * the LAST refresh — never looked at it, so a position crossing INTO roll-candidate territory
+   * (arguably the most actionable trade-manager fact there is: "the system is now weighing
+   * rolling this position") produced no "What changed" callout at all, silently identical to a
+   * refresh where nothing happened. A member watching the static section alone would only
+   * notice a roll watch by re-reading the whole Management block on every poll, not by the
+   * "Since last read" pulse this diff engine exists to spare them from having to do.
+   */
+  rollCandidateReason: string | null;
   sectionTitles: string[];
 };
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Strip the trailing "<N>DTE" token `playContractHeadline` bakes into every non-WATCH headline
+ * (e.g. "TRIM — CRWD 235C 7DTE" -> "TRIM — CRWD 235C") so a headline comparison can tell "the
+ * setup actually changed" from "one calendar day passed and the DTE counter ticked down" — the
+ * one component of the headline that changes on its own, every session day, with nothing else
+ * moving. See the "Verdict headline updated" call site's own comment for the bug this fixes.
+ */
+function stripDteFromHeadline(headline: string): string {
+  return headline.replace(/\s+\d+DTE\b/, "").trim();
 }
 
 function fmtDelta(prev: number, next: number, suffix = ""): string {
@@ -52,7 +91,41 @@ function narratePnlShift(prev: number, next: number): string {
 function narrateSpotShift(prev: number, next: number): string {
   const d = next - prev;
   const dir = d > 0 ? "higher" : "lower";
-  return `**Spot drifted ${dir}** — **$${next.toFixed(2)}** (${d >= 0 ? "+" : ""}${d.toFixed(2)} vs prior read)`;
+  return `**Spot drifted ${dir}** — **$${fmtPriceLevel(next)}** (${d >= 0 ? "+" : ""}${d.toFixed(2)} vs prior read)`;
+}
+
+function narrateMarkShift(prev: number, next: number): string {
+  const d = next - prev;
+  const tone = d >= 0 ? "built" : "slipped";
+  return `**Option mark ${tone}** — $${fmtPriceLevel(prev)} → $${fmtPriceLevel(next)} (${d >= 0 ? "+" : ""}${d.toFixed(2)})`;
+}
+
+/** A structural GEX level (call wall/put wall/gamma flip) moving is a distinct fact from spot
+ *  moving — dealers' own hedging structure shifted, not just price. Framed as room-to-spot
+ *  compressing/receding (using each snapshot's OWN contemporaneous spot, so the read is honest
+ *  about whether the wall moving actually changed the cushion, not just that a number changed)
+ *  rather than a bare "$X → $Y" a reader has to interpret themselves. Deliberately does NOT judge
+ *  favorable/adverse by direction here (unlike `adverseSpotDrift`, which already owns that
+ *  judgment for spot itself moving toward a wall) — a wall's own drift affects both a LONG and a
+ *  SHORT reading the same level, so "less/more room before it matters" is the honest, direction-
+ *  neutral fact; falls back to the plain delta when spot is unavailable on either side, or when
+ *  spot moved together with the level and left the room itself unchanged. */
+function narrateStructuralLevelShift(
+  label: string,
+  prev: number,
+  next: number,
+  prevSpot: number | null,
+  nextSpot: number | null,
+): string {
+  const plain = `${label} moved ${fmtDelta(prev, next)}`;
+  if (prevSpot == null || nextSpot == null) return plain;
+  const prevRoom = Math.abs(prev - prevSpot);
+  const nextRoom = Math.abs(next - nextSpot);
+  if (Math.abs(nextRoom - prevRoom) < 0.05) return plain;
+  const compressing = nextRoom < prevRoom;
+  const verb = compressing ? "closing in" : "receding";
+  const readout = compressing ? "less room before it matters" : "more room before it matters";
+  return `**${label} ${verb}** — $${fmtPriceLevel(prev)} → $${fmtPriceLevel(next)}, now $${fmtPriceLevel(nextRoom)} away (was $${fmtPriceLevel(prevRoom)}) — ${readout}`;
 }
 
 /** BUY > HOLD > TRIM > SELL — matches the ACTION vocabulary `swingActionDisplay` renders
@@ -117,8 +190,8 @@ function synthesizeThesisAndPrice(
   const thesisFact = narrateThesisShift(prev.thesisHealth!, next.thesisHealth!);
   const spotFact = narrateSpotShift(prev.spot!, next.spot!);
   const route = adverse.throughFlip
-    ? `through the gamma flip toward the **${adverse.label}** ($${adverse.level.toFixed(2)})`
-    : `toward the **${adverse.label}** ($${adverse.level.toFixed(2)})`;
+    ? `through the gamma flip toward the **${adverse.label}** ($${fmtPriceLevel(adverse.level)})`
+    : `toward the **${adverse.label}** ($${fmtPriceLevel(adverse.level)})`;
   const downgradeClause = downgradeTo
     ? ` — that combination is why the desk downgraded to **${downgradeTo}**`
     : "";
@@ -192,6 +265,7 @@ export function snapshotFromBrief(
     flowCallPremium: fin(extras?.flowCallPremium),
     flowPutPremium: fin(extras?.flowPutPremium),
     trimsFired: fin(extras?.trimsFired),
+    rollCandidateReason: play?.rollCandidate?.reason ?? null,
     sectionTitles: envelope.sections.map((s) => s.title),
   };
 }
@@ -200,6 +274,17 @@ export function snapshotFromBrief(
 export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapshot): string[] {
   if (!prev) return [];
   const lines: string[] = [];
+
+  // A direction flip invalidates the meaning of every other diffed field (a "spot drifted lower"
+  // line reads as bearish news for a LONG and bullish news for a SHORT) — checked and narrated
+  // FIRST, ahead of every other rule below, and never suppressed by a synthesis rule the way
+  // recommendation/thesis/pnl can be, since it is not consumed by any of them. Only fires when
+  // both sides have a real direction (a null on either side means one snapshot predates direction
+  // being wired, not a real flip).
+  const directionChanged = !!prev.direction && !!next.direction && prev.direction !== next.direction;
+  if (directionChanged) {
+    lines.push(`**Direction flipped** — ${prev.direction} → **${next.direction}** (net flow reversed)`);
+  }
 
   // ---- raw facts (unchanged thresholds — same gates as before synthesis existed) ----
   const recommendationChanged =
@@ -256,19 +341,19 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     lines.push(narratePnlShift(prev.pnlPct!, next.pnlPct!));
   }
   if (prev.mark != null && next.mark != null && Math.abs(prev.mark - next.mark) >= 0.05) {
-    lines.push(`Option mark $${prev.mark.toFixed(2)} → $${next.mark.toFixed(2)}`);
+    lines.push(narrateMarkShift(prev.mark, next.mark));
   }
   if (!spotConsumed && spotMoved) {
     lines.push(narrateSpotShift(prev.spot!, next.spot!));
   }
   if (prev.gammaFlip != null && next.gammaFlip != null && Math.abs(prev.gammaFlip - next.gammaFlip) >= 0.05) {
-    lines.push(`Gamma flip moved ${fmtDelta(prev.gammaFlip, next.gammaFlip)}`);
+    lines.push(narrateStructuralLevelShift("Gamma flip", prev.gammaFlip, next.gammaFlip, prev.spot, next.spot));
   }
   if (prev.callWall != null && next.callWall != null && Math.abs(prev.callWall - next.callWall) >= 0.05) {
-    lines.push(`Call wall ${fmtDelta(prev.callWall, next.callWall)}`);
+    lines.push(narrateStructuralLevelShift("Call wall", prev.callWall, next.callWall, prev.spot, next.spot));
   }
   if (prev.putWall != null && next.putWall != null && Math.abs(prev.putWall - next.putWall) >= 0.05) {
-    lines.push(`Put wall ${fmtDelta(prev.putWall, next.putWall)}`);
+    lines.push(narrateStructuralLevelShift("Put wall", prev.putWall, next.putWall, prev.spot, next.spot));
   }
   const callMoved =
     prev.flowCallPremium != null &&
@@ -292,13 +377,67 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
   ) {
     lines.push(`Trim rail **banked** (${prev.trimsFired} → ${next.trimsFired} fired)`);
   }
-  if (prev.headline !== next.headline) {
+  // Roll-candidate transitions (see BriefSnapshot.rollCandidateReason's own doc comment for the
+  // gap this closes). Only the two EDGE crossings are narrated — a candidate reason simply
+  // reading differently tick-to-tick (the same underlying watch, restated) is not a new fact
+  // worth a "What changed" line, only "a roll wasn't being weighed and now is" or the reverse.
+  if (!prev.rollCandidateReason && next.rollCandidateReason) {
+    lines.push(`**Roll watch triggered** — theta outpacing thesis — ${next.rollCandidateReason}.`);
+  } else if (prev.rollCandidateReason && !next.rollCandidateReason) {
+    // Deliberately does NOT assert "theta/thesis balance back in range" — detectRollCandidate()
+    // (manage.ts) returns roll:false for THREE distinct causes: back in range, thesis broken, or
+    // the structural stop hit. The latter two are the capital-preservation gates, where a roll
+    // clears because the position is being CLOSED, not because anything improved — and the
+    // separate "Desk action shifted" rule above already narrates that exit accurately in the same
+    // pulse. Asserting a specific cause here would contradict it. Peer review, PR #5191.
+    lines.push(`**Roll watch cleared** — no longer being weighed.`);
+  }
+  // BUG FIX (Ask Largo standing mandate, 2026-09-18): the raw headline is
+  // `${action?.label ?? play.recommendation ?? play.status} — ${playContractHeadline(play)}`
+  // (play-brief.ts), and `playContractHeadline` bakes in the contract's own DTE, e.g.
+  // "TRIM — CRWD 235C 7DTE" (adapters.ts stamps `${strike}${right} ${dte}DTE` straight into
+  // `play.contract`). DTE decrements every session day on its own, with no other field moving —
+  // so on a quiet refresh across a day rollover this bare `prev.headline !== next.headline`
+  // check fired unconditionally, and the ONLY thing "What changed"/the narrative pulse had to
+  // show was the content-free line "Verdict headline updated": no old value, no new value, no
+  // reason. That is the exact same shape as the restatement-without-substance bugs already fixed
+  // today elsewhere in this lane (a line that fires but tells the reader nothing they didn't
+  // already know) — worse here, because unlike those it can be the ONLY line in the whole pulse,
+  // i.e. the member sees "something changed" with zero information on what. Every other rule in
+  // this function names the concrete before/after; this was the one exception. Fixed by
+  // normalizing away the DTE segment before comparing — a pure day-rollover no longer fires this
+  // line at all (the "Hold plan" section already surfaces live DTE continuously, so restating
+  // "the DTE changed" here would itself be a second restatement, not new information); a headline
+  // change from any OTHER cause (a roll changing strike, an action-label shift not already
+  // captured by `recommendationChanged` above) still fires, since those genuinely are new facts.
+  if (stripDteFromHeadline(prev.headline) !== stripDteFromHeadline(next.headline)) {
     lines.push(`Verdict headline updated`);
   }
 
   const newSections = next.sectionTitles.filter((t) => !prev.sectionTitles.includes(t));
   if (newSections.length) {
     lines.push(`New sections: ${newSections.join(", ")}`);
+  }
+
+  // GAP FOUND (Ask Largo standing mandate, 2026-09-20): `composeSwingPlayBrief` (play-brief.ts)
+  // conditionally `sections.push(...)`s many intel sections only when the underlying data is
+  // present — "Book context" only when `checkPortfolioOverlap` finds real theme/direction
+  // concentration, "Cortex read" only when a cortex blob is pinned, "Catalysts & news"/"Meridian
+  // catalysts" only when a catalyst read exists, "GEX posture"/"Wall dynamics" only when the
+  // matrix is fresh, etc. (`docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle — omitted
+  // when a product genuinely has nothing to show, never padded). That means a section can
+  // genuinely DISAPPEAR between two refreshes of the same play (the portfolio overlap clears, a
+  // Cortex source starts timing out, a catalyst read goes stale and gets dropped) — a materially
+  // informative fact for a member watching the "What changed" pulse. Until this fix, only ADDED
+  // sections were ever narrated (`newSections` above); a section vanishing was silently identical
+  // to a refresh where nothing changed at all, the exact same "misleading no-op" shape already
+  // fixed elsewhere in this file for the roll-candidate and headline-DTE cases. Symmetric with the
+  // addition case: a plain named list, no fabricated reason for WHY it left (the same reasons a
+  // wall's own drift is reported direction-neutral in `narrateStructuralLevelShift` — naming the
+  // fact honestly beats guessing a cause this diff engine cannot see).
+  const removedSections = prev.sectionTitles.filter((t) => !next.sectionTitles.includes(t));
+  if (removedSections.length) {
+    lines.push(`No longer showing: ${removedSections.join(", ")}`);
   }
 
   return lines.slice(0, 8);
@@ -408,7 +547,18 @@ export function loadPersistedBriefSnapshot(key: string): BriefSnapshot | null {
     const raw = window.sessionStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as BriefSnapshot;
-    if (!parsed || typeof parsed !== "object" || typeof parsed.headline !== "string") return null;
+    // `sectionTitles` is read unconditionally by diffBriefSnapshots (`prev.sectionTitles.includes`)
+    // with no null guard, unlike every other field here. sessionStorage outlives a deploy — a
+    // snapshot written by an older schema, or corrupted by devtools/an extension, must be rejected
+    // as unusable rather than handed back and crashing the diff on the next read.
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.headline !== "string" ||
+      !Array.isArray(parsed.sectionTitles)
+    ) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;

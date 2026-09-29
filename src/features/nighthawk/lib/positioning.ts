@@ -1,6 +1,6 @@
 import {
   analyzeStrikeGexRows,
-  computeGammaFlip,
+  computeGammaFlipDetail,
   gammaRegime,
   topGexWalls,
 } from "@/lib/providers/gamma-desk";
@@ -38,8 +38,20 @@ function buildSummary(
   source: "polygon" | "unusual_whales"
 ): PositioningSummary {
   const gex = analyzeStrikeGexRows(rows);
-  const flip = spot > 0 ? computeGammaFlip(gex.ranked_levels, spot) : null;
-  const regime = gammaRegime(spot, flip);
+  const flipDetail =
+    spot > 0
+      ? computeGammaFlipDetail(gex.ranked_levels, spot)
+      : { flip: null, reason: "insufficient_strikes" as const, crossings: 0, nearestCrossing: null };
+  const flip = flipDetail.flip;
+  // Same null-flip-is-not-null-regime fix as the cache-hit branch above, applied to this
+  // cold-cache fallback path too: net_short_everywhere is a real, unambiguous short-gamma read,
+  // not a data outage.
+  const regime =
+    flip != null
+      ? gammaRegime(spot, flip)
+      : flipDetail.reason === "net_short_everywhere"
+        ? "amplification"
+        : "unknown";
   const walls = spot > 0 ? topGexWalls(gex.ranked_levels, spot, 4) : [];
   const wallSummary = walls.length
     ? walls
@@ -96,7 +108,20 @@ export async function fetchPositioningSummary(ticker: string): Promise<Positioni
     if (gex && gex.spot > 0) {
       // Build PositioningSummary from the canonical positioning contract.
       const flip = gex.flip ?? null;
-      const regime = gammaRegime(gex.spot, flip);
+      // A NULL FLIP IS NOT A NULL REGIME (same fix already shipped for the shared GEX regime
+      // builder, gex-cross-validation-core.ts's buildGexRegime, 2026-08-20 — measured live: SPX/
+      // SPY/QQQ held flip_reason "net_short_everywhere" for a full RTH session, a real, unambiguous
+      // short-gamma/amplification read, not missing data). gammaRegime(spot, flip) alone treats
+      // every null flip as "unknown", throwing that resolution away. `gex.gamma_posture` already
+      // carries it correctly (computed by that same buildGexRegime, via getGexPositioning) — reuse
+      // it here rather than re-deriving from flip alone. Only the flip-null branch changes; the
+      // flip-present branch is untouched so its exact `spot > flip` boundary semantics don't shift.
+      const regime =
+        flip != null
+          ? gammaRegime(gex.spot, flip)
+          : gex.gamma_posture === "short"
+            ? "amplification"
+            : "unknown";
       // Reconstruct wall_summary from call_wall/put_wall.
       const walls: string[] = [];
       if (gex.call_wall != null) {

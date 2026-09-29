@@ -38,6 +38,10 @@ const state = {
   gradeCalls: [] as Array<{ sessionDate: string; ticker: string; grade: Record<string, unknown> }>,
   aggBarCalls: [] as Array<{ symbol: string; timespan: string }>,
   dailyBars: new Map<string, Array<{ t: number; o: number; h: number; l: number; c: number }>>(),
+  /** SPY-bias-timeout regression (2026-09-16): when set, fetchAggBars for THIS symbol delays
+   *  by this many ms before resolving, simulating a slow Polygon response — every other
+   *  symbol/call is unaffected (instant, as every other test in this file expects). */
+  aggBarDelayMsFor: null as { symbol: string; ms: number } | null,
   // persistZeroDteScan wiring (PR-F commit-time tier stamp test below)
   upsertRows: [] as Array<Record<string, unknown>>,
   // WS-01 atomic-commit wiring. `atomicLedger`, when set, is the IN-TRANSACTION ledger the
@@ -217,6 +221,9 @@ mock.module("../providers/polygon-largo", {
     // EMPTY result set. Only symbols seeded into state.dailyBars return bars.
     fetchAggBars: async (symbol: string, _mult: number, timespan: string) => {
       state.aggBarCalls.push({ symbol, timespan });
+      if (state.aggBarDelayMsFor && state.aggBarDelayMsFor.symbol === symbol) {
+        await new Promise((resolve) => setTimeout(resolve, state.aggBarDelayMsFor!.ms));
+      }
       return state.dailyBars.get(symbol) ?? [];
     },
   },
@@ -803,6 +810,211 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   for (const expected of ["Prime score band", "VIX calm band", "Clean Cortex support"]) {
     assert.ok(labels.includes(expected), `factor "${expected}" must argue the tier (got: ${labels.join(", ")})`);
   }
+});
+
+test("persistZeroDteScan: pins G-23 qualification_dislocation_telemetry on commit when both snapshots are present", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+
+  const setup = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    top_strike: 145,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score: 78,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    // Live-refreshed values at commit (attachContractPlans already ran) — this setup drifted
+    // 1% over 2 minutes since it qualified, well under G-23's own 1.5%/5-min trigger, so the
+    // commit is NOT blocked — the telemetry must still be pinned regardless, since the whole
+    // point is measuring the gap for the population that clears the gate, not just the rare
+    // trips.
+    underlying_price: 141.4,
+    underlying_price_as_of: "2026-07-06T14:59:00.000Z",
+    // Frozen in enrichSetup at qualification time, 2 minutes earlier and 1% lower.
+    qualification_underlying_price: 140,
+    qualification_underlying_price_as_of: "2026-07-06T14:57:00.000Z",
+    top_strike_avg_fill: 4.2,
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
+    plan: {
+      occ: "O:NVDA260706C00145000",
+      flow_avg_fill: 4.2,
+      bid: 4.0,
+      ask: 4.4,
+      mark: 4.2,
+      entry_max: 4.2,
+      vs_flow_pct: 0,
+      entry_status: "IN_RANGE",
+      spread_pct: 9.5,
+      illiquid: false,
+      stop_premium: 2.1,
+      target_premium: 8.4,
+      time_stop_et: "15:30",
+      underlying_target: null,
+      underlying_invalid: null,
+    },
+    gamma_regime: null,
+    cortex: {
+      abstained: false as const,
+      decision: "PASS" as const,
+      verdict: {
+        ticker: "NVDA",
+        direction: "long" as const,
+        asOf: "2026-07-06T15:00:00.000Z",
+        score: 2.1,
+        conviction: "A" as const,
+        vetoes: [],
+        supports: [
+          { source: "gex-walls", stance: "supports", weight: 1.0, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "path clear" },
+          { source: "wall-trend", stance: "supports", weight: 1.1, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "wall growing" },
+        ],
+        opposes: [],
+        absent: [],
+        narrative: [],
+      },
+    },
+    gate: {
+      verdict: "COMMIT" as const,
+      blocks: [],
+      calibration: {
+        score_at_commit: 78,
+        market_bias: "up",
+        committed_at_et: "11:30",
+        g4_vix: { day_open_vix: 16.1, tier: "calm", would_block: false, would_halve_size: false, note: "calm" },
+        g6_conflict: { conflict: false, against: [], would_block: false, note: "No cross-system conflict." },
+      },
+    },
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+
+  assert.equal(logged, 1);
+  assert.equal(state.upsertRows.length, 1);
+  const telemetry = (
+    state.upsertRows[0]!.entry_context as {
+      qualification_dislocation_telemetry?: {
+        qualification_underlying_price: number;
+        qualification_underlying_price_as_of: string;
+        current_underlying_price: number;
+        current_underlying_price_as_of: string;
+        elapsed_ms: number;
+        move_pct: number;
+      };
+    }
+  ).qualification_dislocation_telemetry;
+  assert.ok(
+    telemetry,
+    "entry_context must carry G-23 dislocation telemetry whenever both snapshots are present, even on a commit the gate does not block"
+  );
+  assert.equal(telemetry!.qualification_underlying_price, 140);
+  assert.equal(telemetry!.qualification_underlying_price_as_of, "2026-07-06T14:57:00.000Z");
+  assert.equal(telemetry!.current_underlying_price, 141.4);
+  assert.equal(telemetry!.current_underlying_price_as_of, "2026-07-06T14:59:00.000Z");
+  assert.equal(telemetry!.elapsed_ms, 120_000); // exactly 2 minutes
+  assert.equal(telemetry!.move_pct, 1); // |141.4 - 140| / 140 * 100 == 1%
+});
+
+test("persistZeroDteScan: omits qualification_dislocation_telemetry when no qualification snapshot was ever frozen", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+
+  const setup = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    top_strike: 145,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score: 78,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    underlying_price: 140,
+    // No qualification_underlying_price/_as_of — the ordinary case for any test fixture or
+    // pre-enrichSetup code path that never froze one. Must NOT fabricate a telemetry blob.
+    top_strike_avg_fill: 4.2,
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
+    plan: {
+      occ: "O:NVDA260706C00145000",
+      flow_avg_fill: 4.2,
+      bid: 4.0,
+      ask: 4.4,
+      mark: 4.2,
+      entry_max: 4.2,
+      vs_flow_pct: 0,
+      entry_status: "IN_RANGE",
+      spread_pct: 9.5,
+      illiquid: false,
+      stop_premium: 2.1,
+      target_premium: 8.4,
+      time_stop_et: "15:30",
+      underlying_target: null,
+      underlying_invalid: null,
+    },
+    gamma_regime: null,
+    cortex: {
+      abstained: false as const,
+      decision: "PASS" as const,
+      verdict: {
+        ticker: "NVDA",
+        direction: "long" as const,
+        asOf: "2026-07-06T15:00:00.000Z",
+        score: 2.1,
+        conviction: "A" as const,
+        vetoes: [],
+        supports: [
+          { source: "gex-walls", stance: "supports", weight: 1.0, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "path clear" },
+          { source: "wall-trend", stance: "supports", weight: 1.1, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "wall growing" },
+        ],
+        opposes: [],
+        absent: [],
+        narrative: [],
+      },
+    },
+    gate: {
+      verdict: "COMMIT" as const,
+      blocks: [],
+      calibration: {
+        score_at_commit: 78,
+        market_bias: "up",
+        committed_at_et: "11:30",
+        g4_vix: { day_open_vix: 16.1, tier: "calm", would_block: false, would_halve_size: false, note: "calm" },
+        g6_conflict: { conflict: false, against: [], would_block: false, note: "No cross-system conflict." },
+      },
+    },
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+
+  assert.equal(logged, 1);
+  assert.equal(state.upsertRows.length, 1);
+  const ctx = state.upsertRows[0]!.entry_context as { qualification_dislocation_telemetry?: unknown };
+  assert.equal(
+    "qualification_dislocation_telemetry" in ctx,
+    false,
+    "must be OMITTED (not null-filled) when no qualification snapshot was ever frozen"
+  );
 });
 
 test("persistZeroDteScan: A-tier + Vector winner pins 400% runner profile on commit", async () => {
@@ -1605,4 +1817,65 @@ test("applyIntradayEdgeToBreakdown uses the post-clamp applied delta, not the ra
   const updated = applyIntradayEdgeToBreakdown(breakdown, 2); // caller passes the CLAMPED delta
   const sum = Object.values(updated!).reduce((a, b) => a + b, 0);
   assert.equal(sum, 100, "must reconcile to the clamped score (100), not an over-counted 105");
+});
+
+// SPY-bias timeout regression (2026-09-16 live monitor finding): intradayReadFor("SPY", ...)
+// used to share the SAME 2.5s within() budget as every per-ticker read fired alongside it in
+// attachIntradayEdge's Promise.all — but a SPY-read miss nulls `bias`/`biasAsOfMs` for the
+// WHOLE scan cycle, which G-1 (no_market_bias, gates.ts) reads as "tape unreadable" and hard-
+// blocks EVERY index-ETF/SPX-family setup (QQQ/SPY/SPXW/SPX/DIA) at once. Live rejection-export
+// data that day showed 94% of all no_market_bias blocks concentrated on exactly those 5
+// tickers, including a same-cycle simultaneous block on QQQ(84)/SPY(78)/SPXW(68)/SPX(66) — the
+// four highest-scoring setups in the whole pool that pass — off a single slow Polygon response
+// (SPY's minute-bar payload is larger than a single name's).
+//
+// Fix: intradayReadFor now accepts a `timeoutMs` override, and attachIntradayEdge calls SPY's
+// read with the wider SPY_BIAS_FETCH_TIMEOUT_MS (6s) instead of the default per-ticker budget
+// (2.5s) — still well under MARKET_BIAS_MAX_AGE_MS's 15-min staleness ceiling, so a genuinely
+// stale tape still fails closed exactly as before; only a transient response-time blip gets
+// more patience.
+test("intradayReadFor: a per-ticker read still times out fast on a slow response (unchanged default budget)", async () => {
+  const { intradayReadFor } = await mod();
+  state.aggBarDelayMsFor = { symbol: "AAPL", ms: 4_000 };
+  try {
+    const read = await intradayReadFor("AAPL", "2026-09-16");
+    assert.equal(read, null, "a 4s-slow response must still miss the default 2.5s per-ticker budget");
+  } finally {
+    state.aggBarDelayMsFor = null;
+  }
+});
+
+test("intradayReadFor: SPY's read survives the SAME slow response when given the longer SPY-bias budget", async () => {
+  const { intradayReadFor, SPY_BIAS_FETCH_TIMEOUT_MS } = await mod();
+  state.aggBarDelayMsFor = { symbol: "SPY", ms: 4_000 };
+  // Fixed RTH timestamps (11:00-11:01 ET on the test's own session day) — computeIntradayRead
+  // drops any bar outside 9:30-16:00 ET, so a Date.now()-based fixture would silently read as
+  // "no RTH bars" whenever this suite happens to run after the close (exactly the after-hours
+  // trap CLAUDE.md's own environment notes warn about elsewhere in this repo).
+  state.dailyBars.set("SPY", [
+    { t: Date.parse("2026-09-16T15:00:00Z"), o: 100, h: 101, l: 99, c: 100.5 },
+    { t: Date.parse("2026-09-16T15:01:00Z"), o: 100.5, h: 101.5, l: 100, c: 101 },
+  ]);
+  try {
+    const read = await intradayReadFor("SPY", "2026-09-16", SPY_BIAS_FETCH_TIMEOUT_MS);
+    assert.ok(read, "SPY's read must complete within its own 6s budget despite the 4s delay");
+    assert.ok(read!.last_bar_ms != null, "a completed read must carry a real freshness anchor");
+  } finally {
+    state.aggBarDelayMsFor = null;
+    state.dailyBars.delete("SPY");
+  }
+});
+
+test("intradayReadFor: SPY given the DEFAULT (unwidened) budget reproduces the original bug", async () => {
+  // Proves the fix is the timeout override, not some incidental change to
+  // fetchAggBars/caching — SPY with the OLD default budget still times out on the
+  // identical slow response.
+  const { intradayReadFor } = await mod();
+  state.aggBarDelayMsFor = { symbol: "SPY", ms: 4_000 };
+  try {
+    const read = await intradayReadFor("SPY", "2026-09-16");
+    assert.equal(read, null, "without the widened budget, SPY's read times out exactly like a per-ticker one");
+  } finally {
+    state.aggBarDelayMsFor = null;
+  }
 });

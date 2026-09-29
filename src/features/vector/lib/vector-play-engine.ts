@@ -773,7 +773,20 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   if (prox && prox.side === "flip" && prox.nearness !== "near") {
     starred.push(`Flip cross imminent — ${prox.callout}`);
   } else if (prox && prox.nearness !== "near" && (prox.side === "call" || prox.side === "put")) {
-    starred.push(`${prox.strike ? fmt(prox.strike) : ""} ${prox.side} wall ${prox.nearness} — ${prox.callout}`.trim());
+    // BUG FIX (2026-09-12): this used to PREPEND "{strike} {side} wall {nearness} —" ahead of
+    // `prox.callout` — but `deriveWallProximity` (vector-wall-proximity.ts) already builds callout
+    // as a complete sentence that names the same strike/side/"wall" itself (e.g. "Testing 332.50
+    // put wall (0.02% below) — dealers buy weakness; support unless it breaks on volume."). The
+    // prepended prefix duplicated that verbatim, producing an ungrammatical, doubled line — live
+    // repro: AAPL swing brief 2026-09-12 (Ask Largo's `vectorPlayCoaching`, which renders this
+    // exact starred entry unmodified) read "332.5 put wall at — Testing 332.5 put wall (0.02%
+    // below) — dealers buy weakness...". The unit tests below never caught this because their own
+    // `proximity()` test helper fabricates a short synthetic callout that never restates the wall
+    // — the real `deriveWallProximity` output was never exercised through this exact template.
+    // Fix: push the callout as-is. Nothing is lost — callout already states strike, side, "wall",
+    // and a precise distance %, which is strictly more informative than the coarse nearness label
+    // ("testing" vs "at") this used to prepend.
+    starred.push(prox.callout);
   }
   const topZone = nearestConfluenceZone(input.confluenceZones ?? [], spot);
   if (topZone && Math.abs(topZone.center - spot) / spot <= 0.005) {

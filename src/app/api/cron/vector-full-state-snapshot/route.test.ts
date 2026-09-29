@@ -66,6 +66,24 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
 });
 
+test("the background sweep warms the shared-universe ∪ open-swing-position ticker set, not the static allowlist alone", () => {
+  // Regression for the gap vector-dynamic-universe.ts's own header names: Night Hawk's
+  // discovery-driven tickers (e.g. a real committed swing position outside the static
+  // allowlist) were never proactively warmed, so their full-state cache entry only existed on
+  // a member/Largo cold read — see vector-full-state-warm-universe.ts for the live repro.
+  assert.match(
+    routeSrc,
+    /import \{ activeVectorFullStateTickers \} from "@\/features\/vector\/lib\/vector-full-state-warm-universe"/,
+    "must import the shared-universe ∪ open-swing-position ticker helper"
+  );
+  const sweepIdx = routeSrc.indexOf("async function runVectorFullStateSnapshot");
+  const sweepTickersIdx = routeSrc.indexOf("const tickers = await activeVectorFullStateTickers();");
+  assert.ok(
+    sweepIdx > 0 && sweepTickersIdx > sweepIdx,
+    "the background sweep must source its ticker set from activeVectorFullStateTickers(), not the static allowlist alone"
+  );
+});
+
 test("event loop yields are added between ticker batches to prevent blocking incoming requests", () => {
   assert.match(
     routeSrc,

@@ -7,6 +7,8 @@ import type { SwingMeridianCatalystSlice } from "./play-brief-meridian";
 import type { SwingMeridianPeerSlice } from "./play-brief-meridian-peer-core";
 import type { PortfolioPosition } from "./portfolio";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
+import type { SwingChainComposite } from "./record";
+import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 
 /** Inputs gathered server-side for deterministic swing play brief composition. */
 export type SwingPlayBriefContext = {
@@ -57,6 +59,40 @@ export type SwingPlayBriefContext = {
    * never fabricated as "never rolled").
    */
   rollHistory?: SwingRollHistory | null;
+  /**
+   * Ticker-scoped historical context (Largo C10) — "has the desk traded THIS ticker before, and
+   * how did it go" — distinct from `archetypeTrackRecord` above, which is scoped to the
+   * ARCHETYPE dimension, not the ticker (see play-brief-ticker-history.ts's file header for the
+   * exact gap this closes). `null` on a cold/failed read or when there is no resolved prior trade
+   * to cite; `undefined` only in fixtures predating this field (treated identically to `null`).
+   */
+  tickerTrackRecord?: SwingTickerTrackRecord | null;
+  /**
+   * Single canonical "now" (epoch ms) for every Vector/GEX staleness check this brief's compose
+   * performs — stamped ONCE by `composeSwingPlayBrief` before any section is built. Optional so
+   * every existing fixture/test that predates this field keeps working (each staleness helper
+   * still falls back to its own `Date.now()` when this is absent).
+   *
+   * BUG FIX (Ask Largo standing mandate, 2026-09-21): before this field existed, every one of the
+   * ~20 `vectorSnapshotStale(vec, Date.now(), ...)`/`gexMatrixStale(..., Date.now())` call sites
+   * spread across play-brief.ts/play-brief-intel.ts/play-brief-narrative.ts/
+   * play-brief-narrative-coaching.ts sampled the wall clock independently, at whatever instant
+   * that particular section happened to compose (compose does real sequential I/O — Meridian,
+   * book-context, archetype-track-record reads — between sections, so these instants can be
+   * seconds apart within one request). When the underlying Vector snapshot's age sits near the
+   * 120s `VECTOR_STALE_MS` cutoff, two sections reading the exact SAME cached `vec` object could
+   * land on OPPOSITE sides of the boundary and silently disagree — one renders the live Vector
+   * wall, the other falls back to the (different) GEX-matrix number — with no indication to the
+   * trader that two different data sources answered what reads as one fact. Live repro 2026-09-21
+   * (SNXX committed brief): "Trade manager read"'s `confluenceCoaching` bullet ("Confluence 15.50
+   * (put-wall@15.5 ...)") disagreed with "What to watch"'s `watchForSection` ("Structural support
+   * node: put wall 10.00") in the SAME envelope — both trace back to `vec.gexWalls.putWalls[0]`,
+   * but one call evaluated the snapshot as live and the other as stale. Only `confluenceCoaching`
+   * and `watchForSection` (the two call sites this live repro actually exercised) are wired to
+   * this anchor so far; the other ~18 `Date.now()` call sites are the same class of latent risk
+   * and a natural next sweep, left as a documented follow-up rather than folded into this fix.
+   */
+  readMs?: number | null;
 };
 
 /** One leg's identity for the roll-history narrative — deliberately minimal (no P&L; the
@@ -76,6 +112,20 @@ export type SwingRollHistory = {
   rollCount: number;
   /** Full chain oldest→newest by roll_seq, mirroring fetchSwingPositionChain's own order. */
   legs: SwingRollHistoryLeg[];
+  /**
+   * The chain's real composite outcome (record.ts's `buildSwingRecord(chain).composite` — the SAME
+   * function/call the Closed-tab list view and /api/market/swing/record use, never recomputed here).
+   * Present only once the chain has actually closed (`chainResolved`); a still-rolling chain has this
+   * `null` rather than a premature composite. Found 2026-09-15 (Ask Largo mandate, live repro
+   * INTC:35): the play-brief's own headline P&L is deliberately the TERMINAL LEG's own exit P&L, not
+   * this composite (play-brief-resolve.ts's `loadClosedPlay` — protects against the exact
+   * peak/composite-mismatch bug closed-plays.ts's own header documents), so a rolled chain's REAL
+   * result (which can be materially worse — INTC: terminal leg -33.2% vs composite -60.47%
+   * compounded) was otherwise never visible anywhere in the brief. This field feeds ONE additional
+   * reference line (`rollHistoryLine`) — deliberately never blended with the terminal leg's own
+   * price/peak/trough fields, which is exactly what caused the original bug.
+   */
+  chainComposite: SwingChainComposite | null;
 };
 
 export type SwingPlayBriefResult = {

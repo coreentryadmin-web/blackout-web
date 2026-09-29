@@ -5,6 +5,7 @@ import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { warmVectorDarkPool, type WarmVectorDarkPoolResult } from "@/features/vector/lib/vector-dark-pool-cache";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { runUwPool, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,22 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!force && !isEtCashRth()) {
     const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+    await logCronRun("vector-dark-pool-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  // Overlap guard: measured runtime can reach 220+ seconds with UW timeouts, and the 10-minute
+  // schedule leaves 6+ minute margin. During high UW latency, prior runs can still be executing
+  // when the next scheduled run starts, risking concurrent Redis writes to dark-pool cache keys.
+  // Set NX on a lock key with 10m10s TTL to ensure only one run executes at a time.
+  const acquired = await sharedCacheSetNx(
+    "cron:vector-dark-pool-warm:lock",
+    { startedAt: started },
+    610 // TTL = 10min + 10sec buffer for schedule variance
+  ).catch(() => true);
+
+  if (!acquired) {
+    const payload = { ok: true, skipped: true, reason: "Prior run still executing" };
     await logCronRun("vector-dark-pool-warm", started, payload);
     return NextResponse.json(payload);
   }

@@ -26,13 +26,18 @@ export function polygonRestApiKey(): string {
 // on an open circuit (preserving the old throw-immediately gate) and notes 429/OK against
 // the one shared breaker, so behavior here is unchanged: throws on circuit-open, throws on
 // 429, returns json on ok.
-async function polygonGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+async function polygonGet<T>(
+  path: string,
+  params: Record<string, string> = {},
+  signal?: AbortSignal
+): Promise<T> {
   if (!polygonConfigured()) throw new Error("POLYGON_API_KEY not set");
 
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   const res = await polygonTrackedFetch(path, `${BASE}${path}?${qs}`, {
     headers: { Accept: "application/json" },
     cache: "no-store",
+    signal,
   });
 
   if (res.status === 429) throw new Error(`Polygon ${path} → 429 (rate limited)`);
@@ -1191,12 +1196,13 @@ export async function fetchTickerRsi(symbol: string, window = 14, timespan: "day
   });
 }
 
-export async function fetchShortInterest(ticker: string) {
+export async function fetchShortInterest(ticker: string, signal?: AbortSignal) {
   const sym = ticker.toUpperCase();
   try {
     const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
       "/stocks/v1/short-interest",
-      { ticker: sym, limit: "1", sort: "settlement_date.desc" }
+      { ticker: sym, limit: "1", sort: "settlement_date.desc" },
+      signal
     );
     const row = data.results?.[0];
     if (!row) return null;

@@ -39,6 +39,18 @@ export type NighthawkDiagnostics = {
   }>;
 };
 
+/**
+ * globalDiagnostics is a module-level singleton with no consumer in production (nothing
+ * calls .summary() outside this file's own test), so nothing ever drains trails/
+ * gateRejections. recordDataSourceing is called 3x per ticker from polygon-largo.ts's
+ * fetchPolygonMtfTechnicals — a hot path invoked for every ticker across every Night Hawk
+ * product's build — so both arrays grew without bound for the life of the container.
+ * Bounded to a ring buffer (oldest evicted first) so the collector stays useful for
+ * whoever eventually adds a consumer without leaking memory in the meantime.
+ */
+export const MAX_DIAGNOSTIC_TRAILS = 2000;
+export const MAX_GATE_REJECTIONS = 2000;
+
 class DiagnosticsCollector {
   private trails: DiagnosticTrail[] = [];
   private gateRejections: Array<{
@@ -64,10 +76,16 @@ class DiagnosticsCollector {
       final_value: finalValue,
       issue,
     });
+    if (this.trails.length > MAX_DIAGNOSTIC_TRAILS) {
+      this.trails.splice(0, this.trails.length - MAX_DIAGNOSTIC_TRAILS);
+    }
   }
 
   recordGateRejection(ticker: string, gate: string, reason: string, evidence?: string): void {
     this.gateRejections.push({ ticker, gate, reason, evidence });
+    if (this.gateRejections.length > MAX_GATE_REJECTIONS) {
+      this.gateRejections.splice(0, this.gateRejections.length - MAX_GATE_REJECTIONS);
+    }
     this.rejectionCounts[gate] = (this.rejectionCounts[gate] ?? 0) + 1;
   }
 

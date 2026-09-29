@@ -4,6 +4,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   archetypeTrackRecordSection,
   bookContextSection,
+  buildIntelSections,
   catalystsSection,
   chartLevelsSection,
   chartTechnicalsSection,
@@ -16,6 +17,8 @@ import {
   lessonsSection,
   meridianCatalystSection,
   meridianPeerSection,
+  tickerTrackRecordSection,
+  wallDynamicsSection,
   watchForSection,
   whyThisSetupSection,
   vectorDeskSection,
@@ -77,9 +80,176 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
   assert.match(section?.body ?? "", /AMD SHORT/);
 });
 
-test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is not reported as overlap", () => {
+// Note: this must be an ALREADY-COMMITTED play (status != WATCH) to exercise the intended
+// self-exclusion fallback. It used to run against the default WATCH status and pass with `null`
+// -- which, per the 2026-09-21 fix below, was itself the exact bug this row now guards against
+// (a WATCH candidate is an UNCOMMITTED dossier, so a matching row is a genuine distinct position,
+// never "self" -- see that fix's comment for the live repro and the corrected assertion).
+test("bookContextSection: a duplicate/rolled row on the SAME ticker+direction is not reported as overlap (committed play, unresolved positionId)", () => {
   const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG" }];
-  assert.equal(bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book), null);
+  assert.equal(
+    bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG", status: "OPEN" }), book),
+    null,
+  );
+});
+
+test("bookContextSection: a genuine cross-engine sibling on the reviewed play's OWN ticker is labeled, not rendered as bare self-citation (Largo C4)", () => {
+  // Live defect (2026-09-15, Ask Largo standing mandate): loadOpenBook() merges swing_positions
+  // (real positionId) with banger_positions (positionId deliberately left unset -- separate DB
+  // sequences that can collide on numeric id). Once the reviewed play's own positionId excludes
+  // itself exactly, a real cross-engine sibling on the SAME ticker correctly falls through as
+  // genuine concentration -- but rendered as bare "TICKER DIRECTION" it reads as a self-citation
+  // bug. Live-confirmed on CRWD: swing position #39 (reviewed, excluded) vs a real, independently
+  // committed Banger CRWD LONG (positionId unset) both existing at once.
+  const book: PortfolioPosition[] = [
+    { ticker: "CRWD", direction: "LONG" }, // cross-engine sibling, no positionId (Banger-shaped)
+    { ticker: "ZS", direction: "LONG" },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /CRWD LONG \(separate, cross-engine position\)/,
+    `same-ticker cross-engine sibling must be labeled distinctly, got: ${section!.body}`,
+  );
+  assert.match(section!.body, /ZS LONG/, "an unrelated ticker in the same theme is unaffected");
+  assert.doesNotMatch(
+    section!.body,
+    /ZS LONG \(separate/,
+    "the label must only apply to a sibling sharing the reviewed play's OWN ticker",
+  );
+});
+
+test("bookContextSection: a genuine same-ticker swing-native sibling (known positionId) cites its own id", () => {
+  const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG", positionId: 51 }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CRWD LONG \(separate position #51\)/);
+});
+
+// BUG FIX (2026-09-18, Ask Largo standing mandate): live repro on CRWD:39's own brief today --
+// TWO real, independently-committed Banger CRWD LONG positions both rendered the IDENTICAL bare
+// "CRWD LONG (separate, cross-engine position)" text (no positionId on either, per loadOpenBook's
+// deliberate collision-avoidance), reading exactly like the duplicate-counting defect the
+// 2026-09-15 fix above was written to prevent, even though the underlying count was honest.
+// `bangerId` (display-only, never touching checkPortfolioOverlap's exclude/match logic) now
+// disambiguates multiple cross-engine siblings on the same ticker from each other.
+test("bookContextSection: two distinct cross-engine siblings on the same ticker are told apart via bangerId, not rendered identically (2026-09-18 gap fix)", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "CRWD", direction: "LONG", bangerId: 1123 },
+    { ticker: "CRWD", direction: "LONG", bangerId: 1187 },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position #1123\)/);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position #1187\)/);
+  assert.doesNotMatch(
+    section!.body,
+    /cross-engine position\)/,
+    "must not fall back to the bare, indistinguishable label when a real bangerId is known",
+  );
+});
+
+// Live repro (2026-09-18, Ask Largo standing mandate): BYND is unmapped in sector-map.ts, so
+// resolveTheme() gives it the internal own-cluster sentinel "NAME:BYND" rather than a real theme
+// (theme-cluster.ts's OWN_CLUSTER_PREFIX). Before the fix, bookContextSection interpolated
+// overlap.theme raw into the narrative, so a member holding two concurrent BYND positions saw
+// literal internal-key text: `theme "NAME:BYND"`. Confirmed live via GET /api/market/swing/play-brief
+// (envelope.evidence carried the identical leak) before this test was written.
+test("bookContextSection: an own-cluster (unmapped-ticker) overlap reads as a name, never the raw NAME: sentinel", () => {
+  const book: PortfolioPosition[] = [{ ticker: "BYND", direction: "LONG", positionId: 1148 }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:BYND:9999", ticker: "BYND", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /the same name \(BYND\)/);
+  assert.doesNotMatch(section!.body, /NAME:/, "must never leak the internal own-cluster sentinel into narrative copy");
+});
+
+test("bookContextSection: a cross-engine sibling with no bangerId still falls back to the bare label (never fabricated)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG" }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position\)\./);
+});
+
+// FINDINGS 2026-09-12 (live repro, closed AAPL positionId 36): this section's copy is written for a
+// PENDING entry decision ("Adding {ticker} stacks the same wager...") — wrong frame for a position
+// that has already closed and has no forward decision left, even when the CURRENT book happens to
+// overlap the ticker/theme (e.g. a later, unrelated re-entry).
+test("bookContextSection: null for a CLOSED play even when the current book overlaps", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "AMD", direction: "LONG" },
+    { ticker: "SMH", direction: "LONG" },
+  ];
+  const closedPlay = fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" });
+  assert.equal(bookContextSection(closedPlay, book), null);
+});
+
+// Live repro 2026-09-12 (CRWD positionId 19, status TRIM / manageAction EXIT_RUNNER): the same
+// "pending entry decision" tense bug the CLOSED guard above already fixed also applies to an
+// already-committed OPEN/HOLD/TRIM position — "Adding CRWD stacks the same wager..." rendered on a
+// position that is being TRIMMED OUT, not entered. There is no "adding" decision on the table for
+// an already-open managed position; only a genuinely pending WATCH candidate has one.
+test("bookContextSection: an already-open OPEN/HOLD/TRIM position reads as EXISTING exposure, not a pending 'adding' decision", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "AMD", direction: "LONG" },
+    { ticker: "SMH", direction: "LONG" },
+  ];
+  for (const status of ["OPEN", "HOLD", "TRIM"] as const) {
+    const section = bookContextSection(
+      fixturePlay({ ticker: "NVDA", direction: "LONG", status }),
+      book,
+    );
+    assert.ok(section, `expected a section for status ${status}`);
+    assert.match(section?.body ?? "", /Concentration/i);
+    assert.doesNotMatch(
+      section?.body ?? "",
+      /Adding NVDA stacks/i,
+      `status ${status} should not use the pending-entry "Adding" phrasing`,
+    );
+  }
+  // WATCH keeps the original pending-entry phrasing — there IS a decision to make there.
+  const watchSection = bookContextSection(
+    fixturePlay({ ticker: "NVDA", direction: "LONG", status: "WATCH" }),
+    book,
+  );
+  assert.match(watchSection?.body ?? "", /Adding NVDA stacks/i);
+});
+
+// BUG FIX (2026-09-21, Ask Largo standing mandate): a WATCH candidate never carries a ledger
+// positionId (play.id is only ever stamped with one once committed -- banger-lane-merge.ts's own
+// comment), so this call used to fall through to `checkPortfolioOverlap`'s DEFAULT
+// `excludeSelfMatch: true` -- meant for an ALREADY-COMMITTED play excluding its own row, not an
+// uncommitted WATCH dossier. A trader looking at a WATCH signal on a ticker they ALREADY hold in
+// the SAME direction saw the pre-existing position silently treated as "self" and got NO
+// concentration warning at all -- exactly the "about to double an identical wager" case this
+// section exists to flag. Live repro reduced to a fixture: WATCH NVDA LONG candidate, book already
+// holds a bare NVDA LONG row (no positionId, the shape a WATCH candidate's book always sees since
+// it has none of its own).
+test("bookContextSection: a WATCH candidate matching an existing held position's own ticker+direction is flagged as concentration, not silently treated as self", () => {
+  const book: PortfolioPosition[] = [{ ticker: "NVDA", direction: "LONG" }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:NVDA", ticker: "NVDA", direction: "LONG", status: "WATCH" }),
+    book,
+  );
+  assert.ok(section, "expected a Concentration warning, not null");
+  assert.match(section!.body, /Concentration/i);
+  assert.match(section!.body, /NVDA LONG/);
+  assert.match(section!.body, /Adding NVDA stacks/i);
 });
 
 test("bookContextSection: reviewing the second of two independent same-ticker rows does not flag self", () => {
@@ -96,6 +266,36 @@ test("bookContextSection: reviewing the second of two independent same-ticker ro
   assert.match(section?.body ?? "", /EWZ LONG/);
   assert.doesNotMatch(section?.body ?? "", /26.*26/);
   assert.equal((section?.body ?? "").split("EWZ LONG").length - 1, 1);
+});
+
+// GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro RIOT's own book-context): the
+// 2026-09-15/09-18 fixes above only disambiguate the REVIEWED play's own ticker duplicating in its
+// own overlap list. A DIFFERENT ticker duplicating in the SAME list -- reviewing RIOT and seeing
+// MSTX appear twice in RIOT's own concentration line, because two genuinely separate MSTX
+// positions (a swing-native row plus a distinct cross-engine sibling) both overlap RIOT's theme --
+// hit the same "reads like a duplicate-counting defect" symptom the earlier fixes were written to
+// prevent, but for a ticker other than the one being reviewed, so neither prior fix caught it.
+test("bookContextSection: a different ticker (not the reviewed one) appearing twice is disambiguated, not rendered identically", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "MSTX", direction: "LONG", positionId: 1209 },
+    { ticker: "MSTX", direction: "LONG", bangerId: 4471 },
+    { ticker: "MARA", direction: "LONG" },
+  ];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:RIOT:1203", ticker: "RIOT", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /MSTX LONG \(separate position #1209\)/);
+  assert.match(section!.body, /MSTX LONG \(separate, cross-engine position #4471\)/);
+  assert.doesNotMatch(
+    section!.body,
+    /MSTX LONG,/,
+    "must never render the duplicated ticker as a bare, indistinguishable label",
+  );
+  // A ticker that appears only ONCE in the same list is unaffected -- disambiguation is scoped to
+  // the genuine duplicate, not applied blanket to every name in the list.
+  assert.match(section!.body, /MARA LONG(?!\s*\()/);
 });
 
 // ── archetypeTrackRecordSection (Largo C10 historical context; Ask Largo mandate) ─────────────────
@@ -171,6 +371,98 @@ test("archetypeTrackRecordSection: omits the point-Δ line when pointDeltaPts is
   const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ pointDeltaPts: null }) });
   const body = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap)?.body ?? "";
   assert.doesNotMatch(body, /pts.*edge/);
+});
+
+// ── sub-lane citation (graduatedSubLaneEntry — previously wired write-side/tested but never read
+// from a brief section; see this file's header comment on why it now ships as an additive line
+// alongside the archetype citation rather than replacing it) ──────────────────────────────────────
+function snapshotWithSubLanes(
+  archetypes: SwingArchetypeTrackRecordSnapshot["archetypes"] = {},
+  subLanes: SwingArchetypeTrackRecordSnapshot["subLanes"] = {},
+): SwingArchetypeTrackRecordSnapshot {
+  return { asOf: "2026-09-10T15:00:00.000Z", gradedPlays: 70, archetypes, subLanes };
+}
+
+test("archetypeTrackRecordSection: cites the sub-lane too when its own bucket has independently graduated", () => {
+  const snap = snapshotWithSubLanes(
+    { BREAKOUT: trackRecordEntry({ wins: 45, losses: 15, n: 60 }) },
+    { TACTICAL: trackRecordEntry({ wins: 1, losses: 4, n: 5, winRatePct: 20, wilsonLbPct: 5.7 }) },
+  );
+  const play = fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" });
+  const body = archetypeTrackRecordSection(play, snap)?.body ?? "";
+  assert.match(body, /45W \/ 15L/, "archetype line still present");
+  assert.match(body, /Tactical.*sub-lane/i, "sub-lane line present");
+  assert.match(body, /1W \/ 4L/, "sub-lane's own wins\\/losses cited, not the archetype's");
+});
+
+test("archetypeTrackRecordSection: renders the sub-lane citation ALONE when only the sub-lane has graduated (archetype ungraduated/absent)", () => {
+  const snap = snapshotWithSubLanes(
+    {},
+    { STANDARD: trackRecordEntry({ wins: 10, losses: 5, n: 15 }) },
+  );
+  const play = fixturePlay({ archetype: null, subLane: "STANDARD" });
+  const section = archetypeTrackRecordSection(play, snap);
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Standard.*sub-lane/i);
+});
+
+test("archetypeTrackRecordSection: null when neither dimension has graduated", () => {
+  const snap = snapshotWithSubLanes(
+    { BREAKOUT: trackRecordEntry({ graduated: false }) },
+    { TACTICAL: trackRecordEntry({ graduated: false }) },
+  );
+  const play = fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" });
+  assert.equal(archetypeTrackRecordSection(play, snap), null);
+});
+
+test("archetypeTrackRecordSection: an unrecognized subLane string is treated as absent, never fabricated", () => {
+  const snap = snapshotWithSubLanes({}, { TACTICAL: trackRecordEntry() });
+  const play = fixturePlay({ archetype: null, subLane: "NOT_A_REAL_SUB_LANE" });
+  assert.equal(archetypeTrackRecordSection(play, snap), null);
+});
+
+// ── tickerTrackRecordSection (Largo C10 historical context, TICKER-scoped — Ask Largo mandate
+// round 19, 2026-09-18) — sibling of archetypeTrackRecordSection above, scoped to the ticker
+// instead of the archetype. Unlike the archetype section this has no graduation gate: it's a
+// plain factual count, not a calibrated score. ───────────────────────────────────────────────
+
+test("tickerTrackRecordSection: null on a cold/missing read (undefined or null) — never throws", () => {
+  const play = fixturePlay();
+  assert.equal(tickerTrackRecordSection(play, undefined), null);
+  assert.equal(tickerTrackRecordSection(play, null), null);
+});
+
+test("tickerTrackRecordSection: null when there are zero prior resolved trades on this ticker", () => {
+  const play = fixturePlay();
+  assert.equal(
+    tickerTrackRecordSection(play, { ticker: "NVDA", priorClosedTrades: 0, wins: 0, losses: 0 }),
+    null,
+  );
+});
+
+test("tickerTrackRecordSection: renders a 'Ticker track record' section citing the ticker, N, and W/L", () => {
+  const play = fixturePlay();
+  const section = tickerTrackRecordSection(play, {
+    ticker: "NVDA",
+    priorClosedTrades: 3,
+    wins: 2,
+    losses: 1,
+  });
+  assert.ok(section);
+  assert.equal(section?.title, "Ticker track record");
+  assert.match(section?.body ?? "", /NVDA/);
+  assert.match(section?.body ?? "", /\*\*3\*\* times/);
+  assert.match(section?.body ?? "", /2W \/ 1L/);
+  assert.match(section?.body ?? "", /67% win rate/, "win rate rounded and cited");
+});
+
+test("tickerTrackRecordSection: singular 'time' when exactly one prior trade", () => {
+  const play = fixturePlay();
+  const body =
+    tickerTrackRecordSection(play, { ticker: "NVDA", priorClosedTrades: 1, wins: 0, losses: 1 })
+      ?.body ?? "";
+  assert.match(body, /\*\*1\*\* time before/);
+  assert.doesNotMatch(body, /1 times/);
 });
 
 // ── cortexReadSection (swing Cortex-visibility fix — the entry_context.cortex pinned at commit,
@@ -610,6 +902,123 @@ test("holdPlanSection: round-tripped-past-breakeven note fires when current pnl 
   assert.match(section!.body, /consider protecting what's left/);
 });
 
+// BUG FIX (2026-09-21, Ask Largo standing mandate — third instance of #5362's duplication class,
+// live repro SWING:BLSH:1179): the expandIntel=1 expanded view renders "Hold plan" as its own
+// standalone section alongside "Trade manager read" (the default collapsed view folds it away
+// instead), and actionNarrative (play-brief-narrative.ts) already renders the identical round_trip
+// fact into "Trade manager read" unconditionally whenever giveback.kind==="round_trip" — so this
+// bullet duplicated it on every expanded-view read. Same guard shape as lessonsSection's own
+// roundTripAlreadyNoted for the closed-play sibling.
+test("holdPlanSection: round-trip note suppressed when narrative already stated it (narrativeAlreadyNoted.roundTrip)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 132.7,
+      pnlPct: -10,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const withoutSuppression = holdPlanSection(ctx);
+  assert.match(withoutSuppression!.body, /Round-tripped past breakeven/);
+
+  const suppressed = holdPlanSection(ctx, { roundTrip: true });
+  assert.ok(suppressed, "contract runway line still renders regardless of the round-trip note");
+  assert.doesNotMatch(suppressed!.body, /Round-tripped past breakeven/);
+});
+
+// Same shape, capture branch: live BLSH:1179 repro had capturePct ~52.5% (well under this
+// section's own <70 floor, which is itself a strict subset of actionNarrative's <75 floor), so
+// actionNarrative's "Gave back **47%** of peak" ALWAYS fires before this section's "Gave back
+// **47%** from peak" can, guaranteeing the duplicate whenever this branch is reachable.
+test("holdPlanSection: capture giveback note suppressed when narrative already stated it (narrativeAlreadyNoted.capture)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 132.7,
+      pnlPct: 39.8,
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.4,
+            currentScore: 0.35,
+            commitLabel: "unknown",
+            currentLabel: "unknown",
+            status: "intact",
+            contributionPts: 10,
+            deltaPts: -1,
+          },
+        ],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const withoutSuppression = holdPlanSection(ctx);
+  assert.match(withoutSuppression!.body, /Gave back \*\*70%\*\* from peak/);
+
+  const suppressed = holdPlanSection(ctx, { capture: true });
+  assert.ok(suppressed, "contract runway line still renders regardless of the capture note");
+  assert.doesNotMatch(suppressed!.body, /Gave back/i);
+});
+
 test("holdPlanSection: null when no unique hold-plan content beyond Management", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
@@ -732,6 +1141,52 @@ test("deskConsensusSection: CLOSED bucket drops the 'before sizing' live-decisio
   assert.match(section?.body ?? "", /for reference against/i);
 });
 
+test("deskConsensusSection: CLOSED bucket suppresses a Legacy pick dated AFTER the trade's own exit — cannot be 'reference against the setup this play traded' if it postdates the trade", () => {
+  // Live repro (2026-09-12, real CLOSED position AAPL positionId 36): the swing position closed
+  // 2026-09-04, but nighthawk_recent.edition_for read 2026-09-11 — a full week AFTER the trade
+  // already exited. The existing staleness gate (added 2026-09-10) compares edition_for against
+  // `sessionDate` (today), which is *always* satisfied for a CLOSED play once enough real time has
+  // passed for edition_for to fall within the 4-day window of "today" — it never checks the fact
+  // that actually matters for a CLOSED bucket: whether the Legacy pick could possibly have existed
+  // AT THE TIME the trade was live. A pick from after the trade closed cannot be "reference against
+  // the setup this play traded" (play-brief-intel.ts's own CLOSED-bucket tail wording) — it is
+  // information from the future relative to that decision.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-11",
+      direction: "long",
+      conviction: "medium",
+      outcome: "unresolved",
+    },
+  };
+  const section = deskConsensusSection(
+    eco,
+    fixturePlay({ direction: "LONG", exitAt: "2026-09-04T13:45:00.000Z" }),
+    "closed",
+    "2026-09-12",
+  );
+  assert.equal(section, null);
+});
+
+test("deskConsensusSection: CLOSED bucket still narrates a Legacy pick dated at-or-before the trade's own exit, within the window", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-02",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(
+    eco,
+    fixturePlay({ direction: "LONG", exitAt: "2026-09-04T13:45:00.000Z" }),
+    "closed",
+    "2026-09-12",
+  );
+  assert.ok(section);
+  assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);
+});
+
 test("deskConsensusSection: watch/open buckets are unchanged (default param, no regression)", () => {
   const eco: EcosystemContext = {
     nighthawk_recent: {
@@ -754,6 +1209,53 @@ test("deskConsensusSection: null when only flow anomaly (covered by flowNarrativ
   assert.equal(deskConsensusSection(eco, fixturePlay()), null);
 });
 
+test("deskConsensusSection: a stale Legacy pick (>4 days old) is suppressed when sessionDate is known", () => {
+  // Live production bug (2026-09-12, GOOGL): `nighthawk_recent` has no date filter — it is "the
+  // last time this ticker appeared in Legacy," which can be weeks old. This section used to
+  // narrate that unconditionally as current sizing context ("weigh that track record ... before
+  // sizing") even though `unavailableSourcesFor()` (fixed 2026-09-10 for the identical staleness)
+  // correctly labels the same fact "no recent Legacy edition for this ticker" in the same payload.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-08-26",
+      direction: "short",
+      conviction: "medium",
+      outcome: "pending",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "SHORT" }), "open", "2026-09-12");
+  assert.equal(section, null);
+});
+
+test("deskConsensusSection: a recent Legacy pick (within the window) still narrates when sessionDate is known", () => {
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-09-10",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }), "open", "2026-09-12");
+  assert.ok(section);
+  assert.match(section?.body ?? "", /closed \*\*WIN\*\*/i);
+});
+
+test("deskConsensusSection: sessionDate omitted (default null) preserves prior unconditional behavior", () => {
+  // Backward-compat: existing call sites (and the tests above this one) that don't pass a
+  // sessionDate must not regress — the staleness gate only activates when one is supplied.
+  const eco: EcosystemContext = {
+    nighthawk_recent: {
+      edition_for: "2026-08-26",
+      direction: "long",
+      conviction: "medium",
+      outcome: "WIN",
+    },
+  };
+  const section = deskConsensusSection(eco, fixturePlay({ direction: "LONG" }));
+  assert.ok(section);
+});
+
 test("lessonsSection: a round-trip past breakeven never renders a nonsensical negative MFE capture", () => {
   // Reproduces a live production case: INTC:35 peak +25.7%, exited -40.8% used to render
   // "MFE capture: -158.9% of peak move" (exitPnlPct / peak * 100), a percentage with no honest reading.
@@ -771,7 +1273,16 @@ test("lessonsSection: a round-trip past breakeven never renders a nonsensical ne
   assert.match(section!.body, /round-tripped past breakeven/i);
 });
 
-test("lessonsSection: omits the round-trip sentence when the Trade manager read section already stated it, but keeps the rest", () => {
+test("lessonsSection: omits the round-trip sentence AND its coupled advice when the Trade manager read section already stated it, but keeps everything else independent", () => {
+  // CORRECTED 2026-09-18 (Ask Largo standing mandate, live repro AAPL:38): this test used to
+  // assert "gave back the move" survives when only roundTripAlreadyNoted=true — that was never
+  // actually achievable in production. `closedCoaching`'s round_trip branch (the only emitter of
+  // "Round-tripped past breakeven" for bucket==="closed" — play-brief-narrative.ts's own
+  // OPEN-flavored version explicitly `return`s null for bucket==="closed") always renders the
+  // round-trip fact and its advice clause (whichever of its two phrasings) as ONE atomic sentence,
+  // never independently. So if roundTripAlreadyNoted is true, the advice was necessarily already
+  // stated too, whichever phrasing it used — see the `!adviceAlreadyNoted && !roundTripAlreadyNoted`
+  // fix in this section's own body for the live repro this correction is paired with.
   const play = fixturePlay({
     status: "CLOSED",
     peak: 1.3,
@@ -784,15 +1295,213 @@ test("lessonsSection: omits the round-trip sentence when the Trade manager read 
   const withoutSuppression = lessonsSection(play);
   assert.ok(withoutSuppression);
   assert.match(withoutSuppression!.body, /round-tripped past breakeven/i);
+  assert.match(withoutSuppression!.body, /gave back the move/i);
 
   const suppressed = lessonsSection(play, true);
   assert.ok(suppressed);
   assert.doesNotMatch(suppressed!.body, /round-tripped past breakeven/i);
-  // The rest of the post-mortem (peak/exit line, "gave back the move", exit reason, archetype tag)
-  // is independent evidence and must survive the suppression, not just the duplicated sentence.
-  assert.match(suppressed!.body, /gave back the move/i);
+  assert.doesNotMatch(suppressed!.body, /gave back the move/i);
+  // The rest of the post-mortem (peak/exit line, exit reason, archetype tag) is independent
+  // evidence and must survive the suppression.
+  assert.match(suppressed!.body, /Peak was/i);
   assert.match(suppressed!.body, /stop loss/i);
   assert.match(suppressed!.body, /pullback continuation/i);
+});
+
+test("lessonsSection: omits the trim-rail advice and stop-loss advice when Trade manager read already stated them, but keeps everything independent", () => {
+  // Live repro 2026-09-18 (NN:32, CLOSED, real production play-brief): "Trade manager read"
+  // (closedCoaching) rendered "...tighten at first trim rail next time." and "...check if entry
+  // was extended past invalidation." — "Lessons" then independently restated near-identical
+  // advice for BOTH facts one section later in the same response. The prior roundTripAlreadyNoted
+  // fix only deduped the round-trip FACT sentence, not these two advice clauses.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 24.4,
+    exitPnlPct: -60.3,
+    mfeCapturePct: null,
+    closedReason: "stopped",
+    archetype: "PULLBACK_CONTINUATION",
+  });
+
+  const withoutSuppression = lessonsSection(play, false, false, false);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /gave back the move/i);
+  assert.match(withoutSuppression!.body, /stop loss/i);
+
+  const suppressed = lessonsSection(play, false, true, true);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /gave back the move/i);
+  assert.doesNotMatch(suppressed!.body, /stop loss/i);
+  // Independent evidence must survive: peak/exit line, archetype tag.
+  assert.match(suppressed!.body, /Peak was/i);
+  assert.match(suppressed!.body, /pullback continuation/i);
+});
+
+test("lessonsSection: omits the round-trip advice line when roundTripAlreadyNoted is true, even for a peak<=20% round-trip whose Trade-manager-read advice used the 'wouldn't have helped' phrasing instead of 'tighten at first trim rail next time'", () => {
+  // Live repro 2026-09-18 (AAPL:38, CLOSED/stopped, real production play-brief): closedCoaching's
+  // round_trip branch (play-brief-narrative-coaching.ts) has TWO advice phrasings depending on
+  // outcome.peakPct -- "tighten at first trim rail next time" when peakPct > 20, or "a trim rail
+  // wouldn't have helped here; review entry timing or thesis strength instead" when peakPct <= 20
+  // -- always in the SAME sentence as "Round-tripped past breakeven". AAPL:38's peak was only
+  // +10.2%, so "Trade manager read" rendered the SECOND phrasing: "...a trim rail wouldn't have
+  // helped here; review entry timing or thesis strength instead." "Lessons" then independently
+  // rendered "**Gave back the move** — next time tighten at first trim rail or thesis fade." --
+  // directly CONTRADICTING advice on the same trade (one section says trimming wouldn't have
+  // helped, the next says the lesson is to trim earlier), not just a restatement. The prior
+  // adviceAlreadyNoted call-site derivation only matched the first phrasing, so it never
+  // suppressed this one. Since closedCoaching always emits the round-trip fact and its advice
+  // (whichever phrasing) as one atomic sentence, roundTripAlreadyNoted=true alone must be enough
+  // to suppress the advice line too.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 10.2,
+    exitPnlPct: -33.2,
+    mfeCapturePct: null,
+    closedReason: "stopped",
+    archetype: "EVENT_DRIVEN",
+  });
+
+  const withoutSuppression = lessonsSection(play, false, false, false);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /gave back the move/i);
+
+  // roundTripAlreadyNoted=true, adviceAlreadyNoted=false (simulating the "wouldn't have helped"
+  // phrasing, which the call site's string match does not recognize) -- the advice line must
+  // still be suppressed, since it was already covered by whichever phrasing appeared alongside
+  // the round-trip fact.
+  const suppressed = lessonsSection(play, true, false, false);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /gave back the move/i);
+  assert.doesNotMatch(suppressed!.body, /round-tripped past breakeven/i);
+  // Independent evidence must survive.
+  assert.match(suppressed!.body, /Peak was/i);
+  assert.match(suppressed!.body, /event-driven/i);
+});
+
+test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Trade manager read already stated the identical capture>=75 fact", () => {
+  // Live repro 2026-09-18 (CRWD:19, CLOSED/target, real production play-brief): "Trade manager
+  // read" (closedCoaching, play-brief-narrative-coaching.ts capture>=75 branch) rendered
+  // "**Strong discipline** — captured **85.7%** of peak; replicate trim timing." — "Lessons"
+  // (this function) then independently restated the SAME fact one section later: "MFE capture:
+  // 85.7% of peak move" + "**Strong exit discipline** — banked most of the move; replicate trim
+  // ladder timing." Today's roundTripAlreadyNoted/adviceAlreadyNoted/stopAdviceAlreadyNoted fixes
+  // only covered the round_trip kind (and the capture<35 "gave back" branch, which already reuses
+  // adviceAlreadyNoted's exact string) — this capture>=75 "Strong discipline" branch, arguably the
+  // MOST common closed-play outcome (any well-managed winner), was never gated at all.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 161.3,
+    exitPnlPct: 138.3,
+    mfeCapturePct: 85.7,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+  });
+
+  const withoutSuppression = lessonsSection(play, false, false, false, false);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /strong exit discipline/i);
+  assert.match(withoutSuppression!.body, /MFE capture/i);
+
+  const suppressed = lessonsSection(play, false, false, false, true);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /strong exit discipline/i);
+  // Independent evidence must survive: peak/exit line, the raw MFE-capture percentage, exit
+  // reason, and archetype tag — only the restated verdict sentence is suppressed.
+  assert.match(suppressed!.body, /Peak was/i);
+  assert.match(suppressed!.body, /MFE capture/i);
+  assert.match(suppressed!.body, /mechanical exit fired as designed/i);
+  assert.match(suppressed!.body, /sector rotation leadership/i);
+});
+
+test("lessonsSection: a small peak (<=20%) with weak capture (<35%) still gets a verdict line, not just the bare fact", () => {
+  // FINDINGS 2026-09-20 (Ask Largo × Night Hawk Swings mandate): the capture<35 branch only had a
+  // verdict line when `play.peak > 20` ("Gave back the move ... tighten at first trim rail") — for
+  // `play.peak <= 20` the if/else chain fell all the way through with nothing pushed beyond the
+  // bare "MFE capture: X% of peak move" fact, unlike every other capture band (>=75%, 35-75%, and
+  // the round-trip kind's own peak<=20 exception) which all render some verdict. No live closed
+  // position has hit this exact combination yet (checked via GET /api/market/swing/record — every
+  // low-peak trade to date either round-tripped to a loss or nearly fully captured its small peak),
+  // so this is a code-read gap, not a live repro — caught by comparing this if/else chain against
+  // the sibling `closedCoaching` (play-brief-narrative-coaching.ts), which is exhaustive here via a
+  // plain catch-all `else`.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 12,
+    exitPnlPct: 3,
+    mfeCapturePct: null,
+    closedReason: "time_stop",
+    archetype: "PULLBACK_CONTINUATION",
+  });
+
+  const section = lessonsSection(play, false, false, false, false);
+  assert.ok(section);
+  assert.match(section!.body, /MFE capture: \*\*\+25\.0%\*\* of peak move/);
+  // The gap: previously nothing rendered here at all for this exact peak/capture combination.
+  assert.match(section!.body, /small move, weakly captured/i);
+  assert.match(section!.body, /trim rail/i);
+  // Must not collide with the sibling peak>20 branch's distinct wording.
+  assert.doesNotMatch(section!.body, /gave back the move/i);
+});
+
+// Live repro 2026-09-13 (EWZ:29, CLOSED, real production play-brief): lessonsSection's own archetype
+// tag used the same underscore-replace-only transform already fixed in play-brief.ts's Verdict line
+// and play-brief-intel.ts's whyThisSetupSection (PR #4896) -- a third, missed call site. The SAME
+// brief's Verdict/Why-this-setup lines correctly showed "Pullback continuation" (the canonical
+// ARCHETYPE_META label) while this section's own tag showed the raw "PULLBACK CONTINUATION" --
+// underscores replaced with spaces but never cased, and never routed through archetypeLabelFromRaw.
+test("lessonsSection: Archetype tag uses the canonical humanized label, not the underscore-replace-only raw enum", () => {
+  const section = lessonsSection(
+    fixturePlay({
+      status: "CLOSED",
+      peak: 447.4,
+      exitPnlPct: 438.8,
+      mfeCapturePct: 98.1,
+      closedReason: "target",
+      archetype: "PULLBACK_CONTINUATION",
+    }),
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Archetype \*\*Pullback continuation\*\*/);
+  assert.doesNotMatch(section!.body, /PULLBACK CONTINUATION|PULLBACK_CONTINUATION/);
+});
+
+// Live repro 2026-09-21 (KKR closed play, real production play-brief, Ask Largo × Night Hawk
+// Swings mandate): "Lessons" unconditionally rendered "Mechanical exit fired as designed —
+// thesis or ladder did its job." for ANY closedReason of "target"/"ratchet", with no regard for
+// how the trade actually played out. Real numbers: peak +203.8%, exit +50.5%, MFE capture 24.8%
+// — a genuinely bad outcome (gave back three-quarters of the peak move) — and the SAME section
+// rendered "MFE capture: 24.8% of peak move" immediately followed by the unqualified "did its
+// job" praise, directly contradicting the capture-quality read two lines above it (and, when not
+// deduped into "Trade manager read", the "Gave back the move — tighten at first trim rail" line
+// right next to it). A mechanically-correct exit is not the same claim as "this was a good
+// outcome"; the line must not praise a giveback.
+test("lessonsSection: does not claim 'did its job' for a target/ratchet exit that gave back most of its peak", () => {
+  const weakCapturePlay = fixturePlay({
+    status: "CLOSED",
+    peak: 203.8,
+    exitPnlPct: 50.5,
+    mfeCapturePct: 24.8,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+  });
+  const section = lessonsSection(weakCapturePlay, false, false, false, false);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /did its job/i);
+  assert.match(section!.body, /ladder banked little of the peak/i);
+
+  // A genuinely strong capture on the same closedReason must still get the "did its job" praise —
+  // the fix narrows the unqualified line, it doesn't remove it.
+  const strongCapturePlay = fixturePlay({
+    status: "CLOSED",
+    peak: 60,
+    exitPnlPct: 55,
+    mfeCapturePct: 91.7,
+    closedReason: "target",
+    archetype: "SECTOR_ROTATION",
+  });
+  const strongSection = lessonsSection(strongCapturePlay, false, false, false, false);
+  assert.ok(strongSection);
+  assert.match(strongSection!.body, /did its job/i);
 });
 
 function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {
@@ -833,6 +1542,316 @@ test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 f
   assert.ok(section);
   assert.match(section!.body, /short vol ratio \*\*69%\*\*/);
   assert.doesNotMatch(section!.body, /6913%/);
+});
+
+test("catalystsSection: ancient short-interest as_of is omitted, not presented as current (Largo C3)", () => {
+  // Same guard as play-brief.ts's evidenceFromContext short-interest entry (Largo C7 fix,
+  // PR #5042) — catalystsSection reads the identical arsenal.fundamentals field and must not
+  // present an 8+ month old FINRA read with the same unqualified confidence as a fresh one.
+  const section = catalystsSection({
+    ticker: "CRCG",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 12.4, short_volume_ratio: 0.41, price_target: null, as_of: "2025-12-31" },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.equal(section, null);
+});
+
+test("catalystsSection: a genuinely lagging short-interest read carries a staleness disclosure (#4076 comment 5747893411's secondary point)", () => {
+  // Beyond FUNDAMENTALS_RECENT_CEILING_MS (15d) but well under FUNDAMENTALS_ANCIENT_CEILING_MS
+  // (60d) — the exact "lagging but not omitted" band the fundamentalsFreshnessTag fix carved out.
+  // Mirrors the headlines block's own staleLead test just below.
+  const laggingAsOf = new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 2.2, short_volume_ratio: 0.6, price_target: null, as_of: laggingAsOf },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Last settlement\*\*.*old.*short-interest may lag/s);
+});
+
+test("catalystsSection: a normal few-days-old short-interest read carries NO staleness disclosure", () => {
+  const recentAsOf = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 2.2, short_volume_ratio: 0.6, price_target: null, as_of: recentAsOf },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Last settlement/);
+});
+
+test("catalystsSection: headlines from a stale news read carry a staleness disclosure (Largo C2, 2026-09-18)", () => {
+  // Live gap: `arsenal.news.as_of` (NewsResult.asOf, stamped once inside serverCache's cached
+  // builder at true fetch time) can legitimately stay minutes stale under stale-while-revalidate
+  // — the same exposure meridianCatalystSection already discloses for its own catalyst read.
+  // catalystsSection was the one sibling that read a freshness-bearing field with zero disclosure.
+  const staleAsOf = new Date(Date.now() - 20 * 60_000).toISOString(); // 20m old — well past the bound
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: staleAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: staleAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Last snapshot\*\*.*old.*headlines may lag/s);
+  assert.match(section!.body, /CrowdStrike stock moves higher/);
+});
+
+test("catalystsSection: headlines from a fresh news read carry NO staleness disclosure", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString(); // 5s old
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Last snapshot/);
+  assert.match(section!.body, /CrowdStrike stock moves higher/);
+});
+
+// GAP FOUND (2026-09-28, Ask Largo standing mandate): live repro U/WATCH — arsenal.news.headlines
+// carried the SAME headline text twice ("10 Information Technology Stocks Whale Activity In
+// Today's Session" at both index 0 and 2), burning one of only 4 shown slots on a repeat.
+test("catalystsSection: duplicate headline text is deduped, never burning one of the 4 shown slots", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString();
+  const section = catalystsSection({
+    ticker: "U",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: {
+        count: 5,
+        newest: freshAsOf,
+        headlines: [
+          "10 Information Technology Stocks Whale Activity In Today's Session",
+          "10 Information Technology Stocks With Whale Alerts In Today's Session",
+          "10 Information Technology Stocks Whale Activity In Today's Session",
+          "Is Fortnite Down? Here's Why Servers Are Offline",
+          "A genuinely distinct fifth headline",
+        ],
+        as_of: freshAsOf,
+      },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  const bulletLines = section!.body.split("\n").filter((l) => l.startsWith("• "));
+  assert.equal(bulletLines.length, 4, "still shows 4 headlines, not 3");
+  const occurrences = bulletLines.filter(
+    (l) => l === "• 10 Information Technology Stocks Whale Activity In Today's Session",
+  );
+  assert.equal(occurrences.length, 1, "the duplicate headline appears only once");
+  assert.match(
+    section!.body,
+    /A genuinely distinct fifth headline/,
+    "dedup happens BEFORE the top-4 slice, so the real 4th distinct headline still makes the cut",
+  );
+});
+
+// Ask Largo standing mandate, same #5351/#5392-class readMs-anchor sweep — catalystsSection was
+// NOT among the 9 sites #5392 fixed (confirmed against #5392's own diff, which never touched this
+// function) even though it reads TWO freshness-bearing fields (fundamentals.as_of, news.as_of) and
+// sampled a fresh Date.now() at each. A real request runs sections sequentially with real I/O in
+// between, so each bare Date.now() sample can land on a different real instant and disagree with a
+// sibling section about whether the SAME arsenal read is stale.
+test("catalystsSection: uses ctx.readMs as the staleness anchor for fundamentals, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsOf = new Date(Date.now() - 60_000).toISOString(); // fresh vs real now, ancient vs anchor
+  const ecosystem = {
+    ticker: "CRCG",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: { days_to_cover: 12.4, short_volume_ratio: 0.41, price_target: null, as_of: freshAsOf },
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as unknown as EcosystemContext;
+
+  // No ctx (or a real-clock ctx): fundamentals is fresh, so the section renders it.
+  const liveSection = catalystsSection(ecosystem);
+  assert.ok(liveSection);
+  assert.match(liveSection!.body, /short DTC/);
+
+  // ctx.readMs anchored a year in the future: the SAME fundamentals read must now be treated as
+  // ancient and omitted — same as fundamentalsAncient's own ancient-omission contract (Largo C3).
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+  const anchoredSection = catalystsSection(ecosystem, ctx);
+  assert.equal(
+    anchoredSection,
+    null,
+    "must read fundamentals as ancient under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+test("catalystsSection: uses ctx.readMs as the staleness anchor for news headlines, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString(); // fresh vs real now, stale vs anchor
+  const ecosystem = {
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as unknown as EcosystemContext;
+
+  // No ctx: news is fresh under the real wall clock, so no staleness disclosure.
+  const liveSection = catalystsSection(ecosystem);
+  assert.ok(liveSection);
+  assert.doesNotMatch(liveSection!.body, /Last snapshot/);
+
+  // ctx.readMs anchored a year in the future: the SAME news read must now render the staleness
+  // disclosure this section already has logic for (Largo C2) — the bug was that it never consulted
+  // the anchor to decide.
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+  const anchoredSection = catalystsSection(ecosystem, ctx);
+  assert.ok(anchoredSection);
+  assert.match(
+    anchoredSection!.body,
+    /\*\*Last snapshot\*\*.*old.*headlines may lag/s,
+    "must read the news headlines as stale under ctx.readMs even though they are fresh under the real wall clock",
+  );
 });
 
 test("chartTechnicalsSection: bias reads bearish from the technicals on a SHORT play whose tape is entirely bullish (FINDINGS 2026-09-06 #13, INTC shape)", () => {
@@ -892,6 +1911,116 @@ test("chartTechnicalsSection: Vector regime is labeled as dealer GAMMA posture, 
   assert.doesNotMatch(section!.body, /Vector regime:/);
 });
 
+// BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): chartTechnicalsSection
+// used to read vec.regime?.posture directly with no GEX-matrix fallback, so it silently OMITTED the
+// "Dealer gamma regime" line whenever Vector's own read was "unknown" — even when a fresh GEX-matrix
+// posture existed and the SAME brief's "Trade manager read" section (via resolveGammaPosture) showed
+// a resolved answer for the identical fact. Not a wrong-value bug, a completeness gap.
+test("chartTechnicalsSection: falls through to fresh GEX posture when Vector regime is 'unknown' and ctx is supplied", () => {
+  const vec = fixtureVec({
+    spot: 419.48,
+    technicals: {
+      vwap: 420,
+      emaStack: "down",
+      rsi: 45,
+      macd: "bear",
+      goldenPocket: null,
+      structure: null,
+    },
+    regime: { posture: "unknown" },
+  });
+  const ctx = {
+    play: fixturePlay(),
+    asOf: "2026-09-14 21:07 ET",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      ticker: "TSM",
+      gex_positioning: {
+        spot: 419.48,
+        gamma_posture: "short",
+      },
+    } as SwingPlayBriefContext["ecosystem"],
+    vector: vec,
+  } as SwingPlayBriefContext;
+
+  // Without ctx (old call shape): must keep the old silent-omission behavior — no regression for
+  // any caller that hasn't been updated to pass ctx.
+  const withoutCtx = chartTechnicalsSection(vec, "2026-09-14");
+  assert.doesNotMatch(withoutCtx!.body, /Dealer gamma regime/);
+
+  // With ctx (the real production call shape): must fall through to the fresh GEX-matrix posture.
+  const withCtx = chartTechnicalsSection(vec, "2026-09-14", "watch", ctx);
+  assert.match(
+    withCtx!.body,
+    /Dealer gamma regime: \*\*short gamma\*\*/,
+    "must resolve from the GEX-matrix fallback instead of silently omitting the line",
+  );
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-12): chartTechnicalsSection rendered TODAY's spot/
+// EMA/VWAP/RSI/structure for a CLOSED play with no disclosure and a directional bias badge — unlike
+// vectorDeskSection's already-fixed closed-bucket branch (forced neutral, "since this play closed"
+// framing) a few sections later in the same envelope. Live repro: AAPL:36 (closed 2026-09-04)
+// rendered "Chart technicals" full of live 2026-09-12 numbers with zero as-of-close framing.
+test("chartTechnicalsSection: CLOSED bucket prefixes a current-not-as-traded disclosure and forces neutral bias", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  });
+  const closedSection = chartTechnicalsSection(vec, null, "closed");
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current chart read — not the technicals this trade closed under/);
+  assert.equal(closedSection!.bias, "neutral", "closed bucket must not badge a directional bias");
+
+  const openSection = chartTechnicalsSection(vec, null, "open");
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current chart read/, "open/watch buckets are unchanged");
+  assert.equal(openSection!.bias, "bullish", "open bucket keeps its real technicals-derived bias");
+
+  // Default (no bucket arg) must match every pre-existing call site — behavior unchanged.
+  const defaultSection = chartTechnicalsSection(vec);
+  assert.doesNotMatch(defaultSection!.body, /Current chart read/);
+});
+
+// A closed play with a live Vector snapshot carrying no actual technicals/spot content must still
+// return null (not a section containing only the disclosure line, which would be a caveat about
+// nothing).
+test("chartTechnicalsSection: CLOSED bucket returns null rather than a disclosure-only section when there is no real content", () => {
+  const vec = { spot: null, technicals: null, regime: null, play: null } as unknown as VectorFullState;
+  assert.equal(chartTechnicalsSection(vec, null, "closed"), null);
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-12): same defect class — wallDynamicsSection
+// rendered TODAY's building/fading wall events for a CLOSED play with no framing at all.
+test("wallDynamicsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const vec = fixtureVec({
+    dataAgeMs: 1_000,
+    wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+  });
+  const closedSection = wallDynamicsSection(vec, null, "closed");
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current wall activity — not what this trade traded under/);
+
+  const openSection = wallDynamicsSection(vec, null, "open");
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current wall activity/, "open/watch buckets are unchanged");
+
+  // Default (no bucket arg) must match every pre-existing call site — behavior unchanged.
+  const defaultSection = wallDynamicsSection(vec);
+  assert.doesNotMatch(defaultSection!.body, /Current wall activity/);
+});
+
 test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (Largo C2)", () => {
   const vec = fixtureVec({
     freshness: "stale",
@@ -913,6 +2042,101 @@ test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (
   assert.match(section!.body, /Last snapshot/i);
   assert.doesNotMatch(section!.body, /Breakout continuation/i, "stale Vector must not render thesis");
   assert.doesNotMatch(section!.body, /Entry zone/i);
+});
+
+test("vectorDeskSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const vec = fixtureVec({
+    dataAgeMs: Number.POSITIVE_INFINITY,
+    play: { bias: "long", headline: "Ride momentum", grade: "A" },
+  } as Partial<VectorFullState>);
+  const section = vectorDeskSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+  assert.doesNotMatch(section!.body, /Infinitys/i);
+});
+
+// Ask Largo standing mandate, same #5351/#5392/#5393-class readMs-anchor sweep — wallDynamicsSection
+// and vectorDeskSection were the last two swing play-brief sections still sampling the real wall
+// clock (`Date.now()`) instead of the brief's single stamped `ctx.readMs`, so a request straddling
+// a staleness boundary while composing could disagree with every other section in the same brief
+// about "now". Both take a NEW trailing optional `ctx` param (backward-compatible: every
+// pre-existing call/test above that omits it keeps behaving identically off a fresh `Date.now()`).
+test("wallDynamicsSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  // No dataAgeMs/freshness set — vectorAgeStale falls back to `readMs - Date.parse(vec.asOf)`,
+  // the exact readMs-dependent branch this bug hits (same shape as gexPostureSection's own test).
+  const vec = fixtureVec({
+    asOf: new Date(Date.now() - 60_000).toISOString(), // fresh vs real now, ancient vs the far-future anchor
+    wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+  } as Partial<VectorFullState>);
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+
+  // Under the real wall clock this same vec is fresh, so the section must render.
+  const liveSection = wallDynamicsSection(vec, null, "open");
+  assert.ok(liveSection, "fresh vs the real wall clock must render");
+
+  // Under ctx.readMs (anchored a year out) the identical vec must read stale and suppress.
+  const anchoredSection = wallDynamicsSection(vec, null, "open", ctx);
+  assert.equal(
+    anchoredSection,
+    null,
+    "must read the Vector snapshot as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+test("vectorDeskSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const vec = fixtureVec({
+    asOf: new Date(Date.now() - 60_000).toISOString(), // fresh vs real now, ancient vs the far-future anchor
+    play: {
+      bias: "long",
+      headline: "Ride momentum",
+      grade: "A",
+      conviction: "high",
+      targets: [],
+      starred: [],
+    },
+  } as Partial<VectorFullState>);
+  const ctx = { readMs: anchorFarFuture } as SwingPlayBriefContext;
+
+  const liveSection = vectorDeskSection(vec, null, "open");
+  assert.ok(liveSection);
+  assert.doesNotMatch(liveSection!.body, /Last snapshot/i, "fresh vs the real wall clock must render live");
+
+  const anchoredSection = vectorDeskSection(vec, null, "open", ctx);
+  assert.ok(anchoredSection);
+  assert.match(
+    anchoredSection!.body,
+    /Last snapshot/i,
+    "must read the Vector snapshot as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+test("vectorDeskSection: stale Vector with no play.grade still renders the section, not null", () => {
+  // FINDINGS 2026-09-20: the stale branch used to end with `if (!lines.length) return null` --
+  // dead code, since the "Last snapshot ... may lag spot" line just above it is always pushed in
+  // this branch, so `lines.length` can never be 0 there. This is the one combination (stale +
+  // no grade) that would have exercised that dead check if it were ever reachable; asserting the
+  // section still renders here locks in the real (and only ever possible) behavior.
+  const vec = fixtureVec({
+    freshness: "stale",
+    play: {
+      bias: "long",
+      headline: "Ride momentum",
+      grade: null,
+      conviction: "high",
+      thesis: "Breakout continuation",
+      entryZone: "100-102",
+      targets: ["110"],
+      invalidation: "below 98",
+      starred: ["watch 105"],
+    },
+  } as Partial<VectorFullState>);
+  const section = vectorDeskSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.doesNotMatch(section!.body, /Vector desk grade/i);
 });
 
 test("vectorDeskSection: live Vector play.bias badges bullish/bearish", () => {
@@ -1059,6 +2283,44 @@ test("dataFreshnessSection: option mark timestamp renders as a Largo C1 ET stamp
   assert.doesNotMatch(section!.body, /\.663Z/, "must not print a raw ISO mark timestamp");
 });
 
+test("dataFreshnessSection: stale option mark on an OPEN position is labeled stale, not a bare 'as of' (Largo C2, 2026-09-16)", () => {
+  // Same three-way-disagreement bug the evidence[]/unavailableSources[] arrays already guard
+  // against (optionMarkIsStale/collectOptionMarkStalenessAbsence) — this section, the one named
+  // for freshness disclosure, must not be the one place that stays silent on a stale mark.
+  const staleMarkAsOf = new Date(Date.now() - 20 * 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", markAsOf: staleMarkAsOf, markIsSync: false }),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Option mark \*\*stale\*\*/);
+});
+
+test("dataFreshnessSection: fresh option mark on an OPEN position still renders the plain 'as of' line (no regression)", () => {
+  const freshMarkAsOf = new Date(Date.now() - 5 * 60_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", markAsOf: freshMarkAsOf, markIsSync: false }),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Option mark as of \*\*/);
+  assert.doesNotMatch(section!.body, /stale/i);
+});
+
 test("dataFreshnessSection: stale ecosystem.vector_full_state warns when ctx.vector is null", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
@@ -1169,6 +2431,173 @@ test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is f
   assert.match(section!.body, /tape read may lag/);
 });
 
+// Ask Largo standing mandate follow-up to #5351: dataFreshnessSection independently sampled the
+// real wall clock (Date.now()) for its option-mark/Vector/GEX staleness checks instead of
+// consulting ctx.readMs, the one canonical "now" composeSwingPlayBrief stamps before any section
+// builds. Because compose does real sequential I/O between sections, this section's own
+// Date.now() sample can land on the opposite side of a staleness cutoff from a sibling section
+// (watchForSection, already fixed in #5351) reasoning about the SAME underlying field — the exact
+// "same fact, two answers within one envelope" defect #5351 fixed for a different pair of sections.
+// This test anchors ctx.readMs far in the future (well past every staleness window) while the
+// real wall clock (Date.now()) at test-run time is NOT stale — proving the section must consult
+// ctx.readMs rather than silently falling back to the real clock.
+test("dataFreshnessSection: uses ctx.readMs as the staleness anchor, not the real wall clock (Ask Largo standing mandate, #5351 follow-up)", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshMarkAsOf = new Date(Date.now() - 5 * 60_000).toISOString(); // fresh vs real now
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", markAsOf: freshMarkAsOf, markIsSync: false }),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: anchorFarFuture,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(
+    section!.body,
+    /Option mark \*\*stale\*\*/,
+    "must read the mark as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+// Ask Largo standing mandate, same #5351-class readMs-anchor sweep — this time on
+// meridianCatalystSection, chartLevelsSection, gexPostureSection, and preferredGexWalls, which all
+// take a required `ctx: SwingPlayBriefContext` (so ctx.readMs was always in scope) but each still
+// sampled a fresh Date.now() instead of consulting it. A real request runs these sections
+// sequentially with real I/O in between, so each bare Date.now() sample can land on a different
+// real instant and disagree with a sibling section (or with `dataFreshnessSection` above, already
+// fixed) about whether the SAME underlying GEX/Meridian read is stale.
+test("meridianCatalystSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsOf = new Date(Date.now() - 60_000).toISOString(); // fresh vs real now, ancient vs anchor
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-21 10:00 ET",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: { as_of: freshAsOf, items: [], total_matched: 0 },
+    ecosystem: null,
+    vector: null,
+    readMs: anchorFarFuture,
+  };
+  const section = meridianCatalystSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Last snapshot/i,
+    "must read the Meridian catalyst slice as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+});
+
+test("gexPostureSection: uses ctx.readMs as the staleness anchor, not the real wall clock", () => {
+  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const freshAsof = new Date(Date.now() - 60_000).toISOString(); // fresh vs real now, ancient vs anchor
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-21 10:00 ET",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    // No matrix_age_sec so gexMatrixAgeMs falls back to readMs - Date.parse(gex.asof) — the
+    // readMs-dependent branch this bug actually hits.
+    ecosystem: {
+      gex_positioning: { spot: 100, gamma_posture: "long", net_gex: 5_000_000, asof: freshAsof },
+    } as EcosystemContext,
+    vector: null,
+    readMs: anchorFarFuture,
+  };
+  const section = gexPostureSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Last snapshot/i,
+    "must read the GEX matrix as stale under ctx.readMs even though it is fresh under the real wall clock",
+  );
+  assert.doesNotMatch(section!.body, /long gamma/i, "stale-under-ctx.readMs posture must not render as live");
+});
+
+// ── CLOSED plays must not narrate "today's" live-desk staleness (FINDINGS 2026-09-12) ──────────
+// A CLOSED play is a historical record; scan/Vector/GEX/HELIX staleness are all claims about
+// TODAY's live desk state and fire forever once ANY time has passed since close if left ungated —
+// reproduced live on a real INTC brief read a full week after the play closed.
+
+test("dataFreshnessSection: CLOSED play suppresses prior-session scan staleness narration", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: "2026-08-04T20:00:00.000Z",
+    scanSessionDay: "2026-08-04",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "a CLOSED play must not narrate a live discovery-scan staleness claim");
+});
+
+test("dataFreshnessSection: CLOSED play suppresses stale HELIX pipeline narration", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: { flow_feed_fresh: false } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "a CLOSED play must not narrate live HELIX pipeline staleness");
+});
+
+test("dataFreshnessSection: CLOSED play suppresses stale GEX matrix and Vector data-age narration", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: { spot: 100, gamma_posture: "long", matrix_age_sec: 200, freshness: "cached" },
+      vector_full_state: fixtureVec({ dataAgeMs: 180_000 }),
+    } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.equal(section, null, "a CLOSED play must not narrate live GEX/Vector staleness");
+});
+
+test("dataFreshnessSection: an OPEN play with the exact same stale inputs still narrates them (not over-suppressed)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-11 16:00 ET",
+    sessionDate: "2026-09-11",
+    scanAsOf: "2026-08-04T20:00:00.000Z",
+    scanSessionDay: "2026-08-04",
+    laneRows: [],
+    meridian: null,
+    ecosystem: { flow_feed_fresh: false } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section, "a live OPEN play must still get its real staleness caveats");
+  assert.match(section!.body, /today's discovery not yet run/);
+  assert.match(section!.body, /HELIX flow: \*\*pipeline stale\*\*/);
+});
+
 test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Largo C2)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
@@ -1191,6 +2620,63 @@ test("dataFreshnessSection: stale GEX matrix warns when ctx.vector is null (Larg
   const section = dataFreshnessSection(ctx);
   assert.match(section!.body, /GEX matrix \*\*200s\*\* old/);
   assert.match(section!.body, /dealer posture may lag spot/);
+});
+
+test("dataFreshnessSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ dataAgeMs: Number.POSITIVE_INFINITY }),
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Vector data \*\*clock-skewed\*\* old/);
+  assert.doesNotMatch(section!.body, /Infinitys/);
+});
+
+test("dataFreshnessSection: null Vector dataAgeMs still flags staleness via vec.freshness (Largo C2, 2026-09-16)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ dataAgeMs: undefined, freshness: "stale" }),
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Vector data \*\*clock-skewed\*\* old/);
+});
+
+test("dataFreshnessSection: future-skewed GEX matrix age fails closed instead of silently reading as fresh (Largo C2, 2026-09-16)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-16 10:00 ET",
+    sessionDate: "2026-09-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        matrix_age_sec: -500,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.ok(section, "a future-skewed GEX matrix must fail closed, not render as silently fresh");
+  assert.match(section!.body, /GEX matrix \*\*clock-skewed\*\* old/);
 });
 
 test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma posture (Largo C2)", () => {
@@ -1219,6 +2705,62 @@ test("gexPostureSection: stale matrix prefixes Last snapshot, suppresses gamma p
   assert.match(section!.body, /200s old/i);
   assert.doesNotMatch(section!.body, /long gamma/i, "stale GEX-only posture must not render as live");
   assert.doesNotMatch(section!.body, /Net GEX/i, "stale matrix numeric fields must not render as live");
+});
+
+// BUG FIX (2026-09-18, Ask Largo standing mandate): the same false-zero precision defect fixed
+// in play-brief.ts's tradeManagerNarrativeSection (PR #5227, live ABTC $10.15 repro) also existed
+// here — gexPostureSection independently computes net_gex/1e6 and rendered it via a bare
+// toFixed(1), so a real, signed net GEX under ~$50k (common on lower-priced/small-cap tickers)
+// collapsed to "0.0M", reading as "no dealer exposure" when a real signed value exists.
+test("gexPostureSection: a small nonzero net GEX never renders as a false '0.0M' zero", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 10.15,
+        gamma_posture: "long",
+        net_gex: 40_000,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Net GEX: \*\*0\.04M\*\*/, "a real $40k net GEX must widen precision, never collapse to a false 0.0M");
+  assert.doesNotMatch(section!.body, /Net GEX: \*\*-?0\.0M\*\*/, "must never render the false-zero '0.0M'/'-0.0M' shape");
+});
+
+test("gexPostureSection: future-skewed GEX matrix age renders 'clock-skewed', not a negative number (Largo C2, 2026-09-16)", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        matrix_age_sec: -500,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+  assert.doesNotMatch(section!.body, /-500s/);
 });
 
 // FINDING 2026-09-11 (Ask Largo monitor cycle, live MSTR:33): gexPostureSection's "Nearest wall"
@@ -1267,6 +2809,58 @@ test("gexPostureSection: nearest wall prefers a live Vector ladder wall over the
   assert.doesNotMatch(section!.body, /120\.00/);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-09-12): gexPostureSection rendered TODAY's dealer
+// posture for a CLOSED play with no disclosure at all — unlike vectorDeskSection/watchForSection/
+// dataFreshnessSection, which were already fixed the same day for the identical defect class (a
+// closed brief presenting live/current data as if it described the trade's own conditions). Live
+// repro: AAPL:36 (closed 2026-09-04) rendered "Gamma posture: dealers long gamma" on 2026-09-12
+// with zero indication this was today's read, not the trade's.
+test("gexPostureSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const closedSection = gexPostureSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        matrix_age_sec: 10,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current dealer posture — not what this trade traded under/);
+
+  const openSection = gexPostureSection({
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        matrix_age_sec: 10,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current dealer posture/, "open/watch buckets are unchanged");
+});
+
 test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits live-looking technicals (Largo C2)", () => {
   const vec = fixtureVec({
     spot: 95,
@@ -1292,6 +2886,19 @@ test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits l
   assert.doesNotMatch(section!.body, /RSI:/i, "stale RSI must not render as live");
 });
 
+test("chartTechnicalsSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    dataAgeMs: Number.POSITIVE_INFINITY,
+    play: { grade: "A" },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+  assert.doesNotMatch(section!.body, /Infinitys/i);
+});
+
 test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (Largo C2)", () => {
   const section = chartLevelsSection({
     play: fixturePlay(),
@@ -1311,6 +2918,83 @@ test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (
     }),
   });
   assert.equal(section, null, "stale Vector-only levels must not render a section");
+});
+
+// BUG FIX (2026-09-21, Ask Largo standing mandate — sweep of the play-brief-narrative.ts
+// toFixed-vs-roundFloats rounding-mismatch fix (#5380) into this file's own price-level lines).
+// Same live-repro shape as fmt-money.test.ts's fmtPriceLevel suite: 152.035's raw IEEE-754 storage
+// rounds DOWN with plain toFixed(2) ("152.03") but UP with roundFloats' own Math.round(n*100)/100
+// algorithm ("152.04") — and the SAME raw max-pain level is also exposed as a plain number in
+// envelope.levels (the response's roundFloats()'d "max pain" entry), so a line built with plain
+// toFixed(2) could silently disagree with the rest of the response.
+test("chartLevelsSection: max pain matches roundFloats' rounding, not plain toFixed(2), at a half-cent boundary", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ spot: 100, maxPain: 152.035 }),
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Max pain: \*\*152\.04\*\*/, "must round like roundFloats (152.04), not plain toFixed(2) (152.03)");
+  assert.doesNotMatch(section!.body, /152\.03/);
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-15): fmtDist passed a SIGNED delta straight into
+// fmtOptionUsd, whose own doc comment says it is "never signed" — negatives already carry a minus
+// from `.toFixed(2)`, so prepending "$" produced "$-19.48" instead of "-$19.48" for every level
+// below spot (fmt-money.ts's sibling `fmtPremium` already documents this exact trap: "Sign OUTSIDE
+// the currency glyph so negatives read '-$1.2M', never '$-1.2M'" — fmtDist never got that fix).
+// Live-confirmed on essentially every real brief with a below-spot level (TSM/ORCL/GOOG/AAPL/CRWD/
+// NN/CG/RBLU/GMEU/DNA/SOFX/STLN, 2026-09-15).
+test("chartLevelsSection: put wall distance below spot renders sign OUTSIDE the glyph (\"-$X\"), never \"$-X\"", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 419.48,
+      gexWalls: { putWalls: [{ strike: 400 }], callWalls: [] },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /-\$19\.48 from spot/);
+  assert.doesNotMatch(section!.body, /\$-/);
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-15): the dark-pool line formatted a summed
+// institutional block-print notional (routinely hundreds of thousands to tens of millions of
+// dollars) through `fmtOptionUsd` — a 2-decimal per-contract PRICE formatter — instead of the
+// compact-magnitude `fmtPremium` the sibling `narrateDarkPool` (play-brief-narrative.ts) already
+// uses for the identical `premium` field. Not live-confirmed (no ticker checked 2026-09-15 carried
+// a populated darkPoolLevels array) but the defect is unconditional.
+test("chartLevelsSection: dark pool level premium renders as a compact magnitude (\"$X.XM\"), not a raw per-contract price", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 100,
+      darkPoolLevels: [{ strike: 99, pct: 40, premium: 5_230_000 }],
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\$5\.2M/);
+  assert.doesNotMatch(section!.body, /\$5230000/);
 });
 
 // FINDING 2026-09-08 (Ask Largo monitor cycle): a confluence node's score is a weighted sum of
@@ -1338,6 +3022,84 @@ test("chartLevelsSection: confluence score renders at one-decimal precision, not
   assert.ok(section);
   assert.match(section!.body, /score 7\.5/, "must show the real half-point score, not rounded");
   assert.doesNotMatch(section!.body, /score 8\b/, "must not round 7.5 up to 8");
+});
+
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro NAIL): "Confluence nodes" used to
+// join a zone's `kinds` bare, sharing the exact "call-wall" name with the single top-ranked wall
+// shown 3 lines above ("Call wall (GEX): 40.00") even when the confluence engine picked a
+// LOWER-ranked wall at a materially different price (35.00) -- the two "call wall" figures in the
+// SAME section silently disagreed with nothing to explain why. play-brief.ts's structured `levels`
+// array already disambiguated this (2026-09-13); this prose call site never picked up the fix.
+test("chartLevelsSection: 'Confluence nodes' disambiguates a zone's wall price when it differs from the primary wall shown above (live NAIL repro)", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-14 10:00 ET",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 33,
+      gexWalls: { callWalls: [{ strike: 40 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 35,
+          low: 34.5,
+          high: 35.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 35, kind: "call-wall" },
+            { price: 35, kind: "max-pain" },
+          ],
+        },
+      ],
+    }),
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Call wall \(GEX\):\*\* 40\.00/, "the primary wall line itself is untouched");
+  assert.match(
+    section!.body,
+    /\*\*35\.00\*\* \(call-wall@35\+max-pain, score 5\.0\)/,
+    "the confluence node must disclose its OWN wall price (35), not silently share the primary wall's name (40)",
+  );
+});
+
+// Sibling: when the confluence zone's wall genuinely agrees with the primary wall, the label
+// stays plain -- the fix must not qualify every kind unconditionally.
+test("chartLevelsSection: 'Confluence nodes' keeps the plain kind name when the zone's wall matches the primary wall", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-14 10:00 ET",
+    sessionDate: "2026-09-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 33,
+      gexWalls: { callWalls: [{ strike: 40 }], putWalls: [] },
+      confluenceZones: [
+        {
+          center: 40,
+          low: 39.5,
+          high: 40.5,
+          score: 5.0,
+          kinds: ["call-wall", "max-pain"],
+          levels: [
+            { price: 40, kind: "call-wall" },
+            { price: 40, kind: "max-pain" },
+          ],
+        },
+      ],
+    }),
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*40\.00\*\* \(call-wall\+max-pain, score 5\.0\)/);
+  assert.doesNotMatch(section!.body, /call-wall@/);
 });
 
 test("watchForSection: stale GEX-only flip and put wall omitted from watch levels (Largo C2)", () => {
@@ -1448,6 +3210,227 @@ test("watchForSection: live Vector put wall still shown when GEX matrix is stale
   assert.match(section.body, /put wall \*\*98\.00\*\*/);
 });
 
+// Live 2026-09-12: a member read "Flag anchor" (the PINNED first-flagged reference price) as the
+// actionable entry level, which it is not — entryTriggerUnderlyingPx is the live level that
+// actually flips PRE_TRIGGER/FORMING to AT_TRIGGER/TRIGGERED, and the two can diverge once a
+// dossier refreshes its plan on a later scan pass.
+test("watchForSection: entry trigger level is shown distinctly from the flag anchor, watch bucket only", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", flagUnderlyingPx: 175.87, entryTriggerUnderlyingPx: 182.5 }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Flag anchor: \*\*175\.87\*\*/);
+  assert.match(section.body, /Entry trigger: \*\*182\.50\*\*/);
+  assert.match(section.body, /Break\/reclaim above/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-09-12): the "Entry trigger" bullet used to claim,
+// unconditionally, that crossing this level "is what actually fires the setup" — false once the
+// setup itself is dead. Live repro: SKHY WATCH brief with `setupState: "INVALIDATED"` (thesis
+// already broken) where spot had ALREADY crossed the stated trigger with no entry firing —
+// directly contradicting the sentence next to the number. The level itself stays (still useful
+// context); only the false causal claim is corrected.
+test("watchForSection: entry trigger claim is corrected, not fabricated, once the setup is INVALIDATED", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 177.0,
+        setupState: "INVALIDATED",
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*177\.00\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(section.body, /thesis already invalidated — this level no longer fires the setup/);
+});
+
+// Live repro, second shape: MRVL WATCH brief past its entry-validity DEADLINE
+// (`watchEntryExpired: true`, entry-enterability.ts's `pastEntryDeadline`) — the headline
+// correctly says EXPIRED, but "Watch levels" (this section) still framed the same trigger as
+// live and actionable with no cross-reference to that framing.
+test("watchForSection: entry trigger claim is corrected, not fabricated, once the entry-validity window has expired", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 221.25,
+        watchEntryExpired: true,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*221\.25\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(section.body, /entry-validity window expired — this level no longer fires the setup/);
+});
+
+// A live, still-enterable WATCH play (neither INVALIDATED nor past its entry-validity deadline)
+// must keep the original, correct causal claim — this fix must not soften a claim that is true.
+test("watchForSection: a live, still-enterable trigger keeps the unqualified causal claim", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 182.5,
+        setupState: "TRIGGERED",
+        watchEntryExpired: false,
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
+});
+
+test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "SHORT", entryTriggerUnderlyingPx: 342.5 }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*342\.50\*\*/);
+  assert.match(section.body, /Break\/reclaim below/);
+});
+
+test("watchForSection: entry trigger is omitted (never fabricated) when null, and never shown outside the watch bucket", () => {
+  const withoutTrigger = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", entryTriggerUnderlyingPx: null }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(withoutTrigger.body, /Entry trigger:/);
+
+  const openBucket = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", entryTriggerUnderlyingPx: 182.5 }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(openBucket.body, /Entry trigger:/);
+});
+
+// BUG FIX (2026-09-12): `watchForSection`'s "Before entry, clear:" bullet used to re-render each
+// gate's full `code: reason` text — but `watchEntrySection` (play-brief.ts, "Entry" section, which
+// composeSwingPlayBrief always places BEFORE this section for a WATCH play) already renders the
+// IDENTICAL `play.gateBlocks` list in full under "Gates blocking entry:". Live repro: ORCL WATCH
+// brief 2026-09-12, both sections printed the same `g_s4_regime`/`g_s14_cortex` reason strings
+// verbatim. This test pins the NEW behavior: a short count + pointer, not a second full copy.
+test("watchForSection: gate-block bullet is a count + pointer, not a second full copy of Entry's reason text", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        gateBlocks: [
+          { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+          { code: "g_s14_cortex", reason: "Cortex preflight vetoed this setup — desk will not open." },
+        ],
+      }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Entry section above\./);
+  // The full reason text must NOT be duplicated here — its one home is the Entry section.
+  assert.doesNotMatch(section.body, /Broad-market regime degraded/);
+  assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-09-17): `watchForSection`'s "Watch levels" section
+// re-rendered `play.entryStatus` as its own "Entry geometry" bullet — but `watchEntrySection`
+// (play-brief.ts, "Entry" section, which composeSwingPlayBrief always places BEFORE this section
+// for a WATCH play) already renders the IDENTICAL fact as its own "Entry geometry" bullet. Live
+// repro: TSM WATCH brief 2026-09-17, "## Entry" printed "Entry geometry: **AT_TRIGGER**" and
+// "## Watch levels" printed it again three sections later as "Entry geometry: **AT TRIGGER**" —
+// same fact, inconsistent formatting (raw enum vs humanized), exactly the duplication shape the
+// gate-block bullet above was already fixed to avoid. Unlike gateBlocks there is no count worth
+// preserving here (it's a single scalar, not a list), so the second copy is dropped outright
+// rather than replaced with a pointer.
+test("watchForSection: entry geometry is not duplicated — its one home is the Entry section above", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", entryStatus: "AT_TRIGGER" }),
+      asOf: "2026-09-17 10:00 ET",
+      sessionDate: "2026-09-17",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Entry geometry:/);
+});
+
 test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2)", () => {
   const section = chartLevelsSection({
     play: fixturePlay(),
@@ -1471,6 +3454,114 @@ test("chartLevelsSection: stale GEX-only walls, flip, and king omitted (Largo C2
     vector: null,
   });
   assert.equal(section, null);
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-12): same defect class as gexPostureSection above —
+// "Levels on chart" rendered TODAY's call/put wall + gamma flip for a CLOSED play with no framing,
+// duplicating the already-disclosed "Since it closed" section's numbers but without its caveat.
+test("chartLevelsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
+  const ecosystem = {
+    gex_positioning: {
+      spot: 100,
+      call_wall: 105,
+      put_wall: 95,
+      flip: 99,
+      gex_king_strike: 100,
+      matrix_age_sec: 10,
+      freshness: "live",
+    },
+  } as EcosystemContext;
+  const closedSection = chartLevelsSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem,
+    vector: null,
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current levels — not what this trade traded under/);
+
+  const openSection = chartLevelsSection({
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem,
+    vector: null,
+  });
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current levels/, "open/watch buckets are unchanged");
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-18): the gamma magnet is a structural Vector level
+// (envelope.levels/"Key levels" carries it for EVERY bucket — play-brief.ts's own comment says it
+// was added there specifically because "the gamma magnet is narrated prominently in the 'Trade
+// manager read' section (magnetCoaching)... but was never added to the structured envelope.levels
+// array"). That comment is only true for OPEN/WATCH plays: magnetCoaching is called from
+// collectCoachingBullets, which for `bucket === "closed"` returns ONLY `closedCoaching(play)` (an
+// early return — play-brief-narrative-coaching.ts) and never reaches magnetCoaching at all. So a
+// CLOSED play's magnet level exists in the structured levels array/"Key levels" bullet list but is
+// narrated in NO prose section anywhere — confirmed live on two independent CLOSED plays (NRG #34,
+// CG #25, both 2026-09-18 audit cycles). "Levels on chart" (chartLevelsSection) already narrates
+// every OTHER Vector-derived level (max pain, confluence nodes, dark pool) regardless of bucket, so
+// the magnet's absence there specifically is the gap, not an intentional superset-feed design.
+// Fix: chartLevelsSection now adds a "Gamma magnet" line for the CLOSED bucket only (OPEN/WATCH
+// already get it, with actionable framing, from magnetCoaching — adding it here too would just
+// duplicate that line, the exact class of bug this file's own dedup comments warn about above).
+test("chartLevelsSection: CLOSED bucket narrates the gamma magnet in 'Levels on chart' (magnetCoaching never fires for closed plays)", () => {
+  const closedSection = chartLevelsSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-18 10:00 ET",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({ spot: 40.17, magnet: { strike: 40.63, distancePct: 1.1, pull: "up" } }),
+  });
+  assert.ok(closedSection);
+  assert.match(
+    closedSection!.body,
+    /Gamma magnet.*40\.63/,
+    "the gamma magnet level must be narrated in prose for a CLOSED play, not only in the structured levels array",
+  );
+
+  // OPEN bucket must NOT gain a duplicate line here — magnetCoaching (Trade manager read) already
+  // narrates it there with actionable framing; this section adding the same fact again would be the
+  // exact duplication class play-brief-narrative-coaching.ts's own comments warn against.
+  // maxPain is included alongside the magnet so the section renders non-null on the OPEN bucket
+  // too (a magnet-only vector fixture legitimately produces no section at all for OPEN, since this
+  // fix scopes the magnet line to CLOSED only — that emptiness would otherwise make this half of
+  // the test vacuous rather than a real duplication check).
+  const openSection = chartLevelsSection({
+    play: fixturePlay({ status: "OPEN" }),
+    asOf: "2026-09-18 10:00 ET",
+    sessionDate: "2026-09-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: fixtureVec({
+      spot: 40.17,
+      maxPain: 45,
+      magnet: { strike: 40.63, distancePct: 1.1, pull: "up" },
+    }),
+  });
+  assert.ok(openSection);
+  assert.doesNotMatch(
+    openSection!.body,
+    /Gamma magnet/,
+    "OPEN/WATCH buckets already narrate the magnet via magnetCoaching in Trade manager read — chartLevelsSection must not duplicate it",
+  );
 });
 
 test("chartLevelsSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
@@ -1501,6 +3592,41 @@ test("chartLevelsSection: live Vector put wall still shown when GEX matrix is st
   assert.match(section!.body, /\*\*Put wall \(GEX\):\*\* 94\.00/);
   assert.doesNotMatch(section!.body, /Call wall/);
   assert.doesNotMatch(section!.body, /Gamma flip/);
+});
+
+// BUG FIX (2026-09-12): the "Nearest wall" line used to PREPEND "{strike} ({side}, {pct}% away) —"
+// ahead of `vec.proximity.callout` — but the real `deriveWallProximity` callout (vector-wall-
+// proximity.ts) already states the same strike/side/"wall" itself as a complete sentence. Live
+// repro: AAPL closed-position swing brief 2026-09-12 — "Nearest wall: 332.50 (put, -0.0% away) —
+// Testing 332.5 put wall (0.02% below) — dealers buy weakness...". The exact same duplication was
+// independently found and fixed the same day at a different call site reading the identical
+// `WallProximity` shape (vector-play-engine.ts's `starred` array) — this is a second instance.
+test("chartLevelsSection: Nearest wall line is the real callout verbatim, not double-prefixed with the wall it already names", () => {
+  const realisticCallout =
+    "Testing 332.50 put wall (0.02% below) — dealers buy weakness; support unless it breaks on volume.";
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 332.58,
+      proximity: { strike: 332.5, side: "put", distancePct: -0.02, nearness: "at", callout: realisticCallout },
+    } as VectorFullState,
+  });
+  assert.ok(section);
+  assert.equal(
+    section!.body.includes(`Nearest wall: ${realisticCallout}`),
+    true,
+    "Nearest wall line must be the callout verbatim (with its label), not a duplicated prefix ahead of it",
+  );
+  // Strike must appear exactly once — not once in a prefix and again inside the callout.
+  const occurrences = section!.body.split("332.50").length - 1;
+  assert.equal(occurrences, 1, `strike must appear exactly once, found ${occurrences}`);
 });
 
 test("chartLevelsSection: live Vector spot wins over stale GEX spot for wall distance (Largo C2)", () => {
@@ -1609,6 +3735,86 @@ test("meridianCatalystSection: empty successful read states quiet calendar, not 
   assert.ok(section);
   assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
   assert.match(section!.body, /quiet, not missing/);
+});
+
+test("meridianCatalystSection: stale as_of (>120s, Largo C2) prefixes a Last snapshot caveat instead of reading as current", () => {
+  // Real production shape: withServerCache's stale-while-revalidate path can keep serving the
+  // same stored payload — and its true, un-bumped as_of — for up to 10 minutes under a degraded
+  // Benzinga upstream (server-cache.ts MAX_STALE_AGE_MS). Prior to this fix `slice.as_of` was
+  // captured on the type but never read here, so "calendar is quiet" could read as a fresh claim
+  // while actually minutes stale.
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const section = meridianCatalystSection({
+      play: fixturePlay(),
+      asOf: "2026-09-15 16:00 ET",
+      sessionDate: "2026-09-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+      ecosystem: null,
+      vector: null,
+    });
+    assert.ok(section);
+    assert.match(section!.body, /Last snapshot/i);
+    assert.match(section!.body, /~300s old/);
+    assert.match(section!.body, /catalyst calendar may lag/);
+    assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("meridianCatalystSection: future-skewed as_of renders 'clock-skewed', not a negative number (Largo C2, 2026-09-16)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const section = meridianCatalystSection({
+      play: fixturePlay(),
+      asOf: "2026-09-15 16:00 ET",
+      sessionDate: "2026-09-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: { as_of: new Date(readMs + 300_000).toISOString(), items: [], total_matched: 0 },
+      ecosystem: null,
+      vector: null,
+    });
+    assert.ok(section);
+    assert.match(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /\(~clock-skewed old\)/i);
+    assert.doesNotMatch(section!.body, /-300s/);
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("meridianCatalystSection: fresh as_of renders with no Last snapshot caveat", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const section = meridianCatalystSection({
+      play: fixturePlay(),
+      asOf: "2026-09-15 16:00 ET",
+      sessionDate: "2026-09-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: { as_of: new Date(readMs - 30_000).toISOString(), items: [], total_matched: 0 },
+      ecosystem: null,
+      vector: null,
+    });
+    assert.ok(section);
+    assert.doesNotMatch(section!.body, /Last snapshot/i);
+    assert.match(section!.body, /No catalysts in the \*\*14-day\*\* Meridian window/);
+  } finally {
+    Date.now = origNow;
+  }
 });
 
 test("meridianCatalystSection: does not restate the same earnings date catalystsSection already surfaced (audit #16)", () => {
@@ -1854,10 +4060,185 @@ test("meridianPeerSection: dedicated section — coaching bullets must not dupli
 
 test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
   const section = whyThisSetupSection(
-    fixturePlay({ archetype: "momentum_breakout", subLane: "earnings_lead" }),
+    fixturePlay({ archetype: "BREAKOUT", subLane: "earnings_lead" }),
   );
-  assert.match(section.body, /\*\*Archetype:\*\* momentum breakout/);
+  assert.match(section.body, /\*\*Archetype:\*\* Breakout continuation/);
   assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): sectorLeadershipFacts is
+// frozen into the dossier at commit/discovery time and never re-derived — a position committed BEFORE
+// #5446 shipped can still carry a pre-fix benchmark for a theme #5446 now excludes entirely (a
+// crypto-equity name mechanically benchmarked against a SIC/label-derived sector ETF, e.g. HUT vs
+// Financials/XLF). Live-repro'd on HUT:41 ~40min after #5446 merged: the brief still read "leading
+// Financials (XLF) by 10.7%". Caveat only the exact bug signature (theme now excluded from
+// benchmarking + frozen facts still carry one) rather than rewriting the frozen evidence.
+test("whyThisSetupSection: caveats stale pre-fix industry-read evidence for a now-excluded theme (HUT/crypto-equity)", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      ticker: "HUT",
+      sectorLeadershipFacts: {
+        benchmarkEtf: "XLF",
+        benchmarkLabel: "Financials",
+        kind: "sector",
+        nameReturnPct: 6.5,
+        groupReturnPct: -4.2,
+        deltaPct: 10.7,
+      },
+    }),
+  );
+  assert.doesNotMatch(section.body, /Financials/);
+  assert.doesNotMatch(section.body, /XLF/);
+  assert.match(
+    section.body,
+    /\*\*Industry read:\*\* sector benchmark evidence recorded before a classification fix — historical score unaffected\./,
+  );
+});
+
+test("whyThisSetupSection: still surfaces a live, legitimate industry read (non-crypto-equity name, unaffected)", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      ticker: "NVDA",
+      sectorLeadershipFacts: {
+        benchmarkEtf: "SMH",
+        benchmarkLabel: "Semiconductors",
+        kind: "industry",
+        nameReturnPct: 1.6,
+        groupReturnPct: 5.6,
+        deltaPct: -4.0,
+      },
+    }),
+  );
+  assert.match(section.body, /\*\*Industry read:\*\* lagging \*\*Semiconductors\*\* \(SMH\) by 4\.0% over 10 sessions \(\+1\.6% vs \+5\.6%\)\./);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18, fresh angle: `dossier.ts`'s commit-time
+// dataQuality.presentPillars/degraded read, pinned into `feature_vector.present_pillars`/
+// `dq_degraded` at commit — feature-vector.ts, commit.ts — but never read back out anywhere in the
+// serving/brief layer for an already-committed OPEN/CLOSED position). A pre-entry WATCH candidate's
+// identical read already surfaces as a "thin read -- N/7 pillars grounded" thesis-health note the
+// moment it degrades (serving-ingest.ts's swingServingMetaFromDossier) -- but that note is computed
+// from the LIVE dossier, which the WATCH->COMMIT transition does not carry forward. A member
+// reviewing an OPEN/CLOSED position never learned it was entered off a thin read. Wired via
+// `entryPresentPillarsFromFeatureVector` (live-plays.ts) through `livePlayFromSwingPosition` (OPEN)
+// and `closedDeckSourceFromRow` (CLOSED) into TerminalPlay.entryPresentPillars.
+test("whyThisSetupSection: surfaces a thin entry-evidence read for an already-committed position", () => {
+  const section = whyThisSetupSection(fixturePlay({ entryPresentPillars: 2 }));
+  assert.match(section.body, /\*\*Evidence at entry:\*\* thin read — \*\*2\/7\*\* pillars grounded/);
+});
+
+test("whyThisSetupSection: omits the thin-entry-evidence line when the entry was well-grounded (never fabricated)", () => {
+  const section = whyThisSetupSection(fixturePlay({ entryPresentPillars: null }));
+  assert.doesNotMatch(section.body, /Evidence at entry/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): archetype.ts's classification decisiveness
+// (topFit - secondFit) is pinned at commit (feature_vector.classification_margin/.secondary) but was
+// never read back out for an already-committed OPEN/CLOSED position — scoring/gating/calibration all
+// partition on the single pinned `archetype` label (feature-vector.ts's own header), so a razor-thin
+// classification call between two archetypes is a real, disclosed uncertainty a member never saw.
+// Wired via `archetypeNearTieFromFeatureVector` (live-plays.ts) through `livePlayFromSwingPosition`
+// (OPEN) and `closedDeckSourceFromRow` (CLOSED) into TerminalPlay.archetypeNearTie.
+test("whyThisSetupSection: surfaces the archetype near-tie when the entry classification was a razor-thin call", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      archetype: "BREAKOUT",
+      archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 2 },
+    }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Classification:\*\* near-tie at entry — \*\*Breakout continuation\*\* beat \*\*Pullback continuation\*\* by only 2 pts\./,
+  );
+});
+
+test("whyThisSetupSection: omits the archetype-near-tie line when the entry classification was decisive (never fabricated)", () => {
+  const section = whyThisSetupSection(fixturePlay({ archetype: "BREAKOUT", archetypeNearTie: null }));
+  assert.doesNotMatch(section.body, /Classification:/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro CRWD OPEN brief): marginPct is
+// Math.round(margin * 100) (live-plays.ts) and can legitimately round to exactly 0 — an exact
+// classifier tie, still inside ARCHETYPE_NEAR_TIE_MARGIN. The old wording ("beat X by only 0 pts")
+// is self-contradictory at that value: a 0-point margin means no beat occurred.
+test("whyThisSetupSection: an exact classifier tie (marginPct 0) reads as 'tied with', never 'beat by only 0 pts'", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      archetype: "BREAKOUT",
+      archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 0 },
+    }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Classification:\*\* near-tie at entry — \*\*Breakout continuation\*\* tied with \*\*Pullback continuation\*\*; priority order broke the tie\./,
+  );
+  assert.doesNotMatch(section.body, /by only 0 pts/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro NN:32 CLOSED brief — a real
+// thin-evidence position whose row carries `archetype: null`): the render used to fall back to
+// "**the winning archetype**" when `play.archetype` was null, fabricating a decisive-winner claim
+// with no preceding "Archetype:" line to anchor it, for a position the classifier explicitly never
+// classified. `archetypeNearTieFromFeatureVector` is now hardened against ever producing a
+// near-tie in that case (its own test suite), but this proves the render layer independently
+// refuses to fabricate the line even if `archetypeNearTie` somehow arrives anyway.
+test("whyThisSetupSection: never fabricates the near-tie line when the entry itself was unclassified (archetype null), even if archetypeNearTie is somehow set", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      archetype: null,
+      archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 2 },
+    }),
+  );
+  assert.doesNotMatch(section.body, /Classification:/);
+  assert.doesNotMatch(section.body, /the winning archetype/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18): the entry-time contract pick's provenance
+// against the multi-day accumulation flow's own magnet strike (top_flow_strike, pinned at commit)
+// was computed by contract-ranker.ts's rankSwingContracts but never read back out for an
+// already-committed OPEN/CLOSED position. Wired via `topFlowProvenanceFromRow` (live-plays.ts)
+// through `livePlayFromSwingPosition` (OPEN) and `closedDeckSourceFromRow` (CLOSED) into
+// TerminalPlay.topFlowProvenance. Both directions are informative, so both render.
+test("whyThisSetupSection: surfaces corroboration when the pick matches the flow's magnet strike", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ topFlowProvenance: { topFlowStrike: 180, matchedPick: true } }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Strike vs flow:\*\* this contract's strike \(\*\*\$180\*\*\) matches the accumulation flow's own magnet strike — corroborating\./,
+  );
+});
+
+test("whyThisSetupSection: surfaces a real divergence when the pick landed on a different strike than the flow magnet", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ topFlowProvenance: { topFlowStrike: 175, matchedPick: false } }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Strike vs flow:\*\* the accumulation flow's magnet strike was \*\*\$175\*\*; this pick landed at a different strike/,
+  );
+});
+
+test("whyThisSetupSection: omits the strike-vs-flow line when no flow strike was ever resolved (never fabricated)", () => {
+  const section = whyThisSetupSection(fixturePlay({ topFlowProvenance: null }));
+  assert.doesNotMatch(section.body, /Strike vs flow/);
+});
+
+// Live repro 2026-09-13 (COIN, WATCH, real production play-brief): the SAME archetype value
+// rendered THREE differently-styled ways within one brief -- Verdict's raw enum ("Archetype:
+// PULLBACK_CONTINUATION"), this section's own underscore-replace-only line ("Archetype: PULLBACK
+// CONTINUATION"), and the Discovery-read/Cross-desk-friction lines' already-humanized
+// ARCHETYPE_META label ("Pullback continuation"). A foreign/unclassifiable string (never seen on a
+// real committed archetype in production -- TerminalPlay.archetype is populated only from
+// classifyArchetype's own SwingArchetype union or null) now renders NOTHING rather than a blindly
+// humanized guess, matching this repo's honest-absence discipline.
+test("whyThisSetupSection: Archetype line uses the canonical humanized label, and omits a foreign/unclassifiable value rather than guessing", () => {
+  const real = whyThisSetupSection(fixturePlay({ archetype: "PULLBACK_CONTINUATION" }));
+  assert.match(real.body, /\*\*Archetype:\*\* Pullback continuation/);
+  assert.doesNotMatch(real.body, /PULLBACK_CONTINUATION/);
+
+  const foreign = whyThisSetupSection(fixturePlay({ archetype: "some_foreign_value" }));
+  assert.doesNotMatch(foreign.body, /\*\*Archetype:\*\*/);
 });
 
 test("flowIntelSection: stale HELIX feed must not render recent prints or anomalies", () => {
@@ -1992,6 +4373,103 @@ test("flowIntelSection: two genuinely DIFFERENT anomalies on the same ticker bot
   assert.match(section!.body, /PREMIUM_SPIKE/);
 });
 
+test("flowIntelSection: the print list is labeled honestly (48h/premium-sorted) and carries each print's own age, not 'Recent prints'", () => {
+  // Live reproduction (AAPL #37, 2026-09-18): `eco.flow_full_state.recent` comes from
+  // fetchFlowFullState() -> getFlowTapeSummary({ ticker, limit }) with no since_hours/order, which
+  // defaults to db.ts's 48h window sorted BIGGEST-PREMIUM-FIRST (see the fix's own comment in
+  // play-brief-intel.ts) — NOT the same 6h window as the "HELIX tape (Xh)" aggregate line directly
+  // above it, and not recency-ordered. The header used to read "Recent prints" while showing a
+  // $3.43M print alongside a 6h aggregate claiming only $263K of call premium total — a real,
+  // internally-contradictory read. The header must now disclose the true window/order, and every
+  // print must carry its own age so a reader can see it may fall outside the aggregate's window.
+  const now = Date.now();
+  const oldIso = new Date(now - 40 * 3_600_000).toISOString(); // 40h ago — outside the 6h aggregate
+  const eco = {
+    ticker: "AAPL",
+    flow_feed_fresh: true,
+    recent_flow: { window_hours: 6, print_count: 4, call_premium: 263_000, put_premium: 1_300_000, unknown_premium: 0 },
+    recent_anomalies: [],
+    flow_full_state: {
+      count: 40,
+      total_premium: 9_000_000,
+      top_tickers: [],
+      recent: [{ option_type: "CALL", strike: 350, premium: 3_430_000, alerted_at: oldIso }],
+    },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as unknown as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /\*\*Recent prints:\*\*/, "must not claim these are 'recent' — they are premium-sorted over 48h");
+  assert.match(section!.body, /\*\*Notable prints \(48h, largest premium first\):\*\*/);
+  assert.match(section!.body, /CALL 350\.00 \$3430000\.00 \[40h ago\]/, "each print must disclose its own age so a reader can see it falls outside the 6h aggregate window");
+});
+
+test("flowIntelSection: notable-print strikes render to 2dp like every other strike in the brief (C9 precision)", () => {
+  // FIX (2026-09-20): this was the ONE strike in the whole file rendered raw instead of
+  // `.toFixed(2)` — a fractional-strike contract (e.g. 232.5, a real weekly-options strike)
+  // rendered as "232.5" here while every sibling level (GEX king strike, dark-pool levels,
+  // nearest wall, gamma magnet) renders "232.50" two lines above/below it in the same brief.
+  const now = Date.now();
+  const recentIso = new Date(now - 3_600_000).toISOString();
+  const eco = {
+    ticker: "TEST",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: {
+      count: 1,
+      total_premium: 500_000,
+      top_tickers: [],
+      recent: [{ option_type: "PUT", strike: 232.5, premium: 500_000, alerted_at: recentIso }],
+    },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as unknown as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay());
+  assert.ok(section);
+  assert.match(section!.body, /PUT 232\.50 \$500000\.00/, "strike must round to 2dp, not render the raw float");
+});
+
+// FINDING (Ask Largo standing mandate, 2026-09-22, live repro MSTR:33): chartTechnicalsSection,
+// chartLevelsSection, gexPostureSection and wallDynamicsSection all unshift a "_Current X — not
+// what this trade traded under._" disclosure on a CLOSED play (see each section's own fix — the
+// chart-technicals one cites live AAPL:36 evidence for the exact same failure mode: today's data
+// rendered "with no framing whatsoever, reading as if it described the trade's own conditions").
+// flowIntelSection carries the IDENTICAL risk — its HELIX tape/anomalies/notable-prints/0DTE-desk
+// content is always CURRENT (as-of-request-time), yet was the one sibling section never given the
+// same disclosure. Live MSTR:33 (closed 2026-09-03) rendered "HELIX tape (6h): call-heavy...",
+// several dated "[Nh ago]" anomalies/prints, and a 0DTE desk alignment line with zero indication
+// any of it postdates the trade by weeks — a member could easily read it as the flow context the
+// trade was actually taken under.
+test("flowIntelSection: CLOSED bucket gets the same 'not what this trade traded under' disclosure as its sibling sections", () => {
+  const eco = {
+    ticker: "MSTR",
+    flow_feed_fresh: true,
+    recent_flow: { window_hours: 6, print_count: 4, call_premium: 4_600_000, put_premium: 1_900_000, unknown_premium: 0 },
+    recent_anomalies: [],
+    flow_full_state: { count: 1, total_premium: 5_200_000, top_tickers: [], recent: [] },
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as unknown as EcosystemContext;
+
+  const closedSection = flowIntelSection(eco, fixturePlay({ status: "CLOSED" }));
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /Current flow — not what this trade traded under/);
+
+  const openSection = flowIntelSection(eco, fixturePlay({ status: "OPEN" }));
+  assert.ok(openSection);
+  assert.doesNotMatch(openSection!.body, /Current flow/, "open/watch buckets are unchanged");
+});
+
 test("watchForSection: CLOSED bucket suppresses the live ticker-level thesis note (not this trade's thesis)", () => {
   // serving-ingest.ts computes thesisBreak from a LIVE, present-tense "is there a fresh setup on
   // this ticker right now" read — unrelated to the specific, already-resolved CLOSED position. Live
@@ -2071,6 +4549,76 @@ test("watchForSection: watch/open buckets are unchanged — still show live thes
   assert.equal(section.title, "Watch levels");
 });
 
+// Live repro 2026-09-13 (COIN WATCH brief): spot 174.98 vs flip 183.49 (spot well BELOW), direction
+// LONG. The old code picked "Lose gamma flip" purely from `direction === "LONG"`, regardless of
+// which side of the flip spot was actually on — but you can't "lose" a level you're already below.
+// This directly contradicted the SAME brief's own "Dealer gamma regime: short gamma" line a few
+// sections earlier. The four tests below pin all four (direction × spot-side) combinations.
+test("watchForSection: LONG with spot ABOVE flip — still 'Lose', the level has something to lose", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "WATCH", direction: "LONG" }),
+      asOf: "2026-09-07 16:15 ET",
+      sessionDate: "2026-09-07",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 190, flip: 183.49, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Lose gamma flip \*\*183\.49\*\* — dealer posture turns against longs/);
+});
+
+test("watchForSection: LONG with spot BELOW flip (live COIN repro) — 'Reclaim', not 'Lose' an already-lost level", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "WATCH", direction: "LONG" }),
+      asOf: "2026-09-13 05:17 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 174.98, flip: 183.49, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Lose gamma flip/);
+  assert.match(
+    section.body,
+    /Reclaim gamma flip \*\*183\.49\*\* — needed to restore dealer support for longs/,
+  );
+});
+
+test("watchForSection: SHORT with spot ABOVE flip — 'Lose', needs to confirm the short (mirror of the LONG fix)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "WATCH", direction: "SHORT" }),
+      asOf: "2026-09-07 16:15 ET",
+      sessionDate: "2026-09-07",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: { spot: 103, flip: 99.31, freshness: "live" },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Reclaim gamma flip/);
+  assert.match(section.body, /Lose gamma flip \*\*99\.31\*\* — needed to confirm the short thesis/);
+});
+
 // Premium stop rail showed only the absolute dollar level ("thesis breaks if mark closes below
 // $6.66"), forcing a member to mentally compute how much room the current mark still has before
 // invalidation. Added a cushion percentage alongside the dollar level, computed the same way
@@ -2136,6 +4684,419 @@ test("watchForSection: Premium stop rail omits the cushion note when mark is una
   );
   assert.match(section.body, /Premium stop rail: \*\*\$6\.66\*\* — thesis breaks if mark closes below/);
   assert.doesNotMatch(section.body, /cushion/);
+});
+
+// BUG FIX (2026-09-12, Ask Largo standing mandate, live repro EBS OPEN brief): `mark != null` alone
+// is not "a real live mark" — a banger-lane row with no live quote synced yet carries
+// `play.mark === play.entry` (the true entry-fallback echo, `markIsSync: true` + `pnlPct: null`,
+// same signature `pnlSection`'s "Mark: unknown" already gates on) and the stop is set below entry
+// by construction, so the old `mark > 0 && mark > stop` gate always passed for it too. EBS
+// (entry/fallback-mark $0.10, stop $0.04) rendered "60% cushion from current mark" here in the
+// SAME envelope whose Position section, a few lines above, correctly read "Mark: unknown _(sync
+// quote, no live price yet — do not read as flat)_" — a confident percentage computed from the
+// exact number the document itself says isn't known. The dollar stop level is still shown
+// (real regardless of mark); only the fabricated cushion percentage is now omitted.
+test("watchForSection: Premium stop rail omits the cushion note when the mark is the true entry-fallback echo (never fabricated)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "OPEN",
+        direction: "LONG",
+        entry: 0.1,
+        mark: 0.1, // banger-lane fallback: mid = last_mark ?? entry_premium, no live quote yet
+        markIsSync: true,
+        pnlPct: null, // the true-fallback signature — no P&L basis exists because there is no real mark
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.04,
+        },
+      }),
+      asOf: "2026-09-12 07:07 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.04\*\* — thesis breaks if mark closes below/);
+  assert.doesNotMatch(section.body, /cushion/);
+});
+
+// BUG FIX (2026-09-12, live operator conversation, real NN#32 position): the cushion percentage
+// is computed purely from `play.mark` (the MID) vs `stop` — it never checks whether the position's
+// actual EXECUTABLE price (`play.execMark`, the bid a long would actually sell into) has already
+// fallen to or through the stop. Live repro: NN's real contract carried mark $1.10 / stop $0.78 /
+// execMark (bid) $0.70 — the brief rendered "Premium stop rail: $0.78 — 29% cushion from current
+// mark", a confident safety-margin claim that does not survive the real bid/ask spread: a member
+// selling right now would already be filling BELOW the stop rail the brief just told them they had
+// 29% of room above. Same "plausible wrong number is worse than an obvious one" trap the Largo
+// product contract's C4 identity section exists to prevent, and the same shape as the two fixes
+// immediately above this one (mark-unavailable, entry-fallback-echo) — this is the third distinct
+// way the mid-only cushion computation could misstate real safety margin.
+test("watchForSection: Premium stop rail flags 'no real cushion' when the executable price has already reached the stop, even though mid is still above it", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.1,
+        execMark: 0.7, // real bid — already AT/THROUGH the stop despite mid reading a 29% cushion
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-12 16:47 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\*/);
+  assert.match(section.body, /no real cushion/i);
+  assert.doesNotMatch(section.body, /29% cushion/);
+});
+
+test("watchForSection: Premium stop rail keeps the normal cushion percentage when the executable price is still comfortably above the stop", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.1,
+        execMark: 1.0, // executable price still well above the stop — normal case
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-12 16:47 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // BUG FIX (2026-09-14): the cushion basis now prefers execMark (the real bid) over the mid
+  // whenever both are known — (1.00 - 0.78) / 1.00 * 100 = 22.0% -> 22%, not the mid-based 29%.
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 22% cushion from current bid/);
+  assert.doesNotMatch(section.body, /29% cushion/);
+  assert.doesNotMatch(section.body, /no real cushion/i);
+});
+
+// BUG FIX (2026-09-14, Ask Largo standing mandate, live repro SAME NN#32 position as the fix
+// immediately above): the binary "gone" fix only handled the executable price already being
+// AT/THROUGH the stop. The far more common state — execMark still above the stop but the mid-based
+// cushion materially overstates the real room — was left completely unhandled: the cushion kept
+// computing purely from the mid. Live repro: NN mark $1.13 / stop $0.78 / execMark (bid) $0.85 —
+// execMark is above stop (so the "gone" branch never fires) but the REAL executable cushion is only
+// (0.85-0.78)/0.85 = 8.2%, not the 31% the mid-only formula produced — a member deciding whether
+// they have room before exiting was reading a number ~4x too generous on a real losing position.
+test("watchForSection: Premium stop rail uses the executable (bid) cushion, not the more optimistic mid cushion, when they diverge but the position hasn't breached (live NN#32 repro)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.13,
+        execMark: 0.85, // real bid — above the stop, but the mid-based % would be far too generous
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-14 12:17 ET",
+      sessionDate: "2026-09-14",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (0.85 - 0.78) / 0.85 * 100 = 8.24% -> 8%, NOT the mid-based (1.13-0.78)/1.13*100 = 31%.
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 8% cushion from current bid/);
+  assert.doesNotMatch(section.body, /31% cushion/);
+  assert.doesNotMatch(section.body, /no real cushion/i);
+});
+
+test("watchForSection: Premium stop rail falls back to the mid-based cushion when execMark is unknown (never fabricates a bid)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 1.1,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 0.78,
+        },
+      }),
+      asOf: "2026-09-14 12:17 ET",
+      sessionDate: "2026-09-14",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (1.10 - 0.78) / 1.10 * 100 = 29.09% -> 29%, correctly falling back to mark since no execMark.
+  assert.match(section.body, /Premium stop rail: \*\*\$0\.78\*\* — 29% cushion from current mark/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-18, live repro CRWD:39 OPEN brief): the stop rail
+// above gets a fully-gated room% (mark/execMark-preferring, staleness-aware, never fabricated) —
+// `exitPolicy.target_premium` never got the symmetric treatment anywhere in the narrative layer,
+// only ever appearing as a bare dollar figure elsewhere ("Rails: stop X · target Y"). Mirrors the
+// stop-cushion tests immediately above.
+test("watchForSection: Premium target rail shows the live room percentage to the target, not just the dollar level", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 14.65,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (25.40 - 14.65) / 14.65 * 100 = 73.38% -> 73%
+  assert.match(
+    section.body,
+    /Premium target rail: \*\*\$25\.40\*\* — \*\*73%\*\* move still needed from current mark to reach target/,
+  );
+});
+
+test("watchForSection: Premium target rail omits the room note when mark is unavailable (never fabricated)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Premium target rail/);
+});
+
+test("watchForSection: Premium target rail uses the executable (bid) basis, not the more optimistic mid, when they diverge", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 14.65,
+        execMark: 13.0,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (25.40 - 13.00) / 13.00 * 100 = 95.38% -> 95%, using execMark (bid), not the more optimistic mid.
+  assert.match(
+    section.body,
+    /Premium target rail: \*\*\$25\.40\*\* — \*\*95%\*\* move still needed from current bid to reach target/,
+  );
+});
+
+test("watchForSection: Premium target rail omits the room note once the basis has already reached or passed the target (never a negative/zero fabrication)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 26.0,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [],
+          runner_fraction: 0.5,
+          stop_premium: 5.08,
+          target_premium: 25.4,
+        },
+      }),
+      asOf: "2026-09-18 01:18 ET",
+      sessionDate: "2026-09-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Premium target rail/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-09-22, live repro MUU TRIM brief): unlike the test
+// above (mark itself already past target -> omitted), this covers the position that reached
+// target, TRIMMED there, and has since pulled back BELOW it -- `target > targetBasis` is true
+// again, so the old code rendered "Premium target rail: $2.40 -- 19% move still needed to reach
+// target" a few lines below "Trim ladder: +100% checkmark" in the SAME document, directly
+// contradicting itself. Swing's own exit policy prices target_pct identically to its one trim
+// rung's trigger_pct, so this is the common post-trim-pullback shape, not a rare edge case.
+test("watchForSection: Premium target rail is omitted once its own trim tranche already fired, even after the mark pulls back below it again", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "TRIM",
+        direction: "LONG",
+        mark: 2.025, // pulled back from peak 2.85, still below the 2.40 target level again
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 2.4, fired: true }],
+          runner_fraction: 0.5,
+          stop_premium: 0.48,
+          target_premium: 2.4,
+        },
+      }),
+      asOf: "2026-09-22 01:32 ET",
+      sessionDate: "2026-09-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Premium target rail/);
+});
+
+test("watchForSection: Premium target rail still shows the room% for a target no trim tranche has reached yet", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "HOLD",
+        direction: "LONG",
+        mark: 2.025,
+        execMark: null,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 100,
+          // A rung below target that HAS fired must not suppress the room% for a HIGHER,
+          // not-yet-reached target -- only a fired tranche at/above the target level should.
+          trim_levels: [{ trigger_pct: 25, fraction: 0.33, premium: 1.5, fired: true }],
+          runner_fraction: 0.5,
+          stop_premium: 0.48,
+          target_premium: 2.4,
+        },
+      }),
+      asOf: "2026-09-22 01:32 ET",
+      sessionDate: "2026-09-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  // (2.40 - 2.025) / 2.025 * 100 = 18.5% -> 19%
+  assert.match(
+    section.body,
+    /Premium target rail: \*\*\$2\.40\*\* — \*\*19%\*\* move still needed from current mark to reach target/,
+  );
 });
 
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
@@ -2217,4 +5178,156 @@ test("catalystCoaching: still carries the near-term-earnings warning (not duplic
   const line = catalystCoaching(ctx);
   assert.ok(line);
   assert.match(line!, /\*\*Earnings in 8d\*\* \(2026-09-18/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-09-20): buildIntelSections called every section
+// builder bare — no try/catch anywhere in this function or in composeSwingPlayBrief. `factors` is
+// typed as a required array on TerminalPlay, but nothing defended against a degraded/malformed
+// upstream row actually carrying something else at runtime — whyThisSetupSection's unconditional
+// `play.factors.slice(0, 10)` (first section pushed, always unconditional) throws a real TypeError
+// on that shape. Pre-fix, that throw propagated straight out of buildIntelSections (and from there
+// through composeSwingPlayBrief to the API route's top-level catch, turning ONE bad section into a
+// 503 for the entire brief — Verdict/Position/Management included, even though every other section
+// would have built fine). Post-fix (safeSection wrapping every call), the broken section is silently
+// omitted — exactly like a section that legitimately decided it had nothing to say — and every other
+// section still renders.
+test("buildIntelSections: a single section throwing does not take down the whole brief (error boundary)", () => {
+  const play = fixturePlay({
+    status: "WATCH",
+    // Realistic malformed-upstream-row shape: TerminalPlay.factors is typed as a required array,
+    // but this simulates a degraded read that didn't honor that contract at runtime.
+    factors: undefined as unknown as TerminalPlay["factors"],
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-20T14:00:00.000Z",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  // Prove the malformed shape genuinely throws inside the unwrapped builder (the RED half of
+  // RED->GREEN) — this is not a hypothetical, it's the exact call buildIntelSections makes first.
+  assert.throws(() => whyThisSetupSection(play));
+
+  // The composed call must not throw, and every OTHER section must still be present — only the
+  // one broken section is missing.
+  let sections: ReturnType<typeof buildIntelSections> = [];
+  assert.doesNotThrow(() => {
+    sections = buildIntelSections(ctx, "watch");
+  });
+  assert.ok(!sections.some((s) => s.title === "Why this setup"), "broken section omitted, not fabricated");
+  assert.ok(sections.some((s) => s.title === "Trade manager read"), "other sections still render");
+  assert.ok(sections.some((s) => s.title === "Watch levels"), "other sections still render");
+});
+
+// BUG FOUND (2026-09-21, Ask Largo standing mandate — 4th instance of the #5362/#4261 duplication
+// class, live repro pattern: any OPEN play with a HOLD recommendation and a calibrated thesis
+// health below 45). actionNarrative's HOLD branch (play-brief-narrative.ts, feeds "Trade manager
+// read") renders "**Hold the line** — thesis health **X%**. Health fading — tighten stop or trim
+// into any bounce." whenever `rec !== "TRIM" && rec !== "SELL"` and health < 45. holdPlanSection
+// (this file) independently renders "Thesis health **X%** (rung). **Tighten risk** — thesis
+// fading; don't add size" for the SAME health < 45 condition in "Hold plan", which renders
+// together with "Trade manager read" for every live OPEN play (buildIntelSections pushes
+// `narrative` unconditionally and `hold` for bucket === "open"). Both are the identical underlying
+// advice — thesis health has degraded, tighten/reduce risk — restated in different prose across
+// two sections a member reads back to back. The dedup guards this file already carries for
+// round_trip/capture (narrativeAlreadyNoted) never covered this HOLD-branch advisory text because
+// the call site only ever derived roundTrip/capture flags, not a tighten/health-fading one.
+test("buildIntelSections: does not restate the low-thesis-health tighten-risk advisory twice for an OPEN HOLD play", () => {
+  const play = fixturePlay({
+    status: "HOLD",
+    recommendation: "HOLD",
+    contract: "110C · 12DTE",
+    thesisHealth: {
+      health: 30,
+      entryIndex: 70,
+      currentIndex: 30,
+      delta: -40,
+      rung: "MAJOR",
+      rungLabel: "Major fade",
+      pillars: [
+        {
+          id: "structure",
+          label: "Persistence",
+          weight: 0.28,
+          commitScore: 0.9,
+          currentScore: 0.2,
+          commitLabel: "triggered",
+          currentLabel: "broken",
+          status: "faded",
+          contributionPts: 6,
+          deltaPts: -19,
+        },
+        {
+          id: "momentum",
+          label: "Entry geometry",
+          weight: 0.22,
+          commitScore: 1,
+          currentScore: 1,
+          commitLabel: "at trigger",
+          currentLabel: "at trigger",
+          status: "intact",
+          contributionPts: 22,
+          deltaPts: 0,
+        },
+      ],
+      moves: [],
+      committedAtEt: null,
+      computedAtEt: "10:00 ET",
+      advisory: "Thesis fading — tighten risk or trim into strength.",
+      thesisBreakLevel: "warn",
+    },
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-21T20:00:00.000Z",
+    sessionDate: "2026-09-21",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  // collapseIntel: false — the expanded-view shape (expandIntel=1), where "Hold plan" is an
+  // independently visible section rather than folded into "Trade manager read"'s collapsed
+  // summary. Same expansion the BUG FIX note above describes as the condition under which this
+  // duplication is member-visible at all.
+  const sections = buildIntelSections(ctx, "open", { collapseIntel: false });
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  const hold = sections.find((s) => s.title === "Hold plan");
+  assert.ok(narrative, "Trade manager read renders");
+  assert.match(narrative!.body, /Health fading — tighten stop or trim into any bounce\./);
+  assert.ok(hold, "Hold plan renders");
+  // The raw health%/rung number is a compact fact, not prose — it stays independently (same
+  // discipline as the thesis-health advisory-sentence fix above). Only the restated ADVICE
+  // sentence must be suppressed once "Trade manager read" already carries the equivalent one.
+  assert.match(hold!.body, /Thesis health \*\*30%\*\* \(Major fade\)/);
+  assert.doesNotMatch(hold!.body, /\*\*Tighten risk\*\* — thesis fading; don't add size/);
+});
+
+// GAP FOUND (2026-09-20, Ask Largo standing mandate, live repro BKKT: 28 same-theme overlaps
+// rendered as one uncapped comma-separated wall of tickers). A crowded book must still read as
+// trader-manager prose, not a raw name dump — see the doc comment on MAX_OVERLAP_NAMES/
+// joinOverlapNames in play-brief-intel.ts for the full live evidence.
+test("bookContextSection: a large same-theme overlap caps the rendered name list, does not dump every ticker", () => {
+  const crypto = ["COIN", "MSTU", "MARA", "RIOT", "CLSK", "HUT", "IREN", "BITX", "MSTR", "GBTC"];
+  const book: PortfolioPosition[] = crypto.map((ticker) => ({ ticker, direction: "LONG" }));
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:BKKT:1", ticker: "BKKT", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  // The true count in the lead sentence stays honest — nothing is hidden, only the namewall trims.
+  assert.match(section!.body, /already holding 10 same-direction/);
+  // Exactly MAX_OVERLAP_NAMES (8) ticker names are rendered, not all 10.
+  const renderedNames = crypto.filter((t) => section!.body.includes(`${t} LONG`));
+  assert.equal(renderedNames.length, 8, "must cap the rendered names, not list every overlap");
+  assert.match(section!.body, /\+ 2 more/, "the remainder must be folded into an honest count");
 });

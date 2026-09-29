@@ -19,6 +19,7 @@ import {
   readRejectionCounterfactual,
   retroWouldBlock,
   summarizeDebriefPins,
+  summarizePulledByRule,
   targetAtrDistribution,
   type DebriefAggregateRow,
   type NighthawkGateRejectionInput,
@@ -165,6 +166,115 @@ test("summarizeDebriefPins: low_n clears at the shared threshold", () => {
     row({ edition_for: `2026-07-0${(i % 5) + 1}`, debrief: pin("stopped_normal") })
   );
   assert.equal(summarizeDebriefPins(rows).low_n, false);
+});
+
+// ── summarizePulledByRule (Phase 2B) ─────────────────────────────────────────────────
+
+function pulledRow(tag: "pulled_wrongly" | "pulled_correctly", reason: string, over: Partial<DebriefAggregateRow> = {}): DebriefAggregateRow {
+  return row({ pulled: true, pulled_reason: reason, debrief: pin(tag), ...over });
+}
+
+test("summarizePulledByRule: attributes wrongly/correctly counts to the specific rule that fired", () => {
+  const rows = [
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_correctly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules.length, 1);
+  assert.equal(s.rules[0]!.rule, "regime_mismatch_hard");
+  assert.equal(s.rules[0]!.wrongly, 2);
+  assert.equal(s.rules[0]!.correctly, 1);
+  assert.equal(s.rules[0]!.n, 3);
+  assert.equal(s.rules[0]!.wrongly_rate_pct, 66.7);
+  assert.equal(s.total_pulled, 3);
+});
+
+test("summarizePulledByRule: a multi-reason severe pull attributes to EVERY contributing rule, so per-rule n can exceed total_pulled", () => {
+  const rows = [
+    pulledRow(
+      "pulled_wrongly",
+      "Pulled pre-open (severe degradation): Regime is CHOPPY — choppy/neutral reduces conviction for directional plays; Put wall drifted 12 pts (5800 → 5788) — tighten stop"
+    ),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 1);
+  const byRule = new Map(s.rules.map((r) => [r.rule, r]));
+  assert.equal(byRule.get("regime_choppy")?.wrongly, 1);
+  assert.equal(byRule.get("gex_wall_drift_soft")?.wrongly, 1);
+  // Both rules co-fired on the SAME single pull -- their n's sum (2) exceeds total_pulled (1).
+  assert.ok(s.rules.reduce((sum, r) => sum + r.n, 0) > s.total_pulled);
+});
+
+test("summarizePulledByRule: an unrecognized pulled_reason counts as unattributed, never silently dropped or mis-bucketed", () => {
+  const rows = [pulledRow("pulled_wrongly", "some future reason wording this taxonomy has never seen")];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules.length, 0);
+  assert.equal(s.unattributed, 1);
+  assert.equal(s.total_pulled, 1);
+});
+
+test("summarizePulledByRule: only pulled_wrongly/pulled_correctly tagged rows enter -- a non-pulled row is ignored even if it happens to carry a pulled_reason value", () => {
+  const rows = [
+    row({ pulled: false, pulled_reason: "irrelevant leftover value", debrief: pin("clean_win") }),
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 1);
+  assert.equal(s.rules.length, 1);
+  assert.equal(s.rules[0]!.rule, "contrary_anomalies_hard");
+});
+
+test("summarizePulledByRule: legacy-methodology rows are excluded (anti-blend, same discipline as summarizeDebriefPins)", () => {
+  const rows = [
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected", { grade_methodology: GRADE_METHODOLOGY_LEGACY }),
+  ];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.total_pulled, 0);
+  assert.equal(s.rules.length, 0);
+});
+
+test("summarizePulledByRule: low_n reflects total_pulled against the shared threshold", () => {
+  const rows = Array.from({ length: LOW_N_THRESHOLD }, () =>
+    pulledRow("pulled_correctly", "Pulled pre-open: 2 contrary flow anomalies detected")
+  );
+  assert.equal(summarizePulledByRule(rows).low_n, false);
+  assert.equal(summarizePulledByRule(rows.slice(0, -1)).low_n, true);
+});
+
+test("summarizePulledByRule: wrongly_rate_shrunk_pct pulls a THIN rule's alarming 100% toward the pool of every OTHER rule -- the exact noise trap Phase 2E exists to prevent", () => {
+  const rows = [
+    // A thin rule: n=2, 100% wrongly -- reads as a damning verdict on its own.
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected"),
+    // A much larger, genuinely low-wrongly-rate rule providing real pool evidence.
+    ...Array.from({ length: 18 }, () => pulledRow("pulled_correctly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction")),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+    pulledRow("pulled_wrongly", "Pulled pre-open: Regime flipped to BEARISH — contradicts LONG direction"),
+  ];
+  const s = summarizePulledByRule(rows);
+  const thin = s.rules.find((r) => r.rule === "contrary_anomalies_hard")!;
+  assert.equal(thin.n, 2);
+  assert.equal(thin.wrongly_rate_pct, 100);
+  assert.ok(
+    thin.wrongly_rate_shrunk_pct! < 60,
+    `a 2-sample 100% rule must be pulled well below its raw rate toward the pool, got ${thin.wrongly_rate_shrunk_pct}`
+  );
+  const large = s.rules.find((r) => r.rule === "regime_mismatch_hard")!;
+  assert.equal(large.n, 20);
+  // The large, real sample should stay close to its own observed rate, not get yanked toward the thin outlier.
+  assert.ok(
+    Math.abs(large.wrongly_rate_shrunk_pct! - large.wrongly_rate_pct!) < 5,
+    `a 20-sample rule should barely move from its own raw rate`
+  );
+});
+
+test("summarizePulledByRule: wrongly_rate_shrunk_pct is null exactly when wrongly_rate_pct is null (n=0 never happens in the output map, but the null-pool edge case is covered)", () => {
+  // A single rule with real data -- pool == its own rate, so shrinkage should be a no-op (self-pool).
+  const rows = [pulledRow("pulled_wrongly", "Pulled pre-open: 2 contrary flow anomalies detected")];
+  const s = summarizePulledByRule(rows);
+  assert.equal(s.rules[0]!.wrongly_rate_pct, 100);
+  assert.equal(s.rules[0]!.wrongly_rate_shrunk_pct, 100, "the only rule IS the pool, so shrinking toward it is a no-op");
 });
 
 // ── Blocked value ────────────────────────────────────────────────────────────────────

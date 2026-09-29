@@ -17,6 +17,7 @@
  *   node scripts/audit/findings-reconcile.mjs --apply    # rewrites FINDINGS.md + RUN-LOG.md
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { splitAtHeadingBoundaries } from "./lib/findings-entry-set.mjs";
 
 // Overridable so the idempotency test can drive the real script over a throwaway UNTAGGED fixture.
 // Pointing it at the live FINDINGS.md instead would prove nothing: that file is already tagged, so
@@ -107,6 +108,22 @@ const HEADING_NOT_AN_OUTCOME =
   /\b(?:NOT|never|un)\s*(?:FIXED|RESOLVED|SHIPPED|MERGED)\b|\b(?:HOLD|pending|draft|partially|partial)\b/i;
 
 /**
+ * A status claiming FIXED/RESOLVED/SHIPPED but negated ("NOT FIXED", "never resolved") must never
+ * count as resolved in the summary tally below — the same negation-blindness class
+ * HEADING_NOT_AN_OUTCOME already guards against, but only for heading-derived statuses. The final
+ * "resolved" count (the `fixed` filter) re-tests `r.status` with a bare substring match regardless
+ * of which of the three extraction paths (table row / heading / prose) produced it, so a table-row
+ * or prose status like "SHADOW-LOGGED, NOT FIXED" or "Flagged, not fixed" slipped through uncaught.
+ * Found 2026-09-23 folding a shadow-log entry whose own status explicitly says NOT FIXED yet was
+ * tallied as resolved. Deliberately narrower than HEADING_NOT_AN_OUTCOME (no HOLD/pending/draft/
+ * partial): those describe a heading's own outcome-in-progress, but inside a longer status PROSE
+ * string they can legitimately co-occur with an unrelated, genuinely-resolved primary claim (e.g.
+ * "FIXED — ...; a separate, larger backlog item flagged not fixed") — only a direct negation of the
+ * outcome word itself is unambiguous enough to exclude here.
+ */
+const OUTCOME_NEGATED = /\b(?:NOT|never|un)\s*(?:FIXED|RESOLVED|SHIPPED|MERGED)\b/i;
+
+/**
  * A prose status line: `**Status.** FIXED on \`cursor/rth-stale-cron-4002\`.`
  *
  * The THIRD place this file records an outcome, after the `| **Status** |` table row and the
@@ -147,7 +164,13 @@ const STALE_STATUS = new RegExp(
 );
 
 const src = readFileSync(FINDINGS, "utf8");
-const parts = src.split(/\n(?=## )/);
+// Fence-aware split (2026-09-17, Ask Largo standing mandate) — a naive text.split(/\n(?=## )/)
+// treats a `## ` line quoted inside a ``` evidence fence (e.g. a finding quoting a live product's
+// own markdown output) as a real entry boundary, fragmenting one finding into several headless
+// sub-"blocks". See findings-entry-set.mjs's splitAtHeadingBoundaries doc comment for the full
+// live repro (broke findings-hygiene.test.ts when a swing finding quoting an Ask Largo brief was
+// folded in).
+const parts = splitAtHeadingBoundaries(src);
 const preamble = parts[0].startsWith("## ") ? "" : parts.shift();
 // Skip the file's own legend. It quotes the pass-log phrasing while explaining that pass logs
 // belong elsewhere, so a naive pass would classify the documentation as the thing it documents and
@@ -169,7 +192,9 @@ const rows = blocks.map((b) => {
 const findings = rows.filter((r) => r.kind === "FINDING");
 const noStatus = findings.filter((r) => r.status == null);
 const staleStatus = findings.filter((r) => r.stale);
-const fixed = findings.filter((r) => r.status && /FIXED|RESOLVED|SHIPPED/i.test(r.status) && !r.stale);
+const fixed = findings.filter(
+  (r) => r.status && /FIXED|RESOLVED|SHIPPED/i.test(r.status) && !OUTCOME_NEGATED.test(r.status) && !r.stale
+);
 
 console.log("=== classification ===");
 for (const [k, v] of Object.entries(counts).sort((a, b) => b[1] - a[1])) console.log(`  ${String(v).padStart(4)}  ${k}`);
@@ -193,14 +218,52 @@ const keep = rows.filter((r) => r.kind !== "PASS-LOG");
 const moved = rows.filter((r) => r.kind === "PASS-LOG");
 
 const tagged = keep.map((r) => {
-  if (/\n> \*\*kind:\*\*/.test(r.block)) return r.block.replace(/\s+$/, ""); // already tagged
-  const lines = r.block.split("\n");
   const needsStatus = r.status == null;
   const note = needsStatus
     ? "> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED."
     : r.stale
       ? "> **status:** `UNRECONCILED` — recorded mid-flight (\"PR pending\"/\"auto-merge\") and never revisited. Confirm the merge and restamp."
       : null;
+  const hasKindLine = /\n> \*\*kind:\*\*/.test(r.block);
+  const hasUnreconciledNote = /\n> \*\*status:\*\* `UNRECONCILED`/.test(r.block);
+  // A kind line can already be present without this script ever having reconciled the entry —
+  // findings-fold-staging.mjs stamps `> **kind:** FINDING` on every staged file it folds in,
+  // independently of whatever status (or lack of one) that file's own author wrote. The old
+  // unconditional "already tagged, return unchanged" shortcut here treated the kind line alone as
+  // proof the status had ALSO already been checked, so a freshly-folded entry with no status line
+  // (or a stale "PR pending"/"auto-merge" one) sailed through --apply forever with neither its
+  // missing status nor an UNRECONCILED flag ever added — found live 2026-09-13 when a fold brought
+  // in exactly such an entry and a from-scratch regeneration (this file's own idempotency test)
+  // disagreed with the committed file's UNRECONCILED count.
+  //
+  // BUG FIX (2026-09-19): `note == null || hasUnreconciledNote` treated EITHER "nothing new to
+  // add" OR "an UNRECONCILED note already exists" as reason to return the block unchanged — but
+  // those are only the SAME case when note is ALSO non-null (an unreconciled note is still
+  // warranted). An entry whose author later resolves it by hand — appending `— FIXED` to the
+  // heading, or adding a `**Status.**` line — after a PRIOR --apply run already stamped it
+  // UNRECONCILED now computes `note == null` (nothing new needed) while `hasUnreconciledNote` is
+  // still true from that prior stamp, and the old condition short-circuited on `note == null`
+  // alone, leaving the stale UNRECONCILED annotation sitting next to a heading that now says
+  // FIXED. Found live: 7 entries folded via findings-fold-staging.mjs, each later hand-stamped
+  // FIXED, whose stale annotations survived two subsequent --apply runs and made this script's own
+  // idempotency test disagree with the committed file (regenerating from scratch resolved 7 more
+  // entries than the committed file showed). The fixed-point condition is symmetric: unchanged
+  // only when "no note is needed and none is present" or "a note is needed and is already present"
+  // — any other combination (note needed but missing/stale-worded, or no note needed but one
+  // lingers) must go through the rebuild path below, which now also strips a stale annotation.
+  if (hasKindLine && (note == null) === !hasUnreconciledNote) {
+    return r.block.replace(/\s+$/, ""); // truly nothing left to add or retract
+  }
+  // Strip any existing kind line (and the blank line immediately around it) so a block that already
+  // carries one is rebuilt through the exact same insertion path as a fresh block below — this is
+  // what lets a kind-tagged-but-status-incomplete entry still pick up its missing/stale-status note.
+  // Also strip a stale `> **status:** UNRECONCILED ...` annotation for the same reason: the rebuild
+  // below re-adds `note` (or omits it) from scratch, so a leftover old annotation line would
+  // otherwise either duplicate a freshly-added one or survive when the entry no longer needs one.
+  const lines = r.block
+    .replace(/\n\n> \*\*kind:\*\* `[A-Z-]+`\n/, "\n")
+    .replace(/\n> \*\*status:\*\* `UNRECONCILED` — [^\n]*\n/, "\n")
+    .split("\n");
   // Only the OPTIONAL annotations may be dropped. The body lines are passed through as-is: an
   // earlier version ran .filter(Boolean) over the whole array, which also ate the trailing empty
   // line every block carries — so each --apply erased one blank separator and, after enough runs,
@@ -242,7 +305,7 @@ try {
   existing = runlogHeader;
 }
 const alreadyLogged = new Set(
-  existing.split(/\n(?=## )/).filter((b) => b.startsWith("## ")).map((b) => b.split("\n")[0])
+  splitAtHeadingBoundaries(existing).filter((b) => b.startsWith("## ")).map((b) => b.split("\n")[0])
 );
 const fresh = moved.filter((r) => !alreadyLogged.has(r.head));
 writeFileSync(RUNLOG, existing.replace(/\s+$/, "") + (fresh.length ? "\n\n" + fresh.map((r) => r.block).join("\n") : "") + "\n");

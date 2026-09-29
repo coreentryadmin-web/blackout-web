@@ -91,8 +91,25 @@ export type BieSection = {
   provenance?: BieProvenance;
 };
 
-/** A source that was requested but unavailable — surfaced, never silently omitted (§4). */
-export type BieUnavailableSource = { source: string; reason: string };
+/**
+ * A source that was requested but unavailable — surfaced, never silently omitted (§4).
+ *
+ * `what_is_missing`/`retryable` are OPTIONAL here (unlike the Largo product-read contract's
+ * `unavailable{reason,what_is_missing,retryable}`, which requires all three — see
+ * `src/lib/largo/contract/product-read.ts`) because this envelope shape is shared by every
+ * BIE-narrative consumer across the app (chat answers, desk read layouts, verdicts), most of
+ * which predate the two fields and populate only `reason`. Making them required here would be
+ * a breaking change to every existing populator. New/updated call sites — starting with swing
+ * play-brief's `collectBriefUnavailableSources` (Largo C3) — should populate both: a model
+ * reading only `reason` prose must otherwise GUESS whether asking again later is worth it,
+ * which is exactly the guessing C3 exists to remove.
+ */
+export type BieUnavailableSource = {
+  source: string;
+  reason: string;
+  what_is_missing?: string;
+  retryable?: boolean;
+};
 
 /**
  * The complete structured answer the UI renders. Only `version`, `headline`, `bias`, `sections`,
@@ -153,6 +170,14 @@ export type BieAnswerEnvelope = {
   followups?: string[];
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];
+  /**
+   * Swing play-brief "Structure Ladder" widget (`src/lib/swing/play-brief-ladder.ts`) — a
+   * single-source price ladder of every real structural node (walls/flip/king/max-pain/dark-pool/
+   * magnet) with real per-level R:R to the actual structural stop and a cross-desk gamma-regime
+   * agreement flag. Populated ONLY by `composeSwingPlayBrief` for an OPEN/WATCH swing play; absent
+   * everywhere else (never fabricated for a product that doesn't compute these levels).
+   */
+  structureLadder?: import("@/lib/swing/play-brief-ladder").StructureLadder | null;
   /**
    * The persisted assistant-message id for this turn, when it was stored.
    *

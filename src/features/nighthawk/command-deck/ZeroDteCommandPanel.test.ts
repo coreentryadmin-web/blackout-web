@@ -97,3 +97,42 @@ describe("ZeroDteCommandPanel — thesis integrity wiring", () => {
     assert.doesNotMatch(html, /Thesis integrity/);
   });
 });
+
+describe("ZeroDteCommandPanel — SWING thesis health honesty gate (live repro RBLU, 2026-09-15)", () => {
+  const swingBase: TerminalPlay = { ...base, id: "SWING:RBLU:1", ticker: "RBLU", horizon: "SWING" };
+
+  // Mirrors exactly what horizonPlayFromBangerPosition (banger-lane-merge.ts) stamps on every
+  // banger_positions ledger row — same fingerprint thesisHealthUncalibrated() now detects via the
+  // "market" (regime) pillar's currentLabel === "BREAKOUT · BANGER".
+  const BANGER_UNCALIBRATED_HEALTH: ThesisHealthPayload = {
+    ...HEALTH,
+    pillars: [
+      ...HEALTH.pillars,
+      {
+        id: "market",
+        label: "Regime fit",
+        weight: 0.15,
+        commitScore: 0.75,
+        currentScore: 0.75,
+        commitLabel: "BREAKOUT · BANGER",
+        currentLabel: "BREAKOUT · BANGER",
+        status: "intact",
+        contributionPts: 11,
+        deltaPts: 0,
+      },
+    ],
+  };
+
+  it("never renders SwingThesisHealthPanel for a Banger-origin uncalibrated payload — this block used to gate on `thesisHealth != null` alone, missing the same calibration check every other consumer on this page applies", () => {
+    const html = render({ ...swingBase, thesisHealth: BANGER_UNCALIBRATED_HEALTH });
+    assert.doesNotMatch(html, /Swing thesis health/);
+    assert.doesNotMatch(html, /THESIS HEALTH/);
+  });
+
+  it("still renders SwingThesisHealthPanel for a genuinely calibrated SWING position (never over-suppresses)", () => {
+    const html = render({ ...swingBase, thesisHealth: HEALTH });
+    assert.match(html, /Swing thesis health/);
+    assert.match(html, /THESIS HEALTH/);
+    assert.match(html, /84/);
+  });
+});

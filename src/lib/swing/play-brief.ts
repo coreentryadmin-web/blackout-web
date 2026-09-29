@@ -4,10 +4,13 @@
  */
 import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
 import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
-import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
+import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
+import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
+import { formatFixedNonZero } from "@/lib/swing/format-nonzero";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { playContractHeadline } from "@/features/nighthawk/command-deck/play-card-lifecycle";
@@ -15,47 +18,40 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
+import { graduatedArchetypeEntry } from "./calibration-cache";
+import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import {
   collectBriefUnavailableSources,
+  confluenceZoneKindsLabel,
+  fundamentalsAncient,
+  fundamentalsFreshnessTag,
+  gexMarketSessionNote,
   gexMatrixAgeMs,
   gexMatrixStale,
+  optionMarkGenuinelyUnknown,
+  optionMarkIsStale,
   playExpectsLiveOptionMark,
+  resolveGammaPosture,
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
 import { buildIntelSections } from "./play-brief-intel";
+import { checkPortfolioOverlap } from "./portfolio";
+import { describeThemeOverlap } from "./theme-cluster";
+import { parseSwingPlayId } from "./play-brief-resolve-pure";
+import { deadPlayReason } from "./entry-enterability";
+import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
-import { fmtPremium } from "@/lib/fmt-money";
-import {
-  etStampFromDateOrIso,
-  etStampFromIso,
-  parseEtStamp,
-} from "@/lib/largo/temporal/bar-session-date";
-import { thesisHealthUncalibrated } from "./thesis-health";
+import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
+import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(digits)}%`;
-}
-
-/**
- * Format an ABSOLUTE premium price ($ per contract) — entry, mark, and the exit-policy's
- * stop/target rail levels. All four call sites (below) are prices, never signed deltas, so
- * this must never carry a "+"/"-" prefix.
- *
- * BUG FIXED 2026-09-09 (live repro on NN, position #32): this used to be `n >= 0 ? "+" : ""`,
- * a signed-delta formatter borrowed for an absolute price. A premium price is never negative
- * to begin with, so every open swing brief rendered "Entry: **+$1.95**" / "Mark: **+$1.35**"
- * regardless of whether the position was up or down — and worse, "Rails: stop +$0.78" put a
- * "+" on the STOP-LOSS trigger price, which reads as a gain when hitting it is a ~60% loss.
- * `play-brief-intel.ts` already has the correct sign-free formatter for other absolute price
- * levels (GEX walls, spot); this brings play-brief.ts's copy in line with it.
- */
-function fmtUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `$${n.toFixed(2)}`;
 }
 
 function biasFromDirection(dir: string): BieBias {
@@ -73,10 +69,24 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   if (!h) return null;
   const uncalibrated = thesisHealthUncalibrated(h);
   if (uncalibrated) {
+    // Largo C6 gap (2026-09-21, Ask Largo standing mandate): don't blank the ENTIRE panel just
+    // because one pillar is a generic default — show whichever pillars genuinely calibrated (e.g.
+    // persistence/entry-geometry live-derived from real price/trigger reads) instead of discarding
+    // them alongside a flow_corroboration pillar that's honestly empty for this position (a
+    // non-flow archetype like SECTOR_ROTATION, or a commit that predates/skipped G-S6 enforcement).
+    // The blended AGGREGATE % still stays withheld — it can't honestly represent a pillar with no
+    // real read — see calibratedThesisPillars's doc comment for the full trace.
+    const rows = calibratedThesisPillars(h)
+      .map((p) => {
+        const deltaStr = p.deltaPts != null ? ` (Δ ${p.deltaPts >= 0 ? "+" : ""}${p.deltaPts.toFixed(1)} pts)` : "";
+        return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
+      })
+      .join("\n");
     return {
       title: "Thesis health",
-      body:
-        "Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown.",
+      body: rows
+        ? `Aggregate score withheld — not every pillar input is wired for this position yet.\n\n${rows}`
+        : "Inputs not wired for committed positions — aggregate score withheld; pillar breakdown not shown.",
       bias: "neutral",
     };
   }
@@ -86,10 +96,17 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
       return `• **${p.label}** — ${p.currentLabel ?? "unknown"}${deltaStr}`;
     })
     .join("\n");
+  // Largo C5 (2026-09-15, Ask Largo standing mandate): `h.health` is a direction-agnostic "is the
+  // setup intact" score (persistence/entry-geometry/flow/regime/theta pillars) — it says nothing
+  // about market direction. Mapping it straight to bullish/bearish meant a SHORT play with a
+  // healthy thesis (health>=65, price correctly falling) badged the section green "Bullish" —
+  // the literal opposite of what the trade is betting, and a direct contradiction of the envelope's
+  // own top-level `biasFromDirection(play.direction)` (BieSectionCard renders `section.bias` as a
+  // color-coded BiasPill, so this reached real UI, not just inert JSON). No section-level bias for
+  // a non-directional quality signal — `bias` is already optional on RichSection.
   return {
     title: "Thesis health",
     body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
-    bias: h.health >= 65 ? "bullish" : h.health < 45 ? "bearish" : "neutral",
   };
 }
 
@@ -100,6 +117,29 @@ function managementSection(play: TerminalPlay): RichSection {
   if (play.recNote) lines.push(play.recNote);
   if (play.manageAction) {
     lines.push(`Manage engine: **${play.manageAction}**`);
+    // GAP FOUND (2026-09-18, Ask Largo standing mandate): `manage.ts`'s `evaluateSwingManagement`
+    // stamps `enforced:true` always for its four capital-preservation GATE rungs, but `false` for
+    // an EDGE rung (catalyst_shift/regime_shift/flow_decay/rel_strength_loss/vol_collapse/
+    // time_stop/add_eligible) until that specific rung graduates in the calibration ladder
+    // (n≥10, delta≥15pt) — and until graduation the ledger itself takes NO action on it
+    // (`latchSwingLiveStatus`, manage-sync.ts: only an enforced `profit_ladder` latches TRIM).
+    // `manage-sync.ts` persists that flag on every snapshot (`event_json.enforced`) but nothing
+    // read it back out — so this exact line above (and the "SELL"/"TRIM"/"BUY" recommendation
+    // badge, which `recommendationFromManageAction` derives from the same `manageAction` 1:1)
+    // showed an un-graduated advisory signal with IDENTICAL weight to a hard, acted-on gate. A
+    // member reading "Manage engine: TAKE_PARTIAL" (or "Recommended: SELL") had no way to tell
+    // whether the system itself was about to act on that or was merely tracking unproven
+    // evidence — the exact conflation the calibration-first "evidence, not gating, until
+    // graduated" law (manage.ts's own header) exists to prevent at the DECISION layer; it was
+    // leaking back in at the DISPLAY layer. `manageAction === "HOLD"` is excluded — a HOLD is
+    // never a recommendation to act on, so there is nothing to qualify. `manageEnforced` is
+    // tri-state (true/false/null) and this only fires on an explicit `false`, never on null
+    // (no snapshot yet — honest silence, not a fabricated advisory label).
+    if (play.manageAction !== "HOLD" && play.manageEnforced === false) {
+      lines.push(
+        "_Advisory only — this signal hasn't graduated to an enforced recommendation yet; the system itself is not acting on it, the position stays as-is until it does._",
+      );
+    }
   }
   if (play.exitPolicy) {
     const ep = play.exitPolicy;
@@ -113,6 +153,34 @@ function managementSection(play: TerminalPlay): RichSection {
   }
   if (play.progress != null && Number.isFinite(play.progress)) {
     lines.push(`Trim progress: **${Math.round(play.progress * 100)}%**`);
+  }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.rollCandidate` (manage.ts's
+  // dte_migration/roll_intent, threaded through live-plays.ts -> adapters.ts) is a real, live,
+  // per-tick signal — theta decaying faster than thesis progress inside the lane's migration DTE
+  // window, the SAME check `roll.ts`'s live executor uses before it actually rolls a position —
+  // but it never reached this brief. A member watching a position tick toward its migration
+  // window (still HOLD, hasn't hit the harder expiry_risk gate yet) got no warning that a roll was
+  // already being weighed on every refresh; the first they'd hear of it was after the fact, via
+  // the roll-history disclosure (play-brief-narrative.ts's rollLine, which only ever cites PAST
+  // rolls). Only ever shown when a real candidate exists right now (never a fabricated "no roll
+  // pending" line, matching this section's own honest-absence convention elsewhere).
+  if (play.rollCandidate) {
+    lines.push(`Roll watch: **theta outpacing thesis** — ${play.rollCandidate.reason}.`);
+  }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.underlyingExcursion` (manage-sync.ts's
+  // `signedExcursionPct` — the UNDERLYING's own signed favorable/adverse move since entry, computed
+  // and persisted every management tick) is a distinct read from the OPTION premium peak/P&L this
+  // section already shows above: a position can sit on modest premium P&L while the underlying
+  // quietly ran hard favorable and gave most of it back (or the reverse, under IV effects). Pinned
+  // to `swing_position_snapshots.running_mfe`/`.running_mae` on every tick and never read back out
+  // of it anywhere in the serving/brief layer until now — same shape as `entryPresentPillars`/
+  // `archetypeNearTie`/`topFlowProvenance` above. Only rendered once both extremes are known (never
+  // a fabricated 0% when the underlying excursion isn't yet computable).
+  if (play.underlyingExcursion) {
+    const { mfePct, maePct } = play.underlyingExcursion;
+    lines.push(
+      `Underlying excursion since entry: **${fmtPct(mfePct)} favorable** / **${fmtPct(maePct)} adverse**.`,
+    );
   }
   return { title: "Management", body: lines.join("\n\n") };
 }
@@ -250,8 +318,12 @@ function pnlSection(play: TerminalPlay): RichSection {
   // it just lacks a stored timestamp, so show the value with an honest "not timestamped" caveat
   // instead of hiding it. Does not touch the true-fallback case (still "unknown", still tested by
   // the IMPP/EBS/QCML repro test below, which already sets pnlPct: null) or the has-a-real-markAsOf
-  // path (untouched, markUnsynced is false there).
-  const markGenuinelyUnknown = markUnsynced && play.pnlPct == null;
+  // path (untouched, markUnsynced is false there). Delegates to the shared
+  // `optionMarkGenuinelyUnknown` (play-brief-absence.ts, extracted 2026-09-12) so the exact same
+  // "true entry-fallback" test is available to other sections instead of being re-derived (and
+  // risking drift) a second time — see that function's own comment for the EBS repro that made a
+  // second call site necessary.
+  const markGenuinelyUnknown = optionMarkGenuinelyUnknown(play);
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
     markGenuinelyUnknown
@@ -261,9 +333,107 @@ function pnlSection(play: TerminalPlay): RichSection {
         : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(play.pnlPct)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     `Peak: **${fmtPct(play.peak)}**`,
+    // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
+    // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
+    // computed symmetrically alongside `peakDisplay` on every TerminalPlay row, condor-aware) was
+    // fully computed and threaded but had ZERO consumers anywhere in src/lib/swing/ — this brief
+    // showed "Peak: +161.3%" with no way to know the same position was down -57.2% before it
+    // worked. Conviction-relevant history a trade manager would cite ("this one tested you early,
+    // don't flinch on the next drawdown scare") that the data already supports; mirrors Peak's own
+    // unconditional render (fmtPct handles null as "—" — same convention, both null together when
+    // entry/premium data is missing).
+    `Trough: **${fmtPct(play.trough)}**`,
   ];
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.greeks` (DeckGreeks: delta/gamma/
+  // theta/vega/iv) is a real, live per-contract read for every open swing position — the active-
+  // refresh cron fetches it on every tick (`SwingLiveQuote`, live-plays.ts) and carries it onto the
+  // held contract (`contractFromRow`), and `terminalPlayFromHorizon` (adapters.ts) already builds
+  // `play.greeks` from it via `greeksFromContract` — that call site's own comment traces this back
+  // to FINDINGS 2026-08-06 SEV-3 ("greeks never reached the desk... SWING/LEAPS greek strip could
+  // never render anything"), fixed there for the Command Deck's own greek strip (PlayTerminal.tsx).
+  // But the play-brief — Ask Largo's own consumer of the exact same TerminalPlay object — never
+  // read `play.greeks` anywhere in play-brief*.ts: a member asking Largo "what's my theta decay /
+  // delta exposure on this position" got nothing, even though the identical live numbers already
+  // render one click away on the deck's own greek strip. Same wiring-gap shape as the #4101
+  // `unavailableSources` fix — data computed, even already surfaced on a sibling UI surface, never
+  // reached the Largo envelope.
+  //
+  // `greeksFromContract` already only returns a non-null object when at least one field is real
+  // (Object.values(...).some(v => v != null)), the same honesty gate the deck's own `greeksLive`
+  // check applies — so `if (play.greeks)` alone is sufficient here; no extra staleness/absence
+  // plumbing to duplicate. Formatting matches PlayTerminal.tsx's `fmtGreek` exactly (signed
+  // delta/gamma/vega, unsigned theta since a real theta value already carries its own minus sign,
+  // iv as a rounded whole-number percent) so a member cross-referencing the deck and Largo never
+  // sees the same number rendered two different ways.
+  if (play.greeks) {
+    const g = play.greeks;
+    const sign = (v: number) => (v >= 0 ? "+" : "");
+    const parts: string[] = [];
+    if (g.delta != null) parts.push(`Δ ${sign(g.delta)}${g.delta.toFixed(2)}`);
+    if (g.gamma != null) parts.push(`Γ ${sign(g.gamma)}${g.gamma.toFixed(2)}`);
+    if (g.theta != null) parts.push(`θ ${g.theta.toFixed(2)}/day`);
+    if (g.vega != null) parts.push(`ν ${sign(g.vega)}${g.vega.toFixed(2)}`);
+    // BUG FOUND (Ask Largo standing mandate, 2026-09-20): `normalizeImpliedVol` (options-snapshot.ts)
+    // exists specifically to catch a REAL provider placeholder — some expired/edge-row snapshots
+    // return `implied_volatility` on the PERCENT scale (20 = 2000%, 15.83 = 1583%) instead of the
+    // normal DECIMAL scale (0.229 = 22.9%) — but that function's own doc comment ("consumers pass
+    // it through normalizeImpliedVol()... call this at the point IV is displayed") had ZERO call
+    // sites anywhere in the app (repo-wide grep, confirmed before this fix): every consumer of
+    // `play.greeks.iv`/`ChainContract.iv` formatted the RAW provider value straight through
+    // `Math.round(iv * 100)`. A percent-scale placeholder would have rendered here as "IV 2000%"
+    // instead of the intended "IV 20%" — a live-reachable, member-visible defect on any contract
+    // Polygon returns that placeholder for (the function's own docstring: "seen on expired/edge
+    // rows"). Same shape has the identical unguarded formatter in the Command Deck's own greek
+    // strip (`PlayTerminal.tsx`'s `fmtGreek`, fixed in the same PR) — both trace back to the same
+    // unguarded `snap.iv` → `ChainContract.iv` → `DeckGreeks.iv` pipe. Guarding only rescales an
+    // unmistakable placeholder (>= 500% decimal-equivalent); every real IV reading (including a
+    // genuine near-0% one) passes through completely unchanged.
+    if (g.iv != null) {
+      const iv = normalizeImpliedVol(g.iv);
+      if (iv != null) parts.push(`IV ${Math.round(iv * 100)}%`);
+    }
+    if (parts.length) lines.push(`Greeks: ${parts.join(" · ")}`);
+  }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): the deck's own greek strip (fixed above) and
+  // contract-ranker.ts's tradability score both already read live bid/ask on the held contract, but
+  // no consumer ever told a member what the CURRENT spread costs to trim into — the brief showed P&L
+  // and greeks but nothing about execution quality, even though `SWING_SUB_LANES[subLane].liquidity.
+  // maxSpreadPct` (taxonomy.ts) is the exact same calibrated entry-time liquidity bar contract-ranker
+  // enforced when this contract was PICKED. `liquidityFromContract` (adapters.ts, mirrors
+  // `greeksFromContract` above) only returns non-null when a live bid or ask exists; `spreadPct` is
+  // additionally null on a one-sided book, so this renders nothing when there's truly no live quote,
+  // just bid/ask with no comparison line when spreadPct can't be priced, and the full comparison only
+  // when both the live spread AND the sub-lane's own gate are known.
+  if (play.liquidity && (play.liquidity.bid != null || play.liquidity.ask != null)) {
+    const { bid, ask, spreadPct } = play.liquidity;
+    const quote = bid != null && ask != null ? `${fmtUsd(bid)}/${fmtUsd(ask)}` : fmtUsd(bid ?? ask);
+    if (spreadPct != null) {
+      const gate = SWING_SUB_LANES[play.subLane as SwingSubLane]?.liquidity.maxSpreadPct ?? null;
+      const spreadLine = `Spread: **${(spreadPct * 100).toFixed(1)}%** (${quote})`;
+      lines.push(
+        gate != null
+          ? `${spreadLine} — this sub-lane's own entry liquidity bar was **${(gate * 100).toFixed(0)}%**, so current execution is ${spreadPct <= gate ? "still inside" : "now wider than"} it.`
+          : spreadLine,
+      );
+    } else {
+      lines.push(`Quote: **${quote}** _(one-sided book — spread not priceable)_`);
+    }
+  }
   if (blended != null) {
     lines.push(`Blended P&L (realized trim + open runner): **${fmtPct(blended)}**`);
+    // The blended composite above is otherwise opaque arithmetic a member has to trust —
+    // name the fired rung(s) that produced it (fraction @ trigger, plus the ladder's own
+    // frozen absolute premium level when one was priced) so the number is self-verifying
+    // instead of a black box. `premium` is null only when the row had no entry basis to
+    // price the level off (terminal-ladder.ts) — never fabricate one in that case.
+    const banked = (play.exitPolicy?.trim_levels ?? []).filter((t) => t.fired);
+    if (banked.length) {
+      const parts = banked.map((t) => {
+        const pct = `**${Math.round(t.fraction * 100)}% @ +${t.trigger_pct}%**`;
+        return t.premium != null ? `${pct} (${fmtUsd(t.premium)})` : pct;
+      });
+      lines.push(`Banked: ${parts.join(" · ")}`);
+    }
   }
   if (play.execPnlPct != null) lines.push(`Exec P&L: **${fmtPct(play.execPnlPct)}**`);
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
@@ -303,9 +473,38 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
       `First flagged **${days} day${days === 1 ? "" : "s"} ago**${play.detectedAt ? ` (${etStampFromIso(play.detectedAt)})` : ""} — still on WATCH, not yet graduated to a real position.`,
     );
   }
+  // GAP FOUND (2026-09-18, Ask Largo standing mandate): entry-enterability.ts already computes the
+  // real entry-validity deadline (entry-model.ts's sub-lane windows, real-NYSE-trading-day aware)
+  // to decide the boolean `watchEntryExpired` — but that concrete date was discarded the moment the
+  // boolean was derived, so a member watching a still-live setup had no forward-looking runway
+  // ("how much longer is this good for") to weigh against `First flagged` above; the first they'd
+  // hear about the deadline was the EXPIRED badge itself, after it had already passed. Mirrors the
+  // days-on-watch fix directly above it (same section, same "a real computed fact was silently
+  // dropped before reaching the model" shape) — forward-looking instead of backward-looking. Only
+  // shown while NOT already expired (the EXPIRED badge + `deadPlayReason` below already own that
+  // case) and only when a real deadline was resolvable (never fabricated).
+  if (!play.watchEntryExpired && play.entryDeadline) {
+    const deadlineMs = Date.parse(play.entryDeadline);
+    if (Number.isFinite(deadlineMs)) {
+      const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
+      lines.push(
+        `Entry window closes **${etStampFromIso(play.entryDeadline)}** (**${daysLeft} day${daysLeft === 1 ? "" : "s"}** left) — stale after that, wait for a fresh setup.`,
+      );
+    }
+  }
   if (play.gateBlocks?.length) {
+    // BUG FIX (Ask Largo standing mandate, 2026-09-14): this used to always header the list
+    // "Gates blocking entry:", implying clearing them would open entry — false whenever the play
+    // is already past its entry deadline or invalidated (entry-enterability.ts's own if-chain
+    // checks those BEFORE gate-blocked, so the gate is never actually what's stopping entry in
+    // that case; entry-verdict.ts keeps the gate evidence attached anyway rather than dropping
+    // it). Live repro: ORCL WATCH brief, "Entry stance: EXPIRED" and "Gates blocking entry:
+    // g_s4_regime..." sat in the same section with nothing marking the gate as moot. Same root
+    // cause `entryTriggerDeadReason` (play-brief-intel.ts) already fixed for the Entry-trigger
+    // line one section down — `deadPlayReason` is the shared check both now use.
+    const dead = deadPlayReason(play);
     lines.push(
-      "**Gates blocking entry:**\n" +
+      (dead ? `**Also gate-blocked** (moot — ${dead}):\n` : "**Gates blocking entry:**\n") +
         play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
     );
   } else if (play.recommendation === "BUY") {
@@ -332,24 +531,13 @@ function gexFreshness(gex: GexPositioning | null | undefined, readMs: number): B
   return freshnessFromAgeMs(ageMs);
 }
 
-function fundamentalsObservedMs(asOf: string): number | null {
-  const trimmed = asOf.trim();
-  // Date-only anchors at session close ET (Largo C1) — age uses that clock, not UTC midnight.
-  const dateOnly = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed);
-  if (dateOnly) return parseEtStamp(`${dateOnly[1]} 16:00 ET`);
-  // Full ISO / clocked stamps: preserve sub-minute precision for skew guards (ET round-trip truncates).
-  const parsed = Date.parse(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function fundamentalsFreshness(
   asOf: string | null | undefined,
   readMs: number,
 ): BieFreshness {
-  if (!asOf) return "unknown";
-  const observedMs = fundamentalsObservedMs(asOf);
-  if (observedMs == null || !Number.isFinite(observedMs)) return "unknown";
-  return freshnessFromObservedMs(observedMs, readMs);
+  // Cadence-scaled for short-interest's ~biweekly FINRA settlement cycle, not the generic
+  // market-tick 10-minute bucket (see fundamentalsFreshnessTag's doc comment, play-brief-absence.ts).
+  return fundamentalsFreshnessTag(asOf, readMs);
 }
 
 function vectorFreshness(vec: VectorFullState | null, readMs: number): BieFreshness {
@@ -367,6 +555,21 @@ function levelProvenanceAsOf(
     return gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? vec?.asOfEt ?? etStampFromIso(vec?.asOf) ?? null;
   }
   return vec?.asOfEt ?? etStampFromIso(vec?.asOf) ?? gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? null;
+}
+
+/**
+ * `confluence (kind1+kind2)` label for the structured `levels` array below. The actual price-
+ * disambiguation logic (BUG FIX 2026-09-13, live repro NRG/MU/SKHY) now lives in the shared
+ * `confluenceZoneKindsLabel` (play-brief-absence.ts) — extracted 2026-09-14 once two sibling
+ * prose call sites (play-brief-intel.ts, play-brief-narrative-coaching.ts) turned up with the
+ * exact same unpatched bug; see that function's own doc comment for the full history. This
+ * wrapper only adds the `confluence (...)` framing this file's structured levels array expects.
+ */
+function confluenceZoneLabel(
+  z: ConfluenceZone,
+  primary: { callWall?: number | null; putWall?: number | null },
+): string {
+  return `confluence (${confluenceZoneKindsLabel(z, primary)})`;
 }
 
 function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {
@@ -389,14 +592,22 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
   const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
   const flipFromStaleGex = vecFlip == null && gex?.flip != null && gexStale;
+  // Largo C8 (2026-09-15, Ask Largo standing mandate): `price` above already prefers the live
+  // Vector wall (`vecCallWall ?? gex?.call_wall`), but this asOf/freshness ternary tested
+  // `gex?.call_wall != null` — whether GEX *has* a value at all, not whether GEX was the one
+  // `??` actually fell through to for `price`. Since both feeds usually carry a wall, this always
+  // picked GEX's (often staler) timestamp/freshness bucket even when the displayed price was
+  // Vector's live one — the exact "asOf describes a different read than the one shown" defect,
+  // mislabeling a live number as merely "recent". Fixed to test the same vec-side variable that
+  // drives `price`'s own precedence, mirroring the `spot` entry below (`vecSpot != null ? ...`).
   if (callWall != null && !callWallFromStaleGex) {
     levels.push({
       label: "call wall",
       price: callWall,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.call_wall != null ? "gex" : "vector"),
-        freshness: gex?.call_wall != null ? gexFresh : vecFresh,
+        asOf: levelProvenanceAsOf(gex, vec, vecCallWall != null ? "vector" : "gex"),
+        freshness: vecCallWall != null ? vecFresh : gexFresh,
       },
     });
   }
@@ -406,8 +617,8 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       price: putWall,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.put_wall != null ? "gex" : "vector"),
-        freshness: gex?.put_wall != null ? gexFresh : vecFresh,
+        asOf: levelProvenanceAsOf(gex, vec, vecPutWall != null ? "vector" : "gex"),
+        freshness: vecPutWall != null ? vecFresh : gexFresh,
       },
     });
   }
@@ -417,8 +628,8 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       price: flip,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.flip != null ? "gex" : "vector"),
-        freshness: gex?.flip != null ? gexFresh : vecFresh,
+        asOf: levelProvenanceAsOf(gex, vec, vecFlip != null ? "vector" : "gex"),
+        freshness: vecFlip != null ? vecFresh : gexFresh,
       },
     });
   }
@@ -438,7 +649,7 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
   if (!vectorStale) {
     for (const z of vec?.confluenceZones ?? []) {
       levels.push({
-        label: `confluence (${z.kinds.join("+")})`,
+        label: confluenceZoneLabel(z, { callWall, putWall }),
         price: z.center,
         provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
       });
@@ -471,8 +682,9 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
       price: king,
       provenance: {
         source: "GEX",
-        asOf: levelProvenanceAsOf(gex, vec, gex?.gex_king_strike != null ? "gex" : "vector"),
-        freshness: gex?.gex_king_strike != null ? gexFresh : vecFresh,
+        // Largo C8 fix (2026-09-15) — same vec-side test as call/put wall and gamma flip above.
+        asOf: levelProvenanceAsOf(gex, vec, vecKing != null ? "vector" : "gex"),
+        freshness: vecKing != null ? vecFresh : gexFresh,
       },
     });
   }
@@ -501,30 +713,66 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   if (ctx.play.markAsOf) {
     const markMs = Date.parse(ctx.play.markAsOf);
     const markEt = etStampFromIso(ctx.play.markAsOf);
+    // A swing option mark's only writer (swing-active-refresh) runs every 15 minutes, so a mark
+    // 10-15 minutes old is on-schedule, not stale — the generic cross-product 10-minute bucket
+    // (`freshnessFromObservedMs`) false-positives on exactly that window, which is why
+    // `optionMarkIsStale` (play-brief-absence.ts) exists with an 18-minute cadence-aware
+    // threshold. This evidence entry predates that fix and still called the generic bucket
+    // directly, so it kept mislabeling an on-schedule mark as `stale` even after every other
+    // freshness surface in this brief was corrected — live repro 2026-09-23, NVDA. Only downgrade
+    // a generic "stale" verdict (never "live"/"recent", which the cadence-aware check can't make
+    // fresher) so the future-skew fail-closed behavior (Largo C2) is untouched.
+    const genericFreshness = Number.isFinite(markMs) ? freshnessFromObservedMs(markMs, readMs) : "unknown";
+    const markFreshness =
+      genericFreshness === "stale" && !optionMarkIsStale(ctx.play, readMs) ? "recent" : genericFreshness;
     out.push({
       kind: "fact",
       text: `Option mark as of ${markEt}.`,
       provenance: {
         source: "Swing ledger",
         asOf: markEt,
-        freshness: Number.isFinite(markMs) ? freshnessFromObservedMs(markMs, readMs) : "unknown",
+        freshness: markFreshness,
       },
     });
   }
   const eco = ctx.ecosystem;
   const gex = eco?.gex_positioning;
-  const vec = ctx.vector ?? eco?.vector_full_state ?? null;
+  // Cast to include VectorFreshnessBlock's `market_session`/`market_session_note` (PR #5306,
+  // vector-state-freshness.ts): both `ctx.vector` (play-brief-context.ts, straight off
+  // `fetchVectorFullState`) and `eco?.vector_full_state` (ecosystem-context.ts, through
+  // `fitVectorFullStateForModel`, which carries the freshness block verbatim — see that module's
+  // own header) genuinely have these fields at runtime; only the declared `VectorFullState` type
+  // on `SwingPlayBriefContext`/`EcosystemContext` predates them. Cast locally rather than widening
+  // either shared type, since nothing else in this file needs it.
+  const vec = (ctx.vector ?? eco?.vector_full_state ?? null) as
+    | (VectorFullState & Partial<VectorFreshnessBlock>)
+    | null;
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): this used to
+  // compute `postureFromVec` as `vec?.regime?.posture != null ? ... : null`, treating the literal
+  // string "unknown" (Vector genuinely could not resolve a regime) as an equally-resolved answer
+  // to "long"/"short" — the exact same bug `resolveGammaPosture` (play-brief-absence.ts) was fixed
+  // for on 2026-09-12, just never ported to this call site. Live: TSM's own evidence line read
+  // "Dealer posture: γ unknown ..." while the SAME brief's "Trade manager read" narrative (which
+  // already calls resolveGammaPosture) correctly said "dealers short gamma" from the GEX-matrix
+  // fallback in the same moment. Delegating to the shared helper here too so this line can never
+  // contradict the rest of the same envelope again.
+  const gammaPosture = resolveGammaPosture(ctx, vec, readMs);
   const postureFromVec =
-    vec?.regime?.posture != null && !vectorStale ? vec.regime.posture : null;
-  const postureFromGex = gex?.gamma_posture && !gexStale ? gex.gamma_posture : null;
-  const gammaPosture = postureFromVec ?? postureFromGex;
+    vec?.regime?.posture != null && vec.regime.posture !== "unknown" && !vectorStale
+      ? gammaPosture
+      : null;
   if (gammaPosture) {
     const parts: string[] = [`γ ${gammaPosture}`];
     if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
       const netM = gex.net_gex / 1e6;
-      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${netM.toFixed(1)}M`);
+      // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real,
+      // signed net GEX under ~$50k (common on lower-priced/small-cap tickers) rounded to "0.0M" via
+      // a plain toFixed(1) — reading as "no dealer exposure" when the sign and magnitude are both
+      // real and meaningful for the posture read. formatFixedNonZero widens precision only when
+      // the fixed rounding would otherwise collapse a real nonzero value to a false zero.
+      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${formatFixedNonZero(netM, 1)}M`);
     }
     if (gex && !gexStale) {
       // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative
@@ -546,9 +794,9 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
             )
           : null;
       if (wall) {
-        parts.push(`nearest wall ${wall.strike.toFixed(2)} (${wall.distance_pts.toFixed(1)} pts)`);
+        parts.push(`nearest wall ${fmtPriceLevel(wall.strike)} (${wall.distance_pts.toFixed(1)} pts)`);
       } else if (gex.flip != null) {
-        parts.push(`γ-flip ${gex.flip.toFixed(2)}`);
+        parts.push(`γ-flip ${fmtPriceLevel(gex.flip)}`);
       }
     }
     out.push({
@@ -562,6 +810,46 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
           etStampFromIso(gex?.asof) ??
           ctx.asOf,
         freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+      },
+    });
+  }
+  // Fast-follow to PR #5306 (Ask Largo standing mandate, 2026-09-20): #5306 shipped
+  // `market_session_note` on the shared freshness block but deliberately stopped short of wiring
+  // it anywhere — scoped in that PR's own description as "swing-scoped, safe fast-follow". The
+  // note fires only for the misleading combination `describeVectorFreshness` exists to catch: a
+  // weekend/holiday self-warm computes off the last close and reads `freshness: "live"`/`"recent"`
+  // while the market itself has been shut for hours — gated `!vectorStale` so this can never
+  // surface a caveat about a Vector read the rest of this function has already excluded from use
+  // (session-mismatch staleness would already suppress it there; see the cast comment above for
+  // why the self-warm scenario itself does NOT trip that gate).
+  if (!vectorStale && vec?.market_session_note) {
+    out.push({
+      kind: "fact",
+      text: vec.market_session_note,
+      provenance: {
+        source: "Vector",
+        asOf: vec.asOfEt ?? etStampFromIso(vec.asOf) ?? ctx.asOf,
+        freshness: vectorFreshness(vec, readMs),
+      },
+    });
+  }
+  // GEX-matrix sibling of the Vector block above (#4076 comment 5750099882, "Mechanism 2" —
+  // #5306/#5307 shipped Vector's half; this is the GEX-matrix half, deliberately deferred to a
+  // separate PR since `polygon-options-gex.ts` is a broader cross-desk surface). Same misleading
+  // combination, different source: `gex.asof` is `polygon-options-gex.ts`'s own wall-clock
+  // `calculatedAt`, so a weekend/holiday self-warm can compute a genuinely fresh GEX matrix from
+  // Friday's closing chain while the market itself has been shut for hours. Gated `!gexStale` for
+  // the same reason the Vector block is gated `!vectorStale` — this can never surface a caveat
+  // about a GEX read the rest of this function has already excluded as untrustworthy.
+  const gexMarketSessionNoteText = gexMarketSessionNote(gex, readMs);
+  if (!gexStale && gexMarketSessionNoteText) {
+    out.push({
+      kind: "fact",
+      text: gexMarketSessionNoteText,
+      provenance: {
+        source: "GEX",
+        asOf: gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? ctx.asOf,
+        freshness: gexFreshness(gex, readMs),
       },
     });
   }
@@ -588,23 +876,138 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   }
   const fund = eco?.arsenal?.fundamentals;
   if (fund && (fund.days_to_cover != null || fund.short_volume_ratio != null)) {
-    const parts: string[] = [];
-    if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
-    if (fund.short_volume_ratio != null) {
-      parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+    // See FUNDAMENTALS_ANCIENT_CEILING_MS's comment (play-brief-absence.ts) — an ancient
+    // short-interest read must be omitted rather than presented under the same "STALE" tag as a
+    // genuinely few-days-old one. Shared with catalystsSection/shortInterestCoaching.
+    if (!fundamentalsAncient(fund.as_of, readMs)) {
+      const parts: string[] = [];
+      if (fund.days_to_cover != null) parts.push(`DTC ${fund.days_to_cover.toFixed(1)}d`);
+      if (fund.short_volume_ratio != null) {
+        parts.push(`short vol ratio ${(fund.short_volume_ratio * 100).toFixed(0)}%`);
+      }
+      out.push({
+        kind: "fact",
+        text: `Short interest: ${parts.join(" · ")}`,
+        provenance: {
+          source: "Polygon / Benzinga",
+          asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
+          freshness: fundamentalsFreshness(fund.as_of, readMs),
+        },
+      });
     }
+  }
+  // Largo C7 (2026-09-15, Ask Largo standing mandate): `bookContextSection`/`siblingPositionsNote`
+  // assert concrete, checkable member-book facts ("already holding N same-direction positions in
+  // theme X", "AAPL carries 2 concurrent live positions... entry $6.73, P&L -28.3%") off
+  // ctx.openBook/ctx.laneRows, but this function — the sole feeder of envelope.evidence — never
+  // touched either, an inconsistency with every other data-sourced narrative claim here, which all
+  // get a matching evidence entry. Same gating as the sections themselves (CLOSED excluded,
+  // checkPortfolioOverlap's own excludePositionId) so this can never disagree with what the member
+  // reads in the section body.
+  if (statusBucket(ctx.play) !== "closed" && ctx.openBook != null && ctx.openBook.length) {
+    const { positionId } = parseSwingPlayId(ctx.play.id);
+    const overlap = checkPortfolioOverlap(
+      { ticker: ctx.play.ticker, direction: ctx.play.direction },
+      ctx.openBook,
+      positionId != null ? { excludePositionId: positionId } : undefined,
+    );
+    if (overlap.hasOverlap) {
+      const parts: string[] = [];
+      if (overlap.sameThemeSameDirection.length) {
+        parts.push(
+          `${overlap.sameThemeSameDirection.length} same-direction position${overlap.sameThemeSameDirection.length > 1 ? "s" : ""} in ${describeThemeOverlap(overlap.theme)}`,
+        );
+      }
+      if (overlap.sameThemeOpposedDirection.length) {
+        parts.push(`${overlap.sameThemeOpposedDirection.length} opposed position(s) in the same theme`);
+      }
+      out.push({
+        kind: "fact",
+        text: `Book overlap: ${parts.join(" · ")}.`,
+        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+      });
+    }
+  }
+  if (
+    statusBucket(ctx.play) === "open" &&
+    ctx.play.entry != null &&
+    Number.isFinite(ctx.play.entry)
+  ) {
+    const ticker = ctx.play.ticker.toUpperCase();
+    const siblingCount = ctx.laneRows.filter((r) => {
+      if (r.ticker.toUpperCase() !== ticker) return false;
+      if (!r.liveStatus) return false;
+      if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+      return Math.abs(r.entryPremium - ctx.play.entry!) > 0.005;
+    }).length;
+    if (siblingCount > 0) {
+      out.push({
+        kind: "fact",
+        text: `${ticker} carries ${siblingCount + 1} concurrent live position(s) — this brief covers one.`,
+        provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
+      });
+    }
+  }
+  // Largo C10 (historical context) enhancement (2026-09-20, Ask Largo standing mandate):
+  // archetypeTrackRecordSection/tickerTrackRecordSection (play-brief-intel.ts) already cite C10 in
+  // their own doc comments and render these same wins/losses/n numbers — but only into the "Track
+  // record"/"Ticker track record" SECTIONS' prose, never into evidence[], so the numbers were
+  // joinable/citable only as free text, not as a typed fact with its own provenance the way every
+  // other evidence[] line in this function is. Additive per the contract's wrap-don't-flatten
+  // rule — the prose sections are untouched; these are new evidence[] lines carrying the SAME
+  // numbers with real provenance, closing the gap those two sections' own comments already named
+  // without solving (a full dedicated Largo tool, C10's stated ideal, is a larger, separate call).
+  const swingArchetype = (SWING_ARCHETYPES as readonly string[]).includes(ctx.play.archetype ?? "")
+    ? (ctx.play.archetype as (typeof SWING_ARCHETYPES)[number])
+    : null;
+  const graduatedEntry = graduatedArchetypeEntry(ctx.archetypeTrackRecord, swingArchetype);
+  if (graduatedEntry && swingArchetype && ctx.archetypeTrackRecord) {
+    const snapshotMs = Date.parse(ctx.archetypeTrackRecord.asOf);
     out.push({
       kind: "fact",
-      text: `Short interest: ${parts.join(" · ")}`,
+      text: `Archetype track record: ${ARCHETYPE_META[swingArchetype].label} ${graduatedEntry.wins}W / ${graduatedEntry.losses}L across ${graduatedEntry.n} graded plays (Wilson 95% floor ${graduatedEntry.wilsonLbPct.toFixed(0)}%).`,
       provenance: {
-        source: "Polygon / Benzinga",
-        asOf: fund.as_of ? etStampFromDateOrIso(fund.as_of) ?? fund.as_of : ctx.asOf,
-        freshness: fundamentalsFreshness(fund.as_of, readMs),
+        source: "Swing ledger",
+        asOf: etStampFromIso(ctx.archetypeTrackRecord.asOf) ?? ctx.asOf,
+        freshness: Number.isFinite(snapshotMs) ? freshnessFromObservedMs(snapshotMs, readMs) : "unknown",
       },
+    });
+  }
+  const tickerRecord = ctx.tickerTrackRecord;
+  if (tickerRecord && tickerRecord.priorClosedTrades > 0) {
+    out.push({
+      kind: "fact",
+      text: `Ticker track record: ${tickerRecord.ticker} ${tickerRecord.wins}W / ${tickerRecord.losses}L across ${tickerRecord.priorClosedTrades} prior closed trade${tickerRecord.priorClosedTrades === 1 ? "" : "s"}.`,
+      provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
     });
   }
   return out;
 }
+
+// SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION (Ask Largo standing mandate, aggressive-improvement-
+// hunting pass, 2026-09-23): before this, every OPEN play got the identical five followups
+// regardless of state — a position sitting right on its stop and a winner already trimming got
+// the same generic chips. Live spot-check that day: SKHY at -48.4% (HOLD, thesis intact) and
+// RBRK at +124.4% (TAKE_PARTIAL, ladder already firing) both rendered byte-identical followups[].
+// The manage-engine verdict (`play.manageAction`) is already computed and already rendered in the
+// brief's own Management section, so surfacing it here as a targeted suggestion chip is a read
+// of data the brief already has, not a new dependency.
+//
+// COVERAGE FIX (same mandate, later the same day): the first cut only mapped the three
+// ScaleOutAction values (Banger-lineage — TAKE_PARTIAL/EXIT_RUNNER/STOP_OUT). `SwingManageAction`
+// is `ScaleOutAction | "EXIT" | "ADD"` (manage.ts) — EXIT and ADD are the NATIVE swing_positions
+// verdicts (`live-plays.ts`'s `manageObservablesFromEvent`), so a native position with a broken
+// thesis (manageAction: "EXIT") got no situational chip at all — arguably the state most worth
+// one. Confirmed live: NVDA/HUT/AAPL (native, HOLD) correctly get nothing, but nothing in the
+// live sample happened to be in EXIT/ADD at spot-check time — added from reading the type, not a
+// live repro of the miss, so tested directly rather than inferred as fixed.
+const SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION: Partial<Record<NonNullable<TerminalPlay["manageAction"]>, string>> = {
+  TAKE_PARTIAL: "Should I trim more?",
+  EXIT_RUNNER: "Why exit the runner now?",
+  STOP_OUT: "Why is this at its stop?",
+  EXIT: "Why exit now?",
+  ADD: "Should I add to this?",
+};
 
 function followupsFor(play: TerminalPlay): string[] {
   const t = play.ticker;
@@ -617,8 +1020,44 @@ function followupsFor(play: TerminalPlay): string[] {
   if (bucket === "open") base.unshift(`What changed on ${t} since entry?`);
   if (bucket === "watch") base.unshift(`When does ${t} entry trigger?`);
   if (bucket === "closed") base.unshift(`What did we learn from ${t}?`);
+  if (bucket === "open" && play.manageAction) {
+    const situational = SITUATIONAL_FOLLOWUP_BY_MANAGE_ACTION[play.manageAction];
+    if (situational) base.push(`${situational} (${t})`);
+  }
   base.push(`Open full Largo for ${t}`);
   return base;
+}
+
+/**
+ * BUG FOUND (Ask Largo standing mandate, 2026-09-20): mirrors the identical composition-level gap
+ * already found and fixed for `buildIntelSections`'s ~20 sections (PR #5288, play-brief-intel.ts)
+ * — THIS file's own top-level section builders (Management/Thesis health/Position/Entry/Outcome/
+ * sibling-position disclosure) plus the evidence/levels/structure-ladder builders below were called
+ * bare too, with the identical blast radius: one throw anywhere in `composeSwingPlayBrief` itself
+ * propagates through to the API route's top-level catch (`route.ts`), which returns
+ * `{available:false, degraded:true}` (503) — the ENTIRE brief disappears, Verdict included, even
+ * though every other top-level section would have built fine.
+ *
+ * Live repro (regression test below): `managementSection`'s `ep.trim_levels.map(...)` is
+ * unconditional whenever `play.exitPolicy` is set — `TerminalPolicyInput.trim_levels` is typed as
+ * a required array (exit-policy.ts), but nothing here defended against a degraded row carrying a
+ * different runtime shape — the exact same "typed non-optional, not actually guaranteed" gap #5288
+ * found in `TerminalPlay.factors`, just surfacing in a sibling function.
+ *
+ * `safeCompose` gives each of these top-level calls the same fail-soft behavior `buildIntelSections`
+ * already has (post-#5288): log server-side only, fall back to the caller-supplied value (`null` for
+ * an optional section, `[]` for an evidence/levels array) rather than crash the whole envelope.
+ * Deliberately scoped to THIS function's own top-level composition — `buildIntelSections`'s 20
+ * sections are independently protected by #5288 and not duplicated here (single-issue PRs, per this
+ * repo's standing policy).
+ */
+function safeCompose<T>(label: string, build: () => T, fallback: T): T {
+  try {
+    return build();
+  } catch (error) {
+    console.error(`[swing/play-brief] "${label}" threw — falling back, not failing the brief`, error);
+    return fallback;
+  }
 }
 
 export type ComposeSwingPlayBriefOptions = {
@@ -632,6 +1071,12 @@ export function composeSwingPlayBrief(
   opts?: ComposeSwingPlayBriefOptions,
 ): SwingPlayBriefResult {
   const readMs = Date.now();
+  // Stamp the canonical "now" onto ctx ONCE, before any section composes, so every staleness
+  // check downstream that reads `ctx.readMs` (rather than sampling `Date.now()` itself) agrees on
+  // the same instant — see the field's own doc comment (play-brief-types.ts) for the live repro
+  // this fixes. `ctx.readMs ?? readMs` keeps an already-stamped ctx (e.g. a caller that composes
+  // multiple briefs off one shared anchor) untouched rather than overwriting it.
+  ctx = { ...ctx, readMs: ctx.readMs ?? readMs };
   const { play } = ctx;
   const bucket = statusBucket(play);
   const headline = playContractHeadline(play);
@@ -649,22 +1094,27 @@ export function composeSwingPlayBrief(
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
   // Dossier regime (discovery-pillar read, e.g. "Breakout · regime 0.82") belongs in "Why this setup"
   // — not Verdict. It is not Vector/SPX market regime and duplicates archetype when both are present.
-  if (play.archetype) verdictLines.push(`Archetype: ${play.archetype}`);
+  const verdictArchetypeLabel = archetypeLabelFromRaw(play.archetype);
+  if (verdictArchetypeLabel) verdictLines.push(`Archetype: ${verdictArchetypeLabel}`);
   if (play.recNote && bucket === "watch") verdictLines.push(play.recNote);
 
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
 
   if (bucket === "watch") {
-    sections.push(watchEntrySection(play, readMs));
+    const watchSection = safeCompose("Entry", () => watchEntrySection(play, readMs), null);
+    if (watchSection) sections.push(watchSection);
   } else if (bucket === "open") {
-    sections.push(managementSection(play));
-    const th = thesisHealthSection(play);
+    const mgmt = safeCompose("Management", () => managementSection(play), null);
+    if (mgmt) sections.push(mgmt);
+    const th = safeCompose("Thesis health", () => thesisHealthSection(play), null);
     if (th) sections.push(th);
-    sections.push(pnlSection(play));
-    const siblings = siblingPositionsNote(ctx);
+    const pnl = safeCompose("Position", () => pnlSection(play), null);
+    if (pnl) sections.push(pnl);
+    const siblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null);
     if (siblings) sections.push(siblings);
   } else {
-    sections.push(closedSection(play));
+    const closed = safeCompose("Outcome", () => closedSection(play), null);
+    if (closed) sections.push(closed);
   }
 
   sections.push(...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel }));
@@ -676,14 +1126,45 @@ export function composeSwingPlayBrief(
   // at once and tells a trader nothing about THIS setup — see resolveBreakInvalidation's own
   // comment for the live evidence. Gate reason / premium stop stay as fallbacks for when no real
   // level is computable (no live spot, no walls/flip at all).
+  //
+  // CLOSED plays are excluded entirely (live repro 2026-09-12: NVDA/TSM, both STOPPED weeks
+  // earlier, still rendered a labeled "Invalidation" callout reading "Break watch — lose X on a
+  // closing basis -> structural support failed; exit or cut size." computed off TODAY's live
+  // spot/walls). That "exit or cut size" language is live trade-management guidance for a
+  // position that no longer exists — a CLOSED play has nothing left to invalidate. None of the
+  // three fallbacks in this chain checked `bucket` (only the premium-stop fallback already did,
+  // and only for `open`), so a resolvable technical level kept firing for closed rows too.
+  // BUG FIX (Ask Largo standing mandate, 2026-09-18): a WATCH play whose entry is already dead
+  // (`deadPlayReason` — `watchEntryExpired`/`setupState === "INVALIDATED"`) fell straight through
+  // to `play.gateBlocks?.[0]?.reason` below, the same MOOT gate text `watchEntrySection`'s own
+  // "Also gate-blocked (moot — ...)" header and `entryTriggerDeadReason`'s "Entry trigger" line
+  // (both this file/play-brief-intel.ts, already fixed for this exact root cause) explicitly warn
+  // is no longer what's actually stopping entry. Live repro: MU WATCH brief, 2026-09-17/18 —
+  // headline correctly read "EXPIRED — wait for a fresh setup" and the Entry section correctly
+  // labeled its one gate "(moot — entry-validity window expired)", but the SAME brief's top-level
+  // **Invalidation:** evidence-block line still read "Trading-halt feed unavailable — desk will
+  // not open until halt/LULD data recovers" — the moot gate, presented with no "moot" qualifier,
+  // as if clearing it would reopen entry. `deadPlayReason` is already imported in this file for
+  // `watchEntrySection`'s identical check; scoped to `bucket === "watch"` to match its two sibling
+  // call sites exactly and leave OPEN/CLOSED invalidation logic untouched.
+  const dead = bucket === "watch" ? deadPlayReason(play) : null;
   const invalidation =
-    play.thesisBreak?.level === "break"
-      ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
-      : resolveBreakInvalidation(ctx) ??
-        play.gateBlocks?.[0]?.reason ??
-        (bucket === "open" && play.exitPolicy?.stop_premium != null
-          ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
-          : null);
+    bucket === "closed"
+      ? null
+      : play.thesisBreak?.level === "break"
+        ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
+        : dead
+          ? `${dead.charAt(0).toUpperCase()}${dead.slice(1)} — this setup is no longer live.`
+          : resolveBreakInvalidation(ctx) ??
+            play.gateBlocks?.[0]?.reason ??
+            (bucket === "open" && play.exitPolicy?.stop_premium != null
+              ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
+              : null);
+
+  // Computed once and shared by the envelope's own `unavailableSources` chips AND `confidence`
+  // below, so the two can never drift apart (the same class of narrative-vs-chip disagreement
+  // this file has already fixed elsewhere for readMs — see collectBriefUnavailableSources's header).
+  const unavailableSources = collectBriefUnavailableSources(ctx);
 
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
@@ -691,14 +1172,27 @@ export function composeSwingPlayBrief(
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,
-      evidence: evidenceFromContext(ctx, readMs),
-      levels: levelsFromContext(ctx, readMs),
+      evidence: safeCompose("evidence", () => evidenceFromContext(ctx, readMs), []),
+      levels: safeCompose("levels", () => levelsFromContext(ctx, readMs), []),
       invalidation,
       followups: followupsFor(play),
-      unavailableSources: collectBriefUnavailableSources(ctx),
+      unavailableSources,
+      // Largo C6 (Ask Largo standing mandate, 2026-09-26 — see play-brief-confidence.ts's header
+      // for why this is NOT computeSwingThesisHealth's %): evidence-coverage confidence, never a
+      // directional/win-probability read. Never throws by construction (pure, total function over
+      // already-validated inputs), but routed through safeCompose for the same defensive
+      // consistency every other envelope field in this composer gets.
+      confidence: safeCompose(
+        "confidence",
+        () => swingPlayBriefConfidence(play, bucket, unavailableSources),
+        undefined
+      ),
     }),
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,
+    // Structure Ladder widget (Ask Largo standing mandate, 2026-09-12) — null on CLOSED plays and
+    // on any read with no live spot/structural nodes to build from; never fabricated.
+    structureLadder: safeCompose("structureLadder", () => buildStructureLadder(ctx, play, bucket), null),
   };
 
   const flow = trustedHelixFlow(ctx.ecosystem);

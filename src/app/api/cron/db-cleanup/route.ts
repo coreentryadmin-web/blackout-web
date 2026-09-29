@@ -4,9 +4,43 @@ import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { isAllowedCleanupTarget, cleanupRetentionDays } from "@/lib/db-cleanup-targets";
 import { sumCleanupDeletes } from "@/lib/db-cleanup-sum";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
+import { runWithDeadlockRetry } from "@/lib/deadlock-retry";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+/**
+ * Cross-invocation overlap guard. Root-caused 2026-09-12: this route deadlocked
+ * (`deadlock detected`, Postgres 40P01) pruning `vector_wall_history` at 07:04:14 UTC, which made
+ * it return HTTP 500 for that run — and this route's own BIE-ingest log line (one call per
+ * request) was confirmed firing THREE times within ~4 minutes that night (07:04:23, 07:07:02,
+ * 07:08:11 UTC), i.e. the SAME batched-DELETE loop, against the SAME ~26 tables, running
+ * concurrently with itself. `hit-cron` (blackout-infra's EventBridge->Lambda fetch shim) throws on
+ * any non-2xx response, and AWS's own retry-on-throw (Lambda async-retry vs. EventBridge
+ * at-least-once delivery — not fully distinguishable from this repo) is the most likely source of
+ * the 2nd/3rd invocation; a concurrent ECS deploy was ALSO rolling through at that exact minute
+ * and is a plausible contributor to why the first attempt was slow/error-prone enough to trigger
+ * whichever retry path fired. Concurrent invocations of the same batched-DELETE loop racing for
+ * row locks across ~26 shared tables is an ordinary, sufficient way to deadlock on its own — no
+ * exotic DDL-vs-DML theory required.
+ *
+ * This is deliberately NOT a fix to "why did AWS/hit-cron deliver >1 invocation" — that lives in
+ * blackout-infra (the Lambda + EventBridge config), out of this repo's scope, and the exact
+ * mechanism couldn't be pinned down from here. This guard makes a second/third concurrent
+ * invocation a cheap no-op regardless of why it was delivered, the same `sharedCacheSetNx`
+ * idempotent-skip pattern already used by vector-pick-sweep/banger-discovery/thermal-discord for
+ * this exact problem shape — db-cleanup never had it because, being a nightly one-shot, a
+ * same-instant double-fire looked unlikely until it actually happened.
+ *
+ * TTL: `db-cleanup`'s own `maxDuration` is 300s; 600s (2x) gives a slow-but-healthy run real
+ * margin so its own lock can't expire out from under it mid-run — an expired lock would let a
+ * genuine retry start a SECOND real run instead of skipping, recreating the exact deadlock this
+ * guards against (see vector-pick-sweep/route.ts's own header for a fully-worked example of that
+ * failure mode when a lock TTL is too tight against real observed runtime).
+ */
+const OVERLAP_LOCK_KEY = "db-cleanup:running";
+const OVERLAP_LOCK_TTL_SEC = 600;
 
 /**
  * Nightly DB cleanup — prunes high-volume tables to prevent unbounded growth.
@@ -21,6 +55,21 @@ export async function GET(req: NextRequest) {
 
   const dbDenied = requireDatabaseInProduction();
   if (dbDenied) return dbDenied;
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a permanently stuck nightly prune
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous db-cleanup run still in flight (idempotent skip)",
+    };
+    await logCronRun("db-cleanup", started, payload);
+    return NextResponse.json(payload);
+  }
 
   try {
     const { tables: pruneCounts, errors: pruneErrors } = await runCleanup();
@@ -72,6 +121,8 @@ export async function GET(req: NextRequest) {
     console.error("[cron/db-cleanup]", error);
     await logCronRun("db-cleanup", started, { ok: false, error: detail });
     return NextResponse.json({ ok: false, error: "DB cleanup failed" }, { status: 500 });
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
   }
 }
 
@@ -101,14 +152,27 @@ async function deleteOlderThan(table: string, column: string, days: number): Pro
   let total = 0;
   try {
     for (let batch = 0; batch < CLEANUP_MAX_BATCHES; batch++) {
-      const res = await dbQuery(
-        `DELETE FROM ${table}
-           WHERE ctid IN (
-             SELECT ctid FROM ${table}
-             WHERE ${column} < NOW() - ($1::int || ' days')::interval${guard}
-             LIMIT $2
-           )`,
-        [days, CLEANUP_BATCH_SIZE]
+      // Deadlock (40P01) retry: root-caused 2026-09-12 on `vector_wall_history` — batched deletes
+      // across ~26 tables can lock-order-race a concurrent writer (or, before the overlap guard
+      // above, a second invocation of this very route). Postgres's own remedy for the losing side
+      // of a deadlock is to retry the same statement, which is all this does; see
+      // deadlock-retry.ts's header for why only 40P01 is retried (42P01 undefined_table is a
+      // different, already-handled case below, and every other error still fails fast).
+      const res = await runWithDeadlockRetry(
+        () =>
+          dbQuery(
+            `DELETE FROM ${table}
+               WHERE ctid IN (
+                 SELECT ctid FROM ${table}
+                 WHERE ${column} < NOW() - ($1::int || ' days')::interval${guard}
+                 LIMIT $2
+               )`,
+            [days, CLEANUP_BATCH_SIZE]
+          ),
+        {
+          onRetry: (attempt) =>
+            console.warn(`[db-cleanup] ${table}: deadlock detected, retrying (attempt ${attempt})`),
+        }
       );
       const deleted = res.rowCount ?? 0;
       total += deleted;

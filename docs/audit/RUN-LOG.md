@@ -4,6 +4,1430 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-29 (00:16 UTC / Mon 20:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`bb6f5a3`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0005, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 1 open agent PR,
+#5537 (CI-failed, not SEO-lane), nothing to unblock. Opportunity scan — window advanced, same
+query set, no new signal. Nothing to ship.
+
+## 2026-09-28 (18:16 UTC / Mon 14:16 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`0f4ca9b`). Post-RTH close. Purged Cloudflare edge, re-measured homepage
+desktop CLS — **0, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 2 open agent PRs
+(#5558 CI-running, #5537 CI-failed), neither SEO-lane, nothing to unblock. Opportunity scan —
+identical to the prior cycle. Nothing to ship.
+
+## 2026-09-28 (16:35 UTC / Mon 12:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, CLS clean
+
+RTH window confirmed (12:35 ET, trading day, near close of window). Purged Cloudflare edge,
+measured live homepage desktop CLS on a real-data-rendering page — **0.0003, GOOD**. Polled
+`/api/public/gex-snapshot?ticker=SPX` 3x at 6s intervals — `market_session: OPEN`,
+`degraded: false`, `calculation_id` advanced normally. Clean pass. Nothing to ship.
+
+## 2026-09-28 (15:35 UTC / Mon 11:36 ET) — [SEO] Market-hours wake: gamma-snapshot clean, CLS clean
+
+RTH window confirmed (11:36 ET, trading day). Purged Cloudflare edge, measured live homepage
+desktop CLS on a real-data-rendering page — **0.0002, GOOD**. Polled
+`/api/public/gex-snapshot?ticker=SPX` 3x at 6s intervals — `market_session: OPEN`,
+`degraded: false`, `calculation_id` advanced cleanly and monotonically, `age_s` climbed then
+reset on refresh. Clean pass, no anomalies this cycle. Nothing to ship.
+
+## 2026-09-28 (14:15 UTC / Mon 10:15 ET) — [SEO] Daily growth cycle: no new opportunities, avgpos trend continues improving
+
+Live re-verify skipped (done <1h ago, RTH cycle). Opportunity scan — same striking-distance/CTR-gap
+set as prior cycles, nothing new, no on-page work warranted. 28-day totals: avgpos continues
+improving (20.7 → 19.4 → 18.2 → **16.4**), clicks ticked up 19→20. `agent-pr-sweep.mjs` → 1 open
+agent PR, #5537 (CI-failed, not SEO-lane), nothing to unblock.
+
+## 2026-09-28 (13:36 UTC / Mon 09:39 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one non-monotonic calc_id observation (harmless)
+
+RTH window confirmed (09:39 ET, trading day). Note: the Bash tool's safety classifier had a
+transient outage at cycle start (5 consecutive no-verdict failures on a read-only `date` command,
+~2min before recovering) — no product impact, just a delayed start. Purged Cloudflare edge,
+measured live homepage desktop CLS on a real-data-rendering page — **0, GOOD**. Polled
+`/api/public/gex-snapshot?ticker=SPX` 16x total across three batches: `market_session: OPEN`,
+`degraded: false` throughout, spot ~7702-7704 (plausible, internally consistent, no independent
+cross-check available — Massive MCP unauthenticated this session). One non-monotonic
+`calculation_id` observed mid-run (reverted to a ~30s-older calc_id and spot for one poll), same
+shape as the previously-documented harmless backend-replica/cache-read race — a follow-up
+8-poll/2s-interval run was fully clean and monotonic, `age_s` climbing steadily (~24-30s backend
+refresh cadence) and resetting on each new calc_id. Not treating as a defect. Nothing to ship.
+
+## 2026-09-28 (12:17 UTC / Mon 08:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`4b962e0`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0001, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 1 open agent PR,
+#5537 (CI-failed, not SEO-lane), nothing to unblock. Opportunity scan — identical to the prior
+cycle. Nothing to ship.
+
+## 2026-09-28 (06:18 UTC / Mon 02:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`3cd63f3`). Purged Cloudflare edge, measured homepage desktop CLS twice:
+first read **0.0403** (still GOOD but above the ~0 baseline), re-measured — **0.0002, GOOD** —
+transient noise, not a regression. `/api/og` — **HTTP 200, `image/png`,
+`x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`**. Both fixes holding.
+`agent-pr-sweep.mjs` → 3 open agent PRs, none SEO-lane. #5536 (coordinator branch, green-CI
+draft) already has a substantive review comment from another session ~2h prior flagging a real
+gap in `buildPlay`'s dte computation — not re-flagging, nothing to add. Opportunity scan —
+identical to the prior cycle, same thin "what is spx am settlement" (3imp). Nothing to ship.
+
+## 2026-09-28 (00:17 UTC / Sun 20:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, one new thin CTR-gap query
+
+Synced to `origin/main` (`ad4d7b3`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 0 open agent PRs.
+Opportunity scan — new CTR-gap entry: "what is spx am settlement" (pos 7.7, page 1, **3imp**
+0cl) — extremely thin sample, tangentially touched by an existing SPX-vs-SPXW FAQ
+(`article-faqs.ts`) but no dedicated answer. Consistent with the standing "don't churn on thin
+signals" rule (same treatment as the 3-4imp "spx slayers"/"what is dealer gamma" entries) — noting
+it, not acting; will revisit if impressions grow. Nothing else new.
+
+## 2026-09-27 (18:16 UTC / Sun 14:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`a2023cd`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 0 open agent PRs.
+Opportunity scan — identical to the prior cycle. Nothing to ship.
+
+## 2026-09-27 (14:07 UTC / Sun 10:07 ET) — [SEO] Daily growth cycle: no new opportunities, avgpos trend continues improving
+
+Live re-verify skipped (done <3h ago). Opportunity scan — same striking-distance/CTR-gap set as
+prior cycles, nothing new, no on-page work warranted. 28-day totals: avgpos continues its
+multi-cycle improvement (23.4 → 22.4 → 20.7 → 19.4 → **18.2**), clicks/impressions flat
+(19cl/1333imp). `agent-pr-sweep.mjs` → 0 open agent PRs.
+
+## 2026-09-27 (12:17 UTC / Sun 08:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`038fb31`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 0 open agent PRs.
+Opportunity scan — identical to the prior cycle, GSC still hasn't refreshed. Nothing to ship.
+
+## 2026-09-27 (06:16 UTC / Sun 02:16 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`36220f1`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 0 open agent PRs.
+Opportunity scan — identical to the prior cycle, GSC hasn't refreshed. Nothing to ship.
+
+## 2026-09-27 (00:16 UTC / Sat 20:16 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`0cc4343`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0002, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 0 open agent PRs.
+Opportunity scan — window advanced a day, same query set, marginal impression movement, no new
+signal. Nothing to ship.
+
+## 2026-09-26 (18:16 UTC / Sat 14:16 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`94271e0`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 0 open agent PRs.
+Opportunity scan — same window/queries as the last two cycles today; GSC hasn't refreshed
+(weekend). Nothing to ship.
+
+## 2026-09-26 (14:06 UTC / Sat 10:06 ET) — [SEO] Daily growth cycle: quiet, no-change day
+
+Synced to `origin/main` (`b33690d`). Opportunity scan identical to this morning's cycle (same
+window, same queries) — GSC hasn't refreshed yet. `agent-pr-sweep.mjs` → 0 open agent PRs. Live
+re-verify skipped (done <3h ago). Nothing to ship.
+
+## 2026-09-26 (12:17 UTC / Sat 08:17 ET) — [SEO] Consolidated catch-up after ~23h notification gap
+
+Session lost connectivity again (8 scheduled-trigger notifications queued 09-25 13:35 UTC →
+09-26 12:16 UTC: 3 market-hours wakes, 1 daily growth cycle, 4 lane heartbeats). Now Saturday —
+markets closed, so the queued RTH wakes are moot regardless of when they fired; ran one
+consolidated pass instead of replaying each.
+
+Synced to `origin/main` (`f3b298a`). Purged Cloudflare edge, measured homepage desktop CLS twice:
+first read **0.0399** (still GOOD but higher than the recent ~0-0.03 baseline), re-measured
+immediately — **0.0003, GOOD** — confirmed transient noise, not a regression. `/api/og` —
+**HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`**. Both
+fixes holding. `agent-pr-sweep.mjs` → 2 open agent PRs (#5503, #5501, both docs/CI-running, not
+SEO-lane, not stuck) — nothing to unblock. Opportunity scan + 28-day trend: avgpos continues
+improving (23.4 → 22.4 → 20.7 → **19.4**). No new striking-distance/CTR-gap queries beyond the
+same already-optimized set logged in prior cycles ("dealer gamma", "gamma three trading",
+"is 0dte gambling", "what is dealer gamma", "spx slayers") — all already covered by existing
+content/FAQs, still too thin to warrant fresh on-page work. Nothing to ship this cycle.
+
+## 2026-09-25 (12:17 UTC / Fri 08:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`5e8f083`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0002, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 1 open agent PR,
+#5498 (docs, not SEO-lane), CI-running, not stuck — nothing to unblock. Opportunity scan —
+identical 2026-06-25→09-22 window/data to the consolidated catch-up run six hours earlier; no new
+signal since. Nothing to ship this cycle.
+
+## 2026-09-25 (06:21 UTC / Fri 02:21 ET) — [SEO] Consolidated catch-up after ~30h notification gap
+
+Session lost connectivity for a stretch (10 scheduled-trigger notifications queued 09-24 00:16
+UTC → 09-25 06:17 UTC: heartbeats, market-hours wakes, one daily growth cycle). Replaying each
+stale one individually wouldn't add signal — several were already past their RTH window by
+delivery time — so ran one consolidated pass instead. Being explicit about the gap: production
+was **not** actively checked during those ~30h; this entry covers only what was verified now.
+
+Restart-recovery: repo intact, clean tree, synced to `origin/main` (`7ac3b70`). Current time
+02:21 ET — outside RTH, so no live gamma-snapshot poll this cycle.
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `image/png`, 50591 bytes**. Both fixes still holding. Step 2: `agent-pr-sweep.mjs` →
+1 open agent PR, #5491 (docs, not SEO-lane), CI-running, not stuck — nothing to flag. Step 3:
+opportunity scan — avgpos continues improving (23.4 → 22.4 → **20.7** over the last three
+readings). Two new striking-distance queries since last scan: "gamma three trading" (pos 12.7,
+20imp) matches the existing "three-part framework for gamma trading" section in the dealer-gamma
+pillar guide; "is 0dte gambling" (pos 11.5, 4imp) already has a dedicated, well-optimized article
+at `/learn/is-0dte-gambling` (targetKeyword exact match). Both already-covered, thin/early —
+no on-page work warranted. "spx slayers" CTR-gap and "what is dealer gamma" striking-distance
+remain the same already-optimized, thin-sample entries logged before. Nothing to ship this cycle.
+
+## 2026-09-23 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (post-RTH)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5478 (not
+SEO-lane), CI-running, not stuck. Step 3: opportunity scan — still the identical
+2026-06-23→09-20 window/data as the last several cycles. Nothing new.
+
+## 2026-09-23 (16:35 UTC / Wed 12:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one non-monotonic calc_id observation (harmless)
+
+Confirmed clock myself (12:35 ET, Wednesday, in-window, ~25min left). `/tools/gamma-snapshot`'s
+public API: `market_session: "OPEN"`, `degraded: false`. First 3-poll batch showed reads 1 and 3
+sharing a `calculation_id` while read 2 (in between) carried an OLDER one — non-monotonic
+ordering across sequential HTTP calls. Re-polled 5x at 3s intervals to check: fully monotonic,
+`calculation_id` advancing every call, spot moving realistically (7713.93→7714.16). No stale or
+wrong value at any point in either batch — the one out-of-order read is consistent with a harmless
+race between two backend replicas/cache reads on a single request, not a real staleness or
+correctness defect. Cross-checked spot against Massive `/v3/snapshot/indices` (7714.42) — 0.003%
+apart, accurate.
+
+Live CLS: purged edge, desktop **0, GOOD**; mobile **0.0395, GOOD**. Both clean. No PR. Last RTH
+check before window closes; returning to normal search/authority work after 13:00 ET.
+
+## 2026-09-23 (15:35 UTC / Wed 11:35 ET) — [SEO] Market-hours wake: gamma-snapshot live-data validation, clean
+
+Confirmed clock myself (11:35 ET, Wednesday, in-window). `/tools/gamma-snapshot`'s public API:
+`market_session: "OPEN"`, `degraded: false`, spot genuinely moving tick-to-tick
+(7720.50→7720.57→7720.22 across 3 polls), `calculation_id` advancing every call. Cross-checked
+against Massive `/v3/snapshot/indices` (7719.64) — 0.008% apart, normal tick drift.
+
+Live CLS: purged edge, desktop **0.0002, GOOD**; mobile **0.0408, GOOD**. Both clean. No PR.
+Returning to normal search/authority work after 13:00 ET.
+
+## 2026-09-23 (14:07 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC identical to last cycle, 0 stuck PRs, live checks fresh from this morning's RTH wake)
+
+## 2026-09-23 (13:35 UTC / Wed 09:35 ET) — [SEO] Market-hours wake: gamma-snapshot live-data validation, clean
+
+Confirmed clock myself (09:35 ET, Wednesday, in-window). `/tools/gamma-snapshot`'s public API:
+`market_session: "OPEN"`, `degraded: false`, spot genuinely moving tick-to-tick
+(7754.49→7751.56→7751.42 across 3 polls), `calculation_id` advancing. Cross-checked against Massive
+`/v3/snapshot/indices` (7752.21) — 0.01% apart, normal tick drift.
+
+Live CLS: purged edge, desktop **0.0001, GOOD**; mobile **0.005, GOOD**. Both clean. No PR —
+nothing broken. Returning to normal search/authority work after 13:00 ET.
+
+## 2026-09-23 (12:17 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (Wednesday pre-open)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0003, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5469 (docs fold,
+not SEO-lane), CI-running, not stuck. Step 3: opportunity scan — identical to the last two cycles
+(same 2026-06-23→09-20 window/data). Nothing new.
+
+## 2026-09-23 (06:17 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged from last cycle
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs. Step 3: opportunity
+scan — identical to the last cycle (same 2026-06-23→09-20 window, same 4 striking-distance
+queries, same `spx slayers` CTR-gap entry already assessed as noise). Nothing new.
+
+## 2026-09-23 (00:16 UTC) — [SEO] Lane heartbeat: both fixes holding, first-ever CTR-gap entry checked out as noise, continued small positive trend
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs.
+
+Step 3: opportunity scan — same 4 striking-distance queries, no new entrant there. First time this
+cycle's CTR-GAP bucket has ever had an entry (was 0 every prior cycle): `spx slayers` (page-1,
+pos 8.7, 3imp, 0cl). Checked `/learn/spx-slayer`'s current meta title
+(`src/lib/learn/guide-seo.ts`) — already reads "SPX Slayer Guide — Trading 0DTE SPX Options",
+directly containing the query terms. At n=3 impressions, 0/3 clicks is statistical noise, not
+evidence of a real title/meta defect, and the title is already well-formed — changing it now would
+be exactly the forbidden churn on an already-good page. No PR. 28d trend continues improving:
+avgpos **23.4→22.4**, CTR **1.4%→1.43%**, clicks flat at 19 (window 2026-08-24→09-20) — same
+direction as every recent cycle.
+
+## 2026-09-22 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (post-RTH)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5445 (docs fold,
+not SEO-lane), CI-running, not stuck. Step 3: opportunity scan — still the identical
+2026-06-22→09-19 window/data as the last several cycles. Nothing new.
+
+## 2026-09-22 (16:35 UTC / Tue 12:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, last RTH check before window closes
+
+Confirmed clock myself (12:35 ET, Tuesday, in-window, ~25min left). `/tools/gamma-snapshot`'s
+public API: `market_session: "OPEN"`, `degraded: false`, same ~10-12s refresh cadence as last
+cycle (not stuck — consistent with the established, already-noted pattern). Spot moved
+realistically (7761.70→7761.79) and cross-checked against Massive `/v3/snapshot/indices`
+(7760.27) — 0.02% apart, normal drift.
+
+Live CLS: purged edge, desktop **0.0012, GOOD**; mobile **0.005, GOOD**. Both clean. No PR.
+Returning to normal search/authority work after 13:00 ET.
+
+## 2026-09-22 (15:35 UTC / Tue 11:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean, refresh cadence a bit coarser than "5s" but never stale
+
+Confirmed clock myself (11:35 ET, Tuesday, in-window). `/tools/gamma-snapshot`'s public API:
+`market_session: "OPEN"`, `degraded: false`. Noticed two consecutive 6s-apart polls sharing the
+same `calculation_id` — checked more closely with 4s-interval polling and found `calculation_id`
+genuinely advances roughly every ~10-12s, not stuck indefinitely. Reads a bit coarser than the
+literal "every 5s" framing, but the actual behavior that matters (never sits on stale data) holds
+— spot moved realistically across every poll (7759.54→7760.1→7759.46→7759.32) and cross-checked
+against Massive `/v3/snapshot/indices` (7759.21) — 0.001% apart, accurate.
+
+Live CLS: purged edge, desktop **0.0005, GOOD**; mobile **0.0318, GOOD** — both at normal
+baseline. No PR — nothing broken, just a cadence note that doesn't rise to a defect. Returning to
+normal search/authority work after 13:00 ET.
+
+## 2026-09-22 (14:05 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC identical to last cycle, 0 stuck PRs, live checks fresh from this morning's RTH wake)
+
+## 2026-09-22 (13:33 UTC / Tue 09:33 ET) — [SEO] Market-hours wake: gamma-snapshot live-data validation, clean
+
+Confirmed clock myself (09:33 ET, Tuesday, in-window). `/tools/gamma-snapshot`'s public API:
+`market_session: "OPEN"`, `degraded: false`, spot genuinely moving tick-to-tick
+(7779.94→7780.41→7779.34 across 3 polls), `calculation_id` advancing every call. Cross-checked
+against Massive `/v3/snapshot/indices` (7778.63) — 0.009% apart, normal tick drift. 5s refresh
+confirmed genuinely refreshing.
+
+Live CLS: purged edge, desktop **0, GOOD**; mobile **0.0309, GOOD** — back at the normal baseline
+(no repeat of last week's one-off outlier). No PR — nothing broken. Returning to normal
+search/authority work after 13:00 ET.
+
+## 2026-09-22 (12:17 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (Tuesday pre-open)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5432 (docs fold,
+not SEO-lane), CI-running, not stuck. Step 3: opportunity scan — identical to the last two cycles
+(same 2026-06-22→09-19 window/data). Nothing new.
+
+## 2026-09-22 (06:16 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged from last cycle
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5420 (not
+SEO-lane), CI-running, not stuck. Step 3: opportunity scan — identical to the last cycle (same
+2026-06-22→09-19 window, same 4 striking-distance queries). Nothing new.
+
+## 2026-09-22 (00:16 UTC) — [SEO] Lane heartbeat: both fixes holding, continued small positive trend, HTTP-variant GSC row checked out clean
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5400 (docs fold,
+not SEO-lane), created 1 minute before this check — no CI run yet because it's simply too fresh,
+not stuck.
+
+Step 3: opportunity scan — window advanced a day (2026-06-22→09-19), same 4 striking-distance
+queries, no new entrant, small position improvements (`dealer gamma` 16.9→16.6, `gamma three
+trading` 13.4→13.3). 28d trend continues improving: avgpos **24.6→23.4**, CTR **1.36%→1.4%**,
+clicks flat at 19 — same direction as every recent cycle. One odd row in the page breakdown:
+`http://blackouttrades.com/` (non-HTTPS, pos 1, 2imp) — checked directly, confirmed a clean 301 to
+`https://blackouttrades.com/`, so this is just GSC logging a stray pre-redirect crawl/impression,
+not a real canonicalization defect. No PR.
+
+## 2026-09-21 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (post-RTH)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0003, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs. Step 3: opportunity
+scan — still the identical 2026-06-21→09-18 window/data as the recent cycles. Nothing new.
+
+## 2026-09-21 (16:33 UTC / Mon 12:33 ET) — [SEO] Market-hours wake: gamma-snapshot clean, last cycle's mobile CLS outlier resolved as noise
+
+Confirmed clock myself (12:33 ET, Monday, in-window, ~27min left in RTH). `/tools/gamma-snapshot`'s
+public API re-checked: `market_session: "OPEN"`, `degraded: false`, spot genuinely moving
+tick-to-tick (7755.90→7755.64→7755.43 across 3 polls), `calculation_id` advancing every call.
+Cross-checked against Massive `/v3/snapshot/indices` (7754.28) — 0.015% apart, normal tick drift.
+
+Live CLS: desktop **0.0001, GOOD**. Followed up on the last cycle's single 0.1145 mobile outlier
+with 3 more mobile reads — **0.0319 / 0.0312 / 0.0338, all GOOD**, same tight cluster as before.
+Cumulative across both cycles: **8 of 9 mobile reads GOOD** (~0.031-0.034 baseline), 1 outlier.
+Confirms the prior read: a transient blip, not a reproducible regression of #2453 — closing out
+that anomaly as resolved-noise rather than leaving it open indefinitely. No PR. Market closes at
+13:00 ET; returning to normal search/authority work after that.
+
+## 2026-09-21 (15:33 UTC / Mon 11:33 ET) — [SEO] Market-hours wake: gamma-snapshot clean, one noisy mobile CLS outlier (inconclusive)
+
+Confirmed clock myself (11:33 ET, Monday, in-window). `/tools/gamma-snapshot`'s public API
+re-checked: `market_session: "OPEN"`, `degraded: false`, spot genuinely moving tick-to-tick
+(7729.97→7729.64→7729.66 across 3 polls), `calculation_id` advancing every call. Cross-checked
+against Massive `/v3/snapshot/indices` (7728.73) — 0.012% apart, normal tick drift. Same clean
+result as this morning's wake.
+
+Live CLS: purged edge, desktop **0.0001, GOOD**. Mobile came back **0.1145, NEEDS-IMPROVEMENT** on
+the first read — a real outlier vs this morning's clean 0.0318. Did not dismiss OR jump to a fix on
+one read: re-measured 4 more times (0.0329 / 0.0318 / 0.031 / 0.0318, all GOOD, tightly clustered).
+**5 reads total, 1 outlier against 4 consistent GOODs** — reads as a transient/intermittent blip
+(a live market-data update or network timing landing mid-measurement is the likely shape), not a
+reproducible regression of #2453. Logging as an inconclusive anomaly to watch, same discipline as
+the still-open `/tools/gamma-snapshot` intermittent CLS anomaly documented earlier this session —
+not fabricating a root cause or opening a PR without real reproducibility. No PR.
+
+## 2026-09-21 (14:06 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC identical to last cycle, 0 stuck PRs, live checks fresh from this morning's RTH wake)
+
+## 2026-09-21 (13:33 UTC / Mon 09:33 ET) — [SEO] Market-hours wake: `/tools/gamma-snapshot` live-data validation, clean
+
+Confirmed clock myself (09:33 ET, Monday, not a NYSE holiday) before treating this as RTH work —
+in-window (09:30-13:00 ET), market genuinely open.
+
+**`/tools/gamma-snapshot`'s public API** (`/api/public/gex-snapshot?ticker=SPX`): `market_session:
+"OPEN"`, `degraded: false`, fresh (`snapshot_data_age_seconds` 6-12 across three calls). Spot
+7,696.62 cross-checked against an independent source (Massive `/v3/snapshot/indices`, SPX
+7,696.17) — 0.006% apart, consistent with normal tick drift between two separate calls, not a
+data-correctness problem. **5s refresh genuinely refreshes** — polled 3x at 6s intervals, spot
+moved 7695.59→7695.66→7696.16, `asof`/`calculation_id` advanced every call, never sat on a stale
+snapshot.
+
+**Live CLS on the real RTH-rendering homepage** (not a frozen off-hours page): purged Cloudflare
+edge first, then measured — desktop **0, GOOD**; mobile **0.0318, GOOD**. #2453 holds under real
+market-data rendering, not just at rest.
+
+**Derived-vs-raw check** (the licensing question `RESEARCH-PUBLISH-POSTURE.md` flags as an open
+item): confirmed the live payload still only carries derived values (gamma flip, call/put wall,
+posture, narrative `read`) — no chain, no strike matrix — exactly matching that doc's existing
+description. Nothing new to escalate; that item is already correctly tracked as a deliberate,
+pending business-terms decision, not a code defect.
+
+No PR — nothing broken. Returning to normal search/authority work per the brief once 13:00 ET
+passes.
+
+## 2026-09-21 (12:17 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged (Monday pre-open)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5354 (docs fold,
+not SEO-lane), CI-running, not stuck. Step 3: opportunity scan — still the identical
+2026-06-21→09-18 window/data as the last two cycles. Nothing new.
+
+## 2026-09-21 (06:17 UTC) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged from last cycle
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0003, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5344 (not
+SEO-lane), CI-running, not stuck. Step 3: opportunity scan — identical to the last cycle (same
+2026-06-21→09-18 window, same 4 striking-distance queries, `what is dealer gamma` already assessed
+last cycle as well-covered by existing FAQ content). Nothing new, nothing forced.
+
+## 2026-09-21 (00:16 UTC) — [SEO] Lane heartbeat: #5315 merged, one new striking-distance query already well-covered, continued small positive trend
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs — confirmed #5315
+(the coordinator green-draft flagged last cycle) merged.
+
+Step 3: GSC data finally advanced a day (window 2026-06-21→09-18, first move in several checks).
+One new striking-distance query: `what is dealer gamma` (pos 13.0, 4imp, thin). Checked whether it
+needs on-page work: `/learn/what-is-dealer-gamma-exposure` and the pillar guide both already carry
+`ARTICLE_FAQS` entries phrased almost exactly as this query ("What is dealer gamma exposure?",
+"What is dealer gamma in options trading?") — a natural variant of the already-optimized `dealer
+gamma` cluster, not a genuine gap. No PR; adding more content here would be exactly the forbidden
+churn-on-already-good-pages. 28d trend continues improving: avgpos **25.7→24.6**, CTR
+**1.32%→1.36%**, clicks flat at 19 (window 2026-08-22→09-18) — same direction as the last several
+cycles.
+
+## 2026-09-20 (18:16 UTC) — [SEO] Lane heartbeat: both fixes holding, chased a stuck coordinator draft PR, GSC still unchanged
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 2 open agent PRs: #5318 (docs fold,
+not SEO-lane, CI-running, fine) and **#5315** (`Night Hawk Legacy: Phase 0 rank-bucket
+forward-performance diagnostic`, coordinator branch, green/mergeable but stuck in draft, nobody
+watching it — a real green-draft jam per THE DRAFT DEADLOCK). `--mark-ready` FAILED as usual (no
+GitHub MCP undraft tool this session); posted a coordinator flag comment on the PR instead
+(never-sit-idle chase-other-lanes discipline). Step 3: opportunity scan — still the identical
+2026-06-20→09-17 window as every check today, nothing new.
+
+## 2026-09-20 (14:06 UTC) — [SEO] Daily growth cycle: quiet no-change day (GSC window still 09-17, 0 open PRs, live checks already fresh)
+
+## 2026-09-20 (12:16 UTC) — [SEO] Lane heartbeat: both fixes holding, GSC data still unrefreshed (3rd identical pull in a row)
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5301 (docs fold,
+not SEO-lane), CI-running, not stuck. Step 3: opportunity scan — **still the identical
+2026-06-20→09-17 window/numbers as the last two cycles** (dealer gamma/gamma three
+trading/is 0dte gambling unchanged, same positions/impressions to the decimal) — GSC's own
+reporting lag hasn't advanced across three checks spanning ~12h now, so not re-pulling the trend
+either (would repeat the same numbers again). Nothing new, nothing forced.
+
+## 2026-09-20 (06:16 UTC) — [SEO] Lane heartbeat: fresh container recovery, both fixes still holding, GSC data unchanged
+
+Fresh container this cycle — `/home/user/blackout-web` did not exist at all (not just an
+uncommitted-branch restart, a full clean container). Recovered via `git clone` (repo
+`coreentryadmin-web/blackout-web`, proxy-injected auth, no token persisted in `.git/config`) +
+`npm ci` (Node 20 pre-installed at `/opt/node20/bin`, `node_modules` absent as expected on a fresh
+clone) before doing anything else. Landed already at `main`'s latest (`0e6121d`), no drift to
+reconcile.
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0001, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 2 open agent PRs, neither SEO-lane,
+neither stuck (#5283 CI-running, #5282 non-draft/mergeable — will auto-merge on its own once CI
+completes). Step 3: fresh opportunity scan — **identical to the last pull** (same
+2026-06-20→09-17 window, same 3 striking-distance queries, same positions/impressions/clicks down
+to the decimal) — GSC's reporting lag means it hasn't refreshed since the last cycle ~6h ago, so no
+trend re-pull either (would just repeat the same numbers). Nothing new this cycle.
+
+## 2026-09-20 (00:17 UTC) — [SEO] Lane heartbeat: both fixes holding, continued small positive trend, no new work
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0007, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding. Step 2: `agent-pr-sweep.mjs` → 1 open agent PR, #5265 (docs fold,
+not SEO-lane), CI-running, not stuck — no action needed.
+
+Step 3: fresh opportunity scan (new day, ~6h since last one). Same 3 striking-distance queries, no
+new entrant — but **`dealer gamma` got its first-ever click** this pull (pos 16.9, up from 18.6,
+25imp, 1cl) — a small real signal, not itself a new on-page opportunity. 28d trend continues
+improving: clicks **17→19**, avgpos **26.8→25.7**, CTR **1.16%→1.32%** (window 2026-08-21→09-17)
+— same direction as the last two cycles, consistent incremental movement rather than noise.
+`/learn/dealer-gamma-options-flow-guide` picked up a 2nd click, `/learn/meridian` got a new one.
+No PR — nothing here calls for on-page action, just continued organic movement.
+
+## 2026-09-19 (18:16 UTC) — [SEO] Lane heartbeat: clean, both fixes still holding, no new work
+
+Step 1: purged Cloudflare edge, re-measured homepage desktop CLS — **0.0398, GOOD**. `/api/og` —
+**HTTP 200, `content-type: image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status:
+DYNAMIC`**. Both still holding on production. Step 2: `agent-pr-sweep.mjs` → 0 open agent PRs.
+Step 3: opportunity scan + trend already run twice today (12:16 UTC heartbeat, 14:05 UTC daily
+growth cycle) with nothing new and GSC data on a multi-day lag — re-running within 4 hours would
+not surface anything different, so not repeated this cycle. Quiet, clean cycle.
+
+## 2026-09-19 (14:05 UTC) — [SEO] Daily growth cycle: no new opportunities, real small positive movement in the 28d trend
+
+1. **Opportunity scan**: same 3 striking-distance queries as the last several cycles (`dealer
+   gamma` pos 18.6, `gamma three trading` pos 13.6, `is 0dte gambling` pos 11.5), CTR-gap 0, nothing
+   new entered striking distance. All three already registered in `SEO-GROWTH-STRATEGY.md` since
+   2026-09-15 as well-optimized in existing content — not churning on-page edits per the standing
+   rule against editing already-good pages.
+2. **Live re-verify**: skipped per rule 6 — robots.txt/entity JSON-LD confirmed live in the 09-18
+   18:20 UTC cycle (~20h ago), CLS/`/api/og` confirmed live this morning's 12:16 UTC cycle (~2h
+   ago), both within the 3-day window.
+3. **Trend**: `gsc-search-analytics.mjs --days=28` (window 2026-08-20→09-16): clicks=17,
+   impressions=1462, CTR=1.16%, **avgpos=26.8** — vs the last recorded pull (window
+   2026-08-16→09-12: clicks=17, impressions=1613, CTR=1.05%, avgpos=32.0). Real movement: average
+   position improved **32.0 → 26.8** (a meaningful ~5-position gain) and CTR ticked up 1.05%→1.16%,
+   while impressions dipped ~9% on the rolling window shift — clicks held flat at 17. No single
+   shipped change obviously explains the position gain (nothing new merged in this exact window
+   that targets these specific queries); most likely the ordinary accumulation of the several
+   pillar-guide/FAQ/entity-JSON-LD work shipped over the preceding weeks compounding, not one
+   isolated fix. Noting the movement rather than overclaiming a specific cause.
+4. **Housekeeping**: `agent-pr-sweep.mjs` → 0 open agent PRs, nothing stuck. No FINDINGS.md-conflict
+   PRs to leave alone.
+
+## 2026-09-19 (12:16 UTC) — [SEO] Lane heartbeat: clean cycle, both prior fixes re-validated live, no new work forced
+
+Weekend/market-closed cycle. Full 3-step loop run:
+
+**Step 1 (validate shipped)**: purged Cloudflare edge, re-measured homepage desktop CLS live —
+**0.0298, GOOD** (still comfortably under 0.1; consistent with the recent HomeGammaPromo fix
+staying resolved). `/api/og` fetched unauthenticated — **HTTP 200, `content-type: image/png`,
+1200×630, `x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`** — a real crawlable OG
+image, not stale-cached. Both #2453 and #2448 confirmed still holding on production.
+
+**Step 2 (unblock)**: `agent-pr-sweep.mjs` → **0 open agent PRs**. Confirmed #5238/#5239/#5240 (the
+prior cycle's work, incl. the dividend-yield calendar-drift fix that superseded my closed duplicate
+#5241) all merged cleanly. Nothing stuck, nothing red.
+
+**Step 3 (new work)**: re-checked the heartbeat's named GA4→Google Ads conversion gap — confirmed
+still unconfigured live (`gtag('config','G-YLN4K37KYF')` fires on the homepage, no matching
+`gtag('config','AW-...')` follows it, meaning `googleAdsConversionId()` is still resolving null).
+This is not new information: RUN-LOG already has 7+ prior entries documenting this exact gap since
+it surfaced, and it needs an operator/ads-lane action (a real Google Ads account conversion ID +
+labels) that no code change here can supply — re-logging it again would be exactly the kind of
+busywork the swing lane's own journal explicitly calls out avoiding on a clean cycle. Did not
+re-add another duplicate entry for it.
+
+Checked one concrete GSC striking-distance candidate instead (`dealer gamma`, pos 18.6, 21
+impressions, 0 clicks) against `/learn/dealer-gamma-options-flow-guide` — the page already targets
+this exact phrase heavily (meta title, meta description, `targetKeyword`, multiple H2s, dense body
+usage). A short 2-word query sitting at position ~18 against a page already this saturated with the
+term reads as authority-limited (GSC's own DEEP DEMAND bucket shape), not an on-page gap — forcing a
+content change here would not plausibly move it and would just be edit-for-the-sake-of-edit. No PR.
+
+**Verdict: genuinely clean cycle.** Nothing broken, nothing stuck, no fabricated finding. Normal
+heartbeat/RTH/daily-cycle sweeping continues on the next scheduled trigger.
+
+## 2026-09-19 (00:45 UTC) — [SEO] Correction: PR #5241 (below) was a duplicate — closed in favor of #5240
+
+**Correction to the entry directly below.** After opening #5241, syncing back to `main` surfaced a
+parallel swing-lane session's own journal entry (`docs/audit/nighthawk-swings-live-journal.json`,
+commit `dd1d11322`) recording the exact same collision from its own side: a DIFFERENT session had
+already opened **#5240** (`fix/dividend-yield-test-date-drift`) for this identical bug, **7 minutes
+before #5241**, non-draft, freeze-the-clock approach (`mock.timers.enable`) instead of #5241's
+relative-date fixture rewrite — same root cause, functionally equivalent fix, same file. Textbook
+instance of this file's own documented #4495/#4496 duplicate-fix-collision shape.
+
+Since #5240 landed first and is non-draft (eligible to auto-merge on its own, unlike #5241's stuck
+draft — see below), closed #5241 as a duplicate with a comment pointing to #5240 and deferring to
+it. Local branch cleaned up; remote branch delete was denied by the same permission gate as the
+undraft attempt (harmless — an orphaned closed-PR branch, not tracked work). No content was lost:
+the diagnosis, RED/GREEN evidence, and finding doc below remain accurate description of the bug and
+its fix, just landing via #5240 instead of #5241.
+
+**Lesson for future cycles**: after diagnosing a bug on someone else's blocked PR and deciding to
+fix it separately, check for a race — the diagnosis itself (posted as a public PR comment) is
+visible to every other session watching that PR, so more than one may act on it near-simultaneously.
+A quick pre-open search of open PRs touching the same file, or a brief pause after posting the
+diagnosis before opening a fix PR, would have avoided this one.
+
+## 2026-09-19 (00:33 UTC) — [SEO] Never-sit-idle sweep: chased sibling PR #5238's CI failure, found + fixed a real time-bomb test — PR #5241 (draft, CI running)
+
+**Severity.** P3 — genuine CI-flakiness defect, no product/data impact. Full write-up:
+`docs/audit/findings-staging/2026-09-19-dividend-yield-etf-test-calendar-drift.md`.
+
+Per "never sit idle" + "chase other lanes," swept `agent-pr-sweep.mjs` after finishing PR #5224's
+live re-verification (entry above): 2 open agent PRs, #5239 (docs fold, CI-running, no action
+needed) and #5238 (a different lane's cross-desk-coaching disclosure fix) marked **CI-FAILED**.
+My own earlier coordinator comment on #5238 (00:21:39Z) had already diagnosed the failure as
+unrelated to that PR's diff — `polygon-options-gex.test.ts`'s ETF dividend-yield fallback test
+hardcoded absolute `ex_dividend_date` fixture dates against a comment-only "2026-08-28 now"
+assumption, while the code under test calls the real `Date.now()`. As the real calendar caught up
+to the fixture's 12-month window, a previously-excluded row drifted back inside it — a deterministic
+time bomb, not a flake (`expected ~0.01, got 0.0075`).
+
+Confirmed RED on `main` (`not ok 62`), fixed by rewriting the fixture to use dates relative to the
+REAL `Date.now()` the resolver reads (`daysAgo(n)` helper) instead of absolute dates — no production
+code change needed, the underlying pure `trailingTwelveMonthDividendYield` already supports an
+injected `nowMs` via its own separate, unaffected sibling test. RED→GREEN confirmed (70/70 pass on
+the file); full `npm test`: **14865/14868 pass, 3 skipped, 0 fail**; `tsc --noEmit` clean.
+
+Opened PR #5241, CI running. **Could not undraft it myself this cycle** — this session's permission
+classifier explicitly denied the `draft:false` PATCH as a "Merge Without Review" action (a new,
+stricter gate than the historical "PATCH returns 200 but silently no-ops" behavior this file
+documents under THE DRAFT DEADLOCK). Did not attempt any workaround per the "measure twice, cut
+once" discipline — leaving it as a legitimate green draft for the coordinator (or a session holding
+the GitHub MCP `update_pull_request` tool) to review and release, same as any other green-draft jam
+this file already has a standing sweep query for.
+
+## 2026-09-18 (20:22 UTC) — [SEO] PR #5224 live re-verification: HomeGammaPromo CLS fix confirmed in production
+
+**Follow-up to the entry below.** PR #5224 merged cleanly at 19:06:15Z (squash commit `aeb674309`,
+`automerge.yml` worked, all checks green). Per "a merge is not a verification," did not stop at the
+merge — confirmed actual production rollout and live effect before closing this out:
+
+1. **Deploy rollout**: `ecs describe_services` on `blackout-production-cluster`/`blackout-production-web`
+   showed `desired:8 running:8 rolloutState:COMPLETED` on task def `:1675` — full cutover confirmed
+   (checked ~5h post-merge, well past any in-flight-deploy risk after an interrupted earlier attempt).
+2. **Cloudflare purge**: targeted `files` purge of `https://blackouttrades.com/` (never
+   `/_next/static/*`), confirmed `"success": true`.
+3. **Live CLS re-measurement** (`cls-measure.cjs`, post-purge): **desktop 1440×900 → CLS 0 (GOOD)**;
+   **mobile 430×932 → CLS 0.0326 (GOOD)** — both well under the 0.1 threshold and far below the
+   original 0.132 regression this fix targeted.
+4. **Live CSS bundle check** (extra confirmation layer): fetched the homepage's three CSS chunks
+   directly — `146c8792c0bee69c.css` now serves
+   `.rl .gamma-promo-warm{position:relative;padding:2rem 1rem;text-align:center;min-height:14rem;
+   display:flex;align-items:center;justify-content:center}`, i.e. the shipped `min-height:14rem`
+   rule is genuinely live at the edge, not just merged in source.
+
+**Verdict: fix confirmed working in production**, not just in the diff or the merge record. Finding
+closed out. No further action needed on this one — routine heartbeat/RTH/daily-cycle sweeping
+continues per the standing mandate.
+
+## 2026-09-18 (18:20 UTC) — [SEO] Lane heartbeat: real homepage CLS regression found, root-caused, and fixed — PR #5224 (draft, CI running)
+
+**Severity.** P3 — real, evidence-backed finding, fixed this cycle. Full write-up:
+`docs/audit/findings-staging/2026-09-18-home-gamma-promo-warm-state-cls.md`.
+
+Step 1 (validate shipped): purged Cloudflare edge and measured homepage desktop CLS — first read
+came back **0.132, NEEDS-IMPROVEMENT** (over the 0.1 threshold), a real escalation from the last
+few cycles' pattern of occasional-but-still-GOOD noisy reads (0.0435, 0.0892). Investigated rather
+than dismissing a third time: instrumented the live page with a `PerformanceObserver` capturing
+shift `sources`, caught it directly in 2/5 repeated rounds — `.gamma-promo-cta` (the homepage's
+"Open full snapshot" CTA) and `.gamma-promo-read` consistently moved, one capture showing the CTA's
+own rect going from `height:4` (collapsed) to `height:109` (real size).
+
+**Root cause, fully explained (unlike the still-open `/tools/gamma-snapshot` anomaly from
+2026-09-15):** the homepage is ISR (`revalidate=3600`, cache-only seed per `page.tsx`'s own
+documented 2026-09-03 incident trace), and `HomeGammaPromo.tsx`'s mount-fetch self-heal (already
+covered by an existing test as deliberate behavior) flips `showLevels` from false→true shortly
+after first paint whenever the ISR seed itself lacked live levels — swapping a small "warm"
+placeholder for a much taller full matrix/read block, with no space reserved for the difference.
+
+**Fix (PR #5224, draft, CI running):** `.gamma-promo-warm` now reserves `min-height:14rem` (sized
+from the live-measured ~105-140px delta) plus flex-centering. Added a source-scan regression test
+matching the file's existing style; RED→GREEN confirmed via `git stash`. Full suite 14839 pass / 0
+fail / 3 skipped, `tsc --noEmit` clean. Subscribed to PR activity for CI updates. Not yet
+independently re-verified live (can't be, pre-merge) — flagged in the finding for a follow-up
+cycle once deployed.
+
+`/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png` (unaffected, unrelated to this
+finding). PR sweep: `#5224` (mine, CI-RUNNING) plus 2 other-lane PRs, none stuck. GSC opportunity
+scan: byte-identical to the prior cycle — no new opportunities.
+
+**Severity.** — (no defect found)
+
+Third RTH fire today (12:34 ET, near the window's 13:00 close). Live gamma-snapshot API: same
+`calculation_id` across 3 polls but age advancing normally (3→13s, well under the 90s tolerance)
+— a quiet market moment, not a stall; `degraded` false throughout; cross-checked against Massive
+`I:SPX` ground truth (7622.27) — matches closely. Purged Cloudflare edge (HTML only) and
+re-measured homepage CLS live: desktop **0.0002 GOOD**, mobile **0.0324 GOOD** — both back to
+baseline after last cycle's one-off noisy read.
+
+PR sweep: 1 open agent PR fleet-wide, `#5216` (swing lane, CI-RUNNING) — not SEO-lane.
+
+No defects found. Returning to normal search/authority work per the trigger's own 13:00 ET
+boundary once this window closes.
+
+**Severity.** — (no defect found)
+
+Second RTH fire today (11:34 ET, market confirmed open/trading day). Live gamma-snapshot API:
+one poll returned an older `calculation_id` (age 83s, still under the 90s stale-tolerance) — the
+documented, benign multi-replica cache-skew pattern already investigated this session, not a new
+issue; `degraded` stayed false throughout, cross-checked against Massive `I:SPX` ground truth
+(7628.27) — matches closely. Purged Cloudflare edge (HTML only) and measured homepage CLS live:
+first desktop read **0.0892 GOOD** — notably elevated vs the usual near-zero baseline, close to
+(but under) the 0.1 threshold. Re-ran 3x immediately after: **0.0003, 0, 0.0001**, all back to
+baseline — a one-off noisy measurement, not a regression (consistent with the rare intermittent-
+shift pattern documented earlier this session for the gamma-snapshot tool page; this is the
+homepage, a different page, but the same "occasional single noisy read, resolves on re-check"
+shape). Mobile: **0.0324 GOOD**. PR sweep: **0 open agent PRs fleet-wide.**
+
+No defects found.
+
+**Severity.** — (no defect found; real positive movement noted)
+
+1. Opportunity scan: same window as the last cycle (GSC reporting lag), same 3 striking-distance
+   queries, CTR-gap 0 — nothing new.
+2. Live re-verify: skipped — CLS confirmed live this morning's RTH wake (13:35 UTC), robots.txt/
+   entity JSON-LD confirmed live within the last 3 days.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-19→09-15): clicks=17,
+   impressions=1495, CTR=1.14%, avgpos=**27.7** — vs the last recorded pull (window 2026-08-18→09-14:
+   clicks=16, impressions=1520, CTR=1.05%, avgpos=29.5): clicks/CTR both up, **avgpos improved
+   another 1.8 positions**, resuming the clear positive trend after the prior cycle's minor dip
+   (36.5→...→29.5→27.7 across ~9 pulls). New top page entrant: `/learn/spx-slayer` (1cl, 9imp,
+   pos6.0) — small volume, not yet worth separate action.
+4. Housekeeping: PR sweep shows 2 open agent PRs (`#5208`, `#5207`, both non-SEO lanes,
+   CI-RUNNING, not stuck) — no SEO-lane PRs conflicted on `FINDINGS.md`.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
+
+**Severity.** — (no defect found)
+
+Confirmed market open (Fri 2026-09-18, trading day, 09:34 ET) before starting the RTH-scoped job.
+Live gamma-snapshot API: `calculation_id` advancing across 3 polls over ~15s, spot moving
+(7643.20→7643.45), age 3-7s, `degraded` false throughout; cross-checked against Massive `I:SPX`
+ground truth (7640.69) — matches within normal drift. Purged Cloudflare edge (HTML only) and
+re-measured homepage CLS live: desktop **0.0002 GOOD**, mobile **0.0343 GOOD**.
+
+PR sweep: 1 open agent PR fleet-wide, `#5204` (largo lane, CI-RUNNING) — not SEO-lane.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Pre-market heartbeat (08:18 ET, ~1h to open). Purged Cloudflare edge (HTML only) and re-measured
+homepage desktop CLS: **0.0002 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`. PR sweep: 1 open agent PR fleet-wide, `#5201` (swing lane, CI-RUNNING) — not SEO-lane.
+GSC opportunity scan: byte-identical to the prior cycle.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0001 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR
+sweep: 1 open agent PR fleet-wide, `#5175` (swing lane, CI-RUNNING) — not SEO-lane. GSC
+opportunity scan: byte-identical to the prior cycle (same window, same 3 striking-distance
+queries, CTR-gap 0, deep-demand unchanged).
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0002 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR
+sweep: **0 open agent PRs fleet-wide** — #5151 (flagged last cycle) has merged. GSC opportunity
+scan: window advanced (2026-06-17→09-14 to 2026-06-18→09-15), same 3 striking-distance queries
+(`dealer gamma` pos 18.6, `gamma three trading`, `is 0dte gambling`) — no new query entered
+striking distance. CTR-gap 0, deep-demand unchanged.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Back to normal work (14:17 ET, past RTH). Purged Cloudflare edge (HTML only) and re-measured
+homepage desktop CLS: **0.0003 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`.
+
+PR sweep found `#5151` (coordinator/0DTE-lane, green CI) stuck as a draft. Attempted
+`agent-pr-sweep.mjs --mark-ready` — FAILED (same no-GitHub-MCP-undraft-tool limitation as the
+6-PR jam earlier today). Posted a coordinator comment on #5151 requesting it be marked ready.
+
+GSC opportunity scan: byte-identical to the prior cycle — no new opportunities.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Third RTH fire today (12:34 ET, near the window's 13:00 close). Live gamma-snapshot API: spot
+moving (7632.14→7633.01), age up to 41s (still well under the 90s stale-tolerance), `degraded`
+false throughout; cross-checked against Massive `I:SPX` ground truth (7632.99) — near-exact match,
+no real staleness. Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop
+**0.0006 GOOD**, mobile **0.032 GOOD**.
+
+PR sweep: 2 open agent PRs fleet-wide (`#5147` CI-RUNNING, `#5146` MERGEABLE — both audit-lane,
+neither stuck as a draft jam) — not SEO-lane, left for their owners.
+
+No defects found. Returning to normal search/authority work per the trigger's own 13:00 ET
+boundary once this window closes.
+
+**Severity.** — (no defect found)
+
+Second RTH fire today (11:33 ET, market confirmed open/trading day). Live gamma-snapshot API:
+spot moving (7627.54→7627.49), age 6-30s (well within the 90s tolerance), `degraded` false
+throughout; cross-checked against Massive `I:SPX` ground truth (7628.26) — matches closely.
+Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop **0.0002 GOOD**,
+mobile **0.0319 GOOD**.
+
+PR sweep: **0 open agent PRs fleet-wide** — the 6-PR green-draft jam flagged yesterday (12:19 UTC)
+has fully cleared.
+
+No defects found.
+
+**Severity.** — (no defect found; mixed movement noted, within noise)
+
+1. Opportunity scan: same window as the last cycle (GSC reporting lag), same 3 striking-distance
+   queries, CTR-gap 0 — nothing new.
+2. Live re-verify: skipped — CLS confirmed live this morning's RTH wake (13:35 UTC), robots.txt/
+   entity JSON-LD confirmed live yesterday (12:19 UTC) — both within the 3-day window.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-18→09-14): clicks=16,
+   impressions=1520, CTR=1.05%, avgpos=**29.5** — vs the last recorded pull (window 2026-08-17→09-13:
+   clicks=18, impressions=1596, CTR=1.13%, avgpos=30.4): **avgpos improved again** (continuing the
+   multi-cycle uptick), but clicks/impressions/CTR all dipped slightly this pull. At this traffic
+   volume (single-digit click deltas) a 2-click dip reads as normal noise, not a reversal — the
+   underlying avgpos trend (36.5→...→30.4→29.5 across ~7 pulls) keeps moving the same direction.
+4. Housekeeping: PR sweep shows 1 open agent PR (`#5137`, 0DTE-lane docs, CI-RUNNING, not blocked)
+   — not SEO-lane. The 6-PR green-draft jam flagged yesterday (12:19 UTC, comment on #5114) is
+   clearing: #5116 merged since. No SEO-lane PRs conflicted on `FINDINGS.md`.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
+
+**Severity.** — (no defect found)
+
+Confirmed market open (Thu 2026-09-17, trading day, 09:34 ET) before starting the RTH-scoped job.
+Live gamma-snapshot API: `calculation_id` advancing across 3 polls over ~15s, spot moving
+(7630.64→7629.02), age 13-22s, `degraded` false throughout; cross-checked against Massive `I:SPX`
+ground truth (7626.35) — matches within normal drift for a moving market (SPX +0.99% intraday).
+Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop **0.0002 GOOD**,
+mobile **0.0111 GOOD**.
+
+The 6-PR green-draft jam flagged at 12:19 UTC (comment on #5114) is still unresolved — not
+re-flagging, would be duplicate noise; the coordinator has the context already.
+
+No defects found.
+
+**Severity.** — (no defect found; unblocked another lane's stuck work)
+
+Pre-market heartbeat (08:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0006 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`.
+
+PR sweep found a real jam: **6 coordinator-branch PRs (#5130, #5120, #5119, #5118, #5116, #5114)
+green-CI and still draft** — finished work outside the merge pipeline. Not SEO-lane work, but per
+the standing "never sit idle" / chase-other-lanes discipline, attempted
+`agent-pr-sweep.mjs --mark-ready --limit=6` — all 6 FAILED (left as draft), the same
+no-GitHub-MCP-undraft-tool limitation documented earlier this session (PR #4796 incident).
+Posted a consolidated coordinator comment on #5114 (rather than 6 redundant ones) naming all 6,
+the failed mark-ready attempt, and the sweep's file-overlap/ordering note (#5120∩#5119 on
+`api-tracked-fetch.ts`, #5120∩#5116 on `polygon-largo.ts` — trial merge says all 6 are safe to
+release together regardless), asking the coordinator to undraft them.
+
+GSC opportunity scan: byte-identical to the prior cycle — no new opportunities.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:16 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0003 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR
+sweep: **0 open agent PRs fleet-wide.** GSC opportunity scan: byte-identical to the prior cycle
+(same window, same 3 striking-distance queries, CTR-gap 0, deep-demand unchanged).
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0006 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR
+sweep: **0 open agent PRs fleet-wide.** GSC opportunity scan: window advanced (2026-06-16→09-13 to
+2026-06-17→09-14), same 3 striking-distance queries (`dealer gamma`, `gamma three trading`,
+`is 0dte gambling`) — no new query entered striking distance. CTR-gap 0, deep-demand unchanged.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Back to normal work (14:17 ET, past RTH). Purged Cloudflare edge (HTML only) and re-measured
+homepage desktop CLS: first read **0.0435 GOOD** (higher than the usual near-zero baseline but
+still well under 0.1), immediate re-run **0.0005 GOOD** — a one-off noisy read, not a regression;
+#2453 holds. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR sweep: 1 open agent
+PR fleet-wide, `#5082` (audit lane, CI-RUNNING) — not SEO-lane, left for its owner. GSC
+opportunity scan: byte-identical to the prior cycles — no new opportunities.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Third RTH fire today (12:34 ET, near the window's 13:00 close). Live gamma-snapshot API: first
+poll showed a slightly elevated `snapshot_data_age_seconds` (32s) — still well under the 90s
+stale-tolerance and correctly non-degraded; cross-checked against Massive `I:SPX` ground truth
+(7608.27) — platform read 7608.40, matches closely, no real staleness. Purged Cloudflare edge
+(HTML only) and re-measured homepage CLS live: desktop **0.0116 GOOD**, mobile **0.0238 GOOD**.
+
+PR sweep: 1 open agent PR fleet-wide, `#5078` (audit/healthcheck lane, `MERGE-STATE-UNKNOWN` —
+a transient GitHub computation state, not a real block) — not SEO-lane, left for its owner.
+
+No defects found. Returning to normal search/authority work per the trigger's own 13:00 ET
+boundary once this window closes.
+
+**Severity.** — (no defect found)
+
+Second RTH fire today (11:33 ET, market confirmed open/trading day). Live gamma-snapshot API:
+`calculation_id` advancing across 3 polls over ~20s, spot moving (7611.46→7611.66), age 6-10s,
+`degraded` false throughout; cross-checked against Massive `I:SPX` ground truth (7611.90) —
+matches within normal drift. Purged Cloudflare edge (HTML only) and re-measured homepage CLS live:
+desktop **0.0006 GOOD**, mobile **0.0399 GOOD**.
+
+PR sweep: 1 open agent PR fleet-wide, `#5077` (nighthawk lane, CI-RUNNING) — not SEO-lane, left
+for its owner.
+
+No defects found.
+
+**Severity.** — (no defect found; real, small positive movement noted)
+
+1. Opportunity scan: same window as the last few cycles (GSC reporting lag), same 3
+   striking-distance queries, CTR-gap 0 — nothing new. Not churning on-page edits to the
+   already-well-optimized pages hosting them.
+2. Live re-verify: skipped — robots.txt/entity JSON-LD confirmed live yesterday (14:12 UTC),
+   CLS confirmed live twice already today (RTH wake, 13:36 UTC) — all within the 3-day window.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-17→09-13): clicks=18,
+   impressions=1596, CTR=1.13%, avgpos=**30.4** — vs the last recorded pull (window 2026-08-16→09-12:
+   clicks=17, impressions=1635→1613, CTR=1.05%, avgpos=32.0): clicks up, CTR up, **avgpos improved
+   another 1.6 positions**. Continues the steady multi-cycle uptick (36.5→35.9→35.7→33.7→32.0→30.4
+   over the last ~6 pulls). Still no single shipped change obviously attributable at this traffic
+   volume — reads as continued incremental settling (possibly compounding SEO/entity/CWV work
+   landing over recent weeks), not one PR's effect.
+4. Housekeeping: PR sweep clean, 0 open agent PRs fleet-wide.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
+
+**Severity.** — (no defect found)
+
+Confirmed market open (Wed 2026-09-16, trading day, 09:34 ET) before starting the RTH-scoped job.
+Live gamma-snapshot API: two consecutive 5s-apart polls returned the same `calculation_id` (age
+6→12s, well under the 90s stale-tolerance) before advancing on the third poll — normal cache-
+refresh cadence, not a stall; `degraded` stayed false throughout, correctly. Cross-checked spot
+against Massive `I:SPX` ground truth (7602.98) — platform read 7601.82 at the same moment, matches
+within normal drift. Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop
+**0 GOOD**, mobile **0.0326 GOOD** — #2453 holds under live RTH rendering. PR sweep: 0 open agent
+PRs fleet-wide.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Pre-market heartbeat (08:18 ET, ~1h to open). Purged Cloudflare edge (HTML only) and re-measured
+homepage desktop CLS: **0.0002 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`. PR sweep: **0 open agent PRs fleet-wide.** GSC opportunity scan: byte-identical to
+the prior cycle (same window, same 3 striking-distance queries, CTR-gap 0, deep-demand unchanged).
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0002 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR
+sweep: **0 open agent PRs fleet-wide.** GSC opportunity scan: byte-identical to the prior cycle
+(same window, same 3 striking-distance queries, CTR-gap 0, deep-demand list unchanged) —
+reporting lag, expected at this interval.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET). Purged Cloudflare edge (HTML only) and re-measured homepage
+desktop CLS: **0.0007 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`. PR
+sweep: **0 open agent PRs fleet-wide.** GSC opportunity scan: window advanced (2026-06-15→09-12 to
+2026-06-16→09-13), same 3 striking-distance queries (`dealer gamma` pos 19.2, `gamma three trading`,
+`is 0dte gambling`) — no new query entered striking distance. CTR-gap 0. Deep-demand list gained
+`spx vs spxw` (pos 59.8) — authority-limited, not on-page actionable, no action per the standing
+rule.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Back to normal work (14:16 ET, past RTH). Purged Cloudflare edge (HTML only) and re-measured
+homepage desktop CLS: **0.0004 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`. PR sweep: **0 open agent PRs fleet-wide.** GSC opportunity scan: same window as the
+prior cycles (reporting lag), same 3 striking-distance queries, CTR-gap 0, deep-demand list
+unchanged — no new opportunities.
+
+No defects found.
+
+**Severity.** — (no defect found)
+
+Third RTH fire today (12:33 ET, near the window's 13:00 close). Live gamma-snapshot API: spot
+advancing (7588.75→7588.46 over ~10s), age 3-4s, `degraded` false; cross-checked against Massive
+`I:SPX` ground truth (7588.83) — matches. PR sweep: 0 open agent PRs (the `#5033` conflict noted
+last cycle is gone — resolved by its own lane). CLS not re-purged/re-measured a third time this
+session — already confirmed GOOD live twice today (13:55 and 15:38 UTC entries). Byte-identical
+"all clean" result to the prior two RTH checks today.
+
+No defects found. Returning to normal search/authority work per the trigger's own 13:00 ET
+boundary once this window closes.
+
+**Severity.** — (no defect found)
+
+Second RTH fire this session (11:38 ET, market confirmed open/trading day per the first RTH wake
+~2h earlier). Since that earlier wake already ran the full deep-dive (live-data cross-check against
+Massive/Polygon ground truth, extensive CLS forensics on `/tools/gamma-snapshot`), this pass was a
+lighter confirmation rather than a repeat investigation: 3x `/api/public/gex-snapshot?ticker=SPX`
+poll over ~10s — `calculation_id` advancing, spot moving (7581.72→7582.47), age 0-2s, `degraded`
+false throughout; cross-checked against Massive `I:SPX` ground truth (7583.03) — matches within
+normal drift. Purged Cloudflare edge (HTML only) and re-measured homepage CLS live: desktop
+**0.0142 GOOD**, mobile **0.041 GOOD** — #2453 continues to hold under live RTH rendering.
+`/tools/gamma-snapshot`'s own intermittent desktop CLS anomaly (logged 13:55 UTC this session,
+inconclusive root cause) not re-investigated this pass — no new information to add beyond the
+earlier deep dive; a future cycle re-runs it if a scriptable reproduction becomes possible.
+
+PR sweep: 1 open agent PR fleet-wide, `#5033` (swing/nighthawk lane, CONFLICTED) — not SEO-lane,
+not authored by this lane, left for its owner per standing ownership boundaries.
+
+No defects found. No code changed.
+
+**Severity.** — (no defect found; real, small positive movement noted)
+
+1. Opportunity scan: same window as the last two cycles (GSC reporting lag), same 3
+   striking-distance queries (`dealer gamma`, `gamma three trading`, `is 0dte gambling`), CTR-gap 0
+   — nothing new. Per the standing rule, not churning on-page edits to the already-well-optimized
+   pages hosting these queries.
+2. Live re-verify: `robots.txt` confirmed serving `Allow: /api/og` across every UA block (default,
+   GPTBot, ChatGPT-User, ClaudeBot, anthropic-ai, PerplexityBot, Google-Extended, CCBot, Bytespider,
+   cohere-ai, Applebot) plus the `Sitemap:` directive. Entity JSON-LD (#2517, `a98f0e976`) confirmed
+   live on the homepage: `@id` graph present (`#organization`, `#website` nodes) and `knowsAbout`
+   present. CLS/`/api/og` already freshly re-verified this morning's RTH cycle (purged edge,
+   measured live) — within the 3-day window, not repeated.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-16→09-12): clicks=17,
+   impressions=1613, CTR=1.05%, avgpos=**32.0** — vs the last recorded pull (window 2026-08-15→09-11:
+   clicks=17, impressions=1635, CTR=1.04%, avgpos=33.7): clicks/CTR flat, impressions slightly down
+   (-22), **avgpos improved 1.7 positions** — small but real, consistent with the steady small
+   upticks logged across recent cycles (36.5→35.9→35.7→33.7→32.0 over the last ~5 pulls). No single
+   shipped change obviously drives one week's average-position move at this traffic volume; reads as
+   continued incremental settling, not attributable to one PR.
+4. Housekeeping: PR sweep clean, 0 open agent PRs fleet-wide. No SEO-lane PRs conflicted on
+   `FINDINGS.md` to leave alone.
+
+No code changed this cycle. Backlink/authority work remains out-of-lane, escalated in
+`SEO-GROWTH-STRATEGY.md` §5.
+
+**Severity.** P3 (borderline CWV, intermittent, one page, desktop only) — investigated, root cause NOT confirmed, no code changed this cycle.
+
+Confirmed market open (Tue 2026-09-15, not an NYSE holiday, 09:30-13:00 ET window) before starting
+the narrower RTH-only job per the trigger's own instruction to check the clock, not assume from
+the cron firing. Two things checked, per the trigger's scope (public surfaces only observable
+during RTH):
+
+**1. `/tools/gamma-snapshot` live-data correctness — GOOD, no defect.** Polled
+`/api/public/gex-snapshot?ticker=SPX` 4x over ~24s: `calculation_id` advanced every poll, spot
+price genuinely moved (7602.08→7602.22), age stayed 3-7s, `degraded` stayed `false` — the 5s
+client refresh (`GammaSnapshotWidget.tsx`, `setInterval(tick, 5_000)`, `cache: "no-store"`) is a
+real live refresh, not a frozen snapshot. Cross-checked spot against Massive/Polygon ground truth
+(`I:SPX` snapshot): platform reported 7601-7604 across ~13:34 UTC, Massive reported 7607.55 at
+13:35:55 UTC with `session_previous_close: 7619.98` — matches the platform's own prior-close
+exactly, well within normal drift for the ~1min gap. `change_pct: null` observed on every poll is
+**by design**, not a bug: `clusterIndexSpotChangePct` (`socket-cluster-health.ts:37`) withholds it
+unless `entry.open_source === "rest"` (a documented guard against pairing a ws-anchored price with
+a REST-anchored percentage) — confirmed the widget never even renders `change_pct` (zero matches
+in `GammaSnapshotWidget.tsx`), so this has no user-facing effect either way.
+
+**2. Core Web Vitals on live pages, purged edge.** Purged Cloudflare edge (`CF_API_TOKEN`/`CF_ZONE_ID`,
+targeted `files` purge on `/` and `/tools/gamma-snapshot`, never `/_next/static/*`) then measured:
+homepage desktop **CLS 0.0002 GOOD**, mobile **0.0418 GOOD** — #2453 holds on a live RTH page, not
+just off-hours. `/tools/gamma-snapshot` mobile (430x932): **CLS 0 GOOD**, consistently, every run.
+`/tools/gamma-snapshot` **desktop (1440x900): CLS ranged 0 to 0.1708 across 10+ repeated
+measurements — roughly 1 in 5-6 loads crosses the 0.1 GOOD threshold into NEEDS-IMPROVEMENT.**
+
+Spent real effort isolating the source rather than guessing (9 rounds of custom `PerformanceObserver`
++ `requestAnimationFrame` instrumentation, since `cls-measure.cjs`'s own `shifts` array only reports
+a value, and Chrome's `LayoutShift.sources` caps at 5 attributed nodes — not enough to see the true
+root when 5 unrelated elements get dragged along). Directly caught the culprit once with element-level
+rect polling: the static intro `<p>` under the H1 (`"Where dealer gamma flips from long to short...
+Free, no account needed."`, hardcoded text, no live data) rendered at height 56px (2 lines) for one
+frame, then 84px (3 lines) ~250-300ms later — a 28px growth that exactly matches the widget's
+measured 28px downward push in the same shift event. **Ruled out, with direct instrumented
+evidence, every plausible cause tested:** not the widget's own live-data poll (widget's own
+height stayed 380px→380px, unchanged, across every captured shift); not `NavAuthLinks`'
+`__client_uat` cookie self-heal (zero cookies present on every anonymous probe — confirmed via
+`document.cookie` logging — and `readClientSignedIn()` returns `null` on no cookie, which the hook's
+own guard (`client !== null`) means never triggers a state flip); not H1/breadcrumb/nav-header
+reflow (all measured perfectly stable, before and after, across every round); not a custom-webfont
+swap on the intro text itself (`body { font-family: var(--font-body) }` is a bare `system-ui` stack
+— `next/font/local`'s `display:"swap"` only applies to `--font-anton`/`--font-syne`, used for
+headings, not this paragraph); not a scrollbar-width change shrinking the content column
+(`document.documentElement.clientWidth` measured constant at 1440 across every round the anomaly
+did and didn't occur). In 6 follow-up rounds specifically instrumented to re-catch the 56→84
+transition, it reproduced exactly once more — consistent with the ~15-20% rate `cls-measure.cjs`
+itself showed, but too rare to pin the exact low-level trigger (a Chromium-internal layout/text-
+measurement settling artifact on first paint is the remaining, unconfirmed candidate).
+
+**No fix shipped.** Per the standing "root cause, not just symptom" bar and "never fabricate
+findings" — a `min-height` slapped on a static paragraph to paper over an unconfirmed mechanism
+would be exactly the kind of guessed fix that looks resolved while possibly changing nothing (or
+worse, reserving dead space on every one of the ~80-85% of loads that never shift at all). This is
+also a genuinely low-blast-radius, low-severity item: one page, desktop only, borderline over
+threshold (0.17 vs the 0.1 line, nowhere near POOR/0.25), no user-facing data-correctness impact.
+Documented here rather than silently dropped or force-fixed, matching this toolkit's own standing
+pattern for thin/inconclusive evidence (e.g. `swing-score-calibration.mjs`, `swing-pre-entry-drift
+-probe.mjs`: measure honestly, disclose the uncertainty, no change on thin evidence, re-run later).
+**Follow-up for a future cycle:** re-run `node scripts/audit/cls-measure.cjs
+https://blackouttrades.com/tools/gamma-snapshot --json` repeatedly; if the transient 2-line→3-line
+intro-paragraph state reproduces reliably enough to script, capture it with Chrome's
+`--enable-blink-features=LayoutShiftAttribution` verbose tracing or DevTools Performance panel
+recording (neither available in this sandbox's tunneled-Chromium probe) rather than sampling races
+against a single-digit-millisecond window.
+
+PR sweep: 1 open agent PR fleet-wide (`#5026`, different lane, CI-RUNNING) — no SEO action needed.
+
+No code changed this cycle.
+
+**Severity.** — (no defect found)
+
+Pre-RTH heartbeat (08:18 ET). Full behavioural re-validation per the trigger's Step 1, not
+inferred from green CI: purged Cloudflare edge cache for the homepage HTML only (`CF_API_TOKEN`
++ `CF_ZONE_ID`, single `files` purge of `/`, `/_next/static/*` untouched), then measured CLS on
+the freshly-purged page — desktop (1440x900) **CLS 0 → GOOD**, mobile (430x932) **CLS 0.0063 →
+GOOD**, both far under the 0.1 threshold, confirming PR #2453's fix is genuinely live and not a
+stale-edge-cache false negative. `/api/og` re-fetched with a Googlebot UA: HTTP 200 `image/png`,
+valid 1200x630 PNG. Went further than a bare endpoint ping: pulled the actual Article JSON-LD
+`image` URL off `/learn/dealer-gamma-options-flow-guide` (Googlebot UA) and fetched that exact
+URL too — HTTP 200 `image/png` — confirming #2448 unblocked the real article-image path, not
+just the raw route.
+
+PR sweep: 1 open agent PR fleet-wide (`#5026`, a different lane, CI-RUNNING, not blocked) — no
+SEO-lane action needed. GSC opportunity scan: same window as the prior cycle (reporting lag,
+expected), same 3 striking-distance queries (`dealer gamma`, `gamma three trading`,
+`is 0dte gambling`), CTR-gap 0, deep-demand list unchanged — no new opportunities.
+
+No defects found.
+
+---
+## 2026-09-15 (06:24 UTC) — [SEO] Lane heartbeat: post-restart recovery, PR queue empty, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Fired into a freshly restarted container (02:17 ET). Post-restart check found
+`git branch --show-current` on a stale branch (`fix/seo-public-gex-snapshot-stale-degraded-flag`,
+already-merged PR #4796) instead of `main` — the exact container-restart stale-branch trap this
+log documents. Recovered per protocol: `git checkout main -q && git reset --hard origin/main -q`,
+verified HEAD at `a864f4ac4` (matches `origin/main`), deleted the stale local branch.
+
+PR sweep: **0 open agent PRs fleet-wide.** `/api/og`: HTTP 200 in 0.85s, still crawlable.
+Public gamma-snapshot API (`/api/public/gex-snapshot?ticker=SPX`) spot-checked directly (market
+closed, 02:20 ET): `available: true`, `degraded: false`, `snapshot_data_age_seconds: 42`,
+`market_session: "CLOSED"` — correctly non-degraded well under the 90s bound, confirming PR
+#4796's fix is live and behaving correctly in production. CLS/RTH-specific checks deferred to the
+separate MARKET-HOURS WAKE trigger (09:30 ET). GSC opportunity scan: same 3 striking-distance
+queries as last cycle (`dealer gamma`, `gamma three trading`, `is 0dte gambling`), CTR-gap 0,
+deep-demand list unchanged (authority-limited, not on-page actionable) — no new opportunities.
+
+No defects found.
+
+---
+## 2026-09-15 (00:20 UTC) — [SEO] Lane heartbeat: new striking-distance query "dealer gamma" registered, no on-page action needed
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET). GSC opportunity scan found a genuine change: window advanced
+(2026-06-14→09-11 to 2026-06-15→09-12) and **"dealer gamma" (pos 19.6, 18imp) entered striking
+distance** — a third query alongside the two already known (`gamma three trading`,
+`is 0dte gambling`). Investigated the natural landing page
+(`/learn/dealer-gamma-options-flow-guide`, `src/lib/learn/articles.ts`): it already carries a
+dedicated, bolded `## The core concept: dealer gamma exposure` section directly defining the
+term, same treatment that already covers the other two striking-distance queries per
+`SEO-GROWTH-STRATEGY.md` §3. Per the standing "monitor, don't churn" discipline and the direct
+2026-08-29 precedent for the same situation (`gamma three trading`'s own entry), registered the
+new query in §3's lever-map row rather than making a speculative on-page edit to an already-
+strong page — pushed directly (docs-only register update, no PR, matching the established
+precedent commit for this exact pattern).
+
+PR sweep: **0 open agent PRs fleet-wide.** `/api/og` re-fetched with Googlebot UA: HTTP 200
+`image/png`, still crawlable. CLS not re-checked — already fresh ~12h ago.
+
+No defects found.
+
+---
+## 2026-09-14 (18:17 UTC) — [SEO] Lane heartbeat: PR queue empty, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Back to normal work (14:16 ET, past RTH). PR sweep: **0 open agent PRs fleet-wide.** `/api/og`
+re-fetched with Googlebot UA: HTTP 200 `image/png`, still crawlable. CLS not re-checked — already
+confirmed multiple times today during the RTH window. GSC opportunities report same window, same
+2 striking-distance queries — no new opportunities.
+
+No defects found.
+
+---
+## 2026-09-14 (16:34 UTC) — [RTH — SEO] Third market-hours check: gamma-snapshot healthy, transient calc_id "backward" blip traced to replica cache skew
+
+**Severity.** — (no defect found)
+
+Third RTH wake today (12:33 ET, near the window's end). Polled 4 times over this check: ages
+4s → 36s → 31s(→41s by direct computation) → 23s, `degraded` correctly `false` throughout (all
+well under the 90s stale bound). One genuinely odd observation investigated: the second poll's
+`calculation_id` embedded an EARLIER epoch than the first poll's, despite being fetched later in
+wall-clock time — i.e. a later request returned an apparently older snapshot. Traced this to
+ordinary multi-replica cache skew: `fetchGexHeatmap`'s per-process `cachedHeatmaps` map
+(`polygon-options-gex.ts`) is local to each ECS replica, and its documented stale-while-revalidate
+design deliberately allows any cached entry within `GEX_HEATMAP_MAX_STALE_SEC` (90s) to be served
+— two requests landing on different replicas can observe this exact "went backward by a few
+seconds" pattern without it being a defect. Confirmed forward progress resumed on the 4th poll
+(newest `calculation_id` of the whole sequence). Not a repeat of the real #4796 incident (which
+was a SINGLE calc_id frozen for 4+ minutes, past the stale bound) — this was normal jitter.
+
+No defects found. Returning to normal search/authority work at 13:00 ET.
+
+---
+## 2026-09-14 (15:34 UTC) — [RTH — SEO] Second market-hours check: gamma-snapshot healthy, brief 20s poll gap not a stall
+
+**Severity.** — (no defect found)
+
+Second RTH wake today (11:33 ET). First poll showed `snapshot_data_age_seconds: 20` — higher than
+the usual 1-5s but well under the 90s stale bound and correctly `degraded: false`. A second poll
+8s later returned a new `calculation_id` with spot moved (7613.30 → 7618.32) and age back down to
+2s, confirming the earlier reading was ordinary poll-timing, not a stall. CLS not re-measured —
+already confirmed twice today (13:34 and implicitly via the 14:11 growth-cycle skip).
+
+No defects found.
+
+---
+## 2026-09-14 (14:11 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, real 28d position improvement
+
+**Severity.** — (no defect found)
+
+1. Opportunity scan: same window, same 2 striking-distance queries, both already well-optimized
+   per `SEO-GROWTH-STRATEGY.md` §3. No new query entered striking distance. No on-page work done.
+2. Live re-verify: already fresh ~40 min ago (13:34 UTC RTH entry, CLS + gamma-snapshot both
+   confirmed) — not repeated per rule 6.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-15→09-11): clicks=17,
+   impressions=1635, CTR=1.04%, avgpos=**33.7** — vs the last recorded pull (clicks=17,
+   impressions=1627, CTR=1.04%, avgpos=35.0): clicks/CTR flat, impressions slightly up, and a
+   real, larger-than-usual avg-position improvement (+1.3). Too diffuse across many low-volume
+   queries to attribute to any single shipped change.
+4. Housekeeping: 2 open agent PRs fleet-wide (#4969, #4970), both CI-RUNNING, neither SEO-lane —
+   nothing to resolve.
+
+No defects found.
+
+---
+## 2026-09-14 (13:34 UTC) — [RTH — SEO] Market-open check: gamma-snapshot live refresh confirmed, degraded flag correctly false on a genuinely fresh read
+
+**Severity.** — (no defect found)
+
+First RTH wake this week (09:33 ET, market just opened, non-holiday trading day). Confirmed
+`/tools/gamma-snapshot`'s live API via two polls 8s apart: `asof`/`calculation_id` both advanced
+(`SPX:1789392834644` → `SPX:1789392849013`), spot moved (7600.15 → 7602.04), `degraded: false`
+on both — correctly reflecting genuine freshness (age 3-4s), confirming the #4796 stale-detection
+fix from earlier this week has no false-positive side effect on a healthy read. Fresh Cloudflare
+purge + desktop CLS measure with live RTH data rendering: **0.0001 GOOD**.
+
+No defects found.
+
+---
+## 2026-09-14 (12:19 UTC) — [SEO] Lane heartbeat: Monday pre-market, full CLS re-measure GREEN, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Monday pre-market heartbeat (08:18 ET). PR sweep: **0 open agent PRs fleet-wide.** Fresh
+Cloudflare purge + CLS measure (~12h since last full check): desktop 1440x900 **0.0001 GOOD**,
+mobile 430x932 **0.0112 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`,
+still crawlable. GSC opportunities: same window, same 2 striking-distance queries — no new
+opportunities.
+
+No defects found.
+
+---
+## 2026-09-14 (06:19 UTC) — [SEO] Lane heartbeat: quiet overnight pass, no defects
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:18 ET Monday). PR sweep: **0 open agent PRs fleet-wide.** `/api/og`
+re-fetched with Googlebot UA: HTTP 200 `image/png`, still crawlable. Full CLS purge+measure not
+repeated — already fresh ~6h ago (00:18 UTC entry, GOOD both viewports). GSC opportunities report
+same window as 6h ago, same 2 striking-distance queries — no new signal.
+
+No defects found.
+
+---
+## 2026-09-14 (00:18 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR queue empty, GSC window advanced
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET Sunday). PR sweep: **0 open agent PRs fleet-wide.** Fresh
+Cloudflare purge + CLS measure (~12h since last full check): desktop 1440x900 **0.0001 GOOD**,
+mobile 430x932 **0.0341 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`,
+still crawlable. GSC opportunities: window advanced a day (2026-06-13→09-10 to 2026-06-14→09-11),
+same 2 striking-distance queries — no new opportunities.
+
+No defects found.
+
+---
+## 2026-09-13 (18:17 UTC) — [SEO] Lane heartbeat: PR queue empty, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Back to normal work (14:16 ET). PR sweep: **0 open agent PRs fleet-wide.** `/api/og` re-fetched
+with Googlebot UA: HTTP 200 `image/png`, still crawlable. CLS not re-checked — already fresh ~4h
+ago. GSC opportunities report byte-identical to the last check — same 2 striking-distance
+queries, no new opportunities.
+
+No defects found.
+
+---
+## 2026-09-13 (14:06 UTC) — [SEO] Daily growth cycle: no new striking-distance queries, small real 28d uptick
+
+**Severity.** — (no defect found)
+
+1. Opportunity scan: same window, same 2 striking-distance queries (`gamma three trading`,
+   `is 0dte gambling`), both already well-optimized per `SEO-GROWTH-STRATEGY.md` §3. No new query
+   entered striking distance. No on-page work done.
+2. Live re-verify: already fresh ~2h ago (12:18 UTC entry) — not repeated per rule 6.
+3. Trend: `gsc-search-analytics.mjs --days=28` (window 2026-08-14→09-10): clicks=17,
+   impressions=1627, CTR=1.04%, avgpos=35.0 — vs the last recorded pull (clicks=16,
+   impressions=1651, CTR=0.97%, avgpos=35.9): small real uptick in clicks/CTR/position, impressions
+   flat-to-down. Too small a delta to attribute to any specific shipped change.
+4. Housekeeping: 0 open agent PRs fleet-wide.
+
+No defects found.
+
+---
+## 2026-09-13 (12:18 UTC) — [SEO] Lane heartbeat: Sunday pre-market, full CLS re-measure GREEN, GSC unchanged
+
+**Severity.** — (no defect found)
+
+Sunday pre-market heartbeat (08:17 ET). PR sweep: **0 open agent PRs fleet-wide.** Fresh
+Cloudflare purge + CLS measure (~12h since last full check): desktop 1440x900 **0.0001 GOOD**,
+mobile 430x932 **0.0331 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`,
+still crawlable. GSC opportunities: same window, same 2 striking-distance queries — no new
+opportunities.
+
+No defects found.
+
+---
+## 2026-09-13 (06:17 UTC) — [SEO] Lane heartbeat: quiet overnight pass, no defects
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:17 ET Sunday). PR sweep: 1 open agent PR fleet-wide (#4905, CI-RUNNING,
+swing-lane, not SEO). `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`, still
+crawlable. Full CLS purge+measure not repeated — already fresh ~6h ago (00:19 UTC entry, GOOD
+both viewports). GSC opportunities report same window as 6h ago, same 2 striking-distance
+queries — expected short-gap lag, no new signal.
+
+No defects found.
+
+---
+## 2026-09-13 (00:19 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR jam cleared, GSC window resumed advancing
+
+**Severity.** — (no defect found)
+
+After-hours heartbeat (20:17 ET Saturday). PR sweep: **0 open agent PRs fleet-wide** — the two
+draft-jam PRs flagged in the last entry (#4874, #4873) are gone from the sweep, confirming they
+were resolved. Fresh Cloudflare purge + CLS measure: desktop 1440x900 **0.0002 GOOD**, mobile
+430x932 **0.0376 GOOD**. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`, still
+crawlable.
+
+GSC opportunities: window advanced a day (2026-06-12→09-09 to 2026-06-13→09-10) after sitting flat
+across the weekend — confirms the multi-day identical-pull streak noted in prior entries was
+benign weekend processing lag, not a stuck pull. Same 2 striking-distance queries, no new
+opportunities.
+
+No defects found.
+
+---
+## 2026-09-12 (18:18 UTC) — [SEO] Lane heartbeat: GSC unchanged, flagged 2 more stuck coordinator draft PRs (prior 2 confirmed merged)
+
+**Severity.** — (no defect found)
+
+Confirmed both PRs flagged in the 14:06 UTC entry (#4863, #4862) merged since — the coordinator
+note worked. PR sweep surfaced 2 NEW green, draft, coordinator-branch PRs stuck in the same jam
+(#4874 bie ticker-verdict fix, #4873 swing book-context fix) — `--mark-ready` attempted and
+failed again (same known limitation, this session lacks the GitHub MCP undraft tool), posted a
+coordinator note on both. `/api/og` re-fetched with Googlebot UA: HTTP 200 `image/png`, still
+crawlable. CLS not re-checked — already fresh ~4h ago. GSC opportunities byte-identical for a 5th
+consecutive check (~24h span) — same 2 striking-distance queries, no new opportunities.
+
+No defects found.
+
+---
+## 2026-09-12 (14:06 UTC) — [SEO] Daily growth cycle: quiet day (4th identical GSC pull), flagged 2 stuck coordinator draft PRs
+
+**Severity.** — (no defect found)
+
+Quiet no-change day: GSC opportunity/28d totals byte-identical to the last check (2h earlier) —
+same 2 striking-distance queries, same totals (clicks=16, impressions=1651, ctr=0.97%,
+avgpos=35.9). Live re-verify skipped (CLS/robots.txt already fresh within the last 3 days per
+rule 6). Housekeeping surfaced 2 green, cleanly-mergeable coordinator-branch PRs stuck in draft
+with nobody watching them (#4863 nighthawk dossier-date fix, #4862 DMARC finding write-up) —
+`agent-pr-sweep.mjs --mark-ready` attempted and failed (this session lacks the GitHub MCP
+undraft tool), so posted a coordinator note on both rather than leaving them silently stuck.
+
+No defects found.
+
+---
+## 2026-09-12 (12:18 UTC) — [SEO] Lane heartbeat: Saturday pre-market, full CLS re-measure GREEN, GSC 3rd identical pull
+
+**Severity.** — (no defect found)
+
+Saturday pre-market heartbeat (08:16 ET — markets closed today, no RTH wake expected). PR sweep:
+2 open agent PRs fleet-wide (#4857, #4858, both Night Hawk Swings lane, CI-RUNNING) — not SEO-lane,
+nothing to unblock. Fresh Cloudflare purge + CLS measure (~12h since last full check): desktop
+1440x900 **0.0001 GOOD**, mobile 430x932 **0.0379 GOOD**. `/api/og` re-fetched with Googlebot UA:
+HTTP 200 `image/png`, still crawlable.
+
+GSC opportunities report byte-identical for the 3rd consecutive check (~18h span) — same window,
+same 2 striking-distance queries. Longer than the typical 2-3 day lag window would suggest by
+itself, but plausibly weekend-related GSC processing slowdown rather than a stuck pull; worth a
+closer look if it's still unchanged after the weekend. No new opportunities either way.
+
+No defects found.
+
+---
+## 2026-09-12 (06:18 UTC) — [SEO] Lane heartbeat: quiet overnight pass, no defects
+
+**Severity.** — (no defect found)
+
+Overnight heartbeat (02:17 ET). PR sweep: 1 open agent PR fleet-wide (#4836, CI-RUNNING,
+`fix(gex): complete PR #4822's event-loop yield in buildGexHeatmapUncached`) — briefly reviewed
+since it touches the same `buildGexHeatmapUncached` chain as yesterday's #4796 stale-`degraded`-
+flag fix; confirmed unrelated (event-loop yield completeness during large-chain builds, not
+staleness semantics) and no conflict — not SEO-lane, nothing to act on. `/api/og` re-fetched with
+Googlebot UA: HTTP 200 `image/png`, still crawlable. Full CLS purge+measure not repeated —
+already fresh ~6h ago (00:19 UTC entry, GOOD both viewports). GSC opportunities report
+byte-identical to the last check — expected reporting lag, no new signal.
+
+No defects found.
+
+---
 ## 2026-09-12 (00:19 UTC) — [SEO] Lane heartbeat: full CLS re-measure GREEN, PR queue clear, small mixed 28d movement
 
 **Severity.** — (no defect found)
@@ -3967,3 +5391,88 @@ docs (PRs #4729 through #4755, roughly two dozen merges).
 - `npx tsc --noEmit`: clean, zero errors.
 
 No regression from today's fix volume. GREEN pass, no follow-up needed.
+
+## 2026-09-17 (16:2x UTC) — [DISCOVERY] Real UW+Polygon rate-limiter surge + 0DTE cron-stale alert investigated — genuine, self-healed, NOT a code regression from today's merges
+
+The operator flagged two escalating Discord `#🌩️website-logs` alerts within ~35 min of each
+other: "UW rate-limiter queue timeouts surging" (8:40 AM ET), then both "UW" AND "Polygon
+rate-limiter queue timeouts surging" plus a 🔴🚨 "MARKET-HOURS CRON STALE (RTH)" (`zerodte-warm`,
+scanner 35m stale) at 9:15 AM ET, right after this session had merged 5 PRs in rapid succession
+(#5140/#5141/#5142/#5143/#5145). Investigated end-to-end via CloudWatch Logs + `ecs
+describe_services`/`describe_tasks` + ALB `UnHealthyHostCount` metrics (real AWS creds this
+session) rather than dismissing or guessing:
+
+- **Both alerts were real**, not false alarms. Confirmed genuine `RateLimiterQueueTimeoutError`
+  drops (`waited 20001ms of 20000ms`, `budget exceeded at global_rps`) on BOTH the UW and Polygon
+  (`api.massive.com`) shared rate limiters, and a genuine ~20-minute gap in `[zerodte-scan]` ticks
+  (15:43→16:03 UTC).
+- **Root cause was NOT a code bug in any of today's merged PRs.** The two ECS tasks that failed
+  ALB health checks during this window (`56f355f4e5964...`, `d573253012374...`) both exited with
+  `exitCode: 0`, Docker-level `healthStatus: HEALTHY`, and were serving normal business-logic
+  traffic (polygon-gex escalations, uw reads) with zero exceptions right up to their `SIGTERM` —
+  no crash, no error, nothing pointing at a regression.
+- **Root cause was NOT deployment overlap/instability from rapid merging either.** The
+  `ecr-push-production.yml` workflow serializes deploys (no two ran concurrently); the "Roll ECS
+  production web" step for the PR #5140 deploy took 26 min — actually FASTER than the 4 preceding
+  deploys that same day (28-31 min baseline each) — and ALB `UnHealthyHostCount` never exceeded
+  `1` (out of 8 tasks) at any single point.
+- **Actual driver: real contention on the shared, tightly-budgeted UW (`GLOBAL_MAX_RPS=2`) and
+  Polygon (`GLOBAL_MAX_RPS=150`) rate limiters**, compounded by this session's own earlier heavy
+  historical backtest runs (score-floor/confluence-floor outcome backtests) against those same
+  shared limiters — already caught and killed mid-session, with a pacing discipline already
+  shipped in PR #5145. `/api/ready`'s ALB health check (10s timeout, 30s interval, 3-strike
+  unhealthy threshold) transiently missed on 2 tasks while queue waits against the same shared
+  limiter were spiking toward 20s; ECS replaced both automatically, exactly as designed.
+- **Confirmed fully recovered by 16:27 UTC**: ECS deployment `COMPLETED`/steady-state (8/8
+  running), `[zerodte-scan]` ticking normally again, `UnHealthyHostCount` back to 0, zero
+  rate-limiter "budget exceeded" drops in the trailing 4-minute window.
+
+No code change made — the one concrete corrective action (this session's own backtest pacing
+against the shared UW/Polygon limiter) was already shipped in PR #5145 before this incident was
+fully resolved. Logged here, not as a staged finding, because there is no bug to fix: the
+alerting, the ECS self-heal, and the rate limiters themselves all did exactly what they were
+built to do.
+
+## 2026-09-17 (RTH) — [DISCOVERY] PR #5140's gate-calibration `days=N` truncation fix confirmed live, post-deploy
+
+Re-ran `scripts/audit/gate-calibration-live-report.mjs --days={14,30,60,90} --no-grade --json`
+against production per `docs/audit/MARKET-OPEN-VALIDATION.md`'s open WATCH LIST item for PR #5140
+(the `fetchGradedSkips` hardcoded-`LIMIT 2000` fix). Summed `n + ungradeable` across every
+`blocked_value[]` gate code (the real Postgres row count fetched for that window):
+**days=14 → 4200, days=30 → 9000, days=60 → 18000, days=90 → 22222** — the first three land
+exactly on the new `days * 300` formula; days=90 comes in under `90*300=27000` only because the DB
+doesn't hold that many real rows for the period, not a cap. Pre-fix, all four would have flatlined
+at 2000. G-13/`flow_accumulation_conflict`'s graded `n` also held flat at 24 across all four window
+widths (only `ungradeable` grew, as expected) — no drift, unlike the pre-fix 12→10→5 pattern.
+
+Both watch-list checks pass. No code change — this is the post-deploy confirmation the fix actually
+reached production, not just that the PR merged clean. GREEN pass, no follow-up needed.
+
+## 2026-09-21 — [DISCOVERY] `swing-loss-taxonomy-segment.mjs` re-run: two new n>=5 archetype divergences surface as the closed population grew 31→37
+
+Re-ran `scripts/audit/swing-loss-taxonomy-segment.mjs --days=90 --min-n=5` (Ask Largo × Night Hawk
+Swings standing deep-dive, per CLAUDE.md) as scheduled by its own 2026-09-10 write-up ("re-running
+as the closed population grows, not touching a gate on one measurement"). Closed population grew
+37 chains (29 classifiable, up from 31/27) since the last run.
+
+**By ARCHETYPE, two segments now clear the n>=5 divergence bar that did not before** (2026-09-10
+run found "nothing diverges >=20pp from the aggregate at n>=5" for archetype):
+- `EVENT_DRIVEN` — n=10, loss rate 70.0% (7/10: 4 BAD_EXIT + 3 BAD_ENTRY), **+25.2pp vs the 44.8%
+  aggregate**.
+- `SECTOR_ROTATION` — n=9, loss rate 22.2% (2/9), **-22.6pp vs aggregate** (the mirror-image good
+  side of the same split).
+
+By SUB-LANE, `TACTICAL` still diverges (n=5, 80% loss rate, +30pp vs aggregate) — same segment
+flagged 2026-09-10, population hasn't grown past 5 yet. By REGIME, still nothing diverges at
+n>=5 — RISK_ON 54.2% vs RISK_OFF 41.7%, consistent with the standing "no evidence the regime gate
+needs recalibration" conclusion.
+
+**No gate/calibration changed** — same discipline as every prior swing v6 measurement: n=9-10 is
+still thin (well below the Helix-lane minN=30 bar this toolkit otherwise holds itself to), and
+EVENT_DRIVEN is exactly the archetype family G-S3 (earnings/binary-print gate) and the confluence
+gate's CATALYST-kind requirement already exist to protect — worth watching for whether G-S3/G-S6
+are under-protecting this archetype specifically as more EVENT_DRIVEN closes accumulate, but one
+measurement at n=10 is not grounds to touch a gate. Flagging here (not FINDINGS.md — no bug, no
+fix) so the next cycle re-runs against a larger EVENT_DRIVEN population before drawing a
+conclusion, per the same "verify against fresh data, never trust a stale snapshot" discipline this
+repo's CLAUDE.md states everywhere else.

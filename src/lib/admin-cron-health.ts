@@ -7,7 +7,7 @@ import {
   fetchLatestNighthawkJob,
   type CronJobRunRow,
 } from "@/lib/db";
-import { loadPlayEngineHeartbeat } from "@/lib/play-engine-heartbeat";
+import { loadPlayEngineHeartbeat, loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
 import {
   formatEtDate,
   isTradingDayEt,
@@ -353,8 +353,43 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   }
 
   const playHb = await loadPlayEngineHeartbeat();
+  const zeroDteScanHb = await loadZeroDteScanHeartbeat();
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
+
+    // zerodte-warm's cron_job_runs handshake (logCronRun) fires on the route's FAST
+    // synchronous path — auth + cooldown/lock gate + the cheap earnings-cache warm — before
+    // the heavy scanner+persist chain (warmZeroDteBoard -> scanZeroDteBoard ->
+    // persistZeroDteScan -> discovery-events) is even dispatched in the background. So the
+    // handshake reads "on schedule" even when that background chain silently stalls for
+    // tens of minutes: measured live 2026-09-16, a ~35min gap in zerodte_discovery_events
+    // writes (confirmed via CloudWatch: only 2 "[cron/zerodte-warm] background done"
+    // completions logged across a 46-minute span against many fast "accepted" handshakes in
+    // between) produced ZERO cron_job_runs staleness — the exact blind spot
+    // recordZeroDteScanTick("cron") (scan.ts) was built to catch, but its heartbeat was never
+    // read anywhere until now. Unlike spx-evaluate below, this does NOT gate on the
+    // cron_job_runs handshake ALSO looking stale first (`cronStale`) — that signal is the
+    // known-unreliable one here, so the scan heartbeat's own staleness is authoritative
+    // in-window.
+    if (job.key === "zerodte-warm" && zeroDteScanHb.last_tick_at) {
+      const hbAgeMin = zeroDteScanHb.age_ms != null ? Math.round(zeroDteScanHb.age_ms / 60_000) : null;
+      const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+      if (!offWindow && hbAgeMin != null && (zeroDteScanHb.stale || zeroDteScanHb.critical_stale)) {
+        const overrideStatus = zeroDteScanHb.critical_stale ? ("stale" as const) : ("warning" as const);
+        return {
+          ...health,
+          status: overrideStatus,
+          market_hours_stale: overrideStatus === "stale",
+          status_label: zeroDteScanHb.critical_stale
+            ? `Scanner stale · last scan tick ${hbAgeMin}m ago (discovery/commit path stalled)`
+            : `Scanner slow · last scan tick ${hbAgeMin}m ago (heartbeat warning)`,
+          meta: {
+            ...(health.meta ?? {}),
+            zerodte_scan_heartbeat: zeroDteScanHb,
+          },
+        };
+      }
+    }
 
     if (job.key === "spx-evaluate" && playHb.last_tick_at) {
       const hbAgeMin = playHb.age_ms != null ? Math.round(playHb.age_ms / 60_000) : null;

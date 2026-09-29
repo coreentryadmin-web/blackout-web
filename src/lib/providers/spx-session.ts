@@ -115,7 +115,8 @@ function etYmdFromMs(ms: number): string {
 
 export function priorDayFromDailyBars(
   bars: AggBar[],
-  todayYmd: string = todayEtYmd()
+  todayYmd: string = todayEtYmd(),
+  anchorSessionComplete = false
 ): {
   pdh: number | null;
   pdl: number | null;
@@ -130,12 +131,26 @@ export function priorDayFromDailyBars(
   // "today" bar is present. Off-hours it skipped the true last session and returned data
   // one full session stale — corrupting PDH/PDL/PDC and every derived level (the R1/R2/
   // S1/S2 pivots, PDH/PDL breakouts). This supersedes the old ISSUE-34 length<2 guard.
+  //
+  // `anchorSessionComplete`: the default (false) treats `todayYmd`'s own bar as always
+  // in-progress and skips it — correct pre-market/RTH, when no genuine close for today
+  // exists yet. But once today's OWN regular session has actually ended (still the same
+  // ET calendar day, so `todayYmd()` hasn't rolled over), Polygon's daily-bars endpoint
+  // already carries today's own settled bar, and unconditionally skipping it serves
+  // YESTERDAY's (or, on a cold cache, an even staler) close as "the most recent completed
+  // session" — confirmed live 2026-09-12: a cold `blackout-production-web` replica served
+  // Thursday's close as the current SPX price for ~50min after Friday's own 4pm ET close,
+  // tripping the day-range and cross-provider correctness alerts against Friday's real
+  // (correct) intraday range/quote. Callers that know their own session has ended pass
+  // `true` so today's own bar is eligible too — see `spx-desk.ts`'s cold-replica branch.
   if (bars.length === 0) return { pdh: null, pdl: null, pdc: null };
   const dated = bars.filter((b) => b.t != null);
   if (dated.length > 0) {
     for (let i = dated.length - 1; i >= 0; i -= 1) {
       const b = dated[i]!;
-      if (b.t != null && etYmdFromMs(b.t) < todayYmd) {
+      if (b.t == null) continue;
+      const barYmd = etYmdFromMs(b.t);
+      if (barYmd < todayYmd || (anchorSessionComplete && barYmd === todayYmd)) {
         return { pdh: b.h, pdl: b.l, pdc: b.c };
       }
     }

@@ -16,6 +16,7 @@ import type { DeckDirection, DeckStatus, ThesisLevel } from "@/features/nighthaw
 import type { DeckFactor } from "@/features/nighthawk/command-deck/types";
 import { SWING_SUBLANE_MANAGE } from "./manage";
 import type { SwingSubLane } from "./taxonomy";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 
 export type SwingThesisPillarId =
   | "persistence"
@@ -41,24 +42,128 @@ const PILLAR_ID_MAP: Record<SwingThesisPillarId, ThesisPillarId> = {
   theta_budget: "volatility",
 };
 
-/** Default pillar labels when commit-time inputs (setupState/entryStatus/signalKinds) are not wired. */
-const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string>> = {
-  persistence: "unknown",
-  entry_geometry: "n/a",
-  flow_corroboration: "no signals",
+/** Default pillar labels when commit-time inputs (setupState/entryStatus/signalKinds) are not wired.
+ *  Each pillar can have MORE THAN ONE generic-default label — `regime` has two, independently
+ *  reachable: `regimeScore()`'s own "unread" fallback (regime input null AND no factors[0] — the
+ *  native "nothing to read" case) and the Banger-ledger stamped-constant sentinel
+ *  (BANGER_LEDGER_REGIME_LABEL — see the file-level comment below `thesisHealthUncalibrated`). A
+ *  single-string map can only ever hold one of the two, so this is an array per pillar id, and
+ *  every consumer below checks membership, not strict equality. Live gap found 2026-09-22 (AAPL
+ *  position 40): before this array shape, the Banger sentinel occupied `regime`'s one slot and
+ *  "unread" was never recognized by either function — even in the code predating that sentinel's
+ *  addition, since the original hardcoded check only ever matched the Banger string. A native
+ *  position with no regime data at all rendered "**Regime fit** — unread (Δ +0.0 pts)" as if
+ *  calibrated, right next to the aggregate-withheld note — the identical C6 violation class. */
+const UNCALIBRATED_PILLAR_LABELS: Partial<Record<SwingThesisPillarId, string[]>> = {
+  persistence: ["unknown"],
+  entry_geometry: ["n/a"],
+  flow_corroboration: ["no signals"],
+  regime: [BANGER_LEDGER_REGIME_LABEL, "unread"],
 };
 
-/** True when the aggregate health % is built from generic defaults — not a calibrated read. */
+/**
+ * `BANGER_LEDGER_REGIME_LABEL` (imported from banger-lane-merge.ts, the single source of truth for
+ * this sentinel — see its own doc comment) is written ONLY by horizonPlayFromBangerPosition/
+ * horizonPlayFromBangerWatch — a fixed constant stamped on every banger_positions ledger row
+ * regardless of ticker, contract, or price action, never produced by the real regime-fit calc a
+ * native swing position uses. Unlike signalKinds=["BANGER"] alone (which a NATIVE swing position can
+ * also legitimately carry, as just one of several real Tier-0 discovery paths — see
+ * SwingDiscoveryPath in discovery.ts — while still running the real scoring/setupState/entryStatus
+ * engine), this exact string is a safe, unambiguous fingerprint of the stamped-constant merge path.
+ *
+ * CORRECTNESS DEPENDS ON THIS SENTINEL SURVIVING UNCHANGED FROM COMMIT TO HERE — see the live bug
+ * fixed 2026-09-20 (findings-staging/2026-09-20-swing-thesis-health-banger-regime-clobber.md):
+ * `serving-lane.ts`'s `attachThesisExplanation()` used to overwrite ANY play's `regime` field with a
+ * same-ticker discovery dossier's fresh read whenever one existed in the current scan, including a
+ * banger-ledger play whose `regime` was this exact sentinel — silently destroying the fingerprint
+ * this function matches on and reopening the identical byte-identical-fabricated-score bug the
+ * 2026-09-15 fix (this sentinel's original introduction) was written to close. Fixed at the source
+ * (`attachThesisExplanation` now refuses to overwrite this sentinel), not here — but this comment
+ * stays as a flag: if a future caller reads `regime` off a `HorizonPlay`/`TerminalPlay` without
+ * going through `attachThesisExplanation`'s guard, re-verify this sentinel still survives intact.
+ */
+
+/** True when the aggregate health % is built from generic defaults — not a calibrated read.
+ *
+ *  Banger-origin ledger rows stamp setupState/entryStatus/signalKinds/regime as fixed constants on
+ *  EVERY row — there is no real per-position 7-pillar dossier for this lane, just one mechanical
+ *  price trigger (see horizonPlayFromBangerPosition's header comment). The `regime` entry in
+ *  `UNCALIBRATED_PILLAR_LABELS` above (`BANGER_LEDGER_REGIME_LABEL`) is what catches this in the
+ *  loop below — a stamped-constant "regime" is just as fabricated as "unknown"/"n/a"/"no signals"
+ *  are for their own pillars, so it needs the same treatment, not a separate carve-out. Without it,
+ *  every Banger-origin row previously rendered a fabricated-precision pillar breakdown identical
+ *  across every ticker at the same DTE (live repro 2026-09-15: ALLT/CGEM/DRIP all scored exactly
+ *  70% with byte-identical pillar text and deltas, despite different tickers/prices/contracts) —
+ *  the exact C6 violation LARGO-PRODUCT-CONTRACT.md names: "If a product cannot produce a
+ *  calibrated score, OMIT the field... An invented score is worse than nothing." */
 export function thesisHealthUncalibrated(h: ThesisHealthPayload | null | undefined): boolean {
   if (!h?.pillars?.length) return false;
-  for (const [id, defaultLabel] of Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<
-    [SwingThesisPillarId, string]
+  for (const [id, defaultLabels] of Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<
+    [SwingThesisPillarId, string[]]
   >) {
     const mappedId = PILLAR_ID_MAP[id];
     const pillar = h.pillars.find((p) => p.id === mappedId);
-    if (pillar?.currentLabel === defaultLabel) return true;
+    if (pillar?.currentLabel != null && defaultLabels.includes(pillar.currentLabel)) return true;
   }
   return false;
+}
+
+/** `UNCALIBRATED_PILLAR_LABELS` keyed by the mapped `ThesisHealthPayload` pillar id instead of the
+ *  swing-native `SwingThesisPillarId` — lets a caller filter `h.pillars` (which carries the mapped
+ *  ids) without re-deriving `PILLAR_ID_MAP` itself. */
+const UNCALIBRATED_MAPPED_LABELS: Partial<Record<ThesisPillarId, string[]>> = Object.fromEntries(
+  (Object.entries(UNCALIBRATED_PILLAR_LABELS) as Array<[SwingThesisPillarId, string[]]>).map(([id, labels]) => [
+    PILLAR_ID_MAP[id],
+    labels,
+  ]),
+);
+
+/**
+ * The subset of `h.pillars` that carry a REAL, position-specific read — every pillar EXCEPT one
+ * whose `currentLabel` is the generic uncalibrated-default sentinel for its own id.
+ *
+ * GAP FOUND (2026-09-21, Ask Largo standing mandate): `thesisHealthUncalibrated()` is an OR across
+ * pillars — ANY single pillar defaulting trips it — and until now `play-brief.ts`'s
+ * `thesisHealthSection` treated that as "hide the ENTIRE panel", discarding calibrated pillars
+ * along with the uncalibrated one. That was correct for the ORIGINAL bug this function was built
+ * to catch (setupState/entryStatus/signalKinds ALL structurally null for every committed position,
+ * so every pillar was a fabricated default at once — see the header comments on `entryGeometryScore`
+ * callers and #5336/#5364). It stopped being correct once persistence/entry_geometry started being
+ * live-derived (2026-09-20's #5336): a position can have BOTH real, live-derived persistence and
+ * entry-geometry reads AND a genuinely empty flow_corroboration pillar (G-S6 confluence wasn't
+ * enforced when it committed — `isSwingConfluenceEnforced()` is a runtime toggle, `commit.ts`'s
+ * `enforceConfluence` is opt-in — or its archetype, e.g. SECTOR_ROTATION off industry-group RS, never
+ * carries a Tier-0 FLOW/STRUCTURE/CATALYST/BANGER/VECTOR/POSITIONING screen path at all). Live-
+ * verified 2026-09-21: AAPL position 40 (SECTOR_ROTATION, committed today) had `setupState:
+ * TRIGGERED`/`entryStatus: AT_TRIGGER` (both real) but zero `signal_kinds`, and the play-brief showed
+ * "Inputs not wired for committed positions" with NO pillar breakdown at all — a member reading that
+ * position's Ask Largo brief lost two genuinely-calibrated reads because a third, unrelated one was
+ * honestly absent. This filters per-pillar instead of per-panel: the AGGREGATE % (a blend across all
+ * five weighted pillars, including the fabricated one) still stays withheld — that part of the
+ * uncalibrated guard is unchanged and still correct, since a blended score CANNOT honestly represent
+ * a pillar it has no real read for.
+ *
+ * SECOND GAP FOUND (2026-09-22, same mandate, live repro AMDL positionId 1210): the per-pillar filter
+ * above correctly drops `regime` for a Banger-ledger-origin row, but `horizonPlayFromBangerPosition`
+ * (banger-lane-merge.ts) stamps `setupState: "TRIGGERED"`, `entryStatus: "AT_TRIGGER"`, and
+ * `signalKinds: ["BANGER"]` as the SAME fixed constants on EVERY Banger row, identical across every
+ * ticker — not just regime. `entryGeometryScore("AT_TRIGGER")` and `signalScore(["BANGER"])` then
+ * compute the SAME `currentLabel` ("at trigger" / "BANGER") for every Banger position, but neither
+ * string happens to match `UNCALIBRATED_PILLAR_LABELS`' generic-default sentinels ("n/a"/"no
+ * signals") — those sentinels fire on an EMPTY/missing input, not a populated-but-fake one — so the
+ * general per-pillar filter kept both, reopening the identical byte-identical-fabricated-pillar bug
+ * the 2026-09-15 fix closed, through the very filter meant to protect genuinely-partial rows like
+ * AAPL. The distinguishing fact a per-pillar filter cannot see: for a Banger-origin row, ALL of
+ * setupState/entryStatus/signalKinds (and regime) are the SAME per-row-invariant constants at once —
+ * there is no real per-position 7-pillar dossier for this lane at all (single mechanical price
+ * trigger, per horizonPlayFromBangerPosition's own header) — so once `regime` identifies the row as
+ * Banger-origin, no OTHER pillar in that same row can be trusted either, and the correct behavior is
+ * the pre-2026-09-21 one: withhold the whole breakdown, not a partial one.
+ */
+export function calibratedThesisPillars(h: ThesisHealthPayload): ThesisPillarState[] {
+  const regimePillar = h.pillars.find((p) => p.id === PILLAR_ID_MAP.regime);
+  if (regimePillar?.currentLabel === BANGER_LEDGER_REGIME_LABEL) return [];
+  return h.pillars.filter((p) => !UNCALIBRATED_MAPPED_LABELS[p.id]?.includes(p.currentLabel));
 }
 
 const DEFAULT_WEIGHTS: Record<SwingThesisPillarId, number> = {
@@ -127,24 +232,39 @@ function regimeScore(regime: string | null | undefined, factors: DeckFactor[] | 
   return { commit: score, current: score, label: regime ?? (top ? top.label : "unread") };
 }
 
-function thetaBudgetScore(dte: number | null | undefined, subLane: string | null | undefined): { commit: number; current: number; label: string } {
+// Unlike the other score functions in this file, theta budget's commit and current SCORES
+// genuinely diverge from a single `dte` input — time decay is the whole point of the pillar, so
+// "at commit" (full runway assumed) and "now" (however close to the cliff/migration DTE) are
+// different facts even though nothing else about the setup changed. `commitLabel` must diverge
+// from the current-state `label` to match: leaving them identical produced a live, real "drifted
+// DTE 4 migrate → DTE 4 migrate" narrative line (CLSK, 2026-09-14) that read as a no-op transition
+// despite the underlying score genuinely fading (0.75→0.55, crossing into "faded" status) — see
+// FINDINGS for the full repro.
+function thetaBudgetScore(
+  dte: number | null | undefined,
+  subLane: string | null | undefined,
+): { commit: number; current: number; label: string; commitLabel: string } {
   if (dte == null || !Number.isFinite(dte)) {
-    return { commit: 0.5, current: 0.4, label: "DTE n/a" };
+    return { commit: 0.5, current: 0.4, label: "DTE n/a", commitLabel: "DTE n/a" };
   }
   const lane = (subLane as SwingSubLane | null) ?? null;
   const spec = lane ? SWING_SUBLANE_MANAGE[lane] : null;
   const cliff = spec?.expiryRiskDte ?? 2;
-  if (dte <= cliff) return { commit: 0.7, current: 0.15, label: `DTE ${dte} cliff` };
-  if (dte <= (spec?.migrationDte ?? 4)) return { commit: 0.75, current: 0.55, label: `DTE ${dte} migrate` };
-  return { commit: 0.85, current: 0.85, label: `${dte}DTE runway` };
+  if (dte <= cliff) {
+    return { commit: 0.7, current: 0.15, label: `DTE ${dte} cliff`, commitLabel: "full runway assumed" };
+  }
+  if (dte <= (spec?.migrationDte ?? 4)) {
+    return { commit: 0.75, current: 0.55, label: `DTE ${dte} migrate`, commitLabel: "full runway assumed" };
+  }
+  return { commit: 0.85, current: 0.85, label: `${dte}DTE runway`, commitLabel: `${dte}DTE runway` };
 }
 
-function toPillarPair(row: { commit: number; current: number; label: string }): {
+function toPillarPair(row: { commit: number; current: number; label: string; commitLabel?: string }): {
   commit: { score: number; label: string };
   current: { score: number; label: string };
 } {
   return {
-    commit: { score: row.commit, label: row.label },
+    commit: { score: row.commit, label: row.commitLabel ?? row.label },
     current: { score: row.current, label: row.label },
   };
 }
@@ -264,8 +384,6 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
   const pillars: ThesisPillarState[] = defs.map((d) => {
     const weight = DEFAULT_WEIGHTS[d.id];
     const status = pillarStatus(d.commit.score, d.current.score);
-    const contributionPts = Math.round(weight * d.current.score * 100);
-    const deltaPts = Math.round(weight * (d.current.score - d.commit.score) * 100);
     return {
       id: PILLAR_ID_MAP[d.id],
       label: PILLAR_LABELS[d.id],
@@ -275,12 +393,27 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
       commitLabel: d.commit.label,
       currentLabel: d.current.label,
       status,
-      contributionPts,
-      deltaPts,
+      // Placeholder — degradeFromManage below can still mutate currentScore, so the real
+      // contributionPts/deltaPts are computed AFTER it runs, not here. See that recompute pass.
+      contributionPts: 0,
+      deltaPts: 0,
     };
   });
 
   degradeFromManage(input.manageAction, pillars);
+
+  // Bug fixed 2026-09-13 (live audit): contributionPts/deltaPts used to be computed BEFORE
+  // degradeFromManage ran, so a pillar it mutated (persistence, on EXIT/STOP_OUT/TAKE_PARTIAL/
+  // EXIT_RUNNER) showed its OLD, pre-degrade point values alongside its NEW, post-degrade
+  // currentScore/status/currentLabel — e.g. a pillar labeled "lost"/"exit signal" could still
+  // display a positive contributionPts as if nothing had changed. The aggregate `health` below
+  // was never affected (it always read the post-mutation currentScore straight off `pillars`),
+  // only each pillar's OWN displayed point values were stale. Recomputed here, after the mutation,
+  // from each pillar's own (possibly-updated) currentScore/commitScore/weight.
+  for (const p of pillars) {
+    p.contributionPts = Math.round(p.weight * p.currentScore * 100);
+    p.deltaPts = Math.round(p.weight * (p.currentScore - p.commitScore) * 100);
+  }
 
   const health = Math.round(
     pillars.reduce((sum, p) => sum + p.weight * p.currentScore, 0) * 100,

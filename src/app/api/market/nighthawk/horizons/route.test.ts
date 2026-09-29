@@ -114,6 +114,30 @@ mock.module("../../../../../lib/horizon-board", {
     },
   },
 });
+// Penny-priced Banger-origin contract (banger-lane-merge.ts's shape): entry/mark sub-$1, and
+// livePnlPct already computed upstream from the RAW (unrounded) entry/mark — see the SEV note
+// below on why 2dp default rounding of mid/entryPremium/peakPremium breaks the displayed pair.
+const PENNY_ENTRY = 0.15;
+const PENNY_MARK = 0.125; // rounds to 0.13 at 2dp — a live-repro value (RBLU 2026-09-15)
+const PENNY_LIVE_PNL_PCT = -16.7; // Math.round(((0.125/0.15 - 1) * 100) * 10) / 10, computed pre-rounding
+
+// Live-repro trough/mid mismatch (Ask Largo standing mandate, flagged live 2026-09-23, BKKT
+// SWING:BKKT:1310): trough_premium (updateBangerLiveState's LEAST-latched low) sits fractionally
+// BELOW the current mark — real, honest data, since a mark can dip and partially recover — but
+// this route's keyDp map rounds `mid`/`peakPremium` to 4dp while `troughPremium` falls through to
+// the 2dp default. 0.3225 (a real trough tick) rounds to 0.32 at 2dp; a nearby mid of 0.325 stays
+// 0.325 at 4dp. Pick values where that asymmetry inverts trough ABOVE mid — the live symptom.
+const TROUGH_MARK = 0.329; // current mid — 4dp override, unchanged
+const TROUGH_RAW = 0.326; // real trough tick, honestly BELOW mid — rounds to 0.33 at 2dp (the bug)
+
+// Deep-ITM near-expiry swing contract greeks (AAPL 1DTE 330C shape flagged live 2026-09-20): real,
+// honestly-computed small-but-nonzero values that the OLD 2dp default rounding destroyed to 0.00 —
+// see the "gamma/theta/vega ALSO need the override" test below.
+const REAL_GAMMA = 0.0031;
+const REAL_THETA = -0.0087;
+const REAL_VEGA = 0.0054;
+const REAL_IV = 0.1823;
+
 mock.module("../../../../../lib/swing/serving-lane", {
   namedExports: {
     getSwingServingLane: async () => ({
@@ -123,6 +147,28 @@ mock.module("../../../../../lib/swing/serving-lane", {
       watchCount: 3,
       scanAsOf: "2026-09-04T17:00:00.000Z",
       scanSessionDay: "2026-09-04",
+      committed: [
+        {
+          ticker: "PENNY",
+          entryPremium: PENNY_ENTRY,
+          peakPremium: PENNY_MARK,
+          livePnlPct: PENNY_LIVE_PNL_PCT,
+          contract: {
+            mid: PENNY_MARK,
+            gamma: REAL_GAMMA,
+            theta: REAL_THETA,
+            vega: REAL_VEGA,
+            iv: REAL_IV,
+          },
+        },
+        {
+          ticker: "TROUGH",
+          entryPremium: 0.45,
+          peakPremium: TROUGH_MARK,
+          troughPremium: TROUGH_RAW,
+          contract: { mid: TROUGH_MARK },
+        },
+      ],
     }),
     // Route also reads the persisted snapshot / discover seam — stub so the mock module shape matches
     // the live import list (missing named exports → TypeError → degraded {available:false} body).
@@ -174,5 +220,69 @@ describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
   test("still ships no-store (behavior unchanged — rounding-only fix)", async () => {
     const res = await GET(new NextRequest("http://localhost/api/market/nighthawk/horizons"));
     assert.match(res.headers.get("Cache-Control") ?? "", /no-store/);
+  });
+
+  // SEV: penny-priced Banger-origin premiums (entryPremium/contract.mid/peakPremium) were rounded
+  // to the default 2dp at this response boundary, but livePnlPct is computed upstream in
+  // banger-lane-merge.ts from the RAW unrounded entry/mark BEFORE this rounding runs. For a
+  // sub-$1 contract that gap is large enough to be visible: raw mark 0.125 rounds to displayed
+  // 0.13, so a member reading "entry $0.15, mark $0.13" and computing (0.13-0.15)/0.15 gets
+  // -13.3%, while the API's own livePnlPct field says -16.7% (computed from the real 0.125) —
+  // live repro RBLU 2026-09-15. Fix: keyDp overrides mid/entryPremium/peakPremium to 4dp (same
+  // precedent as round-floats.ts's own gamma override) so displayed premiums stay close enough
+  // to the raw value that recomputing the percentage from them agrees with livePnlPct.
+  test("penny-priced premiums keep enough precision that (mark-entry)/entry agrees with livePnlPct", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings")
+    );
+    const body = await res.json();
+    const play = body.board.lanes.SWING.committed[0];
+    assert.equal(play.livePnlPct, PENNY_LIVE_PNL_PCT);
+    const recomputed = ((play.contract.mid / play.entryPremium - 1) * 100);
+    assert.ok(
+      Math.abs(recomputed - play.livePnlPct) < 0.5,
+      `displayed mid ${play.contract.mid} / entry ${play.entryPremium} implies ${recomputed.toFixed(1)}%, ` +
+        `too far from the API's own livePnlPct ${play.livePnlPct}% — precision lost at the rounding boundary`
+    );
+  });
+
+  // BUG (Ask Largo standing mandate, flagged live 2026-09-20 on an AAPL 1DTE deep-ITM 330C swing
+  // position): live-plays.ts honestly computes/carries real, small-but-nonzero gamma/theta/vega
+  // off the live provider quote (never fabricated - `quote?.gamma ?? null`), but this route's
+  // roundFloats() call had no keyDp override for those keys, so the 2dp default silently
+  // quantized every one of them to 0.00 before they ever reached the member/Largo response - a
+  // real computed greek rendering as a confident "0", indistinguishable from a genuinely-absent
+  // quote. This is the exact hazard round-floats.ts's own header warns about for gamma and the
+  // fix vector-response-rounding.ts already applies for Vector's fraction-scale fields; the
+  // horizons route cited that precedent in a comment but never actually added the override.
+  test("gamma/theta/vega/iv keep 4dp precision instead of quantizing to 0.00 (Ask Largo audit, 2026-09-21)", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings")
+    );
+    const body = await res.json();
+    const play = body.board.lanes.SWING.committed[0];
+    assert.equal(play.contract.gamma, REAL_GAMMA, "gamma must not be destroyed to 0.00");
+    assert.equal(play.contract.theta, REAL_THETA, "theta must not be destroyed to 0.00");
+    assert.equal(play.contract.vega, REAL_VEGA, "vega must not be destroyed to 0.00");
+    assert.equal(play.contract.iv, REAL_IV, "iv must keep 4dp precision");
+  });
+
+  // BUG (Ask Largo standing mandate, live repro 2026-09-23, BKKT SWING:BKKT:1310): troughPremium
+  // was missing from the keyDp override map even though its sibling peakPremium/mid were already
+  // in it, so trough rounded at the coarser 2dp default. Live symptom: a real trough tick of
+  // 0.328 rounded to 0.33, ending up ABOVE a mid/peak of 0.325 (unchanged at 4dp) — a trough must
+  // never read higher than the current mark, by definition (it is the LEAST mark ever observed).
+  test("troughPremium keeps 4dp precision, staying consistent with mid/peak (Ask Largo audit, 2026-09-23)", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/market/nighthawk/horizons?view=swings")
+    );
+    const body = await res.json();
+    const play = body.board.lanes.SWING.committed[1];
+    assert.equal(play.ticker, "TROUGH");
+    assert.equal(play.troughPremium, TROUGH_RAW, "trough must not be quantized to 2dp");
+    assert.ok(
+      play.troughPremium <= play.contract.mid,
+      `trough ${play.troughPremium} must never read above mid ${play.contract.mid} — a trough is the LEAST mark ever observed`,
+    );
   });
 });

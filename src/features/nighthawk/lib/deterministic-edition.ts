@@ -44,13 +44,15 @@ import { buildDirectionalStockLevels, computeRiskReward } from "./play-levels";
 import { applyPremiumCapToPlay, validatePlayGeometry, canonicalTicker } from "./play-constraints";
 import { groundPlays } from "./grounding";
 import { GROUNDING_MIN_OI, tieredMinOi } from "./grounding";
-import { MAX_OPTION_PREMIUM_PER_SHARE, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+import { MAX_OPTION_PREMIUM_PER_SHARE, MAX_OPTION_COST_PER_CONTRACT, MIN_PUBLISH_SCORE, DIVERSITY_HEDGE_FLOOR, FORCED_CONTRARIAN_FLOOR, INDEX_SET, INDEX_ETF_PLAYS, PREFERRED_OPTION_PREMIUM_PER_SHARE, MIN_PREFERRED_CONTRACT_DELTA, PREFERRED_OPTION_RELAXED_MIN_OI } from "./constants";
 import {
   diversityHedgeEnabled,
   forcedContrarianHedgeEnabled,
 } from "./edition-quality";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
+import { calendarDteBetween } from "@/lib/zerodte/board";
+import type { NighthawkRejectionDetail } from "./play-outcomes";
 
 /** Default number of plays a full edition publishes. Mirrors the Claude path's top-5 shape. */
 export const DETERMINISTIC_EDITION_TARGET = 5;
@@ -167,6 +169,13 @@ function contractOi(row: ChainStrikeRow, side: "call" | "put"): number {
   return Number.isFinite(oi) ? oi : 0;
 }
 
+/** Per-contract delta for the cost-preference tier below. Honestly null (never fabricated) when the
+ *  row's source didn't carry greeks — see ChainStrikeRow's own comment on UW rows lacking them. */
+function contractDelta(row: ChainStrikeRow, side: "call" | "put"): number | null {
+  const delta = side === "call" ? row.call_delta : row.put_delta;
+  return delta != null && Number.isFinite(delta) ? delta : null;
+}
+
 /** Format a strike for the option-card string so parseOptionsContract can re-read it. Integers stay
  *  integers ("120"); fractional strikes keep up to two decimals with no trailing zeros ("122.5"). */
 function formatStrike(strike: number): string {
@@ -245,6 +254,15 @@ function addCalendarDaysYmd(ymd: string, days: number): string {
  *                   whole intraday board (the "only one play all day" bug's structural half). A
  *                   ticker with no expiry inside the window returns null (honest: no 0DTE to trade).
  *
+ * `preferAffordable` (optional, default off — every existing caller outside Night Hawk Legacy is
+ * unaffected): before the nearest-to-spot ladder below, first tries a PREFERRED subset of the
+ * strict pool — premium ≤ PREFERRED_OPTION_PREMIUM_PER_SHARE AND |delta| ≥ MIN_PREFERRED_CONTRACT_DELTA
+ * (when delta is known) — and picks the nearest-to-spot strike within THAT subset. Falls through to
+ * the unchanged ladder when nothing clears both. Exists because plain nearest-to-spot defaults to
+ * full ATM regardless of the underlying's own price, so a $1,000+ stock's ATM weekly can cost
+ * 10-50x a $20 stock's ATM weekly for the exact same "closest to spot" reason — see the constants'
+ * own doc comments for the live evidence this was built from.
+ *
  * `targetStrike` (optional) ranks candidates by distance to that strike instead of to spot — Night
  * Hawk's own callers never pass it (its 0DTE picks are ATM-nearest-to-spot by design, unchanged),
  * but Vector's role-specific specs (gex-king-pin, magnet-mean, fade-dip/rip) need to target the
@@ -255,18 +273,20 @@ export function pickChainContract(
   chain: EditionChainData,
   direction: "long" | "short",
   maxDte?: number | null,
-  targetStrike?: number | null
+  targetStrike?: number | null,
+  preferAffordable?: boolean,
+  asOfEtYmd?: string
 ): PickedContract | null {
   const side: "call" | "put" = direction === "long" ? "call" : "put";
   const spot = chain.spot;
   const minOi = spot > 0 ? tieredMinOi(spot) : GROUNDING_MIN_OI;
-  const today = todayEtYmd();
+  const today = asOfEtYmd ?? todayEtYmd();
   const dayMode = maxDte != null && maxDte <= 1;
   const dayMaxExpiry = dayMode ? addCalendarDaysYmd(today, Math.max(0, Math.floor(maxDte!))) : null;
   const minExpiry = minExpiryDate(today);
   const distanceRef = targetStrike != null && Number.isFinite(targetStrike) ? targetStrike : spot;
 
-  type Candidate = PickedContract & { dist: number };
+  type Candidate = PickedContract & { dist: number; delta: number | null; oi: number };
   const strict: Candidate[] = [];
   const relaxedPremium: Candidate[] = [];
   const relaxedOi: Candidate[] = [];
@@ -292,6 +312,8 @@ export function pickChainContract(
       expiry: row.expiry,
       premium: Number(premium.toFixed(2)),
       dist: distanceRef > 0 ? Math.abs(row.strike - distanceRef) : row.strike,
+      delta: contractDelta(row, side),
+      oi,
     };
     const oiOk = oi >= minOi;
     const premOk = premium <= MAX_OPTION_PREMIUM_PER_SHARE;
@@ -308,6 +330,32 @@ export function pickChainContract(
 
   const sortFn = (a: Candidate, b: Candidate) =>
     a.dist - b.dist || a.expiry.localeCompare(b.expiry) || a.strike - b.strike;
+
+  // Cost-preference tier: only when the caller opted in. Never excludes a ticker — falls straight
+  // through to the unchanged ladder below when nothing clears the preferred cost + delta floor
+  // (and, for the second pass, the relaxed OI floor) in either pool searched.
+  if (preferAffordable) {
+    const isAffordable = (c: Candidate) =>
+      c.premium <= PREFERRED_OPTION_PREMIUM_PER_SHARE && c.delta != null && Math.abs(c.delta) >= MIN_PREFERRED_CONTRACT_DELTA;
+    // Pass 1: the already-strict (deeply liquid + under the hard cap) pool — same behavior as before
+    // this fallback existed.
+    const strictAffordable = strict.filter(isAffordable);
+    if (strictAffordable.length) {
+      strictAffordable.sort(sortFn);
+      const best = strictAffordable[0]!;
+      return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
+    }
+    // Pass 2: relax the liquidity bar (not the cost/delta bars) down to PREFERRED_OPTION_RELAXED_MIN_OI
+    // — real, quoted, tradeable contracts that simply fall short of the deep-liquidity bar built for
+    // index-class names (see that constant's own doc comment for the live evidence motivating this).
+    // Only consulted when NO strict-pool candidate satisfies the preference at all.
+    const relaxedAffordable = relaxedOi.filter((c) => isAffordable(c) && c.oi >= PREFERRED_OPTION_RELAXED_MIN_OI);
+    if (relaxedAffordable.length) {
+      relaxedAffordable.sort(sortFn);
+      const best = relaxedAffordable[0]!;
+      return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
+    }
+  }
 
   for (const pool of [strict, relaxedPremium, relaxedOi, anyQuoted, shortDated]) {
     if (pool.length) {
@@ -372,6 +420,136 @@ function resolveLevels(
  * risk/reward context, and flags catalysts. Members should read this and immediately understand
  * the trade idea — not decode a score breakdown.
  */
+/**
+ * Pick one real, direction-relevant piece of news text to quote in the thesis. `news_score`
+ * (scoreNewsCatalyst) already reads both `dossier.news_headlines` (plain titles) and
+ * `dossier.polygon_sentiment` (Polygon's own per-article sentiment + reasoning, sliced to 120
+ * chars at fetch time in dossier.ts) to compute the score that can make "news" a top driver in
+ * key_signal — but until now nothing surfaced WHICH headline or WHY to the member, so a card
+ * could read "BULLISH — news + flow" with no stated reason. Prefers a sentiment entry whose
+ * polarity matches the play's own direction (real reasoning, not just a title); falls back to
+ * any sentiment entry, then to a plain headline. Returns null when there's nothing to show —
+ * this is additive only, never fabricates a catalyst.
+ */
+function pickCatalystHeadline(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const wantSentiment = isLong ? "positive" : "negative";
+  const sentiment = dossier?.polygon_sentiment ?? [];
+  const headlines = dossier?.news_headlines ?? [];
+  const matching = sentiment.find((s) => s.toLowerCase().startsWith(`${wantSentiment}:`));
+  // This section only renders when news is a top scoring driver (topDrivers gate below), but
+  // scoreNewsCatalyst can reach that threshold from plain-text keyword hits (upgrade/beat/etc.)
+  // in `news_headlines` alone, independent of what's actually tagged in `polygon_sentiment` --
+  // the two arrays are fed from the same fetch but scored differently. Falling back to
+  // `sentiment[0]` regardless of its own tag reproduced a real case: a LONG pick (bullish via a
+  // "beat" keyword in a plain headline) quoted a "negative: guidance disappoints analysts"
+  // sentiment entry as its "Catalyst:" line -- a bearish-toned quote presented as supporting
+  // evidence for a bullish thesis. Never fall back to a sentiment entry of the OPPOSITE
+  // direction; prefer a plain (untagged) headline instead, or omit the line entirely.
+  const raw = matching ?? headlines[0];
+  if (!raw) return null;
+  // Strip a leading "positive:"/"negative:"/"neutral:" sentiment tag -- the thesis already
+  // states direction via dirWord, so repeating it as a label would be redundant.
+  const text = raw.replace(/^(positive|negative|neutral)\s*:\s*/i, "").trim();
+  if (!text) return null;
+  return text.length > 110 ? `${text.slice(0, 107)}...` : text;
+}
+
+/**
+ * Names WHICH of scoreSmartMoney's three sub-signals (scorer.ts) actually has direction-aligned
+ * evidence, when smart-money is a top scoring driver: congressional trades (unusual + regular
+ * disclosures), institutional net flow, or prediction-market consensus. Without this, a card
+ * could read "BULLISH -- smart-money + flow" and a member has no way to tell whether that means
+ * a senator bought calls, an institution accumulated, or a prediction market moved -- the exact
+ * same "signal exists but isn't surfaced" gap pickCatalystHeadline fixed for news.
+ *
+ * Mirrors the field/side conventions scoreSmartMoney's own helpers read (txn_type/
+ * transaction_type for congress rows, action/change for institutional rows) but checks for
+ * PRESENCE of aligned evidence rather than re-deriving its recency-decay weighting -- this is
+ * prose naming a real signal, not a second scorer, so it doesn't need bit-identical math.
+ * Checked in the same priority order scoreSmartMoney sums them (congress, then institutional,
+ * then predictions) so the note names whichever source is likeliest to be doing the real work.
+ */
+function smartMoneyDriverNote(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const congressRows = [...(dossier?.congress_unusual ?? []), ...(dossier?.congress_trades ?? [])];
+  const congressHit = congressRows.some((row) => {
+    const side = String(
+      row.txn_type ?? row.transaction_type ?? row.transaction ?? row.type ?? row.trade_type ?? ""
+    ).toLowerCase();
+    return isLong ? /buy|purchase/.test(side) : /sell|sale/.test(side);
+  });
+  if (congressHit) return `recent congressional ${isLong ? "buying" : "selling"} disclosed`;
+
+  const instHit = (dossier?.institutional_activity ?? []).some((row) => {
+    // BUG FIX (2026-09-12): the real UW ownership row's field is `units_changed` (trailing "d"),
+    // not `units_change` -- mirrors the identical fallback-chain fix in scorer.ts's
+    // institutionalNetSignal, which this note's presence check should agree with.
+    const change = Number(
+      row.units_changed ??
+        row.change ??
+        row.shares_change ??
+        row.units_change ??
+        row.change_in_shares ??
+        row.net_change ??
+        NaN
+    );
+    if (Number.isFinite(change) && change !== 0) return isLong ? change > 0 : change < 0;
+    const action = String(row.action ?? row.transaction_type ?? row.type ?? "").toLowerCase();
+    return isLong ? /buy|added|increase|new|accumul/.test(action) : /sell|reduced|decrease|trim|liquidat/.test(action);
+  });
+  if (instHit) return `institutional ${isLong ? "accumulation" : "distribution"} flagged`;
+
+  const pred = dossier?.predictions_signal;
+  const predAligns = pred != null && (isLong ? pred.direction === "bullish" : pred.direction === "bearish");
+  if (predAligns) return pred.headline || "prediction-market consensus aligned";
+
+  return null;
+}
+
+/**
+ * Names WHICH positioning sub-signal is driving pos_score when positioning is a top scoring
+ * driver: dark-pool prints, repeated/stacked strike accumulation, or aligned OI growth --
+ * scoreOptionsPositioning (scorer.ts) already blends all of these into pos_score, but until now
+ * the thesis only ever surfaced dealer greek-flow bias (a separate, narrower data source, always
+ * printed below regardless of whether "positioning" is even a top-2 driver) -- a card could read
+ * "BULLISH -- positioning + flow" while a member has no way to tell whether that means dark-pool
+ * buying, stacked call accumulation, rising call OI, or nothing narratable was actually behind it.
+ * Checked in the same priority order scoreOptionsPositioning weighs them (dark-pool up to 6pts,
+ * strike stacks up to 7pts, OI-change 2pts) so the note names whichever source is likeliest to be
+ * doing the real work. Additive only -- never fabricates, and coexists with the separate dealer
+ * greek-flow line since they're independent data sources, not a duplicate of the same one.
+ */
+function positioningDriverNote(dossier: TickerDossier | undefined, isLong: boolean): string | null {
+  const dp = dossier?.dark_pool;
+  const dpBias = (dp?.bias ?? "").toLowerCase();
+  const dpAligns = dpBias === (isLong ? "bullish" : "bearish");
+  if (dpAligns && (dp?.total_premium ?? 0) >= 5_000_000) {
+    return `dark-pool prints leaning ${isLong ? "bullish" : "bearish"}`;
+  }
+
+  const alignedStacks = (dossier?.strike_stacks ?? []).filter((s) => {
+    const t = (s.option_type ?? "").toLowerCase();
+    if (!t) return false;
+    return isLong ? t.startsWith("c") : t.startsWith("p");
+  });
+  if (alignedStacks.some((s) => s.same_strike_accumulation)) {
+    return "repeated same-strike accumulation on the aligned side";
+  }
+  if (alignedStacks.some((s) => s.repeated_hits)) {
+    return "repeated strike hits on the aligned side";
+  }
+
+  const alignedOi = (dossier?.oi_change ?? []).filter((r) => {
+    if (!((r.oi_change ?? 0) > 0)) return false;
+    const t = (r.kind ?? "").toLowerCase();
+    return isLong ? t.startsWith("c") : t.startsWith("p");
+  });
+  if (alignedOi.length >= 2) {
+    return "rising aligned open interest";
+  }
+
+  return null;
+}
+
 export function buildDeterministicThesis(
   scored: ScoredCandidate,
   dossier: TickerDossier | undefined,
@@ -425,7 +603,37 @@ export function buildDeterministicThesis(
     parts.push(`${scored.ticker} ${dirWord} setup.`);
   }
   if (trendConflicts) {
-    parts.push(`Flow conviction overrides ${trend} technicals — institutional money is ${dirWord}.`);
+    // This sentence used to hard-code "Flow conviction... institutional money is {dirWord}"
+    // whenever the technical trend disagreed with the play's final direction — regardless of
+    // whether flow had anything to do with the pick. Reproduced: a candidate driven entirely by
+    // news_score(20) + smart_money_score(15) with flow_score(0) still printed "Flow conviction
+    // overrides bearish technicals — institutional money is bullish", inventing a flow signal
+    // that never existed. Name whichever dimension is ACTUALLY the top scoring driver instead —
+    // same `topDrivers` computation the catalyst/smart-money sections below already gate on.
+    const overrideDriver = topDrivers[0]?.label;
+    const overridePhrase =
+      overrideDriver === "flow"
+        ? `Flow conviction overrides ${trend} technicals — institutional money is ${dirWord}.`
+        : overrideDriver === "smart-money"
+          ? `Smart-money conviction overrides ${trend} technicals.`
+          : overrideDriver === "news"
+            ? `News conviction overrides ${trend} technicals.`
+            : overrideDriver === "positioning"
+              ? `Options-positioning conviction overrides ${trend} technicals.`
+              : null;
+    if (overridePhrase) parts.push(overridePhrase);
+  }
+
+  // --- Catalyst headline (surfaces WHY when news is a top scoring driver, not just THAT it is) ---
+  if (topDrivers.some((d) => d.label === "news")) {
+    const catalyst = pickCatalystHeadline(dossier, isLong);
+    if (catalyst) parts.push(`Catalyst: "${catalyst}".`);
+  }
+
+  // --- Smart-money driver note (surfaces WHICH sub-signal when smart-money is a top driver) ---
+  if (topDrivers.some((d) => d.label === "smart-money")) {
+    const note = smartMoneyDriverNote(dossier, isLong);
+    if (note) parts.push(`Smart money: ${note}.`);
   }
 
   // --- Key S/R levels + R:R ---
@@ -449,7 +657,21 @@ export function buildDeterministicThesis(
   if (scored.flow_score >= 20) {
     const flowParts: string[] = [];
     if (dossier?.flow_streak?.streak_days && dossier.flow_streak.streak_days >= 2) {
-      flowParts.push(`${dossier.flow_streak.streak_days}-day ${dirWord} flow streak`);
+      // The streak is a TICKER-level measurement (net premium direction over the last N trading
+      // days, from a DB rollup independent of tonight's live flow) — it can legitimately disagree
+      // with the play's own chosen direction (scorer.ts's scoreFlowQuality already guards its own
+      // scoring bonus on this exact agreement check). Labeling the streak with the PLAY's dirWord
+      // regardless of what the streak itself measured fabricated corroboration: a real 4-day
+      // PUT-dominated (bearish) streak on a LONG play rendered as "4-day bullish flow streak" —
+      // the opposite of what the streak data showed. Use the streak's own measured direction; only
+      // fall back to the play's dirWord when a dossier carries no streak direction at all.
+      const streakDirWord =
+        dossier.flow_streak.direction === "short"
+          ? "bearish"
+          : dossier.flow_streak.direction === "long"
+            ? "bullish"
+            : dirWord;
+      flowParts.push(`${dossier.flow_streak.streak_days}-day ${streakDirWord} flow streak`);
     }
     if (scored.flow_score >= 30) {
       flowParts.push("aggressive options activity");
@@ -465,6 +687,11 @@ export function buildDeterministicThesis(
   if (scored.pos_score >= 8 && dossier?.greek_flow) {
     const gf = dossier.greek_flow;
     parts.push(`Dealer positioning ${gf.bias}.`);
+  }
+  // --- Positioning driver note (surfaces WHICH sub-signal when positioning is a top driver) ---
+  if (topDrivers.some((d) => d.label === "positioning")) {
+    const posNote = positioningDriverNote(dossier, isLong);
+    if (posNote) parts.push(`Positioning: ${posNote}.`);
   }
   if (scored.wall_proximity_score != null && scored.wall_proximity_score >= 4) {
     parts.push(`GEX wall alignment supports ${isLong ? "upside" : "downside"}.`);
@@ -527,7 +754,8 @@ function buildPlay(
   contract: PickedContract | null,
   levels: { entry_range: string; target: string; stop: string },
   rank: number,
-  bangerTickers?: Set<string>
+  bangerTickers?: Set<string>,
+  asOfEtYmd?: string
 ): PlaybookPlay {
   // PR-N29: ensure the stock target makes the option profitable — a LONG target below
   // the call strike means the option expires worthless at "target", which is incoherent.
@@ -569,6 +797,10 @@ function buildPlay(
   const options_play = formatOptionsPlay(scored.ticker, contract);
   const dir = scored.direction === "short" ? "SHORT" : "LONG";
   const rr = computeRiskReward({ direction: dir, entry_range: levels.entry_range, target: levels.target, stop: levels.stop });
+  // Workstream C / #20's D1 (2026-09-21) — observational only, never read by selection/scoring.
+  // Absent (not 0) when no contract was picked, so a stock-only/caveated fallback never reads as
+  // same-day DTE.
+  const dte = contract ? calendarDteBetween(asOfEtYmd ?? todayEtYmd(), contract.expiry) : null;
   const base: PlaybookPlay = {
     rank,
     ticker: scored.ticker,
@@ -582,6 +814,7 @@ function buildPlay(
     stop: levels.stop,
     options_play,
     score: scored.score,
+    dte,
     sector: scored.sector?.toLowerCase() || undefined,
     flow_streak_days: dossier?.flow_streak?.streak_days ?? undefined,
     iv_rank: dossier?.iv_rank ?? undefined,
@@ -610,7 +843,7 @@ function buildPlay(
   // OTM momentum plays spike then decay, so hold-to-target is the wrong exit. Advisory only (risk_note)
   // — it does NOT change the play's plan/target/stop or how it's graded.
   if (bangerTickers?.has(scored.ticker.toUpperCase())) {
-    base.risk_note = bangerScaleOutNote();
+    base.risk_note = bangerScaleOutNote({ dte });
     base.exit_style = "scale_out"; // structured marker (not just prose) so the ledger can SELECT bangers
   }
   if (contract) {
@@ -635,7 +868,21 @@ export function buildDeterministicEditionPlays(params: {
   maxDte?: number | null;
   /** Tickers surfaced by the whole-market breakout lane — these get the scale-out exit risk_note. */
   bangerTickers?: Set<string>;
-}): { plays: PlaybookPlay[]; funnel: { candidates: number; score_below_floor: number; contract_ok: number; stock_only: number; no_chain: number; no_spot: number; premium_capped: number; geometry_fail: number; geometry_ok: number; premium_ok: number; grounded: number; dropped_ungrounded: number } } {
+  /** Edition's target trading day (YYYY-MM-DD), used for contract DTE anchoring. Critical for weekly
+   *  editions built on Friday for Monday: the 2-day minimum is measured from edition_for, not build date. */
+  edition_for?: string;
+}): {
+  plays: PlaybookPlay[];
+  funnel: { candidates: number; score_below_floor: number; contract_ok: number; stock_only: number; no_chain: number; no_spot: number; premium_capped: number; geometry_fail: number; geometry_ok: number; premium_ok: number; grounded: number; dropped_ungrounded: number };
+  /** Workstream C / #20's D4-extra (2026-09-21) — INSTRUMENTATION ONLY, unconditionally
+   *  populated (no env-flag read here; the flag lives entirely in the caller that decides
+   *  whether to act on this array). Every geometry/premium_cap drop from the main loop below,
+   *  in the SAME NighthawkRejectionDetail shape claude-edition.ts's own `stageRejected` already
+   *  uses, so a caller can merge them in with zero new capture code. Never read by any
+   *  selection/scoring/gating logic in this file — the `continue` statements at each drop point
+   *  are completely unchanged; this is a `.push()` beside an existing branch, not inside it. */
+  mainLoopRejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored: ScoredCandidate; play: PlaybookPlay }>;
+} {
   const target = params.target ?? DETERMINISTIC_EDITION_TARGET;
   // PR-N18: increased buffer from target+12 to target+20 — with 60 candidates and wider
   // chain coverage, grounding/geometry drops are absorbed without emptying the book.
@@ -652,6 +899,7 @@ export function buildDeterministicEditionPlays(params: {
   const built: PlaybookPlay[] = [];
   const selectedFamilies = new Set<string>();
   const strictContractTickers = new Set<string>();
+  const mainLoopRejected: Array<{ ticker: string; detail: NighthawkRejectionDetail; scored: ScoredCandidate; play: PlaybookPlay }> = [];
 
   let scoreBelowFloorCount = 0;
   for (const scored of params.ranked) {
@@ -665,7 +913,10 @@ export function buildDeterministicEditionPlays(params: {
     const dossier = params.dossierMap[ticker] ?? params.dossierMap[scored.ticker];
     const spot = chain?.spot ?? dossier?.tech?.price ?? null;
 
-    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
+    // preferAffordable=true: see pickChainContract's own doc comment — every Legacy call site opts
+    // in so an expensive underlying's ATM strike doesn't default to a wildly costlier contract than
+    // the rest of that night's book for no reason other than "closest to spot."
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true, params.edition_for) : null;
     if (contract && !contract.caveat) {
       contractOk += 1;
     } else if (contract && contract.caveat) {
@@ -686,10 +937,23 @@ export function buildDeterministicEditionPlays(params: {
     }
 
     const levels = resolveLevels(dossier, scored.direction, spot);
-    const play = buildPlay(scored, dossier, contract, levels, built.length + 1, params.bangerTickers);
+    const play = buildPlay(scored, dossier, contract, levels, built.length + 1, params.bangerTickers, params.edition_for);
 
     if (contract && !contract.caveat && play.premium_cap_ok === false) {
       premiumCapCount += 1;
+      // D4-extra: observational only -- the `continue` right below is completely unchanged.
+      mainLoopRejected.push({
+        ticker,
+        detail: {
+          stage: "premium_cap",
+          entry_premium: play.entry_premium ?? null,
+          cap_per_share: MAX_OPTION_PREMIUM_PER_SHARE,
+          entry_cost_per_contract: play.entry_cost_per_contract ?? null,
+          cap_per_contract: MAX_OPTION_COST_PER_CONTRACT,
+        },
+        scored,
+        play,
+      });
       continue;
     }
     premiumOk += 1;
@@ -697,6 +961,8 @@ export function buildDeterministicEditionPlays(params: {
     const geom = validatePlayGeometry(play);
     if (!geom.ok) {
       geometryFailCount += 1;
+      // D4-extra: observational only -- the `continue` right below is completely unchanged.
+      mainLoopRejected.push({ ticker, detail: { stage: "geometry", drops: geom.drops }, scored, play });
       continue;
     }
     geometryOk += 1;
@@ -754,9 +1020,9 @@ export function buildDeterministicEditionPlays(params: {
         const dos = params.dossierMap[t] ?? params.dossierMap[scored.ticker];
         const sp = ch?.spot ?? dos?.tech?.price ?? null;
         if (sp == null || !Number.isFinite(sp) || sp <= 0) continue;
-        const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte) : null;
+        const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte, undefined, true, params.edition_for) : null;
         const lvl = resolveLevels(dos, scored.direction, sp);
-        const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers);
+        const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers, params.edition_for);
         if (!validatePlayGeometry(p).ok) continue;
         const hedgeWarnings = p.gate_warnings ? [...p.gate_warnings] : [];
         hedgeWarnings.push(`Hedge/contrarian play (score ${scored.score}) — minority-view balance against ${dominant} book`);
@@ -794,9 +1060,9 @@ export function buildDeterministicEditionPlays(params: {
           );
           if (contrarian.score < FORCED_CONTRARIAN_FLOOR) continue;
 
-          const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte) : null;
+          const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte, undefined, true, params.edition_for) : null;
           const lvl = resolveLevels(dos, contrarian.direction, sp);
-          const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers);
+          const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers, params.edition_for);
           if (!validatePlayGeometry(p).ok) { contrarianScores[contrarianScores.length - 1] += ":geom-fail"; continue; }
 
           if (!bestContrarian || contrarian.score > bestContrarian.scored.score) {
@@ -844,6 +1110,7 @@ export function buildDeterministicEditionPlays(params: {
       grounded: summary.grounded,
       dropped_ungrounded: summary.dropped_ungrounded,
     },
+    mainLoopRejected,
   };
 }
 
@@ -864,6 +1131,8 @@ export function buildRescuePlays(params: {
   target?: number;
   /** 0 or 1 → select a same-day/1-DTE contract (intraday day-trade path). null/undefined → overnight swing. */
   maxDte?: number | null;
+  /** Edition's target trading day (YYYY-MM-DD), used for contract DTE anchoring. */
+  edition_for?: string;
   // NB: no bangerTickers here — rescue plays are stock-only fallbacks (no option contract), so the
   // scale-out option exit doesn't apply; the note is attached only in buildDeterministicEditionPlays.
 }): PlaybookPlay[] {
@@ -890,11 +1159,13 @@ export function buildRescuePlays(params: {
     const geom = validatePlayGeometry({ ...levels, direction } as Parameters<typeof validatePlayGeometry>[0]);
     if (!geom.ok) continue;
 
-    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
+    const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte, undefined, true, params.edition_for) : null;
     const options_play = formatOptionsPlay(ticker, contract);
     if (!contract) {
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
+    const asOf = params.edition_for ?? todayEtYmd();
+    const dte = contract ? calendarDteBetween(asOf, contract.expiry) : null;
 
     plays.push({
       rank: plays.length + 1,
@@ -904,6 +1175,7 @@ export function buildRescuePlays(params: {
       play_type: classifyPlayType(ticker),
       thesis,
       key_signal,
+      dte,
       entry_range: levels.entry_range,
       target: levels.target,
       stop: levels.stop,

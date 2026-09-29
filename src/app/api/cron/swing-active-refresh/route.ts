@@ -39,7 +39,7 @@ import {
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
-import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
+import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
@@ -109,8 +109,9 @@ async function loadShadowReads(row: SwingShadowPositionRow, nowMs: number): Prom
     try {
       const snaps = await fetchOptionsUnifiedSnapshot([occ]);
       const snap = snaps.get(occ);
+      const resolved = snap ? reliableMarkFromSnapshot(snap) : null;
       const live =
-        typeof snap?.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0 ? snap.mark : null;
+        typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0 ? resolved : null;
       if (live != null) mark = live;
     } catch {
       // fail-soft — underlying path still records
@@ -144,7 +145,8 @@ async function loadOptionQuote(
     const snaps = await fetchOptionsUnifiedSnapshot([occ]);
     const snap = snaps.get(occ);
     if (!snap) return none;
-    const mark = typeof snap.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0 ? snap.mark : null;
+    const resolved = reliableMarkFromSnapshot(snap);
+    const mark = typeof resolved === "number" && Number.isFinite(resolved) && resolved > 0 ? resolved : null;
     // Every field passes through as-is — the provider mapper already normalised each to a finite
     // number or null, so nothing here can invent a greek the provider did not send.
     const quote: SwingLiveQuote = {

@@ -375,6 +375,24 @@ describe("compare card — the stamp anchoring (continued)", () => {
     const { gamma } = compareSidesFrom(futurePos, NO_FLOW, now);
     assert.equal(gamma.age_seconds, null);
   });
+
+  it("gamma summary's 'Flip N' fallback rounds like roundFloats(), not a raw full-precision float (Ask Largo, 2026-09-21)", () => {
+    // No gamma_regime_read prose (falls to the "Flip N" branch), but a real, unrounded flip —
+    // the SAME raw float the numeric `gamma.flip` field carries and roundFloats() rounds at the
+    // payload's own top-level wrap. Baking the raw float into this string instead produces a
+    // different-looking value for the same fact in one response (live repro: "Flip
+    // 4523.360000000001" beside a correctly-rounded gamma.flip: 4523.36).
+    const pos: ComparePositioningInput = {
+      gamma_posture: null,
+      gamma_regime_read: null,
+      asof: null,
+      flip: 4523.360000000001,
+      spot: 4520,
+    };
+    const { gamma } = compareSidesFrom(pos, NO_FLOW);
+    assert.equal(gamma.summary, "Flip 4523.36");
+    assert.equal(gamma.flip, 4523.360000000001, "the raw numeric field is untouched — only the string is reformatted");
+  });
 });
 
 /**

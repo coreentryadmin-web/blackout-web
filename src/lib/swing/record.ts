@@ -150,7 +150,18 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
   const allLegsWon = gradedLegs.length > 0 && gradedLegs.every((l) => l.win);
 
   const pnls = gradedLegs.map((l) => l.realizedPnlPct!).filter(finite);
-  const worstLegPnlPct = pnls.length ? Math.min(...pnls) : null;
+  // FIX: round2'd, unlike a plain Math.min, so this matches what roundFloats() serves to the
+  // client at the API boundary (route.ts wraps the whole response in roundFloats(..., 2)). Before
+  // this fix, worstLegPnlPct was carried at full float precision while buildSwingRecordSummary's
+  // `breakevens` count (below) tested that RAW value for an exact 0. A tiny genuine non-zero P&L
+  // (e.g. -0.001%) rounds to a displayed "0" in the served `records[].composite.worstLegPnlPct" —
+  // JSON.stringify(-0) is even literally "0" — so a member/Largo reading the payload could count
+  // MORE records showing worstLegPnlPct:0 than summary.breakevens reports, a real self-contradiction
+  // within one response. Live-caught 2026-09-12: summary said breakevens:3, but 5 of 21 served
+  // records showed worstLegPnlPct:0. Rounding here first makes the exact-0 test (and every
+  // consumer of this field) agree with the number actually shown — roundFloats() at the API
+  // boundary is then a no-op on an already-2dp value, so this is the single point of truth.
+  const worstLegPnlPct = pnls.length ? round2(Math.min(...pnls)) : null;
   const sumPnlPct = pnls.length ? round2(pnls.reduce((a, b) => a + b, 0)) : null;
   // Compounded capital return — the honest money number. Deliberately SEPARATE from the outcome label:
   // it can be positive while the chain contains a real loss, and it is never allowed to relabel it.
@@ -218,11 +229,67 @@ export type SwingRecordSummary = {
    * (a negative min would report the real loss, not 0), so this is a precise, not approximate, count.
    */
   breakevens: number;
+  /**
+   * `opens` counts committed, still-live positions and is ADDITIVE across both live-trading
+   * engines this lane displays (Largo Product Contract: wrap, don't flatten). `buildSwingRecordSummary`
+   * itself only ever sees `swing_positions` chains, so it can only ever populate the native half
+   * (`nativeOpens`); the route layer (`@/app/api/market/swing/record/route.ts`) adds the Engine B
+   * (Banger) open count on top via `fetchBangerOpenCount()` — the same accessor
+   * `bookContextSection`'s live-book read already uses for this exact banger/swing split
+   * (`docs/audit/FINDINGS.md`, "Ask Largo swing Book context... blind to 94% of the live open
+   * book"). Without this, `opens` (and this panel's member-facing "Open" tile) undercounts by
+   * ~96% on a live book dominated by banger-origin positions — confirmed live 2026-09-23: 3
+   * native swing_positions opens vs 82 real committed positions on the board.
+   */
   opens: number;
+  /** Native `swing_positions`-only open count — exactly what `buildSwingRecordSummary` computes,
+   *  before the route layer adds banger opens into `opens` above. Kept for transparency per the
+   *  Largo Product Contract's additive principle. */
+  nativeOpens: number;
+  /** Engine B (Banger) open position count folded into `opens` above. 0 when the banger engine is
+   *  disabled (`BANGER_ENGINE_ENABLED=0`) or when `buildSwingRecordSummary` is called directly
+   *  (unit tests) rather than through the route. */
+  bangerOpens: number;
   win_rate_pct: number | null;
   avg_compounded_return_pct: number | null;
   low_n: boolean;
 };
+
+/** Statuses that mark a swing_positions row as a currently live, committed position — grading
+ *  only happens once a leg CLOSES or ROLLS, so a genuinely open row never has `graded_at` set. */
+const OPEN_SWING_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
+
+/** The subset of a swing_positions row {@link selectSwingRecordRootIds} needs. */
+export type SwingRecordRootSourceRow = {
+  id: number;
+  root_position_id: number | null;
+  graded_at: string | null;
+  status: string;
+};
+
+/**
+ * Root position ids to seed `/record`'s chain population from a page of swing_positions rows.
+ *
+ * A row seeds a root when it is GRADED (a closed/rolled leg, contributing a resolved chain) OR
+ * currently OPEN/HOLD/TRIM (a live, committed position — necessarily ungraded, since grading only
+ * happens once a leg closes or rolls; see this file's header). Before this function existed, the
+ * caller (the `/record` route) only seeded roots from graded rows, so a fresh position with no
+ * prior roll history — committed, live, but never yet graded — could never enter the chain
+ * population at all. `buildSwingRecordSummary`'s `opens` field (`records.length -
+ * resolved.length`) was then structurally guaranteed to read 0 regardless of how many positions
+ * were genuinely open — a dead counter presented to members/Largo as a measured fact (live repro
+ * 2026-09-16: 3 real OPEN/HOLD positions — CRWD#39, AAPL#38, AAPL#37 — with `summary.opens: 0`
+ * every single call, because none of the three has ever been graded or rolled).
+ */
+export function selectSwingRecordRootIds(rows: readonly SwingRecordRootSourceRow[]): number[] {
+  const roots = new Set<number>();
+  for (const row of rows) {
+    if (row.graded_at || OPEN_SWING_STATUSES.has(row.status)) {
+      roots.add(row.root_position_id ?? row.id);
+    }
+  }
+  return [...roots];
+}
 
 /** Aggregate member-facing summary over built chain records. */
 export function buildSwingRecordSummary(
@@ -255,6 +322,8 @@ export function buildSwingRecordSummary(
     losses,
     breakevens,
     opens,
+    nativeOpens: opens,
+    bangerOpens: 0,
     win_rate_pct: decided > 0 ? Math.round((wins / decided) * 1000) / 10 : null,
     avg_compounded_return_pct: avgCompounded,
     low_n: decided < LOW_N_THRESHOLD,

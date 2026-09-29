@@ -4,7 +4,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
 import type { PoolClient } from "pg";
-import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault, guardCheckedOutClient } from "./db";
+import {
+  mapAlertAuditTrailRow,
+  computeSafePgPoolMaxDefault,
+  guardCheckedOutClient,
+  parseZeroDteRejectionCounterfactual,
+} from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
   const row = mapAlertAuditTrailRow({
@@ -625,6 +630,31 @@ test("guardCheckedOutClient: swallows a checked-out client's own 'error' event i
   );
 });
 
+// BUG FIX (2026-09-20, live CloudWatch: `MaxListenersExceededWarning: Possible EventEmitter
+// memory leak detected. 11 error listeners added to [Client]`). pg-pool recycles idle Client
+// OBJECTS across checkouts, so the SAME physical client can be the one `pool.connect()` hands
+// back many times over the life of the process. guardCheckedOutClient used to add a fresh
+// 'error' listener on every call with no de-dupe, so each recheckout of that same client left
+// another permanent listener behind — unbounded growth, not a one-time cost.
+test("guardCheckedOutClient: guarding the SAME physical client object twice adds only ONE 'error' listener", () => {
+  const client = new EventEmitter() as unknown as PoolClient;
+  guardCheckedOutClient(client);
+  const afterFirst = (client as unknown as EventEmitter).listenerCount("error");
+  assert.equal(afterFirst, 1, "first checkout installs exactly one guard listener");
+
+  // Simulate the client being released back to the pool and checked out again later —
+  // guardCheckedOutClient is called again at the new pool.connect() call site.
+  guardCheckedOutClient(client);
+  guardCheckedOutClient(client);
+  const afterRepeat = (client as unknown as EventEmitter).listenerCount("error");
+  assert.equal(
+    afterRepeat,
+    1,
+    "re-guarding the same recycled client must be a no-op, not stack another listener — " +
+      "this is exactly the accumulation that produced the live MaxListenersExceededWarning"
+  );
+});
+
 // BUG FIX (2026-09-08, live evidence: `GET /api/admin/cron-health` served `desk-warm`'s
 // `runs_24h: {ok:0,failed:0,skipped:2}` for a job firing every ~5 min all morning — misread at
 // first glance as "barely ran today"). `admin-cron-health.ts`'s `buildCronHealthSnapshot` built its
@@ -679,4 +709,109 @@ test("every raw pool.connect() checked-out client in db.ts is wrapped in guardCh
       `checked-out client can't emit an unguarded 'error' event — found unwrapped: ` +
       JSON.stringify(uncoveredConnects)
   );
+});
+
+// BUG FIX (2026-09-12): fetchNighthawkOutcomeAnalytics and fetchNighthawkFunnelStats window their
+// `edition_for` cutoff off bare Postgres `CURRENT_DATE`, which resolves in the DB SESSION's
+// timezone (UTC on this stack — no `SET TIME ZONE` anywhere in db.ts), while `edition_for` is an
+// ET trading-day date. The rest of this file already knows raw CURRENT_DATE is wrong for ET-day
+// math — see the flow-alerts DTE query a few thousand lines up ("DTE against the ET calendar date
+// (not UTC CURRENT_DATE) ... don't go off-by-one/negative in the 8pm-midnight ET window"), fixed
+// there with `(NOW() AT TIME ZONE 'America/New_York')::date`. These two Night Hawk functions never
+// got the same fix. Live-observed 2026-09-12 00:07 UTC (~8pm ET, squarely in that stated window):
+// GET /api/market/nighthawk/record?days=14 resolved count dropped 30->26 within the same ~15-minute
+// audit cycle, at the exact moment UTC crossed midnight — CURRENT_DATE ticked to the next UTC
+// calendar day while it was still the prior ET trading day, prematurely rolling the oldest day out
+// of the window. This corrupts the member-visible win_rate_pct/resolved/segments on `/record` and
+// the admin funnel dashboard (`fetchNighthawkFunnelStats`, windowed "the same way" per its own doc
+// comment) for several hours every single evening — not a rare edge case.
+test("fetchNighthawkOutcomeAnalytics windows edition_for against the ET calendar date, not raw UTC CURRENT_DATE", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchNighthawkOutcomeAnalytics");
+  assert.ok(fnStart >= 0, "fetchNighthawkOutcomeAnalytics must exist in db.ts");
+  const fnEnd = src.indexOf("\nexport async function", fnStart + 1);
+  const body = src.slice(fnStart, fnEnd > 0 ? fnEnd : undefined);
+  assert.doesNotMatch(
+    body,
+    /\bCURRENT_DATE\b/,
+    "fetchNighthawkOutcomeAnalytics must not window edition_for off bare CURRENT_DATE (UTC-anchored) " +
+      "-- use (NOW() AT TIME ZONE 'America/New_York')::date, matching the rest of db.ts's ET-day math"
+  );
+  assert.match(
+    body,
+    /\(NOW\(\) AT TIME ZONE 'America\/New_York'\)::date/,
+    "fetchNighthawkOutcomeAnalytics must anchor its edition_for window to the ET calendar date"
+  );
+});
+
+test("fetchNighthawkFunnelStats windows edition_for against the ET calendar date, not raw UTC CURRENT_DATE", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchNighthawkFunnelStats");
+  assert.ok(fnStart >= 0, "fetchNighthawkFunnelStats must exist in db.ts");
+  const fnEnd = src.indexOf("\nexport async function", fnStart + 1);
+  const body = src.slice(fnStart, fnEnd > 0 ? fnEnd : undefined);
+  assert.doesNotMatch(
+    body,
+    /\bCURRENT_DATE\b/,
+    "fetchNighthawkFunnelStats must not window edition_for off bare CURRENT_DATE (UTC-anchored) -- " +
+      "its own doc comment says it windows 'the same way' fetchNighthawkOutcomeAnalytics does, so " +
+      "both sides of the funnel must share the same ET-anchored cutoff"
+  );
+  const matches = body.match(/\(NOW\(\) AT TIME ZONE 'America\/New_York'\)::date/g) ?? [];
+  assert.equal(
+    matches.length,
+    2,
+    "fetchNighthawkFunnelStats has TWO edition_for window clauses (published-side and rejected-side) " +
+      "-- both must anchor to the ET calendar date so the funnel's two sides stay comparable"
+  );
+});
+
+test("parseZeroDteRejectionCounterfactual: null/non-object/malformed input returns null, never fabricates a verdict", () => {
+  assert.equal(parseZeroDteRejectionCounterfactual(null), null);
+  assert.equal(parseZeroDteRejectionCounterfactual(undefined), null);
+  assert.equal(parseZeroDteRejectionCounterfactual("not an object"), null);
+  assert.equal(parseZeroDteRejectionCounterfactual({}), null);
+  assert.equal(parseZeroDteRejectionCounterfactual({ verdict: "not_a_real_verdict" }), null);
+});
+
+test("parseZeroDteRejectionCounterfactual: a real premium-basis SkipCounterfactual round-trips cleanly", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    version: 1,
+    basis: "premium",
+    verdict: "would_have_won",
+    outcome: "doubled",
+    pnl_pct: 87.5,
+    entry: 2.4,
+    exit: 4.5,
+    move_pct: null,
+    reason: null,
+    graded_at: "2026-09-16T15:00:00.000Z",
+  });
+  assert.deepEqual(parsed, { verdict: "would_have_won", outcome: "doubled", pnl_pct: 87.5, basis: "premium" });
+});
+
+test("parseZeroDteRejectionCounterfactual: an ungradeable row keeps outcome/pnl_pct/basis null rather than guessing", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    version: 1,
+    basis: null,
+    verdict: "ungradeable",
+    outcome: null,
+    pnl_pct: null,
+    entry: null,
+    exit: null,
+    move_pct: null,
+    reason: "no long/short direction on the rejection row",
+    graded_at: "2026-09-16T15:00:00.000Z",
+  });
+  assert.deepEqual(parsed, { verdict: "ungradeable", outcome: null, pnl_pct: null, basis: null });
+});
+
+test("parseZeroDteRejectionCounterfactual: an invalid pnl_pct (NaN/non-number) is dropped, not passed through", () => {
+  const parsed = parseZeroDteRejectionCounterfactual({
+    verdict: "would_have_lost",
+    outcome: "stopped",
+    pnl_pct: "not-a-number",
+    basis: "premium",
+  });
+  assert.deepEqual(parsed, { verdict: "would_have_lost", outcome: "stopped", pnl_pct: null, basis: "premium" });
 });

@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import { computeSpxConfluence, matchingHelixSweepFlows } from "./spx-signals";
+import { computeSpxConfluence, matchingHelixSweepFlows, reclassifyConfluenceScore } from "./spx-signals";
+import type { SpxSignalFactor } from "./spx-signals";
 
 // PROOF THIS PR DOES NOT CHANGE LIVE SIGNALS
 // ───────────────────────────────────────────────────────────────────────────
@@ -303,4 +304,55 @@ test("matchingHelixSweepFlows: excludes a future-dated flow directly — the sha
   const matching = matchingHelixSweepFlows([fresh, future], "2026-07-04", now, 30 * 60_000);
   assert.equal(matching.length, 1);
   assert.equal(matching[0], fresh);
+});
+
+// BUG FIX (2026-09-22): reclassifyConfluenceScore — spx-play-engine.ts's Night Hawk "morning
+// prior" bonus used to mutate `confluence.score`/`confluence.factors` in place without ever
+// re-deriving `grade`/`direction`/`agreeing`/`conflicts`, so a boundary-crossing bonus (bounded
+// ±3 by getNhConfluenceBonus's own contract) left grade/direction stale relative to the mutated
+// score — evaluatePlayGates and evaluateMtfHybrid both read confluence.grade/direction directly.
+// This is the minimal desk fixture spx-play-conflicts.test.ts already uses for
+// computeWeightedConflicts (which this function calls internally).
+const reclassifyDesk = () =>
+  ({
+    price: 7400,
+    market_open: true,
+    tide_bias: "neutral",
+    gamma_regime: "mean_revert",
+    above_gamma_flip: true,
+    gex_walls: [],
+    news_headlines: [],
+    vix: 16,
+  }) as unknown as SpxDeskPayload;
+
+test("reclassifyConfluenceScore: a bonus that crosses the A-grade threshold (58) upgrades grade, not just score", () => {
+  const factors: SpxSignalFactor[] = [
+    { label: "VWAP", weight: 20, detail: "above" },
+    { label: "GEX support", weight: 20, detail: "at wall" },
+    { label: "Live tape", weight: 17, detail: "bullish" },
+  ];
+  // Pre-bonus score 57 (abs 57, conflicts 0) grades "B" (needs >=58 for A).
+  const preBonus = reclassifyConfluenceScore(reclassifyDesk(), 57, factors);
+  assert.equal(preBonus.grade, "B");
+
+  // Same factors + the Night Hawk prior factor pushed on top, score bumped +3 -> 60: must
+  // reclassify to "A", not stay frozen at "B" the way the pre-fix code left it.
+  const withBonus = [...factors, { label: "Night Hawk prior", weight: 3, detail: "NH edition bullish" }];
+  const postBonus = reclassifyConfluenceScore(reclassifyDesk(), 60, withBonus);
+  assert.equal(postBonus.grade, "A", "a +3 bonus crossing the 58 A-grade threshold must upgrade grade");
+  assert.equal(postBonus.direction, "long");
+  assert.equal(postBonus.agreeing, 4, "must count the newly-pushed Night Hawk prior factor too");
+});
+
+test("reclassifyConfluenceScore: a bonus that lifts abs score past 10 flips direction from null to non-null", () => {
+  // Pre-bonus abs score 8 is below the |10| WAIT/HOLD boundary -> direction null.
+  const factors: SpxSignalFactor[] = [{ label: "VWAP", weight: 8, detail: "above" }];
+  const preBonus = reclassifyConfluenceScore(reclassifyDesk(), 8, factors);
+  assert.equal(preBonus.direction, null);
+
+  // +3 bonus -> 11, crosses into the HOLD band (abs >= 10) -> direction must become "long".
+  const withBonus = [...factors, { label: "Night Hawk prior", weight: 3, detail: "NH edition bullish" }];
+  const postBonus = reclassifyConfluenceScore(reclassifyDesk(), 11, withBonus);
+  assert.equal(postBonus.direction, "long", "direction must not stay frozen at null once score crosses the HOLD threshold");
+  assert.equal(postBonus.bias, "bullish");
 });

@@ -4,6 +4,7 @@ import type { VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-
 import {
   filterVectorBoardRowsAdvanced,
   sortVectorBoardRows,
+  stepBoardSelectionIndex,
   vectorBoardActiveFilterCount,
   vectorBoardNetPnl,
   vectorBoardSessionPnl,
@@ -83,4 +84,34 @@ test("vectorBoardActiveFilterCount counts active filters", () => {
     }),
     3
   );
+});
+
+// ── Bug: ArrowDown re-clamped a stale currentIndex to the list's CURRENT bound before
+// stepping (Math.min(listLength-1, currentIndex+1) always lands in range regardless of
+// how stale currentIndex is), but the pre-fix ArrowUp handler only applied Math.max(0, ...)
+// to the STALE index directly, with no upper re-clamp -- after a filter/tab/search change
+// shrinks the visible list while a high index was selected, ArrowUp needed several extra
+// keypresses (stepping through now-nonexistent positions) before landing on a real row. ──
+
+test("stepBoardSelectionIndex: ArrowUp direction recovers a real row in ONE step from a stale high index", () => {
+  // currentIndex=7 is stale (left over from a longer list); the list has since shrunk to 3 rows.
+  const next = stepBoardSelectionIndex(7, 3, -1);
+  assert.equal(next, 1, "must land inside [0, 2] immediately, not decrement 7->6 (out of range)");
+});
+
+test("stepBoardSelectionIndex: ArrowDown direction still lands at the last valid index from a stale high index", () => {
+  const next = stepBoardSelectionIndex(7, 3, 1);
+  assert.equal(next, 2);
+});
+
+test("stepBoardSelectionIndex: normal in-range stepping is unchanged", () => {
+  assert.equal(stepBoardSelectionIndex(1, 5, 1), 2);
+  assert.equal(stepBoardSelectionIndex(1, 5, -1), 0);
+  assert.equal(stepBoardSelectionIndex(0, 5, -1), 0, "clamps at the floor");
+  assert.equal(stepBoardSelectionIndex(4, 5, 1), 4, "clamps at the ceiling");
+});
+
+test("stepBoardSelectionIndex: an empty list returns 0 rather than a negative index", () => {
+  assert.equal(stepBoardSelectionIndex(0, 0, -1), 0);
+  assert.equal(stepBoardSelectionIndex(0, 0, 1), 0);
 });

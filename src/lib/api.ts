@@ -14,19 +14,38 @@ const INTEL_BASE = "/api/engine";
 const MARKET_BASE = "/api/market";
 
 async function marketFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${MARKET_BASE}${path}`, {
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      Pragma: "no-cache",
-      "Cache-Control": "no-cache",
-      ...(options?.body ? { "Content-Type": "application/json" } : {}),
-      ...options?.headers,
-    },
-    ...options,
-  });
-  if (!res.ok) throw new Error(`Market ${path} → ${res.status}`);
-  return res.json();
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetch(`${MARKET_BASE}${path}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        Pragma: "no-cache",
+        "Cache-Control": "no-cache",
+        ...(options?.body ? { "Content-Type": "application/json" } : {}),
+        ...options?.headers,
+      },
+      ...options,
+    });
+
+    if (res.ok) return res.json();
+
+    // On 403 (tier gate), retry with exponential backoff to allow cache
+    // invalidation to propagate across replicas after payment webhook
+    if (res.status === 403 && attempt < maxRetries - 1) {
+      const delay = Math.pow(2, attempt) * 300; // 300ms, 600ms, 1200ms
+      await new Promise(resolve => setTimeout(resolve, delay));
+      lastError = new Error(`Market ${path} → 403 (retrying)`);
+      continue;
+    }
+
+    lastError = new Error(`Market ${path} → ${res.status}`);
+    if (res.status !== 403) throw lastError;
+  }
+
+  throw lastError || new Error(`Market ${path} → unknown error`);
 }
 
 async function intelFetch<T>(path: string, options?: RequestInit): Promise<T> {

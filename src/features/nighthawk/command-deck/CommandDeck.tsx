@@ -24,6 +24,7 @@ import type { TerminalPlay } from "./types";
 import {
   defaultZeroDteStatusFilter,
   preferredPlayId,
+  resolveFocusTickerMatch,
   type DeckSessionHeatState,
   type DeckStatusFilter,
 } from "./deck-session-ui";
@@ -223,24 +224,25 @@ export function CommandDeck({
     }
   }, [sorted, selId]);
 
-  // Cross-deck focus: a Legacy play's "moved to Swings Open" link sets focusTicker once — select
-  // that ticker's row as soon as it's present (it may take a poll cycle for the freshly-promoted
-  // name to appear in this lane's fetched data). Re-fires on every focusTicker/sorted change but
-  // is a no-op once selId already matches, so it doesn't fight the member's own subsequent clicks.
-  // This IS an explicit "go look at this play" navigation (unlike the default-selection effect
-  // above), so it opens the mobile detail view too.
+  // Cross-deck focus: a Legacy play's "moved to Swings Open" link, or a URL-seeded `?ticker=`
+  // deep link, sets focusTicker once — select that ticker's row as soon as it's present (it may
+  // take a poll cycle for a freshly-promoted name to appear in this lane's fetched data). This IS
+  // an explicit "go look at this play" navigation (unlike the default-selection effect above), so
+  // it opens the mobile detail view too — see resolveFocusTickerMatch's own comment for why that
+  // decision is tracked by the focusTicker VALUE (`handledFocusTicker`) rather than by comparing
+  // against `selId`: a coincidental match (the focus target happens to already be the board's own
+  // default selection) used to read as "already handled" and silently skip opening mobile detail.
+  const [handledFocusTicker, setHandledFocusTicker] = useState<string | null>(null);
   useEffect(() => {
-    if (!focusTicker) return;
+    const match = resolveFocusTickerMatch(plays, focusTicker, handledFocusTicker);
+    if (!match) return;
     // The status filter can hide the freshly-promoted row (e.g. filter=OPEN, name lands in WATCH)
     // — widen to ALL so a focus navigation is never silently invisible.
     setStatusFilter("ALL");
-    const match = plays.find((p) => p.ticker.toUpperCase() === focusTicker.toUpperCase());
-    if (match && selId !== match.id) {
-      setSelId(match.id);
-      setMobileDetailOpen(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusTicker, plays, selId]);
+    setSelId(match.id);
+    setMobileDetailOpen(true);
+    setHandledFocusTicker(focusTicker);
+  }, [focusTicker, plays, handledFocusTicker]);
 
   const selected = sorted.find((p) => p.id === selId) ?? null;
   const sessionClosed = String(sessionHeat ?? "").toUpperCase() === "CLOSED";

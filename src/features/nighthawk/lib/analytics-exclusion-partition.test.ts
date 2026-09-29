@@ -106,3 +106,29 @@ test("every field buildRecordSegment computes for the breakdown reaches the wire
     assert.match(wire, new RegExp(`${field}: seg\\.${field}`), `segmentWire drops ${field}`);
   }
 });
+
+// BUG FIX (2026-09-17): buildRecordSegment's private isStopDataUnavailable required BOTH
+// session_high AND session_low to be null, but play-outcomes.ts's resolveOutcome (the
+// canonical grader this mirrors) treats EITHER field missing as making the row's
+// intraday-based verdict untrustworthy (a LONG's target-hit check needs `high`, its
+// stop-hit check needs `low` — either missing means one of those two checks silently
+// never fires yet the row could still grade "target" via the close-only fallback path).
+// A partial bar (one field present, one missing) doesn't currently occur from the sole
+// writer (a Polygon daily OHLC bar is always complete or absent), but the predicate
+// itself was wrong regardless of whether today's data ever exercises the gap.
+test("REGRESSION: a row missing only ONE of session_high/session_low must be excluded as stop-data-unavailable", () => {
+  const rows: NighthawkPlayOutcomeRow[] = [
+    // Graded 'target' via the close-only fallback, but only session_low is missing —
+    // the AND-based predicate wrongly called this "available" and counted it as a real win.
+    row({ id: 1, outcome: "target", stop: 90, session_high: 105 } as Partial<NighthawkPlayOutcomeRow>),
+    // Same shape, only session_high missing.
+    row({ id: 2, outcome: "stop", stop: 90, session_low: 88 } as Partial<NighthawkPlayOutcomeRow>),
+    // A genuinely clean, fully-scoreable row for contrast.
+    row({ id: 3, outcome: "target", stop: 90, session_high: 105, session_low: 95 } as Partial<NighthawkPlayOutcomeRow>),
+  ];
+  const seg = buildRecordSegment("v2_fillability", rows);
+  assert.equal(seg.stop_data_unavailable, 2, "both partial-data rows must be flagged unavailable");
+  assert.equal(seg.scoreable, 1, "only the fully-graded row counts");
+  assert.equal(seg.wins, 1);
+  assert.equal(seg.losses, 0);
+});

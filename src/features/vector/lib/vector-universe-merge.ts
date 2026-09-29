@@ -143,13 +143,30 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
   for (const row of fresh ?? []) {
     const ticker = String(row?.ticker ?? "").trim().toUpperCase();
     if (!ticker) continue;
-    if (byTicker.has(ticker)) carried -= 1; // it is being refreshed, not carried
     const freshHasAsOf = Number.isFinite(row?.asOf as number);
     if (freshHasAsOf) {
+      if (byTicker.has(ticker)) carried -= 1; // it is being refreshed, not carried
       byTicker.set(ticker, row);
       refreshed += 1;
       continue;
     }
+
+    // BUG FIX (2026-09-20): an undated fresh row (the builder produced a row but no usable
+    // evidence this cycle — e.g. spot:null from a block-cap timeout, see isCompleteBuild's doc
+    // comment in this file) used to overwrite whatever the previous-rows loop above had ALREADY
+    // carried forward for this ticker, even when that carried row was genuinely dated (real
+    // evidence from an earlier successful cycle). So a ticker with a real, recent spot could be
+    // replaced by a null one on the very next cycle simply because it was attempted again and
+    // failed — defeating the entire point of "carry forward until genuinely stale" for exactly
+    // the tickers most likely to hit a transient failure. If the carried row is still dated and
+    // not yet expired (the previous-rows loop above already dropped it otherwise), an undated
+    // fresh row for the same ticker must never replace it — it is evidence of nothing new, not
+    // evidence the old value is wrong. Leave it exactly as carried; this ticker was already
+    // counted in `carried` above, so no bookkeeping changes here.
+    const existing = byTicker.get(ticker);
+    if (existing != null && Number.isFinite(existing.asOf as number)) continue;
+
+    if (byTicker.has(ticker)) carried -= 1; // it is being refreshed, not carried
     // A freshly built row can itself be undated (the builder failed to date it this cycle too) —
     // give it the same honest clock so the NEXT cycle, where it becomes `previous`, ages it
     // correctly instead of treating it as brand-new every time.
@@ -194,7 +211,28 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
  * Only when it is complete. A build that lost rows to failures is an incomplete observation and
  * must go through the merge instead — that is the whole distinction the old code collapsed by
  * persisting `allSettled`'s survivors as if they were the roster.
+ *
+ * `producedWithUsableData` (optional, defaults to `produced` for callers that only track row
+ * count) closes a SECOND gap in that same distinction: `attempted`/`produced` only measure
+ * fan-out completeness — did every ticker come back with SOME row object — never whether that
+ * row's actual data resolved. `buildVectorUniverseRow` always returns a row, even when
+ * `fetchGexHeatmap` blocked past `gexHeatmapMaxBlockMs` and fell back to spot:null, so a build
+ * where every ticker "produced" a row but a third of them are spot:null used to satisfy this
+ * check and REPLACE the stored snapshot outright — discarding a previous good spot for that
+ * ticker with zero merge protection, the exact protection this function's own row-count check
+ * was written to provide. Live production, 2026-09-20: `GET /api/market/vector/universe` served
+ * 18/55 rows spot:null (COIN, MSTR, PLTR, JPM, GS, and 13 more) while a same-tick, uncontended
+ * `GET /api/market/gex-heatmap?ticker=COIN` returned a real spot in under a second — the same
+ * class of incident documented above for row-count, now confirmed for row-USABILITY. A caller
+ * that passes the count of rows with resolved data now also has to clear THAT bar before an
+ * outright replace is allowed; a build with any unresolved-but-produced rows instead goes
+ * through `mergeUniverseSnapshot`, which carries the previous snapshot's real spot forward for
+ * exactly those tickers rather than overwriting it with null.
  */
-export function isCompleteBuild(attempted: number, produced: number): boolean {
-  return attempted > 0 && produced >= attempted;
+export function isCompleteBuild(
+  attempted: number,
+  produced: number,
+  producedWithUsableData: number = produced
+): boolean {
+  return attempted > 0 && produced >= attempted && producedWithUsableData >= attempted;
 }

@@ -3,6 +3,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { activeVectorFullStateTickers } from "@/features/vector/lib/vector-full-state-warm-universe";
 import { VECTOR_DTE_HORIZONS } from "@/features/vector/lib/vector-dte-horizon";
 import { computeVectorFullState } from "@/lib/bie/vector-full-state";
 import { writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
@@ -27,8 +28,15 @@ export const maxDuration = 60;
 
 /** Stop composing new snapshots past this so we always return + log under maxDuration. */
 const TIME_BUDGET_MS = 50_000;
-/** Tickers processed concurrently — bounded so we never fan a burst of provider calls at once. */
-const TICKER_CONCURRENCY = 3;
+/** Tickers processed concurrently — bounded so we never fan a burst of provider calls at once.
+ *  Reduced from 3→2 on 2026-09-28 after measuring 395-448s runs against a 5min (300s) schedule
+ *  during RTH-open. At concurrency=3 × 4 horizons × ~10 fetches per horizon = ~120 concurrent
+ *  upstream requests, saturating cluster-wide Polygon/UW rate limiters (2-6 req/s cap) and
+ *  blocking concurrent crons (vector-pick-sweep also hitting cold cache on rate-limit stalls).
+ *  Reducing to 2 trades slightly slower cache-warm (partial completion is fine per TIME_BUDGET_MS)
+ *  for restored rate-limiter headroom, letting both this warm + member traffic coexist.
+ */
+const TICKER_CONCURRENCY = 2;
 
 /**
  * Cross-replica overlap guard. Measured live on prod 2026-09-02: TIME_BUDGET_MS only checks
@@ -50,7 +58,10 @@ const OVERLAP_LOCK_TTL_SEC = 900;
 
 async function runVectorFullStateSnapshot(started: number): Promise<void> {
   try {
-    const tickers = vectorUniverseTickers();
+    // Static allowlist ∪ dynamic (member-viewed) ∪ real open swing positions — see
+    // vector-full-state-warm-universe.ts's header for the gap this closes (a committed swing
+    // position outside the static allowlist previously never got its full-state cache warmed).
+    const tickers = await activeVectorFullStateTickers();
     let written = 0;
     let skippedNoSpot = 0;
     let failed = 0;

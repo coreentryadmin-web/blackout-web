@@ -7,6 +7,8 @@ import { fitSpxStructureForModel } from "@/lib/largo/spx-structure-fit";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import { fetchPositioningSummary } from "@/features/nighthawk/lib/positioning";
+import { resolveNighthawkEdition } from "@/features/nighthawk/lib/resolve-edition";
+import { nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchPlayOutcomeStatsForWindow } from "@/features/spx/lib/spx-play-outcomes";
 // PR-N2: the one headline-scoreable predicate (methodology/pulled/unfilled quarantine)
 // shared by every surface that quotes a Night Hawk win rate.
@@ -1127,6 +1129,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
       return swingHorizonForLargo();
     }
+    case "get_swing_play_brief": {
+      const { swingPlayBriefForLargo } = await import("@/lib/largo/swing-play-brief-read");
+      return swingPlayBriefForLargo(String(input.ticker ?? ""), {
+        positionId: input.positionId != null ? Number(input.positionId) : null,
+        status: input.status ? String(input.status) : null,
+        strike: input.strike != null ? Number(input.strike) : null,
+        right: input.right ? String(input.right) : null,
+      });
+    }
     case "get_nighthawk_horizons": {
       const { nighthawkHorizonsForLargo } = await import("@/lib/largo/product-reads");
       return nighthawkHorizonsForLargo();
@@ -1165,10 +1176,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       );
 
     case "get_nighthawk_edition": {
-      const date = input.date ? String(input.date) : undefined;
-      const edition = date
-        ? await marketPlatform.nighthawk.getNightHawkEditionForDate(date)
-        : await marketPlatform.nighthawk.getLatestNightHawkEdition();
+      const date = input.date ? String(input.date) : null;
+      // FIXED (2026-09-18 Largo/Legacy composer audit): this used to call the bare
+      // marketPlatform "nighthawk" edition getters directly — a bare
+      // DB row through rowToNightHawkEdition with NONE of the member route's resolution ladder or
+      // read-time overlays applied. Two real consequences: (1) `pulled`/`pulled_reason` (morning-
+      // confirm INVALIDATED a play) and `tier`/`morning_checked_at` (pinned tier assignment) are
+      // read-time overlays per PlaybookPlay's own field comments — the raw row never carries them,
+      // so Largo could describe an already-pulled play as an ordinary live pick. (2) freshness/
+      // absence state (`carry_until_close`, `stale`+`served_for`, `no_plays`, `degraded`) was never
+      // computed at all on this path, so a carried-forward or stale answer read as an ordinary fresh
+      // one. `resolveNighthawkEdition` is the exact DB-only core of the route's own resolution logic
+      // (extracted to `resolve-edition.ts` so both paths share it and cannot diverge again) — same
+      // fallback ladder, same overlays, same `editionFor` default (`nextTradingDayEt(todayEt())`,
+      // matching what a member sees with no `?date=`) as `/api/market/nighthawk/edition`.
+      const editionFor = date ?? nextTradingDayEt(todayEt());
+      const edition = await resolveNighthawkEdition(editionFor, date);
       // The RAW edition puts market_recap (41KB on a live edition) ahead of plays
       // (5KB), and the answer loop tail-truncates at MAX_TOOL_RESULT_CHARS — so every
       // play was being cut off. compactNightHawkEditionForModel emits the plays first
@@ -1730,7 +1753,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const raw = omitUncalibratedSpxConfidence(
         confluence ?? { error: "No confluence available — SPX desk not live yet." }
       );
-      return fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
+      const fitted = fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
+      // ADDITIVE ONLY (LARGO-PRODUCT-CONTRACT.md) — every structured field above is untouched;
+      // this synthesizes them into a few connected sentences so the model isn't left to fuse
+      // action/score/bias/grade/agreeing/weighted_conflicts by hand. First step of the standing
+      // Ask Largo x Night Hawk mandate's SPX narrative gap (PR #4076 comment 5749157602).
+      const { spxConfluenceNarrative } = await import("@/lib/largo/spx-confluence-narrative");
+      const narrative = spxConfluenceNarrative(fitted as Record<string, unknown>);
+      return narrative ? { ...fitted, narrative } : fitted;
     }
     case "get_positioning": {
       const sym = uwTicker(ticker);
@@ -2049,6 +2079,28 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         };
       };
 
+      // Sibling pruner for the ARCHIVED (nighthawk_scoring_history) dossier shape, found live
+      // 2026-09-28: that row's `dossier_json` is the raw, unpruned TickerDossier (tech + a per-
+      // alert `flows` array) — pruneDossier above never touches it, because its guard
+      // (`!plays || !Array.isArray(plays)`) only fires on the LIVE-STAGING position shape, and an
+      // archived scoring dossier has no `plays` field at all, so pruneDossier returns it verbatim.
+      // On a ticker with many historical flow alerts (confirmed live for BB, 2026-09-29 edition)
+      // that raw `flows` array alone pushed the serialized tool_result past
+      // MAX_TOOL_RESULT_CHARS, truncating the payload before the much smaller, higher-value
+      // `scored` object was ever reached — so Largo saw tech/flows but never scored.direction or
+      // scored.score. Two independent mitigations, since either alone leaves a gap: (1) drop the
+      // raw `flows` array (Largo already gets the same signal by working with the entry-time
+      // dossier's other pre-aggregated fields — flow_streak, oi_change, dark_pool, positioning
+      // — a raw per-alert list was never in fact needed to explain why a ticker was scored the
+      // way it was, only to reconstruct a live prompt), (2) return `scored` BEFORE `dossier` in
+      // the object literal below, since JSON key order follows insertion order — a still-too-large
+      // dossier truncates its own tail, never the compact `scored` object ahead of it.
+      const pruneArchivedDossier = (d: Record<string, unknown>): Record<string, unknown> => {
+        if (!("flows" in d)) return d;
+        const { flows, ...rest } = d;
+        return rest;
+      };
+
       let editionFor = input.date ? String(input.date) : null;
       if (!editionFor) {
         const latest = await marketPlatform.nighthawk.getLatestNightHawkEdition();
@@ -2067,7 +2119,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         const history = await fetchNighthawkScoringHistory(editionFor, tickerFilter);
         const archivedRow = history[0];
         const dossier = archivedRow
-          ? { ticker: archivedRow.ticker, dossier: pruneDossier(archivedRow.dossier), scored: archivedRow.scored }
+          ? { ticker: archivedRow.ticker, scored: archivedRow.scored, dossier: pruneArchivedDossier(archivedRow.dossier) }
           : null;
         return { edition_for: editionFor, ticker: tickerFilter, dossier, archived: Boolean(archivedRow) };
       }

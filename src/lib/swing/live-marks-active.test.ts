@@ -98,6 +98,7 @@ const bangerRow = (over: Partial<BangerPositionRow> = {}): BangerPositionRow => 
   last_mark: null,
   last_mark_at: null,
   peak_premium: null,
+  trough_premium: null,
   scaled_already: false,
   scale_out_action: null,
   scale_out_reason: null,
@@ -141,4 +142,16 @@ test("bangerRowToActivePlay: an OPEN banger row whose OCC expired weeks ago is E
 test("bangerRowToActivePlay: a healthy still-live banger row is unaffected", () => {
   const p = bangerRowToActivePlay(bangerRow({ contract_expiry: "2026-10-02", contract_occ: "MSTR261002C00110000" }), "2026-09-11");
   assert.notEqual(p, null);
+});
+
+// FINDINGS 2026-09-21 (Ask Largo/Night Hawk Swings audit): this used to hardcode
+// `trough_premium: null` regardless of the row's real value, because banger_positions had no
+// such column to read at all. Now that it does (positions-db.ts), forward the real value.
+test("bangerRowToActivePlay: forwards the row's real trough_premium (was previously hardcoded null)", () => {
+  const p = bangerRowToActivePlay(
+    bangerRow({ contract_expiry: "2026-10-02", contract_occ: "MSTR261002C00110000", trough_premium: 2.1 }),
+    "2026-09-11",
+  );
+  assert.notEqual(p, null);
+  assert.equal(p!.trough_premium, 2.1);
 });

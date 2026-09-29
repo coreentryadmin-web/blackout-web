@@ -145,6 +145,7 @@ test("pin captures spot/prior-close/geometry the builder saw — the AMD 7/07 sh
   assert.equal(ctx.spot_at_publish, 108);
   assert.equal(ctx.prior_close, 107.5);
   assert.equal(ctx.atr14, 4.2);
+  assert.equal(ctx.atr14_estimated, false); // a real, provider-measured ATR14
   assert.equal(ctx.entry_range_low, 100);
   assert.equal(ctx.entry_range_high, 102);
   assert.equal(ctx.target, 110);
@@ -155,6 +156,96 @@ test("pin captures spot/prior-close/geometry the builder saw — the AMD 7/07 sh
   // Target 110 from spot 108 = +1.8519%; stop 95 = −12.037% (uncapped gap risk, visible).
   assert.equal(ctx.target_distance_pct, 1.8519);
   assert.equal(ctx.stop_distance_pct, -12.037);
+});
+
+test("atr14_estimated: a synthetic ATR (prior-day range fallback) is labeled, not indistinguishable from a real one", () => {
+  // Polygon returned fewer than 14 daily bars (PR-N21) -- no real atr14, but a prior-day
+  // high/low IS available, so estimateAtr() falls back to that range (109-105=4).
+  const noRealAtr = {
+    ticker: "AMD",
+    sector: "Technology",
+    scored: undefined,
+    tech: {
+      ticker: "AMD",
+      price: 108,
+      trend: "up",
+      setup_tags: [],
+      support_levels: [],
+      resistance_levels: [],
+      gap_zones: [],
+      breakout_zones: [],
+      prior_day: { high: 109, low: 105, close: 107.5 },
+      weekly: { high: null, low: null },
+      rsi14: null,
+      rel_volume: null,
+      atr14: null,
+      vwap: null,
+      ema20: null,
+      ema50: null,
+      ema200: null,
+      summary: "",
+    },
+  } as unknown as TickerDossier;
+
+  const ctx = buildNighthawkPublishContext({
+    play: play(),
+    scored: scored(),
+    dossier: noRealAtr,
+    market: market(),
+    builtAt: "2026-07-14T21:35:00.000Z",
+  });
+  assert.equal(ctx.atr14, 4);
+  assert.equal(ctx.atr14_estimated, true);
+});
+
+test("atr14_estimated: the 1.5%-of-spot fallback (no prior-day range either) is also labeled", () => {
+  const noRangeEither = {
+    ticker: "AMD",
+    sector: "Technology",
+    scored: undefined,
+    tech: {
+      ticker: "AMD",
+      price: 100,
+      trend: "up",
+      setup_tags: [],
+      support_levels: [],
+      resistance_levels: [],
+      gap_zones: [],
+      breakout_zones: [],
+      prior_day: { high: null, low: null, close: null },
+      weekly: { high: null, low: null },
+      rsi14: null,
+      rel_volume: null,
+      atr14: null,
+      vwap: null,
+      ema20: null,
+      ema50: null,
+      ema200: null,
+      summary: "",
+    },
+  } as unknown as TickerDossier;
+
+  const ctx = buildNighthawkPublishContext({
+    play: play(),
+    scored: scored(),
+    dossier: noRangeEither,
+    market: market(),
+    builtAt: "2026-07-14T21:35:00.000Z",
+  });
+  assert.equal(ctx.atr14, 1.5); // 1.5% of spot 100
+  assert.equal(ctx.atr14_estimated, true);
+});
+
+test("atr14_estimated is false (not true) when there is no ATR at all to label — no dossier, no guess", () => {
+  const ctx = buildNighthawkPublishContext({
+    play: play(),
+    scored: null,
+    dossier: null,
+    market: market(),
+    builtAt: "2026-07-14T21:35:00.000Z",
+  });
+  assert.equal(ctx.atr14, null);
+  assert.equal(ctx.atr14_estimated, false);
 });
 
 test("pin carries the evening regime/breadth bundle and the scorer's own confluence, un-recomputed", () => {

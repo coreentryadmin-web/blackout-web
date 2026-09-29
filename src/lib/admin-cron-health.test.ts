@@ -234,3 +234,32 @@ test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bound
     "must not still reference the deleted row-capped fetch (starves low-frequency jobs' 24h counts)"
   );
 });
+
+// BUG FIX (2026-09-16) — zerodte-warm's cron_job_runs handshake (logCronRun) fires on the
+// route's fast synchronous path (auth + cooldown/lock gate + the cheap earnings-cache warm)
+// before the heavy background chain (warmZeroDteBoard -> scanZeroDteBoard ->
+// persistZeroDteScan -> discovery-events) is dispatched, so the handshake reads "on schedule"
+// even when that background chain silently stalls for tens of minutes. Measured live
+// 2026-09-16: a real ~35min gap in zerodte_discovery_events writes produced zero cron_job_runs
+// staleness. recordZeroDteScanTick("cron") (scan.ts) ticks only after scanZeroDteBoard()
+// actually returns inside warmZeroDteBoard -- the one signal that would have caught this -- but
+// nothing read it until this fix. Unlike spx-evaluate's heartbeat cross-check (which only
+// escalates when the cron_job_runs handshake ALSO looks stale), zerodte-warm's must not gate on
+// that handshake first, since that signal is the known-unreliable one here.
+test("buildCronHealthSnapshot cross-checks zerodte-warm against its own scan heartbeat, not just cron_job_runs", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /loadZeroDteScanHeartbeat/,
+    "must read the zerodte scan heartbeat (play-engine-heartbeat.ts)"
+  );
+  const blockStart = src.indexOf('job.key === "zerodte-warm"');
+  assert.notEqual(blockStart, -1, "zerodte-warm heartbeat cross-check block must exist");
+  const blockEnd = src.indexOf('job.key === "spx-evaluate"', blockStart);
+  assert.notEqual(blockEnd, -1);
+  const block = src.slice(blockStart, blockEnd);
+  // Must key off the heartbeat's OWN staleness, not a `cronStale` gate derived from
+  // cron_job_runs age (that would never fire for this specific blind spot).
+  assert.match(block, /zeroDteScanHb\.stale \|\| zeroDteScanHb\.critical_stale/);
+  assert.doesNotMatch(block, /cronStale/);
+});

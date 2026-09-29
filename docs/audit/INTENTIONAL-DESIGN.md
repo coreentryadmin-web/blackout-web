@@ -51,27 +51,35 @@ precedence from this sample** — revisit once more multi-origin disagreement ro
 
 ---
 
-## 2. Cortex veto has no hysteresis / latching (recomputed each pass)
+## 2. Cortex veto — REVISITED 2026-08-25 → dwell/hysteresis SHIPPED (`cortex-veto-dwell.ts`)
 
-**The choice.** `evaluateCortexForCommit` (`src/lib/zerodte/cortex-gate.ts`) composes a **fresh**
-verdict on **every** scan pass. A veto is **stateless**: it does not latch (stay vetoed once fired)
-and does not dwell (require the block to persist for K passes before it bites). `assessCortexVerdict`
-folds *this pass's* verdict into the decision with no memory of prior passes.
+> **Correction (2026-09-12).** This item said the Cortex veto was stateless and cited a 2026-08-05
+> measurement as the reason nothing had changed. That description is **20 days stale**: PR #2904
+> (2026-08-25) shipped a real dwell/hysteresis latch and this file was never updated to say so — a
+> future reader trusting the "Prior choice" section below at face value would wrongly conclude the
+> live system still re-evaluates a veto with no memory of prior passes. It has not, in production,
+> since 2026-08-25. This is precisely the staleness trap this file's own "keep updated as the
+> measurements run" note (bottom of this document) exists to prevent, and the CLAUDE.md "Ask Largo"
+> mandate independently warns a fresh session never to trust a "shipped so far" list without
+> verifying against `main` — the same discipline applies to this file's design-decision claims.
 
-**Why it's deliberate.** The module doc is explicit that Cortex is a **precision layer stacked on the
-hard-gate safety floor** — "it can only ever *remove* additional plays." A latched veto would keep
-suppressing a setup whose blocking condition (a dealer wall, an opposing $1M cluster) has genuinely
-cleared, i.e. it would manufacture false negatives from stale state. Statelessness keeps every pass
-honest to *current* evidence, consistent with the deliberate fail-soft/ABSTAIN asymmetry documented
-in the same file.
+**Prior choice (through 2026-08-25, and still an accurate description of `evaluateCortexForCommit`/
+`assessCortexVerdict` in isolation).** `cortex-gate.ts` composes a **fresh** verdict on **every**
+call: given the same inputs it returns the same verdict every time, with no memory of its own. That
+much of the original text is still true of that one function. **Why it was deliberate:** the module
+doc is explicit that Cortex is a **precision layer stacked on the hard-gate safety floor** — "it can
+only ever *remove* additional plays." A latched veto would keep suppressing a setup whose blocking
+condition (a dealer wall, an opposing $1M cluster) has genuinely cleared, i.e. it would manufacture
+false negatives from stale state. Statelessness kept every pass honest to *current* evidence,
+consistent with the fail-soft/ABSTAIN asymmetry documented in the same file.
 
-**What would justify revisiting it → `veto-flicker-rate.mjs`.** Measure, over a session's ordered
-passes, how often a Cortex veto **flickers** — fires, then clears within N subsequent passes. A high
-flicker rate means the stateless veto whipsaws candidates on and off the board (the cost a short
-dwell/hysteresis would buy down); a low rate means statelessness is cheap and hysteresis would trade
-responsiveness for little stability. The tool tallies flicker rate, median passes-to-clear, and
-per-ticker churn from a per-pass decision export (exact) or the `zerodte_scan_rejections`
-`cortex_veto*` codes (approximate). Only a **high** flicker rate is evidence for adding a dwell.
+**What this file said would justify revisiting it → `veto-flicker-rate.mjs`.** Measure, over a
+session's ordered passes, how often a Cortex veto **flickers** — fires, then clears within N
+subsequent passes. A high flicker rate means the stateless veto whipsaws candidates on and off the
+board (the cost a short dwell/hysteresis would buy down); a low rate means statelessness is cheap and
+hysteresis would trade responsiveness for little stability. **Only a high flicker rate is evidence
+for adding a dwell** — that bar is stated here because, as shown below, it was never actually cleared
+before the dwell shipped.
 
 **First real run — 2026-08-05 (see FINDINGS.md same date).** Captured 5 real sessions
 (2026-07-28…07-31, 08-04) via `veto-flicker-capture.mjs` (built on PR #1679's `?date=` +
@@ -85,10 +93,59 @@ for the whole session — which trivially reads as "cleared next pass" by constr
 the ticker's true veto duration. Only 2026-08-04 (both tables live) showed a *real* signal: MSFT
 re-wrote a fresh veto row 15 times and INTC 6 times across one session, real repeated state
 transitions, but still not resolvable into an EXACT clear-vs-dropped-candidacy distinction without a
-`--passes` export. **Verdict: insufficient/confounded evidence — `cortex-gate.ts` NOT touched.**
-Re-run forward-looking (2026-08-04 onward only, excluding the 4 pre-#1582 artifact-only days) once
-more post-throttle-fix sessions accumulate; the durable fix for the ambiguity itself would be a new
-`cortex_cleared` discovery-event kind (not attempted — would touch the live scanner).
+`--passes` export. **Verdict at the time: insufficient/confounded evidence — `cortex-gate.ts` NOT
+touched.** No second `veto-flicker-rate.mjs` run happened between then and the ship date below.
+
+**Shipped choice (2026-08-25) — `cortex-veto-dwell.ts`, wired unconditionally into every fresh
+commit.** `scan.ts`'s `attachGateVerdicts` — the one commit path both the legacy and thesis-first
+setups run through, not a thesis-first-only surface — calls `evaluateCortexForCommit` and then
+immediately pipes the result through `applyCortexVetoDwell` before anything downstream
+(`cortexGateBlocks`, ledger persistence, the SKIP card) ever sees it:
+
+- A **VETO** verdict **latches** in Redis (`zerodte:cortex:veto-dwell:<sessionDate>:<ticker>`, 24h
+  TTL) — every subsequent pass returns the LATCHED verdict, not a fresh one, until
+  **`ZERODTE_CORTEX_VETO_DWELL_PASSES`** (env override, **default 3**) consecutive non-veto passes
+  have been seen. `0`/`off`/`false` disables the dwell (reverts to the original stateless behavior).
+- This is exactly "once vetoed, stay vetoed for N passes" — the mechanism the "Prior choice" section
+  above said, correctly at the time, that the system deliberately did **not** have.
+- `docs/audit/FINDINGS.md`'s own "Thesis-first follow-ups phase 2" entry (2026-08-25) states the
+  unconditional scope correctly in its blast-radius line ("Cortex dwell applies to all fresh commits
+  in `attachGateVerdicts`") even though its section header groups G5 alongside otherwise
+  thesis-first-only changes — read the blast-radius line, not the header, for scope.
+
+**Why it shipped without the bar above being cleared.** `docs/audit/THESIS-FIRST-DESIGN-REVIEW.md`
+(2026-08-25 review draft, git-logged ~1 hour before PR #2904's commit) named this exact behavior as
+its own gap **"G5 — Cortex veto is stateless: veto recomputed every pass, no hysteresis → flicker
+risk."** PR #2904's commit message labels the fix "G5 cortex dwell" — the SAME G5, but that review's
+own ad-hoc gap numbering (G1-G9), **not** the hard-gate stack's unrelated `G-5` (`governor.ts`'s
+session governor, referenced throughout `board.ts`/`gates.ts`) — two different things sharing a label
+by coincidence; do not conflate them when reading FINDINGS.md, this PR, or the commit history. The
+dwell was added on architecture-review judgment — a real, named design gap, not a guess — rather than
+on a fresh `veto-flicker-rate.mjs` run clearing the "only a high flicker rate is evidence" bar this
+file itself set 20 days earlier. That is a legitimate way to ship a change; it is a **different**
+justification than "evidence-driven," and this file should not have kept implying the latter applied
+by simply failing to mention the change happened at all.
+
+**What this means for `veto-flicker-rate.mjs` going forward.** The script's own header comment
+(fixed in the same commit as this correction) also still described the veto as stateless — same
+drift, now current there too. More importantly: its data sources (`zerodte_scan_rejections` /
+`zerodte_discovery_events`, the APPROXIMATE input path) record the EFFECTIVE decision *after* the
+dwell fold, not the raw pre-dwell verdict `evaluateCortexForCommit` alone would have produced. Any
+run against live data from 2026-08-25 onward now measures **"does the shipped dwell reduce observed
+flicker"** (a real, useful question — the dwell's whole reason for existing) rather than the original
+**"is the raw stateless veto's flicker rate high enough to justify adding one"** question this file
+posed on 2026-08-05 — that original system no longer runs in production, so it can no longer be
+re-measured directly from live data. **Not yet re-run.** Comparing a fresh capture against the
+2026-08-05 pre-dwell baseline (100% raw flicker, mostly a measurement artifact per that run's own
+caveats) is the honest next step and the evidence check on whether the shipped dwell is doing its
+job — a stale "re-run once more sessions accumulate" note, left over from the pre-dwell world, is not
+that check and has been removed.
+
+**Re-run (same invocation as before; now measures the post-dwell effective series):**
+```
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx \
+  scripts/audit/veto-flicker-rate.mjs --rejections=<export.json> --within=3 --json
+```
 
 ---
 
@@ -549,3 +606,246 @@ POSITIONING/CATALYST/BANGER/VECTOR origins to remove that bias.
 ```
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-gate-compound-funnel.mjs --days=5 --max-tickers=101 --json
 ```
+
+## 9. Cortex `gex-walls` regime-style-oppose applied to CONDOR commits — measured 2026-09-17, INSUFFICIENT DATA (0 condor commits in 90d), no fix shipped
+
+**Where this came from.** The same 2026-09-17 0DTE architecture deep-dive that shipped four fixes
+for "a committed condor cast a false directional vote" (product-adapters.ts/
+consensus-read-extract.ts, governor.ts, thesis-health.ts, confluence.ts — each a mechanical,
+zero-risk "return an honest absence instead of scoring a condor's nominal fade side as directional"
+fix) surfaced a FIFTH instance that is NOT a mechanical fix: `scan.ts` calls
+`evaluateCortexForCommit(ticker, direction, ...)` unconditionally for every gate-surviving setup,
+CONDOR included, passing the condor's nominal `direction`. `src/lib/nighthawk/cortex/sources/
+gex-walls.ts`'s own file header states an assumption that does not hold for a condor: *"Every 0DTE
+Command commit is momentum-style by construction... so posture 'long' opposes any direction."*
+`deriveGexWallsEvidence` has an unconditional `if (gex.regimePosture === "long")` oppose (weight
+0.6, detail *"mean-reversion regime opposes trend-following entries"*) — and `condorSellRegime`
+(condor.ts) ONLY EVER routes a condor to sell in exactly that long-gamma/mean-reverting regime. On
+paper, this looks backwards: the regime that makes a condor safe to sell is the same regime this
+source treats as automatic evidence against the trade. `docs/audit/NIGHTHAWK-CORTEX-DESIGN.md` has
+zero mentions of "condor" anywhere, confirming this was never a deliberate integration — Cortex was
+applied to condor commits as an accidental side effect of the unconditional `scan.ts` call, not a
+designed one. condor.ts's own comment already asks for a proper "Cortex range-intact read... called
+out as a follow-up" — this item is that follow-up's measurement half.
+
+**Why this did NOT get the same mechanical fix as the other four.** Unlike thesis-health/confluence
+(which safely degrade to an existing, already-null-safe "not applicable" state with zero new
+plumbing), skipping Cortex entirely for condor commits would ALSO remove `catalyst-news`'s veto
+power — arguably still a legitimate protective check for a condor (a real news catalyst threatens a
+sold range regardless of which nominal direction the row is framed around). Patching only the
+regime-style-oppose line leaves `wallPathCheck`'s veto/support (also nominal-direction-framed) and
+three other direction-keyed sources (`wall-trend.ts`, `flow-quality.ts`, `catalyst-news.ts`,
+plus `darkpool-confluence.ts` which rides `wallPathCheck` directly) untouched. This needs a real
+product decision, not a mechanical correctness fix — so the standing "measure before guessing"
+discipline applies before anything is touched.
+
+**The measurement, not the hunch.** `scripts/audit/cortex-condor-oppose-measure.mjs` reads the SAME
+already-pinned `entry_context.cortex` blob every committed row carries off
+`GET /api/market/zerodte/record?days=N` — nothing reimplemented, nothing recomputed except a pure
+counterfactual (`score_without_regime_oppose = score + oppose.weight`, checked against compose.ts's
+own A/B/C conviction-band floors) computed from the row's own persisted evidence. Classification
+helpers are mirrored (not imported — the usual `@/` path-alias reason every `scripts/audit/lib/*.mjs`
+helper here follows) in `scripts/audit/lib/cortex-condor-oppose-eval.mjs`, 9 unit tests. Three
+questions: (1) how often does the regime-style-oppose fire on a real committed condor row, (2) does
+it ever suppress the conviction band (A/B/C) for a condor specifically, (3) same question for
+`wallPathCheck`'s veto/support framing (a gex-walls VETO on a row that committed anyway would itself
+be an anomaly worth investigating, since a veto should structurally block commit outright). Never
+gates anything — read-only, same discipline as `cortex-oppose-magnitude-ab.mjs`/
+`veto-flicker-rate.mjs` above.
+
+**First real run, 90-day window: `INSUFFICIENT DATA` — 0 committed condor rows.** Of 411 total
+committed 0DTE plays in the window, every single one carries `entry_context.play_type ===
+"DIRECTIONAL"` (or an older, unset value) — **not one is a CONDOR.** This is itself the actual
+finding this run produced, and it reframes the whole question: the mislabeled regime-oppose cannot
+currently be doing measurable real-world harm, because the condor engine appears to not be
+committing AT ALL in production over this window (`condorSellRegime`'s combined thresholds —
+`CORROBORATION_MIN_BRACKET_DOM_PCT`-class dominance ≥6%, band width ≤3%, offset ≤0.6 — plus the
+cash-settled-root restriction to SPX/NDX only — may simply be rare enough in practice that zero
+qualifying sessions occurred in 90 days; a `discovery_health` spot-check same-day showed PIN
+reporting `status: "off_hours", setups: 0`, consistent with — but not proof of — a genuinely thin
+qualifying population rather than a flag being off). **This is a separate, prior-order open question
+this item surfaces but does not answer**: is the condor engine's near-total absence from the real
+ledger a genuine reflection of how rare a "deep long-gamma pin" qualifying regime is, or is
+something upstream (a flag, a PIN-source health issue, or — worth checking given this very item —
+the Cortex layer's own mislabeled oppose making every candidate that DOES reach commit harder to
+pass) suppressing it further? The regime-oppose question in THIS item cannot be answered without a
+real committed-condor population to measure against.
+
+**What was NOT done.** No gate/source touched (per the operator's explicit instruction for this
+pass). No fix shipped — this is a measurement tool + a documented open question, not a finding with
+an outcome. The tool is ready and should be re-run whenever the condor-commit population is
+non-trivial (or pointed at the PIN-source health / flag-state question first, since that's the
+actual blocker to answering the original question at all).
+
+**Re-run:**
+```
+node scripts/audit/cortex-condor-oppose-measure.mjs --days=90 --json
+```
+
+## 10. PIN discovery builds real candidates but NONE ever commit — 0 flags off, real evidence points at the already-known gate-compound funnel, not a PIN/condor-specific bug (measured 2026-09-17)
+
+**Where this came from.** Item #9 (above, PR #5110) found 0 of 411 committed 0DTE plays over 90
+days carry `play_type: "CONDOR"` and stopped there, INSUFFICIENT DATA. Per the operator's follow-up
+instruction, this item investigates the sharper question: WHY. Three hypotheses, checked against
+real data, not a hunch — flag misconfiguration, a structurally unreachable threshold, or Cortex's
+own regime-style-oppose (item #9) suppressing the few candidates that qualify.
+
+**Hypothesis 1 — flags wrongly off: RULED OUT.** Read `blackout-production/app/env` directly
+(Secrets Manager, AWS creds present this session) for every PIN/CONDOR-relevant key. None of
+`ZERODTE_CONDOR`, `ZERODTE_SRC_PIN`, `ZERODTE_WHOLE_MARKET`, `ZERODTE_CONDOR_ROOTS`,
+`ZERODTE_PIN_UNIVERSE` is set at all — every one of them runs its documented default (all default
+ON / SPX,NDX / the built-in 30-name universe). Confirmed the code side too:
+`condorFlagEnabled()`/`pinSourceEnabled()` both read `true` when run in this same default-env state.
+`PIN_TEMPORAL_STABILITY` IS explicitly set to `1` (a real, deliberate DEFAULT-OFF-until-armed flag
+per `pin-temporal-stability.ts`'s own header — production has armed it).
+
+**Hypothesis 2 — PIN discovery itself is silently dead: RULED OUT, with real production evidence.**
+CloudWatch (`/ecs/blackout-production`, 14-day window) grepped for `[zerodte-pin]` (pin-discovery.ts's
+own log lines): **5998 events**, including **221 "built N pin setup(s)" events** (203×1, 16×2, 2×3 —
+roughly 15-16 candidate builds/day), alongside 1049 "no clean pin regime" skips and 4728 before/after-
+window skips (expected — most cron ticks fall outside the ~5.5h combined RTH+late-condor window).
+**PIN discovery is a live, working, regularly-firing source.** It is NOT silent, NOT broken, and NOT
+gated off — it genuinely finds candidates most trading days.
+
+A live single-snapshot check (`scripts/audit/pin-condor-funnel-measure.mjs`, built this pass, runs
+the REAL unmodified `evaluatePinRegime`/`condorSellRegime` against REAL live `/api/market/gex-heatmap`
+data for the 30-name universe) confirms the underlying regime condition really is narrow: at the
+moment measured, every readable ticker read `posture: "short"` (dealer short-gamma / momentum) except
+one (INTC, long-gamma but still failed on other PIN criteria) — 0/30 cleared a clean PIN. Consistent
+with — though on its own not sole proof of — genuine rarity, not a broken read.
+
+**The real gap: candidates are BUILT but NONE ever COMMIT.** 221 real pin setups over 14 days, 0
+PIN-origin (condor or directional) rows anywhere in the 90-day committed ledger (`GET
+/api/market/zerodte/record`'s `entry_context.discovery_origin` breakdown over the same window:
+`BREAKOUT` 232, `FLOW` 53, `BREAKOUT+FLOW` 15, legacy/none 111 — **zero** carry `PIN` in any
+combination). That gap sits strictly AFTER `discoverPinSetups` returns candidates: the merge onto the
+board (`mergeSameTickerDiscovery`), then the SAME hard-gate stack (G-1..G-19) + Cortex layer every
+origin must clear. `zerodte_scan_rejections` (the admin rejection-export route) could not settle
+where they die — that table only records the FLOW screen's OWN 4 evidence gates (min_gross/
+min_aggr_share/min_dominance/max_itm_pct), never the post-merge hard-gate/Cortex stack a PIN-origin
+candidate goes through — 9 real SPX rejections found there over 90 days, all FLOW-evidence-gate
+codes, none informative about a PIN-origin candidate's fate. CloudWatch also carries zero
+condor-specific log lines beyond the routing-window skip (`buildCondorFromChain`/`priceCondorLegs`
+emit no success/failure log of their own), so whether the 221 builds ever routed to CONDOR
+specifically (vs staying the directional fade) is not determinable from logs alone.
+
+**Most likely explanation, not yet fully proven: this is the SAME already-measured gate-compound
+funnel, not a new PIN/condor-specific defect.** `zerodte-gate-compound-funnel.mjs` (2026-09-08/09)
+already measured a **0% joint pass rate** for FLOW-origin setups against the real hard-gate stack
+(`score_floor` 84.6% isolated failure, `confluence_floor` 50%, compounding to zero survivors even at
+RTH, n=26) — and its own header explicitly discloses **"BREAKOUT/PIN origins (FLOW only this pass)"**
+as never measured. A PIN-origin candidate runs through the exact same `score_floor`/`confluence_floor`/
+`single_rail_corroboration`/`tape_alignment` gates FLOW-origin ones already fail almost universally —
+there is no evident reason PIN-origin candidates would clear a stack that near-zero-percent of
+FLOW-origin candidates clear. Item #9's Cortex regime-style-oppose (a real, separately-documented
+defect) could ALSO be contributing on top of this for the SPX/NDX subset that reaches Cortex, but
+given the gate-compound funnel alone already explains a ~0% survival rate for every origin measured
+so far, it is very unlikely to be the DOMINANT cause of PIN/condor's absence specifically.
+
+**What was NOT done.** No gate/threshold/flag changed — nothing here is a proven, provable
+mechanical bug the way the four condor-vote fixes (#5106-#5109) were; it is a real, evidence-backed
+architectural explanation that stops short of a definitive joint-pass-rate number for PIN origin
+specifically. Per the operator's standing "measure before guessing, don't touch a threshold on a
+hunch" discipline, `condorSellRegime`'s thresholds and `PIN_TEMPORAL_STABILITY`'s tolerance are left
+exactly as they are — there is no evidence yet that either is miscalibrated rather than genuinely
+selective, and the gate-compound funnel (if it is the real cause, as the evidence above suggests) is
+a pre-existing, already-documented, cross-origin issue, not something specific to condor at all.
+
+**Natural next step (not done this pass, scoped for a follow-up):** extend
+`zerodte-gate-compound-funnel.mjs`'s methodology (real `evaluateZeroDteGates` fed real inputs) to
+PIN-origin setups specifically — closing the exact gap that tool's own header names — to get a real
+joint-pass-rate number for PIN the way FLOW already has one, and to settle definitively whether PIN
+candidates die at the same `score_floor`/`confluence_floor` chokepoints or somewhere PIN-specific
+(e.g. the temporal-stability gate this session could not directly measure, needing either a live
+intraday multi-snapshot capture during real RTH — `gex-wall-snapshot-poll.mjs` already exists for
+exactly this and has never been run for a long-enough live window — or CloudWatch instrumentation
+added to `pinPassesTemporalStabilityGate`'s own HOLD branch, which currently only logs failures with
+a `temporal.reason` string that was never observed firing at all in the 14-day CloudWatch sample
+checked here — worth checking directly whether that means it never rejects, or simply never gets
+FAR ENOUGH to be reached under real conditions).
+
+**Re-run:**
+```
+node --import tsx scripts/audit/pin-condor-funnel-measure.mjs --json
+```
+
+**UPDATE (2026-09-17, same day) — the natural next step above is now built: `scripts/audit/
+pin-gate-compound-funnel.mjs`.** Closes the exact gap this item named: it takes a PIN candidate
+through the SAME REAL `evaluateZeroDteGates` hard-gate stack `zerodte-gate-compound-funnel.mjs`
+already measured for FLOW-origin setups (isolated per-gate failure + joint pass rate), instead of
+stopping at `evaluatePinRegime` the way `pin-condor-funnel-measure.mjs` does. Real
+`evaluatePinRegime`/`pinScore` (pin-source.ts) build the candidate's direction/score from real live
+`/api/market/gex-heatmap` data (same route, same auth pattern as the sibling tool above — 
+`gexPositioningFromHeatmap`/`discoverPinSetups` remain unreachable here via their `server-only`
+import), then real `computeIntradayRead`/`computeConfluence` (same recipe the FLOW section already
+uses) feed the real, unmodified `evaluateZeroDteGates`. Confirmed `discovery_origin: ["PIN"]`
+correctly routes through `scoreFloorForOrigins` to the PIN-specific `ZERODTE_SCORE_FLOOR_PIN=65`
+(gates.ts), not the FLOW/BREAKOUT floor — the harness exercises the real PIN-specific gate path, not
+a generic one. Wiring verified against a synthetic input before trusting the live run (real
+`evaluateZeroDteGates` call, sensible verdict/blocks returned, no exception) — the same "prove the
+harness itself works" discipline `depth-live-check.mjs` and others in this toolkit already apply.
+
+**First live run, 2026-09-17 02:14 ET (off-hours): 0/30 tickers cleared `evaluatePinRegime` this
+snapshot — funnel ends before the hard-gate stack is ever reached, same result as
+`pin-condor-funnel-measure.mjs`'s own run minutes earlier.** Traced directly to `pin-discovery.ts`'s
+own operating window (`RTH_OPEN_ET_MINUTES` gate, confirmed via its `"before RTH open — SKIP"` log
+line matching the exact CloudWatch evidence item #10 above already cites) — 02:14 ET is genuinely
+outside the window PIN discovery itself runs in, so an empty snapshot here is expected, not a defect
+in this new tool. **This measurement genuinely needs an RTH re-run to produce a real hard-gate joint-
+pass-rate number** — until then this closes the "tool exists and is wired correctly" half of the
+natural next step, not the "here is PIN's joint pass rate" half. No gate/threshold changed.
+
+**Re-run (during RTH for a non-empty candidate population):**
+```
+node --import tsx scripts/audit/pin-gate-compound-funnel.mjs --json
+```
+
+**SECOND UPDATE (2026-09-17, RTH, ~30 min after the note above) — the genuine same-session
+FLOW-vs-PIN joint-pass-rate comparison this item's own "natural next step" asked for, now run.**
+Both `zerodte-gate-compound-funnel.mjs` and `pin-gate-compound-funnel.mjs` run back-to-back, real
+RTH clock, same session, `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY`. Two passes: an
+initial 09:35-09:36 ET pass landed inside G-2's opening-window transient (unlocks 10:00 ET, so
+`opening_window` isolated-failed 30/30 FLOW setups — a known, self-expiring gate, not a real
+finding), so a second, clean pass was run at 10:02-10:03 ET, past the unlock, for the number that
+actually answers this item's question:
+
+```
+FLOW (zerodte-gate-compound-funnel.mjs, 10:02 ET):
+  3168 raw UW alerts -> 29 setups survived evidence gates -> 0/29 (0.0%) joint commit
+  isolated: early_window_prime_score 93.1% (27/29, G-18's 10:00-10:45 unconditional-75+ band —
+            itself a real gate, not a transient like opening_window), score_floor 82.8% (24/29),
+            confluence_floor 51.7% (15/29), single_rail_corroboration 10.3%, tape_alignment 3.4%
+
+PIN (pin-gate-compound-funnel.mjs, 10:03 ET):
+  30-ticker universe -> 1/30 tickers cleared evaluatePinRegime -> 0/1 (0.0%) joint commit
+  isolated (the ONE pin-regime-qualified candidate): score_floor 100% (1/1),
+            early_window_prime_score 100% (1/1), confluence_floor 100% (1/1)
+```
+
+**Reading this honestly, not overclaiming n=1.** PIN's real base rate (item #10's own CloudWatch
+evidence: ~15-16 candidate builds/day) means a single RTH snapshot landing only 1 qualifying
+ticker is unsurprising, not a defect in the harness — `evaluatePinRegime` is a narrow, genuinely
+selective test by design (item #10's earlier `pin-condor-funnel-measure.mjs` run independently
+found the same narrowness: 0/30 or 1/30-ish clean-regime tickers is the normal shape of a single
+snapshot, not an anomaly). n=1 cannot produce a statistically powerful joint-pass-rate number the
+way FLOW's n=29 can. **But what it CAN show, and does show: the one PIN candidate that DID qualify
+failed the EXACT SAME THREE gates FLOW-origin setups fail almost universally** —
+`score_floor`/`early_window_prime_score`/`confluence_floor`, the identical trio dominating the
+FLOW side this same run, in the same session, under the same market conditions. That is a real,
+same-session, same-clock data point directly supporting this item's leading hypothesis (PIN dies
+in the same hard-gate funnel bottleneck as FLOW, not a PIN-specific defect) — it is corroborating
+evidence, not proof at scale, and is reported as exactly that.
+
+**No gate/threshold/flag changed by this measurement.** Consistent with every other entry in this
+file: this is evidence-gathering, not a mechanical bug with a provable fix. The hard-gate stack
+(`score_floor`/`early_window_prime_score`/`confluence_floor`) is calibrated FLOW-origin-first —
+whether PIN-origin candidates *should* be held to the identical thresholds, or whether a PIN-aware
+recalibration is warranted, is a genuinely open product/calibration question this measurement
+informs but does not settle; touching those thresholds on an n=1 PIN sample would be exactly the
+"threshold change on a hunch" this repo's standing discipline forbids.
+
+**What would close this out properly:** repeated PIN snapshots across multiple RTH sessions
+(`pin-gate-compound-funnel.mjs` re-run daily/on a cron capture, same pattern as
+`gex-wall-snapshot-poll.mjs`'s intraday capture for the temporal-stability item) to accumulate a
+PIN sample size large enough to report a real joint-pass-rate percentage rather than a single
+corroborating data point. Flagged as the natural next step, not done this pass.

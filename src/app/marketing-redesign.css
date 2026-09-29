@@ -1331,7 +1331,16 @@ a.pipe-chip-link:hover{background:rgba(163,230,53,.12);border-color:rgba(163,230
   animation:gamma-scan 4.5s ease-in-out infinite;
 }
 @keyframes gamma-scan{0%,100%{transform:translateY(0);opacity:0}15%{opacity:.45}50%{transform:translateY(180px);opacity:.25}85%{opacity:0}}
-.rl .gamma-promo-warm{position:relative;padding:2rem 1rem;text-align:center}
+/* min-height reserves the loaded state's typical height (headline+matrix+read, sans the optional
+   ladder/degraded banner) so the mount-fetch self-heal in HomeGammaPromo.tsx (loading/showLevels,
+   documented as deliberate in its own test file) doesn't visibly collapse-then-expand this panel.
+   Measured live 2026-09-18: this exact warm->full transition produced a real, catchable
+   layout-shift event on the homepage (desktop, post-Cloudflare-purge) with the CTA link's own
+   rect moving ~105-140px — the one-off CLS 0.132 read this fix responds to. */
+.rl .gamma-promo-warm{
+  position:relative;padding:2rem 1rem;text-align:center;min-height:14rem;
+  display:flex;align-items:center;justify-content:center;
+}
 .rl .gamma-promo-warm p{font-family:var(--rl-mono);font-size:11px;color:var(--rl-dim)}
 .rl .gamma-promo-degraded{
   margin:0 0 .75rem;padding:.45rem .65rem;border-radius:4px;

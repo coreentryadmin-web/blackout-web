@@ -67,6 +67,30 @@ test("weak when only one leg agrees", () => {
   assert.match(c.label, /weak|unconfirmed/);
 });
 
+test("computeConfluence NEUTRAL-STRUCTURE (regression): a CONDOR setup gets no fabricated confluence read", () => {
+  // condor.ts's own buildCondorSetup doc: a condor row's `direction` "carries the pin's nominal
+  // fade side for provenance but is UNUSED by the neutral structure's gates/grader." Before this
+  // fix, computeConfluence scored vwap_ok/market_ok off that nominal side regardless of structure,
+  // fabricating a "triple-confirmed"/"VWAP+market confirmed" read for a delta-neutral condor that
+  // reached the live command-deck (ZeroDteCommandPanel's "confluence N/2" line).
+  const condor = setup({ play_type: "CONDOR" as EnrichedZeroDteSetup["play_type"] });
+  assert.equal(computeConfluence(condor, POST_OPEN), null, "a condor must never get a fabricated confluence tier");
+
+  // A real directional setup (no play_type at all, matching every other fixture in this file)
+  // must be unaffected — this fix must not suppress confluence for a genuine directional play.
+  assert.notEqual(computeConfluence(setup(), POST_OPEN), null);
+});
+
+test("attachConfluence: a CONDOR setup in the batch gets confluence: null, siblings unaffected", () => {
+  const s = [
+    setup({ ticker: "SPX", play_type: "CONDOR" as EnrichedZeroDteSetup["play_type"] }),
+    setup({ ticker: "QQQ" }),
+  ];
+  attachConfluence(s, POST_OPEN);
+  assert.equal(s[0].confluence, null);
+  assert.equal(s[1].confluence?.tier, "triple");
+});
+
 test("attachConfluence mutates every setup in place", () => {
   const s = [setup(), setup({ ticker: "QQQ", market_aligned: false })];
   attachConfluence(s, POST_OPEN);

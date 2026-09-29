@@ -16,7 +16,8 @@ import { buildPlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-pan
 import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-store";
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
 import { degradedPlayPayload } from "@/features/spx/lib/spx-play-payload";
-import { playMemberReadCacheSec } from "@/features/spx/lib/spx-play-config";
+import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
+import { isSpxPlaySnapshotFreshEnough } from "@/features/spx/lib/spx-play-freshness";
 import { playMemberReadMaxBlockMs } from "@/lib/providers/config";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
@@ -223,16 +224,32 @@ async function spxPlayReadFallback(): Promise<Awaited<ReturnType<typeof evaluate
   return spxPlayReadDegraded();
 }
 
+/**
+ * Bug fixed 2026-09-13 (live audit): this used to return `mem`/`hit.value` unconditionally the
+ * instant either was non-null, trusting `peekServerCache`'s generic up-to-10-minute staleness
+ * tolerance (server-cache.ts's `MAX_STALE_AGE_MS`) as if it matched this route's actual 5s
+ * freshness contract (`playMemberReadCacheSec`). It didn't: polling `/api/market/spx/play` at 1s
+ * intervals in production caught snapshots up to ~234s stale, `as_of` jumping BACKWARD between
+ * consecutive requests (different ECS replicas each independently peeking their own up-to-10-min-
+ * stale in-memory copy, since `peekServerCache`'s `store` Map is per-process, not shared), and
+ * `assessed`/`score` flapping true/39 <-> false/0 a second apart on the SAME member's poll loop.
+ * Now both the in-process and Redis-backed peek results are checked against
+ * `playMemberPeekMaxAgeSec()` (a real multiple of the route's own TTL, not the generic ceiling)
+ * before being trusted; a too-stale result falls through to `null`, and the route's own fallback
+ * (`getSpxPlayState()`) does a properly cross-replica-coordinated refresh instead.
+ */
 export async function peekSpxPlayState(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>> | null> {
   const date = todayEtYmd();
+  const maxAgeMs = playMemberPeekMaxAgeSec() * 1000;
   const mem = await peekServerCache<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
     `spx-play-read:${date}`
   );
-  if (mem) return mem;
+  if (mem && isSpxPlaySnapshotFreshEnough(mem.as_of, Date.now(), maxAgeMs)) return mem;
   const hit = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
     spxPlayServerCacheKey(date)
   );
-  return hit?.value ?? null;
+  if (hit?.value && isSpxPlaySnapshotFreshEnough(hit.value.as_of, Date.now(), maxAgeMs)) return hit.value;
+  return null;
 }
 
 export async function getSpxPlayState() {

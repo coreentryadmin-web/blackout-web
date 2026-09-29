@@ -13,6 +13,7 @@ import type {
   BieSection,
 } from "@/lib/bie/answer-envelope";
 import { makeEnvelope } from "@/lib/bie/answer-envelope";
+import { parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 
 /** Display label for a bias. */
 export const BIAS_LABEL: Record<BieBias, string> = {
@@ -64,14 +65,23 @@ export function freshnessToneClass(freshness: BieFreshness): string {
 }
 
 /**
- * Compact "3m ago / 2h ago / just now" from an ISO timestamp, relative to `now`.
+ * Compact "3m ago / 2h ago / just now" from an ISO timestamp — or a Largo C1 ET stamp
+ * ("YYYY-MM-DD HH:mm ET", e.g. swing play-briefs' `envelope.asOf`), relative to `now`.
+ * `Date.parse` returns NaN on the ET-stamp shape, which silently dropped this label on
+ * every swing brief rendered through `<BieAnswer>` (found live 2026-09-14) — same fallback
+ * `@/lib/et-clock`'s internal `toMs` already uses for the same reason.
  * Returns null when the input is absent/unparseable so the UI can omit it rather
  * than render a fake time.
  */
 export function relativeTime(asOf: string | null | undefined, now: number = Date.now()): string | null {
   if (!asOf) return null;
   const t = Date.parse(asOf);
-  if (Number.isNaN(t)) return null;
+  const resolved = Number.isNaN(t) ? parseEtStamp(asOf) : t;
+  if (resolved == null || Number.isNaN(resolved)) return null;
+  return relativeTimeFromMs(resolved, now);
+}
+
+function relativeTimeFromMs(t: number, now: number): string | null {
   const diff = now - t;
   if (diff < 0) return "just now";
   if (diff < 60_000) return "just now";

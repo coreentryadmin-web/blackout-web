@@ -20,6 +20,7 @@ import type { HorizonPlay } from "../horizon-plays";
 import type { SwingWatchCandidate } from "./accumulation-store";
 import { swingThesisKey, persistenceGapReason } from "./accumulation-store";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
+import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
 import {
   assembleSwingServingLane,
   emptySwingServingLane,
@@ -34,7 +35,7 @@ import type { ChainContract } from "../horizon-fanout";
 import { livePlaysFromOpenPositions } from "./live-plays";
 import type { SwingPositionRow } from "../db";
 import type { BangerPositionRow } from "../banger/positions-db";
-import { mergeBangerPositionsIntoSwingPlays } from "./banger-lane-merge";
+import { mergeBangerPositionsIntoSwingPlays, BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 import { enrichSwingPlaysWithVectorLeaders, type VectorLeaderHint } from "./vector-lane-enrich";
 
 /** Add pre-entry banger WATCH rows when the ticker is not already live capital. */
@@ -92,10 +93,84 @@ export function dossiersByTicker(dossiers: SwingDossier[]): Map<string, SwingDos
 }
 
 /**
+ * Does a `factors` array actually explain the score it's shown beside? `contributionsToFactors`'s own
+ * doc comment (swing-pillars.ts) states the invariant: points sum to the score they were computed FROM —
+ * EXACTLY, not approximately: `scoreSwingPillars` rounds each contribution to 1dp and then sums those
+ * already-rounded values for both the dossier's own `score` AND for `contributionsToFactors`'s output, so
+ * a genuinely-paired (score, factors) pair from the SAME scoring run has zero drift, not rounding noise.
+ * The tolerance here is floating-point safety only (JSON round-trip, `roundFloats` at the response edge)
+ * — a real mismatch from pairing two different runs' numbers (the #4826/#4832/#4843/#4837/#5298 bug
+ * class) is a real, non-tiny gap: 0.9pt on LITE, 6.5pt on SMCI, both live 2026-09-20.
+ */
+function factorsSumToScore(factors: HorizonPlay["factors"], score: number, tolerance = 0.15): boolean {
+  if (!Array.isArray(factors) || factors.length === 0 || !Number.isFinite(score)) return false;
+  const sum = factors.reduce((n, f) => n + (Number.isFinite(f.points) ? f.points : 0), 0);
+  return Math.abs(sum - score) <= tolerance;
+}
+
+/** True for a Legacy-morning-confirm-promoted play (`legacy-confirm-promote.ts`'s own marker on every
+ *  row it builds) — checked via the shared gate-block constant rather than importing
+ *  `legacy-confirm-promote.ts` directly, which imports THIS module (persist/read snapshot) and would
+ *  create a cycle. */
+function isLegacyExemptPlay(play: HorizonPlay): boolean {
+  return Array.isArray(play.commitGateBlockedBy) && play.commitGateBlockedBy.includes(LEGACY_COMMIT_GATE_EXEMPT);
+}
+
+/** The one honest breakdown for a Legacy-promoted play: a single factor equal to its own shown score
+ *  (never a dossier's independently-computed pillar decomposition — see `legacy-confirm-promote.ts`'s
+ *  own `buildLegacySwingArtifacts` comment on why pairing those is the #4843 bug). */
+function legacyPinnedFactors(score: number): HorizonPlay["factors"] {
+  return [{ label: "Night Hawk edition score", points: score }];
+}
+
+/**
+ * Resolve which `factors` a play should actually show: its own PERSISTED array when — and only when —
+ * that array genuinely sums to the score shown beside it; otherwise a REPAIR, not a blind pass-through.
+ *
+ * SELF-HEALING (FINDINGS 2026-09-20, 5th occurrence of the #4826/#4832/#4843/#4837/#5298 bug class).
+ * #5298 fixed `enrichPlay` to PREFER a pinned `play.factors` over a fresh dossier re-score — but its
+ * guard only checked NON-EMPTINESS (`factors.length > 0`), never that the pinned array actually sums to
+ * the score it rides beside. That is silently unsafe: it can only ever make a genuinely-pinned array
+ * survive, and can never repair one that was already wrong for ANY reason (a transient write-time race,
+ * a since-fixed bug in an earlier build of the writer, a hand-edited snapshot, a future regression in
+ * this exact spot) — it just enshrines whatever is in Redis as "trust it forever." Live evidence
+ * (2026-09-20): LITE (score 71, persisted factors summing to 70.1 across 5 dossier-shaped pillar rows —
+ * Structure/Regime/Volatility/Flow/Data quality) and SMCI (score 91 vs 84.5, 3 rows) are BOTH
+ * Legacy-morning-confirm-promoted (`commitGateBlockedBy: ["legacy:exempt"]`, `reason` carries "Legacy
+ * morning confirm"), yet carry the exact OLD pre-#4843 dossier-breakdown shape `buildLegacySwingArtifacts`
+ * has not written since 2026-09-12 (verified against ECS task-definition history for BOTH
+ * `blackout-production-web` and `blackout-production-market-worker`: the #4843 fix was live on both
+ * services well before LITE/SMCI's own promotion timestamps, 2026-09-17/18 — so this is not a simple
+ * "the fix hadn't deployed yet" gap, whatever the precise write-time cause was). The persisted swing
+ * serving snapshot itself was stale ~40h at the time this was found (`scanAsOf` stuck at
+ * 2026-09-18T20:37Z) — `carryLegacyPromotedIntoSnapshot`'s day-to-day carry-forward only ever refreshes
+ * a Legacy row's CONTRACT (staleness/expiry), never re-validates `factors`, so once bad, a persisted
+ * value rides untouched for as long as the thesis stays open. Whatever the original write-time cause,
+ * NOTHING before this fix ever re-checked it — so the durable fix is making the READ side self-healing:
+ * verify the invariant every time, and for a Legacy-exempt play specifically, REPAIR with the same
+ * single-factor shape `buildLegacySwingArtifacts` is supposed to write (never fall back to a fresh
+ * dossier decomposition, which would just re-commit the identical mismatch with different numbers).
+ */
+function resolvedFactorsFor(play: HorizonPlay, fallback: HorizonPlay["factors"]): HorizonPlay["factors"] {
+  if (factorsSumToScore(play.factors, play.score)) return play.factors;
+  if (isLegacyExemptPlay(play)) return legacyPinnedFactors(play.score);
+  return fallback;
+}
+
+/**
  * Stamp a produced play with the OBSERVABLE swing state its dossier + grounded reads imply, so the serving
  * router (buildSwingSections) can place it in the right section. Only the observable fields the router keys
  * on (setupState / entryStatus) and the calibration-partition labels (archetype / subLane) are set — the
  * factors/regime/thesis reads ride the meta the command-deck adapter consumes, not the pure play.
+ *
+ * PINNED FACTORS: preferred over a fresh dossier re-score, per `resolvedFactorsFor`'s header above
+ * (the #4826/#4832/#4843/#4837/#5298/2026-09-20 bug-class history and the self-healing fix live there —
+ * this function's own contribution to that history was #5298, 2026-09-19: it used to unconditionally
+ * overwrite `factors: meta.factors`, which was the ONLY call site `attachThesisExplanation` (below) had
+ * NOT been mirrored to, since Legacy-promoted PRE-ENTRY plays never carry `liveStatus`/`manageAction`
+ * and so never take that other function's path). Organic (non-Legacy) discovery plays never set
+ * `play.factors` at all (`horizon-plays.ts`'s `factors` field is optional/undefined until this function
+ * fills it), so `resolvedFactorsFor` falls through to `meta.factors` for them exactly as before.
  */
 function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?: SwingServingReads): HorizonPlay {
   if (!dossier) return play; // no thesis found for this ticker → leave it as-is (routes to RESEARCH honestly)
@@ -111,13 +186,16 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
     entryStatus: meta.entryStatus ?? play.entryStatus,
     archetype: meta.archetype ?? play.archetype,
     subLane: meta.subLane ?? play.subLane,
-    factors: meta.factors,
+    // Self-healing (see `resolvedFactorsFor`'s own header) — a non-empty array is no longer trusted on
+    // sight; it must actually sum to the score it rides beside, or it gets repaired.
+    factors: resolvedFactorsFor(play, meta.factors),
     regime: meta.regime,
     thesisLevel: meta.thesisLevel,
     thesisNote: meta.thesisNote,
     sectorLeadershipFacts: meta.sectorLeadershipFacts,
     flagUnderlyingPx:
       typeof flagPx === "number" && Number.isFinite(flagPx) && flagPx > 0 ? flagPx : play.flagUnderlyingPx,
+    entryTriggerUnderlyingPx: meta.entryTriggerUnderlyingPx ?? play.entryTriggerUnderlyingPx ?? null,
   };
 }
 
@@ -143,22 +221,86 @@ function enrichPlay(play: HorizonPlay, dossier: SwingDossier | undefined, reads?
  * from ongoing management, and a pre-entry read would overwrite a real "thesis broken" with a stale
  * "intact".
  *
- * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) leaves the row
- * untouched and the honest placeholder stands — a committed play never gets an invented explanation.
+ * FACTORS NO LONGER BORROWED FROM A FRESH DOSSIER (FINDINGS 2026-09-12). `play.score` on a live row is
+ * `row.feature_vector.evidence_score` — PINNED at commit (commit.ts: "so trajectory studies can echo
+ * pillars/score on every later snapshot"). This function used to overwrite `factors` with `meta.factors`
+ * from a dossier RE-RUN TODAY, whose pillar reads (rel-strength/regime/structure) legitimately drift
+ * from commit day — so the two numbers silently diverged the longer a position aged (live: AAPL
+ * position 37 SECTOR_ROTATION showed "score 84.4" beside factors summing to 75.0, a 9.4pt/11%
+ * unexplained gap; same failure mode as #4826's Banger/Vector-bump fixes, a third distinct occurrence).
+ * `live-plays.ts`'s `livePlayFromSwingPosition` now reconstructs `play.factors` from that SAME pinned
+ * feature_vector (`pinnedFactorsFromFeatureVector`), so it sums to `play.score` by construction. This
+ * function therefore PREFERS the play's own (pinned) factors and borrows the dossier's fresh ones only
+ * as a fallback for rows committed before the feature vector carried pillar detail (no `pil_*`/archetype
+ * pinned) — those still get SOME explanation rather than none, same as before this fix, just no longer
+ * at the cost of a mismatched score once a pinned one exists.
+ *
+ * FAIL-CLOSED: no dossier for the ticker (the name is no longer in today's discovery) AND no pinned
+ * factors on the row leaves it untouched and the honest placeholder stands — a committed play never
+ * gets an invented explanation.
+ *
+ * SELF-HEALING (FINDINGS 2026-09-20, same fix as `enrichPlay`/`resolvedFactorsFor` above): "pinned" here
+ * used to mean only "non-empty" — never verified the array actually summed to the row's own score, so a
+ * bad persisted value (from any cause) would ride forever once written. Now checked the same way, with
+ * the same Legacy-exempt repair path for defense in depth even though a real live/committed Legacy row
+ * is rare (Legacy promotions are serve-only, `bucketGraduated:false`).
  */
 export function attachThesisExplanation(
   play: HorizonPlay,
   dossier: SwingDossier | undefined,
   reads?: SwingServingReads,
 ): HorizonPlay {
-  if (!dossier) return play;
+  const factorsValid = factorsSumToScore(play.factors, play.score);
+  const legacyExempt = !factorsValid && isLegacyExemptPlay(play);
+  if (!dossier) return legacyExempt ? { ...play, factors: legacyPinnedFactors(play.score) } : play;
   const meta = swingServingMetaFromDossier(dossier, reads);
   const hasFactors = Array.isArray(meta.factors) && meta.factors.length > 0;
-  if (!hasFactors && meta.regime == null && meta.sectorLeadershipFacts == null) return play;
+  // BUG FIXED 2026-09-20 (live repro: PR #4076 comment 5751915312 — 18-19 of a 36-position
+  // Banger-promoted swing batch rendered a byte-identical fabricated "84% · Minor drift" Thesis
+  // Health score, reopening the identical 2026-09-15 C6 violation). ROOT CAUSE: this function is
+  // called TWICE on a banger-ledger play's road to a play-brief — once (correctly) never, inside
+  // getSwingServingLane, since banger rows are merged in AFTER the native-only
+  // livePlaysFromOpenPositions().map(attachThesisExplanation) pass — and once (the bug) from
+  // play-brief-resolve.ts's ticker-only lane fallback, which calls this on WHATEVER lane row it
+  // resolved, banger-origin or native, with no distinction. `horizonPlayFromBangerPosition`
+  // deliberately stamps `regime: BANGER_LEDGER_REGIME_LABEL` as an honest "no real per-position
+  // dossier exists for this play" sentinel that `thesisHealthUncalibrated()` matches on EXACTLY to
+  // withhold the aggregate score. The unconditional `regime: meta.regime ?? play.regime` below used
+  // to happily overwrite that sentinel with an UNRELATED same-ticker discovery dossier's fresh
+  // regime read whenever one happened to exist in the CURRENT scan (true for liquid, actively
+  // rescanned names like RIOT/MSTR/COIN; false for illiquid ones like BKKT/GEMI — exactly the split
+  // observed live) — destroying the fingerprint the omission gate relies on, so the position then
+  // computed a full aggregate score from the REMAINING hardcoded ledger constants (setupState
+  // TRIGGERED, entryStatus AT_TRIGGER, signalKinds=[BANGER], same dte/subLane for every position in
+  // one batch commit), which is why every affected row in the batch converged on the SAME 84%.
+  // FIX: a banger-ledger sentinel regime is never a real per-position read to begin with, so it must
+  // never be overwritten by an unrelated ticker-keyed dossier — the dossier's own regime read
+  // belongs to whatever thesis the discovery engine is CURRENTLY scoring for that ticker, not to
+  // this already-committed banger position, which has no live dossier of its own by construction.
+  const freshRegime = play.regime === BANGER_LEDGER_REGIME_LABEL ? null : meta.regime;
+  if (factorsValid) {
+    // Score-consistent factors already reconstructed from the row's own frozen feature_vector — only
+    // regime/sectorLeadershipFacts (not score-summing fields) still benefit from the live dossier read.
+    if (freshRegime == null && meta.sectorLeadershipFacts == null) return play;
+    return {
+      ...play,
+      regime: freshRegime ?? play.regime,
+      sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
+    };
+  }
+  if (legacyExempt) {
+    return {
+      ...play,
+      factors: legacyPinnedFactors(play.score),
+      regime: freshRegime ?? play.regime,
+      sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
+    };
+  }
+  if (!hasFactors && freshRegime == null && meta.sectorLeadershipFacts == null) return play;
   return {
     ...play,
     factors: hasFactors ? meta.factors : play.factors,
-    regime: meta.regime ?? play.regime,
+    regime: freshRegime ?? play.regime,
     sectorLeadershipFacts: meta.sectorLeadershipFacts ?? play.sectorLeadershipFacts,
   };
 }

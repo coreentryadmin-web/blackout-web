@@ -58,7 +58,7 @@ violate the "don't change stable pages to look productive" rule.
 |---|---|---|---|
 | Entity / knowledge-graph signals (brand panel, AI citation) | Medium, near-term | **SEO (me)** | ✅ shipped — entity `@id` graph + `knowsAbout` + glossary `DefinedTermSet` |
 | AI/GEO surface (llms.txt, machine-readable defs) | Medium, near-term | **SEO (me)** | ✅ strong; DefinedTermSet added |
-| Striking-distance queries (page 2: `is 0dte gambling` pos 11.5, `gamma three trading` pos 18.7) | Small | **SEO (me)** | Both well-optimized in existing dealer-gamma / FAQ content; authority/backlinks drive further movement |
+| Striking-distance queries (page 2: `is 0dte gambling` pos 11.5, `gamma three trading` pos 18.7, `dealer gamma` pos 19.6 — entered 2026-09-15) | Small | **SEO (me)** | All three well-optimized in existing dealer-gamma / FAQ content (`dealer gamma`'s own bolded `## The core concept: dealer gamma exposure` section on the pillar guide); authority/backlinks drive further movement |
 | **Backlinks / digital PR / authority** | **High — the actual traffic lever** | **OUT OF LANE → coordinator** | ⚠️ delegated (see §5) |
 | **Programmatic ticker landing pages** (GEX/flow per ticker) | **High — largest content opportunity** | Blocked | ⛔ **licensing** (vendor redistribution terms) — see §5 |
 | Google Ads receiving GA4 conversions | High for paid, not organic | Out of lane (ads/analytics) | ⚠️ flagged — GA4 events never reach Ads as conversions |

@@ -40,20 +40,27 @@ function getPolygonBase(): string {
 
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
-/** Optional Next/fetch cache override for call sites that must not force dynamic rendering (e.g. marketing ISR). */
-export type PolygonLargoFetchInit = Pick<RequestInit, "cache"> & {
+/** Optional Next/fetch cache override for call sites that must not force dynamic rendering (e.g. marketing ISR).
+ *  `signal` rides the same options object rather than a new positional param on `polygonGet` — see
+ *  that function's own doc comment for why. */
+export type PolygonLargoFetchInit = Pick<RequestInit, "cache" | "signal"> & {
   next?: { revalidate?: number };
 };
 
 /**
  * Build fetch init for `polygonGet` — `cache` and `next.revalidate` are mutually exclusive in
  * Next's fetch patch; when both are present, `cache: "no-store"` wins and ISR overrides are ignored.
+ * `signal`, when supplied, is independent of that choice and always carried through.
  */
 export function buildPolygonLargoFetchInit(fetchInit?: PolygonLargoFetchInit): RequestInit {
   if (fetchInit?.next) {
-    return { headers: { Accept: "application/json" }, next: fetchInit.next };
+    return { headers: { Accept: "application/json" }, next: fetchInit.next, signal: fetchInit.signal };
   }
-  return { headers: { Accept: "application/json" }, cache: fetchInit?.cache ?? "no-store" };
+  return {
+    headers: { Accept: "application/json" },
+    cache: fetchInit?.cache ?? "no-store",
+    signal: fetchInit?.signal,
+  };
 }
 
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
@@ -258,14 +265,21 @@ function symToPath(symbol: string): string {
   return symbol.toUpperCase();
 }
 
-export async function fetchPolygonTickerDetails(ticker: string) {
-  return polygonGet<Record<string, unknown>>(`/v3/reference/tickers/${ticker.toUpperCase()}`, {});
+export async function fetchPolygonTickerDetails(ticker: string, signal?: AbortSignal) {
+  return polygonGet<Record<string, unknown>>(
+    `/v3/reference/tickers/${ticker.toUpperCase()}`,
+    {},
+    undefined,
+    { signal }
+  );
 }
 
-export async function fetchPolygonNews(ticker: string, limit = 15) {
+export async function fetchPolygonNews(ticker: string, limit = 15, signal?: AbortSignal) {
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     "/v2/reference/news",
-    { ticker: ticker.toUpperCase(), limit: String(limit), order: "desc", sort: "published_utc" }
+    { ticker: ticker.toUpperCase(), limit: String(limit), order: "desc", sort: "published_utc" },
+    undefined,
+    { signal }
   );
   return (data?.results ?? []).map((a) => {
     const insights = Array.isArray(a.insights)

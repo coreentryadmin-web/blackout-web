@@ -6,7 +6,7 @@
 // so the bug was branch-specific, not a universal template issue.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildMarketRecap } from "./format";
+import { buildMarketRecap, flowByExpiryPremium } from "./format";
 import type { MarketWideContext } from "./market-wide";
 
 function baseCtx(overrides: Partial<MarketWideContext> = {}): MarketWideContext {
@@ -67,6 +67,41 @@ test("recap summary still reads correctly for a real computed tide", () => {
   assert.ok(summary.startsWith("BULLISH — calls 60% ($6.0M) vs puts $4.0M. SPX"));
 });
 
+// Task #31 (Ask Largo x Night Hawk Legacy standing mandate, 2026-09-18): platform_intel.playbook
+// (deriveComposite's own authored regime strategy line) was already computed and already fed into
+// the Claude edition prompt as advisory context, but nothing guaranteed it reached the member-facing
+// recap deterministically — buildMarketRecap now surfaces it as its own field, same "only non-empty
+// strings render" convention as tide/spx_vix/catalysts.
+test("buildMarketRecap surfaces platform_intel.playbook as desk_playbook", () => {
+  const { desk_playbook } = buildMarketRecap(
+    baseCtx({
+      platform_intel: {
+        composite_regime: "AMPLIFY_BREAKOUT",
+        gex_regime: "amplification",
+        flow_regime: "bullish",
+        playbook: "Dealers short gamma — moves amplify. Trend up with breakout risk; calls favored; ride momentum, avoid fades.",
+        net_gex: null,
+        above_vwap: null,
+        iv_percentile: null,
+        regime_stale: false,
+        critical_anomaly_count: 0,
+        anomaly_tickers: [],
+        signal_recommendation: null,
+        last_brief: null,
+      },
+    })
+  );
+  assert.equal(
+    desk_playbook,
+    "Dealers short gamma — moves amplify. Trend up with breakout risk; calls favored; ride momentum, avoid fades."
+  );
+});
+
+test("buildMarketRecap: desk_playbook is empty string (never null) when platform_intel is unavailable", () => {
+  const { desk_playbook } = buildMarketRecap(baseCtx({ platform_intel: null }));
+  assert.equal(desk_playbook, "");
+});
+
 // Regression (Ask Largo standing mandate, 5-engine live monitor, 2026-09-11): live repro on
 // GET /api/market/nighthawk/edition printed "Macro: GDP 23850.442 · CPI 333.918" straight in the
 // member-facing recap_summary — buildMarketRecap's own macroLine read `m.latest_value` raw with no
@@ -87,4 +122,23 @@ test("recap summary rounds macro indicator values instead of printing raw floats
   assert.ok(summary.includes("Macro: GDP 23850.44 · CPI 333.92."), `expected rounded macro values, got: ${summary}`);
   assert.ok(!summary.includes("23850.442"), `expected no raw unrounded float, got: ${summary}`);
   assert.ok(!summary.includes("333.918"), `expected no raw unrounded float, got: ${summary}`);
+});
+
+// Live-verified 2026-09-12: real UW `/api/stock/{ticker}/flow-per-expiry` rows carry
+// `call_premium`/`put_premium` (separate string fields), never a single `premium`/
+// `total_premium` field. flowByExpiryPremium's old guessed field names always evaluated to 0,
+// so every "Flow by expiry" line in the Legacy dossier text (fed into the edition's Claude
+// prompt) silently read "$0" for every expiry regardless of real flow.
+test("flowByExpiryPremium: real flow-per-expiry shape sums call_premium + put_premium", () => {
+  const row = { expiry: "2026-09-14", call_premium: "47977407.00", put_premium: "23757826.00" };
+  assert.equal(flowByExpiryPremium(row), 47977407 + 23757826);
+});
+
+test("flowByExpiryPremium: falls back to premium/total_premium when call/put premium absent", () => {
+  assert.equal(flowByExpiryPremium({ premium: 500 }), 500);
+  assert.equal(flowByExpiryPremium({ total_premium: 700 }), 700);
+});
+
+test("flowByExpiryPremium: no matching field at all returns 0, not NaN", () => {
+  assert.equal(flowByExpiryPremium({ expiry: "2026-09-14" }), 0);
 });

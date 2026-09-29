@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { freshestMessageAt, isUwSocketStalled, mergeFreshestTimestamps, UW_SOCKET_FIRST_MSG_GRACE_MS, UW_SOCKET_STALL_OFFHOURS_MS } from "./uw-socket-stall";
+import {
+  freshestMessageAt,
+  isUwSocketStalled,
+  mergeFreshestTimestamps,
+  UW_SOCKET_FIRST_MSG_GRACE_MS,
+  UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS,
+  UW_SOCKET_STALL_OFFHOURS_MS,
+} from "./uw-socket-stall";
 
 const CHANNELS = ["flow_alerts", "market_tide", "gex"] as const;
 
@@ -80,6 +87,32 @@ test("isUwSocketStalled: off-hours stall window (5min) within -> false", () => {
 test("isUwSocketStalled: off-hours stall window (5min) beyond -> true", () => {
   const now = 1_000_000;
   assert.equal(isUwSocketStalled(now - 6 * 60_000, UW_SOCKET_STALL_OFFHOURS_MS, now), true);
+});
+
+// --- off-hours first-message grace (regression: reconnect-storm bug, 2026-09-20) ---
+// Live prod symptom: `[uw-socket] stall watchdog — OPEN 44s with ZERO messages` fired every
+// ~44s for 6+ continuous hours during a Sunday (fully off-hours) window, because the caller
+// always passed the RTH-tuned 30s UW_SOCKET_FIRST_MSG_GRACE_MS regardless of market hours —
+// unlike the sibling "has delivered before" branch, which already widens via
+// UW_SOCKET_STALL_MS/UW_SOCKET_STALL_OFFHOURS_MS. These prove the off-hours constant exists,
+// is materially wider, and that isUwSocketStalled actually honors it when passed.
+
+test("UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS is 5 minutes and wider than the RTH grace", () => {
+  assert.equal(UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS, 5 * 60_000);
+  assert.ok(UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS > UW_SOCKET_FIRST_MSG_GRACE_MS);
+});
+
+test("isUwSocketStalled: never delivered, 44s open — stalled under RTH grace but NOT under off-hours grace", () => {
+  const now = 1_000_000;
+  const openedAt = now - 44_000; // matches the live incident's own log line ("OPEN 44s")
+  assert.equal(isUwSocketStalled(null, 75_000, now, openedAt, UW_SOCKET_FIRST_MSG_GRACE_MS), true);
+  assert.equal(isUwSocketStalled(null, 75_000, now, openedAt, UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS), false);
+});
+
+test("isUwSocketStalled: never delivered, off-hours grace still fires once truly exceeded", () => {
+  const now = 1_000_000;
+  const openedAt = now - 6 * 60_000; // 6 minutes silent, past the 5-minute off-hours grace
+  assert.equal(isUwSocketStalled(null, 75_000, now, openedAt, UW_SOCKET_FIRST_MSG_GRACE_OFFHOURS_MS), true);
 });
 
 test("mergeFreshestTimestamps: null handling + max", () => {

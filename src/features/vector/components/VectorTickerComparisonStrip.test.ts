@@ -12,9 +12,13 @@ test("VectorTickerComparisonStrip: surfaces the shared universe snapshot's stale
   // disclosure -- fixed here so the gap can't ship the moment this (currently unmounted)
   // component gets wired into a page. There's no rendering harness in this repo, so this asserts
   // the fix is wired into the source, matching the pattern used elsewhere in this suite.
+  // BUG FIX (2026-09-14): raw `data.updatedAt` was itself a misleading freshness signal (bumped
+  // by a single-ticker append that refreshes just one row — see vector-age-format.ts's own
+  // comment). Freshness now comes from `effectiveUniverseAsOf(data)`, the median row `asOf` —
+  // updated this assertion to match while preserving the original intent.
   const src = readFileSync(join(root, "components/VectorTickerComparisonStrip.tsx"), "utf8");
   assert.match(src, /\berror\b.*=\s*useVectorUniverseSnapshot\(\)|useVectorUniverseSnapshot\(\).*\berror\b/s, "must destructure error from the snapshot hook");
-  assert.match(src, /data\.updatedAt/, "must read the snapshot's updatedAt field");
+  assert.match(src, /effectiveUniverseAsOf\(data\)/, "must derive freshness via effectiveUniverseAsOf(data), not raw data.updatedAt");
   assert.match(src, /formatVectorAge\(/, "must format the age using the shared age formatter");
   assert.match(src, /isVectorUniverseSnapshotStale\(/, "must use the shared staleness helper (future-at guard)");
   assert.match(src, /is-stale/, "must render a distinct visual state once the snapshot is old");

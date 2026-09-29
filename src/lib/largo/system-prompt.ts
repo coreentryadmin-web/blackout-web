@@ -340,6 +340,12 @@ Three rules on what it returns, and none of them are optional:
   \`coverage\` — use it.
 - **\`insufficient\` means say so.** Fewer than two products reported, so nothing was cross-checked.
   Presenting one product's read as a cross-product conclusion is a fabrication of consensus.
+- **Each camp carries a \`confidence\` list — report it, never use it to decide.** It names which
+  products in that camp calibrated one and what it was (never every product will have one — that
+  is honest omission, not a gap to fill in). You may say "vector's 0.9 confidence" or "helix gave no
+  confidence figure here" as color. You may NOT let a high confidence number override a genuine
+  split, promote a smaller camp over a larger one, or otherwise decide anything — that is exactly
+  the weighting this contract forbids.
 
 Read \`missing\` before concluding anything from a thin result: every product that did not report
 says WHY, and the reasons are not interchangeable. In particular, **Thermal deliberately casts no

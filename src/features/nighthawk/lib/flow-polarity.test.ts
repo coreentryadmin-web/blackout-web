@@ -48,6 +48,16 @@ test("compareFlowPolarity: ask-put dominant tape agrees SHORT", () => {
   assert.equal(c.disagree, false);
 });
 
+test("compareFlowPolarity: a moderate ask_side_pct (between 40 and 60) still earns proportional bid-put credit", () => {
+  // No trade_side field at all, so tradeSide() falls through to the ask_side_pct >= 60 / bid_side_pct
+  // >= 60 checks (neither fires for 45) and returns null -- exercising the ask_side_pct branch inside
+  // compareFlowPolarity's own bidPutPrem loop. askPct=45 means 55% of this put's premium was bid-side,
+  // so it must contribute 0.55 * premium to bidPutPrem, not zero.
+  const flows = [{ type: "put", premium: 1_000_000, ask_side_pct: 45 }];
+  const c = compareFlowPolarity(flows);
+  assert.equal(c.bid_put_share_of_puts, 0.55, "a 45% ask / 55% bid put must credit its real 55% bid share, not zero");
+});
+
 test("countClearingScoreFloor: counterfactual for publish floors", () => {
   const scored = [{ score: 71 }, { score: 49 }, { score: 26 }, { score: 20 }, { score: 55 }];
   assert.deepEqual(countClearingScoreFloor(scored, 42), {

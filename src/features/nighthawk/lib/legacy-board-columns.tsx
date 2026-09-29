@@ -6,6 +6,7 @@ import type { LegacyBoardTableRow } from "@/features/nighthawk/lib/legacy-board-
 import {
   legacyBoardMeter,
 } from "@/features/nighthawk/lib/legacy-board-table-utils";
+import { legacyScorecardBadge } from "@/features/nighthawk/lib/legacy-board-detail-copy";
 import { formatPremiumPct } from "@/features/nighthawk/lib/vector-board-table-utils";
 import type { VectorBoardColumnId, VectorBoardPreferences } from "@/features/nighthawk/lib/vector-board-preferences";
 import type { VectorBoardSortDir, VectorBoardSortKey } from "@/features/nighthawk/lib/vector-board-filters";
@@ -77,24 +78,35 @@ export function buildLegacyBoardColumns(opts: {
       colClass: "vector-board-col-pick",
       thClass: "vector-board-col-pick",
       header: "Pick",
-      renderCell: (row, ctx) => (
-        <>
-          <div className="vector-board-pick-name">
-            {ctx.live ? <span className="vector-board-live-dot" aria-label="Live" /> : null}
-            {row.ticker}
-            {row.play.gatePromoted ? (
-              <span className="legacy-pick-badge" title="Gate promoted — best available after funnel">
-                GP
-              </span>
+      renderCell: (row, ctx) => {
+        const scorecardBadge = legacyScorecardBadge(row.play);
+        return (
+          <>
+            <div className="vector-board-pick-name">
+              {ctx.live ? <span className="vector-board-live-dot" aria-label="Live" /> : null}
+              {row.ticker}
+              {row.play.gatePromoted ? (
+                <span className="legacy-pick-badge" title="Gate promoted — best available after funnel">
+                  GP
+                </span>
+              ) : null}
+            </div>
+            <div className="vector-board-pick-sub">{row.contractLabel}</div>
+            <div className="vector-board-pick-id">
+              {row.play.tierLabel ? `Tier ${row.play.tierLabel} · ` : ""}
+              {row.play.direction} · #{row.rank ?? "—"}
+            </div>
+            {scorecardBadge ? (
+              <div
+                className="vector-board-pick-scorecard"
+                title="Historical win rate for this pick's conviction tier — click the row for the full breakdown"
+              >
+                {scorecardBadge}
+              </div>
             ) : null}
-          </div>
-          <div className="vector-board-pick-sub">{row.contractLabel}</div>
-          <div className="vector-board-pick-id">
-            {row.play.tierLabel ? `Tier ${row.play.tierLabel} · ` : ""}
-            {row.play.direction} · #{row.rank ?? "—"}
-          </div>
-        </>
-      ),
+          </>
+        );
+      },
     });
   }
 

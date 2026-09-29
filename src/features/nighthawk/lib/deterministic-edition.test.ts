@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   buildDeterministicEditionPlays,
   buildRescuePlays,
@@ -18,7 +20,16 @@ import type { TickerDossier } from "./dossier";
 // ── Synthetic fixtures ────────────────────────────────────────────────────────────────────────
 function row(
   strike: number,
-  opts: { oi?: number; callAsk?: number; callBid?: number; putAsk?: number; putBid?: number; expiry?: string } = {}
+  opts: {
+    oi?: number;
+    callAsk?: number;
+    callBid?: number;
+    putAsk?: number;
+    putBid?: number;
+    expiry?: string;
+    callDelta?: number | null;
+    putDelta?: number | null;
+  } = {}
 ): ChainStrikeRow {
   const oi = opts.oi ?? 5_000;
   return {
@@ -32,12 +43,12 @@ function row(
     strike,
     call_bid: opts.callBid ?? null,
     call_ask: opts.callAsk ?? null,
-    call_delta: null,
+    call_delta: opts.callDelta ?? null,
     call_oi: oi,
     call_iv: null,
     put_bid: opts.putBid ?? null,
     put_ask: opts.putAsk ?? null,
-    put_delta: null,
+    put_delta: opts.putDelta ?? null,
     put_oi: oi,
     put_iv: null,
   };
@@ -59,6 +70,20 @@ function chainAround(spot: number, opts: { oi?: number; expiry?: string } = {}):
         putBid: 3.8,
       })
     ),
+  };
+}
+
+/** Same shape as chainAround, but with real delta on the ATM strike (matching a real Polygon-sourced
+ *  row) and a cheap, sub-$2 ATM premium — for proving the preferAffordable tier is a no-op on tickers
+ *  whose own ATM strike is already affordable (the common case for a $13-$26 stock). */
+function chainAroundWithDelta(spot: number, atmDelta: number): EditionChainData {
+  return {
+    spot,
+    rows: [
+      row(spot - 2, { oi: 5_000, callAsk: 2.3, callBid: 2.1, callDelta: Math.min(0.95, atmDelta + 0.2) }),
+      row(spot, { oi: 5_000, callAsk: 1.15, callBid: 1.05, callDelta: atmDelta }),
+      row(spot + 2, { oi: 5_000, callAsk: 0.55, callBid: 0.45, callDelta: Math.max(0.05, atmDelta - 0.2) }),
+    ],
   };
 }
 
@@ -141,6 +166,102 @@ test("emits N valid plays with correct geometry and direction from the score sig
   const bbb = plays.find((p) => p.ticker === "BBB")!;
   assert.equal(bbb.direction, "SHORT");
   assert.equal(parseOptionsContract(bbb.options_play)?.side, "put");
+});
+
+test("buildDeterministicEditionPlays: end-to-end, an expensive underlying gets the affordable-preference contract while a cheap one is unaffected (member complaint 2026-09-21)", () => {
+  const ranked = [scored("MUX", "long", 70), scored("CHEAP", "long", 65)];
+  const chains = { MUX: expensiveUnderlyingChain(), CHEAP: chainAroundWithDelta(20, 0.5) };
+  const dossierMap = { MUX: dossier("MUX", 1000), CHEAP: dossier("CHEAP", 20) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+
+  const mux = plays.find((p) => p.ticker === "MUX")!;
+  assert.ok(mux, "MUX should be published");
+  assert.equal(mux.entry_premium, 7, "main-loop call site opts into preferAffordable -- picks the $7/share 1060 strike, not the $20 ATM");
+
+  const cheap = plays.find((p) => p.ticker === "CHEAP")!;
+  assert.ok(cheap, "CHEAP should be published");
+  assert.ok(cheap.entry_premium != null && cheap.entry_premium < 2, "an already-affordable ticker's pick is unchanged by the preference tier");
+});
+
+// ── Workstream C / #20's D4-extra (2026-09-21): mainLoopRejected capture ────────────────────────
+// Both the premium_cap and geometry drop points inside the main loop are narrow/hard-to-trigger
+// paths by design (pickChainContract's strict pool already enforces the premium cap before a
+// non-caveated contract is ever returned, and resolveLevels/buildDirectionalStockLevels already
+// self-correct R:R before validatePlayGeometry runs -- see play-levels.ts's own MIN_RR_RATIO
+// correction). A direct source-inspection proof (this codebase's established substitute for a
+// hard-to-organically-trigger internal branch, e.g. candidate-forward-grade.test.ts's own
+// orchestration tests) is the precise, cheap way to prove the instrumentation is correct without
+// needing to first reverse-engineer a fixture that reliably reaches either branch.
+
+test("mainLoopRejected: buildDeterministicEditionPlays is ALWAYS returned with this field, empty when nothing was rejected", () => {
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: chainAround(120) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const result = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  assert.ok(Array.isArray(result.mainLoopRejected));
+  assert.equal(result.mainLoopRejected.length, 0);
+});
+
+test("mainLoopRejected: source proof -- both drop points push before their EXISTING, unmodified `continue`, never altering the branch condition", () => {
+  const src = readFileSync(fileURLToPath(new URL("./deterministic-edition.ts", import.meta.url)), "utf8");
+
+  const premiumCapBlock = src.slice(
+    src.indexOf("if (contract && !contract.caveat && play.premium_cap_ok === false) {"),
+    src.indexOf("if (contract && !contract.caveat && play.premium_cap_ok === false) {") + 700
+  );
+  assert.match(premiumCapBlock, /premiumCapCount \+= 1;/, "existing counter increment must be unchanged");
+  assert.match(premiumCapBlock, /mainLoopRejected\.push\(\{/, "must push a rejection row");
+  assert.match(premiumCapBlock, /stage: "premium_cap"/);
+  assert.match(premiumCapBlock, /cap_per_share: MAX_OPTION_PREMIUM_PER_SHARE/);
+  assert.match(premiumCapBlock, /cap_per_contract: MAX_OPTION_COST_PER_CONTRACT/);
+  // The push must appear BEFORE the continue, and the continue itself must be exactly the
+  // original bare statement -- no condition added to it.
+  const continueAfterPush = premiumCapBlock.slice(premiumCapBlock.indexOf("mainLoopRejected.push"));
+  assert.match(continueAfterPush, /^\s*(?:.|\n)*?\n\s+continue;\n\s+\}/, "continue must remain a bare, unconditional statement right after the push");
+
+  const geometryBlock = src.slice(src.indexOf("const geom = validatePlayGeometry(play);"), src.indexOf("const geom = validatePlayGeometry(play);") + 400);
+  assert.match(geometryBlock, /geometryFailCount \+= 1;/, "existing counter increment must be unchanged");
+  assert.match(geometryBlock, /mainLoopRejected\.push\(\{ ticker, detail: \{ stage: "geometry", drops: geom\.drops \}, scored, play \}\);/);
+  assert.match(geometryBlock, /\n\s+continue;\n\s+\}/, "continue must remain a bare, unconditional statement right after the push");
+});
+
+test("mainLoopRejected: buildDeterministicEditionPlays never reads the capture-enabled flag -- output is structurally independent of it", () => {
+  const src = readFileSync(fileURLToPath(new URL("./deterministic-edition.ts", import.meta.url)), "utf8");
+  assert.doesNotMatch(src, /NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED/, "the flag must live entirely in the caller, never in the pure builder");
+  assert.doesNotMatch(src, /mainLoopRejectionCaptureEnabled/);
+
+  // Behavioral half of the same proof: run it with the env var unset/0 and with it set to "1" --
+  // plays/funnel must be byte-identical either way, since this file never reads it.
+  const ranked = [scored("AAA", "long", 68), scored("BBB", "short", 61)];
+  const chains = { AAA: chainAround(120), BBB: chainAround(80) };
+  const dossierMap = { AAA: dossier("AAA", 120), BBB: dossier("BBB", 80) };
+
+  delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+  const off = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED = "1";
+  const on = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  delete process.env.NIGHTHAWK_MAIN_LOOP_REJECTION_CAPTURE_ENABLED;
+
+  assert.deepEqual(off.plays, on.plays, "plays must be byte-identical regardless of the flag");
+  assert.deepEqual(off.funnel, on.funnel, "funnel must be byte-identical regardless of the flag");
+});
+
+test("Workstream C / #20's D1 (2026-09-21): a built play with a real contract carries the computed dte", () => {
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: chainAround(120, { expiry: ymdPlus(37) }) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  const p = plays.find((pl) => pl.ticker === "AAA")!;
+  assert.equal(p.dte, 37);
+});
+
+test("Workstream C / #20's D1: a stock-only play (no chain at all, overnight swing) carries dte=null, never a fabricated 0", () => {
+  const ranked = [scored("NOCHAIN", "long", 68)];
+  const chains = {}; // no chain for this ticker -- stock-only fallback path
+  const dossierMap = { NOCHAIN: dossier("NOCHAIN", 120) };
+  const { plays } = buildDeterministicEditionPlays({ ranked, dossierMap, chains, target: 5 });
+  const p = plays.find((pl) => pl.ticker === "NOCHAIN");
+  if (p) assert.equal(p.dte, null);
 });
 
 test("SHORT play has target below entry and stop above (correct short geometry)", () => {
@@ -291,6 +412,149 @@ test("pickChainContract rejects same-day expiry but accepts 3-day", () => {
   assert.equal(c!.expiry, threeDayExpiry, "3-day contract accepted; same-day rejected");
 });
 
+// ── preferAffordable: cost-preference tier (member complaint 2026-09-21 — MU's real $2,488/contract
+// ATM pick vs $52-$111 for the rest of that night's book, all from the same "nearest to spot" logic
+// applied to wildly different-priced underlyings). See constants.ts's own doc comments for the real
+// evidence (a live MU chain pull) grounding $8/share preferred and 0.15 delta floor. ──────────────
+
+/** An "expensive underlying" chain shaped like the real MU pull that motivated this fix: ATM is
+ *  affordable-tier-ineligible (too pricey), a real strike further OTM clears BOTH the preferred cost
+ *  and the delta floor, and a strike further still is cheap enough but has fallen into lotto-delta
+ *  territory and must NOT be preferred despite costing less. */
+function expensiveUnderlyingChain(): EditionChainData {
+  return {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: today's pick, too pricey to prefer
+      row(1050, { oi: 5_000, callAsk: 9.2, callBid: 8.8, callDelta: 0.25 }), // still above the $8 preferred cap
+      row(1060, { oi: 5_000, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // clears BOTH bars — should be preferred
+      row(1100, { oi: 5_000, callAsk: 3.2, callBid: 2.8, callDelta: 0.08 }), // cheaper still, but delta floor excludes it
+    ],
+  };
+}
+
+test("pickChainContract: without preferAffordable, unchanged nearest-to-spot (ATM) — zero regression", () => {
+  const c = pickChainContract(expensiveUnderlyingChain(), "long");
+  assert.equal(c?.strike, 1000, "default behavior is exactly today's — nearest to spot, cost/delta irrelevant");
+  assert.equal(c?.premium, 20);
+});
+
+test("pickChainContract: preferAffordable=true picks the nearest strike clearing BOTH the preferred cost and delta floor", () => {
+  const c = pickChainContract(expensiveUnderlyingChain(), "long", null, undefined, true);
+  assert.equal(c?.strike, 1060, "1050 fails the $8 preferred cap, 1000 (ATM) fails it too — 1060 is nearest-to-spot among strikes that clear both bars");
+  assert.equal(c?.premium, 7);
+  assert.equal(c?.caveat, undefined, "a preferred pick is a normal strict-pool contract, never caveated");
+});
+
+test("pickChainContract: preferAffordable never crosses the delta floor into a lotto strike, even though it's cheaper", () => {
+  const c = pickChainContract(expensiveUnderlyingChain(), "long", null, undefined, true);
+  assert.notEqual(c?.strike, 1100, "1100 is cheaper ($3.20 vs $7.20) but 0.08 delta is below the 0.15 floor — must not be picked over 1060");
+});
+
+test("pickChainContract: preferAffordable=true is a no-op when every row lacks delta (never regresses UW-sourced chains without greeks)", () => {
+  // chainAround-style fixture: cheap and liquid, but delta is null on every row (matches real UW rows,
+  // per ChainStrikeRow's own comment on greeks being source-dependent).
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      row(90, { oi: 5_000, callAsk: 5.2, callBid: 4.8 }),
+      row(100, { oi: 5_000, callAsk: 4.2, callBid: 3.8 }), // ATM
+      row(110, { oi: 5_000, callAsk: 1.2, callBid: 1.0 }),
+    ],
+  };
+  const withPref = pickChainContract(chain, "long", null, undefined, true);
+  const without = pickChainContract(chain, "long");
+  assert.deepEqual(withPref, without, "no delta data anywhere -> identical pick with or without the flag");
+  assert.equal(withPref?.strike, 100);
+});
+
+test("pickChainContract: preferAffordable=true reproduces today's exact pick when the ATM strike already clears both bars", () => {
+  // The real, common case for a cheap-underlying ticker (e.g. a $13-$26 stock): ATM premium and delta
+  // both already sit inside the preferred band, so the preferred subset's nearest-to-spot member IS
+  // the ATM strike itself — same output as the flag being off.
+  const chain: EditionChainData = {
+    spot: 20,
+    rows: [
+      row(18, { oi: 5_000, callAsk: 2.3, callBid: 2.1, callDelta: 0.7 }),
+      row(20, { oi: 5_000, callAsk: 1.15, callBid: 1.05, callDelta: 0.5 }), // ATM — already affordable + real delta
+      row(22, { oi: 5_000, callAsk: 0.55, callBid: 0.45, callDelta: 0.3 }),
+    ],
+  };
+  const withPref = pickChainContract(chain, "long", null, undefined, true);
+  const without = pickChainContract(chain, "long");
+  assert.deepEqual(withPref, without, "already-affordable ATM strike is unaffected by the preference tier");
+  assert.equal(withPref?.strike, 20);
+});
+
+test("pickChainContract: preferAffordable=true falls through to the unchanged ladder when NOTHING clears both bars", () => {
+  // Every strike is either too pricey or (once cheap enough) below the delta floor — no gap in
+  // between, unlike expensiveUnderlyingChain() above. Must fall back to plain nearest-to-spot.
+  const chain: EditionChainData = {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // too pricey
+      row(1150, { oi: 5_000, callAsk: 1.2, callBid: 1.0, callDelta: 0.05 }), // cheap enough but below delta floor
+    ],
+  };
+  const c = pickChainContract(chain, "long", null, undefined, true);
+  assert.equal(c?.strike, 1000, "no strike clears both bars -> unchanged nearest-to-spot ladder");
+});
+
+// ── preferAffordable pass 2: relaxed-OI fallback (live 2026-09-22 — the pass-1-only preference
+// shipped 2026-09-21 was itself a no-op on ALAB/TWLO: both had a real, quoted, cost+delta-qualifying
+// strike, just under the 500-OI tieredMinOi bar their $200+ spot requires — ALAB $430C real: $7.03,
+// 0.183Δ, 75 OI; TWLO $290C real: $6.10, 0.289Δ, 248 OI — landing on their $30.23 and $12.75 ATM
+// picks instead. See PREFERRED_OPTION_RELAXED_MIN_OI's own doc comment in constants.ts. ────────────
+
+/** Spot >= 200 so tieredMinOi is the real 500 floor (matches ALAB/TWLO). ATM is deep-liquidity but
+ *  too pricey to prefer; a further strike clears cost + delta but sits at oi=75 -- below the 500
+ *  floor (so it lands in relaxedOi, not strict) but above PREFERRED_OPTION_RELAXED_MIN_OI (50). */
+function thinButAffordableChain(): EditionChainData {
+  return {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: deep liquid, too pricey
+      row(1060, { oi: 75, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // affordable + real delta, thin OI
+    ],
+  };
+}
+
+test("pickChainContract: preferAffordable=true falls back to a thin-but-real (oi>=50) affordable strike when nothing in the deep-liquidity pool qualifies", () => {
+  const c = pickChainContract(thinButAffordableChain(), "long", null, undefined, true);
+  assert.equal(c?.strike, 1060, "1060 clears cost+delta and its oi=75 clears the relaxed floor -- must not fall all the way back to the $20 ATM pick");
+  assert.equal(c?.premium, 7);
+});
+
+test("pickChainContract: without preferAffordable, the thin-but-affordable strike is never reached -- zero regression on the ordinary ladder", () => {
+  const c = pickChainContract(thinButAffordableChain(), "long");
+  assert.equal(c?.strike, 1000, "ordinary nearest-to-spot ladder is untouched by the relaxed-OI fallback");
+});
+
+test("pickChainContract: relaxed-OI fallback still excludes a genuinely untradeable phantom-quote strike (oi below PREFERRED_OPTION_RELAXED_MIN_OI)", () => {
+  const chain: EditionChainData = {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: deep liquid, too pricey
+      row(1060, { oi: 3, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // affordable + real delta, but oi=3 (noise)
+    ],
+  };
+  const c = pickChainContract(chain, "long", null, undefined, true);
+  assert.equal(c?.strike, 1000, "oi=3 is below even the relaxed floor -- must fall through to the unchanged ordinary ladder, not pick a near-untradeable strike");
+});
+
+test("pickChainContract: a strict-pool affordable strike is always preferred over a thinner relaxed-pool one, even if the relaxed one is nearer to spot", () => {
+  const chain: EditionChainData = {
+    spot: 1000,
+    rows: [
+      row(1000, { oi: 5_000, callAsk: 20.2, callBid: 19.8, callDelta: 0.5 }), // ATM: too pricey
+      row(1055, { oi: 60, callAsk: 7.5, callBid: 7.1, callDelta: 0.19 }), // nearer to spot, but thin (relaxed pool)
+      row(1060, { oi: 5_000, callAsk: 7.2, callBid: 6.8, callDelta: 0.18 }), // farther, but deeply liquid (strict pool)
+    ],
+  };
+  const c = pickChainContract(chain, "long", null, undefined, true);
+  assert.equal(c?.strike, 1060, "a real strict-pool affordable candidate must win over a nearer but thinner relaxed-pool one -- liquidity safety still comes first when a real liquid option exists");
+});
+
 test("thesis is grounded in the score breakdown and cites the leading driver", () => {
   const s = scored("XYZ", "long", 66);
   const { thesis, key_signal } = buildDeterministicThesis(s, dossier("XYZ", 120));
@@ -329,6 +593,233 @@ test("R:R display: a ratio safely inside a label band still prints its true roun
   assert.match(thesis, /R:R 1\.5:1 \(favorable\)/);
 });
 
+test("thesis quotes the actual catalyst when news is a top scoring driver (2026-09-12: news_score could make key_signal but the thesis text never said why)", () => {
+  // flow(18) > news(20)? no -- set news above tech/pos/smart so it lands in the top-2 by
+  // |value| alongside flow, without needing to also touch flow itself.
+  const s = { ...scored("NEWS", "long", 66), news_score: 15 };
+  const d = dossier("NEWS", 100, {
+    polygon_sentiment: ["positive: strong iPhone pre-order checks from supply chain", "negative: unrelated bearish note"],
+    news_headlines: ["Some plain headline"],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /news/, "news must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Catalyst: "strong iPhone pre-order checks from supply chain"\./,
+    "must quote the DIRECTION-MATCHING (positive, for a long) sentiment entry, sentiment tag stripped");
+});
+
+test("thesis catalyst falls back to a plain headline when no polygon_sentiment exists", () => {
+  const s = { ...scored("HDLN", "short", 66), news_score: 15 };
+  const d = dossier("HDLN", 100, {
+    direction: "short",
+    polygon_sentiment: [],
+    news_headlines: ["Analyst downgrades HDLN on weak guidance"],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Catalyst: "Analyst downgrades HDLN on weak guidance"\./);
+});
+
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13):
+// pickCatalystHeadline fell back to `sentiment[0]` regardless of ITS OWN tag when no
+// direction-matching entry existed. scoreNewsCatalyst can make news a top driver purely from a
+// plain-text keyword hit (upgrade/beat/etc.) in `news_headlines`, entirely independent of what's
+// tagged in `polygon_sentiment` -- so a LONG pick could quote a "negative:"-tagged sentiment
+// entry as its "Catalyst:" line, presenting bearish-toned evidence as support for a bullish
+// thesis.
+test("thesis catalyst never quotes a sentiment entry of the OPPOSITE direction (fabricated-catalyst-agreement bug)", () => {
+  const s = { ...scored("OPPOSITE", "long", 45), news_score: 3, flow_score: 2, tech_score: 2, pos_score: 1, smart_money_score: 0 };
+  const d = dossier("OPPOSITE", 100, {
+    // No positive-tagged entry exists at all -- only negative ones.
+    polygon_sentiment: ["negative: guidance disappoints analysts", "negative: margin compression continues"],
+    news_headlines: ["Company reports strong beat on quarterly earnings"],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /news/, "news must actually be the top driver for this fixture to test anything");
+  assert.match(thesis, /Catalyst: "Company reports strong beat on quarterly earnings"\./,
+    "must fall back to the plain headline that actually drove the score, not an opposite-direction sentiment tag");
+  assert.doesNotMatch(thesis, /disappoints|margin compression/, `must never quote bearish sentiment as a bullish catalyst, got: ${thesis}`);
+});
+
+test("thesis catalyst is omitted (never fabricated) when news is a top driver but no headline/sentiment data exists", () => {
+  const s = { ...scored("EMPTY", "long", 66), news_score: 15 };
+  const d = dossier("EMPTY", 100, { polygon_sentiment: [], news_headlines: [] } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Catalyst:/);
+});
+
+test("thesis catalyst stays quiet when news is NOT a top driver, even with real headlines present (keeps thesis scoped to what actually drove the score)", () => {
+  const s = scored("QUIET", "long", 66); // default news_score: 2, well below the top-2 cut
+  const d = dossier("QUIET", 100, {
+    polygon_sentiment: ["positive: this should not appear -- news wasn't a driver here"],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Catalyst:/);
+});
+
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13): the thesis's
+// flow-streak sentence used the PLAY's own direction word (dirWord) to label a TICKER-level flow
+// streak that is measured independently (a 10-day DB rollup of net daily premium, per
+// flow-streak.ts) and can legitimately disagree with the play's chosen direction -- exactly the
+// same disagreement scorer.ts's scoreFlowQuality already guards its own scoring bonus against
+// (`flowStreak.direction === direction`). A real 4-day PUT-dominated (bearish) streak on a LONG
+// play rendered as "4-day bullish flow streak" -- fabricated corroboration, the opposite of what
+// the streak data showed.
+test("thesis flow-streak sentence uses the STREAK's own measured direction, not the play's direction (fabricated-corroboration bug)", () => {
+  const s = { ...scored("MISMATCH", "long", 55), flow_score: 30 };
+  const d = dossier("MISMATCH", 100, {
+    flow_streak: { streak_days: 4, direction: "short", net_3d: -1_000_000, net_5d: -2_000_000 },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /4-day bearish flow streak/, `expected the streak's true (bearish) direction, got: ${thesis}`);
+  assert.doesNotMatch(thesis, /4-day bullish flow streak/, `must not fabricate agreement with the LONG play's direction, got: ${thesis}`);
+});
+
+test("thesis flow-streak sentence still reads correctly when the streak direction genuinely agrees with the play", () => {
+  const s = { ...scored("AGREE", "long", 55), flow_score: 30 };
+  const d = dossier("AGREE", 100, {
+    flow_streak: { streak_days: 3, direction: "long", net_3d: 1_000_000, net_5d: 2_000_000 },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /3-day bullish flow streak/);
+});
+
+test("thesis flow-streak sentence falls back to the play's direction when a dossier carries no streak direction at all (defensive default, unchanged from before)", () => {
+  const s = { ...scored("NODIR", "long", 55), flow_score: 30 };
+  const d = dossier("NODIR", 100); // default fixture's flow_streak has no `direction` field
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /3-day bullish flow streak/);
+});
+
+test("thesis names congressional buying when smart-money is a top scoring driver", () => {
+  const s = { ...scored("CONG", "long", 66), smart_money_score: 15 };
+  const d = dossier("CONG", 100, {
+    congress_unusual: [{ txn_type: "purchase", filed_at: "2026-09-01" }],
+    congress_trades: [],
+    institutional_activity: [],
+    predictions_signal: null,
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /smart-money/, "smart-money must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Smart money: recent congressional buying disclosed\./);
+});
+
+test("thesis falls back to institutional flow when no congressional data exists", () => {
+  const s = { ...scored("INST", "short", 66), smart_money_score: 15 };
+  const d = dossier("INST", 100, {
+    direction: "short",
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [{ action: "reduced position" }],
+    predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: institutional distribution flagged\./);
+});
+
+test("thesis falls back to institutional flow using the real UW `units_changed` field (BUG FIX 2026-09-12)", () => {
+  // Regression: real UW /api/institution/{ticker}/ownership rows carry the share delta as
+  // `units_changed` (trailing "d"), never `units_change`/`change`/etc, and carry no action/
+  // transaction_type field at all. A fixture using only the guessed field names would pass
+  // even on the old, broken fallback chain -- this uses the REAL shape to prove the fix.
+  const s = { ...scored("INSTREAL", "long", 66), smart_money_score: 15 };
+  const d = dossier("INSTREAL", 100, {
+    direction: "long",
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [{ name: "BLACKROCK, INC.", units: "1162996939", units_changed: "18301514" }],
+    predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: institutional accumulation flagged\./);
+});
+
+test("thesis falls back to the prediction-market's own headline when no congress/institutional data exists", () => {
+  const s = { ...scored("PRED", "long", 66), smart_money_score: 15 };
+  const d = dossier("PRED", 100, {
+    congress_unusual: [],
+    congress_trades: [],
+    institutional_activity: [],
+    predictions_signal: { ticker: "PRED", direction: "bullish", confidence_pct: 68, sources: ["polymarket"], headline: "Polymarket: 68% odds PRED beats on guidance" },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Smart money: Polymarket: 68% odds PRED beats on guidance\./);
+});
+
+test("thesis smart-money note is omitted (never fabricated) when smart-money is a top driver but no aligned evidence exists", () => {
+  const s = { ...scored("NOEV", "long", 66), smart_money_score: 15 };
+  const d = dossier("NOEV", 100, {
+    congress_unusual: [], congress_trades: [], institutional_activity: [], predictions_signal: null,
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Smart money:/);
+});
+
+test("thesis smart-money note stays quiet when smart-money is NOT a top driver, even with real congressional data present", () => {
+  const s = scored("QUIETSM", "long", 66); // default smart_money_score: 3, below tech(12)/pos(6) -- not top-2
+  const d = dossier("QUIETSM", 100, {
+    congress_unusual: [{ txn_type: "purchase", filed_at: "2026-09-01" }],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Smart money:/);
+});
+
+test("thesis names dark-pool prints when positioning is a top scoring driver", () => {
+  const s = { ...scored("DPPOS", "long", 66), pos_score: 15 };
+  const d = dossier("DPPOS", 100, {
+    dark_pool: { prints: [], total_premium: 8_000_000, call_premium: 8_000_000, put_premium: 0, bias: "bullish", pcr: null, detail: "" },
+    strike_stacks: [],
+    oi_change: [],
+  } as any);
+  const { thesis, key_signal } = buildDeterministicThesis(s, d);
+  assert.match(key_signal, /positioning/, "positioning must actually be a top-2 driver for this fixture to test anything");
+  assert.match(thesis, /Positioning: dark-pool prints leaning bullish\./);
+});
+
+test("thesis falls back to strike-stack accumulation when no aligned dark-pool bias exists", () => {
+  const s = { ...scored("STACKPOS", "short", 66), pos_score: 15 };
+  const d = dossier("STACKPOS", 100, {
+    direction: "short",
+    dark_pool: null,
+    strike_stacks: [
+      { ticker: "STACKPOS", strike: 95, option_type: "put", expiry: "2026-12-18", alert_count: 4, total_premium: 2_000_000, premiums: [500_000], trade_count: 4, repeated_hits: true, same_strike_accumulation: true, alert_rules: [], kind: "repeated_and_stacked" },
+    ],
+    oi_change: [],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Positioning: repeated same-strike accumulation on the aligned side\./);
+});
+
+test("thesis falls back to rising aligned OI using the real UW `kind` field (not `option_type`)", () => {
+  const s = { ...scored("OIPOS", "long", 66), pos_score: 15 };
+  const d = dossier("OIPOS", 100, {
+    dark_pool: null,
+    strike_stacks: [],
+    oi_change: [
+      { strike: 100, oi_change: 1200, kind: "call" },
+      { strike: 105, oi_change: 800, kind: "call" },
+    ],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Positioning: rising aligned open interest\./);
+});
+
+test("thesis positioning note is omitted (never fabricated) when positioning is a top driver but no aligned evidence exists", () => {
+  const s = { ...scored("NOEVPOS", "long", 66), pos_score: 15 };
+  const d = dossier("NOEVPOS", 100, {
+    dark_pool: null, strike_stacks: [], oi_change: [],
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Positioning:/);
+});
+
+test("thesis positioning note stays quiet when positioning is NOT a top driver, even with real dark-pool data present", () => {
+  const s = scored("QUIETPOS", "long", 66); // default pos_score: 6, below flow(18)/tech(12) -- not top-2
+  const d = dossier("QUIETPOS", 100, {
+    dark_pool: { prints: [], total_premium: 8_000_000, call_premium: 8_000_000, put_premium: 0, bias: "bullish", pcr: null, detail: "" },
+  } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.doesNotMatch(thesis, /Positioning:/);
+});
+
 test("score floor: candidates below MIN_PUBLISH_SCORE (38) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),
@@ -355,6 +846,40 @@ test("thesis explains flow/tech divergence when direction opposes trend (PR-N28)
   const d = dossier("COIN", 160, { tech: { ...dossier("COIN", 160).tech!, trend: "bearish" } } as any);
   const { thesis } = buildDeterministicThesis(s, d);
   assert.match(thesis, /Flow conviction overrides bearish technicals/);
+});
+
+// Regression (Night Hawk Legacy aggressive-improvement-hunting audit, 2026-09-13): the
+// trend-conflict sentence hard-coded "Flow conviction overrides... institutional money is
+// {dirWord}" whenever the technical trend disagreed with the play's final direction, REGARDLESS
+// of whether flow had anything to do with the pick. A candidate driven entirely by news+smart-
+// money with flow_score:0 still claimed a flow signal that never existed.
+test("trend-conflict sentence names the ACTUAL top driver, not a hard-coded 'flow' claim (fabricated-attribution bug)", () => {
+  const s = {
+    ...scored("NEWSDRIVEN", "long", 45),
+    flow_score: 0,
+    tech_score: 5,
+    pos_score: 3,
+    news_score: 20,
+    smart_money_score: 15,
+  };
+  const d = dossier("NEWSDRIVEN", 100, { tech: { ...dossier("NEWSDRIVEN", 100).tech!, trend: "bearish" } } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /News conviction overrides bearish technicals/, `expected the real top driver named, got: ${thesis}`);
+  assert.doesNotMatch(thesis, /Flow conviction|institutional money/, `must not invent a flow signal that never existed, got: ${thesis}`);
+});
+
+test("trend-conflict sentence still uses the original flow wording when flow genuinely IS the top driver", () => {
+  const s = {
+    ...scored("FLOWDRIVEN", "long", 45),
+    flow_score: 30,
+    tech_score: 2,
+    pos_score: 1,
+    news_score: 1,
+    smart_money_score: 0,
+  };
+  const d = dossier("FLOWDRIVEN", 100, { tech: { ...dossier("FLOWDRIVEN", 100).tech!, trend: "bearish" } } as any);
+  const { thesis } = buildDeterministicThesis(s, d);
+  assert.match(thesis, /Flow conviction overrides bearish technicals — institutional money is bullish/);
 });
 
 test("thesis keeps a gap tag paired with its own gap-fill explanation instead of truncating it away", () => {
@@ -968,6 +1493,39 @@ test("no bangerTickers passed → no play gets a scale-out note (backwards compa
   assert.equal(plays[0]?.risk_note, undefined);
 });
 
+// 2026-09-22: found live on Night Hawk Legacy — a banger-lane ticker whose ACTUAL picked contract
+// is a 25-DTE, non-cheap monthly still got the unconditional "cheap OTM weeklies spike then decay"
+// risk_note, which is flatly false about the specific contract the member is holding. Fixed by
+// threading the play's own real `dte` into bangerScaleOutNote() (scale-out.ts).
+test("banger risk_note reflects the ACTUAL contract's DTE: near-term stays 'weekly', far-dated names its real DTE", () => {
+  const rankedNear = [scored("AAA", "long", 68)];
+  const nearChain = { AAA: chainAround(120, { expiry: ymdPlus(4) }) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const { plays: nearPlays } = buildDeterministicEditionPlays({
+    ranked: rankedNear,
+    dossierMap,
+    chains: nearChain,
+    target: 5,
+    bangerTickers: new Set(["AAA"]),
+  });
+  assert.equal(nearPlays[0]?.dte, 4);
+  assert.match(nearPlays[0]?.risk_note ?? "", /cheap OTM weeklies/, "near-term (<=10 DTE) keeps the weekly framing");
+
+  const rankedFar = [scored("BBB", "long", 68)];
+  const farChain = { BBB: chainAround(120, { expiry: ymdPlus(25) }) };
+  const dossierMapFar = { BBB: dossier("BBB", 120) };
+  const { plays: farPlays } = buildDeterministicEditionPlays({
+    ranked: rankedFar,
+    dossierMap: dossierMapFar,
+    chains: farChain,
+    target: 5,
+    bangerTickers: new Set(["BBB"]),
+  });
+  assert.equal(farPlays[0]?.dte, 25);
+  assert.doesNotMatch(farPlays[0]?.risk_note ?? "", /weeklies/i, "25-DTE play must not claim to be a weekly");
+  assert.match(farPlays[0]?.risk_note ?? "", /This 25-DTE contract can still spike/);
+});
+
 // ── buildRescuePlays sector propagation ─────────────────────────────────────────
 // Regression: buildRescuePlays omitted `sector` from the play object, breaking
 // the cross-edition governor's per-sector cap.
@@ -1117,4 +1675,75 @@ test("buildDeterministicEditionPlays: overnight swing mode (maxDte=null) builds 
   // Swing mode should accept the 7-DTE contract (meets the ≥5 DTE requirement).
   assert.equal(plays.length, 1, "overnight swing builds the 7-DTE contract");
   assert.equal(plays[0]!.ticker, "AAA");
+});
+
+// ── Legacy edition DTE weekend gap fix ──────────────────────────────────────────
+// Regression (2026-09-28): pickChainContract anchored contract DTE on wall-clock
+// build date (todayEtYmd) instead of the edition's target date (edition_for).
+// On a Friday-built edition for Monday, a Monday-expiring contract would pass the
+// 2-day minimum (measured from Friday) and ship as a normal swing — but by Monday
+// morning when members read/trade it, it's actually 0-DTE. Fix: thread edition_for
+// through and use it instead of todayEtYmd for DTE anchoring in pickChainContract.
+
+test("pickChainContract: Friday edition for Monday respects edition_for for DTE anchoring", () => {
+  // Simulate: Friday today, Monday edition target.
+  const friday = "2026-09-25"; // arbitrary Friday
+  const monday = "2026-09-28"; // 3 days later
+  
+  // Chain with a Monday-expiring contract (would be 2-DTE from Friday, 0-DTE from Monday).
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      // Monday expiry: passes 2-day minimum from Friday (2 days out), fails from Monday (0 days out).
+      row(100, { expiry: monday, callAsk: 4.2, callBid: 3.8, oi: 5000 }),
+      // Friday + 7 days (far dated, always passes).
+      row(100, { expiry: "2026-10-02", callAsk: 4.2, callBid: 3.8, oi: 5000 }),
+    ],
+  };
+
+  // WITHOUT edition_for (legacy behavior): Monday contract passes 2-day filter from Friday.
+  const legacyPick = pickChainContract(chain, "long", null, undefined, true, friday);
+  assert.ok(legacyPick, "legacy: Monday contract accepted with Friday as anchor");
+  assert.equal(legacyPick!.expiry, monday, "legacy: picks the Monday contract");
+
+  // WITH edition_for=Monday (fixed behavior): Monday contract is 0-DTE, rejected; falls through to shortDated pool.
+  // The short-dated pool accepts Monday's Monday contract only if premium ≤ cap, so it still appears here,
+  // but marked as a last-resort pick. Actually, let me reconsider: the logic is:
+  // - If maxDte is null/undefined (swing mode), contracts must have expiry > today (> Monday).
+  // - Monday = Monday fails this check, so it's skipped entirely.
+  // - Only the Friday+7 contract passes. Let me verify the logic in pickChainContract...
+  
+  // Actually, looking at the code: when dayMode is false and maxDte is null:
+  // - row.expiry <= today → skip (line 301 says "Swing never trades a same-day expiry")
+  // - So Monday (today) gets skipped, and only the far-dated contract is considered.
+  
+  const fixedPick = pickChainContract(chain, "long", null, undefined, true, monday);
+  assert.ok(fixedPick, "fixed: still picks a contract (the far-dated one)");
+  assert.equal(fixedPick!.expiry, "2026-10-02", "fixed: rejects Monday (0-DTE), picks far-dated");
+});
+
+// GAP FOUND (2026-09-28, nighthawk lane, PR #5536 follow-up): the fix above corrected contract
+// SELECTION (pickChainContract) to anchor on edition_for, but buildPlay's own displayed `dte` field
+// still read raw todayEtYmd() -- unaffected by the fix even though buildPlay already accepted
+// asOfEtYmd as a parameter and every call site already passed params.edition_for. A Friday-built
+// Monday edition would therefore show a materially overstated dte on any surviving pick, even after
+// the 0-DTE-by-target-day contracts were correctly filtered out of selection. Anchors the far-future
+// edition_for used here well outside any plausible real "today" at test-run time, so a regression
+// back to todayEtYmd() would produce a wildly different (and wrong) dte instead of matching by luck.
+test("buildDeterministicEditionPlays: displayed dte anchors on edition_for, not build-time today", () => {
+  const editionFor = "2030-01-04"; // arbitrary far-future date, never the real "today" at test-run time
+  const expiry = "2030-01-14"; // editionFor + 10 days
+  const ranked = [scored("FUT", "long", 68)];
+  const chains = { FUT: chainAround(120, { expiry }) };
+  const dossierMap = { FUT: dossier("FUT", 120) };
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    edition_for: editionFor,
+  });
+  const p = plays.find((pl) => pl.ticker === "FUT")!;
+  assert.ok(p, "play built for FUT");
+  assert.equal(p.dte, 10, "dte anchored on edition_for, not real build-time today");
 });

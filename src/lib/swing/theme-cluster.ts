@@ -50,6 +50,9 @@ export const CORRELATION_THEMES: Readonly<Record<string, ReadonlySet<string>>> =
  *  - QQQ / QQQM / NDX: the Nasdaq-100 is ~50% mega-cap tech + semis; it lives and dies with NVDA/AAPL/MSFT.
  *  - SMH / SOXX / SOXL / SOXS: pure semiconductor ETFs — literally the NVDA/AMD/AVGO basket.
  *  - XLK: tech-select sector SPDR, mega-cap-tech-dominated.
+ *  - XRP / XRPZ / XXRP: three separate wrapper tickers on the SAME underlying token — not equities, so they
+ *    get their own cluster ("crypto-xrp") rather than folding into sectorFor's "crypto-equity" (mining/holding
+ *    equities like COIN/MSTR track a different, broader risk driver than one token's own price).
  * This is the override that makes `sameThesis("QQQ","NVDA") === true` (SEV-9 invariant).
  */
 export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze({
@@ -61,6 +64,9 @@ export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze(
   SOXL: "semis",
   SOXS: "semis",
   XLK: "semis",
+  XRP: "crypto-xrp",
+  XRPZ: "crypto-xrp",
+  XXRP: "crypto-xrp",
 });
 
 function normalize(ticker: string | null | undefined): string {
@@ -103,4 +109,33 @@ export function sameThesis(a: string | null | undefined, b: string | null | unde
   const nb = normalize(b);
   if (!na || !nb) return false; // an unknown side is not a match
   return resolveTheme(na) === resolveTheme(nb);
+}
+
+/**
+ * Human-readable label for a theme key, for narrative/UI copy that quotes `resolveTheme`'s
+ * output directly (`theme "${theme}"` in play-brief-intel.ts/play-brief.ts). `NAME:<TICKER>` is
+ * an internal sentinel — "no shared theme was found, this ticker is its own cluster" — never a
+ * real theme name; a caller that interpolates it raw leaks the sentinel into trader-facing prose
+ * (caught live 2026-09-18: BYND's own Book context/evidence line literally read `theme "NAME:BYND"`,
+ * because two concurrent BYND positions share this own-cluster key and no call site stripped the
+ * prefix before display). Strip it here so every display call site gets the same clean label
+ * without re-deriving the sentinel format.
+ */
+export function themeDisplayLabel(theme: string): string {
+  return theme.startsWith(OWN_CLUSTER_PREFIX) ? theme.slice(OWN_CLUSTER_PREFIX.length) : theme;
+}
+
+/** True when `theme` is an own-cluster sentinel (`NAME:<TICKER>`) rather than a real shared theme. */
+export function isOwnClusterTheme(theme: string): boolean {
+  return theme.startsWith(OWN_CLUSTER_PREFIX);
+}
+
+/**
+ * Full narrative phrase for a theme overlap — `theme "software"` for a real shared theme, or
+ * `the same name (BYND)` for an own-cluster overlap (which can only mean the SAME ticker held
+ * twice, per `resolveTheme`'s own-cluster derivation: two distinct unmapped tickers never share
+ * a `NAME:` key). Callers should use this in place of hand-building `theme "${theme}"`.
+ */
+export function describeThemeOverlap(theme: string): string {
+  return isOwnClusterTheme(theme) ? `the same name (${themeDisplayLabel(theme)})` : `theme "${theme}"`;
 }

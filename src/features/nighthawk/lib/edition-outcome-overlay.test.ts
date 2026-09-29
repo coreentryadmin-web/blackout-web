@@ -53,3 +53,41 @@ test("buildOutcomeOverlayMap + applyEditionOutcomeOverlay merge tier pins", () =
   assert.equal(play.tier?.factors.length, 1);
   assert.equal(play.morning_checked_at, "2026-08-07T13:16:00.000Z");
 });
+
+// Bug (found 2026-09-16, live audit): publish_context.tier is the RAW tier-engine assignment
+// (assignNighthawkTier over the scored candidate), pinned independently of whether the play was
+// later gate-promoted. capGatePromotedConviction (publish-gates.ts) caps a gate_promoted play's
+// displayed conviction at "B" at BUILD time; this overlay runs on every live edition read and was
+// unconditionally re-deriving conviction from the raw tier pin, silently re-inflating a capped "B"
+// back to "A" on every read -- exactly the "mechanically blocked A reading as top-tier merit"
+// publish-gates.ts's own cap exists to prevent.
+test("applyEditionOutcomeOverlay does not undo the gate-promote conviction cap on a re-read", () => {
+  const gatePromotedEdition: NightHawkEdition = {
+    ...edition,
+    plays: [
+      {
+        ...edition.plays[0]!,
+        conviction: "B", // already capped at publish time by capGatePromotedConviction
+        gate_promoted: true,
+      },
+    ],
+  };
+
+  const overlays = buildOutcomeOverlayMap([
+    {
+      ticker: "NVDA",
+      publish_context: {
+        context_version: 2,
+        // The tier engine's RAW assignment is "A" -- what the play would have shown had it not
+        // been a mechanically-rescued gate-promote.
+        tier: { tier: "a", factors: [{ label: "Prime band", direction: "up", detail: "40-55 score band" }] },
+      },
+      morning_verdict: null,
+    },
+  ]);
+
+  const merged = applyEditionOutcomeOverlay(gatePromotedEdition, overlays);
+  const play = merged.plays[0] as { conviction?: string; gate_promoted?: boolean };
+  assert.equal(play.gate_promoted, true);
+  assert.equal(play.conviction, "B", "gate-promoted play must stay capped at B, not re-inflate to the raw tier pin's A");
+});

@@ -23,11 +23,6 @@ export function isEtCashRth(now = new Date()): boolean {
   return mins >= etClock(9, 30) && mins <= close;
 }
 
-/** @deprecated Alias — prefer isEtCashRth for early-close correctness. */
-export function isEtMarketHours(now = new Date()): boolean {
-  return isEtCashRth(now);
-}
-
 /**
  * Extended cache-warm window: weekday trading days, 4:00 AM–8:00 PM ET (the standard US-equity
  * pre-market + cash + after-hours span). The cache-warm crons (grid/heatmap/desk/nights-watch —

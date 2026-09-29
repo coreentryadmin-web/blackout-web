@@ -24,6 +24,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { splitAtHeadingBoundaries } from "./lib/findings-entry-set.mjs";
 
 const FINDINGS = process.env.FINDINGS_RECONCILE_FINDINGS ?? "docs/audit/FINDINGS.md";
 const APPLY = process.argv.includes("--apply");
@@ -108,7 +109,10 @@ function presentInTree(sym) {
 }
 
 const src = readFileSync(FINDINGS, "utf8");
-const parts = src.split(/\n(?=## )/);
+// Fence-aware split (2026-09-17, Ask Largo standing mandate) — see findings-entry-set.mjs's
+// splitAtHeadingBoundaries doc comment: a naive split fragments a finding whose Evidence section
+// quotes a `## `-heading inside a ``` fence.
+const parts = splitAtHeadingBoundaries(src);
 const verified = [];
 const unproven = [];
 

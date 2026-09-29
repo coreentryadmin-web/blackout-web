@@ -432,6 +432,34 @@ test("flowAlertToPulseSignal: directionless print above threshold → null (2026
   assert.equal(flowAlertToPulseSignal(flow, 8000), null);
 });
 
+// BUG FIX (2026-09-22, Ask Largo standing mandate): every test above uses a lowercase
+// "call"/"put" `option_type` fixture, but the REAL runtime shape served by `/api/market/flows`
+// (db.ts's `fetchRecentFlows` + unusual-whales.ts's `parseUwFlowAlert`/`parseOccSymbol`) is always
+// UPPERCASE ("CALL"/"PUT"/"UNKNOWN") — the exact case-shape trap #5405 found in HELIX's print-table
+// renderer the same day. These two tests use the REAL production shape and would have caught the
+// bug (both isBullish/isBearish comparisons silently always-false, dropping every real flow print).
+test("flowAlertToPulseSignal: REAL uppercase option_type (production shape) — call buy still bulls", () => {
+  const flow: FlowAlert = {
+    ticker: "SPY", premium: 1_200_000, option_type: "CALL", expiry: "2026-07-16",
+    strike: 560, direction: "buy", score: 90, route: "SWEEP", alerted_at: "2026-07-16T14:00:00Z",
+  };
+  const sig = flowAlertToPulseSignal(flow, 6000);
+  assert.ok(sig, "a real $1.2M CALL buy print must produce a signal, not be silently dropped");
+  assert.equal(sig!.tone, "bull");
+  assert.ok(sig!.line.includes("560C"));
+});
+
+test("flowAlertToPulseSignal: REAL uppercase option_type (production shape) — put buy still bears", () => {
+  const flow: FlowAlert = {
+    ticker: "SPX", premium: 1_100_000, option_type: "PUT", expiry: "2026-07-16",
+    strike: 5500, direction: "buy", score: 85, route: "BLOCK", alerted_at: "2026-07-16T14:05:00Z",
+  };
+  const sig = flowAlertToPulseSignal(flow, 7000);
+  assert.ok(sig, "a real $1.1M PUT buy print must produce a signal, not be silently dropped");
+  assert.equal(sig!.tone, "bear");
+  assert.ok(sig!.line.includes("5500P"));
+});
+
 // ---------------------------------------------------------------------------
 // Additive curation primitives (2026-07-26) — proving they exist and that the
 // Vector detector still emits legacy signals WITHOUT the new optional fields.

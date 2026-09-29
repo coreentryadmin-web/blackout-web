@@ -70,6 +70,81 @@ test("meridianPeerEarningsCoaching: peer beat rates when cohort available", () =
   assert.match(line!, /75% beat/i);
 });
 
+test("meridianPeerEarningsCoaching: surfaces the SUBJECT ticker's own beat rate/reaction, not just peers'", () => {
+  const line = meridianPeerEarningsCoaching(
+    {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "BBWI",
+          report_date: "2026-05-10",
+          expected_move_pct: 8.5,
+          avg_reaction_pct: 3.2,
+          reaction_sample_n: 5,
+          beat_rate: 0.8,
+          beat_rate_n: 5,
+          is_subject: true,
+        },
+        {
+          ticker: "ULTA",
+          report_date: "2026-09-05",
+          expected_move_pct: 6,
+          avg_reaction_pct: -2,
+          reaction_sample_n: 4,
+          beat_rate: 0.75,
+          beat_rate_n: 4,
+          is_subject: false,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    earningsItem(),
+  );
+  // The subject's own history must be present (this is the whole point of the fix)...
+  assert.match(line!, /this ticker's own print history: 80% beat/i);
+  assert.match(line!, /avg reaction \*\*\+3\.2%\*\* \(n=5\)/);
+  // ...alongside, not instead of, the peer history that already worked.
+  assert.match(line!, /ULTA/i);
+  assert.match(line!, /75% beat/i);
+});
+
+test("meridianPeerEarningsCoaching: omits the subject's own line when its sample is thin (never fabricates a rate)", () => {
+  const line = meridianPeerEarningsCoaching(
+    {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        {
+          ticker: "BBWI",
+          report_date: "2026-05-10",
+          expected_move_pct: 8.5,
+          avg_reaction_pct: 3.2,
+          reaction_sample_n: 2,
+          beat_rate: 1,
+          beat_rate_n: 2,
+          is_subject: true,
+        },
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    earningsItem(),
+  );
+  assert.doesNotMatch(line!, /own print history/i);
+});
+
 test("meridianPeerEarningsCoaching: surfaces sector_label and interpretation", () => {
   const line = meridianPeerEarningsCoaching(
     {

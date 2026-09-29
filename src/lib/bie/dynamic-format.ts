@@ -2,6 +2,7 @@ import type { BieAnswerEnvelope, BieLevel, BieTable } from "@/lib/bie/answer-env
 import { makeEnvelope } from "@/lib/bie/answer-envelope";
 import type { BieComposed } from "@/lib/bie/composers-shared";
 import { isRichBieEnvelope } from "@/lib/bie/envelope-richness";
+import { optionSideSuffix } from "@/lib/bie/helix-read-intent";
 import { markdownBullets, markdownTable } from "@/lib/bie/markdown-table";
 import { inferAnswerShape } from "@/lib/bie/response-shape";
 import type { BieRoute } from "@/lib/bie/router";
@@ -121,9 +122,16 @@ function formatHelixPrintTable(
   const topNMatch = question?.match(/\btop\s+(\d+)\b/i);
   const n = topNMatch ? Math.min(15, Math.max(1, Number(topNMatch[1]))) : 3;
   const sorted = [...rows_src].sort((a, b) => (b.premium ?? 0) - (a.premium ?? 0));
+  // BUG FIX (2026-09-22, Ask Largo standing mandate). `option_type` is ALWAYS uppercase from every
+  // real producer (FlowAlert is typed "CALL"|"PUT"; computeFlowStrikeStacks normalizes to
+  // "CALL"/"PUT" too — see helix-read-intent.ts's own header, which fixed the identical defect in
+  // this file's PROSE sibling via `optionSideSuffix`). The old `p.option_type === "put"` compared
+  // that uppercase value against a lowercase literal — ALWAYS false — so this TABLE renderer
+  // mislabeled every real PUT print as a call. `optionSideSuffix` is case-insensitive and returns
+  // "?" for a genuinely unknown side rather than guessing.
   const rows = sorted.slice(0, n).map((p) => [
     p.ticker ?? "—",
-    `${p.strike ?? "—"}${p.option_type === "put" ? "p" : "c"}`,
+    `${p.strike ?? "—"}${optionSideSuffix(p.option_type)}`,
     `$${fmt(p.premium, 0)}`,
     p.direction ?? "—",
   ]);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert";
-import { withFallbacks, globalDiagnostics } from "./diagnostics.js";
+import { withFallbacks, globalDiagnostics, recordDataSourceing, recordGateReject, MAX_DIAGNOSTIC_TRAILS, MAX_GATE_REJECTIONS } from "./diagnostics.js";
 
 test("withFallbacks executes sources in order and returns first success", async () => {
   const calls: string[] = [];
@@ -104,4 +104,37 @@ test("Diagnostics records data sourcing attempts with full details", async () =>
   assert(trails[0]?.attempts.length === 1, "Should have 1 attempt");
   assert(trails[0]?.attempts[0]?.ok === true, "Attempt should be marked successful");
   assert.strictEqual(trails[0]?.final_value, 42, "Should record final value");
+});
+
+// Regression (Night Hawk standing performance/latency audit mandate, 2026-09-13):
+// globalDiagnostics is a module-level singleton with no consumer in production
+// (grep confirms .summary() is called only from this test file) and no reset/eviction —
+// recordDataSourceing is called 3x per ticker from polygon-largo.ts's
+// fetchPolygonMtfTechnicals, a hot path invoked for every ticker across every Night Hawk
+// product's build, so the trails/gateRejections arrays grew without bound for the life
+// of the container. Bounded to a ring buffer so old entries age out instead of
+// accumulating forever.
+test("globalDiagnostics.trails is bounded — old entries age out instead of growing forever", () => {
+  for (let i = 0; i < MAX_DIAGNOSTIC_TRAILS + 50; i++) {
+    recordDataSourceing(`T${i}`, "stage", [{ source: "s", ok: true }], i);
+  }
+  const summary = globalDiagnostics.summary("test", 0, 0, 0);
+  assert.ok(
+    summary.data_sourcing_trails.length <= MAX_DIAGNOSTIC_TRAILS,
+    `expected at most ${MAX_DIAGNOSTIC_TRAILS} retained trails, got ${summary.data_sourcing_trails.length}`
+  );
+  // Most-recent entries survive, not the oldest.
+  const last = summary.data_sourcing_trails.at(-1);
+  assert.equal(last?.ticker, `T${MAX_DIAGNOSTIC_TRAILS + 49}`);
+});
+
+test("globalDiagnostics.gateRejections is bounded the same way", () => {
+  for (let i = 0; i < MAX_GATE_REJECTIONS + 50; i++) {
+    recordGateReject(`T${i}`, "gate", "reason", {});
+  }
+  const summary = globalDiagnostics.summary("test", 0, 0, 0);
+  assert.ok(
+    summary.gate_rejection_details.length <= MAX_GATE_REJECTIONS,
+    `expected at most ${MAX_GATE_REJECTIONS} retained rejections, got ${summary.gate_rejection_details.length}`
+  );
 });

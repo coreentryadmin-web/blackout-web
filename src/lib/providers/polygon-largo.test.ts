@@ -25,6 +25,26 @@ test("buildPolygonLargoFetchInit: explicit cache override when no next.revalidat
   assert.equal(init.next, undefined);
 });
 
+// Cancellation (small isolated follow-up to PR #5111): `signal` must ride through
+// regardless of which of the two cache/ISR branches is taken, and be absent (not a
+// spurious `undefined` key causing a different code path) when the caller supplies none.
+test("buildPolygonLargoFetchInit: signal is carried through the next.revalidate branch", () => {
+  const controller = new AbortController();
+  const init = buildPolygonLargoFetchInit({ next: { revalidate: 3600 }, signal: controller.signal });
+  assert.equal(init.signal, controller.signal);
+});
+
+test("buildPolygonLargoFetchInit: signal is carried through the default cache branch", () => {
+  const controller = new AbortController();
+  const init = buildPolygonLargoFetchInit({ cache: "force-cache", signal: controller.signal });
+  assert.equal(init.signal, controller.signal);
+});
+
+test("buildPolygonLargoFetchInit: omitting signal leaves it undefined in both branches", () => {
+  assert.equal(buildPolygonLargoFetchInit().signal, undefined);
+  assert.equal(buildPolygonLargoFetchInit({ next: { revalidate: 60 } }).signal, undefined);
+});
+
 test("computeLevelsFromBars: includeVwap false omits multi-session VWAP", () => {
   const bars = [
     { o: 100, h: 102, l: 99, c: 101, v: 1_000_000 },

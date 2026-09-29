@@ -64,7 +64,11 @@ export function LearnSidebar() {
                 aria-current={isActive ? "page" : undefined}
               >
                 <span className="learn-sidebar-chapter">{chapter}</span>
-                {item.product === "docs" ? (
+                {item.slug === "meridian" ? (
+                  <span aria-hidden className="meridian-mark shrink-0 text-[1rem]">
+                    ✦
+                  </span>
+                ) : item.product === "docs" ? (
                   <span
                     aria-hidden
                     className="grid size-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] font-mono text-[10px] text-cyan-300"

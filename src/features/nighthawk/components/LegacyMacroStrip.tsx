@@ -13,6 +13,7 @@ export function LegacyMacroStrip({ macro }: { macro: LegacyMacroContext | null }
     items.push(`SPX pre ${macro.spxPremarket.toFixed(2)}`);
   }
   if (macro.regime) items.push(`Regime ${macro.regime}`);
+  if (macro.playbook) items.push(macro.playbook);
   if (macro.gexBias) items.push(`GEX ${macro.gexBias}`);
   if (macro.callWall != null) items.push(`Call wall ${macro.callWall.toFixed(0)}`);
   if (macro.putWall != null) items.push(`Put wall ${macro.putWall.toFixed(0)}`);

@@ -35,3 +35,18 @@ test("swingRollHistoryLegFromRow: converts contract_type 'call' to the short 'C'
   });
   assert.equal(leg.right, "C");
 });
+
+test("swingRollHistoryLegFromRow: a null contract_type maps to right: null (honest absence), never a fabricated 'C'", () => {
+  // Largo C3 absence (2026-09-22): contract_type is a genuinely nullable DB column
+  // (db.ts's SwingPositionInsert.contract_type: string | null) — a roll leg can legitimately
+  // have no recorded contract type. Collapsing that to "C" would tell a trader a fabricated
+  // "call" instead of the honest "contract" fmtLeg's fallback already renders for right:null.
+  const leg = swingRollHistoryLegFromRow({
+    roll_seq: 2,
+    contract_strike: 90,
+    contract_type: null,
+    contract_expiry: "2026-09-09",
+    committed_at: "2026-09-03T11:00:22.000Z",
+  });
+  assert.equal(leg.right, null);
+});

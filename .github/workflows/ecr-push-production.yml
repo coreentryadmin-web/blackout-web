@@ -538,11 +538,12 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "Registered new worker task definition: ${NEW_ARN}"
 
-          # Do NOT pass --desired-count: the worker is a singleton (desiredCount=1)
-          # configured on the service; overriding it on every deploy fights that config.
+          # Do NOT pass --desired-count: desiredCount is configured on the service itself
+          # (2 tasks, not 1 — see below); overriding it on every deploy fights that config.
           #
-          # Rolling strategy: minHealthy=0 / max=200. Live shape (verified 2026-08-06):
-          # desiredCount=2, each task 1024 CPU units = 1 vCPU (2 vCPU for the tier).
+          # Rolling strategy: minHealthy=0 / max=200. Live shape (verified 2026-08-06,
+          # re-verified 2026-09-12): desiredCount=2, each task 1024 CPU units = 1 vCPU
+          # (2 vCPU for the tier).
           #
           # DELIBERATELY NOT CHANGED to minHealthy=100 when the WEB service was moved to 100
           # (2026-08-06). The two services want OPPOSITE things, and the reason is LEADER

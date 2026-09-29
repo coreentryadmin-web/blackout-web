@@ -484,6 +484,7 @@ export async function evaluateLedgerRowExit(
       trimsTaken,
       gexQualityDegraded,
       entryGexWallsVetoRelieved: entryGexWallsVetoReliefOf(row.entry_context),
+      troughPremium: row.trough_premium,
     });
 
     // A trim_scale tranche just armed (never ratchet's own single "plan_target_trim" —

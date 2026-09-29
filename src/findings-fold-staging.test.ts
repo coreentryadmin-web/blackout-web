@@ -184,6 +184,56 @@ test("a body using '## ' for its own sub-sections is skipped, not fragmented int
   assert.match(out, /2026-08-23-multi-heading\.md/, "the offending file must be named in the output");
 });
 
+test("a '## ' heading inside a fenced code block does not count as a real sub-heading", () => {
+  // Live repro 2026-09-17: a finding's Evidence section quoting a live product's own markdown
+  // output (a normal, encouraged evidence pattern per this repo's PR write-up policy) inside a
+  // ``` fence can legitimately contain real `## `-level headings (e.g. a quoted Ask Largo brief's
+  // own "## Why this setup" section) — those must NOT be counted toward the multi-heading guard,
+  // or a well-formed, single-real-heading finding is silently skipped forever, indistinguishable
+  // from the genuine "body uses ## for its own sub-sections" defect the guard exists to catch.
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-08-23-quotes-a-heading.md"),
+    "> **kind:** `FINDING`\n\n" +
+      "## The real finding title\n\n" +
+      "Evidence, a live brief excerpt:\n\n" +
+      "```\n## Why this setup\nsome quoted content\n## Trade manager read\nmore quoted content\n```\n\n" +
+      "Fix rationale.\n"
+  );
+  run(staging, findings);
+  const out = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(out, /## The real finding title/, "the finding must fold despite the quoted headings inside its fence");
+  assert.match(out, /## Why this setup/, "the quoted evidence content itself must survive, verbatim, inside the fold");
+  assert.deepEqual(remaining, [], "a well-formed finding must not be left stuck in staging");
+});
+
+test("a real '## ' sub-heading OUTSIDE any fence still trips the multi-heading guard", () => {
+  // Companion to the fence test above — proves the fence-awareness fix didn't also blind the
+  // guard to the genuine defect it exists to catch (a body using unfenced '## ' sub-sections).
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-08-23-real-multi-heading.md"),
+    "> **kind:** `FINDING`\n\n## The real finding title\n\n## Root cause\n\nSomething broke.\n"
+  );
+  let out = "";
+  try {
+    run(staging, findings);
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string };
+    out = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+  }
+  const foundText = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.doesNotMatch(foundText, /## The real finding title/, "an unfenced multi-heading file must still be skipped");
+  assert.deepEqual(remaining, ["2026-08-23-real-multi-heading.md"], "the offending file must survive, unfolded");
+  assert.match(out, /2026-08-23-real-multi-heading\.md/, "the offending file must be named in the output");
+});
+
 test("a clean staging directory is a no-op", () => {
   const { dir, findings, staging } = setup();
   const before = readFileSync(findings, "utf8");

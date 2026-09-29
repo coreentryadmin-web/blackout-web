@@ -34,14 +34,31 @@ export const SCALE_OUT_RULES = {
 } as const;
 
 /** Human-readable exit guidance for a banger/breakout play — the scale-out rule in one sentence, for
- *  a play's risk_note. Numbers come straight from SCALE_OUT_RULES so the copy never drifts. */
-export function bangerScaleOutNote(): string {
+ *  a play's risk_note. Numbers come straight from SCALE_OUT_RULES so the copy never drifts.
+ *
+ *  `context.dte`, when passed, corrects the trailing descriptive sentence to match the ACTUAL
+ *  contract picked rather than always asserting "cheap OTM weeklies" — found live 2026-09-22 on
+ *  Night Hawk Legacy: banger-lane tickers (discovery-lane membership, independent of what
+ *  `pickChainContract` ultimately selects) can land a 25+ DTE, $30+/share contract, and the
+ *  unconditional "cheap OTM weeklies spike then decay" line was flatly false for that specific
+ *  play — the exact contract-cost complaint already being tracked, but in the narrative text this
+ *  time rather than the pick itself. Omitting `context` (every existing caller, e.g. the whole-market
+ *  weekly-banger board at `banger/board/route.ts`, where the descriptor genuinely IS accurate by
+ *  construction) reproduces the original text byte-for-byte — zero behavior change there. */
+export function bangerScaleOutNote(context?: { dte?: number | null }): string {
   const { scale_at_mult, scale_fraction, trail_from_peak, hard_stop_mult } = SCALE_OUT_RULES;
-  return (
+  const rule =
     `Banger exit — scale out, don't hold to expiry: realize ${(scale_fraction * 100).toFixed(0)}% at ` +
     `${scale_at_mult}×, trail the runner at ${(trail_from_peak * 100).toFixed(0)}% of its peak, hard stop ` +
-    `−${((1 - hard_stop_mult) * 100).toFixed(0)}%. These cheap OTM weeklies spike then decay — the exit is the edge.`
-  );
+    `−${((1 - hard_stop_mult) * 100).toFixed(0)}%.`;
+  const dte = context?.dte;
+  // <=10 DTE reads as "weekly" for this purpose; the descriptor is otherwise silent about DTE, so
+  // no context (dte === undefined) keeps the original weekly framing for every pre-existing caller.
+  const descriptor =
+    dte == null || dte <= 10
+      ? "These cheap OTM weeklies spike then decay — the exit is the edge."
+      : `This ${dte}-DTE contract can still spike and give the move back fast — the exit is the edge, not the target.`;
+  return `${rule} ${descriptor}`;
 }
 
 export type ScaleOutAction = "HOLD" | "TAKE_PARTIAL" | "EXIT_RUNNER" | "STOP_OUT";

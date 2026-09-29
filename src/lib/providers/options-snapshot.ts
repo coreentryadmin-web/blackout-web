@@ -201,7 +201,7 @@ export function normalizeImpliedVol(iv: number | null | undefined): number | nul
  * (ask < bid) — a stale/glitched print must not synthesize a fabricated mid (found 2026-08-26
  * alongside the identical gap in the two sibling copies above).
  */
-function midOf(bid: number | null, ask: number | null): number | null {
+export function midOf(bid: number | null, ask: number | null): number | null {
   if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
     return Number(((bid + ask) / 2).toFixed(4));
   }
@@ -292,6 +292,65 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
     // predicate stays dormant for this contract (absence is never treated as stale).
     quoteUpdatedMs: nsToEpochMs(r.last_quote?.last_updated),
   };
+}
+
+/**
+ * Backstop-quote divergence threshold for `reliableMarkFromSnapshot`: how many multiples of
+ * `last`/`dayClose` a bid=0 mid is allowed to exceed before it is treated as an unfillable
+ * placeholder rather than a real valuation. 10x is well above normal bid/ask noise (even a wide
+ * illiquid spread is rarely >2-3x the last print) and well below what a genuine intraday move
+ * would produce on the SAME contract between the last trade and now.
+ */
+export const ZERO_BID_MID_DIVERGENCE_MULTIPLE = 10;
+
+/**
+ * `snap.mark`'s own doc-priority ladder (mid → last → dayClose) is correct AS A VALUATION
+ * heuristic, but `midOf`'s `bid>=0` guard is deliberately permissive (a genuinely worthless
+ * deep-OTM contract legitimately has bid=0 — see `midOf`'s own comment) and carries no check on
+ * whether the ASK side is a real, fillable quote. A market maker's "backstop" ask on a contract
+ * nobody is bidding on can sit at an order of magnitude above the last real trade, and averaging
+ * a dead bid against that stale ask produces a mid nothing close to the contract's actual value —
+ * confirmed live 2026-09-14: CRSR 260918C00015000 showed `bid:0, ask:15` → mid $7.50, while
+ * `last_trade.price` (and `session.close`) were BOTH $0.07 (a 107x divergence) — same contract's
+ * entry premium was also $0.07, i.e. flat, not the +10614% the naive mid implied. Multiple other
+ * concurrently-committed BANGER positions (EBS/CPRI/BW/PAGS/BAND/ACVA) showed the identical
+ * shape same session. `midOf` itself is left untouched (shared with `zeroDteMidOf` in
+ * zerodte/marks-math.ts by deliberate cross-engine parity — see midOf's own comment); this is a
+ * SEPARATE, additive helper for consumers that want a divergence-sanity-checked mark instead of
+ * the raw doc-priority one. Only engages when bid is EXACTLY 0 (the shape backstop quotes take) —
+ * a real two-sided market (bid>0) is never second-guessed here.
+ *
+ * The actual bid/mark/reference comparison lives in `reliableMarkFromQuote` below — extracted
+ * 2026-09-15 so the identical guard can also protect the WS mark stream (`legacy-option-mark-row.ts`),
+ * which carries the same backstop-quote exposure via its own `midOf(bp, ap)` computation
+ * (`handleQuote`, `options-socket.ts`) but had no divergence check at all until then.
+ */
+export function reliableMarkFromSnapshot(snap: OptionSnapshot): number | null {
+  return reliableMarkFromQuote(snap.mark, snap.bid, snap.last ?? snap.dayClose);
+}
+
+/**
+ * Generic form of the bid=0 backstop-quote divergence guard: given a doc-priority mark, its bid,
+ * and a reference price (last trade, day close, or whatever the caller's best honest anchor is),
+ * return the mark unless it looks like an unfillable backstop quote — in which case fall through
+ * to the reference instead. See `reliableMarkFromSnapshot`'s own doc comment for the live
+ * incident this guards against; kept separate from that function (rather than only exported
+ * as a method on `OptionSnapshot`) so a caller with a different quote shape — the WS mark
+ * stream's `{mark, bid, last}`, which has no `dayClose` — can apply the identical rule without
+ * needing to construct a fake `OptionSnapshot`.
+ */
+export function reliableMarkFromQuote(
+  mark: number | null,
+  bid: number | null,
+  reference: number | null
+): number | null {
+  if (mark == null) return null;
+  if (bid !== 0) return mark;
+  if (reference == null || reference <= 0) return mark;
+  if (mark <= reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) return mark;
+  // The bid/ask mid is a suspected backstop-quote artifact — fall through to the more honest
+  // reference price instead of a mid nobody could actually transact at.
+  return reference;
 }
 
 /** Split an array into chunks of at most `size`. Exported for chunking tests. */

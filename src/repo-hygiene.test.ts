@@ -183,6 +183,44 @@ test("no tracked source file contains a raw NUL byte", () => {
   );
 });
 
+/**
+ * Guards against TypeScript-only syntax landing in a `.mjs` file.
+ *
+ * Found live 2026-09-13: `scripts/audit/thesis-rank-calibration.mjs` (added #2903, 2026-08-25) was
+ * written with TypeScript parameter/return type annotations (`row: Record<string, unknown>`),
+ * a generic type argument (`new Map<string, {...}>()`), and a type assertion
+ * (`{} as Record<string, unknown>`) — none of which are valid in a plain `.mjs` ES module. Its own
+ * `package.json` script (`calibration:thesis-rank`) invokes it with bare `node`, which cannot parse
+ * any of that; even `node --import tsx` fails identically, because tsx's loader hook transforms by
+ * FILE EXTENSION (`.ts`/`.tsx`), not by content, so a `.mjs` file gets no TypeScript transform
+ * regardless of what's inside it. The script had been completely unrunnable since the day it was
+ * added — nothing in `npm test`/`tsc` covers `scripts/` `.mjs` files, so this went unnoticed for 19
+ * days until GitHub's CodeQL scan (which parses every tracked JS/TS file for its own reasons) choked
+ * on the same parse error and failed the `main`-branch CodeQL workflow run.
+ *
+ * `node --check` parses (but does not execute or resolve imports for) a file and exits non-zero on
+ * a syntax error — exactly the class of defect this guards, without the flakiness of trying to run
+ * each script's real logic (network calls, auth, env vars).
+ */
+test("every tracked scripts/**/*.mjs file parses as valid plain JavaScript (no leaked TS syntax)", () => {
+  const files = tracked().filter((p) => p.startsWith("scripts/") && p.endsWith(".mjs"));
+  const bad: string[] = [];
+  for (const file of files) {
+    try {
+      execFileSync("node", ["--check", file], { stdio: "pipe" });
+    } catch (err) {
+      const stderr = err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : String(err);
+      bad.push(`${file}:\n${stderr.split("\n").slice(0, 4).join("\n")}`);
+    }
+  }
+  assert.deepEqual(
+    bad,
+    [],
+    `these scripts/**/*.mjs files fail to parse as plain JavaScript — likely TypeScript syntax ` +
+      `leaked into a .mjs file (see this test's doc comment):\n\n${bad.join("\n\n")}`
+  );
+});
+
 test("gitignore entries for node_modules have no trailing slash", () => {
   // A trailing slash restricts the pattern to directories, leaving a same-named symlink or file
   // un-ignored. Every node_modules rule must match regardless of file type.

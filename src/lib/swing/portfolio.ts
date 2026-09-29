@@ -22,6 +22,18 @@ export interface PortfolioPosition {
   direction: PlayDirection;
   /** Ledger row id when known — lets play-brief exclude the reviewed position by identity. */
   positionId?: number;
+  /** Banger-engine row id, DISPLAY-ONLY — never read by this module's own exclude/match logic
+   *  (which only ever compares `positionId`). Exists solely so play-brief-intel.ts's
+   *  `formatOverlapPosition` can tell two DIFFERENT cross-engine siblings on the same ticker apart
+   *  in the rendered concentration list (see that function's own doc comment for the live repro:
+   *  two genuinely distinct open Banger CRWD LONG positions both rendered the identical, bare
+   *  "CRWD LONG (separate, cross-engine position)" text, reading as a duplicate-counting bug to a
+   *  member even though the underlying count was honest). Deliberately a separate field from
+   *  `positionId` rather than reusing it — `positionId` intentionally stays unset on a banger row
+   *  (play-brief-context.ts's `loadOpenBook` comment) because `banger_positions` and
+   *  `swing_positions` are separate DB sequences that can collide on numeric id, and
+   *  `excludePositionId` above trusts `positionId` as an exact identity match. */
+  bangerId?: number;
 }
 
 export interface PortfolioOverlap {

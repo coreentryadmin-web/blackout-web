@@ -19,8 +19,10 @@ export type PostureResult = {
   reasons: string[];
   /** Candidates re-ranked with SHORT-preferred ordering when posture is SHORT. */
   ranked: ScoredCandidate[];
-  /** Count of candidates whose direction was flipped to SHORT. */
-  flipped: number;
+  /** Count of existing-SHORT candidates given the ranking bonus. */
+  shortsBoosted: number;
+  /** Count of LONG candidates given the ranking penalty (never flipped — see applyBearishPosture). */
+  longsPenalized: number;
 };
 
 // A bearish tape needs ≥2 of these 3 signals to trigger SHORT posture.
@@ -70,12 +72,14 @@ export function applyBearishPosture(
   const { posture, reasons } = detectBookPosture(regime);
 
   if (posture !== "SHORT") {
-    return { posture, reasons, ranked, flipped: 0 };
+    return { posture, reasons, ranked, shortsBoosted: 0, longsPenalized: 0 };
   }
 
-  let flipped = 0;
+  let shortsBoosted = 0;
+  let longsPenalized = 0;
   const adjusted = ranked.map((c) => {
     if (c.direction === "short") {
+      shortsBoosted += 1;
       return { ...c, score: c.score + SHORT_POSTURE_BONUS };
     }
     // Long candidate on a bearish tape: penalize but keep — the downstream
@@ -84,12 +88,13 @@ export function applyBearishPosture(
     // wall-proximity) were all computed for the LONG direction and would be
     // wrong on a flipped short, producing a candidate with contradictory
     // internals. A genuine short needs to be scored as short from the start.
+    longsPenalized += 1;
     return { ...c, score: Math.max(0, c.score - LONG_POSTURE_PENALTY) };
   });
 
   const reranked = [...adjusted].sort((a, b) => b.score - a.score);
 
-  return { posture, reasons, ranked: reranked, flipped };
+  return { posture, reasons, ranked: reranked, shortsBoosted, longsPenalized };
 }
 
 export const BEARISH_RECAP_REASON = "Bearish-tape posture: no aligned SHORT setups survived the funnel on a bearish evening.";

@@ -397,7 +397,7 @@ test("summarizeGovernorForBoard: merges recorded stop timestamps and flips halte
   assert.equal(s.stops.length, 4);
   assert.equal(s.stops.find((x) => x.ticker === "SPY")!.at_ms, NOW - 5 * 60_000, "recorded timestamp wins");
   assert.equal(s.stops.find((x) => x.ticker === "MU")!.at_ms, null, "ledger-only stop stays untimed");
-  assert.deepEqual(s.open_plans, [{ ticker: "NVDA", direction: "long" }]);
+  assert.deepEqual(s.open_plans, [{ ticker: "NVDA", direction: "long", is_condor: false }]);
 });
 
 // ── persistence round-trip (real shared-cache in-memory fallback) ──────────────────
@@ -465,6 +465,60 @@ test("Q9 enforced (Wave A/B default): evaluateZeroDteGovernor blocks a 3rd corre
   const blocks = evaluateZeroDteGovernor({ ticker: "IWM", direction: "long" }, snap, NOW);
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0]!.code, "governor_concentration");
+});
+
+// ── NEUTRAL-STRUCTURE FIX: a committed CONDOR must never be counted as directional exposure ──
+// condor.ts's own buildCondorSetup doc: a condor row's `direction` "carries the pin's nominal
+// fade side for provenance but is UNUSED by the neutral structure's gates/grader." Before this
+// fix, deriveGovernorFromLedger/committedThisCycle carried that nominal direction into
+// evaluateZeroDteGovernor's DIRECTIONAL checks (B-3 correlated-conflict + Q9 concentration)
+// unfiltered, so a delta-neutral SPX/NDX condor (both share CORRELATION_GROUPS's broad index/ETF
+// group with SPY/QQQ/IWM/DIA) could wrongly (a) "oppose" a genuine directional candidate with no
+// real conflicting exposure, and (b) inflate the same-direction concentration count.
+
+test("governor NEUTRAL-STRUCTURE (regression): an open CONDOR must not trigger a false correlated_conflict", () => {
+  // An open SPX condor whose nominal fade side happens to be "short" must not block a genuine,
+  // uncorrelated-in-reality QQQ long — before the fix this read as "QQQ long opposes SPX short".
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "SPX", direction: "short", status: "OPEN", entry_context: { play_type: "CONDOR", condor: { net_credit: 3000, max_loss: 12000 } } }),
+  ]);
+  const blocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "long" }, snap, NOW);
+  assert.deepEqual(blocks, [], "a neutral condor's nominal direction must never manufacture a directional conflict");
+
+  // The SAME open position, but a REAL directional SPY short, must still correctly conflict.
+  const realSnap = deriveGovernorFromLedger([row({ ticker: "SPY", direction: "short", status: "OPEN" })]);
+  const realBlocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "long" }, realSnap, NOW);
+  assert.equal(realBlocks[0]?.code, "correlated_conflict", "a REAL directional conflict must still block — this fix must not weaken the gate");
+});
+
+test("governor NEUTRAL-STRUCTURE (regression): open CONDORs must not inflate same-direction concentration", () => {
+  // Two open SPX/NDX condors that happen to carry the same nominal fade side as SPY/QQQ real
+  // longs must not push a 3rd correlated real long over the Q9 cap — before the fix, the two
+  // condors' nominal directions counted as 2 of the same-direction pile alongside the 2 real
+  // longs, over-blocking on non-existent directional risk.
+  const snap = deriveGovernorFromLedger([
+    row({ ticker: "SPY", direction: "long", status: "OPEN" }),
+    row({ ticker: "SPX", direction: "long", status: "OPEN", entry_context: { play_type: "CONDOR", condor: { net_credit: 3000, max_loss: 12000 } } }),
+    row({ ticker: "NDX", direction: "long", status: "OPEN", entry_context: { play_type: "CONDOR", condor: { net_credit: 3000, max_loss: 12000 } } }),
+  ]);
+  const blocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "long" }, snap, NOW);
+  assert.deepEqual(blocks, [], "condors must not count toward the real-directional concentration cap");
+
+  // Two REAL directional longs must still trip the cap on a 3rd — this fix must not weaken Q9.
+  const realSnap = deriveGovernorFromLedger([
+    row({ ticker: "SPY", direction: "long", status: "OPEN" }),
+    row({ ticker: "QQQ", direction: "long", status: "OPEN" }),
+  ]);
+  const realBlocks = evaluateZeroDteGovernor({ ticker: "IWM", direction: "long" }, realSnap, NOW);
+  assert.equal(realBlocks[0]?.code, "governor_concentration");
+});
+
+test("governor NEUTRAL-STRUCTURE (regression): a CONDOR candidate itself skips the directional checks", () => {
+  // A fresh CONDOR candidate's own nominal direction must not itself be blocked as "opposing" a
+  // real open directional play it has no true conflict with.
+  const snap = deriveGovernorFromLedger([row({ ticker: "SPY", direction: "long", status: "OPEN" })]);
+  const blocks = evaluateZeroDteGovernor({ ticker: "QQQ", direction: "short", is_condor: true }, snap, NOW);
+  assert.deepEqual(blocks, [], "a condor candidate has no real directional stance to conflict with an open play");
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════

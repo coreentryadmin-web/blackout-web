@@ -38,6 +38,20 @@ export function legacyScorecardLine(play: TerminalPlay): string | null {
   return `${wr}% WR${ci} · avg ${sc.avg >= 0 ? "+" : ""}${sc.avg.toFixed(0)}% · n=${sc.n}${scope}`;
 }
 
+/**
+ * Compact one-line variant of legacyScorecardLine for the board TABLE row itself (not the
+ * click-through detail rail) — a table row has no room for the full CI/avg-return line, so this
+ * keeps only what a member needs at a glance to gauge this pick's historical track record without
+ * opening it: the win rate and the sample size it's built on (n is included specifically so a
+ * high rate on a tiny n doesn't read as more settled than it is — same "never a confident rate
+ * without its n" discipline legacyScorecardLine already follows).
+ */
+export function legacyScorecardBadge(play: TerminalPlay): string | null {
+  const sc = play.scorecard;
+  if (!sc) return null;
+  return `${Math.round(sc.winRate)}% WR · n=${sc.n}`;
+}
+
 export function legacyMarkAgeLabel(iso: string | null | undefined): string | null {
   const sec = ageSecFromIso(iso);
   if (sec == null) return null;

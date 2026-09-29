@@ -216,7 +216,7 @@ test("livePnlPct: board ledger and Largo plays use identical rounding", async ()
   // never a client-side copy). The mocked ledger has one HOLD row → one open plan.
   assert.equal(board.ledger[0]!.expiry, null);
   assert.ok(board.governor, "payload carries the governor summary");
-  assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long" }]);
+  assert.deepEqual(board.governor!.open_plans, [{ ticker: "NVDA", direction: "long", is_condor: false }]);
   assert.equal(board.governor!.halted, false);
   const { GOVERNOR_MAX_CONCURRENT_PLANS } = await import("../zerodte/governor");
   assert.equal(board.governor!.max_concurrent, GOVERNOR_MAX_CONCURRENT_PLANS);
@@ -365,9 +365,10 @@ test("exit visibility: an OPEN play's latched peak surfaces the live ratchet flo
   assert.equal(board.ledger[0]!.exit_detail, null);
 });
 
-test("exit visibility: a live play below the +15% arm has no floor (floor_pnl_pct null)", async () => {
+test("exit visibility: a live play below the +5% arm has no floor (floor_pnl_pct null)", async () => {
+  // entry 4.0, peak 4.16 = +4% (below the 2026-09-23-lowered early-arm threshold).
   state.ledgerRead = {
-    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 4.5, last_mark: 4.2, trough_premium: 4.0, status: "HOLD" })],
+    rows: [ledgerRow({ entry_premium: 4.0, peak_premium: 4.16, last_mark: 4.1, trough_premium: 4.0, status: "HOLD" })],
     committed_known: true,
   };
   state.setups = [];

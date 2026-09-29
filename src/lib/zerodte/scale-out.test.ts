@@ -4,6 +4,7 @@ import {
   gradeScaleOut,
   deriveScaleOutAction,
   computeScaleOutTriggerInfo,
+  bangerScaleOutNote,
   SCALE_OUT_RULES,
   type ScaleOutBar,
 } from "./scale-out";
@@ -114,4 +115,34 @@ test("trigger info: no usable mark/entry → nulls, never a fabricated level", (
   assert.equal(info.next_trigger_price, null);
   assert.equal(info.hard_stop_price, null);
   assert.equal(info.pct_to_next_trigger, null);
+});
+
+// ── bangerScaleOutNote (2026-09-22: DTE-aware descriptor) ──────────────────────────
+test("bangerScaleOutNote: no context → original 'cheap OTM weeklies' text, byte-for-byte (banger board default)", () => {
+  const note = bangerScaleOutNote();
+  assert.match(note, /These cheap OTM weeklies spike then decay — the exit is the edge\.$/);
+});
+
+test("bangerScaleOutNote: dte <= 10 → still reads as a weekly, same descriptor as no-context", () => {
+  const note = bangerScaleOutNote({ dte: 4 });
+  assert.match(note, /These cheap OTM weeklies spike then decay — the exit is the edge\.$/);
+});
+
+test("bangerScaleOutNote: dte > 10 → does NOT claim 'weeklies', names the real DTE instead", () => {
+  const note = bangerScaleOutNote({ dte: 25 });
+  assert.doesNotMatch(note, /weeklies/i);
+  assert.match(note, /This 25-DTE contract can still spike/);
+});
+
+test("bangerScaleOutNote: null dte (no contract picked) falls back to the weekly descriptor, never throws", () => {
+  const note = bangerScaleOutNote({ dte: null });
+  assert.match(note, /These cheap OTM weeklies spike then decay — the exit is the edge\.$/);
+});
+
+test("bangerScaleOutNote: the mechanical rule sentence itself is unchanged regardless of context", () => {
+  const withoutContext = bangerScaleOutNote();
+  const withContext = bangerScaleOutNote({ dte: 25 });
+  const rulePrefix = withoutContext.split("These cheap")[0];
+  assert.ok(rulePrefix.length > 0, "sanity: rule prefix extracted");
+  assert.ok(withContext.startsWith(rulePrefix), "rule sentence (percentages/multiples) must not drift with DTE context");
 });

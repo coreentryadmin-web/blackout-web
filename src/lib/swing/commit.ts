@@ -581,6 +581,14 @@ function buildCommitInsert(
       },
       budget_verdict: budgetVerdict ? { blocked: budgetVerdict.blocked, blockedDimensions: budgetVerdict.blockedDimensions } : null,
       cortex: cortexEntryContextFor(cand.cortexAssessment ?? null),
+      // Pin the SAME discovery-provenance kinds already computed for the G-S6 confluence gate
+      // (`discoveryPathsForConfluence`, assembled onto `cand.discoveryPaths` in discovery.ts) so
+      // computeSwingThesisHealth's `flow_corroboration` pillar can read it after commit — before
+      // this, the value existed at commit time (used to DECIDE whether to commit) but was thrown
+      // away, so `thesisHealthUncalibrated` treated every committed position as forever unknown on
+      // this pillar. Reusing the gate's own already-graduated value rather than recomputing keeps
+      // this consistent with what actually cleared G-S6, not a fresh re-derivation.
+      signal_kinds: cand.discoveryPaths ?? null,
     },
     gate_calibration_json: {
       methodology: "swing.commit.graduation.v1",

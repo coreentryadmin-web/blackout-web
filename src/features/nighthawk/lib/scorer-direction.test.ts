@@ -74,6 +74,25 @@ test("smart money: institutional net BUYING helps a long, penalizes a short", ()
   assert.equal(short, -2);
 });
 
+test("smart money: BUG FIX (2026-09-12) -- institutional net-signal reads real UW `units_changed`, not the guessed `units_change`", () => {
+  // Regression for the dead-leg bug: institutionalNetSignal's fallback chain never checked
+  // `units_changed` (trailing "d"), the REAL per-filing share-delta field on UW's
+  // /api/institution/{ticker}/ownership rows (confirmed live). Real rows also carry no
+  // action/transaction_type/type field at all (13F ownership snapshots, not transaction logs),
+  // so the string-fallback branch was equally dead -- together this made the entire
+  // institutional leg of scoreSmartMoney's +3/-2 bonus permanent dead code in production.
+  const realShapeBuying = [
+    { name: "BLACKROCK, INC.", units: "1162996939", units_changed: "18301514" },
+    { name: "VANGUARD", units: "959107911", units_changed: "5260263" },
+  ];
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeBuying }, "long"), 3);
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeBuying }, "short"), -2);
+
+  const realShapeSelling = [{ name: "STATE STREET CORP", units: "615129929", units_changed: "-12788520" }];
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeSelling }, "long"), -2);
+  assert.equal(scoreSmartMoney({ institutional_activity: realShapeSelling }, "short"), 3);
+});
+
 test("smart money: congress BUYS score longs, not shorts", () => {
   const fresh = new Date().toISOString();
   const rows = [
@@ -98,6 +117,29 @@ test("smart money: unknown congress side counts at half weight", () => {
   const fresh = new Date().toISOString();
   const rows = [{ filed_at: fresh }, { filed_at: fresh }]; // no txn_type
   assert.equal(scoreSmartMoney({ congress_unusual: rows }, "long"), 1);
+});
+
+test("smart money: BUG FIX (2026-09-12) -- congress decay reads real UW `filed_at_date`, not the stale `transaction_date` fallback", () => {
+  // Regression for the dead-priority bug: congressTradeDecayMultiplier's fallback chain never
+  // checked `filed_at_date`, the REAL disclosure-date field on UW's /api/congress/recent-trades
+  // rows (confirmed live). A trade disclosed close to the STOCK Act's 45-day deadline has a
+  // transaction_date that reads stale (>14 days -> 0.4x) while its filed_at_date -- the date
+  // that actually matters, per this function's own "more recent disclosures" docstring -- is
+  // brand new (<=7 days -> 1.0x). This pins the real (filed_at_date wins) behavior.
+  const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  const oldTxnFreshFiling = [
+    { txn_type: "Buy", transaction_date: iso(40), filed_at_date: iso(2) },
+  ];
+  assert.equal(
+    scoreSmartMoney({ congress_unusual: oldTxnFreshFiling }, "long"),
+    1,
+    "filed_at_date (2 days old) should give the full 1.0x multiplier, not transaction_date's 40-day-old 0.4x"
+  );
+
+  // Mirror: a row with ONLY transaction_date (no filed_at_date at all, e.g. an unexpected
+  // upstream shape) must still fall back correctly rather than silently scoring 0.
+  const onlyTransactionDate = [{ txn_type: "Buy", transaction_date: iso(2) }];
+  assert.equal(scoreSmartMoney({ congress_unusual: onlyTransactionDate }, "long"), 1);
 });
 
 // ── scoreOptionsPositioning ──────────────────────────────────────────────────────
@@ -154,7 +196,7 @@ test("positioning: presence-as-signal points removed (net_vex/max_pain/oi-count)
   const presenceOnly = scoreOptionsPositioning(
     {
       positioning: { negative_gamma: false, net_vex: 123456, max_pain: 100 } as never,
-      oi_change: [{ oi_change: -5, option_type: "call" }, { oi_change: -2, option_type: "put" }, { oi_change: 0, option_type: "call" }],
+      oi_change: [{ oi_change: -5, kind: "call" }, { oi_change: -2, kind: "put" }, { oi_change: 0, kind: "call" }],
     },
     "long"
   );
@@ -163,11 +205,29 @@ test("positioning: presence-as-signal points removed (net_vex/max_pain/oi-count)
 
 test("positioning: OI growth only counts when aligned with direction", () => {
   const callGrowth = [
-    { oi_change: 1200, option_type: "call" },
-    { oi_change: 800, option_type: "call" },
+    { oi_change: 1200, kind: "call" },
+    { oi_change: 800, kind: "call" },
   ];
   assert.equal(scoreOptionsPositioning({ oi_change: callGrowth }, "long"), 2);
   assert.equal(scoreOptionsPositioning({ oi_change: callGrowth }, "short"), 0);
+});
+
+test("positioning: BUG FIX (2026-09-12) -- OI-change rows use `kind`, never `option_type` (fetchUwOiChange's real shape); `option_type` alone must NOT score", () => {
+  // Regression for the dead-code bug: the scorer used to read a field (`option_type`) that
+  // fetchUwOiChange (unusual-whales.ts) never produces -- real rows are `{strike, oi_change,
+  // kind}`. This pins both directions: the real `kind` shape scores, and a row carrying only
+  // the old wrong field name (as if some other caller supplied it) does NOT silently score.
+  const realShape = [
+    { oi_change: 1200, kind: "call" },
+    { oi_change: 800, kind: "call" },
+  ];
+  assert.equal(scoreOptionsPositioning({ oi_change: realShape }, "long"), 2);
+
+  const wrongFieldOnly = [
+    { oi_change: 1200, option_type: "call" } as unknown as { oi_change?: number; kind?: string },
+    { oi_change: 800, option_type: "call" } as unknown as { oi_change?: number; kind?: string },
+  ];
+  assert.equal(scoreOptionsPositioning({ oi_change: wrongFieldOnly }, "long"), 0);
 });
 
 // ── scoreTechnicalSetup (short branch) ───────────────────────────────────────────
@@ -367,8 +427,8 @@ test("positioning: bullish dealer greek flow penalizes SHORT (−1 before floor)
   // From a non-zero base so the -1 penalty is visible.
   const withOi = {
     oi_change: [
-      { oi_change: 100, option_type: "put" },
-      { oi_change: 200, option_type: "put" },
+      { oi_change: 100, kind: "put" },
+      { oi_change: 200, kind: "put" },
     ],
   };
   const base = scoreOptionsPositioning(withOi, "short");
@@ -412,8 +472,8 @@ test("positioning: greek flow score still capped at 18 total", () => {
       ],
       positioning: { negative_gamma: true } as any,
       oi_change: [
-        { oi_change: 100, option_type: "call" },
-        { oi_change: 200, option_type: "call" },
+        { oi_change: 100, kind: "call" },
+        { oi_change: 200, kind: "call" },
       ],
       greek_flow: { net_delta: 50_000, net_gamma: 1_000, bias: "bullish", row_count: 5 },
     },

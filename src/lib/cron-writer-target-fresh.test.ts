@@ -47,3 +47,22 @@ test("probePgFlowAlertsFresh and the vector-bead-record probe route through the 
   assert.match(src, /const ageMs = signalWindowAgeMs\(ms, Date\.now\(\)\)/);
   assert.match(src, /signalWindowAgeMs\(tail\.time \* 1000, Date\.now\(\)\)/);
 });
+
+test("REGRESSION: the zerodte-warm writer-target probe reads the scanner heartbeat, not the earnings cache", () => {
+  // 2026-09-16: this probe used to check ZERODTE_EARNINGS_KEY -- the cron route's FAST
+  // synchronous sub-task, warmed on every invocation regardless of whether the HEAVY
+  // background chain (warmZeroDteBoard -> scanZeroDteBoard -> persistZeroDteScan ->
+  // discovery-events) ever completes. A live ~35min stall in that background chain left the
+  // earnings cache fresh the whole time, so this probe reported "target fresh" and
+  // admin-cron-health.ts's TARGET_FRESH_OVERRIDE_KEYS suppressed the staleness -- the exact
+  // outage recordZeroDteScanTick("cron")'s heartbeat exists to catch. Assert the probe now
+  // reads that heartbeat (loadZeroDteScanHeartbeat) and never re-introduces the earnings-cache
+  // proxy for this case.
+  const src = readFileSync(join(__dirname, "cron-writer-target-fresh.ts"), "utf8");
+  const caseStart = src.indexOf('case "zerodte-warm": {');
+  assert.notEqual(caseStart, -1, "zerodte-warm case must still exist");
+  const nextCaseStart = src.indexOf('case "uw-cache-refresh"', caseStart);
+  const caseBody = src.slice(caseStart, nextCaseStart === -1 ? undefined : nextCaseStart);
+  assert.match(caseBody, /loadZeroDteScanHeartbeat/);
+  assert.doesNotMatch(caseBody, /ZERODTE_EARNINGS_KEY/);
+});

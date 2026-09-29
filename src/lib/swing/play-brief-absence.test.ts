@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  ageSecondsLabel,
+  relativeAgeLabel,
   collectBriefUnavailableSources,
+  gexMarketSessionNote,
   gexMatrixStale,
+  meridianCatalystAgeMs,
+  meridianCatalystStale,
+  newsCatalystAgeMs,
+  newsCatalystStale,
+  optionMarkIsStale,
   resolveGammaPosture,
   trustedHelixFlow,
   vectorAgeStale,
@@ -26,6 +34,267 @@ test("gexMatrixStale: within future tolerance is not treated as skew-stale", () 
   const nearFutureAsof = new Date(readMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS - 1_000).toISOString();
   const gex = { spot: 100, asof: nearFutureAsof, gamma_posture: "long" };
   assert.equal(gexMatrixStale(gex, readMs), false);
+});
+
+// GEX-matrix sibling of `describeVectorFreshness`'s `market_session_note` (#4076 comment
+// 5750099882, "Mechanism 2" -- Vector's half shipped as #5306, this is the GEX-matrix half).
+test("gexMarketSessionNote: fresh compute on a closed market (weekend self-warm) discloses it", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const gex = { spot: 100, asof: new Date(readMs).toISOString(), gamma_posture: "long" };
+  const note = gexMarketSessionNote(gex, readMs);
+  assert.ok(note, "expected a disclosure for a fresh compute against a closed market");
+  assert.match(note!, /market is CLOSED/);
+});
+
+test("gexMarketSessionNote: fresh compute during real RTH is null (market is open, nothing to disclose)", () => {
+  const readMs = Date.parse("2026-09-18T15:00:00.000Z"); // Fri 11:00 ET -- OPEN
+  const gex = { spot: 100, asof: new Date(readMs).toISOString(), gamma_posture: "long" };
+  assert.equal(gexMarketSessionNote(gex, readMs), null);
+});
+
+test("gexMarketSessionNote: an already-stale GEX matrix suppresses the note (its own staleness note already covers it)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const oldAsof = new Date(readMs - 60 * 60 * 1000).toISOString(); // 1h old -- well past GEX_MATRIX_STALE_MS
+  const gex = { spot: 100, asof: oldAsof, gamma_posture: "long" };
+  assert.equal(gexMatrixStale(gex, readMs), true, "sanity: fixture is actually stale");
+  assert.equal(gexMarketSessionNote(gex, readMs), null);
+});
+
+test("gexMarketSessionNote: null gex or unreadable age never throws or fabricates a note", () => {
+  assert.equal(gexMarketSessionNote(null, Date.now()), null);
+  assert.equal(gexMarketSessionNote({ spot: 100, asof: "not-a-date", gamma_posture: "long" }, Date.now()), null);
+});
+
+test("meridianCatalystStale: fresh as_of (Largo C2)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const slice = { as_of: new Date(readMs - 30_000).toISOString(), items: [], total_matched: 0 };
+  assert.equal(meridianCatalystAgeMs(slice, readMs), 30_000);
+  assert.equal(meridianCatalystStale(slice, readMs), false);
+});
+
+test("meridianCatalystStale: as_of past the 120s bound is stale — a degraded Benzinga upstream under withServerCache's stale-while-revalidate path can serve the same as_of for up to 10 minutes (Largo C2)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const slice = { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 };
+  assert.equal(meridianCatalystStale(slice, readMs), true);
+});
+
+test("meridianCatalystStale: unparseable as_of (e.g. an ET wall-clock test fixture, not the real ISO shape) reads as unknown age, not stale", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const slice = { as_of: "2026-09-15 09:00 ET", items: [], total_matched: 0 };
+  assert.equal(meridianCatalystAgeMs(slice, readMs), null);
+  assert.equal(meridianCatalystStale(slice, readMs), false);
+});
+
+test("meridianCatalystStale: null slice is not stale (absence is a separate signal)", () => {
+  assert.equal(meridianCatalystStale(null), false);
+});
+
+test("newsCatalystStale: fresh as_of (Largo C2, 2026-09-18) — mirrors meridianCatalystStale for arsenal.news", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const asOf = new Date(readMs - 30_000).toISOString();
+  assert.equal(newsCatalystAgeMs(asOf, readMs), 30_000);
+  assert.equal(newsCatalystStale(asOf, readMs), false);
+});
+
+test("newsCatalystStale: as_of past the 120s bound is stale — same stale-while-revalidate exposure `NewsResult.asOf` (polygon-news.ts) carries as meridianCatalystSection's slice.as_of (Largo C2)", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const asOf = new Date(readMs - 300_000).toISOString();
+  assert.equal(newsCatalystStale(asOf, readMs), true);
+});
+
+test("newsCatalystStale: unparseable as_of reads as unknown age, not stale", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  assert.equal(newsCatalystAgeMs("not-a-date", readMs), null);
+  assert.equal(newsCatalystStale("not-a-date", readMs), false);
+});
+
+test("newsCatalystStale: null/undefined as_of is not stale (absence is a separate signal, e.g. an older fixture that predates this field)", () => {
+  assert.equal(newsCatalystStale(null), false);
+  assert.equal(newsCatalystStale(undefined), false);
+});
+
+test("collectBriefUnavailableSources: stale Meridian catalyst read surfaces in unavailableSources (Largo C2/C3)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(
+      sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")),
+    );
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: CLOSED play does not flag a stale Meridian read (historical record, not a live decision)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "CLOSED" },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-09-19): a WATCH play whose entry is already dead
+// (deadPlayReason — invalidated / entry-deadline expired / contract expired / extended-chase) is
+// functionally identical to CLOSED for this file's own "today's live desk state doesn't matter"
+// reasoning, but nothing suppressed the wall-of-stale-chips for it until this fix. Mirrors the
+// CLOSED-play test immediately above, one bucket over.
+test("collectBriefUnavailableSources: dead WATCH play (entry-validity expired) does not flag a stale Meridian read (functionally identical to CLOSED)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "WATCH", watchEntryExpired: true },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: dead WATCH play (thesis invalidated) also suppresses prior-session swing-discovery-scan noise", () => {
+  const ctx = {
+    sessionDate: "2026-09-15",
+    scanSessionDay: "2026-09-10",
+    play: { status: "WATCH", setupState: "INVALIDATED" },
+  } as unknown as SwingPlayBriefContext;
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "swing discovery scan"));
+});
+
+test("collectBriefUnavailableSources: a still-live WATCH play (not dead) keeps surfacing staleness — the dead-WATCH suppression must not over-suppress ordinary candidates", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "WATCH", setupState: "FORMING", entryStatus: "PRE_TRIGGER", watchEntryExpired: false },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: an OPEN position sharing an EXPIRED-looking leftover entryStatus is NOT treated as dead (dead-reason check is WATCH-bucket-only)", () => {
+  const readMs = Date.parse("2026-09-15T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-15",
+    play: { status: "OPEN", entryStatus: "EXPIRED" },
+    meridian: { as_of: new Date(readMs - 300_000).toISOString(), items: [], total_matched: 0 },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(sources.some((s) => s.source === "Meridian catalysts" && s.reason.startsWith("stale")));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+// Largo C2/C3 (2026-09-18): #5166 disclosed ticker-news staleness INLINE in the narrative
+// (play-brief-intel.ts's `staleLead`) but never reached unavailableSources — the one signal the
+// UI's `UnavailableChip` reads from. Every sibling freshness check (Meridian catalysts above,
+// option marks, GEX, Vector) reaches BOTH surfaces; this proves news catalysts now do too.
+test("collectBriefUnavailableSources: stale ticker-news read surfaces in unavailableSources (Largo C2/C3, mirrors Meridian catalysts)", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-18",
+    ecosystem: {
+      arsenal: {
+        news: {
+          count: 2,
+          newest: null,
+          headlines: ["Headline A", "Headline B"],
+          as_of: new Date(readMs - 300_000).toISOString(),
+        },
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(
+      sources.some((s) => s.source === "Ticker news" && s.reason.startsWith("stale")),
+      `expected a stale "Ticker news" absence entry, got: ${JSON.stringify(sources)}`,
+    );
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: fresh ticker-news read does not flag staleness", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-18",
+    ecosystem: {
+      arsenal: {
+        news: {
+          count: 2,
+          newest: null,
+          headlines: ["Headline A", "Headline B"],
+          as_of: new Date(readMs - 5_000).toISOString(),
+        },
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Ticker news"));
+  } finally {
+    Date.now = origNow;
+  }
+});
+
+test("collectBriefUnavailableSources: CLOSED play does not flag stale ticker-news (historical record)", () => {
+  const readMs = Date.parse("2026-09-18T20:00:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-18",
+    play: { status: "CLOSED" },
+    ecosystem: {
+      arsenal: {
+        news: {
+          count: 2,
+          newest: null,
+          headlines: ["Headline A", "Headline B"],
+          as_of: new Date(readMs - 300_000).toISOString(),
+        },
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+  const origNow = Date.now;
+  Date.now = () => readMs;
+  try {
+    const sources = collectBriefUnavailableSources(ctx);
+    assert.ok(!sources.some((s) => s.source === "Ticker news"));
+  } finally {
+    Date.now = origNow;
+  }
 });
 
 test("vectorAgeStale: POSITIVE_INFINITY dataAgeMs from clock skew is stale", () => {
@@ -115,6 +384,34 @@ test("resolveGammaPosture: live Vector regime wins over GEX fallback", () => {
   } as SwingPlayBriefContext;
 
   assert.equal(resolveGammaPosture(ctx, ctx.vector), "long");
+});
+
+test("resolveGammaPosture: live Vector regime of 'unknown' defers to the live GEX posture, not itself", () => {
+  // Live repro 2026-09-12: CG's own COMMIT brief. Vector's regime read (vector-regime.ts) is a
+  // FOUR-value enum -- "long"/"short"/"transition"/"unknown" -- not the GEX matrix's own two-value
+  // "long"|"short"|null. Vector genuinely couldn't resolve a posture ("unknown"), but the GEX
+  // matrix's OWN gamma_posture field was live and said "short". The old check treated "unknown" as
+  // an equally-resolved answer and returned it outright, so dealerPostureLine rendered "dealer
+  // gamma posture not resolved on this read" in the SAME brief whose "GEX posture" section (reading
+  // gex.gamma_posture directly, bypassing this function) confidently said "dealers short gamma...
+  // Net GEX: -4.3M" -- a direct, member-visible contradiction.
+  const ctx = {
+    ecosystem: {
+      gex_positioning: {
+        spot: 42.34,
+        gamma_posture: "short",
+        matrix_age_sec: 30,
+        freshness: "cached",
+      },
+    },
+    vector: {
+      regime: { posture: "unknown", label: "UNKNOWN" },
+      freshness: "live",
+      dataAgeMs: 5_000,
+    },
+  } as SwingPlayBriefContext;
+
+  assert.equal(resolveGammaPosture(ctx, ctx.vector), "short", "unknown Vector regime must defer to the resolved GEX posture, not silence it");
 });
 
 test("trustedHelixFlow: null when feed stale even if recent_flow exists", () => {
@@ -316,6 +613,36 @@ test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal 
   assert.ok(sources.some((s) => s.source === "open book" && s.reason === "ledger read failed"));
 });
 
+test("collectBriefUnavailableSources: every swing-populated source carries Largo C3's retryable + what_is_missing (not just reason prose)", () => {
+  // Regression for a genuine C3 gap: the shared BieUnavailableSource shape optionally supports
+  // `what_is_missing`/`retryable` (see answer-envelope.ts), but every one of this file's own
+  // push sites previously set ONLY `{source, reason}` — a model reading unavailableSources had to
+  // guess whether asking again later was worth it, exactly what C3 says must never be guessed.
+  // This asserts a representative retryable-true (transient) and retryable-false (structural) case
+  // both now carry the full shape, so this class of gap cannot silently return.
+  const ctx = {
+    ecosystem: { flow_feed_fresh: false },
+    openBook: null,
+    play: {
+      status: "OPEN",
+      thesisHealth: { uncalibrated: true },
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+
+  const helix = sources.find((s) => s.source === "HELIX flow");
+  assert.ok(helix, "HELIX flow absence should be present");
+  assert.equal(typeof helix!.what_is_missing, "string");
+  assert.ok(helix!.what_is_missing!.length > 0);
+  assert.equal(helix!.retryable, true); // a stale pipeline tick resolves on its own next tick
+
+  const openBook = sources.find((s) => s.source === "open book");
+  assert.ok(openBook, "open book absence should be present");
+  assert.equal(typeof openBook!.what_is_missing, "string");
+  assert.equal(openBook!.retryable, true); // a failed ledger read is a transient fetch failure
+});
+
 test("collectBriefUnavailableSources: Meridian timeline failure surfaces in envelope", () => {
   const ctx = {
     meridian: {
@@ -512,6 +839,42 @@ test("collectBriefUnavailableSources: aged markAsOf surfaces in envelope (live p
       (s) => s.source === "option mark" && s.reason.includes("stale — last synced"),
     ),
     "expected stale option mark chip for aged markAsOf",
+  );
+});
+
+// Live repro 2026-09-15 (Ask Largo standing mandate): CRWD and AAPL both carry `swing-active-
+// refresh`'s exact 15-minute on-schedule `markAsOf` (":00"/":15" wall-clock stamps), yet the
+// generic cross-product 10-minute freshness bucket flagged them "stale" at the ~13-minute mark —
+// a false positive during normal, healthy operation, roughly a third of every refresh cycle,
+// because a swing option mark's ONLY writer runs every 15 minutes (no faster live-marks writer
+// exists for this DB column — see optionMarkIsStale's own doc comment).
+test("optionMarkIsStale: a mark on-schedule for the 15-minute swing-active-refresh cadence is NOT stale", () => {
+  const readMs = Date.parse("2026-09-15T19:13:00.000Z"); // 15:13 ET
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z", // synced at the prior :00 tick, 13 minutes old
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+
+  assert.equal(
+    optionMarkIsStale(play, readMs),
+    false,
+    "a 13-minute-old mark is still within one healthy swing-active-refresh cycle and must not read as stale",
+  );
+});
+
+test("optionMarkIsStale: a mark that has missed its next scheduled refresh IS stale", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z"); // 15:19 ET — past the 15:15 tick that should have landed
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z",
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+
+  assert.equal(
+    optionMarkIsStale(play, readMs),
+    true,
+    "a mark past 18 minutes old has missed a scheduled refresh and should read stale",
   );
 });
 
@@ -716,4 +1079,47 @@ test("collectBriefUnavailableSources: uncalibrated thesis health surfaces in env
         s.reason === "setup/entry/signal inputs unavailable for committed positions",
     ),
   );
+});
+
+test("ageSecondsLabel: null/undefined returns null (optional-suffix callers omit the parenthetical entirely)", () => {
+  assert.equal(ageSecondsLabel(null), null);
+  assert.equal(ageSecondsLabel(undefined), null);
+});
+
+test("ageSecondsLabel: a finite non-negative age renders 'Ns'", () => {
+  assert.equal(ageSecondsLabel(42_000), "42s");
+  assert.equal(ageSecondsLabel(0), "0s");
+});
+
+test("ageSecondsLabel: Number.POSITIVE_INFINITY (Vector's future-skew sentinel) renders 'clock-skewed', never 'Infinitys'", () => {
+  assert.equal(ageSecondsLabel(Number.POSITIVE_INFINITY), "clock-skewed");
+});
+
+test("ageSecondsLabel: a negative (future-skewed) age renders 'clock-skewed', never a negative number", () => {
+  assert.equal(ageSecondsLabel(-500_000), "clock-skewed");
+});
+
+test("relativeAgeLabel: null/undefined/unparseable timestamp returns null", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  assert.equal(relativeAgeLabel(null, now), null);
+  assert.equal(relativeAgeLabel(undefined, now), null);
+  assert.equal(relativeAgeLabel("not-a-date", now), null);
+});
+
+test("relativeAgeLabel: sub-hour age renders 'Nm ago'", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  const fourteenMinAgo = new Date(now - 14 * 60_000).toISOString();
+  assert.equal(relativeAgeLabel(fourteenMinAgo, now), "14m ago");
+});
+
+test("relativeAgeLabel: hour-plus age renders 'Nh ago'", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  const threeHoursAgo = new Date(now - 3 * 60 * 60_000).toISOString();
+  assert.equal(relativeAgeLabel(threeHoursAgo, now), "3h ago");
+});
+
+test("relativeAgeLabel: a future (clock-skewed) timestamp renders 'clock-skewed', never a negative age", () => {
+  const now = Date.parse("2026-09-16T15:00:00Z");
+  const future = new Date(now + 500_000).toISOString();
+  assert.equal(relativeAgeLabel(future, now), "clock-skewed");
 });

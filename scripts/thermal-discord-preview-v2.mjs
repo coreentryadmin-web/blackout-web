@@ -15,7 +15,6 @@ import { fetchGexHeatmap } from "../src/lib/providers/polygon-options-gex.ts";
 import {
   THERMAL_DISCORD_TICKERS,
   renderThermalDiscordCardPng,
-  type ThermalCardColumn,
 } from "../src/lib/thermal-discord-card.ts";
 import { buildThermalDiscordEmbed } from "../src/lib/thermal-discord-embed.ts";
 import { postDiscordWebhookWithFiles, postDiscordWebhook, redactWebhook } from "../src/lib/discord-post.ts";
@@ -23,7 +22,7 @@ import { postDiscordWebhookWithFiles, postDiscordWebhook, redactWebhook } from "
 const PREVIEW_TAG = "**[PREVIEW — Thermal Discord v2 — not production]**";
 
 /** Representative structure for format preview when live cache/Polygon is unreachable from sandbox. */
-function buildPreviewSnapshotColumns(): ThermalCardColumn[] {
+function buildPreviewSnapshotColumns() {
   const asof = new Date().toISOString();
   const expiries = ["2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-08"];
   const mk = (underlying, spot, change_pct, call_wall, put_wall, flip, cDrift, pDrift, posture) => ({

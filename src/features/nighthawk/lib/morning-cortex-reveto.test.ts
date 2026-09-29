@@ -48,7 +48,8 @@ describe("applyCortexMorningReveto", () => {
     const { statuses: out, result } = applyCortexMorningReveto(statuses, new Map());
     assert.deepEqual(out, statuses);
     assert.equal(result.vetoed.length, 0);
-    assert.equal(result.skipped.length, 2);
+    assert.equal(result.skipped_no_verdict.length, 2);
+    assert.equal(result.skipped_already_invalidated.length, 0);
   });
 
   test("Cortex veto upgrades CONFIRMED → INVALIDATED", () => {
@@ -83,7 +84,8 @@ describe("applyCortexMorningReveto", () => {
     const { statuses: out, result } = applyCortexMorningReveto(statuses, verdicts);
     assert.equal(out[0].status, "INVALIDATED");
     assert.equal(out[0].reason, "Gapped through stop");
-    assert.equal(result.skipped.length, 1);
+    assert.equal(result.skipped_already_invalidated.length, 1);
+    assert.equal(result.skipped_no_verdict.length, 0);
     assert.equal(result.vetoed.length, 0);
   });
 
@@ -96,12 +98,14 @@ describe("applyCortexMorningReveto", () => {
     assert.equal(result.cleared[0], "AMD");
   });
 
-  test("null verdict (Cortex errored) → skipped", () => {
+  test("null verdict (Cortex errored) → skipped_no_verdict, distinct from an already-invalidated skip", () => {
     const statuses = [ps({ ticker: "AMD" })];
     const verdicts = new Map<string, CortexVerdict | null>([["AMD", null]]);
     const { statuses: out, result } = applyCortexMorningReveto(statuses, verdicts);
     assert.equal(out[0].status, "CONFIRMED");
-    assert.equal(result.skipped.length, 1);
+    assert.equal(result.skipped_no_verdict.length, 1);
+    assert.equal(result.skipped_no_verdict[0], "AMD");
+    assert.equal(result.skipped_already_invalidated.length, 0);
   });
 
   test("case-insensitive ticker matching", () => {
@@ -112,6 +116,16 @@ describe("applyCortexMorningReveto", () => {
     const { statuses: out, result } = applyCortexMorningReveto(statuses, verdicts);
     assert.equal(out[0].status, "INVALIDATED");
     assert.equal(result.vetoed.length, 1);
+  });
+
+  test("skip reasons stay distinguishable: an already-invalidated play never lands in skipped_no_verdict, and a Cortex-errored play never lands in skipped_already_invalidated (2026-09-13 fix)", () => {
+    const statuses = [
+      ps({ rank: 1, ticker: "WFC", status: "INVALIDATED", reason: "Gapped through stop" }),
+      ps({ rank: 2, ticker: "AMD", status: "CONFIRMED" }), // no verdict in the map at all
+    ];
+    const { result } = applyCortexMorningReveto(statuses, new Map());
+    assert.deepEqual(result.skipped_already_invalidated, ["WFC"]);
+    assert.deepEqual(result.skipped_no_verdict, ["AMD"]);
   });
 
   test("mixed batch: one vetoed, one cleared, one already invalidated", () => {
@@ -130,7 +144,9 @@ describe("applyCortexMorningReveto", () => {
     assert.equal(out[2].status, "INVALIDATED");
     assert.equal(result.vetoed.length, 1);
     assert.equal(result.cleared.length, 1);
-    assert.equal(result.skipped.length, 1);
+    assert.equal(result.skipped_already_invalidated.length, 1);
+    assert.equal(result.skipped_already_invalidated[0], "WFC");
+    assert.equal(result.skipped_no_verdict.length, 0);
   });
 
   test("CONFIRMED with 'All checks passed' reason → only Cortex veto reason (no vestigial text)", () => {

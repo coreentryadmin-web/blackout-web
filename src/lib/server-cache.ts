@@ -231,7 +231,31 @@ export async function withServerCache<T>(
           return redisHit.value;
         }
       }
-      if (opts.fallback) return opts.fallback() as Promise<T>;
+      if (opts.fallback) {
+        // BUG (found live 2026-09-16): this branch is reached when a build for `key` is
+        // already inflight (from a concurrent caller) AND there's no hit/Redis copy to
+        // serve — a fully cold key under concurrent load, e.g. right after a deploy cycles
+        // tasks or a session-date rollover. Unlike the cold-start path below (which races
+        // its own refreshCache() against maxBlockMs), this call to opts.fallback() was
+        // awaited with NO timeout at all. When the fallback itself does real work that can
+        // block (spx-desk-loader.ts's desk fallback calls loadSpxDeskPulse(), itself a
+        // withServerCache-wrapped builder that can hit a slow upstream), a caller landing
+        // here has no bound on how long it waits — measured live: /api/market/spx/desk
+        // returned in 42.8s against a documented 3s maxBlockMs cap (deskBootstrapMaxBlockMs()),
+        // a ~14x overshoot, while ALB TargetResponseTime showed a sustained sitewide avg
+        // climb to ~11-13s for several minutes. Race it the same way the path below does,
+        // so a slow fallback can never block longer than the caller's own configured cap.
+        const maxBlock = opts.maxBlockMs;
+        if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
+          const racedFallback = await Promise.race([
+            opts.fallback() as Promise<T>,
+            new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+          ]);
+          if (racedFallback !== "timeout") return racedFallback;
+          throw new Error(`[server-cache] ${key}: cold miss (inflight, fallback) exceeded maxBlockMs`);
+        }
+        return opts.fallback() as Promise<T>;
+      }
     }
     return pending;
   }
@@ -244,7 +268,26 @@ export async function withServerCache<T>(
       new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
     ]);
     if (raced !== "timeout") return raced;
-    if (opts.fallback) return opts.fallback() as Promise<T>;
+    if (opts.fallback) {
+      // BUG, part 2 (found live 2026-09-16, same shape as the "already inflight" branch
+      // above): this is the COLD-START path — no build was already inflight, so `refresh`
+      // itself just raced against maxBlockMs and lost. Falling through to opts.fallback()
+      // here was ALSO awaited with no timeout, so a slow fallback (spx-desk-loader.ts's
+      // deskCacheOpts.fallback calls loadSpxDeskPulse(), itself a withServerCache-wrapped
+      // builder that can hit a slow Polygon fetch) could still block the caller far past
+      // maxBlockMs even after the fix above landed — confirmed live post-deploy: PR #5061
+      // shipped the "already inflight" fix, but /api/market/spx/desk still measured a 42.2s
+      // response afterward, because on a genuinely cold key (the far more common case — no
+      // concurrent request racing the same build) execution lands HERE, not in the inflight
+      // branch. Race it the same way.
+      const racedFallback = await Promise.race([
+        opts.fallback() as Promise<T>,
+        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
+      ]);
+      if (racedFallback !== "timeout") return racedFallback;
+      // Fallback also blew the cap — fall through to stale/background-refresh below rather
+      // than waiting on it further.
+    }
     if (hit) return hit.value;
     // Never await the slow cold build after the cap — keep refreshing in background.
     refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);

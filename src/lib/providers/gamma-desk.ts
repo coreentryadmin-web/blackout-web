@@ -1,6 +1,9 @@
 /** 0DTE gamma desk — flip level & GEX walls (ported from engine gamma_desk.py). */
 
-import { cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+import {
+  cumulativeGammaFlipDetail,
+  type GammaFlipDetail,
+} from "@/lib/providers/gex-cross-validation-core";
 
 export type GexStrikeLevel = {
   strike: number;
@@ -67,17 +70,34 @@ export function analyzeStrikeGexRows(rows: Record<string, unknown>[]): {
  * rather than reporting a long→short crossing or a terminal zero-touch as a flip. That removes the
  * cross-surface disagreement and the below-spot inversion documented in docs/audit/FINDINGS.md.
  */
-export function computeGammaFlip(
+/**
+ * Same conversion as `computeGammaFlip`, but keeps the WHY behind a null flip
+ * (`GammaFlipDetail.reason`) instead of collapsing it to a bare `null`. Extracted so a caller that
+ * needs to distinguish a genuine data outage (`insufficient_strikes`) from a real, unambiguous
+ * short-gamma book (`net_short_everywhere` — see gex-cross-validation-core.ts's own doc comment)
+ * doesn't have to re-derive the strike-totals conversion itself. `computeGammaFlip` below delegates
+ * to this so the two can never disagree on the flip value itself.
+ */
+export function computeGammaFlipDetail(
   levels: Array<{ strike: number; net_gex: number }>,
   spot: number
-): number | null {
-  if (!levels.length || spot <= 0) return null;
+): GammaFlipDetail {
+  if (!levels.length || spot <= 0) {
+    return { flip: null, reason: "insufficient_strikes", crossings: 0, nearestCrossing: null };
+  }
   const strikeTotals: Record<string, number> = {};
   for (const lv of levels) {
     if (!Number.isFinite(lv.strike) || !Number.isFinite(lv.net_gex)) continue;
     strikeTotals[lv.strike] = (strikeTotals[lv.strike] ?? 0) + lv.net_gex;
   }
-  return cumulativeGammaFlip(strikeTotals, spot);
+  return cumulativeGammaFlipDetail(strikeTotals, spot);
+}
+
+export function computeGammaFlip(
+  levels: Array<{ strike: number; net_gex: number }>,
+  spot: number
+): number | null {
+  return computeGammaFlipDetail(levels, spot).flip;
 }
 
 export function gammaRegime(spot: number, flip: number | null): string {

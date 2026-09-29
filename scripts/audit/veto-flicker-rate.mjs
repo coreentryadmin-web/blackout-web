@@ -1,13 +1,23 @@
 /**
- * VETO-FLICKER-RATE MEASUREMENT (design item #2 — Cortex veto has no hysteresis/latching).
+ * VETO-FLICKER-RATE MEASUREMENT (design item #2, docs/audit/INTENTIONAL-DESIGN.md).
  *
- * `evaluateCortexForCommit` (cortex-gate.ts) recomputes the Cortex verdict FRESH on every scan pass —
- * a veto is stateless: it neither latches (stay vetoed once vetoed) nor dwells (require the block to
- * persist for K passes before it bites). That is a deliberate choice — Cortex is a precision layer that
- * can only ever REMOVE plays, and a stale latched veto would suppress a genuinely-cleared setup. But it
- * has a measurable cost: a veto that FLICKERS (fires on one pass, clears the next, fires again) either
- * (a) whipsaws a candidate in and out of the board, or (b) reflects a real, unstable signal. This
- * harness measures the flicker rate so a dwell/hysteresis decision is evidence-driven, not a guess.
+ * HISTORY, corrected 2026-09-12 (see INTENTIONAL-DESIGN.md item #2 for the full account — this
+ * header previously described the live system, not just the one function below, as stateless; that
+ * stopped being true on 2026-08-25 and this comment was never updated, which is exactly the kind of
+ * drift this tool's own output could be misread through if the header is trusted at face value).
+ * `evaluateCortexForCommit` (cortex-gate.ts) still recomputes a FRESH Cortex verdict on every call in
+ * isolation — given the same inputs, the same verdict, no memory of its own. But since PR #2904
+ * (2026-08-25), `scan.ts`'s `attachGateVerdicts` pipes that fresh verdict through
+ * `applyCortexVetoDwell` (`cortex-veto-dwell.ts`) BEFORE it reaches persistence or the board: a VETO
+ * now LATCHES for `ZERODTE_CORTEX_VETO_DWELL_PASSES` (default 3) consecutive non-veto passes before
+ * clearing. The EFFECTIVE decision this script measures (via `zerodte_scan_rejections` /
+ * `zerodte_discovery_events`, both written post-dwell) is therefore NOT the raw stateless series this
+ * tool was originally built to characterize — a run against data from 2026-08-25 onward measures
+ * "does the shipped dwell reduce observed flicker," not "is the raw veto's flicker rate high enough to
+ * justify adding a dwell" (that original question can no longer be answered from live data, because
+ * the system it was about no longer runs in production). This harness still measures the flicker rate
+ * so a dwell/hysteresis decision is evidence-driven rather than a guess — just note which question a
+ * given run is actually answering before quoting its number.
  *
  * DEFINITION. For each ticker over a session's ordered scan passes, a "veto episode" is a maximal run of
  * consecutive passes on which a Cortex VETO (`cortex_veto:<source>` or the veto-blind firewall
