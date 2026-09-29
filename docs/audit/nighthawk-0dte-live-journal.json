@@ -488,6 +488,13 @@
       "summary": "upstream_ok:false STILL persisting across 3 fresh fetches (19:10:49, 19:16:03, 19:16:20 -- each a distinct as_of timestamp, so this is not a stale cache, the degradation is genuinely ongoing) -- notably longer than the prior instances today which self-healed within 1-2 cycles. /record cross-checked again: still graded:20/wins:10/losses:9/breakeven:1, unchanged and consistent -- no data loss, the Postgres-backed record path remains completely unaffected. Not escalating yet (no live-trading-path safety issue, data confirmed safe, and CLAUDE.md documents this as an expected recurring pattern) but flagging the LONGER duration explicitly as a distinct data point from the quick-heal instances -- if this specific 'degradation persists >10-15min' shape repeats 2 more times, that would be a genuine 3-instance case worth escalating as a duration/reliability question (separate from the already-accepted 'board snapshot transiently empty' pattern itself).",
       "action": "none -- will re-poll next cycle to see when/if it clears",
       "escalation": "none"
+    },
+    "2026-09-29T19:43:00Z_upstream_healed_post_commit_csiq_open": {
+      "cycle_time": "2026-09-29T19:40:25.903Z",
+      "trigger": "19:43 UTC (trigger 3/4 offset :30)",
+      "summary": "Board self-healed: upstream_ok back to true after the extended (~30+min) degradation logged in the prior two cycles -- longest-duration instance today but resolved without any data loss (consistent with every /record cross-check during the outage). Board transitioned RTH -> POST_COMMIT (no new commits after 3:30 PM ET). 11th trade of the day: CSIQ, still OPEN/HOLD, live -6.98%, peak 4.65% (never cleared the 5% arm threshold, correctly unarmed). This is the only open position heading into the 3:50 PM hard exit -- all other 10 trades already closed.",
+      "action": "none -- watching CSIQ resolve at or before the 3:50 PM hard exit",
+      "escalation": "none"
     }
   },
   "sessions": {
