@@ -418,6 +418,13 @@
       "summary": "Transitioned PRE_MARKET -> OPENING_DRIVE (heat_pct 70, 'Ranges forming -- engines arming. Best entries usually come after 9:50.'). ledger_len still 0 -- correctly empty, G-2 opening_window gate expected to hold commits for the first ~10 min of RTH per documented design. Normal progression.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-29T14:17:00Z_first_commit_be_strong_winner": {
+      "cycle_time": "2026-09-29T14:17:16.630Z",
+      "trigger": "14:16 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "Board transitioned OPENING_DRIVE -> RTH. First commit of the day: BE long, tier B, exit_policy_at_commit trim_scale, entry 6.15, status TRIM (trim_scale ladder has partially scaled out). Strong move: peak_pnl_pct 42.68%, live_pnl_pct 41.95%, floor_pnl_pct correctly armed at 17.07% (= peak*0.4, exact #5472 formula match -- this peak is well above both the old 15% and new 5% early-arm thresholds, so not itself a new confirmation of the 5%-threshold fix specifically, but consistent with the formula). Coherent so far, watching for resolution.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
