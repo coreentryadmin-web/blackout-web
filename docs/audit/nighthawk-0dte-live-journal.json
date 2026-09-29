@@ -467,6 +467,13 @@
       "summary": "3rd live instance of the documented upstream_ok:false self-healing board degradation (prior instances: 2026-09-28 15:44 and 19:11 UTC). Board ledger transiently empty (ledger_len:0, upstream_ok:false), persisted across 2 fetches ~20s apart. Cross-checked per standing protocol: GET /api/market/zerodte/record?days=1 shows graded:20, wins:10, losses:9, breakeven:1, rows.length:20 -- non-zero, consistent with the rolling window covering both today's 9 known trades plus some overlap. No data loss. Not escalating -- same recurring, self-healing pattern.",
       "action": "none -- will re-poll board next cycle to confirm self-heal",
       "escalation": "none"
+    },
+    "2026-09-29T17:44:00Z_nvts_breakout_origin_multiday_expiry": {
+      "cycle_time": "2026-09-29T17:43:24.822Z",
+      "trigger": "17:44 UTC (trigger 3/4 offset :30)",
+      "summary": "10th trade: NVTS short, discovery_origin BREAKOUT (first BREAKOUT-origin commit observed today -- everything else this session has been FLOW-origin). Notable: expiry 2026-10-02, several days out rather than same-day -- single stocks without daily-expiring options presumably use the nearest available weekly rather than a true 0DTE contract; plausible by design (BREAKOUT-origin single-stock plays vs index/ETF same-day 0DTE), not escalating on one instance, but worth watching for a 2nd/3rd instance to confirm this is the intended pattern rather than a mis-tagged contract. Trade itself resolved cleanly via thesis-break (gex-walls) in ~1.75min at -5.36% -- the 2nd thesis-break instance today (after MSTR at 14:43-44), still below the 3-instance noise threshold, both instances coherent/fast, no lagging round-trips.",
+      "action": "none -- watching for more BREAKOUT-origin instances to confirm the multi-day-expiry pattern is intentional",
+      "escalation": "none"
     }
   },
   "sessions": {
