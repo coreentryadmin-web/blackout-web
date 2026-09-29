@@ -4,6 +4,54 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-09-28 — [FINDING, P2 Ask Largo / Night Hawk Legacy] `get_nighthawk_dossier`'s archived-fallback path could truncate before ever reaching `scored` on a ticker with a large flow-alert history — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live repro (2026-09-28, BB, edition_for 2026-09-29, via `POST /api/market/largo/query`): asking Largo to use `get_nighthawk_dossier(ticker=BB, date=2026-09-29)` returned a tool result that was cut off mid-`flows`-array — the model reported (and a follow-up call explicitly instructed to ignore `flows` and check only for `scored` confirmed) that no `scored` key was ever visible, even though the archived row genuinely has one. WAT/KOD/TWLO/ZS's archived dossiers were small enough to not hit this on the same night — ticker-dependent, not universal, which is exactly why it hadn't been caught by any prior audit pass. |
+| **Root cause** | `run-tool.ts`'s `get_nighthawk_dossier` case has two dossier shapes: the live-staging position shape (has a `plays` array) and the durable `nighthawk_scoring_history` archive shape (raw `TickerDossier` — `tech` + a per-alert `flows` array — with no `plays` field at all). The one existing pruner, `pruneDossier`, guards on `if (!plays || !Array.isArray(plays)) return d;` — a guard written for the live-staging shape, which means it silently no-ops on the archive shape instead of pruning it. So the archived-fallback branch returned `{ ticker, dossier: pruneDossier(archivedRow.dossier), scored: archivedRow.scored }` with the dossier completely unpruned and, worse, serialized *before* the much smaller `scored` object — so on a ticker with enough historical flow alerts, the tool-result transport's `MAX_TOOL_RESULT_CHARS` cap truncated the payload inside `flows`, before `scored` (and everything after it in the object) was ever reached. Same defect *family* as the three truncations `largo-truncation-probe.mjs` already tracks (`get_zerodte_record` #2433, `get_nighthawk_edition` #2436, `get_nighthawk_outcomes`), but a distinct call site (`get_nighthawk_dossier`'s archived-fallback branch specifically) not previously catalogued. |
+| **Fix** | Two independent mitigations in `run-tool.ts`, since either alone leaves a gap: (1) new `pruneArchivedDossier` helper drops the raw `flows` array from the archived dossier shape before it's returned — the raw per-alert list was only ever needed to reconstruct a live prompt, not to explain a scoring decision, and the compact fields that DO explain it (`tech`, `sector`, `iv_rank`, `dark_pool`, `positioning`, `catalysts`, etc.) are left untouched; (2) the returned object now serializes `scored` *before* `dossier` (`{ ticker, scored, dossier: pruneArchivedDossier(...) }`), so a still-oversized dossier truncates its own tail, never the compact `scored` object ahead of it. Two new regression tests in `src/lib/largo/run-tool.test.ts`: one with a BB-shaped fixture (`flows` present) asserting the array is dropped and `scored` serializes first; one with a `flows`-free fixture asserting nothing is fabricated or removed when there's nothing to prune. The three pre-existing archived-fallback tests pass unchanged. |
+| **Evidence** | Live repro via two separate `get_nighthawk_dossier(ticker=BB, date=2026-09-29)` calls through `/api/market/largo/query` (documented in `docs/audit/nighthawk-legacy-live-journal.json`'s `legacyDossierTruncationBB_2026_09_28` entry) — both truncated mid-`flows`-array, zero `scored` key visible. `npx tsc --noEmit` clean. `npx tsx --experimental-test-module-mocks --test src/lib/largo/run-tool.test.ts` — 14/14 pass (2 new, 12 pre-existing unchanged). Full suite pending in CI. |
+| **Status** | FIXED — PR #5564, merged, confirmed via `git log --oneline -1 origin/main` (`3448c70d4`). |
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
 ## P3: Swing play-brief ecosystem/Vector fetch failures were logged nowhere — FIXED
 
 > **kind:** `FINDING`
@@ -76,40 +124,6 @@ semantics, no change to the envelope, no change to `collectBriefUnavailableSourc
 | --- | --- |
 | **Commit** | 8f2d8dd49 (#5559) |
 | **PR** | small, single-issue |
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-09-28 — [FINDING, P2 SPX Slayer] `gates.blocks` could show the same synthesized trade idea twice when two different raw gate failures humanized to the same text — FIXED
 
