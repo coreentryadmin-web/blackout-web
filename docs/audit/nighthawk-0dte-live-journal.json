@@ -446,6 +446,13 @@
       "summary": "BE resolved: final CLOSED at +40% via ratchet, with exit_detail EXPLICITLY confirming the trim_scale ladder worked as designed end-to-end -- 'This is the runner only -- 2/2 tranches (33% each) already banked on the way up.' So the full lifecycle for this trade: entered 6.15, ran to +100% peak (12.30), banked 2 partial tranches along the way per trim_scale rules, floor armed at 40% (=100*0.4), retraced and the remaining runner exited at exactly the floor. A clean, textbook confirmation of the trim_scale exit mode doing exactly what TRIM_SCALE_RULES describes -- best example of it observed all week. AMD resolved via flat-timeout at -9.38% (dipped to -19.92% intraday, recovered inside +/-10% band, correctly scratched per the flat-timeout rule). Only ORCL remains open/HOLD, now -27.95% (peak still only 0.98%, correctly unarmed -- within normal range, well short of the -50% hard stop). Day tally so far: BE +40%, QQQ +3.51%, MSTR 0% (instant thesis-break, still only 1 instance), AMD -9.38%, ORCL still open at -27.95%.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-29T15:44:00Z_orcl_stop_spxw_ratchet_3_new_opens": {
+      "cycle_time": "2026-09-29T15:44:51.333Z",
+      "trigger": "15:44 UTC (trigger 3/4 offset :30)",
+      "summary": "9 trades total. ORCL stopped out cleanly: mark 2.24 (-51.09%) at/below plan stop 2.29 -- normal stop-slippage mechanics, nothing anomalous. SPXW (new trade) closed cleanly via ratchet: peak 6.42%, floor 2.57% (=6.42*0.4 exact), exit +2.57% -- another #5472 confirmation in the [5%,15%) band. Three new opens, all correctly unarmed: ASTS short (-13.11%, peak 0%), SPY short (-32.99% live, notable drawdown -- peak briefly touched 4.9% then reversed hard to a -38.7% trough before the last check, but never cleared the 5% arm threshold so floor correctly still null -- within normal range, well short of the -50% hard stop), PL short (-7.89%, peak -1.32%, never went positive). Day tally so far: BE +40%, QQQ +3.51%, SPXW +2.57% (3 wins), MSTR 0% scratch, AMD -9.38%, ORCL -51.09% stop (2 losses so far), ASTS/SPY/PL still open.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
