@@ -4,6 +4,15 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-29 (16:35 UTC / Tue 12:35 ET) — [SEO] Market-hours wake: gamma-snapshot clean (one harmless calc_id blip), CLS clean
+
+RTH window confirmed (12:35 ET, trading day, near close of window). Purged Cloudflare edge,
+measured live homepage desktop CLS on a real-data-rendering page — **0, GOOD**. Polled
+`/api/public/gex-snapshot?ticker=SPX` — one non-monotonic `calculation_id` observed on the first
+3-poll batch (reverted to an older value), re-polled 5x at tighter 3s intervals and got a fully
+stable, clean result — same harmless backend-replica/cache-read race documented before, not a
+regression. `market_session: OPEN`, `degraded: false` throughout. Nothing to ship.
+
 ## 2026-09-29 (15:36 UTC / Tue 11:36 ET) — [SEO] Market-hours wake: gamma-snapshot clean, CLS clean
 
 RTH window confirmed (11:36 ET, trading day). Purged Cloudflare edge, measured live homepage
