@@ -474,6 +474,13 @@
       "summary": "10th trade: NVTS short, discovery_origin BREAKOUT (first BREAKOUT-origin commit observed today -- everything else this session has been FLOW-origin). Notable: expiry 2026-10-02, several days out rather than same-day -- single stocks without daily-expiring options presumably use the nearest available weekly rather than a true 0DTE contract; plausible by design (BREAKOUT-origin single-stock plays vs index/ETF same-day 0DTE), not escalating on one instance, but worth watching for a 2nd/3rd instance to confirm this is the intended pattern rather than a mis-tagged contract. Trade itself resolved cleanly via thesis-break (gex-walls) in ~1.75min at -5.36% -- the 2nd thesis-break instance today (after MSTR at 14:43-44), still below the 3-instance noise threshold, both instances coherent/fast, no lagging round-trips.",
       "action": "none -- watching for more BREAKOUT-origin instances to confirm the multi-day-expiry pattern is intentional",
       "escalation": "none"
+    },
+    "2026-09-29T19:10:00Z_upstream_degradation_4th_instance_clean": {
+      "cycle_time": "2026-09-29T19:10:49.500Z",
+      "trigger": "19:10 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "4th instance today of the upstream_ok:false board degradation (prior: 16:16 today, plus 2 instances yesterday). /record cross-check: graded:20, wins:10, losses:9, breakeven:1 -- identical to the 16:16 reading, consistent, no data loss. Frequency this session (4x in ~1 trading day) is somewhat higher than the historical 2-3x/session baseline noted in CLAUDE.md, but each instance individually resolves cleanly and self-heals -- not escalating on frequency alone since no instance has shown actual data loss or a failure to self-heal; will keep tracking frequency as a soft signal.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
