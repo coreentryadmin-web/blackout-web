@@ -2175,8 +2175,28 @@ export function buildIntelSections(
     // Same restatement class as roundTripAlreadyNoted above, closing the gap that fix left open —
     // see lessonsSection's own doc comment (2026-09-18) for the live repro.
     const adviceAlreadyNoted = narrative?.body?.includes("tighten at first trim rail next time") ?? false;
+    // GAP FOUND (2026-09-29, Ask Largo standing mandate, live repro HUT:43 CLOSED/stopped):
+    // closedCoaching's 2026-09-28 fix (play-brief-narrative-coaching.ts) replaced its generic
+    // "check if entry was extended past invalidation" ask with a computed cushion answer
+    // ("entry X vs invalidation Y, a Z% cushion at commit...") whenever entryTriggerUnderlyingPx/
+    // invalidationUnderlyingPx are both present — but this dedup flag still only matched the OLD
+    // generic phrasing, which the new answer no longer contains. So on every stopped CLOSED play
+    // with both levels pinned (the common case, not the absence edge case), "Trade manager read"
+    // rendered the real cushion answer while "Lessons" — one section below, same response —
+    // independently re-asked the exact question that section had just answered. Same restatement
+    // class as roundTripAlreadyNoted/adviceAlreadyNoted above; gate on the same structural
+    // condition closedCoaching uses to pick its phrasing (mirrors its trig!==0/finite check)
+    // rather than string-matching prose that a future rewording can drift out from under again.
+    const stopCushionAnswered =
+      play.closedReason === "stopped" &&
+      typeof play.entryTriggerUnderlyingPx === "number" &&
+      Number.isFinite(play.entryTriggerUnderlyingPx) &&
+      play.entryTriggerUnderlyingPx !== 0 &&
+      typeof play.invalidationUnderlyingPx === "number" &&
+      Number.isFinite(play.invalidationUnderlyingPx);
     const stopAdviceAlreadyNoted =
-      narrative?.body?.includes("check if entry was extended past invalidation") ?? false;
+      (narrative?.body?.includes("check if entry was extended past invalidation") ?? false) ||
+      stopCushionAnswered;
     // Closes the capture>=75 "Strong exit discipline" gap the flags above left open — see
     // lessonsSection's own doc comment (2026-09-18) for the live repro (CRWD:19).
     const captureAlreadyNoted = narrative?.body?.includes("replicate trim timing") ?? false;
