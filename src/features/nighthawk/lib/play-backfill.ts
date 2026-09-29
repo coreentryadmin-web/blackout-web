@@ -1,14 +1,7 @@
 import { mapClaudePlayToEdition } from "./claude-edition";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "./constants";
 import type { TickerDossier } from "./dossier";
-import {
-  effectiveMeritScore,
-  effectiveMinPublishPlays,
-  effectiveMinPublishScore,
-  legacyMinPublishTier,
-  playMeritTier,
-} from "./edition-quality";
-import { nhConvictionRank } from "./nighthawk-tiers";
+import { effectiveMeritScore, effectiveMinPublishPlays } from "./edition-quality";
 import { tieredMinOi } from "./grounding";
 import { validatePlayGeometry } from "./play-constraints";
 import { capGatePromotedConviction } from "./publish-gates";
@@ -59,76 +52,73 @@ export function pickAffordableChainContract(
   };
 }
 
-/** True when a ranked candidate clears the global-strongest merit bar (score + tier). */
-export function rankedCandidateMeritEligible(
-  scored: ScoredCandidate,
-  dossiers: Record<string, TickerDossier>,
-): boolean {
-  const minScore = effectiveMinPublishScore();
-  const minTier = legacyMinPublishTier();
-  if (effectiveMeritScore(scored) < minScore) return false;
-  const probe: PlaybookPlay = {
-    rank: 1,
-    ticker: scored.ticker,
-    direction: scored.direction === "short" ? "SHORT" : "LONG",
-    conviction: scored.conviction,
-    play_type: "stock",
-    thesis: "",
-    key_signal: "",
-    entry_range: "-",
-    target: "-",
-    stop: "-",
-    options_play: "-",
-    score: scored.score,
-    confirming_signals: scored.confirming_signals,
-    earnings_risk: scored.earnings_risk,
-  };
-  const tier = playMeritTier(probe, dossiers);
-  return nhConvictionRank(tier) >= nhConvictionRank(minTier);
+/**
+ * STRUCTURAL-ONLY backfill eligibility (2026-09-28 redesign, operator-approved — replaces the old
+ * rankedCandidateMeritEligible, which required the SAME score+tier bar as the organic path and
+ * made backfill a no-op on any night where the whole pool scored weakly, not just a gate-rejection
+ * rescue). Backfill exists specifically to admit a candidate that did NOT clear the merit bar, so
+ * checking that bar here would defeat the point. What it must still clear is "this is a real,
+ * safe, gradeable trade, not a guess":
+ *   - not trading-halted (mirrors deterministic-edition.ts's own main-loop check — a halted name
+ *     has no live market to enter at all, backfill or not).
+ * Score/tier are deliberately NOT checked here. Sector-concentration risk is respected by
+ * ranking the eligible pool on effectiveMeritScore (governor-demoted), never raw score, in
+ * backfillThinEditionPlays below — a name the cross-edition governor already discounted for
+ * over-representation stays discounted for backfill purposes too, it is never bypassed.
+ * "Completed scoring" and "resolves a real, liquid, affordable, geometry-valid contract" are
+ * enforced by construction: the caller only ever passes candidates from the already-scored
+ * `ranked` pool, and backfillThinEditionPlays itself skips (never placeholder-publishes) any
+ * candidate that can't resolve a real contract or fails the geometry gate.
+ */
+export function backfillCandidateEligible(scored: ScoredCandidate): boolean {
+  return !scored.trading_halt;
 }
 
 /**
- * When critic/grounding/merit filter leaves fewer than the ops minimum, backfill from the
- * highest-merit ranked candidates (same universe as synthesis) with chain-grounded contracts.
- * Every backfill play is gate_promoted with an honest warning — never silent filler.
+ * PURE selection logic (2026-09-28, extracted from backfillThinEditionPlays so it's testable
+ * without a network-dependent chain fetch — same split `buildDeterministicEditionPlays` already
+ * uses: chains are an INPUT, never fetched internally). Given an already-eligible, already-ranked
+ * pool plus their resolved chains, builds up to `minPlays` backfill plays. Every rejection reason
+ * (no dossier, no contract, failed geometry) is a plain `continue` with a console.warn — the
+ * candidate is simply not added, never published as a placeholder.
  */
-export async function backfillThinEditionPlays(params: {
+export function selectBackfillPlays(params: {
   finalPlays: PlaybookPlay[];
-  ranked: ScoredCandidate[];
+  pool: ScoredCandidate[];
   dossiers: Record<string, TickerDossier>;
-  minPlays?: number;
-}): Promise<{ plays: PlaybookPlay[]; notes: string[] }> {
-  const minPlays = params.minPlays ?? effectiveMinPublishPlays();
-  if (params.finalPlays.length >= minPlays) {
-    return { plays: params.finalPlays, notes: [] };
-  }
-
-  const used = new Set(params.finalPlays.map((p) => p.ticker.toUpperCase()));
-  const pool = params.ranked
-    .filter((r) => !used.has(r.ticker.toUpperCase()))
-    .filter((r) => rankedCandidateMeritEligible(r, params.dossiers))
-    .sort((a, b) => effectiveMeritScore(b) - effectiveMeritScore(a));
-  if (!pool.length) return { plays: params.finalPlays, notes: [] };
-
-  const dossierList = pool
-    .map((r) => params.dossiers[r.ticker.toUpperCase()])
-    .filter((d): d is TickerDossier => Boolean(d));
-
-  const chains = await fetchEditionChains({
-    stockTickers: pool.map((r) => r.ticker),
-    dossiers: dossierList,
-  });
-
+  chains: Record<string, EditionChainData>;
+  minPlays: number;
+}): { plays: PlaybookPlay[]; notes: string[] } {
+  const { finalPlays, dossiers, chains, minPlays } = params;
+  const used = new Set(finalPlays.map((p) => p.ticker.toUpperCase()));
   const notes: string[] = [];
-  const backfilled: PlaybookPlay[] = [...params.finalPlays];
+  const backfilled: PlaybookPlay[] = [...finalPlays];
+  // effectiveMeritScore, not raw score: a candidate the cross-edition sector-concentration
+  // governor already demoted stays demoted here too — backfill ranks AFTER that risk control is
+  // applied, it does not let a capped sector jump back ahead of an uncapped one by reverting to
+  // raw score. Sorted here (not by the caller) so this — the part the operator specifically
+  // required ("rank the remaining eligible candidates after those risk controls are applied") —
+  // is covered by a pure, direct unit test rather than trusted-by-construction in the
+  // network-touching wrapper.
+  const pool = [...params.pool].sort((a, b) => effectiveMeritScore(b) - effectiveMeritScore(a));
 
   for (const scored of pool) {
+    if (used.has(scored.ticker.toUpperCase())) continue;
     if (backfilled.length >= minPlays) break;
     const ticker = scored.ticker.toUpperCase();
-    const dossier = params.dossiers[ticker];
+    const dossier = dossiers[ticker];
     if (!dossier) continue;
 
+    // No placeholder contracts: a backfill candidate with no real, liquid, affordable contract
+    // is skipped outright, never published with an options_play of "-". This is the concrete
+    // "prevent obviously bad/invalid contracts" guard — pickAffordableChainContract already
+    // enforces the liquidity floor (tieredMinOi) and the $35/share premium cap; here we simply
+    // refuse to fall through when it returns null instead of silently degrading to stock-only.
     const contract = pickAffordableChainContract(ticker, scored.direction, chains[ticker]);
+    if (!contract) {
+      console.warn(`[nighthawk/backfill] skipped ${ticker} — no real liquid/affordable contract`);
+      continue;
+    }
     const support = dossier.tech?.support_levels?.[0];
     const resistance = dossier.tech?.resistance_levels?.[0];
     const spot = dossier.tech?.price ?? chains[ticker]?.spot;
@@ -150,12 +140,12 @@ export async function backfillThinEditionPlays(params: {
         entry_range: levels.entry_range,
         target: levels.target,
         stop: levels.stop,
-        options_play: contract?.options_play ?? "-",
-        entry_premium: contract?.entry_premium,
+        options_play: contract.options_play,
+        entry_premium: contract.entry_premium,
         score: scored.score,
       },
       backfilled.length + 1,
-      params.dossiers
+      dossiers
     );
     // Defense in depth: skip backfill candidates that still fail geometry (e.g. resistance ≤ support).
     if (!validatePlayGeometry(play).ok) {
@@ -166,6 +156,7 @@ export async function backfillThinEditionPlays(params: {
       capGatePromotedConviction({
         ...play,
         gate_promoted: true,
+        selection_tier: "BACKFILL",
         gate_warnings: [
           `Ranked-pool merit fill (#${backfilled.length + 1} by score ${Math.round(effectiveMeritScore(scored))}) — verify entry geometry before acting`,
         ],
@@ -173,11 +164,11 @@ export async function backfillThinEditionPlays(params: {
     );
     used.add(ticker);
     notes.push(
-      `Merit backfill ${ticker} (merit ${Math.round(effectiveMeritScore(scored))})${contract ? " — chain-grounded contract" : " — levels only"}.`
+      `Merit backfill ${ticker} (merit ${Math.round(effectiveMeritScore(scored))}) — chain-grounded contract.`
     );
   }
 
-  if (!notes.length) return { plays: params.finalPlays, notes: [] };
+  if (!notes.length) return { plays: finalPlays, notes: [] };
 
   const reranked = backfilled.map((p, i) => ({ ...p, rank: i + 1 }));
   return {
@@ -187,4 +178,50 @@ export async function backfillThinEditionPlays(params: {
       ...notes,
     ],
   };
+}
+
+/**
+ * When critic/grounding/merit filter leaves fewer than the ops minimum, backfill from the
+ * next-best ranked candidates (same universe as synthesis, sorted by governor-adjusted
+ * effectiveMeritScore so the cross-edition sector cap is respected, never bypassed) with
+ * chain-grounded contracts. Every backfill play is gate_promoted, carries selection_tier:
+ * "BACKFILL" (distinct from an organically-qualified play), and an honest warning — never
+ * silent filler, and never a placeholder: a candidate with no resolvable contract is skipped,
+ * not published with a "-" options_play. Thin I/O wrapper around selectBackfillPlays — fetches
+ * chains for the eligible pool, then hands off to the pure selection logic above.
+ */
+export async function backfillThinEditionPlays(params: {
+  finalPlays: PlaybookPlay[];
+  ranked: ScoredCandidate[];
+  dossiers: Record<string, TickerDossier>;
+  minPlays?: number;
+}): Promise<{ plays: PlaybookPlay[]; notes: string[] }> {
+  const minPlays = params.minPlays ?? effectiveMinPublishPlays();
+  if (params.finalPlays.length >= minPlays) {
+    return { plays: params.finalPlays, notes: [] };
+  }
+
+  const used = new Set(params.finalPlays.map((p) => p.ticker.toUpperCase()));
+  // Dedupe + structural eligibility only — selectBackfillPlays does the governor-respecting sort.
+  const pool = params.ranked
+    .filter((r) => !used.has(r.ticker.toUpperCase()))
+    .filter((r) => backfillCandidateEligible(r));
+  if (!pool.length) return { plays: params.finalPlays, notes: [] };
+
+  const dossierList = pool
+    .map((r) => params.dossiers[r.ticker.toUpperCase()])
+    .filter((d): d is TickerDossier => Boolean(d));
+
+  const chains = await fetchEditionChains({
+    stockTickers: pool.map((r) => r.ticker),
+    dossiers: dossierList,
+  });
+
+  return selectBackfillPlays({
+    finalPlays: params.finalPlays,
+    pool,
+    dossiers: params.dossiers,
+    chains,
+    minPlays,
+  });
 }

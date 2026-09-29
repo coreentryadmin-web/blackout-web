@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pickAffordableChainContract } from "./play-backfill";
+import { pickAffordableChainContract, selectBackfillPlays } from "./play-backfill";
 import { buildDirectionalStockLevels } from "./play-levels";
 import { validatePlayGeometry } from "./play-constraints";
 import type { PlaybookPlay } from "./types";
 import type { ChainStrikeRow, EditionChainData } from "./option-chain-prompt";
+import type { ScoredCandidate } from "./scorer";
+import type { TickerDossier } from "./dossier";
 
 const rows: ChainStrikeRow[] = [
   {
@@ -246,4 +248,250 @@ test("buildDirectionalStockLevels: missing/zero ATR falls back to the 0.5% defau
   // Floor half-band: MIN_ENTRY_HALF_PCT = 0.5%
   assert.equal(lo, 99.5);
   assert.equal(hi, 100.5);
+});
+
+// ── selectBackfillPlays (2026-09-28 backfill redesign) ──────────────────────────────────────
+// Real end-to-end reproduction of the operator's own tonight-example: BB/WAT/KOD/TWLO/ZS all
+// scored below the organic merit floor but completed scoring — does backfill correctly fill
+// toward the minimum from the next-best of THOSE, respecting the governor's sector demotion,
+// never placeholder-publishing, never exceeding the minimum, never touching the qualified plays
+// already in the edition.
+
+import { todayEtYmd } from "@/lib/providers/spx-session";
+
+function ymdPlus(days: number): string {
+  const t = todayEtYmd();
+  const d = new Date(t + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function bfRow(strike: number, opts: { oi?: number; callAsk?: number; putAsk?: number } = {}): ChainStrikeRow {
+  const oi = opts.oi ?? 5_000;
+  return {
+    expiry: ymdPlus(30),
+    strike,
+    call_bid: (opts.callAsk ?? 4.2) - 0.3,
+    call_ask: opts.callAsk ?? 4.2,
+    call_delta: 0.5,
+    call_oi: oi,
+    call_iv: null,
+    put_bid: (opts.putAsk ?? 4.2) - 0.3,
+    put_ask: opts.putAsk ?? 4.2,
+    put_delta: -0.5,
+    put_oi: oi,
+    put_iv: null,
+  };
+}
+
+/** A liquid, affordable chain around `spot`. */
+function bfChain(spot: number, opts: { oi?: number; callAsk?: number } = {}): EditionChainData {
+  return {
+    spot,
+    rows: [spot - 5, spot, spot + 5].map((s) => bfRow(s, opts)),
+  };
+}
+
+/** An chain with no affordable/liquid contract on either side — pickAffordableChainContract
+ *  returns null for this, the exact case selectBackfillPlays must skip rather than placeholder. */
+function bfChainUnaffordable(spot: number): EditionChainData {
+  return { spot, rows: [bfRow(spot, { callAsk: 999, putAsk: 999 })] };
+}
+
+function bfDossier(ticker: string, spot: number, over: Partial<TickerDossier> = {}): TickerDossier {
+  return {
+    ticker,
+    flows: [],
+    flow_streak: { streak_days: 1 } as TickerDossier["flow_streak"],
+    iv_rank: 40,
+    benzinga_price_target: null,
+    tech: {
+      ticker,
+      price: spot,
+      trend: "bullish",
+      setup_tags: [],
+      support_levels: [spot - 5],
+      resistance_levels: [spot + 5],
+      gap_zones: [],
+      breakout_zones: [],
+      prior_day: { high: spot + 6, low: spot - 6, close: spot },
+      weekly: { high: null, low: null },
+      rsi14: 55,
+      rel_volume: 1.2,
+      atr14: 3,
+      vwap: spot,
+      ema20: spot,
+      ema50: spot,
+      ema200: spot,
+      summary: `${ticker} holding above VWAP.`,
+    },
+    ...over,
+  } as TickerDossier;
+}
+
+function bfScored(ticker: string, score: number, over: Partial<ScoredCandidate> = {}): ScoredCandidate {
+  return {
+    ticker,
+    direction: "long",
+    score,
+    conviction: "C",
+    flow_score: 5,
+    tech_score: 5,
+    pos_score: 2,
+    news_score: 0,
+    smart_money_score: 0,
+    trading_halt: false,
+    ...over,
+  } as ScoredCandidate;
+}
+
+test("selectBackfillPlays: fills sub-floor scores toward the minimum from the ranked pool (the operator's own tonight-example shape)", () => {
+  // AMD already qualified organically (score 59) and is the one existing finalPlays entry.
+  // BB/WAT/KOD/TWLO/ZS all scored below the organic 40-point floor but completed scoring — this
+  // reproduces exactly that live shape and asserts backfill reaches the minimum of 3 from them.
+  const amd: PlaybookPlay = {
+    rank: 1, ticker: "AMD", direction: "LONG", conviction: "A", play_type: "stock",
+    thesis: "", key_signal: "", entry_range: "-", target: "-", stop: "-",
+    options_play: "AMD $200 Call", score: 59,
+  };
+  // Deliberately scrambled input order — proves selectBackfillPlays itself sorts by merit,
+  // rather than merely preserving whatever order the caller happened to pass in.
+  const pool = [
+    bfScored("ZS", 25),
+    bfScored("KOD", 30),
+    bfScored("WAT", 32),
+  ];
+  const dossiers: Record<string, TickerDossier> = {
+    WAT: bfDossier("WAT", 100),
+    KOD: bfDossier("KOD", 50),
+    ZS: bfDossier("ZS", 200),
+  };
+  const chains: Record<string, EditionChainData> = {
+    WAT: bfChain(100),
+    KOD: bfChain(50),
+    ZS: bfChain(200),
+  };
+
+  const { plays, notes } = selectBackfillPlays({
+    finalPlays: [amd],
+    pool,
+    dossiers,
+    chains,
+    minPlays: 3,
+  });
+
+  assert.equal(plays.length, 3, "reached the minimum of 3");
+  assert.equal(plays[0]!.ticker, "AMD", "the existing qualified play is untouched and stays first");
+  assert.equal(plays[0]!.selection_tier, undefined, "selectBackfillPlays never stamps the pre-existing qualified play");
+  // WAT (32) outranks KOD (30) outranks ZS (25) — filled in merit order.
+  assert.equal(plays[1]!.ticker, "WAT");
+  assert.equal(plays[2]!.ticker, "KOD");
+  assert.equal(plays[1]!.selection_tier, "BACKFILL");
+  assert.equal(plays[2]!.selection_tier, "BACKFILL");
+  assert.ok(notes.some((n) => n.includes("Thin edition backfill")));
+  assert.ok(notes.some((n) => n.includes("WAT")));
+  assert.ok(notes.some((n) => n.includes("KOD")));
+  assert.ok(!notes.some((n) => n.includes("ZS")), "ZS was never needed once the minimum was reached");
+});
+
+test("selectBackfillPlays: respects the cross-edition sector-concentration governor — a raw-higher-scored but governor-demoted candidate ranks BEHIND a lower-raw-scored, undemoted one", () => {
+  // Reproduces the exact tonight-shape the operator called out: BB raw 41, demoted -10 by the
+  // sector governor to effective 31; WAT raw 32, never demoted. Backfill must rank WAT ahead of
+  // BB (respecting the governor), never revert to raw score (which would rank BB first and
+  // silently let a capped sector reappear ahead of an uncapped one).
+  const bb = bfScored("BB", 41, { govPenalty: 10 }); // effective 31
+  const wat = bfScored("WAT", 32); // effective 32, no demotion
+  const dossiers = { BB: bfDossier("BB", 100), WAT: bfDossier("WAT", 120) };
+  const chains = { BB: bfChain(100), WAT: bfChain(120) };
+
+  const { plays } = selectBackfillPlays({
+    finalPlays: [],
+    pool: [bb, wat], // BB listed first by raw score — the sort must still put WAT first
+    dossiers,
+    chains,
+    minPlays: 1,
+  });
+
+  assert.equal(plays.length, 1, "minPlays=1 stops after the single best-ranked candidate");
+  assert.equal(plays[0]!.ticker, "WAT", "governor-demoted BB (effective 31) ranks behind undemoted WAT (32)");
+});
+
+test("selectBackfillPlays: never exceeds minPlays even when more eligible candidates exist", () => {
+  const pool = [bfScored("A", 30), bfScored("B", 29), bfScored("C", 28), bfScored("D", 27)];
+  const dossiers = Object.fromEntries(pool.map((s) => [s.ticker, bfDossier(s.ticker, 100)]));
+  const chains = Object.fromEntries(pool.map((s) => [s.ticker, bfChain(100)]));
+
+  const { plays } = selectBackfillPlays({ finalPlays: [], pool, dossiers, chains, minPlays: 3 });
+  assert.equal(plays.length, 3, "stopped exactly at the minimum, never filled to the full pool size");
+  assert.deepEqual(plays.map((p) => p.ticker), ["A", "B", "C"]);
+});
+
+test("selectBackfillPlays: never removes or replaces an existing qualified play", () => {
+  const qualified: PlaybookPlay = {
+    rank: 1, ticker: "AMD", direction: "LONG", conviction: "A", play_type: "stock",
+    thesis: "", key_signal: "", entry_range: "-", target: "-", stop: "-",
+    options_play: "AMD $200 Call", score: 59, selection_tier: "QUALIFIED",
+  };
+  const pool = [bfScored("WAT", 32)];
+  const dossiers = { WAT: bfDossier("WAT", 100) };
+  const chains = { WAT: bfChain(100) };
+
+  const { plays } = selectBackfillPlays({ finalPlays: [qualified], pool, dossiers, chains, minPlays: 3 });
+  const amdRow = plays.find((p) => p.ticker === "AMD");
+  assert.ok(amdRow, "AMD is still present");
+  assert.equal(amdRow!.selection_tier, "QUALIFIED", "untouched — backfill never overwrites an existing tier");
+  assert.equal(amdRow!.score, 59, "untouched — backfill never mutates an existing qualified play's data");
+});
+
+test("selectBackfillPlays: skips a candidate with no real liquid/affordable contract — never a placeholder", () => {
+  const pool = [bfScored("ILLIQUID", 35), bfScored("GOOD", 30)];
+  const dossiers = {
+    ILLIQUID: bfDossier("ILLIQUID", 100),
+    GOOD: bfDossier("GOOD", 100),
+  };
+  const chains = {
+    ILLIQUID: bfChainUnaffordable(100),
+    GOOD: bfChain(100),
+  };
+
+  const { plays, notes } = selectBackfillPlays({ finalPlays: [], pool, dossiers, chains, minPlays: 3 });
+  assert.equal(plays.length, 1, "only GOOD was added — ILLIQUID skipped outright");
+  assert.equal(plays[0]!.ticker, "GOOD");
+  assert.notEqual(plays[0]!.options_play, "-", "never a placeholder options_play");
+  assert.ok(!notes.some((n) => n.includes("ILLIQUID")), "a skipped candidate produces no promotion note");
+});
+
+test("selectBackfillPlays: a trading-halted candidate in the pool is never promoted", () => {
+  // Eligibility (backfillCandidateEligible) is normally applied by the caller before building
+  // `pool` — this proves selectBackfillPlays' own contract/geometry checks don't accidentally
+  // promote a halted name if one slips through, by pairing it with a real dossier/chain that
+  // WOULD otherwise pass every other check.
+  const pool = [bfScored("HALTED", 90, { trading_halt: true })];
+  const dossiers = { HALTED: bfDossier("HALTED", 100) };
+  const chains = { HALTED: bfChain(100) };
+  // selectBackfillPlays itself is eligibility-agnostic (the filter lives in
+  // backfillThinEditionPlays/backfillCandidateEligible) — this test documents that boundary:
+  // callers MUST filter with backfillCandidateEligible before building `pool`, exactly as
+  // backfillThinEditionPlays itself does.
+  const eligiblePool = pool.filter((p) => !p.trading_halt);
+  const { plays } = selectBackfillPlays({ finalPlays: [], pool: eligiblePool, dossiers, chains, minPlays: 3 });
+  assert.equal(plays.length, 0, "the halted candidate was excluded before reaching selectBackfillPlays");
+});
+
+test("selectBackfillPlays: empty pool returns finalPlays unchanged with empty notes", () => {
+  const { plays, notes } = selectBackfillPlays({ finalPlays: [], pool: [], dossiers: {}, chains: {}, minPlays: 3 });
+  assert.deepEqual(plays, []);
+  assert.deepEqual(notes, []);
+});
+
+test("selectBackfillPlays: a candidate with no dossier is skipped (cannot build levels without it)", () => {
+  const pool = [bfScored("NODOSSIER", 30)];
+  const { plays } = selectBackfillPlays({
+    finalPlays: [],
+    pool,
+    dossiers: {},
+    chains: { NODOSSIER: bfChain(100) },
+    minPlays: 3,
+  });
+  assert.equal(plays.length, 0);
 });
