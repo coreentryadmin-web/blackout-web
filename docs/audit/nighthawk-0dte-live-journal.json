@@ -425,6 +425,13 @@
       "summary": "Board transitioned OPENING_DRIVE -> RTH. First commit of the day: BE long, tier B, exit_policy_at_commit trim_scale, entry 6.15, status TRIM (trim_scale ladder has partially scaled out). Strong move: peak_pnl_pct 42.68%, live_pnl_pct 41.95%, floor_pnl_pct correctly armed at 17.07% (= peak*0.4, exact #5472 formula match -- this peak is well above both the old 15% and new 5% early-arm thresholds, so not itself a new confirmation of the 5%-threshold fix specifically, but consistent with the formula). Coherent so far, watching for resolution.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-29T14:42:00Z_be_runs_to_100pct_plus_new_opens": {
+      "cycle_time": "2026-09-29T14:42:53.075Z",
+      "trigger": "14:42 UTC (trigger 2/4 offset :15)",
+      "summary": "4 trades now. BE long continues to run: peak hit +100% (from +42.68% last check), floor correctly re-armed at 40% (=100*0.4, exact match, ratchet floor tracks peak upward as expected), live now retraced to +62.28% -- still well above the 40% floor so correctly still OPEN/TRIM, not yet exited. QQQ short (2nd trade of the day) CLOSED cleanly via ratchet: peak 9.65%, floor 3.86% (=9.65*0.4 exact), exit +3.51% -- another #5472 [5%,15%) band confirmation. Two fresh opens: ORCL long (tier A, live -3.28%, peak only 0.98%, correctly unarmed) and AMD long (tier A, live -5%, peak 0%, correctly unarmed, only ~3min old). All coherent.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
