@@ -16,6 +16,44 @@ import { alertCandidateSnapshotWriteFailure } from "./candidate-snapshot-alert";
 import { syncNighthawkPlayOutcomes } from "./play-outcomes";
 
 /**
+ * Every other Legacy publish path (edition-builder.ts) calls syncNighthawkPlayOutcomes right
+ * after writing the edition row -- this module's own republish path never did, so a BACKFILL
+ * play could end up with no nighthawk_play_outcomes row at all. Three real consequences, found
+ * live 2026-09-29: (1) the 9:15am ET morning-confirm cron's pull latch (morning-verdict-
+ * persist.ts's recordNighthawkMorningVerdict) silently no-ops for a ticker with no row to match
+ * ("missing_rows"), so an INVALIDATED backfilled play never gets pulled=true and the
+ * member-facing edition keeps showing it as an actionable pick -- a real split-brain (BB:
+ * play-status said INVALIDATED, the edition's own pulled overlay said false) caught by
+ * legacy-e2e-healthcheck.mjs's stage D; (2) the ticker is invisible to forward-grading/
+ * analytics, which read off this same table; (3) it can never resolve to a win/loss.
+ * `publish_context` is intentionally omitted (null) -- backfilled plays never ran the
+ * publish-time gate stack this pin records (the same gap
+ * backfillBypassesPublishGates_2026_09_17T1815Z already flags), and the pin is documented
+ * fail-soft: an un-pinned row must never block the outcome sync. Idempotent
+ * (ON CONFLICT ... WHERE outcome = 'pending'), so calling this for a play that already has a
+ * synced row is always a safe no-op. Isolated in its own try/catch, matching
+ * edition-builder.ts's "POST-PUBLISH steps isolated from the outer catch" discipline -- a
+ * transient DB failure here must never fail the caller.
+ */
+async function syncOutcomeRows(
+  editionFor: string,
+  plays: PlaybookPlay[],
+  dossiers: Record<string, TickerDossier>
+): Promise<void> {
+  try {
+    const sectorByTicker = Object.fromEntries(
+      plays.map((p) => {
+        const ticker = String(p.ticker ?? "").toUpperCase();
+        return [ticker, dossiers[ticker]?.sector ?? null];
+      })
+    );
+    await syncNighthawkPlayOutcomes(editionFor, plays, sectorByTicker, {});
+  } catch (err) {
+    console.warn("[nighthawk/post-publish-backfill] outcome-row sync failed:", err);
+  }
+}
+
+/**
  * Pure reconstruction of the real, already-frozen `ranked` pool (post cross-edition-governor
  * demotion) from durably-persisted `rank_governor`-stage nighthawk_candidate_snapshot rows.
  * This is NOT re-scoring — it is reading back the exact decision-time payload
@@ -94,6 +132,23 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
     ...p,
     selection_tier: p.selection_tier ?? "QUALIFIED",
   }));
+
+  const historyRows = await fetchNighthawkScoringHistory(editionFor);
+  const dossiers: Record<string, TickerDossier> = {};
+  for (const row of historyRows) {
+    dossiers[row.ticker.toUpperCase()] = row.dossier as unknown as TickerDossier;
+  }
+
+  // Repair pass, runs on EVERY call regardless of whether backfill actually happens below --
+  // this is what lets re-invoking this same admin endpoint on an edition that's already at its
+  // play-count minimum still fix a real gap: any play already in `existing.plays` (e.g. a
+  // BACKFILL ticker added by an earlier call, before this repair pass existed) that never got a
+  // nighthawk_play_outcomes row synced. Running this BEFORE the minPlays early-return below is
+  // the whole point -- without it, a second call against an already-at-minimum edition would
+  // never reach a sync call, since the only one used to live inside the backfilled-only branch
+  // further down. See syncOutcomeRows above for the full defect this closes.
+  await syncOutcomeRows(editionFor, finalPlays, dossiers);
+
   const minPlays = effectiveMinPublishPlays();
   if (finalPlays.length >= minPlays) {
     return { ok: true, status: "noop_already_at_minimum", editionFor, playsCount: finalPlays.length };
@@ -102,12 +157,6 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
   const snapshotRows = await fetchNighthawkCandidateSnapshots(editionFor, { stage: "rank_governor" });
   if (!snapshotRows.length) return { ok: false, status: "no_rank_governor_snapshot", editionFor };
   const pool = reconstructScoredPoolFromRankGovernorRows(snapshotRows);
-
-  const historyRows = await fetchNighthawkScoringHistory(editionFor);
-  const dossiers: Record<string, TickerDossier> = {};
-  for (const row of historyRows) {
-    dossiers[row.ticker.toUpperCase()] = row.dossier as unknown as TickerDossier;
-  }
 
   const result = await backfillThinEditionPlays({ finalPlays, ranked: pool, dossiers, minPlays });
   if (!result.notes.length) {
@@ -145,33 +194,11 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
     alertCandidateSnapshotWriteFailure("rank_final:post_publish_backfill", editionFor, err);
   });
 
-  // Every other publish path (edition-builder.ts) calls syncNighthawkPlayOutcomes right after
-  // writing the edition row -- this path never did, so a BACKFILL play had no
-  // nighthawk_play_outcomes row at all. Three real consequences, found live 2026-09-29: (1) the
-  // 9:15am ET morning-confirm cron's pull latch (morning-verdict-persist.ts's
-  // recordNighthawkMorningVerdict) silently no-ops for a ticker with no row to match ("missing_rows"),
-  // so an INVALIDATED backfilled play never gets pulled=true and the member-facing edition keeps
-  // showing it as an actionable pick -- a real split-brain (BB: play-status said INVALIDATED, the
-  // edition's own pulled overlay said false) caught by legacy-e2e-healthcheck.mjs's stage D; (2) the
-  // ticker is invisible to forward-grading/analytics, which read off this same table; (3) it can
-  // never resolve to a win/loss. `publish_context` is intentionally omitted (null) -- backfilled
-  // plays never ran the publish-time gate stack this pin records (the same gap
-  // backfillBypassesPublishGates_2026_09_17T1815Z already flags), and the pin is documented
-  // fail-soft: an un-pinned row must never block the outcome sync. Sector is sourced from the same
-  // already-in-memory scoring-history dossiers used above -- no new fetch. syncNighthawkPlayOutcomes
-  // is idempotent (ON CONFLICT ... WHERE outcome = 'pending') so re-syncing the original QUALIFIED
-  // play's already-existing row alongside the new BACKFILL ones is a safe no-op for it.
-  try {
-    const sectorByTicker = Object.fromEntries(
-      result.plays.map((p) => {
-        const ticker = String(p.ticker ?? "").toUpperCase();
-        return [ticker, dossiers[ticker]?.sector ?? null];
-      })
-    );
-    await syncNighthawkPlayOutcomes(editionFor, result.plays, sectorByTicker, {});
-  } catch (err) {
-    console.warn("[nighthawk/post-publish-backfill] outcome-row sync failed:", err);
-  }
+  // Re-sync with the FINAL play list (the early repair pass above only covered `finalPlays`,
+  // the pre-backfill set) -- this is what actually creates the new BACKFILL tickers' outcome
+  // rows. Re-syncing the pre-existing ones again alongside them is a safe no-op (see
+  // syncOutcomeRows above).
+  await syncOutcomeRows(editionFor, result.plays, dossiers);
 
   return {
     ok: true,

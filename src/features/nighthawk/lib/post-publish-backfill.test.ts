@@ -142,33 +142,45 @@ test("reconstructScoredPoolFromRankGovernorRows: real multi-ticker pool round-tr
 
 // Source-inspection regression guard (2026-09-29, live split-brain found by
 // legacy-e2e-healthcheck.mjs's stage D): republishBackfilledEdition must call
-// syncNighthawkPlayOutcomes the same way every other Legacy publish path (edition-builder.ts)
-// does, or a BACKFILL play gets no nighthawk_play_outcomes row at all -- the 9:15am ET
-// morning-confirm cron's pull latch then silently no-ops for it (no row to match), so an
-// INVALIDATED backfilled play never gets pulled=true and the member-facing edition keeps
-// showing it as live/actionable. Live-reproduced 2026-09-29: BB (added via republish) showed
-// play-status=INVALIDATED but edition pulled=false, while AMD (an original QUALIFIED play with
-// a real outcome row from the normal publish path) correctly flipped pulled=true for the same
-// verdict. republishBackfilledEdition's own async orchestrator can't be behaviorally unit-tested
-// here (see this file's header comment -- @/lib/db can't be safely mocked in this test
-// environment without breaking the "@/" alias across the whole loaded graph), so this is the
-// cheap, precise substitute: it fails the instant the sync call site is removed or is no longer
-// awaited/still reachable.
+// syncNighthawkPlayOutcomes (via the shared syncOutcomeRows helper) the same way every other
+// Legacy publish path (edition-builder.ts) does, or a BACKFILL play gets no
+// nighthawk_play_outcomes row at all -- the 9:15am ET morning-confirm cron's pull latch then
+// silently no-ops for it (no row to match), so an INVALIDATED backfilled play never gets
+// pulled=true and the member-facing edition keeps showing it as live/actionable.
+// Live-reproduced 2026-09-29: BB (added via republish) showed play-status=INVALIDATED but
+// edition pulled=false, while AMD (an original QUALIFIED play with a real outcome row from the
+// normal publish path) correctly flipped pulled=true for the same verdict.
+//
+// A second gap surfaced from LIVE re-verification after the first fix shipped (PR #5569): the
+// original single call site sat AFTER the `minPlays` early-return, so it could never run when
+// re-invoking the admin endpoint against an edition already at its play-count minimum -- exactly
+// tonight's post-backfill state -- meaning the fix could prevent recurrence but could never
+// repair the already-broken BB row. Fixed by extracting the sync into a shared `syncOutcomeRows`
+// helper and calling it TWICE: once as an unconditional repair pass on `finalPlays`, BEFORE the
+// minPlays early-return (so a second call against an already-at-minimum edition still repairs
+// any pre-existing gap), and once more at the end on `result.plays` (which creates the new
+// BACKFILL tickers' rows when backfill actually happens). Re-syncing the same tickers twice is a
+// safe no-op (ON CONFLICT ... WHERE outcome = 'pending').
+//
+// republishBackfilledEdition's own async orchestrator can't be behaviorally unit-tested here (see
+// this file's header comment -- @/lib/db can't be safely mocked in this test environment without
+// breaking the "@/" alias across the whole loaded graph), so this is the cheap, precise
+// substitute: it fails the instant either sync call site is removed, reordered past the
+// early-return, or no longer awaited/reachable.
 function readSource(file: string): string {
   return readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
 }
 
-test("post-publish-backfill.ts: republishBackfilledEdition syncs outcome rows for the full final play list, not just the backfilled ones", () => {
+test("post-publish-backfill.ts: syncOutcomeRows wraps syncNighthawkPlayOutcomes in its own try/catch", () => {
   const src = readSource("./post-publish-backfill.ts");
   assert.match(src, /import \{ syncNighthawkPlayOutcomes \} from "\.\/play-outcomes";/);
+  assert.match(src, /async function syncOutcomeRows\(/);
+
   const callIdx = src.indexOf("await syncNighthawkPlayOutcomes(");
-  assert.ok(callIdx >= 0, "syncNighthawkPlayOutcomes must be called (and awaited) from republishBackfilledEdition");
+  assert.ok(callIdx >= 0, "syncNighthawkPlayOutcomes must be called (and awaited) from syncOutcomeRows");
   const call = src.slice(callIdx, callIdx + 200);
-  // Must sync the FULL final list (result.plays: original QUALIFIED + new BACKFILL plays), never
-  // just the newly-added tickers -- pruneNighthawkPlayOutcomesForEdition (called inside
-  // syncNighthawkPlayOutcomes) deletes any still-pending row for a ticker NOT in the passed list,
-  // so passing only the backfilled subset would silently delete the original play's own row.
-  assert.match(call, /syncNighthawkPlayOutcomes\(editionFor, result\.plays, sectorByTicker, \{\}\)/);
+  assert.match(call, /syncNighthawkPlayOutcomes\(editionFor, plays, sectorByTicker, \{\}\)/);
+
   // Must be inside its own try/catch, matching edition-builder.ts's "POST-PUBLISH steps isolated
   // from the outer catch" discipline -- a transient DB failure here must not fail the whole
   // republish response, since the edition row is already written and members are already served.
@@ -179,4 +191,31 @@ test("post-publish-backfill.ts: republishBackfilledEdition syncs outcome rows fo
     nearestCatchAfterCall >= 0 && nearestCatchAfterCall < callIdx + 300,
     "the sync call's try block must be followed closely by a catch (not left to throw into the caller)"
   );
+});
+
+test("post-publish-backfill.ts: republishBackfilledEdition calls syncOutcomeRows twice -- an unconditional repair pass BEFORE the minPlays early-return, and again at the end on the full final play list", () => {
+  const src = readSource("./post-publish-backfill.ts");
+  const fnIdx = src.indexOf("export async function republishBackfilledEdition(");
+  assert.ok(fnIdx >= 0, "republishBackfilledEdition must exist");
+
+  const minPlaysCheckIdx = src.indexOf("if (finalPlays.length >= minPlays)", fnIdx);
+  assert.ok(minPlaysCheckIdx > fnIdx, "the minPlays early-return must exist inside republishBackfilledEdition");
+
+  // Repair pass: must run on `finalPlays` (the pre-backfill set already on the edition) BEFORE
+  // the minPlays early-return -- this is what lets re-invoking the endpoint on an
+  // already-at-minimum edition still repair a pre-existing missing-row gap, since without it the
+  // function returns before ever reaching a sync call.
+  const repairCallIdx = src.indexOf("await syncOutcomeRows(editionFor, finalPlays, dossiers);", fnIdx);
+  assert.ok(repairCallIdx > fnIdx, "a repair-pass syncOutcomeRows(finalPlays) call must exist in republishBackfilledEdition");
+  assert.ok(
+    repairCallIdx < minPlaysCheckIdx,
+    "the repair-pass sync call must run BEFORE the minPlays early-return, or an already-at-minimum edition can never reach it"
+  );
+
+  // Final sync: must run on `result.plays` (original QUALIFIED + any new BACKFILL plays), never
+  // just the newly-added tickers -- pruneNighthawkPlayOutcomesForEdition (called inside
+  // syncNighthawkPlayOutcomes) deletes any still-pending row for a ticker NOT in the passed list,
+  // so passing only the backfilled subset would silently delete the original play's own row.
+  const finalCallIdx = src.indexOf("await syncOutcomeRows(editionFor, result.plays, dossiers);", fnIdx);
+  assert.ok(finalCallIdx > minPlaysCheckIdx, "a final syncOutcomeRows(result.plays) call must exist after the minPlays check");
 });
