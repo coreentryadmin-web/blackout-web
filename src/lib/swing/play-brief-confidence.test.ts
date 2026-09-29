@@ -71,6 +71,19 @@ test("swingPlayBriefConfidence: full entry evidence + some unavailable sources i
   assert.match(c2.why, /^2 sources /);
 });
 
+test("swingPlayBriefConfidence: moderate 'why' names the actual unavailable sources, not a pointer to a section that may not exist or contain them (live repro 2026-09-28)", () => {
+  // BUG: previously said "see Data freshness" — but dataFreshnessSection only covers option-mark/
+  // scan/Vector-age/GEX-age/HELIX-pipeline staleness, a disjoint check set from these
+  // unavailableSources entries (ecosystem-context/Vector-state fetch failures etc.), and can
+  // return null (section absent entirely) even while unavailableSources is non-empty.
+  const play = fixturePlay({ status: "WATCH", entryPresentPillars: null });
+  const c = swingPlayBriefConfidence(play, "watch", twoUnavailable);
+  assert.equal(c.level, "moderate");
+  assert.ok(!/Data freshness/i.test(c.why), `must not point at a section that may not have this info or exist: ${c.why}`);
+  assert.match(c.why, /HELIX flow/);
+  assert.match(c.why, /GEX matrix/);
+});
+
 test("swingPlayBriefConfidence: WATCH bucket (never committed, entryPresentPillars null) follows the same live-coverage rule as OPEN", () => {
   const play = fixturePlay({ status: "WATCH", entryPresentPillars: null });
   assert.equal(swingPlayBriefConfidence(play, "watch", []).level, "high");
