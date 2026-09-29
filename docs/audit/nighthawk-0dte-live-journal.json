@@ -460,6 +460,13 @@
       "summary": "All 9 trades today now CLOSED, no open positions. ASTS/SPY/PL all resolved via flat-timeout scratches. SPY is the standout: dipped to -38.92% intraday, recovered back inside the +/-10% band, closed at -9.54% -- a real, strong demonstration of the flat-timeout rule converting what could have been a much larger loss into a small scratch (a live example worth remembering for future audits of whether flat-timeout is working as designed -- this instance clearly shows it is). ASTS -6.01% (dipped -16.39%, recovered), PL -7.89% (never left band, -1.32% worst peak). Day tally: BE +40%, QQQ +3.51%, SPXW +2.57% (3 ratchet/trim_scale wins), MSTR 0% (thesis scratch), AMD -9.38%, ASTS -6.01%, SPY -9.54%, PL -7.89% (4 flat-timeout scratches), ORCL -51.09% stop (1 loss) -- 9 trades, 3 clean wins, 4 small flat scratches, 1 scratch, 1 stop-loss. All exit mechanisms observed today (ratchet x3, stop x1, thesis x1, flat x4) behaved coherently with documented design.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-29T16:16:00Z_upstream_degradation_3rd_instance_clean": {
+      "cycle_time": "2026-09-29T16:16:50.910Z",
+      "trigger": "16:16 UTC (trigger 2/4 offset :15)",
+      "summary": "3rd live instance of the documented upstream_ok:false self-healing board degradation (prior instances: 2026-09-28 15:44 and 19:11 UTC). Board ledger transiently empty (ledger_len:0, upstream_ok:false), persisted across 2 fetches ~20s apart. Cross-checked per standing protocol: GET /api/market/zerodte/record?days=1 shows graded:20, wins:10, losses:9, breakeven:1, rows.length:20 -- non-zero, consistent with the rolling window covering both today's 9 known trades plus some overlap. No data loss. Not escalating -- same recurring, self-healing pattern.",
+      "action": "none -- will re-poll board next cycle to confirm self-heal",
+      "escalation": "none"
     }
   },
   "sessions": {
