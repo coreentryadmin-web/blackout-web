@@ -481,6 +481,13 @@
       "summary": "4th instance today of the upstream_ok:false board degradation (prior: 16:16 today, plus 2 instances yesterday). /record cross-check: graded:20, wins:10, losses:9, breakeven:1 -- identical to the 16:16 reading, consistent, no data loss. Frequency this session (4x in ~1 trading day) is somewhat higher than the historical 2-3x/session baseline noted in CLAUDE.md, but each instance individually resolves cleanly and self-heals -- not escalating on frequency alone since no instance has shown actual data loss or a failure to self-heal; will keep tracking frequency as a soft signal.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-29T19:16:00Z_upstream_degradation_persisting_longer": {
+      "cycle_time": "2026-09-29T19:16:20.197Z",
+      "trigger": "19:15 UTC (trigger 2/4 offset :15)",
+      "summary": "upstream_ok:false STILL persisting across 3 fresh fetches (19:10:49, 19:16:03, 19:16:20 -- each a distinct as_of timestamp, so this is not a stale cache, the degradation is genuinely ongoing) -- notably longer than the prior instances today which self-healed within 1-2 cycles. /record cross-checked again: still graded:20/wins:10/losses:9/breakeven:1, unchanged and consistent -- no data loss, the Postgres-backed record path remains completely unaffected. Not escalating yet (no live-trading-path safety issue, data confirmed safe, and CLAUDE.md documents this as an expected recurring pattern) but flagging the LONGER duration explicitly as a distinct data point from the quick-heal instances -- if this specific 'degradation persists >10-15min' shape repeats 2 more times, that would be a genuine 3-instance case worth escalating as a duration/reliability question (separate from the already-accepted 'board snapshot transiently empty' pattern itself).",
+      "action": "none -- will re-poll next cycle to see when/if it clears",
+      "escalation": "none"
     }
   },
   "sessions": {
