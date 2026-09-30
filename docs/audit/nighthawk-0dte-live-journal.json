@@ -586,6 +586,13 @@
       "summary": "upstream_ok:false persisting into a 3rd consecutive cycle. /record still unchanged at 16/7W/8L/1BE -- no data loss, no new trades since QQQ. Same continuing degradation window as the prior 2 cycles.",
       "action": "none -- will re-poll next cycle",
       "escalation": "none"
+    },
+    "2026-09-30T19:10:00Z_upstream_degradation_4th_cycle_45min_2nd_long_instance": {
+      "cycle_time": "2026-09-30T19:10:49.078Z",
+      "trigger": "19:10 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "upstream_ok:false now persisting into a 4th consecutive cycle (~45min: 18:16, 18:43, 18:45, 19:10, each a fresh distinct as_of, not stale cache). /record unchanged at 16/7W/8L/1BE throughout -- no data loss, no new trades. This is the 2nd instance of the 'long-duration persistence' sub-pattern first flagged yesterday (2026-09-29 19:16-19:43 entry, ~30min instance, quick-heal instances self-resolved in 1-2 cycles). Per yesterday's own note: 'if this specific persists>10-15min shape repeats 2 more times, that would be a genuine 3-instance case worth escalating as a duration/reliability question.' This is instance #2 of that sub-pattern -- still not at 3, but the pattern is now recurring across 2 separate trading days with similar ~30-45min durations. Not escalating yet (still no data loss, still below 3-instance threshold for THIS specific sub-pattern), but flagging explicitly that a 3rd long-duration instance should trigger escalation per the noise-discipline threshold.",
+      "action": "none -- will continue tracking long-duration instances toward the 3-instance threshold",
+      "escalation": "none -- but watch closely, 2/3 toward threshold on this specific sub-pattern"
     }
   },
   "sessions": {
