@@ -4,6 +4,13 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-30 (13:35 UTC / Wed 09:36 ET) — [SEO] Market-hours wake: gamma-snapshot clean, CLS clean
+
+RTH window confirmed (09:36 ET, trading day). Purged Cloudflare edge, measured live homepage
+desktop CLS on a real-data-rendering page — **0.0001, GOOD**. Polled
+`/api/public/gex-snapshot?ticker=SPX` 3x at 6s intervals — `market_session: OPEN`,
+`degraded: false`, `calculation_id` advanced cleanly and monotonically. Clean pass. Nothing to ship.
+
 ## 2026-09-30 (12:17 UTC / Wed 08:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
 
 Synced to `origin/main` (`852809c`). Purged Cloudflare edge, re-measured homepage desktop CLS —
