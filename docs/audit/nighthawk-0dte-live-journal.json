@@ -606,6 +606,12 @@
       "resolution": "Confirmed INTENTIONAL DESIGN, not a bug -- closing this watch item. Two explicit, named fields prove deliberate classification rather than an accidental default: contract_horizon:'ONE_DTE' and grading_policy:'same_day_1530_close' appear on every setup regardless of the contract's own expiry. Despite HOOD/ZETA/MARA holding options that don't expire until 2026-10-02, all three were still forced closed TODAY via the normal same-day intraday exit mechanics (ratchet floor / thesis-break / flat-timeout) -- identical management discipline to the literal-0DTE SPXW/QQQ trades. Most single-stock underlyings (HOOD, ZETA, MARA, BE, ACMR, etc.) simply don't have daily-expiring option chains -- only SPY/QQQ/IWM/SPX-class products and a handful of mega-caps do -- so BREAKOUT-origin candidates on those names necessarily pick the nearest liquid expiry (here, Friday 2026-10-02) while the product's 'same-day in-and-out' trading discipline is enforced independently via grading_policy, not via literal contract DTE. The '0DTE' branding describes the HOLDING PERIOD discipline, not a hard requirement that every underlying contract itself expire same-day.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-09-30T19:43:00Z_post_commit_transition": {
+      "summary": "Session state cleanly transitioned RTH -> POST_COMMIT as expected at the 3:30 PM ET new-commit cutoff (as_of 2026-09-30T19:40:31.880Z). upstream_ok:true, ledger stable at 5 rows, all still CLOSED (HOOD/SPXW/ZETA/MARA/QQQ, unchanged from prior cycles). Consistent with the same transition pattern observed 2026-09-29.",
+      "session_tally": "5 trades today, all wins/scratches: HOOD ratchet win, SPXW ratchet win, ZETA thesis-break win near peak, QQQ ratchet win, MARA flat-timeout scratch. 4W/1 scratch, 0 stops, 0 losses -- a clean session so far pending final CLOSED transition.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
