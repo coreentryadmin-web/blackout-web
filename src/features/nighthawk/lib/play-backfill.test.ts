@@ -495,3 +495,44 @@ test("selectBackfillPlays: a candidate with no dossier is skipped (cannot build 
   });
   assert.equal(plays.length, 0);
 });
+
+// ── Narrative enrichment (backfill plays get the same buildDeterministicThesis narrative as
+// organic/rescue plays, not a bare dossier.tech.summary one-liner) ─────────────────────────────
+
+test("selectBackfillPlays: thesis is a real narrative, not just the bare dossier.tech.summary fallback", () => {
+  const pool = [bfScored("WAT", 32, { news_score: 20 })];
+  const dossiers = {
+    WAT: bfDossier("WAT", 100, {
+      news_headlines: ["WAT beats on strong guidance raise"],
+    } as Partial<TickerDossier>),
+  };
+  const chains = { WAT: bfChain(100) };
+
+  const { plays } = selectBackfillPlays({ finalPlays: [], pool, dossiers, chains, minPlays: 1 });
+
+  assert.equal(plays.length, 1);
+  const play = plays[0]!;
+  // The old fallback stamped BOTH thesis and key_signal to the identical bare summary string
+  // ("WAT holding above VWAP."). The fixed narrative diverges thesis from key_signal (a compact
+  // "DIRECTION -- drivers . score N (tier)" badge) and surfaces the catalyst headline whenever
+  // news is a top scoring driver, exactly like an organically-qualified play would.
+  assert.notEqual(play.thesis, play.key_signal, "thesis must be the richer narrative, not a copy of the compact key_signal badge");
+  assert.notEqual(play.thesis, "WAT holding above VWAP.", "must not regress to the bare dossier.tech.summary fallback");
+  assert.match(play.key_signal!, /BULLISH.*score 32/, "key_signal keeps the compact badge shape buildDeterministicThesis produces");
+  assert.match(play.thesis, /Catalyst: "WAT beats on strong guidance raise"/, "surfaces the real catalyst headline, same as an organic pick");
+});
+
+test("selectBackfillPlays: thin dossier (no catalyst/flow signal) still gets a real per-ticker narrative, never a generic placeholder", () => {
+  const pool = [bfScored("KOD", 30)];
+  const dossiers = { KOD: bfDossier("KOD", 50) };
+  const chains = { KOD: bfChain(50) };
+
+  const { plays } = selectBackfillPlays({ finalPlays: [], pool, dossiers, chains, minPlays: 1 });
+
+  assert.equal(plays.length, 1);
+  const play = plays[0]!;
+  assert.notEqual(play.thesis, "", "buildDeterministicThesis always returns at least a per-ticker fallback sentence, never empty");
+  assert.doesNotMatch(play.thesis, /^Ranked-pool backfill \(score/, "must not regress to the old generic backfill placeholder text");
+  assert.notEqual(play.thesis, dossiers.KOD!.tech!.summary, "must not regress to the bare dossier.tech.summary fallback, even with a thin signal set");
+  assert.match(play.thesis, /KOD in bullish trend/, "narrative leads with the real technical setup, matching buildDeterministicThesis's own opener");
+});
