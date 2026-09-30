@@ -4,6 +4,16 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-09-30 (00:16 UTC / Tue 20:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, one new thin CTR-gap query
+
+Synced to `origin/main` (`c5ffc3a`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0001, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 2 open agent PRs
+(#5573 CI-running, #5537 CI-failed/known-intentional), neither SEO-lane. Opportunity scan — new
+CTR-gap entry: "helix flow" (pos 10.0, page 1, **3imp** 0cl) — already has a dedicated
+`/learn/helix-flow-scanner-guide` page, and 3imp is far too thin to act on regardless. Rest of the
+set unchanged. Nothing to ship.
+
 ## 2026-09-29 (18:17 UTC / Tue 14:21 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
 
 Cycle start delayed by a transient Bash-tool classifier outage (~8 consecutive no-verdict
