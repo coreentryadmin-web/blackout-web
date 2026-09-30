@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-29T21:51:40Z",
+  "lastUpdated": "2026-09-30T00:25:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -443,6 +443,10 @@
     {
       "at": "2026-09-29T21:51:40Z",
       "summary": "Expected post-close transition: 2026-09-29 edition (AMD/BB/ZS) went AMBER (A_edition stale, B_marks all 3 stale) at ~20:08 UTC -- matched the already-documented legacyPostCloseStaleEditionExpected pattern exactly, so no new entry was written for that leg. Now (21:51 UTC) the 2026-09-30 edition has published: A_edition flipped back to GREEN (2 fresh plays -- BE, SHOP), D_pull_status correctly SKIPPED (morning-confirm cron not due until ~9:15am ET tomorrow), B_marks AMBER on both new tickers (expected -- freshly-published overnight, no live RTH quotes yet). This confirms legacyPostCloseStaleEditionExpected's own resolution clause held exactly as documented -- closing the loop on that pattern for today. Continuing the standing cadence into the new edition; will watch BE/SHOP through the next morning-confirm run for the first D_pull_status read on this edition."
+    },
+    {
+      "at": "2026-09-30T00:25:00Z",
+      "summary": "AGGRESSIVE-MODE enhancement found and fixed, 2026-09-30 edition (BE/SHOP): pulled the full edition payload while healthcheck was routine-clean and noticed SHOP (rank 2, selection_tier BACKFILL) had thesis byte-identical to key_signal (\"bullish . gap up 4.25 . gap-fill risk below . bullish MA stack\"), while BE (rank 1, QUALIFIED) had a full narrated thesis (catalyst quote, R:R label, watch flags) distinct from its own compact key_signal badge. Root cause: selectBackfillPlays (play-backfill.ts) built key_signal from a bare dossier.tech.summary fallback and let mapClaudePlayToEdition copy that single string into both thesis and key_signal -- every organic (buildPlay) and rescue (buildRescuePlays) play already calls the shared buildDeterministicThesis(scored, dossier, levels) for a real narrated thesis, but selectBackfillPlays never did despite having the same three values already in scope. Fixed in PR #5573 (fix/nighthawk-backfill-thin-thesis): calls buildDeterministicThesis and overrides the constructed play's thesis with the richer output; key_signal keeps its compact badge shape. Zero change to eligibility/ranking/contract-selection/geometry-gate logic -- confirmed via git diff (only play-backfill.ts touched). RED->GREEN proven via git stash on the source file alone. npx tsc --noEmit clean. Full src/features/nighthawk/**/*.test.ts: 2020/2020 pass. PR opened, undrafted, subscribed for CI/review events -- watching for merge."
     }
   ],
   "knownOpenItems": {
