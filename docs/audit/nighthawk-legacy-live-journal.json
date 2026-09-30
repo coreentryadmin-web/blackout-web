@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-30T13:23:06Z",
+  "lastUpdated": "2026-09-30T13:37:09Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -459,6 +459,10 @@
     {
       "at": "2026-09-30T13:23:06Z",
       "summary": "GENUINE TRANSITION: D_pull_status flipped SKIPPED -> GREEN -- the 9:15am ET morning-confirm cron ran for the first time this session on editionFor 2026-09-30 (BE/SHOP). Verdict: BE (INVALIDATED <-> pulled=true, agree) and SHOP (CONFIRMED <-> pulled=false, agree) -- both correct, no mismatch. This is the first D-stage read for this edition; confirms the morning-confirm pipeline ran on schedule and its pull-latch matches the confirmation verdict for both plays. B_marks still AMBER (bid=0/ask=0, no live quote) at this check (13:23 UTC), 7 min before RTH open (13:30 UTC) -- expected, not yet transitioned. A/C unchanged (A GREEN 2 plays fresh, C GREEN resolved=38)."
+    },
+    {
+      "at": "2026-09-30T13:37:09Z",
+      "summary": "GENUINE TRANSITION: B_marks flipped AMBER -> GREEN as RTH open (13:30 UTC) brought live two-sided quotes for both open Legacy plays -- BE mark=5.85 within [5.5,6.2], SHOP mark=3.9 within [3.5,4.3]. Combined with the D_pull_status transition logged 14 min earlier this same session (SKIPPED->GREEN, morning-confirm ran correctly), overall healthcheck verdict is now fully GREEN across all four stages (A/B/C/D) for the first time this session. Both real transitions this session was watching for (D_pull_status, B_marks) are now complete. Returning to normal repeat-clean monitoring cadence."
     }
   ],
   "knownOpenItems": {
