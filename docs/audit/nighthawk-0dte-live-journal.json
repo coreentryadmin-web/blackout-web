@@ -565,6 +565,13 @@
       "summary": "5th trade of the day: QQQ long, tier C/conviction, CLOSED via ratchet -- peak 8.82%, floor 3.53% (=8.82*0.4 exact), exit +3.53%. Another clean, coherent ratchet-floor win. Day tally: SPXW +5.15%, HOOD +4.64%, ZETA +38.41%, QQQ +3.53% (4 wins), MARA -9.26% (1 flat scratch).",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-30T18:16:00Z_upstream_degradation_3rd_instance_clean": {
+      "cycle_time": "2026-09-30T18:16:16.004Z",
+      "trigger": "18:16 UTC (trigger 2/4 offset :15)",
+      "summary": "3rd instance today of upstream_ok:false (ledger_len:0). Cross-checked: /record shows graded:16, wins:7, losses:8, breakeven:1 -- matches the QQQ win just journaled (7W, up from 6W), no data loss. Not escalating, same documented recurring pattern.",
+      "action": "none -- will re-poll next cycle",
+      "escalation": "none"
     }
   },
   "sessions": {
