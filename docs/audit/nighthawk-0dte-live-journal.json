@@ -551,6 +551,13 @@
       "summary": "4 trades now, all coherent. ZETA long is a standout: peak +39.13%, 1/2 tranches (33% each) already banked on the way up per trim_scale, floor armed at 15.65% (=39.13*0.4) -- but thesis-break (gex-walls veto) fired FIRST at +38.41%, well above the floor, catching the exit almost exactly at peak rather than waiting for a retrace to the floor. Same favorable pattern as yesterday's BE/NVTS/CSIQ thesis-break instances -- thesis-break continues to behave coherently, sometimes beating the ratchet floor to a better exit. New open: MARA short, tier B, -14.81% live, peak only -1.85% (never positive), correctly unarmed. Day tally so far: SPXW +5.15%, HOOD +4.64%, ZETA +38.41% (3 wins), MARA still open.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-30T17:10:00Z_mara_flat_timeout_4for4_day_tally": {
+      "cycle_time": "2026-09-30T17:11:08.944Z",
+      "trigger": "17:10 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "MARA short resolved via flat-timeout at -9.26% -- dipped to -24.07% intraday but recovered inside the +/-10% band, another clean save example (3rd today's pattern-consistent flat-timeout observation this week). All 4 of today's trades now accounted for: SPXW +5.15% (ratchet), HOOD +4.64% (ratchet), ZETA +38.41% (thesis-break near peak), MARA -9.26% (flat) = 3W/1L. A brief upstream_ok:false degradation preceded this check (cross-checked clean via /record, which also showed a days=1 window count of 15 graded/6W/8L/1BE -- consistent with the previously-documented rolling-window-boundary overlap beyond exactly today's 4 trades, not a new issue).",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
