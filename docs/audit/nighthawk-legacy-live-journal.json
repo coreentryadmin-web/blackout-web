@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-30T00:41:00Z",
+  "lastUpdated": "2026-09-30T04:07:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -451,6 +451,10 @@
     {
       "at": "2026-09-30T00:41:00Z",
       "summary": "PR #5573 (backfill thin-thesis fix) merged 00:38 UTC (verify + CodeQL both green, no merge conflict, zero review comments, no Claude Approvals check configured on this repo). Squash-merged as 995d3bba0. Folded the staged finding into FINDINGS.md (findings-fold-staging.mjs, findings-hygiene.test.ts 9/9 pass) and pushed. Unsubscribed from PR activity -- closed out. Legacy healthcheck this cycle: repeat-clean (editionFor 2026-09-30, A GREEN BE/SHOP, B AMBER stale both, C GREEN resolved=39, D still SKIPPED pending 9:15am ET morning-confirm)."
+    },
+    {
+      "at": "2026-09-30T04:07:30Z",
+      "summary": "C_record resolved count dropped 39->38 (14-day window, GET /api/market/nighthawk/record?days=14) -- verified this is expected rolling-window drift (an edition aged out of the 14-day lookback with no new resolution overnight, ~4am UTC / off-hours), not a data defect: buckets still sum consistently (scoreable 30, wins 3, losses 2, opens 25, unfilled 3, pulled 6, excluded_total 8 -- 3+2+25+3+6-1(overlap unfilled_not_pulled)=38 checks out), win_rate/CI recomputed correctly (60%, CI 23.1-88.2). All other stages unchanged (A GREEN BE/SHOP, B AMBER stale both, D SKIPPED). Noting so a future cycle recognizes a +-1 total_resolved shift with consistent buckets as benign window drift rather than re-investigating from scratch."
     }
   ],
   "knownOpenItems": {
