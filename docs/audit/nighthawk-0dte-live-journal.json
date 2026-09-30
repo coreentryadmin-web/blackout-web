@@ -523,6 +523,13 @@
       "summary": "Board transitioned OPENING_DRIVE -> RTH. 1st instance today of the upstream_ok:false self-healing degradation pattern (ledger_len:0). Cross-checked per standing protocol: GET /api/market/zerodte/record?days=1 shows graded:11, wins:3, losses:7, breakeven:1 -- matches yesterday's exact final EOD tally, no data loss (no new commits yet today, consistent with the RTH transition just having happened). Not escalating, same documented recurring pattern.",
       "action": "none -- will re-poll board next cycle for first live commits + self-heal confirmation",
       "escalation": "none"
+    },
+    "2026-09-30T14:43:00Z_first_trade_spxw_ratchet_win": {
+      "cycle_time": "2026-09-30T14:43:48.493Z",
+      "trigger": "14:43 UTC (trigger 3/4 offset :30)",
+      "summary": "First trade of the day: SPXW long, tier B, trim_scale, already CLOSED via ratchet -- peak 12.87%, floor 5.15% (=12.87*0.4 exact), exit +5.15%. Another #5472 confirmation in the [5%,15%) band, fast resolution (~1.5min from commit to exit). Clean win, nothing anomalous.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
