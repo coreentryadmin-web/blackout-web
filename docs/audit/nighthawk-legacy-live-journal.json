@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-09-30T20:07:54Z",
+  "lastUpdated": "2026-09-30T21:54:06Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -475,6 +475,10 @@
     {
       "at": "2026-09-30T20:07:54Z",
       "summary": "Routine :06 cycle, first reading after the 16:00 ET close today. A_edition flipped GREEN->AMBER (\"edition is stale (served an older date than requested)\") and both live marks (BE, SHOP) flagged stale simultaneously. Did not escalate blind -- pulled the raw edition payload: edition_for=2026-09-30, available=true, stale=true, 2 plays, confirmed via check-edition-stale.mjs. This is byte-for-byte the same shape already diagnosed and confirmed-correct on 2026-09-16 (see that dated entry): editionWindowStartMinutes() defaults to 17:30 ET with a 120min catchup window, so the fresh edition for tomorrow is not expected for ~80+ minutes after close; today's session correctly self-flags stale (its trading day is over) while still being served since nothing better exists yet, and every option quote stops updating the instant the market closes, so marks going stale together is the market-closed norm, not a pipeline failure. C_record and D_pull_status stayed GREEN throughout. Not escalated -- confirmed instance of the known, honest post-close handoff gap, not a new bug. Still no operator reply on the separate 2-play-edition question from 14:44Z -- continuing to hold per CARVE-OUT, no republish-backfill or discovery/scoring changes."
+    },
+    {
+      "at": "2026-09-30T21:54:06Z",
+      "summary": "GENUINE TRANSITION: fresh edition for 2026-10-01 has published (:51 cycle, 21:53Z). A_edition flipped AMBER->GREEN, edition_for now 2026-10-01, 4 plays (ZETA, ACN, FORM, UTHR) -- above the configured floor of 3, below the target ceiling of 5. Ends the post-16:00-ET-close stale window confirmed and tracked since 20:06Z today. B_marks now AMBER on all 4 new OCCs (\"flagged stale by the API\") -- expected for a just-built overnight edition with no live quote cycle yet (market closed); not escalating, same shape as every prior first-reading-after-build. D_pull_status correctly SKIPPED (morning-confirm cron has not run yet for 2026-10-01). C_record steady GREEN, resolved=40. The operator asked live in chat (21:2x-21:4x cycles) how many plays today and whether tomorrow would hit top-5 -- answered directly with this real number (4, not 5) rather than waiting for the next scheduled report. Separately, still no operator reply on the original 2026-09-30 2-play-edition question (retry-backfill-now vs investigate-discovery-thinness) -- continuing to hold per CARVE-OUT."
     }
   ],
   "knownOpenItems": {
