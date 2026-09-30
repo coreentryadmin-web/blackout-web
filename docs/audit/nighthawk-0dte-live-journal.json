@@ -558,6 +558,13 @@
       "summary": "MARA short resolved via flat-timeout at -9.26% -- dipped to -24.07% intraday but recovered inside the +/-10% band, another clean save example (3rd today's pattern-consistent flat-timeout observation this week). All 4 of today's trades now accounted for: SPXW +5.15% (ratchet), HOOD +4.64% (ratchet), ZETA +38.41% (thesis-break near peak), MARA -9.26% (flat) = 3W/1L. A brief upstream_ok:false degradation preceded this check (cross-checked clean via /record, which also showed a days=1 window count of 15 graded/6W/8L/1BE -- consistent with the previously-documented rolling-window-boundary overlap beyond exactly today's 4 trades, not a new issue).",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-30T18:11:00Z_qqq_ratchet_win_5th_trade": {
+      "cycle_time": "2026-09-30T18:06:08.442Z",
+      "trigger": "18:11 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "5th trade of the day: QQQ long, tier C/conviction, CLOSED via ratchet -- peak 8.82%, floor 3.53% (=8.82*0.4 exact), exit +3.53%. Another clean, coherent ratchet-floor win. Day tally: SPXW +5.15%, HOOD +4.64%, ZETA +38.41%, QQQ +3.53% (4 wins), MARA -9.26% (1 flat scratch).",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
