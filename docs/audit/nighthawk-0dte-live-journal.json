@@ -516,6 +516,13 @@
       "summary": "Transitioned PRE_MARKET -> OPENING_DRIVE. ledger_len still 0 -- correctly empty, G-2 opening_window gate expected to hold commits for the first ~10 min of RTH per documented design. Normal progression.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-30T14:11:00Z_rth_begins_upstream_degradation_1st_instance": {
+      "cycle_time": "2026-09-30T14:11:43.895Z",
+      "trigger": "14:11 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "Board transitioned OPENING_DRIVE -> RTH. 1st instance today of the upstream_ok:false self-healing degradation pattern (ledger_len:0). Cross-checked per standing protocol: GET /api/market/zerodte/record?days=1 shows graded:11, wins:3, losses:7, breakeven:1 -- matches yesterday's exact final EOD tally, no data loss (no new commits yet today, consistent with the RTH transition just having happened). Not escalating, same documented recurring pattern.",
+      "action": "none -- will re-poll board next cycle for first live commits + self-heal confirmation",
+      "escalation": "none"
     }
   },
   "sessions": {
