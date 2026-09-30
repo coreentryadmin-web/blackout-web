@@ -530,6 +530,13 @@
       "summary": "First trade of the day: SPXW long, tier B, trim_scale, already CLOSED via ratchet -- peak 12.87%, floor 5.15% (=12.87*0.4 exact), exit +5.15%. Another #5472 confirmation in the [5%,15%) band, fast resolution (~1.5min from commit to exit). Clean win, nothing anomalous.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-30T15:11:00Z_upstream_degradation_2nd_instance_new_win_revealed": {
+      "cycle_time": "2026-09-30T15:11:34.116Z",
+      "trigger": "15:11 UTC (trigger 1/4 offset :00, full v4 mandate re-fire)",
+      "summary": "2nd instance today of the upstream_ok:false degradation (ledger_len:0). Cross-checked: /record now shows graded:13, wins:5, losses:7, breakeven:1 -- up from yesterday's final 11/3W/7L/1BE plus today's already-journaled SPXW win. That's 13 total (11+SPXW=12), 5 wins (3+SPXW=4W expected, but showing 5W) -- confirms at least ONE MORE new trade closed as a win sometime after SPXW that hasn't been seen in the board ledger yet due to this degradation. No data loss -- will pull full details once the board recovers.",
+      "action": "none -- will identify the new win(s) once board recovers next cycle",
+      "escalation": "none"
     }
   },
   "sessions": {
