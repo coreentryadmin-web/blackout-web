@@ -544,6 +544,13 @@
       "summary": "Board self-healed, ledger_len now 2. The 'missing win' from the prior degraded cycle identified: HOOD short, tier B, CLOSED via ratchet -- peak 12.11%, floor 4.84% (=12.11*0.4 exact), exit +4.64%. Fully reconciles the earlier /record puzzle: yesterday's final 11 graded (3W/7L/1BE) + SPXW win + HOOD win = 13 graded/5W exactly matching the 15:11 /record read. Both of today's 2 trades so far are clean ratchet-floor wins with exact formula matches. Nothing anomalous.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-30T16:43:00Z_zeta_thesis_break_near_peak_mara_new_open": {
+      "cycle_time": "2026-09-30T16:43:45.713Z",
+      "trigger": "16:43 UTC (trigger 3/4 offset :30)",
+      "summary": "4 trades now, all coherent. ZETA long is a standout: peak +39.13%, 1/2 tranches (33% each) already banked on the way up per trim_scale, floor armed at 15.65% (=39.13*0.4) -- but thesis-break (gex-walls veto) fired FIRST at +38.41%, well above the floor, catching the exit almost exactly at peak rather than waiting for a retrace to the floor. Same favorable pattern as yesterday's BE/NVTS/CSIQ thesis-break instances -- thesis-break continues to behave coherently, sometimes beating the ratchet floor to a better exit. New open: MARA short, tier B, -14.81% live, peak only -1.85% (never positive), correctly unarmed. Day tally so far: SPXW +5.15%, HOOD +4.64%, ZETA +38.41% (3 wins), MARA still open.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
