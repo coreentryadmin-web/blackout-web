@@ -1,5 +1,6 @@
 import { mapClaudePlayToEdition } from "./claude-edition";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "./constants";
+import { buildDeterministicThesis } from "./deterministic-edition";
 import type { TickerDossier } from "./dossier";
 import { effectiveMeritScore, effectiveMinPublishPlays } from "./edition-quality";
 import { tieredMinOi } from "./grounding";
@@ -128,25 +129,36 @@ export function selectBackfillPlays(params: {
       resistance,
       spot,
     });
-    const play = mapClaudePlayToEdition(
-      {
-        ticker,
-        type: "stock",
-        direction: scored.direction === "long" ? "LONG" : "SHORT",
-        conviction: scored.conviction,
-        key_signal:
-          dossier.tech?.summary ??
-          `Ranked-pool backfill (score ${Math.round(scored.score)}) — verify before entry.`,
-        entry_range: levels.entry_range,
-        target: levels.target,
-        stop: levels.stop,
-        options_play: contract.options_play,
-        entry_premium: contract.entry_premium,
-        score: scored.score,
-      },
-      backfilled.length + 1,
-      dossiers
-    );
+    // Same narrative builder every organically-qualified play (buildPlay) and last-resort rescue
+    // play (buildRescuePlays) already use, both in deterministic-edition.ts — before this, a
+    // backfill play's thesis/key_signal were both just `dossier.tech?.summary` (a bare technical
+    // one-liner, e.g. "BB holding above VWAP.") with no catalyst quote, R:R context, or watch
+    // flags, reading noticeably thinner than an organic pick even though buildDeterministicThesis
+    // needs nothing selectBackfillPlays doesn't already have in scope (scored, dossier, levels).
+    const { thesis, key_signal } = buildDeterministicThesis(scored, dossier, levels);
+    const play = {
+      ...mapClaudePlayToEdition(
+        {
+          ticker,
+          type: "stock",
+          direction: scored.direction === "long" ? "LONG" : "SHORT",
+          conviction: scored.conviction,
+          key_signal,
+          entry_range: levels.entry_range,
+          target: levels.target,
+          stop: levels.stop,
+          options_play: contract.options_play,
+          entry_premium: contract.entry_premium,
+          score: scored.score,
+        },
+        backfilled.length + 1,
+        dossiers
+      ),
+      // mapClaudePlayToEdition derives `thesis` from the SAME raw `key_signal` it's given (no
+      // separate thesis field on ClaudePlayRaw) — override with buildDeterministicThesis's own
+      // richer, distinct thesis text rather than letting the compact key_signal double as both.
+      thesis,
+    };
     // Defense in depth: skip backfill candidates that still fail geometry (e.g. resistance ≤ support).
     if (!validatePlayGeometry(play).ok) {
       console.warn(`[nighthawk/backfill] skipped ${ticker} — levels fail geometry gate`);
