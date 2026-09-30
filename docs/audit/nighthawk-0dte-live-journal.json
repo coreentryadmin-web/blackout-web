@@ -537,6 +537,13 @@
       "summary": "2nd instance today of the upstream_ok:false degradation (ledger_len:0). Cross-checked: /record now shows graded:13, wins:5, losses:7, breakeven:1 -- up from yesterday's final 11/3W/7L/1BE plus today's already-journaled SPXW win. That's 13 total (11+SPXW=12), 5 wins (3+SPXW=4W expected, but showing 5W) -- confirms at least ONE MORE new trade closed as a win sometime after SPXW that hasn't been seen in the board ledger yet due to this degradation. No data loss -- will pull full details once the board recovers.",
       "action": "none -- will identify the new win(s) once board recovers next cycle",
       "escalation": "none"
+    },
+    "2026-09-30T15:16:00Z_hood_ratchet_win_reconciled": {
+      "cycle_time": "2026-09-30T15:16:48.723Z",
+      "trigger": "15:16 UTC (trigger 2/4 offset :15)",
+      "summary": "Board self-healed, ledger_len now 2. The 'missing win' from the prior degraded cycle identified: HOOD short, tier B, CLOSED via ratchet -- peak 12.11%, floor 4.84% (=12.11*0.4 exact), exit +4.64%. Fully reconciles the earlier /record puzzle: yesterday's final 11 graded (3W/7L/1BE) + SPXW win + HOOD win = 13 graded/5W exactly matching the 15:11 /record read. Both of today's 2 trades so far are clean ratchet-floor wins with exact formula matches. Nothing anomalous.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
