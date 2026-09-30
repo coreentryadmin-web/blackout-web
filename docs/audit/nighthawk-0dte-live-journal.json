@@ -509,6 +509,13 @@
       "summary": "New trading day. Clean cold start: heat.state=PRE_MARKET (heat_pct 34, feeds warming), ledger_len=0 (correctly empty), upstream_ok=true. Container restarted since yesterday's last cycle (OS build changed, skills list shrunk) -- verified per CLAUDE.md's restart caution: git branch=main, working tree clean, origin/main HEAD matched local history including all of yesterday's journal commits through the 11/11 EOD summary, scratchpad scripts survived intact. Yesterday's (2026-09-29) session closed at 11 trades: 3 wins (BE +40% textbook trim_scale, QQQ +3.51%, SPXW +2.57%), 1 stop (ORCL -51.09%), 4 flat-timeout scratches, 3 thesis-break exits (now a confirmed-coherent 3-instance pattern) -- full recap in this journal's 2026-09-29T19:45:00Z entry. Watching for the PRE_MARKET->OPENING_DRIVE->RTH transition and first commits of the day.",
       "action": "none",
       "escalation": "none"
+    },
+    "2026-09-30T13:44:00Z_opening_drive": {
+      "cycle_time": "2026-09-30T13:44:07.520Z",
+      "trigger": "13:43 UTC (trigger 3/4 offset :30)",
+      "summary": "Transitioned PRE_MARKET -> OPENING_DRIVE. ledger_len still 0 -- correctly empty, G-2 opening_window gate expected to hold commits for the first ~10 min of RTH per documented design. Normal progression.",
+      "action": "none",
+      "escalation": "none"
     }
   },
   "sessions": {
