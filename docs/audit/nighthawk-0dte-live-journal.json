@@ -621,6 +621,13 @@
       "breakout_multiday_expiry_status": "Resolved earlier today (19:22 UTC entry) as confirmed intentional design, not a bug -- closed, no further tracking needed on this item.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-09-30T20:16:00Z_direction_asymmetry_first_instance_and_score_band_confirmed_intentional": {
+      "summary": "AGGRESSIVE-MODE dig (EOD, no time pressure): pulled /record?days=1 aggregate breakdowns (2-day rolling window, n=16: today's 5 + yesterday's 11). Two observations.",
+      "score_band_check": "by_score_band collapsed all 16 plays into a single 'score 65+' bucket. Verified via source (record.ts:537-543, scoreBand()) this is CORRECT BY DESIGN, not a bug -- code comment explicitly ties the 65 threshold to gate G-3's commit floor (F-2 calibration finding): since G-3 already blocks any commit scoring <65, the 'score 55-64' and 'score <55' bands exist only for historical/backtest completeness and will structurally always be empty on live data. No action needed, closing this thread immediately (source-verified, not ambiguous).",
+      "direction_asymmetry_watch": "by_direction shows a real split this window: long n=7, 57.1% WR, avg_pnl +2.81% vs short n=9, 33.3% WR, avg_pnl -3.04%. FIRST INSTANCE of this specific observation being logged -- n is far too thin (7/9, well below any real statistical threshold, and below the 3-same-failure-mode-instance noise bar this journal holds itself to) to treat as a finding. Logging as a watch item only: if a similar long>short WR/pnl gap recurs on 2 more independent windows/days, that would cross the 3-instance threshold worth a real look (e.g. whether short-side entries are systematically weaker, or this is pure 2-day noise in a 16-play sample). Not escalating.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
