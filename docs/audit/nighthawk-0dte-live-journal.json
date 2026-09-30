@@ -572,6 +572,13 @@
       "summary": "3rd instance today of upstream_ok:false (ledger_len:0). Cross-checked: /record shows graded:16, wins:7, losses:8, breakeven:1 -- matches the QQQ win just journaled (7W, up from 6W), no data loss. Not escalating, same documented recurring pattern.",
       "action": "none -- will re-poll next cycle",
       "escalation": "none"
+    },
+    "2026-09-30T18:43:00Z_upstream_degradation_continuing_clean": {
+      "cycle_time": "2026-09-30T18:43:55.807Z",
+      "trigger": "18:43 UTC (trigger 3/4 offset :30)",
+      "summary": "upstream_ok:false continuing from last cycle (fresh timestamp confirms not stale cache). /record unchanged at 16/7W/8L/1BE -- no new trades, no data loss. Not escalating.",
+      "action": "none -- will re-poll next cycle",
+      "escalation": "none"
     }
   },
   "sessions": {
