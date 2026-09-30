@@ -579,6 +579,13 @@
       "summary": "upstream_ok:false continuing from last cycle (fresh timestamp confirms not stale cache). /record unchanged at 16/7W/8L/1BE -- no new trades, no data loss. Not escalating.",
       "action": "none -- will re-poll next cycle",
       "escalation": "none"
+    },
+    "2026-09-30T18:45:00Z_upstream_degradation_3rd_cycle_still_clean": {
+      "cycle_time": "2026-09-30T18:45:24.470Z",
+      "trigger": "18:45 UTC (trigger 4/4 offset :45)",
+      "summary": "upstream_ok:false persisting into a 3rd consecutive cycle. /record still unchanged at 16/7W/8L/1BE -- no data loss, no new trades since QQQ. Same continuing degradation window as the prior 2 cycles.",
+      "action": "none -- will re-poll next cycle",
+      "escalation": "none"
     }
   },
   "sessions": {
