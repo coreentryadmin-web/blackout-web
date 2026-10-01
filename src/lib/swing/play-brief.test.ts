@@ -2255,6 +2255,12 @@ test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims fo
 });
 
 test("composeSwingPlayBrief: short interest evidence freshness is stale when fund.as_of is old (Largo C2)", () => {
+  // readMs in composeSwingPlayBrief is real wall-clock time, not ctx.asOf — anchor relative to
+  // Date.now(), same pattern as the "2 days old" recent-freshness test below. A hardcoded calendar
+  // date here drifts out of the intended 15-60 day "stale" window as real time passes (caught live
+  // 2026-10-01: a literal "2026-08-01" aged past the 60-day ancient ceiling and the test started
+  // failing on an unrelated PR).
+  const thirtyFiveDaysAgo = new Date(Date.now() - 35 * 24 * 60 * 60_000).toISOString().slice(0, 10);
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-05 16:00 ET",
@@ -2274,7 +2280,7 @@ test("composeSwingPlayBrief: short interest evidence freshness is stale when fun
           days_to_cover: 2.1,
           short_volume_ratio: 0.35,
           price_target: null,
-          as_of: "2026-08-01",
+          as_of: thirtyFiveDaysAgo,
         },
         related: null,
         news: null,
@@ -2291,7 +2297,7 @@ test("composeSwingPlayBrief: short interest evidence freshness is stale when fun
   assert.equal(siEvidence?.provenance?.freshness, "stale");
   assert.equal(
     siEvidence?.provenance?.asOf,
-    "2026-08-01 16:00 ET",
+    `${thirtyFiveDaysAgo} 16:00 ET`,
     "date-only as_of must anchor at session close ET, not prior evening",
   );
 });
@@ -2383,6 +2389,9 @@ test("composeSwingPlayBrief: short interest evidence is OMITTED (not just tagged
 });
 
 test("composeSwingPlayBrief: short interest evidence still renders when fund.as_of is old-but-plausible (just under the ancient ceiling)", () => {
+  // readMs is real wall-clock time (Date.now()), not ctx.asOf — see the sibling "freshness is
+  // stale" test above for why a hardcoded calendar date drifts out of the intended window.
+  const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60_000).toISOString().slice(0, 10);
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-15 16:00 ET",
@@ -2403,7 +2412,7 @@ test("composeSwingPlayBrief: short interest evidence still renders when fund.as_
           short_volume_ratio: 0.35,
           price_target: null,
           // 45 days old — under the 60-day ceiling, so it must still render (as "stale", honestly).
-          as_of: "2026-08-01",
+          as_of: fortyFiveDaysAgo,
         },
         related: null,
         news: null,
