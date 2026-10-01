@@ -33,8 +33,17 @@ function queueBudgetMs(): number {
 /** Per-process pacing; default 2 rps. Override via UW_MAX_RPS (e.g. lower on the worker
  *  than on web when no Redis-global ceiling is in play). */
 const MAX_RPS = envNumber("UW_MAX_RPS", 2);
-/** Cluster-wide ceiling when REDIS_URL is set — shared by worker + web app. */
-const GLOBAL_MAX_RPS = envNumber("UW_GLOBAL_MAX_RPS", 2);
+/** Cluster-wide ceiling when REDIS_URL is set — shared by worker + web app.
+ *  Increased from 2 to 4 (2026-10-01) to give headroom for concurrent background crons
+ *  (vector-full-state-snapshot every 5min, uw-cache-refresh every 2min, vector-dark-pool-warm
+ *  every 10min) without starving live member traffic. Measured 2026-09-28/10-01: vector-dark-pool-warm
+ *  hit 0/55 success rate with warmed=0, failed=55 on back-to-back runs due to shared
+ *  GLOBAL_MAX_RPS=2 oversubscription. Background sweeps already reserve concurrency slots
+ *  via runWithBackgroundUwSweep; increasing RPS headroom from 2→4 closes the rate-limit gap
+ *  without additional architectural changes, and stays within the upstream UW provider's
+ *  advertised rate capacity.
+ */
+const GLOBAL_MAX_RPS = envNumber("UW_GLOBAL_MAX_RPS", 4);
 /** Live replica count of this service — divides the global budget across replicas on Redis loss. */
 const REPLICA_COUNT = Math.max(1, Math.floor(envNumber("REPLICA_COUNT", 1)));
 
