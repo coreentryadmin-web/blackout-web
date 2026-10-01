@@ -2551,8 +2551,25 @@ export async function readZeroDteLedgerChecked(): Promise<ZeroDteLedgerRead> {
     const rows = await fetchZeroDteSetupLog(today);
     lastGoodLedger = { date: today, rows };
     return { rows, committed_known: true };
-  } catch {
-    if (lastGoodLedger?.date === today) return { rows: lastGoodLedger.rows, committed_known: true };
+  } catch (err) {
+    // 2026-10-01 production incident: upstream_ok went false for up to ~90min across
+    // 4 separate instances in one session day, with zero trading-path impact but no
+    // way to root-cause WHY — this catch previously swallowed the error silently, so
+    // live CloudWatch keyword searches found a cause for one instance and nothing for
+    // another. Log every occurrence so the next instance is diagnosable from logs
+    // alone instead of inferred from infra metrics that all read healthy.
+    if (lastGoodLedger?.date === today) {
+      console.warn(
+        "[zerodte-ledger-read] fetchZeroDteSetupLog failed — serving same-session last-good snapshot:",
+        err
+      );
+      return { rows: lastGoodLedger.rows, committed_known: true };
+    }
+    console.warn(
+      "[zerodte-ledger-read] fetchZeroDteSetupLog failed with NO same-session snapshot — " +
+        "committed_known:false, board degrades to upstream_ok:false:",
+      err
+    );
     return { rows: [], committed_known: false };
   }
 }

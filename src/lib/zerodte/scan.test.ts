@@ -562,6 +562,60 @@ test("readZeroDteLedgerChecked: failure with NO same-session snapshot is committ
   assert.deepEqual(read.rows, []);
 });
 
+// 2026-10-01 production incident: upstream_ok:false persisted up to ~90min across 4
+// separate instances in one session day with no way to root-cause WHY, because this
+// catch block swallowed the read error with zero logging — live CloudWatch keyword
+// searches found a cause for one instance and nothing for another. These prove every
+// occurrence now logs, so a future instance is diagnosable from logs alone.
+test("readZeroDteLedgerChecked: a committed_known:false occurrence logs the underlying error", async () => {
+  resetState();
+  const { readZeroDteLedgerChecked, _resetZeroDteLedgerLatchForTest } = await mod();
+  _resetZeroDteLedgerLatchForTest();
+
+  const warnCalls: unknown[][] = [];
+  const restore = mock.method(console, "warn", (...args: unknown[]) => {
+    warnCalls.push(args);
+  });
+  try {
+    state.ledgerReadFails = true;
+    const read = await readZeroDteLedgerChecked();
+    assert.equal(read.committed_known, false);
+    assert.equal(warnCalls.length, 1, "the blind branch must log exactly once");
+    const [label, err] = warnCalls[0]!;
+    assert.match(String(label), /\[zerodte-ledger-read\]/);
+    assert.match(String(label), /committed_known:false/);
+    assert.ok(err instanceof Error && err.message.includes("hermetic: simulated ledger read failure"));
+  } finally {
+    restore.mock.restore();
+  }
+});
+
+test("readZeroDteLedgerChecked: a latch-recovered blip also logs the underlying error", async () => {
+  resetState();
+  const { readZeroDteLedgerChecked, _resetZeroDteLedgerLatchForTest } = await mod();
+  _resetZeroDteLedgerLatchForTest();
+
+  state.ledgerRows = [baseRow({ status: "OPEN" })];
+  await readZeroDteLedgerChecked(); // primes the latch with a good read
+
+  const warnCalls: unknown[][] = [];
+  const restore = mock.method(console, "warn", (...args: unknown[]) => {
+    warnCalls.push(args);
+  });
+  try {
+    state.ledgerReadFails = true;
+    const read = await readZeroDteLedgerChecked();
+    assert.equal(read.committed_known, true, "latch still recovers the committed set");
+    assert.equal(warnCalls.length, 1, "a masked blip must still log once, not silently");
+    const [label, err] = warnCalls[0]!;
+    assert.match(String(label), /\[zerodte-ledger-read\]/);
+    assert.match(String(label), /last-good snapshot/);
+    assert.ok(err instanceof Error && err.message.includes("hermetic: simulated ledger read failure"));
+  } finally {
+    restore.mock.restore();
+  }
+});
+
 test("readZeroDteLedger: delegates through the checked read (empty on unknowable, latched rows on a blip)", async () => {
   resetState();
   const { readZeroDteLedger, _resetZeroDteLedgerLatchForTest } = await mod();
