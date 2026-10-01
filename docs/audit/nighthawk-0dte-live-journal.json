@@ -634,6 +634,12 @@
       "grading_pass_watch": "Stage G: 0/5 of today's closed rows (HOOD/ZETA/SPXW/MARA/QQQ) carry a graded outcome as of 20:44 UTC ('pending the post-close grade pass'). Checked cron-registry.ts: zerodte-grade runs every 15min specifically in the 20:00-22:00 UTC (4-6pm ET) post-close band (schedule_cron_utc '*/15 20-22 * * 1-5') -- 3 fires (20:00/20:15/20:30) should already have occurred by this check, yet still 0/5 graded. Plausible benign explanation: the grader may process a bounded/batched subset per run (same pattern as the sibling zerodte-skip-grade cron's documented MAX_ROWS_PER_RUN bound) rather than instantly grading everything pending. stale_after_min for this cron is 360min (6hrs), so this would not yet trigger any cron-health alert regardless. FIRST INSTANCE of this specific observation -- not escalating (well under the 3-instance noise threshold, and there's a plausible non-bug explanation). Concrete re-check plan: verify again before/around 22:00 UTC (end of the grading window) that all 5 rows have graded by then; if still ungraded past the window close, that would be a genuine second data point worth digging into the grader's actual per-run row cap.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-01T13:11:00Z_new_day_pre_market_grading_pass_resolved": {
+      "summary": "New trading day (2026-10-01), clean start -- synced local to origin/main (other lanes had committed overnight, no drift/conflict). Board PRE_MARKET, heat_pct 33, upstream_ok:true, ledger_len:0 (expected empty cold start).",
+      "grading_pass_resolution": "RESOLVED: yesterday's 20:44 UTC grading-pass watch item (0/5 of 2026-09-30's closed trades graded over an hour post-close) is now closed out clean. GET /record?days=2 shows graded:16 ungraded:0 for the 2-day window -- all 5 of yesterday's trades (HOOD/ZETA/SPXW/MARA/QQQ) now carry full plan_outcome/managed_outcome/plan_pnl_pct. Spot-checked HOOD: plan_outcome:'ratchet' plan_pnl_pct:4.64, exactly matching the live mechanical exit observed in real time yesterday (peak 12.11%->floor 4.84%). Confirms the benign explanation from yesterday's note (bounded/batched grading pass catching up within its window) -- no bug, closing this watch item.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
