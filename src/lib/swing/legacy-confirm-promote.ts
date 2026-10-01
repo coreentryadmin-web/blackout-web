@@ -4,42 +4,45 @@
 // INVALIDATED) are promoted into the swing serving snapshot so they surface on the Swings tab
 // with a NIGHT HAWK origin badge.
 //
-// LIFECYCLE (fixed 2026-10-01, Ask Largo standing mandate — a real bug, not a design choice):
-// DISCOVERED → FORMING/PRE_TRIGGER → TRIGGERED/CONFIRMED → ACTIVE → EXITED/INVALIDATED.
-// `buildLegacySwingArtifacts` classifies a Legacy play ONCE, at first promotion (`checkedAt`).
-// Before this fix, every later day's carry-forward (`carryLegacyPromotedIntoSnapshot` →
-// `refreshCarriedLegacyPlay`) refreshed ONLY the contract's price/DTE and left `setupState`/
-// `entryStatus` FROZEN at that first-promotion-day read forever — a name whose underlying ran
-// straight through its own published trigger days later still showed PRE_TRIGGER, because nothing
-// ever looked again. Live-reproduced 2026-09-30/10-01: DELL and NVDA, both first classified
-// 2026-09-28, both still read FORMING/PRE_TRIGGER on 2026-10-01 — NVDA's underlying had already
-// closed through its $225.07 trigger at $228.38 three sessions earlier. `refreshCarriedLegacyPlay`
-// now re-runs the EXACT SAME pure classifiers the WATCH lane calls on first promotion
-// (`swingServingReadsFromPlan` + `swingServingMetaFromDossier`, which wrap `deriveSetupState`/
-// `deriveEntryPlan`) against the carried dossier's PINNED structural levels (entry/invalidation/ATR
-// — those don't drift daily, only price does) and a FRESH spot, every refresh. This also makes
-// INVALIDATED reachable for the first time (a Legacy thesis whose underlying closes through its own
-// invalidation level now correctly reads INVALIDATED instead of staying FORMING forever).
+// GRADUATION (added 2026-10-01, PR #5577, corrected same day): a Legacy-promoted thesis was
+// previously serve-only FOREVER — `commitGateBlockedBy: ["legacy:exempt"]` and
+// `bucketGraduated: false` are hardcoded because these rows live ENTIRELY in this module's own
+// persisted serving snapshot, a data path structurally disjoint from `accumulation-store.ts` (the
+// ONLY store `discovery.ts`'s commit loop reads real candidates from via `fetchWatchEligible`) —
+// not a flag bug, a genuinely separate pipeline with no bridge between them. This is still true
+// and still the real gap this file closes; confirmed structurally true even on a row (ZS,
+// 2026-10-01) sitting at live `TRIGGERED`/`AT_TRIGGER` with a correctly up-to-date classification.
 //
-// GRADUATION (added 2026-10-01): a Legacy-promoted thesis was previously serve-only FOREVER —
-// `commitGateBlockedBy: ["legacy:exempt"]` and `bucketGraduated: false` were hardcoded because
-// these rows live ENTIRELY in this module's own persisted serving snapshot, a data path completely
-// disjoint from `accumulation-store.ts` (the ONLY store `discovery.ts`'s commit loop reads
-// candidates from via `fetchWatchEligible`) — not a flag bug, a genuinely separate pipeline with no
-// bridge between them. `legacyCommitCandidatesFromSnapshot` is that bridge: once (and ONLY once) a
-// carried Legacy play's LIVE-recomputed `setupState==="TRIGGERED"` and
-// `entryStatus==="AT_TRIGGER"|"PULLBACK_TO_ENTRY"` — the SAME observable gate `serving.ts` requires
-// for an organic candidate to reach COMMIT_NOW — it becomes a real `SwingCommitCandidate` built from
-// its OWN already-materialized dossier/contract (no new fetch needed) and can be appended to
-// `discovery.ts`'s existing `commitCandidates` list, so it is decided by the REAL, UNMODIFIED
-// `computeSwingCommitPlan` — same G-S3 earnings / G-S4 regime / G-S6 confluence / G-S12 halt / G-S14
-// Cortex gates, same armed-budget + book-percent caps + idempotency checks, zero duplicated or
-// weakened logic. Deliberately does NOT invent a "NIGHT HAWK" confluence kind for G-S6: a Legacy-only
-// candidate carries zero Tier-0 discovery-path provenance unless it is ALSO independently screened by
-// organic FLOW/STRUCTURE/etc. this same scan, so G-S6 (>=2/3 INDEPENDENT kinds) legitimately blocks a
-// Legacy-only signal exactly as it would an under-corroborated organic one — a single human-curated
-// read must not be able to satisfy that bar alone, or this bridge would silently weaken the gate the
-// operator explicitly asked not to bypass.
+// `legacyCommitCandidatesFromSnapshot` is that bridge: once (and ONLY once) a Legacy play's
+// LIVE `setupState==="TRIGGERED"` and `entryStatus` at `"AT_TRIGGER"`/`"PULLBACK_TO_ENTRY"` — the
+// SAME observable gate `serving.ts`'s router requires for an organic candidate to reach
+// `COMMIT_NOW` — it becomes a real `SwingCommitCandidate` built from its own already-materialized
+// dossier/contract (no new fetch needed) and can be appended to `discovery.ts`'s existing
+// `commitCandidates` list, so it is decided by the REAL, UNMODIFIED `computeSwingCommitPlan` —
+// same G-S3 earnings / G-S4 regime / G-S6 confluence / G-S12 halt / G-S14 Cortex gates, same
+// armed-budget + book-percent caps + idempotency, zero duplicated or weakened logic. Deliberately
+// does NOT invent a "NIGHT HAWK" confluence kind for G-S6: a Legacy-only candidate carries zero
+// Tier-0 discovery-path provenance unless it is ALSO independently screened by organic
+// FLOW/STRUCTURE/etc. this same scan, so G-S6 (>=2/3 INDEPENDENT kinds) legitimately blocks a
+// Legacy-only signal exactly as it would an under-corroborated organic one — a single human-
+// curated read must not be able to satisfy that bar alone, or this bridge would silently weaken
+// the gate the operator explicitly asked not to bypass. `removeCommittedLegacyFromSnapshot` drops
+// a committed ticker from the persisted WATCH snapshot so it is not also carried forward as a
+// duplicate thesis.
+//
+// CORRECTION (2026-10-01, same day): this PR originally ALSO claimed `setupState`/`entryStatus`
+// were frozen at first-promotion-day values on every later carry-forward refresh, and shipped a
+// live-reclassification change to `refreshCarriedLegacyPlay` to fix it. That claim was WRONG —
+// caught live during routine monitoring when ZS/SHOP (two of the rows the claim was built on)
+// correctly flipped `FORMING`->`TRIGGERED` on production with `firstSeenAt` unchanged. The real
+// mechanism already exists: `swing-active-refresh` (15-min, RTH-only cron) refreshes
+// `spotsByTicker` for every name in the persisted WATCH snapshot, Legacy rows included
+// ("so FORMING/TRIGGERED stays current" — its own comment), and `serving-lane.ts`'s `enrichPlay`
+// recomputes `setupState`/`entryStatus` fresh via `swingServingMetaFromDossier` on EVERY
+// `/horizons` request, never trusting whatever was persisted. The original DELL/NVDA "frozen"
+// observation was pre-market staleness (that refresh cron does not run outside market hours) read
+// as a structural bug. The live-reclassification change was reverted; this header and the
+// graduation-bridge functions below are what remains.
 
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import type { PlayStatus } from "@/features/nighthawk/lib/morning-confirm-verdict";
@@ -455,20 +458,14 @@ export function isCarriedContractLive(play: HorizonPlay, sessionDay: string): bo
 }
 
 /**
- * Refresh a legacy-carried play for the current session: recompute calendar DTE, merge a fresher
- * quote from today's organic scan when strike/expiry match, drop stale mids when the DTE label has
- * drifted (FINDINGS 2026-08-07 frozen-contract serve bug) — AND (fixed 2026-10-01) re-run the LIVE
- * setup-maturity/entry-stance classification against a fresh spot, instead of leaving `setupState`/
- * `entryStatus` frozen at whatever they read on the play's original promotion day. `live` is optional
- * and backward-compatible: omitting it (or an ungroundable spot/dossier) reproduces the exact prior
- * behavior — contract-only refresh, classification untouched — so every existing caller/test that
- * doesn't pass it keeps working unchanged.
+ * Refresh a legacy-carried play's contract for the current session — recompute calendar DTE, merge a
+ * fresher quote from today's organic scan when strike/expiry match, and drop stale mids when the DTE
+ * label has drifted (FINDINGS 2026-08-07 frozen-contract serve bug).
  */
 export function refreshCarriedLegacyPlay(
   play: HorizonPlay,
   sessionDay: string,
   freshPlayByTicker?: ReadonlyMap<string, HorizonPlay>,
-  live?: { dossier?: SwingDossier | null; spot?: number | null; asOf?: string },
 ): HorizonPlay | null {
   if (!isCarriedContractLive(play, sessionDay) || !play.contract) return null;
   const expiry = carriedContractExpiry(play)!;
@@ -500,65 +497,21 @@ export function refreshCarriedLegacyPlay(
       ? play.reason.replace(/\b\d+DTE\b/g, `${dte}DTE`)
       : play.reason;
 
-  // ── live re-classification (fixed 2026-10-01) ──────────────────────────────────────────────
-  // Re-run the EXACT SAME pure classifiers the WATCH lane calls at first promotion
-  // (swingServingReadsFromPlan → swingServingMetaFromDossier, which wrap deriveSetupState /
-  // deriveEntryPlan) against the dossier's PINNED structural plan levels (entry/invalidation/ATR —
-  // these were set once from promotion-day ATR and should NOT drift daily) and a FRESH spot. A
-  // missing dossier or ungroundable spot degrades honestly to the prior (frozen) fields — never a
-  // guess, same discipline as every other field in this module.
-  let liveFields: Partial<HorizonPlay> = {};
-  if (live?.dossier && live.spot != null && Number.isFinite(live.spot) && live.spot > 0) {
-    const reads = swingServingReadsFromPlan(live.dossier, live.spot, {
-      contract: mergedContract,
-      asOf: live.asOf,
-    });
-    if (reads) {
-      const meta = swingServingMetaFromDossier(live.dossier, reads);
-      liveFields = {
-        setupState: meta.setupState ?? play.setupState,
-        entryStatus: meta.entryStatus ?? play.entryStatus,
-        thesisLevel: meta.thesisLevel,
-        thesisNote: meta.thesisNote ?? undefined,
-        entryTriggerUnderlyingPx: meta.entryTriggerUnderlyingPx ?? play.entryTriggerUnderlyingPx ?? null,
-        invalidationUnderlyingPx:
-          live.dossier.plan?.thesisInvalidationPx ?? play.invalidationUnderlyingPx ?? null,
-        liveSpot: live.spot,
-      };
-    }
-  }
-
-  return { ...play, contract: mergedContract, reason, ...liveFields };
+  return { ...play, contract: mergedContract, reason };
 }
 
-/**
- * Re-attach morning-confirm legacy promotions after a swing-discovery scan overwrites the snapshot.
- * `freshSpotsByTicker` (optional, caller-injected IO) supplies a current underlying price per carried
- * Legacy ticker — tried first, falling back to whatever this scan's own organic universe or the
- * prior snapshot already had cached for that ticker. Absent for a given ticker ⇒ that one row's
- * classification stays frozen this cycle (honest degrade, never a guess) while every other field
- * (contract price/DTE) still refreshes normally.
- */
+/** Re-attach morning-confirm legacy promotions after a swing-discovery scan overwrites the snapshot. */
 export function carryLegacyPromotedIntoSnapshot(
   fresh: SwingServingSnapshot,
   prior: SwingServingSnapshot | null,
-  opts?: { freshSpotsByTicker?: Record<string, number> },
 ): SwingServingSnapshot {
   if (!prior) return fresh;
   const freshByTicker = new Map(
     (fresh.plays ?? []).map((p) => [p.ticker.toUpperCase(), p] as const),
   );
-  const extraSpots = opts?.freshSpotsByTicker ?? {};
   const triples = legacyPromotedTriplesFromSnapshot(prior)
     .map((t) => {
-      const ticker = t.watch.ticker.toUpperCase();
-      const spot =
-        extraSpots[ticker] ?? fresh.spotsByTicker?.[ticker] ?? prior.spotsByTicker?.[ticker] ?? null;
-      const refreshed = refreshCarriedLegacyPlay(t.play, fresh.sessionDay, freshByTicker, {
-        dossier: t.dossier,
-        spot,
-        asOf: fresh.asOf,
-      });
+      const refreshed = refreshCarriedLegacyPlay(t.play, fresh.sessionDay, freshByTicker);
       return refreshed ? { ...t, play: refreshed } : null;
     })
     .filter((t): t is NonNullable<typeof t> => t != null);
@@ -570,78 +523,6 @@ export function carryLegacyPromotedIntoSnapshot(
     asOf: fresh.asOf,
     spotsByTicker: { ...(prior.spotsByTicker ?? {}), ...(fresh.spotsByTicker ?? {}) },
   });
-}
-
-/**
- * GRADUATION BRIDGE (fixed 2026-10-01): Legacy-promoted triples whose LIVE-recomputed maturity has
- * reached the SAME observable gate `serving.ts`'s router requires for an organic candidate to reach
- * COMMIT_NOW — `setupState==="TRIGGERED"` AND `entryStatus` at `"AT_TRIGGER"`/`"PULLBACK_TO_ENTRY"` —
- * become real `SwingCommitCandidate`s, built from their OWN already-materialized dossier/contract (no
- * new fetch needed). The caller (discovery.ts's commit loop) appends these onto its existing
- * `commitCandidates` array BEFORE calling the real, unmodified `computeSwingCommitPlan` — so every
- * real-time gate (G-S3/G-S4/G-S6/G-S12/G-S14, armed budget, book-percent caps, idempotency) applies
- * exactly as it does to an organic candidate. A triple still FORMING/EXTENDED, or PRE_TRIGGER, or
- * INVALIDATED, or with no attached contract, is never included — it stays served WATCH/RESEARCH,
- * exactly like an organic candidate in the same observable state would.
- *
- * `discoveryPaths` deliberately does NOT invent a "NIGHT HAWK" kind — see the file header. Pass
- * `pathsByTicker` (the same per-scan Tier-0 provenance map discovery.ts already builds) so a Legacy
- * ticker that ALSO happens to be independently screened by organic FLOW/STRUCTURE/etc. this scan
- * gets credit for that real corroboration; a Legacy-only name legitimately carries an empty path set
- * and will block on G-S6 confluence like any other under-corroborated single-source candidate.
- */
-export function legacyCommitCandidatesFromSnapshot(
-  triples: ReadonlyArray<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }>,
-  opts: { sessionDate: string; pathsByTicker?: ReadonlyMap<string, readonly string[]> },
-): SwingCommitCandidate[] {
-  const out: SwingCommitCandidate[] = [];
-  for (const t of triples) {
-    const { play, dossier } = t;
-    if (play.setupState !== "TRIGGERED") continue;
-    if (play.entryStatus !== "AT_TRIGGER" && play.entryStatus !== "PULLBACK_TO_ENTRY") continue;
-    if (!play.contract) continue;
-    const ticker = play.ticker.toUpperCase();
-    const direction: PlayDirection | null =
-      play.direction === "LONG" || play.direction === "SHORT" ? play.direction : null;
-    if (!direction) continue;
-    const discoveryPaths = (opts.pathsByTicker?.get(ticker) ?? []) as SwingDiscoveryPath[];
-    out.push({
-      ticker,
-      direction,
-      archetype: dossier.archetype.archetype ?? null,
-      subLane: dossier.subLane ?? null,
-      score: typeof play.score === "number" ? play.score : 0,
-      contract: play.contract,
-      sessionDate: opts.sessionDate,
-      entryUnderlyingPx: dossier.plan?.entryUnderlyingPx ?? null,
-      thesisInvalidationPx: dossier.plan?.thesisInvalidationPx ?? null,
-      targetUnderlyingPx: dossier.plan?.targetUnderlyingPx ?? null,
-      topFlowStrike: null,
-      pillars: dossier.pillarSignals ?? null,
-      presentPillars: dossier.dataQuality?.presentPillars ?? null,
-      dataQualityDegraded: dossier.dataQuality?.degraded ?? null,
-      ivRank: dossier.ivRank ?? null,
-      discoveryPaths,
-      earningsInWindow: false,
-      halted: false,
-      dailyBarComplete: true,
-    });
-  }
-  return out;
-}
-
-/**
- * Drop committed Legacy tickers from the persisted serving snapshot — the Legacy-lane counterpart of
- * `reconcileDiscoveryAfterCommit` (discovery.ts), which already does this for organic watchCandidates.
- * Without this, a Legacy thesis that just opened a REAL position (via `legacyCommitCandidatesFromSnapshot`
- * above) would keep being carried forward as a WATCH row too, showing the same thesis twice.
- */
-export function removeCommittedLegacyFromSnapshot(
-  snap: SwingServingSnapshot,
-  committedTickers: ReadonlySet<string>,
-): SwingServingSnapshot {
-  if (committedTickers.size === 0) return snap;
-  return stripTickersFromSnapshot(snap, new Set([...committedTickers].map((t) => t.toUpperCase())));
 }
 
 export async function promoteLegacyConfirmedToSwing(opts: {
@@ -735,4 +616,78 @@ export async function promoteLegacyConfirmedToSwing(opts: {
   }
 
   return { promoted, skipped, errors, promotedTickers: additionTickers };
+}
+
+/**
+ * GRADUATION BRIDGE: Legacy-promoted triples whose maturity has reached the SAME observable gate
+ * `serving.ts`'s router requires for an organic candidate to reach COMMIT_NOW —
+ * `setupState==="TRIGGERED"` AND `entryStatus` at `"AT_TRIGGER"`/`"PULLBACK_TO_ENTRY"` — become
+ * real `SwingCommitCandidate`s, built from their OWN already-materialized dossier/contract (no new
+ * fetch needed). The caller (discovery.ts's commit loop) appends these onto its existing
+ * `commitCandidates` array BEFORE calling the real, unmodified `computeSwingCommitPlan` — so every
+ * real-time gate (G-S3/G-S4/G-S6/G-S12/G-S14, armed budget, book-percent caps, idempotency)
+ * applies exactly as it does to an organic candidate. A triple still FORMING/EXTENDED, or
+ * PRE_TRIGGER, or INVALIDATED, or with no attached contract, is never included — it stays served
+ * WATCH/RESEARCH, exactly like an organic candidate in the same observable state would.
+ *
+ * `discoveryPaths` deliberately does NOT invent a "NIGHT HAWK" kind — see the file header. Pass
+ * `pathsByTicker` (the same per-scan Tier-0 provenance map discovery.ts already builds) so a
+ * Legacy ticker that ALSO happens to be independently screened by organic FLOW/STRUCTURE/etc.
+ * this scan gets credit for that real corroboration; a Legacy-only name legitimately carries an
+ * empty path set and will block on G-S6 confluence like any other under-corroborated
+ * single-source candidate.
+ */
+export function legacyCommitCandidatesFromSnapshot(
+  triples: ReadonlyArray<{ dossier: SwingDossier; play: HorizonPlay; watch: SwingWatchCandidate }>,
+  opts: { sessionDate: string; pathsByTicker?: ReadonlyMap<string, readonly string[]> },
+): SwingCommitCandidate[] {
+  const out: SwingCommitCandidate[] = [];
+  for (const t of triples) {
+    const { play, dossier } = t;
+    if (play.setupState !== "TRIGGERED") continue;
+    if (play.entryStatus !== "AT_TRIGGER" && play.entryStatus !== "PULLBACK_TO_ENTRY") continue;
+    if (!play.contract) continue;
+    const ticker = play.ticker.toUpperCase();
+    const direction: PlayDirection | null =
+      play.direction === "LONG" || play.direction === "SHORT" ? play.direction : null;
+    if (!direction) continue;
+    const discoveryPaths = (opts.pathsByTicker?.get(ticker) ?? []) as SwingDiscoveryPath[];
+    out.push({
+      ticker,
+      direction,
+      archetype: dossier.archetype.archetype ?? null,
+      subLane: dossier.subLane ?? null,
+      score: typeof play.score === "number" ? play.score : 0,
+      contract: play.contract,
+      sessionDate: opts.sessionDate,
+      entryUnderlyingPx: dossier.plan?.entryUnderlyingPx ?? null,
+      thesisInvalidationPx: dossier.plan?.thesisInvalidationPx ?? null,
+      targetUnderlyingPx: dossier.plan?.targetUnderlyingPx ?? null,
+      topFlowStrike: null,
+      pillars: dossier.pillarSignals ?? null,
+      presentPillars: dossier.dataQuality?.presentPillars ?? null,
+      dataQualityDegraded: dossier.dataQuality?.degraded ?? null,
+      ivRank: dossier.ivRank ?? null,
+      discoveryPaths,
+      earningsInWindow: false,
+      halted: false,
+      dailyBarComplete: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Drop committed Legacy tickers from the persisted serving snapshot — the Legacy-lane counterpart
+ * of `reconcileDiscoveryAfterCommit` (discovery.ts), which already does this for organic
+ * watchCandidates. Without this, a Legacy thesis that just opened a REAL position (via
+ * `legacyCommitCandidatesFromSnapshot` above) would keep being carried forward as a WATCH row
+ * too, showing the same thesis twice.
+ */
+export function removeCommittedLegacyFromSnapshot(
+  snap: SwingServingSnapshot,
+  committedTickers: ReadonlySet<string>,
+): SwingServingSnapshot {
+  if (committedTickers.size === 0) return snap;
+  return stripTickersFromSnapshot(snap, new Set([...committedTickers].map((t) => t.toUpperCase())));
 }

@@ -38,7 +38,7 @@ import { bangerTickersFromGroupedDaily } from "@/lib/swing/v2/origins/banger-scr
 import { vectorTickersFromPickLeaders } from "@/lib/swing/v2/origins/vector-screen-fetch";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
-import { carryLegacyPromotedIntoSnapshot, legacyPromotedTriplesFromSnapshot } from "@/lib/swing/legacy-confirm-promote";
+import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
 import { swingThesisKey } from "@/lib/swing/accumulation-store";
 import {
   fetchRecentFlows,
@@ -439,33 +439,6 @@ export async function GET(req: NextRequest) {
       if (px != null && Number.isFinite(px) && px > 0) flagAnchorsByThesisKey[key] = px;
     }
 
-    // Fresh spot per carried Legacy ticker (fixed 2026-10-01 — Ask Largo standing mandate): without
-    // this, `carryLegacyPromotedIntoSnapshot`'s live re-classification (refreshCarriedLegacyPlay)
-    // has no current price to re-derive setupState/entryStatus against and silently degrades to the
-    // prior (frozen) classification. Most Legacy tickers are NOT in this scan's own organic
-    // universe (that is the whole reason they needed Legacy promotion), so `spotsByTicker` above
-    // rarely covers them — fetch directly, same accessor/fail-soft pattern already used for
-    // `watchTickers` just above.
-    const legacyCarriedTickers = [
-      ...new Set(
-        (existing ? legacyPromotedTriplesFromSnapshot(existing) : []).map((t) =>
-          t.watch.ticker.toUpperCase(),
-        ),
-      ),
-    ];
-    const legacySpotsByTicker: Record<string, number> = {};
-    await Promise.all(
-      legacyCarriedTickers.map(async (ticker) => {
-        try {
-          const trade = await fetchStockLastTrade(ticker);
-          const p = spotFromLastTradeResult(trade);
-          if (p != null) legacySpotsByTicker[ticker] = p;
-        } catch {
-          // fail-soft: that one row's classification stays frozen this cycle, never a guess.
-        }
-      }),
-    );
-
     const persisted = await persistSwingServingSnapshot(
       carryLegacyPromotedIntoSnapshot(
         {
@@ -479,7 +452,6 @@ export async function GET(req: NextRequest) {
           flagAnchorsByThesisKey,
         },
         existing,
-        { freshSpotsByTicker: legacySpotsByTicker },
       ),
     );
     if (!persisted) {
