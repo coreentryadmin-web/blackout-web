@@ -4,6 +4,36 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-01 (13:06 UTC / Wed 09:06 ET) — [Coordinator] Monthly cron DST audit
+
+**Deployed manifest: 39 EventBridge rules.** Audited 24 crons with ET gates; 15 unaudited (background/infra jobs without ET-based decision logic).
+
+**Verdict Summary:**
+- **OK: 5** (`nighthawk-morning-confirm`, `spx-signal-observe`, `banger-live-sync`, `x-analytics`, `spx-signal-weight-optimize`)
+- **ASYMMETRIC: 2** (`nighthawk-outcomes` EDT 10 vs EST 5 hits; `swing-discovery` EDT 122 vs EST 120 hits)
+- **UNSCHEDULED: 8** (not in deployed manifest, no DST exposure)
+- **EXIT CODE: 1** (mismatches detected)
+
+**Changes since prior run (2026-08-24):**
+- `x-autopost`: Still UNSCHEDULED (no entry in deployed manifest — differs from prior findings that reported it BROKEN/missing EST fires; likely registry-mirror mismatch, not a deployed timer)
+- `banger-discovery`: Registry/deployed mismatch persists (`registry: 15 20,21 UTC` vs `deployed: 15 20 UTC` only)
+- `nighthawk-outcomes`, `swing-discovery`: Still ASYMMETRIC; counts unchanged from prior run
+
+**Registry/Deployed Mismatches Found (7 total):**
+1. `banger-discovery`: registry `15 20,21` vs deployed `15 20`
+2. `largo-morning-brief`: registry claims schedule, deployed absent
+3. `zerodte-grade`: registry claims schedule, deployed absent
+4. `legacy-live-sync`: registry claims schedule, deployed absent
+5. `darkpool-discord`: registry claims schedule, deployed absent
+6. `thermal-discord`: registry claims schedule, deployed absent
+7. `helix-discord-digest`: registry claims schedule, deployed absent
+
+**Asymmetric cadence detail:**
+- `nighthawk-outcomes` (UTC `30 20,21 * * 1-5`, gate `inEtWindow(16:30 +90m)`): The 16:30-18:00 ET window spans different UTC hour ranges in EDT vs EST, causing the deployed 20-21 UTC band to hit differently after the DST boundary.
+- `swing-discovery` (UTC `0,30 10-23,0-4`, phase-gated): Similar boundary effect across EDT/EST transition.
+
+Neither is currently "dark" (missing entirely), but both see effective cadence changes. Prior run recommended watching; no change in status, so re-logging for next cycle's comparison.
+
 ## 2026-09-26 (14:06 UTC / Sat 10:06 ET) — [SEO] Daily growth cycle: quiet, no-change day
 
 Synced to `origin/main` (`b33690d`). Opportunity scan identical to this morning's cycle (same
