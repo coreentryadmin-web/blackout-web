@@ -4,6 +4,25 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-01 (06:20 UTC / Wed 02:20 ET) — [SEO] Lane heartbeat: clean, both fixes holding, #5577 investigated (not a jam)
+
+Synced to `origin/main` (`01f0800`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0002, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → 2 open agent PRs:
+#5537 (CI-failed, unchanged, confirmed intentional per its own comment) and **#5577** (new finding
+this cycle — flagged by the sweep tool's own "THE JAM" logic as green-CI + still-draft on a
+coordinator branch). Investigated via GitHub API: CI is genuinely green (CodeQL, triage, verify,
+dispatch, Analyze all `success`; auto-merge steps `skipped`), but the PR's own body states it is
+**intentionally** held as a draft — operator explicitly overrode the repo's standing CARVE-OUT
+auto-merge policy for this task ("Do not change production behavior until the tests demonstrate
+the lifecycle works correctly"), pending explicit sign-off. Same pattern as #5537: a sweep-tool
+false positive once the PR's own stated authorization is read, not a genuine stuck jam. No
+coordinator-flag comment posted. GSC opportunity scan: all flagged queries are thin-sample
+(3-9 impressions) or already served by existing content (`dealer gamma`, 51imp/pos12.9, is the
+same query already dominating `/learn/dealer-gamma-options-flow-guide`'s traffic) — no new action
+warranted. Avgpos trend continues improving: **11.8** over the last 28 days (previously tracked
+23.4 → 12.4).
+
 ## 2026-10-01 (00:16 UTC / Wed 20:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
 
 Synced to `origin/main` (`f5ccd26`). Purged Cloudflare edge, re-measured homepage desktop CLS —
