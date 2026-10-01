@@ -674,6 +674,12 @@
       "degradation_day_summary": "Today was dominated by the upstream_ok:false long-duration pattern: 4 distinct instances (15:44-16:39 ~55min, 18:10-19:40 ~90min, plus two earlier shorter flickers), escalating from 'roughly once per trading day' to 'can recur multiple times intraday.' Zero cumulative data loss across all 4 instances -- every trade that committed during any degraded window was present and graded correctly once the board recovered. Root cause remains OPEN (full investigation + evidence in the 16:15 UTC and 19:11 UTC entries) -- infra (ECS/RDS/Redis) all checked clean via live AWS CloudWatch, one DB connection-pool drop found in one instance but not the other, recommending structured logging at the actual committed_known:false return site as the next step.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-01T20:43:00Z_pr5581_merged_ledger_read_logging_fix": {
+      "summary": "PR #5581 (fix/zerodte-ledger-read-error-logging) MERGED at 20:27:18 UTC -- the readZeroDteLedgerChecked error-logging fix from this cycle's root-cause work is now live on main. Closes the specific observability gap found during today's 4-instance upstream_ok:false investigation: the catch block that decides committed_known now logs the real underlying error in both branches (latch-masked and fully-blind), instead of discarding it silently.",
+      "next_occurrence_expectation": "The NEXT time upstream_ok goes false for any meaningful duration, a '[zerodte-ledger-read]' log line with the real error should be findable in CloudWatch Logs regardless of which branch fires -- this is the concrete thing to verify if/when the pattern recurs. Root cause of the underlying degradation itself remains open; this fix only makes the next instance diagnosable.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
