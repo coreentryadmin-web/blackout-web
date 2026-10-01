@@ -667,6 +667,13 @@
       "related_finding": "2026-10-01T16:15:00Z_long_duration_degradation_3rd_instance_ESCALATED_root_cause_investigated",
       "resolution": "SELF-HEALED between 19:15 and 19:40 UTC (as_of 2026-10-01T19:40:10.647Z, upstream_ok back to true). Total duration ~90min (18:10-19:40 UTC) -- the longest of all 4 instances today, nearly double the 3rd instance's 55min. graded:9/wins:8/losses:1 unchanged throughout -- confirmed zero new commits occurred during this entire window (not a data loss artifact; the 3:30 PM ET new-commit cutoff and session transition to POST_COMMIT happened cleanly right as this resolved). Zero data loss across all 4 of today's instances combined. Root cause remains OPEN -- today's pattern (4 instances, escalating durations ~55min/~34min-seen-then-grew-to-90min, two different evidence signatures) is the strongest case yet for the recommended structured-logging follow-up at the actual committed_known:false return site, since keyword log searches found the cause in one instance and nothing in another despite both presenting identically to users.",
       "status": "RESOLVED (self-healed) \u2014 root cause still open, 4 instances today, zero cumulative data loss"
+    },
+    "2026-10-01T20:10:00Z_session_closed_3for4_eod_summary": {
+      "summary": "Session cleanly transitioned to CLOSED (as_of 2026-10-01T20:10:19.738Z), upstream_ok:true, ledger stable at 4 trades.",
+      "eod_tally": "4 trades today: QQQ (thesis-break win, oppose_cluster veto at +1.07%), AMD (ratchet win, peak 10.39%->floor 4.16%), SPXW (ratchet win, peak 27.99%->floor 11.2%, runner-only after 1/2 tranche pre-banked), GOOGL (ratchet, -1.23% vs +2.46% floor armed by +6.15% peak -- a small loss despite a positive peak, mechanically correct since the floor exits on breach regardless of final sign). 3W/1L for today's own session.",
+      "degradation_day_summary": "Today was dominated by the upstream_ok:false long-duration pattern: 4 distinct instances (15:44-16:39 ~55min, 18:10-19:40 ~90min, plus two earlier shorter flickers), escalating from 'roughly once per trading day' to 'can recur multiple times intraday.' Zero cumulative data loss across all 4 instances -- every trade that committed during any degraded window was present and graded correctly once the board recovered. Root cause remains OPEN (full investigation + evidence in the 16:15 UTC and 19:11 UTC entries) -- infra (ECS/RDS/Redis) all checked clean via live AWS CloudWatch, one DB connection-pool drop found in one instance but not the other, recommending structured logging at the actual committed_known:false return site as the next step.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
