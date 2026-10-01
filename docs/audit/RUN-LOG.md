@@ -4,6 +4,23 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-01 (13:35 UTC / Thu 09:35 ET) — [SEO] RTH wake: gamma-snapshot genuinely live, CLS clean on live-data page
+
+Confirmed clock myself (not the trigger's UTC framing): Thu 09:35 ET, `2026-10-01` not in
+`US_MARKET_HOLIDAYS` (`src/features/nighthawk/lib/session.ts`) → trading day, market open, inside
+the 09:30-13:00 RTH window. Did the RTH-specific job: `/api/public/gex-snapshot?ticker=SPX` →
+`market_session: OPEN`, `degraded: false`. Polled 5x at 3s intervals: `calculation_id` advanced
+monotonically (`...737802` → `...754388` → `...760573` → `...783264`) with spot ticking
+(7673.75 → 7674.64 → 7671.47 → 7674.35) and `snapshot_data_age_seconds` resetting low each time —
+the 5s refresh is genuinely live, not sitting on a stale snapshot. `/tools/gamma-snapshot` page
+SSR-embeds the same fresh `calculation_id`/spot/timestamp, not a stale cached render. No raw
+vendor values exposed — response is fully derived (flip/walls/posture/read), consistent with
+`RESEARCH-PUBLISH-POSTURE.md`'s publishable-derived boundary. Purged Cloudflare edge, re-measured
+homepage CLS on the live, actively-rendering page (not the frozen off-hours layout) —
+**0.0002, GOOD**. No defects found; no PR opened. (No access from this lane to the member-desk
+dashboard to cross-check absolute values — noting the limitation rather than claiming that
+specific check done.)
+
 ## 2026-10-01 (12:17 UTC / Thu 08:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, #5577/#5537 unchanged
 
 Synced to `origin/main` (`079a69b`). Purged Cloudflare edge, re-measured homepage desktop CLS —
