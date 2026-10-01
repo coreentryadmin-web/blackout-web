@@ -38,6 +38,32 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-01 — [FINDING, P1 Vector] `vector-dark-pool-warm` 0% success rate — shared UW rate limiter oversubscribed by three concurrent background crons — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `src/lib/providers/uw-rate-limiter.ts` (shared `GLOBAL_MAX_RPS` cluster-wide ceiling) — contended by `vector-full-state-snapshot`, `uw-cache-refresh`, and `vector-dark-pool-warm`. |
+| **Found** | During RTH on 2026-09-28, `vector-dark-pool-warm` exhibited complete failure across three consecutive runs (16:36–18:17 UTC): 16:36 warmed=11/failed=44 (335s); 17:36 warmed=0/failed=55 (384s); 18:17 warmed=0/failed=55 (389s). Dark-pool levels went fully stale (0 members-visible levels warmed on the last two runs). Member-facing impact contained (ALB p99 held 10–29s band); 0DTE board saw intermittent `upstream_ok: false` mid-RTH, self-healed by watchdog within ~1 min. |
+| **Root cause** | The shared UW global rate limiter (`GLOBAL_MAX_RPS=2`, cluster-wide) is oversubscribed by three concurrent background crons running the same RTH window: `vector-full-state-snapshot` (every 5 min, 55–90s elapsed, `budgetHit=true` on nearly every run), `uw-cache-refresh` (every 2 min, 20–40s), and `vector-dark-pool-warm` (every 10 min, 384–389s, hitting queue timeouts). Each cron individually respects its own overlap lock, bounded per-cron concurrency (`MAX_CONCURRENCY=3`), and background-sweep concurrency reservation — but those guards work at the in-flight CONCURRENCY level, not the RPS level. With `GLOBAL_MAX_RPS=2`, even perfectly non-overlapping runs cannot collectively exceed 2 requests/second, insufficient for three concurrent cache-warming crons plus live member traffic. |
+| **Fix** | Increased `GLOBAL_MAX_RPS` from 2 to 4 in `src/lib/providers/uw-rate-limiter.ts` (line 37/46) — the UW provider's advertised rate limit is higher than 2 RPS (confirmed via provider docs); background sweeps already reserve concurrency slots for live traffic via `runWithBackgroundUwSweep`, so doubling the RPS budget gives the three crons headroom without touching that reservation logic. Simpler than staggering three independent cron schedules, which offers no overlap guarantee anyway. Merged via PR #5579. |
+| **Evidence** | 3-run failure sequence captured above (16:36/17:36/18:17 UTC, 2026-09-28); `git log -S"GLOBAL_MAX_RPS", -- src/lib/providers/uw-rate-limiter.ts` confirms the constant is live at 4 in `main` via #5579, with an explanatory code comment referencing the oversubscription. |
+| **Status** | FIXED — merged via PR #5579. Post-deploy validation targets (next RTH): `vector-dark-pool-warm` warmed > 45/55 (≥80%), `uw-cache-refresh` < 40s elapsed, 0DTE board `upstream_ok=true` on every poll, ALB p99 < 20s — not yet independently re-verified by this entry. |
+
+## 2026-09-28 — [FINDING, P2 Vector] `vector-pick-sweep` cron 2.1–4.6x over its own schedule after an upstream cache-warmer fix — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `src/lib/vector/vector-pick-sweep.ts` — `vector-pick-sweep` cron (120s schedule), downstream of `vector-full-state-snapshot`'s cache warmer. |
+| **Found** | Post-deploy monitoring of PR #5551 (which reduced `vector-full-state-snapshot` TICKER_CONCURRENCY 3→2 to fix a cache-warming cascade failure). `vector-pick-sweep` remained severely over-budget: schedule 120s, observed elapsed across 6 samples 254s/495s/329s/560s/404s/475s — 2.1–4.6x over schedule, no improvement from the upstream fix. |
+| **Root cause** | `SWEEP_CONCURRENCY = 4` processes 64 tickers in 16 sequential batches. The reduced cache warmer (TICKER_CONCURRENCY=2) takes 30+ cycles to warm 64 tickers, so many tickers aren't cached when the sweep runs, forcing per-batch full-state recomputation. With only 4 tickers/batch, batches run serially and the rate-limiter headroom freed by the TICKER_CONCURRENCY reduction (peak concurrent requests dropped from ~120 to ~80) went unused. |
+| **Fix** | Increased `SWEEP_CONCURRENCY` from 4 to 8 in `src/lib/vector/vector-pick-sweep.ts` (line 271) — 8 tickers/batch = 8 batches instead of 16, halving the sequential batch count while staying well under the ~80 peak concurrent requests the upstream fix freed up. Merged via PR #5553. |
+| **Evidence** | 6-sample post-fix elapsed-time regression captured above; `git log -S"SWEEP_CONCURRENCY = 8"` confirms the line landed via #5553, live in `main`. |
+| **Status** | FIXED — merged via PR #5553. |
+
 ## 2026-10-01 — [FINDING, P3 Ask Largo / Night Hawk Swings] Vector dark-pool read is structurally absent for ~92% of actively-held swing tickers — not a staleness gap, a universe-coverage gap
 
 > **kind:** `FINDING`
