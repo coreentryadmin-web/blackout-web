@@ -651,6 +651,13 @@
       "kind": "FINDING",
       "status": "RESOLVED (self-healed) \u2014 root cause still open, no trading-path impact confirmed throughout",
       "resolution": "SELF-HEALED at 16:39 UTC (as_of 2026-10-01T16:39:10.233Z, upstream_ok back to true). Total duration ~55min (15:44-16:39 UTC), the longest of the 3 escalated instances. Ledger now shows all 4 trades that committed during the window, confirmed coherent: QQQ (thesis-break oppose_cluster win +1.07%), SPXW (ratchet runner win +10.24%, 1/2 tranche pre-banked, peak 27.99%->floor 11.2%), AMD (ratchet win +3.95%, peak 10.39%-> floor 4.16%), GOOGL (ratchet win -1.23% vs +2.46% floor armed by +6.15% peak -- a small loss despite a positive peak, still mechanically correct: floor triggers on breach regardless of final sign). Zero data loss confirmed across the full episode -- every trade that committed during the degraded window is present and graded correctly now that the display layer recovered. Root cause remains UNRESOLVED/ambiguous per the investigation above (the single logged DB connection-pool drop at 15:51:05 does not fully explain a 55min span) -- still an OPEN finding worth a dedicated deeper-logs pass, just no longer actively degraded."
+    },
+    "2026-10-01T18:44:00Z_4th_distinct_long_duration_instance_same_day_frequency_escalation": {
+      "summary": "NEW DATA POINT on the already-OPEN finding (key 2026-10-01T16:15:00Z...). A 4th DISTINCT long-duration upstream_ok:false instance started ~18:10 UTC and is still ongoing at 34+min as of this check (18:44 UTC) -- this is the SAME DAY as the just-resolved 3rd instance (15:44-16:39, ~55min), not a new day. This changes the picture from 'roughly once per trading day' to 'can recur multiple times within a single session day' -- a real escalation in frequency worth flagging even though the underlying mechanism/no-trading-impact characterization from the prior investigation still holds.",
+      "data_loss_check": "graded:9 wins:8 losses:1 unchanged vs the pre-degradation read -- no data loss, and (unlike the 3rd instance) no new trades appear to have committed during this specific window so far.",
+      "implication": "The previously-identified single DB connection-pool drop (15:51:05) cannot explain THIS separate occurrence 2+ hours later -- if the root cause is the same mechanism, it is evidently recurring independently, not a one-off blip. Strengthens the case that this deserves the deeper CloudWatch Logs Insights investigation recommended in the prior entry, since a once-a-day assumption undersells how often this needs root-causing.",
+      "kind": "OBSERVATION",
+      "related_finding": "2026-10-01T16:15:00Z_long_duration_degradation_3rd_instance_ESCALATED_root_cause_investigated"
     }
   },
   "sessions": {
