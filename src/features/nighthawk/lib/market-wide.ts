@@ -21,7 +21,7 @@ import {
   type PredictionConsensusSignal,
 } from "@/lib/providers/unusual-whales";
 import { fetchMarketMovers } from "@/lib/providers/polygon";
-import { screenBreakoutMovers } from "./candidates";
+import { screenBreakoutMovers, screenBreakdownMovers } from "./candidates";
 import { summarizeGroupGreekFlow, type GroupGreekFlowSummary } from "@/lib/group-greek-flow-summary";
 import type { UwMacroIndicatorSnapshot } from "@/lib/providers/unusual-whales";
 import {
@@ -87,6 +87,12 @@ export type MarketWideContext = {
   /** Whole-market breakout screen (P2b) — closed-strong, high-volume movers from the grouped-daily
    *  summary already fetched for breadth (no extra API call). Feeds the discovery `breakout` lane. */
   breakout_movers: import("./candidates").BreakoutMover[];
+  /** Whole-market breakdown screen — the bearish mirror of breakout_movers (gap-DOWN, closed
+   *  weak), same grouped-daily summary, no extra API call. Added so the structure lane can score
+   *  a bearish setup exactly as it already scores a bullish one — see laneBreakout in candidates.ts
+   *  (normalized separately from breakout_movers, same ceiling, so breakout's own scores are
+   *  provably unaffected by this field's addition). */
+  breakdown_movers: import("./candidates").BreakoutMover[];
 };
 
 function flowRowToDict(row: { raw: Record<string, unknown>; flow: { ticker: string; premium: number } }) {
@@ -397,5 +403,7 @@ export async function fetchMarketWideContext(opts?: {
     // Whole-market breakout screen off the grouped-daily summary already fetched for breadth — no
     // extra API call. Best-effort: no daily data → empty lane, never a throw (RECAP-MUST-NOT-THROW).
     breakout_movers: dailyMarket?.results?.length ? screenBreakoutMovers(dailyMarket.results, 40) : [],
+    // Bearish mirror of breakout_movers — same data, same best-effort empty-on-missing contract.
+    breakdown_movers: dailyMarket?.results?.length ? screenBreakdownMovers(dailyMarket.results, 40) : [],
   };
 }

@@ -536,14 +536,40 @@ export function screenBreakdownMovers(
   return out.sort((a, b) => b.dollar - a.dollar).slice(0, maxKeep);
 }
 
-function laneBreakout(ctx: MarketWideContext): Map<string, number> {
-  const entries: LaneEntry[] = [];
+/**
+ * Structure lane: bullish breakout + bearish breakdown, each normalized SEPARATELY to the same
+ * LANE_MAX_BREAKOUT ceiling, then merged. Deliberately NOT one pooled normalization over both
+ * populations — measured live 2026-09-30 that breakdown's own top raw score can exceed breakout's
+ * (0.29 vs 0.16 that session), so a single shared normalization base would rescale every bullish
+ * breakout score down whenever a stronger breakdown mover showed up that day, silently changing
+ * already-shipped bullish scoring. Normalizing each side against its own population keeps
+ * laneBreakout's breakout-only output byte-identical to its pre-existing behavior (same top, same
+ * formula, same ceiling) while still letting a breakdown mover earn real, fairly-scaled points on
+ * its own terms. screenBreakoutMovers/screenBreakdownMovers are mutually exclusive by construction
+ * (gain sign), so no ticker can appear in both lists; the Math.max merge below is a defensive
+ * backstop, not a load-bearing dedup.
+ */
+export function laneBreakout(ctx: MarketWideContext): Map<string, number> {
+  const breakoutEntries: LaneEntry[] = [];
   for (const m of ctx.breakout_movers ?? []) {
     if (isExcludedInstrument(m.ticker)) continue;
     // A strong-closing 10% mover outranks a weak-closing 10% one; volume is already gated in the screen.
-    entries.push({ ticker: m.ticker.toUpperCase(), rawScore: m.gain * (0.5 + m.close_strength) });
+    breakoutEntries.push({ ticker: m.ticker.toUpperCase(), rawScore: m.gain * (0.5 + m.close_strength) });
   }
-  return normalizeToMax(entries, LANE_MAX_BREAKOUT);
+  const breakdownEntries: LaneEntry[] = [];
+  for (const m of ctx.breakdown_movers ?? []) {
+    if (isExcludedInstrument(m.ticker)) continue;
+    // Mirror of the breakout formula — gain and close_strength are already stored direction-
+    // normalized (gain as abs(), close_strength low-for-conviction) by screenBreakdownMovers.
+    breakdownEntries.push({ ticker: m.ticker.toUpperCase(), rawScore: m.gain * (0.5 + m.close_strength) });
+  }
+  const breakoutScored = normalizeToMax(breakoutEntries, LANE_MAX_BREAKOUT);
+  const breakdownScored = normalizeToMax(breakdownEntries, LANE_MAX_BREAKOUT);
+  const combined = new Map(breakoutScored);
+  for (const [ticker, score] of breakdownScored) {
+    combined.set(ticker, Math.max(combined.get(ticker) ?? 0, score));
+  }
+  return combined;
 }
 
 export type MultiSourceCandidateRow = {
