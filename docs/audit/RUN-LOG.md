@@ -4,6 +4,16 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-01 (15:35 UTC / Thu 11:35 ET) — [SEO] RTH wake: gamma-snapshot live, CLS clean
+
+Confirmed clock myself: Thu 11:35 ET, trading day, inside 09:30-13:00 RTH. `/api/public/gex-snapshot`
+→ `market_session: OPEN`, `degraded: false`, spot 7623.62 (down from 7673.9 two hours ago — real
+market movement). Polled 5x at 3s intervals: `calculation_id` advanced (`...955537` → `...983135`),
+spot ticked (7623.24 → 7622.33) — refresh cadence varies somewhat cycle-to-cycle (not a rigid exact
+5s, consistent with previously-observed variance) but is genuinely live, never frozen/stale.
+Purged Cloudflare edge, re-measured live-page homepage CLS — **0.0001, GOOD**. No defects found,
+no PR opened.
+
 ## 2026-10-01 (14:06 UTC / Thu 10:06 ET) — [SEO] Daily growth cycle: quiet, no-change day
 
 Container restarted since last cycle — installed Node 20.20.2 via nvm (`NVM_DIR=/opt/nvm` had to
