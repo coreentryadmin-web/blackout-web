@@ -535,6 +535,10 @@
     {
       "at": "2026-10-02T20:07:01Z",
       "summary": "Post-RTH-close transition observed (20:07Z = 4:07pm ET, 7min after the 4:00pm close): A_edition now AMBER (edition API itself reports stale:true, not just marks) AND all three B_marks tickers (USO/MU/LITE) AMBER simultaneously (all flagged stale by the API). First time this session A_edition itself has flagged stale -- every prior AMBER cycle today was B_marks-only. Presumed the symmetric end-of-day counterpart to the already-documented pre-open staleness pattern (confirmed earlier today: pre-open all-3-tickers-stale resolved cleanly ~6min after 9:30am open) -- quotes/edition freshness naturally go stale once RTH ends and feeds stop updating. Not escalating; noting as a genuine new state (never observed this combination before) to verify: either it stays stale through the close (expected, mirrors overnight) or clears if the edition rolls to the next session. C/D stages GREEN (record resolved=38 consistent; pull-status agrees all 3 tickers). healthcheck script also self-swept 1 leaked temp Clerk user >30min old on this run (housekeeping, not a defect)."
+    },
+    {
+      "at": "2026-10-02T21:37:14Z",
+      "summary": "Edition ROLLED OVER to 2026-10-05 (next trading day, weekend skip) with 4 brand-new plays (TER/NTAP/STX/NKE), confirming the hypothesis from the 20:07Z/post-close entries: A_edition is GREEN again (fresh, not stale) -- the prior AMBER state was a transient post-close staleness window that resolved via rollover to the next session, not a stuck/broken state. B_marks AMBER for all 4 new tickers (stale) matches the already-documented pre-open pattern exactly (new plays published overnight, no live quotes until RTH open). D_pull_status correctly SKIPPED (morning-confirm cron has not run yet for 2026-10-05). C_record GREEN, resolved=41 unchanged (today/10-02 record, distinct from the new edition date). This closes the loop on the post-close staleness investigation -- no bug, expected lifecycle."
     }
   ],
   "knownOpenItems": {
