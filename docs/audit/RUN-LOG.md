@@ -4,6 +4,15 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-02 (12:17 UTC / Fri 08:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
+
+Synced to `origin/main` (`afd7090`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0009, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → same 2 open agent
+PRs, unchanged (#5577, #5537, both already confirmed intentional). Neither conflicted. Opportunity
+scan: same 3 striking-distance queries as the register, no new query entered the band; only minor
+rolling-window drift (90-day window now `2026-07-02 → 2026-09-29`).
+
 ## 2026-10-02 (06:17 UTC / Fri 02:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, #5577/#5537 unchanged
 
 Synced to `origin/main` (`038dc27`). Purged Cloudflare edge, re-measured homepage desktop CLS —
