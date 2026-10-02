@@ -736,6 +736,21 @@
       "next_step": "Same as before: only a FUTURE instance lasting >2-3min with none of the three tags firing would be real evidence of a 4th undiscovered route. Watching.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-02T20:11:00Z_session_closed_2for3_eod_summary": {
+      "stage": "session_closed_summary",
+      "headline": "Session closed. 3 committed, 3 closed, 2 wins (SPXW 10:43ET +2.17% ratchet_early_profit_floor off a +5.42% peak, RIVN +1.92% thesis_break:gex-walls exited exactly at its own peak -- zero giveback) vs 1 loss (MSTR -4.05% thesis_break:sector-heat, ~1.5s after entry, never positive). Session PnL +2.41%, no halts, no open risk at close.",
+      "shipped_and_validated_live_today": [
+        "PR #5581 (readZeroDteLedgerChecked catch-block logging) and PR #5583 (buildMinimalBoardFallback timeout logging) both merged yesterday/today, fully deployed (ECS :1825, 8/8). Both post-deploy upstream_ok:false instances today (17:46Z and 19:10-19:11Z) were very brief (<1min each) and produced ZERO matches on any of the three known log tags ([zerodte-scan]/[zerodte-ledger-read]/[zerodte-board-fallback]) -- consistent with CloudWatch filter_log_events delivery lag on a sub-minute instance, not evidence of a 4th undiscovered route. Neither instance crossed the >2-3min bar needed to actually test the fixes. Watching for a longer instance to get a real test."
+      ],
+      "research_finding_today": "MSTR's loss traced to a real, previously-undernoticed nuance in the Cortex commit-relief mechanism (cortex-vector-relief.ts): applyCortexCommitRelief strips ONE veto source in isolation (gex-walls here) without checking whether the TOTAL evidence picture (net score across all sources) still supports a commit once that veto is gone. MSTR's net score was -0.89 even after the gex-walls veto was relieved (sector-heat -0.5 + vex-charm -0.39, both never relieved and already present at entry) -- the exit-time thesis check immediately found that same negative evidence and broke the position in ~1.5 seconds. This reproduces the exact timing signature (near-instant, ~0% net) the 2026-09-09 SHOP/MSTR finding already documented, but via a DIFFERENT un-relieved source than the one that finding's existing grace-period fix covers -- i.e. the existing fix (gexWallsVetoWasRelieved exit-time grace) is narrower than the underlying risk. Logged as FINDING_CANDIDATE_BELOW_THRESHOLD (n=1) with a concrete fix direction (require post-strip net score >= 0 before granting relief) for if this recurs.",
+      "infra_notes": "Board upstream_ok:false fired 2 distinct times today (17:46Z, 19:10-19:11Z), both self-healed within under a minute, /record confirmed healthy both times, zero data loss. Root cause of the underlying degradation (why the cold build/ledger-read/FLOW-fetch occasionally stalls) remains open -- this week's two PRs only made it diagnosable via logs, not fixed at the source.",
+      "next_session_priorities": [
+        "Watch for a 3rd upstream_ok:false instance -- specifically one lasting >2-3min that still produces none of the three known log tags, which would be real evidence of a 4th route.",
+        "Watch for a 2nd/3rd instance of the MSTR relief-pattern shape (relief-committed play, near-instant thesis_break via a DIFFERENT un-relieved oppose source, net evidence already negative pre-relief) -- currently n=1, below the 3-instance escalation bar.",
+        "score_floor/thesis_rank_reject remain the dominant blocked gates on different days -- consistent with the already-tracked, already-open score-floor-inversion research question (0DTE-RESEARCH.md E6), not escalating further without larger n."
+      ],
+      "kind": "OBSERVATION"
     }
   },
   "sessions": {
