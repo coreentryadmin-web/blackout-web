@@ -523,6 +523,10 @@
     {
       "at": "2026-10-02T14:08:11Z",
       "summary": "GENUINE TRANSITION (not escalated -- matches an already-diagnosed pattern): overall flipped back GREEN -> AMBER at 10:08am ET, ~32min after the first all-GREEN moment. USO (mark=0.89 in [0.86,0.91]) and MU (mark=2.54 in [2.49,2.58]) stayed GREEN; LITE alone flipped to AMBER ('mark flagged stale by the API'). This is the same single-ticker intraday quote-lag pattern already root-caused 2026-10-01 for FORM/UTHR (Polygon /v3/snapshot lagging live NBBO for lower-quote-volume contracts, compounded by no WS subscription coverage for published-but-unheld Legacy picks -- logged as knownOpenItems.legacyMarksNoWsCoverageForUnheldPicks_2026_10_01, still held pending cross-desk review) -- same mechanism, different ticker (LITE now, not FORM/UTHR), so not treated as a new finding. D_pull_status and C_record stay GREEN. Both standing threads (2-play-edition retry question; MARA/MUU/DRAM structure-lane finding) still held, zero new operator input."
+    },
+    {
+      "at": "2026-10-02T16:37:05Z",
+      "summary": "B_marks AMBER again: LITE alone (mark flagged stale). This is LITE's 3rd distinct flap today (prior: 14:08Z, 15:08Z), crossing the 3-instance noise threshold FOR LITE SPECIFICALLY. Still matching the already-diagnosed Polygon-snapshot-lag mechanism (root-caused 2026-10-01 for FORM/UTHR, confirmed recurring/rotating across USO/MU/LITE on 2026-10-02) -- not a new root cause, no escalation warranted. Naming it only because LITE itself has now repeated 3x, worth continued tracking if it recurs a 4th time or stops self-healing within the usual ~14-30min window. A/C/D stages GREEN (3 plays fresh; record resolved=38 consistent; pull-status CONFIRMED<->pulled=false agree for all 3 tickers)."
     }
   ],
   "knownOpenItems": {
