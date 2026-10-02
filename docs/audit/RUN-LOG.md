@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-02 (13:35 UTC / Fri 09:35 ET) — [SEO] RTH wake: gamma-snapshot live (one harmless calc_id blip), CLS clean
+
+Confirmed clock myself: Fri 09:35 ET, `2026-10-02` not a holiday → trading day, inside RTH.
+`/api/public/gex-snapshot` → `market_session: OPEN`, `degraded: false`, spot 7734.74, now showing
+a genuine gamma flip (7759.24) unlike yesterday's no-flip reading — new session, real data.
+Polled 5x at 3s intervals: one non-monotonic `calculation_id` reversion observed
+(`...177787` → `...177128`, lower) — re-polled at tighter 2s intervals immediately after,
+confirmed fully clean and monotonically advancing (`...211256` → `...221823`). Consistent with
+the known-harmless backend-replica/cache-read race seen in prior cycles, not a new defect.
+Purged Cloudflare edge, re-measured live-page homepage CLS — **0.0002, GOOD**. No defects found,
+no PR opened.
+
 ## 2026-10-02 (12:17 UTC / Fri 08:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, GSC unchanged
 
 Synced to `origin/main` (`afd7090`). Purged Cloudflare edge, re-measured homepage desktop CLS —
