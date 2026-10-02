@@ -4,6 +4,13 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-02 (14:07 UTC / Fri 10:07 ET) — [SEO] Daily growth cycle: quiet, avgpos trend continues improving
+
+No new striking-distance queries (same 3 as the register, no change). robots.txt re-verified —
+still serves `Allow: /api/og` under the general `Disallow: /api`, for all listed crawler UAs.
+28-day avgpos improved slightly to **11.6** (from 11.8), continuing the steady trend. No action
+taken, per "do not churn already-good pages."
+
 ## 2026-10-02 (13:35 UTC / Fri 09:35 ET) — [SEO] RTH wake: gamma-snapshot live (one harmless calc_id blip), CLS clean
 
 Confirmed clock myself: Fri 09:35 ET, `2026-10-02` not a holiday → trading day, inside RTH.
