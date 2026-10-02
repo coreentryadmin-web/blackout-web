@@ -531,6 +531,10 @@
     {
       "at": "2026-10-02T18:51:40Z",
       "summary": "B_marks AMBER: USO AND LITE both flagged stale simultaneously (MU alone GREEN). New shape vs the pattern tracked all session so far -- every prior flap today (6+ instances across USO/MU/LITE since 14:08Z) was exactly ONE ticker stale at a time, self-healing within ~14-30min. This is the first simultaneous-pair instance. Still presumed same root mechanism (Polygon /v3/snapshot lag for lower-quote-volume contracts, root-caused 2026-10-01 FORM/UTHR) rather than a new issue -- not RTH-close-adjacent (18:51Z = 2:51pm ET, 65min before close) and A/C/D stages all GREEN (3 plays fresh; record resolved=38 consistent; pull-status agrees all 3 tickers). Noting only because two-at-once is new; will escalate if this becomes a recurring co-stale pattern (3-instance threshold) or if either ticker fails to self-heal in the usual window."
+    },
+    {
+      "at": "2026-10-02T20:07:01Z",
+      "summary": "Post-RTH-close transition observed (20:07Z = 4:07pm ET, 7min after the 4:00pm close): A_edition now AMBER (edition API itself reports stale:true, not just marks) AND all three B_marks tickers (USO/MU/LITE) AMBER simultaneously (all flagged stale by the API). First time this session A_edition itself has flagged stale -- every prior AMBER cycle today was B_marks-only. Presumed the symmetric end-of-day counterpart to the already-documented pre-open staleness pattern (confirmed earlier today: pre-open all-3-tickers-stale resolved cleanly ~6min after 9:30am open) -- quotes/edition freshness naturally go stale once RTH ends and feeds stop updating. Not escalating; noting as a genuine new state (never observed this combination before) to verify: either it stays stale through the close (expected, mirrors overnight) or clears if the edition rolls to the next session. C/D stages GREEN (record resolved=38 consistent; pull-status agrees all 3 tickers). healthcheck script also self-swept 1 leaked temp Clerk user >30min old on this run (housekeeping, not a defect)."
     }
   ],
   "knownOpenItems": {
