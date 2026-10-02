@@ -200,6 +200,11 @@ test("never-block: cold miss past maxBlockMs returns minimal fallback immediatel
   process.env.ZERODTE_BOARD_MAX_BLOCK_MS = "500";
   sharedState.slowScanMs = 1_200;
 
+  const warnCalls: unknown[][] = [];
+  const restore = mock.method(console, "warn", (...args: unknown[]) => {
+    warnCalls.push(args);
+  });
+
   try {
     const { getZeroDteBoardPayload } = await import("./zerodte-service");
     const t0 = Date.now();
@@ -211,7 +216,15 @@ test("never-block: cold miss past maxBlockMs returns minimal fallback immediatel
     assert.equal(board.upstream_ok, false, "minimal fallback while cold build still running");
     assert.deepEqual(board.setups, []);
     assert.equal(board.session.heat.state, "RTH", "minimal fallback uses live ET clock, not a hardcoded noon");
+
+    // 2026-10-02: this fallback fired live in production with ZERO matching CloudWatch Logs
+    // lines — the other upstream_ok:false route (readZeroDteLedgerChecked) had just been fixed
+    // to log its error, which made the silence on THIS route conspicuous. Asserts it now logs.
+    const fallbackWarn = warnCalls.find((args) => String(args[0]).includes("[zerodte-board-fallback]"));
+    assert.ok(fallbackWarn, "the minimal-fallback path must log when it fires, not fail silently");
+    assert.match(String(fallbackWarn![0]), /maxBlockMs=500ms/);
   } finally {
+    restore.mock.restore();
     sharedState.slowScanMs = 0;
     if (prev === undefined) delete process.env.ZERODTE_BOARD_MAX_BLOCK_MS;
     else process.env.ZERODTE_BOARD_MAX_BLOCK_MS = prev;

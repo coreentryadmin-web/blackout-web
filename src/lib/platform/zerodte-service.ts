@@ -1078,6 +1078,17 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
           // Never await the cold build here — that defeats maxBlockMs under load (live: 20–43s
           // member polls). Return a structurally valid empty board immediately; coldBuildInflight
           // keeps running and publishes to Redis for the next poll.
+          // 2026-10-02: the OTHER route to upstream_ok:false (readZeroDteLedgerChecked's catch,
+          // fixed in the previous commit) now logs its error, but this route — the cold build
+          // simply running past blockMs with no Redis snapshot or local fallback to serve instead
+          // — logged nothing at all. Confirmed live the same day: an upstream_ok:false instance
+          // with zero matching CloudWatch Logs lines, including the fix from the prior commit,
+          // which this route does not go through.
+          console.warn(
+            `[zerodte-board-fallback] cold build still running past maxBlockMs=${blockMs}ms with ` +
+              "no Redis snapshot or local last-good board to serve — returning the minimal empty " +
+              "fallback (upstream_ok:false). The cold build keeps running in the background."
+          );
           resolve(buildMinimalBoardFallback());
         })();
       }, blockMs);
