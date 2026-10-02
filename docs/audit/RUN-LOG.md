@@ -4,6 +4,14 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-02 (18:16 UTC / Fri 14:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, PRs unchanged
+
+Synced to `origin/main` (`fc3945c`). Purged Cloudflare edge, re-measured homepage desktop CLS —
+**0.0004, GOOD**. `/api/og` — **HTTP 200, `image/png`, `x-clerk-auth-status: signed-out`,
+`cf-cache-status: DYNAMIC`**. Both fixes still holding. `agent-pr-sweep.mjs` → same 2 open agent
+PRs, unchanged (#5577, #5537, both already confirmed intentional holds). Neither conflicted, no
+rebase needed.
+
 ## 2026-10-02 (16:35 UTC / Fri 12:35 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live, CLS clean
 
 Confirmed clock myself: Fri 12:35 ET, last wake in today's window. `/api/public/gex-snapshot` →
