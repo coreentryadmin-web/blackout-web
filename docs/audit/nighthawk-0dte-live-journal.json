@@ -693,7 +693,8 @@
       "data_loss_check": "No separate /record check needed this specific cycle beyond the routine one already done -- this entry is about the observability investigation, not a new data-loss concern (the established no-trading-impact pattern continues to hold).",
       "next_validation": "With BOTH #5581 and #5583 live, the next upstream_ok:false instance should produce either a [zerodte-ledger-read] or [zerodte-board-fallback] log line. An instance with NEITHER would mean a third, still-undiscovered route exists -- worth checking for on the next occurrence.",
       "kind": "FINDING",
-      "status": "FIX OPENED \u2014 PR #5583 (draft), not yet merged as of this entry"
+      "status": "FIX OPENED \u2014 PR #5583 (draft), not yet merged as of this entry",
+      "resolution": "Self-healed at 15:46 UTC, ~34min total duration (15:12-15:46). This instance PREDATED PR #5583's deploy (which started mid-rollout at 15:42:47, after this instance had already been running ~30min) -- so it almost certainly ran on pre-fix code and a missing [zerodte-board-fallback] log for it would NOT disprove the fix. No data loss (graded:5/wins:5 unchanged throughout). The correct verification is the NEXT fresh instance once the :1825 deploy is fully rolled out (8/8 replicas) -- watch for that."
     },
     "2026-10-02T15:45:00Z_pr5583_merged_deploy_mid_rollout_during_ongoing_instance": {
       "summary": "PR #5583 merged. Deploy started 15:42:47 UTC (task def :1825, desired=1 running=0, mid-rollout) -- the OLD task def :1824 (8/8) is still active/draining. The CURRENT upstream_ok:false instance (started ~15:12 UTC, now ~33min ongoing) predates this deploy, so it is almost certainly running on PRE-#5583 code -- do NOT expect to see a [zerodte-board-fallback] log line for THIS specific instance. The next NEW instance (after the rollout completes, all 8 tasks on :1825) is the correct one to check for the new log line.",
