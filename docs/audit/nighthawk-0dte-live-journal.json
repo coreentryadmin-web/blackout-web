@@ -727,6 +727,15 @@
       "natural_next_step_if_recurs": "If this reaches 3 instances: the fix direction most consistent with the existing design's own stated intent (don't commit on evidence that nets negative) would be checking net score post-veto-strip, not just whether the specific relieved source is being re-triggered -- e.g. applyCortexCommitRelief could additionally require the POST-strip net score (supports minus opposes excluding the stripped veto) to be non-negative before granting relief, rather than only checking vectorRelief/regimeRelief conditions in isolation. Not implementing on n=1 -- this is exactly the ambiguous/live-trading-path class the escalation policy says to report and hold, not guess at a fix for.",
       "kind": "FINDING_CANDIDATE_BELOW_THRESHOLD",
       "no_action_needed_yet": true
+    },
+    "2026-10-02T19:11:00Z_2nd_post_deploy_instance_also_very_brief": {
+      "cycle_time": "2026-10-02T19:11:16Z",
+      "trigger": "19:10 UTC (offset :00, v4 mandate)",
+      "summary": "2nd upstream_ok:false instance since both #5581 and #5583 fully deployed (1st was 17:46 UTC, logged inconclusive). Observed 19:10:55Z (ledger_len:0, the empty-fallback shape), self-healed by 19:11:12Z -- ~17 seconds, even briefer than the first. /record cross-checked clean (graded:7 wins:6 losses:1, no data loss -- the 1 loss is the already-logged MSTR relief-commit instant break). CloudWatch checked for all three known tags ([zerodte-scan], [zerodte-ledger-read], [zerodte-board-fallback]) in a 4-min window bracketing the instance -- zero matches, same as the first instance.",
+      "caveat": "Still NOT escalating: both post-deploy instances so far (17:46 and this one) have been under ~1 minute, well short of the >2-3min bar set in the 17:46 entry needed to rule out CloudWatch filter_log_events delivery lag as the explanation. Two short, inconclusive instances is not the same as the 3-instance noise-discipline threshold for a NEW claim -- no new route is being claimed here, just logging that the pattern of brief self-healing instances continues and neither has yet been long enough to actually test the three known log tags.",
+      "next_step": "Same as before: only a FUTURE instance lasting >2-3min with none of the three tags firing would be real evidence of a 4th undiscovered route. Watching.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
