@@ -685,6 +685,15 @@
       "summary": "New trading day (2026-10-02). Container restart confirmed (OS build version changed) -- verified git state before any work: branch main, clean working tree, local was behind origin/main by one commit (overnight SEO-lane heartbeat), synced via reset --hard. Scratchpad scripts survived. Board PRE_MARKET, heat_pct 34, upstream_ok:true, ledger_len:0 (expected empty cold start). Yesterday's PR #5581 (ledger-read error logging fix) remains merged on main -- next time the upstream_ok:false pattern recurs, it should now be diagnosable from CloudWatch Logs.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-02T15:12:00Z_pr5581_verification_found_second_silent_route_PR5583": {
+      "summary": "New upstream_ok:false instance at ~15:12 UTC today -- used it to VERIFY yesterday's PR #5581 fix actually works. Result: it does NOT cover this instance. CloudWatch Logs search for '[zerodte-ledger-read]' (the #5581 log line) in the exact window: ZERO matches. Broader db/redis/zerodte-error search: also zero matches, despite confirming the log group was actively receiving other app traffic in the same minutes and confirming #5581's fix was live on ECS (deployed 2026-10-01 20:32:46 UTC, 5min after merge, 8/8 tasks stable since).",
+      "root_cause_found": "Read getZeroDteBoardPayload (zerodte-service.ts): upstream_ok:false has (at least) TWO independent routes. #5581 fixed readZeroDteLedgerChecked's catch. This instance is going through the OTHER route -- buildMinimalBoardFallback(), fired when a cold board build runs past zerodteBoardMaxBlockMs() with no Redis snapshot or local fallback available -- which had ZERO logging at all, in either the pre- or post-#5581 code.",
+      "fix_shipped": "PR #5583 (draft, opened this cycle): added console.warn at the buildMinimalBoardFallback() call site, naming the configured maxBlockMs. Same purely-additive discipline as #5581. Extended the existing 'never-block: cold miss past maxBlockMs' regression test with a log assertion. tsc clean, 10/10 + 24/24 tests pass on Node 20.",
+      "data_loss_check": "No separate /record check needed this specific cycle beyond the routine one already done -- this entry is about the observability investigation, not a new data-loss concern (the established no-trading-impact pattern continues to hold).",
+      "next_validation": "With BOTH #5581 and #5583 live, the next upstream_ok:false instance should produce either a [zerodte-ledger-read] or [zerodte-board-fallback] log line. An instance with NEITHER would mean a third, still-undiscovered route exists -- worth checking for on the next occurrence.",
+      "kind": "FINDING",
+      "status": "FIX OPENED \u2014 PR #5583 (draft), not yet merged as of this entry"
     }
   },
   "sessions": {
