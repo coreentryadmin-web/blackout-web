@@ -700,6 +700,14 @@
       "summary": "PR #5583 merged. Deploy started 15:42:47 UTC (task def :1825, desired=1 running=0, mid-rollout) -- the OLD task def :1824 (8/8) is still active/draining. The CURRENT upstream_ok:false instance (started ~15:12 UTC, now ~33min ongoing) predates this deploy, so it is almost certainly running on PRE-#5583 code -- do NOT expect to see a [zerodte-board-fallback] log line for THIS specific instance. The next NEW instance (after the rollout completes, all 8 tasks on :1825) is the correct one to check for the new log line.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-02T17:46:00Z_post_deploy_instance_inconclusive_very_brief": {
+      "summary": "First upstream_ok:false instance AFTER both #5581 and #5583 were fully deployed (8/8 replicas on :1825). Checked CloudWatch for '[zerodte-ledger-read]', '[zerodte-board-fallback]', AND the pre-existing '[zerodte-scan]' primary-flow-fetch log (discovered during this check, PR #5249, already shipped -- a THIRD known logged route I hadn't searched for before) -- zero matches for all three in a ~3min window.",
+      "caveat": "INCONCLUSIVE, not escalating: this instance self-healed very fast (<~1min, resolved before the follow-up check completed), and CloudWatch Logs filter_log_events can lag real-time ingestion by up to ~60s+ -- a log genuinely firing just outside my narrow search window is a more likely explanation than a fourth undiscovered route, given how brief this instance was. The live board's own discovery_health (checked directly, no logs needed) showed a normal healthy state once recovered (BREAKOUT:empty_market, PIN:ok) -- no obvious lane failure visible either.",
+      "known_logged_routes_now": "Three distinct upstream_ok:false causes now have logging: (1) scan.ts primary FLOW fetch failure -- '[zerodte-scan]' tag, PR #5249, pre-existing; (2) readZeroDteLedgerChecked catch -- '[zerodte-ledger-read]' tag, PR #5581, today; (3) buildMinimalBoardFallback timeout -- '[zerodte-board-fallback]' tag, PR #5583, today.",
+      "next_step": "If a FUTURE instance lasts long enough to rule out log-delivery-lag as an explanation (e.g. >2-3min) and still produces none of the three tags, that would be a real signal worth investigating further. Not yet at that bar.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
