@@ -680,6 +680,11 @@
       "next_occurrence_expectation": "The NEXT time upstream_ok goes false for any meaningful duration, a '[zerodte-ledger-read]' log line with the real error should be findable in CloudWatch Logs regardless of which branch fires -- this is the concrete thing to verify if/when the pattern recurs. Root cause of the underlying degradation itself remains open; this fix only makes the next instance diagnosable.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-02T13:11:00Z_new_day_pre_market_cold_start": {
+      "summary": "New trading day (2026-10-02). Container restart confirmed (OS build version changed) -- verified git state before any work: branch main, clean working tree, local was behind origin/main by one commit (overnight SEO-lane heartbeat), synced via reset --hard. Scratchpad scripts survived. Board PRE_MARKET, heat_pct 34, upstream_ok:true, ledger_len:0 (expected empty cold start). Yesterday's PR #5581 (ledger-read error logging fix) remains merged on main -- next time the upstream_ok:false pattern recurs, it should now be diagnosable from CloudWatch Logs.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
