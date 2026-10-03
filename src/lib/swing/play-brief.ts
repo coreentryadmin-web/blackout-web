@@ -469,8 +469,16 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   // different facts, and only the first was ever narrated.
   const days = daysOnWatch(play.detectedAt, readMs);
   if (days != null) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-03): this literally said "still on WATCH"
+    // regardless of the play's real serving section — but this section renders for every
+    // pre-entry bucket (WATCH, RESEARCH, WAITING_FOR_ENTRY all route through bucket==="watch"),
+    // so a RESEARCH or WAITING_FOR_ENTRY play read "Serving section: RESEARCH" one line above
+    // "still on WATCH" in the same section — directly self-contradictory. Live repro: ZS,
+    // servingSection RESEARCH. Uses the real serving section, falling back to "WATCH" only when
+    // it's genuinely absent.
+    const sectionLabel = play.servingSection ? play.servingSection.replace(/_/g, " ") : "WATCH";
     lines.push(
-      `First flagged **${days} day${days === 1 ? "" : "s"} ago**${play.detectedAt ? ` (${etStampFromIso(play.detectedAt)})` : ""} — still on WATCH, not yet graduated to a real position.`,
+      `First flagged **${days} day${days === 1 ? "" : "s"} ago**${play.detectedAt ? ` (${etStampFromIso(play.detectedAt)})` : ""} — still on ${sectionLabel}, not yet graduated to a real position.`,
     );
   }
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): entry-enterability.ts already computes the
