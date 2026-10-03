@@ -354,7 +354,35 @@ test("composeSwingPlayBrief: WATCH play with detectedAt narrates real days-on-wa
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry, "expected Entry section");
   assert.match(entry!.body, /First flagged \*\*\d+ days? ago\*\*/);
-  assert.match(entry!.body, /still on WATCH, not yet graduated to a real position/);
+  // fixturePlay defaults servingSection to WAITING_FOR_ENTRY, not WATCH — the narration must
+  // follow the real serving section (see the RESEARCH regression test below for the bug this
+  // guards against).
+  assert.match(entry!.body, /still on WAITING FOR ENTRY, not yet graduated to a real position/);
+});
+
+// BUG FIX regression (Ask Largo standing mandate, 2026-10-03): this line used to hardcode "still
+// on WATCH" regardless of the play's real serving section. Every pre-entry bucket (WATCH,
+// RESEARCH, WAITING_FOR_ENTRY) renders through this same section, so a RESEARCH play read
+// "Serving section: RESEARCH" one line above a contradictory "still on WATCH" in the same body.
+// Live repro: ZS, servingSection RESEARCH, 2026-10-03.
+test("composeSwingPlayBrief: RESEARCH play narrates its real serving section, not a hardcoded WATCH (2026-10-03 bug fix)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ servingSection: "RESEARCH", detectedAt: "2026-09-29T13:15:15.000Z" }),
+    asOf: "2026-10-03T14:12:01.000Z",
+    sessionDate: "2026-10-03",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(entry!.body, /Serving section: \*\*RESEARCH\*\*/);
+  assert.match(entry!.body, /still on RESEARCH, not yet graduated to a real position/);
+  assert.doesNotMatch(entry!.body, /still on WATCH, not yet graduated to a real position/);
 });
 
 // Gap fix (2026-09-18, Ask Largo standing mandate): entry-enterability.ts always computed the real
