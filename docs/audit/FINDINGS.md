@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-03 — [FINDING, P3 Night Hawk Swings / Ask Largo] Swing play-brief's "First flagged" line hardcoded "still on WATCH" regardless of the play's real serving section — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `src/lib/swing/play-brief.ts`, `watchEntrySection()` (the "Entry" section rendered for every pre-entry bucket — WATCH, RESEARCH, and WAITING_FOR_ENTRY all route through the same coarse `bucket === "watch"` branch in `composeSwingPlayBrief`). |
+| **Found** | Live Ask Largo deep-dive sweep, 2026-10-03, checking a swing play in the RESEARCH bucket (ZS, 200C 7DTE) not yet examined that cycle. The composed brief read "Serving section: **RESEARCH**" immediately followed, two lines later in the same "Entry" section body, by "First flagged 4 days ago ... — still on WATCH, not yet graduated to a real position." — directly self-contradictory within the same section. |
+| **Root cause** | The "First flagged ... days ago" sentence hardcoded the literal string `"WATCH"` instead of reading `play.servingSection`. The function is shared across three distinct pre-entry serving sections (WATCH, RESEARCH, WAITING_FOR_ENTRY) because `composeSwingPlayBrief` only branches on the coarser `bucket` value ("watch" vs "open" vs "closed"), not on the finer serving section — so the text was only ever correct for plays actually in the WATCH section, and silently wrong for the other two. The bug was reproducible even in the file's own pre-existing unit test: `fixturePlay()`'s default `servingSection` is `"WAITING_FOR_ENTRY"`, not `"WATCH"`, yet the test asserted the rendered text said "still on WATCH" — the fixture itself demonstrated the mismatch without anyone noticing, because nobody had checked the serving-section line against the "First flagged" line in the same body. |
+| **Fix** | Changed the sentence to interpolate `play.servingSection` (underscore-to-space formatted, matching the existing "Serving section:" line's own formatting), falling back to the literal `"WATCH"` only when `servingSection` is genuinely absent. No other behavior changed — purely a narration-text fix, not a logic change (gates, entry stance, deadlines all untouched). |
+| **Blast radius** | Single call site (`watchEntrySection`), used only by the swing play-brief composer; no other consumer. |
+| **Evidence** | Live repro on ZS (`playId=SWING:ZS`) 2026-10-03: `envelope.sections[Entry].body` contained both `Serving section: **RESEARCH**` and `still on WATCH, not yet graduated to a real position` before the fix. Updated the existing test (`composeSwingPlayBrief: WATCH play with detectedAt narrates real days-on-watch age`) to assert the fixture's real default serving section (`WAITING_FOR_ENTRY`) instead of the previously-hardcoded wrong expectation, and added a new regression test (`composeSwingPlayBrief: RESEARCH play narrates its real serving section, not a hardcoded WATCH`) asserting the RESEARCH case directly and that the old wrong string no longer appears. Full suite: 111/111 pass post-fix (`src/lib/swing/play-brief.test.ts`). |
+| **Status** | FIXED — this PR. |
+
 ## 2026-10-02 — [FINDING, P2 Night Hawk 0DTE] `buildMinimalBoardFallback`'s invocation site logged nothing — the SECOND silent route to `upstream_ok:false` — FIXED
 
 > **kind:** `FINDING`
