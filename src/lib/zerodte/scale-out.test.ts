@@ -91,6 +91,41 @@ test("live: a stopped-out already-scaled position does NOT re-trigger STOP_OUT (
   assert.equal(a.action, "EXIT_RUNNER"); // 0.3 <= 0.5*peak(2.5)=1.25 → runner exits (not STOP_OUT)
 });
 
+// ── RED regression (2026-09-28, operator-directed exit-capture root-cause audit) ───────────────────
+// ROOT CAUSE of "thesis-CONFIRMED trades finishing as catastrophic premium losses despite large MFE"
+// (live cases: NRG:34 peak +132.7% -> exit -62.24%; IBIT:8 underlying-thesis-confirmed -> exit
+// -98.58%; see docs/audit/nighthawk-swings-live-journal.json and #4076 comments 5861181972/
+// 5861531782/5861868692 for the live evidence trail).
+//
+// The PRE-SCALE branch below tests ONLY the CURRENT tick's `lastMark` against the 2x trigger — it
+// never consults `peakPremium`, even though the caller already ratchets and passes a genuine,
+// tick-observed peak (swing: `updateSwingLiveState`'s SQL `peak_premium = GREATEST(...)`; banger:
+// `runBangerLiveSync` passes `Math.max(row.peak_premium, mark)`). Both swing-active-refresh and
+// banger-live-sync run on a fixed cadence (15 min / 5 min respectively, cron-registry.ts) — not
+// continuously — so a premium that crosses 2x and retraces BETWEEN two ticks is invisible to this
+// function even though the system's own peak ratchet correctly recorded the excursion. The position
+// then rides, completely unprotected beyond the -60% hard stop, all the way down.
+//
+// This test encodes the CORRECT expected behavior (a peak that has reached the 2x trigger must
+// still route to TAKE_PARTIAL even if the current mark has since retraced above the hard stop) —
+// it is RED against the current implementation, which returns HOLD here today. Do not "fix" this
+// test to match current behavior; it is intentionally failing to prove the defect exists. See the
+// root-cause report (PR body / #4076) for the proposed invariant before touching scale-out.ts.
+test("BUG (RED): a peak that already crossed 2x, then retraced, is invisible to the pre-scale trigger — HOLD instead of TAKE_PARTIAL", () => {
+  // entry 4.9 (NRG:34's real entry). Peak reached 11.4 (+132.7%, well past the 2x=9.8 trigger) at
+  // an earlier tick. This tick's mark has since retraced to 6.0 — still comfortably above the
+  // 0.4x=1.96 hard stop, so STOP_OUT correctly does not fire, but the position is left on the
+  // hard-stop-only pre-scale branch with zero profit ever locked in, despite the system's own
+  // peak-tracking machinery having proof the 2x trigger was crossed.
+  const a = deriveScaleOutAction({ entryPremium: 4.9, peakPremium: 11.4, lastMark: 6.0, scaledAlready: false });
+  assert.equal(
+    a.action,
+    "TAKE_PARTIAL",
+    "peakPremium (11.4) cleared entry*2 (9.8) — the pre-scale branch must act on the peak crossing " +
+      "it already recorded, not require lastMark to still be above the trigger at this exact tick",
+  );
+});
+
 // ── computeScaleOutTriggerInfo (detail-panel "distance to next trigger") ───────────────────────────
 test("trigger info: pre-scale shows the 2x partial as next trigger + the hard stop as the floor", () => {
   const info = computeScaleOutTriggerInfo({ entryPremium: 2, peakPremium: 2.4, lastMark: 1.5, scaledAlready: false });

@@ -259,6 +259,46 @@ describe("loadSwingPlayBriefContext: openBook merges swing_positions AND banger_
     assert.equal(book!.length, 1);
     assert.equal(book![0]!.ticker, "NN");
   });
+
+  // ── RED regression (2026-09-28, operator-directed expired-open-position audit) ──────────────
+  // Live evidence: KLAC/LRCX/SOXL play-briefs (2026-09-28) each reported "already holding 8
+  // same-direction positions" in theme "semis" — 3 of the 8 named rows (ALAB:1153, ALAB:1139,
+  // CRDO:1136) were already PAST their contract_expiry (2026-09-25), still `status: 'PARTIAL'`
+  // only because `runBangerLiveSync` (the force-close cron, PR #5468) hadn't ticked since —
+  // an 8-vs-5 (60%) overstatement on a live concentration warning (#4076 comment 5862392415).
+  // `fetchBangerOpenBookRows()` (positions-db.ts) is `WHERE status IN ('OPEN','PARTIAL')` with NO
+  // expiry check at all, and `loadOpenBook()` feeds it straight into the concentration book with
+  // no independent defense of its own — unlike `live-marks-active.ts`'s `occAlreadyExpired()`
+  // guard, which is the ALREADY-SHIPPED, ALREADY-TESTED precedent for the exact same class of row
+  // in this same codebase (that consumer needs the raw, unfiltered rows to be ABLE to force-close
+  // them; every consumer that merely COUNTS a position as open does not, and must filter).
+  //
+  // This test encodes the desired invariant (an expired banger row must never be counted as an
+  // open position by the book-context consumer) and is RED today — loadOpenBook() has no expiry
+  // filter of its own, so the expired row is included exactly like a live one. Do not adjust this
+  // test to match current behavior; see the root-cause report (PR body / #4076) for the proposed
+  // fix shape (a shared settlement predicate every non-writer consumer applies) before changing it.
+  it("BUG (RED): an already-expired banger row must not be counted as an open position in ctx.openBook", async () => {
+    mockOpenSwingRows = [];
+    const expired = bangerRow("ALAB", 1153);
+    expired.contract_expiry = "2020-01-01"; // unambiguously past, for any real wall-clock "today"
+    expired.status = "PARTIAL";
+    const live = bangerRow("KLAC", 1272);
+    mockBangerRows = [expired, live];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+    const book = ctx!.openBook;
+    assert.ok(book, "openBook must not be null");
+    assert.equal(
+      book!.length,
+      1,
+      "an expired contract must not count toward the open book — only the live KLAC row should remain",
+    );
+    assert.equal(book!.some((p) => p.ticker === "ALAB"), false, "the expired ALAB row must be excluded");
+    assert.ok(book!.some((p) => p.ticker === "KLAC"), "the live KLAC row must still be present");
+  });
 });
 
 describe("loadSwingPlayBriefContext: independent sources fan out concurrently, not serially", () => {
