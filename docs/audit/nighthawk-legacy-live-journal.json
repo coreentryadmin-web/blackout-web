@@ -539,6 +539,10 @@
     {
       "at": "2026-10-02T21:37:14Z",
       "summary": "Edition ROLLED OVER to 2026-10-05 (next trading day, weekend skip) with 4 brand-new plays (TER/NTAP/STX/NKE), confirming the hypothesis from the 20:07Z/post-close entries: A_edition is GREEN again (fresh, not stale) -- the prior AMBER state was a transient post-close staleness window that resolved via rollover to the next session, not a stuck/broken state. B_marks AMBER for all 4 new tickers (stale) matches the already-documented pre-open pattern exactly (new plays published overnight, no live quotes until RTH open). D_pull_status correctly SKIPPED (morning-confirm cron has not run yet for 2026-10-05). C_record GREEN, resolved=41 unchanged (today/10-02 record, distinct from the new edition date). This closes the loop on the post-close staleness investigation -- no bug, expected lifecycle."
+    },
+    {
+      "at": "2026-10-03T06:37:19Z",
+      "summary": "MINOR NOTE (not escalated, single instance): A_edition briefly reported RED (\"edition fetch failed (auth or network)\") at 06:37:08Z with editionFor=null and D_pull_status SKIPPED(\"no edition date to check against\") -- the first HARD A_edition failure logged all session (every prior A_edition anomaly was AMBER/stale, never a fetch failure). Independently confirmed the live site was healthy throughout: curl to /api/health returned clean 200 in 0.38s at the same moment, and an immediate healthcheck re-run 11s later came back fully clean (A_edition GREEN, editionFor=2026-10-05, same 4 plays, B_marks/C_record/D_pull_status all matching the established weekend pattern). Most likely the harness's own transient auth/token hiccup during the script's temp-Clerk-user exchange (consistent with the FAPI-rate-limit/token-mint transient-failure class already documented in CLAUDE.md), not a real edition-API outage. Below the 3-instance noise threshold -- watching for a 2nd/3rd instance before treating this as a pattern distinct from the known staleness flaps."
     }
   ],
   "knownOpenItems": {
