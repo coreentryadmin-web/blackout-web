@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-05 (16:35 UTC / Mon 12:36 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live, regime flip to long gamma, CLS clean
+
+Confirmed clock myself: Mon 12:36 ET, last wake in today's window. `/api/public/gex-snapshot` →
+`market_session: OPEN`, `degraded: false`, spot 7766.68 — posture flipped from `short` to `long`
+as spot crossed above the gamma flip (7766.32), a genuine regime change from real price movement,
+correctly reflected. Polled 5x at 3s intervals: one non-monotonic `calculation_id` reversion
+observed (`...183550` → `...167686`, older); re-polled at tighter 2s intervals, confirmed fully
+clean and monotonic (`...204590` → `...211183`). Known-harmless backend-replica/cache-read race,
+not a new defect. Purged Cloudflare edge, re-measured live-page homepage CLS — **0.0004, GOOD**.
+No defects found, no PR opened. Returning to normal search/authority posture at 13:00 ET.
+
 ## 2026-10-05 (15:36 UTC / Mon 11:36 ET) — [SEO] RTH wake: gamma-snapshot live, CLS clean
 
 Confirmed clock myself: Mon 11:36 ET, trading day, inside RTH. `/api/public/gex-snapshot` →
