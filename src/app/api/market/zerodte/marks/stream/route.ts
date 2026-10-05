@@ -69,6 +69,10 @@ export async function GET(req: NextRequest) {
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
     }
+    // Remove abort listener to prevent accumulation (fixes memory leak from uncleaned event listeners).
+    // Each connection's listener held closures over controller and intervals; accumulated listeners
+    // kept dead connections' state alive indefinitely, causing heap growth until OOM.
+    req.signal.removeEventListener("abort", cleanup);
   };
 
   const stream = new ReadableStream({
