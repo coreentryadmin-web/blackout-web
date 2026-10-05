@@ -38,6 +38,32 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-05 — [FINDING, P0 Vector] SSE `vector/stream` abort-listener leak caused linear memory growth → one ECS task OOM-crashed at RTH peak — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `src/app/api/market/vector/stream/route.ts` and `src/app/api/market/zerodte/marks/stream/route.ts` — both SSE routes register `req.signal.addEventListener("abort", cleanup)` per connection. |
+| **Found** | Live CloudWatch (AWS/ECS MemoryUtilization, `blackout-production-web`, 2026-10-05 12:17–15:37 UTC): linear climb from ~20% avg / 42% max to 45% avg / 73.3% max over ~3 hours of RTH — not a spike pattern, a systematic leak. One ECS task OOM-crashed at 15:39:36 UTC (`FATAL ERROR: Reached heap limit Allocation failed`), immediately preceded by `TypeError: controller[kState].transformAlgorithm is not a function` in the `vector/stream` route's log stream. ECS auto-replaced the task within ~1 minute. |
+| **Root cause** | `req.signal.addEventListener("abort", cleanup)` was registered on stream start but never deregistered — `cleanup()` cleared intervals/state but never called `removeEventListener`. Each closed connection's listener persisted, holding closures over the `controller` and intervals alive indefinitely. At ~2000 concurrent streams during RTH, listeners accumulated faster than GC could reclaim them, eventually exhausting heap. |
+| **Fix** | Added `req.signal.removeEventListener("abort", cleanup)` inside `cleanup()` in both affected routes (vector/stream, zerodte/marks/stream), merged via #5589. **Correction to the original staged draft's "Files to Check" list**: `src/app/api/market/flows/stream/route.ts` does NOT share this pattern — verified live (`grep -n "req.signal"` returns zero matches in that file; its own `cleanup()` is driven entirely by the `ReadableStream`'s own `cancel()` callback, not an external `abort` listener) — so it was correctly left untouched, not an oversight. |
+| **Evidence** | Live post-fix CloudWatch re-check (12:17–16:07 UTC window, same metric): memory peaked 73.3% max at 15:37 UTC, then declined to 53.5% (15:47), 53.2% (15:57), 49.6% (16:07) — trending back toward the pre-leak 20-30% baseline. This is an early positive signal, not yet a full multi-session confirmation (the pre-15:40 OOM-replaced task alone could partly explain the drop) — the original finding's own validation plan (zero OOM crashes across the next 10 RTH sessions, stable 20-30% utilization) is the real bar and hasn't had time to accumulate evidence yet. |
+| **Status** | FIXED — code confirmed live (`removeEventListener` present at both call sites), early post-deploy memory trend is declining as expected. Re-check ECS MemoryUtilization and the OOM error signature across the next several RTH sessions before closing this out as fully validated. |
+
+## 2026-10-05 — [FINDING, P3 Vector] `vector-pick-sweep` still multi-minute over its 120s schedule post-RPS-bump — RPS ceiling alone is insufficient at RTH peak — OPEN
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `src/lib/vector/vector-pick-sweep.ts` (64-ticker fan-out) + `src/lib/providers/uw-rate-limiter.ts` (shared `GLOBAL_MAX_RPS`, currently 4). Follow-on to the 2026-10-01 `vector-dark-pool-warm` rate-limiter finding (PR #5579, already in FINDINGS.md). |
+| **Found** | Live CloudWatch (`/ecs/blackout-production`, 13:26–14:35 UTC 2026-10-05, RTH open), measured 3-4 days after PR #5579 deployed: `vector-pick-sweep` ran 62s–793s per invocation against its 120s schedule (worst case 793,660ms / 13.2 min). 4,655 `[uw] queue wait` log lines in 30 minutes; UW_GLOBAL_MAX_RPS saturated at 4. |
+| **Root cause** | The shared UW rate limiter remains a cluster-wide bottleneck during RTH peak even at RPS=4: `vector-full-state-snapshot` (~55-90s/5min), `uw-cache-refresh` (~20-40s/2min), `vector-dark-pool-warm` (queued behind others), and `vector-pick-sweep` (64-ticker fan-out) all draw from the same budget concurrently. Each cron's own concurrency guards (overlap lock, bounded pool) work at the in-flight-slot level, not the requests-per-second level, so the shared RPS ceiling is still the binding constraint — confirming PR #5579's RPS bump helped `vector-dark-pool-warm` specifically but did not resolve the underlying multi-cron contention for `vector-pick-sweep`. |
+| **Why not fixed here** | Explicitly flagged by the original investigation as needing more evidence before any ceiling change: is this RTH-open-specific (self-resolving) or does it persist mid-day? Does `vector-pick-sweep`'s own 64-ticker fan-out independently compound the wait (making fan-out throttling, e.g. lowering its own `MAX_CONCURRENCY`, a more surgical fix than a global RPS bump)? Is there confirmed provider headroom above RPS=4? None of these were established by the single-session measurement, and `uw-rate-limiter.ts` is shared across 0DTE/Vector/Helix, so raising the global ceiling again without that evidence risks oversubscribing the real provider plan limit for all three. |
+| **Evidence** | CloudWatch Logs `/ecs/blackout-production`, 13:26-14:35 UTC 2026-10-05: `vector-pick-sweep` elapsed range 62s-793,660ms vs 120s schedule; 4,655 `[uw] queue wait` lines in the 30-min sample window. |
+| **Status** | OPEN — recommend pulling a full trading day's `[uw] queue wait` + `vector-pick-sweep` elapsed data (open, mid-session, afternoon) to separate "always saturated" from "RTH-open-specific," and comparing fan-out throttling against a further RPS bump before changing either. No gate or constant changed by this entry. |
+
 ## 2026-10-05 — [FINDING, P2 Vector] `vector-dark-pool-warm`'s `GLOBAL_MAX_RPS=2→4` fix (PR #5579) only partially restored success rate — still near-total failure in the first ~25min of RTH
 
 > **kind:** `FINDING`
