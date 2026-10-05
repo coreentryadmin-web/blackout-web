@@ -780,6 +780,16 @@
       "kind": "FINDING",
       "no_action_needed": true,
       "note": "No code change -- this is purely an investigation-methodology correction + the first confirmed live attribution of a known fix."
+    },
+    "2026-10-05T18:49:00Z_longest_instance_3m07s_cleanly_attributed_PR5583_confirmed": {
+      "cycle_time": "2026-10-05T18:49:40Z",
+      "trigger": "18:46 UTC (offset :45, v4 mandate)",
+      "stage": "infra -- upstream_ok:false duration + attribution",
+      "summary": "Longest upstream_ok:false instance observed this week: 18:46:22.875Z to 18:49:29.675Z (~3m07s, well past the 2-3min bar set 2026-10-02). /record cross-checked clean throughout (graded:11, matches ledger, no data loss). Using the CORRECTED CloudWatch query syntax (per-tag individual checks, not the broken OR-pattern), cleanly and unambiguously root-caused: [zerodte-board-fallback] fired 8 times across the full instance window, one per ~15-20s poll cycle, every single line reading 'cold build still running past maxBlockMs=3000ms with no Redis snapshot or local last-good board to serve'. [zerodte-ledger-read] 0 matches, 'primary flow fetch failed' 0 matches -- not those routes. This is the SECOND clean live confirmation of PR #5583 (first was the ~1m52s instance at 15:11-15:13Z today) -- both today's instances trace to the same route, both with the corrected methodology, both unambiguous.",
+      "significance": "Two clean confirmations in one day of the SAME root cause (cold board build exceeding its 3000ms maxBlockMs timeout, with no Redis snapshot or local last-good board available to serve instead) is now a real, recurring pattern worth asking WHY the cold build itself is slow on these occasions -- that is a genuinely different, deeper question than 'is this degradation logged' (already answered: yes). This observability work (PRs #5581/#5583) was explicitly scoped NOT to fix the underlying root cause, only to make it diagnosable -- and it is now clearly doing that job. The natural next question (why does the cold build sometimes take >3000ms, twice today alone) is a performance/root-cause investigation, not an observability one -- bigger in scope, needs its own dedicated look (likely: what is the cold build doing during those 3+ minutes -- Polygon/UW upstream latency? Redis unavailability during that window? something else).",
+      "next_step": "Given 2 clean same-cause instances in one day (both #5583's route, none of the other two known routes), this crosses from 'still gathering evidence' into 'confirmed pattern, worth a dedicated root-cause dig' -- but that is a distinct, larger investigation (likely needs ECS/CloudWatch metrics on what the cold build is doing during the stall, not just log-tag attribution) better scoped as its own focused pass next cycle rather than folded into this routine check. Not escalating a code change yet -- still observability-only confirmation, no fix proposed.",
+      "kind": "FINDING",
+      "no_action_needed": true
     }
   },
   "sessions": {
