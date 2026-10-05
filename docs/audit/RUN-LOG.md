@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-05 (14:07 UTC / Mon 10:07 ET) — [SEO] Daily growth cycle: node_modules resynced post-dep-bump, avgpos continues improving
+
+Setup: `node_modules` was significantly stale relative to the Oct 5 dependency bump (#5587) —
+installed `framer-motion@13.2.0` / `@aws-sdk/client-secrets-manager@3.1130.0` vs the lockfile's
+`13.5.0` / `3.1145.0` (framer-motion backs the CLS fix's animation; the AWS SDK backs this very
+scan's Secrets Manager calls). Ran `npm ci` to resync; versions now match the lockfile. No new
+striking-distance queries (same 3 as the register, impressions ticked up slightly, not material).
+28-day avgpos improved to **11.3** (from 11.8), continuing the established long-term trend — no
+single recent shipped change clearly attributable, reads as continued organic movement. No action
+taken on content.
+
 ## 2026-10-05 (13:35 UTC / Mon 09:36 ET) — [SEO] RTH wake (first of the week): gamma-snapshot live, CLS clean post-dep-bump
 
 Confirmed clock myself: Mon 09:36 ET, trading day, inside 09:30-13:00 RTH — first RTH wake since
