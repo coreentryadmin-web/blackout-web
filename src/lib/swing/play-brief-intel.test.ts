@@ -3387,6 +3387,82 @@ test("watchForSection: entry trigger phrasing mirrors below for SHORT direction"
   assert.match(section.body, /Break\/reclaim below/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-06): `entryTriggerUnderlyingPx` for a Legacy-
+// morning-confirm-promoted play (`legacy-confirm-promote.ts`'s `buildLegacySwingArtifacts`) is
+// stamped ONCE, at promotion, from `deriveSwingPlanLevels(direction, groundedSpotAtPromotion, atr)`
+// — and that dossier/plan is never rebuilt again (there is no recurring re-dossier pass for
+// Legacy-promoted rows, unlike organic FLOW/STRUCTURE/etc. discovery, which rebuilds its dossier —
+// and therefore its plan's `entryUnderlyingPx` — on every scan cadence). Because
+// `deriveSwingPlanLevels` always sets `entryUnderlyingPx = price` (the spot at build time), a
+// Legacy-promoted row's `entryTriggerUnderlyingPx` is IDENTICAL to its `flagUnderlyingPx` forever,
+// even days later — confirmed live 2026-10-06 (`GET /api/market/nighthawk/horizons?view=swings`):
+// every Legacy-promoted row (NKE/USO/NTAP, `discoveryOrigin: ["NIGHT HAWK"]`) carried
+// `flagUnderlyingPx === entryTriggerUnderlyingPx` exactly, including USO (4 days stale), while
+// every organically-discovered WATCH row in the same payload (INTC/AVGO/ORCL/COPX/MU/NVDA/GE/
+// EWZ/PLTR) had the two values genuinely diverge. The "Entry trigger" bullet's own claim —
+// "this is what actually fires the setup" — is false for these rows: the number is the promotion-
+// day price, not a live, continuously-refreshed trigger level, so a member reading it days later
+// is seeing a stale level dressed as a live one. Fix: when the play's `discoveryOrigin` is the
+// Legacy-exempt signature AND the two values are byte-identical, disclose that the level is
+// pinned at promotion and has not refreshed since — same "correct the claim, keep the number"
+// shape as the INVALIDATED/EXPIRED fixes above, not a new mechanism.
+test("watchForSection: entry trigger claim is corrected for a Legacy-promoted play whose trigger never refreshed", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        flagUnderlyingPx: 143.47,
+        entryTriggerUnderlyingPx: 143.47,
+        discoveryOrigin: ["NIGHT HAWK"],
+      }),
+      asOf: "2026-10-06 10:00 ET",
+      sessionDate: "2026-10-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*143\.47\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(
+    section.body,
+    /pinned at Legacy promotion, not refreshed since — this level no longer fires the setup/,
+  );
+});
+
+// An organic (non-Legacy) WATCH row whose trigger happens to equal its flag anchor (e.g. the
+// very first scan tick after being flagged, before any price movement) must NOT be mislabeled
+// stale — only the Legacy-exempt signature changes the claim, never a coincidental equal value.
+test("watchForSection: a coincidentally-equal trigger/flag on an organic (non-Legacy) play keeps the live claim", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        flagUnderlyingPx: 182.5,
+        entryTriggerUnderlyingPx: 182.5,
+        discoveryOrigin: ["FLOW"],
+      }),
+      asOf: "2026-10-06 10:00 ET",
+      sessionDate: "2026-10-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(
+    section.body,
+    /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/,
+  );
+});
+
 test("watchForSection: entry trigger is omitted (never fabricated) when null, and never shown outside the watch bucket", () => {
   const withoutTrigger = watchForSection(
     {
