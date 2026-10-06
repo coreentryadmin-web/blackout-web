@@ -821,6 +821,12 @@
         "Watch for a 2nd/3rd instance of the MSTR-shaped Cortex-relief finding (2026-10-02) -- still n=1, no new instances since."
       ],
       "kind": "OBSERVATION"
+    },
+    "2026-10-06T13:11:00Z_new_day_pre_market_cold_start": {
+      "stage": "cold_start",
+      "summary": "New trading day 2026-10-06 (Tuesday). Board healthy: PRE_MARKET, heat 33%, upstream_ok:true, ledger_len:0 as expected before the open (auth fell back to Clerk temp-user this time instead of cron-bearer -- normal fallback path, not a concern). Scratchpad was wiped by a container restart; recreated the three pull_*.mjs helper scripts from scratch (same shape as before, wrapping fetchAuditJson from scripts/audit/lib/audit-auth-fetch.mjs). Carrying forward open watch items from Monday 2026-10-05: (1) the cross-lane UW rate-limiter finding reported on #4076 (comment 6001336921) is still unanswered as of last check -- watch for a response before re-deriving; (2) 3 upstream_ok:false instances Monday trended LONGER each time (1m52s -> 3m07s -> 6.5min) -- watch today for whether that trend continues (would be a stronger signal) or was random variance; (3) SPCX thesis_break-lag counter-example (n=1) and MSTR Cortex-relief finding (n=1, from 2026-10-02) both still below their 3-instance bars, watching for recurrence.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
