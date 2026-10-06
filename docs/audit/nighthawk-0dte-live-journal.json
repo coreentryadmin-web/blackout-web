@@ -865,6 +865,17 @@
       "kind": "OBSERVATION",
       "no_action_needed": false,
       "action_taken": "posted follow-up comment to #4076 with severity-escalation evidence"
+    },
+    "2026-10-06T18:14:12Z_8th_instance_live_traffic_alone_saturates": {
+      "cycle_time": "2026-10-06T18:14:12Z",
+      "trigger": "18:00 UTC offset trigger (v4 mandate)",
+      "summary": "8th confirmed upstream_ok:false instance, 18:11:22Z-18:13:57Z (~2m29s, shorter than #7 but a NEW signature). No data loss (/record graded:18 stable).",
+      "frequency_trend": "Instances 6/7/8 landed at 16:46, 17:10-17:15, 18:11 -- roughly one every 30-55 minutes today, markedly tighter spacing than the hours-apart gaps seen earlier in the week. Noting the trend; not escalating on frequency alone since duration/severity per-instance still varies (this one was comparatively short).",
+      "NEW_FINDING_live_traffic_alone": "Unlike instances #1-7 (all previously attributed to Vector's background-sweep crons racing live traffic for the shared UW_GLOBAL_MAX_RPS=2 budget), THIS instance's queue-wait pressure was almost entirely LIVE-tagged: of 269 total [uw] queue-wait log lines in the window, only 3 carried the '(background sweep)' tag -- the other 266 were plain, untagged (verified against raw log text, not just the filter) live-pool waits, median 2839ms, p90 7953ms, max 19962ms (the highest max-wait yet across all 8 instances), with 16 individual live waits exceeding 10 seconds. This means the existing fix (reserving the last RPS unit for live-tagged traffic, 2026-09-09) is not the whole story -- live/foreground UW demand ALONE, with essentially no background-sweep contribution this time, was enough to saturate the limiter and trip the board's 3000ms maxBlockMs cold-build budget. This reframes the fix direction: tuning Vector's sweep cadence/pacing (the original comment's suggestion) would not have prevented THIS instance, since the sweep was barely running. Raising UW_GLOBAL_MAX_RPS itself, or giving the 0DTE cold-build path a dedicated reserved slice independent of the live/background split, looks more load-bearing than previously framed.",
+      "escalation_action": "Posting a follow-up on #4076 with this finding -- it's new information that changes the recommended fix, not just more volume on the same point.",
+      "kind": "OBSERVATION",
+      "no_action_needed": false,
+      "action_taken": "posted follow-up comment to #4076 with the live-traffic-alone finding"
     }
   },
   "sessions": {
