@@ -838,6 +838,14 @@
       "noise_discipline": "This is the 4th instance of the SAME confirmed cause (board-fallback + UW saturation) -- already well past the 3-instance threshold from yesterday. Logging for the cross-day recurrence evidence, not re-escalating as a new finding (already reported with full evidence). No code change -- still cross-lane, still not mine to fix unilaterally.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-06T15:49:00Z_5th_same_cause_instance_plus_rough_day_so_far": {
+      "cycle_time": "2026-10-06T15:49:06Z",
+      "trigger": "15:45 UTC (offset :45, v4 mandate)",
+      "summary": "5th confirmed same-cause upstream_ok:false instance (15:46:11Z-15:49:06Z, ~2m55s). Re-confirmed via CloudWatch: [zerodte-board-fallback] fired 7 times in the window, same signature as the prior 4 instances. /record clean (graded:17, no data loss). Not re-detailing the full root-cause trace again -- already established and reported on #4076 (comment 6001336921, still unanswered). Durations so far today: 3m43s, 2m55s -- both multi-minute, consistent with yesterday's post-attribution range.",
+      "day_so_far_tally": "5 commits today: AAPL (open, no story), GLW -2.94% thesis_break:gex-walls, NBIS -6.12% flat_theta_bleed, SPY -10.32% thesis_break:gex-walls (peak -2.38%, a real but already-negative-peak giveback -- different shape than SPCX's positive-peak lag, still only n=1 of this specific shape), TEM -0.19% thesis_break:vex-charm clean instant scratch. 0 wins so far today across 4 closed -- notable but single-day, not escalating from n=4 losses alone without a shared failure mode (4 different ticker/reason combinations, no repeat pattern among them).",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
