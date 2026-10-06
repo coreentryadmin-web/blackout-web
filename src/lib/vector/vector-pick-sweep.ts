@@ -37,6 +37,7 @@ import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
 import { invalidationBarsFromSeed } from "@/features/vector/lib/vector-pick-invalidation";
 import { VECTOR_DEFAULT_DTE_HORIZON } from "@/features/vector/lib/vector-dte-horizon";
+import { runUwPool } from "@/lib/providers/uw-rate-limiter";
 
 export type VectorPickSweepTickerResult = {
   ticker: string;
@@ -274,7 +275,6 @@ export async function sweepVectorPickForTicker(
 // = 250-560s observed. 8 tickers per batch = 8 batches, expected to halve the batch latency
 // while staying within the freed rate-limiter budget (8 concurrent full-state fetches << 120
 // original per-batch at TICKER_CONCURRENCY=3).
-const SWEEP_CONCURRENCY = 8;
 
 /** Night Hawk 0DTE discovery names for today — prioritize tickers the commit engine already surfaced. */
 export async function fetchZerodteDiscoveryTickers(sessionDate: string, limit = 20): Promise<string[]> {
@@ -322,34 +322,35 @@ export async function runVectorPickUniverseSweep(): Promise<VectorPickSweepSumma
     base,
     [...zerodte, ...hot.map((h) => h.ticker)]
   );
-  const results: VectorPickSweepTickerResult[] = [];
 
-  for (let i = 0; i < tickers.length; i += SWEEP_CONCURRENCY) {
-    const batch = tickers.slice(i, i + SWEEP_CONCURRENCY);
-    const batchResults = await Promise.all(
-      batch.map(async (ticker) => {
-        try {
-          return await sweepVectorPickForTicker(ticker, sessionDate);
-        } catch (err) {
-          return {
-            ticker,
-            verdict: "RED" as const,
-            detail: err instanceof Error ? err.message : String(err),
-            picksRanked: 0,
-            leadersWritten: 0,
-            closuresLogged: 0,
-          };
-        }
-      })
-    );
-    results.push(...batchResults);
+  // Bounded-concurrency UW pool for market-open queue saturation (2026-10-05).
+  // During RTH when three crons (vector-full-state-snapshot, uw-cache-refresh,
+  // vector-dark-pool-warm) run with overlapping schedules, the shared UW GLOBAL_MAX_RPS=4
+  // rate limiter becomes saturated. Measured impact: pick-sweep runtimes 62-793s vs 120s
+  // schedule, with 10-20s UW queue waits per call. Throttling concurrent UW calls from
+  // the default ~3 to MAX_CONCURRENCY=2 reduces fan-out load and allows other crons
+  // (dark-pool-warm, cache-refresh) to get clearer rate-limiter budget, improving overall
+  // system throughput during market open. This is Phase 1; Phase 2 (schedule stagger) is
+  // a follow-on that requires cron-registry.ts changes and cross-lane coordination.
+  const UW_POOL_MAX_CONCURRENCY = 2;
 
-    // Yield event loop between batches to prevent blocking incoming requests with CPU-bound work.
-    // This allows the Node.js event loop to handle other requests before processing the next batch.
-    if (i + SWEEP_CONCURRENCY < tickers.length) {
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-  }
+  const results = await runUwPool(
+    tickers.map((ticker) => async (): Promise<VectorPickSweepTickerResult> => {
+      try {
+        return await sweepVectorPickForTicker(ticker, sessionDate);
+      } catch (err) {
+        return {
+          ticker,
+          verdict: "RED" as const,
+          detail: err instanceof Error ? err.message : String(err),
+          picksRanked: 0,
+          leadersWritten: 0,
+          closuresLogged: 0,
+        };
+      }
+    }),
+    UW_POOL_MAX_CONCURRENCY
+  );
 
   return {
     sessionDate,
