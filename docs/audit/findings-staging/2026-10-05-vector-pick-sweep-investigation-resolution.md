@@ -118,5 +118,5 @@ Stagger the three overlapping crons to reduce concurrent executions:
 
 ## Files Changed
 
-- `src/lib/flow-pick-sweep.ts` (or equivalent): Add `MAX_CONCURRENCY=2` guard to `runUwPool()` call
+- `src/lib/vector/vector-pick-sweep.ts`: Add `MAX_CONCURRENCY=2` guard to `runUwPool()` call
 - Follow-on PR: `cron-registry.ts` schedule updates for Phase 2
