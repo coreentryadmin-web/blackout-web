@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-06 (18:17 UTC / Tue 14:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, PRs unchanged/in-progress
+
+Synced to `origin/main` (`031f0df` — a cross-lane finding about `upstream_ok:false` on the
+nighthawk-0dte zero-dte board, a different system from the public `/api/public/gex-snapshot`
+checked during RTH; not related to this morning's observations). Purged Cloudflare edge,
+re-measured homepage desktop CLS — **0.0002, GOOD**. `/api/og` — **HTTP 200, `image/png`,
+`x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`**. Both fixes still holding.
+`agent-pr-sweep.mjs` → 3 open agent PRs: new #5600 (another lane's docs fold, `CI-RUNNING`, in
+progress, not stuck) plus #5577/#5537 unchanged, both confirmed intentional holds. Neither
+conflicted, no rebase needed.
+
 ## 2026-10-06 (16:35 UTC / Tue 12:35 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live (spot_source variance, resolved clean), CLS clean
 
 Confirmed clock myself: Tue 12:35 ET, last wake in today's window. `/api/public/gex-snapshot` →
