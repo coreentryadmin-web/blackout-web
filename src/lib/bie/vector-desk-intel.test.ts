@@ -96,6 +96,21 @@ describe("vector-desk-intel brief lines", () => {
     assert.equal(darkPoolBriefLine({ ...state, darkPoolLevels: [] }), null);
   });
 
+  // BUG FIX (2026-10-06, mirror of #5608): darkPoolBriefLine previously read `darkPoolLevels`
+  // with no staleness check at all — a dark-pool cache entry fetched well before `asOf` (e.g. the
+  // warm cron failing) was served and presented as current. Omitted (not disclosed), since this
+  // module has no unavailableSources channel of its own — same discipline as the null-when-empty
+  // case just above.
+  test("darkPoolBriefLine: null (omitted) when the dark-pool read is stale vs asOf", () => {
+    const stale = { ...state, darkPoolAsOf: Date.parse(state.asOf) - 25 * 60 * 1000 };
+    assert.equal(darkPoolBriefLine(stale), null);
+  });
+
+  test("darkPoolBriefLine: still renders when the dark-pool read is fresh (just under the bound)", () => {
+    const fresh = { ...state, darkPoolAsOf: Date.parse(state.asOf) - 10 * 60 * 1000 };
+    assert.ok(darkPoolBriefLine(fresh));
+  });
+
   test("wallDynamicsBriefLine: narrates the fadeness/building events from the rail", () => {
     const line = wallDynamicsBriefLine(state);
     assert.ok(line);
@@ -154,6 +169,16 @@ describe("knownVectorNumbers", () => {
     assert.ok(has(7450), "ladder / EM outer level");
     assert.ok(has(7515), "vanna (VEX) flip");
     assert.ok(has(7620), "vanna call wall");
+  });
+
+  // BUG FIX (2026-10-06, mirror of #5608): knownVectorNumbers previously added every dark-pool
+  // strike/pct unconditionally, so a stale read's numbers stayed "grounded" (citable) even though
+  // darkPoolBriefLine itself would have refused to quote them — the two mechanisms disagreeing is
+  // exactly the defect class play-brief-absence.ts's comments warn about for the swing side.
+  test("omits dark-pool strike/pct (e.g. the 24% put-side share) when the dark-pool read is stale", () => {
+    const stale = { ...state, darkPoolAsOf: Date.parse(state.asOf) - 25 * 60 * 1000 };
+    const known = knownVectorNumbers(stale);
+    assert.ok(!known.some((k) => Math.abs(k - 24) < 1e-6), "24% dark-pool share should be omitted");
   });
 
   test("includes the derived signed distances the wall/max-pain lines cite", () => {
