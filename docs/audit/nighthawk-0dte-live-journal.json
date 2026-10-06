@@ -846,6 +846,15 @@
       "day_so_far_tally": "5 commits today: AAPL (open, no story), GLW -2.94% thesis_break:gex-walls, NBIS -6.12% flat_theta_bleed, SPY -10.32% thesis_break:gex-walls (peak -2.38%, a real but already-negative-peak giveback -- different shape than SPCX's positive-peak lag, still only n=1 of this specific shape), TEM -0.19% thesis_break:vex-charm clean instant scratch. 0 wins so far today across 4 closed -- notable but single-day, not escalating from n=4 losses alone without a shared failure mode (4 different ticker/reason combinations, no repeat pattern among them).",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-06T16:46:25Z_6th_same_cause_instance_3rd_today": {
+      "cycle_time": "2026-10-06T16:46:25Z",
+      "trigger": "16:43 UTC (v4 mandate)",
+      "summary": "6th confirmed same-cause upstream_ok:false instance overall (3rd today, 2026-10-06), 16:44:15Z-by 16:46:25Z (resolved somewhere in that ~2m10s window -- polled, not caught at the exact first-true tick). Re-confirmed via CloudWatch: [zerodte-board-fallback] fired 2x (16:44:15Z, 16:45:15Z, each citing maxBlockMs=3000ms exceeded with no Redis/local-good fallback). Immediately preceding it, untagged (live-traffic) UW queue waits of 3017/3317/1923ms at 16:43:13Z, then a severe background-sweep pileup up to 11159ms at 16:44:2x-16:44:32Z -- same signature as all 5 prior instances. /record and board both healthy after resolution (ledger_len:5, upstream_ok:true at 16:46:25Z check).",
+      "no_response_yet_on_4076": "#4076 comment 6001336921 (posted 2026-10-05 19:14Z) remains the last comment on the thread as of this check (~21.5 hours later, verified via pull_request_read across pages). Not re-posting -- the original report already covers the mechanism; this is further confirming evidence of recurrence (now 6 instances across 2 days).",
+      "noise_discipline": "Well past the 3-instance threshold -- logging for recurrence-tracking only, no new escalation, no code change (cross-lane, not mine to fix unilaterally per the shared UW_GLOBAL_MAX_RPS limiter).",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
