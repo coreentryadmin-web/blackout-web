@@ -876,6 +876,15 @@
       "kind": "OBSERVATION",
       "no_action_needed": false,
       "action_taken": "posted follow-up comment to #4076 with the live-traffic-alone finding"
+    },
+    "2026-10-06T18:46:08Z_9th_instance_confirms_live_only_pattern_recurring": {
+      "cycle_time": "2026-10-06T18:46:08Z",
+      "trigger": "18:30 + 18:45 UTC offset triggers (same cycle, consolidated)",
+      "summary": "9th confirmed upstream_ok:false instance, 18:44:23Z-18:45:47Z (~1m24s) -- the SHORTEST duration observed across all 9 instances. No data loss (/record graded:18 stable). 118 total [uw] queue-wait log lines, ALL 118 untagged live-pool waits (0 background-sweep-tagged), max wait 18016ms.",
+      "confirms_8th_instance_finding": "This is the 2nd instance in a row (8th at 18:11-18:14, now 9th at 18:44-18:46) showing ZERO background-sweep-tagged queue waits -- the live-traffic-alone saturation signature first spotted in instance #8 is recurring, not a one-off. Only 2 instances of this specific sub-pattern so far (below the 3-instance escalation bar for a NEW claim), and the underlying mechanism/fix-direction was already reported on #4076 (comment 6022602033) -- not re-posting a 3rd comment for confirming data on an already-reported finding, per the standing noise discipline. Will escalate further only if a 3rd+ instance reveals something beyond 'yes, still live-traffic-dominated.'",
+      "frequency_note": "7th (17:10-17:15, ~5m26s) -> 8th (18:11-18:14, ~2m29s) -> 9th (18:44-18:46, ~1m24s): duration is trending SHORTER even as frequency stays tight (~30-33min apart for the last two gaps). Could read as 'getting better' (shorter outages) or could just be normal variance in how long live demand spikes last -- one trend line, not escalating on it alone.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
