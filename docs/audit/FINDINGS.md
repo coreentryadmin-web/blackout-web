@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-06 — [FINDING, P4 SPX Slayer/Largo/docs] 2026-08-29 "`summarizeGroupGreekFlow` reads field names that don't exist" entry is marked OPEN but was fixed three days later — FIXED-BUT-MISLABELED, correcting the record
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `docs/audit/FINDINGS.md`'s 2026-08-29 entry "`summarizeGroupGreekFlow` reads field names that don't exist in the real UW response — always returns null — OPEN". This is a documentation-hygiene correction, not a code fix — no code was touched. |
+| **Found** | Re-verifying old FINDINGS.md claims per the standing DISCOVERY-lane audit mandate, continuing the same technique that surfaced the 2026-08-18 Meridian and 2026-08-30 zerodte session-anchor stale-OPEN entries earlier this session. This entry was a stronger test of the technique than the prior two: it explicitly says the fix "requires a product decision on field mapping, out of scope for the transport-cap fix that surfaced it" — i.e. it was NOT expected to be a same-day mechanical fix, so it was worth checking whether the owning lane (SPX Slayer/Largo) made that decision since. |
+| **Root cause of the stale status** | The product decision was made and shipped three days later, in PR #3290 ("fix(desk): group/ticker greek-flow summarizers read UW field names that don't exist — always returned null", commit `7c2b4d86e`, 2026-09-02 01:18 UTC) — but the FINDINGS.md entry's heading/Status row were never updated afterward. |
+| **Verification (against current `main`, `src/lib/group-greek-flow-summary.ts`)** | The fix makes exactly the two calibration calls the original finding said were needed: (1) delta mapping — `num(r, "net_delta", "delta", "net_deltas", "dir_delta_flow")` now falls back to `dir_delta_flow`, UW's real signed net-delta field on this endpoint, with a comment explicitly justifying why `total_delta_flow` is NOT used instead (it's an unsigned magnitude sum, confirmed against the same live sample cited in the original finding: "dir_delta_flow ~308K vs total_delta_flow ~1.58M on the same row"). (2) Gamma — a new `numPresent()` helper distinguishes "never measured" from "measured as zero," so `net_gamma` is now `null` (omitted) rather than fabricated `0` when the endpoint carries no gamma field at all, with a doc comment explicitly citing "confirmed live 2026-08-29/09-02" and the Largo product contract's confidence-omission rule — exactly the "omit rather than fabricate a `0` that reads as measured" recommendation the original finding made. Ran the module's test suite live (Node 20): 8/8 green, including fixtures built from the real sampled UW row shape the finding itself measured (addressing the finding's own "Suggested next step" that no test exercised the real field names). |
+| **Why not fixed further here** | Nothing to fix — this is a status-label correction on an already-shipped fix, not a new defect. Leaving the underlying code untouched; this was a deliberate SPX Slayer/Largo product-calibration decision, already made and shipped by the owning lane. |
+| **Blast radius** | None beyond the documentation record — `FINDINGS.md` is the only file this entry corrects, via the standard fold pipeline (not a direct edit, per `docs/audit/findings-staging/README.md`). |
+| **Status** | FIXED — the underlying 2026-08-29 defect (and its explicitly-flagged product-decision component) was resolved by PR #3290 on 2026-09-02; this entry corrects FINDINGS.md's own stale OPEN label so a future audit doesn't re-investigate a closed issue. |
+
 ## 2026-10-06 — [FINDING, P4 Night Hawk/0DTE/docs] 2026-08-30 "`currentZerodteSessionAnchor`'s `nowMs` is silently ignored" entry is marked OPEN but was fixed the same day — FIXED-BUT-MISLABELED, correcting the record
 
 > **kind:** `FINDING`
