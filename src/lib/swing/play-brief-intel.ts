@@ -46,6 +46,7 @@ import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-
 import { formatFixedNonZero } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason } from "./entry-enterability";
+import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy";
 import {
@@ -1067,7 +1068,27 @@ export function catalystsSection(
  */
 function entryTriggerDeadReason(play: TerminalPlay): string | null {
   const reason = deadPlayReason(play);
-  return reason ? `${reason} — this level no longer fires the setup` : null;
+  if (reason) return `${reason} — this level no longer fires the setup`;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-06): a Legacy morning-confirm-promoted row's
+  // `entryTriggerUnderlyingPx` is stamped ONCE at promotion (legacy-confirm-promote.ts's
+  // `buildLegacySwingArtifacts` → `deriveSwingPlanLevels(direction, groundedSpotAtPromotion, atr)`,
+  // which always sets `entryUnderlyingPx = price`) and that dossier/plan is never rebuilt again —
+  // unlike organic discovery, which re-derives its dossier (and this field) on every scan cadence.
+  // So a Legacy-promoted row's trigger is byte-identical to its flag anchor FOREVER, even days
+  // later (confirmed live 2026-10-06: NKE/USO/NTAP all exact-equal, USO 4 days stale) — while an
+  // organic row's trigger only coincidentally equals its flag anchor on the scan tick it was first
+  // flagged, before any rebuild. Equality alone on an organic row is not evidence of staleness (it
+  // would wrongly flag every freshly-flagged name), so this only fires for the Legacy-exempt
+  // signature specifically, never from the numeric coincidence by itself.
+  if (
+    isLegacyPromotedSignal(play.discoveryOrigin) &&
+    play.flagUnderlyingPx != null &&
+    play.entryTriggerUnderlyingPx != null &&
+    play.flagUnderlyingPx === play.entryTriggerUnderlyingPx
+  ) {
+    return "pinned at Legacy promotion, not refreshed since — this level no longer fires the setup";
+  }
+  return null;
 }
 
 /** What to watch — invalidation, triggers, key levels. */
