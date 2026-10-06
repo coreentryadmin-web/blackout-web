@@ -4,6 +4,19 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-06 (13:35 UTC / Tue 09:36 ET) — [SEO] RTH wake: gamma-snapshot live (more pronounced-than-usual variance, resolved clean), CLS clean
+
+Confirmed clock myself: Tue 09:36 ET, trading day, inside RTH. `/api/public/gex-snapshot` →
+`market_session: OPEN`, `degraded: false`, spot 7810.39, posture `long` — new session data.
+Two rounds of 3s-interval polling each showed one non-monotonic `calculation_id` reversion plus
+elevated `snapshot_data_age_seconds` (up to 80s at worst) — more pronounced than prior cycles'
+occasional blips. Did a third, more detailed round inspecting `spot_timestamp`/`chain_timestamp`/
+`calculated_at` together: calc_id advanced cleanly (`...843787` → `...863415`), all timestamps
+progressed in order, age settled to 8s, `degraded` stayed `false`/`degraded_note` null throughout.
+Treated as the known backend-replica/cache-read race, just more pronounced this cycle — self-
+healing, never stuck, never degraded. Purged Cloudflare edge, re-measured live-page homepage CLS
+— **0.0004, GOOD**. No defects found, no PR opened.
+
 ## 2026-10-06 (12:17 UTC / Tue 08:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, PRs re-verified unchanged
 
 Synced to `origin/main` (`e46eb9c`). Purged Cloudflare edge, re-measured homepage desktop CLS —
