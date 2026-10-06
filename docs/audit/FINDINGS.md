@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-06 — [FINDING, P4 Meridian/docs] 2026-08-18 "Meridian ESTIMATES/HISTORY are empty on EVERY mega-cap" entry is marked OPEN but its root cause has been fixed since the same day — FIXED-BUT-MISLABELED, correcting the record
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `docs/audit/FINDINGS.md`'s 2026-08-18 entry "Meridian ESTIMATES/HISTORY are empty on EVERY mega-cap while the same payload claims history — OPEN" (heading + its `| **Status** |` row both say OPEN). This is a documentation-hygiene correction, not a code fix — no code was touched. |
+| **Found** | Re-verifying old FINDINGS.md claims per the standing DISCOVERY-lane audit mandate. The OPEN entry's own "What is NOT established" section names a specific hypothesis: the six-way `Promise.all` in `loadMeridianEarningsEnrichment` swallows a rate-limit/timeout via `.catch(() => ({ rows: [], entitled: true, error: "cache_error" }))`, which `serverCache` then stores for 10 minutes — making a FAILURE indistinguishable from NO DATA, both in the payload and on screen. |
+| **Root cause of the stale status** | The fix shipped the same calendar day the finding was written, in PR #2292 ("feat(meridian): legibility, type system, Summary tab, and event-expiry correctness", commit `5981cc734`, 2026-08-18 08:04 UTC), but nobody updated the FINDINGS.md heading/Status row from OPEN to FIXED afterward — so the entry has read as an open P1 for ~7 weeks while the underlying defect was already closed. |
+| **Verification (against current `main`, `src/lib/meridian/meridian-earnings-enrich.ts`)** | (1) Line 116: `calendar_error: history.history_error ?? (benzingaRes as { error?: string \| null }).error ?? null,` with an adjacent comment literally citing "measured on 8/8 mega-caps on 2026-08-18" — the exact finding. (2) `src/lib/meridian/meridian-benzinga-earnings.ts` line 196: `loadBenzingaTickerEarnings` now `throw`s on `res.error` instead of silently returning `{rows:[]}`, and line 194's comment states the exact distinction the finding demanded: "An entitled-but-genuinely-empty result (no error, no rows) is a real answer and still cached; a real upstream error is not." (3) `src/lib/server-cache.ts`'s own doc comment confirms a thrown error is never written to the cache store ("Failing keys never enter `store` (the .then that writes the store only runs on success)") — directly fixing the "silently caches a failed result for 10 minutes" half of the original hypothesis. All three pieces of the fix (surface the error on the payload, throw instead of swallow, don't cache a thrown failure) are live and match the finding's own stated remediation requirements word-for-word. |
+| **Why not fixed further here** | Nothing to fix — this is a status-label correction on an already-shipped fix, not a new defect. Leaving the underlying code untouched; Meridian is an owning lane and this entry does not touch any Meridian source file. |
+| **Blast radius** | None beyond the documentation record — `FINDINGS.md` is the only file this entry corrects, via the standard fold pipeline (not a direct edit, per `docs/audit/findings-staging/README.md`). |
+| **Status** | FIXED — the underlying 2026-08-18 defect was fixed same-day by PR #2292; this entry corrects FINDINGS.md's own stale OPEN label so a future audit doesn't re-investigate a closed issue. |
+
 ## 2026-10-05 — [FINDING, P0 Vector] SSE `vector/stream` abort-listener leak caused linear memory growth → one ECS task OOM-crashed at RTH peak — FIXED
 
 > **kind:** `FINDING`
