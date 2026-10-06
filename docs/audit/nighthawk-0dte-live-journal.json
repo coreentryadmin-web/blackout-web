@@ -855,6 +855,16 @@
       "noise_discipline": "Well past the 3-instance threshold -- logging for recurrence-tracking only, no new escalation, no code change (cross-lane, not mine to fix unilaterally per the shared UW_GLOBAL_MAX_RPS limiter).",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-06T17:15:41Z_7th_instance_worst_yet_severity_escalating": {
+      "cycle_time": "2026-10-06T17:15:41Z",
+      "trigger": "17:00 + 17:15 UTC offset triggers (same cycle, consolidated)",
+      "summary": "7th confirmed same-cause upstream_ok:false instance, 17:10:15Z-17:15:41Z (~5m26s), the SECOND-LONGEST duration observed (behind only the 3rd instance's ~6.5min) but by far the WORST by volume: 15x [zerodte-board-fallback] fires (vs 2x for instance #6 and 7x for instances #3-5), 275 total [uw] queue-wait log lines (187 untagged/live-traffic, not background-sweep-tagged), max single wait 19579ms -- the highest max-wait yet recorded across all 7 instances. No data loss (/record graded:17 stable throughout, board ledger_len:5 intact post-resolution).",
+      "severity_trend": "Durations across today's 3 instances: 3m43s -> 2m55s -> 2m10s -> now 5m26s (NOT monotonic -- today's pattern briefly looked like it was improving, then got much worse on this 4th-of-the-day instance). But volume/intensity metrics (fallback-fire count, live-traffic queue-wait count, max wait) are now at their worst point across the full 7-instance history. This is new evidence worth surfacing on #4076: the cross-lane UW saturation is not just recurring, it is capable of getting meaningfully worse, not just staying at a steady-state nuisance level.",
+      "escalation_action": "Posting a concise follow-up comment on #4076 (not a duplicate of the original mechanism report at comment 6001336921, which remains unanswered ~22h later) -- surfacing this severity data point since it changes the risk picture from 'steady recurring nuisance' to 'a cross-lane contention that can spike significantly worse under load', which is new information even though the root cause and fix ownership haven't changed.",
+      "kind": "OBSERVATION",
+      "no_action_needed": false,
+      "action_taken": "posted follow-up comment to #4076 with severity-escalation evidence"
     }
   },
   "sessions": {
