@@ -2533,6 +2533,33 @@ test("composeSwingPlayBrief: prior-session scan evidence uses stale freshness, n
   assert.equal(scanEvidence?.provenance?.freshness, "stale", "prior-session scan must not claim recent freshness");
 });
 
+test("composeSwingPlayBrief: CLOSED play never surfaces today's live swing-scan evidence (matches Data freshness's own isClosed gate)", () => {
+  // Ask Largo deep-dive, 2026-10-06 — live repro: a CLOSED play (e.g. HUT, exited 2026-09-28)
+  // requested via GET /api/market/swing/play-brief today carried
+  // `{"text":"Swing discovery scan as of 2026-10-06 15:05 ET.","provenance":{"freshness":"recent"}}`
+  // in `envelope.evidence` even though the play's own outcome is an 8-day-old ledger record that a
+  // scan run TODAY has no bearing on. `dataFreshnessSection` (play-brief-intel.ts) already has an
+  // explicit `isClosed` gate that drops this exact "Swing scan: ..." line from the prose section
+  // for closed plays — this is the evidence-array sibling of that same `scanAsOf` field, which
+  // never got the matching gate, so the visible section correctly stayed silent while the hidden
+  // evidence[]/markdown-footer array kept citing an irrelevant "recent" live scan as if it
+  // supported the closed-play's historical claims.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-06 16:22 ET",
+    sessionDate: "2026-10-06",
+    scanAsOf: "2026-10-06T19:05:00.000Z",
+    scanSessionDay: "2026-10-06",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const scanEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Swing discovery scan as of"));
+  assert.equal(scanEvidence, undefined, "a CLOSED play's brief must not cite today's live discovery scan as evidence");
+});
+
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
