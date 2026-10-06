@@ -12,6 +12,7 @@ import {
   confluenceZoneKindsLabel,
   fundamentalsAgeMs,
   fundamentalsAncient,
+  darkPoolStale,
   fundamentalsFreshnessTag,
   gexMatrixAgeMs,
   gexMatrixStale,
@@ -776,7 +777,10 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
     );
   }
   const dp = vec?.darkPoolLevels ?? [];
-  if (dp.length && !vectorStaleForLevels) {
+  // BUG FIX (2026-10-06): see collectFocalLevels (play-brief-narrative.ts) for the full account —
+  // `vectorStaleForLevels` alone cannot catch a dark-pool cache entry up to 20+ min stale while the
+  // rest of the Vector state computed live seconds ago.
+  if (dp.length && !vectorStaleForLevels && !darkPoolStale(vec)) {
     lines.push(
       "**Dark pool levels:** " +
         dp

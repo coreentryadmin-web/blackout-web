@@ -567,6 +567,24 @@ export async function getVectorDarkPoolLevels(
   return getCachedVectorDarkPool(ticker);
 }
 
+/**
+ * Same read, PLUS the cache entry's own `fetchedAt` — dropped by `getVectorDarkPoolLevels` above,
+ * which only ever served `.levels`. `fetchedAt` is exactly the field `vector-dark-pool-cache.ts`'s
+ * own header comment says exists to disclose staleness ("Staleness is disclosed via fetchedAt
+ * rather than hidden via expiry") — but nothing downstream of that cache read ever consumed it, so
+ * the disclosure the cache layer was built to provide never reached a brief/tool boundary. Added
+ * 2026-10-06 (Ask Largo standing mandate) after `vector-dark-pool-warm` was observed failing at a
+ * high rate in production: when it DOES succeed intermittently, the resulting cache entry can be
+ * served for up to its 25min TTL by a Vector full-state read that computed everything else live
+ * seconds ago — and the whole-state `asOf`/`freshness` a brief gates on describes that live compute,
+ * not this one field's actual age.
+ */
+export async function getVectorDarkPoolLevelsWithAge(
+  ticker: string = VECTOR_DEFAULT_TICKER
+): Promise<{ levels: VectorDarkPoolLevel[]; fetchedAt: number }> {
+  return getCachedVectorDarkPoolWithAge(ticker);
+}
+
 export type VectorStreamPayload = {
   ticker: string;
   candle: Awaited<ReturnType<typeof getVectorLiveCandle>>["current"];

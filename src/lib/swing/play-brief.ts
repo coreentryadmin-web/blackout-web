@@ -32,6 +32,7 @@ import {
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
   playExpectsLiveOptionMark,
+  darkPoolStale,
   resolveGammaPosture,
   trustedHelixFlow,
   vectorSnapshotStale,
@@ -662,12 +663,20 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
         provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
       });
     }
-    for (const dp of vec?.darkPoolLevels ?? []) {
-      levels.push({
-        label: "dark pool",
-        price: dp.strike,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
-      });
+    // BUG FIX (2026-10-06, Ask Largo standing mandate): this used to stamp the WHOLE Vector
+    // state's asOf/freshness onto a dark-pool level regardless of its OWN cache age — the dark-
+    // pool cache is warmed on a looser ~10min/25min-TTL cadence than the rest of Vector, so a
+    // state computed live seconds ago can still carry a dark-pool read up to 20+ min old with no
+    // way to tell from `vecFresh`. See vector-absent-sections.ts's `dark_pool_stale`. Omit rather
+    // than fabricate freshness — same discipline collectFocalLevels/catalystsSection now apply.
+    if (!darkPoolStale(vec)) {
+      for (const dp of vec?.darkPoolLevels ?? []) {
+        levels.push({
+          label: "dark pool",
+          price: dp.strike,
+          provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+        });
+      }
     }
     // The gamma magnet is narrated prominently in the "Trade manager read" section
     // (magnetCoaching, play-brief-narrative-coaching.ts) as a decision-relevant price ("pull up

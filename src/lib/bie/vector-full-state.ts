@@ -37,7 +37,7 @@ import {
   getVectorGammaFlipForHorizon,
   getVectorVexWalls,
   getVectorVexFlip,
-  getVectorDarkPoolLevels,
+  getVectorDarkPoolLevelsWithAge,
   getVectorWallHistory,
 } from "@/features/vector/lib/vector-snapshot";
 import { getHorizonStrikeTotals } from "@/features/vector/lib/vector-dte-walls-server";
@@ -149,6 +149,12 @@ export type VectorFullState = VectorSnapshot & {
   vexFlip: number | null;
   /** Top institutional dark-pool strike levels. */
   darkPoolLevels: VectorDarkPoolLevel[];
+  /**
+   * Epoch ms the cache entry behind `darkPoolLevels` was actually fetched (NOT when this state was
+   * assembled) — 0 means unknown/a legacy pre-envelope cache entry. See `getVectorDarkPoolLevelsWithAge`
+   * for why this travels separately from the state's own `asOf`/`freshness`.
+   */
+  darkPoolAsOf: number;
 };
 
 /**
@@ -181,7 +187,7 @@ export async function computeVectorFullState(
     // Fail-open PER read (mirrors fetchEcosystemContext): most of these already .catch()
     // internally and resolve to null, but wrapping again guarantees one slow/throwing read
     // can never reject the whole fan-out.
-    const [positioning, gexWalls, gammaFlip, maxPainRes, expectedMove, strikeTotalsRes, flowMarkers, darkPoolLevels] =
+    const [positioning, gexWalls, gammaFlip, maxPainRes, expectedMove, strikeTotalsRes, flowMarkers, darkPoolRead] =
       await Promise.all([
         getGexPositioning(t).catch(() => null),
         getVectorGexWallsForHorizon(t, horizon).catch(() => null),
@@ -190,8 +196,10 @@ export async function computeVectorFullState(
         getVectorExpectedMove(t, horizon).catch(() => null),
         getHorizonStrikeTotals(t, horizon).catch(() => null),
         getVectorFlowMarkers(t, horizon).catch(() => null),
-        getVectorDarkPoolLevels(t).catch(() => [] as VectorDarkPoolLevel[]),
+        getVectorDarkPoolLevelsWithAge(t).catch(() => ({ levels: [] as VectorDarkPoolLevel[], fetchedAt: 0 })),
       ]);
+    const darkPoolLevels = darkPoolRead.levels;
+    const darkPoolAsOf = darkPoolRead.fetchedAt;
 
     // VEX (vanna) lens + the wall-history rail are SYNCHRONOUS in-memory reads (no fetch) — the
     // same per-second stream state the chart renders. vexWalls/vexFlip give BIE the second lens;
@@ -338,6 +346,7 @@ export async function computeVectorFullState(
       vexWalls: vexWalls ?? null,
       vexFlip,
       darkPoolLevels: darkPoolLevels ?? [],
+      darkPoolAsOf,
     }, 2, VECTOR_FRACTION_DP);
   } catch {
     return null; // whole-state failure is a no-surface, never a throw into the caller
@@ -436,9 +445,11 @@ function withReadContext(
       flowMarkers: state.flowMarkers,
       vexWalls: state.vexWalls,
       darkPoolLevels: state.darkPoolLevels,
+      darkPoolAsOf: state.darkPoolAsOf,
       wallHistory: state.wallHistory,
       play: play,
       isRth: isEtCashRth(Number.isFinite(observedAt) ? new Date(observedAt) : new Date()),
+      readMs: Date.now(),
     }),
     ...describeVectorFreshness(state.asOf, Date.now()),
   };

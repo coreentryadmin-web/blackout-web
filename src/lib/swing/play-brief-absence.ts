@@ -4,7 +4,7 @@ import { etSessionFacts } from "@/lib/et-session-facts";
 import { marketSessionDisclosure } from "@/lib/bie/market-session-disclosure";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
-import { etStampFromIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
+import { etStamp, etStampFromIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import type {
   EcosystemContext,
   EcosystemNightHawkTake,
@@ -345,6 +345,21 @@ export function vectorSnapshotStale(
   return false;
 }
 
+/**
+ * Dark-pool levels specifically are stale — same disclosure `collectVectorSectionAbsences` already
+ * surfaces via `vec.dark_pool_stale`, reused here so any call site that INLINES a dark-pool level
+ * into a bullet/focal-level list (rather than going through `unavailableSources`) omits it instead
+ * of silently presenting a cache entry that can be up to 20+ minutes old as current — the same
+ * "omit, don't fabricate freshness" discipline every other `vectorStale`-gated level already
+ * follows here. A level that is BOTH omitted from the narrative AND named in `unavailableSources`
+ * is the honest outcome; a level rendered plainly while `unavailableSources` separately calls it
+ * stale would be the exact two-mechanisms-disagree defect class this file's comments elsewhere
+ * warn about.
+ */
+export function darkPoolStale(vec: VectorWithReadContext | null | undefined): boolean {
+  return vec?.dark_pool_stale === true;
+}
+
 /** Vector state is only live cross-desk signal when its measurement session matches the brief. */
 export function vectorLiveForSession(
   vec: VectorWithReadContext | null | undefined,
@@ -528,6 +543,22 @@ function collectVectorSectionAbsences(vec: VectorWithReadContext): BieUnavailabl
   const out: BieUnavailableSource[] = [];
   for (const section of sections) {
     if (section === "wall_history" && vec.wall_history_empty_reason === "outside_rth_no_recording_yet") {
+      continue;
+    }
+    // BUG FIX (2026-10-06, Ask Largo standing mandate — live trigger: vector-dark-pool-warm
+    // observed failing at a high rate in production). `dark_pool_stale` distinguishes "present but
+    // stale" from "genuinely not present" for this ONE section — see vector-absent-sections.ts for
+    // why the whole-state asOf/freshness can't catch this on its own. Presented with the same
+    // "stale — last synced HH:MM" phrasing collectOptionMarkStalenessAbsence already uses, so the
+    // two staleness disclosures read consistently rather than one looking like a harder failure.
+    if (section === "dark_pool_levels" && vec.dark_pool_stale && vec.darkPoolAsOf) {
+      const stamp = etStamp(vec.darkPoolAsOf) ?? new Date(vec.darkPoolAsOf).toISOString();
+      out.push({
+        source: VECTOR_SECTION_LABELS[section],
+        reason: `stale — last synced ${stamp}`,
+        what_is_missing: `a fresh ${VECTOR_SECTION_LABELS[section]} read`,
+        retryable: true,
+      });
       continue;
     }
     out.push({
