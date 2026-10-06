@@ -885,6 +885,16 @@
       "frequency_note": "7th (17:10-17:15, ~5m26s) -> 8th (18:11-18:14, ~2m29s) -> 9th (18:44-18:46, ~1m24s): duration is trending SHORTER even as frequency stays tight (~30-33min apart for the last two gaps). Could read as 'getting better' (shorter outages) or could just be normal variance in how long live demand spikes last -- one trend line, not escalating on it alone.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-06T20:10:07Z_session_closed_eod_summary": {
+      "cycle_time": "2026-10-06T20:10:07Z",
+      "stage": "eod_summary",
+      "day_tally": "6 commits today: AAPL +3.64% (ratchet floor, peaked +10%), FCEL +6.25% (thesis_break on gex-walls veto, peaked +9.37%), NBIS ~flat (flat_theta_bleed), GLW -2.94% (thesis_break), SPY -10.32% (thesis_break, peak -2.38% -- already-negative-peak giveback), TEM -0.19% (thesis_break:vex-charm, clean instant scratch). Net: 2W/3L/1 flat. Both wins show the protective-exit mechanism working as intended (banking a real peak before giveback), not a repeat of the SPCX lag pattern (still n=1, no recurrence today).",
+      "infra_summary": "9 total upstream_ok:false instances this week (6 Monday 2026-10-05, 3 today), all confirmed same root layer (UW rate-limiter saturation / [zerodte-board-fallback]) but with a notable shift in SIGNATURE: instances #1-7 were attributed to Vector background-sweep contention; instances #8 and #9 (today, 18:11-18:14 and 18:44-18:46) were ALMOST ENTIRELY live-traffic-tagged with near-zero background-sweep activity -- a genuinely new finding escalated to #4076 (comment 6022602033) since it changes the recommended fix direction (raise UW_GLOBAL_MAX_RPS or give 0DTE cold-build its own reserved slice, vs. just tuning Vector's sweep cadence). Severity escalation also reported (comment 6021563148) after instance #7 hit a new max-wait record (19579ms, later beaten by instance #8's 19962ms and #9's 18016ms). No data loss in any of the 9 instances. Both comments remain unanswered as of this check -- will continue monitoring for a response and for whether the live-traffic-only signature recurs a 3rd time tomorrow.",
+      "governor_final": "session_pnl approx -10% to -17% range through the day (improved as FCEL closed green), realized_losers 3/4 session stops, never halted.",
+      "carry_forward_to_tomorrow": "(1) Watch #4076 comments 6021563148 and 6022602033 for a response before re-deriving. (2) Watch whether the live-traffic-only upstream_ok:false signature (instances #8, #9) recurs a 3rd time -- would firmly establish it as the dominant pattern rather than Vector-sweep contention. (3) SPCX thesis_break-lag counter-example (n=1, 2026-10-05) and MSTR Cortex-relief finding (n=1, 2026-10-02) both still below 3-instance bars. (4) Journal still unpruned (blocked by permission classifier since 2026-10-02) -- now well over 125 entries.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
