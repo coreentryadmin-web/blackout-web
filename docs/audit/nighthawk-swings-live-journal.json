@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-09-28T03:17:19.297Z",
-  "notes": "Cycle check 2026-09-28 03:16Z (trig :16 offset). No new PRs, no replies yet on #4076 (7 comments this session, oldest ~3.5h). Deliberately not forcing a new deep-dive this cycle -- the weekend-quiescent board has now been examined from many angles this session (WATCH forensics x2, OPEN thesis health, MFE capture math, 5-truth grader at two window sizes with full quantification, Largo contract audit finding a real tool gap, book-context concentration finding expired-row inflation + its broader blast radius, data-freshness C2/C3 split resolved) and repeating the same checks against the same unchanged data would manufacture findings rather than discover them. Genuinely clean/light cycle by judgment call, not by lack of effort.",
+  "last_updated": "2026-10-06T20:20:00.000Z",
+  "notes": "Cycle check 2026-10-06 20:16Z (:16-offset trigger, v3 cadence). CONTINUITY GAP: journal was last written 2026-09-28 (PR #5537 creation) -- the direct-push-to-main journal-write mechanism was blocked by the harness's auto-mode CI-bypass classifier for the ~9 days since (2026-09-29 through 2026-10-06), so the live 10/5-10/6 RTH confirmation work below was tracked only in-session, not persisted, until this write. This push itself is the first write attempt since that gap; if it fails for the same reason, the blocker is still open and needs a human decision (either a permission-rule exception for this one state file, or changing the journal mechanism to go through a PR like everything else).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -459,5 +459,19 @@
       "evidence": "7 of the 11 disagreements are THESIS=CONFIRMED (target hit on the underlying, real positive MFE +4.55% to +32.67%) paired with a HEAVY option loss (-23.4% to -98.6%): NRG#34, NVDA#20, INTC#18, TSM#11, IBIT#8, FHN#5, SPCX#3. This is the SAME round-trip-despite-real-favorable-move pattern already quantified in the open profit_ladder/GATING_RUNGS escalation (comment 5827427804, reinforced 5829603301) -- independent corroboration via a completely different methodology (structural underlying-level thesis truth from the 5-truth grader, vs option-premium peak/exit retracement from the record closedDeck) and a longer window (90d here vs 30d there). The other 4 (GLW/NOW/DRAM/ORCL, all THESIS=INVALIDATED but small positive pnl 1.4-5.5%) are the opposite shape -- thesis structurally broke but the mechanical stop/exit still banked a small gain, less concerning, likely just normal stop-placement noise near breakeven.",
       "status": "Logged, not re-posted to #4076 this cycle -- the profit_ladder design question already has two rounds of evidence there awaiting a response; a third reinforcement without new decision-relevant content would read as noise. Available to cite if/when a response arrives, or if the closed population grows enough to re-run with a cleaner split."
     }
-  ]
+  ],
+  "exit_capture_bug_5537_live_confirmation_2026_10": {
+    "status": "NO CODE CHANGED -- held for explicit operator sign-off per #5537's own scope (manage.ts/scale-out.ts/calibration.ts/positions-db.ts untouched). This entry is purely additional LIVE EVIDENCE accumulated since #5537 was opened 2026-09-28, gathered during the standing ~15-min RTH monitoring cadence 2026-10-05 and 2026-10-06.",
+    "pr_5537_github_state": "Still OPEN/DRAFT, no new comments since 2026-09-29T15:15Z. Not stale by inactivity -- it is explicitly held pending sign-off, not abandoned.",
+    "pr_5577_github_state": "Also still OPEN/DRAFT (Legacy graduation bridge for the commit pipeline), no new comments since 2026-10-01T15:06Z. Also explicitly held for sign-off, unrelated defect.",
+    "pr_5499_confirmed_merged": "Vector full-state warm-cron fix merged+closed 2026-09-26T11:30:50Z, confirmed via live GitHub read this cycle -- no longer open, no action needed.",
+    "live_repros_since_5537_opened": [
+      "BE:46 -- peaked +114.9% Fri 10/2 (closed +71.4% that day), then recurred Mon 10/5 and Tue 10/6 peaking as high as +125.3%, liveStatus held HOLD throughout every observed tick.",
+      "MSFT:47 -- crossed +100% repeatedly Mon 10/5 and Tue 10/6, observed range ~108% to 153.7% across the two days, liveStatus HOLD at every tick checked.",
+      "AMZN:48 -- crossed +100% for the first time Tue 10/6 (own position, previously never over 2x), reaching 105.6%+ this same week, liveStatus HOLD.",
+      "As of this cycle (2026-10-06 20:16Z): AMZN +102.2%, MSFT +115.4%, BE +104.2%, all three still liveStatus:HOLD -- the identical failure signature (peak premium far past the 2x profit_ladder trigger, zero TRIM transition) now independently observed on all three native positions across multiple separate days, well past the 3-instance noise threshold for all three individually."
+    ],
+    "conclusion": "This is exactly the defect #5537 already root-caused (graduatedRungs permanently [] -> enforced:false -> latchSwingLiveStatus never flips to TRIM) -- these live ticks are confirmation of the existing root cause, not a new finding, so NOT re-posted to #4076 as a fresh escalation. Logging here so the next session reading this journal does not have to re-derive the pattern from scratch, and so the eventual sign-off conversation has the full multi-day live evidence trail in one place.",
+    "next_step": "Keep tracking HOLD/TRIM status every ~15min during RTH. The only new event worth escalating is a QUALITATIVE change -- an actual TRIM transition (would itself be notable/unexpected given the confirmed bug), or the journal-write mechanism blocker getting resolved one way or the other. Do not re-escalate the same already-confirmed pattern on every clean tick."
+  }
 }
