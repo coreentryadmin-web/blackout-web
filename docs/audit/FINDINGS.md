@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-06 — [FINDING, P4 Night Hawk/0DTE/docs] 2026-08-30 "`currentZerodteSessionAnchor`'s `nowMs` is silently ignored" entry is marked OPEN but was fixed the same day — FIXED-BUT-MISLABELED, correcting the record
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `docs/audit/FINDINGS.md`'s 2026-08-30 entry "`currentZerodteSessionAnchor`'s `nowMs` is silently ignored for `session_state`/`session_note` — OPEN, write-up only". This is a documentation-hygiene correction, not a code fix — no code was touched. |
+| **Found** | Re-verifying old FINDINGS.md claims per the standing DISCOVERY-lane audit mandate, continuing the same technique that surfaced the 2026-08-18 Meridian stale-OPEN entry earlier this session. The OPEN entry named a concrete bug (`nighthawk/lib/session.ts`'s `todayEt()`/`etNowParts()` ignore the injected `nowMs` and read the real wall clock instead) with a specific repro (an injected pre-market Friday reading `session_state: "CLOSED"` off the real Sunday wall clock) and a suggested fix shape (add an optional `now: Date` parameter to both functions, threaded through from `currentZerodteSessionAnchor`). |
+| **Root cause of the stale status** | The fix shipped the same calendar day the finding was written: PR #3190 ("fix(zerodte): thread nowMs through session anchor phase", commit `873716fc8`, 2026-08-30 07:02 UTC) — but the FINDINGS.md entry's heading and Status row were never updated from OPEN afterward. |
+| **Verification (against current `main`)** | (1) `src/features/nighthawk/lib/session.ts:71` — `export function todayEt(now: Date = new Date()): string` and line 135 — `export function etNowParts(now: Date = new Date())` — both now take the optional `now` parameter exactly as the finding's own "Suggested fix shape" proposed. (2) `src/lib/zerodte/session-phase.ts:54-58` — `currentZerodteSessionAnchor` now builds `const now = new Date(nowMs)` once and threads it into both `todayEt(now)` and `etNowParts(now)`, replacing the old no-argument calls. (3) `src/lib/zerodte/session-phase.test.ts` carries a test literally named "injected nowMs drives session_state — not the real wall clock" reproducing the exact Friday-pre-market-vs-real-Sunday scenario from the finding's own repro — ran it live (Node 20): 4/4 green including that test. The fix is live, tested, and matches the finding's proposed shape exactly. |
+| **Why not fixed further here** | Nothing to fix — this is a status-label correction on an already-shipped fix, not a new defect. Leaving the underlying code untouched; this is core Night Hawk/0DTE infrastructure and an owning lane already shipped the real fix. |
+| **Blast radius** | None beyond the documentation record — `FINDINGS.md` is the only file this entry corrects, via the standard fold pipeline (not a direct edit, per `docs/audit/findings-staging/README.md`). |
+| **Status** | FIXED — the underlying 2026-08-30 defect was fixed same-day by PR #3190; this entry corrects FINDINGS.md's own stale OPEN label so a future audit doesn't re-investigate a closed issue. |
+
 ## 2026-10-05 — [FINDING, P2 Vector] `vector-pick-sweep` 62s–793s runtime vs 120s schedule caused by three-cron UW rate-limiter contention at market open — Phase 1 FIXED (#5592), Phase 2 schedule-stagger OPEN
 
 > **kind:** `FINDING`
