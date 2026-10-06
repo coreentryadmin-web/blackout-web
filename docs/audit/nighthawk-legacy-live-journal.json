@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-06T16:36:56Z",
+  "lastUpdated": "2026-10-06T20:07:35Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -563,6 +563,10 @@
     {
       "at": "2026-10-06T16:36:56Z",
       "summary": "RESOLUTION + new development. The 3-simultaneous-stale escalation logged last cycle (16:21Z) resolved cleanly: TMO and HUM both recovered to GREEN this cycle (HUM's consecutive-stale streak ended at exactly 3 cycles / ~45min, self-healing rather than persisting further) -- supports the same-mechanism/self-healing read over a systemic degradation. New development: XP flagged stale by the API for the FIRST TIME all session, breaking its perfect clean streak (0 flaps across ~8 prior cycles today). This directly answers the open question posed in the 15:52Z entry (whether XP's immunity meant anything about its quote-volume profile, or was just luck at small sample size) -- it was luck; XP is subject to the same mechanism as the other three tickers, just with a longer gap between instances so far. XP is now on its 1st instance; ILMN is on its 2nd CONSECUTIVE cycle (16:21Z, 16:36Z). Running tally today: TMO 5 (resolved), HUM 5 (resolved), ILMN 4 (2 consecutive, ongoing), XP 1 (new). Still the same already-diagnosed Polygon-snapshot quote-lag mechanism; A/C/D stages GREEN throughout (4 plays fresh; record resolved=37 consistent; pull-status agree for all 4 tickers). No escalation -- this cycle reads as confirmation the mechanism is genuinely random/rotating across all 4 tickers rather than concentrated in a subset, which is itself useful evidence against any ticker-specific root cause."
+    },
+    {
+      "at": "2026-10-06T20:07:35Z",
+      "summary": "Post-RTH-close transition (20:07Z = 4:07pm ET, 7min after the 4:00pm close) -- matches the EXACT already-documented pattern from 2026-10-02 (same 20:07Z timestamp coincidentally): A_edition now AMBER (\"edition is stale (served an older date than requested)\" -- the edition API itself, not just marks) AND all FOUR B_marks tickers (TMO/XP/ILMN/HUM) flagged stale simultaneously -- the first time all 4 (not just 2-3) have been stale together today, and the first time A_edition itself has shown anything but GREEN today. This is the symmetric end-of-day counterpart to the pre-open staleness pattern seen this morning (10-06 cycles before RTH open) and the 2026-10-02 post-close entries: quotes stop updating once RTH ends and the edition begins reflecting staleness until it rolls over to the next trading day. Not escalating -- recognized, expected lifecycle behavior, not a new finding. C_record GREEN (resolved=37, unchanged) and D_pull_status GREEN (all 4 tickers agree with pulled=false) throughout, consistent with this being a quote/edition-freshness-only transition rather than a data-integrity issue. Today's full rotating-staleness episode (TMO/ILMN/HUM/XP all individually flapping throughout RTH, documented across the 14:24Z-19:52Z entries above) is now superseded by this expected close-of-day state; next session should watch for edition rollover to 2026-10-07 (or next trading day) as the next genuine transition."
     }
   ],
   "knownOpenItems": {
