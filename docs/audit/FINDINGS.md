@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-06 — [FINDING, P4 Thermal/docs] 2026-09-05 "`ThermalCompareStrip` still uses raw `change_pct`" entry is marked OPEN but was fixed the same day — FIXED-BUT-MISLABELED, correcting the record
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `docs/audit/FINDINGS.md`'s 2026-09-05 entry "`ThermalCompareStrip` still uses raw `change_pct` not `rebaseChangePct` — OPEN" (found by Cursor's 360° cross-exam, CLQ-018). This is a documentation-hygiene correction, not a code fix — no code was touched. |
+| **Found** | Continuing the "verify old OPEN findings against current code/git log" technique used five times already this session (#5593–#5597). The finding named a concrete, checkable symptom: `ThermalCompareStrip.tsx:63` reading `data?.change_pct` directly instead of mirroring the `rebaseChangePct` pattern sibling desk headers already use. |
+| **Root cause of the stale status** | The fix shipped the same calendar day, in PR #3962 ("fix(thermal): rebase CompareStrip change_pct on live push spot", commit `bf2e44cc9`, 2026-09-05 13:17 UTC) — but the entry's heading/Status row were never updated afterward. A separate FIXED entry already exists elsewhere in `FINDINGS.md` ("`ThermalCompareStrip` raw `change_pct` not rebased on live push — FIXED") documenting this exact fix with its own evidence — the original dated entry simply never got cross-referenced or updated to point at it. |
+| **Verification (against current `main`)** | `src/features/thermal/components/ThermalCompareStrip.tsx` now imports `rebaseChangePct` (line 8) and computes `chg` via `rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct }) ?? pushChangePct ?? matrixChangePct` (lines 77-82) when both a live push spot and a matrix spot are available — exactly the sibling pattern (`GexHeatmap`, `ThermalTripleDesk`) the original finding asked for. Ran the regression test live (Node 20): `ThermalCompareStrip-header-change-pct.test.ts`, 2/2 green, including "compare card rebases when push spot diverges from matrix." |
+| **Why not fixed further here** | Nothing to fix — this is a status-label correction on an already-shipped fix, not a new defect. Leaving the underlying code untouched; Thermal is an owning lane and already shipped the real fix same-day. |
+| **Blast radius** | None beyond the documentation record — `FINDINGS.md` is the only file this entry corrects, via the standard fold pipeline (not a direct edit, per `docs/audit/findings-staging/README.md`). |
+| **Status** | FIXED — the underlying 2026-09-05 defect was fixed same-day by PR #3962, with its own separate FIXED entry already on file; this entry corrects the original's stale OPEN label so a future audit doesn't re-investigate an already-closed finding. |
+
 ## 2026-10-06 — [FINDING, P4 Night Hawk Vector/Legacy/docs] 2026-09-10 "`vectorBoardRowGivebackPct`/`vectorBoardRowAtRisk`" entry is marked OPEN but was resolved a day later — FIXED-BUT-MISLABELED, correcting the record
 
 > **kind:** `FINDING`
