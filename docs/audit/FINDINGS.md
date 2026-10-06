@@ -38,6 +38,19 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-06 — [FINDING, P4 audit-hygiene, Swing] "Shadow positions close at last mark on expiry" (2026-09-05) is marked OPEN but was fixed the same day — CORRECTED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this corrects** | `docs/audit/FINDINGS.md`'s 2026-09-05 entry **"[P2, data-correctness] Shadow positions close at last mark on expiry, not intrinsic $0 — OPEN"** (Cursor 360° cross-exam, CLQ-005). The entry's own "Recommended fix" — "On `reason === "expiry"`, use intrinsic (0 for worthless OTM) before last-mark fallback; keep −60% premium backstop for pre-expiry" — describes exactly what shipped the same calendar day, but the heading/Status row were never updated. |
+| **Found** | Continuing the "verify old OPEN findings against current code/git log" technique used throughout this session (#5593–#5610). The finding named a concrete, checkable symptom: `shadow-refresh.ts`'s expiry-close path falling back to a stale last mark instead of flooring OTM legs at $0 intrinsic. |
+| **Root cause of the stale status** | The fix shipped in PR #3961 ("fix(swing): shadow expiry closes at intrinsic value not last mark", commit `a027176c6`, 2026-09-05 13:00 UTC — same day as the finding) — but the original entry's heading/Status row were never updated afterward to reflect it. |
+| **Verification (against current `main`)** | `src/lib/swing/shadow-refresh.ts` now exports `shadowIntrinsicMarkAtExpiry(row, underlyingPrice)` (lines 78-88): returns `0` for an OTM leg at expiry (`Math.max(0, underlyingPrice - strike)` for calls, `Math.max(0, strike - underlyingPrice)` for puts), `null` only when the underlying price or strike is unavailable. The close path (lines 175-181) computes `exitMark` as `decision.reason === "expiry" ? (shadowIntrinsicMarkAtExpiry(row, reads.underlyingPrice) ?? mark ?? row.last_mark ?? entry) : (mark ?? row.last_mark ?? entry)` — intrinsic value is tried FIRST on expiry, with the old last-mark/entry chain only as a fallback when intrinsic can't be computed (missing underlying price). Non-expiry closes are unaffected, preserving the original −60% premium backstop path exactly as the finding's recommended fix asked. Ran the regression suite live (Node 20): `shadow-refresh.test.ts`, 8/8 green. |
+| **Action taken** | None to the product — already fixed and already covered by its own regression test. This entry exists solely so the next `findings-fold-staging.mjs` pass carries the corrected status forward. |
+| **Status** | CORRECTED — the 2026-09-05 shadow-expiry-intrinsic finding is FIXED (merged #3961, same day as filed). |
+
 ## Vector `vector-desk-intel.ts` served stale dark-pool levels as current — FIXED
 
 > **kind:** `FINDING`
