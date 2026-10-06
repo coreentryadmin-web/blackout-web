@@ -172,6 +172,7 @@ export const VECTOR_FULL_STATE_FIXTURE: VectorFullState = {
     { strike: 7550, premium: 5_000_000, pct: 40 },
     { strike: 7500, premium: 3_000_000, pct: 24 },
   ],
+  darkPoolAsOf: Date.parse("2026-01-02T15:30:00.000Z"),
   ladder: {
     spot: 7560,
     maxAbs: 4_200_000_000,

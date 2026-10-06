@@ -13,6 +13,7 @@ import {
   relativeAgeLabel,
   gexMatrixStale,
   vectorSnapshotStale,
+  darkPoolStale,
   resolveGammaPosture,
   nighthawkLiveForSession,
   zerodteLiveForSession,
@@ -90,8 +91,15 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
   const readMs = ctx.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
 
+  // BUG FIX (2026-10-06): dark-pool levels used to inherit ONLY the whole-state `vectorStale` gate
+  // above, which answers "how old is the overall compute" — not "how old is THIS field's own cache
+  // entry" (the dark-pool cache is warmed on its own looser ~10min/25min-TTL cadence; see
+  // vector-absent-sections.ts's `dark_pool_stale`). Omit the level when it is, same discipline as
+  // every other stale-gated level here, rather than silently citing a cache entry that can be 20+
+  // minutes old as if it were current — live trigger: vector-dark-pool-warm failing heavily in prod.
+  const dpStale = darkPoolStale(vec);
   for (const dp of (vec?.darkPoolLevels ?? []).slice(0, 3)) {
-    if (vectorStale) break;
+    if (vectorStale || dpStale) break;
     out.push({
       price: dp.strike,
       kind: "dark_pool",

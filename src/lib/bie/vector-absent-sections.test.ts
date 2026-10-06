@@ -78,6 +78,43 @@ test("an empty bead rail outside RTH is labelled expected, not missing", () => {
   assert.ok(r.unavailable_sections.includes("wall_history"));
 });
 
+// BUG FIX (2026-10-06, Ask Largo standing mandate — live trigger: vector-dark-pool-warm observed
+// failing at a high rate in production). A present-but-OLD dark-pool cache entry must be disclosed
+// as stale, not treated identically to a fully-resolved read just because the array is non-empty.
+test("present dark-pool levels older than the stale ceiling are named as unavailable (stale, not empty)", () => {
+  const readMs = Date.parse("2026-01-02T16:00:00.000Z");
+  const r = reportVectorAbsences({
+    ...FULL,
+    darkPoolAsOf: readMs - 25 * 60 * 1000, // 25 min old, past the 20min ceiling
+    readMs,
+  });
+  assert.ok(r.unavailable_sections.includes("dark_pool_levels"));
+  assert.equal(r.dark_pool_stale, true);
+});
+
+test("present dark-pool levels within the stale ceiling are NOT flagged", () => {
+  const readMs = Date.parse("2026-01-02T16:00:00.000Z");
+  const r = reportVectorAbsences({
+    ...FULL,
+    darkPoolAsOf: readMs - 5 * 60 * 1000, // 5 min old
+    readMs,
+  });
+  assert.ok(!r.unavailable_sections.includes("dark_pool_levels"));
+  assert.equal(r.dark_pool_stale, false);
+});
+
+test("darkPoolAsOf unknown (0/undefined, e.g. a legacy pre-envelope cache entry) never flags present levels as stale", () => {
+  const r = reportVectorAbsences({ ...FULL, darkPoolAsOf: 0 });
+  assert.ok(!r.unavailable_sections.includes("dark_pool_levels"));
+  assert.equal(r.dark_pool_stale, false);
+});
+
+test("genuinely empty dark-pool levels are still named as missing regardless of darkPoolAsOf", () => {
+  const r = reportVectorAbsences({ ...FULL, darkPoolLevels: [], darkPoolAsOf: Date.now() });
+  assert.ok(r.unavailable_sections.includes("dark_pool_levels"));
+  assert.equal(r.dark_pool_stale, false, "empty is 'not present', not 'stale' — a different reason");
+});
+
 test("an empty bead rail DURING RTH is a genuine gap", () => {
   const r = reportVectorAbsences({ ...FULL, wallHistory: [], isRth: true });
   assert.equal(r.wall_history_empty_reason, "no_samples_during_rth");
