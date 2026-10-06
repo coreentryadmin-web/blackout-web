@@ -821,6 +821,80 @@
         "Watch for a 2nd/3rd instance of the MSTR-shaped Cortex-relief finding (2026-10-02) -- still n=1, no new instances since."
       ],
       "kind": "OBSERVATION"
+    },
+    "2026-10-06T13:11:00Z_new_day_pre_market_cold_start": {
+      "stage": "cold_start",
+      "summary": "New trading day 2026-10-06 (Tuesday). Board healthy: PRE_MARKET, heat 33%, upstream_ok:true, ledger_len:0 as expected before the open (auth fell back to Clerk temp-user this time instead of cron-bearer -- normal fallback path, not a concern). Scratchpad was wiped by a container restart; recreated the three pull_*.mjs helper scripts from scratch (same shape as before, wrapping fetchAuditJson from scripts/audit/lib/audit-auth-fetch.mjs). Carrying forward open watch items from Monday 2026-10-05: (1) the cross-lane UW rate-limiter finding reported on #4076 (comment 6001336921) is still unanswered as of last check -- watch for a response before re-deriving; (2) 3 upstream_ok:false instances Monday trended LONGER each time (1m52s -> 3m07s -> 6.5min) -- watch today for whether that trend continues (would be a stronger signal) or was random variance; (3) SPCX thesis_break-lag counter-example (n=1) and MSTR Cortex-relief finding (n=1, from 2026-10-02) both still below their 3-instance bars, watching for recurrence.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
+    },
+    "2026-10-06T15:21:00Z_4th_same_cause_instance_confirms_recurring_cross_day": {
+      "cycle_time": "2026-10-06T15:20:55Z",
+      "trigger": "15:16 UTC (offset :15, v4 mandate)",
+      "stage": "infra -- 4th confirmed same-cause instance, now cross-day",
+      "summary": "4th upstream_ok:false instance overall (3 yesterday 2026-10-05, 1 today), 15:17:09Z-15:20:52Z (~3m43s). /record cross-checked clean (graded:12, matches yesterday's final tally -- no new grading issues, today had zero prior commits so the trailing window is still mostly yesterday's data). Root-caused via the same corrected CloudWatch methodology: [zerodte-board-fallback] fired 7 times throughout, [zerodte-ledger-read] 0 matches, and UW queue waits were ALREADY elevated (3438ms, untagged = live traffic, not just background sweep) in the 60s before the board-fallback instance even started -- same signature as the 2026-10-05 findings reported on #4076.",
+      "significance": "This confirms the UW rate-limiter cross-lane contention finding (reported #4076 comment 6001336921) is a RECURRING, cross-day condition, not a one-off Monday anomaly. Today's instance happened right as the board's first commit of the day (NBIS, 11:01 ET) was being processed -- the degradation window and the first real discovery/commit activity of the session overlapped, consistent with real UW demand (fresh session discovery scanning many tickers) competing with whatever background sweep triggers the saturation.",
+      "no_response_yet_on_4076": "Checked the #4076 thread before this cycle (comment 6001336921, posted 2026-10-05 19:14Z) -- still the last comment in the thread as of this check, no reply yet (~20 hours later). Not re-posting a duplicate report for this 4th instance -- the original report already covers the mechanism; this is just further confirming evidence. Will note in a future comment if/when enough additional instances accumulate to be worth a follow-up, or if the original goes unanswered for several more days.",
+      "noise_discipline": "This is the 4th instance of the SAME confirmed cause (board-fallback + UW saturation) -- already well past the 3-instance threshold from yesterday. Logging for the cross-day recurrence evidence, not re-escalating as a new finding (already reported with full evidence). No code change -- still cross-lane, still not mine to fix unilaterally.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
+    },
+    "2026-10-06T15:49:00Z_5th_same_cause_instance_plus_rough_day_so_far": {
+      "cycle_time": "2026-10-06T15:49:06Z",
+      "trigger": "15:45 UTC (offset :45, v4 mandate)",
+      "summary": "5th confirmed same-cause upstream_ok:false instance (15:46:11Z-15:49:06Z, ~2m55s). Re-confirmed via CloudWatch: [zerodte-board-fallback] fired 7 times in the window, same signature as the prior 4 instances. /record clean (graded:17, no data loss). Not re-detailing the full root-cause trace again -- already established and reported on #4076 (comment 6001336921, still unanswered). Durations so far today: 3m43s, 2m55s -- both multi-minute, consistent with yesterday's post-attribution range.",
+      "day_so_far_tally": "5 commits today: AAPL (open, no story), GLW -2.94% thesis_break:gex-walls, NBIS -6.12% flat_theta_bleed, SPY -10.32% thesis_break:gex-walls (peak -2.38%, a real but already-negative-peak giveback -- different shape than SPCX's positive-peak lag, still only n=1 of this specific shape), TEM -0.19% thesis_break:vex-charm clean instant scratch. 0 wins so far today across 4 closed -- notable but single-day, not escalating from n=4 losses alone without a shared failure mode (4 different ticker/reason combinations, no repeat pattern among them).",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
+    },
+    "2026-10-06T16:46:25Z_6th_same_cause_instance_3rd_today": {
+      "cycle_time": "2026-10-06T16:46:25Z",
+      "trigger": "16:43 UTC (v4 mandate)",
+      "summary": "6th confirmed same-cause upstream_ok:false instance overall (3rd today, 2026-10-06), 16:44:15Z-by 16:46:25Z (resolved somewhere in that ~2m10s window -- polled, not caught at the exact first-true tick). Re-confirmed via CloudWatch: [zerodte-board-fallback] fired 2x (16:44:15Z, 16:45:15Z, each citing maxBlockMs=3000ms exceeded with no Redis/local-good fallback). Immediately preceding it, untagged (live-traffic) UW queue waits of 3017/3317/1923ms at 16:43:13Z, then a severe background-sweep pileup up to 11159ms at 16:44:2x-16:44:32Z -- same signature as all 5 prior instances. /record and board both healthy after resolution (ledger_len:5, upstream_ok:true at 16:46:25Z check).",
+      "no_response_yet_on_4076": "#4076 comment 6001336921 (posted 2026-10-05 19:14Z) remains the last comment on the thread as of this check (~21.5 hours later, verified via pull_request_read across pages). Not re-posting -- the original report already covers the mechanism; this is further confirming evidence of recurrence (now 6 instances across 2 days).",
+      "noise_discipline": "Well past the 3-instance threshold -- logging for recurrence-tracking only, no new escalation, no code change (cross-lane, not mine to fix unilaterally per the shared UW_GLOBAL_MAX_RPS limiter).",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
+    },
+    "2026-10-06T17:15:41Z_7th_instance_worst_yet_severity_escalating": {
+      "cycle_time": "2026-10-06T17:15:41Z",
+      "trigger": "17:00 + 17:15 UTC offset triggers (same cycle, consolidated)",
+      "summary": "7th confirmed same-cause upstream_ok:false instance, 17:10:15Z-17:15:41Z (~5m26s), the SECOND-LONGEST duration observed (behind only the 3rd instance's ~6.5min) but by far the WORST by volume: 15x [zerodte-board-fallback] fires (vs 2x for instance #6 and 7x for instances #3-5), 275 total [uw] queue-wait log lines (187 untagged/live-traffic, not background-sweep-tagged), max single wait 19579ms -- the highest max-wait yet recorded across all 7 instances. No data loss (/record graded:17 stable throughout, board ledger_len:5 intact post-resolution).",
+      "severity_trend": "Durations across today's 3 instances: 3m43s -> 2m55s -> 2m10s -> now 5m26s (NOT monotonic -- today's pattern briefly looked like it was improving, then got much worse on this 4th-of-the-day instance). But volume/intensity metrics (fallback-fire count, live-traffic queue-wait count, max wait) are now at their worst point across the full 7-instance history. This is new evidence worth surfacing on #4076: the cross-lane UW saturation is not just recurring, it is capable of getting meaningfully worse, not just staying at a steady-state nuisance level.",
+      "escalation_action": "Posting a concise follow-up comment on #4076 (not a duplicate of the original mechanism report at comment 6001336921, which remains unanswered ~22h later) -- surfacing this severity data point since it changes the risk picture from 'steady recurring nuisance' to 'a cross-lane contention that can spike significantly worse under load', which is new information even though the root cause and fix ownership haven't changed.",
+      "kind": "OBSERVATION",
+      "no_action_needed": false,
+      "action_taken": "posted follow-up comment to #4076 with severity-escalation evidence"
+    },
+    "2026-10-06T18:14:12Z_8th_instance_live_traffic_alone_saturates": {
+      "cycle_time": "2026-10-06T18:14:12Z",
+      "trigger": "18:00 UTC offset trigger (v4 mandate)",
+      "summary": "8th confirmed upstream_ok:false instance, 18:11:22Z-18:13:57Z (~2m29s, shorter than #7 but a NEW signature). No data loss (/record graded:18 stable).",
+      "frequency_trend": "Instances 6/7/8 landed at 16:46, 17:10-17:15, 18:11 -- roughly one every 30-55 minutes today, markedly tighter spacing than the hours-apart gaps seen earlier in the week. Noting the trend; not escalating on frequency alone since duration/severity per-instance still varies (this one was comparatively short).",
+      "NEW_FINDING_live_traffic_alone": "Unlike instances #1-7 (all previously attributed to Vector's background-sweep crons racing live traffic for the shared UW_GLOBAL_MAX_RPS=2 budget), THIS instance's queue-wait pressure was almost entirely LIVE-tagged: of 269 total [uw] queue-wait log lines in the window, only 3 carried the '(background sweep)' tag -- the other 266 were plain, untagged (verified against raw log text, not just the filter) live-pool waits, median 2839ms, p90 7953ms, max 19962ms (the highest max-wait yet across all 8 instances), with 16 individual live waits exceeding 10 seconds. This means the existing fix (reserving the last RPS unit for live-tagged traffic, 2026-09-09) is not the whole story -- live/foreground UW demand ALONE, with essentially no background-sweep contribution this time, was enough to saturate the limiter and trip the board's 3000ms maxBlockMs cold-build budget. This reframes the fix direction: tuning Vector's sweep cadence/pacing (the original comment's suggestion) would not have prevented THIS instance, since the sweep was barely running. Raising UW_GLOBAL_MAX_RPS itself, or giving the 0DTE cold-build path a dedicated reserved slice independent of the live/background split, looks more load-bearing than previously framed.",
+      "escalation_action": "Posting a follow-up on #4076 with this finding -- it's new information that changes the recommended fix, not just more volume on the same point.",
+      "kind": "OBSERVATION",
+      "no_action_needed": false,
+      "action_taken": "posted follow-up comment to #4076 with the live-traffic-alone finding"
+    },
+    "2026-10-06T18:46:08Z_9th_instance_confirms_live_only_pattern_recurring": {
+      "cycle_time": "2026-10-06T18:46:08Z",
+      "trigger": "18:30 + 18:45 UTC offset triggers (same cycle, consolidated)",
+      "summary": "9th confirmed upstream_ok:false instance, 18:44:23Z-18:45:47Z (~1m24s) -- the SHORTEST duration observed across all 9 instances. No data loss (/record graded:18 stable). 118 total [uw] queue-wait log lines, ALL 118 untagged live-pool waits (0 background-sweep-tagged), max wait 18016ms.",
+      "confirms_8th_instance_finding": "This is the 2nd instance in a row (8th at 18:11-18:14, now 9th at 18:44-18:46) showing ZERO background-sweep-tagged queue waits -- the live-traffic-alone saturation signature first spotted in instance #8 is recurring, not a one-off. Only 2 instances of this specific sub-pattern so far (below the 3-instance escalation bar for a NEW claim), and the underlying mechanism/fix-direction was already reported on #4076 (comment 6022602033) -- not re-posting a 3rd comment for confirming data on an already-reported finding, per the standing noise discipline. Will escalate further only if a 3rd+ instance reveals something beyond 'yes, still live-traffic-dominated.'",
+      "frequency_note": "7th (17:10-17:15, ~5m26s) -> 8th (18:11-18:14, ~2m29s) -> 9th (18:44-18:46, ~1m24s): duration is trending SHORTER even as frequency stays tight (~30-33min apart for the last two gaps). Could read as 'getting better' (shorter outages) or could just be normal variance in how long live demand spikes last -- one trend line, not escalating on it alone.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
+    },
+    "2026-10-06T20:10:07Z_session_closed_eod_summary": {
+      "cycle_time": "2026-10-06T20:10:07Z",
+      "stage": "eod_summary",
+      "day_tally": "6 commits today: AAPL +3.64% (ratchet floor, peaked +10%), FCEL +6.25% (thesis_break on gex-walls veto, peaked +9.37%), NBIS ~flat (flat_theta_bleed), GLW -2.94% (thesis_break), SPY -10.32% (thesis_break, peak -2.38% -- already-negative-peak giveback), TEM -0.19% (thesis_break:vex-charm, clean instant scratch). Net: 2W/3L/1 flat. Both wins show the protective-exit mechanism working as intended (banking a real peak before giveback), not a repeat of the SPCX lag pattern (still n=1, no recurrence today).",
+      "infra_summary": "9 total upstream_ok:false instances this week (6 Monday 2026-10-05, 3 today), all confirmed same root layer (UW rate-limiter saturation / [zerodte-board-fallback]) but with a notable shift in SIGNATURE: instances #1-7 were attributed to Vector background-sweep contention; instances #8 and #9 (today, 18:11-18:14 and 18:44-18:46) were ALMOST ENTIRELY live-traffic-tagged with near-zero background-sweep activity -- a genuinely new finding escalated to #4076 (comment 6022602033) since it changes the recommended fix direction (raise UW_GLOBAL_MAX_RPS or give 0DTE cold-build its own reserved slice, vs. just tuning Vector's sweep cadence). Severity escalation also reported (comment 6021563148) after instance #7 hit a new max-wait record (19579ms, later beaten by instance #8's 19962ms and #9's 18016ms). No data loss in any of the 9 instances. Both comments remain unanswered as of this check -- will continue monitoring for a response and for whether the live-traffic-only signature recurs a 3rd time tomorrow.",
+      "governor_final": "session_pnl approx -10% to -17% range through the day (improved as FCEL closed green), realized_losers 3/4 session stops, never halted.",
+      "carry_forward_to_tomorrow": "(1) Watch #4076 comments 6021563148 and 6022602033 for a response before re-deriving. (2) Watch whether the live-traffic-only upstream_ok:false signature (instances #8, #9) recurs a 3rd time -- would firmly establish it as the dominant pattern rather than Vector-sweep contention. (3) SPCX thesis_break-lag counter-example (n=1, 2026-10-05) and MSTR Cortex-relief finding (n=1, 2026-10-02) both still below 3-instance bars. (4) Journal still unpruned (blocked by permission classifier since 2026-10-02) -- now well over 125 entries.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {

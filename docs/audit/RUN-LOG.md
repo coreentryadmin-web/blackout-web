@@ -4,6 +4,58 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-06 (18:17 UTC / Tue 14:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, PRs unchanged/in-progress
+
+Synced to `origin/main` (`031f0df` — a cross-lane finding about `upstream_ok:false` on the
+nighthawk-0dte zero-dte board, a different system from the public `/api/public/gex-snapshot`
+checked during RTH; not related to this morning's observations). Purged Cloudflare edge,
+re-measured homepage desktop CLS — **0.0002, GOOD**. `/api/og` — **HTTP 200, `image/png`,
+`x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`**. Both fixes still holding.
+`agent-pr-sweep.mjs` → 3 open agent PRs: new #5600 (another lane's docs fold, `CI-RUNNING`, in
+progress, not stuck) plus #5577/#5537 unchanged, both confirmed intentional holds. Neither
+conflicted, no rebase needed.
+
+## 2026-10-06 (16:35 UTC / Tue 12:35 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live (spot_source variance, resolved clean), CLS clean
+
+Confirmed clock myself: Tue 12:35 ET, last wake in today's window. `/api/public/gex-snapshot` →
+`market_session: OPEN`, `degraded: false`, spot 7833.06. New observation: `spot_source` is `ws`
+(websocket) on this read rather than the usual `redis_cluster`. First poll round showed mixed
+`spot_source` (ws/redis_cluster) plus one non-monotonic `calculation_id` reversion with elevated
+age — re-polled at tighter 2s intervals, confirmed fully clean: `spot_source: ws` consistently,
+age progressing linearly, never degraded. Reads as legitimate dual-source (primary/fallback)
+architecture momentarily interleaving, not a defect. Purged Cloudflare edge, re-measured
+live-page homepage CLS — **0, GOOD**. No defects found, no PR opened. Returning to normal
+search/authority posture at 13:00 ET.
+
+## 2026-10-06 (15:35 UTC / Tue 11:35 ET) — [SEO] RTH wake: gamma-snapshot live, CLS clean
+
+Confirmed clock myself: Tue 11:35 ET, trading day, inside RTH. `/api/public/gex-snapshot` →
+`market_session: OPEN`, `degraded: false`, spot 7839.96 (climbing toward call wall resistance
+at 7850). Polled 5x at 3s intervals: `calculation_id` advanced cleanly and monotonically
+(`...958009` → `...968132`), ages reasonable throughout — clean this cycle, unlike this
+morning's more pronounced variance. Purged Cloudflare edge, re-measured live-page homepage
+CLS — **0.0001, GOOD**. No defects found, no PR opened.
+
+## 2026-10-06 (14:09 UTC / Tue 10:09 ET) — [SEO] Daily growth cycle: quiet, avgpos continues improving
+
+No new striking-distance queries (same 3 as the register). One new thin CTR-gap entry ("gex",
+3imp) — below the established thin-sample threshold, no action. 28-day avgpos improved further
+to **11.1** (from 11.3), continuing the long-term trend. Live checks already covered in this
+morning's RTH wake. No action taken.
+
+## 2026-10-06 (13:35 UTC / Tue 09:36 ET) — [SEO] RTH wake: gamma-snapshot live (more pronounced-than-usual variance, resolved clean), CLS clean
+
+Confirmed clock myself: Tue 09:36 ET, trading day, inside RTH. `/api/public/gex-snapshot` →
+`market_session: OPEN`, `degraded: false`, spot 7810.39, posture `long` — new session data.
+Two rounds of 3s-interval polling each showed one non-monotonic `calculation_id` reversion plus
+elevated `snapshot_data_age_seconds` (up to 80s at worst) — more pronounced than prior cycles'
+occasional blips. Did a third, more detailed round inspecting `spot_timestamp`/`chain_timestamp`/
+`calculated_at` together: calc_id advanced cleanly (`...843787` → `...863415`), all timestamps
+progressed in order, age settled to 8s, `degraded` stayed `false`/`degraded_note` null throughout.
+Treated as the known backend-replica/cache-read race, just more pronounced this cycle — self-
+healing, never stuck, never degraded. Purged Cloudflare edge, re-measured live-page homepage CLS
+— **0.0004, GOOD**. No defects found, no PR opened.
+
 ## 2026-10-06 (12:17 UTC / Tue 08:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, PRs re-verified unchanged
 
 Synced to `origin/main` (`e46eb9c`). Purged Cloudflare edge, re-measured homepage desktop CLS —

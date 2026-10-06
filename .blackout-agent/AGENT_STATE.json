@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-29T15:10:28.315Z",
+  "updated_at": "2026-10-06T18:53:53.298Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a0e9ae2cac3e5f683ff5e57fd80f3c979958fb1f",
+    "last_main_sha": "6bbe555e874c0fcddc2ab514dbd0e8688b39b010",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-21T14:19:27.486Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-21T14:19:27.781Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-21T14:37:20.066Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-21T14:37:20.648Z",
       "type": "context_sync",
@@ -1271,9 +1253,88 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-10-06T18:53:43.248Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-06T18:53:48.582Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-06T18:53:53.298Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 5577,
+      "title": "fix(swing): graduation bridge for Legacy-promoted theses into the real commit pipeline",
+      "branch": "fix/legacy-swing-lifecycle-live-reclassification",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/success",
+      "updated_at": "2026-10-01T15:06:56Z"
+    },
+    {
+      "number": 5547,
+      "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
+      "branch": "dependabot/npm_and_yarn/next-16.3.6",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "completed/failure",
+      "updated_at": "2026-10-05T10:12:35Z"
+    },
+    {
+      "number": 5546,
+      "title": "chore(deps): Bump @whop/sdk from 0.0.42 to 2.0.0",
+      "branch": "dependabot/npm_and_yarn/whop/sdk-2.0.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "completed/failure",
+      "updated_at": "2026-09-29T00:28:27Z"
+    },
+    {
+      "number": 5545,
+      "title": "chore(deps-dev): Bump eslint-config-next from 15.5.19 to 16.3.6",
+      "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.6",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "completed/failure",
+      "updated_at": "2026-10-05T10:11:50Z"
+    },
+    {
+      "number": 5537,
+      "title": "docs(audit): root-cause + invariant for exit-capture and expired-open-position defects (no logic changed)",
+      "branch": "docs/exit-capture-and-expiry-root-cause-2026-09-28",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/failure",
+      "updated_at": "2026-09-29T15:15:00Z"
+    },
+    {
+      "number": 4477,
+      "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
+      "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
+      "author": "dependabot[bot]",
+      "agent": "human",
+      "draft": false,
+      "verify": "completed/failure",
+      "updated_at": "2026-09-29T00:27:43Z"
+    }
+  ],
   "pr_activity": {
     "pr-4190": {
       "last_event": "sweep",

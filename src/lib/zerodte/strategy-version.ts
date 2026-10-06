@@ -321,7 +321,27 @@ export function buildResolvedExitPolicy(
     time_stop_et,
     collision_rule,
   };
-  return { ...core, config_hash: `exitcfg-${fnv1a32(stableStringify(core))}` };
+  // config_hash is derived from `core` AS-IS (including the raw, unrounded `trailing_rule`
+  // text) so the drift-guard/calibration-cohort hash is completely untouched by the display
+  // fix below — changing how a number is PRINTED must never silently fork a calibration
+  // cohort, only a real exit-constant change should (see this file's own header doc).
+  const config_hash = `exitcfg-${fnv1a32(stableStringify(core))}`;
+  // BUG (found 2026-10-06, live audit): `trailing_rule` embeds TRIM_SCALE_RULES.tranche_fraction
+  // (1/3 exactly) via raw template-literal interpolation, so the string this API serves reads
+  // `tranche_fraction=0.3333333333333333` — a 16-digit IEEE-754 float leaking straight past the
+  // shared `roundFloats()` response-boundary fix (round-floats.ts), which only walks genuine
+  // JSON *number* values and can't reach a float baked into a *string*. The sibling numeric
+  // field `trim_levels[].fraction` already serializes as a clean `0.33` because THAT one is a
+  // real number roundFloats can round; this is the same raw float leaking through a text field
+  // instead, served live to members/Largo on every `/api/market/zerodte/record` and
+  // `get_zerodte_record` read whose policy resolves to trim_scale. Fixed by rounding display-only
+  // copies to 2dp (matching roundFloats' own default) — applied AFTER config_hash is computed
+  // above, so no committed row's `strategy_config_hash`/calibration cohort moves.
+  const displayTrailingRule = trailing_rule.replace(
+    /tranche_fraction=(\d+\.\d{3,})/g,
+    (_m, raw: string) => `tranche_fraction=${Math.round(Number(raw) * 100) / 100}`,
+  );
+  return { ...core, trailing_rule: displayTrailingRule, config_hash };
 }
 
 /** The grader-facing numeric subset of a resolved policy — stop/target %, and the ET
