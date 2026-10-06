@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-06 (16:35 UTC / Tue 12:35 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live (spot_source variance, resolved clean), CLS clean
+
+Confirmed clock myself: Tue 12:35 ET, last wake in today's window. `/api/public/gex-snapshot` →
+`market_session: OPEN`, `degraded: false`, spot 7833.06. New observation: `spot_source` is `ws`
+(websocket) on this read rather than the usual `redis_cluster`. First poll round showed mixed
+`spot_source` (ws/redis_cluster) plus one non-monotonic `calculation_id` reversion with elevated
+age — re-polled at tighter 2s intervals, confirmed fully clean: `spot_source: ws` consistently,
+age progressing linearly, never degraded. Reads as legitimate dual-source (primary/fallback)
+architecture momentarily interleaving, not a defect. Purged Cloudflare edge, re-measured
+live-page homepage CLS — **0, GOOD**. No defects found, no PR opened. Returning to normal
+search/authority posture at 13:00 ET.
+
 ## 2026-10-06 (15:35 UTC / Tue 11:35 ET) — [SEO] RTH wake: gamma-snapshot live, CLS clean
 
 Confirmed clock myself: Tue 11:35 ET, trading day, inside RTH. `/api/public/gex-snapshot` →
