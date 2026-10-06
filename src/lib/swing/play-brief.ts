@@ -708,7 +708,15 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
 
 function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvidence[] {
   const out: BieEvidence[] = [];
-  if (ctx.scanAsOf) {
+  // CLOSED play: `ctx.scanAsOf` is TODAY's live discovery-scan timestamp (the serving lane is
+  // read unconditionally for every brief, closed or not, to feed `bookContextSection`'s sibling
+  // comparison) — it has no bearing on a historical, already-graded outcome from a prior session.
+  // `dataFreshnessSection` (play-brief-intel.ts) already gates its own "Swing scan: ..." prose
+  // line behind this exact `isClosed` check for the same reason; this mirrors that gate so the
+  // hidden `evidence[]`/markdown-footer array can't cite an irrelevant "recent" live scan as if
+  // it supported a CLOSED play's claims (Ask Largo deep-dive, 2026-10-06, live repro: HUT).
+  const isClosed = String(ctx.play.status ?? "").toUpperCase() === "CLOSED";
+  if (ctx.scanAsOf && !isClosed) {
     const scanEt = etStampFromIso(ctx.scanAsOf);
     const staleScan =
       ctx.scanSessionDay && ctx.sessionDate && ctx.scanSessionDay !== ctx.sessionDate;
