@@ -4,6 +4,13 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-06 (14:09 UTC / Tue 10:09 ET) — [SEO] Daily growth cycle: quiet, avgpos continues improving
+
+No new striking-distance queries (same 3 as the register). One new thin CTR-gap entry ("gex",
+3imp) — below the established thin-sample threshold, no action. 28-day avgpos improved further
+to **11.1** (from 11.3), continuing the long-term trend. Live checks already covered in this
+morning's RTH wake. No action taken.
+
 ## 2026-10-06 (13:35 UTC / Tue 09:36 ET) — [SEO] RTH wake: gamma-snapshot live (more pronounced-than-usual variance, resolved clean), CLS clean
 
 Confirmed clock myself: Tue 09:36 ET, trading day, inside RTH. `/api/public/gex-snapshot` →
