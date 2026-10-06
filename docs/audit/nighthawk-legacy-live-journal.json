@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-06T15:21:49Z",
+  "lastUpdated": "2026-10-06T15:52:33Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -551,6 +551,10 @@
     {
       "at": "2026-10-06T15:21:49Z",
       "summary": "B_marks AMBER: TMO + HUM both flagged stale by the API simultaneously; XP and ILMN GREEN/live. TMO has now flapped stale 3 DISTINCT times today (14:24Z, 14:36Z, 15:21Z -- not consecutive, self-healed to GREEN at 14:51Z and 15:08Z in between), crossing the 3-instance noise threshold FOR TMO SPECIFICALLY, same convention as the LITE 3rd-flap entry from 2026-10-02. HUM is on its 2nd distinct flap today (14:36Z, now 15:21Z). Still matching the already-diagnosed single-ticker/pair Polygon-snapshot quote-lag mechanism (root-caused 2026-10-01 FORM/UTHR, confirmed recurring across many rotating ticker sets since) -- not a new root cause, no escalation warranted. Naming it only because TMO itself has now repeated 3x this session; worth continued tracking if it recurs a 4th time or stops self-healing within the usual ~15-30min window. A/C/D stages GREEN (4 plays fresh; record resolved=37 consistent; pull-status CONFIRMED/DEGRADED<->pulled=false agree for all 4 tickers)."
+    },
+    {
+      "at": "2026-10-06T15:52:33Z",
+      "summary": "B_marks AMBER: ILMN + HUM both flagged stale by the API simultaneously; TMO and XP GREEN/live (TMO self-healed since its own 3rd-flap entry at 15:21Z). HUM has now flapped stale 3 DISTINCT times today (14:36Z, 15:21Z, 15:52Z -- not consecutive, self-healed to GREEN in between), crossing the 3-instance noise threshold FOR HUM SPECIFICALLY, same convention as TMO (this session, 15:21Z entry) and LITE (2026-10-02). ILMN is on its 2nd distinct flap today (14:24Z, now 15:52Z). Still matching the same already-diagnosed Polygon-snapshot quote-lag mechanism -- no new root cause, no escalation. Across today so far: TMO 3x, HUM 3x, ILMN 2x, XP 0x -- all four Legacy tickers this edition have shown at least one stale flap except XP, which has stayed live every single cycle; worth watching whether XP continuing to never flap (vs the other three repeatedly) says anything about its own quote-volume profile specifically, or is simply luck at this sample size (4-5 cycles each). A/C/D stages GREEN (4 plays fresh; record resolved=37 consistent; pull-status CONFIRMED/DEGRADED<->pulled=false agree for all 4 tickers)."
     }
   ],
   "knownOpenItems": {
