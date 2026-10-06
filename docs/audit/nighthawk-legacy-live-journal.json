@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-01T14:10:00Z",
+  "lastUpdated": "2026-10-06T15:08:41Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -543,6 +543,10 @@
     {
       "at": "2026-10-03T06:37:19Z",
       "summary": "MINOR NOTE (not escalated, single instance): A_edition briefly reported RED (\"edition fetch failed (auth or network)\") at 06:37:08Z with editionFor=null and D_pull_status SKIPPED(\"no edition date to check against\") -- the first HARD A_edition failure logged all session (every prior A_edition anomaly was AMBER/stale, never a fetch failure). Independently confirmed the live site was healthy throughout: curl to /api/health returned clean 200 in 0.38s at the same moment, and an immediate healthcheck re-run 11s later came back fully clean (A_edition GREEN, editionFor=2026-10-05, same 4 plays, B_marks/C_record/D_pull_status all matching the established weekend pattern). Most likely the harness's own transient auth/token hiccup during the script's temp-Clerk-user exchange (consistent with the FAPI-rate-limit/token-mint transient-failure class already documented in CLAUDE.md), not a real edition-API outage. Below the 3-instance noise threshold -- watching for a 2nd/3rd instance before treating this as a pattern distinct from the known staleness flaps."
+    },
+    {
+      "at": "2026-10-06T15:08:41Z",
+      "summary": "Session catch-up entry (journal had gone 3 days stale since last write at 2026-10-03T06:37:19Z, despite the ~15-min cadence running continuously -- prior session segments assessed journal push as blocked and never re-tested; this entry re-tests it). Today (2026-10-06) edition: TMO/XP/ILMN/HUM, 4 plays, resolved=37 in C_record throughout. Observed one genuine B_marks episode worth recording: starting ~14:24Z, TMO/ILMN/HUM each individually flagged stale by the API on a rotating basis across three ~15min cycles (14:24Z: TMO+ILMN stale; 14:36Z: TMO (2nd consecutive)+HUM stale, ILMN recovered; 14:51Z: all recovered to GREEN before any single ticker reached the 3-instance threshold -- TMO came closest at 2 consecutive). XP stayed GREEN/live throughout. This matches the already-diagnosed single-ticker intraday Polygon-snapshot quote-lag mechanism from 2026-10-01/10-02 (FORM/UTHR, then USO/MU/LITE) -- same shape (one ticker at a time, self-healing within 1-3 cycles, never simultaneous-all, A_edition/C_record/D_pull_status untouched) applied to a new set of tickers (TMO/ILMN/HUM) for this edition. Not a new root cause; not escalating. Current cycle (15:08Z) and prior cycle (14:51Z) both fully GREEN. No new bugs, no new enhancement ideas identified this segment beyond what is already tracked in knownOpenItems/toolingGaps."
     }
   ],
   "knownOpenItems": {
