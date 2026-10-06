@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-06T15:08:41Z",
+  "lastUpdated": "2026-10-06T15:21:49Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -547,6 +547,10 @@
     {
       "at": "2026-10-06T15:08:41Z",
       "summary": "Session catch-up entry (journal had gone 3 days stale since last write at 2026-10-03T06:37:19Z, despite the ~15-min cadence running continuously -- prior session segments assessed journal push as blocked and never re-tested; this entry re-tests it). Today (2026-10-06) edition: TMO/XP/ILMN/HUM, 4 plays, resolved=37 in C_record throughout. Observed one genuine B_marks episode worth recording: starting ~14:24Z, TMO/ILMN/HUM each individually flagged stale by the API on a rotating basis across three ~15min cycles (14:24Z: TMO+ILMN stale; 14:36Z: TMO (2nd consecutive)+HUM stale, ILMN recovered; 14:51Z: all recovered to GREEN before any single ticker reached the 3-instance threshold -- TMO came closest at 2 consecutive). XP stayed GREEN/live throughout. This matches the already-diagnosed single-ticker intraday Polygon-snapshot quote-lag mechanism from 2026-10-01/10-02 (FORM/UTHR, then USO/MU/LITE) -- same shape (one ticker at a time, self-healing within 1-3 cycles, never simultaneous-all, A_edition/C_record/D_pull_status untouched) applied to a new set of tickers (TMO/ILMN/HUM) for this edition. Not a new root cause; not escalating. Current cycle (15:08Z) and prior cycle (14:51Z) both fully GREEN. No new bugs, no new enhancement ideas identified this segment beyond what is already tracked in knownOpenItems/toolingGaps."
+    },
+    {
+      "at": "2026-10-06T15:21:49Z",
+      "summary": "B_marks AMBER: TMO + HUM both flagged stale by the API simultaneously; XP and ILMN GREEN/live. TMO has now flapped stale 3 DISTINCT times today (14:24Z, 14:36Z, 15:21Z -- not consecutive, self-healed to GREEN at 14:51Z and 15:08Z in between), crossing the 3-instance noise threshold FOR TMO SPECIFICALLY, same convention as the LITE 3rd-flap entry from 2026-10-02. HUM is on its 2nd distinct flap today (14:36Z, now 15:21Z). Still matching the already-diagnosed single-ticker/pair Polygon-snapshot quote-lag mechanism (root-caused 2026-10-01 FORM/UTHR, confirmed recurring across many rotating ticker sets since) -- not a new root cause, no escalation warranted. Naming it only because TMO itself has now repeated 3x this session; worth continued tracking if it recurs a 4th time or stops self-healing within the usual ~15-30min window. A/C/D stages GREEN (4 plays fresh; record resolved=37 consistent; pull-status CONFIRMED/DEGRADED<->pulled=false agree for all 4 tickers)."
     }
   ],
   "knownOpenItems": {
