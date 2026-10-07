@@ -391,7 +391,25 @@ export async function resolveSwingPlayForBrief(
     const dossier = discovery?.dossiers?.find((d) => d.ticker.toUpperCase() === ticker);
     const reads = discovery?.readsByTicker?.get(ticker);
     const enriched = attachThesisExplanation(lanePlay, dossier, reads);
-    const play = terminalPlayFromHorizon(horizonRowToDeckSource(enriched));
+    // BUG FIX (Ask Largo standing mandate, 2026-10-07, live repro SG 9C/9.5C — two concurrent
+    // banger-origin positions). This call used to be `horizonRowToDeckSource(enriched)` — no
+    // second argument — and that function's own body does `positionId: positionId ?? null`,
+    // reading ONLY the (omitted) parameter, NEVER `p.positionId`. `enriched.positionId` already
+    // carries the real, correctly-resolved id here (banger_positions.id for a banger-origin leg,
+    // or the swing_positions id — `pickLanePlayForBrief`, proven by the 2026-09-21 ABTC test
+    // above, already resolves the SPECIFIC leg when a positionId/strike/right hint disambiguates
+    // one), but it was silently dropped on the floor, so the resulting `TerminalPlay.id` never
+    // carried a positionId suffix for ANY lane-resolved play. `bookContextSection`
+    // (play-brief-intel.ts) parses that id back out via `parseSwingPlayId` to get
+    // `excludePositionId` for `checkPortfolioOverlap`'s identity-based self-exclusion — with it
+    // always null, self-exclusion silently fell back to `excludeSelfMatch: true`'s FIRST-
+    // ticker+direction-match-in-array heuristic (portfolio.ts), which is DB-query-order-dependent,
+    // not identity-based. Live-confirmed: reviewing SG's 9C leg (entry $0.33) and reviewing SG's
+    // 9.5C leg (entry $0.23) BOTH rendered "Book context" citing the SAME banger id (#1396) as "a
+    // separate position" — impossible unless one of the two reviews was citing ITSELF.
+    // `loadOpenTerminalPlay` (a few lines up in this same file) already passes `row.id` through
+    // correctly for its own swing-ledger path — this mirrors that.
+    const play = terminalPlayFromHorizon(horizonRowToDeckSource(enriched, enriched.positionId ?? null));
     const ivRank = resolveBriefIvRank({ dossierIvRank: dossier?.ivRank });
     return {
       play: ivRank != null ? { ...play, ivRank } : play,
