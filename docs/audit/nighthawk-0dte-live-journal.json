@@ -919,6 +919,12 @@
       "kind": "OBSERVATION",
       "no_action_needed": false,
       "action_taken": "posted follow-up comment to #4076 confirming the live-only signature at n=3"
+    },
+    "2026-10-07T17:46:18Z_11th_instance_confirms_live_only_at_n4": {
+      "cycle_time": "2026-10-07T17:46:18Z",
+      "summary": "11th confirmed upstream_ok:false instance, 17:45:58Z-17:46:07Z (~9s, shortest yet). No data loss (/record graded:12 stable). 32/32 [uw] queue-wait lines 100% untagged live traffic, 0 background-sweep-tagged, max wait 19269ms -- the 4th consecutive instance (#8,#9,#10,#11) with this exact signature. Pure confirming data, already escalated and confirmed at n=3 on #4076 (comment 6043025433) -- not re-posting. Duration trend continues shrinking (2m29s->1m24s->44s->9s) while max-wait stays in the same 19-20s band each time.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
