@@ -1,3 +1,29 @@
+## WATCH LIST — 2026-10-07 GEX heatmap main accumulation loop was the unyielded hot loop #4822/#4836 missed — deploy pending validation
+
+**What was fixed:** `buildGexHeatmapUncached`'s main per-contract accumulation loop (`for (const c
+of contracts) accumulateContract(c)`) was never touched by the 2026-09-11/12 event-loop-yield fixes
+(#4822, #4836) — both only yielded the two DOWNSTREAM loops (maxPainByExpiry, depth-block). This
+main loop runs FIRST and is the LARGEST (every contract in an 11K+-contract chain like SPX), calling
+real closed-form Black-Scholes math (vanna/charm) per contract with zero yields. Measured live
+2026-10-07 ~11:30-12:36 UTC: ALB `TargetResponseTime` p99 hit 40-82s and per-minute Max hit 60-106s,
+matching `cron/meridian-warm` elapsed= 40-85s almost exactly — the SAME magnitude as the original
+2026-09-11 incident, meaning the prior two fixes had not actually resolved it. Added a batched
+(every 500 contracts) `setImmediate` yield to this loop. Full write-up:
+`docs/audit/findings-staging/2026-10-07-gex-heatmap-main-accumulation-loop-event-loop-yield.md`.
+
+**Specific thing to check once this deploys, during RTH (market opens 13:30 UTC today):** re-pull
+`AWS/ApplicationELB` `TargetResponseTime` p99/Max on `blackout-production-app`'s target group for
+15-30 min windows during/after the next several `cron/meridian-warm` invocations — should drop
+materially below the 60-106s spikes measured pre-fix (a few seconds at most would confirm it). Also
+re-check `cron/meridian-warm`'s own logged `elapsed=` in `/ecs/blackout-production` — total wall-clock
+won't necessarily shrink much (the fix doesn't reduce total work, only how it's chunked against the
+event loop), so the real signal is the ALB p99/Max during the same window, not the cron's own elapsed
+time. If it is STILL spiking into double-digit seconds, the next place to look is `accumulateContract`
+itself or the un-batched far-dated fetch loop (bounded by `FAR_DATED_MAX_TARGETS=8`, expected small)
+— re-measure before assuming the batching approach itself was wrong.
+
+---
+
 ## WATCH LIST — 2026-09-22 0DTE record `by_outcome` mislabeled two real trim-scale exit reasons — deploy pending validation
 
 **What was fixed:** `record.ts`'s `managedOutcomeLabel()` used an ad hoc `/ratchet|runner/` regex
