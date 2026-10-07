@@ -28,6 +28,7 @@ import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
+import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
 
 const MAX_BULLETS = 14;
 
@@ -954,6 +955,22 @@ function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
 
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-07, blast radius of #5620): #5620 fixed the
+  // identical narrative-vs-chip disagreement for dataFreshnessSection (play-brief-intel.ts) and
+  // extracted the shared `isSwingPlayStaleCheckExempt` predicate specifically so a third call site
+  // couldn't silently reintroduce the same split — but this function, a SIBLING "is today's live
+  // desk state current" narrative line in a DIFFERENT file, was never updated to use it. Live repro
+  // (same NTAP brief #5620 itself reproduced against, `entryStatus: "EXTENDED_CHASE"`, status
+  // `COMMIT`/bucket "watch", confirmed live 2026-10-07 AFTER #5620 merged): this function still
+  // rendered "**Live read** — Vector spot not wired on this tick; desk still says **WAIT**" while
+  // the SAME envelope's `unavailableSources` was `[]` and `confidence.why` read "Every live source
+  // this brief reads from resolved cleanly this cycle" — the exact contradiction #5620 fixed for
+  // the Data-freshness section, recurring here because this is a separate function, not touched by
+  // that fix. A dead-but-not-closed WATCH candidate (extended past entry, invalidated, expired) has
+  // nothing left to refresh — asserting "Vector spot not wired ON THIS TICK" implies a live poll is
+  // still meaningfully running, which #5620's own rationale says is false for this bucket. Gate on
+  // the shared predicate rather than reinventing a third local check.
+  if (bucket === "watch" && isSwingPlayStaleCheckExempt(play)) return null;
   const rec =
     swingActionDisplay(play)?.label ??
     play.recommendation ??

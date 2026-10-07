@@ -216,6 +216,29 @@ test("tradeManagerNarrativeSection: SHORT Break watch considers the GEX king str
   assert.doesNotMatch(section!.body, /Break watch.*120\.00/i);
 });
 
+test("tradeManagerNarrativeSection: dead-but-not-closed WATCH (extended past entry) suppresses 'Vector spot not wired' — matches #5620's dataFreshnessSection fix, blast radius", () => {
+  // Live repro: SWING:NTAP, entryStatus EXTENDED_CHASE, status COMMIT (bucket "watch"). Without a
+  // live spot this function used to fall through to degradedReadLine's "Live read — Vector spot
+  // not wired on this tick" line even though the play is a dead WATCH candidate that
+  // isSwingPlayStaleCheckExempt (entry-enterability.ts) already treats as exempt from every other
+  // "is today's live desk state current" claim in this same envelope (dataFreshnessSection,
+  // collectBriefUnavailableSources) — producing the exact narrative-vs-chip contradiction #5620
+  // fixed for the sibling section (confidence: "every live source resolved cleanly" right next to
+  // a narrative line claiming one didn't resolve).
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "WATCH", entryStatus: "EXTENDED_CHASE", setupState: "EXTENDED" }),
+      vector: null,
+      ecosystem: null,
+    }),
+    "watch",
+  );
+
+  if (section) {
+    assert.doesNotMatch(section.body, /Vector spot not wired on this tick/i);
+  }
+});
+
 test("tradeManagerNarrativeSection: stale Vector snapshot does not say Right now (Largo C2)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

@@ -1,3 +1,12 @@
+## WATCH LIST — 2026-10-07 Ask Largo swing play-brief "Vector spot not wired" line contradicted confidence/unavailableSources for dead WATCH candidates — deploy pending validation
+
+**What was fixed:** `tradeManagerNarrativeSection`'s `degradedReadLine` fallback (`play-brief-narrative.ts`) rendered "**Live read** — Vector spot not wired on this tick; desk still says WAIT" for a dead-but-not-closed WATCH candidate (entry extended past its valid window / invalidated / expired) in the exact same `GET /api/market/swing/play-brief` response whose `confidence` field read "high — Every live source this brief reads from resolved cleanly this cycle" and `unavailableSources: []`. This is the identical narrative-vs-chip disagreement PR #5620 fixed earlier the same day (2026-10-07) for the sibling `dataFreshnessSection` — that fix's own shared `isSwingPlayStaleCheckExempt` predicate was never wired into this second call site. Live-confirmed on `playId=SWING:NTAP` (`entryStatus: "EXTENDED_CHASE"`). Full write-up:
+`docs/audit/findings-staging/2026-10-07-swing-brief-degraded-read-dead-watch.md`.
+
+**Specific thing to check once this deploys:** re-pull `GET /api/market/swing/play-brief?playId=SWING:NTAP&ticker=NTAP&status=COMMIT` (or any other currently-dead/extended WATCH candidate on `GET /api/market/nighthawk/horizons?view=swings` — look for `commitGateBlockedBy`/`entryStatus: "EXTENDED_CHASE"`/`setupState: "EXTENDED"` rows under the SWING lane's `committed` with `serving: "WAITING_FOR_ENTRY"`) and confirm the "Trade manager read" section no longer contains "Vector spot not wired on this tick" while `confidence.why` still says every live source resolved cleanly — the two should no longer disagree. Also spot-check a genuinely live OPEN/HOLD/TRIM position with a stale/missing Vector spot still DOES show the "Vector spot not wired" line (this fix is scoped to dead WATCH only, not a blanket removal).
+
+---
+
 ## WATCH LIST — 2026-10-07 GEX heatmap main accumulation loop was the unyielded hot loop #4822/#4836 missed — deploy pending validation
 
 **What was fixed:** `buildGexHeatmapUncached`'s main per-contract accumulation loop (`for (const c
