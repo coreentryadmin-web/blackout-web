@@ -570,6 +570,32 @@ test("watchGateCoaching: includes reasons", () => {
   assert.match(line!, /wait for trigger/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-07): this used to `.slice(0, 3)` the gate list
+// before rendering, silently dropping every gate past the third with no "+N more" marker — while
+// the sibling "Entry stance" bullet (actionNarrative) states the TRUE, uncapped gate count and the
+// "Entry" section (watchEntrySection, play-brief.ts) renders the full list uncapped. Live repro:
+// WDC WATCH brief, 2026-10-07 — "Entry stance — WAIT. 4 gates blocking entry — see below." then
+// "Gates blocking entry — g_s12_halt_feed_stale ... g_s4_regime ... g_s6_confluence." — the 4th
+// gate (g_s14_cortex, the Cortex veto) was silently omitted even though the bullet promised 4.
+test("watchGateCoaching: renders every gate, not just the first 3 (live WDC repro)", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s12_halt_feed_stale", reason: "Trading-halt feed unavailable." },
+        { code: "g_s4_regime", reason: "Broad-market regime degraded." },
+        { code: "g_s6_confluence", reason: "Independent signal confluence below commit threshold." },
+        { code: "g_s14_cortex", reason: "Cortex preflight vetoed this setup." },
+      ],
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /g_s12_halt_feed_stale/);
+  assert.match(line!, /g_s4_regime/);
+  assert.match(line!, /g_s6_confluence/);
+  assert.match(line!, /g_s14_cortex/, "the 4th gate must not be silently dropped");
+});
+
 // BUG FIX (2026-09-12): every real gate `reason` string (entry-verdict.ts's gate-block map)
 // already ends with its own period, but `watchGateCoaching` unconditionally appended a second
 // "." after joining them — producing a doubled ".." whenever the LAST rendered gate has no
