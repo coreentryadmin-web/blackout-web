@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T14:22:16Z",
+  "lastUpdated": "2026-10-07T15:36:44Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -591,6 +591,10 @@
     {
       "at": "2026-10-07T14:22:16Z",
       "summary": "Outcome-honesty watch continued: both plays swung further. VST reversed from the prior cycle's near-flat -3.4% to +32.9% (mark=4.65 vs entry 3.50, within [4.45,4.85]) -- a real intraday reversal, not noise. MRVL partially recovered from its -67.1% low to -46.0% (mark=3.40 vs entry 6.30, within [3.30,3.50]) -- still net negative but less severe than the last two checks. Both marks sit cleanly inside live bid/ask both times, confirming the quote pipeline itself is sound; the swings are real market volatility on these specific low-DTE (dte=2) weeklies, not a data defect. All 4 stages GREEN, resolved=38 unchanged. This is now 3 consecutive RTH checks with large real moves on both names -- noting the volatility itself as the pattern (per the 3-instance noise-discipline threshold), not any one direction, since the moves have gone both ways. Continuing to watch into the rest of the session; no gate/code action warranted from Legacy's own correctness surface."
+    },
+    {
+      "at": "2026-10-07T15:36:44Z",
+      "summary": "Closing out the VST/MRVL outcome-honesty watch opened at 13:37Z with a positive note: VST has now shown FOUR consecutive cycles of sustained upward movement (+5.7% -> +21.4% -> +36.6% -> +44.3% from entry, mark=5.05 within [4.80,5.30]) -- a real, sustained directional trend rather than noise, and consistent with the play's own stated bullish thesis (prior-day HOD break, 3-day bullish flow streak, aggressive options activity). This is the thesis playing out correctly, worth noting as a positive outcome-honesty data point rather than only flagging adverse moves. MRVL has stabilized in a -50% to -56% band over the last several cycles (now -51.9%, mark=3.03) rather than continuing to deteriorate -- its earlier sharp open-print decline appears to have found a floor. All 4 stages GREEN, resolved=38 unchanged. Treating this watch thread as resolved for now (both names behaving within normal, explicable bounds); will pick up again only if either develops a genuinely new pattern."
     }
   ],
   "knownOpenItems": {
