@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T12:07:47Z",
+  "lastUpdated": "2026-10-07T13:22:41Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -575,6 +575,10 @@
     {
       "at": "2026-10-07T12:07:47Z",
       "summary": "First real B_marks transition since the post-close freeze (overall still AMBER, no bug): VST261009C00160000 and MRVL261009C00290000 both moved from frozen-since-close ('mark flagged stale by the API', asof pinned at yesterday 19:59:59Z all night) to an actively-refreshing pre-market state -- asof now 2026-10-07T12:05:00Z (fresh, ~2min old), bid/ask both 0 (no two-sided market yet this early pre-market), mark ($3.50/$6.30) sourced from last-trade/close fallback. Evidence text changed accordingly to 'no live two-sided quote (bid=0, ask=0) -- mark sourced from last trade/close' via legacy-healthcheck-eval.mjs's own documented, already-unit-tested bid<=0/ask<=0 branch (checked before the generic staleness check specifically so this state reads honestly rather than as a misleading generic stale label). Confirms pre-market data has started flowing ahead of today's RTH open (~13:30 UTC) and the 9:15am ET morning-confirm window (~13:15 UTC) for D_pull_status. Not a defect -- the exact behavior the eval logic's own test suite names and expects."
+    },
+    {
+      "at": "2026-10-07T13:22:41Z",
+      "summary": "D_pull_status GREEN (expected transition): the 9:15am ET morning-confirmation cron has now run for the 2026-10-07 edition -- both VST and MRVL show CONFIRMED <-> pulled=false agreement (neither pick was pulled overnight between publish and the confirm window). A_edition still GREEN (2 plays), C_record still GREEN (resolved=38). B_marks unchanged from the 12:07Z transition -- both still bid=0/ask=0 'no live two-sided quote' pre-market state (~9:22am ET, 8 min before the 9:30am ET open, consistent with thin/no pre-market trading on these names). Matches the established daily pattern (same D_pull_status SKIPPED->GREEN timing seen on prior days). Watching for VST/MRVL to develop a real two-sided quote once RTH opens."
     }
   ],
   "knownOpenItems": {
