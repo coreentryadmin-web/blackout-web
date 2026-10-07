@@ -1437,7 +1437,22 @@ export function holdPlanSection(
         );
       }
     } else if (giveback?.kind === "capture" && giveback.capturePct < 70 && !narrativeAlreadyNoted?.capture) {
-      lines.push(`Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-07): same root cause as the two sibling
+      // call sites in play-brief-narrative.ts (actionNarrative's capture branch and
+      // degradedReadLine's givebackBit) — `giveback.capturePct` divides the RUNNER-only
+      // `play.pnlPct` against `play.peak`, so once a trim has already banked a tranche, "Gave
+      // back X% from peak" describes only the still-open runner, not the whole position. Worse
+      // here than the sibling fix: the trailing clause ("consider trim into strength") is
+      // actively wrong once a trim already fired — there is no trim left to "consider," it
+      // already happened (the exact self-contradiction already fixed for the round_trip branch
+      // immediately above, via the "NOT 'consider trim into strength'" comment — this capture
+      // branch shared the same bug and was missed by that fix's own blast-radius check).
+      const anyTrimBanked = (play.exitPolicy?.trim_levels ?? []).some((t) => t.fired);
+      lines.push(
+        anyTrimBanked
+          ? `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of the runner since peak — part of this position is already banked at a profit; consider protecting what's left`
+          : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`,
+      );
     }
   }
 

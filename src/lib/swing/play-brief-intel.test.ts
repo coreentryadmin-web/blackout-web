@@ -790,6 +790,67 @@ test("holdPlanSection: peak giveback warning still shows when thesis health is u
   assert.doesNotMatch(section!.body, /Gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-07): `giveback.capturePct` divides RUNNER-only
+// `play.pnlPct` against `play.peak` — honest while nothing has been banked, but once a trim has
+// already fired this capture branch's "Gave back X% from peak — consider trim into strength"
+// wording is doubly wrong: the percentage describes only the still-open runner (not the whole
+// position's blended outcome), and "consider trim into strength" implies the protective trim
+// hasn't happened yet, when it already has. Mirrors the round_trip branch's own anyTrimBanked
+// disclosure a few lines above in play-brief-intel.ts (and the sibling fix in
+// play-brief-narrative.ts's actionNarrative capture branch, same root cause, same day).
+test("holdPlanSection: capture giveback note discloses an already-banked trim tranche and drops the stale 'trim into strength' clause", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 130,
+      pnlPct: 20,
+      // The giveback computation this test targets lives inside holdPlanSection's
+      // `if (play.thesisHealth)` block (it also narrates health%/tighten-risk) — any truthy
+      // thesisHealth object enters that block; `uncalibrated: true` keeps this test focused on
+      // the giveback bullet alone, same shape as the NRG repro fixture above.
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 200,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+        runner_fraction: 0.5,
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Gave back \*\*85%\*\* of the runner since peak.*already banked at a profit/,
+    `expected a banked-aware capture giveback bullet, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(section!.body, /consider trim into strength/);
+});
+
 test("holdPlanSection: peak giveback warning does not fire once retained capture clears the floor", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
