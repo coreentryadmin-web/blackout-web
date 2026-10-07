@@ -99,3 +99,32 @@ test("excludePositionId: lone self row produces no overlap", () => {
   const o = checkPortfolioOverlap(long("NVDA"), book, { excludePositionId: 12 });
   assert.equal(o.hasOverlap, false);
 });
+
+// Regression — live repro 2026-10-07 (Ask Largo standing mandate): a Banger-origin reviewed play
+// self-flagged as "concentration" against its OWN position. banger-lane-merge.ts stamps a
+// Banger-origin TerminalPlay's `positionId` from the BANGER row's own id (banger_positions.id),
+// never a real swing_positions id — but play-brief-context.ts's `loadOpenBook()` deliberately
+// leaves `positionId` UNSET on every banger-origin row in the book, storing that same number only
+// under `bangerId` (to avoid a different, already-fixed cross-sequence collision risk — see
+// portfolio.ts's own `bangerId` doc comment). The two choices are individually correct but compose
+// into a gap: `excludePositionId` only ever matches on `pos.positionId`, so a banger-origin
+// candidate's own row in the book — carrying that exact number as `bangerId`, not `positionId` —
+// is never excluded, and gets reported back as "a separate, cross-engine position" sharing its own
+// id. Live: VST and MRVL both showed "already holding 1 same-direction position... (separate,
+// cross-engine position #<id>)" where `<id>` was the reviewed play's own id.
+test("excludePositionId also matches on bangerId — a banger-origin candidate does not flag itself", () => {
+  const book: PortfolioPosition[] = [{ ticker: "VST", direction: "LONG", bangerId: 1478 }];
+  const o = checkPortfolioOverlap(long("VST"), book, { excludePositionId: 1478 });
+  assert.equal(o.hasOverlap, false, "the candidate's own banger-origin row must not self-flag");
+});
+
+test("excludePositionId by bangerId still reports a genuinely separate banger sibling", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "VST", direction: "LONG", bangerId: 1478 }, // self
+    { ticker: "VST", direction: "LONG", bangerId: 2200 }, // genuinely separate sibling
+  ];
+  const o = checkPortfolioOverlap(long("VST"), book, { excludePositionId: 1478 });
+  assert.equal(o.hasOverlap, true);
+  assert.equal(o.sameThemeSameDirection.length, 1);
+  assert.equal(o.sameThemeSameDirection[0]?.bangerId, 2200);
+});
