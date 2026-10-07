@@ -942,6 +942,15 @@
       "kind": "OBSERVATION",
       "no_action_needed": false,
       "action_taken": "posted follow-up comment to #4076 with new severity/volume records + signature shift"
+    },
+    "2026-10-07T20:10:28Z_session_closed_eod_summary": {
+      "cycle_time": "2026-10-07T20:10:28Z",
+      "stage": "eod_summary",
+      "day_tally": "6 commits today: MUU +10% (ratchet floor, peaked 25%), SNXX +7.02% (ratchet floor, peaked 18.42%), MU +10.54% (ratchet floor, peaked 21.05%), SNDK +4.44% (ratchet floor, peaked 11.11%), QQQ -50.76% (hard stop, peaked only 3.79%, never got going), MRNA -1.94% (thesis_break on gex-walls veto, clean instant scratch, never had a positive peak). Net: 4W/2L. All four wins show the ratchet protective-floor mechanism banking real double-digit peaks consistently across different tickers -- a notably clean day for the exit machinery, no mismanagement found.",
+      "infra_summary": "13 total upstream_ok:false instances tracked across 2026-10-05/06/07 (9 on 10-05/10-06, 4 today: #10/#11/#12/#13). Today's instances continued confirming the live-traffic-only UW saturation signature first spotted yesterday (#8/#9), reaching n=5 confirmed (#8-#12) before #13 broke the pattern with a partial reversion to mixed live+background-sweep traffic (90.1%/9.9%) AND set new records across every dimension: longest duration (704.6s, >2x the prior max), most board-fallback fires (34), most total queue-wait volume (355 lines). Escalated to #4076 four times today (comments 6043025433, plus the n=3 confirmation; and 6045208762, the new-records/signature-shift update) -- all four remain unanswered as of session close (~1h after the last post). No data loss in any of the 13 instances across the full 3-day window. Also traced one transient 401 in my own audit tooling (instance #12) to the session's own auth path getting congested alongside the real saturation, not a new production defect -- and corrected a premature 'shrinking duration' claim from my own #10/#11 entries once #12's longer duration contradicted it.",
+      "carry_forward_to_tomorrow": "(1) Watch #4076 for any response to the 4 comments posted today (6021563148, 6022602033, 6043025433, 6045208762) before re-deriving the UW saturation finding from scratch. (2) Watch whether instance #13's partial reversion to a mixed live+background signature recurs, or whether the live-only pattern reasserts itself -- genuinely unclear which is now the steady state. (3) SPCX thesis_break-lag (n=1, 2026-10-05) and MSTR Cortex-relief (n=1, 2026-10-02) findings both still below 3-instance bars. (4) Journal still unpruned (blocked by permission classifier since 2026-10-02), now well over 135 entries -- revisit if the user grants explicit authorization.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
