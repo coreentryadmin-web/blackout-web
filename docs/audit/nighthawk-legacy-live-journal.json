@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T17:21:38Z",
+  "lastUpdated": "2026-10-07T18:13:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -603,6 +603,10 @@
     {
       "at": "2026-10-07T17:21:38Z",
       "summary": "VST approaching its own 2x scale-out trigger: mark=5.88 (+68.0% from entry 3.50, within [5.60,6.15]) -- getting close to the risk_note's stated 'realize 50% at 2x' threshold ($7.00). Not crossed yet. Noting this because crossing it would be a mechanically meaningful event for the play's own exit logic (worth checking on a future cycle whether the live board actually reflects a trim/scale recommendation once/if it crosses, as a genuine outcome-honesty check on whether the stated exit rule is honored in the live UI, not just in the risk_note text). MRVL showed another instance of the already-named self-resolving stale-flicker pattern (now its 3rd occurrence specifically, 6th overall across both tickers) -- not re-logging in detail, consistent with the 16:22Z entry. All other stages GREEN, resolved=38 unchanged."
+    },
+    {
+      "at": "2026-10-07T18:13:00Z",
+      "summary": "VST CROSSED its 2x scale-out trigger ($7.00 = 2 x $3.50 entry). Raw legacy-marks: 18:09:16Z mark=7.00 (bid 6.80/ask 7.20) but quote 110s old -> stale:true (correctly excluded from live-sync by fetchLegacyOptionMarksServer; healthcheck B_marks AMBER on 2 consecutive cycles 17:53Z/18:08Z was this, not the flicker pattern). 18:11:55Z mark=7.08 (bid 6.85/ask 7.30) FRESH (3.6s). Verified: EventBridge blackout-production-legacy-live-sync cron(*/5 11-21 MON-FRI) ENABLED, hit-cron Lambda 200 every 5min through 18:05Z, LEGACY_DISCORD_ALERTS=1 in prod env, VST exit_style=scale_out -> deriveScaleOutAction TAKE_PARTIAL at mark>=2.0x entry when not stale. So the 18:15Z tick should bank the 50% partial. OBSERVABILITY GAP (outcome-honesty): whether TAKE_PARTIAL actually fired is NOT verifiable from outside -- the route logs nothing on success, cron_job_runs.meta_json (holds transitions/noQuote) is exposed by no API, discord_live_state (trims_taken/scaled/peak) is read by no API route, raw PG is blocked here. ENHANCEMENT IDEA (not started, report-only): surface Legacy scale-out live state on the deck the way the Bangers panel already does via computeScaleOutTriggerInfo (next trigger $, % to trigger, hard-stop floor, scaled/trims) -- members currently see the 2x rule as risk_note text with no live indication of whether it fired. Also: a one-line console.info of non-empty transitions in cron/legacy-live-sync would make this auditable from CloudWatch. Next: verify at EOD via the record/outcome grade that VST resolves as a scaled-out position. MRVL 2.85 fresh, stable. Other stages GREEN (A 2 plays, C resolved=38, D both CONFIRMED). Harness note: ~half of ad-hoc peek fetches returned null bodies this cycle (temp Clerk mint flake, swept 1 leaked user) -- tooling, not product."
     }
   ],
   "knownOpenItems": {
