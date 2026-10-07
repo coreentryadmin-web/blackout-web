@@ -105,9 +105,28 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   // own top-level `biasFromDirection(play.direction)` (BieSectionCard renders `section.bias` as a
   // color-coded BiasPill, so this reached real UI, not just inert JSON). No section-level bias for
   // a non-directional quality signal — `bias` is already optional on RichSection.
+  //
+  // BUG FIX (2026-10-07, Ask Largo standing mandate): `rungFromHealth`/`rungLabel` (thesis-health.ts)
+  // name every band purely off the ABSOLUTE health %, with no reference to whether anything moved
+  // since commit — "Minor drift"/"Weakening"/"Degraded"/"Broken" all read as PROCESS words implying
+  // decay happened, but a position can sit in any of those bands on day one, forever, just because
+  // its ENTRY was imperfect (e.g. a chase-risk entry geometry), never having changed at all. Live
+  // repro (SWING:INTC:50, 2026-10-07): the brief rendered "**77%** · Minor drift" directly above
+  // five pillar rows EVERY one of which showed "(Δ +0.0 pts)" — the headline word "drift" directly
+  // contradicted the itemized evidence one line below it, with nothing in the section telling the
+  // reader which one was true. `computeSwingThesisHealth` already computes exactly this "did
+  // anything move" signal (`h.moves`, falling back to the literal string "All swing pillars
+  // unchanged since commit." when no pillar faded/lost — the same fallback
+  // play-brief-narrative-coaching.ts's thesisPillarCoaching already gates its own "What moved" line
+  // on) but this section never read it. Surface it right next to the band label instead of leaving
+  // a reader to infer "unchanged" by checking all five deltas are exactly zero themselves.
+  const noDriftSinceCommit = h.moves?.[0]?.includes("unchanged") ?? false;
+  const headline = noDriftSinceCommit
+    ? `**${h.health}%** · ${h.rungLabel} — unchanged since commit`
+    : `**${h.health}%** · ${h.rungLabel}`;
   return {
     title: "Thesis health",
-    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
+    body: `${headline}\n\n${rows || "Pillars not wired on this row."}`,
   };
 }
 
