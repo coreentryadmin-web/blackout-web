@@ -2706,6 +2706,91 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   );
 });
 
+// Live repro (2026-10-07, Ask Largo standing mandate): rungFromHealth/rungLabel map the AGGREGATE
+// health % to a band name purely off its ABSOLUTE value (thesis-health.ts) — "Minor drift" covers
+// health 70-84 regardless of whether anything actually moved since commit. A real production brief
+// (SWING:INTC:50, 2026-10-07 live fetch) rendered "**77%** · Minor drift" directly above five pillar
+// rows that EVERY one showed "(Δ +0.0 pts)" — i.e. the position's entry geometry was simply
+// imperfect at commit (chase-risk entry), nothing decayed afterward. `computeSwingThesisHealth`
+// already computes exactly this signal (`moves: moves.length > 0 ? moves : ["All swing pillars
+// unchanged since commit."]`, read everywhere else in this lane — e.g. play-brief-narrative-
+// coaching.ts's thesisPillarCoaching gates its own "What moved" line on this same array) but
+// `thesisHealthSection` never surfaces it, so the headline word "drift" directly contradicts the
+// itemized Δ-evidence one line below it with nothing in the section telling the reader which one is
+// true. Fix: when `moves` says nothing changed, say so right next to the band label instead of
+// leaving a reader to infer it from five identical deltas.
+test("composeSwingPlayBrief: Thesis health headline discloses 'unchanged since commit' when every pillar delta is zero (no false 'drift')", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 5.38,
+      mark: 5.83,
+      pnlPct: 8.4,
+      peak: 12.1,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 77,
+        entryIndex: 77,
+        currentIndex: 77,
+        delta: 0,
+        rung: "MINOR",
+        rungLabel: "Minor drift",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.9,
+            currentScore: 0.9,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 25.2,
+            deltaPts: 0,
+          },
+          {
+            id: "entry",
+            label: "Entry geometry",
+            weight: 0.22,
+            commitScore: 0.35,
+            currentScore: 0.35,
+            commitLabel: "chase risk",
+            currentLabel: "chase risk",
+            status: "intact",
+            contributionPts: 7.7,
+            deltaPts: 0,
+          },
+        ],
+        // The exact fallback string thesis-health.ts stamps when no pillar faded/lost — this is
+        // what the fix must key off, not a fresh ad-hoc check.
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 1, 10:00 AM",
+        computedAtEt: "Oct 7, 4:00 PM",
+        advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "multi-day thesis intact",
+      },
+    }),
+    asOf: "2026-10-07T20:00:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.match(
+    thesis!.body,
+    /77%.*Minor drift.*unchanged since commit/is,
+    `Thesis health headline must disclose 'unchanged since commit' when every pillar delta is zero, got: ${thesis!.body}`,
+  );
+});
+
 test("composeSwingPlayBrief: partially-calibrated Thesis health keeps real pillars and only withholds the aggregate % (2026-09-21 live gap, AAPL position 40 SECTOR_ROTATION)", () => {
   // Live repro (2026-09-21, Ask Largo standing mandate): a committed non-Banger position can have
   // BOTH setupState AND entryStatus live-derived (real, calibrated) while signalKinds is genuinely
