@@ -527,6 +527,29 @@ than a blind global change.
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-persistence-recall.mjs --days=90 --horizons=1,3,5 --min-n=8
 ```
 
+**UPDATE 2026-10-07 (post-loosening re-run, after the 5-archetype fix above shipped).** Re-ran the
+same command about a month later, against the CURRENT live rule (the recall script's mirrored
+`ARCHETYPE_PERSISTENCE` copy was updated in lockstep with the loosening fix, per that fix's own
+blast-radius note, so this measures the post-fix gate, not the pre-fix one). 193 total rows in the
+90-day window (down from 232 — a sliding window, not cumulative; older rows aged out as new ones
+were added). Result: the BLOCKED cohort shrank at both trustworthy horizons (34→24 at +1d, 20→16 at
++3d — consistent with the loosening moving some previously-BLOCKED candidates into CLEARED), but the
+REMAINING BLOCKED cohort now leads CLEARED more clearly than in the original measurement: `+1d`
+CLEARED 41.3% WR/−0.11% avg (n=143) vs BLOCKED **62.5%** WR/**+0.66%** avg (n=24, gap widened from
+13.3pp to 21.2pp); `+3d` CLEARED 46.3% WR/−0.79% avg (n=123) vs BLOCKED **56.3%** WR/**+1.02%** avg
+(n=16, flipped from "roughly tied" to a 10.0pp BLOCKED lead at the horizon this item itself called
+"more relevant for a days-to-weeks swing hold"). `+5d` is below the script's own `--min-n=8` floor
+(BLOCKED n=6) and correctly excluded. **Still no gate changed** — n=16-24 remains a small sample,
+and a "still blocked even after loosening" cohort could plausibly be enriched for a pattern (thin
+liquidity, a volatility extreme) this underlying-only proxy cannot distinguish from "the floor is
+net costly." But loosening the gate did not resolve the original mixed verdict — if anything the
+signal firmed up in the direction the original measurement's weakest point already pointed. Full
+write-up: `docs/audit/findings-staging/2026-10-07-swing-persistence-recall-rerun-post-loosening.md`
+(folded into `FINDINGS.md`). Suggested next step: a third re-run in 3-4 weeks once the BLOCKED
+sample grows past ~16-24, then a by-archetype/by-liquidity breakdown of the BLOCKED cohort
+specifically to test the self-selection hypothesis before treating the aggregate gap as evidence
+the floor itself needs recalibration.
+
 ## 8. Swing gate-COMPOUND funnel + discovery-pool loosening pool-size before/after — measured 2026-09-09/10, one genuine gap found and left UNFIXED (documented, not forced)
 
 **Why this was measured.** Two PRs shipped on 2026-09-08 on the same operator complaint about low
