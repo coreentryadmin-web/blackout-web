@@ -5,7 +5,12 @@ import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { warmVectorDarkPool, type WarmVectorDarkPoolResult } from "@/features/vector/lib/vector-dark-pool-cache";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { runUwPool, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
-import { sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { halfBatchSize, selectDarkPoolWarmBatch } from "./rotation";
+
+const ROTATION_CURSOR_KEY = "cron:vector-dark-pool-warm:cursor";
+// Persist well past the ~10min schedule so a single missed/overlapping run doesn't reset coverage.
+const ROTATION_CURSOR_TTL_SEC = 3600;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +28,27 @@ export const maxDuration = 120;
  * well under the timeout instead of racing all 55 into the queue simultaneously. Each task still
  * catches its own rejection into a settled-result shape so one ticker's unexpected throw can't
  * abort the whole pool the way `Promise.all` would.
+ *
+ * ROTATION (2026-10-07). The bound above caps this cron's own CONCURRENCY, not its TOTAL per-run
+ * ticker count — and a fresh re-measurement found the full universe still fails 90%+ of tickers
+ * per run even after the shared UW rate limiter's cluster-wide ceiling was separately doubled
+ * (PR #5579, UW_GLOBAL_MAX_RPS 2->4): aggregate cluster-wide UW demand (live traffic + sibling
+ * crons) still saturates the shared admission queue, and this cron's full ~55-69-ticker ask is
+ * simply more total work than the queue's 20s wait budget can clear every run. See rotation.ts's
+ * header comment for the full measurement and why a 2-way (not larger) rotation was chosen. This
+ * halves the per-run ticker count — full universe coverage every 2 runs instead of every 1 — which
+ * halves this cron's own total admission-queue commitment without touching the shared limiter.
  */
 async function runVectorDarkPoolWarm(started: number): Promise<void> {
-  const tickers = vectorUniverseTickers();
+  const allTickers = vectorUniverseTickers();
+  const cursor = (await sharedCacheGet<number>(ROTATION_CURSOR_KEY).catch(() => null)) ?? 0;
+  const { batch: tickers, nextCursor } = selectDarkPoolWarmBatch(
+    allTickers,
+    cursor,
+    halfBatchSize(allTickers.length)
+  );
+  await sharedCacheSet(ROTATION_CURSOR_KEY, nextCursor, ROTATION_CURSOR_TTL_SEC).catch(() => undefined);
+
   const results = await runUwPool(
     tickers.map((t) => async (): Promise<PromiseSettledResult<WarmVectorDarkPoolResult>> => {
       try {
@@ -53,7 +76,7 @@ async function runVectorDarkPoolWarm(started: number): Promise<void> {
   const failed = fetchFailed + rejected;
 
   console.info(
-    `[cron/vector-dark-pool-warm] background done — warmed=${warmed} failed=${failed} levels=${levels} elapsed=${Date.now() - started}ms`
+    `[cron/vector-dark-pool-warm] background done — warmed=${warmed} failed=${failed} levels=${levels} batch=${tickers.length}/${allTickers.length} elapsed=${Date.now() - started}ms`
   );
 }
 
