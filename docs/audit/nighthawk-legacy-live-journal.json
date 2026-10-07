@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T15:36:44Z",
+  "lastUpdated": "2026-10-07T16:22:23Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -595,6 +595,10 @@
     {
       "at": "2026-10-07T15:36:44Z",
       "summary": "Closing out the VST/MRVL outcome-honesty watch opened at 13:37Z with a positive note: VST has now shown FOUR consecutive cycles of sustained upward movement (+5.7% -> +21.4% -> +36.6% -> +44.3% from entry, mark=5.05 within [4.80,5.30]) -- a real, sustained directional trend rather than noise, and consistent with the play's own stated bullish thesis (prior-day HOD break, 3-day bullish flow streak, aggressive options activity). This is the thesis playing out correctly, worth noting as a positive outcome-honesty data point rather than only flagging adverse moves. MRVL has stabilized in a -50% to -56% band over the last several cycles (now -51.9%, mark=3.03) rather than continuing to deteriorate -- its earlier sharp open-print decline appears to have found a floor. All 4 stages GREEN, resolved=38 unchanged. Treating this watch thread as resolved for now (both names behaving within normal, explicable bounds); will pick up again only if either develops a genuinely new pattern."
+    },
+    {
+      "at": "2026-10-07T16:22:23Z",
+      "summary": "3-INSTANCE PATTERN NAMED (per noise discipline): a brief, single-cycle 'mark flagged stale by the API' flicker on B_marks during active RTH, which self-resolves within seconds on an immediate re-check, has now recurred 3 times today -- MRVL at 13:52Z, VST at 15:07Z, and VST again at 16:22Z (this cycle; re-checked ~10s later, mark=5.33, stale:false). All three instances share the identical signature: one ticker briefly exceeds LEGACY_QUOTE_STALE_MS (30s) between quote ticks, flags AMBER for exactly one healthcheck cycle, then clears on the very next read with no missing data, no NaN, no sign error -- consistent with ordinary per-contract quote-update cadence variance on these specific low-volume weeklies, not a defect. Naming this per the 3-instance threshold so it has a durable record, but NOT escalating: the pattern is benign (self-resolving within seconds, never persists, never produces a bad value), already explained by documented contract-liquidity behavior, and doesn't warrant a code or threshold change on this evidence. VST itself remains elevated (mark=5.33, +52.3% from entry, having peaked near +62.9% last cycle) and MRVL stable (-54.3%). All other stages GREEN, resolved=38 unchanged."
     }
   ],
   "knownOpenItems": {
