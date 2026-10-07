@@ -4,7 +4,28 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
-## 2026-10-07 (16:35 UTC / Wed 12:35 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live, CLS clean
+## 2026-10-07 (18:17 UTC / Wed 14:19 ET) — [SEO] Lane heartbeat: shipped fixes validated, PR sweep clean
+
+Market closed (post-13:00 ET), so this is the heartbeat, not an RTH wake. Resynced to
+`origin/main` (`376310d` → `ebcfadc`, other-lane docs commit). **Step 1 — validate shipped:**
+purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0001, GOOD**. Fetched
+`/api/og` with a Googlebot UA, unauthenticated: `200`, `content-type: image/png`, real
+1200×630 PNG, 50591 bytes — crawlable, confirmed on production, not inferred from the diff.
+**Step 2 — PR sweep:** `agent-pr-sweep.mjs` shows 2 open agent PRs fleet-wide, neither this
+lane's own — #5637 (swing, CI-RUNNING) and #5537 (docs, CI-FAILED, confirmed intentional in
+prior cycles). No conflicts, no drafts-with-green-CI jam, nothing to rebase or chase.
+**Step 3 — new work:** re-checked the GA4→Google Ads conversion gap named in this cycle's
+brief. Confirmed it is not new: `src/lib/analytics/google-ads.ts` + its wiring
+(`Ga4ConversionTracker.tsx`, `Ga4Attribution.tsx`) already ship fail-closed conversion
+tracking for signup/purchase/pricing_view, fully tested. Live homepage HTML still shows only
+`gtag('config','G-YLN4K37KYF')` — no `AW-` config line — confirming `NEXT_PUBLIC_GOOGLE_ADS_ID`
+and the three label env vars are still unset in production (Docker build-args in
+`ecr-push-production.yml` wired but the GitHub Actions secrets behind them are empty). This is
+a real conversion-id/label credential gap, not a code defect — only the real Google Ads account
+owner can create the conversion actions and supply real `AW-<digits>` + labels. Already logged
+this way across many prior RUN-LOG cycles (2026-09 onward); not re-escalating again this cycle
+to avoid repeating the same unactionable note — no code PR possible until the external
+credential lands. No other new SEO work found. No PR opened this cycle.
 
 Confirmed clock myself: Wed 12:35 ET, last wake in today's window. `/api/public/gex-snapshot` →
 `market_session: OPEN`, `degraded: false`, spot 7794.96. Polled 5x at 3s intervals:
