@@ -253,8 +253,16 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
 /** WATCH gate unblock path with reasons, not just codes. */
 export function watchGateCoaching(play: TerminalPlay): string | null {
   if (!play.gateBlocks?.length) return null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-07): this used to `.slice(0, 3)` before mapping,
+  // silently dropping every gate past the third with no "+N more" marker — while the sibling
+  // "Entry stance" bullet (actionNarrative, play-brief-narrative.ts) states the TRUE gate count
+  // (`play.gateBlocks.length`, uncapped) and the "Entry" section (watchEntrySection, play-brief.ts)
+  // renders the FULL list uncapped too. A 4-gate WATCH play (live repro: WDC, 2026-10-07 — g_s12
+  // halt-feed-stale, g_s4 regime, g_s6 confluence, g_s14 cortex) therefore told the member "4 gates
+  // blocking entry — see below" and then only explained 3, silently omitting the Cortex veto — the
+  // single most decisive one, since it is the only gate here with no "clears when X" unlock story.
+  // Render every gate the count promises; nothing elsewhere in this brief caps the list either.
   const gates = play.gateBlocks
-    .slice(0, 3)
     .map((g) => {
       const unlock = g.unlock_et ? ` (clears ~${g.unlock_et} ET)` : "";
       return `**${g.code}**: ${g.reason}${unlock}`;
