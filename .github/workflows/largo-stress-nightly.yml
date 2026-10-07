@@ -31,9 +31,19 @@ permissions:
 jobs:
   largo-stress:
     runs-on: ubuntu-latest
-    # Scheduled: one rotated bank (~100-193 questions) at concurrency 5 — fits 45m.
-    # Manual `bank=all`: full 523-question sweep needs a longer wall clock.
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.bank == 'all' && 360 || 45 }}
+    # Scheduled / manual single-bank: concurrency=2 (lowered from 5 by #4073 to cut Clerk/UW 429
+    # storms — do not raise this back to 5, see largo-stress-nightly-timeout-budget.test.ts).
+    # Banks are NOT evenly sized (bankStats(): ~100-193 questions) — the budget below must cover
+    # the LARGEST bank at concurrency=2, not an average one. MEASURED 2026-09-26 (run 36239606676,
+    # bank1, 109 questions, completed in full): 35.65min live-phase wall clock = ~0.327min/question
+    # at concurrency=2. Bank3 (193 questions, the largest) projects to ~63min at that rate — the
+    # previous "fits 45m... at concurrency 5" comment here was simply wrong for this path (it had
+    # been running at concurrency=2 since #4073, not 5, and nobody re-measured the budget against
+    # the real per-bank sizes) and run 35996805744 (bank3, 2026-09-24) was cancelled by this exact
+    # timeout at 44m45s mid-sweep, auto-filing ops-auto-fix #5485. 90m gives bank3 real margin
+    # (~27min / ~43%) without reverting the #4073 concurrency mitigation.
+    # Manual `bank=all`: full 523-question sweep needs the separate, much longer 360m window.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.bank == 'all' && 360 || 90 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v7
@@ -66,6 +76,19 @@ jobs:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: node --import tsx scripts/largo-stress-run.mjs
+      # The full per-question report (every live answer's preview + issue tags, not just the
+      # console summary) is the only way to tell a genuine BAD answer from a scorer false positive
+      # after the fact — investigating #5502/#5578 (2026-09-26, 2026-10-01) without it meant
+      # reasoning from truncated console `preview` text that was never actually printed, only
+      # written to this file. Kept short-retention since it's a debugging aid, not an audit record.
+      - name: Upload stress report on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: largo-stress-report-${{ github.run_id }}
+          path: audit-output/largo-stress-report*.json
+          if-no-files-found: ignore
+          retention-days: 14
       # `if: failure()` alone does NOT catch a timeout: `timeout-minutes: 45` above kills the
       # previous step with conclusion `cancelled`, not `failure`, so `failure()` is false and this
       # step used to be silently SKIPPED. Measured 2026-08-31: 15 of the last 19 scheduled runs
@@ -85,7 +108,7 @@ jobs:
         with:
           script: |
             const title = `ops-auto-fix: Largo nightly stress failed (${new Date().toISOString().slice(0,10)})`;
-            const body = `Nightly \`validate:largo-stress-live-all\` failed or was cancelled (timeout-minutes: 45 reached is the common case — see workflow run for which). Check workflow run: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `Nightly \`validate:largo-stress-live-all\` failed or was cancelled (a timeout-minutes wall being reached is one possible cause among several — a single BAD-scored live answer also fails this job; see the uploaded \`largo-stress-report-*\` artifact on this run, if one was attached, for the per-question detail). Check workflow run: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
