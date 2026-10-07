@@ -62,8 +62,34 @@ test("buildSpxDeskPulse: cold replica prefers TODAY's own close once the regular
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*let prior = await priorDayForPulseLane\(\);[\s\S]*if \(label === "EXTENDED"\) \{\s*\n\s*const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);\s*\n\s*if \(todaysOwnClose\?\.pdc != null && todaysOwnClose\.pdc > 0\) \{\s*\n\s*prior = todaysOwnClose;/,
-    "closed-market branch must override the exclusive-of-today prior with today's own close once the session is EXTENDED"
+    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*let prior = await priorDayForPulseLane\(\);[\s\S]*if \(label === "EXTENDED"\) \{\s*\n\s*const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);\s*\n\s*if \(todaysOwnClose\?\.pdc != null && todaysOwnClose\.pdc > 0\) \{\s*\n\s*prior = \{ \.\.\.todaysOwnClose, pdh: priorDayLevels\.pdh, pdl: priorDayLevels\.pdl \};/,
+    "closed-market branch must override the exclusive-of-today prior's price/close with today's own close once the session is EXTENDED"
+  );
+});
+
+test("buildSpxDeskPulse: EXTENDED-hours override must NOT roll pdh/pdl forward onto today's own range (2026-10-07 fix)", () => {
+  // Regression for the bug the test above's comment now also documents: the 2026-09-12 fix
+  // correctly rolled TODAY's own close forward for the quoted price/prior_close once the
+  // regular session ends (EXTENDED), but it replaced `prior` wholesale, which also clobbered
+  // pdh/pdl with today's own just-closed high/low. SpxSniperHeader renders those fields under
+  // an explicit "Prior-day high"/"Prior-day low" label (tone "resistance"), and
+  // mergePulseIntoDesk's stickyStructureLevel always prefers a non-null pulse.pdh/pdl over the
+  // base desk's own (correct) value — so this propagated into /api/market/spx/merged and the
+  // live member dashboard every evening, disagreeing with the sibling /api/market/spx/desk
+  // route (which never applies this override) on the same field name. Confirmed live
+  // 2026-10-07: /merged and /pulse both served 2026-10-07's own intraday pdh/pdl
+  // (7807.02/7763.34) while /desk and raw Polygon daily bars agreed on 2026-10-06's real
+  // prior-day range (7844.52/7805.96).
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /const priorDayLevels = \{ pdh: prior\.pdh, pdl: prior\.pdl \};/,
+    "must snapshot the true exclusive-of-today pdh/pdl before the EXTENDED override can replace `prior`"
+  );
+  assert.doesNotMatch(
+    src,
+    /prior = todaysOwnClose;/,
+    "must never replace `prior` wholesale with today's own bar — that clobbers pdh/pdl too"
   );
 });
 
