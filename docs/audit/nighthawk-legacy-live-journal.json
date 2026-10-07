@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T18:13:00Z",
+  "lastUpdated": "2026-10-07T18:37:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -607,6 +607,10 @@
     {
       "at": "2026-10-07T18:13:00Z",
       "summary": "VST CROSSED its 2x scale-out trigger ($7.00 = 2 x $3.50 entry). Raw legacy-marks: 18:09:16Z mark=7.00 (bid 6.80/ask 7.20) but quote 110s old -> stale:true (correctly excluded from live-sync by fetchLegacyOptionMarksServer; healthcheck B_marks AMBER on 2 consecutive cycles 17:53Z/18:08Z was this, not the flicker pattern). 18:11:55Z mark=7.08 (bid 6.85/ask 7.30) FRESH (3.6s). Verified: EventBridge blackout-production-legacy-live-sync cron(*/5 11-21 MON-FRI) ENABLED, hit-cron Lambda 200 every 5min through 18:05Z, LEGACY_DISCORD_ALERTS=1 in prod env, VST exit_style=scale_out -> deriveScaleOutAction TAKE_PARTIAL at mark>=2.0x entry when not stale. So the 18:15Z tick should bank the 50% partial. OBSERVABILITY GAP (outcome-honesty): whether TAKE_PARTIAL actually fired is NOT verifiable from outside -- the route logs nothing on success, cron_job_runs.meta_json (holds transitions/noQuote) is exposed by no API, discord_live_state (trims_taken/scaled/peak) is read by no API route, raw PG is blocked here. ENHANCEMENT IDEA (not started, report-only): surface Legacy scale-out live state on the deck the way the Bangers panel already does via computeScaleOutTriggerInfo (next trigger $, % to trigger, hard-stop floor, scaled/trims) -- members currently see the 2x rule as risk_note text with no live indication of whether it fired. Also: a one-line console.info of non-empty transitions in cron/legacy-live-sync would make this auditable from CloudWatch. Next: verify at EOD via the record/outcome grade that VST resolves as a scaled-out position. MRVL 2.85 fresh, stable. Other stages GREEN (A 2 plays, C resolved=38, D both CONFIRMED). Harness note: ~half of ad-hoc peek fetches returned null bodies this cycle (temp Clerk mint flake, swept 1 leaked user) -- tooling, not product."
+    },
+    {
+      "at": "2026-10-07T18:37:30Z",
+      "summary": "Overall AMBER->GREEN. VST mark now $8.15 (fresh quote) -- well clear of the $7.00 2x trigger logged at 18:13Z, now +133% from $3.50 entry, still climbing (6.58->7.08->8.15 over the last ~25min). The two prior AMBER cycles (17:53Z/18:08Z/18:22Z) were the quote hovering right at/near the trigger with intermittent staleness, not a live-sync problem -- confirmed benign now that it cleared decisively. Still cannot verify from outside whether the TAKE_PARTIAL trim actually fired at the crossing (same observability gap logged 18:13Z: no API exposes discord_live_state/trims_taken, cron logs nothing on success). MRVL steady at $2.81. Other stages unchanged: A 2 plays, C resolved=38, D both CONFIRMED."
     }
   ],
   "knownOpenItems": {
