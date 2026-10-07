@@ -908,6 +908,17 @@
       "cross_lane_fix_relevant_to_4076": "#5632 (swing lane, merged 2026-10-07T15:40Z) fixed a genuine double-fanout bug in the SHARED `fetchVectorFullState` -- `play-brief-context.ts` called `fetchEcosystemContext` and `fetchVectorFullState` concurrently in the same Promise.all, but `fetchEcosystemContext` ALSO calls `fetchVectorFullState` internally for the same (ticker,horizon) key, so a cache miss triggered the expensive compute fan-out TWICE for the identical answer. Fixed via a process-local in-flight-promise dedup map. This is NOT a direct response to my #4076 UW-rate-limiter escalation (different lane, different specific bug), but it reduces real load on the same shared `fetchVectorFullState`/provider-call surface that feeds the UW saturation I've been tracking -- worth watching whether upstream_ok:false instance frequency/severity decreases post-merge as a secondary, unplanned mitigation. Not claiming this resolves the open finding; just noting the connection for future-session context.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-07T17:16:43Z_10th_instance_live_only_signature_crosses_3x_threshold": {
+      "cycle_time": "2026-10-07T17:16:43Z",
+      "trigger": "17:15 UTC offset trigger",
+      "summary": "10th confirmed upstream_ok:false instance, 17:15:59Z-17:16:23Z (~44s, the SHORTEST yet). No data loss (/record graded:12 stable). CloudWatch: 3x [zerodte-board-fallback] fires, 81 total [uw] queue-wait lines, 78 untagged live/3 background-sweep-tagged (96.3% live), max wait 19660ms.",
+      "THRESHOLD_CROSSED": "This is the 3RD CONSECUTIVE instance (#8 2026-10-06 18:11-18:14, #9 2026-10-06 18:44-18:46, #10 today 17:15-17:16) with the near-exclusively-live-traffic signature (96-99% untagged waits each time) -- crosses the standing 3-instance noise-discipline bar. This FIRMLY ESTABLISHES live-traffic-alone UW saturation as the dominant current pattern, not a 2-instance curiosity sitting alongside the original Vector-background-sweep framing (instances #1-7). Duration across the 3: 2m29s -> 1m24s -> 44s (shrinking), while the live-tagged ratio and max-wait (19579/19962/19660ms) have stayed consistently high -- frequency/intensity of the saturation hasn't eased, only the time-to-recover has.",
+      "5632_effect_inconclusive": "#5632 (fetchVectorFullState double-fanout dedup fix) merged ~15:40Z today, ~1.5h before this instance -- the live-traffic-only pattern still fired with the same signature afterward, so that fix alone has not visibly resolved (or worsened) this specific symptom. Consistent with the fix's own scope (removes ONE source of redundant load, doesn't touch UW_GLOBAL_MAX_RPS or the live/background split) -- not surprising, just confirming no silver-bullet effect yet.",
+      "escalation_action": "posting a concise update to #4076 noting the 3-instance confirmation",
+      "kind": "OBSERVATION",
+      "no_action_needed": false,
+      "action_taken": "posted follow-up comment to #4076 confirming the live-only signature at n=3"
     }
   },
   "sessions": {
