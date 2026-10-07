@@ -38,6 +38,22 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-07 — [FINDING, P4 0DTE/audit-research] G-11 liquidity/cap-matched control re-measured — gap narrows to ~1.8x on a thinner sample, consistent with the window-to-window noise the prior run itself flagged — no gate changed
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | `docs/audit/INTENTIONAL-DESIGN.md` item #5 (G-11 earnings-block print-window classification), re-running `scripts/audit/g11-earnings-liquidity-control.mjs` — the liquidity/cap-matched single-stock control built 2026-09-10 to isolate the earnings-specific residual from ordinary single-name-vs-index volatility. |
+| **Found** | DISCOVERY-lane re-verification cycle, 2026-10-07, re-running item #5's most recently-added measurement about 4 weeks after its last run, since the tool takes a plain `--days` window and had not been re-checked since. |
+| **Prior result (2026-09-10, n=71 paired rows, window 2026-08-20…09-09)** | Median realized RTH range: exemptible 8.99% vs liquidity/cap-matched control 2.29% — ratio **3.9x**. Verdict at the time: "sharpens but does not overturn" the original "argues against a naive unblock" reading; a genuine earnings-specific residual survives controlling for cap/liquidity. |
+| **New result (2026-10-07, n=17 paired rows, window 2026-09-16…2026-10-06, same `--importance=4` floor)** | Median realized RTH range: exemptible **4.73%** vs liquidity/cap-matched control **2.60%** — ratio **~1.82x**, roughly half the prior window's. Match quality held (median `cap_ratio=1.0`, `dvol_ratio=0.906`) — the narrower ratio is not an artifact of looser matching. 17/17 exemptible tickers matched to a control, 0 dropped for missing data. |
+| **How to read this** | The file's own prior entry already flagged exactly this risk when the naive exemptible-vs-index ratio moved from 5.6x to 12.5x between its first two windows: "read window-internally, not against the original run's absolute numbers." This third window reinforces that caution rather than contradicting the underlying finding — even the best-controlled metric (exemptible vs. liquidity/cap-matched control, which already removes the ordinary single-stock-vs-index confound) still swings by roughly 2x between a 71-row and a 17-row sample four weeks apart. The new window is also thinner by sample size alone (n=17 vs n=71), so a wider confidence interval is expected on top of any genuine regime difference. |
+| **What this does and does not establish** | Does NOT overturn the standing verdict — the ratio is still **above 1** in both windows (exemptible names realize more RTH range than a comparable non-earnings control even post-matching), so "zero direct print-gap risk ≠ ordinary volatility for that name" continues to hold directionally. Does NOT by itself justify treating 3.9x or 1.82x as *the* number — the two real windows measured so far disagree by more than 2x, which is itself evidence that more windows are needed before any specific ratio could inform a gate threshold, consistent with the item's own standing "no gate touched... needs a real graded P&L backtest" position. |
+| **Action taken** | None — read-only re-measurement, no gate or classifier touched. This entry extends the window-to-window record for whoever next revisits item #5, same discipline as the swing-persistence-floor re-run two cycles ago. |
+| **Re-run** | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/g11-earnings-liquidity-control.mjs --days=20` |
+| **Status** | RE-MEASURED — no gate changed. Adds a third window to `INTENTIONAL-DESIGN.md` item #5's running record (addendum appended there in the same PR as this finding). |
+
 ## 2026-10-07 — [FINDING, P4 audit-hygiene, docs] `INTENTIONAL-DESIGN.md` item #4's "What is actually shipped" table is stale — cap ceiling/screen pool changed in PR #4608, doc never updated — CORRECTED
 
 > **kind:** `FINDING`
