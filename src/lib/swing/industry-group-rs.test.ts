@@ -82,6 +82,15 @@ test("resolveGroupBenchmark: a known crypto-equity name gets NO benchmark, never
   assert.equal(resolveGroupBenchmark({ ticker: "JPM", sicCode: "6021" })?.etf, "KBE");
 });
 
+test("resolveGroupBenchmark: ASST (Strive, bitcoin-treasury) gets NO benchmark — same mislabel shape as HUT", () => {
+  // Live-found 2026-10-07 (Ask Largo standing mandate): ASST was live on the Swing WATCH lane and, before
+  // being added to sector-map.ts's crypto-equity list, was unmapped by `sectorFor` — so this guard never
+  // fired and ASST fell straight into the SIC-range Financials fallback, exactly like HUT before it was
+  // added. Live play-brief cited "leading Financials (XLF) by 2.8%" for a bitcoin-treasury company.
+  assert.equal(resolveGroupBenchmark({ ticker: "ASST", sicCode: "6199", sicDescription: "FINANCE SERVICES" }), null);
+  assert.equal(resolveGroupBenchmark({ ticker: "ASST", sectorLabel: "Tech" }), null);
+});
+
 test("industryGroupRs01: name OUTperforming its group scores > 0; UNDERperforming clamps to 0", () => {
   const nameUp5 = mk(100, 105); // +5% over 10 sessions
   const groupUp2 = mk(100, 102); // +2%

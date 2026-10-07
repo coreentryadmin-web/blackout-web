@@ -1,3 +1,29 @@
+## WATCH LIST — 2026-10-07 GEX heatmap main accumulation loop was the unyielded hot loop #4822/#4836 missed — deploy pending validation
+
+**What was fixed:** `buildGexHeatmapUncached`'s main per-contract accumulation loop (`for (const c
+of contracts) accumulateContract(c)`) was never touched by the 2026-09-11/12 event-loop-yield fixes
+(#4822, #4836) — both only yielded the two DOWNSTREAM loops (maxPainByExpiry, depth-block). This
+main loop runs FIRST and is the LARGEST (every contract in an 11K+-contract chain like SPX), calling
+real closed-form Black-Scholes math (vanna/charm) per contract with zero yields. Measured live
+2026-10-07 ~11:30-12:36 UTC: ALB `TargetResponseTime` p99 hit 40-82s and per-minute Max hit 60-106s,
+matching `cron/meridian-warm` elapsed= 40-85s almost exactly — the SAME magnitude as the original
+2026-09-11 incident, meaning the prior two fixes had not actually resolved it. Added a batched
+(every 500 contracts) `setImmediate` yield to this loop. Full write-up:
+`docs/audit/findings-staging/2026-10-07-gex-heatmap-main-accumulation-loop-event-loop-yield.md`.
+
+**Specific thing to check once this deploys, during RTH (market opens 13:30 UTC today):** re-pull
+`AWS/ApplicationELB` `TargetResponseTime` p99/Max on `blackout-production-app`'s target group for
+15-30 min windows during/after the next several `cron/meridian-warm` invocations — should drop
+materially below the 60-106s spikes measured pre-fix (a few seconds at most would confirm it). Also
+re-check `cron/meridian-warm`'s own logged `elapsed=` in `/ecs/blackout-production` — total wall-clock
+won't necessarily shrink much (the fix doesn't reduce total work, only how it's chunked against the
+event loop), so the real signal is the ALB p99/Max during the same window, not the cron's own elapsed
+time. If it is STILL spiking into double-digit seconds, the next place to look is `accumulateContract`
+itself or the un-batched far-dated fetch loop (bounded by `FAR_DATED_MAX_TARGETS=8`, expected small)
+— re-measure before assuming the batching approach itself was wrong.
+
+---
+
 ## WATCH LIST — 2026-09-22 0DTE record `by_outcome` mislabeled two real trim-scale exit reasons — deploy pending validation
 
 **What was fixed:** `record.ts`'s `managedOutcomeLabel()` used an ad hoc `/ratchet|runner/` regex
@@ -6517,3 +6543,15 @@ this file documents).
 - **What was broken:** `watchEntrySection()` (`play-brief.ts`) hardcoded the literal string `"WATCH"` in its "First flagged N days ago" sentence, but the function renders for every pre-entry bucket (WATCH, RESEARCH, and WAITING_FOR_ENTRY all route through the same coarse `bucket === "watch"` branch). Live repro, Ask Largo standing-mandate sweep: ZS (200C 7DTE, servingSection RESEARCH) composed a brief whose "Entry" section body read "Serving section: **RESEARCH**" two lines above "still on WATCH, not yet graduated to a real position" — directly self-contradictory within the same section. The bug was reproducible in the file's own pre-existing unit test (`fixturePlay()`'s default `servingSection` is `WAITING_FOR_ENTRY`, yet the test asserted the rendered text said "WATCH").
 - **What changed:** the sentence now interpolates `play.servingSection` (same underscore-to-space formatting as the adjacent "Serving section:" line), falling back to the literal `"WATCH"` only when `servingSection` is genuinely absent. Pure narration-text fix — no gate, entry-stance, or deadline logic touched. Updated the existing test's assertion to the fixture's real default (`WAITING_FOR_ENTRY`) and added a RESEARCH-specific regression test.
 - **RTH check:** once deployed, pull `GET /api/market/swing/play-brief` for a live RESEARCH-bucket play (or any pre-entry play whose `servingSection` isn't WATCH) and confirm the "Entry" section's "First flagged" sentence names the same serving section as the "Serving section:" line immediately above it, never a mismatched "still on WATCH".
+
+### 357. Swing play-brief dark-pool levels could be served stale with no disclosure — whole-Vector-state freshness can't see one field's own (looser) cache age — fix/swing-dark-pool-stale-disclosure — 2026-10-06
+
+- **What was broken:** triggered by this cycle's perf-audit step measuring `vector-dark-pool-warm` failing at a high rate in production (warmed=4/failed=51, warmed=10/failed=45). Live-pulled play-briefs (AMZN/MSFT/NVDA) correctly showed dark pool as absent right now (cache fully expired) — but tracing the code path found a separate, latent gap the current failure doesn't happen to exercise: `getVectorDarkPoolLevels` discarded the cache entry's own `fetchedAt` (captured specifically to disclose staleness, per that cache module's own header) before it ever reached the brief. Every consumer gated dark-pool inclusion only on the WHOLE Vector state's compute-recency (`vectorSnapshotStale`), which can read "live" seconds after assembly while the embedded dark-pool levels are up to ~24 minutes old (its own cache TTL is a deliberately looser 25min/10min-cadence than the rest of Vector's 120s bound) — served with no distinction from a current read.
+- **What changed:** added `getVectorDarkPoolLevelsWithAge()` + a new `darkPoolAsOf` field on `VectorFullState`; `reportVectorAbsences` now names `dark_pool_levels` unavailable (with a new `dark_pool_stale` flag) when present-but-older-than-20min, distinct from genuinely empty; `collectVectorSectionAbsences` surfaces it with a `"stale — last synced HH:MM ET"` reason (same phrasing as the existing option-mark staleness disclosure); all three swing-brief dark-pool construction sites now omit a stale entry from the narrative/structured levels rather than rendering it as live. Current cache-expired failure mode is unaffected (already correctly disclosed as absent).
+- **RTH check:** once `vector-dark-pool-warm` is healthy again (post #4076 UW rate-limiter fix) and intermittently warms a ticker's cache, pull `GET /api/market/swing/play-brief` for a real OPEN/WATCH position mid-session ~20+ minutes after a dark-pool cache write and confirm `unavailableSources` shows `"Vector dark pool": "stale — last synced HH:MM ET"` (not silently rendered as current) once the entry crosses the 20min mark, and that the "Trade manager read"/structured levels sections omit that dark-pool level at the same moment.
+
+### 358. Swing WATCH play-brief's "Gates blocking entry" coaching bullet silently dropped every gate past the 3rd — fix/swing-gate-coaching-truncates-blocking-list — 2026-10-07
+
+- **What was broken:** `watchGateCoaching()` (`play-brief-narrative-coaching.ts`) `.slice(0, 3)`'d `play.gateBlocks` before rendering, with no `"+N more"` marker — while the adjacent `actionNarrative` bullet states the TRUE, uncapped gate count ("4 gates blocking entry — see below") and `watchEntrySection`'s "Entry" section renders the full list uncapped a few lines above, in the SAME envelope. Live repro: `GET /api/market/swing/play-brief?playId=SWING:WDC` (2026-10-07, WATCH/`serving: COMMIT_NOW`, 4 real commit-gate blocks — `g_s12_halt_feed_stale`, `g_s4_regime`, `g_s6_confluence`, `g_s14_cortex`) read "4 gates blocking entry — see below" then only explained 3, silently omitting `g_s14_cortex` (the Cortex veto — the one gate of the four with no "clears when X" unlock story).
+- **What changed:** removed the `.slice(0, 3)` cap entirely so `watchGateCoaching` renders the full list, matching the two sibling renderers that were already uncapped. Added a 4-gate regression test proven RED pre-fix / GREEN post-fix.
+- **RTH check:** once deployed, pull `GET /api/market/swing/play-brief` for any live WATCH-bucket play with 4+ active commit-gate blocks (a multi-gate WATCH name is common pre-open/pre-RTH, per this same sweep's live WDC/FRO repros) and confirm the "Trade manager read" → "Gates blocking entry" bullet lists every code the "Entry stance" bullet's stated count promises, with none silently missing.

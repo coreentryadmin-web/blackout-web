@@ -2482,6 +2482,36 @@ test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is f
   assert.match(section!.body, /tape read may lag/);
 });
 
+// BUG (Ask Largo standing mandate, 2026-10-07, live repro: NTAP). A dead-but-not-closed WATCH play
+// (entryStatus EXTENDED_CHASE, i.e. `deadPlayReason` non-null) is exactly the case
+// `collectBriefUnavailableSources` (play-brief-absence.ts) was widened on 2026-09-19 to suppress
+// staleness noise for — but this section only ever checked `status === "CLOSED"`, so it kept
+// rendering "HELIX flow: pipeline stale" for a play whose SAME envelope's unavailableSources[] and
+// confidence prose both correctly said every live source resolved cleanly. Proves the suppression
+// now matches collectBriefUnavailableSources's own isNotLive gate via the shared
+// isSwingPlayStaleCheckExempt predicate.
+test("dataFreshnessSection: suppresses HELIX-stale prose for a dead (extended-chase) WATCH play, matching collectBriefUnavailableSources's isNotLive gate (Ask Largo 2026-10-07, live repro NTAP)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", entryStatus: "EXTENDED_CHASE" }),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: "2026-09-06T14:30:00.000Z",
+    scanSessionDay: "2026-09-06",
+    laneRows: [],
+    meridian: null,
+    ecosystem: { flow_feed_fresh: false } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  if (section) {
+    assert.doesNotMatch(
+      section.body,
+      /HELIX flow: \*\*pipeline stale\*\*/,
+      "a dead WATCH play's narrative must not assert HELIX staleness when the structured unavailableSources[]/confidence for the same brief say every live source resolved cleanly",
+    );
+  }
+});
+
 // Ask Largo standing mandate follow-up to #5351: dataFreshnessSection independently sampled the
 // real wall clock (Date.now()) for its option-mark/Vector/GEX staleness checks instead of
 // consulting ctx.readMs, the one canonical "now" composeSwingPlayBrief stamps before any section

@@ -895,6 +895,12 @@
       "carry_forward_to_tomorrow": "(1) Watch #4076 comments 6021563148 and 6022602033 for a response before re-deriving. (2) Watch whether the live-traffic-only upstream_ok:false signature (instances #8, #9) recurs a 3rd time -- would firmly establish it as the dominant pattern rather than Vector-sweep contention. (3) SPCX thesis_break-lag counter-example (n=1, 2026-10-05) and MSTR Cortex-relief finding (n=1, 2026-10-02) both still below 3-instance bars. (4) Journal still unpruned (blocked by permission classifier since 2026-10-02) -- now well over 125 entries.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-07T13:11:26Z_new_day_pre_market_cold_start": {
+      "stage": "cold_start",
+      "summary": "New trading day 2026-10-07 (Wednesday). Board healthy: PRE_MARKET, heat 34%, upstream_ok:true, ledger_len:0 as expected before the open. Scratchpad survived this restart intact (no recreation needed). Carrying forward from 2026-10-06: (1) #4076 comments 6021563148 (severity escalation) and 6022602033 (live-traffic-alone finding) both still unanswered ~19h later -- watch before re-deriving. (2) 9 total upstream_ok:false instances tracked 2026-10-05/06, with the LAST TWO (instances #8, #9, both late 2026-10-06) showing a near-zero background-sweep-tag signature vs. the Vector-sweep-contention signature in instances #1-7 -- watch today for whether this new live-traffic-only pattern recurs a 3rd time (would firmly establish it) or whether Vector-sweep contention resumes as the dominant cause. (3) SPCX thesis_break-lag counter-example (n=1, 2026-10-05) and MSTR Cortex-relief finding (n=1, 2026-10-02) both still below 3-instance bars. (4) Journal still unpruned (blocked by permission classifier since 2026-10-02), now at 129 entries.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {

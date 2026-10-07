@@ -12,6 +12,7 @@ import {
   confluenceZoneKindsLabel,
   fundamentalsAgeMs,
   fundamentalsAncient,
+  darkPoolStale,
   fundamentalsFreshnessTag,
   gexMatrixAgeMs,
   gexMatrixStale,
@@ -45,7 +46,7 @@ import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { formatFixedNonZero } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
-import { deadPlayReason } from "./entry-enterability";
+import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy";
@@ -776,7 +777,10 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
     );
   }
   const dp = vec?.darkPoolLevels ?? [];
-  if (dp.length && !vectorStaleForLevels) {
+  // BUG FIX (2026-10-06): see collectFocalLevels (play-brief-narrative.ts) for the full account —
+  // `vectorStaleForLevels` alone cannot catch a dark-pool cache entry up to 20+ min stale while the
+  // rest of the Vector state computed live seconds ago.
+  if (dp.length && !vectorStaleForLevels && !darkPoolStale(vec)) {
     lines.push(
       "**Dark pool levels:** " +
         dp
@@ -1991,15 +1995,26 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   // historical record, not a live position). Left ungated, these fire FOREVER once any time has
   // passed since close, exactly the failure mode `play-brief-absence.ts`'s
   // `collectBriefUnavailableSources` already documents and gates for its own (structured
-  // unavailableSources/UnavailableChip) output — this narrative section was the one place that
-  // isClosed gate was missed. Reproduced live 2026-09-12 on a real CLOSED INTC brief read a full
-  // week after the play closed: "Swing scan: prior session ... today's discovery not yet run" and
-  // "HELIX flow: pipeline stale" both still rendered, describing "today" for a trade that closed
-  // 2026-09-04. The option-mark lines above are untouched — `playExpectsLiveOptionMark` already
-  // scopes the live-mark-staleness claim to OPEN/HOLD/TRIM, and a bare `markAsOf` timestamp (when
-  // present) is a historical fact, not a live-staleness claim.
-  const isClosed = String(play.status ?? "").toUpperCase() === "CLOSED";
-  if (!isClosed) {
+  // unavailableSources/UnavailableChip) output. Reproduced live 2026-09-12 on a real CLOSED INTC
+  // brief read a full week after the play closed: "Swing scan: prior session ... today's discovery
+  // not yet run" and "HELIX flow: pipeline stale" both still rendered, describing "today" for a
+  // trade that closed 2026-09-04. The option-mark lines above are untouched — `playExpectsLiveOptionMark`
+  // already scopes the live-mark-staleness claim to OPEN/HOLD/TRIM, and a bare `markAsOf` timestamp
+  // (when present) is a historical fact, not a live-staleness claim.
+  //
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-07): the 2026-09-12 fix above only gated on
+  // `isClosed`. `collectBriefUnavailableSources` was separately widened on 2026-09-19 to also
+  // suppress these checks for a dead-but-not-closed WATCH candidate (`deadPlayReason` non-null —
+  // entry-window expired/extended/invalidated/contract-expired), via its own local `isNotLive`.
+  // This section never got the same widening, so the two halves of the SAME envelope disagreed:
+  // live repro NTAP (today, `entryStatus: "EXTENDED_CHASE"`, status `COMMIT` i.e. still a WATCH
+  // row, not CLOSED) — this section's "Data freshness" prose asserted "HELIX flow: **pipeline
+  // stale**" while the SAME brief's structured `unavailableSources` was `[]` and `confidence.why`
+  // read "Every live source this brief reads from resolved cleanly this cycle." One EXEMPT
+  // predicate (`isSwingPlayStaleCheckExempt`, entry-enterability.ts) now backs both call sites so a
+  // third one can't silently reintroduce the same split.
+  const isStaleCheckExempt = isSwingPlayStaleCheckExempt(play);
+  if (!isStaleCheckExempt) {
     if (scanAsOf) {
       const staleScan =
         scanSessionDay && sessionDate && scanSessionDay !== sessionDate;
