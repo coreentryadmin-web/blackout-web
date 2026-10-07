@@ -38,6 +38,19 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-07 — [FINDING, P4 audit-hygiene, docs] `INTENTIONAL-DESIGN.md` item #4's "What is actually shipped" table is stale — cap ceiling/screen pool changed in PR #4608, doc never updated — CORRECTED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this corrects** | `docs/audit/INTENTIONAL-DESIGN.md` item #4's ("Discovery caps — dynamic N + momentum ranking BOTH SHIPPED") "What is actually shipped" table, last updated in its own "REVISED 2026-08-24" entry, which states `BREAKOUT_MAX_CANDIDATES_CEILING = 150` and a derived screen pool of `600` (ceiling × 4). Both values are now wrong relative to `main`. |
+| **Found** | DISCOVERY-lane re-verification cycle, 2026-10-07, checking the live code behind item #4's reference table (a "check for stale docs" angle) against `src/lib/zerodte/breakout-discovery.ts`. |
+| **Root cause of the staleness** | PR #4608 ("fix(0dte): loosen whole-market discovery/commit gates for volume", commit `9811c10cd`, 2026-09-08) — an operator-reported, well-reasoned 0DTE gate-loosening pass that raised `BREAKOUT_MAX_CANDIDATES_CEILING` 150→**220** and `BREAKOUT_SCREEN_POOL` 200→**280** (alongside 8 other unrelated count-limiting knobs the same PR deliberately loosened, per its own commit message) — shipped cleanly, with 22 test pins updated and a full green suite, but never touched `INTENTIONAL-DESIGN.md`'s item #4 table, which the file's own "Standing note" says to "keep... updated as the measurements run and any of these decisions is revisited." |
+| **Verification (against current `main`)** | `src/lib/zerodte/breakout-discovery.ts`: `BREAKOUT_MAX_CANDIDATES_CEILING = 220` (line 80), `BREAKOUT_SCREEN_POOL = 280` (line 88). The pre-pool formula at line 283, `Math.max(BREAKOUT_MAX_CANDIDATES_CEILING * 4, BREAKOUT_SCREEN_POOL)`, now resolves to `max(880, 280) = 880` — not the `600` the table states (which was itself `max(150×4, 600) = 600` under the old values). `BREAKOUT_MAX_CANDIDATES` (the floor) is unaffected and still `40`, matching the table. |
+| **Action taken** | None to the product — PR #4608's loosening was already a deliberate, documented, tested change; nothing here suggests it was wrong. This entry only corrects the stale reference table so a future session reading item #4 doesn't reason from superseded constants when deciding whether the discovery-recall re-measurement is still worth running. |
+| **Status** | CORRECTED — `INTENTIONAL-DESIGN.md` item #4's table updated in the same PR as this finding to reflect the current live values (220 / 280 / 880), with a pointer to PR #4608. |
+
 ## 2026-10-07 — [FINDING, P4 Swing/audit-research] Swing cross-session persistence floor re-measured post-loosening — BLOCKED still outperforms CLEARED at both measurable horizons, gap widened — no gate changed
 
 > **kind:** `FINDING`

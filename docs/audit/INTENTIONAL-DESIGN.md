@@ -192,14 +192,22 @@ gex-wall-snapshot-poll.mjs` is that live intraday poller — built + smoke-teste
 
 **What is actually shipped.**
 
+> **UPDATED 2026-10-07** — the table below was last refreshed in the 2026-08-24 WS-21 entry and
+> went stale when PR #4608 ("fix(0dte): loosen whole-market discovery/commit gates for volume",
+> 2026-09-08) raised `BREAKOUT_MAX_CANDIDATES_CEILING` 150→**220** and `BREAKOUT_SCREEN_POOL`
+> 200→**280** without this doc being updated alongside it — caught by a DISCOVERY-lane stale-docs
+> sweep (`docs/audit/findings-staging/2026-10-07-intentional-design-item4-stale-constants.md`).
+> Values below now reflect `main` as of that date. The ranking formula, cap-floor, and cap-formula
+> rows were unaffected by #4608 and are unchanged.
+
 | | value | where |
 |---|---|---|
-| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **600** | `breakout-discovery.ts:295` |
+| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **880** | `breakout-discovery.ts:283` |
 | cap floor | `BREAKOUT_MAX_CANDIDATES` = **40** (a floor, not a ceiling) | `breakout-discovery.ts:69` |
-| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **150** | `breakout-discovery.ts:74` |
-| cap formula | `clamp(ceil(qualifying × 0.30), 40, 100)`, `qualifying` = **long + short** pools | `breakout-cap.ts:41-56` |
-| ordering | `rankMoversForChainFetch` — **gain-over-range** (`gain / ((h−l)/o)`) for both sides, $-volume breaks ties | `breakout-discovery.ts:91-112`, applied `:378-379` |
-| chain-fetch budget | `min(max(cap × 4, 60), BREAKOUT_SCREEN_POOL)` | `breakout-discovery.ts:378` |
+| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **220** | `breakout-discovery.ts:80` |
+| cap formula | `clamp(ceil(qualifying × 0.40), 40, 220)`, `qualifying` = **long + short** pools (pool-pct also raised by #4608, 0.30→0.40) | `breakout-cap.ts` |
+| ordering | `rankMoversForChainFetch` — **gain-over-range** (`gain / ((h−l)/o)`) for both sides, $-volume breaks ties | `breakout-discovery.ts:101` |
+| chain-fetch budget | `min(max(cap × 4, 60), BREAKOUT_SCREEN_POOL)` | `breakout-discovery.ts` |
 
 **Corrected measurement — 13 sessions (2026-07-20 … 2026-08-05), long side, favorable-first
 underlying-continuation proxy (+1.5% before −0.8%, 10:00 ET entry, real Polygon minute bars).**
