@@ -38,6 +38,19 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-07 — [FINDING, P4 audit-hygiene, Swing] "Swing `dailyBarComplete` is market-wide grouped-daily non-empty, not per-ticker" (2026-09-05) is marked OPEN but was fixed the same day — CORRECTED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this corrects** | `docs/audit/FINDINGS.md`'s 2026-09-05 entry **"[P2, data-correctness] Swing `dailyBarComplete` is market-wide grouped-daily non-empty, not per-ticker — OPEN"** (Cursor 360° cross-exam, CLQ-003). The entry's own "Recommended fix" — "Per-ticker grouped-daily presence (or explicit `false` when ticker absent from grouped response)" — describes exactly what shipped the same calendar day, but the heading/Status row were never updated. |
+| **Found** | Continuing the "verify old OPEN findings against current code/git log" technique used throughout this session (#5593–#5613). The finding named a concrete, checkable symptom: `discovery.ts` setting `dailyBarComplete: grouped.length > 0` (a market-wide non-empty check) instead of checking the specific ticker's own row. |
+| **Root cause of the stale status** | The fix shipped in PR #3969 ("fix(swing): per-ticker dailyBarComplete gate (CLQ-003)", 2026-09-05 13:40 UTC — same day as the finding) — but the original entry's heading/Status row were never updated afterward to reflect it. |
+| **Verification (against current `main`)** | `src/lib/swing/discovery.ts` now exports `tickerHasGroupedDailyBar(grouped, ticker)` (lines 698-708): scans `grouped` for a row whose `T` field (uppercased/trimmed) matches the ticker, returning `true` only when that SPECIFIC ticker's own bar is present — not merely that the market-wide feed is non-empty. Line 1050 wires this directly: `dailyBarComplete: tickerHasGroupedDailyBar(grouped, w.ticker)`. A day-1 IPO or thin name genuinely absent from the grouped-daily feed now correctly reads `dailyBarComplete: false` even when the rest of the market's feed is populated — exactly the gate behavior the original finding's "Recommended fix" asked for. Ran the regression suite live (Node 20): `discovery.test.ts`, 28/28 green. |
+| **Action taken** | None to the product — already fixed and already covered by the existing regression suite. This entry exists solely so the next `findings-fold-staging.mjs` pass carries the corrected status forward. |
+| **Status** | CORRECTED — the 2026-09-05 Swing `dailyBarComplete` finding is FIXED (merged #3969, same day as filed). |
+
 ## 2026-10-06 — [FINDING, P4 audit-hygiene, Swing] "Shadow positions close at last mark on expiry" (2026-09-05) is marked OPEN but was fixed the same day — CORRECTED
 
 > **kind:** `FINDING`
