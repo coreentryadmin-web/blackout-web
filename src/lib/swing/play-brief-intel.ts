@@ -1070,7 +1070,7 @@ export function catalystsSection(
  * is the same check reused by the "Gates blocking entry" headers in play-brief.ts/play-brief-
  * narrative-coaching.ts — one shared source instead of three copies of the same two branches.
  */
-function entryTriggerDeadReason(play: TerminalPlay): string | null {
+export function entryTriggerDeadReason(play: TerminalPlay): string | null {
   const reason = deadPlayReason(play);
   if (reason) return `${reason} — this level no longer fires the setup`;
   // BUG FIX (Ask Largo standing mandate, 2026-10-06): a Legacy morning-confirm-promoted row's

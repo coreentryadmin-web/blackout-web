@@ -106,7 +106,22 @@ export function checkPortfolioOverlap(
   // independent EWZ LONG in the book gets mis-counted as overlap against itself.
   let selfExcluded = false;
   for (const pos of existing) {
-    if (excludePositionId != null && pos.positionId === excludePositionId) continue;
+    // Match on EITHER id field, not just `positionId`. A Banger-origin reviewed play's "ledger
+    // id" (what `bookContextSection` passes as `excludePositionId`) is actually the banger row's
+    // own id — banger-lane-merge.ts stamps `positionId: row.id` from `banger_positions`, never a
+    // real swing_positions row. `loadOpenBook()` deliberately leaves `positionId` UNSET on every
+    // banger-origin book row and stores that same number only under `bangerId` (to avoid a
+    // DIFFERENT, already-fixed cross-sequence collision risk on `positionId` — see
+    // `PortfolioPosition.bangerId`'s own doc comment). Each choice is correct in isolation, but
+    // composed they left a gap: excluding only on `positionId` can never match a banger-origin
+    // candidate's own row, which carries the exact same id as `bangerId` instead — so the
+    // candidate reported ITSELF back as "a separate, cross-engine position" (live repro 2026-10-07,
+    // VST and MRVL both self-flagged as concentration against their own open position).
+    if (
+      excludePositionId != null &&
+      (pos.positionId === excludePositionId || pos.bangerId === excludePositionId)
+    )
+      continue;
     if (
       excludePositionId == null &&
       excludeSelfMatch &&

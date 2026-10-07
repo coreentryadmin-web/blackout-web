@@ -137,6 +137,18 @@ function sectorEtfFromSic(sic: number): { etf: string; label: string } | null {
   if (sic >= 3570 && sic <= 3579) return XLK;
   if (sic >= 3500 && sic <= 3599) return XLI;
   // Electronic & electrical equipment (semis 3674 handled by the industry tier) → Tech.
+  // EXCEPT the exact top-level catch-all code "3600" itself: Polygon's OWN sic_description for
+  // that code is "ELECTRONIC & OTHER ELECTRICAL EQUIPMENT (NO COMPUTER EQUIP)" — explicitly
+  // disclaiming the Tech label it would otherwise inherit from this range. Live-confirmed
+  // 2026-10-07: GE Aerospace (jet engines, hand-classified "Industrials" in the static sector-map)
+  // carries exactly this generic code, so the range rule mechanically mislabeled it "Technology
+  // (XLK)" in the member-facing Ask Largo play-brief — the same "mechanically-nearest-but-
+  // substantively-wrong ETF" failure the NO_SECTOR_BENCHMARK_THEMES guard above already fixed for
+  // crypto-equity names. Returning null here (not a guess) lets the correct static sector-map
+  // label win instead — same "honest absence beats a wrong mechanical match" principle this file's
+  // own header states. Scoped to the exact ambiguous "3600" code only; genuine sub-codes in this
+  // range (3661 telephone apparatus, 3674 semis, etc.) are untouched.
+  if (sic === 3600) return null;
   if (sic >= 3600 && sic <= 3699) return XLK;
   // Transportation equipment: motor vehicles (371x) → Cons.Disc; aerospace/other → Industrials.
   if (sic >= 3710 && sic <= 3716) return XLY;

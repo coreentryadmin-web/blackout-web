@@ -366,6 +366,14 @@ test("gradeSwingPosition / pinSwingScaleOutGrade: graded-once + scale-out first-
   assert.match(gradeBody, /WHERE id = \$1 AND graded_at IS NULL/);
   // A ROLLED leg stays ROLLED even when the grader closes it out.
   assert.match(gradeBody, /WHEN status = 'ROLLED' THEN 'ROLLED'/);
+  // 2026-10-07 (Ask Largo mandate): the pre-update status (whether a trim was really enforced
+  // before this leg closed) is captured into scale_out_grade in the SAME statement that then
+  // overwrites status to CLOSED/ROLLED — this is the only way to recover that fact later, since
+  // this UPDATE is the sole writer of a closed row's terminal status.
+  assert.match(
+    gradeBody,
+    /scale_out_grade = COALESCE\(\s*scale_out_grade,\s*jsonb_build_object\('trim_enforced_before_close', status = 'TRIM'\)\s*\)/
+  );
 
   const pinBody = src.slice(
     src.indexOf("export async function pinSwingScaleOutGrade"),

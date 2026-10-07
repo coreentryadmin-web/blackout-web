@@ -3428,6 +3428,129 @@ test("composeSwingPlayBrief: gamma magnet is surfaced as a structured envelope l
   assert.equal(magnet?.provenance?.source, "Vector");
 });
 
+// FINDINGS 2026-10-07 (Ask Largo standing mandate): watchForSection (play-brief-intel.ts) narrates
+// play.flagUnderlyingPx/play.entryTriggerUnderlyingPx in prose for every WATCH play ("Flag anchor:
+// ... track move from here", "Entry trigger: ... this is what actually fires the setup"), but
+// neither ever reached the structured envelope.levels array — same gap class as the gamma magnet
+// fix above, except these two levels come from the swing gate itself (not Vector/GEX), so they
+// are the one pair of levels that should ALWAYS be structurally available for a pre-entry setup,
+// including (and especially) when Vector/GEX are cold/stale and every other level is empty. Live
+// repro: WDC WATCH brief 2026-10-07, GEX positioning + Vector desk state both unavailable that
+// cycle, leaving envelope.levels completely empty despite the setup's own trigger geometry being
+// fully known.
+test("composeSwingPlayBrief: WATCH flag anchor + entry trigger are surfaced as structured envelope levels", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 411.04,
+    }),
+    asOf: "2026-10-07 10:43 ET",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor, "flag anchor level must be present for a WATCH play even with no Vector/GEX data");
+  assert.equal(flagAnchor?.price, 411.79);
+  assert.equal(flagAnchor?.provenance?.source, "Swing lane");
+  assert.ok(entryTrigger, "entry trigger level must be present for a WATCH play even with no Vector/GEX data");
+  assert.equal(entryTrigger?.price, 411.04);
+  assert.match(entryTrigger?.note ?? "", /break\/reclaim below fires entry/);
+});
+
+test("composeSwingPlayBrief: flag anchor/entry trigger provenance is anchored to detectedAt (pin time), not the scan clock (2026-10-07 gap fix)", () => {
+  // BUG: these two levels' `note` says "pinned when first flagged", but their provenance used to
+  // hardcode `asOf: ctx.asOf` (today's scan timestamp) and `freshness: "recent"` regardless of how
+  // long ago the play was actually flagged — directly contradicting the adjacent Entry section's
+  // own "First flagged N days ago" narrative built from the SAME `detectedAt` field. A play flagged
+  // weeks ago would read "freshness: recent" on these levels forever. Live repro: WDC, detectedAt
+  // ~23h before the scan — real production confirmed the mismatch before this fix.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 403.61,
+      detectedAt: "2026-10-06T16:07:50.000Z", // ~23h before asOf below
+    }),
+    asOf: "2026-10-07T15:06:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor && entryTrigger);
+  // A ~23h-old pinned value must NOT read "recent" (that bucket is <10 minutes) and must NOT be
+  // stamped with today's scan time — it must carry the real pin time and a freshness bucket that
+  // honestly reflects a day-old value.
+  assert.notEqual(flagAnchor?.provenance?.freshness, "recent");
+  assert.notEqual(flagAnchor?.provenance?.asOf, ctx.asOf);
+  assert.match(flagAnchor?.provenance?.asOf ?? "", /2026-10-06/, "asOf must reflect the real pin date, not the scan date");
+  assert.notEqual(entryTrigger?.provenance?.freshness, "recent");
+  assert.notEqual(entryTrigger?.provenance?.asOf, ctx.asOf);
+});
+
+test("composeSwingPlayBrief: flag anchor/entry trigger fall back to scan asOf/unknown freshness when detectedAt is absent (never fabricated)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 403.61,
+      detectedAt: null,
+    }),
+    asOf: "2026-10-07T15:06:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  assert.ok(flagAnchor);
+  assert.equal(flagAnchor?.provenance?.freshness, "unknown");
+  assert.equal(flagAnchor?.provenance?.asOf, ctx.asOf);
+});
+
+test("composeSwingPlayBrief: OPEN/CLOSED plays do not surface flag anchor/entry trigger as structured levels", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 411.04,
+    }),
+    asOf: "2026-10-07 10:43 ET",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.levels?.find((l) => l.label === "flag anchor"), undefined);
+  assert.equal(brief.envelope.levels?.find((l) => l.label === "entry trigger"), undefined);
+});
+
 test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {
   const staleAsOf = "2026-09-05T20:00:00.000Z";
   const ctx: SwingPlayBriefContext = {
@@ -4147,4 +4270,55 @@ test("composeSwingPlayBrief: adding confidence does not alter direction, invalid
   assert.equal(ctxFull.play.liveStatus, "HOLD");
   assert.equal(ctxThin.play.entryTriggerUnderlyingPx, 100);
   assert.equal(ctxThin.play.invalidationUnderlyingPx, 90);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-07): `composeSwingPlayBrief`'s own `safeCompose`
+// (added by #5288's lineage for this file) correctly keeps the whole brief alive when `evidence`/
+// `levels` throw, falling back to `[]` — but that fallback was, until this fix, byte-identical to
+// a genuine "this product has nothing to show here" read. Largo product contract C3 names this
+// exact shape as the dangerous one: "Never return [] / null / {} for 'unavailable'... any fallback
+// that returns a degraded result the caller cannot distinguish from a real one is a defect even
+// when every test passes." A model reading `envelope.levels: []` after a crash has no way to tell
+// that apart from a WATCH play that genuinely has no flag/entry/wall levels yet. This test forces
+// `levelsFromContext` to throw (a getter trap on `flagUnderlyingPx`, the first field it reads for
+// a WATCH play) and asserts the resulting empty array is now accompanied by a disclosed
+// `unavailableSources` entry naming what failed — RED before the fix (levels silently `[]`, no
+// disclosure), GREEN after.
+test("composeSwingPlayBrief: a levels-build failure is disclosed via unavailableSources, not a silent empty array (Largo C3)", () => {
+  const throwingPlay = fixturePlay({ status: "WATCH" });
+  Object.defineProperty(throwingPlay, "flagUnderlyingPx", {
+    get() {
+      throw new Error("boom — simulated levelsFromContext build failure");
+    },
+    configurable: true,
+  });
+  const ctx: SwingPlayBriefContext = {
+    play: throwingPlay,
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  // The brief still builds (the whole point of safeCompose) and levels still falls back to [].
+  assert.deepEqual(brief.envelope.levels, [], "levels still falls back to [] — this is not what changed");
+
+  const disclosed = brief.envelope.unavailableSources?.find((s) => s.what_is_missing === "levels");
+  assert.ok(
+    disclosed,
+    "expected a disclosed unavailableSources entry naming the failed 'levels' build, not a silent []",
+  );
+  assert.match(disclosed!.reason, /failed to build/);
+  assert.equal(disclosed!.retryable, true);
+
+  // confidence must also reflect the failure (reads the same merged unavailableSources), never the
+  // "high — every live source resolved cleanly" read a bare [] would otherwise have produced.
+  assert.equal(brief.envelope.confidence?.level, "moderate");
+  assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
 });

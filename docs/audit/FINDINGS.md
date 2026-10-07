@@ -38,6 +38,505 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Ask Largo] WATCH "flag anchor"/"entry trigger" structured `envelope.levels` claimed a day-old pinned price was "recent" as of right now — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `levelsFromContext`'s WATCH-bucket branch (shipped earlier the same day as PR #5631, "surface WATCH entry trigger/flag anchor as structured envelope levels") pushed both the "flag anchor" and "entry trigger" levels with `provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" }` — hardcoded to the current scan timestamp/bucket regardless of how long ago the play was actually flagged. Both levels' own `note` text says "pinned when first flagged", and the adjacent "Entry" section of the SAME brief narrates `play.detectedAt` as "First flagged N days ago" — so the brief told the reader two inconsistent things about the identical number in the same response: the prose said "flagged N days ago", the structured envelope said "as of right now, fresh". Live-confirmed, not hypothetical: `GET /api/market/swing/play-brief?playId=SWING:WDC&ticker=WDC&status=COMMIT` on 2026-10-07 returned `envelope.levels` flag-anchor `asOf: "2026-10-07 15:06 ET"` / `freshness: "recent"` for a value `detectedAt` dates to `2026-10-06T16:07:50Z` (~23h earlier), while the same response's "Entry" section correctly said "First flagged 1 day ago (2026-10-06 12:07 ET)". A play that sits on WATCH for 45+ real days (the `AMD` repro the age-on-watch fix, 2026-09-10, already cites) would have read `freshness: "recent"` on these two levels forever, no matter how stale the pin actually was. |
+| **Root cause** | The two `levels.push(...)` calls were written to stamp `ctx.asOf` (the CURRENT scan's timestamp) rather than the timestamp the pinned price actually reflects, and hardcoded `freshness: "recent"` instead of deriving it from real age — unlike every other level/evidence entry in this same file (e.g. `archetypeTrackRecordSection`'s `asOf: etStampFromIso(...) ?? ctx.asOf` / `freshness: Number.isFinite(snapshotMs) ? freshnessFromObservedMs(...) : "unknown"`), which already derive both fields from the value's own observed instant. `play.detectedAt` (the "WATCH Published clock" already wired into the narrative age line) was available on the exact same `play` object used two lines above but was never read here. |
+| **Why not caught earlier** | The regression test added alongside #5631 (`"composeSwingPlayBrief: WATCH flag anchor + entry trigger are surfaced as structured envelope levels"`) only asserted `price`/`source`/`note` — it never asserted `provenance.asOf`/`freshness`, so the hardcoded "recent"/`ctx.asOf` values passed cleanly. Found this cycle by live-verifying the just-merged #5631 output against production rather than only unit tests, per the standing Ask Largo mandate's "keep digging into envelope completeness" discipline. |
+| **Blast radius** | Scoped to these two `levels` entries (`"flag anchor"`, `"entry trigger"`) in the WATCH-bucket branch of `levelsFromContext`. No other level/evidence producer in `play-brief.ts` shares this bug — every sibling already derives `asOf`/`freshness` from a real observed timestamp (Vector/GEX `vecFresh`/`gexFresh`, the archetype/ticker track-record entries, etc.). |
+| **Fix** | Both levels now share one `pinnedProvenance` object: `asOf` is `etStampFromIso(play.detectedAt) ?? ctx.asOf` and `freshness` is `freshnessFromObservedMs(Date.parse(play.detectedAt), readMs)` when `detectedAt` parses, falling back to `ctx.asOf`/`"unknown"` only when `detectedAt` itself is absent (never silently reusing the old wrong-but-present "recent" value). Mirrors the exact precedent `archetypeTrackRecordSection` already set a few hundred lines below in the same file. |
+| **Deliberately unchanged** | The `note` text on both levels ("pinned when first flagged" / the break/reclaim verb) is untouched — it was already correct; only the machine-readable `provenance` was wrong. The narrative "First flagged N days ago" line in the Entry section is untouched (it was already correctly using `detectedAt`); this fix brings the structured envelope into agreement with it, not the other way around. |
+| **Regression guard** | `src/lib/swing/play-brief.test.ts`: two new tests — (1) with `detectedAt` ~23h before `asOf` (the live WDC shape), asserts `freshness !== "recent"` and `asOf` reflects the real pin date, not the scan date; (2) with `detectedAt: null`, asserts the honest fallback (`freshness: "unknown"`, `asOf: ctx.asOf`) rather than fabricating a fresher-than-true read. RED before the fix (git-stash verified: test (1) failed — `freshness` was `"recent"` when it should not have been), GREEN after. |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief.test.ts` 119/119 pass (2 new, RED→GREEN confirmed on one via git-stash). |
+| **Status** | FIXED — branch `fix/swing-watch-level-pin-provenance`. |
+
+## Ask Largo swing play-brief: GE Aerospace's generic SIC "3600" catch-all code mechanically resolved to Technology (XLK) instead of the correct Industrials label — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Night Hawk Swings — sector-rotation industry-group benchmark (`src/lib/swing/industry-group-rs.ts`), surfaced in the Ask Largo swing play-brief's "Why this setup" section (`play-brief-intel.ts`) |
+| **Severity** | P3 (misleading narrative context, not a data-correctness/grading bug) |
+| **Status** | FIXED |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate deep-dive, 2026-10-07 |
+
+### Root cause
+
+`sectorEtfFromSic` (`industry-group-rs.ts`) buckets any Polygon `sic_code` in the range 3600-3699
+to `XLK` (Technology), with the comment "Electronic & electrical equipment ... → Tech". That range
+was written for genuine electronics/communications-equipment sub-codes (3661 telephone apparatus,
+3674 semiconductors, etc.), but it also silently swallows the generic top-level catch-all code
+`3600` itself — whose own Polygon `sic_description` is **"ELECTRONIC & OTHER ELECTRICAL EQUIPMENT
+(NO COMPUTER EQUIP)"**, explicitly disclaiming the Tech label.
+
+Live-confirmed 2026-10-07: GE Aerospace (jet-engine manufacturer, `GET /v3/reference/tickers/GE`)
+carries exactly this generic `sic_code: "3600"`. `resolveGroupBenchmark`'s granularity ladder
+(exact-SIC industry ETF → SIC-range sector ETF → static sector-map label → null) let the coarse
+SIC-range tier claim a match before the correct, hand-curated static label (`sector-map.ts`:
+`GE: "Industrials"`) was ever consulted — the exact "mechanically-nearest-but-substantively-wrong
+ETF" failure mode this same file's header already names, and that the `NO_SECTOR_BENCHMARK_THEMES`
+guard already fixed for crypto-equity names (HUT/MSTR, PR for #5446).
+
+### Evidence
+
+Live repro: `GET /api/market/swing/play-brief?playId=SWING:GE&ticker=GE&status=WATCH&strike=300&right=C`
+(2026-10-07 14:58 ET) rendered, in the "Why this setup" section:
+`"**Industry read:** lagging **Technology** (XLK) by 7.1% over 10 sessions (-4.3% vs +2.8%)."`
+— for GE Aerospace, an industrial/aerospace name, never a technology company. Confirmed the raw
+Polygon reference data directly: `sic_code: "3600"`, `sic_description: "ELECTRONIC & OTHER
+ELECTRICAL EQUIPMENT (NO COMPUTER EQUIP)"`. Confirmed the static sector-map already has the correct
+answer: `src/lib/sector-map.ts` line 39, `GE: "Industrials"` — that correct entry was simply never
+reached.
+
+RED→GREEN: added `resolveGroupBenchmark: the generic SIC '3600' catch-all code is not auto-classified
+Tech — it falls through to the static sector-map label` to `src/lib/swing/industry-group-rs.test.ts`.
+Pre-fix (`git stash` on the implementation file only): test failed — `resolveGroupBenchmark({ticker:
+"GE", sicCode: "3600", sectorLabel: "Industrials"})` returned `{etf: "XLK", label: "Technology",
+kind: "sector"}` instead of the expected Industrials/XLI. Post-fix (`git stash pop`): GREEN. Full
+`src/lib/swing/industry-group-rs.test.ts` suite: 16/16 pass. `npx tsc --noEmit`: clean.
+
+### Fix
+
+Added `if (sic === 3600) return null;` immediately before the `3600-3699 → XLK` range check in
+`sectorEtfFromSic`, scoped to the EXACT ambiguous top-level code only — every genuine sub-code in
+the range (3661, 3674, etc.) is untouched and still resolves to XLK as before (asserted in the new
+test). Returning `null` here (not a guess) is the same "honest absence beats a wrong mechanical
+match" principle this file's own header states for the coarser SIC-range tier generally; it lets
+`resolveGroupBenchmark`'s next tier (the static sector-map label) win for any ticker that has one
+(GE → Industrials/XLI), and correctly yields no benchmark at all for a ticker with SIC 3600 and no
+static label (SECTOR_ROTATION simply won't fire for that name, which is the existing, intentional
+behavior for any unresolvable sector — never a mislabel).
+
+### Blast radius
+
+Single function (`sectorEtfFromSic`), single call site (`resolveGroupBenchmark`), consumed by
+`swing-ingest.ts`'s `industryGroupRsFacts`/`industryGroupRs01` (SECTOR_ROTATION archetype scoring
+and the `sectorLeadershipFacts` narrated in the swing play-brief's "Why this setup" / "Industry
+read" line). Any other live ticker whose Polygon `sic_code` happens to be exactly `"3600"` (not
+3601-3699) gets the same correction automatically on next discovery/active-refresh — not swept
+individually here, since the fix is at the shared resolver, not a per-ticker patch. Frozen
+`sectorLeadershipFacts` on already-committed positions pinned before this fix are NOT retroactively
+rewritten (same "grade against what was known at the time" principle the adjacent `staleBenchmark`
+disclosure guard already establishes in `play-brief-intel.ts`) — a future pass could extend that
+exact disclosure guard to cover this SIC-3600 case too if a live position is found still carrying
+the stale XLK read, but none was found live in this pass (GE's own committed board rows were
+WATCH-bucket, not yet committed, so no frozen stale fact exists yet to disclose).
+
+## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Ask Largo] Every CLOSED swing play-brief's trim ladder read 0 fired, regardless of real trim history — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A CLOSED swing position's play-brief exit ladder (`TerminalPlay.exitPolicy.trim_levels[].fired`, read by `play-brief.ts`/`play-brief-narrative.ts`/`play-brief-narrative-coaching.ts`'s trim-coaching/post-mortem prose) always reported `trimsFired: 0` / every rung `fired: false`, even for a position that genuinely scaled out a real partial before it closed. Any trader reading a closed play-brief's "ladder"/post-mortem section for a trimmed-then-closed position would see "no trims banked" when one actually was. |
+| **Root cause** | `src/features/nighthawk/command-deck/adapters.ts`'s exit-ladder gate (added 2026-09-10, live repro NRG) deliberately only trusts the mechanical peak-vs-level crossing when `status === "TRIM"`, because an open position's bare peak crossing doesn't mean a real scale-out fired (manage-sync.ts gates that behind an `enforced` flag). That gate is correct for OPEN/HOLD/TRIM rows. But `gradeSwingPosition` (db.ts) unconditionally overwrites `status` to `CLOSED` (or `ROLLED`) the moment a position grades — `status = CASE WHEN status = 'ROLLED' THEN 'ROLLED' ELSE $6 END` — discarding whatever sticky `TRIM` status the row carried the instant before. A CLOSED row's `status` can therefore never again equal `"TRIM"`, so the adapter's gate forces `trimsFired:0` on every single closed position unconditionally, independent of its actual trim history. The reserved `swing_positions.scale_out_grade` JSONB column exists for exactly this kind of frozen-at-close fact (see `pinSwingScaleOutGrade`'s own doc comment) but had zero writers anywhere in the codebase (confirmed by grep — only its own tests referenced it). |
+| **Why not caught earlier** | The 2026-09-10 NRG fix's own regression test (`adapters.test.ts`, "swing trim ladder is NOT fired while liveStatus is still HOLD") only exercised the OPEN-lane HOLD→TRIM transition; it never constructed a CLOSED source to check whether a *real* prior trim survived the close, so the always-false behavior for CLOSED rows shipped silently alongside the correct OPEN-lane fix it was built on top of. |
+| **Blast radius** | Every CLOSED swing play-brief and Command Deck CLOSED-tab card, through both call sites of `terminalPlayFromClosedSwing` (`containers.tsx`'s CLOSED tab, `play-brief-resolve.ts`'s per-leg play-brief) and the chain-composite path (`closedDeckSourcesFromChains`, which spreads the single-leg mapper's output, so it inherits the fix automatically). No other product surface reads this gate. |
+| **Fix** | Threaded one new fact end-to-end, additively, no existing behavior changed: (1) `gradeSwingPosition`'s SQL now writes `scale_out_grade = COALESCE(scale_out_grade, jsonb_build_object('trim_enforced_before_close', status = 'TRIM'))` in the SAME statement that overwrites `status` — in a SQL `UPDATE`, every `SET` expression evaluates against the row's PRE-update values, so `status = 'TRIM'` here atomically captures the live status one instant before it's clobbered, no separate read-then-write race, and `COALESCE` never overwrites a value some future unrelated writer sets first. (2) `closed-plays.ts`'s `closedDeckSourceFromRow` reads it back via a new pure helper (`trimEnforcedBeforeCloseFromScaleOutGrade`) onto a new `SwingClosedDeckSource.trimEnforcedBeforeClose: boolean \| null` field — real `true`/`false`, or honestly `null` (never a fabricated `false`) for rows graded before this shipped. (3) `adapters.ts`'s `HorizonDeckSource` carries the same field through `terminalPlayFromClosedSwing`, and the exit-ladder gate becomes `status === "TRIM" \|\| src.trimEnforcedBeforeClose === true` — only an explicit `true` opens it; `null`/`false`/absent all keep the existing, correct zeroed-out behavior. |
+| **Deliberately unchanged** | The OPEN/HOLD/TRIM gate behavior (the 2026-09-10 NRG fix) is untouched — this only widens the CLOSED branch. Chain-roll nuance (whether an EARLIER leg of a rolled chain trimmed) is out of scope: the flag reflects only the terminal leg's own pre-close status, matching the existing precedent that entry/peak/trough on a rolled chain are also terminal-leg-scoped unless the terminal leg is the worst leg (`closedDeckSourcesFromChains`'s own `worstLegIsTerminal` comment). Rows graded before this PR permanently read `null` (never retroactively backfilled) — same honest-absence discipline the rest of this codebase uses for pre-existing gaps, not a backfill migration, which is out of scope for a small single-issue PR. |
+| **Regression guard** | `src/lib/db-swing-ledger.test.ts`: new assertion that `gradeSwingPosition`'s SQL contains the `scale_out_grade = COALESCE(..., jsonb_build_object('trim_enforced_before_close', status = 'TRIM'))` fragment. `src/lib/swing/closed-plays.test.ts`: 4 new tests covering `true`/`false`/absent (`null`)/non-boolean-value cases for `trimEnforcedBeforeCloseFromScaleOutGrade` and `closedDeckSourceFromRow`. `src/features/nighthawk/command-deck/adapters.test.ts`: 1 new test with three CLOSED sources (`trimEnforcedBeforeClose: false/null/true`) asserting the gate opens ONLY on explicit `true`. RED before the fix (git-stash verified: 6 of the new/updated assertions failed — the SQL fragment was absent and the CLOSED gate was unconditionally closed), GREEN after. |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/lib/swing/closed-plays.test.ts src/lib/db-swing-ledger.test.ts src/features/nighthawk/command-deck/adapters.test.ts` 206/207 pass (1 pre-existing unrelated skip), RED→GREEN confirmed via git-stash on the new assertions specifically. |
+| **Status** | FIXED — branch `fix/swing-closed-trim-enforced-flag`. |
+
+## Legacy live-sync cron logged nothing on success — real TRIM/CLOSE actions unverifiable from CloudWatch — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Legacy (live monitoring) |
+| **Found** | 2026-10-07, live audit, while watching VST cross its own 2x scale-out trigger ($7.00 = 2 × $3.50 entry) in real time |
+
+### Root cause
+
+`src/app/api/cron/legacy-live-sync/route.ts` calls `runLegacyLiveSync` every 5 minutes during RTH
+and, on success, only forwards the result to `logCronRun` → `cron_job_runs.meta_json` — a column no
+API route exposes. The route itself never logged anything on a successful run (only on the `catch`
+branch). So when a real position actually crosses a mechanical trigger — `deriveScaleOutAction`
+returning `TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT` (`src/lib/zerodte/scale-out.ts`) — there was no way
+to confirm from CloudWatch (or anywhere reachable from this audit sandbox) that the action actually
+fired, as opposed to the position merely being flagged `noQuote` that tick and silently skipped.
+
+This was not a correctness bug in the state machine itself (unit-tested, and the rule is shared with
+`banger-live-sync`) — it was a pure observability gap discovered by trying to verify a live event
+(VST's mark hit $7.00 at 18:09Z, cleared to $8.15 by 18:37Z) and finding no way to confirm the system
+actually acted on it short of a raw Postgres read (blocked from this sandbox) or decoding Discord
+channel history.
+
+### Evidence
+
+- EventBridge `blackout-production-legacy-live-sync` confirmed `ENABLED`, `cron(*/5 11-21 ? * MON-FRI *)`.
+- `blackout-production-hit-cron` Lambda logs showed `[hit-cron] /api/cron/legacy-live-sync -> 200`
+  every 5 minutes through the window VST crossed its trigger — the cron ran, but its own app-level
+  logs (`/ecs/blackout-production`, filtered on `"legacy-live-sync"`) had zero matching lines.
+- `LEGACY_DISCORD_ALERTS=1` confirmed set in `blackout-production/app/env`, so live management is on.
+- No `/api/admin/nighthawk/*` route and no member-facing route reads `discord_live_state` /
+  `trims_taken` — confirmed by grep across `src/app/api`.
+
+### Fix
+
+Added a single `console.info` in the route, gated on `result.transitions.length > 0` (so an ordinary
+HOLD-only tick — the overwhelming majority — logs nothing, same noise floor as before), placed after
+`runLegacyLiveSync` resolves and before the `logCronRun` handshake. Logs the transitions array
+verbatim (ticker + action), not just a count, so a CloudWatch filter on `"legacy-live-sync"` now
+shows exactly which position scaled/closed and how.
+
+Regression test (`route.test.ts`) asserts: the log line exists, is gated on a non-empty transitions
+array, and runs after `runLegacyLiveSync(` but before the `logCronRun(CRON_KEY, started, ...)`
+handshake (so it can't be dropped by an early return). RED confirmed by stashing the route change and
+re-running the test (assertion failure, "must gate a log line on non-empty transitions"); GREEN after
+restoring it.
+
+### Blast radius
+
+Single file (`route.ts`) + its test. No other caller of `runLegacyLiveSync` needs this — the sibling
+`banger-live-sync` route has the identical gap but was explicitly left untouched here per the
+issue-handling policy's "one issue per branch/PR" discipline; worth a follow-up finding if this
+pattern recurs 3 times (noise-discipline threshold already established for this lane).
+
+### What was deliberately left unchanged
+
+Did not add a member-facing API to expose `discord_live_state`/`trims_taken` — that's a real product
+enhancement (logged in the live journal, `docs/audit/nighthawk-legacy-live-journal.json`,
+2026-10-07T18:13Z entry) but is a larger, UI-surfacing decision outside this fix's scope (pure
+observability, zero behavior change, additive-only).
+
+## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Ask Largo] `composeSwingPlayBrief`'s `evidence`/`levels` build-failure fallback was indistinguishable from a real empty read — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `composeSwingPlayBrief`'s own `safeCompose` wrapper (added for this file's top-level builders so one throw doesn't 503 the whole brief) falls back to `evidence: []` / `levels: []` on a build exception — a shape that is byte-identical to "this play genuinely has no evidence/levels to show." Nothing in the envelope disclosed that a crash happened rather than a real absence, violating the Largo product contract's own C3 principle verbatim: *"Never return [] / null / {} for 'unavailable'... any fallback that returns a degraded result the caller cannot distinguish from a real one is a defect even when every test passes."* A model (or any other Largo consumer) reading `envelope.levels: []` has no way to tell a crashed build from a WATCH play that genuinely has no flag/entry/wall levels yet. |
+| **Root cause** | `safeCompose(label, build, fallback)` only logged server-side (`console.error`) on catch and returned the caller-supplied fallback — `[]` for `evidence`/`levels` — with no path for that fallback to reach the envelope's own absence-disclosure channel (`unavailableSources`, Largo C3). `confidence`'s sibling call correctly falls back to `undefined` (an honest omission per C6), but evidence/levels needed their fallback value to stay `[]` (fabricating fake evidence to "fix" this would be its own, worse violation) — so the only honest fix is disclosing the failure alongside the empty array, not changing the array itself. |
+| **Why not caught earlier** | No existing test forced `evidenceFromContext`/`levelsFromContext` to throw — every other `safeCompose` regression test (added alongside the wrapper itself) exercises the non-evidence/levels sections, whose fallback is `null` (a section simply doesn't render, which carries no false-absence signal the way a present-but-empty structured array does). The evidence/levels-specific risk was distinct enough to need its own test. |
+| **Blast radius** | Scoped to this one composer — `evidenceFromContext`/`levelsFromContext` are the only producers of the `evidence`/`levels` envelope fields in `play-brief.ts`, and `buildIntelSections`'s ~20 sections (independently protected by #5288) are unaffected since sections use `null` fallback, not an array. |
+| **Fix** | `safeCompose` now takes an optional `onFailure` callback, invoked (in addition to the existing log) when the wrapped build throws. `evidence`/`levels` are now composed ahead of `unavailableSources` (previously inline inside the envelope literal) so a failure callback can push the builder's label into a local `buildFailures` array, which is folded into the SAME `unavailableSources` list already shared by the envelope field and `confidence` — a build failure now reads as `{ source: "Swing play-brief internals", reason: '"levels" failed to build this cycle — treat as unknown, not as a confirmed empty/zero read.', what_is_missing: "levels", retryable: true }`, and `confidence` correctly downgrades from "high" to "moderate" as a result (same mechanism `collectBriefUnavailableSources`-sourced absences already drive). |
+| **Deliberately unchanged** | `evidence`/`levels` themselves still fall back to `[]` on failure — fabricating a synthetic non-empty array to avoid the false-absence shape would be worse than the problem being fixed. `safeCompose`'s fail-soft behavior for every other call site (sections, confidence) is untouched; only `evidence`/`levels` were given a failure-tracking callback, since those are the two array fields whose empty-fallback shape collides with a real "nothing here" result. |
+| **Regression guard** | `src/lib/swing/play-brief.test.ts`: added "composeSwingPlayBrief: a levels-build failure is disclosed via unavailableSources, not a silent empty array (Largo C3)" — forces `levelsFromContext` to throw via a getter trap on `play.flagUnderlyingPx` (the first field it reads for a WATCH play), asserts `envelope.levels` still falls back to `[]` but `unavailableSources` now carries a disclosed entry naming `"levels"`, and that `confidence` reflects the failure (`"moderate"`, not a false `"high"`). RED before the fix (git-stash verified: assertion fails, no disclosure entry), GREEN after. |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief.test.ts` 115/115 pass (1 new RED→GREEN) · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-confidence.test.ts src/lib/swing/play-brief-absence.test.ts src/lib/swing/play-brief-resolve.test.ts` 108/108 pass, no regressions. |
+| **Status** | FIXED — branch `fix/swing-play-brief-build-failure-disclosed`. |
+
+## 2026-10-07 — [FINDING, P1 Night Hawk Swings / Ask Largo] "Book context" self-flagged a Banger-origin live position as concentration against ITSELF — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live repro via `GET /api/market/swing/play-brief` (Ask Largo standing audit sweep, 2026-10-07, mint-session probe against two real OPEN/HOLD positions): **VST** (`playId SWING:VST:1478`) and **MRVL** (`playId SWING:MRVL:1476`) each rendered a "Book context" section reading *"Concentration — already holding 1 same-direction position in theme '…': VST LONG (separate, cross-engine position #1478). VST stacks the same wager rather than diversifying risk."* — the cited id (`#1478`/`#1476`) is the member's OWN reviewed position, not a separate one. A member reading this would believe they are doubling an existing bet when in fact they hold exactly one. |
+| **Root cause** | Two individually-correct, already-documented design choices compose into a gap. (1) `banger-lane-merge.ts` stamps a Banger-origin `TerminalPlay.id`'s trailing segment from the **Banger row's own id** (`positionId: row.id` off `banger_positions`, not a `swing_positions` ledger id) — both VST and MRVL were Banger-origin (`"Signals fired: BANGER"`, headline carries `"Banger breakout +…%"`). `bookContextSection` (`play-brief-intel.ts`) parses that id back out via `parseSwingPlayId(play.id)` and passes it to `checkPortfolioOverlap` as `excludePositionId`, trusting it as the ledger self-exclusion key. (2) `play-brief-context.ts`'s `loadOpenBook()` deliberately leaves `positionId` **unset** on every banger-origin row in the open book, storing that identical number only under the separate `bangerId` field — correct in isolation, written specifically to avoid a *different*, already-fixed cross-sequence collision risk (two unrelated rows from `banger_positions` and `swing_positions` coincidentally sharing a numeric id). `checkPortfolioOverlap`'s self-exclusion (`portfolio.ts`) matched only on `pos.positionId === excludePositionId` — never `pos.bangerId` — so a Banger-origin candidate's own row in the book, carrying that same id only under `bangerId`, was never excluded, matched on ticker+direction like any other row, and got reported back as a "separate, cross-engine position" under its own id. |
+| **Why not caught earlier** | The existing regression suite (`portfolio.test.ts`) covers self-exclusion by `positionId` exhaustively (including the real multi-archetype-same-ticker case from the 2026-09-06 CTO audit) and covers `bangerId` *disambiguation* between two genuinely distinct siblings (`formatOverlapPosition`'s own history) — but no test exercised the specific combination of "the reviewed candidate IS itself banger-origin" against a book built the way `loadOpenBook()` actually builds it (self row carrying `bangerId`, not `positionId`). Both halves were tested well individually; the composition wasn't. |
+| **Blast radius** | `bookContextSection` is the only caller of `checkPortfolioOverlap` that passes a banger-row-derived id as `excludePositionId` from live production reads (`play-brief.ts`'s own `excludePositionId` use for `siblingPositionsNote` is similarly affected whenever its reviewed play is itself banger-origin, since it shares the exact same `checkPortfolioOverlap` self-exclusion path). The fix is in the shared function, so both call sites — and any future caller — benefit without a second patch. |
+| **Fix** | `checkPortfolioOverlap`'s self-exclusion in `src/lib/swing/portfolio.ts` now matches `excludePositionId` against **either** `pos.positionId` **or** `pos.bangerId`, not `positionId` alone. A genuinely separate Banger sibling sharing ticker+direction (a different `bangerId`) is still correctly reported as concentration — only the exact id match is now excluded, same as the existing `positionId` behavior. |
+| **Deliberately unchanged** | `bangerId`'s role as a *display-only*, disambiguation-only field for telling two distinct siblings apart (`formatOverlapPosition`) is untouched — this fix only widens what counts as "the reviewed row itself" for exclusion purposes, never what gets rendered. The `positionId`-only exclusion path (real swing-ledger-native positions) is unchanged and still covered by every existing test. |
+| **Regression guard** | `src/lib/swing/portfolio.test.ts`: added "excludePositionId also matches on bangerId — a banger-origin candidate does not flag itself" (reproduces the exact VST live shape, RED pre-fix / GREEN post-fix) and "excludePositionId by bangerId still reports a genuinely separate banger sibling" (proves the fix doesn't over-exclude a real second position). |
+| **Gates** | `npx tsc --noEmit -p tsconfig.json` clean · `npx tsx --experimental-test-module-mocks --test src/lib/swing/portfolio.test.ts` 13/13 pass (2 new RED→GREEN) · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-intel.test.ts src/lib/swing/play-brief.test.ts src/lib/swing/play-brief-context.test.ts` 325/325 pass, no regressions. |
+| **Status** | FIXED — branch `fix/swing-book-context-self-concentration`. |
+
+## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Performance] Swing play-brief requests ran the full Vector fan-out TWICE concurrently, doubling load during the cache cron's already-documented fragility — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live repro via `GET /api/market/swing/play-brief` (Ask Largo standing audit sweep, 2026-10-07): sampled 5 tickers across both CLOSED (BE, MSFT) and WATCH (NVDA, TSLA, AMD) states — **5/5 (100%)** logged BOTH `ecosystem context fetch failed` and `Vector full-state fetch failed`, each a `SwingBriefSourceTimeout` landing at exactly the 8s budget (`BRIEF_SOURCE_TIMEOUT_MS`). Every envelope's `unavailableSources` carried "ecosystem context" and "Vector state" as fetch-failed, and `levels`/`structureLadder` were empty across the board. |
+| **Root cause** | `play-brief-context.ts` fans out `fetchEcosystemContext(ticker)` and `fetchVectorFullState(ticker, normalizeDteHorizon("all"))` **concurrently in the same `Promise.all`** — but `fetchEcosystemContext` (`ecosystem-context.ts:922`) **also calls `fetchVectorFullState(upper, "all")` internally** as part of its own arsenal fan-out, with the exact same ticker and horizon. `vectorFullStateCacheKey` is keyed only on `(ticker, horizon)`, so both calls target the identical cache entry. On a cache HIT this is a harmless extra Redis round-trip — but `vector-full-state-snapshot` (the cron responsible for keeping this cache warm) is **already independently documented in this file** as failing 70-98% of its universe on most runs (rate-limiter contention under `TICKER_CONCURRENCY`), so a cache MISS is common, not rare. On a miss, both callers see "not cached" at the same instant and **each independently launches the full `computeVectorFullState` fan-out** (8+ provider/DB reads across two sequential batches) — i.e. every single swing play-brief request was paying for this expensive read **twice**, for the identical answer, compounding the exact rate-limiter/latency strain the cron fragility finding already measured. |
+| **Why this matters beyond swing** | `fetchVectorFullState` is called from many sites with overlapping args (the Cortex veto layer, `get_vector_full_state`, `composeVectorRead`, `vector-pick-sweep`, the SPX/largo context route) — any two of these racing for the same (ticker, horizon, timeframe) at the same instant hit this identical redundant-compute shape, not just the swing play-brief's two calls. The fix is at the shared function, so every caller benefits, not just swing. |
+| **Why not caught earlier** | Both calls resolve independently to `null` on failure (fail-open by design), so the member-facing symptom is a plausible-looking "fetch failed, retryable" absence line — never an error, never a crash. The *duplication* itself produces no visible signal at all unless you check CloudWatch for two concurrent compute fan-outs on the same ticker, which nothing routinely does. |
+| **Fix** | New `src/lib/bie/vector-full-state-inflight.ts` (`dedupeInFlight`) — a small, dependency-free, process-local in-flight-promise map keyed by `(normalizedTicker, horizon, timeframeMin)`. `fetchVectorFullState`'s live-compute call now routes through it: a second concurrent caller for the same key awaits the first caller's in-flight promise instead of starting a second `computeVectorFullState` fan-out. Purely a call-count optimization — every caller still gets the same resolved value, and the result is still written to the Redis cache exactly once by whichever caller's wrapper reaches `writeVectorFullStateCache` first. No caching semantics, gate, score, or trading behavior changed. |
+| **Why a dependency-free file** | `vector-full-state.ts` carries `import "server-only"`, which throws outside Next's RSC compiler — mirrors `src/lib/swing/brief-source-timeout.ts`'s own reasoning for the same reason, so the dedupe logic stays unit-testable under a plain `tsx --test`. |
+| **Regression guard** | `src/lib/bie/vector-full-state-inflight.test.ts` (4 tests): two concurrent calls for the same key invoke the factory exactly once and both receive the same promise/value; a different key is never deduped against an in-flight call; the entry clears after settling so a later non-overlapping call gets a fresh invocation; a rejected factory still clears its entry (never permanently wedges the key). |
+| **Deliberately unchanged** | The 8s `BRIEF_SOURCE_TIMEOUT_MS` budget itself, the cron's own `TICKER_CONCURRENCY`/overlap-lock tuning, and the cache TTL/versioning are all untouched — this fix removes a self-inflicted doubling of load, it does not attempt to re-tune the already-measured cron fragility those other findings cover. |
+| **Gates** | `npx tsc --noEmit -p tsconfig.json` clean · `npx tsx --experimental-test-module-mocks --test src/lib/bie/*.test.ts` 768/768 pass · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` 818/818 pass · `npx eslint` clean on touched files. |
+| **Status** | FIXED — branch `fix/vector-full-state-duplicate-fanout`. |
+
+## vector-dark-pool-warm still fails 90%+ of tickers per run even after the shared UW rate limiter's cluster-wide ceiling was doubled (PR #5579) — rotated to a half-universe batch — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Vector dark-pool cache warm cron (`/api/cron/vector-dark-pool-warm`) + shared UW rate limiter |
+| **Severity** | P1 performance/correctness — same severity class as the 2026-09-02/2026-09-15 prior findings this one re-measures |
+| **Status** | FIXED (partial mitigation — see "What this does NOT do") |
+| **File** | `src/app/api/cron/vector-dark-pool-warm/route.ts`, new `rotation.ts` |
+
+### Background — why this was re-measured
+
+A standing 5-engine live-monitor cycle found `vector-dark-pool-warm` failing ~93% of its UW pool
+calls on every run for 3+ hours (`warmed=4 failed=51 elapsed=363632ms` at 13:36:38 UTC,
+`warmed=2 failed=53 elapsed=378241ms` at 13:56:53 UTC, 2026-10-07), with a concurrent
+`[db] transient query error: timeout exceeded when trying to connect` / `[ready] database ping
+attempt failed` log pair suggesting a possible DB connection-pool angle.
+
+### What was measured and ruled out
+
+- **RDS connections**: `DatabaseConnections` on `blackout-production-postgres` held flat at
+  19-21 across the entire incident window (11:35-14:34 UTC) — nowhere near the instance's real
+  `max_connections` (~450 on `db.t4g.medium`, confirmed via `describe_db_parameters`) or the RDS
+  Proxy's `MaxConnectionsPercent=90` backend budget (~405). The app's own internal
+  `PGBOUNCER_DEFAULT_POOL_SIZE=20` self-check is a stale conservative assumption (web:
+  `REPLICA_COUNT=8`×`PG_POOL_MAX=2`=16 + market-worker: 2 running×`PG_POOL_MAX=4`=8 = 24 > 20),
+  genuinely worth tightening up separately, but is **not real contention at the RDS/Proxy layer**
+  — both have enormous headroom versus this app's actual demand.
+- **RDS instance health**: CPU ~9-11% the whole window, `CPUCreditBalance` pinned at its max
+  (576, never drawn down), `ReadLatency`/`WriteLatency` ~0, `DiskQueueDepth` ~0, `FreeableMemory`
+  steady ~1.9GB. No resource exhaustion at any point.
+- **ElastiCache/Redis**: CPU ~5-6%, connections stable ~117-141, zero evictions — the Redis-backed
+  global UW rate-limiter semaphore was not itself degraded/unreachable.
+- **Conclusion**: the `[db] transient query error`/`[ready] database ping attempt failed` log pair
+  seen alongside the 13:36 failure is most likely an independent, unrelated transient blip (RDS
+  Proxy connection-borrow contention from some other momentary spike) rather than the cause of
+  `vector-dark-pool-warm`'s UW failures — nothing in the DB/Proxy/Redis metrics correlates with
+  the cron's measured failure pattern.
+- **Cron schedule overlap**: confirmed real (per `[cron/*] background done` logs, 13:30-13:37 UTC:
+  `vector-walls-warm`×2, `zerodte-warm`×3, `bie-full-state-snapshot`, all landing inside this one
+  `vector-dark-pool-warm` run's ~6-minute window) — but this is a **UW-rate-limiter-queue**
+  contention effect, not a DB-connection collision; see Root cause below.
+
+### Root cause (confirmed via live `[api-queue-timing]` logs)
+
+Pulled every `provider=unusual_whales endpoint=/api/darkpool/*` queue-timing log line in the
+13:30-13:37 UTC window. Every logged HTTP call itself completed in well under a second
+(`http_duration_ms` 39-1376ms, `status=200`) — **the UW API itself was fast and healthy the whole
+time.** What grew across the run was `queue_wait_ms`, the time a request waited just to be
+*admitted* into the shared rate limiter: 1934ms → 5108ms → 5590ms → 7328ms → 11702ms → 18274ms →
+18730ms, approaching `DEFAULT_QUEUE_MAX_WAIT_MS`'s 20s ceiling (`queue-budget.ts`). Requests that
+cross that ceiling are dropped as queue-timeouts before ever reaching UW — this is exactly how
+`warmed=4 failed=51` happens with zero evidence of UW itself being slow or erroring.
+
+This is the **same root cause** the 2026-09-02 and 2026-09-15 `FINDINGS.md` entries already
+diagnosed (shared `GLOBAL_MAX_RPS` ceiling oversubscribed by aggregate cluster-wide UW demand —
+live member traffic plus every concurrent background sweep), re-measured fresh and confirmed
+**still present six days after PR #5579 (2026-10-01) doubled the cluster-wide ceiling itself**
+(`UW_GLOBAL_MAX_RPS` 2→4). Verified that fix is actually live: the running ECS task's image tag
+(`blackout-web:3d8c4fb3b...`) matches current `main`, which is well after #5579's merge commit.
+Redis (the mechanism the global ceiling depends on) is healthy per the ElastiCache metrics above,
+so the raised ceiling is genuinely in effect — and the cron is failing at essentially the same
+~90%+ rate it failed at before the raise. Doubling the shared ceiling, by itself, was not enough:
+aggregate platform-wide UW demand (not just this one cron) still saturates it.
+
+### Fix
+
+This cron's own `runUwPool` concurrency bound (3, from PR #3345) already caps how many of ITS OWN
+requests sit in the shared admission queue at once — there is no further concurrency knob to turn
+on this side. What was still fully in this cron's control: how much **total** work it asks the
+shared queue to admit per run. `rotation.ts` adds a pure, Redis-cursor-persisted 2-way rotation —
+each run now warms **half** the universe (`halfBatchSize`, rounds up) instead of the whole thing,
+with the cursor advancing so the two halves alternate and the full universe is still covered every
+2 runs (~20 minutes at this cron's ~10-minute cadence). Halving the per-run ticker count halves
+this cron's own total admission-queue commitment, which — holding aggregate cluster congestion
+constant — proportionally reduces how many of its own tail entrants can cross the 20s queue-wait
+budget before being dropped.
+
+**Why 2-way, not a larger split**: `warmVectorDarkPool`'s cache entries carry a 25-minute TTL
+(`vector-dark-pool-cache.ts`). A 2-way rotation completes full coverage in ~20 minutes, comfortably
+under that TTL; a 3-way rotation would take ~30 minutes — already past the TTL — trading the
+queue-timeout failure mode for cache entries going empty between warms. 2-way is the largest split
+that still respects the cache's own staleness bound.
+
+**Why NOT raise `UW_GLOBAL_MAX_RPS` again or touch the shared limiter**: that's a cluster-wide
+capacity decision affecting every UW consumer on the platform (live member traffic, Nighthawk,
+SPX, Largo tool calls, every other background sweep) — exactly the kind of decision the 2026-09-15
+finding reserved for the owning Vector lane rather than patching blind, and PR #5579 already made
+that call once six days ago without resolving this. This fix is deliberately scoped to the one
+cron's own per-run workload, which is fully this file's own responsibility.
+
+### What this fix does NOT do
+
+Does not guarantee a >90% success rate — it only halves this cron's own contribution to total
+queue demand; if aggregate platform-wide UW demand is high enough, the smaller batch can still see
+elevated queue waits, just proportionally less often. Does not address the underlying open capacity
+question (is `UW_GLOBAL_MAX_RPS=4` still genuinely under UW's real account-level ceiling, and is
+aggregate platform demand simply outgrowing it) — that remains the Vector lane's capacity decision
+per the 2026-09-15 finding, now with fresh evidence that the 2→4 raise alone did not close the gap.
+Does not touch the stale `PGBOUNCER_DEFAULT_POOL_SIZE=20` vs. real demand (24) mismatch noted above
+under "What was measured and ruled out" — real RDS/Proxy headroom means this is not causing failures
+today, but it's a correctness gap in the app's own self-check worth a separate, narrowly-scoped fix.
+
+### Tests
+
+`src/app/api/cron/vector-dark-pool-warm/rotation.test.ts` (8 new tests): `halfBatchSize` rounds up
+correctly; batch selection picks the right half starting at a cursor; wraps around the end of the
+list; two consecutive runs from a persisted cursor cover the full universe exactly once each;
+out-of-range/negative cursors are normalized rather than throwing; empty universe and
+batchSize>=length edge cases return safe, correct results.
+
+`src/app/api/cron/vector-dark-pool-warm/route.test.ts` (+2 tests): the route imports and calls
+`selectDarkPoolWarmBatch`/`halfBatchSize` (not a full-universe pool call), and persists/reads the
+rotation cursor via the shared (Redis-backed) cache rather than per-process memory.
+
+RED→GREEN proven via `git diff`/`git checkout --`: the 2 new route tests fail against the pre-fix
+`route.ts` (2/6 fail, `runUwPool(allTickers...)`/no rotation import present) and all 6 pass with the
+fix reapplied; all 8 new `rotation.test.ts` tests pass against the new pure module (no pre-fix
+baseline needed — the module is new). `npx tsc --noEmit` clean. Full `npm test` (Node 20): run
+alongside this PR — see PR description for the pass count (same pre-existing sandbox-only failures
+as every other entry in this file, zero new failures from this change).
+
+## Ask Largo swing play-brief's structured `envelope.levels` never carried the WATCH setup's own flag anchor / entry trigger — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo / Night Hawk Swings — `GET /api/market/swing/play-brief` (`src/lib/swing/play-brief.ts`'s `levelsFromContext`) |
+| **Severity** | P3 (absence/precision gap against `docs/audit/LARGO-PRODUCT-CONTRACT.md` — the one pair of decision-relevant levels structural consumers can never see, worst when it is most needed) |
+| **Status** | FIXED |
+| **File** | `src/lib/swing/play-brief.ts`, `src/lib/swing/play-brief-intel.ts` (exported `entryTriggerDeadReason`) |
+
+### Root cause
+
+`watchForSection` (`play-brief-intel.ts`) narrates `play.flagUnderlyingPx`/`play.entryTriggerUnderlyingPx`
+in prose for every WATCH-bucket play — "Flag anchor: **411.79** — track move from here" / "Entry
+trigger: **411.04** — ... this is what actually fires the setup" — but `levelsFromContext`
+(`play-brief.ts`), the ONLY function that populates the envelope's structured `levels: BieLevel[]`
+array, never read either field. It only ever derives levels from Vector full-state / the GEX
+positioning matrix (call wall, put wall, gamma flip, spot, confluence zones, dark pool, gamma magnet,
+GEX king, max pain) — all external-feed-sourced. The setup's OWN trigger/anchor geometry, which comes
+straight off the swing gate's commit context (not Vector/GEX at all), had no structured home. This is
+the exact same gap class already found and fixed for the Vector gamma magnet (see that fix's comment
+in `levelsFromContext`, 2026-09-xx: "was never added to the structured envelope.levels array —
+anything consuming levels ... had no way to see it") — just a second, previously-unchecked instance,
+and a more consequential one, since these two levels don't depend on an external feed being warm.
+
+### Evidence
+
+Live audit, 2026-10-07 (RTH): `GET /api/market/nighthawk/horizons?view=swings` showed a live WATCH
+candidate, WDC (SHORT, SECTOR_ROTATION, `setupState: TRIGGERED`, `entryStatus: AT_TRIGGER`,
+`flagUnderlyingPx: 411.79`, `entryTriggerUnderlyingPx: 411.04`). Its play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:WDC&ticker=WDC&status=COMMIT`) rendered both numbers
+correctly in the "Watch levels" section's prose/markdown —
+
+> Flag anchor: **411.79** — track move from here
+> Entry trigger: **411.04** — Break/reclaim below this is what actually fires the setup
+
+— but `envelope.levels` was `[]` (empty) on that exact response. The brief's own `unavailableSources`
+confirmed why: GEX positioning ("cold matrix / no positioning read") and Vector desk state ("snapshot
+unavailable") were BOTH absent that cycle — the one case where the setup's own trigger geometry is the
+*only* decision-relevant number available, and it was invisible to anything reading the structured
+array (a "show on chart" follow-up chip, or any other Largo consumer of `levels`).
+
+Confirmed via source read, not just the live repro: zero references to `flagUnderlyingPx` or
+`entryTriggerUnderlyingPx` anywhere in `play-brief.ts` before this fix (`grep` returned no matches),
+confirming the omission was total, not merely stale-gated like the Vector-sourced levels.
+
+### Fix
+
+`levelsFromContext` now takes the already-in-scope `bucket` parameter (passed by its one caller,
+`composeSwingPlayBrief`, which already computes it) and, for WATCH-bucket plays only, pushes two new
+structured levels sourced from `ctx.play` directly (not Vector/GEX, so never gated on either being
+warm): `flag anchor` (`play.flagUnderlyingPx`, provenance `"Swing lane"`) and `entry trigger`
+(`play.entryTriggerUnderlyingPx`, provenance `"Swing lane"`, `note` reusing the existing
+`entryTriggerDeadReason()` — now exported from `play-brief-intel.ts` instead of duplicated — so a
+dead/Legacy-pinned trigger carries the same honest caveat in the structured level as it already does
+in prose, never silently presented as live when it is not).
+
+Scoped to WATCH only, mirroring exactly where `watchForSection` itself renders these in prose — an
+OPEN play has already crossed this geometry (irrelevant going forward) and a CLOSED play has no live
+entry decision left to make, so surfacing it there would be stale noise the prose doesn't show either.
+
+### Blast radius
+
+One call site touched (`levelsFromContext`'s only caller, inside `composeSwingPlayBrief`) to thread
+the `bucket` argument through; no other consumer of `levelsFromContext` exists. `entryTriggerDeadReason`
+gained an `export` but kept its one existing call site (`watchForSection`) unchanged — purely additive.
+
+### Tests
+
+Two new tests in `src/lib/swing/play-brief.test.ts`: (1) a WATCH play with no Vector/GEX data still
+surfaces both `flag anchor` and `entry trigger` as structured levels with `"Swing lane"` provenance and
+the correct direction-aware note; (2) an OPEN/HOLD play with the same fields set does NOT surface them
+(confirms the bucket gate). RED confirmed pre-fix via `git stash` (1 failure, the new WATCH-levels
+test) / GREEN post-fix (114/114) in an isolated worktree off `origin/main` — a concurrent agent session
+was using the shared checkout for an unrelated `vector-dark-pool-warm` investigation, so this fix was
+developed in a separate `git worktree` rather than touching that session's working tree. `npx tsc
+--noEmit` clean. Full `npm test` run separately to confirm no regression elsewhere.
+
+## 2026-10-07 — [FINDING, P2 CI / Largo] `largo-stress-nightly` scheduled timeout never caught up with its own #4073 concurrency change — bank3 structurally cannot finish in 45 minutes — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Three auto-filed `ops-auto-fix: Largo nightly stress failed` issues with no comments/closing PR: #5485 (2026-09-24), #5502 (2026-09-26), #5578 (2026-10-01). Coordinator sweep flagged them as a recurring unexplained regression since a 2026-08-31/09-04 finding had already "fixed" the 45-minute timeout via bank rotation (PR #3729, #8a923afe6). |
+| **What actually failed — three DIFFERENT things, not one bug** | Pulled the real job logs for all three run IDs (36871016018, 36239606676, 35996805744) rather than assuming the old timeout story still applied. **#5485 (run 35996805744, bank3)**: genuine `cancelled` — the "Run live Largo stress" step ran 44m45s and was killed by `timeout-minutes` mid-sweep (log ends `##[error]The operation was canceled.`). **#5502 (run 36239606676, bank1)** and **#5578 (run 36871016018, bank2)**: both completed WITHIN the 45-minute window and exited 1 because of exactly one `live_bad=1` verdict each (`scoreAnswer`'s `honesty-no-grounded-numbers` rule), not a timeout — "why did you say bearish and bullish in the same breath" (bank1, `spx_desk_read`) and "desk lean on SPX — what ticket would you put on" (bank2, `play_suggest_read`, also tagged `tone-emoji`). |
+| **Root cause (the #5485 timeout, the only one with a confirmed code-level fix in this PR)** | PR #4073 (2026-09-05, `944c8c96e`) deliberately lowered `LARGO_STRESS_CONCURRENCY` from 5 to 2 on BOTH the manual-single-bank and the scheduled-rotated-bank paths to cut Clerk/UW 429 storms — but the job's `timeout-minutes: 45` and the step's own governing comment ("one rotated bank... at concurrency 5 — fits 45m") were never revisited, and the four banks are NOT evenly sized: `bankStats()` = `{bank1:109, bank2:100, bank3:193, bank4:121}` — bank3 is nearly double every sibling. Measured live throughput at concurrency=2 from the one run that completed in full (bank1, 36239606676: live phase 11:41:51→12:17:30 ET, 35.65min / 109 questions = ~0.327 min/question): bank3 projects to **~63 minutes** at that same rate — structurally over the 45-minute budget regardless of luck, and exactly what was observed. |
+| **Why `honesty-no-grounded-numbers` is NOT fixed by this PR** | For bank1's case, the stress bank's own canonical "shape" fixture (`scripts/largo-stress-shape.mjs`) gives the EXPECTED good answer for this exact question as `"**Why bullish and bearish show up together** — signal stack vs thesis friction."` — zero digits, by the bank author's own design — which is circumstantial evidence `honestyIssues()` may be missing an exemption for self-referential "why did you say X and Y" meta-questions (the same category of false positive fixed twice before for `scenario`/`concept_read`/`platform_read`/`clarify_read`). For bank2's case, the question explicitly asks for an actionable "ticket," where grounded numbers are the CORRECT expectation, and near-identical trade-idea questions scored OK in the same and other runs — most consistent with one-off LLM non-determinism (already documented in this file for a different clarify_read case, 2026-09-18), not a code regression. Neither the live failing answer text nor a confirmed scorer gap was available to verify a fix against (the workflow never preserved the per-question report), so no scoring-logic change is made here — see "Fix" below for what IS shipped to make this diagnosable without re-investigation next time. |
+| **Fix** | (1) `timeout-minutes` for the non-`all` path raised 45→90 (keeps `bank=all`'s separate 360m window untouched; concurrency=2 is explicitly NOT reverted to 5 — that would reintroduce the #4073 429 storms, confirmed still present even at concurrency=2 near the tail of both the bank1 and bank3 runs). (2) Stale/misleading governing comment corrected to describe the ACTUAL concurrency (2, not 5) and show the real per-bank math. (3) Added an `actions/upload-artifact` step (14-day retention) uploading `audit-output/largo-stress-report*.json` on failure/cancellation — the full per-question report (answer previews + issue tags) was never preserved before, which is exactly why this investigation could not confirm or deny the `honesty-no-grounded-numbers` cases above from first principles. (4) Ops-issue body text no longer asserts "timeout-minutes: 45" as if it's always the cause, now points at the uploaded report. |
+| **Regression guard** | `src/largo-stress-nightly-timeout-budget.test.ts` (2 tests): (a) the non-`all` `timeout-minutes` must cover the LARGEST bank at the measured concurrency=2 throughput with a 15% margin — RED on the pre-fix 45-minute value (asserts 90 ≥ 72.6min projected), GREEN after; (b) both non-`all` branches must keep `concurrency=2` — guards against a future "just raise concurrency" regression of the #4073 429 mitigation. |
+| **Status** | FIXED (timeout structural bug only) — branch `fix/largo-stress-nightly-timeout-budget`. The two `honesty-no-grounded-numbers` BAD verdicts (#5502, #5578) are left open pending the next occurrence captured with the new artifact upload, per CLAUDE.md's "say so clearly rather than fabricating a fix" instruction — see the three GitHub issues for the full per-issue disposition. |
+
+## `portfolio/sector-map.ts` was missing ASST (Strive bitcoin-treasury), so its SECTOR_ROTATION benchmark and Book-context concentration both mislabeled it as Financials/isolated — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo / Night Hawk Swings — swing play-brief ("Why this setup" industry-leadership read) + portfolio concentration awareness |
+| **Severity** | P3 (correctness gap — a real score-pillar input and a real concentration read are both wrong for one name, not a trading-gate defect) |
+| **Status** | FIXED |
+| **File** | `src/lib/portfolio/sector-map.ts` (`SECTORS.crypto-equity`) |
+
+### Root cause
+
+`industry-group-rs.ts`'s `resolveGroupBenchmark` already has a guard (`NO_SECTOR_BENCHMARK_THEMES`,
+added 2026-09-22 for HUT) that returns `null` — no sector-rotation benchmark at all — for any ticker
+whose `sectorFor()` label is `"crypto-equity"`, specifically because bitcoin-treasury/mining names get
+mechanically bucketed by Polygon's SIC data under a generic finance/holding-company code (e.g. 6199
+"FINANCE SERVICES") that lands in `sectorEtfFromSic`'s 6000-6499 Financials range — a real provider
+quirk, not evidence the name is a Financials-sector-rotation play. That guard only fires for tickers
+`sector-map.ts` actually has in its `crypto-equity` list; an unmapped name falls straight through to the
+same SIC-range Financials mislabel the guard exists to prevent.
+
+`ASST` (Strive, Inc. — the former "Asset Entities" shell that converted to a bitcoin-treasury company in
+2025, structurally identical to MSTR/Strategy) was not in `SECTORS` at all, so `sectorFor("ASST")`
+returned `null` and the guard never engaged. The same unmapped-name gap also means `theme-cluster.ts`'s
+`resolveTheme`/`sameThesis` (which feeds `checkPortfolioOverlap`'s Book-context concentration evidence)
+clusters ASST into its own isolated `NAME:ASST` cluster instead of with the rest of the crypto-equity
+basket (COIN/MARA/RIOT/HUT/MSTR/etc.) it is actually correlated with.
+
+### Evidence
+
+Live audit, 2026-10-07 (pre-market): ASST was live on the Swing WATCH lane (`GET
+/api/market/nighthawk/horizons?view=swings`, `lanes.SWING.watch`). Pulled its play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:ASST&ticker=ASST&status=COMMIT`) — the "Why this
+setup" section's own score-pillar evidence read:
+
+> **Industry read:** leading **Financials** (XLF) by 2.8% over 10 sessions (+1.4% vs -1.4%).
+
+for a company whose live headlines in the same brief are entirely bitcoin-acquisition news ("Strive
+Buys 334 Bitcoin...", "Strive Acquires 2K Bitcoin At $84,422 Per Bitcoin..."). Reproduced the mechanism
+directly:
+
+```
+resolveGroupBenchmark({ ticker: "ASST", sicCode: "6199", sicDescription: "FINANCE SERVICES" })
+// before fix: { etf: "XLF", label: "Financials", kind: "sector" }
+// after fix:  null
+```
+
+Identical mechanism and identical fix shape to the HUT finding this guard was originally built for
+(`docs/audit/FINDINGS.md`, 2026-09-22) and the ALAB/CRDO/KLAC and RGTI/QBTS/IONQ/QUBT gaps found the
+same way on 2026-09-25 — an unmapped name recreates a bug whose guard already exists, just one tier up.
+
+### Fix
+
+Added `"ASST"` to `SECTORS["crypto-equity"]` in `sector-map.ts`. No other currently-committed/watch
+tickers on the live board (checked the full 103-ticker Swing committed+watch list) are obvious
+crypto-treasury/mining/exchange names missing from the existing list, so this stays scoped to the one
+live-confirmed gap rather than speculatively adding more.
+
+Regression test added (`src/lib/swing/industry-group-rs.test.ts`): confirmed RED before the fix
+(`resolveGroupBenchmark({ticker:"ASST", sicCode:"6199"})` returned `{etf:"XLF",...}`) / GREEN after
+(returns `null`, both via the SIC path and via a sector-map-label fallback path). `tsc --noEmit` clean;
+`industry-group-rs.test.ts` (14/14), `board-allocation.test.ts` + `theme-cluster.test.ts` +
+`play-brief-intel.test.ts` (227/227 combined) pass.
+
 ## Swing play-brief "Book context" self-cites a reviewed position as "a separate overlap" whenever a ticker carries 2+ concurrent same-direction positions — fix/swing-play-brief-book-context-self-citation — 2026-10-07
 
 > **kind:** `FINDING`

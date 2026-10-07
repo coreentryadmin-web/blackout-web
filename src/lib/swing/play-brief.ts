@@ -2,7 +2,7 @@
  * Swing Play Intelligence Engine — deterministic, real-time play brief composer.
  * No Anthropic calls. Every claim traces to platform data with null-honesty.
  */
-import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
+import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel, BieUnavailableSource } from "@/lib/bie/answer-envelope";
 import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
@@ -37,7 +37,7 @@ import {
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
-import { buildIntelSections } from "./play-brief-intel";
+import { buildIntelSections, entryTriggerDeadReason } from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
@@ -581,8 +581,72 @@ function confluenceZoneLabel(
   return `confluence (${confluenceZoneKindsLabel(z, primary)})`;
 }
 
-function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {
+function levelsFromContext(
+  ctx: SwingPlayBriefContext,
+  readMs: number,
+  bucket: "watch" | "open" | "closed",
+): BieLevel[] {
   const levels: BieLevel[] = [];
+  // BUG FIX (Ask Largo standing mandate, 2026-10-07): "Watch levels" (watchForSection,
+  // play-brief-intel.ts) narrates `play.flagUnderlyingPx`/`play.entryTriggerUnderlyingPx` in prose
+  // ("Flag anchor: 411.79 — track move from here", "Entry trigger: 411.04 — ... this is what
+  // actually fires the setup") for every WATCH-bucket play, but neither ever reached this
+  // structured `levels` array — the exact same gap already found and fixed for the Vector gamma
+  // magnet (see that fix's comment a few lines below). Unlike the gamma magnet, these two levels
+  // do NOT depend on Vector/GEX at all (they come straight off the swing gate's own commit
+  // context), so they are the one pair of levels a "show on chart" follow-up or another Largo
+  // consumer could ALWAYS get structurally for a pre-entry setup — and the one case this bites
+  // hardest is exactly when Vector/GEX ARE cold/stale (confirmed live, WDC 2026-10-07: GEX
+  // positioning + Vector desk state both unavailable that cycle), which left `envelope.levels`
+  // completely empty even though the setup's own trigger geometry was fully known. Scoped to the
+  // WATCH bucket only, mirroring where watchForSection itself renders these — an OPEN/CLOSED play
+  // has already crossed (or never needs) this geometry, so surfacing it there would be stale noise
+  // the prose doesn't show either.
+  if (bucket === "watch") {
+    const play = ctx.play;
+    // BUG FIX (Ask Largo standing mandate, 2026-10-07 — same cycle as the fix above, found
+    // auditing its own output): both levels below were stamped `asOf: ctx.asOf` (today's scan
+    // timestamp) with a hardcoded `freshness: "recent"`, even though the note on the very same
+    // level says "pinned when first flagged" — i.e. the PRICE is `play.detectedAt`-old, not
+    // scan-fresh. Live repro, same WDC play the fix above was built from (detectedAt
+    // 2026-10-06T16:07:50Z, ~23h before this scan): the narrated "Watch levels" section is
+    // consistent ("First flagged 1 day ago" renders in the adjacent Entry section off the same
+    // `detectedAt`), but the STRUCTURED envelope.levels entry for the identical number claimed
+    // `asOf: "<today>"`/`freshness: "recent"` — a direct narrative-vs-structured-envelope
+    // contradiction any API consumer reading only `envelope.levels` (not the prose) would get
+    // wrong, and the exact "dead-wired data" shape the standing mandate's Largo deep-dive checks
+    // for. A flag pinned 45+ real days ago (the AMD repro the age-on-watch fix above cites) would
+    // have read `freshness: "recent"` forever. Anchored to `play.detectedAt` (the same "WATCH
+    // Published clock" the narrative age line already trusts) with `freshnessFromObservedMs`
+    // doing real age-based classification — same precedent as `archetypeTrackRecordSection`'s
+    // `asOf: etStampFromIso(...) ?? ctx.asOf` / `freshness: Number.isFinite(...) ? ... : "unknown"`
+    // fallback a few hundred lines below. Falls back to `ctx.asOf`/"unknown" only when
+    // `detectedAt` itself is absent, never silently reusing the old wrong-but-present value.
+    const pinnedMs = play.detectedAt ? Date.parse(play.detectedAt) : NaN;
+    const pinnedProvenance = {
+      source: "Swing lane",
+      asOf: (play.detectedAt ? etStampFromIso(play.detectedAt) : null) ?? ctx.asOf,
+      freshness: Number.isFinite(pinnedMs) ? freshnessFromObservedMs(pinnedMs, readMs) : ("unknown" as const),
+    };
+    if (play.flagUnderlyingPx != null && Number.isFinite(play.flagUnderlyingPx)) {
+      levels.push({
+        label: "flag anchor",
+        price: play.flagUnderlyingPx,
+        note: "pinned when first flagged — track move from here",
+        provenance: pinnedProvenance,
+      });
+    }
+    if (play.entryTriggerUnderlyingPx != null && Number.isFinite(play.entryTriggerUnderlyingPx)) {
+      const deadReason = entryTriggerDeadReason(play);
+      const verb = play.direction === "SHORT" ? "break/reclaim below fires entry" : "break/reclaim above fires entry";
+      levels.push({
+        label: "entry trigger",
+        price: play.entryTriggerUnderlyingPx,
+        note: deadReason ?? verb,
+        provenance: pinnedProvenance,
+      });
+    }
+  }
   const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
   const gex = ctx.ecosystem?.gex_positioning;
   const vecFresh = vectorFreshness(vec, readMs);
@@ -1076,11 +1140,23 @@ function followupsFor(play: TerminalPlay): string[] {
  * sections are independently protected by #5288 and not duplicated here (single-issue PRs, per this
  * repo's standing policy).
  */
-function safeCompose<T>(label: string, build: () => T, fallback: T): T {
+// BUG FOUND (Ask Largo standing mandate, 2026-10-07): #5288's fail-soft fallback above correctly
+// keeps the brief alive when a builder throws, but for `evidence`/`levels` specifically it falls
+// back to `[]` — which is byte-identical to "this product genuinely has no evidence/levels to
+// show" and is exactly the shape the contract's own C3 names as the dangerous one ("Never return
+// [] / null / {} for 'unavailable'... any fallback that returns a degraded result the caller
+// cannot distinguish from a real one is a defect even when every test passes"). A build failure
+// here is silently indistinguishable from "we checked and there's nothing" to any downstream
+// Largo reader — including the model itself, which has no way to know the array it's looking at
+// is a crash fallback rather than a real empty read. `onFailure` lets evidence/levels record WHICH
+// builder failed without changing their own `[]` fallback (still correct — don't fabricate fake
+// evidence/levels to "fix" this), so the caller can fold that into `unavailableSources` instead.
+function safeCompose<T>(label: string, build: () => T, fallback: T, onFailure?: (label: string) => void): T {
   try {
     return build();
   } catch (error) {
     console.error(`[swing/play-brief] "${label}" threw — falling back, not failing the brief`, error);
+    onFailure?.(label);
     return fallback;
   }
 }
@@ -1186,10 +1262,31 @@ export function composeSwingPlayBrief(
               ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
               : null);
 
+  // BUG FIX continued (Ask Largo standing mandate, 2026-10-07): evidence/levels are now composed
+  // BEFORE unavailableSources rather than inline inside the envelope literal, so a build failure
+  // recorded via `buildFailures` can be folded into the SAME `unavailableSources` list the
+  // envelope field and `confidence` both read — otherwise a build failure would have nowhere
+  // honest to surface (the pre-existing `[]` fallback alone looks identical to a real empty read).
+  const buildFailures: string[] = [];
+  const trackBuildFailure = (label: string) => buildFailures.push(label);
+  const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, readMs), [], trackBuildFailure);
+  const levels = safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), [], trackBuildFailure);
+
   // Computed once and shared by the envelope's own `unavailableSources` chips AND `confidence`
   // below, so the two can never drift apart (the same class of narrative-vs-chip disagreement
   // this file has already fixed elsewhere for readMs — see collectBriefUnavailableSources's header).
-  const unavailableSources = collectBriefUnavailableSources(ctx);
+  // A build failure above is folded in here as its own honest entry — distinct from a real data
+  // absence (`collectBriefUnavailableSources`'s own checks), but equally something the model must
+  // not read as "zero evidence/levels exist," per Largo C3.
+  const unavailableSources: BieUnavailableSource[] = [
+    ...collectBriefUnavailableSources(ctx),
+    ...buildFailures.map((label) => ({
+      source: "Swing play-brief internals",
+      reason: `"${label}" failed to build this cycle — treat as unknown, not as a confirmed empty/zero read.`,
+      what_is_missing: label,
+      retryable: true,
+    })),
+  ];
 
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
@@ -1197,8 +1294,8 @@ export function composeSwingPlayBrief(
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,
-      evidence: safeCompose("evidence", () => evidenceFromContext(ctx, readMs), []),
-      levels: safeCompose("levels", () => levelsFromContext(ctx, readMs), []),
+      evidence,
+      levels,
       invalidation,
       followups: followupsFor(play),
       unavailableSources,

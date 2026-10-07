@@ -7915,6 +7915,22 @@ export async function gradeSwingPosition(
        grade_methodology = $3,
        legacy_grade = COALESCE($4::jsonb, legacy_grade),
        realized_pnl_pct = COALESCE($5, realized_pnl_pct),
+       -- Ask Largo standing mandate (2026-10-07): capture whether a real scale-out trim was
+       -- ENFORCED on this leg at any point before it closed. status below is immediately
+       -- overwritten to CLOSED/ROLLED by this same statement, which previously discarded a sticky
+       -- TRIM status permanently -- every closed position then read as "never trimmed" regardless
+       -- of real history, because the play-brief adapter's trim-ladder gate (adapters.ts) only
+       -- trusts a literal status === 'TRIM', which a CLOSED row can never satisfy again. In a SQL
+       -- UPDATE, every expression in SET is evaluated against the row's PRE-update values, so
+       -- status = 'TRIM' here reads the live status one statement before it's clobbered below --
+       -- captured atomically, no separate read-then-write race. scale_out_grade was already a
+       -- reserved, schema-present column for exactly this kind of frozen-at-close fact (see
+       -- pinSwingScaleOutGrade above) but had zero writers; COALESCE leaves any future unrelated
+       -- writer's value untouched rather than overwriting it.
+       scale_out_grade = COALESCE(
+         scale_out_grade,
+         jsonb_build_object('trim_enforced_before_close', status = 'TRIM')
+       ),
        status = CASE WHEN status = 'ROLLED' THEN 'ROLLED' ELSE $6 END,
        closed_at = COALESCE(closed_at, NOW()),
        graded_at = NOW(),
