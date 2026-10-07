@@ -4208,3 +4208,54 @@ test("composeSwingPlayBrief: adding confidence does not alter direction, invalid
   assert.equal(ctxThin.play.entryTriggerUnderlyingPx, 100);
   assert.equal(ctxThin.play.invalidationUnderlyingPx, 90);
 });
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-07): `composeSwingPlayBrief`'s own `safeCompose`
+// (added by #5288's lineage for this file) correctly keeps the whole brief alive when `evidence`/
+// `levels` throw, falling back to `[]` — but that fallback was, until this fix, byte-identical to
+// a genuine "this product has nothing to show here" read. Largo product contract C3 names this
+// exact shape as the dangerous one: "Never return [] / null / {} for 'unavailable'... any fallback
+// that returns a degraded result the caller cannot distinguish from a real one is a defect even
+// when every test passes." A model reading `envelope.levels: []` after a crash has no way to tell
+// that apart from a WATCH play that genuinely has no flag/entry/wall levels yet. This test forces
+// `levelsFromContext` to throw (a getter trap on `flagUnderlyingPx`, the first field it reads for
+// a WATCH play) and asserts the resulting empty array is now accompanied by a disclosed
+// `unavailableSources` entry naming what failed — RED before the fix (levels silently `[]`, no
+// disclosure), GREEN after.
+test("composeSwingPlayBrief: a levels-build failure is disclosed via unavailableSources, not a silent empty array (Largo C3)", () => {
+  const throwingPlay = fixturePlay({ status: "WATCH" });
+  Object.defineProperty(throwingPlay, "flagUnderlyingPx", {
+    get() {
+      throw new Error("boom — simulated levelsFromContext build failure");
+    },
+    configurable: true,
+  });
+  const ctx: SwingPlayBriefContext = {
+    play: throwingPlay,
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  // The brief still builds (the whole point of safeCompose) and levels still falls back to [].
+  assert.deepEqual(brief.envelope.levels, [], "levels still falls back to [] — this is not what changed");
+
+  const disclosed = brief.envelope.unavailableSources?.find((s) => s.what_is_missing === "levels");
+  assert.ok(
+    disclosed,
+    "expected a disclosed unavailableSources entry naming the failed 'levels' build, not a silent []",
+  );
+  assert.match(disclosed!.reason, /failed to build/);
+  assert.equal(disclosed!.retryable, true);
+
+  // confidence must also reflect the failure (reads the same merged unavailableSources), never the
+  // "high — every live source resolved cleanly" read a bare [] would otherwise have produced.
+  assert.equal(brief.envelope.confidence?.level, "moderate");
+  assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
+});
