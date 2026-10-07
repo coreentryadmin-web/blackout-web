@@ -873,6 +873,13 @@ function yearsToExpiry(expiry: string, todayYmd: string): number {
 const FAR_DATED_MONTHS_AHEAD = 6;
 /** Hard cap on the far-dated target dates returned — bounds the extra fetch + column count. */
 const FAR_DATED_MAX_TARGETS = 8;
+/**
+ * How many contracts `buildGexHeatmapUncached`'s main accumulation loop processes between
+ * event-loop yields (see the comment at that loop). ~500 keeps the yield count for an 11K+-
+ * contract chain (SPX) in the same ballpark (~22) as the per-expiry max-pain loop's ~20-23
+ * yields, while keeping each contiguous synchronous block short.
+ */
+const ACCUMULATE_CONTRACT_YIELD_BATCH = 500;
 
 /**
  * The standard US options monthly expiration for a given (year, month0): the THIRD FRIDAY.
@@ -3538,7 +3545,36 @@ async function buildGexHeatmapUncached(
 
   // Main banded snapshot — every expiry inside the heatmap strike band (near-term dailies /
   // weeklies dominate this single paginated pass).
-  for (const c of contracts) accumulateContract(c);
+  //
+  // BATCHED event-loop yield — this loop was the one unyielded hot loop #4822/#4836 missed.
+  // `accumulateContract` runs real closed-form BS math per contract (vannaPerShare/charmPerShare —
+  // exp()/erf-approximation, not cheap arithmetic) over the FULL banded chain (SPX confirmed
+  // 11K+ contracts), and it runs FIRST, before the maxPainByExpiry/depth-block loops #4822/#4836
+  // already yield inside. Measured live 2026-10-07 (after both of those fixes had been in
+  // production for weeks): ALB `TargetResponseTime` p99/Max was STILL spiking into the 60-106s
+  // range during pre-open warm-up, timed almost exactly against `cron/meridian-warm` elapsed=
+  // 40-85s — the same magnitude the original 2026-09-11 incident measured (58-70s), i.e. the
+  // prior fix did not hold. #4822's own "RTH check" note named this exact failure mode in
+  // advance ("anything still spiking into double-digit seconds means the yield granularity
+  // needs tightening further") but the fix that landed only touched the two DOWNSTREAM loops,
+  // never this upstream one, which is the largest (every contract in the chain, not one expiry
+  // or one near-term subset at a time).
+  //
+  // Per-contract yields would be wrong here, unlike the per-expiry (~20-23 iterations) loop
+  // below: an 11K+-contract chain would mean 11K+ setImmediate hops, and macrotask scheduling
+  // overhead at that volume would itself add meaningful wall-clock. Batching every
+  // ACCUMULATE_CONTRACT_YIELD_BATCH keeps the max contiguous block small (one batch's worth of
+  // per-contract math) while keeping the yield COUNT in the same ballpark as the other loops in
+  // this function (~22 yields for an 11K-contract chain at the chosen batch size).
+  let contractsSinceYield = 0;
+  for (const c of contracts) {
+    accumulateContract(c);
+    contractsSinceYield += 1;
+    if (contractsSinceYield >= ACCUMULATE_CONTRACT_YIELD_BATCH) {
+      contractsSinceYield = 0;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
 
   // ── FAR-DATED expiries (monthly / quarterly OpEx) ─────────────────────────────
   // The near-term pass above is dominated by dailies/weeklies; the dominant dealer-gamma walls
