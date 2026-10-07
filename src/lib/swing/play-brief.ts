@@ -2,7 +2,7 @@
  * Swing Play Intelligence Engine — deterministic, real-time play brief composer.
  * No Anthropic calls. Every claim traces to platform data with null-honesty.
  */
-import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
+import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel, BieUnavailableSource } from "@/lib/bie/answer-envelope";
 import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
@@ -1116,11 +1116,23 @@ function followupsFor(play: TerminalPlay): string[] {
  * sections are independently protected by #5288 and not duplicated here (single-issue PRs, per this
  * repo's standing policy).
  */
-function safeCompose<T>(label: string, build: () => T, fallback: T): T {
+// BUG FOUND (Ask Largo standing mandate, 2026-10-07): #5288's fail-soft fallback above correctly
+// keeps the brief alive when a builder throws, but for `evidence`/`levels` specifically it falls
+// back to `[]` — which is byte-identical to "this product genuinely has no evidence/levels to
+// show" and is exactly the shape the contract's own C3 names as the dangerous one ("Never return
+// [] / null / {} for 'unavailable'... any fallback that returns a degraded result the caller
+// cannot distinguish from a real one is a defect even when every test passes"). A build failure
+// here is silently indistinguishable from "we checked and there's nothing" to any downstream
+// Largo reader — including the model itself, which has no way to know the array it's looking at
+// is a crash fallback rather than a real empty read. `onFailure` lets evidence/levels record WHICH
+// builder failed without changing their own `[]` fallback (still correct — don't fabricate fake
+// evidence/levels to "fix" this), so the caller can fold that into `unavailableSources` instead.
+function safeCompose<T>(label: string, build: () => T, fallback: T, onFailure?: (label: string) => void): T {
   try {
     return build();
   } catch (error) {
     console.error(`[swing/play-brief] "${label}" threw — falling back, not failing the brief`, error);
+    onFailure?.(label);
     return fallback;
   }
 }
@@ -1226,10 +1238,31 @@ export function composeSwingPlayBrief(
               ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
               : null);
 
+  // BUG FIX continued (Ask Largo standing mandate, 2026-10-07): evidence/levels are now composed
+  // BEFORE unavailableSources rather than inline inside the envelope literal, so a build failure
+  // recorded via `buildFailures` can be folded into the SAME `unavailableSources` list the
+  // envelope field and `confidence` both read — otherwise a build failure would have nowhere
+  // honest to surface (the pre-existing `[]` fallback alone looks identical to a real empty read).
+  const buildFailures: string[] = [];
+  const trackBuildFailure = (label: string) => buildFailures.push(label);
+  const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, readMs), [], trackBuildFailure);
+  const levels = safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), [], trackBuildFailure);
+
   // Computed once and shared by the envelope's own `unavailableSources` chips AND `confidence`
   // below, so the two can never drift apart (the same class of narrative-vs-chip disagreement
   // this file has already fixed elsewhere for readMs — see collectBriefUnavailableSources's header).
-  const unavailableSources = collectBriefUnavailableSources(ctx);
+  // A build failure above is folded in here as its own honest entry — distinct from a real data
+  // absence (`collectBriefUnavailableSources`'s own checks), but equally something the model must
+  // not read as "zero evidence/levels exist," per Largo C3.
+  const unavailableSources: BieUnavailableSource[] = [
+    ...collectBriefUnavailableSources(ctx),
+    ...buildFailures.map((label) => ({
+      source: "Swing play-brief internals",
+      reason: `"${label}" failed to build this cycle — treat as unknown, not as a confirmed empty/zero read.`,
+      what_is_missing: label,
+      retryable: true,
+    })),
+  ];
 
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
@@ -1237,8 +1270,8 @@ export function composeSwingPlayBrief(
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,
-      evidence: safeCompose("evidence", () => evidenceFromContext(ctx, readMs), []),
-      levels: safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), []),
+      evidence,
+      levels,
       invalidation,
       followups: followupsFor(play),
       unavailableSources,
