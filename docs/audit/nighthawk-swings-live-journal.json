@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-07T14:05:00.000Z",
-  "notes": "Cycle check 2026-10-07 14:02Z (:01-offset trigger, v3 cadence). MAJOR EVENT: all three native swing positions (AMZN:48/MSFT:47/BE:46) closed within the first minute of today's RTH open (~13:30-13:31 UTC) -- the #5537 exit-capture bug produced its first REALIZED (not just predicted) outcome. See exit_capture_bug_5537_realized_outcome_2026_10_07 below for full detail. Currently zero native swing positions open (committedCount 71-78 range this cycle, all Banger-lane). No new native commit yet.",
-  "checked_this_cycle_no_bug_found": false,
+  "last_updated": "2026-10-07T20:33:00.000Z",
+  "notes": "Close 2026-10-07 (~20:32Z / 16:32 ET, confirmed via 2 consecutive identical readings over 15 min, well past the 16:00 ET close). Day summary: AMZN:48/MSFT:47/BE:46 all closed at this morning's open (see exit_capture_bug_5537_realized_outcome_2026_10_07 from the 14:05Z entry -- AMZN realized -27.67% stopped, BE +70.61%/MSFT +113.53% target, both well below their peaks). A fresh native position opened mid-morning, MSFT:49 (new positionId), tracked all session: opened near breakeven, oscillated 2% to 19.6% through the day, closed the session at +12.4%, still HOLD, well short of the 2x profit_ladder threshold so the #5537 bug was not in play for this one today -- a normal, uneventful HOLD. #5537 (root-cause, NOT implemented) and the TER/legacy-exempt wiring gap remain open, unchanged, still held for explicit sign-off. 4 cadence triggers disabled for the close; next-day open check-in scheduled.",
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -484,5 +484,11 @@
     "significance": "This is qualitatively different from every prior cycle's observation (peak premium exceeding 2x, liveStatus stuck at HOLD) -- those were UNREALIZED evidence of the bug. This is REALIZED evidence: a position that was a clear, large winner (+105.6%) turned into a real capital loss (-27.67%) with the system never once attempting to protect the gain, because graduatedRungs is structurally always [] (calibration.ts never populated by any production writer) so profit_ladder can never enforce and latchSwingLiveStatus never flips the row to TRIM. Reported directly to the operator in conversation at the time (same cycle as this journal entry).",
     "pr_status_unchanged": "#5537 (root-cause + proposed fix, NOT implemented) remains OPEN/DRAFT, still held for explicit sign-off. #5577 (Legacy graduation bridge, unrelated defect) is now MERGED (commit 8ed9a0a, 2026-10-07T01:07:46Z) but only ships the bridge helper + tests -- the live wiring into swing-discovery/route.ts's commit loop was NOT included (confirmed via grep against origin/main: legacyCommitCandidatesFromSnapshot has zero call sites outside its own file), so TER (score 83, the highest-scoring WATCH candidate) remains structurally blocked by legacy:exempt despite the PR merging. Do not conflate '#5577 merged' with 'TER unblocked' -- verified live, they are not the same thing.",
     "next_step": "Watch for the next native commit and track its peak-to-exit behavior the same way. If a FUTURE position also round-trips through a real stop after crossing 2x, that is confirmation #2 of the realized (not just unrealized) failure mode -- still worth a dedicated mention even past the 3-instance noise threshold, since each realized loss is a distinct capital event, not interchangeable noise. Continue holding on any code change absent explicit operator sign-off."
+  },
+  "msft_49_2026_10_07_session_summary": {
+    "status": "OPEN, carrying overnight -- not a #5537 concern today since it never approached the 2x profit_ladder trigger.",
+    "positionId": 49,
+    "timeline": "Opened ~16:47Z (12:47 ET) near breakeven (-0.9%), drifted to -5.5% by 17:17Z, recovered through the afternoon peaking ~19.6% at 18:32Z, oscillated 15-20% through the rest of RTH, closed the session flat-ish at +12.4% (unchanged across the final two 15-min checks, confirming close).",
+    "note": "Worth tracking tomorrow -- if it ever crosses +100% (2x), that's exactly the scenario #5537 describes as broken (graduatedRungs permanently [] -> no TRIM). Nothing actionable tonight."
   }
 }
