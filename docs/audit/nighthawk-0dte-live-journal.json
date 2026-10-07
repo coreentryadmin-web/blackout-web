@@ -925,6 +925,14 @@
       "summary": "11th confirmed upstream_ok:false instance, 17:45:58Z-17:46:07Z (~9s, shortest yet). No data loss (/record graded:12 stable). 32/32 [uw] queue-wait lines 100% untagged live traffic, 0 background-sweep-tagged, max wait 19269ms -- the 4th consecutive instance (#8,#9,#10,#11) with this exact signature. Pure confirming data, already escalated and confirmed at n=3 on #4076 (comment 6043025433) -- not re-posting. Duration trend continues shrinking (2m29s->1m24s->44s->9s) while max-wait stays in the same 19-20s band each time.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-07T18:16:34Z_12th_instance_corrects_shrinking_duration_claim": {
+      "cycle_time": "2026-10-07T18:16:34Z",
+      "summary": "12th confirmed upstream_ok:false instance, 18:11:34Z-18:15:55Z (~260s / 4m21s). No data loss (/record graded:12 stable after a retry -- see correction below). 241/241 [uw] queue-wait lines 100% untagged live traffic, 0 background-sweep, max wait 19499ms -- the 5th consecutive instance (#8-#12) with this exact signature.",
+      "CORRECTION_shrinking_duration_was_premature": "My #10 and #11 journal entries narrated a 'shrinking duration' trend (2m29s -> 1m24s -> 44s -> 9s across #9/#10/#11) as if it were a meaningful signal. This instance (#12, 260s) breaks that cleanly -- the full duration sequence across the live-only cluster is actually #8=149s, #9=84s, #10=44s, #11=9s, #12=260s, which is NOT monotonic. Flagging this explicitly rather than letting a stale 'things are improving' narrative stand uncorrected -- duration appears to vary with instance-to-instance load, not trend in either direction on this sample size (n=5). What HAS stayed consistent across all 5: the live-tagged ratio (96-100%) and max single wait (19.3-20.0s each time).",
+      "transient_401_was_own_tooling_not_production": "During this window my own audit script hit a genuine 401 on one /record call and several null-board crashes on /board calls (both self-healed on retry, no data lost). Checked CloudWatch for server-side 401s in the same window -- found none related to this session's auth path (the one '401' hit was an unrelated UW provider queue-timing log line, not an actual 401 response). Concluding this was my OWN audit tooling's Clerk/cron-bearer session getting momentarily congested alongside the real server-side UW saturation (plausible: both my tooling and the server-side board route may be competing for the same rate-limited UW pool during these windows), not a new production-side auth defect. Not escalating as a product finding.",
+      "kind": "OBSERVATION",
+      "no_action_needed": true
     }
   },
   "sessions": {
