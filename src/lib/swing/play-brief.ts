@@ -37,7 +37,7 @@ import {
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
-import { buildIntelSections } from "./play-brief-intel";
+import { buildIntelSections, entryTriggerDeadReason } from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
@@ -581,8 +581,48 @@ function confluenceZoneLabel(
   return `confluence (${confluenceZoneKindsLabel(z, primary)})`;
 }
 
-function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {
+function levelsFromContext(
+  ctx: SwingPlayBriefContext,
+  readMs: number,
+  bucket: "watch" | "open" | "closed",
+): BieLevel[] {
   const levels: BieLevel[] = [];
+  // BUG FIX (Ask Largo standing mandate, 2026-10-07): "Watch levels" (watchForSection,
+  // play-brief-intel.ts) narrates `play.flagUnderlyingPx`/`play.entryTriggerUnderlyingPx` in prose
+  // ("Flag anchor: 411.79 — track move from here", "Entry trigger: 411.04 — ... this is what
+  // actually fires the setup") for every WATCH-bucket play, but neither ever reached this
+  // structured `levels` array — the exact same gap already found and fixed for the Vector gamma
+  // magnet (see that fix's comment a few lines below). Unlike the gamma magnet, these two levels
+  // do NOT depend on Vector/GEX at all (they come straight off the swing gate's own commit
+  // context), so they are the one pair of levels a "show on chart" follow-up or another Largo
+  // consumer could ALWAYS get structurally for a pre-entry setup — and the one case this bites
+  // hardest is exactly when Vector/GEX ARE cold/stale (confirmed live, WDC 2026-10-07: GEX
+  // positioning + Vector desk state both unavailable that cycle), which left `envelope.levels`
+  // completely empty even though the setup's own trigger geometry was fully known. Scoped to the
+  // WATCH bucket only, mirroring where watchForSection itself renders these — an OPEN/CLOSED play
+  // has already crossed (or never needs) this geometry, so surfacing it there would be stale noise
+  // the prose doesn't show either.
+  if (bucket === "watch") {
+    const play = ctx.play;
+    if (play.flagUnderlyingPx != null && Number.isFinite(play.flagUnderlyingPx)) {
+      levels.push({
+        label: "flag anchor",
+        price: play.flagUnderlyingPx,
+        note: "pinned when first flagged — track move from here",
+        provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" },
+      });
+    }
+    if (play.entryTriggerUnderlyingPx != null && Number.isFinite(play.entryTriggerUnderlyingPx)) {
+      const deadReason = entryTriggerDeadReason(play);
+      const verb = play.direction === "SHORT" ? "break/reclaim below fires entry" : "break/reclaim above fires entry";
+      levels.push({
+        label: "entry trigger",
+        price: play.entryTriggerUnderlyingPx,
+        note: deadReason ?? verb,
+        provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" },
+      });
+    }
+  }
   const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
   const gex = ctx.ecosystem?.gex_positioning;
   const vecFresh = vectorFreshness(vec, readMs);
@@ -1198,7 +1238,7 @@ export function composeSwingPlayBrief(
       intent: "swing_play_brief",
       sections,
       evidence: safeCompose("evidence", () => evidenceFromContext(ctx, readMs), []),
-      levels: safeCompose("levels", () => levelsFromContext(ctx, readMs), []),
+      levels: safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), []),
       invalidation,
       followups: followupsFor(play),
       unavailableSources,
