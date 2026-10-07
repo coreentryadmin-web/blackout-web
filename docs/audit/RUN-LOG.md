@@ -4,6 +4,16 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-07 (06:17 UTC / Wed 02:17 ET) — [SEO] Lane heartbeat: clean, both fixes holding, #5577 merged
+
+Synced to `origin/main` (`41e0fc7` — includes a "swing Legacy graduation-bridge finding" fold).
+Purged Cloudflare edge, re-measured homepage desktop CLS — **0.0002, GOOD**. `/api/og` — **HTTP
+200, `image/png`, `x-clerk-auth-status: signed-out`, `cf-cache-status: DYNAMIC`**. Both fixes
+still holding. `agent-pr-sweep.mjs` → down to 1 open agent PR: **#5577 merged** (`8ed9a0a`,
+2026-10-07T01:07:46Z) — the long-tracked swing-lane draft, resolved via the coordinator's own
+merge pipeline after its author's Oct 1 self-correction. Only #5537 remains, unchanged, confirmed
+intentional. Not conflicted, no rebase needed.
+
 ## 2026-10-07 (00:17 UTC / Tue 20:18 ET) — [SEO] Lane heartbeat: clean, both fixes holding, PRs unchanged/in-progress
 
 Synced to `origin/main` (`bbb4da6`). Purged Cloudflare edge, re-measured homepage desktop CLS —
