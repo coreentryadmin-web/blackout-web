@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T14:08:10Z",
+  "lastUpdated": "2026-10-07T14:22:16Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -587,6 +587,10 @@
     {
       "at": "2026-10-07T14:08:10Z",
       "summary": "All 4 stages GREEN again (back from the 13:52Z single-cycle flutter, which self-resolved as expected -- confirms that was ordinary quote-cadence noise, not a pattern). Continuing the outcome-honesty watch opened at 13:37Z: VST has partially recovered toward entry (mark=3.38 vs entry 3.50, -3.4%, within [3.20,3.55]) but MRVL has continued declining further -- mark=2.07 vs entry 6.30, now -67.1% (was -53.2% at 13:37Z, -2.95). This confirms MRVL's move is a real, continuing intraday trend rather than a one-off open print -- divergent from VST, which is behaving normally. Not a data defect (mark sits cleanly within live bid/ask [2.00,2.13] both times) and no gate/stop action is this lane's to take, but worth continuing to watch MRVL specifically over the next several cycles for whether it approaches its stop (268.96 on the underlying) or the play's own risk_note scale-out trigger. C_record/D_pull_status unchanged (resolved=38, both CONFIRMED)."
+    },
+    {
+      "at": "2026-10-07T14:22:16Z",
+      "summary": "Outcome-honesty watch continued: both plays swung further. VST reversed from the prior cycle's near-flat -3.4% to +32.9% (mark=4.65 vs entry 3.50, within [4.45,4.85]) -- a real intraday reversal, not noise. MRVL partially recovered from its -67.1% low to -46.0% (mark=3.40 vs entry 6.30, within [3.30,3.50]) -- still net negative but less severe than the last two checks. Both marks sit cleanly inside live bid/ask both times, confirming the quote pipeline itself is sound; the swings are real market volatility on these specific low-DTE (dte=2) weeklies, not a data defect. All 4 stages GREEN, resolved=38 unchanged. This is now 3 consecutive RTH checks with large real moves on both names -- noting the volatility itself as the pattern (per the 3-instance noise-discipline threshold), not any one direction, since the moves have gone both ways. Continuing to watch into the rest of the session; no gate/code action warranted from Legacy's own correctness surface."
     }
   ],
   "knownOpenItems": {
