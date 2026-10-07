@@ -184,6 +184,36 @@ export function deadPlayReason(play: {
 }
 
 /**
+ * Shared "is today's live desk state even meaningful for this play?" gate — CLOSED (a historical
+ * record) or a dead WATCH candidate (`deadPlayReason` non-null: invalidated, entry-window expired,
+ * contract expired, or extended past the valid entry window) both answer no, for the identical
+ * reason `play-brief-absence.ts`'s `collectBriefUnavailableSources` documents at length: every
+ * "is TODAY's scan/Vector/GEX/HELIX read current" check is individually honest but permanently
+ * true (and therefore useless) once nothing will ever refresh that read again for this play.
+ *
+ * Extracted (Ask Largo standing mandate, 2026-10-07) because `collectBriefUnavailableSources` had
+ * this exact `isClosed || isDeadWatch` logic inlined as a private local, and `play-brief-intel.ts`'s
+ * `dataFreshnessSection` independently re-derived only the `isClosed` half of it — so a dead-but-
+ * not-closed WATCH play (live repro: NTAP, `entryStatus: "EXTENDED_CHASE"`) got a narrative line
+ * ("HELIX flow: **pipeline stale** — tape read may lag") that flatly contradicted the SAME
+ * envelope's `unavailableSources: []` and `confidence: "Every live source ... resolved cleanly"` —
+ * the structured chip and the free-text prose disagreeing about the same fact in the same brief.
+ * A single shared predicate keeps that from drifting apart again the next time a third call site
+ * needs the same freshness gate.
+ */
+export function isSwingPlayStaleCheckExempt(play: {
+  status?: string | null;
+  setupState?: string | null;
+  entryStatus?: string | null;
+  watchEntryExpired?: boolean | null;
+}): boolean {
+  const status = String(play.status ?? "").toUpperCase();
+  if (status === "CLOSED") return true;
+  if (status === "OPEN" || status === "HOLD" || status === "TRIM") return false;
+  return deadPlayReason(play) != null;
+}
+
+/**
  * Whether a member can enter now (or soon at limit) — independent of desk serving section / liveStatus.
  */
 export function evaluateSwingEntryEnterability(
