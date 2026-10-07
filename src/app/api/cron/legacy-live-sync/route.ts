@@ -104,6 +104,15 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // Observability (found 2026-10-07, live audit): this route previously logged nothing on a
+    // successful run, so a TRIM/CLOSE actually firing at a real scale-out/stop trigger was
+    // unverifiable from CloudWatch — `result.transitions` only ever reached cron_job_runs.meta_json,
+    // which no API exposes. One line, only when something actually happened, makes a live trigger
+    // crossing (e.g. VST's 2x scale-out) auditable without a DB read.
+    if (result.transitions.length > 0) {
+      console.info(`[cron/legacy-live-sync] ${result.transitions.length} transition(s): ${JSON.stringify(result.transitions)}`);
+    }
+
     await logCronRun(CRON_KEY, started, { ...result, duration_ms: Date.now() - started });
     return NextResponse.json(result);
   } catch (error) {
