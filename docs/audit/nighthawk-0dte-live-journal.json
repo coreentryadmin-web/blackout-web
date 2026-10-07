@@ -933,6 +933,15 @@
       "transient_401_was_own_tooling_not_production": "During this window my own audit script hit a genuine 401 on one /record call and several null-board crashes on /board calls (both self-healed on retry, no data lost). Checked CloudWatch for server-side 401s in the same window -- found none related to this session's auth path (the one '401' hit was an unrelated UW provider queue-timing log line, not an actual 401 response). Concluding this was my OWN audit tooling's Clerk/cron-bearer session getting momentarily congested alongside the real server-side UW saturation (plausible: both my tooling and the server-side board route may be competing for the same rate-limited UW pool during these windows), not a new production-side auth defect. Not escalating as a product finding.",
       "kind": "OBSERVATION",
       "no_action_needed": true
+    },
+    "2026-10-07T19:24:08Z_13th_instance_new_severity_and_volume_records": {
+      "cycle_time": "2026-10-07T19:24:08Z",
+      "summary": "13th confirmed upstream_ok:false instance, 19:11:58Z-19:23:43Z (~704.6s / 11m45s) -- a NEW DURATION RECORD, more than 2x the prior max (#7's ~326s). No data loss (/record graded:12 stable). 34x [zerodte-board-fallback] fires (prior max 15, #7), 355 total [uw] queue-wait lines (prior max 275, #7) -- both NEW VOLUME RECORDS. Max wait 19808ms (2nd-highest, just under #8's 19962ms record). Median wait 4049ms (far above typical) with 48 individual waits exceeding 10 seconds (unprecedented).",
+      "SIGNATURE_SHIFT": "320/355 (90.1%) live-tagged, 35/355 (9.9%) background-sweep-tagged -- a real reversion from the pure 96-100% live-only signature confirmed across instances #8-#12. Background-sweep contention has reappeared as a measurable secondary factor alongside the now-dominant live-traffic-alone pattern. Worth noting both causes can be simultaneously active -- this isn't evidence the live-only pattern was wrong, just that background-sweep pressure returned on top of it for this particular instance.",
+      "escalation_action": "posting a substantive update to #4076 covering the new records and signature shift",
+      "kind": "OBSERVATION",
+      "no_action_needed": false,
+      "action_taken": "posted follow-up comment to #4076 with new severity/volume records + signature shift"
     }
   },
   "sessions": {
