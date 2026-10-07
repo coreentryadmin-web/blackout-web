@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-06T20:20:00.000Z",
-  "notes": "Cycle check 2026-10-06 20:16Z (:16-offset trigger, v3 cadence). CONTINUITY GAP: journal was last written 2026-09-28 (PR #5537 creation) -- the direct-push-to-main journal-write mechanism was blocked by the harness's auto-mode CI-bypass classifier for the ~9 days since (2026-09-29 through 2026-10-06), so the live 10/5-10/6 RTH confirmation work below was tracked only in-session, not persisted, until this write. This push itself is the first write attempt since that gap; if it fails for the same reason, the blocker is still open and needs a human decision (either a permission-rule exception for this one state file, or changing the journal mechanism to go through a PR like everything else).",
-  "checked_this_cycle_no_bug_found": true,
+  "last_updated": "2026-10-07T14:05:00.000Z",
+  "notes": "Cycle check 2026-10-07 14:02Z (:01-offset trigger, v3 cadence). MAJOR EVENT: all three native swing positions (AMZN:48/MSFT:47/BE:46) closed within the first minute of today's RTH open (~13:30-13:31 UTC) -- the #5537 exit-capture bug produced its first REALIZED (not just predicted) outcome. See exit_capture_bug_5537_realized_outcome_2026_10_07 below for full detail. Currently zero native swing positions open (committedCount 71-78 range this cycle, all Banger-lane). No new native commit yet.",
+  "checked_this_cycle_no_bug_found": false,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -473,5 +473,16 @@
     ],
     "conclusion": "This is exactly the defect #5537 already root-caused (graduatedRungs permanently [] -> enforced:false -> latchSwingLiveStatus never flips to TRIM) -- these live ticks are confirmation of the existing root cause, not a new finding, so NOT re-posted to #4076 as a fresh escalation. Logging here so the next session reading this journal does not have to re-derive the pattern from scratch, and so the eventual sign-off conversation has the full multi-day live evidence trail in one place.",
     "next_step": "Keep tracking HOLD/TRIM status every ~15min during RTH. The only new event worth escalating is a QUALITATIVE change -- an actual TRIM transition (would itself be notable/unexpected given the confirmed bug), or the journal-write mechanism blocker getting resolved one way or the other. Do not re-escalate the same already-confirmed pattern on every clean tick."
+  },
+  "exit_capture_bug_5537_realized_outcome_2026_10_07": {
+    "status": "NO CODE CHANGED -- still held for explicit operator sign-off, consistent with every prior cycle. This entry upgrades the prior exit_capture_bug_5537_live_confirmation_2026_10 entry (unrealized-only observation) to a REALIZED outcome -- the bug's predicted failure mode actually happened to real capital this morning.",
+    "what_happened": [
+      "BE:46 -- committed 2026-09-28, peaked +125.3% intraday (2026-10-06), closed 2026-10-07T13:31:20Z at +70.61% (closedReason: target). Gave back ~55pp from peak with zero intermediate protection -- still a real win, but far short of what a working profit_ladder would have banked.",
+      "MSFT:47 -- committed 2026-09-29, peaked ~153.7% across 2026-10-05/06, closed 2026-10-07T13:30:59Z at +113.53% (closedReason: target). Gave back ~40pp from peak, same shape as BE.",
+      "AMZN:48 -- committed 2026-09-30, peaked +105.6% as recently as 2026-10-06 ~20:46 UTC, closed 2026-10-07T13:30:39Z at -27.67% (closedReason: stopped). FULL ROUND TRIP from +105.6% unrealized through breakeven into a REAL REALIZED LOSS. This is the exact scenario #5537's own write-up used NRG:34 (historical) to predict -- now reproduced live, in real time, on a position this lane was actively tracking peak-to-close."
+    ],
+    "significance": "This is qualitatively different from every prior cycle's observation (peak premium exceeding 2x, liveStatus stuck at HOLD) -- those were UNREALIZED evidence of the bug. This is REALIZED evidence: a position that was a clear, large winner (+105.6%) turned into a real capital loss (-27.67%) with the system never once attempting to protect the gain, because graduatedRungs is structurally always [] (calibration.ts never populated by any production writer) so profit_ladder can never enforce and latchSwingLiveStatus never flips the row to TRIM. Reported directly to the operator in conversation at the time (same cycle as this journal entry).",
+    "pr_status_unchanged": "#5537 (root-cause + proposed fix, NOT implemented) remains OPEN/DRAFT, still held for explicit sign-off. #5577 (Legacy graduation bridge, unrelated defect) is now MERGED (commit 8ed9a0a, 2026-10-07T01:07:46Z) but only ships the bridge helper + tests -- the live wiring into swing-discovery/route.ts's commit loop was NOT included (confirmed via grep against origin/main: legacyCommitCandidatesFromSnapshot has zero call sites outside its own file), so TER (score 83, the highest-scoring WATCH candidate) remains structurally blocked by legacy:exempt despite the PR merging. Do not conflate '#5577 merged' with 'TER unblocked' -- verified live, they are not the same thing.",
+    "next_step": "Watch for the next native commit and track its peak-to-exit behavior the same way. If a FUTURE position also round-trips through a real stop after crossing 2x, that is confirmation #2 of the realized (not just unrealized) failure mode -- still worth a dedicated mention even past the 3-instance noise threshold, since each realized loss is a distinct capital event, not interchangeable noise. Continue holding on any code change absent explicit operator sign-off."
   }
 }
