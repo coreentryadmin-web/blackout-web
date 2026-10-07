@@ -604,12 +604,36 @@ function levelsFromContext(
   // the prose doesn't show either.
   if (bucket === "watch") {
     const play = ctx.play;
+    // BUG FIX (Ask Largo standing mandate, 2026-10-07 — same cycle as the fix above, found
+    // auditing its own output): both levels below were stamped `asOf: ctx.asOf` (today's scan
+    // timestamp) with a hardcoded `freshness: "recent"`, even though the note on the very same
+    // level says "pinned when first flagged" — i.e. the PRICE is `play.detectedAt`-old, not
+    // scan-fresh. Live repro, same WDC play the fix above was built from (detectedAt
+    // 2026-10-06T16:07:50Z, ~23h before this scan): the narrated "Watch levels" section is
+    // consistent ("First flagged 1 day ago" renders in the adjacent Entry section off the same
+    // `detectedAt`), but the STRUCTURED envelope.levels entry for the identical number claimed
+    // `asOf: "<today>"`/`freshness: "recent"` — a direct narrative-vs-structured-envelope
+    // contradiction any API consumer reading only `envelope.levels` (not the prose) would get
+    // wrong, and the exact "dead-wired data" shape the standing mandate's Largo deep-dive checks
+    // for. A flag pinned 45+ real days ago (the AMD repro the age-on-watch fix above cites) would
+    // have read `freshness: "recent"` forever. Anchored to `play.detectedAt` (the same "WATCH
+    // Published clock" the narrative age line already trusts) with `freshnessFromObservedMs`
+    // doing real age-based classification — same precedent as `archetypeTrackRecordSection`'s
+    // `asOf: etStampFromIso(...) ?? ctx.asOf` / `freshness: Number.isFinite(...) ? ... : "unknown"`
+    // fallback a few hundred lines below. Falls back to `ctx.asOf`/"unknown" only when
+    // `detectedAt` itself is absent, never silently reusing the old wrong-but-present value.
+    const pinnedMs = play.detectedAt ? Date.parse(play.detectedAt) : NaN;
+    const pinnedProvenance = {
+      source: "Swing lane",
+      asOf: (play.detectedAt ? etStampFromIso(play.detectedAt) : null) ?? ctx.asOf,
+      freshness: Number.isFinite(pinnedMs) ? freshnessFromObservedMs(pinnedMs, readMs) : ("unknown" as const),
+    };
     if (play.flagUnderlyingPx != null && Number.isFinite(play.flagUnderlyingPx)) {
       levels.push({
         label: "flag anchor",
         price: play.flagUnderlyingPx,
         note: "pinned when first flagged — track move from here",
-        provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" },
+        provenance: pinnedProvenance,
       });
     }
     if (play.entryTriggerUnderlyingPx != null && Number.isFinite(play.entryTriggerUnderlyingPx)) {
@@ -619,7 +643,7 @@ function levelsFromContext(
         label: "entry trigger",
         price: play.entryTriggerUnderlyingPx,
         note: deadReason ?? verb,
-        provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" },
+        provenance: pinnedProvenance,
       });
     }
   }

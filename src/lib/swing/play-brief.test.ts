@@ -3466,6 +3466,69 @@ test("composeSwingPlayBrief: WATCH flag anchor + entry trigger are surfaced as s
   assert.match(entryTrigger?.note ?? "", /break\/reclaim below fires entry/);
 });
 
+test("composeSwingPlayBrief: flag anchor/entry trigger provenance is anchored to detectedAt (pin time), not the scan clock (2026-10-07 gap fix)", () => {
+  // BUG: these two levels' `note` says "pinned when first flagged", but their provenance used to
+  // hardcode `asOf: ctx.asOf` (today's scan timestamp) and `freshness: "recent"` regardless of how
+  // long ago the play was actually flagged — directly contradicting the adjacent Entry section's
+  // own "First flagged N days ago" narrative built from the SAME `detectedAt` field. A play flagged
+  // weeks ago would read "freshness: recent" on these levels forever. Live repro: WDC, detectedAt
+  // ~23h before the scan — real production confirmed the mismatch before this fix.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 403.61,
+      detectedAt: "2026-10-06T16:07:50.000Z", // ~23h before asOf below
+    }),
+    asOf: "2026-10-07T15:06:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor && entryTrigger);
+  // A ~23h-old pinned value must NOT read "recent" (that bucket is <10 minutes) and must NOT be
+  // stamped with today's scan time — it must carry the real pin time and a freshness bucket that
+  // honestly reflects a day-old value.
+  assert.notEqual(flagAnchor?.provenance?.freshness, "recent");
+  assert.notEqual(flagAnchor?.provenance?.asOf, ctx.asOf);
+  assert.match(flagAnchor?.provenance?.asOf ?? "", /2026-10-06/, "asOf must reflect the real pin date, not the scan date");
+  assert.notEqual(entryTrigger?.provenance?.freshness, "recent");
+  assert.notEqual(entryTrigger?.provenance?.asOf, ctx.asOf);
+});
+
+test("composeSwingPlayBrief: flag anchor/entry trigger fall back to scan asOf/unknown freshness when detectedAt is absent (never fabricated)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 403.61,
+      detectedAt: null,
+    }),
+    asOf: "2026-10-07T15:06:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  assert.ok(flagAnchor);
+  assert.equal(flagAnchor?.provenance?.freshness, "unknown");
+  assert.equal(flagAnchor?.provenance?.asOf, ctx.asOf);
+});
+
 test("composeSwingPlayBrief: OPEN/CLOSED plays do not surface flag anchor/entry trigger as structured levels", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
