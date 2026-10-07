@@ -4,6 +4,273 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Performance] Swing play-brief requests ran the full Vector fan-out TWICE concurrently, doubling load during the cache cron's already-documented fragility — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live repro via `GET /api/market/swing/play-brief` (Ask Largo standing audit sweep, 2026-10-07): sampled 5 tickers across both CLOSED (BE, MSFT) and WATCH (NVDA, TSLA, AMD) states — **5/5 (100%)** logged BOTH `ecosystem context fetch failed` and `Vector full-state fetch failed`, each a `SwingBriefSourceTimeout` landing at exactly the 8s budget (`BRIEF_SOURCE_TIMEOUT_MS`). Every envelope's `unavailableSources` carried "ecosystem context" and "Vector state" as fetch-failed, and `levels`/`structureLadder` were empty across the board. |
+| **Root cause** | `play-brief-context.ts` fans out `fetchEcosystemContext(ticker)` and `fetchVectorFullState(ticker, normalizeDteHorizon("all"))` **concurrently in the same `Promise.all`** — but `fetchEcosystemContext` (`ecosystem-context.ts:922`) **also calls `fetchVectorFullState(upper, "all")` internally** as part of its own arsenal fan-out, with the exact same ticker and horizon. `vectorFullStateCacheKey` is keyed only on `(ticker, horizon)`, so both calls target the identical cache entry. On a cache HIT this is a harmless extra Redis round-trip — but `vector-full-state-snapshot` (the cron responsible for keeping this cache warm) is **already independently documented in this file** as failing 70-98% of its universe on most runs (rate-limiter contention under `TICKER_CONCURRENCY`), so a cache MISS is common, not rare. On a miss, both callers see "not cached" at the same instant and **each independently launches the full `computeVectorFullState` fan-out** (8+ provider/DB reads across two sequential batches) — i.e. every single swing play-brief request was paying for this expensive read **twice**, for the identical answer, compounding the exact rate-limiter/latency strain the cron fragility finding already measured. |
+| **Why this matters beyond swing** | `fetchVectorFullState` is called from many sites with overlapping args (the Cortex veto layer, `get_vector_full_state`, `composeVectorRead`, `vector-pick-sweep`, the SPX/largo context route) — any two of these racing for the same (ticker, horizon, timeframe) at the same instant hit this identical redundant-compute shape, not just the swing play-brief's two calls. The fix is at the shared function, so every caller benefits, not just swing. |
+| **Why not caught earlier** | Both calls resolve independently to `null` on failure (fail-open by design), so the member-facing symptom is a plausible-looking "fetch failed, retryable" absence line — never an error, never a crash. The *duplication* itself produces no visible signal at all unless you check CloudWatch for two concurrent compute fan-outs on the same ticker, which nothing routinely does. |
+| **Fix** | New `src/lib/bie/vector-full-state-inflight.ts` (`dedupeInFlight`) — a small, dependency-free, process-local in-flight-promise map keyed by `(normalizedTicker, horizon, timeframeMin)`. `fetchVectorFullState`'s live-compute call now routes through it: a second concurrent caller for the same key awaits the first caller's in-flight promise instead of starting a second `computeVectorFullState` fan-out. Purely a call-count optimization — every caller still gets the same resolved value, and the result is still written to the Redis cache exactly once by whichever caller's wrapper reaches `writeVectorFullStateCache` first. No caching semantics, gate, score, or trading behavior changed. |
+| **Why a dependency-free file** | `vector-full-state.ts` carries `import "server-only"`, which throws outside Next's RSC compiler — mirrors `src/lib/swing/brief-source-timeout.ts`'s own reasoning for the same reason, so the dedupe logic stays unit-testable under a plain `tsx --test`. |
+| **Regression guard** | `src/lib/bie/vector-full-state-inflight.test.ts` (4 tests): two concurrent calls for the same key invoke the factory exactly once and both receive the same promise/value; a different key is never deduped against an in-flight call; the entry clears after settling so a later non-overlapping call gets a fresh invocation; a rejected factory still clears its entry (never permanently wedges the key). |
+| **Deliberately unchanged** | The 8s `BRIEF_SOURCE_TIMEOUT_MS` budget itself, the cron's own `TICKER_CONCURRENCY`/overlap-lock tuning, and the cache TTL/versioning are all untouched — this fix removes a self-inflicted doubling of load, it does not attempt to re-tune the already-measured cron fragility those other findings cover. |
+| **Gates** | `npx tsc --noEmit -p tsconfig.json` clean · `npx tsx --experimental-test-module-mocks --test src/lib/bie/*.test.ts` 768/768 pass · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief*.test.ts` 818/818 pass · `npx eslint` clean on touched files. |
+| **Status** | FIXED — branch `fix/vector-full-state-duplicate-fanout`. |
+
+## vector-dark-pool-warm still fails 90%+ of tickers per run even after the shared UW rate limiter's cluster-wide ceiling was doubled (PR #5579) — rotated to a half-universe batch — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Vector dark-pool cache warm cron (`/api/cron/vector-dark-pool-warm`) + shared UW rate limiter |
+| **Severity** | P1 performance/correctness — same severity class as the 2026-09-02/2026-09-15 prior findings this one re-measures |
+| **Status** | FIXED (partial mitigation — see "What this does NOT do") |
+| **File** | `src/app/api/cron/vector-dark-pool-warm/route.ts`, new `rotation.ts` |
+
+### Background — why this was re-measured
+
+A standing 5-engine live-monitor cycle found `vector-dark-pool-warm` failing ~93% of its UW pool
+calls on every run for 3+ hours (`warmed=4 failed=51 elapsed=363632ms` at 13:36:38 UTC,
+`warmed=2 failed=53 elapsed=378241ms` at 13:56:53 UTC, 2026-10-07), with a concurrent
+`[db] transient query error: timeout exceeded when trying to connect` / `[ready] database ping
+attempt failed` log pair suggesting a possible DB connection-pool angle.
+
+### What was measured and ruled out
+
+- **RDS connections**: `DatabaseConnections` on `blackout-production-postgres` held flat at
+  19-21 across the entire incident window (11:35-14:34 UTC) — nowhere near the instance's real
+  `max_connections` (~450 on `db.t4g.medium`, confirmed via `describe_db_parameters`) or the RDS
+  Proxy's `MaxConnectionsPercent=90` backend budget (~405). The app's own internal
+  `PGBOUNCER_DEFAULT_POOL_SIZE=20` self-check is a stale conservative assumption (web:
+  `REPLICA_COUNT=8`×`PG_POOL_MAX=2`=16 + market-worker: 2 running×`PG_POOL_MAX=4`=8 = 24 > 20),
+  genuinely worth tightening up separately, but is **not real contention at the RDS/Proxy layer**
+  — both have enormous headroom versus this app's actual demand.
+- **RDS instance health**: CPU ~9-11% the whole window, `CPUCreditBalance` pinned at its max
+  (576, never drawn down), `ReadLatency`/`WriteLatency` ~0, `DiskQueueDepth` ~0, `FreeableMemory`
+  steady ~1.9GB. No resource exhaustion at any point.
+- **ElastiCache/Redis**: CPU ~5-6%, connections stable ~117-141, zero evictions — the Redis-backed
+  global UW rate-limiter semaphore was not itself degraded/unreachable.
+- **Conclusion**: the `[db] transient query error`/`[ready] database ping attempt failed` log pair
+  seen alongside the 13:36 failure is most likely an independent, unrelated transient blip (RDS
+  Proxy connection-borrow contention from some other momentary spike) rather than the cause of
+  `vector-dark-pool-warm`'s UW failures — nothing in the DB/Proxy/Redis metrics correlates with
+  the cron's measured failure pattern.
+- **Cron schedule overlap**: confirmed real (per `[cron/*] background done` logs, 13:30-13:37 UTC:
+  `vector-walls-warm`×2, `zerodte-warm`×3, `bie-full-state-snapshot`, all landing inside this one
+  `vector-dark-pool-warm` run's ~6-minute window) — but this is a **UW-rate-limiter-queue**
+  contention effect, not a DB-connection collision; see Root cause below.
+
+### Root cause (confirmed via live `[api-queue-timing]` logs)
+
+Pulled every `provider=unusual_whales endpoint=/api/darkpool/*` queue-timing log line in the
+13:30-13:37 UTC window. Every logged HTTP call itself completed in well under a second
+(`http_duration_ms` 39-1376ms, `status=200`) — **the UW API itself was fast and healthy the whole
+time.** What grew across the run was `queue_wait_ms`, the time a request waited just to be
+*admitted* into the shared rate limiter: 1934ms → 5108ms → 5590ms → 7328ms → 11702ms → 18274ms →
+18730ms, approaching `DEFAULT_QUEUE_MAX_WAIT_MS`'s 20s ceiling (`queue-budget.ts`). Requests that
+cross that ceiling are dropped as queue-timeouts before ever reaching UW — this is exactly how
+`warmed=4 failed=51` happens with zero evidence of UW itself being slow or erroring.
+
+This is the **same root cause** the 2026-09-02 and 2026-09-15 `FINDINGS.md` entries already
+diagnosed (shared `GLOBAL_MAX_RPS` ceiling oversubscribed by aggregate cluster-wide UW demand —
+live member traffic plus every concurrent background sweep), re-measured fresh and confirmed
+**still present six days after PR #5579 (2026-10-01) doubled the cluster-wide ceiling itself**
+(`UW_GLOBAL_MAX_RPS` 2→4). Verified that fix is actually live: the running ECS task's image tag
+(`blackout-web:3d8c4fb3b...`) matches current `main`, which is well after #5579's merge commit.
+Redis (the mechanism the global ceiling depends on) is healthy per the ElastiCache metrics above,
+so the raised ceiling is genuinely in effect — and the cron is failing at essentially the same
+~90%+ rate it failed at before the raise. Doubling the shared ceiling, by itself, was not enough:
+aggregate platform-wide UW demand (not just this one cron) still saturates it.
+
+### Fix
+
+This cron's own `runUwPool` concurrency bound (3, from PR #3345) already caps how many of ITS OWN
+requests sit in the shared admission queue at once — there is no further concurrency knob to turn
+on this side. What was still fully in this cron's control: how much **total** work it asks the
+shared queue to admit per run. `rotation.ts` adds a pure, Redis-cursor-persisted 2-way rotation —
+each run now warms **half** the universe (`halfBatchSize`, rounds up) instead of the whole thing,
+with the cursor advancing so the two halves alternate and the full universe is still covered every
+2 runs (~20 minutes at this cron's ~10-minute cadence). Halving the per-run ticker count halves
+this cron's own total admission-queue commitment, which — holding aggregate cluster congestion
+constant — proportionally reduces how many of its own tail entrants can cross the 20s queue-wait
+budget before being dropped.
+
+**Why 2-way, not a larger split**: `warmVectorDarkPool`'s cache entries carry a 25-minute TTL
+(`vector-dark-pool-cache.ts`). A 2-way rotation completes full coverage in ~20 minutes, comfortably
+under that TTL; a 3-way rotation would take ~30 minutes — already past the TTL — trading the
+queue-timeout failure mode for cache entries going empty between warms. 2-way is the largest split
+that still respects the cache's own staleness bound.
+
+**Why NOT raise `UW_GLOBAL_MAX_RPS` again or touch the shared limiter**: that's a cluster-wide
+capacity decision affecting every UW consumer on the platform (live member traffic, Nighthawk,
+SPX, Largo tool calls, every other background sweep) — exactly the kind of decision the 2026-09-15
+finding reserved for the owning Vector lane rather than patching blind, and PR #5579 already made
+that call once six days ago without resolving this. This fix is deliberately scoped to the one
+cron's own per-run workload, which is fully this file's own responsibility.
+
+### What this fix does NOT do
+
+Does not guarantee a >90% success rate — it only halves this cron's own contribution to total
+queue demand; if aggregate platform-wide UW demand is high enough, the smaller batch can still see
+elevated queue waits, just proportionally less often. Does not address the underlying open capacity
+question (is `UW_GLOBAL_MAX_RPS=4` still genuinely under UW's real account-level ceiling, and is
+aggregate platform demand simply outgrowing it) — that remains the Vector lane's capacity decision
+per the 2026-09-15 finding, now with fresh evidence that the 2→4 raise alone did not close the gap.
+Does not touch the stale `PGBOUNCER_DEFAULT_POOL_SIZE=20` vs. real demand (24) mismatch noted above
+under "What was measured and ruled out" — real RDS/Proxy headroom means this is not causing failures
+today, but it's a correctness gap in the app's own self-check worth a separate, narrowly-scoped fix.
+
+### Tests
+
+`src/app/api/cron/vector-dark-pool-warm/rotation.test.ts` (8 new tests): `halfBatchSize` rounds up
+correctly; batch selection picks the right half starting at a cursor; wraps around the end of the
+list; two consecutive runs from a persisted cursor cover the full universe exactly once each;
+out-of-range/negative cursors are normalized rather than throwing; empty universe and
+batchSize>=length edge cases return safe, correct results.
+
+`src/app/api/cron/vector-dark-pool-warm/route.test.ts` (+2 tests): the route imports and calls
+`selectDarkPoolWarmBatch`/`halfBatchSize` (not a full-universe pool call), and persists/reads the
+rotation cursor via the shared (Redis-backed) cache rather than per-process memory.
+
+RED→GREEN proven via `git diff`/`git checkout --`: the 2 new route tests fail against the pre-fix
+`route.ts` (2/6 fail, `runUwPool(allTickers...)`/no rotation import present) and all 6 pass with the
+fix reapplied; all 8 new `rotation.test.ts` tests pass against the new pure module (no pre-fix
+baseline needed — the module is new). `npx tsc --noEmit` clean. Full `npm test` (Node 20): run
+alongside this PR — see PR description for the pass count (same pre-existing sandbox-only failures
+as every other entry in this file, zero new failures from this change).
+
+## Ask Largo swing play-brief's structured `envelope.levels` never carried the WATCH setup's own flag anchor / entry trigger — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Ask Largo / Night Hawk Swings — `GET /api/market/swing/play-brief` (`src/lib/swing/play-brief.ts`'s `levelsFromContext`) |
+| **Severity** | P3 (absence/precision gap against `docs/audit/LARGO-PRODUCT-CONTRACT.md` — the one pair of decision-relevant levels structural consumers can never see, worst when it is most needed) |
+| **Status** | FIXED |
+| **File** | `src/lib/swing/play-brief.ts`, `src/lib/swing/play-brief-intel.ts` (exported `entryTriggerDeadReason`) |
+
+### Root cause
+
+`watchForSection` (`play-brief-intel.ts`) narrates `play.flagUnderlyingPx`/`play.entryTriggerUnderlyingPx`
+in prose for every WATCH-bucket play — "Flag anchor: **411.79** — track move from here" / "Entry
+trigger: **411.04** — ... this is what actually fires the setup" — but `levelsFromContext`
+(`play-brief.ts`), the ONLY function that populates the envelope's structured `levels: BieLevel[]`
+array, never read either field. It only ever derives levels from Vector full-state / the GEX
+positioning matrix (call wall, put wall, gamma flip, spot, confluence zones, dark pool, gamma magnet,
+GEX king, max pain) — all external-feed-sourced. The setup's OWN trigger/anchor geometry, which comes
+straight off the swing gate's commit context (not Vector/GEX at all), had no structured home. This is
+the exact same gap class already found and fixed for the Vector gamma magnet (see that fix's comment
+in `levelsFromContext`, 2026-09-xx: "was never added to the structured envelope.levels array —
+anything consuming levels ... had no way to see it") — just a second, previously-unchecked instance,
+and a more consequential one, since these two levels don't depend on an external feed being warm.
+
+### Evidence
+
+Live audit, 2026-10-07 (RTH): `GET /api/market/nighthawk/horizons?view=swings` showed a live WATCH
+candidate, WDC (SHORT, SECTOR_ROTATION, `setupState: TRIGGERED`, `entryStatus: AT_TRIGGER`,
+`flagUnderlyingPx: 411.79`, `entryTriggerUnderlyingPx: 411.04`). Its play-brief
+(`GET /api/market/swing/play-brief?playId=SWING:WDC&ticker=WDC&status=COMMIT`) rendered both numbers
+correctly in the "Watch levels" section's prose/markdown —
+
+> Flag anchor: **411.79** — track move from here
+> Entry trigger: **411.04** — Break/reclaim below this is what actually fires the setup
+
+— but `envelope.levels` was `[]` (empty) on that exact response. The brief's own `unavailableSources`
+confirmed why: GEX positioning ("cold matrix / no positioning read") and Vector desk state ("snapshot
+unavailable") were BOTH absent that cycle — the one case where the setup's own trigger geometry is the
+*only* decision-relevant number available, and it was invisible to anything reading the structured
+array (a "show on chart" follow-up chip, or any other Largo consumer of `levels`).
+
+Confirmed via source read, not just the live repro: zero references to `flagUnderlyingPx` or
+`entryTriggerUnderlyingPx` anywhere in `play-brief.ts` before this fix (`grep` returned no matches),
+confirming the omission was total, not merely stale-gated like the Vector-sourced levels.
+
+### Fix
+
+`levelsFromContext` now takes the already-in-scope `bucket` parameter (passed by its one caller,
+`composeSwingPlayBrief`, which already computes it) and, for WATCH-bucket plays only, pushes two new
+structured levels sourced from `ctx.play` directly (not Vector/GEX, so never gated on either being
+warm): `flag anchor` (`play.flagUnderlyingPx`, provenance `"Swing lane"`) and `entry trigger`
+(`play.entryTriggerUnderlyingPx`, provenance `"Swing lane"`, `note` reusing the existing
+`entryTriggerDeadReason()` — now exported from `play-brief-intel.ts` instead of duplicated — so a
+dead/Legacy-pinned trigger carries the same honest caveat in the structured level as it already does
+in prose, never silently presented as live when it is not).
+
+Scoped to WATCH only, mirroring exactly where `watchForSection` itself renders these in prose — an
+OPEN play has already crossed this geometry (irrelevant going forward) and a CLOSED play has no live
+entry decision left to make, so surfacing it there would be stale noise the prose doesn't show either.
+
+### Blast radius
+
+One call site touched (`levelsFromContext`'s only caller, inside `composeSwingPlayBrief`) to thread
+the `bucket` argument through; no other consumer of `levelsFromContext` exists. `entryTriggerDeadReason`
+gained an `export` but kept its one existing call site (`watchForSection`) unchanged — purely additive.
+
+### Tests
+
+Two new tests in `src/lib/swing/play-brief.test.ts`: (1) a WATCH play with no Vector/GEX data still
+surfaces both `flag anchor` and `entry trigger` as structured levels with `"Swing lane"` provenance and
+the correct direction-aware note; (2) an OPEN/HOLD play with the same fields set does NOT surface them
+(confirms the bucket gate). RED confirmed pre-fix via `git stash` (1 failure, the new WATCH-levels
+test) / GREEN post-fix (114/114) in an isolated worktree off `origin/main` — a concurrent agent session
+was using the shared checkout for an unrelated `vector-dark-pool-warm` investigation, so this fix was
+developed in a separate `git worktree` rather than touching that session's working tree. `npx tsc
+--noEmit` clean. Full `npm test` run separately to confirm no regression elsewhere.
+
+## 2026-10-07 — [FINDING, P2 CI / Largo] `largo-stress-nightly` scheduled timeout never caught up with its own #4073 concurrency change — bank3 structurally cannot finish in 45 minutes — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Three auto-filed `ops-auto-fix: Largo nightly stress failed` issues with no comments/closing PR: #5485 (2026-09-24), #5502 (2026-09-26), #5578 (2026-10-01). Coordinator sweep flagged them as a recurring unexplained regression since a 2026-08-31/09-04 finding had already "fixed" the 45-minute timeout via bank rotation (PR #3729, #8a923afe6). |
+| **What actually failed — three DIFFERENT things, not one bug** | Pulled the real job logs for all three run IDs (36871016018, 36239606676, 35996805744) rather than assuming the old timeout story still applied. **#5485 (run 35996805744, bank3)**: genuine `cancelled` — the "Run live Largo stress" step ran 44m45s and was killed by `timeout-minutes` mid-sweep (log ends `##[error]The operation was canceled.`). **#5502 (run 36239606676, bank1)** and **#5578 (run 36871016018, bank2)**: both completed WITHIN the 45-minute window and exited 1 because of exactly one `live_bad=1` verdict each (`scoreAnswer`'s `honesty-no-grounded-numbers` rule), not a timeout — "why did you say bearish and bullish in the same breath" (bank1, `spx_desk_read`) and "desk lean on SPX — what ticket would you put on" (bank2, `play_suggest_read`, also tagged `tone-emoji`). |
+| **Root cause (the #5485 timeout, the only one with a confirmed code-level fix in this PR)** | PR #4073 (2026-09-05, `944c8c96e`) deliberately lowered `LARGO_STRESS_CONCURRENCY` from 5 to 2 on BOTH the manual-single-bank and the scheduled-rotated-bank paths to cut Clerk/UW 429 storms — but the job's `timeout-minutes: 45` and the step's own governing comment ("one rotated bank... at concurrency 5 — fits 45m") were never revisited, and the four banks are NOT evenly sized: `bankStats()` = `{bank1:109, bank2:100, bank3:193, bank4:121}` — bank3 is nearly double every sibling. Measured live throughput at concurrency=2 from the one run that completed in full (bank1, 36239606676: live phase 11:41:51→12:17:30 ET, 35.65min / 109 questions = ~0.327 min/question): bank3 projects to **~63 minutes** at that same rate — structurally over the 45-minute budget regardless of luck, and exactly what was observed. |
+| **Why `honesty-no-grounded-numbers` is NOT fixed by this PR** | For bank1's case, the stress bank's own canonical "shape" fixture (`scripts/largo-stress-shape.mjs`) gives the EXPECTED good answer for this exact question as `"**Why bullish and bearish show up together** — signal stack vs thesis friction."` — zero digits, by the bank author's own design — which is circumstantial evidence `honestyIssues()` may be missing an exemption for self-referential "why did you say X and Y" meta-questions (the same category of false positive fixed twice before for `scenario`/`concept_read`/`platform_read`/`clarify_read`). For bank2's case, the question explicitly asks for an actionable "ticket," where grounded numbers are the CORRECT expectation, and near-identical trade-idea questions scored OK in the same and other runs — most consistent with one-off LLM non-determinism (already documented in this file for a different clarify_read case, 2026-09-18), not a code regression. Neither the live failing answer text nor a confirmed scorer gap was available to verify a fix against (the workflow never preserved the per-question report), so no scoring-logic change is made here — see "Fix" below for what IS shipped to make this diagnosable without re-investigation next time. |
+| **Fix** | (1) `timeout-minutes` for the non-`all` path raised 45→90 (keeps `bank=all`'s separate 360m window untouched; concurrency=2 is explicitly NOT reverted to 5 — that would reintroduce the #4073 429 storms, confirmed still present even at concurrency=2 near the tail of both the bank1 and bank3 runs). (2) Stale/misleading governing comment corrected to describe the ACTUAL concurrency (2, not 5) and show the real per-bank math. (3) Added an `actions/upload-artifact` step (14-day retention) uploading `audit-output/largo-stress-report*.json` on failure/cancellation — the full per-question report (answer previews + issue tags) was never preserved before, which is exactly why this investigation could not confirm or deny the `honesty-no-grounded-numbers` cases above from first principles. (4) Ops-issue body text no longer asserts "timeout-minutes: 45" as if it's always the cause, now points at the uploaded report. |
+| **Regression guard** | `src/largo-stress-nightly-timeout-budget.test.ts` (2 tests): (a) the non-`all` `timeout-minutes` must cover the LARGEST bank at the measured concurrency=2 throughput with a 15% margin — RED on the pre-fix 45-minute value (asserts 90 ≥ 72.6min projected), GREEN after; (b) both non-`all` branches must keep `concurrency=2` — guards against a future "just raise concurrency" regression of the #4073 429 mitigation. |
+| **Status** | FIXED (timeout structural bug only) — branch `fix/largo-stress-nightly-timeout-budget`. The two `honesty-no-grounded-numbers` BAD verdicts (#5502, #5578) are left open pending the next occurrence captured with the new artifact upload, per CLAUDE.md's "say so clearly rather than fabricating a fix" instruction — see the three GitHub issues for the full per-issue disposition. |
+
 ## `portfolio/sector-map.ts` was missing ASST (Strive bitcoin-treasury), so its SECTOR_ROTATION benchmark and Book-context concentration both mislabeled it as Financials/isolated — FIXED
 
 > **kind:** `FINDING`
@@ -68,40 +335,6 @@ Regression test added (`src/lib/swing/industry-group-rs.test.ts`): confirmed RED
 (returns `null`, both via the SIC path and via a sector-map-label fallback path). `tsc --noEmit` clean;
 `industry-group-rs.test.ts` (14/14), `board-allocation.test.ts` + `theme-cluster.test.ts` +
 `play-brief-intel.test.ts` (227/227 combined) pass.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Swing play-brief "Book context" self-cites a reviewed position as "a separate overlap" whenever a ticker carries 2+ concurrent same-direction positions — fix/swing-play-brief-book-context-self-citation — 2026-10-07
 
