@@ -38,6 +38,175 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Ask Largo] WATCH "flag anchor"/"entry trigger" structured `envelope.levels` claimed a day-old pinned price was "recent" as of right now — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `levelsFromContext`'s WATCH-bucket branch (shipped earlier the same day as PR #5631, "surface WATCH entry trigger/flag anchor as structured envelope levels") pushed both the "flag anchor" and "entry trigger" levels with `provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" }` — hardcoded to the current scan timestamp/bucket regardless of how long ago the play was actually flagged. Both levels' own `note` text says "pinned when first flagged", and the adjacent "Entry" section of the SAME brief narrates `play.detectedAt` as "First flagged N days ago" — so the brief told the reader two inconsistent things about the identical number in the same response: the prose said "flagged N days ago", the structured envelope said "as of right now, fresh". Live-confirmed, not hypothetical: `GET /api/market/swing/play-brief?playId=SWING:WDC&ticker=WDC&status=COMMIT` on 2026-10-07 returned `envelope.levels` flag-anchor `asOf: "2026-10-07 15:06 ET"` / `freshness: "recent"` for a value `detectedAt` dates to `2026-10-06T16:07:50Z` (~23h earlier), while the same response's "Entry" section correctly said "First flagged 1 day ago (2026-10-06 12:07 ET)". A play that sits on WATCH for 45+ real days (the `AMD` repro the age-on-watch fix, 2026-09-10, already cites) would have read `freshness: "recent"` on these two levels forever, no matter how stale the pin actually was. |
+| **Root cause** | The two `levels.push(...)` calls were written to stamp `ctx.asOf` (the CURRENT scan's timestamp) rather than the timestamp the pinned price actually reflects, and hardcoded `freshness: "recent"` instead of deriving it from real age — unlike every other level/evidence entry in this same file (e.g. `archetypeTrackRecordSection`'s `asOf: etStampFromIso(...) ?? ctx.asOf` / `freshness: Number.isFinite(snapshotMs) ? freshnessFromObservedMs(...) : "unknown"`), which already derive both fields from the value's own observed instant. `play.detectedAt` (the "WATCH Published clock" already wired into the narrative age line) was available on the exact same `play` object used two lines above but was never read here. |
+| **Why not caught earlier** | The regression test added alongside #5631 (`"composeSwingPlayBrief: WATCH flag anchor + entry trigger are surfaced as structured envelope levels"`) only asserted `price`/`source`/`note` — it never asserted `provenance.asOf`/`freshness`, so the hardcoded "recent"/`ctx.asOf` values passed cleanly. Found this cycle by live-verifying the just-merged #5631 output against production rather than only unit tests, per the standing Ask Largo mandate's "keep digging into envelope completeness" discipline. |
+| **Blast radius** | Scoped to these two `levels` entries (`"flag anchor"`, `"entry trigger"`) in the WATCH-bucket branch of `levelsFromContext`. No other level/evidence producer in `play-brief.ts` shares this bug — every sibling already derives `asOf`/`freshness` from a real observed timestamp (Vector/GEX `vecFresh`/`gexFresh`, the archetype/ticker track-record entries, etc.). |
+| **Fix** | Both levels now share one `pinnedProvenance` object: `asOf` is `etStampFromIso(play.detectedAt) ?? ctx.asOf` and `freshness` is `freshnessFromObservedMs(Date.parse(play.detectedAt), readMs)` when `detectedAt` parses, falling back to `ctx.asOf`/`"unknown"` only when `detectedAt` itself is absent (never silently reusing the old wrong-but-present "recent" value). Mirrors the exact precedent `archetypeTrackRecordSection` already set a few hundred lines below in the same file. |
+| **Deliberately unchanged** | The `note` text on both levels ("pinned when first flagged" / the break/reclaim verb) is untouched — it was already correct; only the machine-readable `provenance` was wrong. The narrative "First flagged N days ago" line in the Entry section is untouched (it was already correctly using `detectedAt`); this fix brings the structured envelope into agreement with it, not the other way around. |
+| **Regression guard** | `src/lib/swing/play-brief.test.ts`: two new tests — (1) with `detectedAt` ~23h before `asOf` (the live WDC shape), asserts `freshness !== "recent"` and `asOf` reflects the real pin date, not the scan date; (2) with `detectedAt: null`, asserts the honest fallback (`freshness: "unknown"`, `asOf: ctx.asOf`) rather than fabricating a fresher-than-true read. RED before the fix (git-stash verified: test (1) failed — `freshness` was `"recent"` when it should not have been), GREEN after. |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief.test.ts` 119/119 pass (2 new, RED→GREEN confirmed on one via git-stash). |
+| **Status** | FIXED — branch `fix/swing-watch-level-pin-provenance`. |
+
+## Ask Largo swing play-brief: GE Aerospace's generic SIC "3600" catch-all code mechanically resolved to Technology (XLK) instead of the correct Industrials label — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Night Hawk Swings — sector-rotation industry-group benchmark (`src/lib/swing/industry-group-rs.ts`), surfaced in the Ask Largo swing play-brief's "Why this setup" section (`play-brief-intel.ts`) |
+| **Severity** | P3 (misleading narrative context, not a data-correctness/grading bug) |
+| **Status** | FIXED |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate deep-dive, 2026-10-07 |
+
+### Root cause
+
+`sectorEtfFromSic` (`industry-group-rs.ts`) buckets any Polygon `sic_code` in the range 3600-3699
+to `XLK` (Technology), with the comment "Electronic & electrical equipment ... → Tech". That range
+was written for genuine electronics/communications-equipment sub-codes (3661 telephone apparatus,
+3674 semiconductors, etc.), but it also silently swallows the generic top-level catch-all code
+`3600` itself — whose own Polygon `sic_description` is **"ELECTRONIC & OTHER ELECTRICAL EQUIPMENT
+(NO COMPUTER EQUIP)"**, explicitly disclaiming the Tech label.
+
+Live-confirmed 2026-10-07: GE Aerospace (jet-engine manufacturer, `GET /v3/reference/tickers/GE`)
+carries exactly this generic `sic_code: "3600"`. `resolveGroupBenchmark`'s granularity ladder
+(exact-SIC industry ETF → SIC-range sector ETF → static sector-map label → null) let the coarse
+SIC-range tier claim a match before the correct, hand-curated static label (`sector-map.ts`:
+`GE: "Industrials"`) was ever consulted — the exact "mechanically-nearest-but-substantively-wrong
+ETF" failure mode this same file's header already names, and that the `NO_SECTOR_BENCHMARK_THEMES`
+guard already fixed for crypto-equity names (HUT/MSTR, PR for #5446).
+
+### Evidence
+
+Live repro: `GET /api/market/swing/play-brief?playId=SWING:GE&ticker=GE&status=WATCH&strike=300&right=C`
+(2026-10-07 14:58 ET) rendered, in the "Why this setup" section:
+`"**Industry read:** lagging **Technology** (XLK) by 7.1% over 10 sessions (-4.3% vs +2.8%)."`
+— for GE Aerospace, an industrial/aerospace name, never a technology company. Confirmed the raw
+Polygon reference data directly: `sic_code: "3600"`, `sic_description: "ELECTRONIC & OTHER
+ELECTRICAL EQUIPMENT (NO COMPUTER EQUIP)"`. Confirmed the static sector-map already has the correct
+answer: `src/lib/sector-map.ts` line 39, `GE: "Industrials"` — that correct entry was simply never
+reached.
+
+RED→GREEN: added `resolveGroupBenchmark: the generic SIC '3600' catch-all code is not auto-classified
+Tech — it falls through to the static sector-map label` to `src/lib/swing/industry-group-rs.test.ts`.
+Pre-fix (`git stash` on the implementation file only): test failed — `resolveGroupBenchmark({ticker:
+"GE", sicCode: "3600", sectorLabel: "Industrials"})` returned `{etf: "XLK", label: "Technology",
+kind: "sector"}` instead of the expected Industrials/XLI. Post-fix (`git stash pop`): GREEN. Full
+`src/lib/swing/industry-group-rs.test.ts` suite: 16/16 pass. `npx tsc --noEmit`: clean.
+
+### Fix
+
+Added `if (sic === 3600) return null;` immediately before the `3600-3699 → XLK` range check in
+`sectorEtfFromSic`, scoped to the EXACT ambiguous top-level code only — every genuine sub-code in
+the range (3661, 3674, etc.) is untouched and still resolves to XLK as before (asserted in the new
+test). Returning `null` here (not a guess) is the same "honest absence beats a wrong mechanical
+match" principle this file's own header states for the coarser SIC-range tier generally; it lets
+`resolveGroupBenchmark`'s next tier (the static sector-map label) win for any ticker that has one
+(GE → Industrials/XLI), and correctly yields no benchmark at all for a ticker with SIC 3600 and no
+static label (SECTOR_ROTATION simply won't fire for that name, which is the existing, intentional
+behavior for any unresolvable sector — never a mislabel).
+
+### Blast radius
+
+Single function (`sectorEtfFromSic`), single call site (`resolveGroupBenchmark`), consumed by
+`swing-ingest.ts`'s `industryGroupRsFacts`/`industryGroupRs01` (SECTOR_ROTATION archetype scoring
+and the `sectorLeadershipFacts` narrated in the swing play-brief's "Why this setup" / "Industry
+read" line). Any other live ticker whose Polygon `sic_code` happens to be exactly `"3600"` (not
+3601-3699) gets the same correction automatically on next discovery/active-refresh — not swept
+individually here, since the fix is at the shared resolver, not a per-ticker patch. Frozen
+`sectorLeadershipFacts` on already-committed positions pinned before this fix are NOT retroactively
+rewritten (same "grade against what was known at the time" principle the adjacent `staleBenchmark`
+disclosure guard already establishes in `play-brief-intel.ts`) — a future pass could extend that
+exact disclosure guard to cover this SIC-3600 case too if a live position is found still carrying
+the stale XLK read, but none was found live in this pass (GE's own committed board rows were
+WATCH-bucket, not yet committed, so no frozen stale fact exists yet to disclose).
+
+## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Ask Largo] Every CLOSED swing play-brief's trim ladder read 0 fired, regardless of real trim history — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A CLOSED swing position's play-brief exit ladder (`TerminalPlay.exitPolicy.trim_levels[].fired`, read by `play-brief.ts`/`play-brief-narrative.ts`/`play-brief-narrative-coaching.ts`'s trim-coaching/post-mortem prose) always reported `trimsFired: 0` / every rung `fired: false`, even for a position that genuinely scaled out a real partial before it closed. Any trader reading a closed play-brief's "ladder"/post-mortem section for a trimmed-then-closed position would see "no trims banked" when one actually was. |
+| **Root cause** | `src/features/nighthawk/command-deck/adapters.ts`'s exit-ladder gate (added 2026-09-10, live repro NRG) deliberately only trusts the mechanical peak-vs-level crossing when `status === "TRIM"`, because an open position's bare peak crossing doesn't mean a real scale-out fired (manage-sync.ts gates that behind an `enforced` flag). That gate is correct for OPEN/HOLD/TRIM rows. But `gradeSwingPosition` (db.ts) unconditionally overwrites `status` to `CLOSED` (or `ROLLED`) the moment a position grades — `status = CASE WHEN status = 'ROLLED' THEN 'ROLLED' ELSE $6 END` — discarding whatever sticky `TRIM` status the row carried the instant before. A CLOSED row's `status` can therefore never again equal `"TRIM"`, so the adapter's gate forces `trimsFired:0` on every single closed position unconditionally, independent of its actual trim history. The reserved `swing_positions.scale_out_grade` JSONB column exists for exactly this kind of frozen-at-close fact (see `pinSwingScaleOutGrade`'s own doc comment) but had zero writers anywhere in the codebase (confirmed by grep — only its own tests referenced it). |
+| **Why not caught earlier** | The 2026-09-10 NRG fix's own regression test (`adapters.test.ts`, "swing trim ladder is NOT fired while liveStatus is still HOLD") only exercised the OPEN-lane HOLD→TRIM transition; it never constructed a CLOSED source to check whether a *real* prior trim survived the close, so the always-false behavior for CLOSED rows shipped silently alongside the correct OPEN-lane fix it was built on top of. |
+| **Blast radius** | Every CLOSED swing play-brief and Command Deck CLOSED-tab card, through both call sites of `terminalPlayFromClosedSwing` (`containers.tsx`'s CLOSED tab, `play-brief-resolve.ts`'s per-leg play-brief) and the chain-composite path (`closedDeckSourcesFromChains`, which spreads the single-leg mapper's output, so it inherits the fix automatically). No other product surface reads this gate. |
+| **Fix** | Threaded one new fact end-to-end, additively, no existing behavior changed: (1) `gradeSwingPosition`'s SQL now writes `scale_out_grade = COALESCE(scale_out_grade, jsonb_build_object('trim_enforced_before_close', status = 'TRIM'))` in the SAME statement that overwrites `status` — in a SQL `UPDATE`, every `SET` expression evaluates against the row's PRE-update values, so `status = 'TRIM'` here atomically captures the live status one instant before it's clobbered, no separate read-then-write race, and `COALESCE` never overwrites a value some future unrelated writer sets first. (2) `closed-plays.ts`'s `closedDeckSourceFromRow` reads it back via a new pure helper (`trimEnforcedBeforeCloseFromScaleOutGrade`) onto a new `SwingClosedDeckSource.trimEnforcedBeforeClose: boolean \| null` field — real `true`/`false`, or honestly `null` (never a fabricated `false`) for rows graded before this shipped. (3) `adapters.ts`'s `HorizonDeckSource` carries the same field through `terminalPlayFromClosedSwing`, and the exit-ladder gate becomes `status === "TRIM" \|\| src.trimEnforcedBeforeClose === true` — only an explicit `true` opens it; `null`/`false`/absent all keep the existing, correct zeroed-out behavior. |
+| **Deliberately unchanged** | The OPEN/HOLD/TRIM gate behavior (the 2026-09-10 NRG fix) is untouched — this only widens the CLOSED branch. Chain-roll nuance (whether an EARLIER leg of a rolled chain trimmed) is out of scope: the flag reflects only the terminal leg's own pre-close status, matching the existing precedent that entry/peak/trough on a rolled chain are also terminal-leg-scoped unless the terminal leg is the worst leg (`closedDeckSourcesFromChains`'s own `worstLegIsTerminal` comment). Rows graded before this PR permanently read `null` (never retroactively backfilled) — same honest-absence discipline the rest of this codebase uses for pre-existing gaps, not a backfill migration, which is out of scope for a small single-issue PR. |
+| **Regression guard** | `src/lib/db-swing-ledger.test.ts`: new assertion that `gradeSwingPosition`'s SQL contains the `scale_out_grade = COALESCE(..., jsonb_build_object('trim_enforced_before_close', status = 'TRIM'))` fragment. `src/lib/swing/closed-plays.test.ts`: 4 new tests covering `true`/`false`/absent (`null`)/non-boolean-value cases for `trimEnforcedBeforeCloseFromScaleOutGrade` and `closedDeckSourceFromRow`. `src/features/nighthawk/command-deck/adapters.test.ts`: 1 new test with three CLOSED sources (`trimEnforcedBeforeClose: false/null/true`) asserting the gate opens ONLY on explicit `true`. RED before the fix (git-stash verified: 6 of the new/updated assertions failed — the SQL fragment was absent and the CLOSED gate was unconditionally closed), GREEN after. |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/lib/swing/closed-plays.test.ts src/lib/db-swing-ledger.test.ts src/features/nighthawk/command-deck/adapters.test.ts` 206/207 pass (1 pre-existing unrelated skip), RED→GREEN confirmed via git-stash on the new assertions specifically. |
+| **Status** | FIXED — branch `fix/swing-closed-trim-enforced-flag`. |
+
+## Legacy live-sync cron logged nothing on success — real TRIM/CLOSE actions unverifiable from CloudWatch — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Lane** | Night Hawk Legacy (live monitoring) |
+| **Found** | 2026-10-07, live audit, while watching VST cross its own 2x scale-out trigger ($7.00 = 2 × $3.50 entry) in real time |
+
+### Root cause
+
+`src/app/api/cron/legacy-live-sync/route.ts` calls `runLegacyLiveSync` every 5 minutes during RTH
+and, on success, only forwards the result to `logCronRun` → `cron_job_runs.meta_json` — a column no
+API route exposes. The route itself never logged anything on a successful run (only on the `catch`
+branch). So when a real position actually crosses a mechanical trigger — `deriveScaleOutAction`
+returning `TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT` (`src/lib/zerodte/scale-out.ts`) — there was no way
+to confirm from CloudWatch (or anywhere reachable from this audit sandbox) that the action actually
+fired, as opposed to the position merely being flagged `noQuote` that tick and silently skipped.
+
+This was not a correctness bug in the state machine itself (unit-tested, and the rule is shared with
+`banger-live-sync`) — it was a pure observability gap discovered by trying to verify a live event
+(VST's mark hit $7.00 at 18:09Z, cleared to $8.15 by 18:37Z) and finding no way to confirm the system
+actually acted on it short of a raw Postgres read (blocked from this sandbox) or decoding Discord
+channel history.
+
+### Evidence
+
+- EventBridge `blackout-production-legacy-live-sync` confirmed `ENABLED`, `cron(*/5 11-21 ? * MON-FRI *)`.
+- `blackout-production-hit-cron` Lambda logs showed `[hit-cron] /api/cron/legacy-live-sync -> 200`
+  every 5 minutes through the window VST crossed its trigger — the cron ran, but its own app-level
+  logs (`/ecs/blackout-production`, filtered on `"legacy-live-sync"`) had zero matching lines.
+- `LEGACY_DISCORD_ALERTS=1` confirmed set in `blackout-production/app/env`, so live management is on.
+- No `/api/admin/nighthawk/*` route and no member-facing route reads `discord_live_state` /
+  `trims_taken` — confirmed by grep across `src/app/api`.
+
+### Fix
+
+Added a single `console.info` in the route, gated on `result.transitions.length > 0` (so an ordinary
+HOLD-only tick — the overwhelming majority — logs nothing, same noise floor as before), placed after
+`runLegacyLiveSync` resolves and before the `logCronRun` handshake. Logs the transitions array
+verbatim (ticker + action), not just a count, so a CloudWatch filter on `"legacy-live-sync"` now
+shows exactly which position scaled/closed and how.
+
+Regression test (`route.test.ts`) asserts: the log line exists, is gated on a non-empty transitions
+array, and runs after `runLegacyLiveSync(` but before the `logCronRun(CRON_KEY, started, ...)`
+handshake (so it can't be dropped by an early return). RED confirmed by stashing the route change and
+re-running the test (assertion failure, "must gate a log line on non-empty transitions"); GREEN after
+restoring it.
+
+### Blast radius
+
+Single file (`route.ts`) + its test. No other caller of `runLegacyLiveSync` needs this — the sibling
+`banger-live-sync` route has the identical gap but was explicitly left untouched here per the
+issue-handling policy's "one issue per branch/PR" discipline; worth a follow-up finding if this
+pattern recurs 3 times (noise-discipline threshold already established for this lane).
+
+### What was deliberately left unchanged
+
+Did not add a member-facing API to expose `discord_live_state`/`trims_taken` — that's a real product
+enhancement (logged in the live journal, `docs/audit/nighthawk-legacy-live-journal.json`,
+2026-10-07T18:13Z entry) but is a larger, UI-surfacing decision outside this fix's scope (pure
+observability, zero behavior change, additive-only).
+
 ## 2026-10-07 — [FINDING, P2 Night Hawk Swings / Ask Largo] `composeSwingPlayBrief`'s `evidence`/`levels` build-failure fallback was indistinguishable from a real empty read — FIXED
 
 > **kind:** `FINDING`
