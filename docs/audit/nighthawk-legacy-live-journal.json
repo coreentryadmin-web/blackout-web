@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T18:37:30Z",
+  "lastUpdated": "2026-10-07T19:38:30Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -611,6 +611,10 @@
     {
       "at": "2026-10-07T18:37:30Z",
       "summary": "Overall AMBER->GREEN. VST mark now $8.15 (fresh quote) -- well clear of the $7.00 2x trigger logged at 18:13Z, now +133% from $3.50 entry, still climbing (6.58->7.08->8.15 over the last ~25min). The two prior AMBER cycles (17:53Z/18:08Z/18:22Z) were the quote hovering right at/near the trigger with intermittent staleness, not a live-sync problem -- confirmed benign now that it cleared decisively. Still cannot verify from outside whether the TAKE_PARTIAL trim actually fired at the crossing (same observability gap logged 18:13Z: no API exposes discord_live_state/trims_taken, cron logs nothing on success). MRVL steady at $2.81. Other stages unchanged: A 2 plays, C resolved=38, D both CONFIRMED."
+    },
+    {
+      "at": "2026-10-07T19:38:30Z",
+      "summary": "PR #5641 (legacy-live-sync transitions log, filed 18:13Z's enhancement idea as a real fix) merged clean -- verify green, CodeQL clean, squash-merged b995bc4, verified present on origin/main. Unsubscribed. MRVL mark jumped to $4.05 (fresh quote, bid 3.95/ask 4.15) -- entry_premium confirmed $6.30 via edition payload, so this is -35.7% from entry, a genuine RECOVERY past the 15:36Z-closed watch's '-50% to -56% stabilized' band (was ~$2.8-3.1 the last several cycles). Re-opening the outcome-honesty watch on MRVL: thesis was BULLISH/LONG stock-proxy call, so this recovery is thesis-consistent direction, just magnitude worth tracking. VST $8.03, flat/consolidating near last readings, nowhere near a second trigger. Other stages unchanged: A 2 plays, C resolved=38, D both CONFIRMED."
     }
   ],
   "knownOpenItems": {
