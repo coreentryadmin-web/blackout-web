@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-06T21:36:48Z",
+  "lastUpdated": "2026-10-07T12:07:47Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -571,6 +571,10 @@
     {
       "at": "2026-10-06T21:36:48Z",
       "summary": "Edition ROLLED OVER to 2026-10-07 (next trading day) with 2 brand-new plays (VST/MRVL), confirming the hypothesis from the 20:07Z post-close entry: A_edition is GREEN again (2 play(s), fresh, not degraded) -- the prior AMBER state (edition stale + all 4 old tickers stale) was the transient post-close window, not a stuck/broken state, same as the 2026-10-02 precedent. B_marks AMBER for both new tickers (VST/MRVL stale) matches the already-documented pre-open pattern exactly (new plays published overnight, no live quotes until RTH open). D_pull_status correctly SKIPPED (\"morning confirmation not yet run for this date\" -- the 9:15am ET morning-confirm cron has not run yet for 2026-10-07). C_record GREEN, resolved=41 unchanged (today/10-06 record, distinct from the new edition date, as expected). This closes the loop on today's full lifecycle: RTH open -> rotating single/pair-ticker B_marks staleness (TMO/XP/ILMN/HUM, 14:08Z-19:52Z, same already-diagnosed Polygon-snapshot quote-lag mechanism throughout, never escalated past the noise threshold despite several tickers individually crossing 3+ instances) -> post-close staleness (20:07Z-21:21Z, A_edition+all 4 marks stale together) -> clean rollover (this entry). Only 2 plays in the new edition (vs 4 in the prior one) -- not flagged as anomalous on its own (play count naturally varies day to day based on discovery), but worth noting for context on tomorrow's cycle. Next genuine transition to watch: the new tickers' B_marks going live once RTH opens tomorrow, and the morning-confirm cron populating D_pull_status for 2026-10-07."
+    },
+    {
+      "at": "2026-10-07T12:07:47Z",
+      "summary": "First real B_marks transition since the post-close freeze (overall still AMBER, no bug): VST261009C00160000 and MRVL261009C00290000 both moved from frozen-since-close ('mark flagged stale by the API', asof pinned at yesterday 19:59:59Z all night) to an actively-refreshing pre-market state -- asof now 2026-10-07T12:05:00Z (fresh, ~2min old), bid/ask both 0 (no two-sided market yet this early pre-market), mark ($3.50/$6.30) sourced from last-trade/close fallback. Evidence text changed accordingly to 'no live two-sided quote (bid=0, ask=0) -- mark sourced from last trade/close' via legacy-healthcheck-eval.mjs's own documented, already-unit-tested bid<=0/ask<=0 branch (checked before the generic staleness check specifically so this state reads honestly rather than as a misleading generic stale label). Confirms pre-market data has started flowing ahead of today's RTH open (~13:30 UTC) and the 9:15am ET morning-confirm window (~13:15 UTC) for D_pull_status. Not a defect -- the exact behavior the eval logic's own test suite names and expects."
     }
   ],
   "knownOpenItems": {
