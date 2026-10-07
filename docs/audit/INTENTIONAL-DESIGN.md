@@ -421,6 +421,18 @@ not just trusted as a single aggregate. Same-ticker reuse across multiple exempt
 allowed (no dedup), exactly like the original tool's SPY/QQQ/IWM reuse — the median across many
 dates is what washes out one reused name's idiosyncratic days.
 
+**Third window, re-run 2026-10-07 (n=17 paired rows, 2026-09-16…2026-10-06).** Median realized RTH
+range: exemptible **4.73%** vs liquidity/cap-matched control **2.60%** — ratio **~1.82x**, roughly
+half the prior (2026-09-10) window's 3.9x, on a thinner sample (17 vs 71 paired rows). Match quality
+held (median `cap_ratio=1.0`, `dvol_ratio=0.906`), so the narrower ratio is not a matching-quality
+artifact. Reinforces, rather than contradicts, the "read window-internally" caution already stated
+above: even the best-controlled metric here still swings by ~2x across three real windows measured
+so far, which is itself evidence more windows are needed before any specific ratio could inform a
+gate threshold. The ratio has stayed above 1 in every window measured — "zero direct print-gap risk
+≠ ordinary volatility for that name" still holds directionally — but no single window's number
+should be read as *the* answer. No gate touched. Full write-up:
+`docs/audit/findings-staging/2026-10-07-g11-liquidity-control-rerun.md` (folded into `FINDINGS.md`).
+
 ---
 
 ## 6. Cortex `gex-walls` oppose MAGNITUDE (within a net-PASS commit) does not cleanly predict outcome
