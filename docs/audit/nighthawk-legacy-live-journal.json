@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T16:22:23Z",
+  "lastUpdated": "2026-10-07T17:21:38Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -599,6 +599,10 @@
     {
       "at": "2026-10-07T16:22:23Z",
       "summary": "3-INSTANCE PATTERN NAMED (per noise discipline): a brief, single-cycle 'mark flagged stale by the API' flicker on B_marks during active RTH, which self-resolves within seconds on an immediate re-check, has now recurred 3 times today -- MRVL at 13:52Z, VST at 15:07Z, and VST again at 16:22Z (this cycle; re-checked ~10s later, mark=5.33, stale:false). All three instances share the identical signature: one ticker briefly exceeds LEGACY_QUOTE_STALE_MS (30s) between quote ticks, flags AMBER for exactly one healthcheck cycle, then clears on the very next read with no missing data, no NaN, no sign error -- consistent with ordinary per-contract quote-update cadence variance on these specific low-volume weeklies, not a defect. Naming this per the 3-instance threshold so it has a durable record, but NOT escalating: the pattern is benign (self-resolving within seconds, never persists, never produces a bad value), already explained by documented contract-liquidity behavior, and doesn't warrant a code or threshold change on this evidence. VST itself remains elevated (mark=5.33, +52.3% from entry, having peaked near +62.9% last cycle) and MRVL stable (-54.3%). All other stages GREEN, resolved=38 unchanged."
+    },
+    {
+      "at": "2026-10-07T17:21:38Z",
+      "summary": "VST approaching its own 2x scale-out trigger: mark=5.88 (+68.0% from entry 3.50, within [5.60,6.15]) -- getting close to the risk_note's stated 'realize 50% at 2x' threshold ($7.00). Not crossed yet. Noting this because crossing it would be a mechanically meaningful event for the play's own exit logic (worth checking on a future cycle whether the live board actually reflects a trim/scale recommendation once/if it crosses, as a genuine outcome-honesty check on whether the stated exit rule is honored in the live UI, not just in the risk_note text). MRVL showed another instance of the already-named self-resolving stale-flicker pattern (now its 3rd occurrence specifically, 6th overall across both tickers) -- not re-logging in detail, consistent with the 16:22Z entry. All other stages GREEN, resolved=38 unchanged."
     }
   ],
   "knownOpenItems": {
