@@ -31,6 +31,7 @@ import {
   type VectorDteHorizon,
 } from "@/features/vector/lib/vector-dte-horizon";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
+import { dedupeInFlight } from "@/lib/bie/vector-full-state-inflight";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import {
   getVectorGexWallsForHorizon,
@@ -380,7 +381,15 @@ export async function fetchVectorFullState(
     if (cached) return withReadContext(cached);
   }
 
-  const live = await computeVectorFullState(ticker, horizon, timeframeMin);
+  // De-duplicate a concurrent second caller wanting the SAME (ticker, horizon, timeframeMin) —
+  // see vector-full-state-inflight.ts's header for why this matters: ecosystem-context.ts's own
+  // `fetchEcosystemContext` calls this exact function with the exact same args as several of ITS
+  // OWN callers (e.g. the swing play-brief), so a cache miss used to mean two full fan-outs ran
+  // concurrently for the identical answer.
+  const live = await dedupeInFlight(
+    `${normalizeVectorTicker(ticker)}:${horizon}:${timeframeMin}`,
+    () => computeVectorFullState(ticker, horizon, timeframeMin),
+  );
 
   // Self-warm on a default-TF miss so the next reader hits cache even if the cron hasn't run
   // (off-hours, cold task). Fire-and-forget — a cache write must never delay or fail the read.
