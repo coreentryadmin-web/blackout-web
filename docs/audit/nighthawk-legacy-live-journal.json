@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T13:22:41Z",
+  "lastUpdated": "2026-10-07T13:37:15Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -579,6 +579,10 @@
     {
       "at": "2026-10-07T13:22:41Z",
       "summary": "D_pull_status GREEN (expected transition): the 9:15am ET morning-confirmation cron has now run for the 2026-10-07 edition -- both VST and MRVL show CONFIRMED <-> pulled=false agreement (neither pick was pulled overnight between publish and the confirm window). A_edition still GREEN (2 plays), C_record still GREEN (resolved=38). B_marks unchanged from the 12:07Z transition -- both still bid=0/ask=0 'no live two-sided quote' pre-market state (~9:22am ET, 8 min before the 9:30am ET open, consistent with thin/no pre-market trading on these names). Matches the established daily pattern (same D_pull_status SKIPPED->GREEN timing seen on prior days). Watching for VST/MRVL to develop a real two-sided quote once RTH opens."
+    },
+    {
+      "at": "2026-10-07T13:37:15Z",
+      "summary": "MAJOR TRANSITION: overall AMBER -> GREEN, all 4 stages GREEN for the first time today. RTH opened (9:30am ET, ~7min prior) and B_marks now show real live two-sided quotes for VST261009C00160000 (mark=2.42, within [2.23,2.61]) and MRVL261009C00290000 (mark=2.95, within [2.8,3.1]) -- both within their quoted bid/ask bands, confirming the mark pipeline is sane under real RTH conditions, not just the pre-market bid=0/ask=0 fallback path exercised the last two cycles. Notable for outcome-honesty tracking: both premiums have dropped sharply from entry at the open -- VST entry $3.50 -> $2.42 (-30.9%), MRVL entry $6.30 -> $2.95 (-53.2%). Neither drop is a data defect (both marks sit cleanly inside live bid/ask), but MRVL's -53% at just 7 minutes into RTH is a steep enough early move to watch over the next several cycles -- worth re-checking whether this stabilizes, continues deteriorating toward stop, or reverses. D_pull_status still GREEN (both CONFIRMED, pulled=false) and C_record unchanged (resolved=38)."
     }
   ],
   "knownOpenItems": {
