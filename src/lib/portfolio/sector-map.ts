@@ -46,9 +46,19 @@ const SECTORS: Record<string, string[]> = {
   // already in this bucket, so they belong in the same concentration cluster, not their own isolated
   // one. Deliberately conservative: left out names with only partial/ambiguous crypto correlation
   // (HOOD, CRCL, APLD, BULL) rather than over-reaching this pass.
+  //
+  // Added 2026-10-07 (Ask Largo standing mandate, live finding): ASST (Strive, Inc. — the former
+  // "Asset Entities" shell that converted to a bitcoin-treasury company in 2025, same corporate
+  // structure as MSTR/Strategy) was live on the Swing WATCH lane and unmapped here, so it fell
+  // through `resolveGroupBenchmark` (industry-group-rs.ts) straight into the SIC-range fallback —
+  // Polygon classifies it under a generic finance/holding SIC, landing in the 6000-6499 Financials
+  // range exactly like HUT did before HUT was added to this same list (see that 2026-09-20 note
+  // above). Live play-brief for ASST cited "leading Financials (XLF) by 2.8%" as a real score
+  // pillar input for a bitcoin-treasury name — the identical mislabel this list exists to prevent,
+  // just on a name added to the list later than its peers.
   "crypto-equity": [
     "COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN", "MSTU", "MSTX", "GLXY", "SBET",
-    "GEMI", "BKKT", "ABTC", "BLSH", "BMNR", "BTDR",
+    "GEMI", "BKKT", "ABTC", "BLSH", "BMNR", "BTDR", "ASST",
     "ETH", "ETHE", "ETHU", "ETHA", "IBIT", "GBTC", "BITO", "BITX",
   ],
   "china-adr": ["BABA", "PDD", "NIO", "JD", "BIDU", "LI", "XPEV", "FUTU"],
