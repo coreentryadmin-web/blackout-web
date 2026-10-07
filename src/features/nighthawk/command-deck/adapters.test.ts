@@ -2025,6 +2025,36 @@ test("horizon adapter: swing trim ladder is NOT fired while liveStatus is still 
   assert.equal(actuallyTrimmed.exitPolicy!.trim_levels[0]!.fired, true);
 });
 
+test("horizon adapter: CLOSED swing row's trim ladder honors trimEnforcedBeforeClose (Ask Largo mandate, 2026-10-07)", () => {
+  // gradeSwingPosition (db.ts) always overwrites a closed row's `status` to CLOSED — it can never
+  // again read "TRIM" — so a CLOSED row that really DID trim before it closed must have some other
+  // way to say so, or trimsFired is permanently stuck at 0 for every closed position regardless of
+  // real history (the exact gap this field closes).
+  const closedNeverTrimmed = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, status: "CLOSED",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+    trimEnforcedBeforeClose: false,
+  });
+  assert.equal(closedNeverTrimmed.exitPolicy!.trim_levels[0]!.fired, false);
+
+  const closedPredatesField = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, status: "CLOSED",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+    trimEnforcedBeforeClose: null,
+  });
+  assert.equal(closedPredatesField.exitPolicy!.trim_levels[0]!.fired, false);
+
+  const closedActuallyTrimmed = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, status: "CLOSED",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+    trimEnforcedBeforeClose: true,
+  });
+  assert.equal(closedActuallyTrimmed.exitPolicy!.trim_levels[0]!.fired, true);
+});
+
 test("0DTE adapter: closed row surfaces mfeCapturePct and frozen runner profile", () => {
   const play = terminalPlayFromZeroDte({
     ticker: "CRCL",

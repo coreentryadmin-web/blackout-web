@@ -756,6 +756,11 @@ export interface HorizonDeckSource {
    *  pre-commit WATCH/lane candidate (Cortex only runs on committed rows), a pre-wire-in row,
    *  or a non-SWING caller — honest absence, never fabricated (Largo contract §3 absence). */
   cortex?: unknown;
+  /** CLOSED SWING only: whether a real scale-out trim was ENFORCED on this leg at any point before
+   *  it closed — see `SwingClosedDeckSource`'s own field (closed-plays.ts) for the full history of
+   *  why `status`/`liveStatus` alone can never answer this for a closed row. Null/absent = not
+   *  recorded (rows graded before this field existed), never treated as "no trim happened". */
+  trimEnforcedBeforeClose?: boolean | null;
   /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal, echoed off the
    *  dossier (`HorizonPlay.sectorLeadershipFacts`) — see `whyThisSetupSection`. Null/absent when no
    *  benchmark resolved or not enough history. */
@@ -932,8 +937,15 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   // still fully exposed at HOLD (live repro 2026-09-10: NRG, peak +132.7%, still HOLD). Once
   // `status` actually reaches TRIM the mechanical read is real again, so only gate the
   // not-yet-enforced case.
+  //
+  // CLOSED carve-out (2026-10-07, Ask Largo standing mandate): a CLOSED row's `status` can never be
+  // "TRIM" again — gradeSwingPosition (db.ts) always overwrites it to CLOSED/ROLLED — so this gate
+  // forced trimsFired to 0 on EVERY closed position regardless of real history, permanently losing
+  // whether a trim actually fired along the way. `trimEnforcedBeforeClose` is the frozen-at-grade-
+  // time fact that answers it honestly (null for rows graded before it existed, so NOT an automatic
+  // unlock — only an explicit `true` opens the gate).
   const exitPolicy =
-    status === "TRIM"
+    status === "TRIM" || src.trimEnforcedBeforeClose === true
       ? rawExitPolicy
       : { ...rawExitPolicy, trim_levels: rawExitPolicy.trim_levels.map((t) => ({ ...t, fired: false })) };
   const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
@@ -1416,5 +1428,6 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     cortex: src.cortex ?? null,
     entryTriggerUnderlyingPx: src.entryTriggerUnderlyingPx ?? null,
     invalidationUnderlyingPx: src.invalidationUnderlyingPx ?? null,
+    trimEnforcedBeforeClose: src.trimEnforcedBeforeClose ?? null,
   });
 }
