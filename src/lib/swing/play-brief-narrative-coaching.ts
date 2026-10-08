@@ -254,14 +254,27 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
   return `**Manage plan** — ${parts.join(" · ")}.`;
 }
 
-/** WATCH gate unblock path with reasons, not just codes. */
+/**
+ * WATCH gate unblock path with reasons, not just codes.
+ *
+ * THE one full-text home for `play.gateBlocks` codes+reasons (Ask Largo standing mandate,
+ * 2026-10-08) — both "Entry" (`watchEntrySection`, play-brief.ts) and "Watch levels"
+ * (`watchForSection`, play-brief-intel.ts) now render only a count + a pointer here, having
+ * previously each kept their OWN full copy (live repro: AMD WATCH brief, 2026-10-08 — "Entry"
+ * and "Trade manager read" both carried the verbatim `entry_window_expired` reason text). See
+ * `watchEntrySection`'s own comment for the full account of why this direction was chosen over
+ * the reverse. Note the `g.unlock_et` branch below is currently always inert for swing in
+ * practice — `SwingEntryGateBlock` (entry-verdict.ts, the only producer of swing `gateBlocks`)
+ * has no `unlock_et` field at all, so this only fires if some future swing gate source starts
+ * populating it; left in rather than removed since the type (shared with other TerminalPlay
+ * producers) still allows it and a real value should still render if one ever arrives.
+ */
 export function watchGateCoaching(play: TerminalPlay): string | null {
   if (!play.gateBlocks?.length) return null;
   // BUG FIX (Ask Largo standing mandate, 2026-10-07): this used to `.slice(0, 3)` before mapping,
   // silently dropping every gate past the third with no "+N more" marker — while the sibling
   // "Entry stance" bullet (actionNarrative, play-brief-narrative.ts) states the TRUE gate count
-  // (`play.gateBlocks.length`, uncapped) and the "Entry" section (watchEntrySection, play-brief.ts)
-  // renders the FULL list uncapped too. A 4-gate WATCH play (live repro: WDC, 2026-10-07 — g_s12
+  // (`play.gateBlocks.length`, uncapped). A 4-gate WATCH play (live repro: WDC, 2026-10-07 — g_s12
   // halt-feed-stale, g_s4 regime, g_s6 confluence, g_s14 cortex) therefore told the member "4 gates
   // blocking entry — see below" and then only explained 3, silently omitting the Cortex veto — the
   // single most decisive one, since it is the only gate here with no "clears when X" unlock story.

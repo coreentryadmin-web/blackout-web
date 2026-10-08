@@ -524,10 +524,32 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
     // g_s4_regime..." sat in the same section with nothing marking the gate as moot. Same root
     // cause `entryTriggerDeadReason` (play-brief-intel.ts) already fixed for the Entry-trigger
     // line one section down — `deadPlayReason` is the shared check both now use.
+    //
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08): this used to ALSO render the full
+    // `code: reason` list here — but `watchGateCoaching` (play-brief-narrative-coaching.ts),
+    // which composeSwingPlayBrief always places immediately after this "Entry" section (inside
+    // "Trade manager read") for a WATCH play, independently renders the exact same
+    // `play.gateBlocks` codes+reasons in full too. Both are gated on the identical
+    // `play.gateBlocks?.length` check with no coordination between the two files — live repro:
+    // AMD WATCH brief, 2026-10-08, "## Entry" and "## Trade manager read" both carried the
+    // verbatim `entry_window_expired` reason text. This is the exact same duplication shape the
+    // 2026-09-12 `watchForSection` fix (below, "Watch levels") already removed from a THIRD
+    // location — that fix made "Watch levels" defer to this section ("see Entry section above")
+    // on the premise this section was the one true home, but never noticed this section and
+    // "Trade manager read" were ALSO duplicating each other the whole time. Resolved the other
+    // way around this time: `watchGateCoaching`'s rendering is the richer of the two (it already
+    // states "moot" framing identically, and per its own comment was kept as "the single source
+    // of truth" on 2026-10-07) and renders for EVERY watch-bucket play unconditionally (see
+    // `actionNarrative`'s watch branch, play-brief-narrative.ts), so pointing this section at it
+    // — rather than the reverse — loses no information and needs no new plumbing. The
+    // "Watch levels" pointer below was repointed at "Trade manager read" too, so there is now
+    // exactly one full-text home instead of two independent ones.
     const dead = deadPlayReason(play);
+    const gateCount = play.gateBlocks.length;
     lines.push(
-      (dead ? `**Also gate-blocked** (moot — ${dead}):\n` : "**Gates blocking entry:**\n") +
-        play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
+      dead
+        ? `**Also gate-blocked** (moot — ${dead}) — see Trade manager read below.`
+        : `**Gates blocking entry:** ${gateCount} gate${gateCount === 1 ? "" : "s"} — see Trade manager read below.`,
     );
   } else if (play.recommendation === "BUY") {
     lines.push("No mechanical gates blocking entry on this read.");

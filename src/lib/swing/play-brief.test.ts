@@ -481,8 +481,8 @@ test("composeSwingPlayBrief: Entry section reframes gates as moot once the entry
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\):/);
-  assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/, "must not read as an active/clearable blocker");
+  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\) — see Trade manager read below\./);
+  assert.doesNotMatch(entry!.body, /^\*\*Gates blocking entry/, "must not read as an active/clearable blocker");
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-09-18): the top-level `envelope.invalidation` line
@@ -548,8 +548,52 @@ test("composeSwingPlayBrief: Entry section still frames gates as the live blocke
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Gates blocking entry:\*\*/);
+  assert.match(entry!.body, /\*\*Gates blocking entry:\*\* 1 gate — see Trade manager read below\./);
   assert.doesNotMatch(entry!.body, /Also gate-blocked/);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-08): the full `code: reason` text has exactly
+  // one home now — "Trade manager read" (watchGateCoaching) — so it must not also appear here.
+  // Live repro: AMD WATCH brief, 2026-10-08 — this section and "Trade manager read" both carried
+  // the verbatim gate reason text.
+  assert.doesNotMatch(entry!.body, /Bucket not graduated/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): full end-to-end proof, through the real
+// composeSwingPlayBrief assembly (not just watchEntrySection in isolation), that a WATCH play's
+// gate reason text appears in exactly ONE of the brief's sections — "Trade manager read" — never
+// also in "Entry". Live repro: AMD WATCH brief, 2026-10-08 (`GET /api/market/swing/play-brief?
+// playId=SWING:AMD&ticker=AMD&status=WATCH`), both "## Entry" and "## Trade manager read" carried
+// the verbatim `entry_window_expired`/`g_s4_regime`-style reason text for the SAME gate. RED
+// before the fix (`git stash` on play-brief.ts alone reproduces the duplicate — the reason text
+// matches twice across the full envelope markdown), GREEN after.
+test("composeSwingPlayBrief: gate-block reason text appears in exactly one section, not duplicated across Entry + Trade manager read", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+      ],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  const narrative = brief.envelope.sections.find((s) => s.title === "Trade manager read");
+  assert.ok(entry);
+  assert.ok(narrative);
+  const needle = "Broad-market regime degraded";
+  assert.doesNotMatch(entry!.body, new RegExp(needle), "the reason text must not render in Entry");
+  const hits = (narrative!.body.match(new RegExp(needle, "g")) ?? []).length;
+  assert.equal(hits, 1, `expected the gate reason to appear exactly once in Trade manager read, found ${hits}`);
+  // NOTE: deliberately not asserting on the full `envelope.markdown`/`invalidation` here — the
+  // top-level "**Invalidation:**" callout has its own, already-tested, separate fallback to
+  // `play.gateBlocks?.[0]?.reason` (a different envelope field with a different UI purpose, not
+  // a third copy of this section-duplication bug) and asserting across it would conflate the two.
 });
 
 test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
