@@ -4,6 +4,55 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-08 — [FINDING, P2 Night Hawk Swings / Ask Largo] RESEARCH-section swing plays silently dropped real, live commit-gate evidence from the play-brief Entry section — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Ask Largo standing-mandate deep-dive on a fresh swing-book ticker not previously audited this cycle. Live `GET /api/market/swing/play-brief?playId=SWING:AMD&ticker=AMD&status=WATCH&right=P&strike=660` (2026-10-08, off-hours, AMD served in the RESEARCH section — EVENT_DRIVEN/TACTICAL, score 22.3, first flagged 2026-09-29) rendered: "Entry stance — HOLD. **1 gate blocking entry** — see below." / "**Also gate-blocked** (moot — entry-validity window expired) — **entry_window_expired**: This setup triggered, but its entry window already lapsed...". At the SAME moment, the live horizons board (`GET /api/market/nighthawk/horizons?view=SWING`) showed AMD's raw `commitGateBlockedBy: ["gate:G-S12:halt_feed_stale", "gate:G-S4:regime_degraded", "gate:G-S14:cortex_net_negative"]` — three REAL, active, structurally-blocking commit gates that never appeared anywhere in the brief. A member reading AMD's brief would reasonably conclude the entry window was the only reason this setup wasn't being taken; in fact the setup was also regime-degraded and Cortex-vetoed, independent of the clock. |
+| **Root cause** | `swingEntryVerdict`'s (`entry-verdict.ts`) very first branch — `if (section === "RESEARCH") { ... gateBlocks: researchGateBlocks(input) ... }` — returns EARLY using only `researchGateBlocks(input)`, a 5-rung priority ladder (`thesis_invalidated` > `persistence_gap` > `unclassified` > `entry_window_expired` > generic `research_review`) that picks exactly ONE reason and never consults `input.commitGateBlockedBy` at all. This is the identical defect class the function's own "dont_buy" branch was already fixed for (see the in-code comment there, live MU repro 2026-09-11: "`commitGateBlockedBy` is computed above regardless of which `dont_buy` reason fired ... it is NOT specific to the `wait` branch ... [dropping it] silently discarded real, already-mapped gate evidence") — that fix (and its test, "past entry deadline + active commit gate blocks") covers only the WATCH-section `wait`/`dont_buy` branches further down the same function. The earlier RESEARCH-section early return was never given the same treatment, so a RESEARCH-bucket play with BOTH an entry-window-expiry fact AND independently-active structural gates (G-S3/G-S4/G-S6/G-S12/G-S14) silently loses the latter — exactly as AMD does live right now. |
+| **Why this is a real bug** | `TerminalPlay.gateBlocks` is the single source every play-brief consumer renders from: the "Entry" section (`play-brief.ts`'s `watchEntrySection`, "Also gate-blocked"/"Gates blocking entry" header + full list), `play-brief-intel.ts`'s "Before entry, clear: N gate(s)" count, and `play-brief-narrative-coaching.ts`'s `watchGateCoaching` ("Trade manager read" bullet, which — per its own 2026-10-07 fix — now renders every gate uncapped, not just the first 3). All three correctly render a multi-element list when given one (verified: the WATCH-section MU fix already produces 3-element lists through the exact same rendering path), so the defect was purely in `swingEntryVerdict` never handing RESEARCH-section plays anything but a single generic reason. |
+| **Blast radius** | Every swing play currently served in the RESEARCH section (7 live right now: AMD, FORM, UTHR, USO, TER, TMO, ILMN) whose `commitGateBlockedBy` carries real G-S* gate codes IN ADDITION to the `researchGateBlocks` ladder's own primary reason (invalidated / persistence-gap / entry-window-expired / generic review) silently lost that secondary evidence. Checked the other RESEARCH-section plays live: FORM/TER/TMO/ILMN route via `commitGateBlockedBy: ["legacy:exempt"]` (Legacy morning-confirm promotions, mapped to the already-correct `legacy_exempt` code, not G-S* — not independently affected by this specific gap, since `commitGateBlocksForVerdict` maps that token too and would now also correctly surface for RESEARCH rows that have it, same fix). |
+| **Fix** | In the RESEARCH-section early return, additionally resolve `resolveSwingCommitGateBlockedBy(input)` and map it through the already-correct `commitGateBlocksForVerdict(...)`, then APPEND those real gate blocks after `researchGateBlocks(input)`'s primary reason — never replacing it, so the ladder's own authoritative reason (e.g. "thesis invalidated") stays first, and the real structural-gate detail becomes additive context, mirroring exactly how the sibling WATCH-section `dont_buy` branch already does this. |
+| **Fix rationale** | Reused the exact same `resolveSwingCommitGateBlockedBy`/`commitGateBlocksForVerdict` pair the WATCH-section fix already proved correct, rather than inventing a second gate-mapping path. Chose to APPEND rather than replace `researchGateBlocks`'s output so the existing single-reason tests (`gateBlocks?.[0]?.code`) for the INVALIDATED/persistence-gap/entry-window-expired/generic cases stay valid unchanged — the primary reason is still always `gateBlocks[0]`. Did not touch `researchGateBlocks` itself, `deadPlayReason`, or any of the three downstream rendering call sites — all three already render a multi-element `gateBlocks` list correctly (proven by the existing WATCH-section 3-gate MU test passing through the identical rendering path), so the fix is isolated to the one function that was dropping data before it ever reached them. |
+| **Regression guard** | `src/lib/swing/entry-verdict.test.ts` — new test "RESEARCH + expired entry window ALSO carrying real commit-gate blocks → SKIP with BOTH the expiry reason and the real gates (live AMD repro 2026-10-08)", asserting `gateBlocks` contains `entry_window_expired` AND the three mapped codes (`g_s12_halt_feed_stale`, `g_s4_regime`, `g_s14_cortex`) from a realistic AMD-shaped input. RED→GREEN confirmed: pre-fix, 1/16 subtests in this file failed (the new assertion — only `entry_window_expired` present, the 3 real gate codes absent); post-fix, 16/16 pass, including the untouched sibling WATCH-section/INVALIDATED/persistence-gap tests. Full `npm test` (Node 20, `scripts/run-tests.mjs`) and `npx tsc --noEmit` run clean. |
+| **Status** | FIXED — branch `fix/swing-research-gate-blocks-drop-real-gates`. |
+
 ## 2026-10-08 — [FINDING, P1 Platform / SPX Slayer] `withServerCache`'s fast lane and inflight/cold-start fallbacks served a stale hit of UNBOUNDED age — FIXED
 
 > **kind:** `FINDING`
@@ -63,40 +112,6 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix rationale** | Matching the EXACT fix already applied and proven in the sibling file, rather than inventing a new honesty mechanism, keeps the two parallel ledger-merge paths (swing-native positions vs. banger-origin positions) behaviorally identical for this one field — which is the correct invariant, since both feed the same `HorizonPlay`/`TerminalPlay` shape and the same downstream renderers. |
 | **Regression guard** | `src/lib/swing/banger-lane-merge.test.ts` — new test `"horizonPlayFromBangerPosition does not fabricate contract.mid as entry_premium when no live mark has synced"`, plus a sanity case confirming a REAL live mark still passes through unchanged. RED→GREEN confirmed via `git stash` (pre-fix `banger-lane-merge.ts`, fix-only test file): 1/17 fail pre-fix (`contract.mid` wrongly equal to `0.3`, not `null`); 17/17 pass post-fix. Full `npm test` (Node 20, `scripts/run-tests.mjs`): 15768 pass / 0 fail / 3 skipped (pre-existing, unrelated). `npx tsc --noEmit` clean. |
 | **Status** | FIXED — branch `fix/banger-lane-mark-fabrication`. |
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-10-08 — [FINDING, P3 Night Hawk Swings / Ask Largo] `dataHonestyCoaching`'s "Data caveat" bullet doubles its own trailing period whenever the closed-market note is the last warning — FIXED
 
