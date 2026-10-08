@@ -18,7 +18,7 @@ import {
   type TickerFundamentalsBundle,
 } from "@/lib/bie/ticker-fundamentals";
 import { fetchRelatedCompanies, type RelatedCompanies } from "@/lib/providers/polygon-related";
-import { fetchTickerNews, fetchMarketCatalysts, type NewsResult } from "@/lib/providers/polygon-news";
+import { fetchTickerNews, fetchMarketCatalysts, type NewsResult, type NewsItem } from "@/lib/providers/polygon-news";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { fetchPolygonMacroBackdrop, type PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import { fetchMarketBreadthBundle, type MarketBreadthBundle } from "@/lib/bie/market-breadth";
@@ -286,6 +286,25 @@ export type EcosystemArsenalReads = {
 };
 
 /**
+ * PURE: re-rank a single-name ticker's news items so genuinely ticker-SPECIFIC stories aren't
+ * crowded out by broad multi-company stories that merely co-tag the ticker (see the GAP FOUND note
+ * at this function's one call site for the live repro). Stable ascending sort on `tickers.length`
+ * (fewer co-tagged tickers = more specific to the one we asked about); ties keep the caller's
+ * existing order, which is Benzinga's own `published.desc` for `fetchTickerNews` — so within a
+ * specificity tier, the most recent item still wins. An item with no/empty `tickers` array (a
+ * hand-built fixture, or a defensive-normalize miss) sorts as maximally specific (length 0) rather
+ * than being penalized for a field it never had — never hides a headline for missing metadata.
+ * Explicit index-tagged stable sort rather than relying on Array.prototype.sort's own stability,
+ * so this does not quietly depend on an engine guarantee.
+ */
+export function rankNewsItemsBySpecificity(items: NewsItem[]): NewsItem[] {
+  return items
+    .map((item, index) => ({ item, index, tagCount: item.tickers?.length ?? 0 }))
+    .sort((a, b) => a.tagCount - b.tagCount || a.index - b.index)
+    .map((entry) => entry.item);
+}
+
+/**
  * PURE: fold the raw arsenal reader outputs into the summarized, relevance-gated EcosystemArsenal.
  * Split out from the fetch so the gate + honesty logic is unit-testable without any network/DB.
  * Only the legs relevant to `scope` are considered; a relevant leg that returned nothing usable is
@@ -402,7 +421,29 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           // display consumer, so decode before it reaches a member's screen. Same root cause and
           // fix as meridian-feed-text.ts's 2026-08-21 correction; this call site was missed then
           // because it feeds the swing play-brief, not the Meridian desk.
-          headlines: reads.news.items.slice(0, 4).map((i) => sanitizeFeedText(i.headline)),
+          //
+          // GAP FOUND (Ask Largo standing mandate, 2026-10-08): `fetchTickerNews` IS correctly
+          // ticker-filtered server-side (`tickers.any_of=<SYM>`, verified live against the raw
+          // Benzinga endpoint), but Benzinga's own tagging is co-occurrence, not aboutness — a
+          // broad multi-company story (an AI-industry product launch, a macro "stocks with whale
+          // activity" listicle) gets tagged with every megacap it merely MENTIONS alongside the
+          // one the story is actually about. `.slice(0, 4)` took the top-4-by-recency with no
+          // regard for how many OTHER tickers each item also carried, so a single-name brief for
+          // AMZN surfaced 4/4 headlines that were really about Anthropic/Samsung/TSMC (AMZN was
+          // one of 3-14 co-tagged names) while genuinely AMZN-specific stories in the SAME fetched
+          // batch — AWS funding, a new Alexa product, Bezos/Blue Origin — sat lower in recency and
+          // were silently cut off. Re-rank (single-name scope only — a market-wide catalyst read
+          // has no "this ticker" to be specific to) by ascending tag-count BEFORE slicing, stable
+          // on recency within a tag-count tier, so a narrowly-tagged item never loses its slot to a
+          // more recent but broader one, and broad items still fill out the list when nothing
+          // narrower exists (never hides real context, only deprioritizes noisy co-tags). Feeds
+          // THREE consumers off this one shared fold: `catalystsSection` (play-brief-intel.ts,
+          // takes all 4), and `ticker-verdict.ts`/`ecosystem-narrative.ts` (each take only
+          // `headlines[0]`, so this also fixes their single quoted headline, not just the brief's
+          // list).
+          headlines: (single ? rankNewsItemsBySpecificity(reads.news.items) : reads.news.items)
+            .slice(0, 4)
+            .map((i) => sanitizeFeedText(i.headline)),
           as_of: reads.news.asOf ?? null,
         }
     : (unavailable.push({
