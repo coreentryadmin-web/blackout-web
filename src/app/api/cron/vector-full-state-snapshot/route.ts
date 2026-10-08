@@ -3,11 +3,14 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
-import { activeVectorFullStateTickers } from "@/features/vector/lib/vector-full-state-warm-universe";
+import {
+  activeVectorFullStateTickers,
+  rotateTickersForWarmPass,
+} from "@/features/vector/lib/vector-full-state-warm-universe";
 import { VECTOR_DTE_HORIZONS } from "@/features/vector/lib/vector-dte-horizon";
 import { computeVectorFullState } from "@/lib/bie/vector-full-state";
 import { writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
-import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 // Continuous Vector full-state ingestion — the "non-stop feed" behind Largo-BIE.
@@ -56,25 +59,40 @@ const TICKER_CONCURRENCY = 2;
 const OVERLAP_LOCK_KEY = "vector:full-state-snapshot:running";
 const OVERLAP_LOCK_TTL_SEC = 900;
 
+/** Persists where the LAST run's budget cutoff left off, so the next run resumes instead of
+ *  restarting at index 0 — see rotateTickersForWarmPass's header for the permanent-starvation
+ *  bug this fixes (measured live 2026-10-08: 13/13 consecutive runs stalled on the same first
+ *  ~2 static tickers, never reaching anything after them, including real open swing positions).
+ *  Losing this key just resets rotation to the start of the list — never a correctness issue,
+ *  so a long TTL + fail-open read/write is enough. */
+const WARM_CURSOR_KEY = "vector:full-state-snapshot:cursor";
+const WARM_CURSOR_TTL_SEC = 7 * 24 * 3600;
+
 async function runVectorFullStateSnapshot(started: number): Promise<void> {
   try {
     // Static allowlist ∪ dynamic (member-viewed) ∪ real open swing positions — see
     // vector-full-state-warm-universe.ts's header for the gap this closes (a committed swing
     // position outside the static allowlist previously never got its full-state cache warmed).
-    const tickers = await activeVectorFullStateTickers();
+    const rawTickers = await activeVectorFullStateTickers();
+    const cursor = (await sharedCacheGet<number>(WARM_CURSOR_KEY).catch(() => null)) ?? 0;
+    // Rotate so THIS run picks up where the last budget cutoff left off, rather than always
+    // restarting on the same fixed-order prefix (see rotateTickersForWarmPass's header).
+    const tickers = rotateTickersForWarmPass(rawTickers, cursor);
     let written = 0;
     let skippedNoSpot = 0;
     let failed = 0;
     let budgetHit = false;
+    let attempted = 0;
 
     for (let i = 0; i < tickers.length; i += TICKER_CONCURRENCY) {
       // Time-budget guard: partial completion is fine — the snapshots carry `asOf`, and the next run
-      // (or a reader's self-warm on miss) fills whatever this run didn't reach.
+      // resumes from the rotation cursor below rather than re-stalling on the same prefix.
       if (Date.now() - started > TIME_BUDGET_MS) {
         budgetHit = true;
         break;
       }
       const batch = tickers.slice(i, i + TICKER_CONCURRENCY);
+      attempted += batch.length;
       await Promise.all(
         batch.map(async (ticker) => {
           for (const horizon of VECTOR_DTE_HORIZONS) {
@@ -101,8 +119,13 @@ async function runVectorFullStateSnapshot(started: number): Promise<void> {
       }
     }
 
+    if (rawTickers.length > 0) {
+      const nextCursor = (cursor + attempted) % rawTickers.length;
+      await sharedCacheSet(WARM_CURSOR_KEY, nextCursor, WARM_CURSOR_TTL_SEC).catch(() => undefined);
+    }
+
     console.info(
-      `[cron/vector-full-state-snapshot] background done — tickers=${tickers.length} horizons=${VECTOR_DTE_HORIZONS.length} written=${written} skippedNoSpot=${skippedNoSpot} failed=${failed} budgetHit=${budgetHit} elapsed=${Date.now() - started}ms`
+      `[cron/vector-full-state-snapshot] background done — tickers=${tickers.length} horizons=${VECTOR_DTE_HORIZONS.length} cursor=${cursor} attempted=${attempted} written=${written} skippedNoSpot=${skippedNoSpot} failed=${failed} budgetHit=${budgetHit} elapsed=${Date.now() - started}ms`
     );
   } finally {
     await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
