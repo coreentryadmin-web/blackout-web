@@ -1134,9 +1134,18 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       // exact duplication shape `play-brief-narrative.ts`'s own "Entry stance" bullet was already
       // fixed to avoid (see its comment: "the reason text has exactly one home below") — just a
       // second, previously-unchecked instance of it, in a different pair of sections. State the
-      // count + a pointer here; the full reason text's one home stays the Entry section above.
+      // count + a pointer here.
+      //
+      // REPOINTED (Ask Largo standing mandate, 2026-10-08): the "Entry section above" this
+      // pointer named was itself found duplicating the SAME full gate text against "Trade manager
+      // read" (play-brief.ts's `watchEntrySection`, see its own 2026-10-08 comment) — the "Entry
+      // section" was never actually the sole full-text home this comment assumed. Fixed by making
+      // `watchEntrySection` ALSO a pointer rather than a third full-text copy, so the one real home
+      // is now "Trade manager read" (`watchGateCoaching`, play-brief-narrative-coaching.ts), which
+      // renders unconditionally for every watch-bucket play and sits earlier in section order than
+      // this "Watch levels" section — repointing here, not re-introducing a second full copy.
       const n = play.gateBlocks.length;
-      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Entry section above.`);
+      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Trade manager read above.`);
     }
     // BUG FIX (Ask Largo standing mandate, 2026-09-17): this used to re-render `play.entryStatus`
     // as its own "Entry geometry" bullet — but `watchEntrySection` (play-brief.ts, "Entry" section,

@@ -3615,8 +3615,12 @@ test("watchForSection: gate-block bullet is a count + pointer, not a second full
     },
     "watch",
   );
-  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Entry section above\./);
-  // The full reason text must NOT be duplicated here — its one home is the Entry section.
+  // REPOINTED (Ask Largo standing mandate, 2026-10-08): "Entry section above" was never actually
+  // the sole full-text home this test's own comment assumed — "Trade manager read" independently
+  // rendered the same codes+reasons too (see play-brief.ts's `watchEntrySection` 2026-10-08
+  // comment). Repointed at "Trade manager read", the real one true home now.
+  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Trade manager read above\./);
+  // The full reason text must NOT be duplicated here — its one home is Trade manager read.
   assert.doesNotMatch(section.body, /Broad-market regime degraded/);
   assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
 });
