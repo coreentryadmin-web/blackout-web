@@ -1,3 +1,30 @@
+## WATCH LIST — 2026-10-08 SPX Slayer `/api/market/spx/play` cached a resolved-not-thrown degraded placeholder cluster-wide, flapping real reads to "Desk warming" ~50% of the time — deploy pending validation
+
+**What was fixed:** `getSpxPlayState()`'s `withServerCache(...)` call (`spx-service.ts`) had no
+`shouldCache` guard, so when `evaluateSpxPlayStateCrossReplica()` lost the cross-replica Redis lock
+and resolved (its own intentional, tested design — never throws) to `degradedPlayPayload()`
+("Desk warming — play state unavailable", `score:0`, `factors:[]`), that placeholder got written
+into BOTH the in-memory store and shared Redis for the full 5s TTL and served to every
+replica/member/BIE/Largo reader of the cache key, not just the one request that lost the race.
+Live-measured 2026-10-08 ~00:33-00:37 UTC: a 12-call poll burst (one call every ~2s) came back
+`degraded:true` on 6/12 calls, several sharing an identical `as_of` (same cached placeholder
+re-served). Fix: added `shouldCache: (value) => value.assessed !== false` — `assessed` is the
+payload's own pre-existing absence marker, `false` only on this placeholder/no-confluence-computed
+path, never on a genuine closed-session assessment. Full write-up:
+`docs/audit/findings-staging/2026-10-08-spx-play-degraded-placeholder-cache-poison.md`.
+
+**Specific thing to check once this deploys, ideally during RTH (real concurrent member traffic +
+multiple active ECS replicas, the exact conditions that trigger cross-replica lock contention):**
+poll `GET /api/market/spx/play` repeatedly at a ~1-2s cadence for at least 30-60s (the same burst
+test used to find this) and confirm `degraded:true` no longer appears except immediately after a
+genuine upstream failure (and even then, should clear on the very next poll rather than persisting
+for a full 5s TTL window with a repeated identical `as_of`). Cross-check CloudWatch
+(`/ecs/blackout-production`) for `[market/spx/play]` — a `cold miss exceeded maxBlockMs` error
+should still occasionally appear during real contention (that part is unchanged/expected), but it
+should no longer correlate with a run of several identical-`as_of` degraded responses afterward.
+
+---
+
 ## WATCH LIST — 2026-10-08 Ask Largo swing play-brief "Right now" dealer-posture bullet carried no caveat during a CLOSED market — deploy pending validation
 
 **What was fixed:** `tradeManagerNarrativeSection`'s dealer-posture bullet (`dealerPostureLine`, `play-brief-narrative.ts`) opens with "**Right now** — spot ... dealers short gamma ... γ-flip ..." whenever the Vector snapshot is not stale by compute-age — with no check at all for the orthogonal "is the market itself open" signal (`market_session`/`market_session_note`, PR #5306, 2026-09-20). Live-confirmed post-close on a real committed position (`GET /api/market/swing/play-brief?playId=SWING:INTC&ticker=INTC&positionId=50&status=HOLD`, 2026-10-08 ~20:05 ET, market CLOSED): the prominent "Trade manager read" narrative said "Right now" with zero caveat, while the SAME envelope's buried evidence array separately said "Computed 3s ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks" for the identical Vector/GEX compute. #5306's own PR description scoped wiring `market_session_note` into "the swing evidence array" as its fast-follow and explicitly left the narrative layer untouched — this is that always-disclosed, never-fixed gap, not a regression. Full write-up:
