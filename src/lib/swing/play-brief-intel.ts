@@ -49,6 +49,7 @@ import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 import {
   archetypeLabelFromRaw,
   subLaneLabelFromRaw,
@@ -1181,7 +1182,32 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // contract violation (identity/direction: whose thesis, and is it live) — so it's closed-bucket-
   // only suppressed; watch/open plays are still evaluating entry, where "is there a live setup here
   // right now" is exactly the right question.
-  if (bucket !== "closed" && (play.thesisBreak?.note || play.thesisBreak?.level)) {
+  //
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 and
+  // SWING:GLW:1479): the above holds for a NATIVE swing position, where `thesisBreak.level` really
+  // is computed from a live multi-signal read. For a Banger-origin merged row it is not —
+  // `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps `thesisLevel: "intact"` as a fixed
+  // literal on EVERY row regardless of price action (there is no per-position thesis dossier for
+  // this lane, same root cause `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already
+  // exist to catch for the aggregate Thesis-health panel — see thesis-health.ts). Left unguarded
+  // here, this line renders unconditionally, so this section printed `Thesis **intact** — below
+  // the 2× partial and above the hard stop` for CRI at -59.1% live P&L (mark $0.23 vs stop-rail
+  // $0.22 — a 2% cushion from stopping out) and for GLW at -56.1% — a member reads "intact" as a
+  // calibrated green light right where this exact section's own next two lines ("Premium stop
+  // rail"/"Premium target rail") already state the real, honest mechanical fact (how close to the
+  // ladder's own stop/target) far more precisely. Since the label can never say anything but
+  // "intact" for this lane until the scale-out engine itself force-exits, and the only substantive
+  // content it carries duplicates those two rail lines verbatim, suppress it for Banger-origin rows
+  // (`play.regime === BANGER_LEDGER_REGIME_LABEL`, the same sentinel check `thesisHealthUncalibrated`
+  // and `serving-lane.ts`'s `attachThesisExplanation` guard already use) rather than let it overclaim
+  // a per-position judgment the lane cannot calibrate — the C6 absence principle (omission over
+  // fabrication) applied to this one line, not just the aggregate panel.
+  const bangerOriginNoRealThesis = play.regime === BANGER_LEDGER_REGIME_LABEL;
+  if (
+    bucket !== "closed" &&
+    !bangerOriginNoRealThesis &&
+    (play.thesisBreak?.note || play.thesisBreak?.level)
+  ) {
     lines.push(
       `Thesis **${play.thesisBreak.level ?? "unknown"}**${play.thesisBreak.note ? ` — ${play.thesisBreak.note}` : ""}`,
     );
