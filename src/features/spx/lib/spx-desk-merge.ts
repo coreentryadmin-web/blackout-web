@@ -307,14 +307,32 @@ export function mergePulseIntoDesk(
   const ema200 = stickyStructureLevel("ema200", pulse.ema200, base.ema200);
   const sma50 = stickyStructureLevel("sma50", pulse.sma50, base.sma50);
   const sma200 = stickyStructureLevel("sma200", pulse.sma200, base.sma200);
-  const vix = pulse.vix != null && pulse.vix > 0 ? pulse.vix : base.vix;
+  // pulse.vix falls back to base.vix when pulse's own vix read is unavailable (below) — vix's
+  // OWN change_pct must take the identical fallback, since pulse.vix_change_pct was computed
+  // against pulse's (now-discarded) vix, not against base.vix. Serving pulse.vix_change_pct
+  // unconditionally here let a null/stale pulse-side change% silently overwrite a perfectly
+  // good base-side one whenever `vix` itself correctly fell back to base.
+  const pulseVixLive = pulse.vix != null && pulse.vix > 0;
+  const vix = pulseVixLive ? pulse.vix : base.vix;
   return {
     ...base,
     price,
-    spx_change_pct: pulse.spx_change_pct,
+    // Fall back to the desk's own spx_change_pct when pulse could not anchor its own (common
+    // off-hours/pre-open, when pulse has no trusted prior-close basis) — mirrors the vix
+    // fallback immediately below rather than letting a null pulse-side value blank out a real
+    // one already sitting on base, computed from the exact same price/prior_close this merged
+    // payload reports.
+    spx_change_pct: pulse.spx_change_pct ?? base.spx_change_pct,
     vix,
-    vix_change_pct: pulse.vix_change_pct,
-    above_vwap: pulse.above_vwap,
+    vix_change_pct: pulseVixLive ? pulse.vix_change_pct : base.vix_change_pct,
+    // Recompute above_vwap from the price/vwap this function JUST resolved (sticky fallback
+    // already applied), instead of trusting pulse's own flag — pulse computes above_vwap
+    // against ITS OWN vwap, which is routinely null off-hours/pre-open even though the sticky
+    // `vwap` above has a real value, so pulse.above_vwap can disagree with the vwap/price this
+    // very payload reports (e.g. price genuinely above vwap, flag still reads false). Same
+    // "recompute against the merged value, don't transport a stale derived flag" fix already
+    // applied to above_gamma_flip below (ISSUE-18+20).
+    above_vwap: vwap != null ? price >= vwap : pulse.above_vwap,
     lod,
     hod,
     vwap,
