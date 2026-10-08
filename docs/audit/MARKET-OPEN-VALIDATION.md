@@ -148,6 +148,37 @@ which remains accurate and needed no correction. Full write-up:
 
 ---
 
+## WATCH LIST — 2026-10-08 A net-negative-relief 0DTE commit gets instantly reversed by the exit engine's oppose-cluster check, defeating the relief it was just granted — deploy pending validation
+
+**What was fixed:** `applyCortexCommitRelief` lets a 0DTE setup commit despite a net-negative
+Cortex composite when regime/vector tape alignment overrides it ("full Cortex relief (gex veto
+strip + net-negative pass)"). The exit-time thesis check's VETO arm got a grace period for this on
+2026-09-09 (SHOP/MSTR), but its OPPOSE_CLUSTER arm did not — so any relief commit's negative entry
+score collapses the thesis-break margin to the bare noise floor (0.5), and the next exit-sync tick
+almost always re-finds the SAME opposing evidence that made the entry negative, closing the
+position in seconds. Live-confirmed 2026-10-08 on the SAME DAY's full 7-row committed ledger
+(`GET /api/market/zerodte/board`): **WOLF** (entry score -0.76, relieved) flagged→closed in
+**0.509s**, net 0%; **SPY** (entry score -0.31, relieved) flagged→closed in **2.775s**, net -1.33%
+— via a completely different oppose pair (sector-heat + opening-harvest, no gex-walls at all),
+proving a gex-walls-specific fix would not have caught it. Every non-negative-score commit that
+same day (SPXW/QQQ/IONQ/AMD) ran 25-40+ minutes before its own real exit. Fix: `detectThesisBreak`
+now skips the oppose_cluster check entirely when `entryCortexScore < 0` (proof-by-construction of a
+relief commit — the normal pipeline can never produce a committed row with a negative score
+otherwise). Full write-up:
+`docs/audit/findings-staging/2026-10-08-zerodte-relief-commit-oppose-cluster-instant-exit.md`.
+
+**Specific thing to check once this deploys:** during live RTH, watch `GET
+/api/market/zerodte/board`'s `ledger` for a fresh commit whose `entry_context.cortex.score` is
+negative (a relief commit — check `gex_walls_veto_relieved: true`, or just a negative `score` with
+`decision: "PASS"`) and confirm it is no longer closed within the same 1-3 second window it was
+flagged in via `exit_reason: "thesis"` — it should hold at least long enough for a real mark tick to
+move, and if it does eventually exit via `thesis_break`, the reason should be a genuinely NEW veto,
+never the immediate oppose_cluster re-fire this fix removes. Also spot-check that a NON-relieved
+commit (positive/zero entry score) still gets a real thesis_break exit when warranted — this fix
+must not have silently gone broader than negative-score rows.
+
+---
+
 ## WATCH LIST — 2026-10-08 `vector:full-state` cache TTL (15min) was ~11x shorter than the measured warm-cron rotation lap (~160min), leaving the same-day rotation-starvation fix's own target gap still at 100% failure — deploy pending validation
 
 **What was fixed:** the same-day earlier fix (`rotateTickersForWarmPass`) correctly stops the
