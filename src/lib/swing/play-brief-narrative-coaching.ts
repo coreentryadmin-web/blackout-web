@@ -1336,7 +1336,17 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   }
 
   if (!warnings.length) return null;
-  return `**Data caveat** — ${warnings.join(" · ")}. Treat levels as indicative until refresh.`;
+  // BUG FIX (2026-10-08, Ask Largo standing mandate, live repro `GET /api/market/swing/play-brief`
+  // MU COMMIT-NOW brief): the closed-market note pushed above (`market-session-disclosure.ts`'s
+  // `marketSessionDisclosure` / `play-brief-absence.ts`'s `gexMarketSessionNote`) already ends in
+  // its own sentence-terminating period ("...however fresh the compute looks."). It is always the
+  // LAST entry pushed into `warnings` (every other check above it runs first), so joining with
+  // " · " and then unconditionally appending ". Treat levels..." collided the two periods into a
+  // literal "..", live-confirmed verbatim: "...however fresh the compute looks.. Treat levels as
+  // indicative until refresh.". Strip any warning's own trailing period(s) before joining so this
+  // closing sentence is the only place a period gets added, regardless of which warning lands last.
+  const body = warnings.map((w) => w.replace(/\.+$/, "")).join(" · ");
+  return `**Data caveat** — ${body}. Treat levels as indicative until refresh.`;
 }
 
 /** Closed play post-mortem coaching. */

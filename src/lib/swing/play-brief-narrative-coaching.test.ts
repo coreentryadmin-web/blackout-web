@@ -2610,6 +2610,15 @@ test("dataHonestyCoaching: fresh Vector compute during a CLOSED market surfaces 
   assert.match(line!, /market is CLOSED as of this read/i);
   // Must not ALSO claim Vector is stale — the compute genuinely is fresh, only the market is shut.
   assert.doesNotMatch(line!, /Vector \*\*\d/i);
+  // BUG FOUND 2026-10-08 (same cycle, live repro `GET /api/market/swing/play-brief` MU): the
+  // closed-market note (market-session-disclosure.ts's `marketSessionDisclosure` /
+  // play-brief-absence.ts's `gexMarketSessionNote`) already ends in its own period ("...however
+  // fresh the compute looks."). This function's closing sentence unconditionally appends
+  // ". Treat levels as indicative until refresh." after `warnings.join(" · ")`, so whenever the
+  // closed-market note is the LAST warning pushed (it always is — pushed after every other check)
+  // the two periods collide into a literal "..", live-confirmed verbatim in the MU COMMIT-NOW
+  // brief's "Trade manager read" bullet: "...however fresh the compute looks.. Treat levels...".
+  assert.doesNotMatch(line!, /\.\./, "must not double up the closed-market note's own trailing period");
 });
 
 test("dataHonestyCoaching: GEX-only market_session_note surfaces when Vector gives none", () => {
