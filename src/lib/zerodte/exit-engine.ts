@@ -512,6 +512,33 @@ export type ThesisBreak = {
  * a thesis — same veto asymmetry as entry), and "opposes" items are the soft
  * contrary readings that must CLUSTER (≥2) past the entry's committed score margin
  * before they outweigh the cushion the play was entered with.
+ *
+ * RELIEF GRACE, OPPOSE-CLUSTER ARM (live-monitor finding, 2026-10-08, WOLF/SPY). A
+ * row can only reach this function with a NEGATIVE `entryCortexScore` if
+ * `applyCortexCommitRelief` (cortex-vector-relief.ts) forced the commit through —
+ * cortex-gate.ts's `assessCortexVerdict` always returns NET_NEGATIVE (blocked) for a
+ * genuinely negative score otherwise. The 2026-09-09 SHOP/MSTR fix gave the VETO arm
+ * above a grace period (`skipGexWallsVeto`) so the exit check doesn't immediately
+ * re-veto on the exact wall fact relief overrode — but it left this OPPOSE_CLUSTER
+ * arm untouched. For a relief commit, `Math.max(entryCortexScore, floor)` collapses
+ * to the bare `thesis_min_oppose_weight` noise floor (the WEAKEST possible margin,
+ * identical to "entry score unknown"), and the very next exit-sync tick recomposes
+ * nearly-identical fresh evidence (seconds later, negligible decay) — so the SAME
+ * opposing items that made the entry negative in the first place almost always
+ * clear that floor again immediately. Measured live 2026-10-08: WOLF
+ * (score -0.76, gex-walls veto relieved) closed in 0.509s on a gex-walls+vex-charm
+ * oppose cluster; SPY (score -0.31, also relieved) closed in 2.775s on a completely
+ * DIFFERENT pair (sector-heat + opening-harvest, no gex-walls involved at all) —
+ * proving this isn't fixable by special-casing the gex-walls source the way the
+ * veto arm was. Both netted ~0%, the exact "relief grants entry, the next tick
+ * immediately reverses it" failure the 2026-09-09 fix meant to close, just via the
+ * arm it didn't cover. A relief commit's own entry decision already knew this
+ * evidence was net-negative and chose to override it on other grounds (regime/
+ * vector tape alignment) — re-testing the SAME Cortex evidence moments later via a
+ * different rule contradicts that choice rather than adding new information. The
+ * play keeps every OTHER protection (plan stop, ratchet/trim floors, flat timeout);
+ * only this one check — which structurally cannot distinguish "new information"
+ * from "the same reason relief already overrode" — is skipped for these rows.
  */
 export function detectThesisBreak(
   evidence: EvidenceItem[] | null,
@@ -527,12 +554,19 @@ export function detectThesisBreak(
       return { source: veto.source, kind: "veto", detail: `[${veto.source}] ${veto.detail}` };
     }
   }
+  // A negative entry score is proof-by-construction of a relief commit (see the
+  // module doc above) — the oppose_cluster check below cannot tell "new opposing
+  // evidence" from "the same evidence relief already priced in", so it does not run
+  // for these rows. Checked AFTER the veto branch so a genuinely NEW veto from a
+  // different source (not gex-walls) still exits immediately, unaffected.
+  if (entryCortexScore != null && entryCortexScore < 0) return null;
   const opposes = evidence.filter((e) => e.stance === "opposes" && e.weight > 0);
   if (opposes.length < EXIT_RULES.thesis_min_opposes) return null;
   const combined = round2(opposes.reduce((acc, o) => acc + o.weight, 0));
   // The margin is the cushion the entry was committed with (its net Cortex score);
   // when that is unknown or ~0, the noise floor keeps two microscopic decayed
-  // opposes from scratching a healthy play.
+  // opposes from scratching a healthy play. (entryCortexScore is non-negative here —
+  // the relief case above already returned.)
   const margin = Math.max(entryCortexScore ?? 0, EXIT_RULES.thesis_min_oppose_weight);
   if (combined <= margin) return null;
   const top = [...opposes].sort((a, b) => b.weight - a.weight)[0]!;
