@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-08T18:02:30.000Z",
-  "notes": "Cycle check 2026-10-08 18:02Z (:01-offset trigger, full mandate). RESOLVED: the msft_49_invalidation_watch_2026_10_08 entry's open question is answered -- MSFT:49 closed 2026-10-08T18:00:18Z, closedReason:'stopped', exitPnlPct -47.26%. The system worked AS DESIGNED on the downside: once the underlying actually crossed invalidationUnderlyingPx (520.63), the position was correctly stopped out rather than sticking at liveStatus:HOLD/thesisLevel:intact the way the #5537 bug keeps the UPSIDE (profit_ladder) stuck. No new finding -- this closes out the watch item with a clean (if losing) resolution. nativeOpens now 0 -- flat on native swings as of this tick. Cortex at MSFT:49's original commit was also thin-evidence (score 0.4/conviction C, 4 of 6 sources absent incl. 2 CortexSourceTimeout) -- same shape as INTC:50 (stopped 17:00Z, also thin-evidence). Two thin-evidence-commit losses in roughly 24h is notable but still below the 3-instance threshold, and the existing `cortex-source-timeout-outcome-ab.mjs` 30-day/227-sample measurement already found no systemic degradation from this pattern -- not escalating on n=2 against a larger existing null result. Watching for native re-entry next cycle.",
+  "last_updated": "2026-10-08T18:17:35.000Z",
+  "notes": "Cycle check 2026-10-08 18:17Z (:16-offset). Native book flat (0 committed) since MSFT:49 stopped out last tick. WATCH list: MU(64, PRE_TRIGGER, no block yet), GOOGL(36, EXTENDED_CHASE, blocked by G-S4 regime_degraded + G-S14 cortex_net_negative -- genuine gate rejections), AMD(12.1, EXTENDED_CHASE, blocked by G-S4 regime_degraded + G-S14 cortex_veto:gex-walls -- also genuine), and NEW: VST(score 76, PRE_TRIGGER) and MUU(score 64, PRE_TRIGGER) both blocked SOLELY by commitGateBlockedBy:['legacy:exempt'] -- no other gate listed as the blocker, same shape as TER (score 83) previously flagged. This is now 3 distinct tickers (TER, VST, MUU) observed blocked purely by the #5577 legacy-exempt wiring gap (legacyCommitCandidatesFromSnapshot shipped with tests but never wired into swing-discovery/route.ts's live commit loop) -- clears the 3-instance threshold. Still NOT fixing this myself: wiring a new candidate source into the live commit loop is a live-trading-path change per the standing CARVE-OUT (ambiguous/live-trading-path -> report, hold), not a small/unambiguous fix. Flagging with the reinforced instance count for whenever operator sign-off is given to complete #5577's wiring.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -533,5 +533,17 @@
     "invalidationUnderlyingPx": 520.63,
     "entryTriggerUnderlyingPx": 527.92,
     "next_step": "Next tick: check whether spot has crossed 520.63. If yes, verify thesisLevel flips away from 'intact' and liveStatus/manageReason reflects an actual exit path -- if it does NOT flip, that is a new, reportable finding (downside invalidation-detection gap, separate from #5537's upside/profit_ladder gap). If spot recovers back above invalidation, this entry can be closed out as a normal pullback-and-hold, no finding."
-  }
+  },
+  "legacy_exempt_wiring_gap_instances": [
+    {
+      "t": "2026-10-08T18:17Z",
+      "ticker": "VST",
+      "score": 76
+    },
+    {
+      "t": "2026-10-08T18:17Z",
+      "ticker": "MUU",
+      "score": 64
+    }
+  ]
 }
