@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-08T18:17:35.000Z",
-  "notes": "Cycle check 2026-10-08 18:17Z (:16-offset). Native book flat (0 committed) since MSFT:49 stopped out last tick. WATCH list: MU(64, PRE_TRIGGER, no block yet), GOOGL(36, EXTENDED_CHASE, blocked by G-S4 regime_degraded + G-S14 cortex_net_negative -- genuine gate rejections), AMD(12.1, EXTENDED_CHASE, blocked by G-S4 regime_degraded + G-S14 cortex_veto:gex-walls -- also genuine), and NEW: VST(score 76, PRE_TRIGGER) and MUU(score 64, PRE_TRIGGER) both blocked SOLELY by commitGateBlockedBy:['legacy:exempt'] -- no other gate listed as the blocker, same shape as TER (score 83) previously flagged. This is now 3 distinct tickers (TER, VST, MUU) observed blocked purely by the #5577 legacy-exempt wiring gap (legacyCommitCandidatesFromSnapshot shipped with tests but never wired into swing-discovery/route.ts's live commit loop) -- clears the 3-instance threshold. Still NOT fixing this myself: wiring a new candidate source into the live commit loop is a live-trading-path change per the standing CARVE-OUT (ambiguous/live-trading-path -> report, hold), not a small/unambiguous fix. Flagging with the reinforced instance count for whenever operator sign-off is given to complete #5577's wiring.",
+  "last_updated": "2026-10-08T19:02:40.000Z",
+  "notes": "Cycle check 2026-10-08 19:02Z (:01-offset, full mandate). Native book still flat. Did the first real Ask Largo play-brief deep audit this session (GET /api/market/swing/play-brief?playId=SWING:GOOGL&ticker=GOOGL -- correct param is playId=SWING:<TICKER>, not ticker+positionId as earlier scratch probes assumed, route.ts:15/30/41 confirms). Envelope read well overall (trade-manager-voice narrative, honest unavailableSources for ecosystem-context/Vector-state fetch failures, confidence:moderate with reasoning). Found ONE genuine, new enhancement idea (not previously raised): the brief's 'Trade manager read' section cross-references the WATCH-list leader by score ('Leader: VST @ 76 -- confirm before adding size') with NO caveat that VST is simultaneously commitGateBlockedBy:['legacy:exempt'] (the known #5577 wiring gap, not a real gate) -- so a trader reading GOOGL's brief could read 'VST is about to trigger' when it structurally cannot commit at all right now. Posted as a PR comment on #4076 (comment id 6067024911) proposing a narrow presentation-layer caveat fix, explicitly scoped OUT of the commit-loop wiring itself (which stays held for operator sign-off). Legacy-exempt wiring gap itself: VST+MRVL again this tick (5th+6th instance total across the day), unchanged status, not re-escalating the same root cause again -- just logging the new angle (cross-ticker narrative leakage) found via it.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -544,6 +544,14 @@
       "t": "2026-10-08T18:17Z",
       "ticker": "MUU",
       "score": 64
+    }
+  ],
+  "ask_largo_enhancement_ideas_2026_10_08": [
+    {
+      "t": "2026-10-08T19:02Z",
+      "idea": "play-brief 'Leader: X @ score' cross-reference should caveat when X's own commitGateBlockedBy is purely ['legacy:exempt'] (structural wiring gap, not a real gate) -- avoids implying a structurally-blocked ticker is close to triggering.",
+      "pr_comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-6067024911",
+      "status": "raised with Cursor, awaiting response or my own go-ahead to implement the presentation-layer fix"
     }
   ]
 }
