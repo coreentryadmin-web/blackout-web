@@ -286,6 +286,27 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     // so a scanning member couldn't tell a live setup from one that's been stale for weeks
     // (live repro 2026-09-12: MU/AMD sat WATCH 46-49 days past a 2-5 day window, PR #4076#issuecomment-5646063107).
     if (play.watchEntryExpired) return { label: "EXPIRED", tone: "watch" };
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro NTAP): `watchEntryExpired` only
+    // covers the CALENDAR-deadline dead case — entry-enterability.ts's `deadPlayReason` (the
+    // broader, canonical "is this WATCH play already dead" check play-brief.ts/entry-verdict.ts/
+    // serving.ts all already use) also treats `setupState === "EXTENDED"` /
+    // `entryStatus === "EXTENDED_CHASE"` (price moved too far past the trigger to enter cleanly —
+    // a DIFFERENT dead reason than a calendar deadline) as dead. Before this fix, an
+    // extended-past-entry play fell straight through to the generic "WAIT" pill here — the exact
+    // same member-facing symptom the EXPIRED fix above was written to prevent (a scanning member
+    // can't tell a dead setup from one still freshly forming) — even though the SAME play's own
+    // Ask Largo play-brief already narrates "Setup: EXTENDED" / "Entry geometry: EXTENDED_CHASE"
+    // and a top-level "Extended past the valid entry window — do not chase" verdict line, because
+    // `watchEntrySection` (play-brief.ts) sources its "Entry stance" label from THIS function.
+    // Confirmed live 2026-10-08: NTAP (`entryStatus: "EXTENDED_CHASE"`, `watchEntryExpired: false`)
+    // read "Entry stance: WAIT" in the brief and would have shown the same generic WAIT pill on
+    // the Command Deck, indistinguishable from a perfectly live, still-forming WATCH candidate.
+    // A distinct "EXTENDED" label (not reused "EXPIRED", which specifically means the calendar
+    // deadline passed — a different failure mode) keeps the two dead-reasons distinguishable,
+    // matching the taxonomy.ts SwingSetupState/SwingEntryState vocabulary the brief already uses.
+    if (play.setupState === "EXTENDED" || play.entryStatus === "EXTENDED_CHASE") {
+      return { label: "EXTENDED", tone: "watch" };
+    }
     return { label: "WAIT", tone: "watch" };
   }
   if (play.status === "SKIP") return null;
