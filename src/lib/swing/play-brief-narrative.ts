@@ -24,7 +24,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
-import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -48,11 +48,11 @@ function fmtFlowUsd(n: number): string {
 // (this file previously carried its own byte-identical copy, first for a "+" sign defect fixed
 // 2026-09-09, then for a roundFloats-vs-toFixed rounding mismatch fixed 2026-09-12; both are now
 // fixed once, centrally, rather than re-patched in every file that copied this function).
-
-function fmtPct(n: number, digits = 1): string {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
+//
+// Percentage/distance formatting is `fmtPct`, imported from @/lib/fmt-money above — this file
+// previously carried its own byte-identical copy of the exact same rounding-mismatch bug
+// `fmtOptionUsd` documents, just never caught because it was percentages, not dollars (fixed
+// 2026-10-08 — see fmt-money.ts's `fmtPct` header for the live repro).
 
 function distPct(spot: number, level: number): number {
   return ((level - spot) / spot) * 100;

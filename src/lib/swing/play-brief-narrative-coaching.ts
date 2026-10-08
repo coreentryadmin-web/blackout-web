@@ -22,7 +22,7 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -34,11 +34,6 @@ import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-ses
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
-}
-
-function fmtPct(n: number, digits = 1): string {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
 }
 
 // Widened to Partial<VectorFreshnessBlock> (2026-10-08, Ask Largo standing mandate) so

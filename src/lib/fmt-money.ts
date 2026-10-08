@@ -69,6 +69,40 @@ export function fmtPriceLevel(n: number | null | undefined): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
 
+/**
+ * Signed percentage at N decimals (default 1), e.g. "+2.3%" / "-4.9%" — for a distance/change
+ * percentage narrated in markdown alongside the SAME fact's own JSON number (an API route rounds
+ * that number via `roundFloats()` at the response boundary). MUST round with the exact same
+ * algorithm `roundFloats` uses (`Math.round(n * 10**digits) / 10**digits`, THEN stringify) rather
+ * than calling `n.toFixed(digits)` directly on the raw float — see `fmtOptionUsd`'s header for why
+ * `toFixed` and round-first-then-stringify can disagree at a half-unit boundary.
+ *
+ * FOURTH OCCURRENCE of this bug class (Ask Largo standing mandate, 2026-10-08), now at
+ * PERCENTAGE/distance fields rather than dollar or bare-price-level ones. `fmtPct` had been
+ * independently pasted, byte-identical modulo nullability, into FOUR files (`play-brief.ts`,
+ * `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`) — the
+ * exact same four files `fmtOptionUsd`'s own history names for the money version of this bug —
+ * and none of the four pre-rounded before `toFixed`. Combined with the swing play-brief API route
+ * rounding `structureLadder` via `roundFloats()` (2dp, no `distancePct` override) and
+ * `BieStructureLadder.tsx`'s own `fmtDist()` then re-rounding that ALREADY-2dp wire value to 1dp
+ * again, the SAME underlying distance-to-level fact could display as two different percentages in
+ * one response: live repro, raw `distancePct` -4.94999 read "-4.9%" in the narrative bullet text
+ * (plain `toFixed(1)` on the raw float) and "-5.0%" in the structure-ladder visual (2dp-then-1dp
+ * double round) for the identical rung — the exact Largo-contract precision violation (C9)
+ * `fmtPriceLevel`'s own header already names, here at percentages instead of prices.
+ *
+ * Sign is read off the ROUNDED value, not the raw one (mirrors `rail-levels.ts`'s own
+ * `formatDistance`): a raw value that rounds to exactly 0 at the requested precision (e.g. 0.04 at
+ * 1dp) must read "0.0%", never the misleading "+0.0%" a raw-value sign check would produce.
+ */
+export function fmtPct(n: number | null | undefined, digits = 1): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const factor = 10 ** digits;
+  const rounded = Math.round(n * factor) / factor;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toFixed(digits)}%`;
+}
+
 /** Compact signed dollar magnitude, e.g. "$38.2M" / "-$4.1K". */
 export function fmtPremium(n: number | null): string {
   // NaN/Infinity guard (not just null): these formatters are used pervasively by desk

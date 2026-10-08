@@ -54,7 +54,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ available: false, error: "play not found" }, { status: 404, headers: NO_STORE_HEADERS });
     }
     const brief = composeSwingPlayBrief(ctx, { expandIntel });
-    return NextResponse.json(roundFloats({ available: true, ...brief }), { headers: NO_STORE_HEADERS });
+    // `distancePct` (structureLadder rungs/risk) is narrated everywhere at 1dp (`fmtPct`'s
+    // default) — round it to 1dp here too, not the generic 2dp default, so the wire number
+    // the client re-rounds is already at the SAME precision the narrative committed to. Without
+    // this override, a client-side re-round of an already-2dp value is a genuine DOUBLE round
+    // that can disagree with the narrative's own single round of the raw float at a half-unit
+    // boundary (see `fmtPct`'s header in fmt-money.ts for the live repro and the fix).
+    return NextResponse.json(roundFloats({ available: true, ...brief }, 2, { distancePct: 1 }), {
+      headers: NO_STORE_HEADERS,
+    });
   } catch (error) {
     console.error("[market/swing/play-brief]", error);
     return NextResponse.json({ available: false, degraded: true }, { status: 503, headers: NO_STORE_HEADERS });
