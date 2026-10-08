@@ -737,6 +737,92 @@ test("collectBriefUnavailableSources: cold GEX matrix surfaces in envelope", () 
   assert.ok(!sources.some((s) => s.source === "Vector desk state"));
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-08 cycle): `flip` null is indistinguishable from
+// "no gamma flip data" even though `gex-positioning.ts`'s own `flip_reason` already names WHY —
+// live repro was a FRESH INTC GEX read (call wall/put wall/GEX king all present, posture "short")
+// with no gamma-flip level and nothing in `unavailableSources` explaining the gap. These four
+// cases lock in the fix: a real structural "net short/long everywhere" reason is surfaced as a
+// non-retryable finding (it IS the answer, not a missing fetch); a genuine data gap
+// (`insufficient_data`/`crossings_far`) is surfaced as retryable; an unrecognized reason code is
+// never fabricated into prose; and a matrix that is ALREADY stale does not get a second,
+// flip-specific chip piled on top of the existing GEX-staleness one.
+test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (net_short_everywhere, non-retryable)", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: null, flip_reason: "net_short_everywhere", gamma_posture: "short" },
+      vector_full_state: { spot: 100 },
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const chip = sources.find((s) => s.source === "GEX gamma flip");
+  assert.ok(chip, "expected a GEX gamma flip absence chip");
+  assert.match(chip!.reason, /net short gamma at every strike/);
+  assert.equal(chip!.retryable, false);
+});
+
+test("collectBriefUnavailableSources: fresh GEX matrix with no flip surfaces WHY (insufficient_data, retryable)", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: null, flip_reason: "insufficient_data", gamma_posture: null },
+      vector_full_state: { spot: 100 },
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const chip = sources.find((s) => s.source === "GEX gamma flip");
+  assert.ok(chip, "expected a GEX gamma flip absence chip");
+  assert.equal(chip!.retryable, true);
+});
+
+test("collectBriefUnavailableSources: unrecognized flip_reason is never fabricated into a chip (C6 omission)", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: null, flip_reason: "some_future_code", gamma_posture: null },
+      vector_full_state: { spot: 100 },
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "GEX gamma flip"));
+});
+
+test("collectBriefUnavailableSources: an ALREADY-stale GEX matrix does not get a second, flip-specific chip", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        flip: null,
+        flip_reason: "net_short_everywhere",
+        gamma_posture: "short",
+        matrix_age_sec: 99_999,
+      },
+      vector_full_state: { spot: 100 },
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "GEX matrix" && s.reason.startsWith("stale")));
+  assert.ok(!sources.some((s) => s.source === "GEX gamma flip"));
+});
+
+test("collectBriefUnavailableSources: a real flip value never trips the absence chip", () => {
+  const ctx = {
+    ecosystem: {
+      gex_positioning: { spot: 100, flip: 98, gamma_posture: "long" },
+      vector_full_state: { spot: 100 },
+    },
+    vector: { spot: 100 },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "GEX gamma flip"));
+});
+
 test("collectBriefUnavailableSources: missing Vector desk state surfaces in envelope", () => {
   const ctx = {
     ecosystem: {
