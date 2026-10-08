@@ -209,6 +209,100 @@ NOT resolve the tail latency, and a direct benchmark shows its root-cause theory
   spot=6700, strikes/IV/expiry varied across the loop — reproducible by any future session in under a
   minute via `npx tsx` against the real exported test hooks, no fixture file needed.
 
+**RE-MEASURED 2026-10-08 ~06:00-07:52 UTC (coordinator cycle — SPX Slayer lane was asked to
+root-cause a SEPARATE-looking symptom, `/api/market/spx/desk` spiking ~40-44s on a cold-cache hit;
+this is the SAME open item, not a new bug, and this pass found the concrete TRIGGER #5650 did not
+have — the downstream contention mechanism is still the same open hypothesis):**
+- **First ruled out every boot/cron explanation specific to the 0DTE board** (the thing the prior
+  coordinator cycle *had* just fixed, PR #5678): confirmed the running ECS image
+  (`blackout-web:8303ee76efaf28dd792c2b0be53bbf100cbc7507`, task def `blackout-production-web:1862`,
+  registered 07:27:23 UTC) is byte-identical to the `main` commit carrying #5678/#5666/#5065/#5061 —
+  so those four fixes are genuinely live, not stale. Yet `AWS/ApplicationELB` `TargetResponseTime`
+  Max still spiked to 42-44s repeatedly through the morning (06:23, 06:33, 06:39, 06:42, 06:53, 07:00,
+  07:10, 07:18, 07:23, **and 07:52 — on an already-8/8-stable fleet with zero task churn in flight**),
+  always with p50 under 0.5s (tail latency, not fleet capacity) and ECS CPU 1-min averages staying
+  low (2-8% avg, 20-55% max) — same signature #5650 already established for the meridian-warm/
+  zerodte-warm case. Cross-checked every candidate boot-triggered GEX scan directly against ECS
+  service events: the bursts of `[polygon-gex] full-chain escalation ADOPTED` lines that time-align
+  with these spikes hit MULTIPLE different log streams simultaneously (five ECS tasks aged 23m, 17m,
+  12m, 6m and one about to drain, all firing the same ~30-ticker sequence within a 20s window at
+  07:50:08-07:50:27) — ages too varied for a per-task boot-warm event, which rules #5678's own call
+  site back out as the current cause (it is fixed and working).
+- **Ruled out every EventBridge-scheduled cron as the trigger.** Pulled the full deployed rule set
+  (`events.list_rules`, not `cron-registry.ts`'s mirror, per this file's own standing DST-audit
+  caution): every rule touching GEX/Thermal/Vector (`heatmap-warm`, `gex-alerts`, `desk-warm`,
+  `vector-full-state-snapshot`, `vector-walls-warm`, `vector-dark-pool-warm`, `vector-universe-snapshot`,
+  `thermal-discord`) is windowed to `11-21 ? * MON-FRI` (≈7am-5pm ET) — none can fire at 06:xx/07:xx
+  UTC (≈2-3am ET) at all. The only unconditional-schedule crons (`cron-staleness-watchdog`,
+  `platform-warm`, both `*/5 * * * ? *` 24/7) were read end-to-end: both correctly gate their GEX-
+  relevant work behind `isEtCashRth()`/`isEtExtendedWarmHours()` (confirmed in `admin-cron-health.ts`'s
+  `inMarketHoursEt`/`market_hours_stale` computation and `rth-warm-leader.ts`/
+  `vector-bead-recorder-leader.ts`'s own tick gates) — none of them can explain a 3am ET fan-out
+  either. `dispatchCronWarm`'s only ungated caller, `/api/admin/cron/run`, requires live admin auth
+  per-call and was not the source here (no matching request evidence).
+- **Found the actual trigger: `GET /api/market/vector/universe`'s cache-miss inline rebuild — a cost
+  lever the route's own code already names.** `src/app/api/market/vector/universe/route.ts`:
+  `loadVectorUniverseSnapshot()` is a bare Redis read with no fallback; when it returns `null` (the
+  normal state at 3am ET, since every Vector warm cron above is itself window-gated to 7am-5pm ET)
+  the route falls through to `refreshVectorUniverseSnapshot()` — the route's own comment: *"force is
+  a 21-ticker heatmap fan-out per request — a loopable cost lever if any authorized member can pull
+  it... with an inline rebuild only on a genuine cache miss"* — i.e. this fires for ANY authorized
+  premium/admin caller, not just `force=1`+cron, on exactly the condition that is guaranteed true
+  outside the warm window. `refreshVectorUniverseSnapshot` → `buildVectorUniverseSnapshot` calls
+  `fetchGexHeatmap(ticker)` once per ticker in the shared universe (static allowlist ∪ ≤100 dynamic
+  Vector-tracked names — the same universe `heatmap-warm` warms), which is exactly the ticker set
+  seen in every burst: bank/industrial presets (JPM, WFC, BAC, GE, NOC, MMM, RTX, PEP, DAL, COF, GM,
+  PNC, USB, TFC, SCHW, MS, CB, BNY, PLD, TRV, FAST, NFLX, DPZ, HDB, IBN, MRSH, PGR) plus dynamic/swing
+  names (BRZE, CAPR, PGNY, EXTR, BKSY, STXL, …). Confirmed this is driven by real authenticated HTTP
+  traffic, not an internal job: `[clerk-webhook] Event: user.created ... claude-audit-temp+ip5h5@…`
+  fired at **07:50:02.990**, that temp user was deleted at **07:50:29.036**, and the GEX-escalation
+  burst on five ECS tasks ran **07:50:08-07:50:27** — inside that exact session window, to the
+  second. Same pattern at the 07:17 burst (`claude-audit-temp+gaupj@…`, created 07:17:05.76, one
+  second before the first escalation line at 07:17:06.775). `claude-audit-temp+<id>@…` is this
+  toolkit's own standard temp-Clerk-user naming convention (`scripts/audit/lib/clerk-audit-user.mjs`)
+  — i.e. this is coordinator/audit-session traffic, consistent with (though not individually
+  attributed to) the standing 5-engine monitor's own per-cycle instruction to check
+  `/api/market/vector/universe` "if time permits," run by sibling hourly-offset sessions around the
+  clock, including hours Vector's own warm crons are intentionally idle.
+- **The downstream contention mechanism — why this makes an UNRELATED `/api/market/spx/desk` cold
+  rebuild on the SAME replica pay ~40s instead of the few seconds `withServerCache`'s own
+  `maxBlockMs` races are designed to cap it at — is still #5650's open, unconfirmed hypothesis, now
+  with one more supporting (not conclusive) data point.** Checked the live ECS task definition
+  (`blackout-production-web:1862`) directly: `UV_THREADPOOL_SIZE` is **not set** anywhere in its
+  container env (only `NODE_OPTIONS=--max-old-space-size=2560`), so it defaults to Node's built-in
+  **4**. `polygon-rate-limiter.ts`'s own `MAX_CONCURRENCY` is 48 by design ("Polygon Advanced is
+  effectively unlimited... raised 40 → 150 to let the parallelizable heavy paths... drain faster") —
+  i.e. the app is deliberately built to fan out up to 48 concurrent outbound HTTPS calls per
+  replica, all of which still have to share libuv's 4-thread pool for DNS resolution and gzip/brotli
+  inflate of every response body. A ~30-100-ticker universe rebuild firing that many concurrent
+  full-chain fetches at once is a plausible way to starve that 4-thread pool long enough to stall an
+  unrelated request's own DNS/gzip work on the same replica for tens of seconds, invisible to both
+  the JS event loop and to 1-minute-averaged ECS CPU% — but this is the SAME unconfirmed hypothesis
+  #5650 already named, not newly proven here; no profiler or direct libuv-queue-depth measurement was
+  taken this pass either.
+- **No fix shipped this pass, intentionally.** Per the standing caution two prior SPX-desk-specific
+  attempts (#5061, #5065) already demonstrate — do not guess a fix without a confirmed root cause.
+  The TRIGGER is now confirmed; the CONTENTION MECHANISM is not. Two concrete, low-risk next steps
+  for whichever session re-opens this, in order of cost:
+  1. **Cheap experiment, no code change**: bump `UV_THREADPOOL_SIZE` on the ECS task definition (e.g.
+     16 or 32) and re-measure ALB `TargetResponseTime` p99/Max during/after the next
+     `/api/market/vector/universe` cold-cache hit outside Vector's warm window — if the libuv-
+     contention hypothesis is right, the spike magnitude should drop sharply; if it doesn't, that
+     disproves it the same way #5650's benchmark disproved #5625, cheaply and reversibly.
+  2. **Product/perf decision, needs its own scoped PR, not guessed here**: `/api/market/vector/
+     universe`'s inline-rebuild-on-cache-miss is a real, self-documented cost lever reachable by any
+     authorized premium member or audit session outside the warm window — consider gating it the
+     same way other expensive cold-build fallbacks in this codebase already are (serve a "warming"
+     placeholder + background-refresh instead of inline-blocking the caller on a ~30-100-ticker
+     fan-out), independent of whatever the libuv experiment in (1) finds.
+  3. **Process note for the standing audit mandate itself**: the 5-engine monitor's own per-cycle
+     instruction to check `/api/market/vector/universe` "if time permits" is, on this evidence, a
+     repeat trigger of the exact cost lever named in (2) when run outside Vector's 7am-5pm ET warm
+     window (which these hourly-offset cycles do, by design, around the clock) — worth the
+     coordinator's attention independent of whether (1)/(2) ship, since the audit mandate causing the
+     outage it exists to catch is the same shape of problem the UW-rate-limiter incident (2026-09-17,
+     this file's Environment-realities section) already documents for a different provider.
+
 ---
 
 ## WATCH LIST — 2026-09-22 0DTE record `by_outcome` mislabeled two real trim-scale exit reasons — deploy pending validation
