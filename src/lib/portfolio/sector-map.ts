@@ -24,8 +24,22 @@ const SECTORS: Record<string, string[]> = {
   // Book-context sections reported only same-ticker concentration, never the cross-ticker basket.
   // Same gap shape/fix pattern as the 2026-09-20 crypto-equity and 2026-09-25 quantum-computing
   // extensions above.
-  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC"],
-  megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META"],
+  // Extended 2026-10-07 (Ask Largo standing mandate, live finding, same gap shape as the ALAB/
+  // CRDO/KLAC and crypto-equity leveraged-wrapper extensions above): a real committed book held
+  // SMCI LONG (MANAGING) *and* SMCX — "Defiance Daily Target 2X Long SMCI ETF" — LONG (MANAGING)
+  // at the same time, and separately MU LONG (WATCH) alongside MULL — "GraniteShares 2x Long MU
+  // Daily ETF" — LONG (MANAGING): the identical underlying stock held twice through a plain and a
+  // leveraged wrapper, same shape as the already-fixed MSTR/MSTU/MSTX and RBLX/RBLU precedent, but
+  // unlike those pairs SMCI/MU already have an established peer bucket here (semis), so the
+  // leveraged wrapper joins that bucket directly rather than getting its own isolated pair.
+  // AVGX ("Defiance Daily Target 2X Long AVGO ETF") is the same wrapper shape on AVGO, already
+  // listed below — added proactively for when the book holds it too (not yet live at time of
+  // writing, but the gap is identical in kind). Verified ticker identity via Polygon reference
+  // (`/v3/reference/tickers/<T>`) before adding, not guessed from the symbol alone.
+  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC", "SMCX", "MULL", "AVGX"],
+  // AMZU ("Direxion Daily AMZN Bull 2X ETF") added 2026-10-07 for the same reason as SMCX/MULL
+  // above — AMZN already has a peer bucket here, so its leveraged wrapper joins it directly.
+  megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AMZU"],
   // PLTU is a leveraged single-stock ETF tracking PLTR itself — same bet, different wrapper.
   software: ["PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
   "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM"],
@@ -78,6 +92,15 @@ const SECTORS: Record<string, string[]> = {
   roblox: ["RBLX", "RBLU"],
   gamestop: ["GME", "GMEU"],
   sofi: ["SOFI", "SOFX"],
+  // Added 2026-10-07 (Ask Largo standing mandate, live finding): a real committed book held GLW
+  // (Corning, plain equity) *and* GLWG ("Leverage Shares 2X Long GLW Daily ETF") LONG in MANAGING
+  // at the same time — the literal same stock, held twice through a plain and a leveraged wrapper,
+  // completely invisible to `checkPortfolioOverlap` because GLW had no entry anywhere in this map
+  // at all (not even its own name), so both resolved to DIFFERENT `NAME:<ticker>` own-clusters
+  // (`NAME:GLW` vs `NAME:GLWG`) instead of the one cluster they actually are. GLW has no existing
+  // themed peer here (it is not a semis name), so — same precedent as roblox/gamestop/sofi above —
+  // it gets its own small pair cluster rather than being folded into an unrelated bucket.
+  corning: ["GLW", "GLWG"],
 };
 
 // Inverted once at module load: TICKER → sector.

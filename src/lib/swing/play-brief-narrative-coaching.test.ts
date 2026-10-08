@@ -2539,6 +2539,95 @@ test("dataHonestyCoaching: stale GEX matrix warns dealer posture may lag (Largo 
   assert.match(line!, /dealer posture may lag spot/);
 });
 
+// GAP FOUND 2026-10-08 (Ask Largo standing mandate): neither staleness check above fires for the
+// orthogonal "compute is fresh but the MARKET is CLOSED" case `market_session_note` exists to
+// catch (vector-state-freshness.ts, PR #5306) — live repro INTC SWING:INTC:50 HOLD brief,
+// 2026-10-08 20:05 ET (market CLOSED): the "Trade manager read" section's prominent "Right now"
+// dealer-posture bullet (play-brief-narrative.ts's dealerPostureLine) carried zero caveat while
+// the SAME envelope's buried evidence array separately said "Computed 3s ago, but the market is
+// CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh
+// the compute looks" for the identical Vector compute. These tests prove the fix: the same note
+// now reaches this "Data caveat" bullet too.
+test("dataHonestyCoaching: fresh Vector compute during a CLOSED market surfaces market_session_note", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: {
+        dataAgeMs: 0,
+        freshness: "live",
+        market_session_note:
+          "Computed 0s ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks.",
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /market is CLOSED as of this read/i);
+  // Must not ALSO claim Vector is stale — the compute genuinely is fresh, only the market is shut.
+  assert.doesNotMatch(line!, /Vector \*\*\d/i);
+});
+
+test("dataHonestyCoaching: GEX-only market_session_note surfaces when Vector gives none", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED (same fixture instant play-brief-absence.test.ts's own gexMarketSessionNote tests use)
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /market is CLOSED/i);
+});
+
+test("dataHonestyCoaching: Vector's own closed-market note suppresses a redundant GEX one (dedup, same shape as vectorConflictAlreadyNoted)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      vector: {
+        dataAgeMs: 0,
+        freshness: "live",
+        market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
+  // The GEX-sourced note would independently say "the market is CLOSED" -- must not ALSO appear,
+  // or the same real-world fact is restated twice in one bullet from two sources.
+  const closedMentions = (line!.match(/market is CLOSED/gi) ?? []).length;
+  assert.equal(closedMentions, 0, "Vector's note already covers it; the GEX one must not also fire");
+});
+
+test("dataHonestyCoaching: a genuinely stale Vector snapshot (by this file's own 120s bar) never leaks a closed-market note even if the field is set", () => {
+  // Simulates a server/local-threshold disagreement (server's freshness bucket is live/recent up
+  // to 600s; this file's own vectorAgeStale fires past 120s) -- the existing Vector-staleness
+  // warning must win and the closed-market note must not also render.
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: {
+        dataAgeMs: 150_000,
+        freshness: "recent",
+        market_session_note: "SHOULD_NOT_APPEAR",
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*150s\*\* stale/);
+  assert.doesNotMatch(line!, /SHOULD_NOT_APPEAR/);
+});
+
 // BUG FOUND 2026-09-20 (Ask Largo standing mandate): dataHonestyCoaching's "Data caveat" bullet
 // (Vector/GEX/HELIX/discovery-scan staleness) fired identically for a dead WATCH play as for a
 // live one -- the same wall-of-stale-warnings-for-a-setup-nobody-can-act-on shape

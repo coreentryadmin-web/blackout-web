@@ -49,7 +49,14 @@ import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
-import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy";
+import {
+  archetypeLabelFromRaw,
+  subLaneLabelFromRaw,
+  ARCHETYPE_META,
+  SWING_ARCHETYPES,
+  SWING_SUB_LANES,
+  SWING_SUB_LANES_ORDER,
+} from "./taxonomy";
 import {
   graduatedArchetypeEntry,
   graduatedSubLaneEntry,
@@ -128,7 +135,15 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
             `**${play.archetypeNearTie.secondaryLabel}** by only ${play.archetypeNearTie.marginPct} pts.`,
     );
   }
-  if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-08): this used to print `play.subLane.replace(/_/g,
+  // " ")` — a no-op on every REAL `SwingSubLane` value (`TACTICAL`/`STANDARD`/`EXTENDED` have no
+  // underscore), so it rendered the shouty raw enum ("Sub-lane: TACTICAL") while the archetype line
+  // immediately above, `archetypeTrackRecordSection` further down this SAME brief, and the live
+  // command-deck UI (`terminal-display.ts`) all render the identical field as "Tactical (5–7d)" —
+  // see `subLaneLabelFromRaw`'s own doc comment (taxonomy.ts) for the full trace. Unrecognized/foreign
+  // values render nothing here, same honest-absence discipline `archetypeLabelFromRaw` already uses.
+  const subLaneLabel = subLaneLabelFromRaw(play.subLane);
+  if (subLaneLabel) lines.push(`**Sub-lane:** ${subLaneLabel}`);
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the pre-entry WATCH note for the identical
   // fact ("thin read — N/7 pillars grounded", serving-ingest.ts) never survives WATCH→COMMIT — see
   // `entryPresentPillarsFromFeatureVector`'s own doc comment (live-plays.ts) for the full trace.

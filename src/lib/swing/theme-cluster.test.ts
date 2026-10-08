@@ -138,3 +138,26 @@ test("AI-datacenter connectivity chips + semis-equipment names cluster into semi
   // Not merged into an unrelated theme just because both are "tech".
   assert.equal(sameThesis("ALAB", "AAPL"), false);
 });
+
+test("leveraged single-stock ETFs whose underlying ALREADY has a themed peer join that peer's bucket directly, not their own isolated pair (2026-10-07 live finding: SMCI+SMCX and MU+MULL concurrent LONG book, no Book-context concentration flag)", () => {
+  // SMCX ("Defiance Daily Target 2X Long SMCI ETF") is the same underlying as SMCI, already in semis.
+  assert.equal(resolveTheme("SMCX"), "semis");
+  assert.equal(sameThesis("SMCX", "SMCI"), true);
+  assert.equal(sameThesis("SMCX", "NVDA"), true); // joins the WHOLE semis cluster, not just SMCI
+  // MULL ("GraniteShares 2x Long MU Daily ETF") is the same underlying as MU, already in semis.
+  assert.equal(resolveTheme("MULL"), "semis");
+  assert.equal(sameThesis("MULL", "MU"), true);
+  // AVGX ("Defiance Daily Target 2X Long AVGO ETF") is the same underlying as AVGO, already in semis.
+  assert.equal(resolveTheme("AVGX"), "semis");
+  assert.equal(sameThesis("AVGX", "AVGO"), true);
+  // AMZU ("Direxion Daily AMZN Bull 2X ETF") is the same underlying as AMZN, already in megatech.
+  assert.equal(resolveTheme("AMZU"), "megatech");
+  assert.equal(sameThesis("AMZU", "AMZN"), true);
+});
+
+test("GLW + GLWG are the literal same stock (plain vs 2x-leveraged wrapper) and must cluster together, not into separate NAME: own-clusters (2026-10-07 live finding: GLW+GLWG concurrent LONG book, no Book-context concentration flag)", () => {
+  assert.equal(resolveTheme("GLW"), resolveTheme("GLWG"));
+  assert.equal(sameThesis("GLW", "GLWG"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("GLW", "NVDA"), false);
+});
