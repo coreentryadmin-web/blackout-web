@@ -10,13 +10,19 @@
 // real and it is not small:
 //
 //  - the cron is RTH-gated (`2-59/5 11-21 * * 1-5`), so OFF-HOURS nothing refreshes the cache at
-//    all and an entry simply ages until the 15-minute TTL drops it;
-//  - it warms only the ~55 allowlist names, while Vector deliberately serves ANY optionable
-//    symbol — an off-allowlist ticker is only ever warmed by a reader's own self-warm;
-//  - its serial critical path is 76 computes against a 50s time budget, so every
-//    `computeVectorFullState` must finish inside ~658ms for the sweep to cover the universe.
-//    It is written to truncate rather than overrun ("partial completion is fine — the snapshots
-//    carry `asOf`"), and the tickers it does not reach keep their older entry.
+//    all and an entry simply ages until the TTL drops it (`vector-full-state-cache.ts`);
+//  - it warms only the merged static+dynamic+open-position universe, while Vector deliberately
+//    serves ANY optionable symbol — an off-universe ticker is only ever warmed by a reader's own
+//    self-warm;
+//  - its real per-batch cost is NOT the ~658ms this comment used to assume. MEASURED LIVE
+//    2026-10-08: a single `TICKER_CONCURRENCY=2 x 4 horizons` batch now routinely costs
+//    51-118 SECONDS (the chain fetch's real cost under current shared-rate-limiter contention),
+//    not milliseconds — so the sweep completes only ONE batch per 5-min run before its own 50s
+//    `TIME_BUDGET_MS` is blown, and `rotateTickersForWarmPass` (vector-full-state-warm-universe.ts)
+//    exists specifically so that the ticker(s) NOT reached this run get their turn on a LATER run
+//    rather than never. At 2 tickers/run against a 64-ticker universe, one full rotation lap is
+//    ~160 minutes — see `vector-full-state-cache.ts`'s TTL comment for why the TTL was raised to
+//    comfortably outlive that, rather than the old 15-min assumption this paragraph used to cite.
 //
 // So the design already DEPENDS on `asOf` to disclose staleness. That disclosure never actually
 // reached the reader: `get_vector_full_state` returns the raw state whose only time field is a

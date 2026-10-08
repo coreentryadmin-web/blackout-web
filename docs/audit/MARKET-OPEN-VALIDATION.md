@@ -148,6 +148,37 @@ which remains accurate and needed no correction. Full write-up:
 
 ---
 
+## WATCH LIST — 2026-10-08 `vector:full-state` cache TTL (15min) was ~11x shorter than the measured warm-cron rotation lap (~160min), leaving the same-day rotation-starvation fix's own target gap still at 100% failure — deploy pending validation
+
+**What was fixed:** the same-day earlier fix (`rotateTickersForWarmPass`) correctly stops the
+`vector-full-state-snapshot` cron from starving the same ~2 tickers forever — confirmed live, the
+cursor genuinely advances run over run (`cursor=22,26,28,30,32,34,36,38` across ~30 minutes). But
+each ~5-min run still only completes ONE `TICKER_CONCURRENCY=2 x 4 horizons` batch before its own
+50s budget is blown by the real per-ticker chain-fetch cost (`elapsed=51050-117676ms` per run,
+measured live) — so a full rotation lap over the 64-ticker universe takes ~160 minutes, eleven
+times longer than the 15-minute cache TTL. Re-probed `GET /api/market/swing/play-brief` on six
+fresh tickers this cycle (MSFT, PBR, WING, CTVA, MU, AMD) AFTER the rotation fix had deployed:
+**all six** still carried `unavailableSources: ["ecosystem context", "Vector state"]` — the
+identical 100% failure rate the rotation fix was built to close, now confirmed to persist even
+after that fix shipped and is confirmed working. Raised `VECTOR_FULL_STATE_CACHE_TTL_SEC` from 15
+minutes to 4 hours — safe because `describeVectorFreshness` labels staleness purely from the
+snapshot's own `observed_at`, independent of this TTL, so a longer-lived entry is never
+misrepresented as live; it is just less often deleted before it can be served at all. Full
+write-up: `docs/audit/findings-staging/2026-10-08-vector-full-state-ttl-rotation-mismatch.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for several
+committed/watch swing tickers (e.g. off `GET /api/market/nighthawk/horizons?view=swings`'s SWING
+lane) during RTH and confirm `unavailableSources` no longer routinely lists both "ecosystem
+context" and "Vector state" with `"reason":"fetch failed"` — an occasional miss right after a
+ticker's own rotation turn is still expected and fine, but it should no longer be the common case
+across an arbitrary sample. Also spot-check that when a Vector/ecosystem read IS served from an
+older cache entry, the brief's `confidence`/freshness disclosure correctly reflects its real age
+(via `age_seconds`/`freshness: "stale"`) rather than presenting it as live — this fix should never
+make a stale read look fresher than it is, only make a stale-but-labeled read available instead of
+a hard timeout.
+
+---
+
 ## WATCH LIST — 2026-10-08 `heatmap-warm`'s bulk "rest" ticker fetch fanned out via an UNBOUNDED `Promise.allSettled` — the confirmed downstream contention mechanism behind the recurring ALB tail-latency spikes #5680/#5684 left open — deploy pending validation
 
 **What was fixed:** picks up exactly where #5680 ("found the trigger, contention mechanism still
