@@ -15,12 +15,47 @@ import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon"
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 
 /**
- * TTL for a cached snapshot. Chosen (like vector-universe's serve-stale) to comfortably outlive the
- * ~5-min RTH cron cadence so an entry never expires on the knife-edge between two runs; the
- * snapshot's own `asOf` discloses staleness to consumers. After the cron stops at the close, entries
- * age out within this window and off-hours reads fall back to a live compute (which self-warms).
+ * TTL for a cached snapshot.
+ *
+ * WAS 15 min, on the assumption (stated here verbatim until 2026-10-08) that this "comfortably
+ * outlives the ~5-min RTH cron cadence so an entry never expires on the knife-edge between two
+ * runs." That assumed every ticker gets refreshed roughly every cron tick. It does not.
+ *
+ * MEASURED LIVE 2026-10-08 (Ask Largo standing mandate, CloudWatch `/ecs/blackout-production`),
+ * AFTER `rotateTickersForWarmPass` (the same-day starvation fix — see
+ * `vector-full-state-warm-universe.ts` / FINDINGS.md 2026-10-08) had already shipped and was
+ * confirmed advancing the cursor run over run:
+ *
+ *   tickers=64 horizons=4 cursor=36 attempted=2 written=8 ... budgetHit=true elapsed=51050ms
+ *   tickers=64 horizons=4 cursor=34 attempted=2 written=8 ... budgetHit=true elapsed=74664ms
+ *   tickers=64 horizons=4 cursor=32 attempted=2 written=8 ... budgetHit=true elapsed=117676ms
+ *
+ * Each ~5-min run only completes ONE `TICKER_CONCURRENCY=2` batch before `TIME_BUDGET_MS` (50s) is
+ * blown by the per-ticker chain-fetch cost (out of scope here — see the rotation fix's own "what
+ * this does NOT fix"). So a full rotation lap over a 64-ticker universe takes ~64/2 * 5min = 160
+ * minutes — ~11x the old 15-min TTL. An entry is therefore warm for ~15 of every ~160 minutes
+ * (≈90% cold), for EVERY ticker, not only the ones the old fixed-iteration-order bug starved
+ * outright. Reproduced as a 100% failure rate on Ask Largo's `GET /api/market/swing/play-brief`:
+ * `ecosystem context` and `Vector state` both hard-timing out at the brief's own 8s
+ * `BRIEF_SOURCE_TIMEOUT_MS` on 9/9 sampled tickers across two separate hours — including real
+ * open-capital swing positions (MSFT, NRG, CIEN) the rotation fix explicitly exists to protect.
+ *
+ * Raising the TTL is safe because staleness disclosure does NOT depend on it:
+ * `describeVectorFreshness` (vector-state-freshness.ts) derives `freshness`/`age_seconds` purely
+ * from the snapshot's own `observed_at` vs real read time, so a longer-lived entry is never
+ * misrepresented as live — anything older than 10 minutes is still correctly labeled "stale" with
+ * an honest age (Largo C2). This TTL only controls whether Redis still HAS an entry to label; a
+ * value shorter than the real rotation lap just deletes usable (if stale) evidence before serving
+ * it at all, trading an honestly-labeled stale read for a hard, evidence-free "fetch failed" — a
+ * strictly worse outcome for the member. 4h clears the measured ~160-min lap with real margin for
+ * a slower day (lower throughput, heavier rate-limiter contention) while still being comfortably
+ * inside one RTH session, so an entry still naturally ages out by the next trading day.
+ *
+ * Ratcheted by a test in vector-full-state-cache.test.ts: TTL must exceed one full rotation lap at
+ * the measured 64-ticker / 2-per-cycle / 5-min-cycle throughput, so this can't silently regress
+ * back to a value shorter than the cron can actually cover.
  */
-export const VECTOR_FULL_STATE_CACHE_TTL_SEC = 15 * 60;
+export const VECTOR_FULL_STATE_CACHE_TTL_SEC = 4 * 60 * 60;
 
 /**
  * Payload-shape version. BUMP THIS whenever the MEANING of a field in `VectorFullState` changes
