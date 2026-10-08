@@ -6105,3 +6105,53 @@ measurement at n=10 is not grounds to touch a gate. Flagging here (not FINDINGS.
 fix) so the next cycle re-runs against a larger EVENT_DRIVEN population before drawing a
 conclusion, per the same "verify against fresh data, never trust a stale snapshot" discipline this
 repo's CLAUDE.md states everywhere else.
+
+## 2026-10-08 — [DISCOVERY] Independent ALB corroboration on the #5680/#5681 vector/universe trigger-prompt fix: spike FREQUENCY dropped sharply but did NOT go to zero — a `platform-warm` cron correlation is a new, unconfirmed lead for the residual
+
+Coordinator-cycle dispatch pulled `AWS/ApplicationELB` `TargetResponseTime` for
+`blackout-production-app` directly from CloudWatch (never called `GET /api/market/vector/universe`
+itself, per standing instruction) to independently corroborate #5681's trigger-prompt fix, per its
+own write-up's explicit ask: *"re-pull `TargetResponseTime` Max over the following 24-48h and check
+whether the ~40-44s spike FREQUENCY drops... a reduced-but-nonzero rate would point at other
+callers... a rate unchanged would mean this was never the dominant source."*
+
+**Measured, 05:38-09:48 UTC (2026-10-08):** 13 distinct 5-min buckets with p99/Max >=20s between
+06:23 and 08:13 UTC (roughly one every 10-20 min, e.g. 42-44s clusters) — all BEFORE the fix landed
+(trigger prompts rewritten via `update_trigger`, confirmed live by `get_trigger` on
+`trig_01NNvznmA6eMsH61cLe7yb6z` carrying the new "DO NOT call" text, with its first post-fix
+`last_run` at 09:02:09 UTC). Then a ~65-minute CLEAN window (08:18-09:23 UTC, zero >=20s spikes) —
+closely matching the fix's own predicted timing. Then **one fresh spike at 09:28 UTC (p99 21.28s,
+Max 21.33s)**, confirmed NOT a duplicate/rebucketing artifact (reproduced in a second, differently-
+windowed pull). **Verdict: reduced-but-nonzero**, exactly the "other callers" branch #5681's own
+write-up named — not a clean kill.
+
+**Ruled OUT as the 09:28 spike's cause:** the 5-engine monitor itself — its 09:02 and all
+surrounding firings already carried the fixed no-`/vector/universe` prompt, so none of the six
+triggers could have driven this one. Also ruled out: an ECS deploy/rolling-replacement artifact —
+`describe_services` events show the service fully steady-state (8/8 running, 0 pending, no task
+churn) continuously since 07:52:53 UTC, well before and after both the 08:08-08:13 and 09:28
+spikes.
+
+**New, UNCONFIRMED correlation worth the next cycle's attention:** CloudWatch Logs
+(`/ecs/blackout-production`, `elapsed=` grep) show the `platform-warm` cron's background
+`loadBootstrapBundle()` rebuild (fire-and-forget via `after()`, decoupled from the ALB response per
+its own route comment) taking **100218ms** (finished ~09:23:46 UTC) and **60376ms** (finished
+~09:27:26 UTC) in the run-up to the 09:28 spike — and `loadBootstrapBundle` assembles the same
+SPX-desk/GEX bundle (`gex_walls`/`gex_net`/`gamma_flip`/etc., `buildMergedBundle` in
+`spx-desk-loader.ts`) that #5680 named as the contention surface. However, the correlation is NOT
+clean: two earlier `platform-warm` long-elapsed events in the same pull (48301ms @ 08:26:14,
+60294ms @ 08:36:26) have **no corresponding ALB spike** in their own window (p99 stayed 4.8-8.5s
+through 08:23-08:53), and the pre-fix 08:08/08:13 spikes have no `platform-warm` long-elapsed
+correlate at all in the log window pulled (08:00-09:33 UTC) — so this is a real, specific lead for
+ONE spike, not a demonstrated mechanism for all of them. A request-count pull also shows a traffic
+burst (174 requests in the 09:19-09:24 bucket vs a 9-40 baseline) just before the 09:28 spike —
+real member/bot traffic hitting the expensive endpoint directly is an equally live alternative
+explanation, not yet distinguished from the `platform-warm` hypothesis.
+
+**No gate/code changed on this measurement** — same discipline as every other first-look entry in
+this file. Next step for whoever picks this up: CloudWatch Logs Insights cross-referencing the
+exact replica/ECS task ID behind the 09:28 ALB spike against which process (the `platform-warm`
+background task vs. a real inbound request to `/vector/universe`) was actually running on it at
+that moment — the same technique #5680 used to nail its own root cause, not yet applied here.
+Folded a related docs-only finding this same cycle (PR #5682, folding #5681's staged finding file
+into `FINDINGS.md` — it had been merged but never folded).
