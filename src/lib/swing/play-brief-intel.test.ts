@@ -31,6 +31,7 @@ import type { PaneCortexView } from "@/lib/zerodte/pane";
 import { catalystCoaching, collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -3457,6 +3458,63 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
     "watch",
   );
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 at -59.1% P&L and
+// SWING:GLW:1479 at -56.1% P&L): `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps
+// `thesisLevel: "intact"` as a fixed literal on every Banger-origin row regardless of price action
+// — there is no real per-position thesis dossier for this lane, the same gap
+// `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already exist to catch for the
+// aggregate Thesis-health panel. Left unguarded, this section rendered "Thesis **intact** — below
+// the 2× partial and above the hard stop" for a position 2% from stopping out — overclaiming a
+// calibrated judgment the lane cannot produce, and purely restating the honest "Premium stop
+// rail"/"Premium target rail" lines two lines below it. Must suppress regardless of bucket
+// (watch/open) and regardless of whether thesisBreak carries a note.
+test("watchForSection: Banger-origin thesis line is suppressed, not fabricated (Largo C6, live repro CRI/GLW)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: BANGER_LEDGER_REGIME_LABEL,
+        thesisBreak: { level: "intact", note: "below the 2× partial and above the hard stop" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Thesis \*\*/);
+  assert.doesNotMatch(section.body, /below the 2× partial/);
+});
+
+// Sibling guard: a NATIVE swing position's real, live-derived thesisBreak must still render —
+// the suppression above is scoped to the Banger-ledger sentinel, not to "intact" generally.
+test("watchForSection: a NATIVE position's thesis line still renders (suppression is Banger-scoped only)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: "Pullback continuation · regime 1.00",
+        thesisBreak: { level: "intact", note: "structure holding" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Thesis \*\*intact\*\* — structure holding/);
 });
 
 test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
