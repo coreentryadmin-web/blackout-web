@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-08T17:02:30.000Z",
-  "notes": "Cycle check 2026-10-08 17:02Z (:01-offset trigger, v3 cadence, full mandate). MSFT:49 carried over from 10/7, oscillating through the morning (+13.3% at 16:31Z -> -3.7% at 16:48Z -> -15% at 17:02Z), liveStatus HOLD throughout, manageEnforced:false, underlying excursion only MFE+0.79%/MAE-0.27% -- the swing is almost entirely premium/IV/theta noise around a barely-moved underlying (spot 525.83 vs entry-trigger 527.92, invalidation far off at 520.63), not a thesis break. Not a #5537 concern -- never approached the 2x profit_ladder threshold. NEW: INTC:50 appeared in closedDeck this cycle (first time seen -- it was committed 2026-10-07T19:10Z, entirely outside this session's RTH monitoring window, and closed 2026-10-08T17:00:18Z, so this cadence never observed it OPEN). Exit -52.84% stopped, entry 5.38 -> peak only 6.03 (+12%, nowhere near 2x) -> trough 2.54. Cortex at commit: score +0.4/conviction C, 4 of 6 sources ABSENT including three CortexSourceTimeout reads (gex-walls/wall-trend/darkpool-confluence) -- same thin-evidence shape `cortex-source-timeout-outcome-ab.mjs` already measured (30-day sample: no systemic degradation from timeout commits). This is one more data point consistent with that existing measurement, not a new pattern -- not escalated. committedCount dropped 48->40 across this session's ticks; cross-checked against swing/record (which only tracks the native-swing chain, not Banger) -- only 1 native close (INTC:50) in the last 4h, so the remaining ~7-count drop is Banger-lane expiries/closures that swing/record doesn't surface (expected, already-documented lane-separation, not a bug). Also discovered play-brief's real query contract is `playId`, not `ticker`+`positionId` as this session's scratch probe assumed -- 400 'playId is required'. Didn't block on resolving the exact playId format this cycle given nothing else was actionable; worth fixing the probe next cycle for the Ask Largo deep audit the v3 mandate wants every tick.",
+  "last_updated": "2026-10-08T17:48:10.000Z",
+  "notes": "Cycle check 2026-10-08 17:47Z (:46-offset trigger). MSFT:49 has now declined 4 consecutive ticks (-15% -> -21.9% -> -31.7% -> -39.2%, 16:48Z-17:47Z), underlying drifting steadily toward invalidation: spot 525.83 -> 525.95 -> 523.08 -> 522.43 vs invalidationUnderlyingPx 520.63 (only ~0.34% away as of this tick, MAE -1.07%). thesisLevel still reads 'intact' and manageReasonDetail still says 'thesis intact, premium above the 0.4x backstop, ample time -- hold' at every tick -- not yet a bug (spot has not actually crossed invalidation), but this is now a real, monotonic approach worth close tracking next cycle: if spot breaches 520.63 and the engine STILL reports thesisLevel:intact / liveStatus:HOLD, that would be a genuine thesis-invalidation-detection gap (distinct from the already-known #5537 profit_ladder/TRIM bug -- this would be on the DOWNSIDE invalidation side, never previously observed). If it breaches and correctly flips to broken/CLOSE, that's the system working as designed. Flagging this explicitly as the thing to check first next tick.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -490,5 +490,48 @@
     "positionId": 49,
     "timeline": "Opened ~16:47Z (12:47 ET) near breakeven (-0.9%), drifted to -5.5% by 17:17Z, recovered through the afternoon peaking ~19.6% at 18:32Z, oscillated 15-20% through the rest of RTH, closed the session flat-ish at +12.4% (unchanged across the final two 15-min checks, confirming close).",
     "note": "Worth tracking tomorrow -- if it ever crosses +100% (2x), that's exactly the scenario #5537 describes as broken (graduatedRungs permanently [] -> no TRIM). Nothing actionable tonight."
+  },
+  "msft_49_invalidation_watch_2026_10_08": {
+    "status": "WATCHING -- not yet a finding. spot still above invalidationUnderlyingPx as of 17:47Z.",
+    "trail": [
+      {
+        "t": "16:31Z",
+        "spot": null,
+        "pnl": 13.3
+      },
+      {
+        "t": "16:48Z",
+        "spot": 525.83,
+        "pnl": -3.7,
+        "maePct": -0.27
+      },
+      {
+        "t": "17:02Z",
+        "spot": 525.95,
+        "pnl": -15,
+        "maePct": -0.79
+      },
+      {
+        "t": "17:16Z",
+        "spot": 525.95,
+        "pnl": -21.9,
+        "maePct": -0.79
+      },
+      {
+        "t": "17:31Z",
+        "spot": 523.08,
+        "pnl": -31.7,
+        "maePct": -0.92
+      },
+      {
+        "t": "17:47Z",
+        "spot": 522.43,
+        "pnl": -39.2,
+        "maePct": -1.07
+      }
+    ],
+    "invalidationUnderlyingPx": 520.63,
+    "entryTriggerUnderlyingPx": 527.92,
+    "next_step": "Next tick: check whether spot has crossed 520.63. If yes, verify thesisLevel flips away from 'intact' and liveStatus/manageReason reflects an actual exit path -- if it does NOT flip, that is a new, reportable finding (downside invalidation-detection gap, separate from #5537's upside/profit_ladder gap). If spot recovers back above invalidation, this entry can be closed out as a normal pullback-and-hold, no finding."
   }
 }
