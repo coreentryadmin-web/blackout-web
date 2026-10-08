@@ -1,3 +1,36 @@
+## WATCH LIST — 2026-10-08 Ask Largo swing play-brief Management section's "Rails: ... target $X" line showed an already-banked trim level as a fresh, unmet objective, contradicting the "Trim ladder: +100% ✓" line directly above it — deploy pending validation
+
+**What was fixed:** `managementSection` (`play-brief.ts`) rendered `exitPolicy.target_premium` as a
+bare, un-annotated dollar figure in its "Rails: stop $X · target $Y" line regardless of whether a
+fired trim had already reached it. Swing's single-rung `SWING_SCALE_OUT_POLICY` prices its one trim
+trigger identically to the policy's overall target (both 100%), so once that rung fires, the fired
+trim's own premium and `target_premium` are the SAME dollar level — live-confirmed 2026-10-08 on
+`GET /api/market/swing/play-brief?playId=SWING:EXTR&ticker=EXTR&status=OPEN` (real committed
+BANGER-origin position, entry $0.15, mark $0.38, +150% P&L, trim already fired at $0.30): the
+Management section rendered `Trim ladder: +100% ✓` immediately followed by `Rails: stop $0.06 ·
+target $0.30` with nothing indicating the two lines describe the same already-crossed level — a
+member reading top-to-bottom sees a "still ahead" target beside its own "already done" disclosure.
+`play-brief-intel.ts`'s separate "What to watch" section (further down the SAME envelope) already
+fixed this exact self-contradiction for its own "Premium target rail" line on 2026-09-22, but this
+earlier, more prominent Management-section line was never given the equivalent treatment — grep
+confirmed it as the only other call site rendering `target_premium` as a bare value. Fix: annotate
+the target with the ladder's own "✓ (reached)" convention whenever a fired trim's premium has
+already met or passed it; a target not yet reached (confirmed live on RGNX/BSP) still renders as
+a bare figure, unchanged. Full write-up:
+`docs/audit/findings-staging/2026-10-08-swing-rails-target-reached-self-contradiction.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any
+real OPEN/SCALING_OUT swing position whose single trim rung has already fired (check `GET
+/api/market/nighthawk/horizons?view=swings` for a `SWING`-lane committed row with `serving:
+"SCALING_OUT"`, or the swing record for a leg with `trim_levels[].fired: true`) and confirm its
+Management section now reads `Rails: stop $X · target $Y ✓ (reached)` rather than a bare `target
+$Y`. Also spot-check a genuinely still-open position whose trim hasn't fired yet (e.g. a fresh
+MANAGING-state row) and confirm it still shows the bare `target $Y` with no "reached" annotation —
+this fix only adds the annotation when the contradiction would otherwise exist, it should not
+touch a still-forward-looking target.
+
+---
+
 ## CORRECTION / REOPENED — 2026-10-08 ALB tail-latency investigation: #5686 confirmed DEPLOYED LIVE but did NOT measurably reduce `TargetResponseTime` p99/Max — this thread is OPEN, not done
 
 **Read this before trusting any "the arc is done" impression from chat, a stale trigger-prompt

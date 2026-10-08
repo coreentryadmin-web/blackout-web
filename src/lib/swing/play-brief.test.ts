@@ -3230,6 +3230,91 @@ test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) ne
   );
 });
 
+// Live repro 2026-10-08 (Ask Largo standing mandate, EXTR OPEN brief): swing's single-rung
+// SWING_SCALE_OUT_POLICY prices its one trim rung's `trigger_pct` identically to `target_pct`
+// (both 100), so once that rung fires, the fired trim's `premium` and `exitPolicy.target_premium`
+// are the SAME dollar level. `managementSection`'s "Rails: stop X · target Y" line used to print
+// that level as a bare, un-annotated figure right below "Trim ladder: +100% ✓" — the exact
+// self-contradiction play-brief-intel.ts's "What to watch" section already fixed on 2026-09-22 for
+// its own "Premium target rail" line, but this earlier, more prominent summary line never got the
+// same treatment.
+test("composeSwingPlayBrief: Rails target already reached by a fired trim is annotated, not shown as a bare unmet figure (live EXTR repro)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "TRIM",
+      entry: 0.15,
+      mark: 0.38,
+      pnlPct: 150,
+      peak: 150,
+      manageAction: "TAKE_PARTIAL",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 0.3, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 0.06,
+        target_premium: 0.3,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-08T23:15:00.000Z",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /Rails: stop \$0\.06 · target \$0\.30 ✓ \(reached\)/,
+    `target already hit by the fired trim must say so, not read as a fresh unmet objective, got: ${management!.body}`,
+  );
+});
+
+// A target NOT yet reached by any fired trim must still render as a bare, un-annotated figure —
+// the fix above must not suppress or annotate a genuinely forward-looking target.
+test("composeSwingPlayBrief: Rails target not yet reached renders as a bare figure (no false 'reached' annotation)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 0.15,
+      mark: 0.2,
+      pnlPct: 33.3,
+      peak: 33.3,
+      manageAction: "HOLD",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 0.3, fired: false }],
+        runner_fraction: 0.5,
+        stop_premium: 0.06,
+        target_premium: 0.3,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-08T23:15:00.000Z",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(management!.body, /Rails: stop \$0\.06 · target \$0\.30$/m, `got: ${management!.body}`);
+  assert.doesNotMatch(management!.body, /reached/, `got: ${management!.body}`);
+});
+
 // ─── Roll-candidate advisory (Ask Largo standing mandate, 2026-09-18): manage.ts's dte_migration/
 // roll_intent — the SAME signal roll.ts's live executor acts on — never reached the brief; only
 // past, already-executed rolls were ever disclosed (play-brief-narrative.ts's rollLine).
