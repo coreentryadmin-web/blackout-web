@@ -1,3 +1,50 @@
+## WATCH LIST — 2026-10-08 `heatmap-warm`'s bulk "rest" ticker fetch fanned out via an UNBOUNDED `Promise.allSettled` — the confirmed downstream contention mechanism behind the recurring ALB tail-latency spikes #5680/#5684 left open — deploy pending validation
+
+**What was fixed:** picks up exactly where #5680 ("found the trigger, contention mechanism still
+open") and #5684 (duty-cycle fix, explicitly NOT an ALB-latency fix per its own honest
+correlation test) left off. Live evidence THIS cycle: `AWS/ECS` Container Insights per-task
+`CpuUtilized` for the specific ECS task running a `heatmap-warm` pass spiked from an idle ~8-18 CPU
+units (of 2048 reserved) to **700-860** — 0.7-0.85 of one full vCPU, sustained for the entire
+60-90s run — while four sibling tasks serving ordinary live traffic in the SAME minutes stayed at
+their own normal baseline. This directly corrects #5680's "ECS CPU 1-min averages stayed low
+(2-8% avg)" read, which was fleet-average and dilutes exactly this kind of single-task spike down
+to a low-single-digit-percent number (750/8 tasks ≈ 94, consistent with what was reported). The CPU
+spike precisely time-correlates (to the minute, lagging slightly as the stalled request completes
+after the CPU-heavy work clears) with `AWS/ApplicationELB` `TargetResponseTime` p99/Max spiking to
+8.6s-80.4s on `blackout-production-app` — independently re-pulled this cycle and matching the
+investigating prompt's own cited 10:56Z/11:00Z/11:01Z numbers exactly. Root cause:
+`heatmap-warm`'s own per-ticker sweep (`src/app/api/cron/heatmap-warm/route.ts`) fanned the BULK
+"rest" tier of its ~100-130-ticker universe (typically 70-100+ names) out via a bare, **unbounded**
+`Promise.allSettled` — no concurrency cap at all — the exact "unbounded batch fan-out starves
+concurrent live traffic on the same replica" bug class `runPolygonPool`'s own doc comment says was
+already found and fixed for the Vector universe snapshot build on 2026-09-04; this route was simply
+never migrated to the same fix. Up to 48 of those ~100 `fetchGexHeatmap` calls (the Polygon
+per-process admission ceiling) land in flight on ONE task at once, and each one's real synchronous
+per-ticker cost (chain-response JSON parse, GEX matrix build, the documented "~33x chain-size...
+55-370ms" depth ladder) piles up back-to-back on that task's single event loop with nothing pacing
+it. Fix: routed `rest` through the same, already-proven `runPolygonPool` (`POOL_MAX_CONCURRENCY=8`
+default, not overridden) the Vector-universe build already uses for the identical reason. Full
+write-up: `docs/audit/findings-staging/2026-10-08-heatmap-warm-unbounded-rest-fanout-per-task-cpu-contention.md`.
+
+**Specific thing to check once this deploys, during RTH (11:00-21:59 UTC / ~7am-5:59pm ET, when
+`heatmap-warm` runs every ~60-110s via EventBridge):** catch the NEXT live `heatmap-warm` run by
+watching CloudWatch Logs for `[rth-warm-leader] backup warm 'heatmap-warm' ok` (or the equivalent
+EventBridge-triggered completion) and pull `AWS/ECS` Container Insights per-task `CpuUtilized` for
+whichever task's log stream carries that run's `[polygon-gex] full-chain escalation ADOPTED` lines
+— confirm the single-task CPU spike shrinks materially below the measured 700-860/2048 baseline
+(a smaller, more spread-out rise is expected; it will not go fully to zero since the SAME total
+Polygon work still has to happen, just paced 8-at-a-time instead of ~70-100-at-once). In the SAME
+window, pull `AWS/ApplicationELB` `TargetResponseTime` p99/Max at 1-min granularity and confirm the
+corresponding spike shrinks or disappears. **If the ALB spike persists at a similar magnitude
+despite the CPU bound taking effect, that is real evidence the dominant mechanism is something
+OTHER than synchronous per-ticker processing bursts** (e.g. libuv-threadpool/DNS/gzip contention
+even at 8-at-a-time, or Polygon admission-queue wait time itself, per #5650's still-open
+hypotheses) — do not conclude this fix failed without that live re-measurement, and per this file's
+own standing discipline (the #5061/#5065 precedent), do not guess a second fix without it; document
+the re-measurement result (either way) as the next dated finding instead.
+
+---
+
 ## WATCH LIST — 2026-10-08 `heatmap-warm`'s 20s in-app-leader heal threshold made it "overdue" the instant any normal run finished, driving a ~70% near-continuous duty cycle during the pre-EventBridge pre-market window — deploy pending validation
 
 **What was fixed:** `RTH_WRITER_HEAL_AFTER_MIN["heatmap-warm"]` (`rth-warm-leader-logic.ts`) was `20/60` (20s) — copied from `vector-walls-warm`'s entry (justified there by a ~900ms cache TTL) rather than derived from `heatmap-warm`'s own real cost. A real `heatmap-warm` run sweeps the shared ~100-ticker universe through Polygon and has always taken 60-110s (p50=46.5s/p90=81.1s/p99=181.1s/max=209.2s, measured 2026-09-03). `rthWriterOverdue()`'s age calc reads `cron_job_runs.started_at`, which is actually stamped by a bare SQL `now()` default at INSERT time — i.e. at the run's COMPLETION (`logCronRun` is called at the very end of the handler), not its true start. So with a 20s threshold and 60-110s real runtime, every run was already "overdue" by the instant it finished, and the in-app leader's own 15s tick re-commissioned a fresh full sweep almost every time. Live-confirmed 2026-10-08, 08:00-09:48 UTC (the pre-EventBridge 4-7am ET pre-market window — AWS-confirmed `AWS/Events` `Invocations`=0 for this rule's `cron(*/1 11-21 ? * MON-FRI *)` the entire window, so this ran ENTIRELY off the leader, isolating it as the sole cause): 70 consecutive full runs, zero skips, median runtime 60.9s, ~68-70% wall-clock duty cycle, median gap between completion and next start only ~30s. Checked the original hypothesis that this was measurably driving ALB latency spikes with a proper 2-hour correlation: it does NOT hold up (spike-minute heatmap-warm-overlap rate ≈ non-spike-minute rate at every threshold tested, 5-20s Max) — reported honestly rather than retrofit; the fix stands on its own duty-cycle/backup-semantics merits instead. Fix: raised the threshold to 81s (the job's own measured p90), matching the design of every sibling entry in this map. Full write-up: `docs/audit/findings-staging/2026-10-08-heatmap-warm-heal-threshold-duty-cycle.md`.
