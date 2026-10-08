@@ -8,6 +8,7 @@ import {
   ageSecondsLabel,
   confluenceZoneKindsLabel,
   fundamentalsAncient,
+  gexMarketSessionNote,
   gexMatrixAgeMs,
   gexMatrixStale,
   meridianCatalystAgeMs,
@@ -19,6 +20,7 @@ import {
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import { computeLaneRank } from "./play-brief-lane-rank";
 import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
@@ -39,8 +41,15 @@ function fmtPct(n: number, digits = 1): string {
   return `${sign}${n.toFixed(digits)}%`;
 }
 
-function vectorOf(ctx: SwingPlayBriefContext): VectorFullState | null {
-  return ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+// Widened to Partial<VectorFreshnessBlock> (2026-10-08, Ask Largo standing mandate) so
+// dataHonestyCoaching below can read `market_session_note` — see its own doc comment for why.
+// Matches the identical cast already used by play-brief.ts/play-brief-narrative.ts's own local
+// `vectorOf` helpers for the same field; this file's copy had drifted to the narrower, pre-#5306
+// type.
+function vectorOf(ctx: SwingPlayBriefContext): (VectorFullState & Partial<VectorFreshnessBlock>) | null {
+  return (ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null) as
+    | (VectorFullState & Partial<VectorFreshnessBlock>)
+    | null;
 }
 
 /** Urgent thesis invalidation — leads narrative when fired. */
@@ -1267,6 +1276,38 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
     warnings.push(
       `swing discovery from **${ctx.scanSessionDay}** — today's scan not yet run`,
     );
+  }
+  // GAP FOUND (2026-10-08, Ask Largo standing mandate): neither the Vector-age check nor the
+  // GEX-matrix-age check above fires for the orthogonal "compute is fresh but the MARKET is
+  // CLOSED" case `market_session_note` (vector-state-freshness.ts, PR #5306) exists specifically
+  // to catch — a post-close/weekend self-warm genuinely computes a fresh Vector/GEX snapshot off
+  // the LAST session's tape, so both staleness checks above stay silent (by design: the compute
+  // really is recent), and this whole "Data caveat" bullet said nothing — while, three bullets
+  // ABOVE it in the SAME "Trade manager read" section, `dealerPostureLine` (play-brief-
+  // narrative.ts) confidently opens with "**Right now** — spot ... dealers short gamma ...
+  // gamma-flip ..." with zero caveat. #5306's own evidence-array fast-follow (play-brief.ts,
+  // gated identically `!vectorStale && vec?.market_session_note` / `!gexStale &&
+  // gexMarketSessionNote(...)`) already discloses this exact combination — but only in the
+  // buried evidence list at the bottom of the document, never in the narrative a member actually
+  // reads first. #5306's own PR description named "wiring market_session_note into the swing
+  // evidence array" as the scoped fast-follow and explicitly left the narrative untouched, so
+  // this is not a regression of that fix, it is the gap it always disclosed. Live repro
+  // 2026-10-08: INTC SWING:INTC:50 HOLD brief at 20:05 ET (market CLOSED) — "Right now" bullet
+  // carried no caveat while the evidence array separately said "Computed 3s ago, but the market
+  // is CLOSED as of this read — this reflects the last session's tape, not a live tick, however
+  // fresh the compute looks" for the identical Vector compute.
+  //
+  // One combined warning, not two: a post-close self-warm computes Vector AND the GEX matrix off
+  // the SAME last session's tape at nearly the same instant, so when Vector's own note is already
+  // present it already covers the identical fact the GEX note would restate — only fall through
+  // to the GEX-sourced note when Vector itself gave none (stale, absent, or genuinely live during
+  // real RTH). Mirrors the `vectorConflictAlreadyNoted`-style dedup idiom already used elsewhere
+  // in this file rather than inventing a new one.
+  if (!dead) {
+    const closedMarketNote =
+      (!vectorAgeStale(vec, readMs) ? vec?.market_session_note : null) ??
+      (!gexMatrixStale(gex, readMs) ? gexMarketSessionNote(gex, readMs) : null);
+    if (closedMarketNote) warnings.push(closedMarketNote);
   }
 
   if (!warnings.length) return null;
