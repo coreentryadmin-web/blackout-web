@@ -260,6 +260,27 @@ export async function getSpxPlayState() {
     staleOnInflight: true,
     maxBlockMs: playMemberReadMaxBlockMs(),
     fallback: spxPlayReadFallback,
+    // BUG (found live 2026-10-08, ~50% degraded rate measured via repeated polling):
+    // evaluateSpxPlayStateCrossReplica() INTENTIONALLY RESOLVES (never throws) to
+    // degradedPlayPayload() when this replica loses the cross-replica Redis lock and
+    // neither a stale snapshot nor a peer's published result shows up within the wait —
+    // a routine outcome, not a rare one, since the in-memory TTL here is only 5s
+    // (playMemberReadCacheSec()) while the real eval can easily take longer than the
+    // 800ms peer-wait. Because that placeholder is a normally-RESOLVED value, not a
+    // thrown error, refreshCache()'s success path (server-cache.ts) was writing it into
+    // BOTH the in-memory store AND shared Redis for the FULL TTL with no shouldCache
+    // guard — so one replica losing the lock didn't just degrade that one request, it
+    // cached "Desk warming" cluster-wide (via the shared Redis copy) for the next ~5s,
+    // repeatedly amplifying a single lock-contention loss into a flapping outage visible
+    // to every member/BIE/Largo reader of this cache key. `assessed` is the payload's own
+    // documented absence marker (see SpxPlayPayload's doc comment: explicit `false` means
+    // "grade/score are placeholder literals, NOT a measurement") and is `false` ONLY on
+    // this placeholder path — never on a genuine closed-session/no-trade assessment
+    // (which still sets `assessed: true` with real factors) — so gating on it here is the
+    // same fix already shipped for Night Hawk's edition route (`available !== false`,
+    // src/app/api/market/nighthawk/edition/route.ts), applied to the field that's actually
+    // exclusive to this payload's placeholder state.
+    shouldCache: (value) => (value as Awaited<ReturnType<typeof evaluateSpxPlayState>>).assessed !== false,
   });
 }
 

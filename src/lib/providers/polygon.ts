@@ -351,7 +351,12 @@ export function computeMarketBreadthFromSummary(
 
     byVolume.push({
       ticker,
-      volume: v,
+      // Polygon's grouped-daily `v` occasionally carries a floating-point fractional
+      // remainder (e.g. 678896466.29) despite representing a whole share count — round
+      // at the data layer per repo policy (same class of bug as the unrounded-price
+      // fields this file already guards against) rather than serving a fractional share
+      // count to members/Largo.
+      volume: Math.round(v),
       change_pct: Number((((c - ref) / ref) * 100).toFixed(2)),
     });
   }

@@ -48,6 +48,7 @@ import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-r
 import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
 import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
 import { vectorSideToDirection } from "@/lib/zerodte/vector-commit-boost";
+import { BANGER_LEDGER_REGIME_LABEL } from "@/lib/swing/banger-lane-merge";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -756,6 +757,11 @@ export interface HorizonDeckSource {
    *  pre-commit WATCH/lane candidate (Cortex only runs on committed rows), a pre-wire-in row,
    *  or a non-SWING caller — honest absence, never fabricated (Largo contract §3 absence). */
   cortex?: unknown;
+  /** CLOSED SWING only: whether a real scale-out trim was ENFORCED on this leg at any point before
+   *  it closed — see `SwingClosedDeckSource`'s own field (closed-plays.ts) for the full history of
+   *  why `status`/`liveStatus` alone can never answer this for a closed row. Null/absent = not
+   *  recorded (rows graded before this field existed), never treated as "no trim happened". */
+  trimEnforcedBeforeClose?: boolean | null;
   /** SWING only: the raw industry-group RS facts behind the SECTOR_ROTATION signal, echoed off the
    *  dossier (`HorizonPlay.sectorLeadershipFacts`) — see `whyThisSetupSection`. Null/absent when no
    *  benchmark resolved or not enough history. */
@@ -932,11 +938,40 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   // still fully exposed at HOLD (live repro 2026-09-10: NRG, peak +132.7%, still HOLD). Once
   // `status` actually reaches TRIM the mechanical read is real again, so only gate the
   // not-yet-enforced case.
+  //
+  // CLOSED carve-out (2026-10-07, Ask Largo standing mandate): a CLOSED row's `status` can never be
+  // "TRIM" again — gradeSwingPosition (db.ts) always overwrites it to CLOSED/ROLLED — so this gate
+  // forced trimsFired to 0 on EVERY closed position regardless of real history, permanently losing
+  // whether a trim actually fired along the way. `trimEnforcedBeforeClose` is the frozen-at-grade-
+  // time fact that answers it honestly (null for rows graded before it existed, so NOT an automatic
+  // unlock — only an explicit `true` opens the gate).
   const exitPolicy =
-    status === "TRIM"
+    status === "TRIM" || src.trimEnforcedBeforeClose === true
       ? rawExitPolicy
       : { ...rawExitPolicy, trim_levels: rawExitPolicy.trim_levels.map((t) => ({ ...t, fired: false })) };
-  const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
+  // BUG (found live 2026-10-08, Ask Largo standing mandate — sibling of #5693): #5693 fixed the
+  // fabricated "Thesis intact" sentence in Ask Largo's play-brief narrative (watchForSection,
+  // play-brief-intel.ts) by suppressing it when `play.regime === BANGER_LEDGER_REGIME_LABEL` —
+  // but that was ONE consumer. `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps
+  // `thesisLevel: "intact"` on EVERY Banger-origin ledger row unconditionally (there is no
+  // per-position thesis dossier for this lane, just a mechanical price trigger — see its own
+  // header comment), and this adapter forwarded that straight through via `src.thesisBreak ?? ...`
+  // with no equivalent guard. That value feeds `TerminalPlay.thesisBreak`, which PlayTerminal.tsx's
+  // ThesisPanel renders VERBATIM as "✓ thesis intact" for the Command Deck's Swing lane — live
+  // repro 2026-10-08: SWING:CRI:1510 at -59.1% P&L, SWING:GLW:1479 at -56.1%, SWING:NEBX at
+  // -55.9%, SWING:AI at -52.5%, all rendering the same green "✓ thesis intact" badge regardless
+  // of real price action. 78/81 of the live committed Swing book is Banger-origin (CLAUDE.md),
+  // so this is the dominant rendered state of the lane's own thesis-health line, not an edge case.
+  // Fix: same sentinel check #5693 already established — when `regime` IS the stamped-constant
+  // Banger fingerprint, treat the level as "unknown" (an existing, already-rendered honest state:
+  // "• thesis not monitored") instead of trusting the fabricated "intact" — mirrors
+  // `thesisHealthUncalibrated()`'s (thesis-health.ts) identical guard for the aggregate score.
+  // The mechanical `note` (e.g. "below the 2× partial and above the hard stop") is real, useful
+  // information and is kept; only the misleading green "intact" level is suppressed.
+  const thesisBreakResolved =
+    src.regime === BANGER_LEDGER_REGIME_LABEL
+      ? { level: "unknown" as ThesisLevel, note: src.thesisBreak?.note }
+      : (src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon));
   // Ask Largo standing mandate (#4076): a committed row's WATCH-lane dossier state (setupState)
   // never survives the WATCH→COMMIT transition — src.setupState is structurally null for every
   // live SWING position, permanently withholding computeSwingThesisHealth's persistence pillar.
@@ -1072,6 +1107,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     trackPct,
     flagUnderlyingPx: flagPx,
     entryTriggerUnderlyingPx: fin(src.entryTriggerUnderlyingPx),
+    invalidationUnderlyingPx: fin(src.invalidationUnderlyingPx),
     peak: peakDisplay,
     trough: troughDisplay,
     // FINDINGS 2026-08-06 (SEV-3, greeks never reached the desk): this was a hardcoded `null`, so the
@@ -1413,5 +1449,8 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     exitPnlPct: src.exitPnlPct ?? null,
     closedReason: src.closedReason ?? null,
     cortex: src.cortex ?? null,
+    entryTriggerUnderlyingPx: src.entryTriggerUnderlyingPx ?? null,
+    invalidationUnderlyingPx: src.invalidationUnderlyingPx ?? null,
+    trimEnforcedBeforeClose: src.trimEnforcedBeforeClose ?? null,
   });
 }

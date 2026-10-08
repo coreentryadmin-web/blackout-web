@@ -59,7 +59,27 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
-  const mid = mark ?? entry;
+  // BUG (found live 2026-10-08, Ask Largo standing mandate): this used to be `mark ?? entry` — the
+  // EXACT SEV-1 pattern FINDINGS 2026-08-06 already found and fixed in this file's sibling,
+  // live-plays.ts's `contractFromRow` ("this was `mark ?? entry`, which LAUNDERED 'no live mark
+  // yet' into 'the mark is exactly the entry'... NEVER substitute entry for an absent mark — a
+  // fabricated mark is worse than a missing one") — but that fix never touched this file, so the
+  // identical bug has been live here the whole time, on the lane that dominates the committed
+  // Swing book. Confirmed live 2026-10-08: every BANGER-origin MANAGING/SCALING_OUT row with no
+  // live mark sync (e.g. CIEG/APPX/FUBO/CRNC/GO/CAPR/... the overwhelming majority of the
+  // committed book — the "~85 of ~90" figure the `factors` comment a few lines below already
+  // measured) carried `contract.mid === entry_premium` exactly, `markAsOf: null`. Downstream,
+  // `markDollarPnl` (terminal-display.ts) computes `mark - entry` and TradeSummaryHero's PRIMARY
+  // "Current" P&L tile renders whatever that returns UNLESS it is `null` — so a fabricated
+  // mid-equals-entry made it compute `0`, not `null`, and the live Command Deck showed a
+  // confident "+$0.00" instead of the honest "—" (unknown) its own null-mark fallback already
+  // provides and already uses correctly for every non-banger-origin row. `markIsSync`
+  // (adapters.ts, keyed on `markAsOf == null`) already lets Ask Largo's play-brief narrative
+  // correctly say "Mark: unknown" in prose — but that guard was never applied to this raw numeric
+  // field, so any consumer reading `play.mark`/`contract.mid` directly (not just the narrative)
+  // got fooled. `livePnlPct` two lines below already uses the honest `mark` (not this `mid`), so
+  // it was never affected — only this one field needed the fix.
+  const mid = mark;
   const gainPct = row.discovery_gain != null ? Math.round(row.discovery_gain * 1000) / 10 : null;
   const liveStatus = row.status === "PARTIAL" || row.scaled_already ? "TRIM" : "OPEN";
   const manageAction =

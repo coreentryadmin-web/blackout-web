@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { todayEt } from "@/features/nighthawk/lib/session";
 import type { EnrichedZeroDteSetup } from "./board";
 import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 import {
@@ -8,6 +9,25 @@ import {
   resolveZeroDteContractAttach,
   vectorRankContractsEnabled,
 } from "./vector-contract-resolve";
+
+/** `today + n` calendar days, for OCC fixtures — avoids a hardcoded date going stale. */
+function datePlusDays(n: number): Date {
+  const today = new Date(`${todayEt()}T12:00:00Z`);
+  today.setUTCDate(today.getUTCDate() + n);
+  return today;
+}
+
+function occYmdPlusDays(n: number): string {
+  const d = datePlusDays(n);
+  const yy = String(d.getUTCFullYear()).slice(2);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yy}${mm}${dd}`;
+}
+
+function isoYmdPlusDays(n: number): string {
+  return datePlusDays(n).toISOString().slice(0, 10);
+}
 
 const baseSetup = (over: Partial<EnrichedZeroDteSetup> = {}): EnrichedZeroDteSetup =>
   ({
@@ -59,4 +79,28 @@ test("resolveZeroDteContractAttach: falls back to discovery when no pulse", () =
 
 test("rankVectorContractOnChain: returns null without chain", () => {
   assert.equal(rankVectorContractOnChain(baseSetup(), winnerPulse(), null), null);
+});
+
+// 2026-10-08 finding: Vector pulse OCCs were attached with no DTE validation at all — unlike
+// rankVectorContractAlternatives' own `dte > 4` filter — so a pulse tracking a multi-week contract
+// (CIFR, 2026-10-08: pulse OCC expiry 7 days past the setup's own flagged 0DTE target) got attached
+// as if it were in-window. These two tests pin the fix: reject beyond ZERODTE_MAX_DTE, accept and
+// carry expiry/dte within it.
+test("resolveVectorPulseContract: pulse OCC expiring beyond ZERODTE_MAX_DTE is rejected", () => {
+  const farPulse: ZeroDteVectorPulse = {
+    ...winnerPulse(),
+    occ: `O:NVDA${occYmdPlusDays(8)}C00142000`,
+  };
+  assert.equal(resolveVectorPulseContract(baseSetup({ expiry: todayEt() }), farPulse), null);
+});
+
+test("resolveVectorPulseContract: pulse OCC within ZERODTE_MAX_DTE is accepted and carries expiry/dte", () => {
+  const nearPulse: ZeroDteVectorPulse = {
+    ...winnerPulse(),
+    occ: `O:NVDA${occYmdPlusDays(1)}C00142000`,
+  };
+  const r = resolveVectorPulseContract(baseSetup({ expiry: todayEt() }), nearPulse);
+  assert.ok(r);
+  assert.equal(r!.dte, 1);
+  assert.equal(r!.expiry, isoYmdPlusDays(1));
 });

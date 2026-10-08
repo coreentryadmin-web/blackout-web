@@ -1737,7 +1737,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     regime: String(regime),
     levels,
     dark_pool: darkPool,
-    lit_dark_ratio: computeLitDarkRatio(),
+    lit_dark_ratio: computeLitDarkRatio(darkPool),
     spx_flows: spxFlows,
     unified_tape: unifiedTape,
     opening_range,
@@ -2002,15 +2002,36 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     if (!(prior.pdc != null && prior.pdc > 0)) {
       prior = await fetchPriorDayCached().catch(() => prior);
     }
+    // The TRUE previous trading day's range — must survive the EXTENDED-hours price override
+    // below. PDH/PDL is a fixed trading reference (SpxSniperHeader renders it as "Prior-day
+    // high"/"Prior-day low", tone "resistance") that only rolls forward once the NEXT session
+    // begins; it must not jump to today's own just-closed range the instant today ends.
+    const priorDayLevels = { pdh: prior.pdh, pdl: prior.pdl };
     // Once today's OWN regular session has already closed (still the same ET calendar day,
     // "EXTENDED"), that settled bar — not the exclusive-of-today `prior` above — is the most
     // recent completed session, and it now exists in Polygon's daily-bars endpoint. Prefer it
     // so the off-hours cold path doesn't serve yesterday's (or a colder cache's even older)
     // close as "today's" price. See `fetchTodaysOwnCloseIfSessionComplete`'s own header.
+    //
+    // BUG (found 2026-10-07, live): the wholesale `prior = todaysOwnClose` here used to replace
+    // pdh/pdl too, so for the entire post-close EXTENDED window every evening the dashboard's
+    // "Prior-day high/low" tiles — and /api/market/spx/merged, which this pulse lane feeds via
+    // mergePulseIntoDesk's `stickyStructureLevel("pdh", pulse.pdh, base.pdh)` (pulse always wins
+    // when non-null) — quoted TODAY's own session high/low under a "prior day" label, while the
+    // sibling /api/market/spx/desk route (buildSpxDesk's own priorFromBars, which never applies
+    // this override) kept serving the correct, true prior-day values. Confirmed live 2026-10-07
+    // 23:xx UTC: /merged and /pulse both reported pdh=7807.02/pdl=7763.34 (2026-10-07's OWN
+    // intraday high/low) while /desk correctly reported pdh=7844.52/pdl=7805.96 (2026-10-06's
+    // real prior-day range, verified against raw Polygon daily bars) — a cross-route
+    // disagreement on the same field name, not a legitimate difference of opinion. Fix: let
+    // today's own close roll forward for the quoted price/prior_close (the original 2026-09-12
+    // fix's actual intent), but keep pdh/pdl pinned to the real prior day throughout tonight's
+    // EXTENDED window; they naturally become today's range on their own once `todayEtYmd()`
+    // rolls to the next calendar day and the ordinary exclusive-of-today walk-back picks it up.
     if (label === "EXTENDED") {
       const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete().catch(() => null);
       if (todaysOwnClose?.pdc != null && todaysOwnClose.pdc > 0) {
-        prior = todaysOwnClose;
+        prior = { ...todaysOwnClose, pdh: priorDayLevels.pdh, pdl: priorDayLevels.pdl };
       }
     }
     if (prior.pdc != null && prior.pdc > 0) {
@@ -2346,7 +2367,7 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
     polled_at: polledAt,
     price,
     dark_pool: darkPool,
-    lit_dark_ratio: computeLitDarkRatio(),
+    lit_dark_ratio: computeLitDarkRatio(darkPool),
     spx_flows: spxFlows,
     unified_tape: unifiedTape,
     strike_stacks,

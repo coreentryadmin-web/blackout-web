@@ -188,6 +188,95 @@ test("maxBlockMs on expired fast lane serves stale instead of blocking refresh",
   assert.ok(invoked <= 1, `expected at most one background refresh, got ${invoked}`);
 });
 
+// Regression for the live 2026-10-08 /api/market/spx/play staleness bug: EVERY `return hit.value`
+// site reachable from a `staleWhileRevalidate:false` + `staleOnInflight`/`maxBlockMs` caller (the
+// exact shape of spx-service.ts's getSpxPlayState) served the in-memory hit completely
+// unconditionally, however old it was — unlike the SWR branch's own long-standing MAX_STALE_AGE_MS
+// guard a few lines below it in the same file. Measured live: `/api/market/spx/play`'s `as_of` up
+// to ~27 minutes stale and inconsistent across replicas (each replica frozen at whenever its own
+// last-successful background refresh happened to land), `assessed: true` the whole time — while
+// `/api/market/spx/desk` (same underlying desk snapshot, a route that does not pass
+// staleWhileRevalidate:false) stayed current throughout the identical polling window. These two
+// tests use the new test-only `maxStaleAgeMs` override (mirrors `peekServerCache`'s own
+// `maxStaleMs`) to exercise the real ceiling with milliseconds of real wait instead of a real
+// 10-minute one.
+test("fast lane (no inflight) does not serve a hit past maxStaleAgeMs — falls back instead", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:fast-lane-ancient:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }), { staleWhileRevalidate: false });
+  // Let the hit age well past a tiny 10ms test ceiling (simulating the live bug's "replica whose
+  // background refresh kept losing the race" scenario without a real 10-minute wait).
+  await new Promise((r) => setTimeout(r, 40));
+
+  const value = await withServerCache(
+    key,
+    ttl,
+    async () => {
+      // Deliberately slower than maxBlockMs — the loader must lose this race every time, so the
+      // only way to avoid serving the ancient hit is to fall through to the fallback.
+      await new Promise((r) => setTimeout(r, 500));
+      return { n: 2 };
+    },
+    {
+      staleWhileRevalidate: false,
+      maxBlockMs: 20,
+      maxStaleAgeMs: 10,
+      fallback: async () => ({ n: 99 }),
+    }
+  );
+
+  // Before the fix: this returned the ~40ms-old { n: 1 } hit — unconditionally, however stale.
+  assert.deepEqual(value, { n: 99 }, "an ancient fast-lane hit must not be served past maxStaleAgeMs");
+});
+
+test("staleOnInflight does not serve a hit past maxStaleAgeMs while a rebuild is in flight — falls back instead", async () => {
+  const { withServerCache } = await import("./server-cache");
+  const key = `test:stale-on-inflight-ancient:${Math.random()}`;
+  const ttl = 5;
+
+  await withServerCache(key, ttl, async () => ({ n: 1 }), { staleWhileRevalidate: false });
+  await new Promise((r) => setTimeout(r, 40));
+
+  let releaseSlow!: () => void;
+  const slowGate = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
+
+  // Kick off a slow rebuild (becomes the module's `inflight` entry for this key) without
+  // awaiting it yet — same pattern as the "staleOnInflight returns stale..." test above.
+  const slowRefresh = withServerCache(
+    key,
+    ttl,
+    async () => {
+      await slowGate;
+      return { n: 2 };
+    },
+    { staleWhileRevalidate: false, maxStaleAgeMs: 10 }
+  );
+
+  const concurrent = await Promise.race([
+    withServerCache(key, ttl, async () => ({ n: 3 }), {
+      staleOnInflight: true,
+      staleWhileRevalidate: false,
+      maxBlockMs: 20,
+      maxStaleAgeMs: 10,
+      fallback: async () => ({ n: 99 }),
+    }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 200)),
+  ]);
+
+  // Before the fix: `staleOnInflight` returned the ~40ms-old { n: 1 } hit unconditionally.
+  assert.deepEqual(
+    concurrent,
+    { n: 99 },
+    "an ancient hit must not be served via staleOnInflight past maxStaleAgeMs"
+  );
+  releaseSlow();
+  await slowRefresh;
+});
+
 // Regression for the live 2026-09-11 spx/play staleness bug: peekServerCache's final fallback
 // (`if (hit) return hit.value`) had NO staleness ceiling, unlike withServerCache's own
 // MAX_STALE_AGE_MS guard — so a replica that stopped refreshing served an arbitrarily old cached

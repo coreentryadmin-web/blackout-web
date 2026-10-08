@@ -51,3 +51,40 @@ test("the downstream fulfilled/fetchFailed aggregation is unchanged by the pooli
   assert.match(routeSrc, /if \(r\.status === "fulfilled"\)/);
   assert.match(routeSrc, /if \(r\.value\.fetchFailed\)/);
 });
+
+// Regression (2026-10-07): the concurrency bound above caps this cron's OWN admission-queue
+// entrants, but a fresh re-measurement (post PR #5579's GLOBAL_MAX_RPS 2->4 raise) showed the
+// full ~55-69-ticker universe still fails 90%+ of tickers per run — the shared queue is
+// saturated by AGGREGATE cluster-wide UW demand, not just this cron's concurrency. The route
+// must rotate through a HALF-sized batch per run (selectDarkPoolWarmBatch/halfBatchSize in
+// ./rotation.ts) rather than asking the shared queue to admit the whole universe every time.
+test("the route rotates a half-universe batch through the shared rotation helper, not the full universe", () => {
+  assert.match(
+    routeSrc,
+    /import \{ halfBatchSize, selectDarkPoolWarmBatch \} from "\.\/rotation"/,
+    "must reuse the shared rotation helper, not reimplement batch selection inline"
+  );
+  assert.match(
+    routeSrc,
+    /selectDarkPoolWarmBatch\(\s*allTickers,\s*cursor,\s*halfBatchSize\(allTickers\.length\)\s*\)/,
+    "must select a HALF-sized rotating batch, not the full universe, per run"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /runUwPool\(\s*allTickers\.map/,
+    "must pool over the rotated batch, not the raw full-universe ticker list"
+  );
+});
+
+test("the rotation cursor is persisted across runs via the shared cache, not per-process memory", () => {
+  assert.match(
+    routeSrc,
+    /sharedCacheGet<number>\(ROTATION_CURSOR_KEY\)/,
+    "must read the cursor back from shared (Redis-backed) cache so rotation survives across ECS tasks/runs"
+  );
+  assert.match(
+    routeSrc,
+    /sharedCacheSet\(ROTATION_CURSOR_KEY, nextCursor, ROTATION_CURSOR_TTL_SEC\)/,
+    "must persist the next cursor so the following run continues coverage instead of restarting at 0"
+  );
+});

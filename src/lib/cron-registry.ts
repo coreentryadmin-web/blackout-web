@@ -112,11 +112,11 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Thermal Warm",
     kind: "http",
     path: "/api/cron/heatmap-warm",
-    schedule_label: "Every 1 min EventBridge + in-app leader ~20s (market hours) + delta SSE",
+    schedule_label: "Every 1 min EventBridge + in-app leader ~81s backup (market hours) + delta SSE",
     stale_after_min: 2,
     weekdays_only: true,
     market_hours_only: true,
-    description: "Pre-warm GEX heatmap matrix for shared sticky universe (static ∪ dynamic ≤100/14d; SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~20s; Thermal clients force-refresh when asof is stale",
+    description: "Pre-warm GEX heatmap matrix for shared sticky universe (static ∪ dynamic ≤100/14d; SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~81s (the job's own p90 runtime — was 20s, see rth-warm-leader-logic.ts); Thermal clients force-refresh when asof is stale",
   },
   {
     key: "platform-warm",

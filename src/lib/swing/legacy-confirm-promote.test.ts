@@ -9,14 +9,18 @@ import {
   isCarriedContractLive,
   carriedContractExpiry,
   legacyPlayDirection,
+  legacyCommitCandidatesFromSnapshot,
   mergeLegacyPromotedSnapshot,
   refreshCarriedLegacyPlay,
+  removeCommittedLegacyFromSnapshot,
 } from "./legacy-confirm-promote.ts";
 import { HORIZONS } from "../horizons.ts";
 import { subLaneForDte } from "./taxonomy.ts";
 import { discoverSwingFromPersisted, persistSwingServingSnapshot } from "./serving-lane.ts";
 import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import { swingThesisKey } from "./accumulation-store.ts";
+import { computeSwingCommitPlan, type CommitBookPosition } from "./commit.ts";
+import { DEFAULT_PORTFOLIO_BUDGET } from "./swing-portfolio-budget.ts";
 
 const chainRows: ChainStrikeRow[] = [
   {
@@ -443,4 +447,162 @@ test("refreshCarriedLegacyPlay recomputes DTE and merges a fresher organic quote
   assert.equal(refreshed!.contract.dte, 7);
   assert.equal(refreshed!.contract.mid, 0.22);
   assert.match(refreshed!.reason ?? "", /7DTE/);
+});
+
+// ─── GRADUATION BRIDGE (PR #5577) ──────────────────────────────────────────────────────────────
+// Legacy-promoted rows were permanently serve-only — `bucketGraduated: false` and
+// `commitGateBlockedBy: ["legacy:exempt"]` hardcoded because these rows live entirely in this
+// module's own persisted snapshot, structurally disjoint from accumulation-store.ts (the only
+// store discovery.ts's commit loop reads candidates from). `legacyCommitCandidatesFromSnapshot` is
+// the bridge: only a triple whose setupState/entryStatus has reached the same TRIGGERED+AT_TRIGGER
+// bar an organic candidate needs for COMMIT_NOW becomes a real SwingCommitCandidate. These tests
+// hand-construct the triggered play (the shape `swing-active-refresh`'s own live reclassification
+// already produces in production — see the file header correction) rather than re-deriving it,
+// since reclassification itself is proven to already work and isn't this file's concern.
+
+test("legacyCommitCandidatesFromSnapshot: a still-FORMING triple is never offered to the commit gate", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  assert.equal(artifact.play.setupState, "FORMING", "sanity: promotion-day spot (97) is below the 99 trigger");
+  const candidates = legacyCommitCandidatesFromSnapshot([artifact], { sessionDate: "2026-08-04" });
+  assert.equal(candidates.length, 0, "FORMING/PRE_TRIGGER must never reach the commit gate");
+});
+
+test("legacyCommitCandidatesFromSnapshot: a TRIGGERED+AT_TRIGGER triple becomes a real SwingCommitCandidate", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  // The shape `swing-active-refresh` + `enrichPlay`'s live reclassification already produces in
+  // production once price clears the trigger — proven live (PR #5577 correction), not re-derived here.
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const triggeredTriple = { ...artifact, play: triggeredPlay };
+
+  const candidates = legacyCommitCandidatesFromSnapshot([triggeredTriple], { sessionDate: "2026-08-04" });
+  assert.equal(candidates.length, 1);
+  const c = candidates[0]!;
+  assert.equal(c.ticker, "NVDA");
+  assert.equal(c.direction, "LONG");
+  assert.equal(c.entryUnderlyingPx, 99);
+  assert.equal(c.thesisInvalidationPx, 95);
+  assert.ok(c.contract, "must carry the already-materialized contract — no new fetch needed");
+  assert.deepEqual(c.discoveryPaths, [], "a Legacy-only candidate carries no Tier-0 paths unless independently screened this scan");
+});
+
+test("legacyCommitCandidatesFromSnapshot: credits REAL Tier-0 provenance when pathsByTicker names one (never invents a NIGHT HAWK kind)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04", pathsByTicker: new Map([["NVDA", ["FLOW", "STRUCTURE"]]]) },
+  );
+  assert.deepEqual(candidates[0]!.discoveryPaths, ["FLOW", "STRUCTURE"]);
+});
+
+test("removeCommittedLegacyFromSnapshot: drops a committed ticker so it is not ALSO carried as a WATCH row", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "NVDA" }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const snap = mergeLegacyPromotedSnapshot(null, [artifact], {
+    sessionDay: "2026-08-04",
+    asOf: "2026-08-04T13:20:00.000Z",
+    spotsByTicker: { NVDA: 97 },
+  });
+  const after = removeCommittedLegacyFromSnapshot(snap, new Set(["NVDA"]));
+  assert.equal(after.plays.some((p) => p.ticker === "NVDA"), false);
+  assert.equal(after.watch.some((w) => w.ticker === "NVDA"), false);
+});
+
+// ─── FULL LIFECYCLE PROOF — the REAL, unmodified commit.ts gate pipeline, not a reimplementation ──
+
+test("FULL LIFECYCLE: a TRIGGERED+AT_TRIGGER Legacy play reaches ACTIVE (committable:true) through the real, unmodified computeSwingCommitPlan, with every real-time gate still applying", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "NVDA", score: 85 }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = {
+    ...artifact.play,
+    setupState: "TRIGGERED" as const,
+    entryStatus: "AT_TRIGGER" as const,
+    contract: { ...artifact.play.contract!, bid: 1.3, ask: 1.4, mid: 1.35 },
+  };
+
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04" },
+  );
+  assert.equal(candidates.length, 1);
+
+  // The REAL function from commit.ts — imported, never reimplemented.
+  const plan = computeSwingCommitPlan({
+    candidates,
+    report: null,
+    book: [],
+    budget: DEFAULT_PORTFOLIO_BUDGET,
+  });
+  assert.equal(plan.committableCount, 1, "TRIGGERED -> ACTIVE: the real commit gate opens it");
+  const decision = plan.decisions[0]!;
+  assert.equal(decision.committable, true);
+  assert.equal(decision.insert?.status, "OPEN");
+  assert.equal(decision.insert?.ticker, "NVDA");
+
+  // Deduplication / idempotency still applies — a SECOND run against a book that already holds
+  // this exact thesis must refuse to double-open it (no bypass of Gate 3).
+  const alreadyOpenBook: CommitBookPosition[] = [
+    { ticker: "NVDA", direction: "LONG", archetype: decision.archetype, commitKey: decision.commitKey, riskUsd: decision.riskUsd, isEvent: false, isOvernight: true },
+  ];
+  const planAgain = computeSwingCommitPlan({ candidates, report: null, book: alreadyOpenBook, budget: DEFAULT_PORTFOLIO_BUDGET });
+  assert.equal(planAgain.committableCount, 0, "idempotency must still block a duplicate open — never bypassed for a Legacy-sourced candidate");
+  assert.ok(planAgain.decisions[0]!.blockedBy.includes("already_open"));
+});
+
+test("FULL LIFECYCLE: G-S6 confluence still blocks a Legacy-only candidate with zero independent corroboration when V2 confluence is enforced (no silent bypass)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay({ ticker: "NVDA" }),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 97,
+    chainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  const candidates = legacyCommitCandidatesFromSnapshot(
+    [{ ...artifact, play: triggeredPlay }],
+    { sessionDate: "2026-08-04" }, // no pathsByTicker -> zero Tier-0 provenance, same as a real Legacy-only name
+  );
+  const plan = computeSwingCommitPlan({
+    candidates,
+    report: null,
+    book: [],
+    budget: DEFAULT_PORTFOLIO_BUDGET,
+    v2: { enforceConfluence: true },
+  });
+  assert.equal(plan.committableCount, 0, "a single human-curated signal must not satisfy G-S6 confluence alone");
+  assert.ok(plan.decisions[0]!.blockedBy.some((b) => b.startsWith("gate:G-S6")));
 });

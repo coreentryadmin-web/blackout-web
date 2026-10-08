@@ -227,11 +227,30 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
   if (!section) return null;
 
   if (section === "RESEARCH") {
+    // GAP FOUND (2026-10-08, Ask Largo standing mandate, live AMD repro): `researchGateBlocks`
+    // below returns exactly ONE reason from its own priority ladder (invalidated > persistence
+    // gap > unclassified > entry-window-expired > generic "needs more work") and that single
+    // reason was the WHOLE `gateBlocks` output — `input.commitGateBlockedBy` (the real, live
+    // commit-gate stack: G-S3/G-S4/G-S6/G-S12/G-S14) was never consulted at all on this branch.
+    // Live repro: AMD (RESEARCH, EVENT_DRIVEN/TACTICAL, entry window lapsed 8 days ago) ALSO
+    // carried 3 active real gates (G-S12 halt_feed_stale, G-S4 regime_degraded, G-S14
+    // cortex_net_negative) at the exact same moment — the play-brief Entry section rendered only
+    // "entry_window_expired" and silently dropped all three, even though the data existed and was
+    // already available via `resolveSwingCommitGateBlockedBy`/`commitGateBlocksForVerdict`. This
+    // is the identical defect class the "past entry deadline + active commit gate blocks" WATCH-
+    // section fix below already closed for the `dont_buy` branch ("commitGateBlockedBy is computed
+    // ... regardless of which ... reason fired ... NOT specific to the wait branch") — that fix
+    // never reached this earlier RESEARCH-section early return. Fix: append the real, mapped gate
+    // evidence after the primary research-ladder reason, never replacing it (the ladder's own
+    // reason — e.g. "thesis invalidated" — stays first and authoritative; the commit-gate detail
+    // is additive context a member can act on, same as the WATCH-section sibling already does).
+    const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
+    const realGateBlocks = commitGateBlockedBy.length ? commitGateBlocksForVerdict(commitGateBlockedBy) : [];
     return {
       deckStatus: "SKIP",
       recommendation: "HOLD",
       recNote: "Desk is passing this setup — no entry recommended.",
-      gateBlocks: researchGateBlocks(input),
+      gateBlocks: [...researchGateBlocks(input), ...realGateBlocks],
       actionLabel: null,
       entryAction: "dont_buy",
     };

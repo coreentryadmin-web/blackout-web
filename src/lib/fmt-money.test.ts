@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "./fmt-money";
+import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "./fmt-money";
 
 describe("fmt-money", () => {
   it("returns an em-dash for null/non-finite", () => {
@@ -111,6 +111,58 @@ describe("fmtPriceLevel", () => {
     const roundFloatsStyle = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
     for (const n of [152.035, 6.175, 6.725, 7499.360000000001, 1.005, 2.675, 0.005]) {
       assert.equal(fmtPriceLevel(n), roundFloatsStyle(n));
+    }
+  });
+});
+
+describe("fmtPct", () => {
+  it("returns an em-dash for null/undefined/non-finite", () => {
+    assert.equal(fmtPct(null), "—");
+    assert.equal(fmtPct(undefined), "—");
+    assert.equal(fmtPct(NaN), "—");
+    assert.equal(fmtPct(Infinity), "—");
+  });
+
+  it("signs positive values with a leading +, never double-signs negatives", () => {
+    assert.equal(fmtPct(2.3), "+2.3%");
+    assert.equal(fmtPct(-4.9), "-4.9%");
+    assert.equal(fmtPct(0), "0.0%");
+  });
+
+  it("honors a custom digits count", () => {
+    assert.equal(fmtPct(2.347, 2), "+2.35%");
+  });
+
+  it(
+    "FOURTH OCCURRENCE of fmtOptionUsd's/fmtPriceLevel's own rounding-mismatch bug class " +
+      "(2026-10-08), now at PERCENTAGE/distance fields instead of dollar or price-level ones — " +
+      "live repro: the swing play-brief structure ladder serializes `distancePct` through " +
+      "roundFloats() (2dp, no keyDp override) and BieStructureLadder.tsx's fmtDist() then rounds " +
+      "that ALREADY-2dp wire value to 1dp again (a genuine double round) — while the SAME " +
+      "underlying rung's narrative prose called plain `n.toFixed(1)` directly on the untouched " +
+      "raw float. For raw -4.94999: narrative read '-4.9%' (direct 1dp round) while the double-" +
+      "rounded wire path read '-5.0%' (2dp-then-1dp) — two different percentages for one fact.",
+    () => {
+      // Sanity: plain toFixed(1) really does disagree with a round-to-2dp-then-round-to-1dp
+      // path on this value — the double-rounding mechanism, not a one-off coincidence.
+      assert.equal((-4.94999).toFixed(1), "-4.9", "environment assumption changed — revisit this test");
+      assert.equal((Math.round(-4.94999 * 100) / 100).toFixed(1), "-5.0", "environment assumption changed — revisit this test");
+
+      // fmtPct must agree with the SINGLE canonical round (matching what roundFloats would
+      // produce if asked for 1dp directly), not with a value that already lost precision to an
+      // intermediate 2dp pass.
+      assert.equal(fmtPct(-4.94999, 1), "-4.9%");
+    },
+  );
+
+  it("matches src/lib/round-floats.ts's roundFloats() byte-for-byte on the same raw number at 1dp", () => {
+    const roundFloatsStyle = (n: number) => {
+      const r = Math.round(n * 10) / 10;
+      const sign = r > 0 ? "+" : "";
+      return `${sign}${r.toFixed(1)}%`;
+    };
+    for (const n of [2.347, -4.94999, 0.04, -0.03, 7499.36, 1.05, -1.05]) {
+      assert.equal(fmtPct(n), roundFloatsStyle(n));
     }
   });
 });

@@ -139,6 +139,37 @@ test("horizon adapter (PR-12): thesisBreak DERIVES from setupState; INVALIDATED 
   assert.equal(live.thesisBreak!.level, "intact");
 });
 
+// Live repro 2026-10-08 (Ask Largo standing mandate, sibling of #5693's play-brief fix):
+// horizonPlayFromBangerPosition (banger-lane-merge.ts) stamps thesisLevel:"intact" on EVERY
+// Banger-origin ledger row regardless of price action — a Command Deck consumer that forwarded
+// that straight through would render "✓ thesis intact" for a position down -59.1% P&L. This
+// adapter must suppress it to "unknown" (the same honest default the PR-12 DERIVES test above
+// uses for "no real dossier") whenever `regime` carries the stamped-constant Banger fingerprint,
+// exactly as thesisHealthUncalibrated() already does for the aggregate score.
+test("horizon adapter: Banger-origin thesisLevel:'intact' is suppressed to 'unknown', never rendered as a real thesis read", () => {
+  const banger = terminalPlayFromHorizon({
+    ticker: "cri", direction: "LONG", horizon: "SWING", score: 62, status: "COMMIT",
+    contract: { strike: 35, right: "C", expiry: "2026-10-16", dte: 8, mid: 0.225 },
+    liveStatus: "OPEN",
+    livePnlPct: -59.1,
+    regime: "BREAKOUT · BANGER",
+    thesisBreak: { level: "intact", note: "below the 2× partial and above the hard stop" },
+  });
+  assert.equal(banger.thesisBreak!.level, "unknown", "a fabricated 'intact' must never survive for a Banger-origin row");
+  assert.equal(banger.thesisBreak!.note, "below the 2× partial and above the hard stop", "the real mechanical note is still useful and must be kept");
+
+  // A NATIVE swing position's real thesisBreak read (not Banger-origin) must be untouched.
+  const native = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "COMMIT",
+    contract: { strike: 500, right: "C", expiry: "2026-10-16", dte: 8, mid: 5 },
+    liveStatus: "OPEN",
+    livePnlPct: -59.1,
+    regime: "Breakout continuation · regime 0.60",
+    thesisBreak: { level: "intact", note: "thesis intact — structure holding" },
+  });
+  assert.equal(native.thesisBreak!.level, "intact", "a real, non-Banger thesis read must not be suppressed");
+});
+
 test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legacy literals preserved", () => {
   // No swing reads supplied (the live LEAPS path): factors []/regime null/thesisBreak intact — exactly as before.
   const play = terminalPlayFromHorizon({
@@ -2023,6 +2054,36 @@ test("horizon adapter: swing trim ladder is NOT fired while liveStatus is still 
     entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
   });
   assert.equal(actuallyTrimmed.exitPolicy!.trim_levels[0]!.fired, true);
+});
+
+test("horizon adapter: CLOSED swing row's trim ladder honors trimEnforcedBeforeClose (Ask Largo mandate, 2026-10-07)", () => {
+  // gradeSwingPosition (db.ts) always overwrites a closed row's `status` to CLOSED — it can never
+  // again read "TRIM" — so a CLOSED row that really DID trim before it closed must have some other
+  // way to say so, or trimsFired is permanently stuck at 0 for every closed position regardless of
+  // real history (the exact gap this field closes).
+  const closedNeverTrimmed = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, status: "CLOSED",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+    trimEnforcedBeforeClose: false,
+  });
+  assert.equal(closedNeverTrimmed.exitPolicy!.trim_levels[0]!.fired, false);
+
+  const closedPredatesField = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, status: "CLOSED",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+    trimEnforcedBeforeClose: null,
+  });
+  assert.equal(closedPredatesField.exitPolicy!.trim_levels[0]!.fired, false);
+
+  const closedActuallyTrimmed = terminalPlayFromHorizon({
+    ticker: "nrg", direction: "LONG", horizon: "SWING", score: 27.2, status: "CLOSED",
+    contract: { strike: 110, right: "C", expiry: "2026-09-18", dte: 8, mid: 6.85 },
+    entryPremium: 4.9, peakPremium: 11.4, committedAt: "2026-09-02T20:31:43.000Z",
+    trimEnforcedBeforeClose: true,
+  });
+  assert.equal(closedActuallyTrimmed.exitPolicy!.trim_levels[0]!.fired, true);
 });
 
 test("0DTE adapter: closed row surfaces mfeCapturePct and frozen runner profile", () => {

@@ -326,6 +326,31 @@ export function allSwingSubLanes(): SwingSubLaneSpec[] {
   return SWING_SUB_LANES_ORDER.map((id) => SWING_SUB_LANES[id]);
 }
 
+/** Safely narrow a play's loosely-typed `subLane?: string | null` field (TerminalPlay's shape is
+ *  shared beyond swing, so it can't carry the real `SwingSubLane` union) to this taxonomy's own
+ *  human-readable `SWING_SUB_LANES[...].label` ("Tactical (5–7d)"), or null when the value is
+ *  absent/foreign. Narrows against ALL THREE keys of `SWING_SUB_LANES` (including `EXTENDED`,
+ *  which is deliberately excluded from `SWING_SUB_LANES_ORDER` — see that const's own comment —
+ *  but still a real label a historical position can carry), never just the current-order subset.
+ *  Callers should use THIS rather than ad hoc `raw.replace(/_/g, " ")` or printing the raw enum
+ *  verbatim — exactly the same trap `archetypeLabelFromRaw`'s own doc comment documents (COIN,
+ *  2026-09-13), reproduced for this sibling field: `play-brief-intel.ts`'s `whyThisSetupSection`
+ *  rendered a committed `TACTICAL`/`STANDARD` sub-lane as the shouty raw enum ("Sub-lane: TACTICAL")
+ *  while the archetype line two lines above it, the track-record section further down the SAME
+ *  brief, and the live command-deck UI (`terminal-display.ts`'s `swingStatusDisplay`) all render the
+ *  identical field as "Tactical (5–7d)" — three correct renderings and one wrong one for the same
+ *  play, same field, same document (found during the Ask Largo standing audit mandate, 2026-10-08).
+ *  The bug was invisible to the existing unit test because that test exercised a fictional
+ *  snake_case value ("earnings_lead") that is not a member of the real `SwingSubLane` union and
+ *  therefore never occurs on a real play — `.replace(/_/g, " ")` is a no-op on every REAL value
+ *  (`TACTICAL`/`STANDARD`/`EXTENDED` have no underscore to replace at all). */
+export function subLaneLabelFromRaw(raw: string | null | undefined): string | null {
+  const subLane = (Object.keys(SWING_SUB_LANES) as readonly string[]).includes(raw ?? "")
+    ? (raw as SwingSubLane)
+    : null;
+  return subLane == null ? null : SWING_SUB_LANES[subLane].label;
+}
+
 // ─── Pre-entry maturity + entry position (the serving router keys on these) ────
 // Setup maturity: FORMING (thesis building, not yet actionable) → TRIGGERED (in its valid entry window)
 // → EXTENDED (moved too far past the trigger to enter cleanly) → INVALIDATED (structure broke). The

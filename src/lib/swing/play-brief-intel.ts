@@ -3,7 +3,7 @@
  * Surfaces chart technicals, flow, GEX nodes, catalysts, watch levels, and hold plan.
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
-import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -12,6 +12,7 @@ import {
   confluenceZoneKindsLabel,
   fundamentalsAgeMs,
   fundamentalsAncient,
+  darkPoolStale,
   fundamentalsFreshnessTag,
   gexMatrixAgeMs,
   gexMatrixStale,
@@ -45,9 +46,18 @@ import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { formatFixedNonZero } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
-import { deadPlayReason } from "./entry-enterability";
+import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
-import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
+import {
+  archetypeLabelFromRaw,
+  subLaneLabelFromRaw,
+  ARCHETYPE_META,
+  SWING_ARCHETYPES,
+  SWING_SUB_LANES,
+  SWING_SUB_LANES_ORDER,
+} from "./taxonomy";
 import {
   graduatedArchetypeEntry,
   graduatedSubLaneEntry,
@@ -58,12 +68,6 @@ import {
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
 } from "./play-brief-meridian-peer-core";
-
-function fmtPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
 
 // Absolute per-contract/level PRICE formatting is `fmtUsd` (aliased from @/lib/fmt-money's
 // `fmtOptionUsd` above) — see that module for the rounding-consistency history this file's own
@@ -126,7 +130,15 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
             `**${play.archetypeNearTie.secondaryLabel}** by only ${play.archetypeNearTie.marginPct} pts.`,
     );
   }
-  if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-08): this used to print `play.subLane.replace(/_/g,
+  // " ")` — a no-op on every REAL `SwingSubLane` value (`TACTICAL`/`STANDARD`/`EXTENDED` have no
+  // underscore), so it rendered the shouty raw enum ("Sub-lane: TACTICAL") while the archetype line
+  // immediately above, `archetypeTrackRecordSection` further down this SAME brief, and the live
+  // command-deck UI (`terminal-display.ts`) all render the identical field as "Tactical (5–7d)" —
+  // see `subLaneLabelFromRaw`'s own doc comment (taxonomy.ts) for the full trace. Unrecognized/foreign
+  // values render nothing here, same honest-absence discipline `archetypeLabelFromRaw` already uses.
+  const subLaneLabel = subLaneLabelFromRaw(play.subLane);
+  if (subLaneLabel) lines.push(`**Sub-lane:** ${subLaneLabel}`);
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the pre-entry WATCH note for the identical
   // fact ("thin read — N/7 pillars grounded", serving-ingest.ts) never survives WATCH→COMMIT — see
   // `entryPresentPillarsFromFeatureVector`'s own doc comment (live-plays.ts) for the full trace.
@@ -775,7 +787,10 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
     );
   }
   const dp = vec?.darkPoolLevels ?? [];
-  if (dp.length && !vectorStaleForLevels) {
+  // BUG FIX (2026-10-06): see collectFocalLevels (play-brief-narrative.ts) for the full account —
+  // `vectorStaleForLevels` alone cannot catch a dark-pool cache entry up to 20+ min stale while the
+  // rest of the Vector state computed live seconds ago.
+  if (dp.length && !vectorStaleForLevels && !darkPoolStale(vec)) {
     lines.push(
       "**Dark pool levels:** " +
         dp
@@ -1006,10 +1021,27 @@ export function catalystsSection(
     const staleLead = stale
       ? `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — headlines may lag.\n\n`
       : "";
+    // GAP FOUND (2026-09-28, Ask Largo standing mandate): arsenal.news.headlines can carry the
+    // SAME headline text twice (live repro U/WATCH, 2026-09-28: "10 Information Technology Stocks
+    // Whale Activity In Today's Session" appeared as both item 1 and item 3) — upstream Benzinga
+    // re-publishes near-identical wire items with identical titles, and this section rendered the
+    // raw array with no dedup, burning one of only 4 shown slots on a repeat with zero new
+    // information. Dedup BEFORE slicing to 4 (not after) so a duplicate never displaces a real,
+    // distinct headline that would otherwise have made the cut. Case/whitespace-insensitive,
+    // first-occurrence order preserved. Scoped to this render only — the two other readers of
+    // arsenal.news.headlines (ecosystem-narrative.ts, ticker-verdict.ts) only ever take headlines[0]
+    // and are unaffected either way.
+    const seenHeadlines = new Set<string>();
+    const dedupedHeadlines = arsenal.news.headlines.filter((h) => {
+      const key = h.trim().toLowerCase();
+      if (seenHeadlines.has(key)) return false;
+      seenHeadlines.add(key);
+      return true;
+    });
     lines.push(
       staleLead +
         "**Headlines:**\n" +
-        arsenal.news.headlines
+        dedupedHeadlines
           .slice(0, 4)
           .map((h) => `• ${h}`)
           .join("\n"),
@@ -1048,9 +1080,29 @@ export function catalystsSection(
  * is the same check reused by the "Gates blocking entry" headers in play-brief.ts/play-brief-
  * narrative-coaching.ts — one shared source instead of three copies of the same two branches.
  */
-function entryTriggerDeadReason(play: TerminalPlay): string | null {
+export function entryTriggerDeadReason(play: TerminalPlay): string | null {
   const reason = deadPlayReason(play);
-  return reason ? `${reason} — this level no longer fires the setup` : null;
+  if (reason) return `${reason} — this level no longer fires the setup`;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-06): a Legacy morning-confirm-promoted row's
+  // `entryTriggerUnderlyingPx` is stamped ONCE at promotion (legacy-confirm-promote.ts's
+  // `buildLegacySwingArtifacts` → `deriveSwingPlanLevels(direction, groundedSpotAtPromotion, atr)`,
+  // which always sets `entryUnderlyingPx = price`) and that dossier/plan is never rebuilt again —
+  // unlike organic discovery, which re-derives its dossier (and this field) on every scan cadence.
+  // So a Legacy-promoted row's trigger is byte-identical to its flag anchor FOREVER, even days
+  // later (confirmed live 2026-10-06: NKE/USO/NTAP all exact-equal, USO 4 days stale) — while an
+  // organic row's trigger only coincidentally equals its flag anchor on the scan tick it was first
+  // flagged, before any rebuild. Equality alone on an organic row is not evidence of staleness (it
+  // would wrongly flag every freshly-flagged name), so this only fires for the Legacy-exempt
+  // signature specifically, never from the numeric coincidence by itself.
+  if (
+    isLegacyPromotedSignal(play.discoveryOrigin) &&
+    play.flagUnderlyingPx != null &&
+    play.entryTriggerUnderlyingPx != null &&
+    play.flagUnderlyingPx === play.entryTriggerUnderlyingPx
+  ) {
+    return "pinned at Legacy promotion, not refreshed since — this level no longer fires the setup";
+  }
+  return null;
 }
 
 /** What to watch — invalidation, triggers, key levels. */
@@ -1083,9 +1135,18 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       // exact duplication shape `play-brief-narrative.ts`'s own "Entry stance" bullet was already
       // fixed to avoid (see its comment: "the reason text has exactly one home below") — just a
       // second, previously-unchecked instance of it, in a different pair of sections. State the
-      // count + a pointer here; the full reason text's one home stays the Entry section above.
+      // count + a pointer here.
+      //
+      // REPOINTED (Ask Largo standing mandate, 2026-10-08): the "Entry section above" this
+      // pointer named was itself found duplicating the SAME full gate text against "Trade manager
+      // read" (play-brief.ts's `watchEntrySection`, see its own 2026-10-08 comment) — the "Entry
+      // section" was never actually the sole full-text home this comment assumed. Fixed by making
+      // `watchEntrySection` ALSO a pointer rather than a third full-text copy, so the one real home
+      // is now "Trade manager read" (`watchGateCoaching`, play-brief-narrative-coaching.ts), which
+      // renders unconditionally for every watch-bucket play and sits earlier in section order than
+      // this "Watch levels" section — repointing here, not re-introducing a second full copy.
       const n = play.gateBlocks.length;
-      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Entry section above.`);
+      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Trade manager read above.`);
     }
     // BUG FIX (Ask Largo standing mandate, 2026-09-17): this used to re-render `play.entryStatus`
     // as its own "Entry geometry" bullet — but `watchEntrySection` (play-brief.ts, "Entry" section,
@@ -1121,7 +1182,32 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // contract violation (identity/direction: whose thesis, and is it live) — so it's closed-bucket-
   // only suppressed; watch/open plays are still evaluating entry, where "is there a live setup here
   // right now" is exactly the right question.
-  if (bucket !== "closed" && (play.thesisBreak?.note || play.thesisBreak?.level)) {
+  //
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 and
+  // SWING:GLW:1479): the above holds for a NATIVE swing position, where `thesisBreak.level` really
+  // is computed from a live multi-signal read. For a Banger-origin merged row it is not —
+  // `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps `thesisLevel: "intact"` as a fixed
+  // literal on EVERY row regardless of price action (there is no per-position thesis dossier for
+  // this lane, same root cause `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already
+  // exist to catch for the aggregate Thesis-health panel — see thesis-health.ts). Left unguarded
+  // here, this line renders unconditionally, so this section printed `Thesis **intact** — below
+  // the 2× partial and above the hard stop` for CRI at -59.1% live P&L (mark $0.23 vs stop-rail
+  // $0.22 — a 2% cushion from stopping out) and for GLW at -56.1% — a member reads "intact" as a
+  // calibrated green light right where this exact section's own next two lines ("Premium stop
+  // rail"/"Premium target rail") already state the real, honest mechanical fact (how close to the
+  // ladder's own stop/target) far more precisely. Since the label can never say anything but
+  // "intact" for this lane until the scale-out engine itself force-exits, and the only substantive
+  // content it carries duplicates those two rail lines verbatim, suppress it for Banger-origin rows
+  // (`play.regime === BANGER_LEDGER_REGIME_LABEL`, the same sentinel check `thesisHealthUncalibrated`
+  // and `serving-lane.ts`'s `attachThesisExplanation` guard already use) rather than let it overclaim
+  // a per-position judgment the lane cannot calibrate — the C6 absence principle (omission over
+  // fabrication) applied to this one line, not just the aggregate panel.
+  const bangerOriginNoRealThesis = play.regime === BANGER_LEDGER_REGIME_LABEL;
+  if (
+    bucket !== "closed" &&
+    !bangerOriginNoRealThesis &&
+    (play.thesisBreak?.note || play.thesisBreak?.level)
+  ) {
     lines.push(
       `Thesis **${play.thesisBreak.level ?? "unknown"}**${play.thesisBreak.note ? ` — ${play.thesisBreak.note}` : ""}`,
     );
@@ -1395,7 +1481,22 @@ export function holdPlanSection(
         );
       }
     } else if (giveback?.kind === "capture" && giveback.capturePct < 70 && !narrativeAlreadyNoted?.capture) {
-      lines.push(`Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-07): same root cause as the two sibling
+      // call sites in play-brief-narrative.ts (actionNarrative's capture branch and
+      // degradedReadLine's givebackBit) — `giveback.capturePct` divides the RUNNER-only
+      // `play.pnlPct` against `play.peak`, so once a trim has already banked a tranche, "Gave
+      // back X% from peak" describes only the still-open runner, not the whole position. Worse
+      // here than the sibling fix: the trailing clause ("consider trim into strength") is
+      // actively wrong once a trim already fired — there is no trim left to "consider," it
+      // already happened (the exact self-contradiction already fixed for the round_trip branch
+      // immediately above, via the "NOT 'consider trim into strength'" comment — this capture
+      // branch shared the same bug and was missed by that fix's own blast-radius check).
+      const anyTrimBanked = (play.exitPolicy?.trim_levels ?? []).some((t) => t.fired);
+      lines.push(
+        anyTrimBanked
+          ? `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of the runner since peak — part of this position is already banked at a profit; consider protecting what's left`
+          : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`,
+      );
     }
   }
 
@@ -1953,15 +2054,26 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
   // historical record, not a live position). Left ungated, these fire FOREVER once any time has
   // passed since close, exactly the failure mode `play-brief-absence.ts`'s
   // `collectBriefUnavailableSources` already documents and gates for its own (structured
-  // unavailableSources/UnavailableChip) output — this narrative section was the one place that
-  // isClosed gate was missed. Reproduced live 2026-09-12 on a real CLOSED INTC brief read a full
-  // week after the play closed: "Swing scan: prior session ... today's discovery not yet run" and
-  // "HELIX flow: pipeline stale" both still rendered, describing "today" for a trade that closed
-  // 2026-09-04. The option-mark lines above are untouched — `playExpectsLiveOptionMark` already
-  // scopes the live-mark-staleness claim to OPEN/HOLD/TRIM, and a bare `markAsOf` timestamp (when
-  // present) is a historical fact, not a live-staleness claim.
-  const isClosed = String(play.status ?? "").toUpperCase() === "CLOSED";
-  if (!isClosed) {
+  // unavailableSources/UnavailableChip) output. Reproduced live 2026-09-12 on a real CLOSED INTC
+  // brief read a full week after the play closed: "Swing scan: prior session ... today's discovery
+  // not yet run" and "HELIX flow: pipeline stale" both still rendered, describing "today" for a
+  // trade that closed 2026-09-04. The option-mark lines above are untouched — `playExpectsLiveOptionMark`
+  // already scopes the live-mark-staleness claim to OPEN/HOLD/TRIM, and a bare `markAsOf` timestamp
+  // (when present) is a historical fact, not a live-staleness claim.
+  //
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-07): the 2026-09-12 fix above only gated on
+  // `isClosed`. `collectBriefUnavailableSources` was separately widened on 2026-09-19 to also
+  // suppress these checks for a dead-but-not-closed WATCH candidate (`deadPlayReason` non-null —
+  // entry-window expired/extended/invalidated/contract-expired), via its own local `isNotLive`.
+  // This section never got the same widening, so the two halves of the SAME envelope disagreed:
+  // live repro NTAP (today, `entryStatus: "EXTENDED_CHASE"`, status `COMMIT` i.e. still a WATCH
+  // row, not CLOSED) — this section's "Data freshness" prose asserted "HELIX flow: **pipeline
+  // stale**" while the SAME brief's structured `unavailableSources` was `[]` and `confidence.why`
+  // read "Every live source this brief reads from resolved cleanly this cycle." One EXEMPT
+  // predicate (`isSwingPlayStaleCheckExempt`, entry-enterability.ts) now backs both call sites so a
+  // third one can't silently reintroduce the same split.
+  const isStaleCheckExempt = isSwingPlayStaleCheckExempt(play);
+  if (!isStaleCheckExempt) {
     if (scanAsOf) {
       const staleScan =
         scanSessionDay && sessionDate && scanSessionDay !== sessionDate;
@@ -2158,8 +2270,28 @@ export function buildIntelSections(
     // Same restatement class as roundTripAlreadyNoted above, closing the gap that fix left open —
     // see lessonsSection's own doc comment (2026-09-18) for the live repro.
     const adviceAlreadyNoted = narrative?.body?.includes("tighten at first trim rail next time") ?? false;
+    // GAP FOUND (2026-09-29, Ask Largo standing mandate, live repro HUT:43 CLOSED/stopped):
+    // closedCoaching's 2026-09-28 fix (play-brief-narrative-coaching.ts) replaced its generic
+    // "check if entry was extended past invalidation" ask with a computed cushion answer
+    // ("entry X vs invalidation Y, a Z% cushion at commit...") whenever entryTriggerUnderlyingPx/
+    // invalidationUnderlyingPx are both present — but this dedup flag still only matched the OLD
+    // generic phrasing, which the new answer no longer contains. So on every stopped CLOSED play
+    // with both levels pinned (the common case, not the absence edge case), "Trade manager read"
+    // rendered the real cushion answer while "Lessons" — one section below, same response —
+    // independently re-asked the exact question that section had just answered. Same restatement
+    // class as roundTripAlreadyNoted/adviceAlreadyNoted above; gate on the same structural
+    // condition closedCoaching uses to pick its phrasing (mirrors its trig!==0/finite check)
+    // rather than string-matching prose that a future rewording can drift out from under again.
+    const stopCushionAnswered =
+      play.closedReason === "stopped" &&
+      typeof play.entryTriggerUnderlyingPx === "number" &&
+      Number.isFinite(play.entryTriggerUnderlyingPx) &&
+      play.entryTriggerUnderlyingPx !== 0 &&
+      typeof play.invalidationUnderlyingPx === "number" &&
+      Number.isFinite(play.invalidationUnderlyingPx);
     const stopAdviceAlreadyNoted =
-      narrative?.body?.includes("check if entry was extended past invalidation") ?? false;
+      (narrative?.body?.includes("check if entry was extended past invalidation") ?? false) ||
+      stopCushionAnswered;
     // Closes the capture>=75 "Strong exit discipline" gap the flags above left open — see
     // lessonsSection's own doc comment (2026-09-18) for the live repro (CRWD:19).
     const captureAlreadyNoted = narrative?.body?.includes("replicate trim timing") ?? false;

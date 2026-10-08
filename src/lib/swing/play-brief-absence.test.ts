@@ -4,6 +4,7 @@ import {
   ageSecondsLabel,
   relativeAgeLabel,
   collectBriefUnavailableSources,
+  darkPoolStale,
   gexMarketSessionNote,
   gexMatrixStale,
   meridianCatalystAgeMs,
@@ -595,6 +596,56 @@ test("collectBriefUnavailableSources: prior-session Vector surfaces in unavailab
         s.reason === "prior session (2026-09-05) — today's desk read not yet run",
     ),
   );
+});
+
+// BUG FIX (2026-10-06, Ask Largo standing mandate — live trigger: vector-dark-pool-warm observed
+// failing at a high rate in production). A dark-pool cache entry the composer flagged stale
+// (vec.dark_pool_stale, set via reportVectorAbsences at full-state assembly) must surface in
+// unavailableSources with its OWN "stale — last synced" reason, not the generic "not present on
+// this read" every other absent section gets — and darkPoolStale() must report it so inline
+// level-construction call sites (collectFocalLevels etc.) can omit it rather than render it live.
+test("collectBriefUnavailableSources: stale dark-pool cache entry surfaces its own 'stale — last synced' reason", () => {
+  const darkPoolAsOf = Date.parse("2026-09-06T15:40:00.000Z");
+  const ctx = {
+    sessionDate: "2026-09-06",
+    readMs: Date.parse("2026-09-06T16:05:00.000Z"),
+    ecosystem: {
+      vector_full_state: {
+        spot: 100,
+        dataAgeMs: 1_000,
+        freshness: "live",
+        unavailable_sections: ["dark_pool_levels"],
+        dark_pool_stale: true,
+        darkPoolAsOf,
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const dp = sources.find((s) => s.source === "Vector dark pool");
+  assert.ok(dp, "stale dark-pool entry must surface in unavailableSources");
+  assert.match(dp!.reason, /^stale — last synced /);
+  assert.equal(darkPoolStale(ctx.ecosystem!.vector_full_state as never), true);
+});
+
+test("collectBriefUnavailableSources: a genuinely-absent dark-pool read keeps the generic 'not present' reason (dark_pool_stale false)", () => {
+  const ctx = {
+    sessionDate: "2026-09-06",
+    ecosystem: {
+      vector_full_state: {
+        spot: 100,
+        dataAgeMs: 1_000,
+        freshness: "live",
+        unavailable_sections: ["dark_pool_levels"],
+        dark_pool_stale: false,
+      },
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const dp = sources.find((s) => s.source === "Vector dark pool");
+  assert.ok(dp);
+  assert.equal(dp!.reason, "not present on this read");
 });
 
 test("collectBriefUnavailableSources: HELIX stale + open book failure + arsenal legs", () => {

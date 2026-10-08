@@ -202,12 +202,29 @@ for any live position. What members/Largo see for "why did this close" (`closedR
 `closed-plays.ts`) is a cruder sign-of-P&L heuristic inferred from the financial result, not an
 independent structural-level THESIS walk.
 
-**Not fixed here** — building the missing EOD reconciliation pass (or deciding it should stay
-unbuilt and this section should describe an intentionally-deferred design instead) is a real
-product/scope decision with live-trading-path surface (what changes for members, where do the
-5 truths get exposed, does it replace or supplement the markfreeze number), raised for a second
-opinion on PR #4076 rather than built solo. This correction only fixes the SPEC DOC to describe
-what actually ships today; no application code changed.
+**Partially closed, 2026-09-20 (PR #5331) — an additive, read-only retrace, not a replacement for
+the live markfreeze number.** The full "should the 5-truth grader supersede or supplement what
+members see" question is still a real product/scope decision, deliberately not decided
+unilaterally (raised on `#4076`, comment 5751117208). What #5331 ships instead is the smallest of
+the shapes floated there: `GET /api/admin/swing/multi-truth-grade` (admin-only), which retraces
+each closed/rolled `swing_positions` row against the REAL `swing/grade.ts` `gradeSwingPosition`
+on request, using real Polygon forward UNDERLYING bars (`grade-retrace.ts`'s `swingRowToGradeInput`/
+`swingBarWindow`), and returns it alongside the row's own frozen `markfreezeRealizedPnlPct`/
+`markfreezeGradeJson` — nothing in the member-facing path is touched, no schema change, no new
+cron. Scope is deliberately narrow: only **PATH** (underlying MFE/MAE) and **THESIS**
+(CONFIRMED/INVALIDATED/OPEN) are populated, both gradeable from underlying bars alone; EXECUTION
+stays honestly `ungradeable` (`no_fill` — no real fill price is ever recorded on this ledger) and
+FINANCIAL/MANAGEMENT stay honestly `ungradeable` too (`no_forward_bars` — fetching historical
+OPTION bars per position is a materially larger OCC-resolution + Polygon-options-aggregates lift,
+a real follow-up, not silently skipped).
+
+Live value already demonstrated (2026-09-28, `#4076` comment 5861531782): retracing NRG:34
+(-62.24% markfreeze) returned `thesis.outcome: "CONFIRMED"` with `path.mfePct: 9.53` vs
+`path.maePct: -5.37` — the underlying call was RIGHT and the member still lost real capital, which
+the markfreeze number alone cannot distinguish from an ordinary wrong-thesis loss (the other closed
+legs that window graded `INVALIDATED` alongside their losses, the expected shape). That distinction
+— was this a bad call or a good call the exit management gave back — is exactly what this retrace
+was built to surface, and it surfaced a real one on its first live use.
 
 ---
 
@@ -240,7 +257,7 @@ drift.
 | 0DTE feature store / intelligence base rates | `labelFromPlanOutcome` — **raw MID DB columns** | `feature-store.ts` → `db.ts` |
 | Iron condor ledger rows | `gradeCondorFromBars` | `condor.ts` |
 | Swing position record (LIVE — what members actually see) | `gradeParentFromMark` (single markfreeze P&L, NOT the 5 truths) | `roll-plan.ts` → written via `db.ts`'s `gradeSwingPosition` |
-| Swing position record (NOT wired — pure/tested only, §6 correction) | `gradeSwingPosition` (5 truths) | `swing/grade.ts` |
+| Swing position record (admin-only retrace, PATH+THESIS only — §6 correction) | `gradeSwingPosition` via `GET /api/admin/swing/multi-truth-grade` | `swing/grade.ts`, `grade-retrace.ts` |
 | Banger scan backtest (`--grade`) | `gradeScaleOut` | `scale-out.ts` |
 | Swing FINANCIAL truth (not wired — see §6 correction) | `gradeBangerScaleOut` (same function as Banger) | `banger-scale-out-grade.ts` |
 

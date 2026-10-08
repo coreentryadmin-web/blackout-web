@@ -2,7 +2,7 @@
  * Swing Play Intelligence Engine — deterministic, real-time play brief composer.
  * No Anthropic calls. Every claim traces to platform data with null-honesty.
  */
-import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel } from "@/lib/bie/answer-envelope";
+import type { BieAnswerEnvelope, BieBias, BieEvidence, BieFreshness, BieLevel, BieUnavailableSource } from "@/lib/bie/answer-envelope";
 import { freshnessFromAgeMs, freshnessFromObservedMs } from "@/lib/bie/answer-envelope";
 import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
@@ -20,6 +20,7 @@ import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-di
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
 import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, type SwingSubLane } from "./taxonomy";
 import { graduatedArchetypeEntry } from "./calibration-cache";
+import { swingPlayBriefConfidence } from "./play-brief-confidence";
 import {
   collectBriefUnavailableSources,
   confluenceZoneKindsLabel,
@@ -31,11 +32,12 @@ import {
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
   playExpectsLiveOptionMark,
+  darkPoolStale,
   resolveGammaPosture,
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
-import { buildIntelSections } from "./play-brief-intel";
+import { buildIntelSections, entryTriggerDeadReason } from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
@@ -43,15 +45,9 @@ import { deadPlayReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
-import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
-
-function fmtPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
 
 function biasFromDirection(dir: string): BieBias {
   return dir === "SHORT" ? "bearish" : dir === "LONG" ? "bullish" : "neutral";
@@ -103,9 +99,28 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   // own top-level `biasFromDirection(play.direction)` (BieSectionCard renders `section.bias` as a
   // color-coded BiasPill, so this reached real UI, not just inert JSON). No section-level bias for
   // a non-directional quality signal — `bias` is already optional on RichSection.
+  //
+  // BUG FIX (2026-10-07, Ask Largo standing mandate): `rungFromHealth`/`rungLabel` (thesis-health.ts)
+  // name every band purely off the ABSOLUTE health %, with no reference to whether anything moved
+  // since commit — "Minor drift"/"Weakening"/"Degraded"/"Broken" all read as PROCESS words implying
+  // decay happened, but a position can sit in any of those bands on day one, forever, just because
+  // its ENTRY was imperfect (e.g. a chase-risk entry geometry), never having changed at all. Live
+  // repro (SWING:INTC:50, 2026-10-07): the brief rendered "**77%** · Minor drift" directly above
+  // five pillar rows EVERY one of which showed "(Δ +0.0 pts)" — the headline word "drift" directly
+  // contradicted the itemized evidence one line below it, with nothing in the section telling the
+  // reader which one was true. `computeSwingThesisHealth` already computes exactly this "did
+  // anything move" signal (`h.moves`, falling back to the literal string "All swing pillars
+  // unchanged since commit." when no pillar faded/lost — the same fallback
+  // play-brief-narrative-coaching.ts's thesisPillarCoaching already gates its own "What moved" line
+  // on) but this section never read it. Surface it right next to the band label instead of leaving
+  // a reader to infer "unchanged" by checking all five deltas are exactly zero themselves.
+  const noDriftSinceCommit = h.moves?.[0]?.includes("unchanged") ?? false;
+  const headline = noDriftSinceCommit
+    ? `**${h.health}%** · ${h.rungLabel} — unchanged since commit`
+    : `**${h.health}%** · ${h.rungLabel}`;
   return {
     title: "Thesis health",
-    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
+    body: `${headline}\n\n${rows || "Pillars not wired on this row."}`,
   };
 }
 
@@ -449,6 +464,21 @@ function daysOnWatch(sinceIso: string | null | undefined, nowMs: number): number
 
 function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   const lines: string[] = [];
+  // Computed once, up front: `deadPlayReason` is the authoritative "is this play already dead for
+  // ANY reason" check (INVALIDATED, calendar-deadline-expired, contract-expired, or EXTENDED-chase)
+  // — already used a few lines below for the gate-block "moot" qualifier. Reused here (BUG FIX, Ask
+  // Largo standing mandate, 2026-10-08) to gate the forward-looking "Entry window closes" line too,
+  // instead of the narrower `play.watchEntryExpired` flag that only covers the calendar-deadline
+  // case. `watchEntryExpired` false does NOT mean the play is still live — an EXTENDED-chase play
+  // (setupState "EXTENDED" / entryStatus "EXTENDED_CHASE") leaves it false while still carrying a
+  // real future `entryDeadline`, so the old guard let this section say "Entry window closes ... (N
+  // days left)" a few lines above — and the brief's own top-level invalidation line say "Extended
+  // past the valid entry window — this setup is no longer live" — about the SAME play, in the SAME
+  // response. Both lines were independently correct in isolation (two different kinds of "window":
+  // calendar-deadline vs. price-extension), but reusing the word "window" for both meanings read as
+  // a flat self-contradiction to a member. Live repro: NTAP, 2026-10-08 (Ask Largo health-check
+  // deep-dive) — see docs/audit/findings-staging/2026-10-08-swing-watch-entry-window-wording-collision.md.
+  const dead = deadPlayReason(play);
   const label =
     swingActionDisplay(play)?.label ??
     play.swingEntryAction?.toUpperCase() ??
@@ -468,8 +498,16 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   // different facts, and only the first was ever narrated.
   const days = daysOnWatch(play.detectedAt, readMs);
   if (days != null) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-03): this literally said "still on WATCH"
+    // regardless of the play's real serving section — but this section renders for every
+    // pre-entry bucket (WATCH, RESEARCH, WAITING_FOR_ENTRY all route through bucket==="watch"),
+    // so a RESEARCH or WAITING_FOR_ENTRY play read "Serving section: RESEARCH" one line above
+    // "still on WATCH" in the same section — directly self-contradictory. Live repro: ZS,
+    // servingSection RESEARCH. Uses the real serving section, falling back to "WATCH" only when
+    // it's genuinely absent.
+    const sectionLabel = play.servingSection ? play.servingSection.replace(/_/g, " ") : "WATCH";
     lines.push(
-      `First flagged **${days} day${days === 1 ? "" : "s"} ago**${play.detectedAt ? ` (${etStampFromIso(play.detectedAt)})` : ""} — still on WATCH, not yet graduated to a real position.`,
+      `First flagged **${days} day${days === 1 ? "" : "s"} ago**${play.detectedAt ? ` (${etStampFromIso(play.detectedAt)})` : ""} — still on ${sectionLabel}, not yet graduated to a real position.`,
     );
   }
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): entry-enterability.ts already computes the
@@ -480,9 +518,11 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   // hear about the deadline was the EXPIRED badge itself, after it had already passed. Mirrors the
   // days-on-watch fix directly above it (same section, same "a real computed fact was silently
   // dropped before reaching the model" shape) — forward-looking instead of backward-looking. Only
-  // shown while NOT already expired (the EXPIRED badge + `deadPlayReason` below already own that
-  // case) and only when a real deadline was resolvable (never fabricated).
-  if (!play.watchEntryExpired && play.entryDeadline) {
+  // shown while NOT already dead for ANY reason (`dead`, computed at the top of this function —
+  // the EXPIRED badge + `deadPlayReason`'s gate-block qualifier below already own every dead case,
+  // not just the calendar-deadline one; see that computation's own comment for why `watchEntryExpired`
+  // alone used to under-cover this) and only when a real deadline was resolvable (never fabricated).
+  if (!dead && play.entryDeadline) {
     const deadlineMs = Date.parse(play.entryDeadline);
     if (Number.isFinite(deadlineMs)) {
       const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
@@ -501,10 +541,32 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
     // g_s4_regime..." sat in the same section with nothing marking the gate as moot. Same root
     // cause `entryTriggerDeadReason` (play-brief-intel.ts) already fixed for the Entry-trigger
     // line one section down — `deadPlayReason` is the shared check both now use.
-    const dead = deadPlayReason(play);
+    //
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08): this used to ALSO render the full
+    // `code: reason` list here — but `watchGateCoaching` (play-brief-narrative-coaching.ts),
+    // which composeSwingPlayBrief always places immediately after this "Entry" section (inside
+    // "Trade manager read") for a WATCH play, independently renders the exact same
+    // `play.gateBlocks` codes+reasons in full too. Both are gated on the identical
+    // `play.gateBlocks?.length` check with no coordination between the two files — live repro:
+    // AMD WATCH brief, 2026-10-08, "## Entry" and "## Trade manager read" both carried the
+    // verbatim `entry_window_expired` reason text. This is the exact same duplication shape the
+    // 2026-09-12 `watchForSection` fix (below, "Watch levels") already removed from a THIRD
+    // location — that fix made "Watch levels" defer to this section ("see Entry section above")
+    // on the premise this section was the one true home, but never noticed this section and
+    // "Trade manager read" were ALSO duplicating each other the whole time. Resolved the other
+    // way around this time: `watchGateCoaching`'s rendering is the richer of the two (it already
+    // states "moot" framing identically, and per its own comment was kept as "the single source
+    // of truth" on 2026-10-07) and renders for EVERY watch-bucket play unconditionally (see
+    // `actionNarrative`'s watch branch, play-brief-narrative.ts), so pointing this section at it
+    // — rather than the reverse — loses no information and needs no new plumbing. The
+    // "Watch levels" pointer below was repointed at "Trade manager read" too, so there is now
+    // exactly one full-text home instead of two independent ones.
+    // `dead` reused from the top of this function (same value — computed once, not re-derived).
+    const gateCount = play.gateBlocks.length;
     lines.push(
-      (dead ? `**Also gate-blocked** (moot — ${dead}):\n` : "**Gates blocking entry:**\n") +
-        play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
+      dead
+        ? `**Also gate-blocked** (moot — ${dead}) — see Trade manager read below.`
+        : `**Gates blocking entry:** ${gateCount} gate${gateCount === 1 ? "" : "s"} — see Trade manager read below.`,
     );
   } else if (play.recommendation === "BUY") {
     lines.push("No mechanical gates blocking entry on this read.");
@@ -571,8 +633,72 @@ function confluenceZoneLabel(
   return `confluence (${confluenceZoneKindsLabel(z, primary)})`;
 }
 
-function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel[] {
+function levelsFromContext(
+  ctx: SwingPlayBriefContext,
+  readMs: number,
+  bucket: "watch" | "open" | "closed",
+): BieLevel[] {
   const levels: BieLevel[] = [];
+  // BUG FIX (Ask Largo standing mandate, 2026-10-07): "Watch levels" (watchForSection,
+  // play-brief-intel.ts) narrates `play.flagUnderlyingPx`/`play.entryTriggerUnderlyingPx` in prose
+  // ("Flag anchor: 411.79 — track move from here", "Entry trigger: 411.04 — ... this is what
+  // actually fires the setup") for every WATCH-bucket play, but neither ever reached this
+  // structured `levels` array — the exact same gap already found and fixed for the Vector gamma
+  // magnet (see that fix's comment a few lines below). Unlike the gamma magnet, these two levels
+  // do NOT depend on Vector/GEX at all (they come straight off the swing gate's own commit
+  // context), so they are the one pair of levels a "show on chart" follow-up or another Largo
+  // consumer could ALWAYS get structurally for a pre-entry setup — and the one case this bites
+  // hardest is exactly when Vector/GEX ARE cold/stale (confirmed live, WDC 2026-10-07: GEX
+  // positioning + Vector desk state both unavailable that cycle), which left `envelope.levels`
+  // completely empty even though the setup's own trigger geometry was fully known. Scoped to the
+  // WATCH bucket only, mirroring where watchForSection itself renders these — an OPEN/CLOSED play
+  // has already crossed (or never needs) this geometry, so surfacing it there would be stale noise
+  // the prose doesn't show either.
+  if (bucket === "watch") {
+    const play = ctx.play;
+    // BUG FIX (Ask Largo standing mandate, 2026-10-07 — same cycle as the fix above, found
+    // auditing its own output): both levels below were stamped `asOf: ctx.asOf` (today's scan
+    // timestamp) with a hardcoded `freshness: "recent"`, even though the note on the very same
+    // level says "pinned when first flagged" — i.e. the PRICE is `play.detectedAt`-old, not
+    // scan-fresh. Live repro, same WDC play the fix above was built from (detectedAt
+    // 2026-10-06T16:07:50Z, ~23h before this scan): the narrated "Watch levels" section is
+    // consistent ("First flagged 1 day ago" renders in the adjacent Entry section off the same
+    // `detectedAt`), but the STRUCTURED envelope.levels entry for the identical number claimed
+    // `asOf: "<today>"`/`freshness: "recent"` — a direct narrative-vs-structured-envelope
+    // contradiction any API consumer reading only `envelope.levels` (not the prose) would get
+    // wrong, and the exact "dead-wired data" shape the standing mandate's Largo deep-dive checks
+    // for. A flag pinned 45+ real days ago (the AMD repro the age-on-watch fix above cites) would
+    // have read `freshness: "recent"` forever. Anchored to `play.detectedAt` (the same "WATCH
+    // Published clock" the narrative age line already trusts) with `freshnessFromObservedMs`
+    // doing real age-based classification — same precedent as `archetypeTrackRecordSection`'s
+    // `asOf: etStampFromIso(...) ?? ctx.asOf` / `freshness: Number.isFinite(...) ? ... : "unknown"`
+    // fallback a few hundred lines below. Falls back to `ctx.asOf`/"unknown" only when
+    // `detectedAt` itself is absent, never silently reusing the old wrong-but-present value.
+    const pinnedMs = play.detectedAt ? Date.parse(play.detectedAt) : NaN;
+    const pinnedProvenance = {
+      source: "Swing lane",
+      asOf: (play.detectedAt ? etStampFromIso(play.detectedAt) : null) ?? ctx.asOf,
+      freshness: Number.isFinite(pinnedMs) ? freshnessFromObservedMs(pinnedMs, readMs) : ("unknown" as const),
+    };
+    if (play.flagUnderlyingPx != null && Number.isFinite(play.flagUnderlyingPx)) {
+      levels.push({
+        label: "flag anchor",
+        price: play.flagUnderlyingPx,
+        note: "pinned when first flagged — track move from here",
+        provenance: pinnedProvenance,
+      });
+    }
+    if (play.entryTriggerUnderlyingPx != null && Number.isFinite(play.entryTriggerUnderlyingPx)) {
+      const deadReason = entryTriggerDeadReason(play);
+      const verb = play.direction === "SHORT" ? "break/reclaim below fires entry" : "break/reclaim above fires entry";
+      levels.push({
+        label: "entry trigger",
+        price: play.entryTriggerUnderlyingPx,
+        note: deadReason ?? verb,
+        provenance: pinnedProvenance,
+      });
+    }
+  }
   const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
   const gex = ctx.ecosystem?.gex_positioning;
   const vecFresh = vectorFreshness(vec, readMs);
@@ -653,12 +779,20 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
         provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
       });
     }
-    for (const dp of vec?.darkPoolLevels ?? []) {
-      levels.push({
-        label: "dark pool",
-        price: dp.strike,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
-      });
+    // BUG FIX (2026-10-06, Ask Largo standing mandate): this used to stamp the WHOLE Vector
+    // state's asOf/freshness onto a dark-pool level regardless of its OWN cache age — the dark-
+    // pool cache is warmed on a looser ~10min/25min-TTL cadence than the rest of Vector, so a
+    // state computed live seconds ago can still carry a dark-pool read up to 20+ min old with no
+    // way to tell from `vecFresh`. See vector-absent-sections.ts's `dark_pool_stale`. Omit rather
+    // than fabricate freshness — same discipline collectFocalLevels/catalystsSection now apply.
+    if (!darkPoolStale(vec)) {
+      for (const dp of vec?.darkPoolLevels ?? []) {
+        levels.push({
+          label: "dark pool",
+          price: dp.strike,
+          provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+        });
+      }
     }
     // The gamma magnet is narrated prominently in the "Trade manager read" section
     // (magnetCoaching, play-brief-narrative-coaching.ts) as a decision-relevant price ("pull up
@@ -699,7 +833,15 @@ function levelsFromContext(ctx: SwingPlayBriefContext, readMs: number): BieLevel
 
 function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvidence[] {
   const out: BieEvidence[] = [];
-  if (ctx.scanAsOf) {
+  // CLOSED play: `ctx.scanAsOf` is TODAY's live discovery-scan timestamp (the serving lane is
+  // read unconditionally for every brief, closed or not, to feed `bookContextSection`'s sibling
+  // comparison) — it has no bearing on a historical, already-graded outcome from a prior session.
+  // `dataFreshnessSection` (play-brief-intel.ts) already gates its own "Swing scan: ..." prose
+  // line behind this exact `isClosed` check for the same reason; this mirrors that gate so the
+  // hidden `evidence[]`/markdown-footer array can't cite an irrelevant "recent" live scan as if
+  // it supported a CLOSED play's claims (Ask Largo deep-dive, 2026-10-06, live repro: HUT).
+  const isClosed = String(ctx.play.status ?? "").toUpperCase() === "CLOSED";
+  if (ctx.scanAsOf && !isClosed) {
     const scanEt = etStampFromIso(ctx.scanAsOf);
     const staleScan =
       ctx.scanSessionDay && ctx.sessionDate && ctx.scanSessionDay !== ctx.sessionDate;
@@ -1050,11 +1192,23 @@ function followupsFor(play: TerminalPlay): string[] {
  * sections are independently protected by #5288 and not duplicated here (single-issue PRs, per this
  * repo's standing policy).
  */
-function safeCompose<T>(label: string, build: () => T, fallback: T): T {
+// BUG FOUND (Ask Largo standing mandate, 2026-10-07): #5288's fail-soft fallback above correctly
+// keeps the brief alive when a builder throws, but for `evidence`/`levels` specifically it falls
+// back to `[]` — which is byte-identical to "this product genuinely has no evidence/levels to
+// show" and is exactly the shape the contract's own C3 names as the dangerous one ("Never return
+// [] / null / {} for 'unavailable'... any fallback that returns a degraded result the caller
+// cannot distinguish from a real one is a defect even when every test passes"). A build failure
+// here is silently indistinguishable from "we checked and there's nothing" to any downstream
+// Largo reader — including the model itself, which has no way to know the array it's looking at
+// is a crash fallback rather than a real empty read. `onFailure` lets evidence/levels record WHICH
+// builder failed without changing their own `[]` fallback (still correct — don't fabricate fake
+// evidence/levels to "fix" this), so the caller can fold that into `unavailableSources` instead.
+function safeCompose<T>(label: string, build: () => T, fallback: T, onFailure?: (label: string) => void): T {
   try {
     return build();
   } catch (error) {
     console.error(`[swing/play-brief] "${label}" threw — falling back, not failing the brief`, error);
+    onFailure?.(label);
     return fallback;
   }
 }
@@ -1160,17 +1314,53 @@ export function composeSwingPlayBrief(
               ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
               : null);
 
+  // BUG FIX continued (Ask Largo standing mandate, 2026-10-07): evidence/levels are now composed
+  // BEFORE unavailableSources rather than inline inside the envelope literal, so a build failure
+  // recorded via `buildFailures` can be folded into the SAME `unavailableSources` list the
+  // envelope field and `confidence` both read — otherwise a build failure would have nowhere
+  // honest to surface (the pre-existing `[]` fallback alone looks identical to a real empty read).
+  const buildFailures: string[] = [];
+  const trackBuildFailure = (label: string) => buildFailures.push(label);
+  const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, readMs), [], trackBuildFailure);
+  const levels = safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), [], trackBuildFailure);
+
+  // Computed once and shared by the envelope's own `unavailableSources` chips AND `confidence`
+  // below, so the two can never drift apart (the same class of narrative-vs-chip disagreement
+  // this file has already fixed elsewhere for readMs — see collectBriefUnavailableSources's header).
+  // A build failure above is folded in here as its own honest entry — distinct from a real data
+  // absence (`collectBriefUnavailableSources`'s own checks), but equally something the model must
+  // not read as "zero evidence/levels exist," per Largo C3.
+  const unavailableSources: BieUnavailableSource[] = [
+    ...collectBriefUnavailableSources(ctx),
+    ...buildFailures.map((label) => ({
+      source: "Swing play-brief internals",
+      reason: `"${label}" failed to build this cycle — treat as unknown, not as a confirmed empty/zero read.`,
+      what_is_missing: label,
+      retryable: true,
+    })),
+  ];
+
   const envelope: BieAnswerEnvelope = {
     ...buildRichEnvelope({
       headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
       bias: biasFromDirection(play.direction),
       intent: "swing_play_brief",
       sections,
-      evidence: safeCompose("evidence", () => evidenceFromContext(ctx, readMs), []),
-      levels: safeCompose("levels", () => levelsFromContext(ctx, readMs), []),
+      evidence,
+      levels,
       invalidation,
       followups: followupsFor(play),
-      unavailableSources: collectBriefUnavailableSources(ctx),
+      unavailableSources,
+      // Largo C6 (Ask Largo standing mandate, 2026-09-26 — see play-brief-confidence.ts's header
+      // for why this is NOT computeSwingThesisHealth's %): evidence-coverage confidence, never a
+      // directional/win-probability read. Never throws by construction (pure, total function over
+      // already-validated inputs), but routed through safeCompose for the same defensive
+      // consistency every other envelope field in this composer gets.
+      confidence: safeCompose(
+        "confidence",
+        () => swingPlayBriefConfidence(play, bucket, unavailableSources),
+        undefined
+      ),
     }),
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,

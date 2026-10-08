@@ -1399,6 +1399,20 @@ async function attachContractPlans(
     const attached = resolveZeroDteContractAttach(s, pulse, chain);
     if (attached) {
       s.top_strike = attached.strike;
+      // 2026-10-08 finding: this call site previously left s.expiry/contract_horizon/
+      // actual_dte_at_commit/grading_policy untouched even when the resolved contract's own
+      // expiry differs from the setup's pre-attach target — the two other contract-resolution
+      // call sites in this codebase (below, and contract-attach.ts's attachThesisContractPlans)
+      // both sync all four fields together whenever a contract is (re)resolved; this one must too,
+      // or the board displays a stale/wrong DTE for the contract actually being traded.
+      if (attached.expiry) {
+        s.expiry = attached.expiry;
+        if (attached.dte != null) {
+          s.contract_horizon = deriveContractHorizon(attached.dte);
+          s.actual_dte_at_commit = attached.dte;
+          s.grading_policy = gradingPolicyForHorizon(s.contract_horizon);
+        }
+      }
       occOf.set(s.ticker, attached.occ);
       continue;
     }
@@ -2551,8 +2565,25 @@ export async function readZeroDteLedgerChecked(): Promise<ZeroDteLedgerRead> {
     const rows = await fetchZeroDteSetupLog(today);
     lastGoodLedger = { date: today, rows };
     return { rows, committed_known: true };
-  } catch {
-    if (lastGoodLedger?.date === today) return { rows: lastGoodLedger.rows, committed_known: true };
+  } catch (err) {
+    // 2026-10-01 production incident: upstream_ok went false for up to ~90min across
+    // 4 separate instances in one session day, with zero trading-path impact but no
+    // way to root-cause WHY — this catch previously swallowed the error silently, so
+    // live CloudWatch keyword searches found a cause for one instance and nothing for
+    // another. Log every occurrence so the next instance is diagnosable from logs
+    // alone instead of inferred from infra metrics that all read healthy.
+    if (lastGoodLedger?.date === today) {
+      console.warn(
+        "[zerodte-ledger-read] fetchZeroDteSetupLog failed — serving same-session last-good snapshot:",
+        err
+      );
+      return { rows: lastGoodLedger.rows, committed_known: true };
+    }
+    console.warn(
+      "[zerodte-ledger-read] fetchZeroDteSetupLog failed with NO same-session snapshot — " +
+        "committed_known:false, board degrades to upstream_ok:false:",
+      err
+    );
     return { rows: [], committed_known: false };
   }
 }

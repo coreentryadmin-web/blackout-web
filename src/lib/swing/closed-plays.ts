@@ -62,10 +62,33 @@ export type SwingClosedDeckSource = {
   exitAt?: string | null;
   exitPnlPct?: number | null;
   closedReason?: string | null;
+  /** Underlying-terms entry trigger / structural invalidation levels pinned at commit
+   *  (SwingPositionRow.entry_underlying_px/thesis_invalidation_px) — static, never depend on
+   *  live state, so they stay valid after close. Lets closedCoaching's "check if entry was
+   *  extended past invalidation" prompt (play-brief-narrative-coaching.ts) actually answer the
+   *  question instead of just asking it. */
+  entryTriggerUnderlyingPx?: number | null;
+  invalidationUnderlyingPx?: number | null;
   /** Raw entry_context.cortex JSONB — parsed structurally by the adapter (readCortexView),
    *  never trusted here. Carries the Cortex evidence pinned at commit, when one exists. */
   cortex?: unknown;
+  /** Whether a real scale-out trim was ENFORCED on this leg at any point before it closed —
+   *  persisted into `scale_out_grade` at grade time (db.ts's `gradeSwingPosition`) from the row's
+   *  own pre-update `status`, since a closed row's `status` is always CLOSED/ROLLED and can never
+   *  again show a sticky TRIM. Null for rows graded before this field existed (honest absence, not
+   *  a fabricated false) — see `trimEnforcedBeforeCloseFromScaleOutGrade` for the parse. */
+  trimEnforcedBeforeClose?: boolean | null;
 };
+
+/** Read the `trim_enforced_before_close` fact out of `scale_out_grade` — honestly null, never a
+ *  fabricated false, when the row predates this field (scale_out_grade had no other writer before
+ *  2026-10-07, so any non-boolean/absent value here means "not recorded", not "did not happen"). */
+export function trimEnforcedBeforeCloseFromScaleOutGrade(
+  scaleOutGrade: Record<string, unknown> | null | undefined,
+): boolean | null {
+  const v = scaleOutGrade?.trim_enforced_before_close;
+  return typeof v === "boolean" ? v : null;
+}
 
 function closedReasonFromRow(row: SwingPositionRow): string | null {
   const pnl = fin(row.realized_pnl_pct);
@@ -162,6 +185,9 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     exitPnlPct: exitPnl,
     closedReason: closedReasonFromRow(row),
     cortex: row.entry_context?.cortex ?? null,
+    entryTriggerUnderlyingPx: fin(row.entry_underlying_px),
+    invalidationUnderlyingPx: fin(row.thesis_invalidation_px),
+    trimEnforcedBeforeClose: trimEnforcedBeforeCloseFromScaleOutGrade(row.scale_out_grade),
   };
 }
 

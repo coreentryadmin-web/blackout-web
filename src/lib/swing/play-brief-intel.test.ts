@@ -31,6 +31,7 @@ import type { PaneCortexView } from "@/lib/zerodte/pane";
 import { catalystCoaching, collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -790,6 +791,67 @@ test("holdPlanSection: peak giveback warning still shows when thesis health is u
   assert.doesNotMatch(section!.body, /Gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-07): `giveback.capturePct` divides RUNNER-only
+// `play.pnlPct` against `play.peak` — honest while nothing has been banked, but once a trim has
+// already fired this capture branch's "Gave back X% from peak — consider trim into strength"
+// wording is doubly wrong: the percentage describes only the still-open runner (not the whole
+// position's blended outcome), and "consider trim into strength" implies the protective trim
+// hasn't happened yet, when it already has. Mirrors the round_trip branch's own anyTrimBanked
+// disclosure a few lines above in play-brief-intel.ts (and the sibling fix in
+// play-brief-narrative.ts's actionNarrative capture branch, same root cause, same day).
+test("holdPlanSection: capture giveback note discloses an already-banked trim tranche and drops the stale 'trim into strength' clause", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 130,
+      pnlPct: 20,
+      // The giveback computation this test targets lives inside holdPlanSection's
+      // `if (play.thesisHealth)` block (it also narrates health%/tighten-risk) — any truthy
+      // thesisHealth object enters that block; `uncalibrated: true` keeps this test focused on
+      // the giveback bullet alone, same shape as the NRG repro fixture above.
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 200,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+        runner_fraction: 0.5,
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Gave back \*\*85%\*\* of the runner since peak.*already banked at a profit/,
+    `expected a banked-aware capture giveback bullet, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(section!.body, /consider trim into strength/);
+});
+
 test("holdPlanSection: peak giveback warning does not fire once retained capture clears the floor", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({
@@ -1413,6 +1475,57 @@ test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Tr
   assert.match(suppressed!.body, /sector rotation leadership/i);
 });
 
+test("buildIntelSections: Lessons omits the generic invalidation-check ask when Trade manager read already answered it with the computed cushion", () => {
+  // GAP FOUND (2026-09-29, Ask Largo standing mandate, live repro HUT:43 CLOSED/stopped, real
+  // production play-brief): closedCoaching's 2026-09-28 fix (play-brief-narrative-coaching.ts)
+  // replaced its generic "check if entry was extended past invalidation" ask with a computed
+  // cushion answer ("entry X vs invalidation Y, a Z% cushion at commit...") whenever
+  // entryTriggerUnderlyingPx/invalidationUnderlyingPx are both pinned — but the call site's
+  // stopAdviceAlreadyNoted dedup flag (buildIntelSections, this file) still only string-matched
+  // the OLD generic phrasing, which the new cushion answer no longer contains. Live response
+  // rendered BOTH: "Trade manager read" — "**Stop fired** (stopped) — entry 100.97 vs
+  // invalidation 94.01, a +6.9% cushion at commit..." — and, one section below in the same
+  // response, "Lessons" — "Stop loss — check if invalidation level was respected or entry was
+  // extended." — independently re-asking the exact question just answered.
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 8.5,
+    exitPnlPct: -50.9,
+    closedReason: "stopped",
+    archetype: "PULLBACK_CONTINUATION",
+    entryTriggerUnderlyingPx: 100.97,
+    invalidationUnderlyingPx: 94.01,
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-28T16:00:00.000Z",
+    sessionDate: "2026-09-28",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const sections = buildIntelSections(ctx, "closed");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  const lessons = sections.find((s) => s.title === "Lessons");
+
+  assert.ok(narrative, "Trade manager read must render");
+  assert.match(narrative!.body, /cushion at commit/i);
+
+  assert.ok(lessons, "Lessons must still render (independent evidence survives)");
+  assert.doesNotMatch(
+    lessons!.body,
+    /check if invalidation level was respected or entry was extended/i,
+    "Lessons must not re-ask a question Trade manager read already answered with the real cushion",
+  );
+  // Independent evidence must survive — only the answered-question line is suppressed.
+  assert.match(lessons!.body, /Peak was/i);
+  assert.match(lessons!.body, /pullback continuation/i);
+});
+
 test("lessonsSection: a small peak (<=20%) with weak capture (<35%) still gets a verdict line, not just the bare fact", () => {
   // FINDINGS 2026-09-20 (Ask Largo × Night Hawk Swings mandate): the capture<35 branch only had a
   // verdict line when `play.peak > 20` ("Gave back the move ... tighten at first trim rail") — for
@@ -1702,6 +1815,60 @@ test("catalystsSection: headlines from a fresh news read carry NO staleness disc
   assert.ok(section);
   assert.doesNotMatch(section!.body, /Last snapshot/);
   assert.match(section!.body, /CrowdStrike stock moves higher/);
+});
+
+// GAP FOUND (2026-09-28, Ask Largo standing mandate): live repro U/WATCH — arsenal.news.headlines
+// carried the SAME headline text twice ("10 Information Technology Stocks Whale Activity In
+// Today's Session" at both index 0 and 2), burning one of only 4 shown slots on a repeat.
+test("catalystsSection: duplicate headline text is deduped, never burning one of the 4 shown slots", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString();
+  const section = catalystsSection({
+    ticker: "U",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: {
+        count: 5,
+        newest: freshAsOf,
+        headlines: [
+          "10 Information Technology Stocks Whale Activity In Today's Session",
+          "10 Information Technology Stocks With Whale Alerts In Today's Session",
+          "10 Information Technology Stocks Whale Activity In Today's Session",
+          "Is Fortnite Down? Here's Why Servers Are Offline",
+          "A genuinely distinct fifth headline",
+        ],
+        as_of: freshAsOf,
+      },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  const bulletLines = section!.body.split("\n").filter((l) => l.startsWith("• "));
+  assert.equal(bulletLines.length, 4, "still shows 4 headlines, not 3");
+  const occurrences = bulletLines.filter(
+    (l) => l === "• 10 Information Technology Stocks Whale Activity In Today's Session",
+  );
+  assert.equal(occurrences.length, 1, "the duplicate headline appears only once");
+  assert.match(
+    section!.body,
+    /A genuinely distinct fifth headline/,
+    "dedup happens BEFORE the top-4 slice, so the real 4th distinct headline still makes the cut",
+  );
 });
 
 // Ask Largo standing mandate, same #5351/#5392-class readMs-anchor sweep — catalystsSection was
@@ -2375,6 +2542,36 @@ test("dataFreshnessSection: stale HELIX pipeline warns when flow_feed_fresh is f
   const section = dataFreshnessSection(ctx);
   assert.match(section!.body, /HELIX flow: \*\*pipeline stale\*\*/);
   assert.match(section!.body, /tape read may lag/);
+});
+
+// BUG (Ask Largo standing mandate, 2026-10-07, live repro: NTAP). A dead-but-not-closed WATCH play
+// (entryStatus EXTENDED_CHASE, i.e. `deadPlayReason` non-null) is exactly the case
+// `collectBriefUnavailableSources` (play-brief-absence.ts) was widened on 2026-09-19 to suppress
+// staleness noise for — but this section only ever checked `status === "CLOSED"`, so it kept
+// rendering "HELIX flow: pipeline stale" for a play whose SAME envelope's unavailableSources[] and
+// confidence prose both correctly said every live source resolved cleanly. Proves the suppression
+// now matches collectBriefUnavailableSources's own isNotLive gate via the shared
+// isSwingPlayStaleCheckExempt predicate.
+test("dataFreshnessSection: suppresses HELIX-stale prose for a dead (extended-chase) WATCH play, matching collectBriefUnavailableSources's isNotLive gate (Ask Largo 2026-10-07, live repro NTAP)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", entryStatus: "EXTENDED_CHASE" }),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: "2026-09-06T14:30:00.000Z",
+    scanSessionDay: "2026-09-06",
+    laneRows: [],
+    meridian: null,
+    ecosystem: { flow_feed_fresh: false } as EcosystemContext,
+    vector: null,
+  };
+  const section = dataFreshnessSection(ctx);
+  if (section) {
+    assert.doesNotMatch(
+      section.body,
+      /HELIX flow: \*\*pipeline stale\*\*/,
+      "a dead WATCH play's narrative must not assert HELIX staleness when the structured unavailableSources[]/confidence for the same brief say every live source resolved cleanly",
+    );
+  }
 });
 
 // Ask Largo standing mandate follow-up to #5351: dataFreshnessSection independently sampled the
@@ -3263,6 +3460,63 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 at -59.1% P&L and
+// SWING:GLW:1479 at -56.1% P&L): `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps
+// `thesisLevel: "intact"` as a fixed literal on every Banger-origin row regardless of price action
+// — there is no real per-position thesis dossier for this lane, the same gap
+// `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already exist to catch for the
+// aggregate Thesis-health panel. Left unguarded, this section rendered "Thesis **intact** — below
+// the 2× partial and above the hard stop" for a position 2% from stopping out — overclaiming a
+// calibrated judgment the lane cannot produce, and purely restating the honest "Premium stop
+// rail"/"Premium target rail" lines two lines below it. Must suppress regardless of bucket
+// (watch/open) and regardless of whether thesisBreak carries a note.
+test("watchForSection: Banger-origin thesis line is suppressed, not fabricated (Largo C6, live repro CRI/GLW)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: BANGER_LEDGER_REGIME_LABEL,
+        thesisBreak: { level: "intact", note: "below the 2× partial and above the hard stop" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Thesis \*\*/);
+  assert.doesNotMatch(section.body, /below the 2× partial/);
+});
+
+// Sibling guard: a NATIVE swing position's real, live-derived thesisBreak must still render —
+// the suppression above is scoped to the Banger-ledger sentinel, not to "intact" generally.
+test("watchForSection: a NATIVE position's thesis line still renders (suppression is Banger-scoped only)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: "Pullback continuation · regime 1.00",
+        thesisBreak: { level: "intact", note: "structure holding" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Thesis \*\*intact\*\* — structure holding/);
+});
+
 test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
   const section = watchForSection(
     {
@@ -3280,6 +3534,82 @@ test("watchForSection: entry trigger phrasing mirrors below for SHORT direction"
   );
   assert.match(section.body, /Entry trigger: \*\*342\.50\*\*/);
   assert.match(section.body, /Break\/reclaim below/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-06): `entryTriggerUnderlyingPx` for a Legacy-
+// morning-confirm-promoted play (`legacy-confirm-promote.ts`'s `buildLegacySwingArtifacts`) is
+// stamped ONCE, at promotion, from `deriveSwingPlanLevels(direction, groundedSpotAtPromotion, atr)`
+// — and that dossier/plan is never rebuilt again (there is no recurring re-dossier pass for
+// Legacy-promoted rows, unlike organic FLOW/STRUCTURE/etc. discovery, which rebuilds its dossier —
+// and therefore its plan's `entryUnderlyingPx` — on every scan cadence). Because
+// `deriveSwingPlanLevels` always sets `entryUnderlyingPx = price` (the spot at build time), a
+// Legacy-promoted row's `entryTriggerUnderlyingPx` is IDENTICAL to its `flagUnderlyingPx` forever,
+// even days later — confirmed live 2026-10-06 (`GET /api/market/nighthawk/horizons?view=swings`):
+// every Legacy-promoted row (NKE/USO/NTAP, `discoveryOrigin: ["NIGHT HAWK"]`) carried
+// `flagUnderlyingPx === entryTriggerUnderlyingPx` exactly, including USO (4 days stale), while
+// every organically-discovered WATCH row in the same payload (INTC/AVGO/ORCL/COPX/MU/NVDA/GE/
+// EWZ/PLTR) had the two values genuinely diverge. The "Entry trigger" bullet's own claim —
+// "this is what actually fires the setup" — is false for these rows: the number is the promotion-
+// day price, not a live, continuously-refreshed trigger level, so a member reading it days later
+// is seeing a stale level dressed as a live one. Fix: when the play's `discoveryOrigin` is the
+// Legacy-exempt signature AND the two values are byte-identical, disclose that the level is
+// pinned at promotion and has not refreshed since — same "correct the claim, keep the number"
+// shape as the INVALIDATED/EXPIRED fixes above, not a new mechanism.
+test("watchForSection: entry trigger claim is corrected for a Legacy-promoted play whose trigger never refreshed", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        flagUnderlyingPx: 143.47,
+        entryTriggerUnderlyingPx: 143.47,
+        discoveryOrigin: ["NIGHT HAWK"],
+      }),
+      asOf: "2026-10-06 10:00 ET",
+      sessionDate: "2026-10-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*143\.47\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(
+    section.body,
+    /pinned at Legacy promotion, not refreshed since — this level no longer fires the setup/,
+  );
+});
+
+// An organic (non-Legacy) WATCH row whose trigger happens to equal its flag anchor (e.g. the
+// very first scan tick after being flagged, before any price movement) must NOT be mislabeled
+// stale — only the Legacy-exempt signature changes the claim, never a coincidental equal value.
+test("watchForSection: a coincidentally-equal trigger/flag on an organic (non-Legacy) play keeps the live claim", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        flagUnderlyingPx: 182.5,
+        entryTriggerUnderlyingPx: 182.5,
+        discoveryOrigin: ["FLOW"],
+      }),
+      asOf: "2026-10-06 10:00 ET",
+      sessionDate: "2026-10-06",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(
+    section.body,
+    /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/,
+  );
 });
 
 test("watchForSection: entry trigger is omitted (never fabricated) when null, and never shown outside the watch bucket", () => {
@@ -3343,8 +3673,12 @@ test("watchForSection: gate-block bullet is a count + pointer, not a second full
     },
     "watch",
   );
-  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Entry section above\./);
-  // The full reason text must NOT be duplicated here — its one home is the Entry section.
+  // REPOINTED (Ask Largo standing mandate, 2026-10-08): "Entry section above" was never actually
+  // the sole full-text home this test's own comment assumed — "Trade manager read" independently
+  // rendered the same codes+reasons too (see play-brief.ts's `watchEntrySection` 2026-10-08
+  // comment). Repointed at "Trade manager read", the real one true home now.
+  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Trade manager read above\./);
+  // The full reason text must NOT be duplicated here — its one home is Trade manager read.
   assert.doesNotMatch(section.body, /Broad-market regime degraded/);
   assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
 });
@@ -4006,10 +4340,50 @@ test("meridianPeerSection: dedicated section — coaching bullets must not dupli
 
 test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
   const section = whyThisSetupSection(
-    fixturePlay({ archetype: "BREAKOUT", subLane: "earnings_lead" }),
+    fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" }),
   );
   assert.match(section.body, /\*\*Archetype:\*\* Breakout continuation/);
-  assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
+  assert.match(section.body, /\*\*Sub-lane:\*\* Tactical \(5.7d\)/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-08): `whyThisSetupSection` used to render
+// `play.subLane.replace(/_/g, " ")` — a no-op on every real `SwingSubLane` value, since none of
+// TACTICAL/STANDARD/EXTENDED contain an underscore — so a real committed play's sub-lane rendered
+// as the shouty raw enum ("Sub-lane: TACTICAL") instead of the human label
+// (`SWING_SUB_LANES[...].label`, "Tactical (5–7d)") that `archetypeTrackRecordSection` further down
+// this SAME brief and the live command-deck UI (`terminal-display.ts`'s `swingStatusDisplay`) both
+// already use for the identical field. The previous test above (then using a fictional snake_case
+// fixture value, "earnings_lead", which is not a member of `SwingSubLane` and can never occur on a
+// real play) could not catch this because `.replace` only does something on a value that never
+// actually ships. This test exercises every real value and asserts the raw enum form never leaks
+// into the brief.
+test("whyThisSetupSection: never renders the raw SwingSubLane enum verbatim for a real sub-lane", () => {
+  for (const [subLane, expectedLabel] of [
+    ["TACTICAL", "Tactical (5–7d)"],
+    ["STANDARD", "Standard (8–15d)"],
+    ["EXTENDED", "Extended (22–30d)"],
+  ] as const) {
+    const section = whyThisSetupSection(fixturePlay({ archetype: null, subLane }));
+    assert.match(
+      section.body,
+      new RegExp(`\\*\\*Sub-lane:\\*\\* ${expectedLabel.replace(/[()–]/g, (c) => `\\${c}`)}`),
+      `${subLane} must render as its human label, not the raw enum`,
+    );
+    assert.doesNotMatch(
+      section.body,
+      new RegExp(`\\*\\*Sub-lane:\\*\\* ${subLane}\\b`),
+      `${subLane} must never render as the shouty raw enum verbatim`,
+    );
+  }
+});
+
+// Unrecognized/foreign sub-lane values stay silent — same honest-absence discipline
+// `archetypeLabelFromRaw`'s callers already rely on, never a fabricated label.
+test("whyThisSetupSection: an unrecognized subLane string renders no Sub-lane line at all", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ archetype: "BREAKOUT", subLane: "NOT_A_REAL_SUB_LANE" }),
+  );
+  assert.doesNotMatch(section.body, /\*\*Sub-lane:\*\*/);
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): sectorLeadershipFacts is

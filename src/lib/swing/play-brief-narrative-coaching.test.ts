@@ -570,6 +570,32 @@ test("watchGateCoaching: includes reasons", () => {
   assert.match(line!, /wait for trigger/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-07): this used to `.slice(0, 3)` the gate list
+// before rendering, silently dropping every gate past the third with no "+N more" marker — while
+// the sibling "Entry stance" bullet (actionNarrative) states the TRUE, uncapped gate count and the
+// "Entry" section (watchEntrySection, play-brief.ts) renders the full list uncapped. Live repro:
+// WDC WATCH brief, 2026-10-07 — "Entry stance — WAIT. 4 gates blocking entry — see below." then
+// "Gates blocking entry — g_s12_halt_feed_stale ... g_s4_regime ... g_s6_confluence." — the 4th
+// gate (g_s14_cortex, the Cortex veto) was silently omitted even though the bullet promised 4.
+test("watchGateCoaching: renders every gate, not just the first 3 (live WDC repro)", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "WATCH",
+      gateBlocks: [
+        { code: "g_s12_halt_feed_stale", reason: "Trading-halt feed unavailable." },
+        { code: "g_s4_regime", reason: "Broad-market regime degraded." },
+        { code: "g_s6_confluence", reason: "Independent signal confluence below commit threshold." },
+        { code: "g_s14_cortex", reason: "Cortex preflight vetoed this setup." },
+      ],
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /g_s12_halt_feed_stale/);
+  assert.match(line!, /g_s4_regime/);
+  assert.match(line!, /g_s6_confluence/);
+  assert.match(line!, /g_s14_cortex/, "the 4th gate must not be silently dropped");
+});
+
 // BUG FIX (2026-09-12): every real gate `reason` string (entry-verdict.ts's gate-block map)
 // already ends with its own period, but `watchGateCoaching` unconditionally appended a second
 // "." after joining them — producing a doubled ".." whenever the LAST rendered gate has no
@@ -659,6 +685,53 @@ test("crossDeskCoaching: Vector bearish bias conflicts with LONG swing", () => {
   assert.match(line!, /Cross-desk friction/i);
   assert.match(line!, /Vector bearish/i);
   assert.match(line!, /Fade the rip/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro NET WATCH brief 2026-10-07):
+// crossDeskCoaching is called for the WATCH bucket too (collectCoachingBullets only
+// short-circuits "closed"), but the "structure" conflict's resolution text unconditionally read
+// "watch for it to flip back before your next trim rail — until then, size down" — language that
+// presupposes an existing position (something to trim, something to size down). A WATCH candidate
+// has no position: this must not tell a member to "size down" a trade they haven't entered, or
+// reference a trim rail that can't exist without an entry.
+test("crossDeskCoaching: WATCH-bucket structure conflict never tells the member to size down or wait for a trim rail (no position exists yet)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", status: "WATCH" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /Vector bearish/i);
+  assert.doesNotMatch(line!, /trim rail/i, "a WATCH candidate has no position, so no trim rail exists yet");
+  assert.doesNotMatch(line!, /size down/i, "a WATCH candidate has no size on to size down");
+  assert.match(line!, /isn't a green light to enter/i);
+});
+
+// Companion: the OPEN/HOLD bucket's existing "size down"/"trim rail" phrasing is still correct
+// there (a real position with a real scale-out ladder exists) — this is a regression guard that
+// the WATCH-bucket fix above didn't accidentally change the open-bucket text too.
+test("crossDeskCoaching: OPEN-bucket structure conflict still reads size down / trim rail (unchanged)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", status: "HOLD" }),
+  );
+  assert.match(line!, /trim rail/i);
+  assert.match(line!, /size down/i);
 });
 
 test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk friction", () => {
@@ -1601,6 +1674,64 @@ test("closedCoaching: outcome + exit-reason are separate bullet points, not one 
   assert.match(points[2], /^\*\*Stop fired\*\* \(stopped\)/);
 });
 
+// GAP FOUND (2026-09-28, Ask Largo standing mandate): the "Stop fired — check if entry was
+// extended past invalidation" line only ever posed the question; entryTriggerUnderlyingPx and
+// invalidationUnderlyingPx (both pinned at commit, static, valid post-close) are now threaded
+// through closed-plays.ts/adapters.ts onto TerminalPlay, so closedCoaching can answer it.
+test("closedCoaching: stopped LONG with entry/invalidation levels reports the real cushion", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "LONG",
+      peak: 0,
+      exitPnlPct: -55.1,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 90,
+    }),
+  );
+  assert.ok(line);
+  assert.match(
+    line!,
+    /\*\*Stop fired\*\* \(stopped\) — entry \*\*100\.00\*\* vs invalidation \*\*90\.00\*\*, a \*\*\+10\.0%\*\* cushion at commit/,
+  );
+});
+
+test("closedCoaching: stopped SHORT with entry/invalidation levels reports the real cushion", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      direction: "SHORT",
+      peak: 0,
+      exitPnlPct: -40,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: 110,
+    }),
+  );
+  assert.ok(line);
+  assert.match(
+    line!,
+    /\*\*Stop fired\*\* \(stopped\) — entry \*\*100\.00\*\* vs invalidation \*\*110\.00\*\*, a \*\*\+10\.0%\*\* cushion at commit/,
+  );
+});
+
+test("closedCoaching: stopped play missing either level falls back to the generic prompt", () => {
+  const line = closedCoaching(
+    play({
+      status: "CLOSED",
+      peak: 0,
+      exitPnlPct: -30,
+      closedReason: "stopped",
+      entryTriggerUnderlyingPx: 100,
+      invalidationUnderlyingPx: null,
+    }),
+  );
+  assert.ok(line);
+  const points = line!.split("\n• ");
+  assert.match(points[points.length - 1], /^\*\*Stop fired\*\* \(stopped\) — check if entry was extended past invalidation\.$/);
+});
+
 test("closedCoaching: discloses a real drawdown before outcome (gap fix 2026-09-18)", () => {
   // Live repro shape: CRWD-style position that dipped hard before eventually closing — the raw
   // trough was computed (adapters.ts) but never reached any CLOSED-bucket narrative section.
@@ -2453,6 +2584,104 @@ test("dataHonestyCoaching: stale GEX matrix warns dealer posture may lag (Largo 
   );
   assert.match(line!, /GEX matrix \*\*180s\*\* stale/);
   assert.match(line!, /dealer posture may lag spot/);
+});
+
+// GAP FOUND 2026-10-08 (Ask Largo standing mandate): neither staleness check above fires for the
+// orthogonal "compute is fresh but the MARKET is CLOSED" case `market_session_note` exists to
+// catch (vector-state-freshness.ts, PR #5306) — live repro INTC SWING:INTC:50 HOLD brief,
+// 2026-10-08 20:05 ET (market CLOSED): the "Trade manager read" section's prominent "Right now"
+// dealer-posture bullet (play-brief-narrative.ts's dealerPostureLine) carried zero caveat while
+// the SAME envelope's buried evidence array separately said "Computed 3s ago, but the market is
+// CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh
+// the compute looks" for the identical Vector compute. These tests prove the fix: the same note
+// now reaches this "Data caveat" bullet too.
+test("dataHonestyCoaching: fresh Vector compute during a CLOSED market surfaces market_session_note", () => {
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: {
+        dataAgeMs: 0,
+        freshness: "live",
+        market_session_note:
+          "Computed 0s ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks.",
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /market is CLOSED as of this read/i);
+  // Must not ALSO claim Vector is stale — the compute genuinely is fresh, only the market is shut.
+  assert.doesNotMatch(line!, /Vector \*\*\d/i);
+  // BUG FOUND 2026-10-08 (same cycle, live repro `GET /api/market/swing/play-brief` MU): the
+  // closed-market note (market-session-disclosure.ts's `marketSessionDisclosure` /
+  // play-brief-absence.ts's `gexMarketSessionNote`) already ends in its own period ("...however
+  // fresh the compute looks."). This function's closing sentence unconditionally appends
+  // ". Treat levels as indicative until refresh." after `warnings.join(" · ")`, so whenever the
+  // closed-market note is the LAST warning pushed (it always is — pushed after every other check)
+  // the two periods collide into a literal "..", live-confirmed verbatim in the MU COMMIT-NOW
+  // brief's "Trade manager read" bullet: "...however fresh the compute looks.. Treat levels...".
+  assert.doesNotMatch(line!, /\.\./, "must not double up the closed-market note's own trailing period");
+});
+
+test("dataHonestyCoaching: GEX-only market_session_note surfaces when Vector gives none", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED (same fixture instant play-brief-absence.test.ts's own gexMarketSessionNote tests use)
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /market is CLOSED/i);
+});
+
+test("dataHonestyCoaching: Vector's own closed-market note suppresses a redundant GEX one (dedup, same shape as vectorConflictAlreadyNoted)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      vector: {
+        dataAgeMs: 0,
+        freshness: "live",
+        market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
+  // The GEX-sourced note would independently say "the market is CLOSED" -- must not ALSO appear,
+  // or the same real-world fact is restated twice in one bullet from two sources.
+  const closedMentions = (line!.match(/market is CLOSED/gi) ?? []).length;
+  assert.equal(closedMentions, 0, "Vector's note already covers it; the GEX one must not also fire");
+});
+
+test("dataHonestyCoaching: a genuinely stale Vector snapshot (by this file's own 120s bar) never leaks a closed-market note even if the field is set", () => {
+  // Simulates a server/local-threshold disagreement (server's freshness bucket is live/recent up
+  // to 600s; this file's own vectorAgeStale fires past 120s) -- the existing Vector-staleness
+  // warning must win and the closed-market note must not also render.
+  const line = dataHonestyCoaching(
+    ctx({
+      vector: {
+        dataAgeMs: 150_000,
+        freshness: "recent",
+        market_session_note: "SHOULD_NOT_APPEAR",
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*150s\*\* stale/);
+  assert.doesNotMatch(line!, /SHOULD_NOT_APPEAR/);
 });
 
 // BUG FOUND 2026-09-20 (Ask Largo standing mandate): dataHonestyCoaching's "Data caveat" bullet

@@ -6,6 +6,8 @@ import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import { computeSwingThesisHealth } from "./thesis-health";
+import { swingPlayBriefConfidence } from "./play-brief-confidence";
+import { collectBriefUnavailableSources } from "./play-brief-absence";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -352,7 +354,35 @@ test("composeSwingPlayBrief: WATCH play with detectedAt narrates real days-on-wa
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry, "expected Entry section");
   assert.match(entry!.body, /First flagged \*\*\d+ days? ago\*\*/);
-  assert.match(entry!.body, /still on WATCH, not yet graduated to a real position/);
+  // fixturePlay defaults servingSection to WAITING_FOR_ENTRY, not WATCH — the narration must
+  // follow the real serving section (see the RESEARCH regression test below for the bug this
+  // guards against).
+  assert.match(entry!.body, /still on WAITING FOR ENTRY, not yet graduated to a real position/);
+});
+
+// BUG FIX regression (Ask Largo standing mandate, 2026-10-03): this line used to hardcode "still
+// on WATCH" regardless of the play's real serving section. Every pre-entry bucket (WATCH,
+// RESEARCH, WAITING_FOR_ENTRY) renders through this same section, so a RESEARCH play read
+// "Serving section: RESEARCH" one line above a contradictory "still on WATCH" in the same body.
+// Live repro: ZS, servingSection RESEARCH, 2026-10-03.
+test("composeSwingPlayBrief: RESEARCH play narrates its real serving section, not a hardcoded WATCH (2026-10-03 bug fix)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ servingSection: "RESEARCH", detectedAt: "2026-09-29T13:15:15.000Z" }),
+    asOf: "2026-10-03T14:12:01.000Z",
+    sessionDate: "2026-10-03",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(entry!.body, /Serving section: \*\*RESEARCH\*\*/);
+  assert.match(entry!.body, /still on RESEARCH, not yet graduated to a real position/);
+  assert.doesNotMatch(entry!.body, /still on WATCH, not yet graduated to a real position/);
 });
 
 // Gap fix (2026-09-18, Ask Largo standing mandate): entry-enterability.ts always computed the real
@@ -393,6 +423,46 @@ test("composeSwingPlayBrief: WATCH play already past its entry deadline omits th
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
   assert.doesNotMatch(entry!.body, /Entry window closes/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): the forward-looking line above was gated on
+// `!play.watchEntryExpired` alone — but `watchEntryExpired` is ONLY set true by the calendar-deadline
+// path (entry-enterability.ts's `pastEntryDeadline` check). A play already dead for a DIFFERENT
+// reason (EXTENDED-chase: `setupState === "EXTENDED"` / `entryStatus === "EXTENDED_CHASE"`) leaves
+// `watchEntryExpired` false while still carrying a future `entryDeadline`, so this line rendered
+// "Entry window closes ... (N days left)" directly alongside — in the SAME "Entry" section, a few
+// lines below — the "Also gate-blocked (moot — extended past the valid entry window)" line (which
+// reuses the word "window" for the unrelated price-extension concept) and the brief's own top-level
+// invalidation text ("Extended past the valid entry window — this setup is no longer live."). Live
+// repro: NTAP, 2026-10-08, `setupState: "EXTENDED"`, `entryStatus: "EXTENDED_CHASE"`,
+// `watchEntryExpired: false`, `entryDeadline` ~2 hours in the future — the brief told the member in
+// one breath the entry window had already closed and in the next that it still had a day left.
+// `deadPlayReason` (already imported, already used a few lines below for the gate-block "moot"
+// qualifier) is the authoritative "is this play already dead for ANY reason" check, so gate the
+// forward-looking line on it instead of the narrower `watchEntryExpired` flag.
+test("composeSwingPlayBrief: WATCH play that is EXTENDED (chase risk) omits the forward-looking entry-window line even with a live entryDeadline (2026-10-08 gap fix)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "EXTENDED",
+      entryStatus: "EXTENDED_CHASE",
+      watchEntryExpired: false,
+      entryDeadline: "2026-09-10T13:15:00.000Z",
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.doesNotMatch(entry!.body, /Entry window closes/);
+  // The moot gate-block qualifier (same section) should still name the real reason.
+  assert.match(entry!.body, /extended past the valid entry window/);
 });
 
 test("composeSwingPlayBrief: WATCH play without entryDeadline omits the forward-looking line entirely (never fabricated)", () => {
@@ -451,8 +521,8 @@ test("composeSwingPlayBrief: Entry section reframes gates as moot once the entry
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\):/);
-  assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/, "must not read as an active/clearable blocker");
+  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\) — see Trade manager read below\./);
+  assert.doesNotMatch(entry!.body, /^\*\*Gates blocking entry/, "must not read as an active/clearable blocker");
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-09-18): the top-level `envelope.invalidation` line
@@ -518,8 +588,52 @@ test("composeSwingPlayBrief: Entry section still frames gates as the live blocke
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Gates blocking entry:\*\*/);
+  assert.match(entry!.body, /\*\*Gates blocking entry:\*\* 1 gate — see Trade manager read below\./);
   assert.doesNotMatch(entry!.body, /Also gate-blocked/);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-08): the full `code: reason` text has exactly
+  // one home now — "Trade manager read" (watchGateCoaching) — so it must not also appear here.
+  // Live repro: AMD WATCH brief, 2026-10-08 — this section and "Trade manager read" both carried
+  // the verbatim gate reason text.
+  assert.doesNotMatch(entry!.body, /Bucket not graduated/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): full end-to-end proof, through the real
+// composeSwingPlayBrief assembly (not just watchEntrySection in isolation), that a WATCH play's
+// gate reason text appears in exactly ONE of the brief's sections — "Trade manager read" — never
+// also in "Entry". Live repro: AMD WATCH brief, 2026-10-08 (`GET /api/market/swing/play-brief?
+// playId=SWING:AMD&ticker=AMD&status=WATCH`), both "## Entry" and "## Trade manager read" carried
+// the verbatim `entry_window_expired`/`g_s4_regime`-style reason text for the SAME gate. RED
+// before the fix (`git stash` on play-brief.ts alone reproduces the duplicate — the reason text
+// matches twice across the full envelope markdown), GREEN after.
+test("composeSwingPlayBrief: gate-block reason text appears in exactly one section, not duplicated across Entry + Trade manager read", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+      ],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  const narrative = brief.envelope.sections.find((s) => s.title === "Trade manager read");
+  assert.ok(entry);
+  assert.ok(narrative);
+  const needle = "Broad-market regime degraded";
+  assert.doesNotMatch(entry!.body, new RegExp(needle), "the reason text must not render in Entry");
+  const hits = (narrative!.body.match(new RegExp(needle, "g")) ?? []).length;
+  assert.equal(hits, 1, `expected the gate reason to appear exactly once in Trade manager read, found ${hits}`);
+  // NOTE: deliberately not asserting on the full `envelope.markdown`/`invalidation` here — the
+  // top-level "**Invalidation:**" callout has its own, already-tested, separate fallback to
+  // `play.gateBlocks?.[0]?.reason` (a different envelope field with a different UI purpose, not
+  // a third copy of this section-duplication bug) and asserting across it would conflate the two.
 });
 
 test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
@@ -881,7 +995,18 @@ test("composeSwingPlayBrief: regime read is labeled as TODAY's read, distinct fr
   assert.doesNotMatch(why!.body, /\*\*Discovery read:\*\*/, "old unqualified label must not reappear");
 });
 
-test("composeSwingPlayBrief: omits envelope.confidence (Largo C6 — no uncalibrated score)", () => {
+// UPDATED 2026-09-26 (Ask Largo standing mandate, operator directive): this test used to assert
+// confidence was ALWAYS omitted, because at the time swing had no calibrated evidence-coverage
+// signal to report and C6 correctly says omit rather than fabricate. That is no longer true —
+// `swingPlayBriefConfidence` (play-brief-confidence.ts) now derives a genuinely calibrated
+// evidence-coverage read from already-existing, already-thresholded fields (entryPresentPillars'
+// dossier.ts degraded gate, collectBriefUnavailableSources' own absence list) — the SAME kind of
+// evidence-coverage calibration verdict-core.ts/cortex-read.ts already use elsewhere for this exact
+// field. C6 is still honored: this fixture (a clean WATCH candidate with no thin-entry flag and no
+// unavailable sources) has a real, full evidence read, so a real "high" confidence is correct here,
+// not an omission — omission remains correct only for a genuine build failure (safeCompose's own
+// fallback), never for "we have nothing to say."
+test("composeSwingPlayBrief: populates envelope.confidence with a real evidence-coverage read (Largo C6)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-05T20:00:00.000Z",
@@ -894,7 +1019,10 @@ test("composeSwingPlayBrief: omits envelope.confidence (Largo C6 — no uncalibr
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
-  assert.equal(brief.envelope.confidence, undefined);
+  assert.ok(brief.envelope.confidence, "expected a populated confidence — this fixture has full coverage, nothing to omit");
+  assert.equal(brief.envelope.confidence!.level, "high");
+  assert.equal(typeof brief.envelope.confidence!.why, "string");
+  assert.ok(brief.envelope.confidence!.why.length > 0, "why must never be an empty placeholder");
 });
 
 test("composeSwingPlayBrief: arsenal.unavailable_sources reaches envelope.unavailableSources (BIE absence contract)", () => {
@@ -2239,6 +2367,12 @@ test("composeSwingPlayBrief: short interest evidence grounds Catalysts claims fo
 });
 
 test("composeSwingPlayBrief: short interest evidence freshness is stale when fund.as_of is old (Largo C2)", () => {
+  // readMs in composeSwingPlayBrief is real wall-clock time, not ctx.asOf — anchor relative to
+  // Date.now(), same pattern as the "2 days old" recent-freshness test below. A hardcoded calendar
+  // date here drifts out of the intended 15-60 day "stale" window as real time passes (caught live
+  // 2026-10-01: a literal "2026-08-01" aged past the 60-day ancient ceiling and the test started
+  // failing on an unrelated PR).
+  const thirtyFiveDaysAgo = new Date(Date.now() - 35 * 24 * 60 * 60_000).toISOString().slice(0, 10);
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-05 16:00 ET",
@@ -2258,7 +2392,7 @@ test("composeSwingPlayBrief: short interest evidence freshness is stale when fun
           days_to_cover: 2.1,
           short_volume_ratio: 0.35,
           price_target: null,
-          as_of: "2026-08-01",
+          as_of: thirtyFiveDaysAgo,
         },
         related: null,
         news: null,
@@ -2275,7 +2409,7 @@ test("composeSwingPlayBrief: short interest evidence freshness is stale when fun
   assert.equal(siEvidence?.provenance?.freshness, "stale");
   assert.equal(
     siEvidence?.provenance?.asOf,
-    "2026-08-01 16:00 ET",
+    `${thirtyFiveDaysAgo} 16:00 ET`,
     "date-only as_of must anchor at session close ET, not prior evening",
   );
 });
@@ -2367,6 +2501,9 @@ test("composeSwingPlayBrief: short interest evidence is OMITTED (not just tagged
 });
 
 test("composeSwingPlayBrief: short interest evidence still renders when fund.as_of is old-but-plausible (just under the ancient ceiling)", () => {
+  // readMs is real wall-clock time (Date.now()), not ctx.asOf — see the sibling "freshness is
+  // stale" test above for why a hardcoded calendar date drifts out of the intended window.
+  const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60_000).toISOString().slice(0, 10);
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-15 16:00 ET",
@@ -2387,7 +2524,7 @@ test("composeSwingPlayBrief: short interest evidence still renders when fund.as_
           short_volume_ratio: 0.35,
           price_target: null,
           // 45 days old — under the 60-day ceiling, so it must still render (as "stale", honestly).
-          as_of: "2026-08-01",
+          as_of: fortyFiveDaysAgo,
         },
         related: null,
         news: null,
@@ -2478,6 +2615,33 @@ test("composeSwingPlayBrief: prior-session scan evidence uses stale freshness, n
   const scanEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Swing discovery scan as of"));
   assert.ok(scanEvidence, "expected swing-scan evidence");
   assert.equal(scanEvidence?.provenance?.freshness, "stale", "prior-session scan must not claim recent freshness");
+});
+
+test("composeSwingPlayBrief: CLOSED play never surfaces today's live swing-scan evidence (matches Data freshness's own isClosed gate)", () => {
+  // Ask Largo deep-dive, 2026-10-06 — live repro: a CLOSED play (e.g. HUT, exited 2026-09-28)
+  // requested via GET /api/market/swing/play-brief today carried
+  // `{"text":"Swing discovery scan as of 2026-10-06 15:05 ET.","provenance":{"freshness":"recent"}}`
+  // in `envelope.evidence` even though the play's own outcome is an 8-day-old ledger record that a
+  // scan run TODAY has no bearing on. `dataFreshnessSection` (play-brief-intel.ts) already has an
+  // explicit `isClosed` gate that drops this exact "Swing scan: ..." line from the prose section
+  // for closed plays — this is the evidence-array sibling of that same `scanAsOf` field, which
+  // never got the matching gate, so the visible section correctly stayed silent while the hidden
+  // evidence[]/markdown-footer array kept citing an irrelevant "recent" live scan as if it
+  // supported the closed-play's historical claims.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-06 16:22 ET",
+    sessionDate: "2026-10-06",
+    scanAsOf: "2026-10-06T19:05:00.000Z",
+    scanSessionDay: "2026-10-06",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const scanEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Swing discovery scan as of"));
+  assert.equal(scanEvidence, undefined, "a CLOSED play's brief must not cite today's live discovery scan as evidence");
 });
 
 test("composeSwingPlayBrief: flowSnapshot is null when HELIX has no recent-flow read", () => {
@@ -2623,6 +2787,91 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(
     !/Thesis strength/i.test(verdict.body),
     `Verdict must not leak fabricated thesis strength, got: ${verdict.body}`,
+  );
+});
+
+// Live repro (2026-10-07, Ask Largo standing mandate): rungFromHealth/rungLabel map the AGGREGATE
+// health % to a band name purely off its ABSOLUTE value (thesis-health.ts) — "Minor drift" covers
+// health 70-84 regardless of whether anything actually moved since commit. A real production brief
+// (SWING:INTC:50, 2026-10-07 live fetch) rendered "**77%** · Minor drift" directly above five pillar
+// rows that EVERY one showed "(Δ +0.0 pts)" — i.e. the position's entry geometry was simply
+// imperfect at commit (chase-risk entry), nothing decayed afterward. `computeSwingThesisHealth`
+// already computes exactly this signal (`moves: moves.length > 0 ? moves : ["All swing pillars
+// unchanged since commit."]`, read everywhere else in this lane — e.g. play-brief-narrative-
+// coaching.ts's thesisPillarCoaching gates its own "What moved" line on this same array) but
+// `thesisHealthSection` never surfaces it, so the headline word "drift" directly contradicts the
+// itemized Δ-evidence one line below it with nothing in the section telling the reader which one is
+// true. Fix: when `moves` says nothing changed, say so right next to the band label instead of
+// leaving a reader to infer it from five identical deltas.
+test("composeSwingPlayBrief: Thesis health headline discloses 'unchanged since commit' when every pillar delta is zero (no false 'drift')", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 5.38,
+      mark: 5.83,
+      pnlPct: 8.4,
+      peak: 12.1,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 77,
+        entryIndex: 77,
+        currentIndex: 77,
+        delta: 0,
+        rung: "MINOR",
+        rungLabel: "Minor drift",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.9,
+            currentScore: 0.9,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 25.2,
+            deltaPts: 0,
+          },
+          {
+            id: "entry",
+            label: "Entry geometry",
+            weight: 0.22,
+            commitScore: 0.35,
+            currentScore: 0.35,
+            commitLabel: "chase risk",
+            currentLabel: "chase risk",
+            status: "intact",
+            contributionPts: 7.7,
+            deltaPts: 0,
+          },
+        ],
+        // The exact fallback string thesis-health.ts stamps when no pillar faded/lost — this is
+        // what the fix must key off, not a fresh ad-hoc check.
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 1, 10:00 AM",
+        computedAtEt: "Oct 7, 4:00 PM",
+        advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "multi-day thesis intact",
+      },
+    }),
+    asOf: "2026-10-07T20:00:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.match(
+    thesis!.body,
+    /77%.*Minor drift.*unchanged since commit/is,
+    `Thesis health headline must disclose 'unchanged since commit' when every pillar delta is zero, got: ${thesis!.body}`,
   );
 });
 
@@ -3348,6 +3597,129 @@ test("composeSwingPlayBrief: gamma magnet is surfaced as a structured envelope l
   assert.equal(magnet?.provenance?.source, "Vector");
 });
 
+// FINDINGS 2026-10-07 (Ask Largo standing mandate): watchForSection (play-brief-intel.ts) narrates
+// play.flagUnderlyingPx/play.entryTriggerUnderlyingPx in prose for every WATCH play ("Flag anchor:
+// ... track move from here", "Entry trigger: ... this is what actually fires the setup"), but
+// neither ever reached the structured envelope.levels array — same gap class as the gamma magnet
+// fix above, except these two levels come from the swing gate itself (not Vector/GEX), so they
+// are the one pair of levels that should ALWAYS be structurally available for a pre-entry setup,
+// including (and especially) when Vector/GEX are cold/stale and every other level is empty. Live
+// repro: WDC WATCH brief 2026-10-07, GEX positioning + Vector desk state both unavailable that
+// cycle, leaving envelope.levels completely empty despite the setup's own trigger geometry being
+// fully known.
+test("composeSwingPlayBrief: WATCH flag anchor + entry trigger are surfaced as structured envelope levels", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 411.04,
+    }),
+    asOf: "2026-10-07 10:43 ET",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor, "flag anchor level must be present for a WATCH play even with no Vector/GEX data");
+  assert.equal(flagAnchor?.price, 411.79);
+  assert.equal(flagAnchor?.provenance?.source, "Swing lane");
+  assert.ok(entryTrigger, "entry trigger level must be present for a WATCH play even with no Vector/GEX data");
+  assert.equal(entryTrigger?.price, 411.04);
+  assert.match(entryTrigger?.note ?? "", /break\/reclaim below fires entry/);
+});
+
+test("composeSwingPlayBrief: flag anchor/entry trigger provenance is anchored to detectedAt (pin time), not the scan clock (2026-10-07 gap fix)", () => {
+  // BUG: these two levels' `note` says "pinned when first flagged", but their provenance used to
+  // hardcode `asOf: ctx.asOf` (today's scan timestamp) and `freshness: "recent"` regardless of how
+  // long ago the play was actually flagged — directly contradicting the adjacent Entry section's
+  // own "First flagged N days ago" narrative built from the SAME `detectedAt` field. A play flagged
+  // weeks ago would read "freshness: recent" on these levels forever. Live repro: WDC, detectedAt
+  // ~23h before the scan — real production confirmed the mismatch before this fix.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 403.61,
+      detectedAt: "2026-10-06T16:07:50.000Z", // ~23h before asOf below
+    }),
+    asOf: "2026-10-07T15:06:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  const entryTrigger = brief.envelope.levels?.find((l) => l.label === "entry trigger");
+  assert.ok(flagAnchor && entryTrigger);
+  // A ~23h-old pinned value must NOT read "recent" (that bucket is <10 minutes) and must NOT be
+  // stamped with today's scan time — it must carry the real pin time and a freshness bucket that
+  // honestly reflects a day-old value.
+  assert.notEqual(flagAnchor?.provenance?.freshness, "recent");
+  assert.notEqual(flagAnchor?.provenance?.asOf, ctx.asOf);
+  assert.match(flagAnchor?.provenance?.asOf ?? "", /2026-10-06/, "asOf must reflect the real pin date, not the scan date");
+  assert.notEqual(entryTrigger?.provenance?.freshness, "recent");
+  assert.notEqual(entryTrigger?.provenance?.asOf, ctx.asOf);
+});
+
+test("composeSwingPlayBrief: flag anchor/entry trigger fall back to scan asOf/unknown freshness when detectedAt is absent (never fabricated)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "WATCH",
+      direction: "SHORT",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 403.61,
+      detectedAt: null,
+    }),
+    asOf: "2026-10-07T15:06:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const flagAnchor = brief.envelope.levels?.find((l) => l.label === "flag anchor");
+  assert.ok(flagAnchor);
+  assert.equal(flagAnchor?.provenance?.freshness, "unknown");
+  assert.equal(flagAnchor?.provenance?.asOf, ctx.asOf);
+});
+
+test("composeSwingPlayBrief: OPEN/CLOSED plays do not surface flag anchor/entry trigger as structured levels", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      flagUnderlyingPx: 411.79,
+      entryTriggerUnderlyingPx: 411.04,
+    }),
+    asOf: "2026-10-07 10:43 ET",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.levels?.find((l) => l.label === "flag anchor"), undefined);
+  assert.equal(brief.envelope.levels?.find((l) => l.label === "entry trigger"), undefined);
+});
+
 test("composeSwingPlayBrief: envelope level provenance uses ET stamps, not raw UTC ISO (C1)", () => {
   const staleAsOf = "2026-09-05T20:00:00.000Z";
   const ctx: SwingPlayBriefContext = {
@@ -3934,4 +4306,188 @@ test("composeSwingPlayBrief: OPEN play with ADD manage action gets a situational
     brief.envelope.followups?.some((f) => /should i add to this/i.test(f)),
     `expected an add-specific followup for an ADD manage action, got: ${JSON.stringify(brief.envelope.followups)}`,
   );
+});
+
+// ── Largo C6 confidence field (Ask Largo standing mandate, operator directive 2026-09-26) ──
+// These tests prove: (1) the `confidence` shown in the composed envelope always matches an
+// independent recomputation from the same inputs (no drift between "what's shown" and "what's
+// calculated"), and (2) adding it changes NOTHING else — not direction, not entry/stop/target
+// fields, not `liveStatus`/`manageAction`, not the play object itself (never mutated).
+
+/** Mirrors play-brief.ts's own (private, duplicated) statusBucket — same 3-line mapping, not a
+ *  new concept. See play-brief-confidence.ts's header for why bucket is an input, not re-derived. */
+function testStatusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
+  if (play.status === "CLOSED") return "closed";
+  if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") return "open";
+  return "watch";
+}
+
+test("composeSwingPlayBrief: confidence shown to members always matches an independent recomputation (OPEN, thin entry)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", entryPresentPillars: 2 }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const expected = swingPlayBriefConfidence(
+    ctx.play,
+    testStatusBucket(ctx.play),
+    collectBriefUnavailableSources(ctx)
+  );
+  assert.deepEqual(brief.envelope.confidence, expected);
+  assert.equal(brief.envelope.confidence?.level, "low");
+});
+
+test("composeSwingPlayBrief: confidence shown to members always matches an independent recomputation (OPEN, full entry)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", entryPresentPillars: null }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const expected = swingPlayBriefConfidence(
+    ctx.play,
+    testStatusBucket(ctx.play),
+    collectBriefUnavailableSources(ctx)
+  );
+  assert.deepEqual(brief.envelope.confidence, expected);
+  assert.ok(brief.envelope.confidence?.level === "high" || brief.envelope.confidence?.level === "moderate");
+});
+
+test("composeSwingPlayBrief: CLOSED play confidence is always high, matching the pure function directly", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "NVDA", direction: "LONG", status: "CLOSED" }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.envelope.confidence?.level, "high");
+  assert.deepEqual(
+    brief.envelope.confidence,
+    swingPlayBriefConfidence(ctx.play, "closed", collectBriefUnavailableSources(ctx))
+  );
+});
+
+test("composeSwingPlayBrief: adding confidence does not alter direction, invalidation, structureLadder, or the play object itself", () => {
+  const basePlay = {
+    status: "OPEN" as const,
+    recommendation: "HOLD" as const,
+    direction: "LONG" as const,
+    entryTriggerUnderlyingPx: 100,
+    invalidationUnderlyingPx: 90,
+    liveStatus: "HOLD",
+    manageAction: undefined,
+    entry: 5,
+    mark: 6,
+  };
+  const ctxThin: SwingPlayBriefContext = {
+    play: fixturePlay({ ...basePlay, entryPresentPillars: 2 }),
+    asOf: "2026-09-26T15:00:00.000Z",
+    sessionDate: "2026-09-26",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const ctxFull: SwingPlayBriefContext = {
+    ...ctxThin,
+    play: fixturePlay({ ...basePlay, entryPresentPillars: null }),
+  };
+
+  const playThinBefore = JSON.stringify(ctxThin.play);
+  const playFullBefore = JSON.stringify(ctxFull.play);
+
+  const briefThin = composeSwingPlayBrief(ctxThin);
+  const briefFull = composeSwingPlayBrief(ctxFull);
+
+  // Confidence itself legitimately differs (that's the feature) ...
+  assert.notEqual(briefThin.envelope.confidence?.level, briefFull.envelope.confidence?.level);
+
+  // ... but every trade-relevant field is untouched by which branch confidence took.
+  assert.equal(briefThin.envelope.bias, briefFull.envelope.bias, "direction/bias must not depend on confidence");
+  assert.equal(briefThin.envelope.invalidation, briefFull.envelope.invalidation, "invalidation (stop) must not depend on confidence");
+  assert.equal(briefThin.envelope.structureLadder, briefFull.envelope.structureLadder, "structure ladder (targets/levels) must not depend on confidence");
+
+  // Neither compose call mutated its own input play object.
+  assert.equal(JSON.stringify(ctxThin.play), playThinBefore, "composeSwingPlayBrief must not mutate ctx.play (thin case)");
+  assert.equal(JSON.stringify(ctxFull.play), playFullBefore, "composeSwingPlayBrief must not mutate ctx.play (full case)");
+
+  // The play's own liveStatus/manageAction/entry/stop fields survive unchanged on the object itself
+  // (composeSwingPlayBrief reads them, never rewrites them) — confidence is a pure addition to the
+  // envelope, not a rewrite of the position's own management state.
+  assert.equal(ctxThin.play.liveStatus, "HOLD");
+  assert.equal(ctxFull.play.liveStatus, "HOLD");
+  assert.equal(ctxThin.play.entryTriggerUnderlyingPx, 100);
+  assert.equal(ctxThin.play.invalidationUnderlyingPx, 90);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-07): `composeSwingPlayBrief`'s own `safeCompose`
+// (added by #5288's lineage for this file) correctly keeps the whole brief alive when `evidence`/
+// `levels` throw, falling back to `[]` — but that fallback was, until this fix, byte-identical to
+// a genuine "this product has nothing to show here" read. Largo product contract C3 names this
+// exact shape as the dangerous one: "Never return [] / null / {} for 'unavailable'... any fallback
+// that returns a degraded result the caller cannot distinguish from a real one is a defect even
+// when every test passes." A model reading `envelope.levels: []` after a crash has no way to tell
+// that apart from a WATCH play that genuinely has no flag/entry/wall levels yet. This test forces
+// `levelsFromContext` to throw (a getter trap on `flagUnderlyingPx`, the first field it reads for
+// a WATCH play) and asserts the resulting empty array is now accompanied by a disclosed
+// `unavailableSources` entry naming what failed — RED before the fix (levels silently `[]`, no
+// disclosure), GREEN after.
+test("composeSwingPlayBrief: a levels-build failure is disclosed via unavailableSources, not a silent empty array (Largo C3)", () => {
+  const throwingPlay = fixturePlay({ status: "WATCH" });
+  Object.defineProperty(throwingPlay, "flagUnderlyingPx", {
+    get() {
+      throw new Error("boom — simulated levelsFromContext build failure");
+    },
+    configurable: true,
+  });
+  const ctx: SwingPlayBriefContext = {
+    play: throwingPlay,
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  // The brief still builds (the whole point of safeCompose) and levels still falls back to [].
+  assert.deepEqual(brief.envelope.levels, [], "levels still falls back to [] — this is not what changed");
+
+  const disclosed = brief.envelope.unavailableSources?.find((s) => s.what_is_missing === "levels");
+  assert.ok(
+    disclosed,
+    "expected a disclosed unavailableSources entry naming the failed 'levels' build, not a silent []",
+  );
+  assert.match(disclosed!.reason, /failed to build/);
+  assert.equal(disclosed!.retryable, true);
+
+  // confidence must also reflect the failure (reads the same merged unavailableSources), never the
+  // "high — every live source resolved cleanly" read a bare [] would otherwise have produced.
+  assert.equal(brief.envelope.confidence?.level, "moderate");
+  assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
 });

@@ -334,22 +334,50 @@ export type ZeroDteBoardPayload = {
 // on a stale-while-revalidate cadence (single writer per cycle) so `as_of`/scores/marks
 // advance every cycle instead of freezing.
 const BOARD_SNAPSHOT_KEY = "zerodte:board:snapshot:v1";
-// How long the published snapshot lives in Redis. Comfortably longer than the serve/
-// refresh windows below so freshness is governed by the snapshot's own `as_of` age
-// (BOARD_SNAPSHOT_*_MS), never by the Redis key silently expiring under us.
-const BOARD_SNAPSHOT_TTL_SEC = 600;
+// How long the published snapshot lives in Redis. MUST be >= BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS
+// below (in seconds) or the key evaporates from Redis before that ceiling is ever reached — see its
+// comment for the incident this caused when the two were equal.
+const BOARD_SNAPSHOT_TTL_SEC = 1_200;
 // Soft age: once the shared snapshot is older than this, the NEXT reader kicks a
 // background rebuild (non-blocking SWR) so the cycle advances. Matches the ~5s member
 // poll cadence — most polls land inside a fresh snapshot and never trigger a rebuild.
 const BOARD_SNAPSHOT_REFRESH_MS = 5_000;
 // Past BOARD_SNAPSHOT_REFRESH_MS the reader kicks a background rebuild (non-blocking SWR).
-// Serve ceiling aligned with Redis TTL — a key still present is always served SWR-style
-// so a stalled writer never 504s the route; only a true cold miss blocks on build.
+// "Fully fresh" ceiling — intentionally NOT derived from BOARD_SNAPSHOT_TTL_SEC (see that
+// constant's comment for why these two used to be accidentally coupled).
 // Proven 2026-07-29: blocking cold builds under parallel audit load exceeded CF origin
 // timeout → HTTP 504 on /api/market/zerodte/board while the snapshot was still in Redis.
-const BOARD_SNAPSHOT_SERVE_MAX_AGE_MS = BOARD_SNAPSHOT_TTL_SEC * 1000;
-/** Serve stale shared snapshot up to 10m while rebuild runs — never 504 the route. */
+const BOARD_SNAPSHOT_SERVE_MAX_AGE_MS = 600_000;
+/** Serve stale shared snapshot up to 10m while rebuild runs — never 504 the route.
+ *  This is `localBoardIsServable`'s OWN ceiling for the per-replica last-good-board fallback
+ *  (a different mechanism — see that function), NOT the shared Redis snapshot's stale-serve
+ *  ceiling below. Keep them separate: this one has its own explicit 10m/11m regression test
+ *  (zerodte-board-convergence.test.ts) guarding a real historical as_of-regression incident;
+ *  widening it would be an untested, unrelated behavior change to a guard that already works. */
 const BOARD_STALE_SERVE_MAX_AGE_MS = 10 * 60_000;
+/**
+ * Past BOARD_SNAPSHOT_SERVE_MAX_AGE_MS, the shared Redis snapshot is still served — never 504
+ * the route — but explicitly as STALE: the reader kicks an unlocked cold rebuild rather than
+ * blocking on one. This ceiling bounds that window.
+ *
+ * BUG FIXED 2026-10-08: this used to BE BOARD_STALE_SERVE_MAX_AGE_MS, which was in turn equal to
+ * BOARD_SNAPSHOT_SERVE_MAX_AGE_MS (both 600_000) and to BOARD_SNAPSHOT_TTL_SEC*1000 (also
+ * 600_000) — all three the same number. That made this whole safety net dead code: by the
+ * instant a snapshot's age would have crossed into "stale but still servable", the Redis key
+ * had ALSO just hit its own TTL and was already gone, so `readSharedBoardSnapshot()` returned
+ * null and every read fell straight through to the cold-build-and-block path instead. Under
+ * real load (board builds measured live at 20-45s, worse under UW-queue backpressure) that
+ * path routinely blocks past `maxBlockMs` (default 3s) and serves the synthetic empty
+ * `upstream_ok:false` fallback to a real member — confirmed live 2026-10-08: 11 occurrences of
+ * "[zerodte-board-fallback] cold build still running past maxBlockMs" inside one 30-minute
+ * CloudWatch window during RTH, while `[zerodte-scan]`/`[zerodte-breakout]` logs in that SAME
+ * window show the real discovery pipeline finding 180-200+ setups every cycle — the board had
+ * a real, recent snapshot to serve and served an empty one instead because the dead branch
+ * could never reach it. Deliberately a SEPARATE constant from BOARD_STALE_SERVE_MAX_AGE_MS
+ * (see that constant's comment) so this fix cannot silently change the per-replica fallback's
+ * own, independently-tested 10-minute ceiling.
+ */
+const BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS = 20 * 60_000;
 // Cross-replica rebuild lock: elects ONE replica to rebuild+publish per cycle so N
 // replicas don't each re-derive the same snapshot. Auto-expires (writer crash safety);
 // the winner also deletes it right after publishing so the next cycle can advance.
@@ -1047,7 +1075,7 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   }
 
   // Soft-stale snapshot still in Redis — serve immediately, rebuild in background.
-  if (shared && shared.ageMs <= BOARD_STALE_SERVE_MAX_AGE_MS) {
+  if (shared && shared.ageMs <= BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS) {
     kickColdBoardBuild();
     return rememberGoodBoard(shared.value);
   }
@@ -1078,6 +1106,17 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
           // Never await the cold build here — that defeats maxBlockMs under load (live: 20–43s
           // member polls). Return a structurally valid empty board immediately; coldBuildInflight
           // keeps running and publishes to Redis for the next poll.
+          // 2026-10-02: the OTHER route to upstream_ok:false (readZeroDteLedgerChecked's catch,
+          // fixed in the previous commit) now logs its error, but this route — the cold build
+          // simply running past blockMs with no Redis snapshot or local fallback to serve instead
+          // — logged nothing at all. Confirmed live the same day: an upstream_ok:false instance
+          // with zero matching CloudWatch Logs lines, including the fix from the prior commit,
+          // which this route does not go through.
+          console.warn(
+            `[zerodte-board-fallback] cold build still running past maxBlockMs=${blockMs}ms with ` +
+              "no Redis snapshot or local last-good board to serve — returning the minimal empty " +
+              "fallback (upstream_ok:false). The cold build keeps running in the background."
+          );
           resolve(buildMinimalBoardFallback());
         })();
       }, blockMs);

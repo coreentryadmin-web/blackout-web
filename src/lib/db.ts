@@ -2489,6 +2489,31 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS trough_premium NUMERIC;
   `);
+  // Prospective NBBO quote-tick log (015_banger_quote_tick_log.sql), inlined for ECS standalone cold
+  // starts. Persists the SAME options-unified-snapshot data banger-live-sync already fetches every
+  // tick (zero additional Polygon calls) so a future exit-rule validation can replay production's own
+  // real, historically-faithful polling tape instead of Polygon's archived /v3/quotes tape, which a
+  // real validation attempt found does not always agree with the live snapshot service at the exact
+  // instant that matters (docs/audit/BANGER-EXIT-QUOTE-TICK-VALIDATION-2026-09-27.md). Purely
+  // additive: never read by the live exit-decision path, only written to (best-effort, fire-and-forget
+  // — see src/lib/banger/quote-tick-log.ts).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS banger_quote_tick_log (
+      id BIGSERIAL PRIMARY KEY,
+      contract_occ TEXT NOT NULL,
+      polled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      bid NUMERIC,
+      ask NUMERIC,
+      last_trade NUMERIC,
+      raw_mark NUMERIC,
+      reliable_mark NUMERIC
+    );
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_banger_quote_tick_log_occ_time
+    ON banger_quote_tick_log(contract_occ, polled_at);
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_banger_quote_tick_log_polled_at ON banger_quote_tick_log(polled_at)`);
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS email_captures (
@@ -7890,6 +7915,22 @@ export async function gradeSwingPosition(
        grade_methodology = $3,
        legacy_grade = COALESCE($4::jsonb, legacy_grade),
        realized_pnl_pct = COALESCE($5, realized_pnl_pct),
+       -- Ask Largo standing mandate (2026-10-07): capture whether a real scale-out trim was
+       -- ENFORCED on this leg at any point before it closed. status below is immediately
+       -- overwritten to CLOSED/ROLLED by this same statement, which previously discarded a sticky
+       -- TRIM status permanently -- every closed position then read as "never trimmed" regardless
+       -- of real history, because the play-brief adapter's trim-ladder gate (adapters.ts) only
+       -- trusts a literal status === 'TRIM', which a CLOSED row can never satisfy again. In a SQL
+       -- UPDATE, every expression in SET is evaluated against the row's PRE-update values, so
+       -- status = 'TRIM' here reads the live status one statement before it's clobbered below --
+       -- captured atomically, no separate read-then-write race. scale_out_grade was already a
+       -- reserved, schema-present column for exactly this kind of frozen-at-close fact (see
+       -- pinSwingScaleOutGrade above) but had zero writers; COALESCE leaves any future unrelated
+       -- writer's value untouched rather than overwriting it.
+       scale_out_grade = COALESCE(
+         scale_out_grade,
+         jsonb_build_object('trim_enforced_before_close', status = 'TRIM')
+       ),
        status = CASE WHEN status = 'ROLLED' THEN 'ROLLED' ELSE $6 END,
        closed_at = COALESCE(closed_at, NOW()),
        graded_at = NOW(),

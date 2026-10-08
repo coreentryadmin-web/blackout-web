@@ -38,6 +38,32 @@ test("resolveGroupBenchmark: SIC range → the right SECTOR ETF when no tight in
   assert.equal(resolveGroupBenchmark({ ticker: "AAPL", sicCode: "3571" })?.kind, "sector");
 });
 
+// FINDINGS (Ask Largo standing mandate deep-dive, 2026-10-07, live repro): GE Aerospace's real
+// Polygon sic_code is the exact top-level catch-all "3600" — Polygon's OWN sic_description for
+// that exact code is "ELECTRONIC & OTHER ELECTRICAL EQUIPMENT (NO COMPUTER EQUIP)", explicitly
+// disclaiming the Tech label — yet the 3600-3699 range rule (added for genuine electronics/
+// communications-equipment sub-codes like 3661/3674) swallowed the generic 3600 code too and
+// resolved it to XLK/Technology. GE is hand-classified "Industrials" in the static sector-map
+// (sector-map.ts) specifically because it's correct, but that correct tier-3 fallback was never
+// reached because the coarser tier-2 SIC-range rule claimed a match first. Live effect: the
+// member-facing Ask Largo swing play-brief's "Why this setup" section narrated GE Aerospace (a
+// jet-engine manufacturer) as "Industry read: lagging Technology (XLK) by 7.1%..." — the exact
+// "mechanically-nearest-but-substantively-wrong ETF" failure mode this file's own header already
+// names and the NO_SECTOR_BENCHMARK_THEMES guard already fixed for crypto-equity names (HUT/MSTR).
+test("resolveGroupBenchmark: the generic SIC '3600' catch-all code is not auto-classified Tech — it falls through to the static sector-map label", () => {
+  // GE Aerospace: live Polygon sic_code is the exact string "3600" (confirmed live 2026-10-07).
+  // Static sector-map correctly says "Industrials" — that must win, not a mechanical XLK guess.
+  assert.deepEqual(
+    resolveGroupBenchmark({ ticker: "GE", sicCode: "3600", sectorLabel: "Industrials" }),
+    { etf: "XLI", label: "Industrials", kind: "sector" },
+  );
+  // No static label either → honest null, never a guessed Tech benchmark for the ambiguous code.
+  assert.equal(resolveGroupBenchmark({ ticker: "WXYZ", sicCode: "3600" }), null);
+  // A genuine, more specific sub-code in the same range is UNCHANGED — this fix is scoped to the
+  // exact ambiguous top-level "3600" code, not the whole 3600-3699 band.
+  assert.equal(resolveGroupBenchmark({ ticker: "T", sicCode: "3661" })?.etf, "XLK");
+});
+
 test("resolveGroupBenchmark: no SIC → static sector-map label fallback (zero-IO)", () => {
   // XOM has no SIC in Polygon (confirmed live) → resolve from its sector-map label.
   assert.deepEqual(resolveGroupBenchmark({ ticker: "XOM", sectorLabel: "Energy" }), { etf: "XLE", label: "Energy", kind: "sector" });
@@ -80,6 +106,15 @@ test("resolveGroupBenchmark: a known crypto-equity name gets NO benchmark, never
   assert.equal(resolveGroupBenchmark({ ticker: "COIN", sectorLabel: "Tech" }), null);
   // A non-crypto name with the SAME SIC code is unaffected — the guard is ticker-scoped, not SIC-scoped.
   assert.equal(resolveGroupBenchmark({ ticker: "JPM", sicCode: "6021" })?.etf, "KBE");
+});
+
+test("resolveGroupBenchmark: ASST (Strive, bitcoin-treasury) gets NO benchmark — same mislabel shape as HUT", () => {
+  // Live-found 2026-10-07 (Ask Largo standing mandate): ASST was live on the Swing WATCH lane and, before
+  // being added to sector-map.ts's crypto-equity list, was unmapped by `sectorFor` — so this guard never
+  // fired and ASST fell straight into the SIC-range Financials fallback, exactly like HUT before it was
+  // added. Live play-brief cited "leading Financials (XLF) by 2.8%" for a bitcoin-treasury company.
+  assert.equal(resolveGroupBenchmark({ ticker: "ASST", sicCode: "6199", sicDescription: "FINANCE SERVICES" }), null);
+  assert.equal(resolveGroupBenchmark({ ticker: "ASST", sectorLabel: "Tech" }), null);
 });
 
 test("industryGroupRs01: name OUTperforming its group scores > 0; UNDERperforming clamps to 0", () => {

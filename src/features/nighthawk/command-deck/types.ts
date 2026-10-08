@@ -155,6 +155,11 @@ export interface TerminalPlay {
    * which it is not — this field is the one that actually is.
    */
   entryTriggerUnderlyingPx?: number | null;
+  /** Structural invalidation level (underlying terms), pinned at commit alongside
+   *  `entryTriggerUnderlyingPx` — the other leg the "check if entry was extended past
+   *  invalidation" closed-play coaching (play-brief-narrative-coaching.ts's `closedCoaching`)
+   *  needs to actually answer that question instead of just prompting it. */
+  invalidationUnderlyingPx?: number | null;
   peak?: number | null;
   trough?: number | null;
   /** Closed: % of peak MFE captured at exit. */

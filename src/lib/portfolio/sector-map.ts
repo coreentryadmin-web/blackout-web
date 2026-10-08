@@ -24,8 +24,32 @@ const SECTORS: Record<string, string[]> = {
   // Book-context sections reported only same-ticker concentration, never the cross-ticker basket.
   // Same gap shape/fix pattern as the 2026-09-20 crypto-equity and 2026-09-25 quantum-computing
   // extensions above.
-  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC"],
-  megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META"],
+  // Extended 2026-10-07 (Ask Largo standing mandate, live finding, same gap shape as the ALAB/
+  // CRDO/KLAC and crypto-equity leveraged-wrapper extensions above): a real committed book held
+  // SMCI LONG (MANAGING) *and* SMCX — "Defiance Daily Target 2X Long SMCI ETF" — LONG (MANAGING)
+  // at the same time, and separately MU LONG (WATCH) alongside MULL — "GraniteShares 2x Long MU
+  // Daily ETF" — LONG (MANAGING): the identical underlying stock held twice through a plain and a
+  // leveraged wrapper, same shape as the already-fixed MSTR/MSTU/MSTX and RBLX/RBLU precedent, but
+  // unlike those pairs SMCI/MU already have an established peer bucket here (semis), so the
+  // leveraged wrapper joins that bucket directly rather than getting its own isolated pair.
+  // AVGX ("Defiance Daily Target 2X Long AVGO ETF") is the same wrapper shape on AVGO, already
+  // listed below — added proactively for when the book holds it too (not yet live at time of
+  // writing, but the gap is identical in kind). Verified ticker identity via Polygon reference
+  // (`/v3/reference/tickers/<T>`) before adding, not guessed from the symbol alone.
+  // MTSI added 2026-10-08 (Ask Largo standing mandate, live finding, same gap shape as the
+  // ALAB/CRDO/KLAC extension above): a real committed book held MTSI LONG (MANAGING, Breakout
+  // continuation) concurrently with SMCI/INTC/SMCX/MULL/AVGX/MRVL — all already in this list —
+  // but MTSI itself had no entry anywhere in this map, so `checkPortfolioOverlap` resolved it to
+  // its own isolated `NAME:MTSI` cluster and MTSI's live play-brief rendered NO "Book context"
+  // section at all, hiding a real 7-name same-direction semis concentration from the one ticker
+  // whose brief should have shown it. MTSI (MACOM Technology Solutions Holdings) is confirmed via
+  // Polygon reference (`sic_code: "3674"`, "SEMICONDUCTORS & RELATED DEVICES") — not guessed from
+  // the symbol — and the SAME live play-brief's own independently-sourced "Peers" line already
+  // named LRCX and KLAC, both already in this list, corroborating the classification.
+  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC", "SMCX", "MULL", "AVGX", "MTSI"],
+  // AMZU ("Direxion Daily AMZN Bull 2X ETF") added 2026-10-07 for the same reason as SMCX/MULL
+  // above — AMZN already has a peer bucket here, so its leveraged wrapper joins it directly.
+  megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AMZU"],
   // PLTU is a leveraged single-stock ETF tracking PLTR itself — same bet, different wrapper.
   software: ["PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
   "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM"],
@@ -46,9 +70,19 @@ const SECTORS: Record<string, string[]> = {
   // already in this bucket, so they belong in the same concentration cluster, not their own isolated
   // one. Deliberately conservative: left out names with only partial/ambiguous crypto correlation
   // (HOOD, CRCL, APLD, BULL) rather than over-reaching this pass.
+  //
+  // Added 2026-10-07 (Ask Largo standing mandate, live finding): ASST (Strive, Inc. — the former
+  // "Asset Entities" shell that converted to a bitcoin-treasury company in 2025, same corporate
+  // structure as MSTR/Strategy) was live on the Swing WATCH lane and unmapped here, so it fell
+  // through `resolveGroupBenchmark` (industry-group-rs.ts) straight into the SIC-range fallback —
+  // Polygon classifies it under a generic finance/holding SIC, landing in the 6000-6499 Financials
+  // range exactly like HUT did before HUT was added to this same list (see that 2026-09-20 note
+  // above). Live play-brief for ASST cited "leading Financials (XLF) by 2.8%" as a real score
+  // pillar input for a bitcoin-treasury name — the identical mislabel this list exists to prevent,
+  // just on a name added to the list later than its peers.
   "crypto-equity": [
     "COIN", "MARA", "RIOT", "MSTR", "CLSK", "HUT", "CIFR", "BITF", "WULF", "IREN", "MSTU", "MSTX", "GLXY", "SBET",
-    "GEMI", "BKKT", "ABTC", "BLSH", "BMNR", "BTDR",
+    "GEMI", "BKKT", "ABTC", "BLSH", "BMNR", "BTDR", "ASST",
     "ETH", "ETHE", "ETHU", "ETHA", "IBIT", "GBTC", "BITO", "BITX",
   ],
   "china-adr": ["BABA", "PDD", "NIO", "JD", "BIDU", "LI", "XPEV", "FUTU"],
@@ -68,6 +102,15 @@ const SECTORS: Record<string, string[]> = {
   roblox: ["RBLX", "RBLU"],
   gamestop: ["GME", "GMEU"],
   sofi: ["SOFI", "SOFX"],
+  // Added 2026-10-07 (Ask Largo standing mandate, live finding): a real committed book held GLW
+  // (Corning, plain equity) *and* GLWG ("Leverage Shares 2X Long GLW Daily ETF") LONG in MANAGING
+  // at the same time — the literal same stock, held twice through a plain and a leveraged wrapper,
+  // completely invisible to `checkPortfolioOverlap` because GLW had no entry anywhere in this map
+  // at all (not even its own name), so both resolved to DIFFERENT `NAME:<ticker>` own-clusters
+  // (`NAME:GLW` vs `NAME:GLWG`) instead of the one cluster they actually are. GLW has no existing
+  // themed peer here (it is not a semis name), so — same precedent as roblox/gamestop/sofi above —
+  // it gets its own small pair cluster rather than being folded into an unrelated bucket.
+  corning: ["GLW", "GLWG"],
 };
 
 // Inverted once at module load: TICKER → sector.

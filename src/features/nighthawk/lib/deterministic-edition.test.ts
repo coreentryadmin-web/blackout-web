@@ -1676,3 +1676,74 @@ test("buildDeterministicEditionPlays: overnight swing mode (maxDte=null) builds 
   assert.equal(plays.length, 1, "overnight swing builds the 7-DTE contract");
   assert.equal(plays[0]!.ticker, "AAA");
 });
+
+// ── Legacy edition DTE weekend gap fix ──────────────────────────────────────────
+// Regression (2026-09-28): pickChainContract anchored contract DTE on wall-clock
+// build date (todayEtYmd) instead of the edition's target date (edition_for).
+// On a Friday-built edition for Monday, a Monday-expiring contract would pass the
+// 2-day minimum (measured from Friday) and ship as a normal swing — but by Monday
+// morning when members read/trade it, it's actually 0-DTE. Fix: thread edition_for
+// through and use it instead of todayEtYmd for DTE anchoring in pickChainContract.
+
+test("pickChainContract: Friday edition for Monday respects edition_for for DTE anchoring", () => {
+  // Simulate: Friday today, Monday edition target.
+  const friday = "2026-09-25"; // arbitrary Friday
+  const monday = "2026-09-28"; // 3 days later
+  
+  // Chain with a Monday-expiring contract (would be 2-DTE from Friday, 0-DTE from Monday).
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      // Monday expiry: passes 2-day minimum from Friday (2 days out), fails from Monday (0 days out).
+      row(100, { expiry: monday, callAsk: 4.2, callBid: 3.8, oi: 5000 }),
+      // Friday + 7 days (far dated, always passes).
+      row(100, { expiry: "2026-10-02", callAsk: 4.2, callBid: 3.8, oi: 5000 }),
+    ],
+  };
+
+  // WITHOUT edition_for (legacy behavior): Monday contract passes 2-day filter from Friday.
+  const legacyPick = pickChainContract(chain, "long", null, undefined, true, friday);
+  assert.ok(legacyPick, "legacy: Monday contract accepted with Friday as anchor");
+  assert.equal(legacyPick!.expiry, monday, "legacy: picks the Monday contract");
+
+  // WITH edition_for=Monday (fixed behavior): Monday contract is 0-DTE, rejected; falls through to shortDated pool.
+  // The short-dated pool accepts Monday's Monday contract only if premium ≤ cap, so it still appears here,
+  // but marked as a last-resort pick. Actually, let me reconsider: the logic is:
+  // - If maxDte is null/undefined (swing mode), contracts must have expiry > today (> Monday).
+  // - Monday = Monday fails this check, so it's skipped entirely.
+  // - Only the Friday+7 contract passes. Let me verify the logic in pickChainContract...
+  
+  // Actually, looking at the code: when dayMode is false and maxDte is null:
+  // - row.expiry <= today → skip (line 301 says "Swing never trades a same-day expiry")
+  // - So Monday (today) gets skipped, and only the far-dated contract is considered.
+  
+  const fixedPick = pickChainContract(chain, "long", null, undefined, true, monday);
+  assert.ok(fixedPick, "fixed: still picks a contract (the far-dated one)");
+  assert.equal(fixedPick!.expiry, "2026-10-02", "fixed: rejects Monday (0-DTE), picks far-dated");
+});
+
+// GAP FOUND (2026-09-28, nighthawk lane, PR #5536 follow-up): the fix above corrected contract
+// SELECTION (pickChainContract) to anchor on edition_for, but buildPlay's own displayed `dte` field
+// still read raw todayEtYmd() -- unaffected by the fix even though buildPlay already accepted
+// asOfEtYmd as a parameter and every call site already passed params.edition_for. A Friday-built
+// Monday edition would therefore show a materially overstated dte on any surviving pick, even after
+// the 0-DTE-by-target-day contracts were correctly filtered out of selection. Anchors the far-future
+// edition_for used here well outside any plausible real "today" at test-run time, so a regression
+// back to todayEtYmd() would produce a wildly different (and wrong) dte instead of matching by luck.
+test("buildDeterministicEditionPlays: displayed dte anchors on edition_for, not build-time today", () => {
+  const editionFor = "2030-01-04"; // arbitrary far-future date, never the real "today" at test-run time
+  const expiry = "2030-01-14"; // editionFor + 10 days
+  const ranked = [scored("FUT", "long", 68)];
+  const chains = { FUT: chainAround(120, { expiry }) };
+  const dossierMap = { FUT: dossier("FUT", 120) };
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    edition_for: editionFor,
+  });
+  const p = plays.find((pl) => pl.ticker === "FUT")!;
+  assert.ok(p, "play built for FUT");
+  assert.equal(p.dte, 10, "dte anchored on edition_for, not real build-time today");
+});

@@ -192,14 +192,22 @@ gex-wall-snapshot-poll.mjs` is that live intraday poller — built + smoke-teste
 
 **What is actually shipped.**
 
+> **UPDATED 2026-10-07** — the table below was last refreshed in the 2026-08-24 WS-21 entry and
+> went stale when PR #4608 ("fix(0dte): loosen whole-market discovery/commit gates for volume",
+> 2026-09-08) raised `BREAKOUT_MAX_CANDIDATES_CEILING` 150→**220** and `BREAKOUT_SCREEN_POOL`
+> 200→**280** without this doc being updated alongside it — caught by a DISCOVERY-lane stale-docs
+> sweep (`docs/audit/findings-staging/2026-10-07-intentional-design-item4-stale-constants.md`).
+> Values below now reflect `main` as of that date. The ranking formula, cap-floor, and cap-formula
+> rows were unaffected by #4608 and are unchanged.
+
 | | value | where |
 |---|---|---|
-| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **600** | `breakout-discovery.ts:295` |
+| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **880** | `breakout-discovery.ts:283` |
 | cap floor | `BREAKOUT_MAX_CANDIDATES` = **40** (a floor, not a ceiling) | `breakout-discovery.ts:69` |
-| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **150** | `breakout-discovery.ts:74` |
-| cap formula | `clamp(ceil(qualifying × 0.30), 40, 100)`, `qualifying` = **long + short** pools | `breakout-cap.ts:41-56` |
-| ordering | `rankMoversForChainFetch` — **gain-over-range** (`gain / ((h−l)/o)`) for both sides, $-volume breaks ties | `breakout-discovery.ts:91-112`, applied `:378-379` |
-| chain-fetch budget | `min(max(cap × 4, 60), BREAKOUT_SCREEN_POOL)` | `breakout-discovery.ts:378` |
+| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **220** | `breakout-discovery.ts:80` |
+| cap formula | `clamp(ceil(qualifying × 0.40), 40, 220)`, `qualifying` = **long + short** pools (pool-pct also raised by #4608, 0.30→0.40) | `breakout-cap.ts` |
+| ordering | `rankMoversForChainFetch` — **gain-over-range** (`gain / ((h−l)/o)`) for both sides, $-volume breaks ties | `breakout-discovery.ts:101` |
+| chain-fetch budget | `min(max(cap × 4, 60), BREAKOUT_SCREEN_POOL)` | `breakout-discovery.ts` |
 
 **Corrected measurement — 13 sessions (2026-07-20 … 2026-08-05), long side, favorable-first
 underlying-continuation proxy (+1.5% before −0.8%, 10:00 ET entry, real Polygon minute bars).**
@@ -413,6 +421,18 @@ not just trusted as a single aggregate. Same-ticker reuse across multiple exempt
 allowed (no dedup), exactly like the original tool's SPY/QQQ/IWM reuse — the median across many
 dates is what washes out one reused name's idiosyncratic days.
 
+**Third window, re-run 2026-10-07 (n=17 paired rows, 2026-09-16…2026-10-06).** Median realized RTH
+range: exemptible **4.73%** vs liquidity/cap-matched control **2.60%** — ratio **~1.82x**, roughly
+half the prior (2026-09-10) window's 3.9x, on a thinner sample (17 vs 71 paired rows). Match quality
+held (median `cap_ratio=1.0`, `dvol_ratio=0.906`), so the narrower ratio is not a matching-quality
+artifact. Reinforces, rather than contradicts, the "read window-internally" caution already stated
+above: even the best-controlled metric here still swings by ~2x across three real windows measured
+so far, which is itself evidence more windows are needed before any specific ratio could inform a
+gate threshold. The ratio has stayed above 1 in every window measured — "zero direct print-gap risk
+≠ ordinary volatility for that name" still holds directionally — but no single window's number
+should be read as *the* answer. No gate touched. Full write-up:
+`docs/audit/findings-staging/2026-10-07-g11-liquidity-control-rerun.md` (folded into `FINDINGS.md`).
+
 ---
 
 ## 6. Cortex `gex-walls` oppose MAGNITUDE (within a net-PASS commit) does not cleanly predict outcome
@@ -526,6 +546,29 @@ than a blind global change.
 ```
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx scripts/audit/swing-persistence-recall.mjs --days=90 --horizons=1,3,5 --min-n=8
 ```
+
+**UPDATE 2026-10-07 (post-loosening re-run, after the 5-archetype fix above shipped).** Re-ran the
+same command about a month later, against the CURRENT live rule (the recall script's mirrored
+`ARCHETYPE_PERSISTENCE` copy was updated in lockstep with the loosening fix, per that fix's own
+blast-radius note, so this measures the post-fix gate, not the pre-fix one). 193 total rows in the
+90-day window (down from 232 — a sliding window, not cumulative; older rows aged out as new ones
+were added). Result: the BLOCKED cohort shrank at both trustworthy horizons (34→24 at +1d, 20→16 at
++3d — consistent with the loosening moving some previously-BLOCKED candidates into CLEARED), but the
+REMAINING BLOCKED cohort now leads CLEARED more clearly than in the original measurement: `+1d`
+CLEARED 41.3% WR/−0.11% avg (n=143) vs BLOCKED **62.5%** WR/**+0.66%** avg (n=24, gap widened from
+13.3pp to 21.2pp); `+3d` CLEARED 46.3% WR/−0.79% avg (n=123) vs BLOCKED **56.3%** WR/**+1.02%** avg
+(n=16, flipped from "roughly tied" to a 10.0pp BLOCKED lead at the horizon this item itself called
+"more relevant for a days-to-weeks swing hold"). `+5d` is below the script's own `--min-n=8` floor
+(BLOCKED n=6) and correctly excluded. **Still no gate changed** — n=16-24 remains a small sample,
+and a "still blocked even after loosening" cohort could plausibly be enriched for a pattern (thin
+liquidity, a volatility extreme) this underlying-only proxy cannot distinguish from "the floor is
+net costly." But loosening the gate did not resolve the original mixed verdict — if anything the
+signal firmed up in the direction the original measurement's weakest point already pointed. Full
+write-up: `docs/audit/findings-staging/2026-10-07-swing-persistence-recall-rerun-post-loosening.md`
+(folded into `FINDINGS.md`). Suggested next step: a third re-run in 3-4 weeks once the BLOCKED
+sample grows past ~16-24, then a by-archetype/by-liquidity breakdown of the BLOCKED cohort
+specifically to test the self-selection hypothesis before treating the aggregate gap as evidence
+the floor itself needs recalibration.
 
 ## 8. Swing gate-COMPOUND funnel + discovery-pool loosening pool-size before/after — measured 2026-09-09/10, one genuine gap found and left UNFIXED (documented, not forced)
 

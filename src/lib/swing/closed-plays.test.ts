@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { closedDeckSourceFromRow, closedDeckSourcesFromChains } from "./closed-plays";
+import {
+  closedDeckSourceFromRow,
+  closedDeckSourcesFromChains,
+  trimEnforcedBeforeCloseFromScaleOutGrade,
+} from "./closed-plays";
 import type { SwingPositionRow } from "../db";
 
 function row(overrides: Partial<SwingPositionRow> = {}): SwingPositionRow {
@@ -59,9 +63,55 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.positionId, 1);
   });
 
+  // GAP FOUND (2026-09-28, Ask Largo standing mandate): entry_underlying_px/thesis_invalidation_px
+  // are static (pinned at commit, never depend on live state) so they stay valid post-close, but
+  // this mapper never carried them onto SwingClosedDeckSource — silently withholding the two
+  // numbers closedCoaching's "check if entry was extended past invalidation" line needs to answer
+  // its own question (play-brief-narrative-coaching.ts).
+  it("carries entry-trigger/invalidation underlying levels onto the closed deck source", () => {
+    const src = closedDeckSourceFromRow(row({ entry_underlying_px: 175, thesis_invalidation_px: 170 }));
+    assert.equal(src?.entryTriggerUnderlyingPx, 175);
+    assert.equal(src?.invalidationUnderlyingPx, 170);
+  });
+
+  it("reports null levels honestly when the row itself has none", () => {
+    const src = closedDeckSourceFromRow(row({ entry_underlying_px: null, thesis_invalidation_px: null }));
+    assert.equal(src?.entryTriggerUnderlyingPx, null);
+    assert.equal(src?.invalidationUnderlyingPx, null);
+  });
+
   it("skips open rows and ungraded closes", () => {
     assert.equal(closedDeckSourceFromRow(row({ status: "OPEN" })), null);
     assert.equal(closedDeckSourceFromRow(row({ graded_at: null })), null);
+  });
+
+  // GAP FOUND (2026-10-07, Ask Largo standing mandate): gradeSwingPosition (db.ts) unconditionally
+  // overwrites a CLOSED row's `status` to CLOSED/ROLLED, so a position that was really TRIM at some
+  // point before it closed could never again be told apart from one that never trimmed at all —
+  // every closed play-brief's trim ladder read "0 fired" regardless of real history. Fixed by
+  // persisting the pre-update status fact into `scale_out_grade` at grade time; this mapper must
+  // surface it honestly (real true/false, or null when the row predates the fix).
+  describe("trimEnforcedBeforeClose", () => {
+    it("surfaces true when scale_out_grade recorded a real pre-close trim", () => {
+      const src = closedDeckSourceFromRow(row({ scale_out_grade: { trim_enforced_before_close: true } }));
+      assert.equal(src?.trimEnforcedBeforeClose, true);
+    });
+
+    it("surfaces false (not null) when scale_out_grade recorded no trim — a real negative fact", () => {
+      const src = closedDeckSourceFromRow(row({ scale_out_grade: { trim_enforced_before_close: false } }));
+      assert.equal(src?.trimEnforcedBeforeClose, false);
+    });
+
+    it("is honestly null (never a fabricated false) when scale_out_grade is absent — a row graded before this field existed", () => {
+      const src = closedDeckSourceFromRow(row({ scale_out_grade: null }));
+      assert.equal(src?.trimEnforcedBeforeClose, null);
+    });
+
+    it("trimEnforcedBeforeCloseFromScaleOutGrade: ignores a non-boolean value rather than coercing it", () => {
+      assert.equal(trimEnforcedBeforeCloseFromScaleOutGrade({ trim_enforced_before_close: "yes" }), null);
+      assert.equal(trimEnforcedBeforeCloseFromScaleOutGrade(undefined), null);
+      assert.equal(trimEnforcedBeforeCloseFromScaleOutGrade({}), null);
+    });
   });
 
   // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence). `contract_type` is a

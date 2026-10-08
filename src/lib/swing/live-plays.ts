@@ -34,12 +34,18 @@ const LIVE: ReadonlySet<string> = new Set(["OPEN", "HOLD", "TRIM"]);
 // contradiction (see docs/audit/FINDINGS.md, same date). `manageAction` is the freshest read of
 // the two, so the reason's verb must come from it whenever it names an active reduce/exit, not
 // from the stale ledger status.
+// GAP FOUND (2026-09-28, Ask Largo standing mandate): live repro AAPL — `ADD` mapped to
+// "add to", which the `live ${verb} — ${archetype} thesis` template below turns into
+// "live add to — SECTOR_ROTATION thesis", a dangling preposition with no object. Every
+// other verb here reads fine standalone in that same template ("live exit — ... thesis",
+// "live trim — ... thesis"); "add to" was the only one written as if a following noun
+// phrase would complete it, and none does.
 const REASON_VERB_BY_MANAGE_ACTION: Partial<Record<SwingManageAction, string>> = {
   EXIT: "exit",
   STOP_OUT: "stop out",
   TAKE_PARTIAL: "trim",
   EXIT_RUNNER: "trim",
-  ADD: "add to",
+  ADD: "add",
 };
 
 function liveStatusOf(status: string): SwingLiveStatus | null {

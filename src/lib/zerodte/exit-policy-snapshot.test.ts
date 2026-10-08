@@ -94,6 +94,33 @@ test("WS-02 config_hash is stable + deterministic across repeated builds (pure, 
   assert.equal(buildResolvedExitPolicy("ratchet").config_hash, buildResolvedExitPolicy("ratchet").config_hash);
 });
 
+test("WS-02 trailing_rule never leaks a raw unrounded float (found 2026-10-06 live audit: tranche_fraction=0.3333333333333333)", () => {
+  // `trailing_rule` is a display string, so the shared response-boundary `roundFloats()`
+  // (round-floats.ts) can never reach a float baked into it — it only rounds genuine JSON
+  // number values. TRIM_SCALE_RULES.tranche_fraction is exactly 1/3, so an un-rounded
+  // interpolation serializes 16 noise digits straight into a member/Largo-facing API field.
+  // Any run of 3+ digits after a decimal point is exactly that noise signature.
+  const trim = buildResolvedExitPolicy("trim_scale");
+  assert.ok(
+    !/\.\d{3,}/.test(trim.trailing_rule),
+    `trailing_rule leaked an unrounded float: ${trim.trailing_rule}`,
+  );
+  assert.match(trim.trailing_rule, /tranche_fraction=0\.33;/);
+
+  // An extended-runner (200-400% target) policy takes the OTHER trailing_rule branch
+  // (tranche_fraction=0.25, already exact) — still assert the guard holds there too.
+  const extended = buildResolvedExitPolicy("trim_scale", { target_pct: 300, regime: "trend" });
+  assert.ok(
+    !/\.\d{3,}/.test(extended.trailing_rule),
+    `extended-runner trailing_rule leaked an unrounded float: ${extended.trailing_rule}`,
+  );
+
+  // The fix must be purely cosmetic: config_hash (the calibration-cohort key) is derived from
+  // the RAW, pre-rounding value and must stay byte-identical to the committed golden above —
+  // this display fix must never silently fork a calibration cohort.
+  assert.equal(trim.config_hash, GOLDEN_TRIM_SCALE_HASH);
+});
+
 test("WS-02 readFrozenExitPolicy: returns a present snapshot, null-guards legacy/malformed rows", () => {
   const snap = buildResolvedExitPolicy("ratchet");
   assert.deepEqual(readFrozenExitPolicy({ exit_policy_snapshot: snap }), snap);

@@ -449,6 +449,71 @@ describe("resolveSwingPlayForBrief: a separately-supplied positionId must resolv
   });
 });
 
+// BUG FOUND 2026-09-27 (Ask Largo standing mandate, live 5-engine monitor cycle). Unlike the
+// INTC case above (positionId supplied separately), a caller with ONLY a ticker + an explicit
+// `status=CLOSED` hint — no positionId at all — had NO guard: `pickLanePlayForBrief` never reads
+// `hints.status`, so it happily matched the ticker against a live lane row and returned it,
+// silently overriding the caller's explicit request for the CLOSED play. Live repro:
+// `GET /api/market/swing/play-brief?playId=SWING:HUT&ticker=HUT&status=CLOSED` (no positionId)
+// returned an ACTIVE TRIM position (a different contract entirely) instead of the CLOSED one;
+// the identical request WITH positionId correctly resolved the closed play. Fixed by skipping the
+// lane fallback outright whenever `status` explicitly says CLOSED — lane rows are never closed
+// (confirmed: serving-lane.ts has no CLOSED status path), so this can only ever help, not regress.
+describe("resolveSwingPlayForBrief: ticker-only + status=CLOSED (no positionId) must resolve the CLOSED position, not an unrelated live lane row for the same ticker", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("status=CLOSED with no positionId skips the live lane row and finds the closed position", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      {
+        ...openRow("HUT", 41),
+        status: "CLOSED",
+        graded_at: "2026-09-24T20:00:00.000Z",
+        closed_at: "2026-09-24T20:00:00.000Z",
+        realized_pnl_pct: -35.4,
+      },
+    ];
+    // A DIFFERENT, currently-live TRIM candidate for the same ticker — exactly the shape that
+    // silently won before this fix, because pickLanePlayForBrief never checked `status` at all.
+    mockLaneRows = [laneRow({ ticker: "HUT", status: "TRIM" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:HUT", // no embedded position id
+      ticker: "HUT",
+      status: "CLOSED", // explicit hint, no positionId supplied at all
+    });
+
+    assert.ok(resolved, "must resolve to something");
+    assert.equal(
+      resolved!.play.status,
+      "CLOSED",
+      `must resolve the CLOSED position, not the live TRIM row — got status "${resolved!.play.status}"`,
+    );
+  });
+
+  test("no status hint at all still prefers the live lane row (unchanged behavior)", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [
+      { ...openRow("HUT", 41), status: "CLOSED", graded_at: "2026-09-24T20:00:00.000Z", closed_at: "2026-09-24T20:00:00.000Z" },
+    ];
+    mockLaneRows = [laneRow({ ticker: "HUT", status: "TRIM" })];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolved = await mod.resolveSwingPlayForBrief({ playId: "SWING:HUT", ticker: "HUT" });
+    assert.ok(resolved, "must resolve to something");
+    assert.notEqual(
+      resolved!.play.status,
+      "CLOSED",
+      "with no status hint, the live lane row is still the reasonable default — this fix must not change that",
+    );
+  });
+});
+
 // BUG FOUND 2026-09-11 (Ask Largo standing mandate — roll-narrative trace, follow-up to #4794's
 // OCC-identity fix). root_position_id is STICKY to the very first leg (roll.ts), never to an
 // immediate parent, so a chain rolled TWICE — root(id=1)→rolled child(id=2, root_position_id=1)→
@@ -493,5 +558,88 @@ describe("resolveSwingPlayForBrief: a chain rolled TWICE still resolves via an I
       `must resolve the currently-OPEN grandchild leg (strike 120), not fall through to an unrelated fallback — got contract "${resolved!.play.contract}"`,
     );
     assert.equal(resolved!.play.status, "OPEN", "the resolved play must be the live OPEN leg, not a terminal one");
+  });
+});
+
+// BUG FOUND 2026-10-07 (Ask Largo standing mandate, live 5-engine monitor cycle, live repro SG
+// 9C/9.5C — two concurrent banger-origin positions). `pickLanePlayForBrief` (proven above) DOES
+// resolve the real, distinct `HorizonPlay` for a given positionId/strike hint, carrying its own
+// correct `positionId` field (banger_positions.id, per banger-lane-merge.ts). But
+// `resolveSwingPlayForBrief`'s lane-play branch then builds the final `TerminalPlay` via
+// `horizonRowToDeckSource(enriched)` — called with ONLY the HorizonPlay, never a second
+// `positionId` argument — and `horizonRowToDeckSource`'s own body does `positionId: positionId ??
+// null`, reading ONLY the (omitted) parameter, never `p.positionId`. So the resolved play's `id`
+// (`${horizon}:${ticker}${positionId ? ":"+positionId : ""}`) NEVER carries a positionId suffix
+// for ANY lane-resolved play — confirmed live: `GET .../play-brief?playId=SWING:SG&ticker=SG`
+// returned `"playId": "SWING:SG"` with no embedded id, for either of SG's two real concurrent
+// positions.
+//
+// Blast radius: `bookContextSection` (play-brief-intel.ts) does
+// `const { positionId } = parseSwingPlayId(play.id)` and passes `excludePositionId: positionId`
+// to `checkPortfolioOverlap` ONLY when non-null — with positionId always null here, it silently
+// falls back to `excludeSelfMatch: true`'s FIRST-ticker+direction-match-in-array heuristic
+// (portfolio.ts), which is DB-query-order-dependent, not identity-based. Live-confirmed on SG:
+// reviewing the 9C position (entry $0.33) AND reviewing the 9.5C position (entry $0.23)
+// BOTH rendered "Book context" citing the SAME banger id (#1396) as "a separate position" —
+// impossible unless one of the two reviews is citing ITSELF. The sibling "Other concurrent
+// position(s)" section (built via `laneRows`, not `checkPortfolioOverlap`) independently and
+// correctly named the TRUE other leg in both directions, proving the Book-context section alone
+// was wrong. Fix: pass the HorizonPlay's own `positionId` through to `horizonRowToDeckSource` at
+// this call site, exactly as `loadOpenTerminalPlay` already does a few lines up in this same file.
+describe("resolveSwingPlayForBrief: a lane-resolved play (banger-origin or swing-native) keeps its own positionId", () => {
+  let mod: typeof import("./play-brief-resolve");
+
+  before(async () => {
+    mod = await import("./play-brief-resolve");
+  });
+
+  test("two concurrent same-ticker same-direction lane rows each resolve to a play.id carrying THEIR OWN positionId, not a dropped/null one", async () => {
+    mockOpenRows = [];
+    mockClosedRows = [];
+    mockLaneRows = [
+      laneRow({
+        ticker: "SG",
+        status: "TRIM",
+        liveStatus: "TRIM",
+        livePnlPct: -24.2,
+        positionId: 1396,
+        contract: { ticker: "SG", strike: 9, right: "C", expiry: "2026-10-09", dte: 2, mid: 0.25, bid: null, ask: null, delta: null, openInterest: 0 },
+      }),
+      laneRow({
+        ticker: "SG",
+        status: "TRIM",
+        liveStatus: "TRIM",
+        livePnlPct: -56.5,
+        positionId: 1450,
+        contract: { ticker: "SG", strike: 9.5, right: "C", expiry: "2026-10-09", dte: 2, mid: 0.1, bid: null, ask: null, delta: null, openInterest: 0 },
+      }),
+    ];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const resolvedLower = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:SG",
+      ticker: "SG",
+      positionId: 1396,
+    });
+    assert.ok(resolvedLower, "must resolve to something");
+    assert.equal(
+      resolvedLower!.play.id,
+      "SWING:SG:1396",
+      `resolved play.id must embed the SPECIFIC leg's own positionId (1396) — got "${resolvedLower!.play.id}" ` +
+        `(a dropped/null positionId here is exactly what makes bookContextSection's self-exclusion fall back ` +
+        `to the broken order-dependent heuristic — see the bug note above)`,
+    );
+
+    const resolvedHigher = await mod.resolveSwingPlayForBrief({
+      playId: "SWING:SG",
+      ticker: "SG",
+      positionId: 1450,
+    });
+    assert.ok(resolvedHigher, "must resolve to something");
+    assert.equal(
+      resolvedHigher!.play.id,
+      "SWING:SG:1450",
+      `resolved play.id must embed the OTHER leg's own positionId (1450) — got "${resolvedHigher!.play.id}"`,
+    );
   });
 });
