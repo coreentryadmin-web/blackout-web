@@ -591,7 +591,10 @@ export function livePlayFromSwingPosition(
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
-  const markAsOf = row.last_mark_at ?? quote?.asOf ?? null;
+  // Prefer snapshot's explicit mark_as_of (populated every refresh from the quote timestamp), then fall back
+  // to the quote's own asOf timestamp, then null. The snapshot's mark_as_of carries the mark timestamp
+  // independently of whether a fresh quote was available this tick (off-hours, no refresh = stale mark + null quote).
+  const markAsOf = (manageEvent?.mark_as_of as string | null | undefined) ?? quote?.asOf ?? null;
 
   // Pinned at commit (commit.ts's buildCommitInsert) as `entry_context.signal_kinds` — the same
   // discovery-provenance kinds the G-S6 confluence gate graduated on. Read back here so
