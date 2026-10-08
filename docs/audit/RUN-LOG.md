@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-08 (15:35 UTC / Thu 11:35 ET) — [SEO] RTH wake: gamma-snapshot live, one transient age spike resolved, CLS clean
+
+Confirmed clock myself (Thu 11:35 ET, within 09:30-13:00). Resynced to `origin/main`
+(`86cb0d2` → `1472b95`, other-lane findings-fold). `/api/public/gex-snapshot?ticker=SPX` →
+`market_session: OPEN`, `degraded: false`, but `snapshot_data_age_seconds: 29` — elevated vs the
+usual single digits. Re-polled 5x at 2s intervals: resolved cleanly, `calculation_id` advancing
+monotonically (`...764280` → `...769406`), ages back to 0-5s throughout — the known-harmless
+cache-read artifact, not a real staleness regression; no finding opened. Purged Cloudflare edge,
+re-measured live homepage CLS under real RTH rendering — **0.0002, GOOD**. No defects found, no
+PR opened. Returning to normal search/authority posture at 13:00 ET.
+
 ## 2026-10-08 (14:06 UTC / Thu 10:07 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
 
 Resynced to `origin/main` (`f7aad57` → `c43290c`, other-lane data-correctness fix). GSC
