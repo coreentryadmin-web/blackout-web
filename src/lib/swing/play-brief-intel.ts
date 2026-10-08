@@ -3,7 +3,7 @@
  * Surfaces chart technicals, flow, GEX nodes, catalysts, watch levels, and hold plan.
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
-import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -67,12 +67,6 @@ import {
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
 } from "./play-brief-meridian-peer-core";
-
-function fmtPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
 
 // Absolute per-contract/level PRICE formatting is `fmtUsd` (aliased from @/lib/fmt-money's
 // `fmtOptionUsd` above) — see that module for the rounding-consistency history this file's own

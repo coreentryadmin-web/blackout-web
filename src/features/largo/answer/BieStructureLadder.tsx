@@ -3,6 +3,7 @@
 import { clsx } from "clsx";
 import type { StructureLadder, StructureLadderRisk, StructureLadderRung } from "@/lib/swing/play-brief-ladder";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
+import { fmtPct } from "@/lib/fmt-money";
 
 function fmtPrice(n: number): string {
   // Round for display — several endpoints serve unrounded floats (7499.360000001), same guard
@@ -10,9 +11,15 @@ function fmtPrice(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+// Delegates to the shared `fmtPct` (fmt-money.ts) rather than a local `n.toFixed(1)` — this
+// component's `distancePct` arrives over the wire already rounded once by the swing play-brief
+// route's `roundFloats(..., { distancePct: 1 })` override; re-rounding that already-1dp number
+// with the SAME canonical algorithm `fmtPct` uses (rather than a bare `toFixed`) is what keeps
+// this ladder's display in agreement with the narrative text's own `fmtPct` call for the
+// identical rung, instead of a second, independent rounding step that can disagree with it at a
+// half-unit boundary (fixed 2026-10-08 — see `fmtPct`'s header in fmt-money.ts for the repro).
 function fmtDist(n: number): string {
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}${n.toFixed(1)}%`;
+  return fmtPct(n, 1);
 }
 
 const ROLE_LABEL: Record<StructureLadderRung["role"], string> = {
