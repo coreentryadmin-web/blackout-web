@@ -31,6 +31,53 @@ time. If it is STILL spiking into double-digit seconds, the next place to look i
 itself or the un-batched far-dated fetch loop (bounded by `FAR_DATED_MAX_TARGETS=8`, expected small)
 — re-measure before assuming the batching approach itself was wrong.
 
+**RE-MEASURED 2026-10-07 ~21:10-23:45 UTC (coordinator cycle, hours after #5625 deployed — confirmed
+deployed: `a092bd9275` is an ancestor of the `main` HEAD running in prod, and multiple SUBSEQUENT
+merges built/deployed cleanly through `ecr-push-production.yml` the same afternoon) — the fix did
+NOT resolve the tail latency, and a direct benchmark shows its root-cause theory does not hold up:**
+- **ALB still spiking at the same magnitude, long after deploy.** `TargetResponseTime` 15-min buckets
+  21:25-21:40 UTC: p99 47.7-55.6s, Max 83.9-89.7s. Re-checked again in the last 30 min before writing
+  this (23:16-23:41 UTC, so ~10h post-deploy): p99 still hit 20.8-25.2s and Max 40.5s in the 23:26 and
+  23:31 buckets — smaller than the pre-open peak but still clearly the same double-digit-second tail,
+  not "a few seconds at most" as hoped. p50 stayed under 0.2s throughout both windows (confirms it is
+  still a tail-latency signature, not fleet capacity — ECS CPU/Mem averages stayed 12%/18-23% the
+  whole time).
+- **The timing correlation is real but no longer specific to `meridian-warm`/GEX.** In the
+  21:10-21:55 window the long `elapsed=` runs lining up with the ALB spikes were `platform-warm`
+  (30.6-81.3s), `meridian-warm` (35.5-80.3s) and one `desk-warm` (78.9s) — all three touch the GEX
+  heatmap path. But in a FRESH 23:00-23:45 UTC pull (post-close, `meridian-warm` not even running in
+  this window), the SAME ALB-spike correlation reappeared against `zerodte-warm` (13-32s runs,
+  several per 5-min cycle) and one `data-correctness` run (10.6s) — neither of which goes through
+  `buildGexHeatmapUncached`'s main accumulation loop. So whatever is actually causing the shared web
+  ECS tasks to stall concurrent member requests is not unique to the GEX contract-math loop; it
+  reproduces against unrelated background warm/cron handlers too.
+- **Direct benchmark disproves the #5625 root-cause theory outright.** Imported the REAL
+  `__test_vannaPerShare`/`__test_charmPerShare` from `polygon-options-gex.ts` (not reimplemented) and
+  ran them 11,500 times (SPX-chain-sized) with a representative strike/expiry/IV spread, timed with
+  `process.hrtime.bigint()` in isolation from any network I/O: **total 15.8ms, ~1.4µs/contract.**
+  Even un-yielded, the ENTIRE main accumulation loop's own closed-form math costs single-digit
+  milliseconds for the whole chain — three to four orders of magnitude too small to produce the
+  measured 60-85s cron runtimes or the 20-55s ALB p99 spikes. #5625's diagnosis (per-contract BS math
+  as the unyielded hot loop) is not consistent with this measurement; the batching it added is
+  harmless but was very likely never the actual bottleneck.
+- **Not re-opening #5625 and not reverting it** — the yield it added is correct practice regardless
+  and does not need undoing. But per this file's own standing instruction not to let a "shipped so
+  far" list go stale: **this item should be read as still OPEN, not resolved**, and the next
+  investigation should stop looking inside `accumulateContract`/the far-dated loop (ruled out by the
+  benchmark above) and instead look at (a) what `buildMergedBundle`/`loadMergedSpxDeskCore` and the
+  zerodte/data-correctness warm paths' OWN synchronous stretches actually are (JSON
+  serialization of large payloads, Map→object conversion, or other post-fetch transform work, none
+  of which has been benchmarked yet), and (b) whether the real mechanism is CPU-blocking at all,
+  versus connection-pool/libuv-threadpool contention from the sheer number of concurrent outbound
+  Polygon/UW calls these warm crons fan out (gzip/brotli compression and DNS resolution both run on
+  libuv's shared 4-thread pool and would stall unrelated requests on the same task without touching
+  the JS event loop or CPU% the way a tight synchronous loop would). Neither hypothesis is confirmed
+  here — flagging both as the honest next step rather than guessing further without a profiler.
+- Bench script used (not committed, scratch-only):
+  `__test_vannaPerShare`/`__test_charmPerShare` looped 11,500× with `process.hrtime.bigint()` timing,
+  spot=6700, strikes/IV/expiry varied across the loop — reproducible by any future session in under a
+  minute via `npx tsx` against the real exported test hooks, no fixture file needed.
+
 ---
 
 ## WATCH LIST — 2026-09-22 0DTE record `by_outcome` mislabeled two real trim-scale exit reasons — deploy pending validation
