@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-07T21:52:00Z",
+  "lastUpdated": "2026-10-08T04:23:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -623,6 +623,10 @@
     {
       "at": "2026-10-07T21:52:00Z",
       "summary": "Tonight's edition PUBLISHED -- editionFor flipped 2026-10-07->2026-10-08. A_edition back to GREEN (2 new plays). B_marks AMBER on the NEW tickers (MRNA261016C00202500, MUU261016C00038000) is now the expected, honest overnight state (no live quotes until premarket/RTH tomorrow) -- same reasoning as the 2026-10-07 post-close window, just rolled forward to the new picks. D_pull_status correctly SKIPPED ('morning confirmation not yet run for this date') -- that cron runs ~9:15am ET, not yet due. This closes the full day-cycle tracked since this session started: VST (entry $3.50 -> peaked ~$8.15, crossed its 2x trigger, PR #5641 shipped for trim observability) and MRVL (entry $6.30 -> round-tripped -67% to -35.7% and back) are now off the live edition and folded into the record (resolved=40, unchanged this cycle -- they likely get graded tomorrow once marked closed, not tonight). Will verify new plays MRNA/MUU correctness fresh tomorrow at pre-market/open: entry premiums sane, thesis consistent with marks once quotes go live, and D_pull_status flips to GREEN after the 9:15am ET morning-confirm cron runs."
+    },
+    {
+      "at": "2026-10-08T04:23:00Z",
+      "summary": "First DEGRADED edition verdict observed this session (04:21:54Z): editionFor computed as 2026-10-09 (one day ahead of the stable 2026-10-08 seen every prior cycle), A_edition AMBER 'edition served from degraded fallback source' (resolve-edition.ts's final emptyEdition+degraded:true branch -- no lastGoodEdition to fall back on), B_marks trivially GREEN (zero plays in a degraded/empty edition). Immediate re-run 34s later (04:22:28Z): editionFor back to the stable 2026-10-08, A_edition back to GREEN with MRNA/MUU, fully self-resolved. editionFor itself flipping between two near-simultaneous requests (not just the stale/degraded flag) is new -- not previously directly observed this session, though resolve-edition.ts's own code comments already document a 'captured just before a midnight-ET day rollover' transient-mismatch class as expected and self-healing. This fits that documented class (UTC 04:21 is ET ~00:21, i.e. just past ET midnight) rather than being a new bug -- logging as a confirmed first instance of a known category, not escalating. resolved=37 unchanged (still the post-rollover 14-day window, no new resolutions). Will watch for a 3rd instance before treating this as a pattern needing a code fix (e.g. the editionFor computation itself showing a brief race right at the ET boundary, distinct from the already-fixed served_for/stale staleness logic)."
     }
   ],
   "knownOpenItems": {
