@@ -7,6 +7,28 @@
 
 ---
 
+## WATCH LIST — 2026-10-08 Ask Largo swing play-brief rendered the raw SwingSubLane enum ("TACTICAL") instead of its human label — deploy pending validation
+
+**What was fixed:** `whyThisSetupSection`'s `**Sub-lane:**` line (`play-brief-intel.ts`) built the
+sub-lane name with `play.subLane.replace(/_/g, " ")` — a no-op on every real `SwingSubLane` value
+(`TACTICAL`/`STANDARD`/`EXTENDED` contain no underscore), so it printed the raw shouty enum
+("**Sub-lane:** TACTICAL") in the same brief whose own `archetypeTrackRecordSection` (further down
+the identical document) and whose live command-deck UI (`terminal-display.ts`) both already render
+the SAME field as its human label ("Tactical (5–7d)"). Same class of bug as the already-fixed
+archetype/COIN incident (2026-09-13), never applied to this sibling field. Added
+`subLaneLabelFromRaw` to `taxonomy.ts` (mirrors `archetypeLabelFromRaw` exactly) and wired it in.
+Full write-up: `docs/audit/findings-staging/2026-10-08-swing-brief-sublane-raw-enum.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any
+committed TACTICAL or STANDARD position (e.g. a 5-7 DTE or 8-15 DTE swing play — check
+`GET /api/market/nighthawk/horizons?view=swings` for a `committed` row's `subLane`) and confirm
+the "Why this setup" section's Sub-lane line reads "Tactical (5–7d)" / "Standard (8–15d)", never
+the bare raw enum ("TACTICAL"/"STANDARD"). Also spot-check that the archetype line just above it
+and the track-record section further down (when graduated) all still agree with each other — this
+fix should make all three renderings of the sub-lane consistent across the one brief.
+
+---
+
 ## WATCH LIST — 2026-10-07 Ask Largo swing play-brief "Vector spot not wired" line contradicted confidence/unavailableSources for dead WATCH candidates — deploy pending validation
 
 **What was fixed:** `tradeManagerNarrativeSection`'s `degradedReadLine` fallback (`play-brief-narrative.ts`) rendered "**Live read** — Vector spot not wired on this tick; desk still says WAIT" for a dead-but-not-closed WATCH candidate (entry extended past its valid window / invalidated / expired) in the exact same `GET /api/market/swing/play-brief` response whose `confidence` field read "high — Every live source this brief reads from resolved cleanly this cycle" and `unavailableSources: []`. This is the identical narrative-vs-chip disagreement PR #5620 fixed earlier the same day (2026-10-07) for the sibling `dataFreshnessSection` — that fix's own shared `isSwingPlayStaleCheckExempt` predicate was never wired into this second call site. Live-confirmed on `playId=SWING:NTAP` (`entryStatus: "EXTENDED_CHASE"`). Full write-up:

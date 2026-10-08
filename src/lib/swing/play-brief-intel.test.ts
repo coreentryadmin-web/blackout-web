@@ -4278,10 +4278,50 @@ test("meridianPeerSection: dedicated section — coaching bullets must not dupli
 
 test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
   const section = whyThisSetupSection(
-    fixturePlay({ archetype: "BREAKOUT", subLane: "earnings_lead" }),
+    fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" }),
   );
   assert.match(section.body, /\*\*Archetype:\*\* Breakout continuation/);
-  assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
+  assert.match(section.body, /\*\*Sub-lane:\*\* Tactical \(5.7d\)/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-08): `whyThisSetupSection` used to render
+// `play.subLane.replace(/_/g, " ")` — a no-op on every real `SwingSubLane` value, since none of
+// TACTICAL/STANDARD/EXTENDED contain an underscore — so a real committed play's sub-lane rendered
+// as the shouty raw enum ("Sub-lane: TACTICAL") instead of the human label
+// (`SWING_SUB_LANES[...].label`, "Tactical (5–7d)") that `archetypeTrackRecordSection` further down
+// this SAME brief and the live command-deck UI (`terminal-display.ts`'s `swingStatusDisplay`) both
+// already use for the identical field. The previous test above (then using a fictional snake_case
+// fixture value, "earnings_lead", which is not a member of `SwingSubLane` and can never occur on a
+// real play) could not catch this because `.replace` only does something on a value that never
+// actually ships. This test exercises every real value and asserts the raw enum form never leaks
+// into the brief.
+test("whyThisSetupSection: never renders the raw SwingSubLane enum verbatim for a real sub-lane", () => {
+  for (const [subLane, expectedLabel] of [
+    ["TACTICAL", "Tactical (5–7d)"],
+    ["STANDARD", "Standard (8–15d)"],
+    ["EXTENDED", "Extended (22–30d)"],
+  ] as const) {
+    const section = whyThisSetupSection(fixturePlay({ archetype: null, subLane }));
+    assert.match(
+      section.body,
+      new RegExp(`\\*\\*Sub-lane:\\*\\* ${expectedLabel.replace(/[()–]/g, (c) => `\\${c}`)}`),
+      `${subLane} must render as its human label, not the raw enum`,
+    );
+    assert.doesNotMatch(
+      section.body,
+      new RegExp(`\\*\\*Sub-lane:\\*\\* ${subLane}\\b`),
+      `${subLane} must never render as the shouty raw enum verbatim`,
+    );
+  }
+});
+
+// Unrecognized/foreign sub-lane values stay silent — same honest-absence discipline
+// `archetypeLabelFromRaw`'s callers already rely on, never a fabricated label.
+test("whyThisSetupSection: an unrecognized subLane string renders no Sub-lane line at all", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ archetype: "BREAKOUT", subLane: "NOT_A_REAL_SUB_LANE" }),
+  );
+  assert.doesNotMatch(section.body, /\*\*Sub-lane:\*\*/);
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): sectorLeadershipFacts is
