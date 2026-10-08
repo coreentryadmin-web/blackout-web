@@ -99,6 +99,37 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.doesNotMatch(v?.gateBlocks?.[0]?.reason ?? "", /needs more work/);
   });
 
+  // Live repro (2026-10-08, Ask Largo standing mandate): AMD (score 22.3, EVENT_DRIVEN/TACTICAL,
+  // first flagged 2026-09-29) routes to RESEARCH via the SAME `entryWindowExpired` path as the
+  // test above, but ALSO carries 3 real, live commit-gate blocks (G-S12 halt_feed_stale, G-S4
+  // regime_degraded, G-S14 cortex_net_negative) — the exact structural evidence
+  // `commitGateBlocksForVerdict` already maps to member-facing text for the sibling WATCH-section
+  // "past entry deadline + active commit gate blocks" case below. The RESEARCH early-return above
+  // never calls `resolveSwingCommitGateBlockedBy`/`commitGateBlocksForVerdict` at all, so those 3
+  // real gates were silently discarded — a member reading the live AMD brief saw ONLY
+  // "entry_window_expired" and had no idea AMD was also regime-degraded and Cortex-vetoed. This is
+  // the identical "real, already-computed gate evidence silently dropped" defect class the MU
+  // WATCH-section fix two tests below this one already fixed — just unfixed on this sibling path.
+  it("RESEARCH + expired entry window ALSO carrying real commit-gate blocks → SKIP with BOTH the expiry reason and the real gates (live AMD repro 2026-10-08)", () => {
+    const v = swingEntryVerdict({
+      servingSection: "RESEARCH",
+      setupState: "FORMING",
+      entryStatus: "PRE_TRIGGER",
+      entryWindowExpired: true,
+      commitGateBlockedBy: [
+        "gate:G-S12:halt_feed_stale",
+        "gate:G-S4:regime_degraded",
+        "gate:G-S14:cortex_net_negative",
+      ],
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    const codes = v?.gateBlocks?.map((g) => g.code) ?? [];
+    assert.ok(codes.includes("entry_window_expired"), "must keep the primary expiry reason first");
+    assert.ok(codes.includes("g_s12_halt_feed_stale"), "must surface the real halt-feed gate, not discard it");
+    assert.ok(codes.includes("g_s4_regime"), "must surface the real regime gate, not discard it");
+    assert.ok(codes.includes("g_s14_cortex"), "must surface the real cortex gate, not discard it");
+  });
+
   it("RESEARCH with no expiry/persistence/invalidation signal still falls through to the generic reason", () => {
     const v = swingEntryVerdict({
       servingSection: "RESEARCH",
