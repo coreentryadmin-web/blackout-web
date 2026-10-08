@@ -15,8 +15,19 @@
  * ── FAILURE POSTURE ──────────────────────────────────────────────────────────────────
  * Unclassified, never wrong. A name whose detail call fails is returned with a null
  * classification and simply does not join a cohort; it is not guessed into one from its name or
- * silently dropped from the lane. And a failed lookup is NOT cached — caching it would freeze a
- * transient upstream blip into a week of "unclassified" for that name.
+ * silently dropped from the lane.
+ *
+ * Two failure shapes, two different cache answers (fixed 2026-10-08, see FINDINGS): most
+ * failures (network error, 5xx, a circuit-breaker-open throw) are NOT cached — caching one would
+ * freeze a transient upstream blip into a week of "unclassified" for that name, which is why
+ * `classifyOne` returns bare `null` for them and the caller retries next build. But a CONFIRMED
+ * `HTTP 404` from `/v3/reference/tickers/{t}` means Polygon's reference index has no detail
+ * record for that ticker at all — a fact as stable as a present `sic_code` is, not a blip — so
+ * that one case is cached as the same "unclassifiable" `SectorClassification` a 200-with-no-code
+ * response already gets, for the same week-long TTL. Live-measured 2026-10-08: WBS/SOND (both
+ * real, actively-traded tickers with real price data, just missing a reference-detail record)
+ * 404'd 426 times across 7 days of CloudWatch logs with zero chance of ever succeeding, because
+ * the uncached path retried them on every single Meridian earnings-lane build.
  */
 
 import { withServerCache } from "@/lib/server-cache";
@@ -40,17 +51,43 @@ export type SectorClassifyResult = {
   failed: string[];
 };
 
+/** The one `classifySic`-shaped "no sector" value, reused so a confirmed-absent ticker is
+ *  indistinguishable from a 200 response that genuinely carries no `sic_code`. */
+const UNCLASSIFIABLE: SectorClassification = {
+  majorGroup: null,
+  label: null,
+  sicCode: null,
+  sicDescription: null,
+};
+
 async function classifyOne(ticker: string): Promise<SectorClassification | null> {
   try {
-    const { fetchPolygonTickerDetails } = await import("@/lib/providers/polygon-largo");
-    const res = (await fetchPolygonTickerDetails(ticker)) as
-      | { results?: Record<string, unknown> }
-      | null;
+    // Relative specifier, not the "@/..." alias — tsx's alias rewrite only applies to
+    // statically-parsed top-level `import ... from` statements, not a dynamic `import()` call
+    // (confirmed the hard way in flow-gex-enrichment.test.ts: a `@/...` dynamic import resolves
+    // fine under Next's real bundler but is silently unmockable, and sometimes unresolvable,
+    // under this repo's tsx test runner). Relative resolves identically under both.
+    const { fetchPolygonTickerDetails } = await import("../providers/polygon-largo");
+    let failureReason: string | null = null;
+    const res = (await fetchPolygonTickerDetails(ticker, undefined, (reason) => {
+      failureReason = reason;
+    })) as { results?: Record<string, unknown> } | null;
     const r = res?.results;
-    // A 200 with no results object is an upstream failure wearing a success code — treat it as
-    // one, so it stays out of the cache and gets retried, rather than being cached as "this
-    // company has no sector".
-    if (!r || typeof r !== "object") return null;
+    if (!r || typeof r !== "object") {
+      // A confirmed upstream "HTTP 404" means Polygon's reference-tickers index has no detail
+      // record for this ticker AT ALL — distinct from a transient network error or a 5xx, which
+      // stay as `null` (uncached, retried next build). Measured live 2026-10-08: WBS and SOND
+      // both 404 on `/v3/reference/tickers/{t}` on EVERY call, on both the primary (massive.com)
+      // and fallback (polygon.io) providers, despite both carrying real price/aggregates data
+      // (i.e. they are real, actively-traded tickers — Polygon's reference index is just missing
+      // their detail record) — 426 repeat failures in 7 days of CloudWatch logs, every one an
+      // upstream call that was never going to succeed. A 404 is as stable a fact as a present
+      // `sic_code` is (the file-level comment above already banks on SIC codes "effectively never
+      // changing" for a week-long cache), so treat it the same way: a real, cacheable
+      // classification of "unclassifiable" rather than a failure to retry forever.
+      if (failureReason === "HTTP 404") return UNCLASSIFIABLE;
+      return null;
+    }
     return classifySic(r.sic_code, r.sic_description);
   } catch {
     return null;

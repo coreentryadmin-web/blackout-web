@@ -265,11 +265,15 @@ function symToPath(symbol: string): string {
   return symbol.toUpperCase();
 }
 
-export async function fetchPolygonTickerDetails(ticker: string, signal?: AbortSignal) {
+export async function fetchPolygonTickerDetails(
+  ticker: string,
+  signal?: AbortSignal,
+  onFailure?: (reason: string) => void
+) {
   return polygonGet<Record<string, unknown>>(
     `/v3/reference/tickers/${ticker.toUpperCase()}`,
     {},
-    undefined,
+    onFailure,
     { signal }
   );
 }
