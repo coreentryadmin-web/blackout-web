@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-08 (14:06 UTC / Thu 10:07 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
+
+Resynced to `origin/main` (`f7aad57` → `c43290c`, other-lane data-correctness fix). GSC
+opportunity scan: same 3 striking-distance queries as prior cycles ("dealer gamma" pos 12.4,
+"gamma three trading" pos 11.9, "is 0dte gambling" pos 11.5), all already well-optimized per
+`docs/audit/SEO-GROWTH-STRATEGY.md`'s register — no new query entered striking distance, no
+on-page churn. CTR-gap and deep-demand bands unchanged in shape (authority-limited). Live
+re-verify: `robots.txt` still `Allow: /api/og` before the broader `/api` disallow; entity JSON-LD
+(`#organization`/`#website` `@id` graph + `knowsAbout`) present on live homepage. 28-day totals:
+22 clicks / 1366 impressions / avgpos 11.2 — consistent with the ongoing steady-improvement
+trend, nothing new attributable to a single shipped change this cycle. No PR opened.
+
 ## 2026-10-08 (13:35 UTC / Thu 09:36 ET) — [SEO] RTH wake: gamma-snapshot live and correct, CLS clean
 
 Confirmed clock myself (Thu 09:36 ET, not a holiday) before treating this as RTH. Resynced to
