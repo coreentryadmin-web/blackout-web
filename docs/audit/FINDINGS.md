@@ -4,6 +4,215 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-08 — [FINDING, largo-narrative] Swing WATCH Command Deck pill (and the Ask Largo brief's own "Entry stance" label, which sources from the same function) showed generic WAIT on an EXTENDED-chase play instead of distinguishing it from a live setup — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (narrative/UX clarity — the play-brief's other fields already disclosed the real state, so no wrong trade-management data reached a member, but the quick-scan pill and the brief's own top-line label both under-communicated it) |
+| **Component** | `src/features/nighthawk/command-deck/play-card-lifecycle.ts` (`swingActionDisplay`) |
+| **PR** | fix/swing-watch-extended-chase-pill |
+
+### Root cause
+
+`swingActionDisplay`'s WATCH branch only special-cased ONE of `entry-enterability.ts`'s several
+"this WATCH play is already dead" reasons — the calendar-deadline one (`play.watchEntryExpired`,
+fixed 2026-09-12 to render an `EXPIRED` pill instead of generic `WAIT`). A DIFFERENT dead reason,
+`setupState === "EXTENDED"` / `entryStatus === "EXTENDED_CHASE"` (price moved too far past the
+trigger to enter cleanly — a structural "chase" condition, unrelated to the calendar clock), left
+`watchEntryExpired` `false` and fell straight through to the same generic `WAIT` pill the
+2026-09-12 fix was written to distinguish FROM. `deadPlayReason()` (entry-enterability.ts) is
+already the canonical, broader "is this play dead for ANY of the four reasons" check —
+`play-brief.ts`, `entry-verdict.ts` and `serving.ts` already read it — but `swingActionDisplay`
+never adopted it, so it under-covered exactly the same way the now-fixed #5687 (today's earlier
+wording-collision finding) under-covered before its own fix.
+
+This matters beyond the Command Deck pill itself: `watchEntrySection` (`play-brief.ts`) sources
+its own "**Entry stance:**" label directly from `swingActionDisplay(play)?.label` (line ~482), so
+the SAME gap reached the Ask Largo play-brief's own top-of-section label, not just the deck badge.
+
+**Corrects a stale claim in today's earlier finding** (`2026-10-08-swing-watch-entry-window-
+wording-collision.md`, PR #5687/the "blast radius" section): it asserted *"`play-card-
+lifecycle.ts`'s EXPIRED pill ... already treat[s] EXTENDED-chase as a dead state"* — confirmed
+false by reading the actual source (`swingActionDisplay` never checked `setupState`/`entryStatus`
+at all prior to this fix). Flagging this here rather than silently correcting it, per this repo's
+own standing instruction to verify every claim against current source rather than trust a prior
+write-up at face value.
+
+### Evidence
+
+Live repro, same NTAP WATCH play #5687 already found (`GET
+/api/market/swing/play-brief?playId=SWING:NTAP&ticker=NTAP&status=WATCH`, 2026-10-08 ~07:57 ET,
+post-#5687-merge): `entryStatus: "EXTENDED_CHASE"`, `setupState: "EXTENDED"`,
+`watchEntryExpired: false`. The brief's own "Entry" section already correctly says:
+
+```
+Setup: **EXTENDED**
+Entry geometry: **EXTENDED_CHASE**
+```
+
+and the top-level verdict/invalidation line already correctly says "Extended past the valid entry
+window — do not chase; wait for a reset." — but the SAME response's "**Entry stance:**" line (and
+the Command Deck pill `swingActionDisplay` drives) read **WAIT**, identical to what a freshly-
+forming, perfectly live WATCH candidate shows.
+
+Added 3 regression tests to `play-card-lifecycle.test.ts` reproducing: (1) `setupState: "EXTENDED"`
+→ must render `EXTENDED`, not `WAIT`; (2) `entryStatus: "EXTENDED_CHASE"` (the exact live NTAP
+shape) → same; (3) `watchEntryExpired: true` together with `entryStatus: "EXTENDED_CHASE"` still
+resolves to `EXPIRED` (the narrower, pre-existing check still wins when both happen to be true —
+no regression to the 2026-09-12 fix). Confirmed RED pre-fix via `git stash` (2 of the 3 new tests
+failed against the old source — the third, EXPIRED-wins-over-EXTENDED, trivially passed since it
+only exercises the pre-existing `watchEntryExpired` branch) and GREEN post-fix: full
+`play-card-lifecycle.test.ts` suite 57/57 pass. `npx tsc --noEmit` clean.
+
+### Fix rationale
+
+Added a second, narrower condition directly beneath the existing `watchEntryExpired` check —
+`if (play.setupState === "EXTENDED" || play.entryStatus === "EXTENDED_CHASE") return { label:
+"EXTENDED", tone: "watch" };` — rather than swapping in the full `deadPlayReason()` helper.
+Considered reusing `deadPlayReason` directly (it's already imported two call sites away in
+`adapters.ts`, so the import path is proven safe from this feature directory), but:
+- `watchEntryExpired`'s existing, separately-tested `EXPIRED` branch must keep winning when BOTH
+  are true (confirmed by the third new test) — `deadPlayReason`'s own internal ordering already
+  checks `watchEntryExpired` before the EXTENDED case, so reusing it whole would have been
+  equivalent here, but the two-line, one-new-condition diff is smaller and changes nothing about
+  any OTHER status branch (CLOSED/OPEN/HOLD/TRIM) that this function also handles.
+- A distinct `EXTENDED` label (not reusing `EXPIRED`) keeps the two dead-reasons member-legible as
+  different failure modes — "EXPIRED" specifically means the calendar deadline passed; "EXTENDED"
+  means price ran away from the entry zone — matching the vocabulary `taxonomy.ts`'s
+  `SwingSetupState`/`SwingEntryState` and the brief's own "Setup: EXTENDED" / "Entry geometry:
+  EXTENDED_CHASE" lines already use, rather than collapsing both into one pill label.
+- `setupState === "INVALIDATED"` and `entryStatus === "EXPIRED"` (contract-expired) were
+  deliberately NOT added here: unlike EXTENDED-chase, no LIVE repro surfaced either state reaching
+  `swingActionDisplay` with `status === "WATCH"` this cycle, and extending scope beyond a confirmed
+  live reproduction risks an unverified behavior change on this file's other status branches. Left
+  as a named, open follow-up rather than silently folded in.
+
+### Blast radius
+
+Single function, single call site inside it (the WATCH branch of `swingActionDisplay`) — the
+CLOSED/OPEN/HOLD/TRIM branches of the same function are untouched, and the new condition is
+additive (fires only when `setupState`/`entryStatus` carry these specific values, both `undefined`
+in every pre-existing test fixture, so no existing assertion changed). Two consumers benefit from
+the single fix: the Command Deck's own WATCH pill, and `play-brief.ts`'s `watchEntrySection`,
+which sources its "Entry stance" label from this same function.
+
+## 2026-10-08 — [FINDING, largo-narrative] Ask Largo swing play-brief rendered "Thesis **intact**" for Banger-origin positions off a hardcoded constant, not a calibrated read — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (narrative/UX honesty — a Largo C6 "fabricated certainty" violation; no trade-management action or sizing depends on this field, but a member reads it as a calibrated green light) |
+| **Component** | `src/lib/swing/play-brief-intel.ts` (`watchForSection`) |
+| **PR** | fix/swing-banger-thesis-intact-largo-brief |
+
+### Root cause
+
+`horizonPlayFromBangerPosition` (`src/lib/swing/banger-lane-merge.ts:159`) stamps
+`thesisLevel: "intact"` as a fixed literal on **every** Banger-origin merged Swing position,
+regardless of price action — there is no per-position 7-pillar thesis dossier for this lane (the
+same root cause the file's own header comment and `BANGER_LEDGER_REGIME_LABEL` sentinel already
+document for the `regime` field, and that `thesis-health.ts`'s `thesisHealthUncalibrated()` +
+`calibratedThesisPillars()` already exist to catch for the aggregate **Thesis health** panel).
+
+That existing coverage stops at the aggregate panel. `watchForSection` in `play-brief-intel.ts`
+separately renders a one-line `Thesis **${play.thesisBreak.level}** — ${play.thesisBreak.note}`
+sentence for every non-closed-bucket play whenever `thesisBreak` is set at all — with no check for
+the Banger-ledger sentinel. For a Banger-origin row, `thesisBreak.level` traces straight back to
+that hardcoded `"intact"`, so this line rendered **"Thesis intact"** unconditionally, including for
+positions sitting a few percent from a hard stop-out, right next to the SAME section's own honest
+"Premium stop rail" / "Premium target rail" lines (which do carry the real, computed cushion).
+
+### Evidence
+
+Live repro via `GET /api/market/swing/play-brief?playId=SWING:<T>&ticker=<T>&positionId=<id>&status=OPEN`
+(2026-10-08, pre-market, authenticated via `mintClerkPremiumSession`):
+
+- **SWING:CRI:1510** — `signalKinds: ["BANGER"]`, live P&L **-59.1%** (entry $0.55, mark $0.23).
+  Brief body: `"Thesis **intact** — below the 2× partial and above the hard stop\n\n...\n\nPremium
+  stop rail: **$0.22** — 2% cushion from current mark — thesis breaks if mark closes
+  below\n\nPremium target rail: **$1.10** — **389%** move still needed..."` — i.e. "intact" sitting
+  two lines above the honest disclosure that the position is a 2% move from its own stop.
+- **SWING:GLW:1479** — same shape, live P&L **-56.1%** (entry $3.20, mark $1.41), "Thesis
+  **intact**" again, 9% cushion from the stop rail.
+- Cross-check: the SAME two briefs' "Thesis health" section already correctly said *"Inputs not
+  wired for committed positions — aggregate score withheld; pillar breakdown not shown"* — proving
+  the aggregate-panel guard works exactly as designed, while this separate one-line sentence,
+  fed from the same underlying hardcoded field, had no equivalent guard.
+- Confirmed via `GET /api/market/nighthawk/horizons?view=swings`: of 81 committed SWING rows, 78
+  carry `signalKinds: ["BANGER"]` (matches `swing/record`'s `bangerOpens: 78` of 80 total opens) —
+  this is the majority of the live committed book, not an edge case.
+
+Added two regression tests to `play-brief-intel.test.ts`: (1) a Banger-origin fixture
+(`regime: BANGER_LEDGER_REGIME_LABEL`, `thesisBreak: {level:"intact", note:"below the 2× partial
+and above the hard stop"}`) must render NEITHER `"Thesis **"` NOR the note text; (2) a sibling
+NATIVE-position fixture (ordinary `regime` string) must still render `"Thesis **intact** —
+structure holding"` unchanged — proving the suppression is scoped to the Banger sentinel, not a
+blanket removal of the whole feature. Confirmed RED pre-fix via `git stash` (test 1 failed, test 2
+passed) and GREEN post-fix: full `play-brief-intel.test.ts` suite 210/210 pass. Related suites
+(`play-brief.test.ts`, `thesis-health.test.ts`) 156/156 pass. `npx tsc --noEmit` clean (0 errors).
+
+### Fix rationale
+
+Guarded the existing line with `play.regime === BANGER_LEDGER_REGIME_LABEL` — the exact sentinel
+check `thesisHealthUncalibrated()` and `serving-lane.ts`'s `attachThesisExplanation` guard already
+use to detect "this is a Banger-ledger row with no real per-position read," rather than inventing a
+second detection mechanism. Suppression (not a reworded line) was chosen because the sentence's
+only substantive content — how close the position sits to its own scale-out stop/target — is
+*already* stated, more precisely (exact $ rail + exact % cushion), by the two lines immediately
+below it in the same section; a reworded "Thesis: mechanical hold, not calibrated" line would just
+be a third restatement of the same fact already covered twice. Scoped to this one line only — the
+closed-bucket suppression immediately above it, and every other section's rendering of
+`thesisBreak`, are untouched.
+
+### Blast radius
+
+Single call site (`watchForSection`'s one `lines.push` for the thesis line). Does not touch
+`calibratedThesisPillars`/`thesisHealthUncalibrated` (the aggregate panel, already correct) or any
+NATIVE swing position's rendering (the sibling regression test proves this explicitly). No other
+reader of `play.thesisBreak` was found to lack an equivalent Banger-origin guard in this pass —
+`play-brief.ts:1307-1308`'s `thesisBreak?.level === "break"` branch only fires on an actual
+`"break"` level, which a Banger row can never produce (hardcoded to `"intact"`), so it was not
+independently reachable here and is left untouched rather than speculatively changed.
+
 ## 2026-10-08 — [FINDING, P2 infra/performance] Unstaggered cron-schedule collision (desk-warm/meridian-warm/zerodte-warm/swing-active-refresh) RECONFIRMED LIVE, still contributing to sustained ALB tail latency — fix attempt BLOCKED by this session's own permission classifier, same blocker as a month ago
 
 > **kind:** `FINDING`
@@ -419,40 +628,6 @@ OTHER than synchronous per-ticker processing bursts (e.g. genuinely saturating t
 even at 8-at-a-time, or Polygon admission-queue wait time itself) — do not conclude this fix failed
 without that live re-measurement, and do not guess a second fix without it, per this file's own
 standing discipline.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-10-08 — [FINDING, performance] `heatmap-warm`'s 20s in-app-leader heal threshold made it "overdue" the instant any normal run finished, driving a ~70% near-continuous duty cycle during the pre-EventBridge pre-market window — FIXED
 
