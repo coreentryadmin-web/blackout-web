@@ -122,6 +122,28 @@ test("horizonPlayFromBangerPosition reports markAsOf null when no mark was ever 
   assert.equal(play!.markAsOf, null);
 });
 
+// Regression for the live 2026-10-08 bug: when no live mark has ever synced (last_mark null —
+// the real, confirmed-live state of the overwhelming majority of the committed BANGER-origin
+// book), `contract.mid` must stay honestly null, NEVER fall back to entry_premium. Before the
+// fix: `mid === entry_premium` exactly, which downstream made markDollarPnl compute 0 (not null)
+// and the Command Deck's primary P&L tile render a confident "+$0.00" instead of "—" (unknown).
+test("horizonPlayFromBangerPosition does not fabricate contract.mid as entry_premium when no live mark has synced", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({ entry_premium: 0.3, last_mark: null, last_mark_at: null }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(play!.contract.mid, null, "an absent live mark must stay null, never entry_premium");
+  // Sanity: a REAL live mark still passes through unchanged (the fix only removes the fallback,
+  // it does not touch a genuine mark).
+  const withMark = horizonPlayFromBangerPosition(
+    bangerRow({ entry_premium: 0.3, last_mark: 0.45, last_mark_at: "2026-09-04T20:55:00.000Z" }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(withMark);
+  assert.equal(withMark!.contract.mid, 0.45);
+});
+
 test("mergeBangerPositionsIntoSwingPlays replaces pre-entry row on same ticker", () => {
   const watch: HorizonPlay = {
     ticker: "ANET",
