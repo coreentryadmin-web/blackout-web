@@ -6155,3 +6155,42 @@ background task vs. a real inbound request to `/vector/universe`) was actually r
 that moment — the same technique #5680 used to nail its own root cause, not yet applied here.
 Folded a related docs-only finding this same cycle (PR #5682, folding #5681's staged finding file
 into `FINDINGS.md` — it had been merged but never folded).
+
+## 2026-10-08 (11:3x UTC) — [DISCOVERY] Coordinator cycle: live ALB spike cluster (p99 50-80s) traced to the already-known, in-flight `heatmap-warm` fan-out — not a new root cause; #5686 still unmerged
+
+Per the standing performance/latency mandate, pulled `AWS/ApplicationELB` `TargetResponseTime`
+(real AWS creds, `arn:...:user/vinay-blackout`) for `blackout-production-alb` over the trailing
+12h. Found a fresh, notably WORSE spike cluster than the pattern already being chased by PR #5686
+(that PR's own write-up measured ~40-44s clusters pre-fix) — **10:58-11:33 UTC, 2026-10-08: eight
+consecutive 5-min buckets with p99/Max 50-80s** (peak 11:03 UTC: p99=80.28s, Max=80.40s), still
+climbing as of the last bucket pulled.
+
+**Checked whether this is a genuinely new/different mechanism, per this cycle's explicit
+instruction not to re-litigate #5686's already-diagnosed root cause:**
+- `AWS/ECS` CPU/Memory for `blackout-production-web` over the same window stayed unremarkable —
+  service-level max ~55-60% CPU, ~40% memory, nothing resembling the 860%/685% single-task
+  saturation #5686's own diagnosis measured. Ruled out a second CPU-saturation event.
+- CloudWatch Logs (`/ecs/blackout-production`, `elapsed=` grep, trailing 50 min) showed
+  `meridian-warm` (20-79s) and `platform-warm` (12-78s) completing on roughly their normal ~5-min
+  cadence — both already background-dispatched via `after()` (confirmed by reading both routes),
+  so neither one's own request blocks the ALB directly; logged here only as contributing
+  same-task-CPU noise, not as the driver of an ALB-visible response time.
+- `heatmap-warm`'s own route (`src/app/api/cron/heatmap-warm/route.ts`) does NOT dispatch
+  in the background — its own header comment (written 2026-09-03/2026-10-08, predating this
+  cycle) already documents it running **synchronously** inside the HTTP handler, with an
+  **unbounded `Promise.allSettled(rest.map(...))` fan-out** over the shared ≤100-ticker universe,
+  and already measured (same file, n=1000 runs) **p50=46.5s, p90=81.1s, p99=181.1s, max=209.2s** —
+  a near-exact magnitude match for the 50-80s cluster just observed. This is precisely what PR
+  #5686 (`fix/heatmap-warm-unbounded-rest-fanout`, owned by a sibling agent this cycle, open/
+  CI-running, not yet merged) is already fixing.
+
+**Verdict: not a new finding.** The 10:58-11:33 UTC cluster is consistent with the SAME
+already-diagnosed `heatmap-warm` synchronous-fan-out root cause #5686 targets, simply continuing
+to occur in production because that fix has not merged yet — exactly the expected state while a
+known, already-owned fix is still in flight. No duplicate PR opened; left for #5686's owning
+agent per this cycle's explicit instruction. **Flag for the next cycle**: re-pull
+`TargetResponseTime` once #5686 merges and deploys — if this specific 50-80s cluster shape
+disappears, that is live corroboration of the fix (same discipline as the #5680/#5681
+corroboration entry above); if a reduced-but-nonzero rate persists, the `meridian-warm`/
+`platform-warm` same-task contention noted above (still correctly background-dispatched, so not
+itself a bug) is the next thing to measure as a secondary contributor.
