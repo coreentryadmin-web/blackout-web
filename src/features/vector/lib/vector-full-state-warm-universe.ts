@@ -4,8 +4,9 @@ import { listSharedUniverseTickers, mergeSharedUniverseTickers } from "./vector-
 /**
  * The ticker set `vector-full-state-snapshot`'s cron should proactively warm — the cache
  * `fetchVectorFullState`/`fetchEcosystemContext` read cache-first (`vector:full-state:{ticker}:
- * {horizon}`, 15-min TTL — vector-full-state-cache.ts), consumed by Ask Largo's swing play-brief,
- * ecosystem context, and every other reader `vector-full-state.ts`'s own header lists.
+ * {horizon}`, TTL `VECTOR_FULL_STATE_CACHE_TTL_SEC` — 4h as of #5705, see vector-full-state-cache.ts
+ * for why — was 15min when this header was first written), consumed by Ask Largo's swing
+ * play-brief, ecosystem context, and every other reader `vector-full-state.ts`'s own header lists.
  *
  * GAP FOUND (Ask Largo x Night Hawk Swings standing mandate): the cron previously iterated only
  * `vectorUniverseTickers()` (the static allowlist), not even `listSharedUniverseTickers()`'s
@@ -27,6 +28,21 @@ import { listSharedUniverseTickers, mergeSharedUniverseTickers } from "./vector-
  * WATCH rail — a smaller, high-value bulk union rather than re-deriving the entire discovery pool
  * here. `fetchOpenSwingPositions` failing (a DB hiccup) degrades to the shared universe alone,
  * never blocks the sweep.
+ *
+ * ORDERING (Ask Largo standing mandate, live audit 2026-10-08): open positions are placed FIRST,
+ * not appended after the shared universe. `mergeSharedUniverseTickers` keeps only the FIRST
+ * occurrence of each ticker (de-dupes on the way through its own argument order), and this list's
+ * order is exactly what `rotateTickersForWarmPass`'s cursor walks — so "appended last" used to mean
+ * "warmed last in every lap, every time," for the exact population (real committed capital) the
+ * rotation/TTL fixes above (#5701, #5705) exist to protect. Confirmed live, ~2h after #5705
+ * deployed (two rotation laps' worth of cron cycles observed in CloudWatch): CIEG/MRNA/PSX — all
+ * three real open swing positions — were STILL hard-timing out on Ask Largo's swing play-brief
+ * (`SwingBriefSourceTimeout: brief source read exceeded 8000ms` on both `ecosystem context` and
+ * `Vector state`), because the tail-heavy ordering meant this lap simply hadn't reached them yet.
+ * The TTL fix makes a WARM entry survive long enough to outlast a lap; it does nothing for an
+ * entry that is never the FIRST one warmed in a given lap. Putting positions first fixes the
+ * latter without touching the former — the shared static/dynamic universe is still fully covered
+ * every lap, just after the highest-stakes names rather than before them.
  */
 export async function activeVectorFullStateTickers(): Promise<string[]> {
   const [shared, positions] = await Promise.all([
@@ -34,8 +50,8 @@ export async function activeVectorFullStateTickers(): Promise<string[]> {
     fetchOpenSwingPositions().catch(() => []),
   ]);
   return mergeSharedUniverseTickers(
-    shared,
-    positions.map((p) => p.ticker)
+    positions.map((p) => p.ticker),
+    shared
   );
 }
 
