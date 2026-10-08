@@ -483,10 +483,25 @@ export function collectOptionMarkStalenessAbsence(
       source: "option mark",
       reason: "sync quote without freshness timestamp",
       what_is_missing: "a live option-quote sync with a mark_as_of timestamp",
-      // Whether the NEXT sync carries a timestamp depends on the lane's own schema (banger-lane
-      // rows have no mark_as_of column at all, per the comment above) — not something a retry of
-      // THIS read can fix, so this is honestly not retryable from the brief's own vantage point.
-      retryable: false,
+      // FIX (found live 2026-10-08, Ask Largo standing mandate — repro: a BANGER batch committed
+      // by banger-discovery at 20:15 ET, all 74 rows markIsSync:true, markAsOf:null). This used to
+      // be hardcoded `false` on the premise that "banger-lane rows have no mark_as_of column at
+      // all" — true before the 2026-09-11 fix (FINDINGS 2026-09-11, which added
+      // banger_positions.last_mark_at / row.last_mark_at specifically so this lane could carry a
+      // real timestamp), false ever since. The live symptom this staleness caused: the SAME 74
+      // rows, read again after banger-live-sync's next on-schedule RTH tick, DO carry a real
+      // markAsOf (confirmed live against the 33 banger rows committed on an earlier session day,
+      // all stamped ~16:00:44 ET) — so "retry later" genuinely resolves this, it just isn't
+      // retryable WITHIN THE SAME off-hours instant. That is exactly the "wait for more data"
+      // shape this file's own GEX `insufficient_data` chip already treats as retryable:true (see
+      // the test file's header comment distinguishing it from the truly-structural
+      // `net_short_everywhere` case) — a never-synced mark is the transient case, not the
+      // structural one, in BOTH lanes: native swing_positions rows hit this exact branch too for a
+      // position committed between swing-active-refresh's own 15-min RTH-gated ticks, and resolve
+      // the same way. Mislabeling it non-retryable told Largo (and any UI reading this chip) that
+      // re-asking is pointless, when the lane's own next scheduled refresh is the one thing that
+      // fixes it — the same kind of false permanence C3 exists to prevent.
+      retryable: true,
     };
   }
   if (optionMarkIsStale(play, readMs)) {

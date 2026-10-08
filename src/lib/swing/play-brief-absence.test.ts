@@ -1028,6 +1028,21 @@ test("collectBriefUnavailableSources: unsynced option mark surfaces in envelope 
   );
 });
 
+test("collectBriefUnavailableSources: unsynced option mark is retryable, not permanently stuck (found live 2026-10-08, Ask Largo mandate — a brand-new BANGER commit's markIsSync is honestly C3-absent, but the NEXT scheduled banger-live-sync/swing-active-refresh RTH tick WILL populate a real markAsOf on a future read, exactly the 'wait for more data' shape the GEX insufficient_data chip already treats as retryable — see collectOptionMarkStalenessAbsence's updated comment for why the old banger-has-no-column rationale for retryable:false went stale on 2026-09-11)", () => {
+  const ctx = {
+    play: { markIsSync: true, status: "OPEN" },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  const chip = sources.find((s) => s.source === "option mark");
+  assert.ok(chip, "expected an option mark absence chip");
+  assert.equal(
+    chip!.retryable,
+    true,
+    "a never-synced mark resolves on the lane's own next scheduled refresh tick — it is not a structural dead end",
+  );
+});
+
 test("collectBriefUnavailableSources: closed play with markIsSync does not surface option mark absence", () => {
   const ctx = {
     play: { markIsSync: true, status: "CLOSED" },
