@@ -989,6 +989,12 @@
       "fix_shipped_this_session": "PR #5702 (OCC-vs-expiry desync on Vector-pulse attach) -- merged, verified live on IONQ/QQQ's fresh commits (both correctly consistent contract_horizon/actual_dte_at_commit).",
       "enhancement_idea_logged": "veto_shadow counterfactual (vector_winner_misses) never captured historically -- see 2026-10-08T18:12:00Z entry.",
       "other_lanes_observed": "PRs #5708/#5709/#5711 (vector/swing full-state warm-rotation fixes) merged by a parallel session this window -- reviewed, out of my 0DTE scope, no action needed."
+    },
+    "2026-10-08T20:11:00Z_SESSION_CLOSED": {
+      "cycle_time": "2026-10-08T20:11:00Z",
+      "kind": "GREEN",
+      "severity_assessment": "clean close, no escalation",
+      "summary": "Session state transitioned cleanly to CLOSED (heat_pct:0) after the 3:50 PM ET hard exit. All 13 graded plays (2026-10-07+08 window) confirmed 0 remaining open/ungraded rows -- no stray positions left unmanaged into the close. 7 plays committed today (AMD/CIFR/SPXW/SPY/WOLF/IONQ/QQQ), final day story already logged in the 19:46:00Z session-day-summary entry. Night Hawk now builds tomorrow's playbook per its own post-close note."
     }
   },
   "sessions": {
