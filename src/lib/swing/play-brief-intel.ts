@@ -1380,9 +1380,26 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   }
 
   if (!lines.length) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro SWING:NVDA:42 CLOSED brief):
+    // the flip/wall lines above are suppressed whenever the GEX matrix is stale
+    // (`flipFromStaleGex`/`putWallFromStaleGex`/`callWallFromStaleGex`), which is correct — but
+    // this fallback used to say "No gamma flip / GEX wall read available" unconditionally,
+    // claiming an outright absence even when a (merely stale) read genuinely exists. That is a
+    // real, reproducible self-contradiction within the SAME envelope: `gexPostureSection` reads
+    // the identical `ctx.ecosystem.gex_positioning` object and, in that exact case, renders
+    // "**Last snapshot** (~163s old) — dealer posture may lag spot" — i.e. it discloses a read
+    // DOES exist, just withheld for freshness. "No data" and "data withheld because stale" are
+    // different Largo C3 claims; collapsing them to the same sentence is the defect. Distinguish
+    // genuine absence (no gex_positioning object at all for this ticker) from stale-and-withheld
+    // (object present, past GEX_MATRIX_STALE_MS) and word the closed-bucket fallback honestly.
+    const gexAgeMs = gexMatrixAgeMs(gexForLevels, readMs);
+    const gexExistsButStale = gexForLevels != null && gexMatrixStale(gexForLevels, readMs);
+    const staleAgeLabel = gexExistsButStale ? ageSecondsLabel(gexAgeMs) : null;
     lines.push(
       bucket === "closed"
-        ? "No gamma flip / GEX wall read available for this name since the play closed."
+        ? gexExistsButStale
+          ? `GEX read for this name is currently stale${staleAgeLabel != null ? ` (~${staleAgeLabel} old)` : ""} — today's dealer posture withheld, not absent.`
+          : "No gamma flip / GEX wall read available for this name since the play closed."
         : "Watch spot vs gamma flip and nearest GEX wall — no extra triggers wired on this row.",
     );
   }

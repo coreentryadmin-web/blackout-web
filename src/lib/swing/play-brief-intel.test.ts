@@ -3325,6 +3325,64 @@ test("watchForSection: stale Vector + stale GEX must not resolve spot from GEX f
   assert.doesNotMatch(section.body, /Lose gamma flip/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro SWING:NVDA:42 CLOSED brief):
+// when a closed play's GEX matrix exists but is stale (above GEX_MATRIX_STALE_MS), this
+// section's own numeric lines (flip/wall) are correctly suppressed — but the fallback text it
+// falls back to, "No gamma flip / GEX wall read available for this name since the play
+// closed," claims an outright ABSENCE. That is false: `gexPostureSection` (same ctx, same
+// request) reads the identical `ctx.ecosystem.gex_positioning` object and renders "**Last
+// snapshot** (~163s old) — dealer posture may lag spot" — i.e. a read DOES exist, it is just
+// withheld here for freshness. Two sections of the SAME envelope disagreeing about whether
+// a read exists for this ticker is exactly the Largo C2/C3 class this file exists to prevent:
+// "no data" and "intentionally withheld because stale" are different claims, and this message
+// collapsed them to the former. Must distinguish genuine absence (no gex_positioning object at
+// all) from stale-and-withheld (object present, past the freshness cutoff).
+test("watchForSection: closed-bucket fallback distinguishes stale-and-withheld GEX from genuine absence (Largo C2/C3)", () => {
+  const staleButPresent = watchForSection(
+    {
+      play: fixturePlay({ status: "CLOSED", direction: "LONG" }),
+      asOf: "2026-10-08 18:10 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          flip: 99,
+          put_wall: 98,
+          matrix_age_sec: 163,
+          freshness: "cached",
+        },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  // Must not claim outright absence when a (stale) read genuinely exists.
+  assert.doesNotMatch(staleButPresent.body, /No gamma flip \/ GEX wall read available/i);
+  assert.match(staleButPresent.body, /stale/i);
+  assert.match(staleButPresent.body, /163s/);
+
+  const genuinelyAbsent = watchForSection(
+    {
+      play: fixturePlay({ status: "CLOSED", direction: "LONG" }),
+      asOf: "2026-10-08 18:10 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {} as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  // Genuine absence (no gex_positioning object at all) keeps the original "no read" framing.
+  assert.match(genuinelyAbsent.body, /No gamma flip \/ GEX wall read available/i);
+});
+
 test("watchForSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
   const section = watchForSection(
     {
