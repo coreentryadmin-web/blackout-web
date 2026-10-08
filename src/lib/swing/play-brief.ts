@@ -464,6 +464,21 @@ function daysOnWatch(sinceIso: string | null | undefined, nowMs: number): number
 
 function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   const lines: string[] = [];
+  // Computed once, up front: `deadPlayReason` is the authoritative "is this play already dead for
+  // ANY reason" check (INVALIDATED, calendar-deadline-expired, contract-expired, or EXTENDED-chase)
+  // — already used a few lines below for the gate-block "moot" qualifier. Reused here (BUG FIX, Ask
+  // Largo standing mandate, 2026-10-08) to gate the forward-looking "Entry window closes" line too,
+  // instead of the narrower `play.watchEntryExpired` flag that only covers the calendar-deadline
+  // case. `watchEntryExpired` false does NOT mean the play is still live — an EXTENDED-chase play
+  // (setupState "EXTENDED" / entryStatus "EXTENDED_CHASE") leaves it false while still carrying a
+  // real future `entryDeadline`, so the old guard let this section say "Entry window closes ... (N
+  // days left)" a few lines above — and the brief's own top-level invalidation line say "Extended
+  // past the valid entry window — this setup is no longer live" — about the SAME play, in the SAME
+  // response. Both lines were independently correct in isolation (two different kinds of "window":
+  // calendar-deadline vs. price-extension), but reusing the word "window" for both meanings read as
+  // a flat self-contradiction to a member. Live repro: NTAP, 2026-10-08 (Ask Largo health-check
+  // deep-dive) — see docs/audit/findings-staging/2026-10-08-swing-watch-entry-window-wording-collision.md.
+  const dead = deadPlayReason(play);
   const label =
     swingActionDisplay(play)?.label ??
     play.swingEntryAction?.toUpperCase() ??
@@ -503,9 +518,11 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   // hear about the deadline was the EXPIRED badge itself, after it had already passed. Mirrors the
   // days-on-watch fix directly above it (same section, same "a real computed fact was silently
   // dropped before reaching the model" shape) — forward-looking instead of backward-looking. Only
-  // shown while NOT already expired (the EXPIRED badge + `deadPlayReason` below already own that
-  // case) and only when a real deadline was resolvable (never fabricated).
-  if (!play.watchEntryExpired && play.entryDeadline) {
+  // shown while NOT already dead for ANY reason (`dead`, computed at the top of this function —
+  // the EXPIRED badge + `deadPlayReason`'s gate-block qualifier below already own every dead case,
+  // not just the calendar-deadline one; see that computation's own comment for why `watchEntryExpired`
+  // alone used to under-cover this) and only when a real deadline was resolvable (never fabricated).
+  if (!dead && play.entryDeadline) {
     const deadlineMs = Date.parse(play.entryDeadline);
     if (Number.isFinite(deadlineMs)) {
       const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
@@ -544,7 +561,7 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
     // — rather than the reverse — loses no information and needs no new plumbing. The
     // "Watch levels" pointer below was repointed at "Trade manager read" too, so there is now
     // exactly one full-text home instead of two independent ones.
-    const dead = deadPlayReason(play);
+    // `dead` reused from the top of this function (same value — computed once, not re-derived).
     const gateCount = play.gateBlocks.length;
     lines.push(
       dead
