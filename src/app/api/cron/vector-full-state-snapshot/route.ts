@@ -5,6 +5,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import {
   activeVectorFullStateTickers,
+  resolveWarmCursorIndex,
   rotateTickersForWarmPass,
 } from "@/features/vector/lib/vector-full-state-warm-universe";
 import { VECTOR_DTE_HORIZONS } from "@/features/vector/lib/vector-dte-horizon";
@@ -59,10 +60,16 @@ const TICKER_CONCURRENCY = 2;
 const OVERLAP_LOCK_KEY = "vector:full-state-snapshot:running";
 const OVERLAP_LOCK_TTL_SEC = 900;
 
-/** Persists where the LAST run's budget cutoff left off, so the next run resumes instead of
- *  restarting at index 0 — see rotateTickersForWarmPass's header for the permanent-starvation
- *  bug this fixes (measured live 2026-10-08: 13/13 consecutive runs stalled on the same first
- *  ~2 static tickers, never reaching anything after them, including real open swing positions).
+/** Persists the TICKER NAME the last run's budget cutoff left off on, so the next run resumes
+ *  right after it instead of restarting at index 0 — see rotateTickersForWarmPass's header for
+ *  the permanent-starvation bug this fixes (measured live 2026-10-08: 13/13 consecutive runs
+ *  stalled on the same first ~2 static tickers, never reaching anything after them, including
+ *  real open swing positions).
+ *  CONTENT-ADDRESSED, NOT A RAW INDEX (Ask Largo standing mandate, live audit 2026-10-08) — see
+ *  resolveWarmCursorIndex's header for why: a bare numeric offset silently breaks the moment
+ *  activeVectorFullStateTickers()'s order changes (exactly what the position-first reorder above
+ *  did the same day), pointing the next run's rotation start at whatever now sits at that raw
+ *  index rather than after the ticker actually finished.
  *  Losing this key just resets rotation to the start of the list — never a correctness issue,
  *  so a long TTL + fail-open read/write is enough. */
 const WARM_CURSOR_KEY = "vector:full-state-snapshot:cursor";
@@ -74,9 +81,16 @@ async function runVectorFullStateSnapshot(started: number): Promise<void> {
     // vector-full-state-warm-universe.ts's header for the gap this closes (a committed swing
     // position outside the static allowlist previously never got its full-state cache warmed).
     const rawTickers = await activeVectorFullStateTickers();
-    const cursor = (await sharedCacheGet<number>(WARM_CURSOR_KEY).catch(() => null)) ?? 0;
-    // Rotate so THIS run picks up where the last budget cutoff left off, rather than always
-    // restarting on the same fixed-order prefix (see rotateTickersForWarmPass's header).
+    // Typed `unknown`, not `string`: the FIRST read after this ships still returns whatever the
+    // OLD code last persisted — a bare number — and resolveWarmCursorIndex's own `typeof` guard
+    // is what actually makes that safe (see its header). Claiming `<string>` here would be a lie
+    // the type system can't check across a Redis round-trip.
+    const cursorTicker = (await sharedCacheGet<unknown>(WARM_CURSOR_KEY).catch(() => null)) ?? null;
+    // Resolve the remembered ticker NAME to a position in TODAY's list (content-addressed — see
+    // resolveWarmCursorIndex's header for why this must never be a raw index carried across a
+    // run whose list order may have changed), then rotate so THIS run picks up right after it
+    // instead of always restarting on the same fixed-order prefix.
+    const cursor = resolveWarmCursorIndex(rawTickers, cursorTicker);
     const tickers = rotateTickersForWarmPass(rawTickers, cursor);
     let written = 0;
     let skippedNoSpot = 0;
@@ -119,13 +133,18 @@ async function runVectorFullStateSnapshot(started: number): Promise<void> {
       }
     }
 
-    if (rawTickers.length > 0) {
-      const nextCursor = (cursor + attempted) % rawTickers.length;
-      await sharedCacheSet(WARM_CURSOR_KEY, nextCursor, WARM_CURSOR_TTL_SEC).catch(() => undefined);
+    // Persist the NAME of the last ticker this run actually attempted — not a raw index (see
+    // resolveWarmCursorIndex's header) — so the next run resumes right after it regardless of
+    // whether activeVectorFullStateTickers()'s order has since changed. attempted===0 (budget
+    // blown before a single ticker ran) leaves the previous cursor untouched, same as the old
+    // `cursor + 0` no-op.
+    const lastAttemptedTicker = attempted > 0 ? tickers[attempted - 1] : null;
+    if (lastAttemptedTicker) {
+      await sharedCacheSet(WARM_CURSOR_KEY, lastAttemptedTicker, WARM_CURSOR_TTL_SEC).catch(() => undefined);
     }
 
     console.info(
-      `[cron/vector-full-state-snapshot] background done — tickers=${tickers.length} horizons=${VECTOR_DTE_HORIZONS.length} cursor=${cursor} attempted=${attempted} written=${written} skippedNoSpot=${skippedNoSpot} failed=${failed} budgetHit=${budgetHit} elapsed=${Date.now() - started}ms`
+      `[cron/vector-full-state-snapshot] background done — tickers=${tickers.length} horizons=${VECTOR_DTE_HORIZONS.length} cursorTicker=${cursorTicker ?? "(start)"} resolvedIndex=${cursor} attempted=${attempted} written=${written} skippedNoSpot=${skippedNoSpot} failed=${failed} budgetHit=${budgetHit} elapsed=${Date.now() - started}ms`
     );
   } finally {
     await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
