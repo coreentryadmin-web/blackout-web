@@ -425,6 +425,46 @@ test("composeSwingPlayBrief: WATCH play already past its entry deadline omits th
   assert.doesNotMatch(entry!.body, /Entry window closes/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): the forward-looking line above was gated on
+// `!play.watchEntryExpired` alone — but `watchEntryExpired` is ONLY set true by the calendar-deadline
+// path (entry-enterability.ts's `pastEntryDeadline` check). A play already dead for a DIFFERENT
+// reason (EXTENDED-chase: `setupState === "EXTENDED"` / `entryStatus === "EXTENDED_CHASE"`) leaves
+// `watchEntryExpired` false while still carrying a future `entryDeadline`, so this line rendered
+// "Entry window closes ... (N days left)" directly alongside — in the SAME "Entry" section, a few
+// lines below — the "Also gate-blocked (moot — extended past the valid entry window)" line (which
+// reuses the word "window" for the unrelated price-extension concept) and the brief's own top-level
+// invalidation text ("Extended past the valid entry window — this setup is no longer live."). Live
+// repro: NTAP, 2026-10-08, `setupState: "EXTENDED"`, `entryStatus: "EXTENDED_CHASE"`,
+// `watchEntryExpired: false`, `entryDeadline` ~2 hours in the future — the brief told the member in
+// one breath the entry window had already closed and in the next that it still had a day left.
+// `deadPlayReason` (already imported, already used a few lines below for the gate-block "moot"
+// qualifier) is the authoritative "is this play already dead for ANY reason" check, so gate the
+// forward-looking line on it instead of the narrower `watchEntryExpired` flag.
+test("composeSwingPlayBrief: WATCH play that is EXTENDED (chase risk) omits the forward-looking entry-window line even with a live entryDeadline (2026-10-08 gap fix)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "EXTENDED",
+      entryStatus: "EXTENDED_CHASE",
+      watchEntryExpired: false,
+      entryDeadline: "2026-09-10T13:15:00.000Z",
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.doesNotMatch(entry!.body, /Entry window closes/);
+  // The moot gate-block qualifier (same section) should still name the real reason.
+  assert.match(entry!.body, /extended past the valid entry window/);
+});
+
 test("composeSwingPlayBrief: WATCH play without entryDeadline omits the forward-looking line entirely (never fabricated)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ entryDeadline: null, watchEntryExpired: false }),

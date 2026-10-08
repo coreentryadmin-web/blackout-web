@@ -1,3 +1,38 @@
+## WATCH LIST — 2026-10-08 Ask Largo swing WATCH brief's "Entry" section could say the entry window had already closed AND, two lines below, that it still had "1 day left" — deploy pending validation
+
+**What was fixed:** `watchEntrySection` (`play-brief.ts`) gated its forward-looking "Entry window
+closes **DATE** (**N days** left)" line on `!play.watchEntryExpired` alone — but that flag is set
+`true` by only ONE of `entry-enterability.ts`'s several dead-play branches (the calendar-deadline-
+expired one). A DIFFERENT branch, EXTENDED-chase (`setupState === "EXTENDED"` /
+`entryStatus === "EXTENDED_CHASE"` — price moved too far from the entry zone), leaves
+`watchEntryExpired` false while still carrying a real future `entryDeadline`, so the forward-
+looking line rendered anyway — directly beside the SAME section's "Also gate-blocked (moot —
+extended past the valid entry window)" line and the brief's own top-level `invalidation` text
+("Extended past the valid entry window — this setup is no longer live."). Both facts were each
+independently correct (two different kinds of "window": calendar-deadline vs. price-extension),
+but sharing the word "window" in the same section about the same play read as the brief flatly
+contradicting itself. Live-confirmed 2026-10-08 (Ask Largo health-check deep-dive): `GET
+/api/market/swing/play-brief?playId=SWING:NTAP&ticker=NTAP` showed exactly this — "Entry window
+closes 2026-10-08 09:15 ET (1 day left)" three lines above the brief's own invalidation line
+saying that same window had already closed. Fix: gate the forward-looking line on
+`deadPlayReason(play)` (the authoritative "is this play dead for ANY reason" check, already used
+a few lines below for the gate-block qualifier) instead of the narrower `watchEntryExpired` flag.
+Full write-up:
+`docs/audit/findings-staging/2026-10-08-swing-watch-entry-window-wording-collision.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any
+real WATCH-bucket candidate currently in an EXTENDED/EXTENDED_CHASE state (check
+`GET /api/market/nighthawk/horizons?view=swings` for a committed/watch row with
+`setupState: "EXTENDED"` or `entryStatus: "EXTENDED_CHASE"`) and confirm its "Entry" section no
+longer shows a forward-looking "Entry window closes ... (N days left)" line — only the "Also
+gate-blocked (moot — extended past the valid entry window)" line and the top-level invalidation
+text, with nothing nearby claiming time is still left. Also spot-check a genuinely still-live
+WATCH play (not EXTENDED, not past its calendar deadline) and confirm it STILL shows the
+forward-looking line as before — this fix narrows the suppression condition, it should not
+remove the line from plays that are actually still enterable.
+
+---
+
 ## WATCH LIST — 2026-10-08 `heatmap-warm`'s 20s in-app-leader heal threshold made it "overdue" the instant any normal run finished, driving a ~70% near-continuous duty cycle during the pre-EventBridge pre-market window — deploy pending validation
 
 **What was fixed:** `RTH_WRITER_HEAL_AFTER_MIN["heatmap-warm"]` (`rth-warm-leader-logic.ts`) was `20/60` (20s) — copied from `vector-walls-warm`'s entry (justified there by a ~900ms cache TTL) rather than derived from `heatmap-warm`'s own real cost. A real `heatmap-warm` run sweeps the shared ~100-ticker universe through Polygon and has always taken 60-110s (p50=46.5s/p90=81.1s/p99=181.1s/max=209.2s, measured 2026-09-03). `rthWriterOverdue()`'s age calc reads `cron_job_runs.started_at`, which is actually stamped by a bare SQL `now()` default at INSERT time — i.e. at the run's COMPLETION (`logCronRun` is called at the very end of the handler), not its true start. So with a 20s threshold and 60-110s real runtime, every run was already "overdue" by the instant it finished, and the in-app leader's own 15s tick re-commissioned a fresh full sweep almost every time. Live-confirmed 2026-10-08, 08:00-09:48 UTC (the pre-EventBridge 4-7am ET pre-market window — AWS-confirmed `AWS/Events` `Invocations`=0 for this rule's `cron(*/1 11-21 ? * MON-FRI *)` the entire window, so this ran ENTIRELY off the leader, isolating it as the sole cause): 70 consecutive full runs, zero skips, median runtime 60.9s, ~68-70% wall-clock duty cycle, median gap between completion and next start only ~30s. Checked the original hypothesis that this was measurably driving ALB latency spikes with a proper 2-hour correlation: it does NOT hold up (spike-minute heatmap-warm-overlap rate ≈ non-spike-minute rate at every threshold tested, 5-20s Max) — reported honestly rather than retrofit; the fix stands on its own duty-cycle/backup-semantics merits instead. Fix: raised the threshold to 81s (the job's own measured p90), matching the design of every sibling entry in this map. Full write-up: `docs/audit/findings-staging/2026-10-08-heatmap-warm-heal-threshold-duty-cycle.md`.
