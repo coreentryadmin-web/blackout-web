@@ -36,7 +36,17 @@ const SECTORS: Record<string, string[]> = {
   // listed below — added proactively for when the book holds it too (not yet live at time of
   // writing, but the gap is identical in kind). Verified ticker identity via Polygon reference
   // (`/v3/reference/tickers/<T>`) before adding, not guessed from the symbol alone.
-  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC", "SMCX", "MULL", "AVGX"],
+  // MTSI added 2026-10-08 (Ask Largo standing mandate, live finding, same gap shape as the
+  // ALAB/CRDO/KLAC extension above): a real committed book held MTSI LONG (MANAGING, Breakout
+  // continuation) concurrently with SMCI/INTC/SMCX/MULL/AVGX/MRVL — all already in this list —
+  // but MTSI itself had no entry anywhere in this map, so `checkPortfolioOverlap` resolved it to
+  // its own isolated `NAME:MTSI` cluster and MTSI's live play-brief rendered NO "Book context"
+  // section at all, hiding a real 7-name same-direction semis concentration from the one ticker
+  // whose brief should have shown it. MTSI (MACOM Technology Solutions Holdings) is confirmed via
+  // Polygon reference (`sic_code: "3674"`, "SEMICONDUCTORS & RELATED DEVICES") — not guessed from
+  // the symbol — and the SAME live play-brief's own independently-sourced "Peers" line already
+  // named LRCX and KLAC, both already in this list, corroborating the classification.
+  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC", "SMCX", "MULL", "AVGX", "MTSI"],
   // AMZU ("Direxion Daily AMZN Bull 2X ETF") added 2026-10-07 for the same reason as SMCX/MULL
   // above — AMZN already has a peer bucket here, so its leveraged wrapper joins it directly.
   megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AMZU"],
