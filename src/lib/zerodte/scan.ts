@@ -1399,6 +1399,20 @@ async function attachContractPlans(
     const attached = resolveZeroDteContractAttach(s, pulse, chain);
     if (attached) {
       s.top_strike = attached.strike;
+      // 2026-10-08 finding: this call site previously left s.expiry/contract_horizon/
+      // actual_dte_at_commit/grading_policy untouched even when the resolved contract's own
+      // expiry differs from the setup's pre-attach target — the two other contract-resolution
+      // call sites in this codebase (below, and contract-attach.ts's attachThesisContractPlans)
+      // both sync all four fields together whenever a contract is (re)resolved; this one must too,
+      // or the board displays a stale/wrong DTE for the contract actually being traded.
+      if (attached.expiry) {
+        s.expiry = attached.expiry;
+        if (attached.dte != null) {
+          s.contract_horizon = deriveContractHorizon(attached.dte);
+          s.actual_dte_at_commit = attached.dte;
+          s.grading_policy = gradingPolicyForHorizon(s.contract_horizon);
+        }
+      }
       occOf.set(s.ticker, attached.occ);
       continue;
     }
