@@ -4,6 +4,111 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-10-08 — [FINDING, P2 infra/performance] Unstaggered cron-schedule collision (desk-warm/meridian-warm/zerodte-warm/swing-active-refresh) RECONFIRMED LIVE, still contributing to sustained ALB tail latency — fix attempt BLOCKED by this session's own permission classifier, same blocker as a month ago
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+| --- | --- |
+| **Status** | OPEN — reconfirmed live; fix designed (unchanged from the original finding) but **not applied**; needs explicit operator action, not another agent retry |
+| **Severity** | P2 (recurring member-facing latency; zero 5XX so far, but see "what this is NOT" below) |
+| **Continuing** | `docs/audit/FINDINGS.md`'s own 2026-09-02 entry *"ALB tail-latency spikes root-caused to unstaggered cron schedules — four crons fire on the exact same UTC minute — FIX PROPOSED, blocked on AWS write permission"* — that entry has sat OPEN for over a month. This entry is a fresh, independent re-measurement (this coordinator cycle, not inherited from memory) that (a) confirms the root cause is still live today, unchanged, and (b) records a second, independent attempt to apply the already-designed fix, blocked by what is evidently the same gate. |
+
+### What prompted this re-check
+
+This cycle's step-8 perf audit (confirming whether #5686's heatmap-warm fix cleared the ALB spike
+pattern) found `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app` SUSTAINED at
+p99 50-100s / Max up to 100.2s continuously from 10:57 UTC through at least 12:17 UTC today — not
+brief blips, every single 5-minute bucket in that window. Zero `HTTPCode_Target_5XX_Count` /
+`HTTPCode_ELB_5XX_Count` / `TargetConnectionErrorCount` throughout (`RequestCount` 3176 total,
+normal volume) — so this is a pure-latency symptom, not an outage, but p99 Max this is a 1000x+
+multiple of the ~0.1-2s healthy baseline this file's own prior entries establish.
+
+`AWS/ECS` CPU/Memory on `blackout-production-web` stayed LOW on 5-min-Average granularity
+(CPU ~8-10%, Memory ~15-20%) — but re-pulled at **1-minute granularity with the Maximum statistic**
+(the averaging trap the original 2026-09-02 finding chain did not need to reach for, because it had
+`events.describe_rule` access that session) shows CPU **sustained 40-65% continuously** the entire
+window on whichever of the 8 running web tasks is acting as `rth-warm-leader`'s elected leader at
+that moment — the fleet average dilutes one busy-of-eight replica down to single digits.
+`ecs.list_tasks`/`describe_tasks` confirms 8/8 healthy, all recently (re)started 11:49-12:11 UTC
+from the day's deploy wave (#5684/#5687 rolling out) — ruling out stale/zombie tasks.
+
+### Root cause — unchanged from the 2026-09-02 finding, re-verified live via `events.describe_rule`
+
+```
+blackout-production-desk-warm             cron(*/5 11-21 ? * MON-FRI *)   ENABLED
+blackout-production-meridian-warm         cron(*/5 11-21 ? * MON-FRI *)   ENABLED
+blackout-production-zerodte-warm          cron(*/5 11-21 ? * MON-FRI *)   ENABLED
+blackout-production-swing-active-refresh  cron(*/15 11-21 ? * MON-FRI *)  ENABLED
+```
+
+All four are **still** byte-identical to what the original finding measured over a month ago:
+three independent crons firing on the EXACT same UTC minute every 5 minutes, a fourth landing on
+the same `:00` anchor every 15. CloudWatch Logs confirms `meridian-warm`'s own `elapsed=` line
+landing every ~5 minutes at 20-79s (`12:01:06.853 elapsed=33564ms`, `12:06:33.430 elapsed=60050ms`,
+`12:10:53.086 elapsed=19813ms`, `12:16:13.362 elapsed=40061ms`, `12:21:13.423 elapsed=40177ms`, …) —
+every single one of its runs lands inside the same sustained-spike window, consistent with (though
+not isolated proof of) this cron contending for the busy leader-replica's event loop/CPU alongside
+whichever of its 3 same-minute siblings also fired.
+
+**This finding does NOT claim sole attribution for today's episode.** The still-undeployed
+`heatmap-warm` fix (#5686, merged 12:01 UTC, deploy queued behind #5687's rollout as of this
+writing) is a second, independently-diagnosed, and very plausibly dominant contributor this
+specific morning — `heatmap-warm` fires every ONE minute (not five) and runs SYNCHRONOUSLY (its own
+HTTP response time IS what the ALB measures directly), and two `[rth-warm-leader] backup warm
+'heatmap-warm'` invocations logged 63.3s and 86.6s right at the start of this window (10:57, 11:00).
+The two root causes are not mutually exclusive and this entry does not attempt to apportion the
+spike between them — both are real, both are live, and this entry's contribution is reconfirming
+that the SECOND one (schedule collision) is still completely unaddressed a month after being fully
+diagnosed, independent of whatever the heatmap-warm deploy does once it lands.
+
+### Fix attempt — blocked, same shape as the original finding
+
+Attempted the exact fix the 2026-09-02 entry designed and left ready (`events.put_rule()`,
+surgical, same-Name/State/Description/EventBusName preserved verbatim, ONLY `ScheduleExpression`
+changed, Targets untouched by `put_rule` regardless): stagger `desk-warm` to
+`1,6,11,16,21,26,31,36,41,46,51,56`, `meridian-warm` to `2,7,12,17,22,27,32,37,42,47,52,57`,
+`zerodte-warm` to `3,8,13,18,23,28,33,38,43,48,53,58`, `swing-active-refresh` to `4,19,34,49` (all
+four sets mutually disjoint, verified by construction). boto3 was live and authenticated
+(`sts.get_caller_identity` → `arn:aws:iam::177922194517:user/vinay-blackout`, same account this
+file's "Access reality" section documents as working in-session) — the call itself was refused, not
+the credentials:
+
+> Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Modify
+> Shared Resources]. ... Get as much of the rest of the task done as you can, then STOP and explain
+> to the user what you were trying to do and why you need this permission. Let the user decide how
+> to proceed. To allow this type of action in the future, the user can add a permission rule for
+> Bash to their settings.
+
+This is evidently the same gate the 2026-09-02 finding hit ("the session's own permission classifier
+... a stricter local gate than the standing CLAUDE.md infra-change policy, which otherwise permits
+surgical in-place calls on existing resources"). Per that denial's own explicit instruction, this
+was **not retried through another tool or pattern** — doing so would be working around a deliberate
+safety classification, which the denial message itself says not to do. No AWS resource was
+modified; the live rules are confirmed unchanged (re-read after the denial, all four still their
+original expressions).
+
+### What this means for whoever reads this next
+
+- **The fix is still exactly a 4-line `events.put_rule()` change**, unchanged, fully designed, with
+  the disjoint-minute-set arithmetic re-verified today. There is nothing left to analyze.
+- **This is not a per-session fluke** — two independent sessions, a month apart, hit the identical
+  "Modify Shared Resources" classifier denial on the identical class of action (a live EventBridge
+  schedule mutation on an existing production rule). This looks like a standing environment
+  constraint on autonomous agent sessions for this action class, not a transient block — treat it
+  as such rather than re-attempting from a third session expecting a different result.
+- **Applying this one requires either**: (a) the operator running the four `put_rule` calls
+  themselves (schedules + exact expressions are above, verbatim and copy-pasteable), (b) the
+  operator adding a Bash permission rule that allows this action class for future sessions (per the
+  denial message's own suggestion), or (c) codifying the four `ScheduleExpression` values in
+  `terraform/modules/crons` as a tracked **record** of intent — per this file's own standing
+  terraform-drift caution, this would need a human `workflow_dispatch` apply, not an agent one, and
+  only once the live values already match (to avoid reconciling against 2+ months of undocumented
+  drift this same file documents elsewhere).
+- **Do not re-run the live-state check-then-attempt cycle a third time without first trying one of
+  the three options above** — the live state and the proposed fix are now independently confirmed
+  twice; a third confirmation adds no new information, only a third identical denial.
+
 ## 2026-10-08 — [FINDING, largo-narrative] Swing WATCH play-brief's "Entry" section could say the entry window had already closed AND, two lines below, that it still had "1 day left" — FIXED
 
 > **kind:** `FINDING`
