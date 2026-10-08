@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # Codemagic: fetch/create App Store signing cert + profile for BLACKOUT TRADE LLC.
 #
-# Shared between the Capacitor WebView shell (apps/blackout-ios) and the
-# native SwiftUI app (apps/blackout-ios-native). Both apps target the SAME
-# bundle id (`com.blackout-trades.app`) + team, so a SINGLE distribution
-# cert + provisioning profile serves both. What differs is where the
-# generated Xcode project sits:
+# Written to be shareable between the Capacitor WebView shell
+# (apps/blackout-ios) and the native SwiftUI app (apps/blackout-ios-native) —
+# both apps target the SAME bundle id (`com.blackout-trades.app`) + team, so a
+# SINGLE distribution cert + provisioning profile can serve both, and
+# PBX_PATH lets a caller point this at either app's Xcode project:
 #   - WebView shell: ios/App/App.xcodeproj/project.pbxproj (Capacitor)
 #   - Native app:    BlackOut.xcodeproj/project.pbxproj    (XcodeGen)
-# The caller sets PBX_PATH to the correct path; env-var defaulting keeps
-# the existing WebView TestFlight workflow working without changes.
+# In practice only the native workflow (.github/workflows/
+# blackout-ios-native-testflight.yml) calls this file today. The WebView
+# pipeline (codemagic.yaml) still runs its own separate, older copy at
+# apps/blackout-ios/scripts/codemagic-signing.sh, which has NOT picked up
+# this file's later fixes (the Apple cert-limit stranded-cert sweep below,
+# the quoted-vs-unquoted PRODUCT_BUNDLE_IDENTIFIER regex). The PBX_PATH
+# default below exists for a WebView caller that does not exist yet.
 #
 # CALLER ENV CONTRACT:
 #   BUNDLE_ID           the com.* bundle to sign for (both apps use the same)
