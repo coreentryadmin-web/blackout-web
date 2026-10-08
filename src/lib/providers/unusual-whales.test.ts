@@ -11,6 +11,7 @@ import {
   optionTradePrintToFlowRaw,
   fetchUwIvRank,
   fetchUwInsiderTransactions,
+  fetchUwNope,
   emptyDarkPoolSnapshot,
   darkPoolBias,
 } from "./unusual-whales";
@@ -165,6 +166,86 @@ test("fetchUwIvRank caches within TTL: two sequential calls → ONE underlying f
     if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
     if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
     if (prevTtl === undefined) delete process.env.UW_IV_RANK_CACHE_SEC; else process.env.UW_IV_RANK_CACHE_SEC = prevTtl;
+  }
+});
+
+// ── NOPE net_delta: dead-field lookup, same bug class as `summarizeGroupGreekFlow`'s
+// `net_delta`/`net_gamma` (#3290, 2026-09-02) ───────────────────────────────────────────────
+// WHY: live-verified 2026-10-08 against the REAL UW `/api/stock/{t}/nope` response (SPY):
+// `{"timestamp":"...","call_delta":"328598403.373379","put_delta":"-101025599.646208",
+// "call_vol":...,"put_vol":...,"stock_vol":...,"call_fill_delta":"...","put_fill_delta":"...",
+// "nope_fill":"0.268465","nope":"8.693712"}` — there is NO `net_delta` key anywhere on the row.
+// `fetchUwNope` read `r.net_delta ?? 0`, so `net_delta` was ALWAYS exactly 0 on every real call —
+// fabricating "perfectly balanced dealer delta flow" on a row that was actually ~+227.6M net-long
+// (call_delta + put_delta). This feeds straight into `spx-desk.ts`'s `nope_net_delta` (SPX desk)
+// AND directly into Largo's `get_nope` tool for every NON-SPX ticker (`run-tool.ts` calls
+// `fetchUwNope(sym)` unmodified) — a member asking Largo about NOPE on any skewed-flow ticker
+// would see a hard-coded 0, not a measured number.
+test("fetchUwNope: computes net_delta from the REAL call_delta/put_delta fields, never the nonexistent `net_delta` key", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevRedis = process.env.REDIS_URL;
+  process.env.UW_API_KEY = "test-uw-key";
+  delete process.env.REDIS_URL; // force L1-only path, no live Redis needed
+
+  mock.method(globalThis, "fetch", async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            timestamp: "2026-10-07T19:59:00Z",
+            call_delta: "328598403.373379",
+            put_delta: "-101025599.646208",
+            call_vol: 5396919,
+            put_vol: 6150926,
+            stock_vol: 26176714,
+            nope_fill: "0.268465",
+            nope: "8.693712",
+            // Deliberately NO `net_delta` key — matches the real upstream shape exactly.
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ),
+  );
+
+  try {
+    const result = await fetchUwNope("NOPEDELTATEST");
+    assert.ok(result, "expected a non-null row");
+    assert.equal(result!.nope, 8.693712);
+    // The real, honest computation: call_delta + put_delta (the same two signed inputs UW's own
+    // `nope` is derived from) — NOT the fabricated 0 a dead `r.net_delta` lookup always produced.
+    assert.ok(
+      Math.abs(result!.net_delta! - 227572803.727171) < 0.01,
+      `expected net_delta ≈ +227.57M (call_delta+put_delta), got ${result!.net_delta}`,
+    );
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
+  }
+});
+
+test("fetchUwNope: net_delta is null (not fabricated 0) when the row carries neither call_delta nor put_delta", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevRedis = process.env.REDIS_URL;
+  process.env.UW_API_KEY = "test-uw-key";
+  delete process.env.REDIS_URL;
+
+  mock.method(globalThis, "fetch", async () =>
+    new Response(
+      JSON.stringify({ data: [{ timestamp: "2026-10-07T19:59:00Z", nope: "0" }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ),
+  );
+
+  try {
+    const result = await fetchUwNope("NOPEDELTATEST2");
+    assert.ok(result, "expected a non-null row");
+    assert.equal(result!.net_delta, null, "absence must stay absence, never fabricated as 0");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
   }
 });
 
