@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-08T13:37:01Z",
+  "lastUpdated": "2026-10-08T14:52:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -635,6 +635,10 @@
     {
       "at": "2026-10-08T13:37:01Z",
       "summary": "Overall AMBER->GREEN -- first fully clean state this session. RTH open (9:37am ET): B_marks flipped GREEN now that both tickers have live two-sided quotes -- MRNA mark=6.03 (in [5.80,6.25]), MUU mark=1.70 (in [1.65,1.75]). A_edition/C_record/D_pull_status unchanged from the 13:23Z check (MRNA still correctly INVALIDATED, MUU still CONFIRMED). All 4 stages GREEN."
+    },
+    {
+      "at": "2026-10-08T14:52:00Z",
+      "summary": "MUU261016C00038000 B_marks AMBER 'stale' persisted across multiple cycles (14:37Z through at least 14:51Z, ~14+ min), unlike the single-cycle self-resolving flicker already named 2026-10-07 -- investigated via raw /api/market/nighthawk/legacy-marks?occs=... rather than assuming the same pattern. Confirmed real, not a bug: MUU's quote has genuine bid=1.25/ask=1.45/mark=1.35 but its own asof timestamp (14:51:03Z) was ~70s old against the 30s LEGACY_QUOTE_STALE_MS bar at request time, while MRNA's asof matched request time almost exactly (continuously ticking). Reads as thin liquidity on this small-cap 38-strike call -- market makers/WS ticks for MUU just update less often than MRNA's -- and the system is correctly disclosing that staleness rather than silently serving a frozen number. First instance of this specific shape (persistent-stale vs single-cycle-flicker); watching for recurrence before naming a pattern. No code change -- the staleness disclosure is doing its job."
     }
   ],
   "knownOpenItems": {
