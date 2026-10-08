@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-08T04:23:00Z",
+  "lastUpdated": "2026-10-08T13:23:04Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -627,6 +627,10 @@
     {
       "at": "2026-10-08T04:23:00Z",
       "summary": "First DEGRADED edition verdict observed this session (04:21:54Z): editionFor computed as 2026-10-09 (one day ahead of the stable 2026-10-08 seen every prior cycle), A_edition AMBER 'edition served from degraded fallback source' (resolve-edition.ts's final emptyEdition+degraded:true branch -- no lastGoodEdition to fall back on), B_marks trivially GREEN (zero plays in a degraded/empty edition). Immediate re-run 34s later (04:22:28Z): editionFor back to the stable 2026-10-08, A_edition back to GREEN with MRNA/MUU, fully self-resolved. editionFor itself flipping between two near-simultaneous requests (not just the stale/degraded flag) is new -- not previously directly observed this session, though resolve-edition.ts's own code comments already document a 'captured just before a midnight-ET day rollover' transient-mismatch class as expected and self-healing. This fits that documented class (UTC 04:21 is ET ~00:21, i.e. just past ET midnight) rather than being a new bug -- logging as a confirmed first instance of a known category, not escalating. resolved=37 unchanged (still the post-rollover 14-day window, no new resolutions). Will watch for a 3rd instance before treating this as a pattern needing a code fix (e.g. the editionFor computation itself showing a brief race right at the ET boundary, distinct from the already-fixed served_for/stale staleness logic)."
+    },
+    {
+      "at": "2026-10-08T13:23:04Z",
+      "summary": "First morning-confirm result of the session (D_pull_status SKIPPED->GREEN at 13:23Z, cron ran 13:15:14Z). MRNA261016C00202500 INVALIDATED -- pulled_reason: 'Cortex fresh-veto: [gex-walls] long target path crosses dominant call wall 200 (18.58% of ladder gamma) 3.6 pts above spot 196.4, inside 0.5x expected move (6.12 pts)' -- a legitimate pre-open risk/reward catch, not a bug: the long thesis's target sits inside a strong resistance wall before the expected move even clears it, so Cortex correctly pulled it rather than let members chase a poor setup. MUU261016C00038000 CONFIRMED clean, no veto. Both verdicts agree with the DB's pulled flag (A_edition/B_marks unchanged: A GREEN, B still AMBER -- MRNA/MUU both still showing 'no live two-sided quote', expected this close to but before the 9:30am ET open)."
     }
   ],
   "knownOpenItems": {
