@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-08T17:48:10.000Z",
-  "notes": "Cycle check 2026-10-08 17:47Z (:46-offset trigger). MSFT:49 has now declined 4 consecutive ticks (-15% -> -21.9% -> -31.7% -> -39.2%, 16:48Z-17:47Z), underlying drifting steadily toward invalidation: spot 525.83 -> 525.95 -> 523.08 -> 522.43 vs invalidationUnderlyingPx 520.63 (only ~0.34% away as of this tick, MAE -1.07%). thesisLevel still reads 'intact' and manageReasonDetail still says 'thesis intact, premium above the 0.4x backstop, ample time -- hold' at every tick -- not yet a bug (spot has not actually crossed invalidation), but this is now a real, monotonic approach worth close tracking next cycle: if spot breaches 520.63 and the engine STILL reports thesisLevel:intact / liveStatus:HOLD, that would be a genuine thesis-invalidation-detection gap (distinct from the already-known #5537 profit_ladder/TRIM bug -- this would be on the DOWNSIDE invalidation side, never previously observed). If it breaches and correctly flips to broken/CLOSE, that's the system working as designed. Flagging this explicitly as the thing to check first next tick.",
+  "last_updated": "2026-10-08T18:02:30.000Z",
+  "notes": "Cycle check 2026-10-08 18:02Z (:01-offset trigger, full mandate). RESOLVED: the msft_49_invalidation_watch_2026_10_08 entry's open question is answered -- MSFT:49 closed 2026-10-08T18:00:18Z, closedReason:'stopped', exitPnlPct -47.26%. The system worked AS DESIGNED on the downside: once the underlying actually crossed invalidationUnderlyingPx (520.63), the position was correctly stopped out rather than sticking at liveStatus:HOLD/thesisLevel:intact the way the #5537 bug keeps the UPSIDE (profit_ladder) stuck. No new finding -- this closes out the watch item with a clean (if losing) resolution. nativeOpens now 0 -- flat on native swings as of this tick. Cortex at MSFT:49's original commit was also thin-evidence (score 0.4/conviction C, 4 of 6 sources absent incl. 2 CortexSourceTimeout) -- same shape as INTC:50 (stopped 17:00Z, also thin-evidence). Two thin-evidence-commit losses in roughly 24h is notable but still below the 3-instance threshold, and the existing `cortex-source-timeout-outcome-ab.mjs` 30-day/227-sample measurement already found no systemic degradation from this pattern -- not escalating on n=2 against a larger existing null result. Watching for native re-entry next cycle.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -492,7 +492,7 @@
     "note": "Worth tracking tomorrow -- if it ever crosses +100% (2x), that's exactly the scenario #5537 describes as broken (graduatedRungs permanently [] -> no TRIM). Nothing actionable tonight."
   },
   "msft_49_invalidation_watch_2026_10_08": {
-    "status": "WATCHING -- not yet a finding. spot still above invalidationUnderlyingPx as of 17:47Z.",
+    "status": "RESOLVED 2026-10-08T18:00:18Z -- closed 'stopped' at -47.26% once spot actually crossed invalidationUnderlyingPx. System correctly exited; this was a normal losing trade, not a thesis-invalidation-detection gap. Closing this watch item.",
     "trail": [
       {
         "t": "16:31Z",
