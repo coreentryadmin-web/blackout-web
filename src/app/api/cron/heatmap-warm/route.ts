@@ -1,7 +1,11 @@
 // Cron: pre-warm the shared GEX heatmap matrix cache for the shared sticky universe
 // (static allowlist ∪ dynamic ≤100 / 14d — same set Vector records beads for).
-// Schedule: ~every 30-45s during market hours (registered in cron-registry.ts as
-// "heatmap-warm"; EventBridge wires the actual fire).
+// Schedule: EventBridge `cron(*/1 11-21 ? * MON-FRI *)` — 1/min, ~7am-5:59pm ET (registered in
+// cron-registry.ts as "heatmap-warm") — PLUS the in-app rth-warm-leader backing it up whenever a
+// run is overdue past its own ~81s p90 runtime (RTH_WRITER_HEAL_AFTER_MIN), including the wider
+// 4am-8pm ET pre-market/after-hours window EventBridge's own schedule doesn't cover at all. A
+// real full sweep itself takes ~60-110s (see OVERLAP_LOCK's doc comment below), so "~30-45s
+// cadence" (this comment's old claim) was never actually achieved — corrected 2026-10-08.
 //
 // THE POINT: the Heat Maps UI / Largo explain / gex-positioning all read fetchGexHeatmap(ticker),
 // which dedups per ticker through the in-memory + Redis matrix cache (and a single-flight guard).
@@ -14,7 +18,8 @@
 //
 // DELTA BROADCAST: after warming each ticker, calculate the delta vs. the previous snapshot
 // and broadcast to all active SSE subscribers (/api/market/gex-matrix-deltas). This gives
-// real-time perception (10-15s) while keeping the full rebuild to 30-45s cadence.
+// real-time perception (10-15s) while the full rebuild itself runs on a ~60-110s cadence (see
+// the schedule note above).
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
@@ -65,12 +70,14 @@ const OVERLAP_LOCK_TTL_SEC = 240;
  * EventBridge, rth-warm-leader and the staleness watchdog all positively ruled out as the source).
  *
  * 10s sits safely BELOW every legitimate cadence for this specific cron so it never blocks real
- * traffic: rth-warm-leader's own heal threshold here is 20s (RTH_WRITER_HEAL_AFTER_MIN
- * ["heatmap-warm"], the TIGHTEST of any watched key — see rth-warm-leader-logic.ts) and its own
- * tick loop runs every 15s (TICK_MS, rth-warm-leader.ts); EventBridge's own schedule is ~30-45s
- * (this file's header comment). None of those legitimate paths re-requests this key sooner than
- * 10s ever would allow, so only an out-of-band replay loop tighter than the leader's own tick can
- * ever observe this floor.
+ * traffic: rth-warm-leader's own heal threshold here is 81s — the job's own p90 measured runtime
+ * (RTH_WRITER_HEAL_AFTER_MIN["heatmap-warm"], raised from a nonsensical 20s 2026-10-08 — see
+ * rth-warm-leader-logic.ts for why 20s let the leader re-dispatch a fresh full sweep on almost
+ * every tick) and its own tick loop runs every 15s (TICK_MS, rth-warm-leader.ts); EventBridge's
+ * OWN deployed schedule fires every 1 minute, 11:00-21:59 UTC Mon-Fri (confirmed live against the
+ * actual EventBridge rule, not this file's stale "~30-45s" header comment above). None of those
+ * legitimate paths re-requests this key sooner than 10s ever would allow, so only an out-of-band
+ * replay loop tighter than any of them can ever observe this floor.
  */
 const RERUN_COOLDOWN_KEY = "heatmap-warm:cooldown";
 const RERUN_COOLDOWN_SEC = 10;
