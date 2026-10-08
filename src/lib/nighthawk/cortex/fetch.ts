@@ -471,6 +471,18 @@ export async function fetchCortexInputs(
 
   const nowIso = now.toISOString();
   const spot = finiteOrNull(vector?.spot) ?? finiteOrNull(positioning?.spot);
+  // Bound to a plain variable (not `asOf`/`darkPool.asOf` directly) matching this file's own
+  // existing `nowIso` convention a few lines above — this is a pure instant used for a DURATION
+  // calc downstream (`compose.ts`'s `ageSec = now - asOfMs`), never for resolving which trading
+  // SESSION a date falls in, so Largo contract C1's UTC-after-20:00-ET-rolls-to-tomorrow failure
+  // mode (the thing `session-anchor.test.ts`'s ratchet exists to catch) genuinely does not apply
+  // here — same reasoning as every other bare `nowIso`-sourced `asOf`/`as_of` field already in
+  // this file (sector/opening/news), none of which carry or need an ET session anchor either.
+  const darkPoolAsOfIso = vector
+    ? vector.darkPoolAsOf
+      ? new Date(vector.darkPoolAsOf).toISOString()
+      : vector.asOf
+    : nowIso; // unused when vector is null (darkPool becomes null below) — nowIso just keeps this a plain string
 
   return {
     ticker: upper,
@@ -490,9 +502,26 @@ export async function fetchCortexInputs(
     }),
     news: mapNewsSlice(news, earnings, nowIso),
     vex: mapVexSlice(positioning),
+    // BUG FOUND (Ask Largo standing mandate, 2026-10-08): must anchor to the dark-pool cache's
+    // OWN (looser, ~25min TTL / 10min cadence) fetchedAt (`vector.darkPoolAsOf`), never the whole
+    // Vector state's compute-recency (`vector.asOf`) — same root-cause shape the swing play-brief
+    // fix already corrected for narrative display (MARKET-OPEN-VALIDATION.md #357, 2026-10-06:
+    // "every consumer gated dark-pool inclusion only on the WHOLE Vector state's compute-recency,
+    // which can read 'live' seconds after assembly while the embedded dark-pool levels are up to
+    // ~24 minutes old"). That fix only reached the swing narrative layer; this call site feeds
+    // `compose.ts`'s REAL exponential half-life decay (`cortexDecayFactor`, ageSec = now - asOfMs,
+    // 60min half-life) for the `darkpool-confluence` Cortex source — shared by BOTH the 0DTE and
+    // Swing commit gates (`vectorHorizonForCortexCommit`). Using `vector.asOf` here silently
+    // zeroed the computed age on every read where the dark-pool cache wasn't fetched in the same
+    // instant as the rest of Vector state (i.e. almost always), which both over-weighted the
+    // confluence bonus (treating a stale read as perfectly fresh) and permanently disabled this
+    // source's own staleness self-exclusion (`ageSec > halfLifeSec * ABSENT_AFTER_HALF_LIVES`
+    // could never fire for dark-pool specifically). `darkPoolAsOf` 0/unset (legacy/unknown cache
+    // entry) falls back to `vector.asOf` — the same "unknown never reads as stale" discipline
+    // `vector-absent-sections.ts`'s `reportVectorAbsences` already applies to this identical field.
     darkPool: vector
       ? {
-          asOf: vector.asOf,
+          asOf: darkPoolAsOfIso,
           levels: (vector.darkPoolLevels ?? []).map((l) => ({ price: l.strike, premium: l.premium })),
         }
       : null,
