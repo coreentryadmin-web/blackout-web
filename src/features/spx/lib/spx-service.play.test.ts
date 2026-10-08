@@ -39,6 +39,24 @@ test("member /api/market/spx/play catch returns degradedPlayPayload shape", () =
   assert.match(route, /degradedPlayPayload/);
 });
 
+test("getSpxPlayState's withServerCache call never caches an unassessed/degraded placeholder (2026-10-08 fix)", () => {
+  // evaluateSpxPlayStateCrossReplica() can RESOLVE (not throw) to degradedPlayPayload()
+  // when this replica loses the cross-replica Redis lock and no stale/peer snapshot shows
+  // up in time — a routine outcome given the 5s TTL here, not a rare one. Without a
+  // shouldCache guard, server-cache.ts's refreshCache() persists ANY resolved value for the
+  // full TTL (in-memory AND shared Redis), so one lock-contention loss gets amplified into
+  // every reader of this cache key seeing "Desk warming" for the next TTL window — measured
+  // live 2026-10-08: ~50% of a 12-call burst over 24s came back `degraded:true`, several
+  // sharing an identical `as_of` (the same cached placeholder served repeatedly). `assessed`
+  // is explicitly `false` ONLY on that placeholder path (see SpxPlayPayload's own doc
+  // comment) and never on a genuine closed-session assessment, so it is the correct guard —
+  // the same shape as Night Hawk edition route's `available !== false` shouldCache.
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const fn = service.match(/export async function getSpxPlayState\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, "getSpxPlayState function present");
+  assert.match(fn![0], /shouldCache:\s*\(\w+\)\s*=>.*assessed\s*!==\s*false/);
+});
+
 test("peekSpxPlayState checks isSpxPlaySnapshotFreshEnough on BOTH the in-process and Redis-backed peek paths (2026-09-13 fix)", () => {
   const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
   const fn = service.match(/export async function peekSpxPlayState\(\)[\s\S]*?\n\}/);
