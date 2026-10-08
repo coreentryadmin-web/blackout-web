@@ -1,3 +1,153 @@
+## CORRECTION / REOPENED — 2026-10-08 ALB tail-latency investigation: #5686 confirmed DEPLOYED LIVE but did NOT measurably reduce `TargetResponseTime` p99/Max — this thread is OPEN, not done
+
+**Read this before trusting any "the arc is done" impression from chat, a stale trigger-prompt
+reference, or the entry immediately below this one.** The entry directly below (`heatmap-warm`'s
+unbounded `rest`-tier fan-out, PR #5686) is a REAL, well-evidenced, correctly-fixed bug — the
+single-task CPU saturation it found and fixed genuinely existed and is genuinely gone. It is **not**
+however the dominant driver of the CURRENT sustained ALB tail-latency pattern, confirmed by a live
+post-deploy re-measurement this cycle. Nothing in this correction asks anyone to revert #5686 or
+re-open it as broken — it is a correct, narrow fix for a real bug that simply was not (or was not
+only) the cause of this specific symptom.
+
+### Part 1 — #5686 deployed, confirmed live, re-measured: NO improvement
+
+**Deployment confirmed independently this cycle** (not merely asserted): `ecs.describe_services`
+on `blackout-production-web` shows the #5686 image
+(`177922194517.dkr.ecr.us-east-1.amazonaws.com/blackout-web:bb61d961b7674da07cc73c111ac34f5c8154ac9a`
+— `bb61d961b` is exactly PR #5686's merge commit, `fix(perf): heatmap-warm's bulk ticker fetch used
+an unbounded fan-out, starving the task it ran on`) was deployed as task-definition revision 1865,
+and the service's own event log shows that rollout **reached steady state at 12:54:07 UTC**
+(`(deployment ecs-svc/9166911404125338068) deployment completed` / `has reached a steady state`) —
+i.e. all 8 running web tasks were on the fixed image from 12:54:07 UTC onward, well inside the
+window measured below.
+
+**Independently re-pulled `AWS/ApplicationELB TargetResponseTime` (1-min granularity,
+`blackout-production-app` target group) for the window immediately AFTER that steady-state
+timestamp** — this is a fresh pull this cycle, not a re-quote of an earlier number:
+
+| minute (UTC) | p50 | p99 | Max |
+| --- | --- | --- | --- |
+| 12:54 | 0.018 | 68.89 | 69.52 |
+| 12:55 | 0.042 | 7.87 | 8.01 |
+| 12:56 | 0.024 | 68.58 | 68.90 |
+| 12:57 | 0.228 | 48.35 | 48.55 |
+| 12:58 | 0.047 | 34.41 | 34.44 |
+| 12:59 | 0.018 | 0.31 | 0.31 |
+| 13:00 | 0.019 | 60.68 | 61.33 |
+| 13:01 | 0.276 | 32.46 | 32.65 |
+| 13:02 | 0.017 | 49.14 | 49.49 |
+
+p50 stayed under 0.3s in every one of these minutes — confirming (again) that this is a
+tail-latency signature, not fleet capacity. **This is statistically indistinguishable from the
+pre-deploy baseline** measured earlier the same morning (11:00-11:55 UTC, before #5686's rollout
+even started): p99/Max repeatedly 50-100s in that window too (e.g. 11:05 p99=80.28/Max=80.40, 11:45
+p99=97.97/Max=100.21, 12:30 p99=65.39/Max=91.22). A companion live run (a sibling cycle, reported
+the same morning) independently measured the same post-deploy non-improvement across a wider
+12:22-12:57 UTC window (p99/Max 57-91s throughout) — corroborating, not duplicating, the numbers
+above. **Zero `HTTPCode_Target_5XX_Count` across the entire trailing 3 hours of this pull** (summed
+metric = 0) — before AND after the #5686 deploy. This has never been an outage; it is pure,
+recurring tail latency, continuing unabated after a real, correctly-targeted, fully-deployed fix.
+
+**What this means:** #5686's root-cause theory (unbounded `Promise.allSettled` fan-out on
+`heatmap-warm`'s bulk `rest` tier spiking one ECS task's CPU to 700-860/2048 units for 60-90s,
+stalling co-located requests) was real and is now fixed — but is shown by this live
+before/after to NOT be the dominant mechanism behind the CURRENT sustained p99/Max pattern. Two
+honest readings, neither confirmed over the other yet: (a) #5686 was never the dominant driver of
+THIS specific symptom — a real bug, correctly fixed, that happened to share a measurement window
+with a larger, still-unidentified cause; or (b) there is a compounding/masking second mechanism that
+#5686 alone cannot address. **Do not guess between these — the next session with capacity should
+profile rather than patch further**, per this file's own standing #5061/#5065 caution against
+shipping a second speculative fix without a confirmed mechanism.
+
+### Part 2 — cron-schedule-collision hypothesis (#5692): read-only correlation test this cycle, result is WEAK/MIXED, not a confirmation
+
+Per this cycle's explicit instruction, no AWS write was attempted (the `events.put_rule` stagger
+fix remains fully designed and ready, still blocked on this sandbox's "Modify Shared Resources"
+permission classifier — confirmed blocked on two independent sessions a month apart, see #5692; do
+**not** re-attempt the write from this sandbox). Instead, pulled CloudWatch Logs `/ecs/blackout-
+production` `elapsed=` completion lines for the four crons #5692 names as colliding
+(`desk-warm`/`meridian-warm`/`zerodte-warm` all on `cron(*/5 11-21 ? * MON-FRI *)`,
+`swing-active-refresh` on `cron(*/15 ...)`, `market_hours_only: true`) over a 4h10m window
+(09:00-13:09 UTC, 2026-10-08) matching 251 one-minute `AWS/ApplicationELB TargetResponseTime`
+buckets, and tested whether ALB p99/Max spike minutes (p99>=20s) show MORE overlapping elapsed-time
+from these crons than non-spike minutes — the same overlap-correlation technique PR #5684's own
+write-up used for the `heatmap-warm` duty-cycle hypothesis (and which found no correlation there).
+
+**Real, disclosed limitation: only a 2-way test was possible this cycle, not the full 4-way.**
+`swing-active-refresh` is `market_hours_only` (cash RTH) and had not fired even once in this window
+— cash open is 13:30 UTC and this window ends 13:09 UTC — so it structurally could not
+participate in any collision today before this analysis was run. More surprisingly,
+`desk-warm`'s own EventBridge-triggered heavy pass (the `[cron/desk-warm] background done —
+...elapsed=Nms` line, historically 9-24s+ per its own route comment) logged **zero** completions
+in the full 4h10m window, despite `AWS/Events Invocations` confirming EventBridge itself fired the
+rule's Lambda target 26 times in that span with 0 `FailedInvocations` — every `desk-warm`-related
+log line in the window was instead the in-app leader's cheap `[rth-warm-leader] backup warm
+'desk-warm' ok (Nms)` check (138 of them, all under 200ms). This is an unconfirmed anomaly, not a
+root-caused finding — plausibly the leader's own freshness checks are satisfying desk-warm's
+staleness bar before EventBridge's own trigger ever needs to do real work, or the real pass is
+being silently skipped by `OVERLAP_LOCK`/`shouldRunCacheWarmer` every single time — but it means
+**desk-warm's real heavy pass could not be observed overlapping anything this cycle either**.
+Flagging as a lead for a future cycle to actually root-cause (it touches `desk-warm`'s own overlap
+semantics, not the ALB-latency investigation directly) rather than guessing here.
+
+**With only `meridian-warm` (25 runs, 19.8-79.2s each, mean ~40s) and `zerodte-warm` (46 runs, mostly
+0.6-3s, one 81.6s outlier) actually producing measurable elapsed-time in this window:**
+
+- Mean number of these crons concurrently active: **0.52** during spike minutes (n=81) vs **0.30**
+  during non-spike minutes (n=169) — a real but modest ~1.7x enrichment. Overlap count never
+  exceeded 2 in this window (never the 3-way or 4-way collision #5692 actually describes).
+- Only **7 of 251** minutes had BOTH `meridian-warm` and `zerodte-warm` active at once. Of those 7:
+  **4 coincided with a real spike** (41-61s) and **3 did not** (1.3-6.5s) — small-n and mixed, not a
+  clean confirmation either way.
+- Breaking the two crons out individually: `meridian-warm` was active in **35.8%** of spike minutes
+  vs only **8.9%** of non-spike minutes (a real ~4x enrichment — but this is the SAME correlation
+  this file's own 2026-10-07 entries already found and partially investigated for meridian-warm's
+  long `elapsed=` runs, not new information). `zerodte-warm` showed **no positive correlation at
+  all** (16.0% active during spike vs 21.4% during non-spike — if anything slightly negative).
+
+**Verdict: WEAK/MIXED, reported honestly rather than rounded up to a confirmation.** The
+correlation that does exist in this data is attributable to `meridian-warm`'s own already-documented
+long elapsed runtime (a symptom this file's 2026-10-07 entries already connected to the shared
+GEX-heatmap/SPX-desk build path, and which a direct benchmark already showed is NOT explained by
+per-contract Black-Scholes cost alone) — not to a demonstrated multi-cron pile-up effect layered on
+top of it. 53% of all spike minutes (43/81) had ZERO overlapping elapsed-time from any of these four
+crons at all, which argues against the identical-minute collision being the DOMINANT mechanism,
+though it does not rule out a secondary contributing role once `desk-warm`'s real heavy pass and
+`swing-active-refresh` (post-13:30-UTC) can both be included in a cleaner re-run. **#5692 remains the
+leading unconfirmed alternative/compounding hypothesis** — not ruled out, not confirmed, and its own
+fix (EventBridge minute-stagger) remains blocked on the same operator-actionable AWS permission
+boundary named above. **Do not re-attempt the AWS write from this sandbox.**
+
+### Standing operator-actionable blockers (both still open, both named here so a future session
+doesn't re-discover them from scratch)
+
+1. **The #5692 cron-minute-stagger fix** — fully designed, ready to apply via `events.put_rule`,
+   blocked twice (a month apart, two independent sessions) by this sandbox's own "Modify Shared
+   Resources" permission classifier. Needs operator action (either grant the AWS write permission in
+   this sandbox, or apply the designed change directly) — not a code or research gap.
+2. **ALB access logging** — identified since 2026-09-02 (see this file's own history) as the
+   single highest-leverage next step for this entire investigation: real per-request attribution
+   (path, latency, target, status) would let a future session directly identify WHICH requests are
+   slow and WHICH upstream call they're blocked on, instead of inferring from minute-level
+   CloudWatch metric correlation. Also blocked on an AWS permission boundary in this sandbox (per
+   this cycle's explicit instruction, NOT re-attempted here). This is the standing,
+   operator-actionable blocker for making further progress on this specific symptom from this
+   sandbox — a future session should not spend more cycles on correlation inference without first
+   checking whether this has been enabled.
+
+### Status going forward: **OPEN — not resolved, not closed, not "the arc is done."**
+
+Any future session (or trigger-prompt text) that reads a prior cycle's work on this investigation
+and concludes it is finished should re-read this entry first and re-verify against live
+`TargetResponseTime` data before saying so again. The six 5-engine-monitor trigger prompts
+(`trig_01NNvznmA6eMsH61cLe7yb6z` and its 5 siblings) were checked this cycle and already correctly
+avoid declaring this closed — their Vector-board instruction already says "the downstream
+contention mechanism is still open... do not attempt a speculative fix to it from this trigger,"
+which remains accurate and needed no correction. Full write-up:
+`docs/audit/findings-staging/2026-10-08-alb-latency-investigation-reopened-5686-no-improvement.md`.
+
+---
+
 ## WATCH LIST — 2026-10-08 `heatmap-warm`'s bulk "rest" ticker fetch fanned out via an UNBOUNDED `Promise.allSettled` — the confirmed downstream contention mechanism behind the recurring ALB tail-latency spikes #5680/#5684 left open — deploy pending validation
 
 **What was fixed:** picks up exactly where #5680 ("found the trigger, contention mechanism still
