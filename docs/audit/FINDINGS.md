@@ -4,6 +4,141 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-10-08 — [FINDING, P3 Night Hawk Swings / Ask Largo] `fmtPct`'s raw `toFixed` (never pre-rounded, unlike the money formatters) let the structure-ladder UI double-round `distancePct` and disagree with the narrative text for the same rung — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The swing play-brief's structure ladder can show a DIFFERENT distance-to-level percentage in the "Trade manager read" narrative prose than in the structure-ladder visual (`BieStructureLadder.tsx`) for the SAME rung, in the SAME `GET /api/market/swing/play-brief` response. Confirmed by brute-force search over a dense grid of raw floats in `[-5, 5]`: ~5% of sampled raw `distancePct` values (50,447 of 1,000,001) produce a mismatch between a single round-to-1dp of the raw value and a round-to-2dp-then-round-to-1dp of the same value — e.g. raw `-4.94999` single-rounds to `-4.9%` but double-rounds to `-5.0%`, a full 0.1-point difference in the SAME fact. |
+| **Root cause** | `fmtPct()` — independently pasted, byte-identical modulo nullability, into FOUR files (`play-brief.ts`, `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`) — called `n.toFixed(digits)` directly on the raw float, never pre-rounding via `Math.round(n * 10**digits) / 10**digits` the way `src/lib/round-floats.ts`'s `roundFloats()` does at every API response boundary. This is the EXACT bug class `fmtOptionUsd`/`fmtPriceLevel` (`src/lib/fmt-money.ts`) already document three prior fixes for (a sign defect 2026-09-09, a `toFixed`-vs-`Math.round` rounding mismatch 2026-09-12, the same mismatch again for bare price levels 2026-09-21) — those three fixes covered dollar amounts and price levels, but the identical pattern was never generalized to percentages, and `fmtPct` carried the un-fixed version in all four of its copies. Compounding it: the swing play-brief API route (`src/app/api/market/swing/play-brief/route.ts`) serializes `structureLadder` (which carries `distancePct` on every rung and on `StructureLadderRisk`, `src/lib/swing/play-brief-ladder.ts`) through `roundFloats({ available: true, ...brief })` with NO `keyDp` override, so the wire number gets the generic 2dp default. `BieStructureLadder.tsx`'s own `fmtDist()` then re-rounds that already-2dp wire value to 1dp with a bare `n.toFixed(1)` — a genuine double round, layered on top of the narrative's separate un-pre-rounded single round of the raw float. The two paths can disagree at exactly the IEEE-754/half-unit boundaries `fmtOptionUsd`'s own header explains. |
+| **Why this is a real bug, not a legitimate design choice** | Both numbers describe the identical fact (how far a specific wall/flip/pin level sits from spot, for the same rung, in the same response) and are shown to the member at the same time — one as prose, one as a visual bar label. The Largo product contract's precision point (C9) exists exactly to prevent two surfaces disagreeing on one fact; `fmtPriceLevel`'s own file header already names this violation class for price levels, and this is the same violation one layer over, in percentages, that nobody had checked for. |
+| **Blast radius** | All four `fmtPct` duplicates (`play-brief.ts`, `play-brief-narrative.ts`, `play-brief-narrative-coaching.ts`, `play-brief-intel.ts`) carried the un-pre-rounded version and are replaced by one import from `@/lib/fmt-money`. `BieStructureLadder.tsx`'s `fmtDist()` is the one concrete DOUBLE-round site (reads the wire `distancePct` after `roundFloats`) and is fixed at both ends: the route now rounds `distancePct` to 1dp at the source (matching the precision it is narrated at everywhere), and the component delegates to the same canonical `fmtPct` instead of a bespoke `toFixed(1)`, so a client-side re-round of an already-1dp number is now idempotent rather than a second independent rounding. `rail-levels.ts`'s own `formatDistance` (used by the separate, non-swing `LargoDeskRead.tsx` ladder) is a genuinely independent client-side recomputation from price/spot, not a re-round of a transmitted `distancePct`, and was deliberately left untouched — out of scope for this single-root-cause fix. |
+| **Fix** | Added a canonical `fmtPct(n: number \| null \| undefined, digits = 1): string` to `src/lib/fmt-money.ts`, alongside `fmtOptionUsd`/`fmtPriceLevel`, pre-rounding via `Math.round(n * 10**digits) / 10**digits` before `.toFixed(digits)` — byte-for-byte the same algorithm `roundFloats()` uses, generalized from 2dp to an arbitrary digit count. Sign is read off the ROUNDED value (mirrors `rail-levels.ts`'s own `formatDistance`), so a raw value that rounds to exactly 0 at the requested precision reads `"0.0%"`, never a misleading `"+0.0%"`. Replaced all four local duplicates with imports of this one function (no behavior change at any of their existing call sites — full suite confirms). Added `{ distancePct: 1 }` as a `keyDp` override to the swing play-brief route's `roundFloats()` call, so the wire-transmitted `distancePct` is rounded to the SAME 1dp precision it is displayed at everywhere, eliminating the double-round at the source rather than only patching the symptom client-side. Updated `BieStructureLadder.tsx`'s `fmtDist()` to delegate to the shared `fmtPct` instead of its own `n.toFixed(1)`. |
+| **Fix rationale** | Centralizing in `fmt-money.ts` (rather than re-patching all four duplicates in place) matches this exact codebase's own established remedy for the identical bug class in money/price formatters, and removes yet another 4-way byte-identical duplicate at the same time — same shape as the historical `fmtOptionUsd` centralization. Rounding `distancePct` to 1dp at the ROUTE (rather than only fixing the client component's own rounding) was deliberate: fixing only `BieStructureLadder.tsx` would still leave the wire number itself inconsistent with its own narrative-text sibling at 2dp vs. the narrative's 1dp, a smaller but real residual mismatch; rounding at the source makes the client's re-round a true no-op instead of merely "less wrong." `rail-levels.ts`'s independent client-side `distancePct` recompute (feeding the separate `LargoDeskRead.tsx`/generic-Largo ladder, not swing's `structureLadder`) was left untouched — a different computation path entirely, and a second finding if it ever needs the same treatment. |
+| **Regression guard** | `src/lib/fmt-money.test.ts`, new `describe("fmtPct", ...)` block: null/non-finite → em-dash; sign placement; custom digits; the live-shaped repro (`-4.94999` single-rounds to `-4.9%` but double-rounds to `-5.0%` — asserted as an environment sanity check, then asserts `fmtPct` agrees with the single canonical round); and a byte-for-byte match against a hand-written `roundFloats`-style reference across seven raw values including the repro and near-zero cases. RED→GREEN confirmed: before the `fmtPct` export existed, the import itself failed (`(0, import_fmt_money.fmtPct) is not a function`, 5/19 fmt-money tests failing); after the fix, 19/19 pass. Full relevant suite (`fmt-money.test.ts` + all four swing `play-brief*.test.ts` files + `play-brief-ladder.test.ts`) — 626/626 pass, confirming none of the existing narrative/ladder assertions happened to encode the old buggy rounding at a boundary value. `npx tsc --noEmit` clean. Full `npm test` run clean (see PR). |
+| **Status** | FIXED — branch `fix/swing-pct-double-rounding`. |
+
+## 2026-10-08 — [FINDING, P3 Night Hawk Swings / Ask Largo] `crossDeskCoaching`'s "structure" conflict told a WATCH (pre-entry) candidate to "size down" and wait for its "next trim rail" — positions that don't exist yet — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Area** | Ask Largo swing play-brief — `crossDeskCoaching`/`renderCrossDeskConflict`/`crossDeskResolution` (`src/lib/swing/play-brief-narrative-coaching.ts`), the "Cross-desk friction" trade-manager bullet |
+| **Severity** | P3 — member-facing narrative correctness (Largo product contract), no live-trading-path change |
+| **Status** | FIXED — branch `fix/swing-crossdesk-watch-trim-language` |
+| **Found by** | ASK LARGO × NIGHT HAWK SWINGS standing ownership mandate, 5-engine live monitor cycle, 2026-10-08 01:01 UTC firing |
+
+### Root cause
+
+`collectCoachingBullets` calls `crossDeskCoaching(ctx, play)` unconditionally for both the `"watch"`
+(pre-entry candidate) and `"open"` (already-entered HOLD/TRIM/OPEN) buckets — only the `"closed"`
+bucket short-circuits before reaching it. When Vector's gamma-regime structure read conflicts with
+the swing's own directional thesis, `crossDeskCoaching` renders a "Cross-desk friction" bullet via
+`renderCrossDeskConflict`, whose `crossDeskResolution("structure")` branch unconditionally returned:
+
+> "watch for it to flip back before your next trim rail — until then, size down"
+
+This sentence presupposes an EXISTING POSITION: something already sized that could be "sized down",
+and a scale-out ladder (`SWING_SCALE_OUT_POLICY`) with a "trim rail" already running. Neither exists
+for a WATCH-bucket candidate — no entry has been made, there is no position, and no trim rail has
+ever been armed. This is exactly the failure class this same file has already been fixed for twice
+before on OTHER sections — `bookContextSection`'s CLOSED-bucket "Adding {ticker} stacks the same
+wager" tense bug and its ALREADY-OPEN "Adding..." sibling fix (both FINDINGS 2026-09-12) — just never
+audited for THIS specific `crossDeskResolution` line.
+
+### Evidence
+
+Live repro, `GET /api/market/swing/play-brief?playId=SWING:NET&ticker=NET&status=WATCH` (NET WATCH
+brief, 2026-10-07 ~21:08 ET, `positionId: null`, `status: "WATCH"`, `setupState: "TRIGGERED"`,
+genuinely gated behind TWO unresolved entry gates — `g_s12_halt_feed_stale`, `g_s6_confluence` — so
+no entry decision has even been reachable yet, let alone taken):
+
+> **Cross-desk friction** — Vector bearish (POSITION · momentum short on continuation → target put
+> wall 342.5). That's live price structure — the same tape this swing itself trades — exactly the
+> evidence a **Pullback continuation** setup leans on: watch for it to flip back before your next
+> trim rail — until then, size down.
+
+A member reading this on a candidate they have not entered is told to manage a position ("size
+down", "trim rail") that does not exist. The sibling OPEN-bucket brief (`SWING:INTC`, an actual HOLD
+position) renders the identical text correctly — there the language is accurate, since a real
+position and a real trim ladder exist.
+
+New regression tests, `src/lib/swing/play-brief-narrative-coaching.test.ts`:
+- `"crossDeskCoaching: WATCH-bucket structure conflict never tells the member to size down or wait
+  for a trim rail (no position exists yet)"` — RED pre-fix (`git stash` of only
+  `play-brief-narrative-coaching.ts`): the function has no way to distinguish buckets, so the
+  WATCH-status fixture renders the same open-position language. GREEN post-fix.
+- `"crossDeskCoaching: OPEN-bucket structure conflict still reads size down / trim rail
+  (unchanged)"` — companion guard proving the fix is additive, not a rewording of the already-correct
+  open-position text.
+
+### Fix
+
+`crossDeskCoaching` now derives the same `"watch" | "open"` bucket split `statusBucket` already uses
+elsewhere in this lane (`play-brief.ts`/`play-brief-intel.ts`: `OPEN`/`HOLD`/`TRIM` → `"open"`,
+everything else → `"watch"`; `"closed"` is impossible here since that bucket never reaches this
+function) and threads it through `renderCrossDeskConflict` into `crossDeskResolution`. Only the
+`"structure"` case branches on it — the `"flow"`/`"intraday_scalp"`/`"digest"` resolution texts are
+already entry-decision-neutral (they talk about thesis validity/evidence weight, not sizing or trim
+mechanics) and were left untouched. WATCH now reads:
+
+> "watch for it to flip back before treating this as confirmation — until then, this isn't a green
+> light to enter"
+
+### Fix rationale
+
+Scoped to exactly the one branch that presupposed a position (`"structure"`) rather than threading
+bucket-awareness through every resolution kind, since the other three already read correctly for
+both buckets — widening the change would have been scope creep for no behavioral gain. Did not touch
+`renderCrossDeskConflict`'s ranking/weighting logic, the 4-desk conflict detection, or the existing
+`+N more desks` disclosure (2026-09-19 fix) — all already correct and independently tested.
+
+### Blast radius
+
+Single call site (`crossDeskResolution` is only invoked from `renderCrossDeskConflict`, which is only
+invoked from `crossDeskCoaching`). No other narrative section reuses this text. `collectCoachingBullets`'s
+consumption of `crossDeskCoaching`'s return value is unaffected — it still receives one nullable
+string.
+
+### Gates
+
+`npx tsc --noEmit` clean (Node 20.20.2) · `npx tsx --experimental-test-module-mocks --test
+src/lib/swing/play-brief-narrative-coaching.test.ts` 154/154 pass · full `npm test` run — see PR.
+
+## 2026-10-08 — [FINDING, P1 SPX Slayer] `GET /api/market/spx/play`'s resolved (not thrown) degraded placeholder was cached and served cluster-wide, flapping real member reads to "Desk warming" ~50% of the time — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live-measured 2026-10-08 ~00:33-00:37 UTC: a 12-call burst against `GET /api/market/spx/play` (one call every ~2s, the same cadence a real client's poll loop uses) came back `degraded:true` ("Desk warming — play state unavailable", `score:0`, `factors:[]`, `gates.blocks:[]`) on **6 of 12 calls (50%)** — interleaved with healthy "Session closed" responses carrying real factors/score. Several consecutive degraded responses shared the exact same `as_of` timestamp (e.g. three calls in a row all returned `as_of: 2026-10-08T00:36:35.426Z`), proving the SAME placeholder object was being re-served, not freshly regenerated per request. CloudWatch (`/ecs/blackout-production`) confirmed three real `[market/spx/play] Error: [server-cache] spx-play-read:2026-10-07: cold miss exceeded maxBlockMs` entries in the same window — but the degraded-rate in the live traffic sample was far higher than the logged-error count, because most of the degraded responses were never logged at all: they were served straight from cache, not from a fresh failing eval. |
+| **Root cause** | `evaluateSpxPlayStateCrossReplica()` (`src/features/spx/lib/spx-service.ts`) intentionally **resolves** (never throws) to `degradedPlayPayload()` when this replica loses the cross-replica Redis lock (`sharedCacheSetNx`) and neither a stale Redis snapshot nor a peer's published result shows up within an 800ms wait — a documented, tested, INTENTIONAL fallback (`spx-service-cross-replica-lock.test.ts` asserts exactly this "falls through to the degraded read ... instead of throwing"). The bug is one layer up: `getSpxPlayState()`'s `withServerCache(...)` call wrapping that loader passed no `shouldCache` option, so `server-cache.ts`'s `refreshCache()` treated this normally-resolved degraded value exactly like a real one — writing it into BOTH the in-memory `store` Map and shared Redis (`writeRedisCache`) for the full configured TTL (`playMemberReadCacheSec()` = **5 seconds**). Since the in-memory TTL is this short, the cache goes cold on essentially every poll from a low/sparse request rate (off-hours, or simply two different ECS replicas), making cross-replica lock contention a ROUTINE outcome, not a rare edge case — and because `evaluateSpxPlayState()`'s real eval can easily take longer than the 800ms peer-wait, the losing side of that routine contention regularly produces a degraded resolve, which then gets cached and served, via the shared Redis copy, to every replica (not just the one that lost the race) for the next 5 seconds — repeatedly amplifying one lock-contention loss into a cluster-wide flapping outage. |
+| **Why this is a real bug, not a legitimate degrade-under-load behavior** | The placeholder exists to answer ONE request gracefully when a genuinely-concurrent build is already running elsewhere — it was never meant to be treated as "the current state of the desk" and handed to every subsequent, non-colliding request for the next five seconds. `server-cache.ts`'s own `CacheOpts.shouldCache` doc comment states its exact purpose: "a loader result ... is served but NOT written to the ... cache. Use for payloads that must not poison SWR (e.g. Night Hawk pre-publish empty shells with `available:false`)" — this is precisely that shape, just not wired up for this caller. |
+| **Blast radius** | `getSpxPlayState()` is the single derivation point for the member `/api/market/spx/play` route, the BIE `spx_full_state` surface, and Largo's `get_spx_play` tool (per this file's own doc comment: "Single derivation for member ... BIE ... and Largo"), so the poisoned cache entry reached all three consumers identically, not just the member-facing page. No other `withServerCache` caller in `spx-service.ts` shares this exact loader/placeholder shape, so the fix is scoped to this one call site. |
+| **Fix** | Added `shouldCache: (value) => value.assessed !== false` to the `withServerCache` options in `getSpxPlayState()`. `assessed` is the payload's own pre-existing, documented absence marker (`SpxPlayPayload`'s doc comment: explicit `false` means "`grade`/`score`/`rawScore` are placeholder literals, NOT a measurement") and is set to `false` ONLY on the `degradedPlayPayload()` path and the two genuine-no-confluence-computed paths in `spx-play-engine.ts`/`spx-play-payload.ts` — never on a real closed-session assessment, which still sets `assessed:true` with real factors even though `available:false`. This is the identical pattern already shipped for Night Hawk's edition route (`shouldCache: (value) => (value as NightHawkEdition).available !== false`, `src/app/api/market/nighthawk/edition/route.ts`), applied here to the field that is actually exclusive to this payload's placeholder state (`available` is not exclusive here — a genuine closed-session result also has `available:false`). |
+| **Fix rationale** | Did not touch `evaluateSpxPlayStateCrossReplica()`'s intentional resolve-not-throw design (it is correct and already covered by its own test) and did not touch `server-cache.ts`'s generic `shouldCache` mechanism (already correct and already proven elsewhere) — the bug was purely a missing wire-up at this one call site, so the fix is a one-line addition plus an explanatory comment, not a redesign. |
+| **Regression guard** | `src/features/spx/lib/spx-service.play.test.ts`: new test `"getSpxPlayState's withServerCache call never caches an unassessed/degraded placeholder (2026-10-08 fix)"`, matching this file's existing convention of asserting on `getSpxPlayState()`'s literal source configuration (same style as the adjacent `maxBlockMs`/`staleWhileRevalidate` assertions). RED→GREEN confirmed via `git stash` of only `spx-service.ts`: fails pre-fix (source has no `shouldCache`), passes post-fix. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2) · `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/spx-service.play.test.ts` 6/6 pass · full `npm test` run — see PR for result. |
+| **Status** | FIXED — branch `fix/spx-play-degraded-placeholder-cache-poison`. |
+
+## 2026-10-08 — [FINDING, P1 Ask Largo / Night Hawk 0DTE + Swings] Cortex `darkpool-confluence` evidence stamped the WHOLE Vector state's fresh `asOf` instead of the dark-pool cache's own, looser fetchedAt — silently disabled the source's own staleness decay/self-exclusion at commit time — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Tracing the 2026-10-06 swing play-brief dark-pool staleness fix (MARKET-OPEN-VALIDATION.md #357 — "every consumer gated dark-pool inclusion only on the WHOLE Vector state's compute-recency, which can read 'live' seconds after assembly while the embedded dark-pool levels are up to ~24 minutes old") to see whether its blast radius reached every consumer, found that it did not: `src/lib/nighthawk/cortex/fetch.ts`'s `fetchCortexInputs()` — the shared Cortex evidence assembler used by BOTH 0DTE's and Swing's commit-time gate (`vectorHorizonForCortexCommit`, horizon `"0dte"` or `"swing"`) — builds its `darkPool` slice as `{ asOf: vector.asOf, levels: ... }`, i.e. the identical bug the narrative-layer fix above already corrected, reintroduced one layer down in the scoring engine. |
+| **Root cause** | `compose.ts`'s evidence weighting is a REAL exponential half-life decay, not a label: `cortexDecayFactor(ageSec, halfLifeSec)` where `ageSec = (nowMs - Date.parse(item.asOf)) / 1000`, and — more consequentially — `ageSec > item.halfLifeSec * ABSENT_AFTER_HALF_LIVES` is the source's own staleness self-exclusion gate. `darkpool-confluence.ts` (`sources/darkpool-confluence.ts`) passes this `asOf` straight through onto its evidence item (`asOf: darkPool.asOf`) with a 60-minute half-life (`DARKPOOL_HALF_LIFE_SEC`). Because `fetch.ts` stamped `darkPool.asOf` from `vector.asOf` (the whole `VectorFullState`'s own compute timestamp, refreshed on every read) rather than `vector.darkPoolAsOf` (that one field's own, looser ~25min-TTL/10min-cadence cache fetchedAt — already a distinct field on `VectorFullState`, added by the #357 fix specifically to let consumers tell the two apart), the computed `ageSec` for dark-pool evidence was effectively always ~0, regardless of how old the actual dark-pool read was. |
+| **Why this matters** | Two concrete effects, both silent: (1) a dark-pool confluence bonus computed off data up to ~24 minutes stale was scored with decay factor ≈1.0 (no discount) instead of the ~0.76 a genuine 24-minute age should apply at this half-life — systematically over-weighting the `darkpool-confluence` bonus (shared `dealer-positioning` family, alongside `gex-walls`/`wall-trend`/`vex-charm`) in every 0DTE and Swing commit-gate Cortex score. (2) The source's own staleness self-exclusion (`ageSec > halfLifeSec * ABSENT_AFTER_HALF_LIVES`) could never fire for dark-pool specifically, because its computed age could never exceed a few seconds — a real, permanently-disabled honesty check, the exact "fabricated certainty... corrupts cross-product ranking" failure `docs/audit/LARGO-PRODUCT-CONTRACT.md` warns about for confidence/evidence fields generally. |
+| **Blast radius** | `fetchCortexInputs()` is the single shared assembler for Cortex evidence on BOTH products this standing mandate owns — every 0DTE commit-time Cortex read and every Swing commit-time Cortex read (`vectorHorizonForCortexCommit("0dte" \| "swing")`) passes through this exact code path, so the fix at this one call site benefits both products identically, the same one-fix-many-consumers shape the #357 writeup itself called out for its own (narrower) layer. |
+| **Fix** | `fetch.ts`'s `darkPool` construction now reads `asOf: vector.darkPoolAsOf ? new Date(vector.darkPoolAsOf).toISOString() : vector.asOf` (bound to a plain `darkPoolAsOfIso` local, not inlined — see Fix rationale) — anchors to the cache's own fetchedAt when known, falling back to `vector.asOf` only when `darkPoolAsOf` is 0/unset (a legacy/unknown cache entry), mirroring the exact "unknown never reads as stale" discipline `vector-absent-sections.ts`'s `reportVectorAbsences` already applies to this identical field. No change to `compose.ts`'s decay math or to `darkpool-confluence.ts`'s own logic — both were already correct, acting faithfully on a mis-stamped input. |
+| **Fix rationale** | Reused the field #357 already added to `VectorFullState` rather than inventing a second staleness mechanism — `vector.darkPoolAsOf` already exists specifically so a consumer can distinguish this one field's cache age from the whole state's. Did not touch `ABSENT_AFTER_HALF_LIVES`/`DARKPOOL_HALF_LIFE_SEC` or any other Cortex source's `asOf` derivation — this is a single mis-wired field at one assembly call site, not a design change to the decay model. The first draft inlined `asOf: vector.darkPoolAsOf ? new Date(...).toISOString() : vector.asOf` directly in the object literal and the repo's own `session-anchor.test.ts` ratchet (Largo contract C1: a Largo-facing payload stamping a UTC instant must carry an ET session anchor) correctly caught it as a NEW unanchored `asOf: ...toISOString()` construction site. Genuinely re-examined rather than routing around it: this field feeds a pure DURATION calc downstream (`compose.ts`'s `ageSec = now - asOfMs`), never a trading-session resolution, so the UTC-after-20:00-ET-rolls-to-tomorrow failure mode the ratchet exists to catch does not apply here — the same reasoning the rest of this file's own `nowIso`-bound `asOf`/`as_of` fields (sector/opening/news, all pre-existing and unflagged) already rely on. Rebound the construction to a plain `darkPoolAsOfIso` local, matching the file's own established `nowIso` convention, rather than adding a needless session anchor to a field that has no session to anchor. |
+| **Regression guard** | `src/lib/nighthawk/cortex/fetch.test.ts`: new test sets `darkPoolAsOf` to 20 minutes before the fixture's `asOf` and asserts `input.darkPool.asOf` equals the dark-pool cache's own stamp, not the fresh `vector.asOf`; a second test confirms the legacy fallback (`darkPoolAsOf` unset) still reads `vector.asOf`. RED→GREEN confirmed via `git stash` of only `fetch.ts`: 1 failure pre-fix (`fetch: assembler (injected deps)` suite), 0 failures post-fix — reconfirmed after the rebind above with the same stash/pop. |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/lib/nighthawk/cortex/fetch.test.ts src/lib/nighthawk/cortex/compose.test.ts src/lib/nighthawk/cortex/sources/darkpool-confluence.test.ts src/lib/bie/vector-absent-sections.test.ts src/lib/largo/contract/session-anchor.test.ts` 61/61 pass (Node 20.20.2) · full `npm test` (15754 tests) run TWICE — first run (before the rebind) correctly caught the session-anchor regression (1 fail, `src/lib/largo/contract/session-anchor.test.ts`), full re-run after the rebind confirmed 0 fail before this PR was opened. |
+| **Status** | FIXED — branch `fix/cortex-darkpool-confluence-asof-leak`. |
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
