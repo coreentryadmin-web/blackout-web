@@ -45,15 +45,9 @@ import { deadPlayReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
-import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
-
-function fmtPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
 
 function biasFromDirection(dir: string): BieBias {
   return dir === "SHORT" ? "bearish" : dir === "LONG" ? "bullish" : "neutral";
@@ -105,9 +99,28 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   // own top-level `biasFromDirection(play.direction)` (BieSectionCard renders `section.bias` as a
   // color-coded BiasPill, so this reached real UI, not just inert JSON). No section-level bias for
   // a non-directional quality signal — `bias` is already optional on RichSection.
+  //
+  // BUG FIX (2026-10-07, Ask Largo standing mandate): `rungFromHealth`/`rungLabel` (thesis-health.ts)
+  // name every band purely off the ABSOLUTE health %, with no reference to whether anything moved
+  // since commit — "Minor drift"/"Weakening"/"Degraded"/"Broken" all read as PROCESS words implying
+  // decay happened, but a position can sit in any of those bands on day one, forever, just because
+  // its ENTRY was imperfect (e.g. a chase-risk entry geometry), never having changed at all. Live
+  // repro (SWING:INTC:50, 2026-10-07): the brief rendered "**77%** · Minor drift" directly above
+  // five pillar rows EVERY one of which showed "(Δ +0.0 pts)" — the headline word "drift" directly
+  // contradicted the itemized evidence one line below it, with nothing in the section telling the
+  // reader which one was true. `computeSwingThesisHealth` already computes exactly this "did
+  // anything move" signal (`h.moves`, falling back to the literal string "All swing pillars
+  // unchanged since commit." when no pillar faded/lost — the same fallback
+  // play-brief-narrative-coaching.ts's thesisPillarCoaching already gates its own "What moved" line
+  // on) but this section never read it. Surface it right next to the band label instead of leaving
+  // a reader to infer "unchanged" by checking all five deltas are exactly zero themselves.
+  const noDriftSinceCommit = h.moves?.[0]?.includes("unchanged") ?? false;
+  const headline = noDriftSinceCommit
+    ? `**${h.health}%** · ${h.rungLabel} — unchanged since commit`
+    : `**${h.health}%** · ${h.rungLabel}`;
   return {
     title: "Thesis health",
-    body: `**${h.health}%** · ${h.rungLabel}\n\n${rows || "Pillars not wired on this row."}`,
+    body: `${headline}\n\n${rows || "Pillars not wired on this row."}`,
   };
 }
 
@@ -451,6 +464,21 @@ function daysOnWatch(sinceIso: string | null | undefined, nowMs: number): number
 
 function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   const lines: string[] = [];
+  // Computed once, up front: `deadPlayReason` is the authoritative "is this play already dead for
+  // ANY reason" check (INVALIDATED, calendar-deadline-expired, contract-expired, or EXTENDED-chase)
+  // — already used a few lines below for the gate-block "moot" qualifier. Reused here (BUG FIX, Ask
+  // Largo standing mandate, 2026-10-08) to gate the forward-looking "Entry window closes" line too,
+  // instead of the narrower `play.watchEntryExpired` flag that only covers the calendar-deadline
+  // case. `watchEntryExpired` false does NOT mean the play is still live — an EXTENDED-chase play
+  // (setupState "EXTENDED" / entryStatus "EXTENDED_CHASE") leaves it false while still carrying a
+  // real future `entryDeadline`, so the old guard let this section say "Entry window closes ... (N
+  // days left)" a few lines above — and the brief's own top-level invalidation line say "Extended
+  // past the valid entry window — this setup is no longer live" — about the SAME play, in the SAME
+  // response. Both lines were independently correct in isolation (two different kinds of "window":
+  // calendar-deadline vs. price-extension), but reusing the word "window" for both meanings read as
+  // a flat self-contradiction to a member. Live repro: NTAP, 2026-10-08 (Ask Largo health-check
+  // deep-dive) — see docs/audit/findings-staging/2026-10-08-swing-watch-entry-window-wording-collision.md.
+  const dead = deadPlayReason(play);
   const label =
     swingActionDisplay(play)?.label ??
     play.swingEntryAction?.toUpperCase() ??
@@ -490,9 +518,11 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   // hear about the deadline was the EXPIRED badge itself, after it had already passed. Mirrors the
   // days-on-watch fix directly above it (same section, same "a real computed fact was silently
   // dropped before reaching the model" shape) — forward-looking instead of backward-looking. Only
-  // shown while NOT already expired (the EXPIRED badge + `deadPlayReason` below already own that
-  // case) and only when a real deadline was resolvable (never fabricated).
-  if (!play.watchEntryExpired && play.entryDeadline) {
+  // shown while NOT already dead for ANY reason (`dead`, computed at the top of this function —
+  // the EXPIRED badge + `deadPlayReason`'s gate-block qualifier below already own every dead case,
+  // not just the calendar-deadline one; see that computation's own comment for why `watchEntryExpired`
+  // alone used to under-cover this) and only when a real deadline was resolvable (never fabricated).
+  if (!dead && play.entryDeadline) {
     const deadlineMs = Date.parse(play.entryDeadline);
     if (Number.isFinite(deadlineMs)) {
       const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
@@ -511,10 +541,32 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
     // g_s4_regime..." sat in the same section with nothing marking the gate as moot. Same root
     // cause `entryTriggerDeadReason` (play-brief-intel.ts) already fixed for the Entry-trigger
     // line one section down — `deadPlayReason` is the shared check both now use.
-    const dead = deadPlayReason(play);
+    //
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08): this used to ALSO render the full
+    // `code: reason` list here — but `watchGateCoaching` (play-brief-narrative-coaching.ts),
+    // which composeSwingPlayBrief always places immediately after this "Entry" section (inside
+    // "Trade manager read") for a WATCH play, independently renders the exact same
+    // `play.gateBlocks` codes+reasons in full too. Both are gated on the identical
+    // `play.gateBlocks?.length` check with no coordination between the two files — live repro:
+    // AMD WATCH brief, 2026-10-08, "## Entry" and "## Trade manager read" both carried the
+    // verbatim `entry_window_expired` reason text. This is the exact same duplication shape the
+    // 2026-09-12 `watchForSection` fix (below, "Watch levels") already removed from a THIRD
+    // location — that fix made "Watch levels" defer to this section ("see Entry section above")
+    // on the premise this section was the one true home, but never noticed this section and
+    // "Trade manager read" were ALSO duplicating each other the whole time. Resolved the other
+    // way around this time: `watchGateCoaching`'s rendering is the richer of the two (it already
+    // states "moot" framing identically, and per its own comment was kept as "the single source
+    // of truth" on 2026-10-07) and renders for EVERY watch-bucket play unconditionally (see
+    // `actionNarrative`'s watch branch, play-brief-narrative.ts), so pointing this section at it
+    // — rather than the reverse — loses no information and needs no new plumbing. The
+    // "Watch levels" pointer below was repointed at "Trade manager read" too, so there is now
+    // exactly one full-text home instead of two independent ones.
+    // `dead` reused from the top of this function (same value — computed once, not re-derived).
+    const gateCount = play.gateBlocks.length;
     lines.push(
-      (dead ? `**Also gate-blocked** (moot — ${dead}):\n` : "**Gates blocking entry:**\n") +
-        play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
+      dead
+        ? `**Also gate-blocked** (moot — ${dead}) — see Trade manager read below.`
+        : `**Gates blocking entry:** ${gateCount} gate${gateCount === 1 ? "" : "s"} — see Trade manager read below.`,
     );
   } else if (play.recommendation === "BUY") {
     lines.push("No mechanical gates blocking entry on this read.");

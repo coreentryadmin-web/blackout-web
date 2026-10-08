@@ -425,6 +425,46 @@ test("composeSwingPlayBrief: WATCH play already past its entry deadline omits th
   assert.doesNotMatch(entry!.body, /Entry window closes/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): the forward-looking line above was gated on
+// `!play.watchEntryExpired` alone — but `watchEntryExpired` is ONLY set true by the calendar-deadline
+// path (entry-enterability.ts's `pastEntryDeadline` check). A play already dead for a DIFFERENT
+// reason (EXTENDED-chase: `setupState === "EXTENDED"` / `entryStatus === "EXTENDED_CHASE"`) leaves
+// `watchEntryExpired` false while still carrying a future `entryDeadline`, so this line rendered
+// "Entry window closes ... (N days left)" directly alongside — in the SAME "Entry" section, a few
+// lines below — the "Also gate-blocked (moot — extended past the valid entry window)" line (which
+// reuses the word "window" for the unrelated price-extension concept) and the brief's own top-level
+// invalidation text ("Extended past the valid entry window — this setup is no longer live."). Live
+// repro: NTAP, 2026-10-08, `setupState: "EXTENDED"`, `entryStatus: "EXTENDED_CHASE"`,
+// `watchEntryExpired: false`, `entryDeadline` ~2 hours in the future — the brief told the member in
+// one breath the entry window had already closed and in the next that it still had a day left.
+// `deadPlayReason` (already imported, already used a few lines below for the gate-block "moot"
+// qualifier) is the authoritative "is this play already dead for ANY reason" check, so gate the
+// forward-looking line on it instead of the narrower `watchEntryExpired` flag.
+test("composeSwingPlayBrief: WATCH play that is EXTENDED (chase risk) omits the forward-looking entry-window line even with a live entryDeadline (2026-10-08 gap fix)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "EXTENDED",
+      entryStatus: "EXTENDED_CHASE",
+      watchEntryExpired: false,
+      entryDeadline: "2026-09-10T13:15:00.000Z",
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.doesNotMatch(entry!.body, /Entry window closes/);
+  // The moot gate-block qualifier (same section) should still name the real reason.
+  assert.match(entry!.body, /extended past the valid entry window/);
+});
+
 test("composeSwingPlayBrief: WATCH play without entryDeadline omits the forward-looking line entirely (never fabricated)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ entryDeadline: null, watchEntryExpired: false }),
@@ -481,8 +521,8 @@ test("composeSwingPlayBrief: Entry section reframes gates as moot once the entry
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\):/);
-  assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/, "must not read as an active/clearable blocker");
+  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\) — see Trade manager read below\./);
+  assert.doesNotMatch(entry!.body, /^\*\*Gates blocking entry/, "must not read as an active/clearable blocker");
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-09-18): the top-level `envelope.invalidation` line
@@ -548,8 +588,52 @@ test("composeSwingPlayBrief: Entry section still frames gates as the live blocke
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Gates blocking entry:\*\*/);
+  assert.match(entry!.body, /\*\*Gates blocking entry:\*\* 1 gate — see Trade manager read below\./);
   assert.doesNotMatch(entry!.body, /Also gate-blocked/);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-08): the full `code: reason` text has exactly
+  // one home now — "Trade manager read" (watchGateCoaching) — so it must not also appear here.
+  // Live repro: AMD WATCH brief, 2026-10-08 — this section and "Trade manager read" both carried
+  // the verbatim gate reason text.
+  assert.doesNotMatch(entry!.body, /Bucket not graduated/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): full end-to-end proof, through the real
+// composeSwingPlayBrief assembly (not just watchEntrySection in isolation), that a WATCH play's
+// gate reason text appears in exactly ONE of the brief's sections — "Trade manager read" — never
+// also in "Entry". Live repro: AMD WATCH brief, 2026-10-08 (`GET /api/market/swing/play-brief?
+// playId=SWING:AMD&ticker=AMD&status=WATCH`), both "## Entry" and "## Trade manager read" carried
+// the verbatim `entry_window_expired`/`g_s4_regime`-style reason text for the SAME gate. RED
+// before the fix (`git stash` on play-brief.ts alone reproduces the duplicate — the reason text
+// matches twice across the full envelope markdown), GREEN after.
+test("composeSwingPlayBrief: gate-block reason text appears in exactly one section, not duplicated across Entry + Trade manager read", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+      ],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  const narrative = brief.envelope.sections.find((s) => s.title === "Trade manager read");
+  assert.ok(entry);
+  assert.ok(narrative);
+  const needle = "Broad-market regime degraded";
+  assert.doesNotMatch(entry!.body, new RegExp(needle), "the reason text must not render in Entry");
+  const hits = (narrative!.body.match(new RegExp(needle, "g")) ?? []).length;
+  assert.equal(hits, 1, `expected the gate reason to appear exactly once in Trade manager read, found ${hits}`);
+  // NOTE: deliberately not asserting on the full `envelope.markdown`/`invalidation` here — the
+  // top-level "**Invalidation:**" callout has its own, already-tested, separate fallback to
+  // `play.gateBlocks?.[0]?.reason` (a different envelope field with a different UI purpose, not
+  // a third copy of this section-duplication bug) and asserting across it would conflate the two.
 });
 
 test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
@@ -2703,6 +2787,91 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(
     !/Thesis strength/i.test(verdict.body),
     `Verdict must not leak fabricated thesis strength, got: ${verdict.body}`,
+  );
+});
+
+// Live repro (2026-10-07, Ask Largo standing mandate): rungFromHealth/rungLabel map the AGGREGATE
+// health % to a band name purely off its ABSOLUTE value (thesis-health.ts) — "Minor drift" covers
+// health 70-84 regardless of whether anything actually moved since commit. A real production brief
+// (SWING:INTC:50, 2026-10-07 live fetch) rendered "**77%** · Minor drift" directly above five pillar
+// rows that EVERY one showed "(Δ +0.0 pts)" — i.e. the position's entry geometry was simply
+// imperfect at commit (chase-risk entry), nothing decayed afterward. `computeSwingThesisHealth`
+// already computes exactly this signal (`moves: moves.length > 0 ? moves : ["All swing pillars
+// unchanged since commit."]`, read everywhere else in this lane — e.g. play-brief-narrative-
+// coaching.ts's thesisPillarCoaching gates its own "What moved" line on this same array) but
+// `thesisHealthSection` never surfaces it, so the headline word "drift" directly contradicts the
+// itemized Δ-evidence one line below it with nothing in the section telling the reader which one is
+// true. Fix: when `moves` says nothing changed, say so right next to the band label instead of
+// leaving a reader to infer it from five identical deltas.
+test("composeSwingPlayBrief: Thesis health headline discloses 'unchanged since commit' when every pillar delta is zero (no false 'drift')", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 5.38,
+      mark: 5.83,
+      pnlPct: 8.4,
+      peak: 12.1,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 77,
+        entryIndex: 77,
+        currentIndex: 77,
+        delta: 0,
+        rung: "MINOR",
+        rungLabel: "Minor drift",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.9,
+            currentScore: 0.9,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 25.2,
+            deltaPts: 0,
+          },
+          {
+            id: "entry",
+            label: "Entry geometry",
+            weight: 0.22,
+            commitScore: 0.35,
+            currentScore: 0.35,
+            commitLabel: "chase risk",
+            currentLabel: "chase risk",
+            status: "intact",
+            contributionPts: 7.7,
+            deltaPts: 0,
+          },
+        ],
+        // The exact fallback string thesis-health.ts stamps when no pillar faded/lost — this is
+        // what the fix must key off, not a fresh ad-hoc check.
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 1, 10:00 AM",
+        computedAtEt: "Oct 7, 4:00 PM",
+        advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "multi-day thesis intact",
+      },
+    }),
+    asOf: "2026-10-07T20:00:00.000Z",
+    sessionDate: "2026-10-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.match(
+    thesis!.body,
+    /77%.*Minor drift.*unchanged since commit/is,
+    `Thesis health headline must disclose 'unchanged since commit' when every pillar delta is zero, got: ${thesis!.body}`,
   );
 });
 

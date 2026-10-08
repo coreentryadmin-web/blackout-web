@@ -304,6 +304,32 @@ export function mapUnifiedSnapshotResult(r: UnifiedSnapshotResult): OptionSnapsh
 export const ZERO_BID_MID_DIVERGENCE_MULTIPLE = 10;
 
 /**
+ * Tighter divergence bar for the THINNEST possible backstop shape — bid=0 AND an ask of size
+ * `<= THIN_ASK_SIZE_MAX`. A one-lot ask alongside a dead bid is categorically less trustworthy
+ * than a bid=0 quote with real size behind it: nobody could transact meaningful size at that
+ * price even if it were genuine, which is a size-based signal independent of (and stronger than)
+ * the price-divergence signal `ZERO_BID_MID_DIVERGENCE_MULTIPLE` alone relies on.
+ *
+ * Live incident 2026-10-08 (CRI 261016C00035000, caught live by the Ask Largo standing mandate):
+ * `bid:0 (size 0), ask:5.60 (size 1)` -> mid $2.80, while the contract's own LAST TRADE (2 days
+ * earlier, the most recent real transaction) was $0.55 — a 5.09x divergence, comfortably UNDER
+ * the general 10x bar, so the existing guard passed it through as "reliable." It was not: an
+ * independent Black-Scholes check using the SAME snapshot's own strike/DTE/IV/underlying-price
+ * priced the contract at ~$0.21 (consistent with the $0.55 last trade, nowhere near $2.80), and
+ * the contract's own delta (0.166) is far too low for a genuine $2.80 price at this spot/strike.
+ * The live consequence was not cosmetic: `banger-live-sync`'s scale-out logic ratcheted
+ * `peak_premium` up to this fabricated $2.80 (a one-way ratchet that can never self-correct) and
+ * flipped the position from HOLD to TAKE_PARTIAL/SCALING_OUT — a real, Discord-notified trade-
+ * management action triggered by a price nobody could have transacted at. 10x stays the bar for
+ * any quote with real size (`askSize > THIN_ASK_SIZE_MAX` or absent/unknown) — unchanged, and
+ * still backed by the CRSR precedent below — only a wafer-thin one-lot stub gets the tighter 3x
+ * bar the file's own original comment already named as the realistic ceiling for honest illiquid
+ * noise ("even a wide illiquid spread is rarely >2-3x the last print").
+ */
+export const THIN_ASK_SIZE_MAX = 1;
+export const THIN_ASK_DIVERGENCE_MULTIPLE = 3;
+
+/**
  * `snap.mark`'s own doc-priority ladder (mid → last → dayClose) is correct AS A VALUATION
  * heuristic, but `midOf`'s `bid>=0` guard is deliberately permissive (a genuinely worthless
  * deep-OTM contract legitimately has bid=0 — see `midOf`'s own comment) and carries no check on
@@ -326,7 +352,7 @@ export const ZERO_BID_MID_DIVERGENCE_MULTIPLE = 10;
  * (`handleQuote`, `options-socket.ts`) but had no divergence check at all until then.
  */
 export function reliableMarkFromSnapshot(snap: OptionSnapshot): number | null {
-  return reliableMarkFromQuote(snap.mark, snap.bid, snap.last ?? snap.dayClose);
+  return reliableMarkFromQuote(snap.mark, snap.bid, snap.last ?? snap.dayClose, snap.askSize);
 }
 
 /**
@@ -338,16 +364,26 @@ export function reliableMarkFromSnapshot(snap: OptionSnapshot): number | null {
  * as a method on `OptionSnapshot`) so a caller with a different quote shape — the WS mark
  * stream's `{mark, bid, last}`, which has no `dayClose` — can apply the identical rule without
  * needing to construct a fake `OptionSnapshot`.
+ *
+ * `askSize` is OPTIONAL — a caller with no size info (e.g. the WS mark stream, which carries no
+ * quote size at all) gets exactly the prior, unchanged 10x behavior. Only when a real, thin size
+ * is known (`<= THIN_ASK_SIZE_MAX`) does the tighter `THIN_ASK_DIVERGENCE_MULTIPLE` bar apply —
+ * see `THIN_ASK_SIZE_MAX`'s own doc comment for the live incident this additionally guards.
  */
 export function reliableMarkFromQuote(
   mark: number | null,
   bid: number | null,
-  reference: number | null
+  reference: number | null,
+  askSize?: number | null
 ): number | null {
   if (mark == null) return null;
   if (bid !== 0) return mark;
   if (reference == null || reference <= 0) return mark;
-  if (mark <= reference * ZERO_BID_MID_DIVERGENCE_MULTIPLE) return mark;
+  const multiple =
+    askSize != null && Number.isFinite(askSize) && askSize <= THIN_ASK_SIZE_MAX
+      ? THIN_ASK_DIVERGENCE_MULTIPLE
+      : ZERO_BID_MID_DIVERGENCE_MULTIPLE;
+  if (mark <= reference * multiple) return mark;
   // The bid/ask mid is a suspected backstop-quote artifact — fall through to the more honest
   // reference price instead of a mid nobody could actually transact at.
   return reference;

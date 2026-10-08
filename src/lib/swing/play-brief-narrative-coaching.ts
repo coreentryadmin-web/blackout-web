@@ -8,6 +8,7 @@ import {
   ageSecondsLabel,
   confluenceZoneKindsLabel,
   fundamentalsAncient,
+  gexMarketSessionNote,
   gexMatrixAgeMs,
   gexMatrixStale,
   meridianCatalystAgeMs,
@@ -19,8 +20,9 @@ import {
 } from "./play-brief-absence";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import { computeLaneRank } from "./play-brief-lane-rank";
-import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { nighthawkLiveForSession, trustedHelixFlow, zerodteLiveForSession } from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { thesisHealthUncalibrated } from "./thesis-health";
@@ -34,13 +36,15 @@ function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
-function fmtPct(n: number, digits = 1): string {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
-
-function vectorOf(ctx: SwingPlayBriefContext): VectorFullState | null {
-  return ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+// Widened to Partial<VectorFreshnessBlock> (2026-10-08, Ask Largo standing mandate) so
+// dataHonestyCoaching below can read `market_session_note` — see its own doc comment for why.
+// Matches the identical cast already used by play-brief.ts/play-brief-narrative.ts's own local
+// `vectorOf` helpers for the same field; this file's copy had drifted to the narrower, pre-#5306
+// type.
+function vectorOf(ctx: SwingPlayBriefContext): (VectorFullState & Partial<VectorFreshnessBlock>) | null {
+  return (ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null) as
+    | (VectorFullState & Partial<VectorFreshnessBlock>)
+    | null;
 }
 
 /** Urgent thesis invalidation — leads narrative when fired. */
@@ -250,14 +254,27 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
   return `**Manage plan** — ${parts.join(" · ")}.`;
 }
 
-/** WATCH gate unblock path with reasons, not just codes. */
+/**
+ * WATCH gate unblock path with reasons, not just codes.
+ *
+ * THE one full-text home for `play.gateBlocks` codes+reasons (Ask Largo standing mandate,
+ * 2026-10-08) — both "Entry" (`watchEntrySection`, play-brief.ts) and "Watch levels"
+ * (`watchForSection`, play-brief-intel.ts) now render only a count + a pointer here, having
+ * previously each kept their OWN full copy (live repro: AMD WATCH brief, 2026-10-08 — "Entry"
+ * and "Trade manager read" both carried the verbatim `entry_window_expired` reason text). See
+ * `watchEntrySection`'s own comment for the full account of why this direction was chosen over
+ * the reverse. Note the `g.unlock_et` branch below is currently always inert for swing in
+ * practice — `SwingEntryGateBlock` (entry-verdict.ts, the only producer of swing `gateBlocks`)
+ * has no `unlock_et` field at all, so this only fires if some future swing gate source starts
+ * populating it; left in rather than removed since the type (shared with other TerminalPlay
+ * producers) still allows it and a real value should still render if one ever arrives.
+ */
 export function watchGateCoaching(play: TerminalPlay): string | null {
   if (!play.gateBlocks?.length) return null;
   // BUG FIX (Ask Largo standing mandate, 2026-10-07): this used to `.slice(0, 3)` before mapping,
   // silently dropping every gate past the third with no "+N more" marker — while the sibling
   // "Entry stance" bullet (actionNarrative, play-brief-narrative.ts) states the TRUE gate count
-  // (`play.gateBlocks.length`, uncapped) and the "Entry" section (watchEntrySection, play-brief.ts)
-  // renders the FULL list uncapped too. A 4-gate WATCH play (live repro: WDC, 2026-10-07 — g_s12
+  // (`play.gateBlocks.length`, uncapped). A 4-gate WATCH play (live repro: WDC, 2026-10-07 — g_s12
   // halt-feed-stale, g_s4 regime, g_s6 confluence, g_s14 cortex) therefore told the member "4 gates
   // blocking entry — see below" and then only explained 3, silently omitting the Cortex veto — the
   // single most decisive one, since it is the only gate here with no "clears when X" unlock story.
@@ -578,12 +595,31 @@ function crossDeskBasis(kind: CrossDeskEvidenceKind): string {
   }
 }
 
-/** What would actually resolve THIS kind of disagreement — printed once, for the most
- *  load-bearing conflict only, so the coaching ends on one concrete next-check instead of N. */
-function crossDeskResolution(kind: CrossDeskEvidenceKind): string {
+/**
+ * What would actually resolve THIS kind of disagreement — printed once, for the most
+ * load-bearing conflict only, so the coaching ends on one concrete next-check instead of N.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-10-08): the "structure" resolution unconditionally
+ * read "watch for it to flip back before your next trim rail — until then, size down" — language
+ * that presupposes an EXISTING position (something to trim, something already sized that could be
+ * "sized down"). `crossDeskCoaching` is called for the WATCH bucket too (collectCoachingBullets
+ * only short-circuits on "closed"), and a WATCH candidate has no position yet — no entry has been
+ * made, there is no trim rail to speak of. Live repro: NET WATCH brief, 2026-10-07 — "Cross-desk
+ * friction — Vector bearish... watch for it to flip back before your next trim rail — until then,
+ * size down" rendered on a play still gated behind two entry gates (g_s12_halt_feed_stale,
+ * g_s6_confluence), never entered. This is the same class of bug as the already-fixed
+ * `bookContextSection` "Adding {ticker} stacks the same wager" CLOSED/OPEN tense mismatches
+ * (FINDINGS 2026-09-12) — position-management language leaking onto a bucket where no position
+ * exists — just never audited for THIS line specifically. `bucket` is threaded in from
+ * `crossDeskCoaching` (never "closed" — that bucket short-circuits before reaching here) so the
+ * WATCH case gets its own, entry-appropriate framing instead of borrowing open-position vocabulary.
+ */
+function crossDeskResolution(kind: CrossDeskEvidenceKind, bucket: "watch" | "open"): string {
   switch (kind) {
     case "structure":
-      return "watch for it to flip back before your next trim rail — until then, size down";
+      return bucket === "watch"
+        ? "watch for it to flip back before treating this as confirmation — until then, this isn't a green light to enter"
+        : "watch for it to flip back before your next trim rail — until then, size down";
     case "flow":
       return "one session's premium tilt isn't a structural change yet — give it another session before treating this as thesis-invalidating";
     case "intraday_scalp":
@@ -598,7 +634,11 @@ function crossDeskResolution(kind: CrossDeskEvidenceKind): string {
  *  what would actually resolve it. Replaces a flat `conflicts.join(" · ")` + one fixed generic
  *  closing line with a real weighing, so two different conflict sources produce two differently
  *  reasoned readings rather than the same template with names swapped in. */
-function renderCrossDeskConflict(conflicts: CrossDeskConflict[], archetype: SwingArchetype | null): string {
+function renderCrossDeskConflict(
+  conflicts: CrossDeskConflict[],
+  archetype: SwingArchetype | null,
+  bucket: "watch" | "open",
+): string {
   const ranked = [...conflicts].sort((a, b) => b.weight - a.weight);
   const lead = ranked[0]!;
   const rest = ranked.slice(1);
@@ -619,7 +659,7 @@ function renderCrossDeskConflict(conflicts: CrossDeskConflict[], archetype: Swin
 
   let text =
     `**Cross-desk friction** — ${lead.desk} ${lead.claim}. That's ${crossDeskBasis(lead.evidenceKind)} — ` +
-    `${leadReason}${weighClause}: ${crossDeskResolution(lead.evidenceKind)}.`;
+    `${leadReason}${weighClause}: ${crossDeskResolution(lead.evidenceKind, bucket)}.`;
 
   if (rest.length) {
     const shown = rest.slice(0, 2);
@@ -697,7 +737,14 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   if (play.direction === "SHORT" && callHeavy) conflict("HELIX", "call-led", "flow");
 
   if (conflicts.length) {
-    return renderCrossDeskConflict(conflicts, archetype);
+    // `crossDeskCoaching` is called for both the "watch" and "open" buckets (collectCoachingBullets
+    // short-circuits only on "closed") — mirror statusBucket's own OPEN/HOLD/TRIM/CLOSED->open,
+    // everything else->watch split (play-brief.ts/play-brief-intel.ts) so the resolution text below
+    // never assumes a position exists on a WATCH candidate. Never "closed" here: a closed play never
+    // reaches this function.
+    const bucket: "watch" | "open" =
+      play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM" ? "open" : "watch";
+    return renderCrossDeskConflict(conflicts, archetype, bucket);
   }
 
   const aligned: string[] = [];
@@ -1268,9 +1315,51 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
       `swing discovery from **${ctx.scanSessionDay}** — today's scan not yet run`,
     );
   }
+  // GAP FOUND (2026-10-08, Ask Largo standing mandate): neither the Vector-age check nor the
+  // GEX-matrix-age check above fires for the orthogonal "compute is fresh but the MARKET is
+  // CLOSED" case `market_session_note` (vector-state-freshness.ts, PR #5306) exists specifically
+  // to catch — a post-close/weekend self-warm genuinely computes a fresh Vector/GEX snapshot off
+  // the LAST session's tape, so both staleness checks above stay silent (by design: the compute
+  // really is recent), and this whole "Data caveat" bullet said nothing — while, three bullets
+  // ABOVE it in the SAME "Trade manager read" section, `dealerPostureLine` (play-brief-
+  // narrative.ts) confidently opens with "**Right now** — spot ... dealers short gamma ...
+  // gamma-flip ..." with zero caveat. #5306's own evidence-array fast-follow (play-brief.ts,
+  // gated identically `!vectorStale && vec?.market_session_note` / `!gexStale &&
+  // gexMarketSessionNote(...)`) already discloses this exact combination — but only in the
+  // buried evidence list at the bottom of the document, never in the narrative a member actually
+  // reads first. #5306's own PR description named "wiring market_session_note into the swing
+  // evidence array" as the scoped fast-follow and explicitly left the narrative untouched, so
+  // this is not a regression of that fix, it is the gap it always disclosed. Live repro
+  // 2026-10-08: INTC SWING:INTC:50 HOLD brief at 20:05 ET (market CLOSED) — "Right now" bullet
+  // carried no caveat while the evidence array separately said "Computed 3s ago, but the market
+  // is CLOSED as of this read — this reflects the last session's tape, not a live tick, however
+  // fresh the compute looks" for the identical Vector compute.
+  //
+  // One combined warning, not two: a post-close self-warm computes Vector AND the GEX matrix off
+  // the SAME last session's tape at nearly the same instant, so when Vector's own note is already
+  // present it already covers the identical fact the GEX note would restate — only fall through
+  // to the GEX-sourced note when Vector itself gave none (stale, absent, or genuinely live during
+  // real RTH). Mirrors the `vectorConflictAlreadyNoted`-style dedup idiom already used elsewhere
+  // in this file rather than inventing a new one.
+  if (!dead) {
+    const closedMarketNote =
+      (!vectorAgeStale(vec, readMs) ? vec?.market_session_note : null) ??
+      (!gexMatrixStale(gex, readMs) ? gexMarketSessionNote(gex, readMs) : null);
+    if (closedMarketNote) warnings.push(closedMarketNote);
+  }
 
   if (!warnings.length) return null;
-  return `**Data caveat** — ${warnings.join(" · ")}. Treat levels as indicative until refresh.`;
+  // BUG FIX (2026-10-08, Ask Largo standing mandate, live repro `GET /api/market/swing/play-brief`
+  // MU COMMIT-NOW brief): the closed-market note pushed above (`market-session-disclosure.ts`'s
+  // `marketSessionDisclosure` / `play-brief-absence.ts`'s `gexMarketSessionNote`) already ends in
+  // its own sentence-terminating period ("...however fresh the compute looks."). It is always the
+  // LAST entry pushed into `warnings` (every other check above it runs first), so joining with
+  // " · " and then unconditionally appending ". Treat levels..." collided the two periods into a
+  // literal "..", live-confirmed verbatim: "...however fresh the compute looks.. Treat levels as
+  // indicative until refresh.". Strip any warning's own trailing period(s) before joining so this
+  // closing sentence is the only place a period gets added, regardless of which warning lands last.
+  const body = warnings.map((w) => w.replace(/\.+$/, "")).join(" · ");
+  return `**Data caveat** — ${body}. Treat levels as indicative until refresh.`;
 }
 
 /** Closed play post-mortem coaching. */

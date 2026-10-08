@@ -3,7 +3,7 @@
  * Surfaces chart technicals, flow, GEX nodes, catalysts, watch levels, and hold plan.
  */
 import type { RichSection } from "@/lib/bie/rich-narrative";
-import { fmtOptionUsd as fmtUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import {
   playExpectsLiveOptionMark,
@@ -49,7 +49,15 @@ import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
-import { archetypeLabelFromRaw, ARCHETYPE_META, SWING_ARCHETYPES, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
+import {
+  archetypeLabelFromRaw,
+  subLaneLabelFromRaw,
+  ARCHETYPE_META,
+  SWING_ARCHETYPES,
+  SWING_SUB_LANES,
+  SWING_SUB_LANES_ORDER,
+} from "./taxonomy";
 import {
   graduatedArchetypeEntry,
   graduatedSubLaneEntry,
@@ -60,12 +68,6 @@ import {
   meridianPeerEarningsCoaching,
   pickEarningsForSwingPeer,
 } from "./play-brief-meridian-peer-core";
-
-function fmtPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
 
 // Absolute per-contract/level PRICE formatting is `fmtUsd` (aliased from @/lib/fmt-money's
 // `fmtOptionUsd` above) — see that module for the rounding-consistency history this file's own
@@ -128,7 +130,15 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
             `**${play.archetypeNearTie.secondaryLabel}** by only ${play.archetypeNearTie.marginPct} pts.`,
     );
   }
-  if (play.subLane) lines.push(`**Sub-lane:** ${play.subLane.replace(/_/g, " ")}`);
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-08): this used to print `play.subLane.replace(/_/g,
+  // " ")` — a no-op on every REAL `SwingSubLane` value (`TACTICAL`/`STANDARD`/`EXTENDED` have no
+  // underscore), so it rendered the shouty raw enum ("Sub-lane: TACTICAL") while the archetype line
+  // immediately above, `archetypeTrackRecordSection` further down this SAME brief, and the live
+  // command-deck UI (`terminal-display.ts`) all render the identical field as "Tactical (5–7d)" —
+  // see `subLaneLabelFromRaw`'s own doc comment (taxonomy.ts) for the full trace. Unrecognized/foreign
+  // values render nothing here, same honest-absence discipline `archetypeLabelFromRaw` already uses.
+  const subLaneLabel = subLaneLabelFromRaw(play.subLane);
+  if (subLaneLabel) lines.push(`**Sub-lane:** ${subLaneLabel}`);
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the pre-entry WATCH note for the identical
   // fact ("thin read — N/7 pillars grounded", serving-ingest.ts) never survives WATCH→COMMIT — see
   // `entryPresentPillarsFromFeatureVector`'s own doc comment (live-plays.ts) for the full trace.
@@ -1125,9 +1135,18 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       // exact duplication shape `play-brief-narrative.ts`'s own "Entry stance" bullet was already
       // fixed to avoid (see its comment: "the reason text has exactly one home below") — just a
       // second, previously-unchecked instance of it, in a different pair of sections. State the
-      // count + a pointer here; the full reason text's one home stays the Entry section above.
+      // count + a pointer here.
+      //
+      // REPOINTED (Ask Largo standing mandate, 2026-10-08): the "Entry section above" this
+      // pointer named was itself found duplicating the SAME full gate text against "Trade manager
+      // read" (play-brief.ts's `watchEntrySection`, see its own 2026-10-08 comment) — the "Entry
+      // section" was never actually the sole full-text home this comment assumed. Fixed by making
+      // `watchEntrySection` ALSO a pointer rather than a third full-text copy, so the one real home
+      // is now "Trade manager read" (`watchGateCoaching`, play-brief-narrative-coaching.ts), which
+      // renders unconditionally for every watch-bucket play and sits earlier in section order than
+      // this "Watch levels" section — repointing here, not re-introducing a second full copy.
       const n = play.gateBlocks.length;
-      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Entry section above.`);
+      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Trade manager read above.`);
     }
     // BUG FIX (Ask Largo standing mandate, 2026-09-17): this used to re-render `play.entryStatus`
     // as its own "Entry geometry" bullet — but `watchEntrySection` (play-brief.ts, "Entry" section,
@@ -1163,7 +1182,32 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // contract violation (identity/direction: whose thesis, and is it live) — so it's closed-bucket-
   // only suppressed; watch/open plays are still evaluating entry, where "is there a live setup here
   // right now" is exactly the right question.
-  if (bucket !== "closed" && (play.thesisBreak?.note || play.thesisBreak?.level)) {
+  //
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 and
+  // SWING:GLW:1479): the above holds for a NATIVE swing position, where `thesisBreak.level` really
+  // is computed from a live multi-signal read. For a Banger-origin merged row it is not —
+  // `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps `thesisLevel: "intact"` as a fixed
+  // literal on EVERY row regardless of price action (there is no per-position thesis dossier for
+  // this lane, same root cause `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already
+  // exist to catch for the aggregate Thesis-health panel — see thesis-health.ts). Left unguarded
+  // here, this line renders unconditionally, so this section printed `Thesis **intact** — below
+  // the 2× partial and above the hard stop` for CRI at -59.1% live P&L (mark $0.23 vs stop-rail
+  // $0.22 — a 2% cushion from stopping out) and for GLW at -56.1% — a member reads "intact" as a
+  // calibrated green light right where this exact section's own next two lines ("Premium stop
+  // rail"/"Premium target rail") already state the real, honest mechanical fact (how close to the
+  // ladder's own stop/target) far more precisely. Since the label can never say anything but
+  // "intact" for this lane until the scale-out engine itself force-exits, and the only substantive
+  // content it carries duplicates those two rail lines verbatim, suppress it for Banger-origin rows
+  // (`play.regime === BANGER_LEDGER_REGIME_LABEL`, the same sentinel check `thesisHealthUncalibrated`
+  // and `serving-lane.ts`'s `attachThesisExplanation` guard already use) rather than let it overclaim
+  // a per-position judgment the lane cannot calibrate — the C6 absence principle (omission over
+  // fabrication) applied to this one line, not just the aggregate panel.
+  const bangerOriginNoRealThesis = play.regime === BANGER_LEDGER_REGIME_LABEL;
+  if (
+    bucket !== "closed" &&
+    !bangerOriginNoRealThesis &&
+    (play.thesisBreak?.note || play.thesisBreak?.level)
+  ) {
     lines.push(
       `Thesis **${play.thesisBreak.level ?? "unknown"}**${play.thesisBreak.note ? ` — ${play.thesisBreak.note}` : ""}`,
     );
@@ -1437,7 +1481,22 @@ export function holdPlanSection(
         );
       }
     } else if (giveback?.kind === "capture" && giveback.capturePct < 70 && !narrativeAlreadyNoted?.capture) {
-      lines.push(`Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-07): same root cause as the two sibling
+      // call sites in play-brief-narrative.ts (actionNarrative's capture branch and
+      // degradedReadLine's givebackBit) — `giveback.capturePct` divides the RUNNER-only
+      // `play.pnlPct` against `play.peak`, so once a trim has already banked a tranche, "Gave
+      // back X% from peak" describes only the still-open runner, not the whole position. Worse
+      // here than the sibling fix: the trailing clause ("consider trim into strength") is
+      // actively wrong once a trim already fired — there is no trim left to "consider," it
+      // already happened (the exact self-contradiction already fixed for the round_trip branch
+      // immediately above, via the "NOT 'consider trim into strength'" comment — this capture
+      // branch shared the same bug and was missed by that fix's own blast-radius check).
+      const anyTrimBanked = (play.exitPolicy?.trim_levels ?? []).some((t) => t.fired);
+      lines.push(
+        anyTrimBanked
+          ? `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of the runner since peak — part of this position is already banked at a profit; consider protecting what's left`
+          : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak — consider trim into strength`,
+      );
     }
   }
 

@@ -24,10 +24,11 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
-import { fmtOptionUsd, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
+import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
 
 const MAX_BULLETS = 14;
 
@@ -47,11 +48,11 @@ function fmtFlowUsd(n: number): string {
 // (this file previously carried its own byte-identical copy, first for a "+" sign defect fixed
 // 2026-09-09, then for a roundFloats-vs-toFixed rounding mismatch fixed 2026-09-12; both are now
 // fixed once, centrally, rather than re-patched in every file that copied this function).
-
-function fmtPct(n: number, digits = 1): string {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
+//
+// Percentage/distance formatting is `fmtPct`, imported from @/lib/fmt-money above — this file
+// previously carried its own byte-identical copy of the exact same rounding-mismatch bug
+// `fmtOptionUsd` documents, just never caught because it was percentages, not dollars (fixed
+// 2026-10-08 — see fmt-money.ts's `fmtPct` header for the live repro).
 
 function distPct(spot: number, level: number): number {
   return ((level - spot) / spot) * 100;
@@ -600,8 +601,26 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
         : `**Round-tripped past breakeven** — was up **${giveback.peakPct.toFixed(0)}%** at peak, now **${giveback.exitPnlPct.toFixed(0)}%** — consider protecting what's left.`,
     );
   } else if (giveback?.kind === "capture" && giveback.capturePct < 75) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-07): this "Gave back X% of peak" line
+    // divides the SAME runner-only `play.pnlPct` the round_trip branch above divides (both
+    // read the identical `giveback` from `mfeCaptureOutcome(play.pnlPct, play.peak, null)`),
+    // but unlike that branch (fixed 2026-09-14 for the live CRWD repro — see `anyTrimBanked`'s
+    // own comment a few lines up) this one never checked it. Live repro: 50% banked at the
+    // +100% trim rail, runner pulls back to +20% off a +130% peak — capturePct = 20/130×100 ≈
+    // 15.4%, well under the 75 floor, so this fires "Gave back **85%** of peak — consider
+    // protecting runner." with no qualification at all, in the SAME "Trade manager read"
+    // section that ALSO renders "Manage plan — all trims banked — runner only" a few bullets
+    // later (holdPlanSection/manageLifecycleCoaching). A member reading only this bullet has
+    // no way to know the alarming "85%" is the RUNNER's own retracement, not the whole
+    // position's — the true blended return here is +60% (50%×100% + 50%×20%), a solid win,
+    // not the near-total giveback the unqualified wording implies. Same fix shape as the
+    // round_trip branch above: qualify the wording when a trim has already banked, rather than
+    // only disambiguating the (rarer) full-loss case and leaving this far more common
+    // post-trim-pullback case to read as a whole-position alarm.
     lines.push(
-      `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of peak — consider protecting runner.`,
+      anyTrimBanked
+        ? `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of the runner since peak — part of this position is already banked at a profit; consider protecting what's left.`
+        : `Gave back **${(100 - giveback.capturePct).toFixed(0)}%** of peak — consider protecting runner.`,
     );
   }
 
@@ -954,6 +973,22 @@ function rollHistoryLine(ctx: SwingPlayBriefContext): string | null {
 
 function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed"): string | null {
   if (bucket === "closed") return null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-07, blast radius of #5620): #5620 fixed the
+  // identical narrative-vs-chip disagreement for dataFreshnessSection (play-brief-intel.ts) and
+  // extracted the shared `isSwingPlayStaleCheckExempt` predicate specifically so a third call site
+  // couldn't silently reintroduce the same split — but this function, a SIBLING "is today's live
+  // desk state current" narrative line in a DIFFERENT file, was never updated to use it. Live repro
+  // (same NTAP brief #5620 itself reproduced against, `entryStatus: "EXTENDED_CHASE"`, status
+  // `COMMIT`/bucket "watch", confirmed live 2026-10-07 AFTER #5620 merged): this function still
+  // rendered "**Live read** — Vector spot not wired on this tick; desk still says **WAIT**" while
+  // the SAME envelope's `unavailableSources` was `[]` and `confidence.why` read "Every live source
+  // this brief reads from resolved cleanly this cycle" — the exact contradiction #5620 fixed for
+  // the Data-freshness section, recurring here because this is a separate function, not touched by
+  // that fix. A dead-but-not-closed WATCH candidate (extended past entry, invalidated, expired) has
+  // nothing left to refresh — asserting "Vector spot not wired ON THIS TICK" implies a live poll is
+  // still meaningfully running, which #5620's own rationale says is false for this bucket. Gate on
+  // the shared predicate rather than reinventing a third local check.
+  if (bucket === "watch" && isSwingPlayStaleCheckExempt(play)) return null;
   const rec =
     swingActionDisplay(play)?.label ??
     play.recommendation ??
@@ -1000,9 +1035,20 @@ function degradedReadLine(play: TerminalPlay, bucket: "watch" | "open" | "closed
   // duplicate it was already emitting. Fix: restrict this bit to the [75,80) band the comment
   // always intended — the ONLY range where actionNarrative's own <75 branch does NOT already fire,
   // so this line is genuinely additive instead of an echo.
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-07): same root cause as actionNarrative's own
+  // capture-branch fix a few hundred lines above — this bit divides the same runner-only
+  // `play.pnlPct` giveback.capturePct is built from, with no disclosure that a already-banked
+  // trim tranche means the "gave back X% from peak" figure describes the RUNNER leg only, not
+  // the whole position's blended outcome. Lower-stakes than the sibling fix (this band is
+  // [75,80), a mild giveback, not the dramatic case) but the same honest-disclosure gap, so it
+  // gets the same `anyTrimBanked` qualifier rather than being left as the one unfixed sibling.
+  const anyTrimBanked = (play.exitPolicy?.trim_levels ?? []).some((t) => t.fired);
   const givebackBit =
     giveback?.kind === "capture" && giveback.capturePct >= 75 && giveback.capturePct < 80
-      ? ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
+      ? anyTrimBanked
+        ? ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from the runner's own peak (part already banked at a profit)`
+        : ` · gave back **${(100 - giveback.capturePct).toFixed(0)}%** from peak`
       : "";
   const healthBit = health != null ? ` · thesis **${health}%**` : "";
   // BUG FIX (2026-09-14, Ask Largo standing mandate, live repro RKLX/PGY OPEN briefs): this used to

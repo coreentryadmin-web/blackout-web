@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it, mock } from "node:test";
 import type { SwingPositionRow } from "@/lib/db";
 import type { BangerPositionRow } from "@/lib/banger/positions-db";
+import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 
 // REGRESSION (Ask Largo standing mandate, 2026-09-12): `loadOpenBook()` used to read ONLY
 // `swing_positions`, so `bookContextSection`'s theme/direction overlap check was blind to every
@@ -17,6 +18,28 @@ let mockOpenSwingRows: SwingPositionRow[] = [];
 let mockBangerRows: BangerPositionRow[] = [];
 let bangerEngineEnabled = true;
 let bangerFetchShouldThrow = false;
+
+// REGRESSION (Ask Largo standing mandate, 2026-10-08): `fetchSwingPositionById`/
+// `fetchSwingPositionChain` below default to `null`/`[]` so every pre-existing fixture in this
+// file (none of which exercise roll history) keeps composing the same brief it always did. The
+// new describe block near the bottom overrides these (and `mockResolvedPlay`) to reproduce the
+// banger/swing id-collision bug in `loadRollHistory`/`resolveRootPositionId`.
+let mockSwingPositionByIdRow: SwingPositionRow | null = null;
+let mockSwingPositionChainRows: SwingPositionRow[] = [];
+const DEFAULT_RESOLVED_PLAY: TerminalPlay = {
+  id: "SWING:TEST",
+  ticker: "TEST",
+  direction: "LONG",
+  contract: "50C · 15DTE",
+  score: 70,
+  status: "WATCH",
+  horizon: "SWING",
+  exitModel: "SCALE_OUT",
+  recommendation: "BUY",
+  factors: [],
+  gates: [],
+};
+let mockResolvedPlay: TerminalPlay = DEFAULT_RESOLVED_PLAY;
 
 // PERFORMANCE REGRESSION (standing latency mandate, 2026-09-22): meridian/meridianPeer and
 // ecosystem used to be `await`ed in strict sequence (meridian, THEN meridianPeer, THEN the
@@ -113,8 +136,8 @@ function bangerRow(ticker: string, id: number): BangerPositionRow {
 mock.module("../db", {
   namedExports: {
     fetchOpenSwingPositions: async () => mockOpenSwingRows,
-    fetchSwingPositionById: async () => null,
-    fetchSwingPositionChain: async () => [],
+    fetchSwingPositionById: async () => mockSwingPositionByIdRow,
+    fetchSwingPositionChain: async () => mockSwingPositionChainRows,
     // Ask Largo mandate round 19 (2026-09-18): ticker-scoped historical context
     // (play-brief-ticker-history.ts) — defaults to an empty ledger read so existing fixtures in
     // this file (none of which exercise the new "Ticker track record" section) keep composing the
@@ -177,19 +200,7 @@ mock.module("./calibration-cache", {
 mock.module("./play-brief-resolve", {
   namedExports: {
     resolveSwingPlayForBrief: async () => ({
-      play: {
-        id: "SWING:TEST",
-        ticker: "TEST",
-        direction: "LONG",
-        contract: "50C · 15DTE",
-        score: 70,
-        status: "WATCH",
-        horizon: "SWING",
-        exitModel: "SCALE_OUT",
-        recommendation: "BUY",
-        factors: [],
-        gates: [],
-      },
+      play: mockResolvedPlay,
       scanAsOf: "2026-09-12T13:00:00.000Z",
       scanSessionDay: "2026-09-12",
       laneRows: [],
@@ -368,6 +379,100 @@ describe("loadSwingPlayBriefContext: a genuine ecosystem/vector fetch failure is
     } finally {
       vectorShouldThrow = false;
       restore.mock.restore();
+    }
+  });
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-08, live-audit cycle): `loadRollHistory`/
+// `resolveRootPositionId` (play-brief-context.ts) resolve a reviewed play's ledger row with a
+// bare `fetchSwingPositionById(positionId)` — a flat `swing_positions` lookup by numeric id, with
+// no check that the row it finds actually belongs to the ticker under review. For a BANGER-origin
+// SWING-lane play, that `positionId` is really a `banger_positions.id` (banger-lane-merge.ts
+// stamps `positionId: row.id` so the row survives into the same `${horizon}:${ticker}:${id}` shape
+// `terminalPlayFromHorizon` uses for every lane) — `banger_positions` and `swing_positions` are
+// separate id sequences that CAN collide on a shared numeric id, exactly the risk
+// `loadOpenBook()`'s own regression above already proves this file takes seriously for the
+// book-context merge. `loadRollHistory` had no equivalent guard: a collision would surface an
+// UNRELATED position's real strike/expiry/P&L as if it were the reviewed play's own prior roll
+// leg — a direct Largo product-contract IDENTITY violation, not a cosmetic bug. Fixed by requiring
+// the fetched row's own `ticker` to match the reviewed play's ticker before trusting it.
+describe("loadSwingPlayBriefContext: roll history is ticker-identity-checked (banger/swing id collision)", () => {
+  let mod: typeof import("./play-brief-context");
+
+  before(async () => {
+    mod = await import("./play-brief-context");
+  });
+
+  it("does NOT cite an unrelated ticker's roll chain when a banger-origin positionId collides with an unrelated swing_positions row", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    // ADSK here is BANGER-origin — its "positionId" (1485) is really banger_positions.id, baked
+    // into play.id the same way banger-lane-merge.ts/adapters.ts do in production.
+    mockResolvedPlay = {
+      ...DEFAULT_RESOLVED_PLAY,
+      id: "SWING:ADSK:1485",
+      ticker: "ADSK",
+      contract: "242.5C · 8DTE",
+    };
+    // The swing_positions table happens to ALSO have a row with numeric id 1485 — for a
+    // completely unrelated ticker (ZETA). This is the collision: fetchSwingPositionById(1485)
+    // returns THIS row, which has nothing to do with the ADSK play under review.
+    mockSwingPositionByIdRow = { ...swingRow("ZETA", 1485), root_position_id: 1400 };
+    // A real 2-leg roll chain for ZETA — if the identity check is missing, this chain gets cited
+    // as if it belonged to the ADSK play being reviewed.
+    mockSwingPositionChainRows = [swingRow("ZETA", 1400), swingRow("ZETA", 1485)];
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({
+        playId: "SWING:ADSK:1485",
+        ticker: "ADSK",
+        positionId: 1485,
+      });
+      assert.ok(ctx, "context must still resolve");
+      assert.equal(
+        ctx!.rollHistory,
+        null,
+        "a ticker-mismatched row must never be cited as this play's roll history — " +
+          "got a real ZETA chain attached to an ADSK brief",
+      );
+    } finally {
+      mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
+      mockSwingPositionByIdRow = null;
+      mockSwingPositionChainRows = [];
+    }
+  });
+
+  it("still cites the real roll history when the ticker genuinely matches", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    mockResolvedPlay = {
+      ...DEFAULT_RESOLVED_PLAY,
+      id: "SWING:INTC:50",
+      ticker: "INTC",
+      contract: "35C · 10DTE",
+    };
+    mockSwingPositionByIdRow = { ...swingRow("INTC", 50), root_position_id: 49 };
+    mockSwingPositionChainRows = [swingRow("INTC", 49), swingRow("INTC", 50)];
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({
+        playId: "SWING:INTC:50",
+        ticker: "INTC",
+        positionId: 50,
+      });
+      assert.ok(ctx, "context must still resolve");
+      assert.ok(ctx!.rollHistory, "a genuinely matching ticker's roll chain must still be cited");
+      assert.equal(ctx!.rollHistory!.rollCount, 1);
+    } finally {
+      mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
+      mockSwingPositionByIdRow = null;
+      mockSwingPositionChainRows = [];
     }
   });
 });

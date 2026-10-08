@@ -4,6 +4,86 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-08 (16:35 UTC / Thu 12:35 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live, CLS clean
+
+Confirmed clock myself: Thu 12:35 ET, last wake in today's window. Resynced to `origin/main`
+(`f6fcc41` → `becccb1`, other-lane findings-fold). `/api/public/gex-snapshot` →
+`market_session: OPEN`, `degraded: false`, spot 7782.88. Polled 5x at 3s intervals:
+`calculation_id` advanced cleanly and monotonically (`...357925` → `...374504` → `...387380`),
+ages reasonable throughout. Purged Cloudflare edge, re-measured live-page homepage CLS —
+**0.0001, GOOD**. No defects found, no PR opened. Returning to normal search/authority posture
+at 13:00 ET.
+
+## 2026-10-08 (15:35 UTC / Thu 11:35 ET) — [SEO] RTH wake: gamma-snapshot live, one transient age spike resolved, CLS clean
+
+Confirmed clock myself (Thu 11:35 ET, within 09:30-13:00). Resynced to `origin/main`
+(`86cb0d2` → `1472b95`, other-lane findings-fold). `/api/public/gex-snapshot?ticker=SPX` →
+`market_session: OPEN`, `degraded: false`, but `snapshot_data_age_seconds: 29` — elevated vs the
+usual single digits. Re-polled 5x at 2s intervals: resolved cleanly, `calculation_id` advancing
+monotonically (`...764280` → `...769406`), ages back to 0-5s throughout — the known-harmless
+cache-read artifact, not a real staleness regression; no finding opened. Purged Cloudflare edge,
+re-measured live homepage CLS under real RTH rendering — **0.0002, GOOD**. No defects found, no
+PR opened. Returning to normal search/authority posture at 13:00 ET.
+
+## 2026-10-08 (14:06 UTC / Thu 10:07 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
+
+Resynced to `origin/main` (`f7aad57` → `c43290c`, other-lane data-correctness fix). GSC
+opportunity scan: same 3 striking-distance queries as prior cycles ("dealer gamma" pos 12.4,
+"gamma three trading" pos 11.9, "is 0dte gambling" pos 11.5), all already well-optimized per
+`docs/audit/SEO-GROWTH-STRATEGY.md`'s register — no new query entered striking distance, no
+on-page churn. CTR-gap and deep-demand bands unchanged in shape (authority-limited). Live
+re-verify: `robots.txt` still `Allow: /api/og` before the broader `/api` disallow; entity JSON-LD
+(`#organization`/`#website` `@id` graph + `knowsAbout`) present on live homepage. 28-day totals:
+22 clicks / 1366 impressions / avgpos 11.2 — consistent with the ongoing steady-improvement
+trend, nothing new attributable to a single shipped change this cycle. No PR opened.
+
+## 2026-10-08 (13:35 UTC / Thu 09:36 ET) — [SEO] RTH wake: gamma-snapshot live and correct, CLS clean
+
+Confirmed clock myself (Thu 09:36 ET, not a holiday) before treating this as RTH. Resynced to
+`origin/main` (`f1ca356` → `d400c18`, other-lane findings-fold). `/api/public/gex-snapshot?ticker=SPX`
+→ `market_session: OPEN`, `degraded: false`, spot 7776.22, age 8s. Polled 5x at 3s intervals:
+`calculation_id` advanced cleanly and monotonically (`...575083` → `...586882` → `...598261`,
+~12s apart) with spot moving realistically each time and age staying single/low-double digits —
+the 5s refresh is genuinely refreshing, not stuck on a stale snapshot. `/tools/gamma-snapshot`
+page itself loads `200` and renders the matching SPX/call_wall/put_wall content. Purged Cloudflare
+edge, re-measured live homepage CLS under real RTH rendering — **0.0001, GOOD**. No defects
+found, no PR opened. Returning to normal search/authority posture at 13:00 ET.
+
+## 2026-10-08 (12:17 UTC / Thu 08:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Pre-open (market opens 09:30 ET), still heartbeat cadence. Resynced to `origin/main`
+(`1723acb` → `bb61d96`, other-lane perf fix). **Step 1:** purged Cloudflare edge HTML,
+re-measured live homepage CLS — **0.0002, GOOD**. Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png`, real 1200×630 PNG — crawlable, confirmed on production.
+**Step 2 — PR sweep:** 4 open agent PRs fleet-wide, none this lane's own — #5663 (swing,
+CI-FAILED), #5689 (findings-fold, CI-RUNNING), #5647 (audit tooling, READY-BUT-DRAFT green-CI
+jam, left for the coordinator), #5537 (docs, CI-FAILED, long-confirmed intentional). Nothing for
+this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-08 (06:17 UTC / Thu 02:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Market long closed. Resynced to `origin/main` (`4c5347d` → `5cbf15b`, other-lane findings-fold
+commit). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0003,
+GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real
+1200×630 PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 3 open agent PRs
+fleet-wide, none this lane's own — #5663 (swing, CI-FAILED), #5647 (audit tooling,
+READY-BUT-DRAFT green-CI jam, left for the coordinator), #5537 (docs, CI-FAILED, long-confirmed
+intentional). Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found.
+No PR opened.
+
+## 2026-10-08 (00:16 UTC / Wed 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Market long closed. Resynced to `origin/main` (`714cf8e` → `b0232cf`, other-lane swing fix).
+**Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0001, GOOD**.
+Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real 1200×630 PNG —
+crawlable, confirmed on production. **Step 2 — PR sweep:** 4 open agent PRs fleet-wide, none
+this lane's own — #5653 (findings-fold, CI-RUNNING), #5652 (swing, CONFLICTED — swing lane's to
+rebase, not SEO's), #5647 (audit tooling, READY-BUT-DRAFT green-CI jam — flagged by the sweep
+tool, not an SEO-lane PR, left for the coordinator per standing discipline), #5537 (docs,
+CI-FAILED, long-confirmed intentional). Nothing for this lane to rebase or chase. **Step 3:** no
+new SEO-lane gap found; GA4→Google Ads conversion-id/label gap remains the same external
+credential dependency logged previously, not re-detailed again this cycle. No PR opened.
+
 ## 2026-10-07 (18:17 UTC / Wed 14:19 ET) — [SEO] Lane heartbeat: shipped fixes validated, PR sweep clean
 
 Market closed (post-13:00 ET), so this is the heartbeat, not an RTH wake. Resynced to
@@ -6081,3 +6161,153 @@ measurement at n=10 is not grounds to touch a gate. Flagging here (not FINDINGS.
 fix) so the next cycle re-runs against a larger EVENT_DRIVEN population before drawing a
 conclusion, per the same "verify against fresh data, never trust a stale snapshot" discipline this
 repo's CLAUDE.md states everywhere else.
+
+## 2026-10-08 — [DISCOVERY] Independent ALB corroboration on the #5680/#5681 vector/universe trigger-prompt fix: spike FREQUENCY dropped sharply but did NOT go to zero — a `platform-warm` cron correlation is a new, unconfirmed lead for the residual
+
+Coordinator-cycle dispatch pulled `AWS/ApplicationELB` `TargetResponseTime` for
+`blackout-production-app` directly from CloudWatch (never called `GET /api/market/vector/universe`
+itself, per standing instruction) to independently corroborate #5681's trigger-prompt fix, per its
+own write-up's explicit ask: *"re-pull `TargetResponseTime` Max over the following 24-48h and check
+whether the ~40-44s spike FREQUENCY drops... a reduced-but-nonzero rate would point at other
+callers... a rate unchanged would mean this was never the dominant source."*
+
+**Measured, 05:38-09:48 UTC (2026-10-08):** 13 distinct 5-min buckets with p99/Max >=20s between
+06:23 and 08:13 UTC (roughly one every 10-20 min, e.g. 42-44s clusters) — all BEFORE the fix landed
+(trigger prompts rewritten via `update_trigger`, confirmed live by `get_trigger` on
+`trig_01NNvznmA6eMsH61cLe7yb6z` carrying the new "DO NOT call" text, with its first post-fix
+`last_run` at 09:02:09 UTC). Then a ~65-minute CLEAN window (08:18-09:23 UTC, zero >=20s spikes) —
+closely matching the fix's own predicted timing. Then **one fresh spike at 09:28 UTC (p99 21.28s,
+Max 21.33s)**, confirmed NOT a duplicate/rebucketing artifact (reproduced in a second, differently-
+windowed pull). **Verdict: reduced-but-nonzero**, exactly the "other callers" branch #5681's own
+write-up named — not a clean kill.
+
+**Ruled OUT as the 09:28 spike's cause:** the 5-engine monitor itself — its 09:02 and all
+surrounding firings already carried the fixed no-`/vector/universe` prompt, so none of the six
+triggers could have driven this one. Also ruled out: an ECS deploy/rolling-replacement artifact —
+`describe_services` events show the service fully steady-state (8/8 running, 0 pending, no task
+churn) continuously since 07:52:53 UTC, well before and after both the 08:08-08:13 and 09:28
+spikes.
+
+**New, UNCONFIRMED correlation worth the next cycle's attention:** CloudWatch Logs
+(`/ecs/blackout-production`, `elapsed=` grep) show the `platform-warm` cron's background
+`loadBootstrapBundle()` rebuild (fire-and-forget via `after()`, decoupled from the ALB response per
+its own route comment) taking **100218ms** (finished ~09:23:46 UTC) and **60376ms** (finished
+~09:27:26 UTC) in the run-up to the 09:28 spike — and `loadBootstrapBundle` assembles the same
+SPX-desk/GEX bundle (`gex_walls`/`gex_net`/`gamma_flip`/etc., `buildMergedBundle` in
+`spx-desk-loader.ts`) that #5680 named as the contention surface. However, the correlation is NOT
+clean: two earlier `platform-warm` long-elapsed events in the same pull (48301ms @ 08:26:14,
+60294ms @ 08:36:26) have **no corresponding ALB spike** in their own window (p99 stayed 4.8-8.5s
+through 08:23-08:53), and the pre-fix 08:08/08:13 spikes have no `platform-warm` long-elapsed
+correlate at all in the log window pulled (08:00-09:33 UTC) — so this is a real, specific lead for
+ONE spike, not a demonstrated mechanism for all of them. A request-count pull also shows a traffic
+burst (174 requests in the 09:19-09:24 bucket vs a 9-40 baseline) just before the 09:28 spike —
+real member/bot traffic hitting the expensive endpoint directly is an equally live alternative
+explanation, not yet distinguished from the `platform-warm` hypothesis.
+
+**No gate/code changed on this measurement** — same discipline as every other first-look entry in
+this file. Next step for whoever picks this up: CloudWatch Logs Insights cross-referencing the
+exact replica/ECS task ID behind the 09:28 ALB spike against which process (the `platform-warm`
+background task vs. a real inbound request to `/vector/universe`) was actually running on it at
+that moment — the same technique #5680 used to nail its own root cause, not yet applied here.
+Folded a related docs-only finding this same cycle (PR #5682, folding #5681's staged finding file
+into `FINDINGS.md` — it had been merged but never folded).
+
+## 2026-10-08 (11:3x UTC) — [DISCOVERY] Coordinator cycle: live ALB spike cluster (p99 50-80s) traced to the already-known, in-flight `heatmap-warm` fan-out — not a new root cause; #5686 still unmerged
+
+Per the standing performance/latency mandate, pulled `AWS/ApplicationELB` `TargetResponseTime`
+(real AWS creds, `arn:...:user/vinay-blackout`) for `blackout-production-alb` over the trailing
+12h. Found a fresh, notably WORSE spike cluster than the pattern already being chased by PR #5686
+(that PR's own write-up measured ~40-44s clusters pre-fix) — **10:58-11:33 UTC, 2026-10-08: eight
+consecutive 5-min buckets with p99/Max 50-80s** (peak 11:03 UTC: p99=80.28s, Max=80.40s), still
+climbing as of the last bucket pulled.
+
+**Checked whether this is a genuinely new/different mechanism, per this cycle's explicit
+instruction not to re-litigate #5686's already-diagnosed root cause:**
+- `AWS/ECS` CPU/Memory for `blackout-production-web` over the same window stayed unremarkable —
+  service-level max ~55-60% CPU, ~40% memory, nothing resembling the 860%/685% single-task
+  saturation #5686's own diagnosis measured. Ruled out a second CPU-saturation event.
+- CloudWatch Logs (`/ecs/blackout-production`, `elapsed=` grep, trailing 50 min) showed
+  `meridian-warm` (20-79s) and `platform-warm` (12-78s) completing on roughly their normal ~5-min
+  cadence — both already background-dispatched via `after()` (confirmed by reading both routes),
+  so neither one's own request blocks the ALB directly; logged here only as contributing
+  same-task-CPU noise, not as the driver of an ALB-visible response time.
+- `heatmap-warm`'s own route (`src/app/api/cron/heatmap-warm/route.ts`) does NOT dispatch
+  in the background — its own header comment (written 2026-09-03/2026-10-08, predating this
+  cycle) already documents it running **synchronously** inside the HTTP handler, with an
+  **unbounded `Promise.allSettled(rest.map(...))` fan-out** over the shared ≤100-ticker universe,
+  and already measured (same file, n=1000 runs) **p50=46.5s, p90=81.1s, p99=181.1s, max=209.2s** —
+  a near-exact magnitude match for the 50-80s cluster just observed. This is precisely what PR
+  #5686 (`fix/heatmap-warm-unbounded-rest-fanout`, owned by a sibling agent this cycle, open/
+  CI-running, not yet merged) is already fixing.
+
+**Verdict: not a new finding.** The 10:58-11:33 UTC cluster is consistent with the SAME
+already-diagnosed `heatmap-warm` synchronous-fan-out root cause #5686 targets, simply continuing
+to occur in production because that fix has not merged yet — exactly the expected state while a
+known, already-owned fix is still in flight. No duplicate PR opened; left for #5686's owning
+agent per this cycle's explicit instruction. **Flag for the next cycle**: re-pull
+`TargetResponseTime` once #5686 merges and deploys — if this specific 50-80s cluster shape
+disappears, that is live corroboration of the fix (same discipline as the #5680/#5681
+corroboration entry above); if a reduced-but-nonzero rate persists, the `meridian-warm`/
+`platform-warm` same-task contention noted above (still correctly background-dispatched, so not
+itself a bug) is the next thing to measure as a secondary contributor.
+
+## 2026-10-08 (13:0x UTC) — [CORRECTION] #5686 confirmed deployed live, re-measured, NO improvement to ALB tail latency — investigation REOPENED; plus a read-only cron-collision correlation test (#5692) — result WEAK/MIXED, not confirmed
+
+Picking up directly from the entry immediately above (which left #5686 "not a new root cause...
+left for #5686's owning agent"): #5686 merged and deployed since that entry was written. This cycle
+independently confirmed the deploy and re-measured against live `TargetResponseTime` per that
+entry's own stated validation plan.
+
+**Deployment confirmed via `ecs.describe_services`:** `blackout-production-web`'s task-definition
+revision 1865 carries image `...blackout-web:bb61d961b7674da07cc73c111ac34f5c8154ac9a` — exactly
+#5686's merge commit (`bb61d961b`, visible in `git log origin/main`). Service events show
+`deployment completed` / `has reached a steady state` at **12:54:07 UTC**.
+
+**Re-pulled `AWS/ApplicationELB TargetResponseTime` (1-min, `blackout-production-app`) for the
+window immediately after steady state:** 12:54 p99=68.89/Max=69.52, 12:55 p99=7.87/Max=8.01, 12:56
+p99=68.58/Max=68.90, 12:57 p99=48.35/Max=48.55, 12:58 p99=34.41/Max=34.44, 13:00
+p99=60.68/Max=61.33, 13:01 p99=32.46/Max=32.65, 13:02 p99=49.14/Max=49.49 — p50 stayed <0.3s
+throughout every minute (tail-latency signature, not fleet capacity), and this is statistically
+indistinguishable from the pre-deploy baseline measured the same morning (e.g. 11:05
+p99=80.28/Max=80.40, 11:45 p99=97.97/Max=100.21). `HTTPCode_Target_5XX_Count` summed to 0 across
+the trailing 3h of this pull, before and after deploy — still pure tail latency, never an outage.
+**Verdict: #5686 did NOT measurably reduce the spike pattern.** Folded a corrected top-of-file entry
+into `docs/audit/MARKET-OPEN-VALIDATION.md` and a staged finding
+(`2026-10-08-alb-latency-investigation-reopened-5686-no-improvement.md`) reopening the investigation
+— #5686 itself stays shipped/correct, it just isn't the dominant cause of this specific symptom.
+
+**Read-only correlation test on the #5692 cron-schedule-collision hypothesis** (no AWS write
+attempted — confirmed blocked twice already, not re-attempted): pulled CloudWatch Logs
+`/ecs/blackout-production` `elapsed=` completions for `desk-warm`/`meridian-warm`/`zerodte-warm`/
+`swing-active-refresh` over a 4h10m window (09:00-13:09 UTC) matching 251 one-minute ALB buckets,
+and checked whether spike minutes (p99>=20s, n=81) show more overlapping cron elapsed-time than
+non-spike minutes (n=169) — same technique #5684's own write-up used for the `heatmap-warm`
+duty-cycle hypothesis.
+
+**Only a 2-way test was possible, not the real 4-way**: `swing-active-refresh` (market-hours-gated,
+cash opens 13:30 UTC) never fired in this window; `desk-warm`'s own EventBridge-triggered heavy pass
+logged **zero** `background done` completions despite `AWS/Events Invocations` confirming
+EventBridge fired its Lambda target 26 times with 0 failures (every `desk-warm` log line was the
+leader's cheap <200ms `backup warm` check instead) — an unconfirmed anomaly in `desk-warm`'s own
+overlap semantics, flagged for a future cycle, not root-caused here.
+
+With only `meridian-warm` (25 runs, 19.8-79.2s) and `zerodte-warm` (46 runs, mostly 0.6-3s)
+measurable: mean concurrently-active-cron-count 0.52 on spike minutes vs 0.30 on non-spike (~1.7x,
+modest). Only 7/251 minutes had both active at once — 4/7 coincided with a real spike, 3/7 didn't
+(mixed, small-n). Individually: `meridian-warm` active in 35.8% of spike minutes vs 8.9% of
+non-spike (~4x — but this just reconfirms the SAME meridian-warm correlation this file's 2026-10-07
+entries already found, not new information); `zerodte-warm` showed no positive correlation (16.0%
+vs 21.4%, if anything inverted). 53% of spike minutes (43/81) had ZERO overlapping cron activity at
+all from any of the four — evidence against the identical-minute collision being the DOMINANT
+mechanism, though a cleaner 4-way re-run (post-cash-open, with `desk-warm`'s real pass actually
+observed) could still change this. **Verdict: WEAK/MIXED, not reported as confirmation either way**
+— #5692 stays the leading unconfirmed alternative, its own fix still blocked on the same AWS
+permission boundary (not re-attempted).
+
+**Standing operator-actionable blockers, both still open:** (1) #5692's EventBridge minute-stagger
+fix — designed, blocked twice a month apart by this sandbox's permission classifier, needs operator
+action; (2) ALB access logging — the highest-leverage next step named since 2026-09-02, also
+AWS-permission-blocked here. Neither re-attempted this cycle. **Checked the six 5-engine-monitor
+trigger prompts (`trig_01NNvznmA6eMsH61cLe7yb6z` + 5 siblings) for stale "resolved" language before
+writing this up — none needed correction; their Vector-board instruction already says the
+contention mechanism "is still open... do not attempt a speculative fix," which remains accurate.**

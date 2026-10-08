@@ -151,6 +151,67 @@ describe("mergePulseIntoDesk session extremes", () => {
   });
 });
 
+// 2026-10-08 live SPX merged desk (off-hours/EXTENDED session): price 7801.77, prior_close
+// 7818.93, vwap 7790.74, vix 15.08 all real and INTERNALLY CONSISTENT in the same merged
+// payload — yet spx_change_pct/vix_change_pct were null and above_vwap was false (price was
+// ABOVE vwap). Root cause: mergePulseIntoDesk passed pulse.spx_change_pct / pulse.vix_change_pct
+// / pulse.above_vwap straight through, never falling back to the desk's own (base) values the
+// way `vix` itself already does (`pulse.vix != null && pulse.vix > 0 ? pulse.vix : base.vix`) —
+// so once pulse's own fast off-hours build loses its anchor (null vwap/vix, common outside RTH)
+// its own derived null/false fields silently overwrote perfectly good numbers already sitting
+// in the SAME merged response. Exactly the same class of bug `above_gamma_flip` (ISSUE-18+20,
+// a few lines below in this same function) was already fixed for.
+describe("mergePulseIntoDesk off-hours derived-field fallback", () => {
+  beforeEach(() => {
+    resetSpxDeskMergeCache();
+  });
+
+  it("recomputes above_vwap from the merged price/vwap instead of trusting pulse's null-anchored flag", () => {
+    // Off-hours pulse: no live vwap to anchor against, so pulse itself honestly computed
+    // above_vwap=false (price vs a null vwap). Desk's sticky/base vwap is still real.
+    const base = deskStub({ vwap: 7350, above_vwap: true });
+    const pulse = pulseStub({ vwap: null, above_vwap: false, price: 7440.43 });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.vwap, 7350); // sticky fallback already worked correctly
+    assert.equal(merged.price, 7440.43);
+    // price (7440.43) is above the merged vwap (7350) — above_vwap must say so.
+    assert.equal(merged.above_vwap, true);
+  });
+
+  it("falls back to the desk's own spx_change_pct when pulse could not anchor its own", () => {
+    const base = deskStub({ spx_change_pct: -0.22, prior_close: 7818.93 });
+    const pulse = pulseStub({ spx_change_pct: null, price: 7801.77 });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.spx_change_pct, -0.22);
+  });
+
+  it("keeps pulse's own live spx_change_pct when pulse DID anchor successfully (no regression)", () => {
+    const base = deskStub({ spx_change_pct: -0.22 });
+    const pulse = pulseStub({ spx_change_pct: 0.8 });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.spx_change_pct, 0.8);
+  });
+
+  it("falls back to the desk's own vix_change_pct when pulse's vix itself is unavailable", () => {
+    // pulse.vix is null, so merged.vix already (correctly) falls back to base.vix — but
+    // vix_change_pct must take the SAME fallback, since it was computed off base.vix, not
+    // off pulse's own (discarded) null vix.
+    const base = deskStub({ vix: 15.08, vix_change_pct: 0.5 });
+    const pulse = pulseStub({ vix: null, vix_change_pct: null });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.vix, 15.08);
+    assert.equal(merged.vix_change_pct, 0.5);
+  });
+
+  it("keeps pulse's own live vix_change_pct when pulse's vix IS live (no regression)", () => {
+    const base = deskStub({ vix: 15.08, vix_change_pct: 0.5 });
+    const pulse = pulseStub({ vix: 12.9, vix_change_pct: -1.3 });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.vix, 12.9);
+    assert.equal(merged.vix_change_pct, -1.3);
+  });
+});
+
 describe("mergeFlowIntoDesk gamma flip truth", () => {
   it("keeps an explicit null live flip — does not resurrect sticky desk flip", () => {
     const base = deskStub({ gamma_flip: 7596.4, above_gamma_flip: false, price: 7428.78 });

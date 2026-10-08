@@ -139,6 +139,37 @@ test("horizon adapter (PR-12): thesisBreak DERIVES from setupState; INVALIDATED 
   assert.equal(live.thesisBreak!.level, "intact");
 });
 
+// Live repro 2026-10-08 (Ask Largo standing mandate, sibling of #5693's play-brief fix):
+// horizonPlayFromBangerPosition (banger-lane-merge.ts) stamps thesisLevel:"intact" on EVERY
+// Banger-origin ledger row regardless of price action — a Command Deck consumer that forwarded
+// that straight through would render "✓ thesis intact" for a position down -59.1% P&L. This
+// adapter must suppress it to "unknown" (the same honest default the PR-12 DERIVES test above
+// uses for "no real dossier") whenever `regime` carries the stamped-constant Banger fingerprint,
+// exactly as thesisHealthUncalibrated() already does for the aggregate score.
+test("horizon adapter: Banger-origin thesisLevel:'intact' is suppressed to 'unknown', never rendered as a real thesis read", () => {
+  const banger = terminalPlayFromHorizon({
+    ticker: "cri", direction: "LONG", horizon: "SWING", score: 62, status: "COMMIT",
+    contract: { strike: 35, right: "C", expiry: "2026-10-16", dte: 8, mid: 0.225 },
+    liveStatus: "OPEN",
+    livePnlPct: -59.1,
+    regime: "BREAKOUT · BANGER",
+    thesisBreak: { level: "intact", note: "below the 2× partial and above the hard stop" },
+  });
+  assert.equal(banger.thesisBreak!.level, "unknown", "a fabricated 'intact' must never survive for a Banger-origin row");
+  assert.equal(banger.thesisBreak!.note, "below the 2× partial and above the hard stop", "the real mechanical note is still useful and must be kept");
+
+  // A NATIVE swing position's real thesisBreak read (not Banger-origin) must be untouched.
+  const native = terminalPlayFromHorizon({
+    ticker: "nvda", direction: "LONG", horizon: "SWING", score: 70, status: "COMMIT",
+    contract: { strike: 500, right: "C", expiry: "2026-10-16", dte: 8, mid: 5 },
+    liveStatus: "OPEN",
+    livePnlPct: -59.1,
+    regime: "Breakout continuation · regime 0.60",
+    thesisBreak: { level: "intact", note: "thesis intact — structure holding" },
+  });
+  assert.equal(native.thesisBreak!.level, "intact", "a real, non-Banger thesis read must not be suppressed");
+});
+
 test("horizon adapter (PR-12): LEAPS / un-enriched caller is UNCHANGED — legacy literals preserved", () => {
   // No swing reads supplied (the live LEAPS path): factors []/regime null/thesisBreak intact — exactly as before.
   const play = terminalPlayFromHorizon({

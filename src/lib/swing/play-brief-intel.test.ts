@@ -31,6 +31,7 @@ import type { PaneCortexView } from "@/lib/zerodte/pane";
 import { catalystCoaching, collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -788,6 +789,67 @@ test("holdPlanSection: peak giveback warning still shows when thesis health is u
   assert.doesNotMatch(section!.body, /Thesis health \*\*46%\*\*/);
   assert.match(section!.body, /Gave back \*\*70%\*\* from peak/, `expected ~70% relative giveback, got: ${section!.body}`);
   assert.doesNotMatch(section!.body, /Gave back \*\*93%\*\*/, "must not regress to the point-difference bug");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-07): `giveback.capturePct` divides RUNNER-only
+// `play.pnlPct` against `play.peak` — honest while nothing has been banked, but once a trim has
+// already fired this capture branch's "Gave back X% from peak — consider trim into strength"
+// wording is doubly wrong: the percentage describes only the still-open runner (not the whole
+// position's blended outcome), and "consider trim into strength" implies the protective trim
+// hasn't happened yet, when it already has. Mirrors the round_trip branch's own anyTrimBanked
+// disclosure a few lines above in play-brief-intel.ts (and the sibling fix in
+// play-brief-narrative.ts's actionNarrative capture branch, same root cause, same day).
+test("holdPlanSection: capture giveback note discloses an already-banked trim tranche and drops the stale 'trim into strength' clause", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      contract: "110C · 12DTE",
+      peak: 130,
+      pnlPct: 20,
+      // The giveback computation this test targets lives inside holdPlanSection's
+      // `if (play.thesisHealth)` block (it also narrates health%/tighten-risk) — any truthy
+      // thesisHealth object enters that block; `uncalibrated: true` keeps this test focused on
+      // the giveback bullet alone, same shape as the NRG repro fixture above.
+      thesisHealth: {
+        health: 46,
+        entryIndex: 60,
+        currentIndex: 46,
+        delta: -14,
+        rung: "degraded",
+        rungLabel: "Degraded",
+        pillars: [],
+        moves: [],
+        committedAtEt: null,
+        computedAtEt: "10:00 ET",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "warn",
+      },
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 200,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+        runner_fraction: 0.5,
+      },
+    }),
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Gave back \*\*85%\*\* of the runner since peak.*already banked at a profit/,
+    `expected a banked-aware capture giveback bullet, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(section!.body, /consider trim into strength/);
 });
 
 test("holdPlanSection: peak giveback warning does not fire once retained capture clears the floor", () => {
@@ -3398,6 +3460,63 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 at -59.1% P&L and
+// SWING:GLW:1479 at -56.1% P&L): `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps
+// `thesisLevel: "intact"` as a fixed literal on every Banger-origin row regardless of price action
+// — there is no real per-position thesis dossier for this lane, the same gap
+// `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already exist to catch for the
+// aggregate Thesis-health panel. Left unguarded, this section rendered "Thesis **intact** — below
+// the 2× partial and above the hard stop" for a position 2% from stopping out — overclaiming a
+// calibrated judgment the lane cannot produce, and purely restating the honest "Premium stop
+// rail"/"Premium target rail" lines two lines below it. Must suppress regardless of bucket
+// (watch/open) and regardless of whether thesisBreak carries a note.
+test("watchForSection: Banger-origin thesis line is suppressed, not fabricated (Largo C6, live repro CRI/GLW)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: BANGER_LEDGER_REGIME_LABEL,
+        thesisBreak: { level: "intact", note: "below the 2× partial and above the hard stop" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Thesis \*\*/);
+  assert.doesNotMatch(section.body, /below the 2× partial/);
+});
+
+// Sibling guard: a NATIVE swing position's real, live-derived thesisBreak must still render —
+// the suppression above is scoped to the Banger-ledger sentinel, not to "intact" generally.
+test("watchForSection: a NATIVE position's thesis line still renders (suppression is Banger-scoped only)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: "Pullback continuation · regime 1.00",
+        thesisBreak: { level: "intact", note: "structure holding" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Thesis \*\*intact\*\* — structure holding/);
+});
+
 test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
   const section = watchForSection(
     {
@@ -3554,8 +3673,12 @@ test("watchForSection: gate-block bullet is a count + pointer, not a second full
     },
     "watch",
   );
-  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Entry section above\./);
-  // The full reason text must NOT be duplicated here — its one home is the Entry section.
+  // REPOINTED (Ask Largo standing mandate, 2026-10-08): "Entry section above" was never actually
+  // the sole full-text home this test's own comment assumed — "Trade manager read" independently
+  // rendered the same codes+reasons too (see play-brief.ts's `watchEntrySection` 2026-10-08
+  // comment). Repointed at "Trade manager read", the real one true home now.
+  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Trade manager read above\./);
+  // The full reason text must NOT be duplicated here — its one home is Trade manager read.
   assert.doesNotMatch(section.body, /Broad-market regime degraded/);
   assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
 });
@@ -4217,10 +4340,50 @@ test("meridianPeerSection: dedicated section — coaching bullets must not dupli
 
 test("whyThisSetupSection: surfaces subLane alongside archetype", () => {
   const section = whyThisSetupSection(
-    fixturePlay({ archetype: "BREAKOUT", subLane: "earnings_lead" }),
+    fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" }),
   );
   assert.match(section.body, /\*\*Archetype:\*\* Breakout continuation/);
-  assert.match(section.body, /\*\*Sub-lane:\*\* earnings lead/);
+  assert.match(section.body, /\*\*Sub-lane:\*\* Tactical \(5.7d\)/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-08): `whyThisSetupSection` used to render
+// `play.subLane.replace(/_/g, " ")` — a no-op on every real `SwingSubLane` value, since none of
+// TACTICAL/STANDARD/EXTENDED contain an underscore — so a real committed play's sub-lane rendered
+// as the shouty raw enum ("Sub-lane: TACTICAL") instead of the human label
+// (`SWING_SUB_LANES[...].label`, "Tactical (5–7d)") that `archetypeTrackRecordSection` further down
+// this SAME brief and the live command-deck UI (`terminal-display.ts`'s `swingStatusDisplay`) both
+// already use for the identical field. The previous test above (then using a fictional snake_case
+// fixture value, "earnings_lead", which is not a member of `SwingSubLane` and can never occur on a
+// real play) could not catch this because `.replace` only does something on a value that never
+// actually ships. This test exercises every real value and asserts the raw enum form never leaks
+// into the brief.
+test("whyThisSetupSection: never renders the raw SwingSubLane enum verbatim for a real sub-lane", () => {
+  for (const [subLane, expectedLabel] of [
+    ["TACTICAL", "Tactical (5–7d)"],
+    ["STANDARD", "Standard (8–15d)"],
+    ["EXTENDED", "Extended (22–30d)"],
+  ] as const) {
+    const section = whyThisSetupSection(fixturePlay({ archetype: null, subLane }));
+    assert.match(
+      section.body,
+      new RegExp(`\\*\\*Sub-lane:\\*\\* ${expectedLabel.replace(/[()–]/g, (c) => `\\${c}`)}`),
+      `${subLane} must render as its human label, not the raw enum`,
+    );
+    assert.doesNotMatch(
+      section.body,
+      new RegExp(`\\*\\*Sub-lane:\\*\\* ${subLane}\\b`),
+      `${subLane} must never render as the shouty raw enum verbatim`,
+    );
+  }
+});
+
+// Unrecognized/foreign sub-lane values stay silent — same honest-absence discipline
+// `archetypeLabelFromRaw`'s callers already rely on, never a fabricated label.
+test("whyThisSetupSection: an unrecognized subLane string renders no Sub-lane line at all", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ archetype: "BREAKOUT", subLane: "NOT_A_REAL_SUB_LANE" }),
+  );
+  assert.doesNotMatch(section.body, /\*\*Sub-lane:\*\*/);
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-09-22, follow-up to #5446): sectorLeadershipFacts is

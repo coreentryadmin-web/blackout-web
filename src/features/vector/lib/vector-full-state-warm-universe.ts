@@ -38,3 +38,52 @@ export async function activeVectorFullStateTickers(): Promise<string[]> {
     positions.map((p) => p.ticker)
   );
 }
+
+/**
+ * Rotate `tickers` so repeated warm passes advance through the WHOLE list instead of resetting to
+ * index 0 every run.
+ *
+ * BUG FOUND (Ask Largo x Night Hawk Swings standing mandate, live audit 2026-10-08): this cron's
+ * own TIME_BUDGET_MS check (route.ts) only runs BETWEEN ticker batches, and a cold
+ * `computeVectorFullState` pays a chain fetch (`vector-gex-heatmap-server.ts`'s
+ * `fetchReconstructChain`, up to 60 paginated `/v3/snapshot/options/{underlying}` pages) that now
+ * routinely costs far more than the per-batch share of the 50s budget under current shared-
+ * rate-limiter load. Measured live: 13 consecutive runs over 3+ hours each logged
+ * `written=8` (exactly ONE `TICKER_CONCURRENCY=2 x 4 horizons` batch) against a 59-62-ticker
+ * universe, `elapsed=77220-146306ms` (1.5-3x the 50s budget), `budgetHit=true` every time.
+ * Because `activeVectorFullStateTickers()` above always returns the SAME fixed order (static
+ * allowlist first, in `vectorUniverseTickers()`'s own order, then dynamic/open-swing-position
+ * names appended), the route's loop always dies on the SAME first ~2 static names and NEVER
+ * reaches anything after them — not "slower," but a hard, permanent 0% coverage for every other
+ * ticker in the merged universe, run after run, forever. That falsifies this cron's own stated
+ * recovery invariant ("partial completion is fine... the next run... fills whatever this run
+ * didn't reach" — route.ts's own comment) and silently reproduces the EXACT gap this file's own
+ * header names as already fixed for HUT (2026-09-26): a real OPEN swing position (confirmed live:
+ * INTC, positionId 50) never gets warmed at all, so its `fetchVectorFullState`/
+ * `fetchEcosystemContext` read hard-times-out at the swing play-brief's 8s
+ * `BRIEF_SOURCE_TIMEOUT_MS` on every single request — confirmed in CloudWatch
+ * (`[swing-play-brief] ecosystem context fetch failed for INTC: SwingBriefSourceTimeout`), 13/13
+ * sampled invocations across 3+ hours, for INTC and seven other tickers never in the first two
+ * static slots (NET, BE, GOOGL, CIEN, MSFT, NRG, MRVL) — silently dropping Ask Largo's Vector/
+ * ecosystem evidence from every swing play-brief for any ticker that isn't one of the first two
+ * names in the static allowlist.
+ *
+ * Fix: the caller (route.ts) persists a rotating start offset across runs, so each run begins
+ * where the PREVIOUS run's budget cutoff left off instead of restarting at index 0 every time.
+ * Over enough 5-min runs this guarantees every ticker in the merged universe — including a real
+ * open swing position far down the list — eventually gets its turn, without touching the
+ * expensive Polygon-chain fetch itself (out of scope here — that cost is the other half of the
+ * already-open ALB tail-latency investigation and needs its own measurement, not a blind change
+ * to a shared hot path several other Vector/Thermal/Largo readers depend on).
+ *
+ * Pure: `cursor` is read/written by the caller (sharedCacheGet/Set in route.ts); this just computes
+ * the rotated order. Wraps safely for an out-of-range/negative/non-finite cursor (a stale cursor
+ * from a shorter previous universe, or corrupted Redis state, must never throw or skip everything).
+ */
+export function rotateTickersForWarmPass(tickers: readonly string[], cursor: number): string[] {
+  const n = tickers.length;
+  if (n === 0) return [];
+  const safeCursor = Number.isFinite(cursor) ? Math.trunc(cursor) : 0;
+  const start = ((safeCursor % n) + n) % n;
+  return [...tickers.slice(start), ...tickers.slice(0, start)];
+}

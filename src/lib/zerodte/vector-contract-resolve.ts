@@ -4,14 +4,18 @@
  */
 import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
+import { todayEt } from "@/features/nighthawk/lib/session";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { rankVectorPlayCandidates } from "@/features/vector/lib/vector-play-candidates";
 import { vectorPickOcc } from "@/features/vector/lib/vector-pick-occ";
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
 import { buildOcc } from "@/lib/ws/options-socket";
+import { calendarDteBetween } from "./board";
 import type { EnrichedZeroDteSetup } from "./board";
 import { vectorPulseAlignsDirection } from "./vector-commit-boost";
 import type { ZeroDteVectorPulse, ZeroDteVectorPulseByTicker } from "./vector-crosslink-core";
 import { vectorPulseForDirection } from "./vector-crosslink-core";
+import { occExpiryYmd } from "./live-marks";
 
 export type VectorContractAttachSource = "vector_pulse" | "vector_rank" | "discovery";
 
@@ -38,13 +42,27 @@ function eligibleForVectorAttach(s: EnrichedZeroDteSetup, pulse: ZeroDteVectorPu
   return origin.includes("FLOW") || origin.includes("BREAKOUT");
 }
 
-/** Fast path — attach from Vector pulse when OCC + strike are present. */
+/** Fast path — attach from Vector pulse when OCC + strike are present.
+ *  2026-10-08 finding: unlike `rankVectorContractAlternatives` (which filters `dte > 4`), this
+ *  path previously trusted `pulse.occ`'s expiry blindly — Vector tracks contracts across its own
+ *  horizons, so a pulse OCC can carry an expiry weeks past ZERODTE_MAX_DTE. Reject (fall through
+ *  to chain-rank/discovery, both DTE-capped) rather than attach a contract whose real DTE
+ *  contradicts the displayed 0DTE/ZERO_DTE horizon this setup was flagged under. */
 export function resolveVectorPulseContract(
   s: EnrichedZeroDteSetup,
   pulse: ZeroDteVectorPulse | null
 ): VectorContractAttach | null {
   if (!eligibleForVectorAttach(s, pulse) || !pulse?.occ || pulse.strike == null) return null;
-  return { occ: pulse.occ, strike: pulse.strike, source: "vector_pulse" };
+  const expiry = occExpiryYmd(pulse.occ);
+  let dte: number | undefined;
+  if (expiry != null) {
+    const parsed = calendarDteBetween(todayEt(), expiry);
+    if (Number.isFinite(parsed)) {
+      if (parsed > ZERODTE_MAX_DTE) return null;
+      dte = parsed;
+    }
+  }
+  return { occ: pulse.occ, strike: pulse.strike, source: "vector_pulse", expiry: expiry ?? undefined, dte };
 }
 
 function syntheticVectorPlay(s: EnrichedZeroDteSetup): VectorPlay {
