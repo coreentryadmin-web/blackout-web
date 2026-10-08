@@ -93,13 +93,18 @@ test("the sweep rotates its ticker order from a persisted cursor instead of a fi
   // vector-full-state-warm-universe.ts's rotateTickersForWarmPass header for the full trace).
   assert.match(
     routeSrc,
-    /import \{\s*activeVectorFullStateTickers,\s*rotateTickersForWarmPass,?\s*\} from "@\/features\/vector\/lib\/vector-full-state-warm-universe"/,
-    "must import the rotation helper alongside the ticker-set helper"
+    /import \{\s*activeVectorFullStateTickers,\s*resolveWarmCursorIndex,\s*rotateTickersForWarmPass,?\s*\} from "@\/features\/vector\/lib\/vector-full-state-warm-universe"/,
+    "must import the rotation + cursor-resolution helpers alongside the ticker-set helper"
   );
   assert.match(
     routeSrc,
-    /const cursor = \(await sharedCacheGet<number>\(WARM_CURSOR_KEY\)\.catch\(\(\) => null\)\) \?\? 0;/,
-    "must read a persisted cursor (fail-open to 0) before ordering the sweep"
+    /const cursorTicker = \(await sharedCacheGet<unknown>\(WARM_CURSOR_KEY\)\.catch\(\(\) => null\)\) \?\? null;/,
+    "must read the persisted cursor as unknown (a deploy-transition leftover number must not be trusted as a string) and fail-open to null"
+  );
+  assert.match(
+    routeSrc,
+    /const cursor = resolveWarmCursorIndex\(rawTickers, cursorTicker\);/,
+    "must resolve the remembered ticker to TODAY's list content-addressed, never trust a raw offset across a reorder"
   );
   assert.match(
     routeSrc,
@@ -108,8 +113,34 @@ test("the sweep rotates its ticker order from a persisted cursor instead of a fi
   );
   assert.match(
     routeSrc,
-    /await sharedCacheSet\(WARM_CURSOR_KEY, nextCursor, WARM_CURSOR_TTL_SEC\)\.catch\(\(\) => undefined\);/,
-    "must persist the advanced cursor so the NEXT run resumes instead of restarting at index 0"
+    /const lastAttemptedTicker = attempted > 0 \? tickers\[attempted - 1\] : null;/,
+    "must derive the last ticker NAME actually attempted this run, not a raw count"
+  );
+  assert.match(
+    routeSrc,
+    /await sharedCacheSet\(WARM_CURSOR_KEY, lastAttemptedTicker, WARM_CURSOR_TTL_SEC\)\.catch\(\(\) => undefined\);/,
+    "must persist the ticker NAME so the NEXT run resumes right after it regardless of any reorder"
+  );
+});
+
+test("a reordered ticker universe does not desync the persisted cursor (regression, 2026-10-08)", () => {
+  // BUG FOUND same day as the ordering fix: a raw numeric cursor persisted across runs is only
+  // safe while activeVectorFullStateTickers()'s order is STABLE. The position-first reorder
+  // above changes that order on every deploy that adds/removes/reshuffles open positions — a
+  // bare index silently keeps meaning "skip N array slots," not "resume after ticker X," and
+  // points the rotation start somewhere else entirely the moment the list moves under it.
+  // Content-addressing via resolveWarmCursorIndex is the fix; this proves the route wires it in
+  // (not a bare number) by checking the three call-sites can't have regressed back to the old
+  // number-cursor shape.
+  assert.doesNotMatch(
+    routeSrc,
+    /sharedCacheGet<number>\(WARM_CURSOR_KEY\)/,
+    "the persisted cursor must be a ticker NAME (string), never a raw numeric index again"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /\(cursor \+ attempted\) % rawTickers\.length/,
+    "must not reintroduce raw-index cursor arithmetic"
   );
 });
 

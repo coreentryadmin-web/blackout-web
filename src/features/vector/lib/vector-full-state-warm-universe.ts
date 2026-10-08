@@ -103,3 +103,56 @@ export function rotateTickersForWarmPass(tickers: readonly string[], cursor: num
   const start = ((safeCursor % n) + n) % n;
   return [...tickers.slice(start), ...tickers.slice(0, start)];
 }
+
+/**
+ * Resolve the NUMERIC rotation cursor `rotateTickersForWarmPass` wants, from the TICKER NAME the
+ * previous run last attempted — content-addressed, never a raw array offset carried across runs.
+ *
+ * BUG FOUND (Ask Largo standing mandate, live audit 2026-10-08, same day as the ordering fix
+ * above): the caller used to persist `cursor` as a bare number and feed it straight back into
+ * `rotateTickersForWarmPass` next run. That is only safe while `activeVectorFullStateTickers()`
+ * returns tickers in a STABLE order — the moment that order changes, a stored numeric offset keeps
+ * meaning "skip this many array slots," not "resume after ticker X," and silently points somewhere
+ * else entirely. The ordering fix immediately above is exactly such a change: it moves ~35 open
+ * positions from the TAIL of the merged list to the HEAD. Confirmed live: the persisted cursor
+ * (34, carried over from the pre-fix tail-heavy list) was still being interpreted as a raw index
+ * into the NEW, position-first list after the fix deployed — which, with positions now occupying
+ * indices 0-34, put the cursor's rotation start WELL PAST every open position and into the shared-
+ * universe tail instead, so the very first lap after the reorder dropped right past the highest-
+ * stakes names the reorder exists to prioritize. The rotation only reaches them again once the raw
+ * index happens to wrap back around past the list length — a full lap's delay (confirmed in
+ * CloudWatch: FUBO/CRDU/LQDA — all real open positions near the front of the new order — still
+ * logging `SwingBriefSourceTimeout` on `ecosystem context fetch failed` at 18:56, fourteen minutes
+ * after the reorder fix had already deployed and three rotation runs had already fired).
+ *
+ * Resolving by CONTENT instead of position fixes this permanently, not just for today's one-time
+ * reorder: any future change in list shape (a position opens/closes, the dynamic/shared universe's
+ * membership shifts) resumes "right after whatever we last actually finished," wherever that
+ * ticker now sits, rather than at a raw offset that silently means something else once the list
+ * underneath it moves.
+ *
+ * Falls back to 0 (the START of the list — i.e., today's highest-priority names) when the
+ * remembered ticker is no longer present (position closed, dropped from the universe, or no prior
+ * run yet) — restarting a lap costs at most one extra partial pass over already-warm entries
+ * (TTL is 4h, #5705), while silently resuming at a stale offset risks starving the exact
+ * population a reorder was meant to protect, which is the far more expensive failure.
+ *
+ * DEPLOY-TRANSITION SAFETY: `lastAttemptedTicker` is typed `unknown`, not `string`, because the
+ * FIRST read after this change ships will still hand back whatever the OLD code last persisted — a
+ * bare NUMBER
+ * (Redis/JSON round-trips a number as a number, not a string; TypeScript's generic on the read
+ * side cannot enforce that at runtime). Accepting `unknown` here and checking `typeof` explicitly
+ * means that leftover number is treated as "no remembered ticker" (falls back to 0) instead of
+ * throwing when `.trim()` is called on it — the exact kind of one-release-only crash that is easy
+ * to miss in a diff review because it only ever happens once, right after deploy.
+ */
+export function resolveWarmCursorIndex(
+  tickers: readonly string[],
+  lastAttemptedTicker: unknown
+): number {
+  if (typeof lastAttemptedTicker !== "string" || !lastAttemptedTicker) return 0;
+  const key = lastAttemptedTicker.trim().toUpperCase();
+  if (!key) return 0;
+  const idx = tickers.findIndex((t) => t.toUpperCase() === key);
+  return idx === -1 ? 0 : idx + 1; // resume AFTER the last ticker actually attempted
+}
