@@ -19,7 +19,7 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { NextEarnings } from "@/lib/providers/uw-earnings";
 import type { TickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
 import type { RelatedCompanies } from "@/lib/providers/polygon-related";
-import type { NewsResult } from "@/lib/providers/polygon-news";
+import type { NewsResult, NewsItem } from "@/lib/providers/polygon-news";
 import type { PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import type { MarketBreadthBundle } from "@/lib/bie/market-breadth";
 import { SPX_CONFIDENCE_OMITTED, SPX_SCORE_CLAMP_NOTE } from "@/lib/largo/spx-confidence-boundary";
@@ -263,10 +263,17 @@ let ECOSYSTEM_CONTEXT_FIELDS: typeof import("./ecosystem-context").ECOSYSTEM_CON
 let mapNighthawkEchoRows: typeof import("./ecosystem-context").mapNighthawkEchoRows;
 let assembleEcosystemArsenal: typeof import("./ecosystem-context").assembleEcosystemArsenal;
 let isEcosystemIndexTicker: typeof import("./ecosystem-context").isEcosystemIndexTicker;
+let rankNewsItemsBySpecificity: typeof import("./ecosystem-context").rankNewsItemsBySpecificity;
 
 before(async () => {
-  ({ fetchEcosystemContext, ECOSYSTEM_CONTEXT_FIELDS, mapNighthawkEchoRows, assembleEcosystemArsenal, isEcosystemIndexTicker } =
-    await import("./ecosystem-context"));
+  ({
+    fetchEcosystemContext,
+    ECOSYSTEM_CONTEXT_FIELDS,
+    mapNighthawkEchoRows,
+    assembleEcosystemArsenal,
+    isEcosystemIndexTicker,
+    rankNewsItemsBySpecificity,
+  } = await import("./ecosystem-context"));
 });
 
 test("ECOSYSTEM_CONTEXT_FIELDS: covers every real field with a non-empty description", () => {
@@ -872,6 +879,90 @@ test("assembleEcosystemArsenal: Benzinga headline HTML entities are decoded for 
     "12 Information Technology Stocks Moving In Tuesday's Intraday Session",
     "Safran Electronics & Defense agreement",
   ]);
+});
+
+test("rankNewsItemsBySpecificity: ascending tag-count, stable on recency within a tier (Ask Largo mandate, live repro 2026-10-08)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:AMZN&ticker=AMZN — the raw Benzinga
+  // tickers.any_of=AMZN feed (re-verified directly against the provider, bypassing this repo
+  // entirely) returned, most-recent-first: 3 broad AI-industry stories co-tagging AMZN alongside
+  // 3-9 OTHER megacaps, THEN two genuinely AMZN-specific stories (AWS funding, a new Alexa
+  // product) further back in recency. `.slice(0, 4)` on the raw order would surface 0 of the 2
+  // AMZN-specific stories.
+  const broadClaudeDocs = { headline: "Anthropic Announces Claude Docs...", tickers: ["AMZN", "GOOG", "GOOGL"] };
+  const broadCyberMission = {
+    headline: "Anthropic Launches Cyber Mission...",
+    tickers: ["AMZN", "GOOGL", "GOOG", "MSFT", "PANW", "CRWD", "ACN", "ROK", "BAH"],
+  };
+  const broadSamsungTsmc = {
+    headline: "Stock Reaction To Samsung And TSMC Earnings...",
+    tickers: ["USO", "SPY", "NVDA", "TSLA", "QQQ", "AMZN", "AAPL", "GOOG", "META", "MSFT", "AMD", "TSM"],
+  };
+  const specificAws = { headline: "Amazon Web Services Announces Golden Age of Science Accelerator", tickers: ["AMZN"] };
+  const specificAlexa = { headline: "Amazon Introducing All-New Amazon Alexa Tablets", tickers: ["AMZN"] };
+  const items = [broadClaudeDocs, broadCyberMission, broadSamsungTsmc, specificAws, specificAlexa] as unknown as NewsItem[];
+
+  const ranked = rankNewsItemsBySpecificity(items);
+  assert.deepEqual(
+    ranked.map((i) => i.headline),
+    [
+      // Both 1-tag items first (tie broken by original/recency order: AWS before Alexa).
+      specificAws.headline,
+      specificAlexa.headline,
+      // Then broad items, in their original recency order — never hidden, just deprioritized.
+      broadClaudeDocs.headline,
+      broadCyberMission.headline,
+      broadSamsungTsmc.headline,
+    ],
+  );
+
+  // End-to-end through the real fold: the two AMZN-specific stories now survive `.slice(0, 4)`
+  // instead of being crowded out by 3 broad co-tagged ones occupying every slot.
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: { items, asOf: "2026-10-08T20:55:00Z", newest: "2026-10-08T20:00:00Z" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, [
+    specificAws.headline,
+    specificAlexa.headline,
+    broadClaudeDocs.headline,
+    broadCyberMission.headline,
+  ]);
+  // Total count is unaffected by the re-rank — still every item the provider returned.
+  assert.equal(ars.news?.count, 5);
+});
+
+test("rankNewsItemsBySpecificity: an item with no tickers field sorts as maximally specific, never penalized for missing metadata", () => {
+  const noTagField = { headline: "hand-built fixture, no tickers field at all" } as unknown as NewsItem;
+  const emptyTags = { headline: "normalized but untagged", tickers: [] } as unknown as NewsItem;
+  const broad = { headline: "broad story", tickers: ["A", "B", "C"] } as unknown as NewsItem;
+  const ranked = rankNewsItemsBySpecificity([broad, noTagField, emptyTags]);
+  assert.deepEqual(ranked.map((i) => i.headline), [noTagField.headline, emptyTags.headline, broad.headline]);
+});
+
+test("assembleEcosystemArsenal(single_name): market catalysts (no single ticker) are left in Benzinga's own recency order, not re-ranked", () => {
+  // The specificity re-rank only makes sense when there IS a "this ticker" to be specific to.
+  // A market-wide catalyst read (scope: "index") has no such anchor — re-ranking by tag-count
+  // there would just reorder by how many stocks each macro story happens to list, which is noise,
+  // not a correctness improvement. Confirms the `single` gate actually gates.
+  const items = [
+    { headline: "narrow by chance", tickers: ["X"] },
+    { headline: "broad macro story", tickers: ["A", "B", "C", "D", "E"] },
+  ] as unknown as NewsItem[];
+  const ars = assembleEcosystemArsenal({
+    scope: "index",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: { items, asOf: "2026-10-08T20:55:00Z", newest: "2026-10-08T20:00:00Z" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, ["narrow by chance", "broad macro story"]);
 });
 
 test("assembleEcosystemArsenal(single_name): percent-scale short_volume_ratio normalizes to 0–1 fraction (audit #12)", () => {
