@@ -162,7 +162,29 @@ function managementSection(play: TerminalPlay): RichSection {
       .join(" · ");
     if (trims) lines.push(`Trim ladder: ${trims}`);
     if (ep.stop_premium != null || ep.target_premium != null) {
-      lines.push(`Rails: stop ${fmtUsd(ep.stop_premium)} · target ${fmtUsd(ep.target_premium)}`);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro EXTR OPEN brief): once a
+      // trim rung priced at/above `target_premium` has already fired, this line still printed
+      // the bare, un-annotated "target $X" — on the SAME single-rung swing exit policy
+      // (SWING_SCALE_OUT_POLICY: one rung at +100%, target_pct also 100, so the fired trim's
+      // `premium` and `target_premium` are the literal same dollar level — see
+      // play-brief-intel.ts's symmetric 2026-09-22 fix for this exact shape), the member reads
+      // "Trim ladder: +100% ✓" one line above "Rails: ... target $0.30" with nothing telling
+      // them the target in that second line is the SAME level the checkmark above already says
+      // fired — it reads as a fresh, unmet objective directly beside its own "already done"
+      // disclosure. play-brief-intel.ts's "What to watch" section already fixed this exact
+      // self-contradiction for its own "Premium target rail" line (omitting the room% once
+      // fired) but this earlier, more prominent Management-section summary line was never
+      // given the equivalent treatment — confirmed by grep, it is the only other call site
+      // that renders `target_premium` as a bare value. Mirror the ladder's own "✓" convention
+      // (already used two words to the left on the same line, for the identical fact) rather
+      // than inventing new wording or suppressing the real number.
+      const targetAlreadyFired =
+        ep.target_premium != null &&
+        ep.trim_levels.some((t) => t.fired === true && t.premium != null && t.premium >= ep.target_premium!);
+      const targetLabel = targetAlreadyFired
+        ? `${fmtUsd(ep.target_premium)} ✓ (reached)`
+        : fmtUsd(ep.target_premium);
+      lines.push(`Rails: stop ${fmtUsd(ep.stop_premium)} · target ${targetLabel}`);
     }
   }
   if (play.progress != null && Number.isFinite(play.progress)) {
