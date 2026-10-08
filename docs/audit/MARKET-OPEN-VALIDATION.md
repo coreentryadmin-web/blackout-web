@@ -1,3 +1,30 @@
+## WATCH LIST — 2026-10-08 SPX Slayer `/api/market/spx/play` cached a resolved-not-thrown degraded placeholder cluster-wide, flapping real reads to "Desk warming" ~50% of the time — deploy pending validation
+
+**What was fixed:** `getSpxPlayState()`'s `withServerCache(...)` call (`spx-service.ts`) had no
+`shouldCache` guard, so when `evaluateSpxPlayStateCrossReplica()` lost the cross-replica Redis lock
+and resolved (its own intentional, tested design — never throws) to `degradedPlayPayload()`
+("Desk warming — play state unavailable", `score:0`, `factors:[]`), that placeholder got written
+into BOTH the in-memory store and shared Redis for the full 5s TTL and served to every
+replica/member/BIE/Largo reader of the cache key, not just the one request that lost the race.
+Live-measured 2026-10-08 ~00:33-00:37 UTC: a 12-call poll burst (one call every ~2s) came back
+`degraded:true` on 6/12 calls, several sharing an identical `as_of` (same cached placeholder
+re-served). Fix: added `shouldCache: (value) => value.assessed !== false` — `assessed` is the
+payload's own pre-existing absence marker, `false` only on this placeholder/no-confluence-computed
+path, never on a genuine closed-session assessment. Full write-up:
+`docs/audit/findings-staging/2026-10-08-spx-play-degraded-placeholder-cache-poison.md`.
+
+**Specific thing to check once this deploys, ideally during RTH (real concurrent member traffic +
+multiple active ECS replicas, the exact conditions that trigger cross-replica lock contention):**
+poll `GET /api/market/spx/play` repeatedly at a ~1-2s cadence for at least 30-60s (the same burst
+test used to find this) and confirm `degraded:true` no longer appears except immediately after a
+genuine upstream failure (and even then, should clear on the very next poll rather than persisting
+for a full 5s TTL window with a repeated identical `as_of`). Cross-check CloudWatch
+(`/ecs/blackout-production`) for `[market/spx/play]` — a `cold miss exceeded maxBlockMs` error
+should still occasionally appear during real contention (that part is unchanged/expected), but it
+should no longer correlate with a run of several identical-`as_of` degraded responses afterward.
+
+---
+
 ## WATCH LIST — 2026-10-07 Ask Largo swing play-brief "Vector spot not wired" line contradicted confidence/unavailableSources for dead WATCH candidates — deploy pending validation
 
 **What was fixed:** `tradeManagerNarrativeSection`'s `degradedReadLine` fallback (`play-brief-narrative.ts`) rendered "**Live read** — Vector spot not wired on this tick; desk still says WAIT" for a dead-but-not-closed WATCH candidate (entry extended past its valid window / invalidated / expired) in the exact same `GET /api/market/swing/play-brief` response whose `confidence` field read "high — Every live source this brief reads from resolved cleanly this cycle" and `unavailableSources: []`. This is the identical narrative-vs-chip disagreement PR #5620 fixed earlier the same day (2026-10-07) for the sibling `dataFreshnessSection` — that fix's own shared `isSwingPlayStaleCheckExempt` predicate was never wired into this second call site. Live-confirmed on `playId=SWING:NTAP` (`entryStatus: "EXTENDED_CHASE"`). Full write-up:
