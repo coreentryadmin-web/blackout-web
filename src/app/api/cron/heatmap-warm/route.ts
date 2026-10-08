@@ -20,11 +20,21 @@
 // and broadcast to all active SSE subscribers (/api/market/gex-matrix-deltas). This gives
 // real-time perception (10-15s) while the full rebuild itself runs on a ~60-110s cadence (see
 // the schedule note above).
+//
+// CONCURRENCY (fixed 2026-10-08): the bulk "rest" of the universe (everything outside the small
+// priority/CORE set, typically 70-100+ names) used to fan out via a bare, unbounded
+// `Promise.allSettled` — every `fetchGexHeatmap` call fired at once, with nothing pacing how many
+// of their real per-ticker synchronous costs (chain-response JSON parse, GEX matrix build, depth
+// ladder) could land on this task's single event loop together. Now routed through the shared
+// `runPolygonPool` (POOL_MAX_CONCURRENCY=8), the same bounded-fan-out helper already used for the
+// Vector universe snapshot build for the identical reason. See the `restResults` call site below
+// for the full root-cause writeup.
 
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { runPolygonPool } from "@/lib/providers/polygon-rate-limiter";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { comparePresetWarmTickers } from "@/features/thermal/lib/thermal-compare-presets";
 import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
@@ -181,7 +191,34 @@ async function runHeatmapWarm(req: NextRequest, started: number): Promise<NextRe
       coreResults.push({ status: "rejected", reason });
     }
   }
-  const restResults = await Promise.allSettled(rest.map((t) => fetchGexHeatmap(t)));
+  // `rest` is the BULK of the shared universe (everything outside the small priority/CORE set —
+  // typically 70-100+ names). This used to be a bare, unbounded `Promise.allSettled` over every
+  // `rest` ticker's `fetchGexHeatmap` call at once, with NO concurrency bound at all — exactly the
+  // "unbounded batch fan-out starves concurrent live traffic" bug class `runPolygonPool`'s own doc
+  // comment (polygon-rate-limiter.ts) says was already found and fixed for the Vector universe
+  // snapshot on 2026-09-04 (PR referenced there). This route was never migrated to the same fix:
+  // every one of those ~70-100 `fetchGexHeatmap` calls fired its real Polygon chain fetch at once,
+  // and however many landed in the same admission window resolved in a cluster and ran their (real,
+  // per-ticker: JSON-parse the chain response, build the GEX matrix, build the depth ladder —
+  // "~33x chain-size closed-form evaluations... 55-370ms", see the DEPTH_RANGE_PCT comment in
+  // polygon-options-gex.ts) SYNCHRONOUS post-processing back-to-back on this one task's single
+  // event loop, with nothing pacing how many landed together. Routing through `runPolygonPool`
+  // (POOL_MAX_CONCURRENCY=8 by default, the same helper and the same cap already proven safe for
+  // the Vector universe build) bounds how many of those synchronous bursts can ever be in flight
+  // at once, the same way it already does for that other call site.
+  const restResults = await runPolygonPool(
+    rest.map(
+      (t) =>
+        async (): Promise<PromiseSettledResult<Awaited<ReturnType<typeof fetchGexHeatmap>>>> => {
+          try {
+            const data = await fetchGexHeatmap(t);
+            return { status: "fulfilled", value: data };
+          } catch (reason) {
+            return { status: "rejected", reason };
+          }
+        }
+    )
+  );
   const orderedTickers = [
     ...priority.filter((t) => !coreSet.has(t)),
     ...core,
