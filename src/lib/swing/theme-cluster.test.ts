@@ -161,3 +161,14 @@ test("GLW + GLWG are the literal same stock (plain vs 2x-leveraged wrapper) and 
   // Not merged into an unrelated theme just because both are "tech"-adjacent.
   assert.equal(sameThesis("GLW", "NVDA"), false);
 });
+
+test("MTSI (MACOM Technology Solutions) clusters into semis, not its own isolated NAME: cluster (2026-10-08 live finding: MTSI LONG concurrent with SMCI/INTC/SMCX/MULL/AVGX/MRVL, no Book-context concentration flag on MTSI's own play-brief)", () => {
+  assert.equal(resolveTheme("MTSI"), "semis");
+  assert.equal(sameThesis("MTSI", "SMCI"), true);
+  assert.equal(sameThesis("MTSI", "NVDA"), true); // joins the WHOLE semis cluster, not just one peer
+  // Corroborated by the live play-brief's own independently-sourced peer list (LRCX, KLAC).
+  assert.equal(sameThesis("MTSI", "LRCX"), true);
+  assert.equal(sameThesis("MTSI", "KLAC"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("MTSI", "AAPL"), false);
+});
