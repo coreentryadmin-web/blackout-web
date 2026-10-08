@@ -1214,6 +1214,38 @@ test("tradeManagerNarrativeSection: degraded-read 'Live read' no longer duplicat
   assert.doesNotMatch(section!.body, /Live read.*gave back/i, "below the 75% floor, Live read must defer to actionNarrative's own giveback line rather than repeating it");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-07): the [75,80) `givebackBit` above divides the
+// same runner-only `play.pnlPct` the round_trip branch (fixed 2026-09-14) and actionNarrative's
+// own capture branch (fixed same day as this test) both divide — but never disclosed an
+// already-banked trim tranche either. Same fixture shape (pnlPct 77, peak 100 -> capturePct 77%,
+// squarely in the one band this bit is genuinely additive) with a fired trim added.
+test("tradeManagerNarrativeSection: degraded-read 'Live read' giveback bit discloses an already-banked trim tranche", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: 77,
+        peak: 100,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 200,
+          trim_levels: [{ trigger_pct: 50, fraction: 0.5, premium: 10, fired: true }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Live read.*gave back \*\*23%\*\* from the runner's own peak \(part already banked at a profit\)/,
+    `expected a banked-aware Live-read giveback bit, got: ${section!.body}`,
+  );
+});
+
 test("describeDarkPoolLevel: support language for long below spot", () => {
   const line = describeDarkPoolLevel({ strike: 95, premium: 5_000_000, pct: 30 }, 100, "LONG");
   assert.match(line, /Watch 95\.00/);
@@ -2676,4 +2708,68 @@ test("tradeManagerNarrativeSection: uses ctx.readMs, not the real wall clock, to
     /long gamma/i,
     "ctx.readMs-fresh Vector regime must render dealer posture, not read as stale off the real wall clock",
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-07): the "Gave back X% of peak" capture-branch
+// giveback line divides the SAME runner-only `play.pnlPct` the round_trip branch above divides
+// (both read `mfeCaptureOutcome(play.pnlPct, play.peak, null)`) — but the round_trip branch was
+// fixed 2026-09-14 (live CRWD repro, see the test above) to disclose an already-banked trim
+// tranche, while this sibling capture branch never got the same treatment. Repro: 50% banked at
+// the +100% trim rail, runner pulls back to +20% off a +130% peak — capturePct ≈ 15.4%, firing
+// "Gave back 85% of peak" with no qualification, reading as if the WHOLE position gave back 85%
+// when the true blended return (50%×100% + 50%×20%) is +60%, a solid win.
+test("tradeManagerNarrativeSection: capture-branch giveback line discloses an already-banked trim tranche (not just the round_trip branch)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: 20,
+        peak: 130,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 200,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Gave back \*\*85%\*\* of the runner since peak.*already banked at a profit/,
+    `expected a banked-aware capture giveback bullet, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /Gave back \*\*85%\*\* of peak — consider protecting runner\./,
+    "the unqualified (nothing-banked) wording must not fire once a trim has been banked",
+  );
+});
+
+test("tradeManagerNarrativeSection: capture-branch giveback line keeps the unqualified wording when nothing has been banked", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        pnlPct: 20,
+        peak: 130,
+        exitPolicy: {
+          policy: "trim_scale",
+          hard_stop_pct: -60,
+          target_pct: 200,
+          trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: false }],
+          runner_fraction: 0.5,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Gave back \*\*85%\*\* of peak — consider protecting runner\./);
+  assert.doesNotMatch(section!.body, /already banked at a profit/);
 });
