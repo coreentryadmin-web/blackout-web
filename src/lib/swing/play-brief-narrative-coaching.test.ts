@@ -687,6 +687,53 @@ test("crossDeskCoaching: Vector bearish bias conflicts with LONG swing", () => {
   assert.match(line!, /Fade the rip/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro NET WATCH brief 2026-10-07):
+// crossDeskCoaching is called for the WATCH bucket too (collectCoachingBullets only
+// short-circuits "closed"), but the "structure" conflict's resolution text unconditionally read
+// "watch for it to flip back before your next trim rail — until then, size down" — language that
+// presupposes an existing position (something to trim, something to size down). A WATCH candidate
+// has no position: this must not tell a member to "size down" a trade they haven't entered, or
+// reference a trim rail that can't exist without an entry.
+test("crossDeskCoaching: WATCH-bucket structure conflict never tells the member to size down or wait for a trim rail (no position exists yet)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", status: "WATCH" }),
+  );
+  assert.match(line!, /Cross-desk friction/i);
+  assert.match(line!, /Vector bearish/i);
+  assert.doesNotMatch(line!, /trim rail/i, "a WATCH candidate has no position, so no trim rail exists yet");
+  assert.doesNotMatch(line!, /size down/i, "a WATCH candidate has no size on to size down");
+  assert.match(line!, /isn't a green light to enter/i);
+});
+
+// Companion: the OPEN/HOLD bucket's existing "size down"/"trim rail" phrasing is still correct
+// there (a real position with a real scale-out ladder exists) — this is a regression guard that
+// the WATCH-bucket fix above didn't accidentally change the open-bucket text too.
+test("crossDeskCoaching: OPEN-bucket structure conflict still reads size down / trim rail (unchanged)", () => {
+  const line = crossDeskCoaching(
+    ctx({
+      vector: {
+        play: {
+          bias: "short",
+          headline: "Fade the rip",
+          grade: "B",
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG", status: "HOLD" }),
+  );
+  assert.match(line!, /trim rail/i);
+  assert.match(line!, /size down/i);
+});
+
 test("crossDeskCoaching: stale Vector play.bias must not invent cross-desk friction", () => {
   const line = crossDeskCoaching(
     ctx({

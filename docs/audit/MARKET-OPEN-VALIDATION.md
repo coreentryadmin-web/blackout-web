@@ -1,3 +1,11 @@
+## WATCH LIST — 2026-10-08 Ask Largo swing play-brief told a pre-entry WATCH candidate to "size down" and wait for its "next trim rail" — positions that don't exist yet — deploy pending validation
+
+**What was fixed:** `crossDeskCoaching`'s "structure" conflict resolution (`play-brief-narrative-coaching.ts`) unconditionally rendered "watch for it to flip back before your next trim rail — until then, size down" whenever Vector's gamma-regime read conflicted with the swing's thesis — language that presupposes an existing, sized position with an armed trim ladder. `crossDeskCoaching` runs for the WATCH bucket too (`collectCoachingBullets` only short-circuits `"closed"`), so a pre-entry candidate with no position yet got told to manage one. Live-confirmed on `GET /api/market/swing/play-brief?playId=SWING:NET&ticker=NET&status=WATCH` (2026-10-07 ~21:08 ET): NET was still gated behind two unresolved entry gates (`g_s12_halt_feed_stale`, `g_s6_confluence`, `positionId: null`), yet its "Cross-desk friction" bullet said "...until then, size down." Full write-up: `docs/audit/findings-staging/2026-10-08-swing-crossdesk-watch-trim-language.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any real WATCH-bucket candidate whose Vector read conflicts with the swing's own direction (structure-kind cross-desk friction) and confirm the "Cross-desk friction" bullet reads "...this isn't a green light to enter" rather than "size down"/"trim rail." Also spot-check a real OPEN/HOLD/TRIM position with the same kind of conflict and confirm its bullet is UNCHANGED ("size down"/"trim rail" still correct there, since a real position and ladder exist).
+
+---
+
 ## WATCH LIST — 2026-10-08 SPX Slayer `/api/market/spx/play` cached a resolved-not-thrown degraded placeholder cluster-wide, flapping real reads to "Desk warming" ~50% of the time — deploy pending validation
 
 **What was fixed:** `getSpxPlayState()`'s `withServerCache(...)` call (`spx-service.ts`) had no

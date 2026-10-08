@@ -582,12 +582,31 @@ function crossDeskBasis(kind: CrossDeskEvidenceKind): string {
   }
 }
 
-/** What would actually resolve THIS kind of disagreement — printed once, for the most
- *  load-bearing conflict only, so the coaching ends on one concrete next-check instead of N. */
-function crossDeskResolution(kind: CrossDeskEvidenceKind): string {
+/**
+ * What would actually resolve THIS kind of disagreement — printed once, for the most
+ * load-bearing conflict only, so the coaching ends on one concrete next-check instead of N.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-10-08): the "structure" resolution unconditionally
+ * read "watch for it to flip back before your next trim rail — until then, size down" — language
+ * that presupposes an EXISTING position (something to trim, something already sized that could be
+ * "sized down"). `crossDeskCoaching` is called for the WATCH bucket too (collectCoachingBullets
+ * only short-circuits on "closed"), and a WATCH candidate has no position yet — no entry has been
+ * made, there is no trim rail to speak of. Live repro: NET WATCH brief, 2026-10-07 — "Cross-desk
+ * friction — Vector bearish... watch for it to flip back before your next trim rail — until then,
+ * size down" rendered on a play still gated behind two entry gates (g_s12_halt_feed_stale,
+ * g_s6_confluence), never entered. This is the same class of bug as the already-fixed
+ * `bookContextSection` "Adding {ticker} stacks the same wager" CLOSED/OPEN tense mismatches
+ * (FINDINGS 2026-09-12) — position-management language leaking onto a bucket where no position
+ * exists — just never audited for THIS line specifically. `bucket` is threaded in from
+ * `crossDeskCoaching` (never "closed" — that bucket short-circuits before reaching here) so the
+ * WATCH case gets its own, entry-appropriate framing instead of borrowing open-position vocabulary.
+ */
+function crossDeskResolution(kind: CrossDeskEvidenceKind, bucket: "watch" | "open"): string {
   switch (kind) {
     case "structure":
-      return "watch for it to flip back before your next trim rail — until then, size down";
+      return bucket === "watch"
+        ? "watch for it to flip back before treating this as confirmation — until then, this isn't a green light to enter"
+        : "watch for it to flip back before your next trim rail — until then, size down";
     case "flow":
       return "one session's premium tilt isn't a structural change yet — give it another session before treating this as thesis-invalidating";
     case "intraday_scalp":
@@ -602,7 +621,11 @@ function crossDeskResolution(kind: CrossDeskEvidenceKind): string {
  *  what would actually resolve it. Replaces a flat `conflicts.join(" · ")` + one fixed generic
  *  closing line with a real weighing, so two different conflict sources produce two differently
  *  reasoned readings rather than the same template with names swapped in. */
-function renderCrossDeskConflict(conflicts: CrossDeskConflict[], archetype: SwingArchetype | null): string {
+function renderCrossDeskConflict(
+  conflicts: CrossDeskConflict[],
+  archetype: SwingArchetype | null,
+  bucket: "watch" | "open",
+): string {
   const ranked = [...conflicts].sort((a, b) => b.weight - a.weight);
   const lead = ranked[0]!;
   const rest = ranked.slice(1);
@@ -623,7 +646,7 @@ function renderCrossDeskConflict(conflicts: CrossDeskConflict[], archetype: Swin
 
   let text =
     `**Cross-desk friction** — ${lead.desk} ${lead.claim}. That's ${crossDeskBasis(lead.evidenceKind)} — ` +
-    `${leadReason}${weighClause}: ${crossDeskResolution(lead.evidenceKind)}.`;
+    `${leadReason}${weighClause}: ${crossDeskResolution(lead.evidenceKind, bucket)}.`;
 
   if (rest.length) {
     const shown = rest.slice(0, 2);
@@ -701,7 +724,14 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
   if (play.direction === "SHORT" && callHeavy) conflict("HELIX", "call-led", "flow");
 
   if (conflicts.length) {
-    return renderCrossDeskConflict(conflicts, archetype);
+    // `crossDeskCoaching` is called for both the "watch" and "open" buckets (collectCoachingBullets
+    // short-circuits only on "closed") — mirror statusBucket's own OPEN/HOLD/TRIM/CLOSED->open,
+    // everything else->watch split (play-brief.ts/play-brief-intel.ts) so the resolution text below
+    // never assumes a position exists on a WATCH candidate. Never "closed" here: a closed play never
+    // reaches this function.
+    const bucket: "watch" | "open" =
+      play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM" ? "open" : "watch";
+    return renderCrossDeskConflict(conflicts, archetype, bucket);
   }
 
   const aligned: string[] = [];
