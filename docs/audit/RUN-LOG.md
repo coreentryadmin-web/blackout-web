@@ -6205,3 +6205,64 @@ disappears, that is live corroboration of the fix (same discipline as the #5680/
 corroboration entry above); if a reduced-but-nonzero rate persists, the `meridian-warm`/
 `platform-warm` same-task contention noted above (still correctly background-dispatched, so not
 itself a bug) is the next thing to measure as a secondary contributor.
+
+## 2026-10-08 (13:0x UTC) — [CORRECTION] #5686 confirmed deployed live, re-measured, NO improvement to ALB tail latency — investigation REOPENED; plus a read-only cron-collision correlation test (#5692) — result WEAK/MIXED, not confirmed
+
+Picking up directly from the entry immediately above (which left #5686 "not a new root cause...
+left for #5686's owning agent"): #5686 merged and deployed since that entry was written. This cycle
+independently confirmed the deploy and re-measured against live `TargetResponseTime` per that
+entry's own stated validation plan.
+
+**Deployment confirmed via `ecs.describe_services`:** `blackout-production-web`'s task-definition
+revision 1865 carries image `...blackout-web:bb61d961b7674da07cc73c111ac34f5c8154ac9a` — exactly
+#5686's merge commit (`bb61d961b`, visible in `git log origin/main`). Service events show
+`deployment completed` / `has reached a steady state` at **12:54:07 UTC**.
+
+**Re-pulled `AWS/ApplicationELB TargetResponseTime` (1-min, `blackout-production-app`) for the
+window immediately after steady state:** 12:54 p99=68.89/Max=69.52, 12:55 p99=7.87/Max=8.01, 12:56
+p99=68.58/Max=68.90, 12:57 p99=48.35/Max=48.55, 12:58 p99=34.41/Max=34.44, 13:00
+p99=60.68/Max=61.33, 13:01 p99=32.46/Max=32.65, 13:02 p99=49.14/Max=49.49 — p50 stayed <0.3s
+throughout every minute (tail-latency signature, not fleet capacity), and this is statistically
+indistinguishable from the pre-deploy baseline measured the same morning (e.g. 11:05
+p99=80.28/Max=80.40, 11:45 p99=97.97/Max=100.21). `HTTPCode_Target_5XX_Count` summed to 0 across
+the trailing 3h of this pull, before and after deploy — still pure tail latency, never an outage.
+**Verdict: #5686 did NOT measurably reduce the spike pattern.** Folded a corrected top-of-file entry
+into `docs/audit/MARKET-OPEN-VALIDATION.md` and a staged finding
+(`2026-10-08-alb-latency-investigation-reopened-5686-no-improvement.md`) reopening the investigation
+— #5686 itself stays shipped/correct, it just isn't the dominant cause of this specific symptom.
+
+**Read-only correlation test on the #5692 cron-schedule-collision hypothesis** (no AWS write
+attempted — confirmed blocked twice already, not re-attempted): pulled CloudWatch Logs
+`/ecs/blackout-production` `elapsed=` completions for `desk-warm`/`meridian-warm`/`zerodte-warm`/
+`swing-active-refresh` over a 4h10m window (09:00-13:09 UTC) matching 251 one-minute ALB buckets,
+and checked whether spike minutes (p99>=20s, n=81) show more overlapping cron elapsed-time than
+non-spike minutes (n=169) — same technique #5684's own write-up used for the `heatmap-warm`
+duty-cycle hypothesis.
+
+**Only a 2-way test was possible, not the real 4-way**: `swing-active-refresh` (market-hours-gated,
+cash opens 13:30 UTC) never fired in this window; `desk-warm`'s own EventBridge-triggered heavy pass
+logged **zero** `background done` completions despite `AWS/Events Invocations` confirming
+EventBridge fired its Lambda target 26 times with 0 failures (every `desk-warm` log line was the
+leader's cheap <200ms `backup warm` check instead) — an unconfirmed anomaly in `desk-warm`'s own
+overlap semantics, flagged for a future cycle, not root-caused here.
+
+With only `meridian-warm` (25 runs, 19.8-79.2s) and `zerodte-warm` (46 runs, mostly 0.6-3s)
+measurable: mean concurrently-active-cron-count 0.52 on spike minutes vs 0.30 on non-spike (~1.7x,
+modest). Only 7/251 minutes had both active at once — 4/7 coincided with a real spike, 3/7 didn't
+(mixed, small-n). Individually: `meridian-warm` active in 35.8% of spike minutes vs 8.9% of
+non-spike (~4x — but this just reconfirms the SAME meridian-warm correlation this file's 2026-10-07
+entries already found, not new information); `zerodte-warm` showed no positive correlation (16.0%
+vs 21.4%, if anything inverted). 53% of spike minutes (43/81) had ZERO overlapping cron activity at
+all from any of the four — evidence against the identical-minute collision being the DOMINANT
+mechanism, though a cleaner 4-way re-run (post-cash-open, with `desk-warm`'s real pass actually
+observed) could still change this. **Verdict: WEAK/MIXED, not reported as confirmation either way**
+— #5692 stays the leading unconfirmed alternative, its own fix still blocked on the same AWS
+permission boundary (not re-attempted).
+
+**Standing operator-actionable blockers, both still open:** (1) #5692's EventBridge minute-stagger
+fix — designed, blocked twice a month apart by this sandbox's permission classifier, needs operator
+action; (2) ALB access logging — the highest-leverage next step named since 2026-09-02, also
+AWS-permission-blocked here. Neither re-attempted this cycle. **Checked the six 5-engine-monitor
+trigger prompts (`trig_01NNvznmA6eMsH61cLe7yb6z` + 5 siblings) for stale "resolved" language before
+writing this up — none needed correction; their Vector-board instruction already says the
+contention mechanism "is still open... do not attempt a speculative fix," which remains accurate.**
