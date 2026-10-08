@@ -77,6 +77,27 @@ test("no open positions leaves the shared universe untouched", async () => {
   assert.deepEqual(new Set(out), new Set(["SPY", "SPX"]));
 });
 
+// BUG FIXED 2026-10-08 (Ask Largo standing mandate): open positions used to be APPENDED after the
+// shared static/dynamic universe, which `rotateTickersForWarmPass`'s cursor walks in THIS exact
+// order — so real committed capital was always the LAST thing warmed in every rotation lap, not
+// the first. Confirmed live ~2h after the TTL fix (#5705) deployed: CIEG/MRNA/PSX (real open swing
+// positions) were still hard-timing out (`SwingBriefSourceTimeout`, 8000ms) on Ask Largo's swing
+// play-brief because the lap simply hadn't reached their tail position yet. A long TTL cannot help
+// an entry that is never first in line to be (re)warmed each lap.
+test("open swing positions are ordered FIRST, ahead of the shared static/dynamic universe — the highest-stakes names must not be the last ones a rotation lap reaches", async () => {
+  sharedUniverse = ["SPY", "SPX", "AAPL"];
+  openPositions = [{ ticker: "HUT" }, { ticker: "MSTR" }];
+  fetchOpenSwingPositionsShouldThrow = false;
+
+  const out = await activeVectorFullStateTickers();
+
+  assert.deepEqual(
+    out,
+    ["HUT", "MSTR", "SPY", "SPX", "AAPL"],
+    "open positions must lead the list a rotation cursor walks, not trail it"
+  );
+});
+
 // ── rotateTickersForWarmPass — regression for the permanent-starvation bug ───────────────────
 //
 // Live repro (2026-10-08): with a FIXED iteration order and a per-run time budget a single

@@ -4,6 +4,192 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-10-08 — [FINDING, zerodte] The 0DTE board's shared-snapshot "soft-stale, serve anyway" branch was dead code — a snapshot's age ceiling and the Redis TTL it was stored under were the SAME number, so a real board was replaced by the empty `upstream_ok:false` fallback under ordinary RTH load — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (no bad numbers served — the synthetic fallback is structurally honest, `upstream_ok:false`/empty arrays — but real members and Largo/BIE consumers got an empty board in place of a real, slightly-aging one, repeatedly, during live RTH trading) |
+| **Component** | `src/lib/platform/zerodte-service.ts` (`getZeroDteBoardPayload`, `BOARD_SNAPSHOT_TTL_SEC`, `BOARD_SNAPSHOT_SERVE_MAX_AGE_MS`, `BOARD_STALE_SERVE_MAX_AGE_MS`, new `BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS`) |
+| **PR** | fix/zerodte-board-shared-snapshot-stale-serve |
+| **Found via** | 5-engine live monitor sweep, `GET /api/market/zerodte/board` health check, cross-checked against CloudWatch |
+
+### Root cause
+
+`getZeroDteBoardPayload()` reads a shared Redis snapshot (`zerodte:board:snapshot:v1`) and branches
+on its age in two tiers, per its own comments: (1) fresh — serve immediately, kicking a locked
+background refresh past 5s; (2) soft-stale — still serve immediately (never 504 the route), but kick
+an *unlocked* cold rebuild instead. Tier 2 exists specifically so a slow/overloaded rebuild (board
+builds measured live at 20-45s, worse under UW-queue backpressure) still has a real, aging board to
+fall back on rather than nothing.
+
+The bug: `BOARD_SNAPSHOT_SERVE_MAX_AGE_MS` (tier-1 ceiling), `BOARD_STALE_SERVE_MAX_AGE_MS` (tier-2
+ceiling), and `BOARD_SNAPSHOT_TTL_SEC * 1000` (the Redis key's own hard TTL) were **all the same
+number** (600_000ms / 600s). Tier 2's condition (`shared.ageMs <= BOARD_STALE_SERVE_MAX_AGE_MS`) can
+only ever be reached for a snapshot tier 1 did NOT already serve — i.e. one older than 600s. But the
+Redis key itself expires at exactly 600s (`redis.set(key, payload, "EX", 600)`), so by the instant a
+snapshot's age would cross into "stale but still servable," `readSharedBoardSnapshot()` has already
+returned `null` for that key (Redis evicted it at the same boundary). Tier 2 was therefore
+**unreachable in production** — every read past the 10-minute mark fell straight to the cold-build-
+and-block path (`blockMs` default 3000ms), which under real load (board builds measured live at
+20-45s) routinely times out and serves the synthetic empty `upstream_ok:false` fallback instead of
+the real board that was sitting in Redis moments earlier.
+
+### Evidence
+
+Live `GET /api/market/zerodte/board` (temp Clerk session) returned, repeatedly, during RTH:
+
+```
+{"upstream_ok":false,"setups":[],"ledger":[],
+ "discovery_health":{"BREAKOUT":{"status":"disabled","setups":0},"PIN":{"status":"disabled","setups":0}}}
+```
+
+Three re-polls ~15-20s apart all returned the identical degraded payload. In the SAME window,
+CloudWatch (`/ecs/blackout-production`) shows the real discovery pipeline finding real setups every
+cycle:
+
+```
+[zerodte-scan] discovery rail mix total=214 FLOW=27 BREAKOUT=197 PIN=0 multi=10 merge_policy=v2
+[zerodte-breakout] 239 breakouts + 255 breakdowns (pool), built 202 setup(s) (91L/111S) ...
+```
+
+and the degraded-fallback log line firing repeatedly — 11 occurrences in one 30-minute RTH window:
+
+```
+[zerodte-board-fallback] cold build still running past maxBlockMs=3000ms with no Redis snapshot
+or local last-good board to serve — returning the minimal empty fallback (upstream_ok:false).
+```
+
+i.e. the board had real, recent data to serve and served an empty one instead, exactly because the
+dead branch could never reach the real snapshot sitting in Redis one tick earlier.
+
+### Fix
+
+Decoupled the shared-snapshot stale-serve ceiling into its OWN constant,
+`BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS` (20 minutes), distinct from:
+- `BOARD_SNAPSHOT_SERVE_MAX_AGE_MS` (10 min, unchanged) — the "fully fresh" ceiling.
+- `BOARD_STALE_SERVE_MAX_AGE_MS` (10 min, unchanged) — `localBoardIsServable`'s OWN ceiling for a
+  completely different mechanism (the per-replica last-good-board fallback), which has its own
+  explicit 10m/11m regression test guarding a real historical `as_of`-regression incident. Reusing
+  that constant for the shared-snapshot branch would have silently widened an already-correct,
+  already-tested guard — deliberately left untouched.
+- Raised `BOARD_SNAPSHOT_TTL_SEC` (the Redis key's own TTL) from 600 to 1200 so the key now
+  genuinely outlives the new 20-minute stale-serve ceiling, giving tier 2 real room to fire.
+
+### Regression test
+
+`src/lib/platform/zerodte-board-convergence.test.ts` — new test stamps a shared-snapshot entry 12
+minutes old (past the 10-minute fresh ceiling) with an `expiresAt` consistent with the production
+Redis TTL, then asserts `getZeroDteBoardPayload()` serves THAT board's own `upstream_ok`/`setups`
+(not the empty fallback) and kicks a background rebuild. RED against the pre-fix constants
+(`git stash` of only `zerodte-service.ts`, keeping the new test) — `served.setups` came back `[]`
+(the dead branch swallowed the stale board and a fresh, empty-setups cold rebuild served instead).
+GREEN after the fix — 11/11 tests pass in the file. Full suite (`npm test`, Node 20): pending this
+cycle's run (prior confirmed baseline 15819 pass / 0 fail / 3 skip). `tsc --noEmit` clean.
+
+### Blast radius
+
+Only `zerodte-service.ts`'s three timing constants and the one `if` condition changed (`main` branch
+read confirmed before editing — no open PR touches this file). `runColdBoardBuild`'s own internal
+race-check (guards against a slow cold build overwriting a fresher concurrent publish) intentionally
+still uses the "fresh" ceiling — it asks "is the snapshot fresh NOW", a different, correctly-scoped
+question from the stale-serve branch's "is there anything servable at all." No other reader of
+`getZeroDteBoardPayload()` (the member route, Largo/BIE tools) needed changes — they already treat
+whatever board comes back as the current board; this fix only changes how often that board is the
+real one versus the synthetic fallback.
+
+## 2026-10-08 — [FINDING, largo-swing] `vector-full-state-snapshot`'s warm cron put real open swing positions LAST in its rotation order, so the highest-stakes tickers were the last ones warmed in every lap — FIXED (open positions now lead the rotation)
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (no bad numbers served — an honest `unavailableSources`/"fetch failed" disclosure per the Largo absence contract — but the exact population the rotation/TTL fixes exist to protect, real committed capital, was structurally the LAST to benefit from them) |
+| **Component** | `src/features/vector/lib/vector-full-state-warm-universe.ts` (`activeVectorFullStateTickers`) |
+| **PR** | fix/vector-full-state-open-positions-first |
+| **Found via** | Ask Largo standing sub-mandate — verifying #5705 (TTL raise) actually closes the member-facing gap, this cycle's 5-engine live monitor sweep |
+| **Related** | Complementary to the same-day rotating-cursor fix (`rotateTickersForWarmPass`) and TTL raise (`VECTOR_FULL_STATE_CACHE_TTL_SEC`, #5705, staged separately as `2026-10-08-vector-full-state-ttl-rotation-mismatch.md`). Both of those fix *how long* a warm entry survives and *whether* the rotation eventually reaches every ticker; this fix changes *which ticker gets warmed first*. |
+
+### Root cause
+
+`activeVectorFullStateTickers()` built its output as
+`mergeSharedUniverseTickers(sharedStaticAndDynamicUniverse, openSwingPositionTickers)` — the shared
+static-allowlist-plus-member-viewed universe FIRST, real open swing positions APPENDED after. This
+list's order is exactly what `rotateTickersForWarmPass`'s cursor walks each cron cycle. So even with
+the rotation-starvation fix and the TTL raise both working exactly as designed, real committed
+positions were structurally the LAST names a rotation lap would reach — the opposite priority from
+what the function's own doc comment says the open-position union exists for: "real capital, the
+highest-stakes blast radius."
+
+### Evidence
+
+Live `GET /api/market/swing/play-brief` for three real, currently-committed swing positions (CIEG,
+MRNA, PSX — picked fresh, not previously audited), run ~2 hours AFTER the #5705 TTL fix had deployed
+and with the rotating cursor confirmed advancing through at least 1.5 full laps in that window
+(CloudWatch `cursor=` sequence 0→38→0→...→18), still returned:
+
+```
+unavailableSources: [
+  {"source":"ecosystem context","reason":"fetch failed","retryable":true},
+  {"source":"Vector state","reason":"fetch failed","retryable":true}
+]
+```
+
+CloudWatch confirms the exact mechanism — a genuine cache-miss-driven timeout, not a thrown provider
+error:
+
+```
+[swing-play-brief] ecosystem context fetch failed for CIEG: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] Vector full-state fetch failed for CIEG: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] ecosystem context fetch failed for MRNA: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] Vector full-state fetch failed for MRNA: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] ecosystem context fetch failed for PSX: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] Vector full-state fetch failed for PSX: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+```
+
+Not a regression in #5705 — the TTL fix makes a WARM entry survive longer; it does nothing for an
+entry that is never first in line to be warmed each lap. CIEG/FUBO/CCOI/MRNA/ADSK/PSX (and ~30 more)
+are all real `SWING` committed positions on the live board at probe time — all tail-ordered in the
+old merge, all paying the same 8-second hard timeout on every Ask Largo brief until their turn
+eventually comes up, once per ~160-minute lap.
+
+### Fix
+
+Swapped the merge order: `mergeSharedUniverseTickers(openSwingPositionTickers,
+sharedStaticAndDynamicUniverse)`. `mergeSharedUniverseTickers` keeps only the first occurrence of a
+de-duplicated ticker, so this also means a ticker that is BOTH a static-allowlist name AND a real
+open position now keeps its (earlier) position-derived slot — a strict improvement, never a
+regression, since that ticker is more deserving of priority either way. The shared static/dynamic
+universe is still fully covered every lap; it is simply warmed after the highest-stakes names
+instead of before them.
+
+### Regression test
+
+`src/features/vector/lib/vector-full-state-warm-universe.test.ts` — new test asserts
+`activeVectorFullStateTickers()` returns open positions BEFORE the shared universe, in that exact
+order (`["HUT","MSTR","SPY","SPX","AAPL"]` for a 2-position / 3-shared fixture). RED against the
+pre-fix order (`git stash` of only the source file, keeping the new test) — failed on the expected
+vs actual order. GREEN after the fix — 10/10 tests pass in the file (plus the 4 pre-existing
+order-independent tests still pass unchanged). Full suite (`npm test`, Node 20): 15820 pass / 0
+fail / 3 skip. `tsc --noEmit` clean.
+
+Also corrected two now-stale doc comments (`vector-full-state-cache.ts`, this same file's own
+header) that still cited the pre-#5705 "15-min TTL" as a current fact rather than the historical
+value it was when originally written — harmless on their own, but exactly the kind of staleness this
+repo's own `CLAUDE.md` warns against trusting at face value.
+
+### Blast radius
+
+Single call site (`src/app/api/cron/vector-full-state-snapshot/route.ts`), confirmed via repo-wide
+grep before editing. No change to `mergeSharedUniverseTickers`, `rotateTickersForWarmPass`,
+`listSharedUniverseTickers`, the cron's own budget/concurrency, or any other reader of the
+`vector:full-state:*` cache. `heatmap-warm`/`vector-walls-warm` (the OTHER crons that warm the
+shared static/dynamic universe) call `listSharedUniverseTickers()` directly, not this function, so
+their own warm priority is completely unaffected by this change.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
@@ -37,6 +223,136 @@ Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so
 PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-08 — [FINDING, largo-swing] `vector:full-state` cache TTL (15min) is ~11x shorter than the measured warm-cron rotation lap (~160min), so the 2026-10-08 starvation fix did not actually close the member-facing gap it targeted — FIXED (TTL raised, honesty unaffected)
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (no bad numbers served — every affected section degrades honestly to `unavailableSources`/"fetch failed", per the Largo absence contract — but the SAME 100% member-facing evidence gap the same-day rotation fix set out to close, still measured at 100% after that fix shipped) |
+| **Component** | `src/lib/bie/vector-full-state-cache.ts` (`VECTOR_FULL_STATE_CACHE_TTL_SEC`), `src/lib/bie/vector-state-freshness.ts` (stale header comment corrected alongside) |
+| **PR** | fix/vector-full-state-ttl-rotation-mismatch |
+| **Found via** | Standing Ask Largo deep-dive sub-mandate, `GET /api/market/swing/play-brief` live audit (this cycle), cross-checked against CloudWatch cron logs |
+| **Related** | Same-day earlier finding "`vector-full-state-snapshot`'s cache-warm cron permanently starves every ticker after its first time-budget batch... — FIXED (rotating warm cursor)" (this file, folded into FINDINGS.md). This finding is the next layer down: that fix shipped, is confirmed working (cursor genuinely advances run over run), and still did not close the gap, because nobody checked the TTL against the fix's own measured throughput. |
+
+### Root cause
+
+`rotateTickersForWarmPass` (merged same day) correctly stops the cron from starving the SAME ~2
+tickers forever — the cursor advances every run (confirmed live: `cursor=22,26,28,30,32,34,36,38`
+across ~30 minutes of consecutive runs), so every ticker in the merged universe eventually gets a
+turn. But "eventually" is doing a lot of work: each ~5-min run only completes ONE
+`TICKER_CONCURRENCY=2 x 4 horizons` batch before the cron's own 50s `TIME_BUDGET_MS` is blown by the
+real per-ticker chain-fetch cost (measured live, same CloudWatch window: `elapsed=51050-117676ms`
+per run — 1-2.3x the budget on a SINGLE batch). At 2 tickers warmed per ~5-min cycle against a
+64-ticker universe, one full rotation lap takes **~64/2 * 5min = 160 minutes**.
+
+The cache TTL `fetchVectorFullState`/`fetchEcosystemContext` read against is **15 minutes**
+(`VECTOR_FULL_STATE_CACHE_TTL_SEC`, chosen on the explicit, now-falsified assumption — stated
+verbatim in its own old comment — that it "comfortably outlives the ~5-min RTH cron cadence
+so an entry never expires on the knife-edge between two runs"). With a 160-minute real rotation
+lap, an entry is warm for 15 minutes out of every ~160 — cold roughly 90% of the time — for
+**every** ticker in the universe, not just the ones the OLD fixed-iteration-order bug starved
+outright. The rotation fix changed "0% coverage forever" to "sparse coverage, briefly, once every
+~160 minutes" — which, against a 15-minute TTL, is barely distinguishable from 0% in practice.
+
+### Evidence
+
+Re-ran the exact same live probe the rotation-fix finding used, on SIX fresh tickers this cycle
+(MSFT, PBR, WING, CTVA, MU, AMD — none overlapping that finding's own three), through
+`GET /api/market/swing/play-brief`, via the standard temp-Clerk-session auth helper:
+
+```
+unavailableSources: [
+  {"source":"ecosystem context","reason":"fetch failed","retryable":true},
+  {"source":"Vector state","reason":"fetch failed","retryable":true}
+]
+```
+
+**All six**, every time — 100%, identical to the rotation fix's own pre-fix baseline. Combined with
+the three tickers (RBLX, DUOL, CIEN) probed in the immediately preceding audit cycle (same session,
+same day, after the rotation fix had already deployed), that is **9/9 sampled tickers across two
+separate hours, zero successes**, for both `ecosystem context` and `Vector state` independently.
+
+CloudWatch confirms the mechanism directly — every single one of the 9 calls logged the identical
+8-second hard timeout, not a slow-but-eventually-successful read:
+
+```
+[swing-play-brief] ecosystem context fetch failed for AMD: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] Vector full-state fetch failed for AMD: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] ecosystem context fetch failed for MSFT: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+[swing-play-brief] Vector full-state fetch failed for MSFT: SwingBriefSourceTimeout: brief source read exceeded 8000ms
+... (identical pair, 9/9 tickers, 18 lines total)
+```
+
+And the cron's own run log shows the rotation genuinely advancing (so the earlier fix is real and
+working), while never completing more than one batch per run:
+
+```
+[cron/vector-full-state-snapshot] background done — tickers=64 horizons=4 cursor=36 attempted=2 written=8 ... budgetHit=true elapsed=51050ms
+[cron/vector-full-state-snapshot] background done — tickers=64 horizons=4 cursor=34 attempted=2 written=8 ... budgetHit=true elapsed=74664ms
+[cron/vector-full-state-snapshot] background done — tickers=64 horizons=4 cursor=32 attempted=2 written=8 ... budgetHit=true elapsed=117676ms
+[cron/vector-full-state-snapshot] background done — tickers=64 horizons=4 cursor=30 attempted=2 written=8 ... budgetHit=true elapsed=81934ms
+```
+
+MSFT and NRG are real, currently-OPEN swing positions (MSFT: positionId 49, committed 2026-10-07,
+live P&L -21.9% at probe time) — exactly the highest-stakes case the rotation fix's own header
+names as the reason the merged ticker universe includes open positions at all.
+
+### Fix
+
+Raised `VECTOR_FULL_STATE_CACHE_TTL_SEC` from 15 minutes to 4 hours — comfortably clears the
+measured ~160-minute rotation lap with margin for a slower day, while staying inside one RTH
+session so entries still naturally age out by the next trading day. Corrected the adjacent stale
+assumption in `vector-state-freshness.ts`'s header comment (previously cited "76 computes against
+a 50s budget, ~658ms per compute" — also falsified by the same measurement; real per-batch cost is
+51-118 seconds for a 2-ticker batch, not milliseconds for 76).
+
+**Why this is safe, not a staleness/honesty regression:** `describeVectorFreshness`
+(`vector-state-freshness.ts`) derives `freshness`/`age_seconds`/`note` purely from the snapshot's
+own `observed_at` versus the real read instant — completely independent of the Redis TTL. A
+longer-lived cache entry is never relabeled as fresher than it is; anything older than 10 minutes
+is still correctly tagged `"stale"` with an honest age and an explicit note (Largo C2). The TTL
+only controls whether Redis still HAS an entry to label at all. A TTL shorter than the real
+rotation lap does not make reads more honest — it just deletes usable (if aging) evidence before
+it can be served, trading an honestly-labeled stale read for a hard, evidence-free "fetch failed."
+Raising it converts a near-universal timeout into a near-universal honestly-labeled (occasionally
+stale) read, which is strictly more informative to both the member and to Largo.
+
+**Why a longer TTL and not a faster/bigger cron:** the real bottleneck is the per-ticker chain-fetch
+cost (`fetchReconstructChain`, up to 60 paginated Polygon pages), already explicitly flagged by the
+rotation fix's own "what this does NOT fix" section as tied to the open ALB tail-latency
+investigation and NOT safe to touch blindly — `TICKER_CONCURRENCY` was deliberately reduced 3→2 on
+2026-09-28 after a prior incident where raising concurrency saturated the shared cluster-wide
+rate limiter. Raising the TTL fixes the member-facing symptom without touching that shared hot path
+or betting on an unmeasured change to it.
+
+### Regression test
+
+`src/lib/bie/vector-full-state-cache.test.ts` — new test asserts
+`VECTOR_FULL_STATE_CACHE_TTL_SEC` exceeds one full rotation lap computed from the measured
+throughput (64 tickers, 2/cycle, 5-min cycle = 9600s). RED against the old 900s TTL (confirmed via
+`git stash` of only the two source files, keeping the new test), GREEN at 14400s. Full suite
+(`npm test`, Node 20): 15819 pass / 0 fail / 3 skip. `tsc --noEmit` clean.
+
+### Blast radius
+
+Only the TTL constant and two header comments changed. No change to `computeVectorFullState`,
+`fetchVectorFullState`, `fetchEcosystemContext`, `rotateTickersForWarmPass`, the swing play-brief
+composer, the cron's concurrency/budget, or any other reader of the `vector:full-state:*` cache —
+every reader already treats a cache miss as an honest miss (self-warm on read, its own 8s budget,
+`unavailableSources` disclosure) exactly as before; this change only means misses should now be
+far rarer.
+
+### What this does NOT fix (deliberately out of scope here, same boundary the rotation fix drew)
+
+The per-ticker chain-fetch cost itself is still untouched — raising the TTL buys headroom, it does
+not make the universe warm faster. If the universe grows meaningfully beyond ~64 tickers, or the
+chain-fetch cost increases further, the rotation lap grows too and the TTL margin shrinks with it.
+The regression test ties the TTL to today's measured throughput so a future session re-measuring
+cron logs can tell directly whether the margin still holds, rather than re-discovering the mismatch
+from scratch.
 
 ## 2026-10-08 — [FINDING, nighthawk-0dte] Vector-pulse 0DTE contract attach skipped DTE validation and never synced the resolved expiry/horizon back onto the setup — displayed DTE/horizon understated real contract risk — FIXED
 
