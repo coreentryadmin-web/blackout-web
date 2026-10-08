@@ -4,6 +4,55 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-08 — [FINDING, P3 Night Hawk Swings / Ask Largo] `dataHonestyCoaching`'s "Data caveat" bullet doubles its own trailing period whenever the closed-market note is the last warning — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live repro, standing Ask Largo deep-dive, `GET /api/market/swing/play-brief?playId=SWING:MU&ticker=MU` (2026-10-07 22:17 ET, market CLOSED): the "Trade manager read" section's "Data caveat" bullet read `"...however fresh the compute looks.. Treat levels as indicative until refresh."` — a literal double period mid-sentence, member-facing, in both the structured `envelope.sections` array and the rendered `markdown` field. |
+| **Root cause** | `dataHonestyCoaching` (`src/lib/swing/play-brief-narrative-coaching.ts`) collects a `warnings: string[]` array from several independent staleness checks, then unconditionally returns `` `**Data caveat** — ${warnings.join(" · ")}. Treat levels as indicative until refresh.` `` — appending its own closing period after every warning is joined. PR #5654 (2026-10-08, same day) added a new, LAST-pushed warning: the closed-market note (`market-session-disclosure.ts`'s `marketSessionDisclosure`, shared by Vector's `market_session_note` and `play-brief-absence.ts`'s `gexMarketSessionNote`) — and that note's own text already ends in a period: `"Computed Ns ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks."`. Because this closed-market check runs after every other warning in the function body, it is always the LAST array entry when present, so its own trailing period collided directly with the function's own appended `"."` — the only warning in the array that already ends in punctuation, which is exactly why no earlier warning ever exposed this. |
+| **Why this is a real bug, not a legitimate design choice** | This is the exact narrative-vs-bullet-dump / text-quality class the standing Ask Largo mandate calls out — a member reading the live "Trade manager read" narrative sees a visibly malformed sentence (".. Treat") on any gated or off-hours swing candidate once the market is closed, which is routine (every evening/weekend self-warm). It is cosmetic, not a data-correctness defect, which is why it is P3 — but it degrades the "one connected narrative, not a bullet dump" quality bar this surface is held to, on a bullet that fires on essentially every off-hours brief read now that PR #5654 wired the closed-market note into it. |
+| **Blast radius** | Single call site — `dataHonestyCoaching`'s own closing-sentence construction is the only place that appends the final period, and the closed-market note is the only warning value that can itself already end in one (every other warning in this function is a short fragment built without a trailing full stop). No other function constructs this bullet. |
+| **Fix** | Strip any trailing period(s) from each warning (`w.replace(/\.+$/, "")`) before joining with `" · "`, so the function's own closing `". Treat levels as indicative until refresh."` is the only place a sentence-terminating period is added, regardless of which warning lands last. |
+| **Fix rationale** | Stripping at the join site (rather than editing the shared `marketSessionDisclosure`/`gexMarketSessionNote` strings to drop their own trailing period) keeps those two shared strings byte-identical everywhere else they are consumed — including standalone in the brief's `evidence` array and in `play-brief.ts`'s fast-follow wiring, both of which read fine as complete, period-terminated sentences on their own. The defect is specific to THIS function's own close-with-a-period convention colliding with an already-punctuated input, so the fix is scoped to the one place that convention lives. |
+| **Regression guard** | `src/lib/swing/play-brief-narrative-coaching.test.ts` — extended the existing `"dataHonestyCoaching: fresh Vector compute during a CLOSED market surfaces market_session_note"` test with `assert.doesNotMatch(line!, /\.\./, ...)`. RED→GREEN confirmed: failed against the pre-fix function body (1 fail), passed after the fix (full file 154/154 pass). Full `npm test` (Node 20, `scripts/run-tests.mjs`): 15767 pass / 0 fail / 3 skipped (pre-existing, unrelated). `npx tsc --noEmit` clean. |
+| **Status** | FIXED — branch `fix/swing-data-caveat-double-period`. |
+
 ## 2026-10-08 — [FINDING, P3 Night Hawk Swings / Ask Largo] `fmtPct`'s raw `toFixed` (never pre-rounded, unlike the money formatters) let the structure-ladder UI double-round `distancePct` and disagree with the narrative text for the same rung — FIXED
 
 > **kind:** `FINDING`
@@ -138,40 +187,6 @@ src/lib/swing/play-brief-narrative-coaching.test.ts` 154/154 pass · full `npm t
 | **Regression guard** | `src/lib/nighthawk/cortex/fetch.test.ts`: new test sets `darkPoolAsOf` to 20 minutes before the fixture's `asOf` and asserts `input.darkPool.asOf` equals the dark-pool cache's own stamp, not the fresh `vector.asOf`; a second test confirms the legacy fallback (`darkPoolAsOf` unset) still reads `vector.asOf`. RED→GREEN confirmed via `git stash` of only `fetch.ts`: 1 failure pre-fix (`fetch: assembler (injected deps)` suite), 0 failures post-fix — reconfirmed after the rebind above with the same stash/pop. |
 | **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/lib/nighthawk/cortex/fetch.test.ts src/lib/nighthawk/cortex/compose.test.ts src/lib/nighthawk/cortex/sources/darkpool-confluence.test.ts src/lib/bie/vector-absent-sections.test.ts src/lib/largo/contract/session-anchor.test.ts` 61/61 pass (Node 20.20.2) · full `npm test` (15754 tests) run TWICE — first run (before the rebind) correctly caught the session-anchor regression (1 fail, `src/lib/largo/contract/session-anchor.test.ts`), full re-run after the rebind confirmed 0 fail before this PR was opened. |
 | **Status** | FIXED — branch `fix/cortex-darkpool-confluence-asof-leak`. |
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-10-08 — [FINDING, P3 Night Hawk Swings / Ask Largo] "Trade manager read"'s prominent "Right now" dealer-posture bullet asserted live data with zero caveat while the market was CLOSED, contradicting the same envelope's own buried evidence array — FIXED
 
