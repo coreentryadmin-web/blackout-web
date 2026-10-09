@@ -283,6 +283,57 @@ test("persist → discoverSwingFromPersisted round-trips and GATES to persistenc
   assert.ok(!rendered.includes("FRSH"), "a single-sighting name never reaches the member board (persistence gate)");
 });
 
+// ── ARCHETYPE-DRIFT FALLBACK (Ask Largo standing mandate, live repro 2026-10-09 — RCL/SNDK/XAR) ──────────
+//
+// Live-confirmed on prod: all three tickers were present in the SAME scan's `snap.watch`/
+// `snap.observed` (per `/api/admin/swing/discovery-debug`), yet absent from EVERY section of the real
+// member board (`GET /api/market/nighthawk/horizons?view=swings`, verified via its `scanAsOf` matching
+// the admin snapshot's `asOf` byte-for-byte — not a staleness artifact). Root cause: `snap.plays`
+// carries exactly ONE HorizonPlay per ticker, classified under whichever archetype THIS scan's fresh
+// read lands on, while the accumulation store tracks PARALLEL per-archetype theses for the same
+// ticker+direction — when this scan's archetype disagrees with whichever archetype actually has the
+// accumulation history, the exact thesis key (`ticker|direction|archetype`) misses both `cleared` and
+// `observedByKey`, and the play vanished from the ENTIRE board with no trace. See
+// `tickerDirectionKey`'s doc comment (accumulation-store.ts) for the fix.
+
+test("ARCHETYPE DRIFT: a persistence-cleared candidate whose fresh-scan archetype no longer matches its watch-candidate archetype still surfaces (falls back to ticker+direction)", async () => {
+  const d = buildSwingDossier(dossier("NVDA"));
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [d],
+    // Cleared under BREAKOUT (the watch candidate's locked-at-clearing archetype) — but THIS scan's
+    // fresh classification landed on a DIFFERENT archetype, same shape as a real near-tie reclass.
+    plays: [play({ ticker: "NVDA", direction: "LONG", status: "WATCH", archetype: "SECTOR_ROTATION" })],
+    watch: [watchCand({ ticker: "NVDA", direction: "LONG", archetype: "BREAKOUT" })],
+    observed: [],
+  });
+
+  const lane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+  const rendered = Object.values(lane.sections).flat().map((p) => p.ticker);
+  assert.ok(rendered.includes("NVDA"), "the ticker must not vanish just because this scan's archetype drifted");
+  // Never mis-granted cleared/COMMIT status under the mismatched archetype — it only earns a pre-entry
+  // surfacing (RESEARCH via the router's honest-degradation default), never COMMIT_NOW.
+  assert.ok(!lane.sections.COMMIT_NOW.some((p) => p.ticker === "NVDA"));
+});
+
+test("ARCHETYPE DRIFT regression guard: a genuinely untracked single-sighting name (no watch/observed entry under ANY archetype) still never surfaces", async () => {
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [],
+    plays: [play({ ticker: "FRSH", direction: "LONG", status: "WATCH", archetype: "BREAKOUT" })],
+    watch: [],
+    observed: [],
+  });
+  const lane = await getSwingServingLane({ discover: discoverSwingFromPersisted });
+  const rendered = Object.values(lane.sections).flat().map((p) => p.ticker);
+  assert.ok(
+    !rendered.includes("FRSH"),
+    "zero accumulation evidence under ANY archetype must still never surface — the anti-lone-print invariant",
+  );
+});
+
 test("persisted flag anchors stamp first-flag underlying — enrichPlay does not overwrite with scan spot", async () => {
   const d = buildSwingDossier(dossier("NVDA"));
   const arch = d.archetype.archetype;
