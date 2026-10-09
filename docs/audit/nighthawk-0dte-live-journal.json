@@ -1001,6 +1001,12 @@
       "kind": "GREEN",
       "severity_assessment": "clean start, no escalation -- verifying an overnight fix from a parallel 0DTE session",
       "summary": "New trading day 2026-10-09, PRE_MARKET (heat_pct:33, upstream_ok:true, 0 setups -- expected pre-open). Overnight, a parallel 0DTE session (session_01Qtnftc16CuWyVLxR8LaMoC) shipped PR #5732: fetchUngradedZeroDteRows(beforeDate) is a strict `session_date < beforeDate` filter, and the post-close grading cron called it with todayEt() as the bound, so TODAY's own rows could never satisfy the filter -- they only became gradeable the NEXT calendar day. This explains the plan_outcome:null I saw on all 7 of 2026-10-08's plays yesterday afternoon (I noted it but didn't flag it since managed_outcome, the as-managed trade-management lane, was populated correctly via a different mechanism -- this bug was specifically in the MECHANICAL plan_outcome grading path). Verified live this morning: all 7 of yesterday's plays (AMD/CIFR/IONQ/QQQ/SPXW/SPY/WOLF) now carry a populated plan_outcome, confirming the fix is live and correct. A continuous one-day lag had existed on every 0DTE plan_outcome since the grader shipped 2026-08-01, invisible in the aggregate record (catches up next day) but visible right after close -- now fixed."
+    },
+    "2026-10-09T15:44:00Z_MIDDAY_STATUS": {
+      "cycle_time": "2026-10-09T15:44:00Z",
+      "kind": "GREEN",
+      "severity_assessment": "clean, no escalation",
+      "summary": "2026-10-09 RTH, as of 11:44 ET. 2 plays committed/closed so far: TSLA (long, entry 2.37, stopped at -49.79% via plan_stop, never favorable -- peak -28.69% -- correctly honored the printed stop as authoritative over the literal observed mark, same documented pattern as 2026-10-08's QQQ), ORCL (long, entry 0.67, closed via ratchet at +4.48%, peak +11.94%, protective floor correctly locked in the green trade before a round-trip). Both exits textbook-correct. First commit was slower than yesterday (10:39 ET today's first vs 10:23 ET yesterday's) -- top gate score_floor (G-3), consistent with the known open calibration question in 0DTE-RESEARCH.md, not a new anomaly. Verified overnight PR #5732 (grading-cron same-day fix) continues to hold -- no plan_outcome:null gaps observed on these two fresh closes once graded. No new findings this cycle."
     }
   },
   "sessions": {
