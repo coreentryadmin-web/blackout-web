@@ -630,10 +630,11 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
 /**
  * The exact `focal` entry `breakTrigger`'s "Break watch" bullet cites as this play's structural
  * stop (LONG) / reclaim level (SHORT), if any — same side-filtered `.find()` `breakTrigger` has
- * used since the 2026-09-11/09-15 fixes referenced below, factored out so a SECOND call site
- * (`tradeManagerNarrativeSection`'s own level-narration loop, below) can identify the SAME object
- * by reference rather than re-deriving the selection rule a second time and risking the two
- * drifting apart.
+ * used since the 2026-09-11/09-15 fixes referenced below, factored out so other call sites
+ * (`tradeManagerNarrativeSection`'s own level-narration loop, and `watchForSection`'s "Structural
+ * support/resistance node" line, both below/elsewhere) can identify the SAME object by reference
+ * rather than re-deriving the selection rule a second (or third) way and risking them drifting
+ * apart.
  *
  * BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro: PROF WATCH brief): the narration
  * loop iterates `focal` nearest-first and stops once `MAX_BULLETS` is reached, with NO awareness
@@ -651,8 +652,21 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
  * coaching bullet going missing). The caller below now identifies this exact level and passes
  * `{ reserved: true }` into `add()` for it, the same bypass the Break watch/Counter-thesis bullets
  * already use — so the level a stated invalidation depends on can never be silently truncated.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-08 :40 cycle, live repro SWING:TNGX:1611): exported
+ * (was module-private) because a THIRD call site — `watchForSection`'s "Structural support node"/
+ * "Structural resistance node" line in play-brief-intel.ts — had never been wired to this
+ * selection at all. It hardcoded put wall (LONG) / call wall (SHORT) unconditionally, unaware the
+ * 2026-09-15 fix above (see `breakTrigger`'s own comment) had already widened "Break watch"'s own
+ * candidate set to whichever of put wall/dark pool/GEX king is actually NEAREST spot. Live TNGX
+ * repro: GEX king (22.00) sat nearer spot (22.57) than the put wall (20.00), so `envelope.
+ * invalidation`/"Break watch" correctly cited 22.00 while "What to watch", in the SAME envelope,
+ * said "Structural support node: put wall 20.00" — two different numbers for what both sections
+ * present as THE one structural level that matters, with nothing telling the member they're
+ * reading two different concepts. `watchForSection` now calls this directly instead of
+ * re-deriving its own put-wall-only version.
  */
-function resolveInvalidationFocalLevel(play: TerminalPlay, focal: FocalLevel[]): FocalLevel | undefined {
+export function resolveInvalidationFocalLevel(play: TerminalPlay, focal: FocalLevel[]): FocalLevel | undefined {
   if (play.direction === "LONG") {
     return focal.find(
       (l) => (l.kind === "put_wall" || l.kind === "dark_pool" || l.kind === "king") && l.distancePct < 0,

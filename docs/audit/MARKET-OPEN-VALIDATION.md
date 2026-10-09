@@ -1,3 +1,35 @@
+## WATCH LIST — 2026-10-09 Ask Largo swing play-brief "What to watch"'s "Structural support node" hardcoded put wall while the authoritative Break watch level (and `envelope.invalidation`) can cite a nearer GEX king or dark-pool print — deploy pending validation
+
+**What was fixed:** `watchForSection`'s "Structural support node" (LONG) / "Structural resistance
+node" (SHORT) line (`play-brief-intel.ts`, the "What to watch" section) independently computed
+put wall / call wall and rendered it unconditionally — unaware that `breakTrigger`'s "Break watch"
+bullet and the headline `envelope.invalidation` field (`play-brief-narrative.ts`) were fixed on
+2026-09-15 to instead pick whichever of put wall / dark pool / GEX king sits NEAREST spot, because
+the king or a dark-pool print can legitimately be the closer, more relevant real risk. Live-
+confirmed 2026-10-08 on `GET /api/market/swing/play-brief?playId=SWING:TNGX:1611&ticker=TNGX&status=OPEN`
+(real committed BANGER-origin LONG position, spot $22.57, GEX king $22.00 at -2.5%, put wall
+$20.00 at -11.4%): `envelope.invalidation`/"Break watch" correctly read "lose 22.00" (the nearer
+king) while "What to watch", in the SAME envelope, read "Structural support node: put wall
+20.00" — two different numbers for what both sections present as THE one structural level that
+matters, with nothing telling the member they're reading two different concepts. Fix:
+`watchForSection` now calls the same shared `resolveInvalidationFocalLevel`/`collectFocalLevels`
+selection `breakTrigger` uses (both newly exported), rendering whichever level wins under its own
+label (put wall / GEX king / dark pool) instead of a hardcoded "put wall"/"call wall" string — the
+two sections can no longer disagree. Full write-up:
+`docs/audit/findings-staging/2026-10-09-swing-watch-structural-level-king-mismatch.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for a real
+LONG OPEN/HOLD swing position whose GEX king (or a live dark-pool print) sits materially NEARER
+spot than its put wall (TNGX-shaped: king within a few %, put wall 10%+ away) and confirm "What to
+watch"'s "Structural support node" line now names the SAME level and price as "Trade manager
+read"'s "Break watch" bullet in the same response — not a second, independently-derived number.
+Also spot-check a position where the put wall genuinely IS the nearest level (e.g. SOXS/KOLD/
+ETHD/AAOZ/XRPN-shaped, all confirmed unaffected this cycle) and confirm it still renders exactly
+"Structural support node: put wall $X" as before — this fix only changes which level wins when a
+king/dark-pool print is nearer, it should not alter anything for the common case.
+
+---
+
 ## WATCH LIST — 2026-10-09 Ask Largo swing play-brief "Break watch" could cite an invalidation price with zero supporting narration when MAX_BULLETS dropped the exact level it depends on — deploy pending validation
 
 **What was fixed:** `tradeManagerNarrativeSection`'s "Trade manager read" loop narrates each GEX/

@@ -5709,3 +5709,57 @@ test("bookContextSection: a large same-theme overlap caps the rendered name list
   assert.equal(renderedNames.length, 8, "must cap the rendered names, not list every overlap");
   assert.match(section!.body, /\+ 2 more/, "the remainder must be folded into an honest count");
 });
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-08 :40 cycle, live repro SWING:TNGX:1611):
+// breakTrigger (play-brief-narrative.ts), the narrative's authoritative "Break watch" bullet AND
+// the headline `envelope.invalidation` field, was fixed on 2026-09-15 to pick whichever real
+// support level — put wall, dark pool, or GEX king — is actually NEAREST spot (see
+// resolveInvalidationFocalLevel's own doc comment: "the king sat 8x nearer than the put wall" on
+// a live CRWD repro). `watchForSection`'s own "Structural support node"/"Structural resistance
+// node" line was never updated to match — it still hardcodes put wall (LONG) / call wall (SHORT)
+// unconditionally, with no awareness that a nearer GEX king (or dark-pool print) exists. Live
+// TNGX repro (spot 22.57, GEX king 22.00, put wall 20.00): `envelope.invalidation` correctly read
+// "Break watch — lose 22.00" (the nearer, real risk) while "What to watch" in the SAME envelope
+// said "Structural support node: put wall 20.00" — two different numbers for what both sections
+// present as THE structural level that matters for this play, with no indication to the member
+// that they're reading two different concepts. Reproduced here with the identical shape (king
+// nearer than put wall for a LONG).
+test("watchForSection: Structural support node matches breakTrigger's nearest-level selection, not a hardcoded put wall (Largo identity/precision)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ direction: "LONG", status: "OPEN" }),
+    asOf: "2026-10-08 20:44 ET",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gex_king_strike: 102,
+        put_wall: 90,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      gexWalls: { putWalls: [{ strike: 90 }], callWalls: [] },
+      ladder: { rows: [{ strike: 97, isKing: true }] },
+    } as unknown as VectorFullState,
+  };
+
+  const watch = watchForSection(ctx, "open");
+  const narrative = tradeManagerNarrativeSection(ctx, "open");
+
+  assert.ok(narrative);
+  // The narrative's authoritative Break watch bullet picks the nearer king (97), not the put wall.
+  assert.match(narrative!.body, /\*\*Break watch\*\* — lose \*\*97\.00\*\*/);
+
+  // "What to watch" must cite the SAME level the authoritative Break watch bullet names — never a
+  // second, independently-selected number for what both sections call "the" structural support.
+  assert.match(watch.body, /Structural support node: GEX king \*\*97\.00\*\*/);
+  assert.doesNotMatch(watch.body, /put wall \*\*90\.00\*\*/);
+});

@@ -29,7 +29,11 @@ import {
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
-import { tradeManagerNarrativeSection } from "./play-brief-narrative";
+import {
+  tradeManagerNarrativeSection,
+  collectFocalLevels,
+  resolveInvalidationFocalLevel,
+} from "./play-brief-narrative";
 import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
@@ -1250,18 +1254,24 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(watch);
   }
 
-  const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
-  const putWall = vecPutWall ?? gexForLevels?.put_wall;
-  const callWall = vecCallWall ?? gexForLevels?.call_wall;
-  const gexStaleForLevels = gexMatrixStale(gexForLevels, readMs);
-  const putWallFromStaleGex = vecPutWall == null && gexForLevels?.put_wall != null && gexStaleForLevels;
-  const callWallFromStaleGex = vecCallWall == null && gexForLevels?.call_wall != null && gexStaleForLevels;
-  if (play.direction === "LONG" && putWall != null && !putWallFromStaleGex) {
-    lines.push(`Structural support node: put wall **${fmtPriceLevel(putWall)}**`);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-08 :40 cycle, live repro SWING:TNGX:1611): this
+  // used to hardcode put wall (LONG) / call wall (SHORT) as THE structural level, unaware that
+  // `breakTrigger`'s own "Break watch" bullet (and the headline `envelope.invalidation` field)
+  // was fixed on 2026-09-15 to pick whichever of put wall/dark pool/GEX king actually sits
+  // NEAREST spot — see `resolveInvalidationFocalLevel`'s own doc comment for the full account.
+  // Live TNGX repro: GEX king (22.00) sat nearer spot (22.57) than the put wall (20.00), so
+  // `envelope.invalidation`/"Break watch" correctly cited 22.00 while this line, in the SAME
+  // envelope, said "Structural support node: put wall 20.00" — two different numbers for what
+  // both sections present as THE one structural level that matters, with nothing telling the
+  // member they're reading two different concepts. Calling the SAME selection here (instead of
+  // re-deriving a put-wall-only version) means the two can never again disagree.
+  const invalidationLevel =
+    spot != null ? resolveInvalidationFocalLevel(play, collectFocalLevels(ctx, spot)) : undefined;
+  if (play.direction === "LONG" && invalidationLevel != null) {
+    lines.push(`Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
   }
-  if (play.direction === "SHORT" && callWall != null && !callWallFromStaleGex) {
-    lines.push(`Structural resistance node: call wall **${fmtPriceLevel(callWall)}**`);
+  if (play.direction === "SHORT" && invalidationLevel != null) {
+    lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
   }
 
   if (bucket === "open" && play.exitPolicy?.stop_premium != null) {
