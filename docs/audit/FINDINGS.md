@@ -4,6 +4,67 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-10-09 — [FINDING, largo-swing] `counterThesisLine()` only ever checked EMA stack for chart-technical disagreement — missed MACD and market-structure direction, silently dropping real corroborating evidence (live repro: GDDY committed position) — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Ask Largo standing mandate Largo deep-dive, live repro 2026-10-09 ~07:43 UTC on a committed GDDY swing position (`playId=SWING:GDDY:1599`). The brief's own "Chart read" bullet (one bullet above, same "Trade manager read" section) correctly said `chart reads bearish (conflicts with swing direction)` — RSI 41, mixed EMA stack, MACD bearish, structure CHOCH down, vs the position's own LONG direction. Yet `counterThesisLine()` — the function whose entire job is to steelman the opposing case and name how many independent reads corroborate it — returned **no reason at all for the chart** in that same brief; only the separately-computed "call wall overhead" reason fired, so the brief said `"a single, uncorroborated signal"` when a second, already-computed, already-displayed piece of evidence (the chart's own bearish verdict) existed two lines above it in the exact same response. |
+| **Root cause** | `technicalsBias()` (`play-brief-technicals.ts`), the function both `technicalsCoaching` (prints "Chart read ... conflicts with swing direction") and `tradeManagerNarrativeSection`'s own overall section bias use, counts FOUR independent votes: EMA stack, MACD, VWAP side, and market-structure direction (BOS/CHOCH). `counterThesisLine()` (`play-brief-narrative.ts`) only ever read `vec?.technicals?.emaStack` — MACD and structure direction were never checked as their own corroborating reasons. For GDDY: EMA stack was `"mixed"` (casts no vote in `technicalsBias()`), while MACD (`"bear"`) and structure (`CHOCH down`) both voted bearish and drove the aggregate verdict — exactly the two votes `counterThesisLine()` never looked at, so it saw zero reasons from the chart at all despite the chart being the stronger, already-displayed disagreement. |
+| **Why this matters** | This is the identical evidence-weighting discipline `counterThesisLine()`'s own history already establishes (Vector bias, call/put wall overhead, dealer gamma posture, and EMA stack were each added incrementally as "independent reads" over several prior fixes, per the file's own doc comments) — MACD and structure direction were simply never ported in. The member-visible cost: the brief literally says `"a single, uncorroborated signal"` right next to a chart bullet that already told them the technicals disagree, which is a real cross-sentence inconsistency inside one response, and understates how much evidence actually opposes the position whenever EMA alone doesn't vote but MACD/structure do (exactly the live GDDY case — not a hypothetical). |
+| **Blast radius** | `counterThesisLine()` only (`src/lib/swing/play-brief-narrative.ts`) — the single call site (`tradeManagerNarrativeSection`) and its one caller (`composeSwingPlayBrief` → the live `/api/market/swing/play-brief` route and the Ask Largo tool answer that reuses the same envelope) both pick up the fix for free, no other call site duplicates this logic. `technicalsBias()`/`technicalsCoaching()` themselves were already correct and are unchanged. |
+| **Fix** | Added two more independent-read checks in `counterThesisLine()`, gated by the same `vectorSnapshotStale()` freshness check the existing EMA-stack reason already uses (Largo C2 — never steelman off a stale snapshot): `macd === "bear"`/`"bull"` → `"bear MACD on chart"` / `"bull MACD on chart"`; `structure.direction === "down"`/`"up"` → `"bearish structure break (CHOCH down)"` / `"bullish structure break (BOS up)"` (literal structure `type` from the data, not hardcoded). Each is pushed as its own distinct reason, same per-indicator granularity as the existing EMA-stack line — they are independent reads (momentum vs. trend-stack vs. swing-structure break), not a restatement of each other, so the corroboration count increments correctly once per vote that actually fires. |
+| **Fix rationale** | Reusing the exact same staleness gate (`vectorSnapshotStale`) and per-indicator-reason shape already established for EMA stack keeps this consistent with the rest of the function rather than inventing a parallel "chart bias" reason that would double-count against the EMA-stack line whenever both fire. Rejected alternative: pushing one combined `"chart reads bearish"` reason off `technicalsBias()`'s aggregate verdict instead of per-indicator — rejected because it would silently merge up to 4 independent votes (EMA/MACD/VWAP/structure) into 1 counted reason, understating corroboration in the opposite direction from the original bug, and would double-count with the existing EMA-stack reason whenever EMA is also part of the aggregate's majority. |
+| **Regression guard** | New tests in `src/lib/swing/play-brief-narrative.test.ts`: (1) MACD+structure alone (EMA `"mixed"`, no vote) now steelmans a 2-reason, correctly-labeled `"corroborated across 2 independent reads"` bear case for a LONG play — the exact GDDY repro; (2) the SHORT-side mirror (bull MACD + bullish BOS); (3) a stale-Vector guard proving neither new reason steelmans off a stale snapshot (Largo C2). RED→GREEN confirmed via a standalone repro script against `git stash`-able `play-brief-narrative.ts`: pre-fix `counterThesisLine()` returned `null` for the GDDY-shaped input; post-fix it returns the corroborated 2-reason line. |
+| **Gates** | `npx tsc --noEmit` clean · `src/lib/swing/play-brief-narrative.test.ts` 112/112 pass · all `src/lib/swing/play-brief*.test.ts` 866/866 pass, 0 fail · full `npm test` (Node 20.20.2): 15865 pass / 0 fail / 3 skipped. |
+| **Status** | FIXED — branch `fix/swing-counter-thesis-macd-structure`. |
+
+## 2026-10-09 — [FINDING, discovery] `docs/api-audit/README.md` linked to 5 weekly-audit reports that never existed on `main` — FIXED (doc-only; links de-annotated as not-yet-generated)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | docs/api-audit (API-audit automation docs) |
+| **Status** | FIXED (doc-only correction) |
+
+**What was wrong:** `docs/api-audit/README.md`'s provider table linked to 7 weekly automated-audit
+reports (`unusual-whales.md`, `polygon-stocks.md`, `polygon-indices.md`, `polygon-options.md`,
+`polygon-benzinga.md`, `whop.md`, `clerk.md`) as if all 7 were live, current reports "Generated by
+Claude scheduled tasks." Only 2 of the 7 (`whop.md`, `clerk.md`) actually exist in
+`docs/api-audit/` and have real commit history on `main`. The other 5 have never existed anywhere
+in `main`'s history.
+
+**Evidence:**
+- `ls docs/api-audit/` — only `clerk.md` and `whop.md` present among the 7 listed reports.
+- `git log --oneline main -- docs/api-audit/unusual-whales.md docs/api-audit/polygon-stocks.md
+  docs/api-audit/polygon-indices.md docs/api-audit/polygon-options.md
+  docs/api-audit/polygon-benzinga.md` → empty (no commit on `main` ever touched these paths).
+- The only commits that ever created `unusual-whales.md`/`polygon-stocks.md` (`2390c4c6c`,
+  `eaee24199`, both `"audit: ... API coverage update [automated]"`) live on an orphaned,
+  unmerged branch (`fix/nighthawk-mojibake-separators`) — `git merge-base --is-ancestor
+  eaee24199 HEAD` returns false. `polygon-indices.md`/`polygon-options.md`/`polygon-benzinga.md`
+  have zero history anywhere, ever.
+- `whop.md`/`clerk.md` by contrast have real merged-to-`main` history (`cb41d9d44` for Clerk),
+  confirming the "Claude scheduled tasks" pipeline this README describes is real for 2 of 7
+  providers but was never wired up (or never landed) for the other 5.
+- No acknowledgment of this gap exists anywhere searched (`AUDIT-SKILL-REFERENCE.md`,
+  `OPEN-ISSUES.md`) — unlike other intentional-absence cases in this repo (e.g. the
+  `INTENTIONALLY_UNREGISTERED` allowlist pattern used elsewhere), nothing here explains the 5
+  missing reports as deliberate.
+
+**Fix:** De-linked the 5 non-existent reports in the table (removing the dead markdown links,
+which would otherwise 404) and annotated each as "not yet generated — scheduled task not wired
+up," so the doc no longer claims all 7 are live. Left `whop.md`/`clerk.md` linked as-is (both
+real, both current).
+
+**What is NOT fixed, and why:** Actually standing up the missing 5 scheduled tasks is outside this
+sandbox's reach — "Claude scheduled tasks" here means an external routine/trigger mechanism this
+session has no ability to create or verify for another account's automation pipeline. Whoever owns
+that pipeline should either wire up the 5 missing providers or decide 2-of-7 is the intended
+scope; this fix only stops the doc from claiming something false in the meantime.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
