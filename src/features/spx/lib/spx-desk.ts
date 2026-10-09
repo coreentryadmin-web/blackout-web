@@ -1475,6 +1475,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     breadthAll,
     newsRaw,
     intelRaw,
+    marketNow,
   ] = await Promise.all([
     fetchIndexSnapshots([SPX, VIX, VIX9D, VIX3M, TICK, TRIN, ADD]).catch(() => ({})),
     fetchIndexMinuteBars(SPX, today, today).catch(() => []),
@@ -1490,6 +1491,11 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     // TTL matches TTL.NEWS (2 min). fetchBenzingaNews is itself idempotent / GET-only.
     serverCache("bz:news:market", 120_000, () => fetchBenzingaNews(15)).catch(() => []),
     intelPromise,
+    // fetchMarketStatusNow() has its own 60s module-level cache (polygon.ts) and is already kept
+    // warm by the pulse lane's own frequent polling, so this is normally a cache hit — fetched
+    // here (parallel, not serial) so buildSpxDesk can detect the EXTENDED window itself. See the
+    // `priorFromBars` comment below for why.
+    fetchMarketStatusNow().catch(() => null),
   ]);
 
   const intel: EngineIntelOverlay | null = parseEngineIntelOverlay(intelRaw);
@@ -1498,7 +1504,29 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const spxSnap = snaps[SPX];
   const vixSnap = snaps[VIX];
-  const priorFromBars = priorDayFromDailyBars(dailyBars);
+  const label = marketStatusLabel(new Date(), marketNow);
+  // BUG FOUND 2026-10-09 (live, ~06:43 UTC / 02:43 ET): `priorDayFromDailyBars(dailyBars)` with
+  // bare default args (today, anchorSessionComplete=false) is correct BEFORE ET midnight — the
+  // bar dated exactly `today` (today's own just-settled close) gets excluded, correctly landing
+  // on the true prior day — but WRONG from ET midnight through the next session's open:
+  // `todayEtYmd()` has already rolled to the NEW calendar date, so YESTERDAY's close bar now
+  // satisfies `barYmd < today` unconditionally and gets returned as "prior", even though we are
+  // still in the same EXTENDED evening and `price` below is frozen on that exact same bar (the
+  // live WS snapshot has no fresher tick to offer). That collapses `price === prior_close` for
+  // the whole post-midnight stretch of every EXTENDED window — confirmed live: this route served
+  // price=prior_close=7765.36 (2026-10-08's close) while the sibling, already-fixed
+  // `/api/market/spx/pulse` route (`buildSpxDeskPulse`, #5729/#5735) correctly reported
+  // prior_close=7801.77 (2026-10-07's real prior close) for the exact same instant — the
+  // identical root cause reincarnated in this sibling function, which was never given pulse's
+  // EXTENDED-hours override (those PRs only touched `buildSpxDeskPulse`). `latestSessionAndItsOwnPrior`
+  // (spx-session.ts) already solves this generally: it finds "today's own close" (eligible once
+  // the EXTENDED label says the regular session has closed) then derives the TRUE prior by
+  // anchoring a second lookup to THAT matched bar's own date, never to the possibly-rolled-over
+  // `today` — reused here rather than duplicated, same function the pulse fix already uses.
+  const priorFromBars =
+    label === "EXTENDED"
+      ? latestSessionAndItsOwnPrior(dailyBars, today).prior
+      : priorDayFromDailyBars(dailyBars, today);
   const price =
     spxSnap?.price ?? lastPulseForSignals?.price ?? priorFromBars.pdc ?? 0;
   if (!(price > 0)) return empty;
