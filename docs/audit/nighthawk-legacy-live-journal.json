@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-09T14:07:44Z",
+  "lastUpdated": "2026-10-09T14:23:36Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -675,6 +675,10 @@
     {
       "at": "2026-10-09T14:07:44Z",
       "summary": "VLO MARK-STALENESS BLIP SELF-CLEARED (closing the watch from 13:52:33Z) -- VLO261016C00460000 is back to GREEN with a live two-sided quote (mark=5.3 within [4.1,6.5]), full healthcheck GREEN across all 4 stages again at 14:07:44Z. Cleared within ~15min, same shape as the earlier 22:36:55Z edition-fallback blip -- transient, not a pattern. Benign [clerk-session] swept 1 leaked temp user(s) older than 30m log line also seen this run (documented self-healing sweep, not an issue)."
+    },
+    {
+      "at": "2026-10-09T14:23:36Z",
+      "summary": "VLO MARK-STALENESS RECURS, INSTANCE 2 OF A POSSIBLE PATTERN -- not yet escalating (3-instance threshold), but tracking. Timeline: instance 1 at 13:52:33Z (flagged stale, ACN/IREN GREEN), self-cleared by 14:07:44Z (full GREEN), now instance 2 at 14:23:36Z (flagged stale again, ACN/IREN still GREEN both times). Two recurrences ~16min apart, same single ticker both times -- if a 3rd instance appears, this becomes a real pattern worth investigating root cause (VLO-specific quote-refresh cadence/liquidity vs a shared upstream issue). D_pull_status and C_record remain GREEN throughout; only B_marks/VLO affected."
     }
   ],
   "knownOpenItems": {
