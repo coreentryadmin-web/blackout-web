@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-09T13:37:48Z",
+  "lastUpdated": "2026-10-09T13:52:33Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -667,6 +667,10 @@
     {
       "at": "2026-10-09T13:37:48Z",
       "summary": "B_MARKS TRANSITION: AMBER->GREEN at market open (~13:30 UTC) for editionFor 2026-10-09. All three picks now have live two-sided quotes with mark inside [bid, ask]: ACN 4.80 in [4.10,5.50], VLO 4.85 in [3.80,5.90], IREN 1.59 in [1.55,1.63]. Combined with the D_pull_status SKIPPED->GREEN transition logged at 13:22:54Z (morning-confirm cron, all three CONFIRMED), overall healthcheck is now full GREEN across all four stages for the first time this session on this edition -- the whole pre-market->morning-confirm->market-open pipeline worked end-to-end, no anomalies."
+    },
+    {
+      "at": "2026-10-09T13:52:33Z",
+      "summary": "ISOLATED MID-RTH MARK-STALENESS BLIP, VLO ONLY, FIRST INSTANCE -- watching, not escalating. One healthcheck run at 13:52:33Z (15min after market open, previously full-GREEN at 13:37:48Z) found VLO261016C00460000 flagged stale by the API while ACN and IREN both held live two-sided quotes (mark inside [bid,ask]). Overall flipped GREEN->AMBER on this single ticker. Different shape from the earlier pre-market pattern (all three OCCs simultaneously no-quote/stale) -- this is one ticker, mid-RTH, isolated. Per 3-instance noise discipline, not escalating yet; will re-check next cycle and only name it a pattern if VLO specifically recurs stale a 2nd/3rd time."
     }
   ],
   "knownOpenItems": {
