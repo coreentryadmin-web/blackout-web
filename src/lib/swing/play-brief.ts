@@ -387,9 +387,33 @@ function pnlSection(play: TerminalPlay): RichSection {
     play.pnlPct != null &&
     Number.isFinite(play.pnlPct) &&
     Math.abs((play.mark / play.entry - 1) * 100 - play.pnlPct) <= 0.5;
-  const pnlForDisplay = markRoundTripsPnl
+  let pnlForDisplay = markRoundTripsPnl
     ? (Math.round(play.mark! * 100) / 100 / play.entry! - 1) * 100
     : play.pnlPct;
+  // GUARD (2026-10-09, Ask Largo standing mandate — live CNXC repro, positionId 1624): the
+  // recompute above rounds `play.mark` to the cent BEFORE dividing, and standard half-up rounding
+  // can push the result either direction relative to the raw mid — the SG repro above only ever
+  // exercised the round-DOWN case (mid $0.575 -> displayed $0.57, understating P&L). The symmetric
+  // round-UP case (mid $0.425 -> displayed $0.43, entry $0.30) OVERSTATES: recompute gives +43.3%
+  // while this position's own `peak`/`trough` (adapters.ts's `peakDisplay`/`troughDisplay`,
+  // computed from the RAW un-rounded premium, never re-derived from a rounded Mark) both correctly
+  // read +41.7% — so the brief showed a current P&L visibly ABOVE the position's own recorded
+  // all-time high two lines below, which is a logical impossibility (the current mark IS one of
+  // the samples peak/trough were latched from, so the canonical `play.pnlPct` always lies inside
+  // [trough, peak] by construction — only this cent-rounded recompute can escape that range).
+  // Fall back to the canonical value whenever the recompute would contradict the position's own
+  // recorded extremes; left untouched (same as before this guard) when peak/trough aren't
+  // available to check against, or when the recompute stays inside bounds (the common case this
+  // guard must NOT regress — e.g. the original SG repro, whose round-trip stays well inside
+  // [-39.4, 81.8]). The 0.05pp tolerance absorbs peak/trough's own 1dp display rounding.
+  if (
+    pnlForDisplay != null &&
+    Number.isFinite(pnlForDisplay) &&
+    ((play.peak != null && Number.isFinite(play.peak) && pnlForDisplay > play.peak + 0.05) ||
+      (play.trough != null && Number.isFinite(play.trough) && pnlForDisplay < play.trough - 0.05))
+  ) {
+    pnlForDisplay = play.pnlPct;
+  }
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
     markGenuinelyUnknown

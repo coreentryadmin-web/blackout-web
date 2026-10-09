@@ -4300,6 +4300,106 @@ test("composeSwingPlayBrief: Position section's P&L is left untouched when it do
   assert.match(position!.body, /P&L: \*\*\+12\.3%\*\*/, `got: ${position!.body}`);
 });
 
+test("composeSwingPlayBrief: Position section's P&L never overstates the canonical pnlPct when the cent-rounded Mark rounds UP (live CNXC repro 2026-10-09, Ask Largo standing mandate)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:CNXC (positionId 1624) — entry
+  // $0.30, raw mid $0.425 EXACTLY equal to this position's own peak_premium/trough_premium (it
+  // has never moved off this single post-entry mark — confirmed live via a fresh
+  // GET /api/market/nighthawk/horizons?view=swing read showing entryPremium:0.3,
+  // peakPremium:0.425, troughPremium:0.425, livePnlPct:41.7 for the SAME positionId at the SAME
+  // moment). The canonical, cross-surface value for this fact is +41.7% — it's what Peak/Trough
+  // show two lines below, what PlayTerminal.tsx's Command Deck card renders directly off
+  // `play.pnlPct`, and what the horizons API itself reports.
+  //
+  // The 2026-10-09 SG-repro fix (PR #5734, pnlSection's `markRoundTripsPnl`/`pnlForDisplay`)
+  // redisplays P&L from `Math.round(play.mark * 100) / 100` — i.e. from the Mark figure AFTER
+  // cent-rounding, not before. `Math.round(42.5)` is 43 (JS rounds .5 away from zero, and
+  // 0.425 * 100 lands on an exact 42.5 in IEEE-754 here, unlike the SG repro's 0.575 * 100 which
+  // instead lands just BELOW its own .5 boundary and rounds down) — so the cent-rounded Mark
+  // becomes $0.43, and (0.43 / 0.30 - 1) * 100 = 43.3%, a full +1.6pp ABOVE the true, canonical
+  // 41.7% every other surface agrees on. The SG repro only ever exercised the round-DOWN case;
+  // this is the symmetric round-UP case, and because Peak/Trough (adapters.ts's `peakDisplay`/
+  // `troughDisplay`) are computed from the RAW, un-rounded premium (not re-derived from a rounded
+  // Mark), this makes "P&L: +43.3%" visibly exceed "Peak: +41.7%" in the SAME brief — a position
+  // reads as CURRENTLY ABOVE its own all-time high, which is incoherent on its face, and overstates
+  // the member's real P&L on the exact number they'd act on.
+  //
+  // Fix: P&L must always show the canonical `play.pnlPct` (rounded only at the percentage level,
+  // identically to Peak/Trough and to PlayTerminal.tsx's own renderer) — never a second
+  // recomputation from an independently cent-rounded dollar figure. A rounded 2dp Mark sitting a
+  // bounded, SYMMETRIC fraction of a percentage point off a 1dp-rounded P&L is an inherent,
+  // harmless display-precision artifact (present in virtually every financial UI); silently
+  // inflating or deflating the one number a member most directly acts on to paper over it is worse
+  // than the cosmetic mismatch it "fixes".
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "CNXC",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.3,
+      mark: 0.425,
+      pnlPct: 41.7,
+      peak: 41.7,
+      trough: 41.7,
+      markIsSync: false,
+      markAsOf: "2026-10-09T17:51:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T17:55:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.43\*\*/, `got: ${position!.body}`);
+  // P&L must match Peak/Trough exactly — never exceed the position's own recorded high.
+  assert.match(position!.body, /P&L: \*\*\+41\.7%\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /Peak: \*\*\+41\.7%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+43\.3%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L never overstates Peak — second independent live repro (EXTR, positionId distinct contract, found same cycle)", () => {
+  // Found independently the SAME cycle, unprompted, while sweeping other fresh tickers — not a
+  // hand-picked edge case. GET /api/market/swing/play-brief?playId=SWING:EXTR&ticker=EXTR: entry
+  // $0.15, raw mark $0.375 (0.375 is exactly representable in IEEE-754 — 3/8 — so
+  // `0.375 * 100` lands on an exact `37.5`, rounds UP to a displayed $0.38 the same way CNXC's
+  // $0.425 did) showed "P&L: +153.3% / Peak: +150.0%" live — P&L exceeding its own recorded peak
+  // by 3.3pp, confirming the CNXC repro above is a systemic class (any BANGER-origin position
+  // whose raw mark happens to round up at the cent boundary), not a one-off.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "EXTR",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.15,
+      mark: 0.375,
+      pnlPct: 150.0,
+      peak: 150.0,
+      trough: 33.3,
+      markIsSync: false,
+      markAsOf: "2026-10-09T18:10:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T18:15:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.38\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /P&L: \*\*\+150\.0%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+153\.3%\*\*/, `got: ${position!.body}`);
+});
+
 test("composeSwingPlayBrief: Thesis health section carries no bias for a healthy SHORT (Largo C5 — a non-directional quality score must never badge bullish on a bearish trade)", () => {
   // Live defect (2026-09-15, Ask Largo standing mandate): thesisHealthSection mapped h.health
   // (a direction-agnostic "is the setup intact" score) straight to bullish/bearish. A SHORT play
