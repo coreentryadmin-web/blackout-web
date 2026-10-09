@@ -33,6 +33,7 @@ function row(
   // Pass `null` explicitly to build a floor-cleared-but-still-pre-entry WATCH row (status COMMIT,
   // no liveStatus) — the live LITE repro this fix addresses.
   liveStatus: HorizonPlay["liveStatus"] | null = status === "COMMIT" ? "OPEN" : undefined,
+  commitGateBlockedBy?: string[],
 ): HorizonPlay {
   const c = contract ?? { strike: 100, right: "C" as const };
   return {
@@ -46,6 +47,7 @@ function row(
     manageAction,
     setupState,
     liveStatus: liveStatus ?? undefined,
+    commitGateBlockedBy,
   };
 }
 
@@ -388,6 +390,40 @@ test("computeLaneRank: a play whose OWN score is withheld (0 fallback) returns n
   lanes[0]!.scoreWithheld = true;
   const snap = computeLaneRank(play({ ticker: "AAPL", score: 0, status: "HOLD", contract: undefined }), lanes);
   assert.equal(snap, null, "AAPL's own withheld score must not produce a fabricated rank");
+});
+
+// Live repro 2026-10-08 (Ask Largo standing mandate, raised on #4076 comment 6067024911): GOOGL's
+// own brief named VST (score 76) as the named leader while VST's commitGateBlockedBy was exactly
+// ["legacy:exempt"] — the #5577 Legacy graduation-bridge wiring gap, not a real gate rejection.
+test("computeLaneRank: topLegacyExemptOnly is true when the named leader's ONLY block is legacy:exempt", () => {
+  const lanes = [
+    row("VST", 76, "WATCH", undefined, undefined, "TRIGGERED", undefined, ["legacy:exempt"]),
+    row("GOOGL", 36, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "VST");
+  assert.equal(snap!.topLegacyExemptOnly, true);
+});
+
+test("computeLaneRank: topLegacyExemptOnly is false when the named leader also carries a real gate block", () => {
+  const lanes = [
+    row("VST", 76, "WATCH", undefined, undefined, "TRIGGERED", undefined, [
+      "legacy:exempt",
+      "gate:G-S4:regime_degraded",
+    ]),
+    row("GOOGL", 36, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topLegacyExemptOnly, false, "a real gate alongside legacy:exempt is not a PURELY structural block");
+});
+
+test("computeLaneRank: topLegacyExemptOnly is false when the named leader has no block at all", () => {
+  const lanes = [row("VST", 76, "WATCH"), row("GOOGL", 36, "WATCH")];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topLegacyExemptOnly, false);
 });
 
 test("computeLaneRank: a withheld PEER is excluded from the pool so it cannot drag down another play's median/rank", () => {
