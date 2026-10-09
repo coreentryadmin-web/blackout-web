@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-09T16:02:20.000Z",
-  "notes": "Consolidated clean-cycle note, 14:17Z-16:02Z (8 ticks, all clean, no new finding). Native book flat the entire window (0 open). WATCH list stable in shape: GOOGL (regime_degraded+cortex_net_negative, genuine gate rejections) and VLO/IREN (legacy:exempt, the already-shipped-caveat #5577 wiring gap -- now correctly caveated in their own/cross-referencing play-briefs per #5761). No reply yet on #4076 from Cursor re: the shipped caveat. Nothing else to report this window.",
+  "last_updated": "2026-10-09T16:17:15.000Z",
+  "notes": "New native commit: AMD:51, committed 16:05:57Z, score 68.1, EVENT_DRIVEN/TACTICAL, entry premium 17.725, entry trigger underlying 610.91 / invalidation 595.78, signals FLOW+VECTOR+CATALYST. First native commit today. HOLD, +2.8% as of 16:17Z. Tracking for the day. Native book no longer flat.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -553,5 +553,16 @@
       "pr_comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-6067024911",
       "status": "SHIPPED 2026-10-09 -- PR #5761 merged (d28658f), folded into FINDINGS.md via #5762 (draft, routine docs PR)."
     }
-  ]
+  ],
+  "amd_51_2026_10_09": {
+    "status": "OPEN, tracking.",
+    "positionId": 51,
+    "committedAt": "2026-10-09T16:05:57.000Z",
+    "entryPremium": 17.725,
+    "entryTriggerUnderlyingPx": 610.91,
+    "invalidationUnderlyingPx": 595.78,
+    "archetype": "EVENT_DRIVEN",
+    "subLane": "TACTICAL",
+    "score": 68.1
+  }
 }
