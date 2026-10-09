@@ -38,6 +38,120 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-09 — [FINDING, swing-largo] Night Hawk Swings graduation bridge (#5577) was never wired into the live commit loop — a TRIGGERED Legacy thesis stays `legacy:exempt` forever — FIXED (flag-gated, OFF by default)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Ask Largo / Night Hawk Swings standing deep-dive (fresh tickers this cycle). `GET /api/market/nighthawk/horizons?view=swings` served **VST** (COMMIT_NOW section, promoted 2026-10-07 via Night Hawk Legacy morning confirm) with live `setupState: "TRIGGERED"`, `entryStatus: "AT_TRIGGER"` — but still `commitGateBlockedBy: ["legacy:exempt"]`, entry stance **WAIT**, exactly as if the play had never cleared its own trigger. |
+| **Root cause** | `legacy-confirm-promote.ts`'s `legacyCommitCandidatesFromSnapshot` (and its sibling `removeCommittedLegacyFromSnapshot`) were built and fully unit-tested in **#5577** (2026-10-01) specifically to bridge a Legacy-promoted play, once it reaches `setupState==="TRIGGERED"`+`entryStatus` at `"AT_TRIGGER"`/`"PULLBACK_TO_ENTRY"`, into a real `SwingCommitCandidate` evaluated by the real G-S3/G-S4/G-S6/G-S12/G-S14 commit-gate stack — but a repo-wide grep confirmed **zero call sites** for either function anywhere outside their own definitions, comments, and tests. `docs/audit/FINDINGS.md`'s own 2026-10-01 entry for #5577 names this explicitly under "What was deliberately NOT shipped this PR" — the live-cron wiring into `discovery.ts`'s commit loop requires reordering `swing-discovery/route.ts` so the prior serving snapshot is read BEFORE the scan's own commit loop, not after (the order that shipped), and was deliberately deferred as a named follow-up rather than rushed through, per the operator's own instruction not to change production behavior until the lifecycle is demonstrated correct. Confirmed via `git log` that nothing since #5577 touched either function — the follow-up sat open for 8 days until this fix. |
+| **Why this matters** | Every Legacy-morning-confirm-promoted thesis — however clearly its own trigger fires — was structurally incapable of ever becoming a real committed swing position; the "legacy:exempt" the brief/board shows is not a transient gate block but a permanent architectural dead end until this wiring exists, which misrepresents a real, live, triggered trading opportunity as permanently un-actionable. |
+| **Blast radius** | `src/lib/swing/discovery.ts` (`SwingDiscoveryDeps`/`runSwingDiscoveryScan`'s commit-candidate assembly), `src/app/api/cron/swing-discovery/route.ts` (read-order + `buildDiscoveryDeps` + post-commit snapshot cleanup), `src/lib/swing/v2/config.ts` (new flag). No change to `legacy-confirm-promote.ts` itself — its bridge functions were already correct and fully tested; this fix only calls them. |
+| **Fix** | Threads the prior serving snapshot's `legacyPromotedTriplesFromSnapshot(existing)` output through `SwingDiscoveryDeps.legacyTriples` into `discovery.ts`, which calls the REAL, unmodified `legacyCommitCandidatesFromSnapshot(deps.legacyTriples, { sessionDate, pathsByTicker })` — using its OWN locally-built `pathsByTicker` (the per-scan Tier-0 provenance map) so a Legacy ticker that's ALSO independently screened this scan gets credit for real corroboration at G-S6, exactly as #5577's design intended — and merges the result into `commitCandidates` (organic wins on a ticker\|direction collision; a Legacy row only ever fills a gap, never overrides independent evidence). `swing-discovery/route.ts` is reordered to read the prior snapshot before the scan (previously read only after), and after the scan, diffs `result.commit.committed` against the Legacy ticker set to call `removeCommittedLegacyFromSnapshot` before the carry-forward persist, so a just-committed Legacy thesis is not also carried forward as a duplicate WATCH row. |
+| **Fix rationale** | Gated the entire wiring behind a new flag, `isSwingLegacyCommitBridgeEnabled()` (env `SWING_LEGACY_COMMIT_BRIDGE_ENABLED`, **OFF by default**), rather than flipping live behavior on merge — directly honoring the operator's own recorded caution on this exact code path (real-money commit logic) while still closing the dead-code gap and proving it end-to-end. The capability is built, tested, and ready; arming it in production is left as an explicit separate decision (flip the env var), not a side effect of this PR merging. Did not touch `legacy-confirm-promote.ts`'s own bridge functions — they were already correct; this fix only calls them from the right place. |
+| **Regression guard** | Three new integration tests in `src/lib/swing/discovery.test.ts`, each driving `runSwingDiscoveryScan` end-to-end (not a reimplementation): (1) flag OFF (default) — a TRIGGERED Legacy triple never reaches `commitCandidates`/opens; (2) flag ON — the same triple reaches the real `computeSwingCommitPlan` and opens; (3) an organic candidate for the same ticker\|direction wins over a same-ticker Legacy triple (no duplicate open). RED→GREEN proved via `git stash` on the three production files (`discovery.ts`, `swing-discovery/route.ts`, `v2/config.ts`): test (2) failed `0 !== 1` pre-fix (reproducing the exact live gap), full file 30/31 pass pre-fix → 31/31 post-fix (`git stash pop`). `legacy-confirm-promote.test.ts` (25/25) and `swing-discovery/route.test.ts` (4/4) unaffected/still green. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `discovery.test.ts` 31/31 · `legacy-confirm-promote.test.ts` 25/25 · `swing-discovery/route.test.ts` 4/4 · full `npm test` run (see PR for the complete count). |
+| **Status** | FIXED (flag-gated, OFF by default) — branch `fix/swing-legacy-commit-bridge-wiring`. |
+
+## 2026-10-09 — [FINDING, largo-swing] #5717's news-specificity re-rank fetches too few items to ever find a genuinely ticker-specific headline for a high-news-volume name — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P3 (same class as #5717 — every individual headline shown is real and genuinely tagged with the ticker, so no single field fails validation; the defect is that the fetch window is too narrow for the already-correct ranking logic to ever see the item it should promote) |
+| **Component** | `src/lib/bie/ecosystem-context.ts` (`fetchEcosystemArsenal`'s single-name `fetchTickerNews` call) |
+| **PR** | fix/largo-news-specificity-fetch-limit |
+| **Found via** | Ask Largo standing sub-mandate — 5-engine live monitor, :20 cycle, deep-diving `GET /api/market/swing/play-brief` for fresh tickers (RILY/PHAT/KD open, INTC/AMZN/HUT/MSTR closed) against `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s C7 (evidence) point |
+
+### Root cause
+
+#5717 (merged 2026-10-08, the day before this finding) added `rankNewsItemsBySpecificity()` to stop
+a broad multi-ticker co-tagged Benzinga story from crowding out a genuinely ticker-specific headline
+in the swing play-brief's "Catalysts & news" section — a real, well-diagnosed fix, and its own unit
+tests correctly prove the ranking function itself is right. But the ranking function can only
+re-order whatever `fetchTickerNews` already fetched, and the live call site
+(`fetchEcosystemArsenal`, same file) still requests `fetchTickerNews(ticker, { limit: 6 })` —
+unchanged by that PR. For a high-news-volume megacap, Benzinga's 6 MOST RECENT items (by
+`published.desc`) can ALL be broad co-tagged roundups, while a genuinely specific item (tagged with
+only this one ticker) sits a few hours further back — just outside that 6-item window, so the
+specificity re-rank never has the chance to promote it; there is nothing in the fetched batch to
+promote.
+
+### Evidence
+
+Live `GET /api/market/swing/play-brief?playId=SWING:AMZN:48&ticker=AMZN&status=CLOSED` (2026-10-09,
+~07:26 ET — one day after #5717 shipped, independently re-checked as part of this cycle's routine
+ticker rotation, not a targeted re-test) still rendered **0 of 4 "Catalysts & news" headlines about
+AMZN specifically**:
+
+- "Anthropic Announces Claude Docs, Slides, And Design Are Out Of Beta..." (co-tagged `AMZN, GOOG,
+  GOOGL` — 3 tickers)
+- "Jim Cramer Says OpenAI Revenue Isn't 'Apples to Apples' With Anthropic..." (co-tagged 4 tickers)
+- "Ahead of DAL Earnings, Elon Musk Mocks Delta's Starlink Snub..." (co-tagged 5 tickers)
+- "Wall Street Still Treats Micron Like a Commodity Stock..." (co-tagged 7 tickers)
+
+Queried the raw Benzinga feed directly (`tickers.any_of=AMZN`, bypassing this repo, same
+rule-out-a-wiring-bug discipline #5717's own finding used): the SAME-day batch also contained, at
+raw recency positions 11 and 12 — outside the live `limit: 6` fetch window —
+
+- "Amazon Web Services Announces Golden Age of Science Accelerator..." (co-tagged: **just `AMZN`**)
+- "Jeff Bezos Could Take Blue Origin Public. Amazon Investors Just Got a New Space Question"
+  (co-tagged: `AMZN, SPCX` — 2 tickers)
+
+Both are genuinely about Amazon and more specific than every item the brief actually showed; neither
+reached the re-rank because `limit: 6` never fetched them in the first place. This is the identical
+symptom #5717 reported fixing, one day later, with different headline instances — confirming the
+gap is structural (the fetch window, not a one-off news cycle that #5717's fix happened to miss).
+
+### Fix rationale
+
+Widened the single-name `fetchTickerNews` call from `limit: 6` to `limit: 20` — still well under
+`fetchTickerNews`'s own 50-item cap (`polygon-news.ts`: `Math.min(opts?.limit ?? 12, 50)`), and
+Benzinga news carries no documented rate limit (same file's own header). This gives
+`rankNewsItemsBySpecificity()` — already correct — a real pool to choose from instead of fixing the
+ranking function a second time. `catalystsSection`'s own `.slice(0, 4)` display count is unchanged;
+only the upstream fetch widened.
+
+Considered and rejected: raising the limit all the way to 50 (the provider's own cap). 20 was chosen
+as a bounded middle ground — enough to reach the specific items observed sitting at positions 8-12
+in both this and #5717's own repro, without fetching (and holding in memory/cache) an unbounded
+amount of news per ticker for no demonstrated benefit beyond that.
+
+**Blast radius — same shared fold #5717 already fixed, now actually effective.** `fetchEcosystemArsenal`
+feeds `assembleEcosystemArsenal()`'s single-name news fold, which in turn feeds three consumers:
+`catalystsSection` (`play-brief-intel.ts`, takes all 4 — the surface that exposed this), and
+`ticker-verdict.ts` / `ecosystem-narrative.ts` (each take only `headlines[0]`). Widening the fetch
+window benefits all three the same way #5717 intended to, for every high-news-volume ticker, not
+only AMZN.
+
+### Evidence the fix is real (RED → GREEN)
+
+Added a regression test asserting the single-name `fetchTickerNews` call requests a limit ≥ 15 (new
+mock capture of the `opts` argument, which the existing mock previously discarded). `git stash`-only
+the implementation line (kept the new test): failed with `fetchTickerNews limit must be wide enough
+... (got 6)` before the fix; after restoring the one-line change, all 37 tests in
+`src/lib/bie/ecosystem-context.test.ts` pass. `npx tsc --noEmit` clean. Full `npm test`: 15880 pass /
+0 fail / 3 skipped (pre-existing, unrelated).
+
+## 2026-10-09 — [FINDING, docs/tooling] `docs/bie/FULL-SYSTEM-AWARENESS.md` Stage 3 claimed four Railway infra probes were "SHIPPED" and live for 3 months after they were deleted — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `docs/bie/FULL-SYSTEM-AWARENESS.md`'s Stage 3 table (the BIE — Backend Intelligence Engine — product's own "what can it see" doc, explicitly designed to be ingested by BIE's knowledge layer so a future question like "does BIE see Railway logs?" retrieves this file's answer instead of the router inventing one) marked four items **SHIPPED**, each naming `src/lib/railway-status.ts` and one of its exported functions (`probeRailwayRuntimeErrors()`, `probeRailwayStatus()`, `probeRailwayResourceUsage()`, `probeRailwayEnvVars()`) as the live implementation wired into `/api/admin/bie-report`'s `railway_runtime_errors`/`railway`/`railway_resource_usage`/`railway_env_vars` fields. The file does not exist. |
+| **Root cause** | `src/lib/railway-status.ts` and every one of its call sites were deleted by commit `0280ced7a` ("chore: purge Railway references + aggressive DB retention", #779, 2026-07-18) as part of the full Railway→AWS ECS infra migration — the commit's own message explicitly says "Delete dead railway-status.ts GraphQL client + tests (402 lines)" and "Remove Railway probe imports/calls from admin BIE report route." That sweep updated ~100 files and explicitly named several other docs it touched (`PGBOUNCER-SETUP`, `PITR-RESTORE-DRILL`, `RAILWAY-CRON-SCHEDULES`, `CLERK_WEBHOOK_CONFIG`, `CLOUDFLARE_SETUP`, `OPS-AUTO-FIX`, `MARKET-OPEN-VALIDATION`, `NIGHTHAWK-OVERNIGHT-DECISION`) — `docs/bie/FULL-SYSTEM-AWARENESS.md` was not among them, so this file's "SHIPPED 2026-07-03" claims (dated 15 days *before* the purge) were simply never revisited. |
+| **Why this matters** | This isn't a routine stale doc — the file's own closing section explains its purpose is to be ingested by BIE itself, specifically so BIE never fabricates an answer about its own capabilities. A doc that confidently claims a deleted capability is live defeats that exact purpose: it would cause BIE (or an agent reading it, human or Claude) to tell a user Railway runtime-error/resource-usage/env-var/deploy-status data is available in the `/api/admin/bie-report` payload when the fields and the code that populated them are gone. The "honest line" summary paragraph compounded this by declaring Stage 3 "now fully closed," burying the regression inside a line that reads as fully resolved. |
+| **Blast radius** | Single file, `docs/bie/FULL-SYSTEM-AWARENESS.md` — 4 table rows (lines ~139-142) + the "honest line, updated 2026-07-03" summary paragraph (lines ~149-155). No other doc references these specific probe names (checked via repo-wide grep); the other Railway-era docs the #779 purge already updated are unaffected. No application code changed — `src/lib/railway-status.ts` was already correctly deleted; this is purely the doc not catching up to that deletion. |
+| **Fix** | Reworded the 4 table rows from `SHIPPED` to `REMOVED 2026-07-18` with the #779 reference and a strikethrough on the dead function name, each naming the concrete AWS/ECS/CloudWatch equivalent that would need to be built to re-close the item (ECS `DescribeServices`/CloudWatch Logs/`GetMetricData`/Secrets Manager, as applicable) rather than leaving a bare "it's gone" with no forward path. Rewrote the "honest line" paragraph to state plainly that Stage 3 is **not** fully closed — the four Railway items are open again — and to flag that the 2026-07-03 version of that exact line was itself the stale claim for roughly three months. |
+| **Fix rationale** | Left every other Stage 3 row (Redis internals, Postgres pool stats, pg_stat_statements, Clerk auth-failure monitoring) untouched — verified those probes' source files (`redis-health.ts`, `db.ts`'s `getDatabasePoolStats`, `pg-stat-statements-health.ts`, `AuthFailureObserver.tsx`) still exist and are still called from `/api/admin/bie-report`, so only the Railway-specific claims were false. Did not attempt to build the ECS/CloudWatch replacement probes themselves — that is new feature work (4 new probes), out of scope for a doc-accuracy fix, and is named explicitly in the new row text as the next step rather than silently deferred. |
+| **Regression guard** | None added — this is prose correcting prose, same category as the `docs/api-audit/README.md` dead-links fix earlier this session; no code path or test exists to assert a markdown table cell's truth against a deleted file automatically. Verified by direct evidence instead: `find . -iname "railway-status*"` (no results), `grep -rn "probeRailway" src/` (zero matches), `git log --oneline --all -- "*railway-status*"` (confirms the deleting commit), and `git show --stat 0280ced7a` (confirms the file + BIE route changes were in that commit, and `docs/bie/FULL-SYSTEM-AWARENESS.md` was not among the docs it touched). |
+| **Gates** | Docs-only change — no `tsc`/test impact. `npx tsx --experimental-test-module-mocks --test src/findings-hygiene.test.ts` (Node 20) still 9/9 after folding. |
+| **Status** | FIXED — branch `fix/bie-doc-stale-railway-probes`. |
+
 ## 2026-10-09 — [FINDING, tooling/largo] Five Largo audit scripts called `mintClerkPremiumSession()` with no arguments — crashed before ever authenticating, and four of them also destructured a return shape that doesn't exist — FIXED
 
 > **kind:** `FINDING`
