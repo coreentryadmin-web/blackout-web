@@ -69,6 +69,49 @@ export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze(
   XXRP: "crypto-xrp",
 });
 
+/**
+ * Inverse/short-leveraged ETFs seeded into `ETF_PROXY_THEMES` above for THEME clustering (SOXS
+ * correctly shares the "semis" theme with NVDA/AMD/SOXL — it is driven by the exact same basket).
+ * But theme is not direction: SOXS is a -3x fund, so a nominal "LONG SOXS" position is an
+ * ECONOMICALLY BEARISH bet on semis, the opposite of a nominal "LONG NVDA" position.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-09): `checkPortfolioOverlap` (portfolio.ts)
+ * compares each book row's raw `direction` field to the candidate's, with no adjustment for this —
+ * live-reproduced on a real MRVL (LONG, bullish) play-brief that already held a real SOXS LONG
+ * position: the book-context narrative read "already holding 1 same-direction position in theme
+ * 'semis': SOXS LONG. MRVL stacks the same wager rather than diversifying risk" — exactly
+ * backwards. A LONG SOXS holder is betting semis fall; pairing it with a LONG MRVL bullish bet is
+ * an INTERNAL CONFLICT (one leg fights the other), not concentration (stacking the identical
+ * wager) — the trader-facing coaching text told a member to read risk in the wrong direction.
+ * `effectiveDirection()` below flips the nominal direction for any ticker in this set before
+ * `portfolio.ts` compares candidate vs. book row, so the same/opposed classification reflects the
+ * REAL economic bet, not the raw long/short field on the option position. Scoped to the one
+ * inverse-leverage name actually seeded above (SOXS) — add a new entry here, not a parallel list,
+ * if another inverse ETF (e.g. SQQQ) is ever added to `ETF_PROXY_THEMES`.
+ */
+export const INVERSE_LEVERAGE_ETFS: ReadonlySet<string> = new Set(["SOXS"]);
+
+/** True when `ticker` is a known inverse/short-leveraged ETF (its nominal LONG/SHORT direction is
+ *  the opposite of its real directional bet on the theme it clusters into). */
+export function isInverseLeverageEtf(ticker: string | null | undefined): boolean {
+  return INVERSE_LEVERAGE_ETFS.has(normalize(ticker));
+}
+
+/**
+ * The REAL directional bet a position represents, flipping the nominal LONG/SHORT for a known
+ * inverse-leverage ETF (see `INVERSE_LEVERAGE_ETFS` above). A LONG SOXS position's effective
+ * direction is SHORT (bearish semis); every other ticker's effective direction equals its nominal
+ * one. Callers that need to compare two positions' REAL economic bet (not just their raw option
+ * side) should compare `effectiveDirection(...)` outputs, not the raw `direction` field directly.
+ */
+export function effectiveDirection(
+  ticker: string | null | undefined,
+  direction: "LONG" | "SHORT",
+): "LONG" | "SHORT" {
+  if (!isInverseLeverageEtf(ticker)) return direction;
+  return direction === "LONG" ? "SHORT" : "LONG";
+}
+
 function normalize(ticker: string | null | undefined): string {
   return (ticker ?? "").trim().toUpperCase();
 }

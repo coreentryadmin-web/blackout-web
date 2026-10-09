@@ -128,3 +128,42 @@ test("excludePositionId by bangerId still reports a genuinely separate banger si
   assert.equal(o.sameThemeSameDirection.length, 1);
   assert.equal(o.sameThemeSameDirection[0]?.bangerId, 2200);
 });
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-09) — live repro: a real MRVL (LONG, bullish)
+// play-brief's Book context section read "already holding 1 same-direction position in theme
+// 'semis': SOXS LONG. MRVL stacks the same wager rather than diversifying risk" against a real
+// open SOXS LONG position. That is backwards: SOXS is a -3x inverse semiconductor ETF, so a LONG
+// SOXS position is a BEARISH bet on semis — the opposite economic bet to a bullish LONG MRVL.
+// Pairing them is an INTERNAL CONFLICT (one leg fights the other), not concentration (stacking the
+// identical wager); the prior raw-`direction`-field comparison told the trader to read their own
+// book's risk exactly backwards. Fixed by classifying on `effectiveDirection` (theme-cluster.ts),
+// which flips the nominal direction for a known inverse-leverage ETF before comparing.
+test("a real SOXS LONG is an OPPOSED bet against a bullish MRVL/NVDA LONG, not concentration (2026-10-09 live finding)", () => {
+  const o = checkPortfolioOverlap(long("MRVL"), [long("SOXS")]);
+  assert.equal(o.theme, "semis");
+  assert.equal(o.hasOverlap, true);
+  assert.equal(
+    o.sameThemeOpposedDirection.length,
+    1,
+    "LONG SOXS is economically bearish semis — opposed to a bullish LONG MRVL, not stacked on top of it",
+  );
+  assert.equal(o.sameThemeSameDirection.length, 0);
+});
+
+test("a SHORT SOXS (bearish semis bet inverted to bullish) IS concentration against a bullish LONG MRVL", () => {
+  const o = checkPortfolioOverlap(long("MRVL"), [short("SOXS")]);
+  assert.equal(o.sameThemeSameDirection.length, 1, "SHORT SOXS's effective direction is LONG — same bullish bet as MRVL");
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});
+
+test("two inverse-leverage legs on each side still compare correctly (SOXS LONG vs SOXS LONG is genuine concentration)", () => {
+  const o = checkPortfolioOverlap(long("SOXS"), [long("SOXS")], { excludeSelfMatch: false });
+  assert.equal(o.sameThemeSameDirection.length, 1, "both legs are the identical bearish bet on semis");
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});
+
+test("SOXL (the bull sibling, not inverse) is unaffected — still compares on raw direction", () => {
+  const o = checkPortfolioOverlap(long("MRVL"), [long("SOXL")]);
+  assert.equal(o.sameThemeSameDirection.length, 1, "SOXL LONG is a genuinely bullish semis bet, same as MRVL LONG");
+  assert.equal(o.sameThemeOpposedDirection.length, 0);
+});
