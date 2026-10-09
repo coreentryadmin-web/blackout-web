@@ -1,3 +1,33 @@
+## WATCH LIST — 2026-10-09 SPX Slayer `/desk` + `/merged` `prior_close`/`pdh`/`pdl` collapse onto today's own close after ET midnight — deploy pending validation
+
+**What was fixed:** The EXTENDED-hours fix immediately below this entry (#5729/#5735) only
+touched `buildSpxDeskPulse` (`/api/market/spx/pulse`). Its sibling `buildSpxDesk` (`/api/market/
+spx/desk` — the shared cache lane also feeding `/api/market/spx/play` and `/api/admin/spx/
+dashboard`) computed its own `prior` via a bare `priorDayFromDailyBars(dailyBars)` with no
+EXTENDED-hours awareness at all, so it carried the IDENTICAL latent bug, invisible until the
+first cross-midnight EXTENDED window after the pulse fix shipped. Live-confirmed 2026-10-09
+~06:43 UTC (02:43 ET): `GET /api/market/spx/desk` AND `GET /api/market/spx/merged` both served
+`price=prior_close=7765.36, pdh=7797.79, pdl=7731.26` (all four fields 2026-10-08's OWN
+close/high/low) while `GET /api/market/spx/pin` (independent computation) correctly reported
+`priorClose=7801.77` (2026-10-07's real prior close) for the same instant — note the earlier
+#5735 entry below this one recommends cross-checking `/pulse` against `/desk` as a trustworthy
+oracle; that recommendation is **retroactively wrong for this exact window** (both were broken
+the same way) until THIS fix deploys. Fix: `buildSpxDesk` now derives its `prior` via the same
+already-tested `latestSessionAndItsOwnPrior` (`spx-session.ts`) whenever `marketStatusLabel()`
+reports `"EXTENDED"`, reusing the exact logic the pulse fix already shipped rather than a new,
+possibly-divergent heuristic. Full write-up:
+`docs/audit/findings-staging/2026-10-09-spx-desk-merged-extended-midnight-prior-close.md`.
+
+**Specific thing to check once this deploys:** tonight, in the early-morning cross-midnight
+window (~12:30-2:30am ET), pull `GET /api/market/spx/desk`, `GET /api/market/spx/merged`, and
+`GET /api/market/spx/pulse` all three — confirm `prior_close`/`pdh`/`pdl` AGREE across all three
+routes, are all DIFFERENT from `price`, and match the true two-sessions-back close/high/low
+(cross-check against real Polygon daily bars, or against `GET /api/market/spx/pin`'s independent
+`priorClose`, which was never affected by either bug). `spx_change_pct`/`gap_pct` on `/desk` and
+`/merged` should also read a real nonzero value, not a false `0`.
+
+---
+
 ## WATCH LIST — 2026-10-09 SPX Slayer EXTENDED-hours `prior_close` collapses onto `price` again after ET midnight — deploy pending validation
 
 **What was fixed:** The SAME-DAY-EARLIER fix (#5729, this file's next entry down) stopped the

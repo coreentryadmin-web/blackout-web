@@ -216,3 +216,34 @@ test("stickyDeskGexFallback: preserves gex_net, gex_king, max_pain from last goo
     "resolveCanonicalDeskGex must capture max_pain from fresh fetch"
   );
 });
+
+test("buildSpxDesk: EXTENDED-hours prior_close must not collapse onto today's own close after ET midnight (2026-10-09 fix)", () => {
+  // Root cause: `priorDayFromDailyBars(dailyBars)` here used bare default args (today,
+  // anchorSessionComplete=false) unconditionally. That's correct BEFORE ET midnight — today's
+  // own just-settled bar (barYmd === today) is excluded, correctly landing on the true prior
+  // day — but WRONG from ET midnight through the next session's open: todayEtYmd() has already
+  // rolled to the NEXT calendar date, so YESTERDAY's close bar (the one `price` is frozen on,
+  // via the live WS snapshot with no fresher tick to offer) now satisfies `barYmd < today`
+  // unconditionally and gets returned as "prior" too — collapsing price === prior_close for the
+  // whole post-midnight stretch of every EXTENDED evening. Confirmed live 2026-10-09 ~06:43 UTC
+  // (02:43 ET): GET /api/market/spx/desk served price=prior_close=7765.36 (2026-10-08's close)
+  // while the sibling, already-fixed /api/market/spx/pulse route (buildSpxDeskPulse, #5729/
+  // #5735) correctly reported prior_close=7801.77 (2026-10-07's real prior close) for the exact
+  // same instant — the identical root cause reincarnated in this sibling function, which was
+  // never given pulse's EXTENDED-hours override (those PRs only touched buildSpxDeskPulse).
+  // Fix: reuse latestSessionAndItsOwnPrior (spx-session.ts, already used/tested by the pulse
+  // fix) to derive the true prior whenever the EXTENDED label says today's own session has
+  // already closed, instead of a bare priorDayFromDailyBars call that can't tell "today just
+  // closed" apart from "today hasn't started yet" once todayEtYmd() has rolled over.
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /const label = marketStatusLabel\(new Date\(\), marketNow\);[\s\S]{0,2000}?const priorFromBars =\s*\n\s*label === "EXTENDED"\s*\n\s*\? latestSessionAndItsOwnPrior\(dailyBars, today\)\.prior\s*\n\s*: priorDayFromDailyBars\(dailyBars, today\);/,
+    "buildSpxDesk must derive priorFromBars from latestSessionAndItsOwnPrior's true prior during the EXTENDED window, not a bare priorDayFromDailyBars(dailyBars) that collapses onto today's own close after ET midnight"
+  );
+  assert.doesNotMatch(
+    src,
+    /const priorFromBars = priorDayFromDailyBars\(dailyBars\);/,
+    "the old unconditional call must be gone, not left alongside the new EXTENDED-aware branch"
+  );
+});
