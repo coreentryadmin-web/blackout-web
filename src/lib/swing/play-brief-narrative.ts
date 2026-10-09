@@ -627,6 +627,43 @@ function actionNarrative(play: TerminalPlay, bucket: "watch" | "open" | "closed"
   return lines.join(" ");
 }
 
+/**
+ * The exact `focal` entry `breakTrigger`'s "Break watch" bullet cites as this play's structural
+ * stop (LONG) / reclaim level (SHORT), if any — same side-filtered `.find()` `breakTrigger` has
+ * used since the 2026-09-11/09-15 fixes referenced below, factored out so a SECOND call site
+ * (`tradeManagerNarrativeSection`'s own level-narration loop, below) can identify the SAME object
+ * by reference rather than re-deriving the selection rule a second time and risking the two
+ * drifting apart.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro: PROF WATCH brief): the narration
+ * loop iterates `focal` nearest-first and stops once `MAX_BULLETS` is reached, with NO awareness
+ * that the reserved, always-shown "Break watch" bullet above depends on one specific entry in
+ * that same array. A LONG breakout's resistance levels (call wall / GEX king / max pain) commonly
+ * cluster NEAR spot while the one real support (put wall) sits much farther away — so on a ticker
+ * with a couple of extra coaching bullets ahead of it (PROF had "Short interest" + "Confluence"
+ * that a sibling ticker in the same scan lacked), the put wall was consistently the one entry
+ * `.find()` selects here for "Break watch" yet the LAST one the narration loop would ever reach —
+ * it never got its own explanatory bullet, while two bullets were spent explaining call wall and
+ * GEX king (the same $7.50 strike, narrated twice) that have nothing to do with the downside risk
+ * the Break watch line names. A member saw "Break watch — lose 5.00" with zero supporting
+ * narration anywhere in "Trade manager read" for WHY 5.00 matters (it IS mentioned, unexplained,
+ * in the separate "Levels on chart"/"What to watch" sections — this is specifically the narrated
+ * coaching bullet going missing). The caller below now identifies this exact level and passes
+ * `{ reserved: true }` into `add()` for it, the same bypass the Break watch/Counter-thesis bullets
+ * already use — so the level a stated invalidation depends on can never be silently truncated.
+ */
+function resolveInvalidationFocalLevel(play: TerminalPlay, focal: FocalLevel[]): FocalLevel | undefined {
+  if (play.direction === "LONG") {
+    return focal.find(
+      (l) => (l.kind === "put_wall" || l.kind === "dark_pool" || l.kind === "king") && l.distancePct < 0,
+    );
+  }
+  if (play.direction === "SHORT") {
+    return focal.find((l) => (l.kind === "call_wall" || l.kind === "king") && l.distancePct > 0);
+  }
+  return undefined;
+}
+
 function breakTrigger(
   play: TerminalPlay,
   focal: FocalLevel[],
@@ -651,12 +688,12 @@ function breakTrigger(
   // real nearest risk while this "Break watch" bullet — in the same response — cited the far more
   // distant put wall. Added to both predicates so `.find()` (nearest-first) picks whichever real
   // wall, including king, is actually closest.
-  const support = focal.find(
-    (l) => (l.kind === "put_wall" || l.kind === "dark_pool" || l.kind === "king") && l.distancePct < 0,
-  )?.price;
-  const resist = focal.find(
-    (l) => (l.kind === "call_wall" || l.kind === "king") && l.distancePct > 0,
-  )?.price;
+  //
+  // Both predicates now live in `resolveInvalidationFocalLevel` above (2026-10-08) — same
+  // selection, exposed so the narration loop can match on object identity.
+  const invalidationLevel = resolveInvalidationFocalLevel(play, focal);
+  const support = play.direction === "LONG" ? invalidationLevel?.price : undefined;
+  const resist = play.direction === "SHORT" ? invalidationLevel?.price : undefined;
 
   // FINDING (Ask Largo standing mandate, 2026-09-19): both branches below always closed with
   // POSITION-MANAGEMENT language ("exit or cut size" / "cover shorts") — correct for an OPEN play
@@ -1146,23 +1183,35 @@ export function tradeManagerNarrativeSection(
   if (spot != null) {
     const focal = collectFocalLevels(ctx, spot);
     const used = new Set<LevelKind>();
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08, live PROF repro — see
+    // `resolveInvalidationFocalLevel`'s own doc comment for the full account): this is the SAME
+    // level `breakTrigger` below will cite in the reserved, always-shown "Break watch" bullet —
+    // when it's also the one `focal` entry this loop would otherwise drop for being farthest from
+    // spot (sorted nearest-first, capped at MAX_BULLETS), the brief ends up naming an invalidation
+    // price with no supporting bullet anywhere in this section. Identify it by reference so its
+    // own narration bypasses the cap exactly like Break watch itself does.
+    const invalidationLevel = resolveInvalidationFocalLevel(play, focal);
 
     for (const level of focal) {
-      if (bullets.length >= MAX_BULLETS) break;
+      const isInvalidationLevel = level === invalidationLevel;
+      // Only skip a level once the cap is hit AND it isn't the one Break watch depends on —
+      // `continue` (not `break`) so a later, farther-sorted invalidation level is still reached
+      // and reserved rather than the loop exiting before it ever gets there.
+      if (!isInvalidationLevel && bullets.length >= MAX_BULLETS) continue;
       if (level.kind === "dark_pool" && !used.has("dark_pool")) {
-        add(narrateDarkPool(level, play, spot));
+        add(narrateDarkPool(level, play, spot), { reserved: isInvalidationLevel });
         used.add("dark_pool");
       } else if (level.kind === "put_wall" && !used.has("put_wall")) {
-        add(narrateWall(level, play, spot));
+        add(narrateWall(level, play, spot), { reserved: isInvalidationLevel });
         used.add("put_wall");
       } else if (level.kind === "call_wall" && !used.has("call_wall")) {
-        add(narrateWall(level, play, spot));
+        add(narrateWall(level, play, spot), { reserved: isInvalidationLevel });
         used.add("call_wall");
       } else if (level.kind === "magnet" && !used.has("magnet") && !bullets.some((b) => /Gamma magnet/i.test(b))) {
         add(narrateMagnet(level, resolveGammaPosture(ctx, vec)));
         used.add("magnet");
       } else if (level.kind === "king" && !used.has("king")) {
-        add(narrateKing(level, resolveGammaPosture(ctx, vec)));
+        add(narrateKing(level, resolveGammaPosture(ctx, vec)), { reserved: isInvalidationLevel });
         used.add("king");
       } else if (level.kind === "max_pain" && !used.has("max_pain")) {
         add(narrateMaxPain(level, spot, resolveGammaPosture(ctx, vec)));

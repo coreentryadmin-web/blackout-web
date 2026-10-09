@@ -1,3 +1,36 @@
+## WATCH LIST — 2026-10-09 Ask Largo swing play-brief "Break watch" could cite an invalidation price with zero supporting narration when MAX_BULLETS dropped the exact level it depends on — deploy pending validation
+
+**What was fixed:** `tradeManagerNarrativeSection`'s "Trade manager read" loop narrates each GEX/
+structure level (put wall, call wall, GEX king, max pain, etc.) into its own bullet, sorted
+nearest-first from spot and capped at `MAX_BULLETS` (14). The section's separate, always-shown
+"Break watch" bullet is built independently by `breakTrigger`, which picks the one real structural
+stop from the SAME sorted level array regardless of the cap. For a LONG breakout, resistance
+levels (call wall/GEX king/max pain) commonly cluster near spot while the one real support (put
+wall) sits much farther away — so on a ticker with a couple of extra coaching bullets ahead of it
+(short interest, a confluence node), put wall was reliably the LAST level the capped loop reached,
+and got silently dropped while Break watch (unaffected by the cap) still cited its price. Live-
+confirmed 2026-10-08 on `GET /api/market/swing/play-brief?playId=SWING:PROF&ticker=PROF&status=OPEN`
+(real committed BANGER-origin position): the "Trade manager read" section's 14 bullets covered Call
+wall $7.50 and GEX king $7.50 (the same strike, twice) but had NO Put wall bullet, immediately
+followed by `**Break watch** — lose **5.00** on a closing basis → structural support failed; exit
+or cut size.` with nothing in the section explaining what $5.00 is. Fix: the loop now identifies
+the exact level `breakTrigger` will cite (via a new shared `resolveInvalidationFocalLevel` helper,
+also used by `breakTrigger` itself so the two selections can't drift apart) and reserves its bullet
+past the cap, the same bypass Break watch/Counter-thesis already use. Full write-up:
+`docs/audit/findings-staging/2026-10-09-swing-break-watch-invalidation-level-dropped.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for a real
+LONG OPEN/HOLD swing position whose put wall sits materially farther from spot than its call wall/
+GEX king/max pain cluster (PROF-shaped: resistance within ~10%, support 20%+ away) and confirm the
+"Trade manager read" section now carries its own "Put wall $X ... dealer support / put wall"
+bullet alongside the "Break watch — lose $X" line, not just the bare reserved line alone. Also
+spot-check a position where the put wall is already the NEAREST level (e.g. PLAY/GMEU-shaped) and
+confirm it still renders exactly as before — this fix only adds a bullet when the cap would
+otherwise have dropped it, it should not duplicate or reorder anything for a ticker that was never
+affected.
+
+---
+
 ## WATCH LIST — 2026-10-08 Ask Largo swing play-brief Management section's "Rails: ... target $X" line showed an already-banked trim level as a fresh, unmet objective, contradicting the "Trim ladder: +100% ✓" line directly above it — deploy pending validation
 
 **What was fixed:** `managementSection` (`play-brief.ts`) rendered `exitPolicy.target_premium` as a

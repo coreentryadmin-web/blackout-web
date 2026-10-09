@@ -2246,6 +2246,84 @@ test("tradeManagerNarrativeSection: Break watch + Counter-thesis survive MAX_BUL
   assert.match(section!.body, /Counter-thesis/i, "counter-thesis must not starve behind MAX_BULLETS");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro: PROF WATCH brief). Unlike the
+// fixture above (where the live Vector put wall sits close to spot, at -3%, and survives the
+// cap on nearest-first merit alone), a LONG breakout commonly has its resistance levels (call
+// wall / GEX king / max pain) clustered NEAR spot while its one real support (put wall) sits much
+// farther away. `collectFocalLevels` sorts nearest-first, so that far put wall is reliably the
+// LAST entry the narration loop reaches — and on a ticker with a couple of extra coaching bullets
+// ahead of it (short interest + a confluence node, both present here), the cap was already hit by
+// the time the loop got there. Pre-fix, this produced a brief whose reserved "Break watch" bullet
+// said "lose $70.00" with NO bullet anywhere in "Trade manager read" explaining what $70 even is —
+// while two bullets were spent narrating call wall and GEX king, the same $105 strike, twice.
+test("tradeManagerNarrativeSection: a distant put wall still gets its own bullet when it anchors Break watch, even past MAX_BULLETS (2026-10-08, live PROF shape)", () => {
+  const vector = {
+    spot: 100,
+    gammaFlip: 98.5,
+    maxPain: 105,
+    vexFlip: 99.2,
+    vexWalls: { callWalls: [{ strike: 104, gex: 1 }], putWalls: [{ strike: 70, gex: 1 }] },
+    regime: { posture: "long", label: "LONG GAMMA" },
+    // The one real support is FAR below spot (-30%) — last in the nearest-first sort — while
+    // every resistance level clusters within a few percent of spot, exactly the PROF shape.
+    gexWalls: { callWalls: [{ strike: 105, gex: 1 }], putWalls: [{ strike: 70, gex: 1 }] },
+    proximity: { strike: 105, side: "call", callout: "within 5% of call wall" },
+    wallEvents: [{ kind: "call_wall_shift", message: "call wall lifted to 105" }],
+    magnet: { strike: 103, distancePct: 3, pull: "up" },
+    confluenceZones: [{ center: 105, score: 8, kinds: ["gex", "max_pain"] }],
+    expectedMove: { bands: [{ sigma: 1, low: 95.8, high: 104.2, movePts: 4.2 }] },
+    technicals: { emaStack: "up", macd: "bull", vwapSide: "above", structure: "BOS up" },
+    play: {
+      headline: "POSITION · momentum long on continuation → target magnet 103",
+      bias: "long",
+      invalidation: "5m close < 98.50",
+      thesis: "trend continuation",
+    },
+  } as SwingPlayBriefContext["vector"];
+
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        status: "HOLD",
+        recommendation: "HOLD",
+        score: 63,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.04,
+          target_premium: 0.2,
+          time_stop_et: "16:00",
+          runner_fraction: 0.5,
+        },
+      }),
+      vector,
+      ecosystem: {
+        ticker: "PROF",
+        recent_flow: null,
+        gex_positioning: { spot: 100, flip: 98.5, gamma_posture: "long", gex_king_strike: 105 },
+        arsenal: {
+          fundamentals: { days_to_cover: 12.3, as_of: "2026-10-08T00:00:00.000Z" },
+        },
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+      readMs: new Date("2026-10-08T23:54:00.000Z").getTime(),
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  // The reserved Break watch bullet must still cite the real, far-below-spot put wall.
+  assert.match(section!.body, /Break watch.*lose \*\*70\.00\*\*/i);
+  // ...and that same level must ALSO have its own explanatory bullet in the body, not just a
+  // bare price in the one reserved line — pre-fix, this assertion is exactly what failed: the
+  // put wall bullet ("dealer support / put wall") was silently dropped by the MAX_BULLETS cap.
+  assert.match(
+    section!.body,
+    /\*\*Put wall 70\.00\*\*.*dealer support \/ put wall/i,
+    "the level Break watch depends on must have its own narrated bullet, not just a bare cited price",
+  );
+});
+
 // Regression for the "thesis or ladder fired" mislabel (FINDINGS 2026-09-10, live repro NRG
 // SWING:NRG:34): a SELL recommendation from a pure expiry_risk force-manage has an intact thesis
 // and an un-fired ladder, so the old hardcoded line was factually wrong. manageReason (threaded
