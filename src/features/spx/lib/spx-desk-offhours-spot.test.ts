@@ -123,12 +123,39 @@ test("buildSpxDeskPulse: EXTENDED-hours override must NOT roll prior_close forwa
   );
 });
 
-test("fetchTodaysOwnCloseIfSessionComplete: calls priorDayFromDailyBars with anchorSessionComplete=true", () => {
+test("fetchTodaysOwnCloseIfSessionComplete: delegates to latestSessionAndItsOwnPrior, not a bare priorDayFromDailyBars(bars, today, true) (2026-10-09 midnight-rollover fix)", () => {
+  // Pre-fix this called `priorDayFromDailyBars(bars, today, true)` directly and discarded the
+  // bars — which worked fine for "today's own close" in isolation but left the CALLER's
+  // separate `priorDayLevels` snapshot (from `priorDayForPulseLane()`) anchored to the same raw
+  // `today`, which can have already rolled to the next calendar date for hours before this
+  // EXTENDED label itself rolls (see `latestSessionAndItsOwnPrior`'s own header, spx-session.ts,
+  // for the live repro and the anchorSessionComplete=true invariant's own test coverage, now
+  // exercised one layer down in spx-session.test.ts).
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /async function fetchTodaysOwnCloseIfSessionComplete\(\)[\s\S]*?return priorDayFromDailyBars\(bars, today, true\);/,
-    "must pass anchorSessionComplete=true so today's own settled bar is eligible, not skipped"
+    /async function fetchTodaysOwnCloseIfSessionComplete\(\)[\s\S]*?const \{ latest, prior \} = latestSessionAndItsOwnPrior\(bars, today\);\s*\n\s*return \{ \.\.\.latest, prior \};/,
+    "must derive both the latest session AND its own true prior from the SAME bars fetch, anchored to the matched bar's own date"
+  );
+});
+
+test("buildSpxDeskPulse: EXTENDED override re-snapshots priorDayLevels from todaysOwnClose.prior, not the (possibly already-rolled-over) priorDayForPulseLane anchor (2026-10-09 midnight-rollover fix)", () => {
+  // Live repro 2026-10-09 ~04:29 UTC (00:29 ET): the EARLIER 2026-10-09 fix (the test above this
+  // one in file history) correctly stopped the override from reading `prior.pdc` AFTER it had
+  // been overwritten — but `priorDayLevels` itself was snapshotted from `priorDayForPulseLane()`,
+  // which separately anchors to raw `todayEtYmd()`. Once ET crosses midnight, that anchor rolls
+  // to the NEXT calendar date hours before the EXTENDED label itself rolls (PT-clock-driven), so
+  // `priorDayLevels` was ALSO already one session too recent by the time the override fired —
+  // `price` and `prior_close` collapsed onto the same bar again, just via a different omission.
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  const block = src.match(
+    /if \(label === "EXTENDED"\) \{\s*\n\s*const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);[\s\S]{0,2000}?\n\s*\}\s*\n\s*\}\s*\n\s*if \(prior\.pdc/
+  );
+  assert.ok(block, `expected to find the EXTENDED override block, got no match in:\n${src.slice(src.indexOf('if (label === "EXTENDED")'), src.indexOf('if (label === "EXTENDED")') + 1800)}`);
+  assert.match(
+    block![0],
+    /if \(todaysOwnClose\.prior\.pdc != null\) \{\s*\n\s*priorDayLevels\.pdh = todaysOwnClose\.prior\.pdh;\s*\n\s*priorDayLevels\.pdl = todaysOwnClose\.prior\.pdl;\s*\n\s*priorDayLevels\.pdc = todaysOwnClose\.prior\.pdc;/,
+    "once the EXTENDED override fires, priorDayLevels must be re-snapshotted from todaysOwnClose's own (bars-anchored) prior, not left at its raw-today-anchored value"
   );
 });
 

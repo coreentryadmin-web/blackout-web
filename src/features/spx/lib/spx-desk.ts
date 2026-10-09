@@ -72,6 +72,7 @@ import {
 import { isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
 import {
   inferRegime,
+  latestSessionAndItsOwnPrior,
   priorDayFromDailyBars,
   priorEtYmd,
   sessionStatsFromMinuteBars,
@@ -1809,15 +1810,34 @@ async function fetchPriorDayCached(): Promise<{
  * so this doesn't change the exclusive-of-today semantics the RTH/pivot callers above depend on.
  * Cold-replica off-hours already has no fast-lane latency budget to protect (see the comment on
  * the caller), so the extra read is safe.
+ *
+ * Also returns `prior` — the TRUE session before whichever bar this matched as "today's own
+ * close", via `latestSessionAndItsOwnPrior` (spx-session.ts). BUG FOUND 2026-10-09, live: this
+ * used to return only the `{pdh,pdl,pdc}` triple, and the caller separately snapshotted
+ * `priorDayLevels` from `priorDayForPulseLane()` (`cachedPriorDay`), which ALSO anchors to raw
+ * `todayEtYmd()`. Both anchors roll to the NEXT calendar date at ET midnight, several hours
+ * BEFORE the EXTENDED-hours label itself rolls (`marketStatusLabel`'s own boundary is PT-clock-
+ * driven, ~3am ET) — so for that whole cross-midnight stretch, "today's own close" and
+ * "priorDayLevels" both silently shifted forward by the SAME one session, colliding on the
+ * SAME bar instead of landing one real session apart. Live-confirmed 2026-10-09 ~04:29 UTC
+ * (00:29 ET): `GET /api/market/spx/pulse` served `price` and `prior_close` both as 7765.36
+ * (2026-10-08's close) while the true prior day (2026-10-07) closed at 7801.77 — the exact
+ * `price === prior_close` shape the 2026-10-09 `priorDayLevels` fix (a few hours earlier the
+ * same day) was supposed to have already closed, reincarnated one layer deeper. Fix: derive
+ * `prior` from the SAME bars this function already fetched, anchored to the matched bar's OWN
+ * date (never to `todayEtYmd()`), so the caller can re-snapshot `priorDayLevels` from it instead
+ * of trusting the wall-clock-anchored `cachedPriorDay` once this override is about to fire.
  */
 async function fetchTodaysOwnCloseIfSessionComplete(): Promise<{
   pdh: number | null;
   pdl: number | null;
   pdc: number | null;
+  prior: { pdh: number | null; pdl: number | null; pdc: number | null };
 }> {
   const today = todayEtYmd();
   const bars = await fetchIndexDailyBars(SPX, priorEtYmd(10), today).catch(() => []);
-  return priorDayFromDailyBars(bars, today, true);
+  const { latest, prior } = latestSessionAndItsOwnPrior(bars, today);
+  return { ...latest, prior };
 }
 
 /** EMAs / VWAP / HOD/LOD — refreshed on a slower cadence so 1s pulse stays light. */
@@ -2036,6 +2056,26 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
       const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete().catch(() => null);
       if (todaysOwnClose?.pdc != null && todaysOwnClose.pdc > 0) {
         prior = { ...todaysOwnClose, pdh: priorDayLevels.pdh, pdl: priorDayLevels.pdl };
+        // BUG FOUND 2026-10-09 (live, ~04:29 UTC / 00:29 ET — a few hours after the sibling
+        // `priorDayLevels.pdc` fix directly above shipped the SAME evening): `priorDayLevels`
+        // was snapshotted a few lines up from `priorDayForPulseLane()`/`cachedPriorDay`, which
+        // ALSO anchors its "exclusive of today" walk-back to raw `todayEtYmd()`. Once ET
+        // crosses midnight, `todayEtYmd()` rolls to the NEXT calendar date — but this EXTENDED
+        // label (PT-clock-driven, `marketStatusLabel`) keeps firing for several more hours
+        // past that (until ~3am ET). For that whole cross-midnight stretch, BOTH the override
+        // above AND `priorDayLevels` itself silently anchor to the ALREADY-ROLLED-OVER "today",
+        // so they collapse onto the SAME most-recently-settled session instead of landing one
+        // real trading day apart — confirmed live: `/pulse` served price=prior_close=7765.36
+        // (2026-10-08's close) while the true prior day (2026-10-07) closed at 7801.77. Fix:
+        // once we know this override is firing, re-snapshot `priorDayLevels` from
+        // `todaysOwnClose.prior` — computed (`latestSessionAndItsOwnPrior`, spx-session.ts)
+        // from the SAME bars fetch, anchored to the matched bar's OWN date rather than to
+        // `todayEtYmd()`, so it is correct whether this fires at 11pm or 2am.
+        if (todaysOwnClose.prior.pdc != null) {
+          priorDayLevels.pdh = todaysOwnClose.prior.pdh;
+          priorDayLevels.pdl = todaysOwnClose.prior.pdl;
+          priorDayLevels.pdc = todaysOwnClose.prior.pdc;
+        }
       }
     }
     if (prior.pdc != null && prior.pdc > 0) {
