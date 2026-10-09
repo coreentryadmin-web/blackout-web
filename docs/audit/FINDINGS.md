@@ -4,6 +4,56 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-09 — [FINDING, spx-desk] SPX prior_close/pdh/pdl collapse-onto-today's-close bug (#5729/#5735/#5740) reappears once the off-hours label rolls past EXTENDED into PRE-MARKET — the fix only covered part of the affected window — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Earlier today (2026-10-09) three PRs (#5729 `/pulse`, #5735, #5740 `/desk`) fixed the ET-midnight-rollover bug where `prior_close`/`pdh`/`pdl` collapse onto today's own just-settled close. A coordinator cycle verified the fix live at ~07:30-07:42 UTC (`/desk` and `/merged` both showed `prior_close=7801.77 ≠ price=7765.36`, matching `/pulse`). Re-polled live at 08:17:56 UTC: **the bug symptom was back** — `/desk`, `/pulse`, and `/merged` all served `price=prior_close=7765.36` again, with `pdh=7797.79`/`pdl=7731.26` (2026-10-08's own intraday range) mislabeled "prior day." Raw Polygon daily bars confirm the true values: 2026-10-08 closed 7765.36 (range 7797.79/7731.26), 2026-10-07 — the TRUE prior day — closed 7801.77 (range 7807.02/7763.34). |
+| **Root cause** | All three fixed functions (`buildSpxDesk`'s `priorFromBars` ternary, `buildSpxDeskPulse`'s off-hours "today's own close" override) gated the correction on `label === "EXTENDED"` only. `marketStatusLabel`'s EXTENDED→PRE-MARKET transition is a PT-clock rollover (~3am ET, i.e. PT midnight) that has nothing to do with whether a new RTH session has started — confirmed directly: `marketStatusLabel(new Date("2026-10-09T07:42:00Z"), null) === "EXTENDED"` while `marketStatusLabel(new Date("2026-10-09T08:00:00Z"), null) === "PRE-MARKET"`, with `isSpxRthActive` still `false` on both sides, all the way to the 9:30am ET open. The underlying defect the earlier PRs fixed — `todayEtYmd()` rolls to the next calendar date at ET midnight while the daily-bars endpoint's most recently SETTLED bar is still dated the prior calendar day, so a bare `priorDayFromDailyBars(bars, today, false)` walk-back collapses "prior" onto that same settled bar — persists for the ENTIRE non-RTH stretch (EXTENDED + PRE-MARKET + CLOSED on a weekend/holiday), not just the EXTENDED sub-window of it. Once the label rolled past ~3-4am ET, the narrow `label === "EXTENDED"` gate stopped firing and the naive, rolled-over-anchored lookup took over again, reproducing the identical bug under a different label. Live-reconfirmed via direct poll at 08:22 UTC (`market_label: 'PRE-MARKET'` on `/pulse` and `/merged`) and via raw Polygon daily-bar fetch matching the live-served (wrong) values exactly. |
+| **Why this matters** | The fix shipped earlier today was real and correct for the window it covered, but the gating condition it chose (one specific label value) was narrower than the actual defect (a time-of-day-independent condition: "no partial bar exists yet for today's own session"). This reproduced the exact member-visible symptom the morning's PRs were meant to close — a 0.00% day-change read, a prior-day range mislabeled as today's own, for roughly 4 hours every single overnight+pre-market session (from the PT-midnight rollover at ~3am ET until the 9:30am ET cash open), not a one-time event. |
+| **Blast radius** | `src/features/spx/lib/spx-desk.ts`: `buildSpxDesk`'s `priorFromBars` ternary; `buildSpxDeskPulse`'s off-hours "today's own close" override (the `!rthOpen && !premarketPlan` branch); and `fetchPriorDayCached()`/`priorDayForPulseLane()` — the latter two are also the sole source feeding `prior.pdc`/`pdh`/`pdl` for the `premarketPlan` (7:00-9:30am ET) sub-window, which had NO override at all before this fix and would have reproduced the same collapse once that window was reached (not yet observed live at investigation time — 04:22 ET — but deterministic from the code, confirmed by tracing `cachedPriorDay`'s own write path). `/api/market/spx/desk`, `/api/market/spx/pulse`, and `/api/market/spx/merged` (built from the first two via `spx-desk-loader.ts`) all share this root cause and are all fixed together. |
+| **Fix** | (1) `buildSpxDesk`: widened `label === "EXTENDED"` to `label !== "RTH OPEN"`, so the `latestSessionAndItsOwnPrior`-anchored prior applies to every non-RTH label, not just EXTENDED. (2) `buildSpxDeskPulse`'s off-hours override: removed the `label === "EXTENDED"` gate entirely (the surrounding `if (!rthOpen && !premarketPlan)` already guarantees non-RTH, so the override now always applies inside that branch — covering EXTENDED, PRE-MARKET-before-7am, and CLOSED alike). (3) `fetchPriorDayCached()`/`priorDayForPulseLane()` now take an explicit `rthOpen: boolean` parameter: during RTH they keep the exact original `priorDayFromDailyBars(bars, today)` behavior (needed by RTH/pivot/gap% callers — see rationale below); off-RTH they use `latestSessionAndItsOwnPrior(bars, today).prior`, closing the previously-unfixed `premarketPlan` (7:00-9:30am ET) sub-window with no added network calls (same 60s cache, same single Polygon fetch). |
+| **Fix rationale** | The correct general condition is "not currently in an RTH session," not any specific non-RTH label — `marketStatusLabel` subdivides that into EXTENDED/PRE-MARKET/CLOSED for display purposes only, and the prior-anchoring logic should not care which subdivision is current. `latestSessionAndItsOwnPrior(bars, today).prior` is **provably equivalent** to the old naive `priorDayFromDailyBars(bars, today, false)` whenever a genuine in-progress "today" bar exists in `bars` (the RTH case: `latest` resolves to that bar's date, making the subsequent `.prior` lookup identical to the old call) — so widening to cover RTH too would have been safe in the common case, but was deliberately NOT done for `fetchPriorDayCached`, to avoid a narrow regression risk in the few moments right at the 9:30am ET open before Polygon has posted the day's first partial bar (where `latest` would incorrectly resolve to yesterday's bar and `.prior` would walk one session too far back) — this is why `fetchPriorDayCached` takes an explicit `rthOpen` flag rather than blanket-switching, while `buildSpxDesk`'s one-shot ternary (which already behaved this way for the EXTENDED case) was simply widened directly. |
+| **Regression guard** | `src/features/spx/lib/spx-desk-offhours-spot.test.ts`: updated the three tests that pinned the old `label === "EXTENDED"`-only gate and the old no-arg `priorDayForPulseLane()`/`fetchPriorDayCached()` signatures to assert the widened conditions, added `assert.doesNotMatch` guards against re-narrowing back to `label === "EXTENDED"` only. `src/features/spx/lib/spx-market-session.test.ts`: new test proving the EXTENDED→PRE-MARKET label rollover is a PT-clock boundary independent of RTH activity (both sides read `isSpxRthActive() === false`), directly supporting the root-cause claim. RED→GREEN confirmed via `git stash`: the updated test file fails (3/12 tests) against the pre-fix `spx-desk.ts`, passes (12/12) against the fix. |
+| **Gates** | `npx tsc --noEmit` clean · `src/features/spx/lib/spx-desk-offhours-spot.test.ts` 12/12 pass · `src/features/spx/lib/spx-market-session.test.ts` 5/5 pass · `src/lib/providers/spx-session.test.ts` 21/21 pass (unchanged, confirms `latestSessionAndItsOwnPrior`/`priorDayFromDailyBars` themselves needed no change) · full `src/features/spx` + `src/lib/providers` suite: 1476/1476 pass, 0 fail. |
+| **Status** | FIXED — branch `fix/spx-prior-close-non-rth-label`. |
+
 ## 2026-10-09 — [FINDING, largo-swing] `counterThesisLine()` only ever checked EMA stack for chart-technical disagreement — missed MACD and market-structure direction, silently dropping real corroborating evidence (live repro: GDDY committed position) — FIXED
 
 > **kind:** `FINDING`
@@ -64,40 +114,6 @@ sandbox's reach — "Claude scheduled tasks" here means an external routine/trig
 session has no ability to create or verify for another account's automation pipeline. Whoever owns
 that pipeline should either wire up the 5 missing providers or decide 2-of-7 is the intended
 scope; this fix only stops the doc from claiming something false in the meantime.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-10-09 — [FINDING, P1 SPX Slayer] `buildSpxDesk`'s `prior_close`/`pdh`/`pdl` collapse onto today's own close after ET midnight — the EXTENDED-hours fix shipped to `/pulse` (#5729/#5735) was never applied to the sibling `/desk` function it feeds `/merged` — FIXED
 
