@@ -210,6 +210,44 @@ describe("mergePulseIntoDesk off-hours derived-field fallback", () => {
     assert.equal(merged.vix, 12.9);
     assert.equal(merged.vix_change_pct, -1.3);
   });
+
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-09, live repro mid an ECS rolling deploy):
+  // mergePulseIntoDesk never assigned prior_close/gap_pct/gap_source at all, so the `...base`
+  // spread silently carried whatever base already had forever, with no fallback to pulse's own
+  // values the way every sibling derived field here (spx_change_pct/vix_change_pct above,
+  // pdh/pdl below) already gets. Harmless when base is a real desk build (it already has a
+  // correct prior_close of its own) but deskShellFromPulse's FALLBACK shell starts base at
+  // emptyDeskPayload (prior_close/gap_pct/gap_source all null) and relies ENTIRELY on this
+  // function to carry pulse's real values through — which it silently failed to do. Live repro:
+  // GET /api/market/spx/merged served available:false/prior_close:null/gap_pct:null/
+  // gap_source:null while the sibling /api/market/spx/pulse route (the only data source this
+  // fallback shell has) carried the real prior_close:7801.77/gap_pct/gap_source the whole time.
+  it("carries prior_close/gap_pct/gap_source through from pulse when base has none (the deskShellFromPulse fallback-shell case)", () => {
+    const base = deskStub({ prior_close: null, gap_pct: null, gap_source: null });
+    const pulse = pulseStub({ prior_close: 7801.77, gap_pct: -0.47, gap_source: "SPX" });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.prior_close, 7801.77);
+    assert.equal(merged.gap_pct, -0.47);
+    assert.equal(merged.gap_source, "SPX");
+  });
+
+  it("falls back to the desk's own prior_close/gap_pct/gap_source when pulse itself has none", () => {
+    const base = deskStub({ prior_close: 7818.93, gap_pct: -0.22, gap_source: "SPX" });
+    const pulse = pulseStub({ prior_close: null, gap_pct: null, gap_source: null });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.prior_close, 7818.93);
+    assert.equal(merged.gap_pct, -0.22);
+    assert.equal(merged.gap_source, "SPX");
+  });
+
+  it("keeps pulse's own live prior_close/gap_pct/gap_source when pulse DID anchor successfully (no regression)", () => {
+    const base = deskStub({ prior_close: 7300, gap_pct: null, gap_source: null });
+    const pulse = pulseStub({ prior_close: 7440, gap_pct: 1.9, gap_source: "SPY" });
+    const merged = mergePulseIntoDesk(base, pulse);
+    assert.equal(merged.prior_close, 7440);
+    assert.equal(merged.gap_pct, 1.9);
+    assert.equal(merged.gap_source, "SPY");
+  });
 });
 
 describe("mergeFlowIntoDesk gamma flip truth", () => {
