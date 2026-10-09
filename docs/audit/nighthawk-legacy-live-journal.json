@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-09T13:22:54Z",
+  "lastUpdated": "2026-10-09T13:37:48Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -663,6 +663,10 @@
     {
       "at": "2026-10-09T13:22:54Z",
       "summary": "D_PULL_STATUS TRANSITION: SKIPPED->GREEN as the ~13:15 UTC morning-confirm cron fired on schedule for editionFor 2026-10-09. All three picks (ACN/VLO/IREN) resolved CONFIRMED, agreeing with pulled=false -- the whole publish->confirm pipeline worked end-to-end for this edition. Prior cycles (12:07Z-13:07Z) correctly held D_pull_status SKIPPED (\"morning confirmation not yet run for this date\") pending this cron; this is the expected transition, not an anomaly. Also noted in passing this cycle (no action, not a bug): B_marks AMBER evidence text shifted mid-morning (~12:07Z onward) from \"mark flagged stale by the API\" to \"no live two-sided quote (bid=0, ask=0) -- mark sourced from last trade/close\" for all three OCCs -- both are the same documented pre-market AMBER sub-state per legacy-healthcheck-eval.mjs verdictForMarkRow() (lines 76-91), which checks bid/ask<=0 before the stale flag; expect B_marks to clear toward GREEN at market open (~13:30 UTC)."
+    },
+    {
+      "at": "2026-10-09T13:37:48Z",
+      "summary": "B_MARKS TRANSITION: AMBER->GREEN at market open (~13:30 UTC) for editionFor 2026-10-09. All three picks now have live two-sided quotes with mark inside [bid, ask]: ACN 4.80 in [4.10,5.50], VLO 4.85 in [3.80,5.90], IREN 1.59 in [1.55,1.63]. Combined with the D_pull_status SKIPPED->GREEN transition logged at 13:22:54Z (morning-confirm cron, all three CONFIRMED), overall healthcheck is now full GREEN across all four stages for the first time this session on this edition -- the whole pre-market->morning-confirm->market-open pipeline worked end-to-end, no anomalies."
     }
   ],
   "knownOpenItems": {
