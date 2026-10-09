@@ -53,6 +53,32 @@ mark internally — only the plain runner-only `P&L:` line was changed).
 
 ---
 
+## WATCH LIST — 2026-10-09 Night Hawk Swings Ask Largo play-brief "Trade manager read" narrative showed a different current P&L than the "Position" section, in the SAME brief — deploy pending validation
+
+**What was fixed:** the fix immediately above only reconciled the "Position" section's own local
+`P&L:` display variable — it never touched `play.pnlPct` itself, the raw field every OTHER
+narrative section reads for "current P&L" framing (`mfeCaptureOutcome`'s "Round-tripped past
+breakeven"/"Gave back X% of peak" lines in `play-brief-narrative.ts`, mirrored in
+`play-brief-narrative-coaching.ts` and `play-brief-intel.ts`, plus the "rail already cleared"
+line). Live-confirmed 2026-10-09 ~05:56 UTC: `GET /api/market/swing/play-brief?playId=SWING:CTVA&
+ticker=CTVA&positionId=1483` — "Position" showed `P&L: -21.7%` (reconciled) while "Trade manager
+read" in the SAME response said "now **-24%**" (the raw, unrounded -23.9 mark/entry-1 read) — a
+2.2pp disagreement between two sections of one brief for the identical position at the identical
+instant. Fix: `reconcileLivePnlPctWithDisplayMark()` (`play-brief-resolve-pure.ts`), applied once
+in `loadSwingPlayBriefContext` (`play-brief-context.ts`) — the single choke point every live brief
+passes through — so `play.pnlPct` itself is reconciled before any section builder runs. Full
+write-up: `docs/audit/findings-staging/2026-10-09-swing-play-brief-narrative-pnl-not-reconciled.md`.
+
+**Specific thing to check once this deploys:** during RTH, pull a live `GET /api/market/swing/
+play-brief` for an OPEN/HOLD/TRIM swing or BANGER-origin position with a sub-few-dollar mark
+(the kind most likely to land on a fractional cent) and confirm EVERY section quoting "current
+P&L" — Position, Trade manager read / narrative giveback lines, coaching bullets, the Intel
+section's giveback line — all agree with each other and with `(Mark - Entry) / Entry` computed by
+hand from the displayed `Mark:`. Previously only the Position section was guaranteed to agree;
+now all of them should.
+
+---
+
 ## WATCH LIST — 2026-10-09 0DTE Night Hawk `zerodte-grade` cron could never grade TODAY's own session — every play's `plan_outcome` lagged a full calendar day — deploy pending validation
 
 **What was fixed:** `fetchUngradedZeroDteRows(beforeDate, limit)` (`src/lib/db.ts`) filters
