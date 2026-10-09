@@ -4490,6 +4490,34 @@ test("whyThisSetupSection: still surfaces a live, legitimate industry read (non-
   assert.match(section.body, /\*\*Industry read:\*\* lagging \*\*Semiconductors\*\* \(SMH\) by 4\.0% over 10 sessions \(\+1\.6% vs \+5\.6%\)\./);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-10-09, live AAPL WATCH brief): `deltaPct` is
+// nameReturnPct − groupReturnPct computed on RAW, unrounded returns (industry-group-rs.ts), then
+// this section rounded it to 1dp INDEPENDENTLY of the already-1dp-rounded `fmtPct` display of the
+// two operands beside it — so the stated "by X%" lag/lead magnitude could silently disagree with
+// the subtraction a reader does themselves from the two percentages right next to it. Real example
+// (live production, same numbers reproduced here): raw nameReturnPct=1.34/groupReturnPct=1.55 (a
+// real pair that independently round to the DIFFERENT display values "+1.3%"/"+1.6%", a 0.3 spread)
+// used to render "by 0.2%" (1.34−1.55=−0.21, rounded alone) instead of the "0.3%" that actually
+// subtracts from what's displayed — a Largo-contract C9 precision violation.
+test("whyThisSetupSection: industry-read lag/lead magnitude always equals the displayed name/group delta, even when raw and rounded deltas disagree", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      ticker: "AAPL",
+      sectorLeadershipFacts: {
+        benchmarkEtf: "XLK",
+        benchmarkLabel: "Technology",
+        kind: "sector",
+        nameReturnPct: 1.34,
+        groupReturnPct: 1.55,
+        deltaPct: 1.34 - 1.55, // raw, unrounded — exactly what industry-group-rs.ts produces
+      },
+    }),
+  );
+  // Must read "0.3%" (1.6 − 1.3), never "0.2%" (the raw delta rounded in isolation).
+  assert.match(section.body, /\*\*Industry read:\*\* lagging \*\*Technology\*\* \(XLK\) by 0\.3% over 10 sessions \(\+1\.3% vs \+1\.6%\)\./);
+  assert.doesNotMatch(section.body, /by 0\.2%/);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18, fresh angle: `dossier.ts`'s commit-time
 // dataQuality.presentPillars/degraded read, pinned into `feature_vector.present_pillars`/
 // `dq_degraded` at commit — feature-vector.ts, commit.ts — but never read back out anywhere in the
