@@ -2299,15 +2299,37 @@ const GRADE_ATTEMPT_INTERVAL_MS = 10 * 60 * 1000;
  * Grade ungraded ledger rows from FINISHED sessions against their official close
  * (Polygon daily bar for that exact date). Lazy: called opportunistically from the
  * scan warm and board builds — no dedicated cron needed.
+ *
+ * `gradeThroughToday` (2026-10-09 finding): `fetchUngradedZeroDteRows(beforeDate)` is a
+ * STRICT `session_date < beforeDate` filter, so passing today's own date (the old,
+ * unconditional behavior below) can never select today's own rows — they only became
+ * eligible the NEXT calendar day, once `todayEt()` advanced past them. That silently
+ * contradicted this function's own doc comment above ("FINISHED sessions") for the one
+ * caller that exists specifically to grade TODAY'S session promptly after today's own
+ * close (`/api/cron/zerodte-grade`, scheduled 16:00-18:45 ET post-close): verified live
+ * 2026-10-08, 7/7 of that session's CLOSED 0DTE rows (WOLF/SPY/CIFR/SPXW/QQQ/IONQ/AMD)
+ * stayed `plan_outcome: null` through 12 same-day cron runs while the prior two sessions
+ * (2026-10-06/07) graded 6/6 each — every session's plan_outcome has been lagging a full
+ * calendar day behind its close, every day, since this lazy grader shipped.
+ *
+ * Scoped to an opt-in flag rather than changing the shared default: `warmZeroDteBoard`'s
+ * own ~2-min RTH-cadence call (10-minute-throttled, `force=false`) must keep excluding
+ * today, because it can fire WHILE today's session is still open — grading an open
+ * position's plan against only the bars-so-far would apply the same-day 15:50 ET
+ * time-stop rule against a PARTIAL day and PERMANENTLY pin a premature outcome (the
+ * `row.plan_outcome == null` guard never re-grades a stamped row). Only the dedicated
+ * post-close cron, which by construction never fires until today's session is genuinely
+ * finished, opts in.
  */
-export async function gradeZeroDteLedger(force = false): Promise<number> {
+export async function gradeZeroDteLedger(force = false, gradeThroughToday = false): Promise<number> {
   if (!dbConfigured()) return 0;
   const now = Date.now();
   if (!force && now - lastGradeAttemptMs < GRADE_ATTEMPT_INTERVAL_MS) return 0;
   lastGradeAttemptMs = now;
 
   const today = todayEt();
-  const ungraded = await fetchUngradedZeroDteRows(today).catch(() => [] as ZeroDteSetupLogRow[]);
+  const fetchBound = gradeThroughToday ? nextTradingDayEt(today) : today;
+  const ungraded = await fetchUngradedZeroDteRows(fetchBound).catch(() => [] as ZeroDteSetupLogRow[]);
   let graded = 0;
   for (const row of ungraded) {
     try {
