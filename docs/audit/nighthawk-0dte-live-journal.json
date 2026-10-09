@@ -995,6 +995,12 @@
       "kind": "GREEN",
       "severity_assessment": "clean close, no escalation",
       "summary": "Session state transitioned cleanly to CLOSED (heat_pct:0) after the 3:50 PM ET hard exit. All 13 graded plays (2026-10-07+08 window) confirmed 0 remaining open/ungraded rows -- no stray positions left unmanaged into the close. 7 plays committed today (AMD/CIFR/SPXW/SPY/WOLF/IONQ/QQQ), final day story already logged in the 19:46:00Z session-day-summary entry. Night Hawk now builds tomorrow's playbook per its own post-close note."
+    },
+    "2026-10-09T13:11:00Z_NEW_DAY_COLDSTART_PLUS_OVERNIGHT_FIX_VERIFIED": {
+      "cycle_time": "2026-10-09T13:11:00Z",
+      "kind": "GREEN",
+      "severity_assessment": "clean start, no escalation -- verifying an overnight fix from a parallel 0DTE session",
+      "summary": "New trading day 2026-10-09, PRE_MARKET (heat_pct:33, upstream_ok:true, 0 setups -- expected pre-open). Overnight, a parallel 0DTE session (session_01Qtnftc16CuWyVLxR8LaMoC) shipped PR #5732: fetchUngradedZeroDteRows(beforeDate) is a strict `session_date < beforeDate` filter, and the post-close grading cron called it with todayEt() as the bound, so TODAY's own rows could never satisfy the filter -- they only became gradeable the NEXT calendar day. This explains the plan_outcome:null I saw on all 7 of 2026-10-08's plays yesterday afternoon (I noted it but didn't flag it since managed_outcome, the as-managed trade-management lane, was populated correctly via a different mechanism -- this bug was specifically in the MECHANICAL plan_outcome grading path). Verified live this morning: all 7 of yesterday's plays (AMD/CIFR/IONQ/QQQ/SPXW/SPY/WOLF) now carry a populated plan_outcome, confirming the fix is live and correct. A continuous one-day lag had existed on every 0DTE plan_outcome since the grader shipped 2026-08-01, invisible in the aggregate record (catches up next day) but visible right after close -- now fixed."
     }
   },
   "sessions": {
