@@ -6,7 +6,11 @@ import type {
   SpxSignalFactor,
 } from "@/features/spx/lib/spx-signals";
 import type { PlayGateResult } from "@/features/spx/lib/spx-play-gates";
-import { emptyCategorizedGateBlocks } from "@/features/spx/lib/playbook-gate-categories";
+import {
+  categorizeGateBlocks,
+  emptyCategorizedGateBlocks,
+  firstGateBlockCategory,
+} from "@/features/spx/lib/playbook-gate-categories";
 import { isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
 import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
@@ -150,14 +154,27 @@ export function intelGates(
   gates: PlayGateResult
 ): SpxPlayPayload["gates"] {
   const play_idea = gates.play_idea ?? buildPlayIdeaIntel(desk, confluence);
+  // Dedupe exact duplicates so the payload (and every consumer — desk panel,
+  // Largo get_spx_play) never carries repeated gate lines. Display-only: the
+  // pass/fail decision is computed from the raw blocks in evaluatePlayGates.
+  const blocks = Array.from(new Set(humanizeGateBlocks(gates.blocks, desk, confluence)));
   return {
     passed: gates.passed,
-    // Dedupe exact duplicates so the payload (and every consumer — desk panel,
-    // Largo get_spx_play) never carries repeated gate lines. Display-only: the
-    // pass/fail decision is computed from the raw blocks in evaluatePlayGates.
-    blocks: Array.from(new Set(humanizeGateBlocks(gates.blocks, desk, confluence))),
-    blocks_by_category: gates.blocks_by_category,
-    first_block_category: gates.first_block_category,
+    blocks,
+    // BUG FIX (2026-10-09, Ask Largo/5-engine standing mandate, live repro on GET
+    // /api/market/spx/play): these two MUST be re-derived from the FINAL humanized+deduped
+    // `blocks` above, not `gates.blocks_by_category`/`gates.first_block_category` — those were
+    // computed by evaluatePlayGates() in spx-play-gates.ts from the RAW, pre-humanization blocks
+    // list. humanizeGateBlocks() (spx-play-intel.ts, fixed 2026-09-28) collapses any two raw
+    // reasons that resolve to the same buildPlayIdeaIntel() line — e.g. "Grade D below minimum"
+    // and "Score N too low — quality setups only" both become one idea line when a weak setup
+    // fails both gates at once, which is the common case. Reusing the stale categorized fields
+    // left the exact duplicate the 2026-09-28 fix was meant to kill sitting in the parallel
+    // `blocks_by_category.quality` array (and `first_block_category`, when it was the only
+    // populated layer) — a consumer reading the categorized view (Largo's get_spx_play passes
+    // it through verbatim, uncapped) saw two "reasons" for what `blocks` already shows as one.
+    blocks_by_category: categorizeGateBlocks(blocks),
+    first_block_category: firstGateBlockCategory(blocks),
     warnings: gates.warnings,
     entry_mode: gates.entry_mode,
     play_idea,
