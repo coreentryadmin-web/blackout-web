@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-09T04:07:45Z",
+  "lastUpdated": "2026-10-09T13:22:54Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -659,6 +659,10 @@
     {
       "at": "2026-10-09T04:07:45Z",
       "summary": "C_record resolved count DECREASED 39->34 for the first time this session - investigated, not a bug. /api/market/nighthawk/record?days=14 (healthcheck default) is a ROLLING N-day window computed fresh from current server time each request (route.ts: windowDays clamped 7-90, default 30; healthcheck passes days=14), not a fixed accumulator. This request landed right after the ET day boundary (04:07 UTC = ~00:07 ET) - the 14-day window shifted forward one calendar day, dropping the oldest day's ~5 resolved plays off the back end, while today's session hasn't resolved anything new yet (markets not open, morning-confirm not run). Buckets still summed consistently (GREEN) confirming no internal inconsistency, just the expected shrink-then-grow shape of a rolling window at a day boundary. Naming this now: a drop in `resolved` right after a UTC/ET midnight crossing is expected rolling-window behavior, not data loss - do not re-flag this shape on future days unless buckets stop summing consistently or the drop is implausibly large (more than one day's worth of plays)."
+    },
+    {
+      "at": "2026-10-09T13:22:54Z",
+      "summary": "D_PULL_STATUS TRANSITION: SKIPPED->GREEN as the ~13:15 UTC morning-confirm cron fired on schedule for editionFor 2026-10-09. All three picks (ACN/VLO/IREN) resolved CONFIRMED, agreeing with pulled=false -- the whole publish->confirm pipeline worked end-to-end for this edition. Prior cycles (12:07Z-13:07Z) correctly held D_pull_status SKIPPED (\"morning confirmation not yet run for this date\") pending this cron; this is the expected transition, not an anomaly. Also noted in passing this cycle (no action, not a bug): B_marks AMBER evidence text shifted mid-morning (~12:07Z onward) from \"mark flagged stale by the API\" to \"no live two-sided quote (bid=0, ask=0) -- mark sourced from last trade/close\" for all three OCCs -- both are the same documented pre-market AMBER sub-state per legacy-healthcheck-eval.mjs verdictForMarkRow() (lines 76-91), which checks bid/ask<=0 before the stale flag; expect B_marks to clear toward GREEN at market open (~13:30 UTC)."
     }
   ],
   "knownOpenItems": {
