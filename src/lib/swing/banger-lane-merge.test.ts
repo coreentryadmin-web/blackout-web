@@ -329,3 +329,52 @@ test("horizonPlayFromBangerPosition does not mark 'closing soon' inside the norm
   assert.equal(play!.contract.dte, 8);
   assert.doesNotMatch(play!.reason, /closing soon/);
 });
+
+// FOUND LIVE 2026-10-09 (Ask Largo standing mandate): `subLane` was computed from TODAY's `dte`
+// (`subLaneForDte(dte)`) on every tick, not frozen at entry — the exact opposite of how every
+// other identity-ish field on this row behaves (`row.sub_lane` is read as a stored, commit-time
+// value for NATIVE swing positions in live-plays.ts; `manage.ts`'s own dossier resolver prefers a
+// persisted `subLane` and only falls back to a live recompute when one was never stored at all).
+// Consequence: a BANGER-origin position entered at 8 DTE (STANDARD) silently reclassifies to
+// TACTICAL as it ages through the 5-7 DTE band, then LOSES its sub-lane entirely (becomes
+// `undefined`) once dte drops under TACTICAL's own floor (5) — exactly the "closing soon" window
+// this file's own header comment says must stay visible, not quietly lose its classification.
+// Reproduced live 2026-10-09 against prod: XP/PBR/CIEN/SG/PSX/PSKY (all BANGER-origin, all
+// dte=0 "closing soon") every one serves `subLane: undefined` on `/api/market/nighthawk/horizons`.
+// This isn't cosmetic: `play-brief.ts`'s execution-quality section looks up
+// `SWING_SUB_LANES[play.subLane]?.liquidity.maxSpreadPct` to compare the position's CURRENT
+// spread against the entry-time liquidity bar it was picked under (`SWING_SUB_LANES[subLane]`,
+// see that file's own "GAP FOUND 2026-09-18" comment) — once subLane goes undefined, that lookup
+// silently resolves to `null` and the brief drops the comparison line entirely, precisely on the
+// final-day positions where spread-vs-liquidity scrutiny matters most.
+test("horizonPlayFromBangerPosition freezes subLane at its ENTRY dte, not the live/current dte", () => {
+  // session_date 2026-09-04, contract_expiry 2026-09-09 -> entry dte = 5 -> TACTICAL (5-7) at entry.
+  const row = bangerRow({ session_date: "2026-09-04", contract_expiry: "2026-09-09" });
+
+  const atEntry = horizonPlayFromBangerPosition(row, new Date("2026-09-04T16:00:00-04:00"));
+  assert.ok(atEntry);
+  assert.equal(atEntry!.contract.dte, 5);
+  assert.equal(atEntry!.subLane, "TACTICAL");
+
+  // Same position, now on its expiry day (dte=0 live) — still genuinely open/managing. subLane
+  // must stay the SAME "TACTICAL" it was entered under, not drift to undefined because today's
+  // dte (0) no longer falls in TACTICAL's own 5-7 band.
+  const onExpiryDay = horizonPlayFromBangerPosition(row, new Date("2026-09-09T10:00:00-04:00"));
+  assert.ok(onExpiryDay);
+  assert.equal(onExpiryDay!.contract.dte, 0);
+  assert.equal(
+    onExpiryDay!.subLane,
+    "TACTICAL",
+    "subLane must stay frozen at its entry-time classification, not vanish as the live dte ages past it",
+  );
+});
+
+test("horizonPlayFromBangerPosition freezes a STANDARD-entry subLane through to expiry too", () => {
+  // session_date 2026-09-04, contract_expiry 2026-09-12 -> entry dte = 8 -> STANDARD (8-15) at entry.
+  const row = bangerRow({ session_date: "2026-09-04", contract_expiry: "2026-09-12" });
+
+  const nearExpiry = horizonPlayFromBangerPosition(row, new Date("2026-09-12T10:00:00-04:00"));
+  assert.ok(nearExpiry);
+  assert.equal(nearExpiry!.contract.dte, 0);
+  assert.equal(nearExpiry!.subLane, "STANDARD");
+});
