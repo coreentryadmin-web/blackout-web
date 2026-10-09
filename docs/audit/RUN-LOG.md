@@ -4,6 +4,29 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-09 (13:35 UTC / Fri 09:36 ET) — [SEO] RTH wake: SPX change_pct traced to honest fail-closed gap (unused field), CLS transient resolved
+
+Confirmed clock myself (Fri 09:36 ET, not a holiday) before treating this as RTH. Resynced to
+`origin/main` (`72270aa` → `da60a19`, other-lane findings-fold). `/api/public/gex-snapshot?ticker=SPX`
+→ `market_session: OPEN`, `degraded: false`, but `change_pct` read `null` across 11 consecutive
+polls (~45s) while SPY (0.3) and QQQ (0.46) both carried real values on the same checks — SPX-
+specific, not transient. `calculation_id` itself briefly went non-monotonic once
+(`...978017`→`...967306`) then resolved cleanly on re-poll, the known-harmless cache-read race;
+unrelated to the `change_pct` gap, which persisted through it. Traced root cause: SPX's spot comes
+from `spot_source: redis_cluster` (`readClusterIndexSpot`, `socket-cluster-health.ts`), whose
+`clusterIndexSpotChangePct` deliberately returns `null` unless the ingest leader's snapshot entry
+was REST-anchored (`open_source === "rest"`) — the same fail-closed guard `liveWsIndexSpot` uses,
+correctly refusing to report a percentage measured against a mid-session WS-bar open as if it were
+a true day-open change. **Confirmed zero visible impact**: grepped every public consumer
+(`GammaSnapshotWidget.tsx`, `HomeGammaPromo.tsx`, `HomeLiveDeskStrip.tsx`) — none render
+`change_pct` at all; it is carried in the payload but never displayed. Not a credibility defect,
+not a fabrication, no PR opened — this is the designed fail-closed behavior doing exactly what it
+should when the leader's anchor isn't REST-sourced. Purged Cloudflare edge, measured live homepage
+CLS: first read **0.0131** (GOOD, but one shift ≥0.01 — notably higher than the week's usual
+~0.0001-0.0003), re-measured immediately → **0.0005, GOOD** — resolved to the known one-off
+transient pattern, not a reproducible regression. No PR opened. Returning to normal search/
+authority posture at 13:00 ET.
+
 ## 2026-10-09 (12:18 UTC / Fri 08:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Pre-open (market opens 09:30 ET), still heartbeat cadence. Resynced to `origin/main`
