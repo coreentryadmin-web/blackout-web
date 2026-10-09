@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-09 (15:35 UTC / Fri 11:35 ET) — [SEO] RTH wake: gamma-snapshot live, SPX change_pct self-resolved, CLS clean
+
+Confirmed clock myself (Fri 11:35 ET, within 09:30-13:00). Resynced to `origin/main`
+(`864f10a` → `b498233`, other-lane dead-code cleanup). `/api/public/gex-snapshot?ticker=SPX` →
+`market_session: OPEN`, `degraded: false`, **`change_pct` now 0.4/0.39** — confirms the prior
+RTH wake's null reading was the transient leader-anchor state traced then
+(`clusterIndexSpotChangePct` requiring a REST-anchored snapshot), not a persistent defect; it
+self-resolved as expected. Polled 5x at 3s intervals: `calculation_id` advanced cleanly and
+monotonically (`...133596`→`...159316`→`...164861`), `change_pct` stable. Purged Cloudflare
+edge, re-measured live homepage CLS — **0.0002, GOOD**. No defects found, no PR opened.
+
 ## 2026-10-09 (14:12 UTC / Fri 10:13 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
 
 Resynced to `origin/main` (`80cf2b6` → `a338b9c`, other-lane journal note). GSC opportunity scan:
