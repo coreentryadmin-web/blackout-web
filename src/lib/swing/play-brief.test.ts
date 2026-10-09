@@ -4217,7 +4217,87 @@ test("composeSwingPlayBrief: Position section does not call a mark 'unknown' whe
     `Mark must not read "unknown" when a real P&L was derived from it, got: ${position!.body}`,
   );
   assert.match(position!.body, /Mark: \*\*\$5\.22\*\*/, `got: ${position!.body}`);
-  assert.match(position!.body, /P&L: \*\*-35\.9%\*\*/, `got: ${position!.body}`);
+  // -36.0%, not the fixture's input -35.9: (5.22-8.15)/8.15 = -35.9509%, which rounds to -36.0 at
+  // 1dp. Tightened by the 2026-10-09 SG-repro fix (see pnlSection's own comment) — P&L is now
+  // redisplayed from the SAME displayed Mark/Entry so hand arithmetic always reconciles; -35.9
+  // was the fixture's hand-picked approximation, not what these exact entry/mark values imply.
+  assert.match(position!.body, /P&L: \*\*-36\.0%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L reconciles with the displayed Mark, not the raw unrounded mid (live SG repro 2026-10-09)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:SG (positionId 1396) — entry
+  // $0.33, true mid $0.575 (a normal bid/ask midpoint, computed as `livePnlPct(entry, mark)`
+  // upstream in banger-lane-merge.ts/adapters.ts BEFORE the mark is rounded to the cent for
+  // display here). Pre-fix this rendered "Mark: **$0.57**" / "P&L: **+74.2%**" — but
+  // (0.57-0.33)/0.33 = +72.7%, not +74.2%, a ~1.5pp gap a member doing the obvious hand-check
+  // on the two numbers directly above/below each other would hit immediately. Fixed: P&L is
+  // redisplayed from the SAME rounded-to-cent mark the Mark: line shows, so the two numbers
+  // always reconcile by hand.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "SG",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.33,
+      mark: 0.575,
+      pnlPct: 74.2,
+      peak: 81.8,
+      trough: -39.4,
+      markIsSync: false,
+      markAsOf: "2026-10-08T16:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T04:00:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.57\*\*/, `got: ${position!.body}`);
+  // +72.7% is (0.57 - 0.33) / 0.33 — the hand-check a member would do against the displayed
+  // Mark and Entry. The pre-fix body showed +74.2% here (the raw-mid-derived figure), which does
+  // not reconcile with the displayed $0.57 mark.
+  assert.match(position!.body, /P&L: \*\*\+72\.7%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+74\.2%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L is left untouched when it does not round-trip from the raw mark (executable-lane fallback, not a mark/entry read)", () => {
+  // Guard test for the SG-repro fix above: when `pnlPct` is NOT simply mark/entry-1 (e.g. the
+  // WS-10 executable-lane `exec.pnl_pct` fallback — a bid/ask-fill-based number with a genuinely
+  // different basis from the mid), recomputing from the mark would silently REPLACE a correct
+  // number with a wrong one. `markRoundTripsPnl`'s tolerance guard must refuse to touch this case.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "XYZ",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 1.0,
+      mark: 1.5, // would imply +50% if treated as a plain mark/entry read
+      pnlPct: 12.3, // a genuinely different basis (e.g. exec.pnl_pct) — far outside rounding noise
+      peak: 20,
+      trough: -5,
+      markIsSync: false,
+      markAsOf: "2026-10-08T16:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T04:00:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$1\.50\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /P&L: \*\*\+12\.3%\*\*/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Thesis health section carries no bias for a healthy SHORT (Largo C5 — a non-directional quality score must never badge bullish on a bearish trade)", () => {
