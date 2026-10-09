@@ -48,22 +48,35 @@ test("buildSpxDeskPulse: cold replica awaits the real prior-day fetch when prior
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*let prior = await priorDayForPulseLane\(\);\s*\n\s*if \(!\(prior\.pdc != null && prior\.pdc > 0\)\) \{\s*\n\s*prior = await fetchPriorDayCached\(\)\.catch\(\(\) => prior\);/,
-    "closed-market branch must await fetchPriorDayCached() when the fire-and-forget priorDayForPulseLane() is still empty"
+    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*let prior = await priorDayForPulseLane\(rthOpen\);\s*\n\s*if \(!\(prior\.pdc != null && prior\.pdc > 0\)\) \{\s*\n\s*prior = await fetchPriorDayCached\(rthOpen\)\.catch\(\(\) => prior\);/,
+    "closed-market branch must await fetchPriorDayCached(rthOpen) when the fire-and-forget priorDayForPulseLane(rthOpen) is still empty"
   );
 });
 
-test("buildSpxDeskPulse: cold replica prefers TODAY's own close once the regular session has closed (2026-09-12 fix)", () => {
+test("buildSpxDeskPulse: cold replica prefers TODAY's own close once the regular session has closed (2026-09-12 fix, widened 2026-10-09)", () => {
   // Root-cause fix for the live 2026-09-12 bug: `prior` above (priorDayForPulseLane /
   // fetchPriorDayCached) is EXCLUSIVE of today by design (correct for RTH/pivot callers), so
-  // once today's own session has genuinely closed (label === "EXTENDED", still the same ET
-  // calendar day) it must be overridden with today's own settled bar rather than served as-is
-  // — otherwise a cold replica serves a stale prior-day close as "today's" off-hours price.
+  // once today's own session has genuinely closed it must be overridden with today's own
+  // settled bar rather than served as-is — otherwise a cold replica serves a stale prior-day
+  // close as "today's" off-hours price.
+  //
+  // WIDENED 2026-10-09: this override used to be gated on `label === "EXTENDED"`, which missed
+  // that the identical root cause persists through PRE-MARKET too (and CLOSED, on a weekend) —
+  // `marketStatusLabel`'s EXTENDED→PRE-MARKET boundary is an unrelated PT-clock rollover
+  // (~3am ET), not a signal that a new RTH session has started. This whole block only runs when
+  // `!rthOpen` already (the surrounding `if (!rthOpen && !premarketPlan)` guard), so the override
+  // must apply unconditionally here, not re-gated on any particular non-RTH label — confirmed
+  // live 2026-10-09 ~08:17-08:22 UTC (label PRE-MARKET): the bug reproduced again post-fix.
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*let prior = await priorDayForPulseLane\(\);[\s\S]*if \(label === "EXTENDED"\) \{\s*\n\s*const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);\s*\n\s*if \(todaysOwnClose\?\.pdc != null && todaysOwnClose\.pdc > 0\) \{\s*\n\s*prior = \{ \.\.\.todaysOwnClose, pdh: priorDayLevels\.pdh, pdl: priorDayLevels\.pdl \};/,
-    "closed-market branch must override the exclusive-of-today prior's price/close with today's own close once the session is EXTENDED"
+    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*let prior = await priorDayForPulseLane\(rthOpen\);[\s\S]*const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);\s*\n\s*if \(todaysOwnClose\?\.pdc != null && todaysOwnClose\.pdc > 0\) \{\s*\n\s*prior = \{ \.\.\.todaysOwnClose, pdh: priorDayLevels\.pdh, pdl: priorDayLevels\.pdl \};/,
+    "closed-market branch must override the exclusive-of-today prior's price/close with today's own close whenever the session isn't RTH, unconditional on which non-RTH label is current"
+  );
+  assert.doesNotMatch(
+    src,
+    /if \(label === "EXTENDED"\) \{\s*\n\s*const todaysOwnClose/,
+    "the override must not be re-narrowed back to the EXTENDED label only — that is the exact bug this test guards against"
   );
 });
 
@@ -139,23 +152,27 @@ test("fetchTodaysOwnCloseIfSessionComplete: delegates to latestSessionAndItsOwnP
   );
 });
 
-test("buildSpxDeskPulse: EXTENDED override re-snapshots priorDayLevels from todaysOwnClose.prior, not the (possibly already-rolled-over) priorDayForPulseLane anchor (2026-10-09 midnight-rollover fix)", () => {
+test("buildSpxDeskPulse: off-hours override re-snapshots priorDayLevels from todaysOwnClose.prior, not the (possibly already-rolled-over) priorDayForPulseLane anchor (2026-10-09 midnight-rollover fix, widened same day)", () => {
   // Live repro 2026-10-09 ~04:29 UTC (00:29 ET): the EARLIER 2026-10-09 fix (the test above this
   // one in file history) correctly stopped the override from reading `prior.pdc` AFTER it had
   // been overwritten — but `priorDayLevels` itself was snapshotted from `priorDayForPulseLane()`,
   // which separately anchors to raw `todayEtYmd()`. Once ET crosses midnight, that anchor rolls
-  // to the NEXT calendar date hours before the EXTENDED label itself rolls (PT-clock-driven), so
-  // `priorDayLevels` was ALSO already one session too recent by the time the override fired —
+  // to the NEXT calendar date hours before the (then-EXTENDED-only-gated) override itself rolled,
+  // so `priorDayLevels` was ALSO already one session too recent by the time the override fired —
   // `price` and `prior_close` collapsed onto the same bar again, just via a different omission.
+  //
+  // WIDENED same day: the override's own gate was later widened from `label === "EXTENDED"` to
+  // unconditional-within-this-off-hours-branch (see the test above), so this block no longer sits
+  // behind an `if (label === "EXTENDED")` wrapper — one fewer closing brace before `if (prior.pdc`.
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   const block = src.match(
-    /if \(label === "EXTENDED"\) \{\s*\n\s*const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);[\s\S]{0,2000}?\n\s*\}\s*\n\s*\}\s*\n\s*if \(prior\.pdc/
+    /const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete\(\)\.catch\(\(\) => null\);[\s\S]{0,2000}?\n\s*\}\s*\n\s*if \(prior\.pdc/
   );
-  assert.ok(block, `expected to find the EXTENDED override block, got no match in:\n${src.slice(src.indexOf('if (label === "EXTENDED")'), src.indexOf('if (label === "EXTENDED")') + 1800)}`);
+  assert.ok(block, `expected to find the off-hours override block, got no match in:\n${src.slice(src.indexOf("const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete"), src.indexOf("const todaysOwnClose = await fetchTodaysOwnCloseIfSessionComplete") + 1800)}`);
   assert.match(
     block![0],
     /if \(todaysOwnClose\.prior\.pdc != null\) \{\s*\n\s*priorDayLevels\.pdh = todaysOwnClose\.prior\.pdh;\s*\n\s*priorDayLevels\.pdl = todaysOwnClose\.prior\.pdl;\s*\n\s*priorDayLevels\.pdc = todaysOwnClose\.prior\.pdc;/,
-    "once the EXTENDED override fires, priorDayLevels must be re-snapshotted from todaysOwnClose's own (bars-anchored) prior, not left at its raw-today-anchored value"
+    "once the override fires, priorDayLevels must be re-snapshotted from todaysOwnClose's own (bars-anchored) prior, not left at its raw-today-anchored value"
   );
 });
 
@@ -217,7 +234,7 @@ test("stickyDeskGexFallback: preserves gex_net, gex_king, max_pain from last goo
   );
 });
 
-test("buildSpxDesk: EXTENDED-hours prior_close must not collapse onto today's own close after ET midnight (2026-10-09 fix)", () => {
+test("buildSpxDesk: off-hours prior_close must not collapse onto today's own close after ET midnight, for ANY non-RTH label (2026-10-09 fix, widened same day)", () => {
   // Root cause: `priorDayFromDailyBars(dailyBars)` here used bare default args (today,
   // anchorSessionComplete=false) unconditionally. That's correct BEFORE ET midnight — today's
   // own just-settled bar (barYmd === today) is excluded, correctly landing on the true prior
@@ -225,25 +242,34 @@ test("buildSpxDesk: EXTENDED-hours prior_close must not collapse onto today's ow
   // rolled to the NEXT calendar date, so YESTERDAY's close bar (the one `price` is frozen on,
   // via the live WS snapshot with no fresher tick to offer) now satisfies `barYmd < today`
   // unconditionally and gets returned as "prior" too — collapsing price === prior_close for the
-  // whole post-midnight stretch of every EXTENDED evening. Confirmed live 2026-10-09 ~06:43 UTC
+  // whole post-midnight stretch until the next cash open. Confirmed live 2026-10-09 ~06:43 UTC
   // (02:43 ET): GET /api/market/spx/desk served price=prior_close=7765.36 (2026-10-08's close)
   // while the sibling, already-fixed /api/market/spx/pulse route (buildSpxDeskPulse, #5729/
   // #5735) correctly reported prior_close=7801.77 (2026-10-07's real prior close) for the exact
-  // same instant — the identical root cause reincarnated in this sibling function, which was
-  // never given pulse's EXTENDED-hours override (those PRs only touched buildSpxDeskPulse).
+  // same instant.
+  //
+  // WIDENED same day (re-found live ~08:17-08:22 UTC / 04:17-04:22 ET): the first fix gated this
+  // on `label === "EXTENDED"` only, which missed that `marketStatusLabel`'s EXTENDED→PRE-MARKET
+  // boundary is an unrelated PT-clock rollover (~3am ET) — the root cause holds for the ENTIRE
+  // non-RTH stretch (EXTENDED, PRE-MARKET, and CLOSED on a weekend/holiday), not just EXTENDED.
   // Fix: reuse latestSessionAndItsOwnPrior (spx-session.ts, already used/tested by the pulse
-  // fix) to derive the true prior whenever the EXTENDED label says today's own session has
-  // already closed, instead of a bare priorDayFromDailyBars call that can't tell "today just
-  // closed" apart from "today hasn't started yet" once todayEtYmd() has rolled over.
+  // fix) to derive the true prior whenever we are NOT in an RTH session, instead of a bare
+  // priorDayFromDailyBars call that can't tell "today just closed" apart from "today hasn't
+  // started yet" once todayEtYmd() has rolled over.
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /const label = marketStatusLabel\(new Date\(\), marketNow\);[\s\S]{0,2000}?const priorFromBars =\s*\n\s*label === "EXTENDED"\s*\n\s*\? latestSessionAndItsOwnPrior\(dailyBars, today\)\.prior\s*\n\s*: priorDayFromDailyBars\(dailyBars, today\);/,
-    "buildSpxDesk must derive priorFromBars from latestSessionAndItsOwnPrior's true prior during the EXTENDED window, not a bare priorDayFromDailyBars(dailyBars) that collapses onto today's own close after ET midnight"
+    /const label = marketStatusLabel\(new Date\(\), marketNow\);[\s\S]{0,4000}?const priorFromBars =\s*\n\s*label !== "RTH OPEN"\s*\n\s*\? latestSessionAndItsOwnPrior\(dailyBars, today\)\.prior\s*\n\s*: priorDayFromDailyBars\(dailyBars, today\);/,
+    "buildSpxDesk must derive priorFromBars from latestSessionAndItsOwnPrior's true prior whenever the label is not RTH OPEN, not a bare priorDayFromDailyBars(dailyBars) that collapses onto today's own close after ET midnight"
   );
   assert.doesNotMatch(
     src,
     /const priorFromBars = priorDayFromDailyBars\(dailyBars\);/,
-    "the old unconditional call must be gone, not left alongside the new EXTENDED-aware branch"
+    "the old unconditional call must be gone, not left alongside the new RTH-aware branch"
+  );
+  assert.doesNotMatch(
+    src,
+    /label === "EXTENDED"\s*\n\s*\? latestSessionAndItsOwnPrior\(dailyBars, today\)\.prior/,
+    "the gate must not be re-narrowed back to the EXTENDED label only — that is the exact bug this test guards against"
   );
 });
