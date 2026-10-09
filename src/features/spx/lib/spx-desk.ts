@@ -2002,11 +2002,15 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     if (!(prior.pdc != null && prior.pdc > 0)) {
       prior = await fetchPriorDayCached().catch(() => prior);
     }
-    // The TRUE previous trading day's range — must survive the EXTENDED-hours price override
-    // below. PDH/PDL is a fixed trading reference (SpxSniperHeader renders it as "Prior-day
-    // high"/"Prior-day low", tone "resistance") that only rolls forward once the NEXT session
-    // begins; it must not jump to today's own just-closed range the instant today ends.
-    const priorDayLevels = { pdh: prior.pdh, pdl: prior.pdl };
+    // The TRUE previous trading day's range/close — must survive the EXTENDED-hours price
+    // override below. PDH/PDL is a fixed trading reference (SpxSniperHeader renders it as
+    // "Prior-day high"/"Prior-day low", tone "resistance") that only rolls forward once the
+    // NEXT session begins; it must not jump to today's own just-closed range the instant today
+    // ends. `pdc` is captured here for the SAME reason (see the `prior_close` bug fixed
+    // 2026-10-09 below) — the field is named "prior CLOSE", i.e. the session strictly before
+    // today, and must not silently become today's own close just because the EXTENDED override
+    // below needs today's close for the DISPLAYED price.
+    const priorDayLevels = { pdh: prior.pdh, pdl: prior.pdl, pdc: prior.pdc };
     // Once today's OWN regular session has already closed (still the same ET calendar day,
     // "EXTENDED"), that settled bar — not the exclusive-of-today `prior` above — is the most
     // recent completed session, and it now exists in Polygon's daily-bars endpoint. Prefer it
@@ -2024,7 +2028,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     // intraday high/low) while /desk correctly reported pdh=7844.52/pdl=7805.96 (2026-10-06's
     // real prior-day range, verified against raw Polygon daily bars) — a cross-route
     // disagreement on the same field name, not a legitimate difference of opinion. Fix: let
-    // today's own close roll forward for the quoted price/prior_close (the original 2026-09-12
+    // today's own close roll forward for the quoted DISPLAYED price (the original 2026-09-12
     // fix's actual intent), but keep pdh/pdl pinned to the real prior day throughout tonight's
     // EXTENDED window; they naturally become today's range on their own once `todayEtYmd()`
     // rolls to the next calendar day and the ordinary exclusive-of-today walk-back picks it up.
@@ -2039,7 +2043,23 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
         ...empty,
         available: true,
         price: prior.pdc,
-        prior_close: prior.pdc,
+        // BUG (found 2026-10-09, live): this used to read `prior_close: prior.pdc` — the SAME
+        // `prior.pdc` the EXTENDED branch just overrode with TODAY's own close two lines above.
+        // That made `price` and `prior_close` IDENTICAL every evening throughout the EXTENDED
+        // window (confirmed live 2026-10-09 ~22:32 UTC: /pulse served price=7765.36,
+        // prior_close=7765.36 — both today's own close — while the sibling /desk route correctly
+        // reported prior_close=7801.77, yesterday's real close, for the exact same instant). A
+        // field literally named "prior close" silently meaning "today's own close" breaks any
+        // change% derived from it: `pulseChangePctFromPriorClose` (spx-change-anchor.ts) computes
+        // `(price - priorClose) / priorClose`, which collapses to exactly 0.00% whenever the two
+        // inputs are equal — hiding the real, nonzero day change (-0.47% that evening) behind a
+        // false "flat" read, the exact 2026-08-07 P0 shape this file's own comments warn about,
+        // reincarnated through `prior_close` instead of a transported `change_pct`. Same root
+        // fix as the 2026-10-07 pdh/pdl bug directly above: `priorDayLevels` now also snapshots
+        // the TRUE exclusive-of-today `pdc` before the override can replace `prior`, so
+        // `prior_close` stays correct (yesterday's close) all evening while `price` still rolls
+        // forward to today's own settled close.
+        prior_close: priorDayLevels.pdc,
         pdh: prior.pdh,
         pdl: prior.pdl,
         market_open: false,

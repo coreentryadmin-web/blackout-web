@@ -83,13 +83,43 @@ test("buildSpxDeskPulse: EXTENDED-hours override must NOT roll pdh/pdl forward o
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /const priorDayLevels = \{ pdh: prior\.pdh, pdl: prior\.pdl \};/,
-    "must snapshot the true exclusive-of-today pdh/pdl before the EXTENDED override can replace `prior`"
+    /const priorDayLevels = \{ pdh: prior\.pdh, pdl: prior\.pdl, pdc: prior\.pdc \};/,
+    "must snapshot the true exclusive-of-today pdh/pdl (and pdc, added 2026-10-09 for the sibling prior_close bug) before the EXTENDED override can replace `prior`"
   );
   assert.doesNotMatch(
     src,
     /prior = todaysOwnClose;/,
     "must never replace `prior` wholesale with today's own bar — that clobbers pdh/pdl too"
+  );
+});
+
+test("buildSpxDeskPulse: EXTENDED-hours override must NOT roll prior_close forward onto today's own close (2026-10-09 fix)", () => {
+  // Regression, same shape as the pdh/pdl fix above but for `prior_close` itself. The
+  // 2026-09-12 fix let `prior.pdc` roll forward to TODAY's own close so the EXTENDED-window
+  // `price` field shows a live-looking close instead of a stale prior-day one — but the final
+  // return statement then read `prior_close: prior.pdc`, reusing that SAME overridden value, so
+  // `price` and `prior_close` were IDENTICAL all evening (both today's own close). A field
+  // literally named "prior close" must mean the session strictly BEFORE today, never today's
+  // own close — confirmed live 2026-10-09: /pulse served price=prior_close=7765.36 (today's
+  // close) while the sibling /desk route correctly reported prior_close=7801.77 (yesterday's).
+  // `pulseChangePctFromPriorClose` derives change% as (price - priorClose) / priorClose, which
+  // silently reads exactly 0.00% whenever the two inputs are equal — hiding a real, nonzero day
+  // change behind a false "flat" read, the 2026-08-07 P0 shape.
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /const priorDayLevels = \{ pdh: prior\.pdh, pdl: prior\.pdl, pdc: prior\.pdc \};/,
+    "priorDayLevels must also snapshot the true exclusive-of-today pdc before the EXTENDED override can replace `prior`"
+  );
+  assert.match(
+    src,
+    /prior_close: priorDayLevels\.pdc,/,
+    "the EXTENDED-window return must serve prior_close from the snapshotted true prior-day pdc, not the (possibly overridden) `prior.pdc`"
+  );
+  assert.doesNotMatch(
+    src,
+    /if \(label === "EXTENDED"\)[\s\S]{0,400}prior_close: prior\.pdc,/,
+    "the EXTENDED-window return block must not serve prior_close straight off `prior.pdc` — scoped to this block only, since other builders (buildSpxDesk/buildSpxDeskPulseMinimal) legitimately use an unrelated `prior.pdc` that never passes through the EXTENDED override"
   );
 });
 
