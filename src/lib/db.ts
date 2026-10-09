@@ -2489,6 +2489,46 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS trough_premium NUMERIC;
   `);
+  // FINDINGS 2026-10-09 (Ask Largo standing mandate — same SEV-2 shape FINDINGS 2026-08-06 already
+  // fixed on the swing_positions side, never ported here): horizonPlayFromBangerPosition
+  // (banger-lane-merge.ts) has ALWAYS hardcoded bid/ask/openInterest/delta/gamma/theta/vega/iv to
+  // null/0 on every committed BANGER-origin contract, regardless of what the provider actually
+  // quotes — not because the data is unavailable, but because nowhere on this row was there a
+  // column to hold it. The data is not even an extra fetch: banger-live-sync's cron ALREADY calls
+  // fetchOptionsUnifiedSnapshot every tick and already has the full snapshot (bid/ask/OI/greeks) in
+  // scope the moment it builds `banger_quote_tick_log` rows (quote-tick-log.ts) from the exact same
+  // `snap` — it was captured for a historical research log and then discarded for the LIVE row.
+  // Since Engine B banger positions are the large majority of the committed Swing book (today's
+  // live snapshot: ~91 of ~92 committed SWING rows are BANGER-origin, 0 native), this is not a
+  // one-ticker gap — it is the default experience for most of what a member/Ask Largo sees on the
+  // Swing desk's Position panel and GEX/greeks surfaces. Columns added here (updateBangerQuoteFields,
+  // positions-db.ts) are purely additive carriage, same discipline as last_mark_at/trough_premium
+  // above and the native swing `quote` field (live-plays.ts/manage-sync.ts): never read by the
+  // scale-out DECISION path (deriveScaleOutAction still reads only `mark`), evidence/display only.
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS bid NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS ask NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS open_interest NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS quote_delta NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS quote_gamma NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS quote_theta NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS quote_vega NUMERIC;
+  `);
+  await p.query(`
+    ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS quote_iv NUMERIC;
+  `);
   // Prospective NBBO quote-tick log (015_banger_quote_tick_log.sql), inlined for ECS standalone cold
   // starts. Persists the SAME options-unified-snapshot data banger-live-sync already fetches every
   // tick (zero additional Polygon calls) so a future exit-rule validation can replay production's own
