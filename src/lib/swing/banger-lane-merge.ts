@@ -56,6 +56,24 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
   // continuity for an already-open position, not a new discovery admission.
   if (!Number.isFinite(dte) || dte < 0 || dte > HORIZONS.SWING.dteMax) return null;
   const closingSoon = dte < HORIZONS.SWING.dteMin;
+  // FIX (found live 2026-10-09, Ask Largo standing mandate): subLane must be derived from the
+  // DTE AT ENTRY (`row.session_date`, first-write-wins pinned — see this module's own accessor
+  // header), never from today's live `dte`. `banger_positions` has no persisted `sub_lane` column
+  // (unlike `swing_positions.sub_lane`, which `live-plays.ts` reads as-stored and never
+  // recomputes), so this used to call `subLaneForDte(dte)` with the LIVE dte every tick — which
+  // silently reclassifies an aging position (STANDARD -> TACTICAL as dte crosses 7) and then
+  // DROPS the classification entirely (`undefined`) once dte falls under TACTICAL's own 5-day
+  // floor, exactly the "closing soon" window the header comment above says must stay visible.
+  // Reproduced live 2026-10-09: every BANGER-origin dte=0 "closing soon" row on prod
+  // (XP/PBR/CIEN/SG/PSX/PSKY) served `subLane: undefined`. This isn't cosmetic:
+  // `play-brief.ts` looks up `SWING_SUB_LANES[play.subLane]?.liquidity.maxSpreadPct` to compare
+  // the CURRENT spread against the entry-time liquidity bar the contract was picked under — once
+  // subLane goes undefined that comparison silently disappears from the brief, precisely on the
+  // final-day positions where spread-vs-liquidity scrutiny matters most. Falls back to the live
+  // `dte` only if `session_date` is somehow unparseable, so a malformed row still gets a best-effort
+  // read rather than silently losing subLane altogether.
+  const entryDte = calendarDte(row.session_date, row.contract_expiry);
+  const subLaneDte = Number.isFinite(entryDte) ? entryDte : dte;
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
@@ -143,7 +161,7 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
       openInterest: row.open_interest ?? 0,
     },
     archetype: "BREAKOUT",
-    subLane: subLaneForDte(dte) ?? undefined,
+    subLane: subLaneForDte(subLaneDte) ?? undefined,
     setupState: "TRIGGERED",
     entryStatus: "AT_TRIGGER",
     serving: row.scaled_already ? "SCALING_OUT" : "MANAGING",
