@@ -1,3 +1,31 @@
+## WATCH LIST — 2026-10-09 Night Hawk Swings Legacy graduation bridge (#5577) now actually wired, but SHIPS DISARMED (flag OFF) — deploy pending an explicit arm decision, not RTH validation
+
+**What was fixed:** `legacyCommitCandidatesFromSnapshot`/`removeCommittedLegacyFromSnapshot`
+(`legacy-confirm-promote.ts`, #5577, 2026-10-01) were built and fully unit-tested to let a Legacy-
+morning-confirm-promoted swing thesis, once it reaches live `setupState: "TRIGGERED"` +
+`entryStatus: "AT_TRIGGER"`, actually reach the real G-S3/G-S4/G-S6/G-S12/G-S14 commit gates — but
+neither function had a single call site anywhere outside their own tests, so every Legacy-promoted
+play stayed permanently `commitGateBlockedBy: ["legacy:exempt"]` no matter what price did. Live-
+confirmed 2026-10-09: VST (promoted 2026-10-07) sat at live `TRIGGERED`/`AT_TRIGGER` while
+`GET /api/market/nighthawk/horizons?view=swings` still served `legacy:exempt`/WAIT for it. Fix wires
+the bridge into `discovery.ts`'s commit loop (fed via a hoisted `readSwingServingSnapshot()` in
+`swing-discovery/route.ts`) — but gates the ENTIRE change behind a new flag,
+`isSwingLegacyCommitBridgeEnabled()` (`SWING_LEGACY_COMMIT_BRIDGE_ENABLED`), **OFF by default**,
+because this touches real-money commit logic and the operator's own prior instruction (recorded
+against #5577) was explicit: don't change production behavior on this path until asked. Full
+write-up: `docs/audit/findings-staging/2026-10-09-swing-legacy-commit-bridge-wiring.md`.
+
+**Specific thing to check once this deploys:** with the flag left OFF (the shipped default),
+Legacy-promoted TRIGGERED plays (e.g. the next VST-shaped row) should behave EXACTLY as before —
+still `legacy:exempt`/WAIT, nothing opens differently. This is NOT a behavior change to validate at
+market open; it is dormant, tested capability. **Do not flip `SWING_LEGACY_COMMIT_BRIDGE_ENABLED=1`
+without a fresh, explicit operator go-ahead** — if/when that's given, the validation to run is:
+confirm a live TRIGGERED Legacy play's `commitGateBlockedBy` actually clears to real gate codes
+(or opens) instead of `legacy:exempt`, and that `GET /api/market/swing/record`/`horizons` never
+shows the same thesis twice (once as a committed position, once still carried as WATCH).
+
+---
+
 ## WATCH LIST — 2026-10-09 SPX Slayer `/desk` + `/merged` `prior_close`/`pdh`/`pdl` collapse onto today's own close after ET midnight — deploy pending validation
 
 **What was fixed:** The EXTENDED-hours fix immediately below this entry (#5729/#5735) only

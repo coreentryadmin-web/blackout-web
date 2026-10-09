@@ -104,6 +104,22 @@ export function isSwingDailyBarGateEnforced(env: Record<string, string | undefin
   return envTriState(env, "SWING_ENGINE_V2_ENFORCE_DAILY_BAR", false);
 }
 
+/** GRADUATION BRIDGE at COMMIT (`legacyCommitCandidatesFromSnapshot`, legacy-confirm-promote.ts) —
+ *  lets a Legacy-morning-confirm-promoted play that has reached TRIGGERED/AT_TRIGGER actually reach
+ *  the real G-S3/G-S4/G-S6/G-S12/G-S14 commit gates instead of staying permanently
+ *  `commitGateBlockedBy: ["legacy:exempt"]`. The bridge function + its full-lifecycle tests shipped
+ *  in #5577 (2026-10-01), but the live-cron wiring into `discovery.ts`'s commit loop was deliberately
+ *  left as a follow-up per the operator's own instruction not to change production behavior until the
+ *  lifecycle is demonstrated correct (see `docs/audit/FINDINGS.md`'s 2026-10-01 entry). OFF by
+ *  default so wiring the bridge into the live scan (this follow-up) ships INERT — the capability is
+ *  built, tested, and ready, but flipping real Legacy-origin theses into real committed positions
+ *  requires an explicit `SWING_LEGACY_COMMIT_BRIDGE_ENABLED=1`, a deliberate separate decision, not a
+ *  side effect of this fix merging. Opt in once ready. */
+export function isSwingLegacyCommitBridgeEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  return envTriState(env, "SWING_LEGACY_COMMIT_BRIDGE_ENABLED", false);
+}
+
 /** Max watch candidates to Cortex-preflight per scan (provider budget). Raised 12→20 (still
  *  hard-capped at 25) on 2026-09-08 — more candidates get a Cortex-informed commit read instead
  *  of going without one. */
