@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-08T22:36:55Z",
+  "lastUpdated": "2026-10-09T04:07:45Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -655,6 +655,10 @@
     {
       "at": "2026-10-08T22:36:55Z",
       "summary": "ISOLATED TRANSIENT DEGRADED-FALLBACK BLIP, FIRST INSTANCE, SELF-CLEARED - watching, not escalating yet. One healthcheck run at 22:36:55Z returned A_edition AMBER 'edition served from degraded fallback source' (available:true but degraded:true, 0 plays) and B_marks GREEN 'no open plays - nothing to check' (a cascade of the empty plays list, not an independent marks problem). Immediately re-fetched the live edition 4x over the next ~15s (3x no-date + 1x explicit ?date=2026-10-09): all 4 came back clean, available:true, 3 plays (ACN/VLO/IREN), no stale/degraded flags. Re-ran the full healthcheck ~1min later: back to the established baseline (A_edition GREEN, B_marks AMBER x3 as expected overnight). This matches edition/route.ts's own documented `timeoutFallbackEdition` behavior exactly (the 2026-09-08 incident write-up in that file's comments: a real computation blowing past maxBlockMs on one request, with no lastGoodEdition warm in that particular server process, honestly reporting degraded rather than masking it) - NOT a new bug, and the route's own honest-disclosure design is working as intended. Filing this as instance 1 of a possible pattern per the 3-instance noise-discipline threshold; a 2nd/3rd recurrence (especially if it fails to self-clear within a few seconds, or recurs multiple times in a short window) would be worth escalating as an actual transient-rate concern. A single isolated blip that clears in <15s is not actionable on its own."
+    },
+    {
+      "at": "2026-10-09T04:07:45Z",
+      "summary": "C_record resolved count DECREASED 39->34 for the first time this session - investigated, not a bug. /api/market/nighthawk/record?days=14 (healthcheck default) is a ROLLING N-day window computed fresh from current server time each request (route.ts: windowDays clamped 7-90, default 30; healthcheck passes days=14), not a fixed accumulator. This request landed right after the ET day boundary (04:07 UTC = ~00:07 ET) - the 14-day window shifted forward one calendar day, dropping the oldest day's ~5 resolved plays off the back end, while today's session hasn't resolved anything new yet (markets not open, morning-confirm not run). Buckets still summed consistently (GREEN) confirming no internal inconsistency, just the expected shrink-then-grow shape of a rolling window at a day boundary. Naming this now: a drop in `resolved` right after a UTC/ET midnight crossing is expected rolling-window behavior, not data loss - do not re-flag this shape on future days unless buckets stop summing consistently or the drop is implausibly large (more than one day's worth of plays)."
     }
   ],
   "knownOpenItems": {
