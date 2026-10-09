@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-07T19:09:40.759Z",
+  "updated_at": "2026-10-09T13:43:59.166Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "106e01963733b22118e934912c4d9dd8d4ce74ef",
+    "last_main_sha": "dbda58847a687ac8904b4d88b77c96c927e615e4",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-21T14:42:18.217Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-21T14:42:18.556Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-21T14:45:18.153Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-21T14:45:19.037Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-09T13:43:47.139Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-09T13:43:53.732Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-09T13:43:59.166Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 5638,
-      "title": "fix(swing): GE Aerospace SIC-3600 catch-all mislabeled Technology instead of Industrials",
-      "branch": "fix/ge-sic-3600-tech-misclassification",
+      "number": 5663,
+      "title": "fix(swing): explicit mark_as_of column for staleness tracking",
+      "branch": "claude/nh-frwl68",
       "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-07T19:05:00Z"
+      "agent": "claude",
+      "draft": true,
+      "verify": "completed/failure",
+      "updated_at": "2026-10-08T02:42:06Z"
     },
     {
       "number": 5547,
