@@ -476,3 +476,92 @@ describe("loadSwingPlayBriefContext: roll history is ticker-identity-checked (ba
     }
   });
 });
+
+// BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): see
+// `reconcileLivePnlPctWithDisplayMark`'s own doc comment (play-brief-resolve-pure.ts) for the full
+// live repro. `ctx.play.pnlPct` is what EVERY section downstream reads for "current P&L" framing
+// (not just the Position section's own locally-reconciled display line) — this proves the loader
+// itself hands out the reconciled number, not the raw one, so every section composed from `ctx.play`
+// agrees with the "Mark:" line a member can see and hand-check.
+describe("loadSwingPlayBriefContext: pnlPct is reconciled with the displayed (rounded-to-cent) mark", () => {
+  let mod: typeof import("./play-brief-context");
+
+  before(async () => {
+    mod = await import("./play-brief-context");
+  });
+
+  it("replaces the raw mark/entry-1 pnlPct with the cent-rounded-mark recompute (live CTVA shape)", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    // Live values: entry $0.23, raw mid $0.175 (displays as "Mark: $0.18"), raw livePnlPct -23.9
+    // (= 0.175/0.23-1 * 100, unrounded). The reconciled figure a member can hand-check against the
+    // displayed $0.18 mark is (0.18/0.23-1)*100 = -21.7391...%.
+    mockResolvedPlay = {
+      ...DEFAULT_RESOLVED_PLAY,
+      id: "SWING:CTVA:1483",
+      ticker: "CTVA",
+      status: "OPEN",
+      entry: 0.23,
+      mark: 0.175,
+      pnlPct: -23.9,
+      peak: 95.7,
+      trough: -34.8,
+    };
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({
+        playId: "SWING:CTVA:1483",
+        ticker: "CTVA",
+        positionId: 1483,
+      });
+      assert.ok(ctx, "context must still resolve");
+      assert.ok(ctx!.play.pnlPct != null, "pnlPct must not be dropped");
+      assert.ok(
+        Math.abs(ctx!.play.pnlPct! - -21.7391) < 0.01,
+        `expected the cent-rounded-mark recompute (~-21.74), got ${ctx!.play.pnlPct}`,
+      );
+      assert.notEqual(
+        Math.round(ctx!.play.pnlPct! * 10),
+        -239,
+        "must not still be the raw, unreconciled -23.9 the live repro served",
+      );
+    } finally {
+      mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
+    }
+  });
+
+  it("leaves pnlPct untouched when it is not a plain mark/entry-1 read (WS-10 executable-lane guard)", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    // mark/entry-1 implies +50%, but pnlPct carries a genuinely different basis (e.g. exec.pnl_pct)
+    // far outside ordinary rounding noise — must be left exactly as given, same guard as
+    // play-brief.ts's own `markRoundTripsPnl`.
+    mockResolvedPlay = {
+      ...DEFAULT_RESOLVED_PLAY,
+      id: "SWING:XYZ:9001",
+      ticker: "XYZ",
+      status: "OPEN",
+      entry: 1.0,
+      mark: 1.5,
+      pnlPct: 12.3,
+    };
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({
+        playId: "SWING:XYZ:9001",
+        ticker: "XYZ",
+        positionId: 9001,
+      });
+      assert.ok(ctx, "context must still resolve");
+      assert.equal(ctx!.play.pnlPct, 12.3, "a non-mark/entry pnlPct basis must not be rewritten");
+    } finally {
+      mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
+    }
+  });
+});

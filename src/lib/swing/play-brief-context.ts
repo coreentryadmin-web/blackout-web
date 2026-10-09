@@ -12,6 +12,7 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext, SwingRollHistory } from "./play-brief-types";
 import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
+import { reconcileLivePnlPctWithDisplayMark } from "./play-brief-resolve-pure";
 import { fetchMeridianForTicker } from "./play-brief-meridian";
 import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
@@ -214,7 +215,26 @@ export async function loadSwingPlayBriefContext(
   const resolved = await resolveSwingPlayForBrief(input);
   if (!resolved) return null;
 
-  const ticker = resolved.play.ticker.toUpperCase();
+  // BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): every
+  // section downstream (`composeSwingPlayBrief` and the ~6 call sites across
+  // play-brief-narrative.ts/-coaching.ts/-intel.ts that read `play.pnlPct` for "current P&L"
+  // framing) must see the SAME reconciled number `positionSection`'s own `pnlForDisplay` already
+  // shows — reconciled here, once, at the single point every live brief passes through, rather
+  // than left for each section to (not) redo. See `reconcileLivePnlPctWithDisplayMark`'s own doc
+  // comment (play-brief-resolve-pure.ts) for the full live repro and why this is the safe choke
+  // point (every existing section-level unit test builds its own fixture and calls
+  // `composeSwingPlayBrief` directly, bypassing this loader entirely, so none of them are
+  // affected by this change).
+  const play = {
+    ...resolved.play,
+    pnlPct: reconcileLivePnlPctWithDisplayMark({
+      entry: resolved.play.entry,
+      mark: resolved.play.mark,
+      pnlPct: resolved.play.pnlPct,
+    }),
+  };
+
+  const ticker = play.ticker.toUpperCase();
 
   // PERFORMANCE FIX (standing latency mandate, 2026-09-22): `meridian` and `meridianPeer` used to
   // be `await`ed one after another BEFORE the `Promise.all` below ever started — meridianPeer
@@ -239,7 +259,7 @@ export async function loadSwingPlayBriefContext(
   // rejection is just another throw here, so it flows through the same failed-flag path.
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
-  const positionId = positionIdFromPlayId(resolved.play.id);
+  const positionId = positionIdFromPlayId(play.id);
   const [
     meridian,
     meridianPeer,
@@ -292,9 +312,9 @@ export async function loadSwingPlayBriefContext(
     withBriefSourceTimeout(
       resolveRootPositionId(positionId, ticker).then((rootId) =>
         loadTickerTrackRecord(
-          resolved.play.ticker,
+          play.ticker,
           rootId,
-          resolved.play.exitAt ? (Date.parse(resolved.play.exitAt) || null) : null,
+          play.exitAt ? (Date.parse(play.exitAt) || null) : null,
         ),
       ),
     ).catch(() => null),
@@ -304,7 +324,7 @@ export async function loadSwingPlayBriefContext(
   // Largo C1: brief read time on the market clock — same convention as Vector/BIE tools.
   const asOf = etStamp(nowMs) ?? new Date(nowMs).toISOString();
   return {
-    play: resolved.play,
+    play,
     asOf,
     sessionDate: etSessionDate(nowMs),
     scanAsOf: resolved.scanAsOf,
