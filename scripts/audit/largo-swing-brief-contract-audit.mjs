@@ -320,10 +320,10 @@ function auditC10HistoricalContext(envelope) {
  * Main audit runner
  */
 async function auditPlayBriefs() {
-  const session = await mintClerkPremiumSession();
-  if (!session) {
-    console.error("Failed to mint session");
-    process.exit(1);
+  const session = await mintClerkPremiumSession({ appUrl: BASE });
+  if (!session || session.skip) {
+    console.error(`SKIP — could not mint a Clerk session: ${session?.reason ?? "unknown"}`);
+    process.exit(2);
   }
 
   const results = {
