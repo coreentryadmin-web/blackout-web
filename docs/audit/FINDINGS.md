@@ -4,6 +4,56 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-09 — [FINDING, P2 SPX Slayer] EXTENDED-hours `prior_close` silently equaled today's own close, hiding the real day change — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | During the post-close EXTENDED-hours window (after 4pm ET, same calendar day), `GET /api/market/spx/pulse` served `price` and `prior_close` as the SAME value — today's own just-closed settled bar — instead of `prior_close` meaning the session strictly before today. Live-confirmed 2026-10-09 ~22:32 UTC: `/pulse` reported `price=7765.36, prior_close=7765.36` (both today's own close), while the sibling `GET /api/market/spx/desk` route correctly reported `prior_close=7801.77` (yesterday's real close) for the exact same instant. |
+| **Root cause** | The 2026-10-07 fix for the sibling PDH/PDL bug (#5646) snapshotted `priorDayLevels = { pdh: prior.pdh, pdl: prior.pdl }` before the EXTENDED-hours branch replaces `prior` with `fetchTodaysOwnCloseIfSessionComplete()`'s result (`prior = { ...todaysOwnClose, pdh: priorDayLevels.pdh, pdl: priorDayLevels.pdl }`), re-attaching the preserved pdh/pdl — but the EXTENDED branch's own return statement still read `prior_close: prior.pdc`, the SAME `prior.pdc` that assignment had just overridden with TODAY's own close two lines above. `priorDayLevels` never captured `pdc`, so there was nothing uncontaminated left to serve `prior_close` from. |
+| **Why this is a real bug, not a legitimate semantic choice** | `prior_close` is a standard field name meaning the close of the session strictly before today — `pulseChangePctFromPriorClose` (`spx-change-anchor.ts`) computes `(price - priorClose) / priorClose`, which collapses to exactly 0.00% whenever `price` and `prior_close` are identical. That hid a real, nonzero day change (-0.47% at the time this was caught live) behind a false "flat" read — the exact 2026-08-07 P0 shape this file's own comments already warn about, reincarnated through `prior_close` instead of a transported `change_pct`. |
+| **Blast radius** | `buildSpxDeskPulse()`'s EXTENDED-hours branch only (the nightly post-close-to-midnight ET window) — the `prior_close` field on `/api/market/spx/pulse` and anything deriving change% from it client-side. Checked every other `prior_close: prior.pdc` call site in `spx-desk.ts` (lines 1572, 1708, 2129, 2146, 2166, 2266): all belong to `buildSpxDesk`/`buildSpxDeskPulseMinimal` or other branches that never pass through the EXTENDED override, so `prior.pdc` there is the real, untouched prior-day close and was never wrong. Only the one EXTENDED-branch return (line ~2062) was affected. |
+| **Fix** | `priorDayLevels` now also snapshots `pdc: prior.pdc` at the same point it already snapshots `pdh`/`pdl` (before the override can replace `prior`), and the EXTENDED-branch return now serves `prior_close: priorDayLevels.pdc` instead of `prior.pdc`. `price` still rolls forward to today's own settled close (the original 2026-09-12 fix's actual intent, unchanged); only `prior_close` is corrected to stay pinned to the true prior day. |
+| **Fix rationale** | Same root-cause shape and same fix pattern as the 2026-10-07 pdh/pdl bug (#5646) — extended the existing `priorDayLevels` snapshot object rather than introducing a second, parallel snapshot, so the two related fixes stay visually and structurally paired in the source. Deliberately did not touch the other `prior_close: prior.pdc` call sites (confirmed correct above), `buildSpxDesk()`'s own `priorFromBars`, or the RTH/premarket branches. |
+| **Regression guard** | `src/features/spx/lib/spx-desk-offhours-spot.test.ts`: updated the existing pdh/pdl regression assertion to also require the `pdc` snapshot, and added a new test asserting (a) `priorDayLevels` captures `pdc` and (b) the EXTENDED-branch return serves `prior_close` from the snapshot, not from the (possibly overridden) `prior.pdc`. RED→GREEN confirmed via restoring only `spx-desk.ts` to its pre-fix `origin/main` state: 2/10 tests fail pre-fix (the updated existing assertion + the new one), 10/10 pass post-fix. |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/spx-desk-offhours-spot.test.ts` 10/10 pass · full `src/features/spx/lib/*.test.ts` suite 824/824 pass, 0 fail (Node 20.20.2). |
+| **Status** | FIXED — branch `fix/spx-extended-prior-close-today-close`. |
+
 ## 2026-10-09 — [FINDING, largo-swing] "What to watch"'s "Structural support node" hardcoded put wall while the authoritative "Break watch" level (and `envelope.invalidation`) can cite a nearer GEX king or dark-pool print instead — two different numbers for the same play's one real support level — FIXED
 
 > **kind:** `FINDING`
@@ -78,40 +128,6 @@ fixture with GEX king nearer than put wall (same shape as the live TNGX repro) a
 returned `"Structural support node: put wall **90.00**"` while the narrative's "Break watch"
 correctly cited `97.00`. GREEN post-fix: both sections now cite `97.00`. Full suite: `tsc
 --noEmit` clean; `npm test` (Node 20.20.2) 15843/15843 passing, 0 failures.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-10-09 — [FINDING, largo-swing] "Break watch" can cite an invalidation price with zero supporting narration — MAX_BULLETS truncation can drop exactly the level it depends on — FIXED
 
