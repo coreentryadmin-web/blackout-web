@@ -360,6 +360,36 @@ function pnlSection(play: TerminalPlay): RichSection {
   // risking drift) a second time — see that function's own comment for the EBS repro that made a
   // second call site necessary.
   const markGenuinelyUnknown = optionMarkGenuinelyUnknown(play);
+  // BUG FOUND (2026-10-09, Ask Largo standing mandate — live SG repro, positionId 1396): `Mark:`
+  // above renders `play.mark` (the raw, full-precision mid — e.g. $0.575, a normal bid/ask
+  // midpoint, NOT an edge case) through `fmtUsd`, which rounds to the cent for display ("$0.57").
+  // `P&L:` renders `play.pnlPct`, which was computed upstream (banger-lane-merge.ts's
+  // `livePnlPct`/adapters.ts's `livePnl`) from that SAME raw, UNROUNDED mid — so the two displayed
+  // numbers stop reconciling whenever the true mid lands on a fractional cent. Live repro: entry
+  // $0.33, mid $0.575 showed "Mark: **$0.57**" / "P&L: **+74.2%**", but a member doing the obvious
+  // hand-check gets (0.57-0.33)/0.33 = +72.7%, a ~1.5pp gap right under the two numbers that most
+  // directly invite that check. Fix: redisplay `P&L:` from the SAME rounded-to-cent mark the
+  // `Mark:` line already shows, so hand arithmetic on the two displayed dollar figures always
+  // reproduces the displayed percentage — the exact self-consistency principle `reconcileStrikeTotal`
+  // (round-floats.ts) already applies one layer up ("a member could manually add up... always
+  // agree"), extended to this narrative pairing. Guarded by `markRoundTripsPnl`: only trust that
+  // `play.pnlPct` really is the plain mark/entry-1 read (and so is safe to redisplay this way) when
+  // recomputing it from the RAW mark already lands within ordinary 1dp rounding noise of the stored
+  // value — `exec.pnl_pct` (adapters.ts's WS-10 executable-lane fallback, a bid/ask-fill-based
+  // number with a different basis entirely) would NOT pass this check, so it is left untouched.
+  const markRoundTripsPnl =
+    !markGenuinelyUnknown &&
+    play.entry != null &&
+    Number.isFinite(play.entry) &&
+    play.entry !== 0 &&
+    play.mark != null &&
+    Number.isFinite(play.mark) &&
+    play.pnlPct != null &&
+    Number.isFinite(play.pnlPct) &&
+    Math.abs((play.mark / play.entry - 1) * 100 - play.pnlPct) <= 0.5;
+  const pnlForDisplay = markRoundTripsPnl
+    ? (Math.round(play.mark! * 100) / 100 / play.entry! - 1) * 100
+    : play.pnlPct;
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
     markGenuinelyUnknown
@@ -367,7 +397,7 @@ function pnlSection(play: TerminalPlay): RichSection {
       : markUnsynced
         ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
         : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
-    `P&L: **${fmtPct(play.pnlPct)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
+    `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     `Peak: **${fmtPct(play.peak)}**`,
     // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
     // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
