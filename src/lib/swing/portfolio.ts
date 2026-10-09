@@ -14,7 +14,7 @@
 // PURE & deterministic — no IO. Evidence-only: flags overlap; sizes and blocks nothing.
 
 import type { PlayDirection } from "../horizon-fanout";
-import { resolveTheme, sameThesis } from "./theme-cluster";
+import { resolveTheme, sameThesis, effectiveDirection } from "./theme-cluster";
 
 /** A held (or candidate) position — the minimum the overlap check needs. */
 export interface PortfolioPosition {
@@ -133,7 +133,15 @@ export function checkPortfolioOverlap(
       continue;
     }
     if (!sameThesis(candidate.ticker, pos.ticker)) continue;
-    if (pos.direction === candidate.direction) sameDir.push(pos);
+    // Classify by EFFECTIVE direction, not the raw field — a LONG position in a known inverse-
+    // leverage ETF (e.g. SOXS) is an economically SHORT bet on the theme it clusters into (see
+    // `effectiveDirection`'s own doc comment for the live repro: a real SOXS LONG was narrated as
+    // "stacking the same wager" alongside a real bullish MRVL LONG, exactly backwards). Raw
+    // `direction` is still used for self-match exclusion above — that's an identity check (is this
+    // row the candidate's own position), not an economic-bet comparison, so it must stay literal.
+    const candidateEffective = effectiveDirection(candidate.ticker, candidate.direction);
+    const posEffective = effectiveDirection(pos.ticker, pos.direction);
+    if (posEffective === candidateEffective) sameDir.push(pos);
     else opposedDir.push(pos);
   }
 

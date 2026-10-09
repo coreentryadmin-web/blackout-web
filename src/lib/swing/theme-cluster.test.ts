@@ -6,6 +6,8 @@ import {
   BROAD_MARKET_THEME,
   ETF_PROXY_THEMES,
   CORRELATION_THEMES,
+  isInverseLeverageEtf,
+  effectiveDirection,
 } from "./theme-cluster.ts";
 
 test("SEV-9 invariant: sameThesis('QQQ','NVDA') === true", () => {
@@ -171,4 +173,27 @@ test("MTSI (MACOM Technology Solutions) clusters into semis, not its own isolate
   assert.equal(sameThesis("MTSI", "KLAC"), true);
   // Not merged into an unrelated theme just because both are "tech"-adjacent.
   assert.equal(sameThesis("MTSI", "AAPL"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-09): SOXS correctly shares the "semis" theme
+// with NVDA/MRVL (it is driven by the exact same basket) but is a -3x INVERSE fund, so a nominal
+// LONG SOXS position is an economically BEARISH bet — the opposite of a nominal LONG NVDA/MRVL
+// position. `effectiveDirection` flips the nominal direction for exactly this case so a caller
+// comparing REAL economic bets (portfolio.ts's same/opposed-direction classification) gets the
+// right answer. Live-reproduced on a real MRVL play-brief: see portfolio.test.ts's sibling test
+// for the end-to-end narrative-level repro.
+test("SOXS is a known inverse-leverage ETF; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(isInverseLeverageEtf("SOXS"), true);
+  assert.equal(isInverseLeverageEtf("soxs"), true); // case-insensitive
+  assert.equal(effectiveDirection("SOXS", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("SOXS", "SHORT"), "LONG");
+});
+
+test("every other ticker's effective direction equals its nominal one, including SOXS's own bull sibling SOXL", () => {
+  assert.equal(isInverseLeverageEtf("SOXL"), false);
+  assert.equal(isInverseLeverageEtf("NVDA"), false);
+  assert.equal(isInverseLeverageEtf(null), false);
+  assert.equal(isInverseLeverageEtf(undefined), false);
+  assert.equal(effectiveDirection("SOXL", "LONG"), "LONG");
+  assert.equal(effectiveDirection("NVDA", "SHORT"), "SHORT");
 });
