@@ -126,14 +126,21 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
       right: "C",
       dte,
       mid,
-      delta: null,
-      gamma: null,
-      theta: null,
-      vega: null,
-      iv: null,
-      bid: null,
-      ask: null,
-      openInterest: 0,
+      // FIX (2026-10-09, Ask Largo standing mandate — FINDINGS 2026-10-09 / migration 017): these
+      // used to be hardcoded null/0 regardless of what the provider actually quoted — not because
+      // the data was unavailable, but because banger_positions had no column to hold it. The cron
+      // (banger-live-sync) already fetches this exact snapshot every tick for the quote-tick log;
+      // `updateBangerQuoteFields` now carries it onto this row instead of discarding it. Honest
+      // null when a tick hasn't landed yet (pre-migration row, or a quote-less tick) — never
+      // fabricated, same discipline every other field on this row already follows.
+      delta: row.quote_delta,
+      gamma: row.quote_gamma,
+      theta: row.quote_theta,
+      vega: row.quote_vega,
+      iv: row.quote_iv,
+      bid: row.bid,
+      ask: row.ask,
+      openInterest: row.open_interest ?? 0,
     },
     archetype: "BREAKOUT",
     subLane: subLaneForDte(dte) ?? undefined,
