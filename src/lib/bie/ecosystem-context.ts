@@ -476,7 +476,21 @@ async function fetchEcosystemArsenal(ticker: string, scope: "index" | "single_na
       single ? fetchNextEarningsDate(ticker).catch(() => null) : Promise.resolve(null),
       single ? fetchTickerFundamentalsBundle(ticker).catch(() => null) : Promise.resolve(null),
       single ? fetchRelatedCompanies(ticker).catch(() => null) : Promise.resolve(null),
-      (single ? fetchTickerNews(ticker, { limit: 6 }) : fetchMarketCatalysts({ limit: 8 })).catch(() => null),
+      // BUG FOUND (Ask Largo standing mandate, 2026-10-09 :20 cycle, live repro GET
+      // /api/market/swing/play-brief?playId=SWING:AMZN:48): #5717 added rankNewsItemsBySpecificity()
+      // to stop broad multi-ticker co-tagged stories from crowding out a genuinely ticker-specific
+      // headline, but it can only re-rank whatever this call fetched — and `limit: 6` fetched only
+      // Benzinga's 6 MOST RECENT items. For a high-news-volume megacap, all 6 most-recent items can
+      // be broad roundups (an AI-industry product launch, a market-wide "whale activity" listicle)
+      // while a genuinely ticker-specific story (tagged with ONLY this ticker) sits a few hours
+      // further back, just outside that window — re-verified live 2026-10-09: AMZN's brief STILL
+      // showed 4/4 generic multi-ticker headlines, same symptom #5717 itself reported fixing, one day
+      // later, with different headlines (AWS/Alexa that time, Anthropic/Cramer/Musk/Micron this time)
+      // — a structural gap in the fetch window, not a one-off news cycle. Widened to 20 (still well
+      // under fetchTickerNews's own 50-item cap, and Benzinga news carries no rate limit per
+      // polygon-news.ts's header) so the re-rank has a real pool — not just a fix to the ranking
+      // function, which was already correct on whatever it was given.
+      (single ? fetchTickerNews(ticker, { limit: 20 }) : fetchMarketCatalysts({ limit: 8 })).catch(() => null),
       single ? Promise.resolve(null) : fetchPolygonMacroBackdrop().catch(() => null),
       single ? Promise.resolve(null) : fetchMarketBreadthBundle().catch(() => null),
     ]);
