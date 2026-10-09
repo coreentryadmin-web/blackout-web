@@ -1157,9 +1157,20 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
     );
   }
   if (snap.deltaFromMedian < -15) {
+    // Found live 2026-10-08 (Ask Largo standing mandate, raised on #4076 comment 6067024911):
+    // GOOGL's own brief named "Leader: VST @ 76 — confirm before adding size" while VST sat on the
+    // WATCH board unable to ever commit (commitGateBlockedBy: ["legacy:exempt"], the #5577
+    // graduation-bridge wiring gap, not a real gate) — reads as "go confirm this, it's about to
+    // trigger" about a ticker that structurally cannot fire a commit right now for a plumbing
+    // reason unrelated to its own setup quality. Caveat rather than suppress: the score/rank
+    // comparison is still honest context, it's specifically the "go look at this one" implication
+    // that needed the disclosure.
+    const caveat = snap.topLegacyExemptOnly
+      ? " (structurally blocked from committing — pending #5577 wiring, not a live gate)"
+      : " — confirm before adding size";
     return (
       `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
-      `${snap.deltaFromMedian} vs median). Leader: **${snap.topTicker ?? "—"}** @ **${snap.topScore ?? "—"}** — confirm before adding size.`
+      `${snap.deltaFromMedian} vs median). Leader: **${snap.topTicker ?? "—"}** @ **${snap.topScore ?? "—"}**${caveat}.`
     );
   }
   if (snap.rank <= 3 && snap.deltaFromMedian >= 10 && !snap.selfReducing) {

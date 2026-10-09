@@ -3064,3 +3064,41 @@ test("laneRankCoaching: below-median wording keeps 'confirm before adding size' 
   assert.ok(line);
   assert.match(line, /confirm before adding size/, "a plain HOLD is still a legitimate add-size caution");
 });
+
+// Live repro 2026-10-08 (Ask Largo standing mandate, raised on #4076 comment 6067024911): GOOGL's
+// own brief (score 36, WATCH) named "Leader: VST @ 76 — confirm before adding size" while VST sat
+// on the SAME WATCH board unable to ever commit (commitGateBlockedBy: ["legacy:exempt"], the #5577
+// Legacy graduation-bridge wiring gap, not a real gate rejection) — reads as "go confirm this, it's
+// close to triggering" about a ticker that structurally cannot fire a commit right now for a
+// plumbing reason unrelated to its own setup quality.
+test("laneRankCoaching: below-median leader line caveats a named leader whose ONLY block is the #5577 legacy:exempt wiring gap", () => {
+  const lanes = [
+    laneRow({ ticker: "VST", score: 76, status: "WATCH", setupState: "TRIGGERED", commitGateBlockedBy: ["legacy:exempt"] }),
+    laneRow({ ticker: "GOOGL", score: 36, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(line);
+  assert.match(line, /Leader: \*\*VST\*\* @ \*\*76\*\*/);
+  assert.match(line, /structurally blocked from committing.*pending #5577 wiring/);
+  assert.doesNotMatch(line, /confirm before adding size/, "the caveat replaces the misleading 'go confirm it' framing");
+});
+
+test("laneRankCoaching: below-median leader line keeps 'confirm before adding size' when the named leader is ALSO blocked by a real gate", () => {
+  // A peer blocked by legacy:exempt ALONGSIDE a real gate is not "only" a plumbing block — the real
+  // gate rejection would have stopped it anyway, so the caveat must not fire (narrow gating: exactly
+  // one block reason, that exact one).
+  const lanes = [
+    laneRow({
+      ticker: "VST",
+      score: 76,
+      status: "WATCH",
+      setupState: "TRIGGERED",
+      commitGateBlockedBy: ["legacy:exempt", "gate:G-S4:regime_degraded"],
+    }),
+    laneRow({ ticker: "GOOGL", score: 36, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(line);
+  assert.match(line, /confirm before adding size/);
+  assert.doesNotMatch(line, /structurally blocked/);
+});

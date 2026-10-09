@@ -4,6 +4,7 @@
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { RichSection } from "@/lib/bie/rich-narrative";
+import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
 
 export type LaneRankSnapshot = {
   rank: number;
@@ -24,6 +25,18 @@ export type LaneRankSnapshot = {
    *  manage engine EXIT_RUNNER — "Lane leader ... Desk attention follows the top row" directly
    *  contradicted the same brief's "Desk says TRIM ... protect what's left" three lines above it). */
   selfReducing: boolean;
+  /** True when the NAMED leader peer's only commit-gate block is the structural #5577 Legacy
+   *  graduation-bridge wiring gap (`commitGateBlockedBy` is exactly `["legacy:exempt"]`), not a
+   *  real gate rejection (regime/cortex/confluence/etc). Found live 2026-10-08 (Ask Largo standing
+   *  mandate, raised on #4076 comment 6067024911): GOOGL's own brief named "Desk leader: VST @ 76
+   *  — confirm before adding size" while VST sat on the WATCH board unable to ever commit for a
+   *  plumbing reason unrelated to its own setup quality (the commit-loop wiring for Legacy-promoted
+   *  theses was shipped+tested in #5577 but never called) — a trader reading a DIFFERENT ticker's
+   *  brief had no way to know the named leader couldn't actually fire. Gated narrowly (exactly one
+   *  block reason, that exact one) so a peer blocked by a real gate ALONGSIDE legacy:exempt still
+   *  reads as a normal (uncaveated) leader — this flag means "the only thing stopping it is
+   *  plumbing," not "it also happens to carry this tag." */
+  topLegacyExemptOnly: boolean;
 };
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
@@ -190,6 +203,9 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
       !INVALIDATED_SETUP_STATES.has(r.setupState ?? ""),
   );
   const top = leaderCandidates[0] ?? others[0] ?? null;
+  const topBlockedBy = top?.commitGateBlockedBy ?? [];
+  const topLegacyExemptOnly =
+    topBlockedBy.length === 1 && topBlockedBy[0] === LEGACY_COMMIT_GATE_EXEMPT;
 
   return {
     rank: Math.min(rank, sorted.length),
@@ -205,6 +221,7 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
     deltaFromMedian: Math.round((playScore - medianScore) * 10) / 10,
     selfInvalidated: play.setupState === "INVALIDATED",
     selfReducing: REDUCE_MANAGE_ACTIONS.has(play.manageAction ?? ""),
+    topLegacyExemptOnly,
   };
 }
 
@@ -222,7 +239,10 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
     `Lane median: **${snap.medianScore}**`,
   ];
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
-    lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**`);
+    const caveat = snap.topLegacyExemptOnly
+      ? " — structurally blocked from committing (pending #5577 wiring, not a live gate)"
+      : "";
+    lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**${caveat}`);
   }
   if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated && !snap.selfReducing) {
     lines.push("Top-ranked play in this bucket — size and attention follow score.");
