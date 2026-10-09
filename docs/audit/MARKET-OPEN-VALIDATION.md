@@ -1,3 +1,36 @@
+## WATCH LIST — 2026-10-09 SPX Slayer `/api/market/spx/pulse` EXTENDED-hours `prior_close` silently equaled today's own close — deploy pending validation
+
+**What was fixed:** `buildSpxDeskPulse()`'s post-close EXTENDED-hours branch (after 4pm ET,
+before midnight ET, same calendar day) served `prior_close` straight off `prior.pdc` — the SAME
+field the branch had just overridden two lines above with TODAY's own settled close (so the
+`price` tile shows a live-looking close instead of a stale prior-day one). That made `price` and
+`prior_close` IDENTICAL all evening. Live-confirmed 2026-10-09 ~22:32 UTC: `GET /api/market/spx/pulse`
+served `price=7765.36, prior_close=7765.36` (both today's own close) while the sibling
+`GET /api/market/spx/desk` correctly served `prior_close=7801.77` (yesterday's real close) for the
+exact same instant. `pulseChangePctFromPriorClose` (`spx-change-anchor.ts`) derives change% as
+`(price - priorClose) / priorClose`, which silently reads exactly 0.00% whenever the two inputs are
+equal — hiding the real day change (-0.47% that evening) behind a false "flat" read, the 2026-08-07
+P0 shape. Fix: `priorDayLevels` (already snapshotting the true exclusive-of-today `pdh`/`pdl` per
+the 2026-10-07 sibling fix, #5646) now also snapshots `pdc`, and the EXTENDED branch's return
+serves `prior_close` from that untouched snapshot instead of the overridden `prior.pdc`. `price`
+still rolls forward to today's own close unchanged. Full write-up:
+`docs/audit/findings-staging/2026-10-09-spx-extended-prior-close-today-close.md`. Shipped in
+PR #5729 (merged).
+
+**Specific thing to check once this deploys:** this evening after today's regular session closes
+(4pm ET+), pull `GET /api/market/spx/pulse` directly and confirm `prior_close` is now DIFFERENT
+from `price` and matches the true previous session's close (cross-check against
+`GET /api/market/spx/desk`'s `prior_close` for the same moment — they should now agree) — not
+identical to `price` as before this fix. Also confirm `pdh`/`pdl` still correctly stay pinned to
+the true prior day throughout the EXTENDED window (the already-shipped 2026-10-07 behavior,
+unchanged by this fix) and that the main dashboard's live header tile (fed via
+`mergeDeskLayers`/`mergePulseIntoDesk`, which already read `prior_close` from the base `/desk`
+layer rather than the raw pulse payload — this bug's blast radius was the raw `/pulse` endpoint
+and anything reading it directly, not the merged dashboard) still shows the correct nonzero
+overnight change% rather than a false 0.00%.
+
+---
+
 ## WATCH LIST — 2026-10-09 Ask Largo swing play-brief "What to watch"'s "Structural support node" hardcoded put wall while the authoritative Break watch level (and `envelope.invalidation`) can cite a nearer GEX king or dark-pool print — deploy pending validation
 
 **What was fixed:** `watchForSection`'s "Structural support node" (LONG) / "Structural resistance
