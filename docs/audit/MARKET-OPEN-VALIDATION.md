@@ -1,3 +1,37 @@
+## WATCH LIST — 2026-10-09 Swing archetype-drift board disappearance (RCL/SNDK/XAR) fixed — deploy pending validation
+
+**What was fixed:** `discoverSwingFromPersisted` (`serving-lane.ts`) joined `snap.plays` (one
+HorizonPlay per ticker, classified under THIS scan's fresh archetype read) against `snap.watch`/
+`snap.observed` (the accumulation store's persistence-cleared/below-floor candidates, keyed by
+`ticker|direction|archetype`) on the EXACT thesis key only. Live-confirmed 2026-10-09: `RCL`,
+`SNDK`, `XAR` were all present in `snap.watch`/`snap.observed` per `GET /api/admin/swing/
+discovery-debug` (same scan, `scanAsOf` matched the real board's own `scanAsOf` byte-for-byte —
+not a staleness artifact), yet absent from EVERY section of `GET /api/market/nighthawk/
+horizons?view=swings` (confirmed via a full-string search of the whole board payload). Root
+cause: a real, disclosed behavior (archetype can be reclassified session-to-session — the swing
+narrative's own "near-tie at entry... priority order broke the tie") meant this scan's single
+play's archetype no longer matched whichever archetype actually had the accumulation history, so
+the exact thesis key missed both lists and the ticker vanished from the board with zero
+disclosure anywhere. Fix: `discoverSwingFromPersisted` now falls back to a ticker+direction-only
+match (`tickerDirectionKey`, accumulation-store.ts) ONLY when the exact thesis key misses both
+lists — surfacing the play (never granting it `cleared`/WATCH status under the mismatched
+archetype) rather than letting it disappear outright. A genuinely untracked single-sighting name
+(no accumulation evidence under ANY archetype) still never surfaces — regression-guarded by a new
+test. Full write-up: `docs/audit/findings-staging/2026-10-09-swing-archetype-drift-board-
+disappearance.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/admin/swing/discovery-debug`'s
+`watchTickers` alongside `GET /api/market/nighthawk/horizons?view=swings` during live RTH
+discovery (any scan after the fix is live) and confirm every name in `watchTickers` — and every
+name in a fresh `GET /api/admin/swing/accumulation-export` pull with `promoted_position_id: null`
+and `distinct_session_days >= 1` — appears SOMEWHERE in the board's seven sections (most likely
+RESEARCH for a freshly-drifted archetype, not necessarily WATCH). A ticker present in the
+accumulation export but absent from every board section again would mean either a genuinely new
+gap, or this fix's `trackedTickerDirections` fallback not firing as expected — re-open the staged
+finding above rather than assuming it is new.
+
+---
+
 ## WATCH LIST — 2026-10-09 Night Hawk Swings Legacy graduation bridge (#5577) now actually wired, but SHIPS DISARMED (flag OFF) — deploy pending an explicit arm decision, not RTH validation
 
 **What was fixed:** `legacyCommitCandidatesFromSnapshot`/`removeCommittedLegacyFromSnapshot`

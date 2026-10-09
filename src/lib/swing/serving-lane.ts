@@ -18,7 +18,7 @@
 import type { SwingDossier } from "./dossier";
 import type { HorizonPlay } from "../horizon-plays";
 import type { SwingWatchCandidate } from "./accumulation-store";
-import { swingThesisKey, persistenceGapReason } from "./accumulation-store";
+import { swingThesisKey, tickerDirectionKey, persistenceGapReason } from "./accumulation-store";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
 import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
 import {
@@ -497,6 +497,22 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
   const observedByKey = new Map(
     (snap.observed ?? []).map((c) => [swingThesisKey(c.ticker, c.direction, c.archetype), c]),
   );
+  // ARCHETYPE-DRIFT FALLBACK (Ask Largo standing mandate, live repro 2026-10-09 — RCL/SNDK/XAR: all
+  // three were live in `snap.watch`/`snap.observed`, from this SAME scan's own snapshot, yet absent
+  // from every section of the served board). `snap.plays` carries exactly one HorizonPlay per ticker,
+  // classified under whichever archetype THIS scan's fresh read lands on — but the accumulation store
+  // tracks parallel per-archetype theses for the same ticker+direction (a real, disclosed behavior:
+  // the play-brief narrative's own "near-tie at entry... priority order broke the tie"). When this
+  // scan's archetype disagrees with whichever archetype actually has the accumulation history,
+  // `playThesisKey(p)` misses BOTH `cleared` and `observedByKey` even though the ticker+direction is
+  // actively tracked, and the play silently vanished from the entire board. This set is ticker+
+  // direction only (see `tickerDirectionKey`'s own doc comment) and is used ONLY to decide whether to
+  // surface the play at all — never to grant it `cleared` status under the mismatched archetype, so a
+  // genuinely untracked single-sighting name (no entry in either list, under ANY archetype) still
+  // never surfaces, preserving the anti-lone-print invariant (accumulation-store.ts's own header).
+  const trackedTickerDirections = new Set(
+    [...(snap.watch ?? []), ...(snap.observed ?? [])].map((c) => tickerDirectionKey(c.ticker, c.direction)),
+  );
   const playThesisKey = (p: HorizonPlay): string => {
     const arch =
       p.archetype ??
@@ -518,7 +534,12 @@ export async function discoverSwingFromPersisted(): Promise<SwingDiscoveryLike |
   const observedPlays = (snap.plays ?? [])
     .filter((p) => {
       const key = playThesisKey(p);
-      return observedByKey.has(key) && !cleared.has(key);
+      if (cleared.has(key)) return false;
+      if (observedByKey.has(key)) return true;
+      // Exact thesis key missed both lists — fall back to ticker+direction so an actively-tracked
+      // name (archetype drifted this scan) still surfaces instead of vanishing outright. `obs` stays
+      // undefined below for this path, which the existing optional-chained fields already handle.
+      return trackedTickerDirections.has(tickerDirectionKey(p.ticker, p.direction));
     })
     .map((p) => {
       const key = playThesisKey(p);
