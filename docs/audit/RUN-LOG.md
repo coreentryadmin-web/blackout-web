@@ -4,6 +4,23 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-09 (16:35 UTC / Fri 12:35 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live, two CLS transients both resolved on re-measure
+
+Confirmed clock myself: Fri 12:35 ET, last wake in today's window. Resynced to `origin/main`
+(`49e3448` → `7178704`, other-lane swing fix). `/api/public/gex-snapshot` → `market_session: OPEN`,
+`degraded: false`, spot 7805.9, `change_pct` populated (0.52) — consistent with the earlier
+self-resolve this morning. Polled 5x at 3s intervals: `calculation_id` briefly reverted once
+(`...764234`→`...755893`) then recovered (`...779899`), the known-harmless cache-read race, ages
+staying reasonable throughout. Purged Cloudflare edge; first CLS read **0.0556** (GOOD, but one
+shift ≥0.01 accounting for nearly all of it — notably above the usual ~0.0001-0.0005 baseline).
+Re-measured immediately → **0.0001**, then a third check → **0.0003** — both confirm it was a
+one-off transient, not reproducible. **Noting for pattern-watch**: this is the SECOND same-session
+elevated-but-still-GOOD CLS transient today (the earlier RTH wake saw 0.0131, also resolved on
+immediate re-measure) — two isolated non-reproducible spikes in one day is more than the prior
+baseline of occasional single spikes, but each individually resolved clean and nothing differs
+in viewport/assets, so not escalating to a finding; worth a closer look if a third same-day
+instance recurs. No PR opened. Returning to normal search/authority posture at 13:00 ET.
+
 ## 2026-10-09 (15:35 UTC / Fri 11:35 ET) — [SEO] RTH wake: gamma-snapshot live, SPX change_pct self-resolved, CLS clean
 
 Confirmed clock myself (Fri 11:35 ET, within 09:30-13:00). Resynced to `origin/main`
