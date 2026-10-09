@@ -181,6 +181,7 @@ let earningsCalls: string[] = [];
 let fundamentalsCalls: string[] = [];
 let relatedCalls: string[] = [];
 let tickerNewsCalls: string[] = [];
+let tickerNewsOpts: Array<{ limit?: number } | undefined> = [];
 let catalystCalls = 0;
 let macroCalls = 0;
 let breadthCalls = 0;
@@ -219,8 +220,9 @@ mock.module("../providers/polygon-related", {
 });
 mock.module("../providers/polygon-news", {
   namedExports: {
-    fetchTickerNews: async (ticker: string) => {
+    fetchTickerNews: async (ticker: string, opts?: { limit?: number }) => {
       tickerNewsCalls.push(ticker);
+      tickerNewsOpts.push(opts);
       return mockTickerNews;
     },
     fetchMarketCatalysts: async () => {
@@ -1102,6 +1104,37 @@ test('fetchEcosystemContext("AAPL"): runs ONLY the single-name arsenal readers, 
   assert.equal(ctx.arsenal.scope, "single_name");
   assert.equal(ctx.arsenal.earnings?.days_until, 12);
   assert.deepEqual(ctx.arsenal.related, ["MSFT", "GOOGL"]);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-09 :20 cycle, live repro GET
+// /api/market/swing/play-brief?playId=SWING:AMZN:48): #5717 (2026-10-08) added
+// rankNewsItemsBySpecificity() to stop broad multi-ticker co-tagged stories from crowding out a
+// genuinely ticker-specific headline — but it re-ranks whatever `fetchTickerNews` already fetched,
+// and the live call site (`fetchEcosystemArsenal` above) still requests only `limit: 6`. For a
+// high-news-volume megacap, Benzinga's own 6 MOST RECENT items can ALL be broad roundups (an
+// Anthropic product launch, a Jim Cramer segment, an Elon Musk tweet story, a "Micron commodity
+// stock" piece) while the genuinely AMZN-specific items ("Amazon Web Services Announces Golden Age
+// of Science Accelerator", tagged with ONLY `AMZN`) sit a few hours further back, outside that
+// 6-item window — re-verified live 2026-10-09, same symptom, different headlines than #5717's own
+// AWS/Alexa repro, because this is a structural gap (fetch window too narrow for the re-rank to
+// ever see the specific item), not a one-off news cycle. A fetch limit wide enough for the
+// specificity ranking to have a real pool to choose from is the fix — this test pins that limit
+// rather than re-asserting the (already correct) ranking order `rankNewsItemsBySpecificity`'s own
+// tests already cover.
+test('fetchEcosystemContext(single name): requests enough ticker-news items for rankNewsItemsBySpecificity to have a real pool — a too-small fetch defeats the #5717 re-rank for high-news-volume tickers', async () => {
+  earningsCalls = []; fundamentalsCalls = []; relatedCalls = []; tickerNewsCalls = []; tickerNewsOpts = []; catalystCalls = 0; macroCalls = 0; breadthCalls = 0;
+  mockTickerNews = { items: [{ headline: "placeholder" }], asOf: "x", newest: "y" } as unknown as NewsResult;
+
+  await fetchEcosystemContext("AMZN");
+
+  assert.deepEqual(tickerNewsCalls, ["AMZN"]);
+  assert.equal(tickerNewsOpts.length, 1);
+  assert.ok(
+    (tickerNewsOpts[0]?.limit ?? 0) >= 15,
+    `fetchTickerNews limit must be wide enough for rankNewsItemsBySpecificity to find a genuinely ` +
+      `specific item outside the top handful of broad co-tagged stories (got ${tickerNewsOpts[0]?.limit}) — ` +
+      `see #5717's own AWS/Alexa repro, which sat at raw positions 8/11 by recency`,
+  );
 });
 
 test('fetchEcosystemContext("SPX"): runs ONLY the index arsenal readers (macro/breadth/catalysts), never the single-name ones', async () => {
