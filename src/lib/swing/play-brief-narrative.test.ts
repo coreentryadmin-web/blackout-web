@@ -2083,6 +2083,77 @@ test("counterThesisLine: 2+ reasons are labeled as corroborated, with the real c
   assert.doesNotMatch(line!, /a single, uncorroborated signal/i);
 });
 
+// GAP FIX (Ask Largo standing mandate, 2026-10-09, live repro GDDY committed position):
+// technicalsBias() (play-brief-technicals.ts) — the SAME function technicalsCoaching uses to print
+// "chart reads bearish (conflicts with swing direction)" two bullets above this one in the real
+// brief — counts FOUR votes (EMA stack, MACD, VWAP side, structure direction), but counterThesisLine
+// only ever checked EMA stack. A chart that turns bearish on MACD + structure alone (EMA merely
+// "mixed", casting no vote) used to return NO counter-thesis reason at all, silently dropping real,
+// already-computed, independently-voted evidence instead of steelmanning it like every sibling
+// reason in this function. See the fix's own comment in play-brief-narrative.ts.
+test("counterThesisLine: MACD + market-structure direction steelman the bear case even when EMA stack doesn't vote (2026-10-09)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        spot: 103.19,
+        technicals: {
+          emaStack: "mixed",
+          macd: "bear",
+          structure: { type: "CHOCH", direction: "down", level: 103.17 },
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    103.19,
+  );
+  assert.ok(line, "MACD+structure disagreement must steelman a counter-thesis, not return null");
+  assert.match(line!, /Counter-thesis \(bear case\)/i);
+  assert.match(line!, /bear MACD on chart/i);
+  assert.match(line!, /bearish structure break \(CHOCH down\)/i);
+  assert.match(line!, /corroborated across 2 independent reads/i);
+});
+
+test("counterThesisLine: SHORT play steelmans bull MACD + bullish structure break", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        spot: 50,
+        technicals: {
+          emaStack: "mixed",
+          macd: "bull",
+          structure: { type: "BOS", direction: "up", level: 49.5 },
+        },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "SHORT" }),
+    50,
+  );
+  assert.ok(line);
+  assert.match(line!, /Counter-thesis \(bull case\)/i);
+  assert.match(line!, /bull MACD on chart/i);
+  assert.match(line!, /bullish structure break \(BOS up\)/i);
+});
+
+test("counterThesisLine: stale Vector MACD/structure must not steelman chart read (Largo C2)", () => {
+  const line = counterThesisLine(
+    ctx({
+      vector: {
+        spot: 103.19,
+        technicals: {
+          emaStack: "mixed",
+          macd: "bear",
+          structure: { type: "CHOCH", direction: "down", level: 103.17 },
+        },
+        freshness: "stale",
+        dataAgeMs: 180_000,
+      } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    103.19,
+  );
+  assert.equal(line, null, "stale Vector MACD/structure must not appear in counter-thesis");
+});
+
 test("tradeManagerNarrativeSection: includes counter-thesis when opposing signals exist", () => {
   const section = tradeManagerNarrativeSection(
     ctx({

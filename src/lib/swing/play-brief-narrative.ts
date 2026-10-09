@@ -897,6 +897,34 @@ export function counterThesisLine(
   if (play.direction === "LONG" && ema === "down") reasons.push("bear EMA stack on chart");
   if (play.direction === "SHORT" && ema === "up") reasons.push("bull EMA stack on chart");
 
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-09, live repro GDDY committed position): EMA
+  // stack is only ONE of the four votes `technicalsBias()` (play-brief-technicals.ts) counts when
+  // it decides the chart's own aggregate bias — the identical function `technicalsCoaching`
+  // (play-brief-narrative-coaching.ts) uses, two bullets above this one in the SAME "Trade manager
+  // read" section, to print "chart reads bearish (conflicts with swing direction)". MACD and
+  // market-structure direction (BOS/CHOCH) are the other two votes, and neither was ever checked
+  // here — so whenever a chart turns bearish on MACD+structure alone (EMA merely "mixed", not
+  // "down"), this function silently returned NO counter-thesis reason at all for that evidence,
+  // even though the brief's own "Chart read" bullet, right above, already told the member the chart
+  // conflicts with their LONG thesis. Live: GDDY 2026-10-09 — EMA "mixed" (no vote), MACD "bear",
+  // structure CHOCH down — technicalsBias() correctly read "bearish" and printed the conflict
+  // bullet, but counterThesisLine() returned null outright (reasons.length stayed 0 end to end),
+  // understating the evidence to "nothing to weigh" when a second, independent reason (the call
+  // wall overhead, already captured below) existed alongside it. Each vote is pushed as its own
+  // fact, same per-indicator granularity as the EMA-stack reason above — they are independent
+  // reads (MACD momentum vs. EMA trend-stack vs. swing-structure breaks), not a restatement of one
+  // another, so corroboration correctly increments once per vote that actually fires.
+  const macd = !vectorStale ? vec?.technicals?.macd ?? null : null;
+  if (play.direction === "LONG" && macd === "bear") reasons.push("bear MACD on chart");
+  if (play.direction === "SHORT" && macd === "bull") reasons.push("bull MACD on chart");
+
+  const structure = !vectorStale ? vec?.technicals?.structure ?? null : null;
+  if (play.direction === "LONG" && structure?.direction === "down") {
+    reasons.push(`bearish structure break (${(structure.type || "CHOCH").replace(/_/g, " ")} down)`);
+  } else if (play.direction === "SHORT" && structure?.direction === "up") {
+    reasons.push(`bullish structure break (${(structure.type || "BOS").replace(/_/g, " ")} up)`);
+  }
+
   // BUG FIX (2026-09-15, Ask Largo standing mandate, sibling of the play-brief.ts evidenceFromContext
   // fix same day): `vecPosture` used to be `vec?.regime?.posture ?? null`, treating the literal
   // string "unknown" (Vector genuinely could not resolve a regime) as an equally-resolved answer to
