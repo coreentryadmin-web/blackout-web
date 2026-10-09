@@ -27,6 +27,14 @@ function bangerRow(overrides: Partial<BangerPositionRow> = {}): BangerPositionRo
     last_mark_at: "2026-09-04T20:55:00.000Z",
     peak_premium: 5.5,
     trough_premium: 3.9,
+    bid: null,
+    ask: null,
+    open_interest: null,
+    quote_delta: null,
+    quote_gamma: null,
+    quote_theta: null,
+    quote_vega: null,
+    quote_iv: null,
     scaled_already: false,
     scale_out_action: null,
     scale_out_reason: null,
@@ -51,6 +59,52 @@ test("horizonPlayFromBangerPosition maps OPEN banger to SWING MANAGING with BANG
   assert.equal(play!.liveStatus, "OPEN");
   assert.deepEqual(play!.signalKinds, ["BANGER"]);
   assert.equal(play!.archetype, "BREAKOUT");
+});
+
+// FINDINGS 2026-10-09 (Ask Largo standing mandate — migration 017): contract.bid/ask/openInterest/
+// delta/gamma/theta/vega/iv were ALWAYS hardcoded null/0 on every BANGER-origin committed position,
+// regardless of what the provider actually quoted — not because the data was unavailable, but
+// because banger_positions had no column to hold it (fixed by migration 017 + updateBangerQuoteFields,
+// banger-live-sync's cron already fetches this exact snapshot every tick for the quote-tick log).
+// This proves the honest round-trip both ways: real values surface when the row carries them, and
+// absence stays honest null (never fabricated) when it does not — the exact C6 discipline this file's
+// other FINDINGS comments already apply to trough_premium/markAsOf.
+test("horizonPlayFromBangerPosition serves real bid/ask/OI/greeks when the row carries a quote", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({
+      bid: 5.4,
+      ask: 5.6,
+      open_interest: 812,
+      quote_delta: 0.63,
+      quote_gamma: 0.019,
+      quote_theta: -0.21,
+      quote_vega: 0.14,
+      quote_iv: 0.71,
+    }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(play!.contract.bid, 5.4);
+  assert.equal(play!.contract.ask, 5.6);
+  assert.equal(play!.contract.openInterest, 812);
+  assert.equal(play!.contract.delta, 0.63);
+  assert.equal(play!.contract.gamma, 0.019);
+  assert.equal(play!.contract.theta, -0.21);
+  assert.equal(play!.contract.vega, 0.14);
+  assert.equal(play!.contract.iv, 0.71);
+});
+
+test("horizonPlayFromBangerPosition serves honest null quote fields when the row has none yet (never fabricated)", () => {
+  const play = horizonPlayFromBangerPosition(bangerRow(), new Date("2026-09-04T16:00:00-04:00"));
+  assert.ok(play);
+  assert.equal(play!.contract.bid, null);
+  assert.equal(play!.contract.ask, null);
+  assert.equal(play!.contract.openInterest, 0);
+  assert.equal(play!.contract.delta, null);
+  assert.equal(play!.contract.gamma, null);
+  assert.equal(play!.contract.theta, null);
+  assert.equal(play!.contract.vega, null);
+  assert.equal(play!.contract.iv, null);
 });
 
 // FINDINGS 2026-09-21 (Ask Largo/Night Hawk Swings audit): horizonPlayFromBangerPosition built

@@ -44,6 +44,74 @@ test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", (
   assert.equal(row.closed_at, null);
   assert.equal(row.last_mark_at, null);
   assert.equal(row.trough_premium, 1.4);
+  // Columns absent from this raw row entirely (pre-migration-017 shape) must degrade to honest
+  // null, never a fabricated 0/default — same discipline as every other optional column above.
+  assert.equal(row.bid, null);
+  assert.equal(row.ask, null);
+  assert.equal(row.open_interest, null);
+  assert.equal(row.quote_delta, null);
+  assert.equal(row.quote_gamma, null);
+  assert.equal(row.quote_theta, null);
+  assert.equal(row.quote_vega, null);
+  assert.equal(row.quote_iv, null);
+});
+
+// FINDINGS 2026-10-09 (Ask Largo standing mandate — migration 017): banger_positions never carried
+// a live NBBO/greeks quote at all — horizonPlayFromBangerPosition (banger-lane-merge.ts) hardcoded
+// bid/ask/openInterest/delta/gamma/theta/vega/iv to null/0 regardless of what the provider actually
+// quoted, because there was nowhere on this row for that data to live. Confirms the mapper
+// round-trips the new columns now that they exist (db.ts's ALTERs + updateBangerQuoteFields), same
+// pattern as the trough_premium test above.
+test("mapBangerPositionRow surfaces bid/ask/OI/greeks when the columns carry a value", () => {
+  const base = {
+    id: "1",
+    commit_key: "k",
+    session_date: "2026-08-04",
+    ticker: "T",
+    contract_strike: "1",
+    contract_expiry: "2026-08-14",
+    contract_occ: "occ",
+    entry_premium: "2",
+    last_mark: "1.5",
+    peak_premium: "2.5",
+    scaled_already: false,
+    scale_out_action: null,
+    scale_out_reason: null,
+    partial_realized_premium: null,
+    realized_pnl_pct: null,
+    realized_pnl_usd: null,
+    entry_context: null,
+    status: "OPEN",
+    first_seen_at: "2026-08-04T13:30:00.000Z",
+    committed_at: "2026-08-04T13:30:00.000Z",
+    closed_at: null,
+    updated_at: "2026-08-04T14:00:00.000Z",
+  };
+  const withQuote = mapBangerPositionRow({
+    ...base,
+    bid: "1.45",
+    ask: "1.55",
+    open_interest: "312",
+    quote_delta: "0.58",
+    quote_gamma: "0.021",
+    quote_theta: "-0.09",
+    quote_vega: "0.11",
+    quote_iv: "0.62",
+  });
+  assert.equal(withQuote.bid, 1.45);
+  assert.equal(withQuote.ask, 1.55);
+  assert.equal(withQuote.open_interest, 312);
+  assert.equal(withQuote.quote_delta, 0.58);
+  assert.equal(withQuote.quote_gamma, 0.021);
+  assert.equal(withQuote.quote_theta, -0.09);
+  assert.equal(withQuote.quote_vega, 0.11);
+  assert.equal(withQuote.quote_iv, 0.62);
+
+  const withoutQuote = mapBangerPositionRow(base);
+  assert.equal(withoutQuote.bid, null);
+  assert.equal(withoutQuote.ask, null);
+  assert.equal(withoutQuote.open_interest, null);
+  assert.equal(withoutQuote.quote_delta, null);
 });
 
 // FINDINGS 2026-09-21 (Ask Largo/Night Hawk Swings audit): banger_positions never had a
