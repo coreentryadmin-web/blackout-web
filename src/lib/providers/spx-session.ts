@@ -163,6 +163,44 @@ export function priorDayFromDailyBars(
   return { pdh: prior.h, pdl: prior.l, pdc: prior.c };
 }
 
+/**
+ * Like `priorDayFromDailyBars(bars, todayYmd, true)` ("today's own close, now that the
+ * session has completed"), but ALSO returns the TRUE prior session relative to whichever bar
+ * it actually matched — anchored to THAT bar's own date, never to the raw `todayYmd` passed
+ * in. Exists for a bug found live 2026-10-09 in the sole caller
+ * (`spx-desk.ts`'s `fetchTodaysOwnCloseIfSessionComplete`): `todayYmd` (usually `todayEtYmd()`)
+ * rolls to the NEXT calendar date at ET midnight, but the off-hours EXTENDED-hours market
+ * label that calls this (PT-clock-driven, `marketStatusLabel`) keeps reporting "EXTENDED" for
+ * several more hours past that, until ~3am ET. During that cross-midnight stretch, a second,
+ * naive `priorDayFromDailyBars(bars, todayYmd, false)` call would ALSO treat the already-rolled
+ * `todayYmd` as its anchor and walk back from the SAME (now one-session-too-recent) point,
+ * landing on the identical bar the first call already returned instead of the one genuinely
+ * before it. Live-confirmed 2026-10-09 ~04:29 UTC (00:29 ET): `GET /api/market/spx/pulse`
+ * served `price` and `prior_close` both as 7765.36 (2026-10-08's real close) while the true
+ * prior day (2026-10-07) closed at 7801.77 — anchoring this second lookup to the FIRST
+ * lookup's own matched-bar date (2026-10-08), rather than to the rolled-over wall-clock
+ * "today" (2026-10-09), is what makes it land on 2026-10-07 instead.
+ */
+export function latestSessionAndItsOwnPrior(
+  bars: AggBar[],
+  todayYmd: string = todayEtYmd()
+): {
+  latest: { pdh: number | null; pdl: number | null; pdc: number | null };
+  prior: { pdh: number | null; pdl: number | null; pdc: number | null };
+} {
+  const latest = priorDayFromDailyBars(bars, todayYmd, true);
+  const none = { pdh: null, pdl: null, pdc: null };
+  if (latest.pdc == null) return { latest, prior: none };
+  const dated = bars.filter((b) => b.t != null);
+  const latestBar = dated[dated.length - 1];
+  // Bars are fetched with `todayYmd` as the upper date bound, so the last dated element is
+  // always the bar `latest` just matched — recovering ITS OWN date is cheaper and no less
+  // correct than re-walking the array to find which bar satisfied the match above.
+  const latestBarYmd = latestBar?.t != null ? etYmdFromMs(latestBar.t) : todayYmd;
+  const prior = priorDayFromDailyBars(bars, latestBarYmd, false);
+  return { latest, prior };
+}
+
 /** Cash RTH minute bars only (09:30–16:00 ET). Shared by desk session stats and playbook breakout extremes. */
 export function filterRthBars(bars: AggBar[]): AggBar[] {
   return bars.filter((b) => {

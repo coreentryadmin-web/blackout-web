@@ -1,3 +1,33 @@
+## WATCH LIST — 2026-10-09 SPX Slayer EXTENDED-hours `prior_close` collapses onto `price` again after ET midnight — deploy pending validation
+
+**What was fixed:** The SAME-DAY-EARLIER fix (#5729, this file's next entry down) stopped the
+EXTENDED-hours override from overwriting `priorDayLevels.pdc` with today's own close — but
+`priorDayLevels` itself was snapshotted from `priorDayForPulseLane()`, which anchors its
+"exclusive of today" walk-back to raw `todayEtYmd()`. That anchor rolls to the NEXT calendar
+date at ET midnight, several hours before `marketStatusLabel`'s EXTENDED window itself rolls
+(PT-clock-driven, ~3am ET) — so for that whole cross-midnight stretch (roughly 00:00-03:00 ET),
+`priorDayLevels` was ALREADY wrong (one session too recent) before the override even ran. Live-
+confirmed 2026-10-09 ~04:29 UTC (00:29 ET), on the already-deployed #5729 fix: `GET
+/api/market/spx/pulse` served `price=7765.36, prior_close=7765.36` (both 2026-10-08's close)
+while the true prior day (2026-10-07) closed at 7801.77 — the exact symptom #5729 shipped to fix,
+reincarnated one layer deeper, a few hours after that fix deployed. Fix: added
+`latestSessionAndItsOwnPrior` (`spx-session.ts`), which derives the true prior session by
+anchoring to the MATCHED latest-session bar's own date, never to the (possibly already-rolled-
+over) wall-clock `todayYmd` — so the two lookups can never collapse onto the same bar regardless
+of what time the request lands. Full write-up:
+`docs/audit/findings-staging/2026-10-09-spx-extended-midnight-rollover-prior-close.md`.
+
+**Specific thing to check once this deploys:** tonight, after the regular session closes (4pm
+ET+), pull `GET /api/market/spx/pulse` TWICE — once in the ordinary evening EXTENDED window
+(e.g. ~8-10pm ET, to confirm the earlier #5729 fix still holds) and once in the early-morning
+cross-midnight window (~12:30-2:30am ET) — and confirm `prior_close` is DIFFERENT from `price`
+and matches the true two-sessions-back close in BOTH checks, not just the first. Cross-check
+against real Polygon daily closes or the sibling `GET /api/market/spx/desk` route for the same
+instant. This is the one window the #5729 fix's own validation entry could not have caught,
+since it was written and merged entirely within the ordinary pre-midnight EXTENDED evening.
+
+---
+
 ## WATCH LIST — 2026-10-09 0DTE Night Hawk `zerodte-grade` cron could never grade TODAY's own session — every play's `plan_outcome` lagged a full calendar day — deploy pending validation
 
 **What was fixed:** `fetchUngradedZeroDteRows(beforeDate, limit)` (`src/lib/db.ts`) filters
