@@ -2489,6 +2489,14 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS trough_premium NUMERIC;
   `);
+  // FINDINGS 2026-10-08 (Ask Largo/Night Hawk Swings mark staleness): swing_position_snapshots
+  // stored option marks but never recorded WHEN each mark was obtained, so positions served without
+  // a fresh manage event quote showed age=unknown even when they had marks. Recording the timestamp
+  // of when the mark was loaded gives the health check and brief narratives honest freshness info.
+  // Mirrors swing_positions' own last_mark_at column but per-snapshot for fine-grained tracking.
+  await p.query(`
+    ALTER TABLE swing_position_snapshots ADD COLUMN IF NOT EXISTS mark_as_of TIMESTAMPTZ;
+  `);
   // Prospective NBBO quote-tick log (015_banger_quote_tick_log.sql), inlined for ECS standalone cold
   // starts. Persists the SAME options-unified-snapshot data banger-live-sync already fetches every
   // tick (zero additional Polygon calls) so a future exit-rule validation can replay production's own
@@ -8051,7 +8059,7 @@ export async function fetchLatestSwingSnapshotEvents(
   await ensureSchema();
   if (positionIds.length === 0) return new Map();
   const res = await dbQuery<QueryResultRow>(
-    `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state, running_mfe, running_mae
+    `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state, running_mfe, running_mae, mark_as_of
        FROM swing_position_snapshots
       WHERE position_id = ANY($1::bigint[])
       ORDER BY position_id, created_at DESC`,
@@ -8067,6 +8075,8 @@ export async function fetchLatestSwingSnapshotEvents(
     // `underlyingExcursion` doc comment for the full gap this closes.
     if (r.running_mfe != null) event.running_mfe = Number(r.running_mfe);
     if (r.running_mae != null) event.running_mae = Number(r.running_mae);
+    // Mark timestamp — freshness evidence for live position quotes.
+    if (r.mark_as_of != null) event.mark_as_of = String(r.mark_as_of);
     out.set(id, event);
   }
   return out;
@@ -8408,6 +8418,7 @@ export type SwingSnapshotInsert = {
   dte_remaining?: number | null;
   underlying_px?: number | null;
   option_mark?: number | null;
+  mark_as_of?: string | null;
   running_mfe?: number | null;
   running_mae?: number | null;
   thesis_state?: string | null;
@@ -8421,9 +8432,9 @@ export async function insertSwingSnapshot(s: SwingSnapshotInsert): Promise<numbe
   await ensureSchema();
   const res = await dbQuery<{ id: string }>(
     `INSERT INTO swing_position_snapshots (
-       position_id, snapshot_kind, dte_remaining, underlying_px, option_mark,
+       position_id, snapshot_kind, dte_remaining, underlying_px, option_mark, mark_as_of,
        running_mfe, running_mae, thesis_state, feature_vector, event_json
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb)
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb)
      RETURNING id`,
     [
       s.position_id,
@@ -8431,6 +8442,7 @@ export async function insertSwingSnapshot(s: SwingSnapshotInsert): Promise<numbe
       s.dte_remaining ?? null,
       s.underlying_px ?? null,
       s.option_mark ?? null,
+      s.mark_as_of ?? null,
       s.running_mfe ?? null,
       s.running_mae ?? null,
       s.thesis_state ?? null,
