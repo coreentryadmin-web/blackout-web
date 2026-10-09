@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-10-09 Night Hawk Swings Ask Largo play-brief `Position` section's `P&L:` didn't reconcile with the displayed `Mark:` — deploy pending validation
+
+**What was fixed:** `pnlSection` (`src/lib/swing/play-brief.ts`, the "Position" section of
+`GET /api/market/swing/play-brief`) showed `Entry:`/`Mark:`/`P&L:` as three adjacent lines, but
+`P&L:` was computed upstream from the RAW, full-precision option mid (e.g. `$0.575`, a normal
+bid/ask midpoint) while `Mark:` displayed that same mid rounded to the cent (`$0.57`) — so the
+two numbers stopped reconciling by hand whenever the true mid landed on a fractional cent. Live-
+confirmed 2026-10-09, `GET /api/market/swing/play-brief?playId=SWING:SG&ticker=SG` (positionId
+1396, a live committed BANGER-origin position): showed `Entry: $0.33` / `Mark: $0.57` /
+`P&L: +74.2%`, but `(0.57-0.33)/0.33 = +72.7%`. Fix: `P&L:` is now redisplayed from the SAME
+rounded-to-cent mark the `Mark:` line already shows (guarded so the WS-10 executable-lane P&L
+fallback, a genuinely different basis, is never touched). Full write-up:
+`docs/audit/findings-staging/2026-10-09-swing-position-pnl-mark-roundtrip.md`.
+
+**Specific thing to check once this deploys:** during RTH tomorrow, pull a handful of live
+`GET /api/market/swing/play-brief?playId=SWING:<ticker>&ticker=<ticker>` requests for OPEN/HOLD/
+TRIM swing or BANGER-origin positions (the ones most likely to carry a fresh bid/ask-midpoint
+mark with a fractional cent, unlike a static post-close mark) and hand-verify `(Mark - Entry) /
+Entry` equals the displayed `P&L:` to within rounding — it should now always reconcile. Also spot-
+check a position known to have gone through a trim (the "Blended P&L" line a few lines below
+`P&L:`) to confirm that composite is unaffected (it deliberately still uses the raw, unrounded
+mark internally — only the plain runner-only `P&L:` line was changed).
+
+---
+
 ## WATCH LIST — 2026-10-09 0DTE Night Hawk `zerodte-grade` cron could never grade TODAY's own session — every play's `plan_outcome` lagged a full calendar day — deploy pending validation
 
 **What was fixed:** `fetchUngradedZeroDteRows(beforeDate, limit)` (`src/lib/db.ts`) filters
