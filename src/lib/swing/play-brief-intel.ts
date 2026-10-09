@@ -197,8 +197,26 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
       );
     } else {
       const verb = f.deltaPct >= 0 ? "leading" : "lagging";
+      // BUG FIX (Ask Largo standing mandate, 2026-10-09): this used to round `f.deltaPct` (the raw,
+      // unrounded nameReturnPct − groupReturnPct) to 1dp INDEPENDENTLY of the 1dp-rounded
+      // `fmtPct(nameReturnPct)`/`fmtPct(groupReturnPct)` shown right beside it — the same
+      // independently-rounded-related-quantities precision bug `fmtPct`'s and `fmtPriceLevel`'s own
+      // headers already name as a recurring class here (C9), just not yet caught at THIS call site.
+      // Live repro (2026-10-09, real AAPL WATCH brief): "lagging Technology (XLK) by 0.2% over 10
+      // sessions (+1.3% vs +1.6%)" — a member doing the subtraction themselves from the two
+      // displayed numbers gets 1.6 − 1.3 = 0.3, not the stated 0.2; raw nameReturnPct=1.34,
+      // groupReturnPct=1.55 reproduces it exactly (raw delta −0.21 rounds to "0.2" alone, while each
+      // operand independently rounds to 1.3/1.6, which subtract to 0.3). Fix: round the two operands
+      // ONCE (the same rounding `fmtPct` applies) and derive the displayed delta from THOSE rounded
+      // values, never from the raw delta — guarantees "by X%" always equals the subtraction a reader
+      // does from the two numbers right next to it. The second `Math.round(... * 10) / 10` after
+      // subtracting is not a second independent rounding, just float-noise cleanup (1.6 − 1.3 ===
+      // 0.2999999999999998 in IEEE 754) before `.toFixed(1)` would otherwise need to re-round it.
+      const roundedName = Math.round(f.nameReturnPct * 10) / 10;
+      const roundedGroup = Math.round(f.groupReturnPct * 10) / 10;
+      const roundedDelta = Math.round((roundedName - roundedGroup) * 10) / 10;
       lines.push(
-        `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(f.deltaPct).toFixed(1)}% ` +
+        `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(roundedDelta).toFixed(1)}% ` +
           `over 10 sessions (${fmtPct(f.nameReturnPct)} vs ${fmtPct(f.groupReturnPct)}).`,
       );
     }
