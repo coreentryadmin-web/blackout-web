@@ -1,3 +1,32 @@
+## WATCH LIST — 2026-10-09 0DTE Night Hawk `zerodte-grade` cron could never grade TODAY's own session — every play's `plan_outcome` lagged a full calendar day — deploy pending validation
+
+**What was fixed:** `fetchUngradedZeroDteRows(beforeDate, limit)` (`src/lib/db.ts`) filters
+`WHERE graded_at IS NULL AND session_date < $1::date` — a strict less-than. `gradeZeroDteLedger`
+called it with `today = todayEt()` as the bound, so today's own `session_date = today` rows could
+never satisfy `session_date < today` — they only became eligible the NEXT calendar day. Live-
+confirmed 2026-10-08: the dedicated post-close cron (`/api/cron/zerodte-grade`, 16:00-18:45 ET,
+"so post-close rows grade promptly") ran 12 times that day and graded exactly 0 rows each time;
+all 7 of that session's own CLOSED plays (WOLF, SPY, CIFR, SPXW, QQQ, IONQ, AMD) stayed
+`plan_outcome: null` while the prior two sessions (2026-10-06, 2026-10-07) were each fully graded
+6/6 — a continuous, invisible one-day lag on every single 0DTE outcome since this grader shipped
+(2026-08-01). Fix: added an opt-in `gradeThroughToday` parameter to `gradeZeroDteLedger`; when
+true, the fetch boundary shifts to `nextTradingDayEt(today)` (tomorrow) so today's own rows satisfy
+the query. Only the dedicated post-close cron opts in — `warmZeroDteBoard`'s mid-RTH opportunistic
+call (which can fire while today's session is still open) is deliberately left unchanged, so an
+in-progress position is never prematurely graded against a partial day's bars. Full write-up:
+`docs/audit/findings-staging/2026-10-09-zerodte-grade-today-exclusion.md`.
+
+**Specific thing to check once this deploys:** tomorrow, within the 16:00-18:45 ET window after
+the next regular session closes, pull `GET /api/market/zerodte/board` and confirm that session's
+own CLOSED ledger rows show `graded: true` and a real `plan_outcome` (doubled/stopped/time_stop/
+ratchet-close, etc.) the SAME evening — not `plan_outcome: null` until the following day. Cross-
+check via `POST /api/admin/zerodte/tier-export?days=1` (admin) that `plan_outcome` is non-null for
+every row whose `session_date` is that same day. Also confirm the PRIOR day's rows (which graded
+correctly even before this fix, since the lag always resolved itself one day later) are unaffected
+— this fix only changes WHEN today's own rows become eligible, not the grading math itself.
+
+---
+
 ## WATCH LIST — 2026-10-09 SPX Slayer `/api/market/spx/pulse` EXTENDED-hours `prior_close` silently equaled today's own close — deploy pending validation
 
 **What was fixed:** `buildSpxDeskPulse()`'s post-close EXTENDED-hours branch (after 4pm ET,
