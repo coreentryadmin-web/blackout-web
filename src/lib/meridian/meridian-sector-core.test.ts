@@ -84,6 +84,25 @@ test("a cohort below the peer floor reports members but NO distribution", () => 
   assert.equal(cohort.members.length, 3);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-10-10): zero peers hit the same "only N peer(s)
+// reporting" template as any other below-floor count, producing the grammatically confusing
+// "only 0 peers reporting with a comparable number" — live repro: LRN/CLF swing play-briefs.
+test("a cohort with ZERO peers reports the plain 'no peers' wording, not 'only 0 peers'", () => {
+  const cohort = buildSectorCohort({
+    subject: "NVDA",
+    subjectValue: 7.2,
+    classification: cls,
+    peers: [],
+  });
+  assert.ok(cohort);
+  assert.equal(cohort.distribution, null);
+  assert.equal(
+    cohort.insufficientReason,
+    "no peers reporting with a comparable number — too few to rank against",
+  );
+  assert.doesNotMatch(cohort.insufficientReason!, /only 0/);
+});
+
 test("the subject is excluded from its own distribution", () => {
   const peers = [
     { ticker: "A", value: 2 },
