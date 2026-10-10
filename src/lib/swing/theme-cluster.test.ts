@@ -197,3 +197,27 @@ test("every other ticker's effective direction equals its nominal one, including
   assert.equal(effectiveDirection("SOXL", "LONG"), "LONG");
   assert.equal(effectiveDirection("NVDA", "SHORT"), "SHORT");
 });
+
+test("clinical/commercial-stage biotech names cluster together, not each in its own isolated cluster (2026-10-10 live finding: NTLA+CRSP+VIR+MIRM+IONS+NVAX+IOVA+PCVX+TNGX+RLAY concurrent LONG book, no Book-context concentration flag beyond the two same-ticker repeats)", () => {
+  assert.equal(resolveTheme("NTLA"), "biotech");
+  assert.equal(resolveTheme("CRSP"), "biotech");
+  assert.equal(resolveTheme("VIR"), "biotech");
+  assert.equal(resolveTheme("MIRM"), "biotech");
+  assert.equal(resolveTheme("IONS"), "biotech");
+  assert.equal(resolveTheme("NVAX"), "biotech");
+  assert.equal(resolveTheme("IOVA"), "biotech");
+  assert.equal(resolveTheme("PCVX"), "biotech");
+  assert.equal(resolveTheme("TNGX"), "biotech");
+  assert.equal(resolveTheme("RLAY"), "biotech");
+  assert.equal(sameThesis("NTLA", "CRSP"), true);
+  assert.equal(sameThesis("VIR", "IOVA"), true);
+  assert.equal(sameThesis("IONS", "RLAY"), true); // joins the WHOLE biotech cluster, not just one peer
+  // Not merged into an unrelated theme just because both are "healthcare"-adjacent.
+  assert.equal(sameThesis("NTLA", "MRNA"), false);
+  // Deliberately NOT folded in: different risk driver than a clinical/regulatory binary catalyst
+  // (bioprocessing tools, diagnostics services, and a drug-discovery platform business, not a
+  // trial-readout bet) — each stays its own isolated cluster rather than a false merge.
+  assert.equal(sameThesis("NTLA", "RGEN"), false);
+  assert.equal(sameThesis("NTLA", "GRAL"), false);
+  assert.equal(sameThesis("NTLA", "ABSI"), false);
+});

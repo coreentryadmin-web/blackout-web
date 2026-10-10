@@ -111,6 +111,34 @@ const SECTORS: Record<string, string[]> = {
   // themed peer here (it is not a semis name), so — same precedent as roblox/gamestop/sofi above —
   // it gets its own small pair cluster rather than being folded into an unrelated bucket.
   corning: ["GLW", "GLWG"],
+  // Added 2026-10-10 (Ask Largo standing mandate, live finding): a real committed Swing book held
+  // NTLA+CRSP+VIR+MIRM+IONS+NVAX+IOVA+PCVX+TNGX+RLAY concurrently LONG — ten clinical/commercial-
+  // stage biotech names whose dominant risk driver is the SAME binary catalyst (FDA decision,
+  // clinical trial readout), not ten independent edges — and `checkPortfolioOverlap` reported
+  // concentration only on the two names that happened to repeat (NTLA, IOVA each held twice),
+  // never the cross-ticker biotech basket, because none of these tickers had any entry anywhere
+  // in this map (same gap shape as the quantum-computing/semis/crypto-equity extensions above).
+  // Each identity verified via Polygon reference (`/v3/reference/tickers/<T>`) before adding, not
+  // guessed from the symbol alone: NTLA (Intellia Therapeutics, gene editing), CRSP (CRISPR
+  // Therapeutics, gene editing), VIR (Vir Biotechnology), MIRM (Mirum Pharmaceuticals), IONS
+  // (Ionis Pharmaceuticals), NVAX (Novavax), IOVA (Iovance Biotherapeutics, cell therapy), PCVX
+  // (Vaxcyte, vaccines), TNGX (Tango Therapeutics, oncology), RLAY (Relay Therapeutics, precision
+  // oncology) — SIC 2834/2835/2836 (pharmaceutical preparations / biological products) throughout.
+  // Deliberately conservative, same discipline as the crypto-equity/quantum-computing precedents:
+  // left out names that were ALSO live in the same book but trade on a materially different risk
+  // driver rather than a clinical/regulatory binary catalyst — RGEN (Repligen) sells bioprocessing
+  // equipment/tools TO biotech manufacturers (steady recurring picks-and-shovels revenue, not a
+  // trial-readout bet), GRAL (GRAIL) is a diagnostics-services company (SIC 8071, medical
+  // laboratories) whose catalyst is commercial adoption of a cancer-detection test rather than a
+  // drug trial, and ABSI (Absci, SIC 8731 commercial biological research) is an AI drug-discovery
+  // PLATFORM company monetized via partnerships, not a clinical-stage therapeutics developer —
+  // each left unmapped (its own `NAME:` cluster) rather than folded into this bucket, matching the
+  // existing "never falsely merge" posture elsewhere in this file. The existing `healthcare`
+  // bucket above is deliberately left untouched — it is large-cap diversified pharma/managed-care
+  // (LLY/UNH/PFE/JNJ/ABBV/TMO/AMGN), a different risk profile from this small/mid-cap clinical-
+  // catalyst cluster; reclassifying MRNA (also in `healthcare` today, arguably closer to this
+  // bucket's risk profile) is a separate question out of scope for this fix.
+  biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY"],
 };
 
 // Inverted once at module load: TICKER → sector.
