@@ -110,6 +110,36 @@ describe("readyBlockReason — chronology", () => {
   });
 });
 
+describe("readyBlockReason — confidence (C6: calibrated or absent, never invented)", () => {
+  it("allows a row with no confidence field at all", () => {
+    assert.equal(readyBlockReason(readyRow()), null);
+  });
+
+  it("allows a properly calibrated confidence", () => {
+    const withConfidence = readyRow() as ReadyInput & {
+      confidence: { score: number; basis: string; sample_size: number | null };
+    };
+    withConfidence.confidence = { score: 0.68, basis: "n=47 similar prior signals, 68% hit rate", sample_size: 47 };
+    assert.equal(readyBlockReason(withConfidence), null);
+  });
+
+  it("refuses a confidence score outside 0..1", () => {
+    const row = readyRow() as ReadyInput & {
+      confidence: { score: number; basis: string; sample_size: number | null };
+    };
+    row.confidence = { score: 5, basis: "n=47 similar prior signals, 68% hit rate", sample_size: 47 };
+    assert.match(String(readyBlockReason(row)), /confidence\.score must be a number between 0 and 1/);
+  });
+
+  it("refuses a confidence with no basis — invented certainty with nothing behind it", () => {
+    const row = readyRow() as ReadyInput & {
+      confidence: { score: number; basis: string; sample_size: number | null };
+    };
+    row.confidence = { score: 0.7, basis: "", sample_size: null };
+    assert.match(String(readyBlockReason(row)), /requires a basis/);
+  });
+});
+
 describe("readyBlockReason — evidence floor", () => {
   it("refuses READY with a single attachment", () => {
     const reason = readyBlockReason(readyRow({ attachments: [attachment()] }));

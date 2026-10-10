@@ -381,9 +381,7 @@ export function xWeightedPostLength(text: string | null | undefined): number {
  * all expiries and LONG GAMMA / call wall 7,700 at 0DTE. Quoting the first while writing about
  * the next six hours is not a rounding error, it is the opposite claim.
  *
- * Exported so `validators.ts`'s `validateSessionClaim` can share this exact rule rather than
- * reimplementing it — that sibling used to be a stale stub that always returned null regardless
- * of horizon, silently un-fixing this same check.
+ * `readyBlockReason` below is its only real caller.
  */
 export function sessionClaimFarDatedViolation(
   row: Pick<XIntelQueueRow, "underlying_evidence"> & Partial<Pick<XIntelQueueRow, "session_claim">>,
@@ -409,7 +407,12 @@ export function readyBlockReason(
     XIntelQueueRow,
     "status" | "post_copy" | "attachments" | "chronology" | "underlying_evidence"
   > &
-    Partial<Pick<XIntelQueueRow, "skip_kind" | "blind_spots" | "products_referenced" | "session_claim">>,
+    Partial<
+      Pick<
+        XIntelQueueRow,
+        "skip_kind" | "blind_spots" | "products_referenced" | "session_claim" | "confidence"
+      >
+    >,
 ): string | null {
   const blind = row.blind_spots ?? [];
 
@@ -489,6 +492,20 @@ export function readyBlockReason(
     }
     if (!(chron.detection.at_ms < chron.market_event.at_ms)) {
       return `precedence_claimed but detection (${chron.detection.at_et}) is not strictly earlier than the market event (${chron.market_event.at_et})`;
+    }
+  }
+
+  // C6 — a present confidence must be genuinely calibrated, not just non-null. The field is
+  // optional specifically so a package can omit it rather than invent a score; once it IS
+  // present, it must carry a real 0..1 score and the basis that earned it, or it is fabricated
+  // certainty reaching the same admin surface as a measured one.
+  const confidence = row.confidence;
+  if (confidence) {
+    if (typeof confidence.score !== "number" || confidence.score < 0 || confidence.score > 1) {
+      return "confidence.score must be a number between 0 and 1 — omit confidence entirely if it cannot be calibrated";
+    }
+    if (!confidence.basis || typeof confidence.basis !== "string") {
+      return "confidence requires a basis explaining how the score was calibrated (e.g. 'n=47 similar prior signals, 68% hit rate')";
     }
   }
 
