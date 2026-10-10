@@ -2198,29 +2198,6 @@ html.nav-locked body { overflow: hidden; }
 .mv-countdown-ago { font-size: 0.6em; opacity: 0.7; margin-left: 0.15rem; }
 @keyframes mv-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
 
-/* ── Signal chips ── */
-.mv-chip {
-  display: inline-flex; align-items: center; gap: 0.22rem;
-  padding: 0.08rem 0.38rem; border-radius: 999px;
-  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
-  font-family: var(--font-mono, monospace); font-size: 0.64rem;
-  letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
-  color: rgba(226, 244, 255, 0.85);
-}
-.mv-chip-glyph { font-size: 0.72em; }
-.mv-chip-accelerating, .mv-chip-rank_improving, .mv-chip-top_performer {
-  color: var(--mv-bull); border-color: rgba(52,211,153,0.57);
-}
-.mv-chip-deteriorating, .mv-chip-rank_falling {
-  color: var(--mv-bear); border-color: rgba(251,113,133,0.57);
-}
-.mv-chip-anomaly, .mv-chip-approaching_threshold {
-  color: var(--mv-attention); border-color: rgba(251,191,36,0.62);
-}
-.mv-chip-newly_changed { color: var(--mv-neutral); border-color: rgba(167,139,250,0.62); }
-/* An anomaly is by definition rare, so a persistent pulse here stays informative. */
-.mv-chip-anomaly .mv-chip-glyph { animation: mv-breathe 1.6s ease-in-out infinite; }
-
 /* ── Sparkline ── */
 .mv-spark polyline { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
 .mv-spark.mv-bull polyline { stroke: var(--mv-bull); }
@@ -2232,8 +2209,7 @@ html.nav-locked body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .mv-halo-seg { animation: none; stroke-dashoffset: 0; }
   .mv-tape-print { animation: none; opacity: 1; }
-  .mv-countdown-imminent .mv-countdown-clock,
-  .mv-chip-anomaly .mv-chip-glyph { animation: none; }
+  .mv-countdown-imminent .mv-countdown-clock { animation: none; }
   .mv-rail-band, .mv-rail-spot, .mv-beat-bar, .mv-rev-seg, .mv-ladder-row,
   .mv-target-dot, .mv-tape-print { transition: none; }
 }
