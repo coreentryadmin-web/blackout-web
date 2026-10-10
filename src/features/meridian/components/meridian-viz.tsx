@@ -47,7 +47,6 @@ import {
   wallInversionNote,
   targetRail,
   LIVE_SIGNAL_GLYPH,
-  LIVE_SIGNAL_LABEL,
   type Domain,
   type LiveSignal,
   type PrintLike,
@@ -128,18 +127,6 @@ export function MeridianCountUp({
   return (
     <span className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
       {shown === null ? "—" : `${prefix}${shown.toFixed(decimals)}${suffix}`}
-    </span>
-  );
-}
-
-/* ── Live signal chip ─────────────────────────────────────────────────────────────── */
-export function MeridianSignalChip({ signal, detail }: { signal: LiveSignal; detail?: string }) {
-  return (
-    <span className={`mv-chip mv-chip-${signal}`} title={detail ?? LIVE_SIGNAL_LABEL[signal]}>
-      <span className="mv-chip-glyph" aria-hidden="true">
-        {LIVE_SIGNAL_GLYPH[signal]}
-      </span>
-      {LIVE_SIGNAL_LABEL[signal]}
     </span>
   );
 }
