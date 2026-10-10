@@ -12,6 +12,7 @@ import {
   type XIntelQueueRow,
 } from "@/lib/x-intel/queue-types";
 import { X_INTEL_QUEUE_FIXTURES } from "@/lib/x-intel/queue-fixtures";
+import { nightHawkPostGate } from "@/lib/x-intel/nighthawk-gate";
 
 function attachment(over: Partial<XIntelAttachment> = {}): XIntelAttachment {
   return {
@@ -493,5 +494,34 @@ describe("horizon — an all-expiry aggregate must not describe today's session"
       ),
       null,
     );
+  });
+});
+
+describe("readyBlockReason — GAP (documented, NOT fixed): Night Hawk P&L gate is never consulted", () => {
+  // nighthawk-gate.ts's own header claims: "Enforced in code for the same reason the chronology
+  // rule is" — and content/Screenshot-Playbook.md:284 tells the OPERATOR the same thing:
+  // "Enforced in `src/lib/x-intel/nighthawk-gate.ts`; requires both a >50% closed play and a
+  // session that did not finish red." Neither claim is true: readyBlockReason — the one real
+  // function queue-store.ts calls before a row can persist as READY — has no branch on
+  // `franchise` at all and never imports nightHawkPostGate. This test documents today's actual
+  // (wrong) behavior as a tripwire, not as desired behavior — fixing it needs new fields
+  // (closed plays, session_pnl_r) that don't exist on XIntelQueueRow yet, which is a real design
+  // decision (where does that data come from — operator-entered? board-read at capture time?),
+  // not something to invent here. See the write-up PR for the full root cause.
+  it("a NIGHT_HAWK_STRIKE package cherry-picking a winner from a red session is NOT blocked", () => {
+    const row = readyRow({
+      underlying_evidence: [{ what: "SPX spot", value: "7,641.16", source: "market" }],
+    });
+    (row as XIntelQueueRow).franchise = "NIGHT_HAWK_STRIKE";
+
+    // The real gate WOULD refuse this exact scenario, if anything ever called it:
+    const gateVerdict = nightHawkPostGate({
+      closed: [{ ticker: "SPX", contract: "16.5C 0DTE", pnl_pct: 97, window_et: "10:33→10:45", grade: "A" }],
+      session_pnl_r: -2.8, // session finished red
+    });
+    assert.equal(gateVerdict.publishable, false);
+
+    // But readyBlockReason never calls it, so the package reaches READY anyway.
+    assert.equal(readyBlockReason(row), null, "GAP: should be blocked, is not — nightHawkPostGate is dead code");
   });
 });
