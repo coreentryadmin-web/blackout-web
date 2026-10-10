@@ -11,7 +11,6 @@ export type VectorPickPartition = {
   closed: VectorContractPick[];
 };
 
-export const VECTOR_PICK_POOL_SIZE = 8;
 export const VECTOR_PICK_MAX_ACTIVE = 3;
 
 function pickRank(p: VectorContractPick, fallback: number): number {
