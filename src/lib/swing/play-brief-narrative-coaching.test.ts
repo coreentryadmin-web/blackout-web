@@ -3079,7 +3079,7 @@ test("laneRankCoaching: below-median leader line caveats a named leader whose ON
   const line = laneRankCoaching(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
   assert.ok(line);
   assert.match(line, /Leader: \*\*VST\*\* @ \*\*76\*\*/);
-  assert.match(line, /structurally blocked from committing.*pending #5577 wiring/);
+  assert.match(line, /structurally blocked from committing.*a platform wiring gap/);
   assert.doesNotMatch(line, /confirm before adding size/, "the caveat replaces the misleading 'go confirm it' framing");
 });
 

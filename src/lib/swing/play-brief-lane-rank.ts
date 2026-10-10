@@ -240,7 +240,7 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
   ];
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
     const caveat = snap.topLegacyExemptOnly
-      ? " — structurally blocked from committing (pending #5577 wiring, not a live gate)"
+      ? " — structurally blocked from committing (a platform wiring gap, not a live gate)"
       : "";
     lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**${caveat}`);
   }
