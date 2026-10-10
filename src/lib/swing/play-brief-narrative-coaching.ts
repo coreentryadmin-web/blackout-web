@@ -1166,7 +1166,7 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
     // comparison is still honest context, it's specifically the "go look at this one" implication
     // that needed the disclosure.
     const caveat = snap.topLegacyExemptOnly
-      ? " (structurally blocked from committing — pending #5577 wiring, not a live gate)"
+      ? " (structurally blocked from committing — a platform wiring gap, not a live gate)"
       : " — confirm before adding size";
     return (
       `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
