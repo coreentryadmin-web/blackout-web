@@ -38,6 +38,37 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-10 — [FINDING, P4 dead-code, Vector] 4 unused constants in the Vector cadence/pick-partition layer — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Four exported constants had zero real importers anywhere in `src/` — confirmed via repo-wide grep, each one's only reference was its own declaration line: `VECTOR_PICK_POOL_SIZE` (`vector-pick-partition.ts:14`), `VECTOR_SPOT_TICK_MS`, `VECTOR_NON_UNIVERSE_WALL_TRAIL_SEC`, and `VECTOR_SPY_VOLUME_BACKFILL_MS` (all three in `vector-cadence.ts`). |
+| **Root cause** | `vector-cadence.ts`'s own header comment claims it is the "single source of truth for client + server tuning," but three of its exported constants had a real, independently-defined local duplicate elsewhere carrying the *same numeric value* that consumers actually import: `vector-stream-hub.ts:8` has its own `const TICK_MS = 1_000` instead of `VECTOR_SPOT_TICK_MS`; `VectorChart.tsx:291` has its own `const SPY_VOLUME_BACKFILL_MS = 60_000` instead of `VECTOR_SPY_VOLUME_BACKFILL_MS` (despite that same file already importing other names from `vector-cadence.ts`); `vector-wall-sample.ts:21` has its own `NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC = 15` instead of `VECTOR_NON_UNIVERSE_WALL_TRAIL_SEC`. The claimed "single source of truth" constants were never adopted — the real runtime values live in the separate local constants. `VECTOR_PICK_POOL_SIZE` (`vector-pick-partition.ts`) is unrelated to the cadence file but the same shape: a sibling constant on the same declaration line (`VECTOR_PICK_MAX_ACTIVE`) has real importers, this one never did, and no "pool size" cap concept is enforced anywhere in the pick-partition logic. |
+| **Why this matters** | All three cadence pairs currently hold the same numeric value, so there is no live bug today — but the dead "source of truth" constant and the real local duplicate can silently drift apart on a future edit, since editing the file that claims to be authoritative does nothing to the value consumers actually read. Same latent-drift shape as this session's earlier `fmtPct` duplication finding, just in the tuning-constant layer rather than formatting. |
+| **Blast radius** | `src/features/vector/lib/vector-cadence.ts` (3 dead constants removed) and `src/features/vector/lib/vector-pick-partition.ts` (1 dead constant removed). No consumer file touched — by definition, none imported these names. The real local duplicates (`TICK_MS`, `SPY_VOLUME_BACKFILL_MS`, `NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC`) and `VECTOR_PICK_MAX_ACTIVE` are untouched and still the live values. |
+| **Fix** | Deleted the 4 dead constants. Did NOT consolidate the 3 real local duplicates to import from `vector-cadence.ts` instead — that changes real import wiring in 3 separate consumer files the Vector lane owns, which this session's standing brief treats as a design decision for that lane to make, not something to do unilaterally. |
+| **Fix rationale** | Direct removal of unambiguously dead code, same pattern as this session's other dead-code fixes (`isThermalCompareTicker`, `sameFlowContract`) — these four carry no protective rationale in their own comments, unlike the Thermal functions left alone elsewhere this session. The drift-risk half of the finding (should the 3 real duplicates be consolidated onto `vector-cadence.ts`) is reported here for the Vector lane's own call, not built. |
+| **Regression guard** | No behavior to regression-test (pure deletion of unreachable code). `grep -rn "VECTOR_PICK_POOL_SIZE\|VECTOR_SPOT_TICK_MS\|VECTOR_SPY_VOLUME_BACKFILL_MS\|VECTOR_NON_UNIVERSE_WALL_TRAIL_SEC" src` → zero hits post-fix. `vector-cadence.test.ts` (2 tests) and `vector-pick-partition.test.ts` (6 tests) pass unchanged. `tsc --noEmit` clean. |
+| **Gates** | `npx tsx --experimental-test-module-mocks --test src/features/vector/lib/vector-cadence.test.ts src/features/vector/lib/vector-pick-partition.test.ts` (Node 20) — 8/8 pass (2+6). `npx tsc --noEmit` — clean. |
+| **Status** | FIXED — branch `fix/vector-dead-cadence-constants`. |
+
+## 2026-10-10 — [FINDING, P4 Largo/Meridian] Sector-cohort "insufficient peers" message read "only 0 peers reporting" when the true count was zero — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live swing play-briefs for LRN (Education sector) and CLF (Metals & Mining sector), 2026-10-10, both rendered their "Earnings peer lens" section's thin-cohort note as **"only 0 peers reporting with a comparable number — too few to rank against."** The phrasing reads as if some peers exist but not enough ("only 0" is self-contradictory phrasing), when the true state is simply no comparable peers at all. |
+| **Root cause** | `buildSectorCohort` (`src/lib/meridian/meridian-sector-core.ts`) builds its `insufficientReason` from one template for every count below `MIN_COHORT_PEERS` (4): `` `only ${values.length} peer${values.length === 1 ? "" : "s"} reporting with a comparable number — too few to rank against` ``. That phrasing is fine for N=1..3 but grammatically confusing at N=0. |
+| **Why not caught earlier** | The existing regression test (`meridian-sector-core.test.ts`, "a cohort below the peer floor...") only exercised N=2 peers; N=0 was never a tested case, and it is the live repro (both LRN's Education and CLF's Metals & Mining sectors had zero comparable peers in the loaded Meridian window at the time of this read). |
+| **Fix** | Special-case `values.length === 0` to the plain, unambiguous "no peers reporting with a comparable number — too few to rank against," leaving the existing "only N peer(s)..." wording unchanged for N=1..3. |
+| **Blast radius** | Single call site (`buildSectorCohort`); its only consumer, `src/lib/largo/meridian-peer-cohort-for-largo-core.ts`, passes `insufficientReason` straight through as a plain string field (`insufficient_reason`) with no pattern-matching on its content — checked, no downstream test or code string-matches the old "only N" phrasing in a way the fix breaks. |
+| **Regression guard** | `src/lib/meridian/meridian-sector-core.test.ts` — new test builds a cohort with zero peers and asserts the exact "no peers reporting..." string, and that it never contains "only 0". RED→GREEN proven via `git stash` isolating the test from the production fix. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2) · `meridian-sector-core.test.ts` + `meridian-peer-cohort-for-largo-core.test.ts` + `play-brief-intel.test.ts` 240/240 pass · full `npm test` run alongside this write-up. |
+| **Status** | FIXED — see PR. |
+
 ## 2026-10-10 — [FINDING, P4 dead-code, Helix] `sameFlowContract` had zero importers anywhere in the repo — FIXED
 
 > **kind:** `FINDING`
