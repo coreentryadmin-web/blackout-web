@@ -38,6 +38,22 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-10 — [FINDING, P4 dead-code, SPX] 5 unused exports across spx-lotto-copy.ts and playbook-promotion-requirements.ts — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Five exported names had zero real importers anywhere in `src/` — confirmed via repo-wide grep, each one's only reference was its own declaration: `lottoPanelLoadingCopy`, `lottoPanelOffHoursCopy`, `lottoPanelEmptyCopy` (`src/features/spx/lib/spx-lotto-copy.ts`), and `PROMOTION_TIER_ORDER`, `thresholdsForTier` (`src/features/spx/lib/playbook-promotion-requirements.ts`). |
+| **Root cause** | `spx-lotto-copy.ts`'s only real consumer, `spx-lotto-engine.ts`, imports 8 other copy functions from the same file (`lottoBuyStatusMessage`, `lottoHoldStatusMessage`, `lottoNoneCopy`, `lottoPhaseKicker`, `lottoWatchHeadline`, `lottoWatchStatusMessage`, `lottoWatchThesis`, `lottoWinStatusMessage`) but never the three "Panel*" wrappers — two of which (`lottoPanelOffHoursCopy`/`lottoPanelEmptyCopy`) are themselves thin wrappers around `lottoNoneCopy("off_hours")`/`lottoNoneCopy("no_qualify")`, which IS called directly elsewhere. These read like an abandoned alternate call-site superseded by calling `lottoNoneCopy` directly. Similarly, `playbook-promotion-requirements.ts`'s real consumer (`playbook-promotion-eval.ts`) imports the three threshold constants (`PROMOTION_RESEARCH_THRESHOLDS`/`PROMOTION_STAGING_THRESHOLDS`/`PROMOTION_LIMITED_LIVE_THRESHOLDS`) directly and calls `evaluatePromotionGates` per-tier by hand, bypassing the `thresholdsForTier(tier)` lookup helper (and the `PROMOTION_TIER_ORDER` array built to drive it) entirely. |
+| **Why this matters** | Dead wrapper/lookup functions sitting beside their live siblings make a reader trace an extra call path that goes nowhere — `thresholdsForTier` in particular looks like the intended single entry point for threshold lookup, when the real code already bypassed it. |
+| **Blast radius** | `src/features/spx/lib/spx-lotto-copy.ts` (3 functions removed) and `src/features/spx/lib/playbook-promotion-requirements.ts` (1 constant + 1 function removed). No consumer file touched — by definition, none imported these names. The surviving types these dead exports used (`LottoCopyLine`, `PlaybookPromotionTier`) are untouched since both have other live consumers (`lottoNoneCopy` and `playbook-promotion-eval.ts` respectively). No dedicated test file existed for either module; the broader SPX lib+hooks suite (844 tests) passes unchanged. |
+| **Fix** | Deleted the 5 dead exports. |
+| **Fix rationale** | Direct removal — same pattern as this session's other dead-code fixes (`isThermalCompareTicker`, `sameFlowContract`, Vector cadence constants). Both carry no protective rationale in their own comments, unlike the Thermal functions left alone elsewhere this session. |
+| **Regression guard** | No behavior to regression-test (pure deletion of unreachable code). `grep -rn "lottoPanelLoadingCopy\|lottoPanelOffHoursCopy\|lottoPanelEmptyCopy\|PROMOTION_TIER_ORDER\|thresholdsForTier" src` → zero hits post-fix. Full `src/features/spx/lib/*.test.ts src/features/spx/hooks/*.test.ts` sweep: 844/844 pass. `tsc --noEmit` clean. |
+| **Gates** | `npx tsx --experimental-test-module-mocks --test src/features/spx/lib/*.test.ts src/features/spx/hooks/*.test.ts` (Node 20) — 844/844 pass. `npx tsc --noEmit` — clean. |
+| **Status** | FIXED — branch `fix/spx-dead-lotto-promotion-exports`. |
+
 ## 2026-10-10 — [FINDING, P2 correctness, X-Intel] confidence validation was dead code with a false "this is the law" comment — the real enforcement path never checked it — FIXED
 
 > **kind:** `FINDING`
