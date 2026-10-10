@@ -2202,11 +2202,27 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
  * evidence/levels builders are a separate, smaller surface not touched here — a natural follow-up,
  * not folded in to keep this a single-issue PR.
  */
-function safeSection<T>(title: string, build: () => T): T | null {
+// BUG FOUND (Ask Largo standing mandate, 2026-10-10): the 2026-10-07 fix on `safeCompose`
+// (play-brief.ts) gave evidence/levels an `onFailure` hook specifically because a silent []
+// fallback is indistinguishable from "we checked and there's genuinely nothing" — but that same
+// fix explicitly deferred extending the identical pattern to THIS function's 20 `safeSection`
+// calls ("not duplicated here (single-issue PRs, per this repo's standing policy)"). The gap it
+// described applies here unchanged: when a section builder throws (#5288's own repro — a
+// malformed/degraded upstream row at runtime despite a required-field type), the section is
+// omitted with no record anywhere the model-facing envelope reads — not `unavailableSources`, not
+// `confidence` — so the member/Largo reading the brief cannot tell a dropped "Chart technicals" or
+// "Catalysts & news" apart from a bucket that was never meant to show one. Zero live occurrences
+// found in 7 days of CloudWatch `/ecs/blackout-production` logs for `"intel section"` at time of
+// writing — this is a latent disclosure-contract gap, not an active one — but the fix is the same
+// proven, already-shipped `onFailure` pattern, so completing it here is the natural scoped follow-up
+// rather than a new design. `onFailure` defaults to a no-op so every existing caller (including the
+// many direct `buildIntelSections(ctx, bucket)` calls in this file's own tests) is unaffected.
+function safeSection<T>(title: string, build: () => T, onFailure?: (label: string) => void): T | null {
   try {
     return build();
   } catch (error) {
     console.error(`[swing/play-brief] intel section "${title}" threw — omitting it, not failing the brief`, error);
+    onFailure?.(title);
     return null;
   }
 }
@@ -2215,78 +2231,95 @@ function safeSection<T>(title: string, build: () => T): T | null {
 export function buildIntelSections(
   ctx: SwingPlayBriefContext,
   bucket: "watch" | "open" | "closed",
-  opts?: { collapseIntel?: boolean },
+  opts?: { collapseIntel?: boolean; onFailure?: (label: string) => void },
 ): RichSection[] {
   const { play, ecosystem } = ctx;
   const vec = vectorOf(ctx);
   const out: RichSection[] = [];
+  const onFailure = opts?.onFailure;
 
-  const narrative = safeSection("Trade manager read", () => tradeManagerNarrativeSection(ctx, bucket));
+  const narrative = safeSection("Trade manager read", () => tradeManagerNarrativeSection(ctx, bucket), onFailure);
   if (narrative) out.push(narrative);
 
-  const whySetup = safeSection("Why this setup", () => whyThisSetupSection(play));
+  const whySetup = safeSection("Why this setup", () => whyThisSetupSection(play), onFailure);
   if (whySetup) out.push(whySetup);
 
-  const book = safeSection("Book context", () => bookContextSection(play, ctx.openBook));
+  const book = safeSection("Book context", () => bookContextSection(play, ctx.openBook), onFailure);
   if (book) out.push(book);
 
-  const trackRecord = safeSection("Archetype track record", () =>
-    archetypeTrackRecordSection(play, ctx.archetypeTrackRecord),
+  const trackRecord = safeSection(
+    "Archetype track record",
+    () => archetypeTrackRecordSection(play, ctx.archetypeTrackRecord),
+    onFailure,
   );
   if (trackRecord) out.push(trackRecord);
 
-  const tickerRecord = safeSection("Ticker track record", () =>
-    tickerTrackRecordSection(play, ctx.tickerTrackRecord),
+  const tickerRecord = safeSection(
+    "Ticker track record",
+    () => tickerTrackRecordSection(play, ctx.tickerTrackRecord),
+    onFailure,
   );
   if (tickerRecord) out.push(tickerRecord);
 
-  const cortexRead = safeSection("Cortex read", () => cortexReadSection(play));
+  const cortexRead = safeSection("Cortex read", () => cortexReadSection(play), onFailure);
   if (cortexRead) out.push(cortexRead);
 
-  const rank = safeSection("Lane rank", () => laneRankSection(play, ctx.laneRows));
+  const rank = safeSection("Lane rank", () => laneRankSection(play, ctx.laneRows), onFailure);
   if (rank) out.push(rank);
 
-  const technicals = safeSection("Chart technicals", () =>
-    chartTechnicalsSection(vec, ctx.sessionDate, bucket, ctx),
+  const technicals = safeSection(
+    "Chart technicals",
+    () => chartTechnicalsSection(vec, ctx.sessionDate, bucket, ctx),
+    onFailure,
   );
   if (technicals) out.push(technicals);
 
-  const levels = safeSection("Chart levels", () => chartLevelsSection(ctx));
+  const levels = safeSection("Chart levels", () => chartLevelsSection(ctx), onFailure);
   if (levels) out.push(levels);
 
-  const gex = safeSection("GEX posture", () => gexPostureSection(ctx));
+  const gex = safeSection("GEX posture", () => gexPostureSection(ctx), onFailure);
   if (gex) out.push(gex);
 
-  const walls = safeSection("Wall dynamics", () => wallDynamicsSection(vec, ctx.sessionDate, bucket, ctx));
+  const walls = safeSection(
+    "Wall dynamics",
+    () => wallDynamicsSection(vec, ctx.sessionDate, bucket, ctx),
+    onFailure,
+  );
   if (walls) out.push(walls);
 
-  const vdesk = safeSection("Vector desk", () => vectorDeskSection(vec, ctx.sessionDate, bucket, ctx));
+  const vdesk = safeSection(
+    "Vector desk",
+    () => vectorDeskSection(vec, ctx.sessionDate, bucket, ctx),
+    onFailure,
+  );
   if (vdesk) out.push(vdesk);
 
-  const flow = safeSection("Flow intel", () => flowIntelSection(ecosystem, play, ctx.sessionDate));
+  const flow = safeSection("Flow intel", () => flowIntelSection(ecosystem, play, ctx.sessionDate), onFailure);
   if (flow) out.push(flow);
 
-  const catalysts = safeSection("Catalysts", () => catalystsSection(ecosystem, ctx));
+  const catalysts = safeSection("Catalysts", () => catalystsSection(ecosystem, ctx), onFailure);
   if (catalysts) out.push(catalysts);
 
-  const meridian = safeSection("Meridian catalyst", () => meridianCatalystSection(ctx));
+  const meridian = safeSection("Meridian catalyst", () => meridianCatalystSection(ctx), onFailure);
   if (meridian) out.push(meridian);
 
-  const meridianPeer = safeSection("Meridian peer", () => meridianPeerSection(ctx));
+  const meridianPeer = safeSection("Meridian peer", () => meridianPeerSection(ctx), onFailure);
   if (meridianPeer) out.push(meridianPeer);
 
-  const macro = safeSection("Macro tape", () => macroTapeSection(ecosystem));
+  const macro = safeSection("Macro tape", () => macroTapeSection(ecosystem), onFailure);
   if (macro) out.push(macro);
 
-  const consensus = safeSection("Desk consensus", () =>
-    deskConsensusSection(ecosystem, play, bucket, ctx.sessionDate),
+  const consensus = safeSection(
+    "Desk consensus",
+    () => deskConsensusSection(ecosystem, play, bucket, ctx.sessionDate),
+    onFailure,
   );
   if (consensus) out.push(consensus);
 
-  const fresh = safeSection("Data freshness", () => dataFreshnessSection(ctx));
+  const fresh = safeSection("Data freshness", () => dataFreshnessSection(ctx), onFailure);
   if (fresh) out.push(fresh);
 
-  const watchFor = safeSection("Watch for", () => watchForSection(ctx, bucket));
+  const watchFor = safeSection("Watch for", () => watchForSection(ctx, bucket), onFailure);
   if (watchFor) out.push(watchFor);
 
   if (bucket === "open") {
@@ -2300,12 +2333,15 @@ export function buildIntelSections(
     // repro (any OPEN play with a HOLD-class recommendation and health < 45).
     const tightenAlreadyNoted =
       narrative?.body?.includes("Health fading — tighten stop or trim into any bounce") ?? false;
-    const hold = safeSection("Hold plan", () =>
-      holdPlanSection(ctx, {
-        roundTrip: roundTripAlreadyNoted,
-        capture: captureAlreadyNoted,
-        tighten: tightenAlreadyNoted,
-      }),
+    const hold = safeSection(
+      "Hold plan",
+      () =>
+        holdPlanSection(ctx, {
+          roundTrip: roundTripAlreadyNoted,
+          capture: captureAlreadyNoted,
+          tighten: tightenAlreadyNoted,
+        }),
+      onFailure,
     );
     if (hold) out.push(hold);
   }
@@ -2340,8 +2376,11 @@ export function buildIntelSections(
     // Closes the capture>=75 "Strong exit discipline" gap the flags above left open — see
     // lessonsSection's own doc comment (2026-09-18) for the live repro (CRWD:19).
     const captureAlreadyNoted = narrative?.body?.includes("replicate trim timing") ?? false;
-    const lessons = safeSection("Lessons", () =>
-      lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted, captureAlreadyNoted),
+    const lessons = safeSection(
+      "Lessons",
+      () =>
+        lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted, captureAlreadyNoted),
+      onFailure,
     );
     if (lessons) out.push(lessons);
   }

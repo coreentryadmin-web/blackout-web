@@ -4756,3 +4756,44 @@ test("composeSwingPlayBrief: a levels-build failure is disclosed via unavailable
   assert.equal(brief.envelope.confidence?.level, "moderate");
   assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
 });
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-10): the test above proved `safeCompose`'s
+// `onFailure` disclosure for evidence/levels; `buildIntelSections`'s own 20 `safeSection` calls
+// (play-brief-intel.ts) had no equivalent hook at all until now, so a thrown intel section (e.g.
+// "Why this setup" on the same malformed-`factors` shape #5288 found) vanished from the TOP-LEVEL
+// envelope with zero record — not in `unavailableSources`, not in `confidence` — exactly the gap
+// Largo C3 names as dangerous. Proves the fix end-to-end through the real `composeSwingPlayBrief`
+// entry point, not just `buildIntelSections` in isolation.
+test("composeSwingPlayBrief: an intel-section build failure is disclosed via unavailableSources, not silently omitted with no trace (Largo C3)", () => {
+  const throwingPlay = fixturePlay({
+    status: "WATCH",
+    factors: undefined as unknown as TerminalPlay["factors"],
+  });
+  const ctx: SwingPlayBriefContext = {
+    play: throwingPlay,
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  // The broken section still doesn't appear — the fix is disclosure, not fabrication.
+  assert.ok(!brief.envelope.sections.some((s) => s.title === "Why this setup"));
+
+  const disclosed = brief.envelope.unavailableSources?.find((s) => s.what_is_missing === "Why this setup");
+  assert.ok(
+    disclosed,
+    "expected a disclosed unavailableSources entry naming the failed 'Why this setup' build, not silence",
+  );
+  assert.match(disclosed!.reason, /failed to build/);
+  assert.equal(disclosed!.retryable, true);
+
+  assert.equal(brief.envelope.confidence?.level, "moderate");
+  assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
+});

@@ -1346,7 +1346,17 @@ export function composeSwingPlayBrief(
     if (closed) sections.push(closed);
   }
 
-  sections.push(...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel }));
+  // BUG FIX (Ask Largo standing mandate, 2026-10-10): declared here, BEFORE buildIntelSections,
+  // rather than down at the evidence/levels composition below (where this pair originated for the
+  // 2026-10-07 fix) — buildIntelSections' own 20 safeSection calls needed the identical `onFailure`
+  // hook (see its own doc comment, play-brief-intel.ts), and declaring one shared collector that
+  // every composer call feeds is what lets `unavailableSources` below see ALL of them, not just
+  // evidence/levels'.
+  const buildFailures: string[] = [];
+  const trackBuildFailure = (label: string) => buildFailures.push(label);
+  sections.push(
+    ...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel, onFailure: trackBuildFailure }),
+  );
 
   // Prefer a real per-ticker technical break level (put wall/gamma flip/call wall — same
   // computation the "Trade manager read" narrative's own "Break watch" bullet uses) over the
@@ -1392,11 +1402,10 @@ export function composeSwingPlayBrief(
 
   // BUG FIX continued (Ask Largo standing mandate, 2026-10-07): evidence/levels are now composed
   // BEFORE unavailableSources rather than inline inside the envelope literal, so a build failure
-  // recorded via `buildFailures` can be folded into the SAME `unavailableSources` list the
+  // recorded via `buildFailures` (declared above, now ALSO fed by buildIntelSections — see the
+  // 2026-10-10 comment on that call) can be folded into the SAME `unavailableSources` list the
   // envelope field and `confidence` both read — otherwise a build failure would have nowhere
   // honest to surface (the pre-existing `[]` fallback alone looks identical to a real empty read).
-  const buildFailures: string[] = [];
-  const trackBuildFailure = (label: string) => buildFailures.push(label);
   const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, readMs), [], trackBuildFailure);
   const levels = safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), [], trackBuildFailure);
 

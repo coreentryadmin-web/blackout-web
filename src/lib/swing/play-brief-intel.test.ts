@@ -5631,6 +5631,41 @@ test("buildIntelSections: a single section throwing does not take down the whole
   assert.ok(sections.some((s) => s.title === "Watch levels"), "other sections still render");
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-10-10): the test above proves the error BOUNDARY
+// works (one throw doesn't take down the whole brief) but not that the failure is DISCLOSED —
+// pre-fix, `safeSection` had no `onFailure` hook at all, so a thrown section vanished with zero
+// record anywhere the model-facing envelope reads (not `unavailableSources`, not `confidence`),
+// identical to the gap the 2026-10-07 `safeCompose`/`onFailure` fix closed for evidence/levels but
+// explicitly deferred extending to this function's own 20 `safeSection` calls. Reuses the exact
+// same malformed-`factors` repro as the test above.
+test("buildIntelSections: a thrown section is reported via onFailure, not silently indistinguishable from a real absence", () => {
+  const play = fixturePlay({
+    status: "WATCH",
+    factors: undefined as unknown as TerminalPlay["factors"],
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-20T14:00:00.000Z",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const failures: string[] = [];
+  const sections = buildIntelSections(ctx, "watch", { onFailure: (label) => failures.push(label) });
+
+  assert.ok(!sections.some((s) => s.title === "Why this setup"), "broken section still omitted, not fabricated");
+  assert.deepEqual(failures, ["Why this setup"], "the broken section's own label is reported exactly once");
+
+  // Omitting `onFailure` entirely (every pre-existing call site in this file) must stay a no-op —
+  // the hook is additive, never required.
+  assert.doesNotThrow(() => buildIntelSections(ctx, "watch"));
+});
+
 // BUG FOUND (2026-09-21, Ask Largo standing mandate — 4th instance of the #5362/#4261 duplication
 // class, live repro pattern: any OPEN play with a HOLD recommendation and a calibrated thesis
 // health below 45). actionNarrative's HOLD branch (play-brief-narrative.ts, feeds "Trade manager
