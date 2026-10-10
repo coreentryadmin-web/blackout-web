@@ -1342,8 +1342,14 @@ export function fmtPrice(n: number | null, decimals = 2): string {
 
 export function fmtPct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}${n.toFixed(2)}%`;
+  // Round first, then toFixed — toFixed on the raw float can round the wrong
+  // way at an exact half-cent boundary (e.g. 6.175 is stored as
+  // 6.1749999999999998..., so a bare toFixed(2) prints "6.17" instead of
+  // "6.18"). Same bug class already fixed in fmt-money.ts's fmtPct; this
+  // older duplicate (SPX desk's dayChange display) was missed.
+  const rounded = Math.round(n * 100) / 100;
+  const sign = rounded >= 0 ? "+" : "";
+  return `${sign}${rounded.toFixed(2)}%`;
 }
 
 export function pctClass(n: number | null): string {
