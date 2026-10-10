@@ -59,6 +59,58 @@ test("swingCalibrationRowFromLedger: reads pinned grade/archetype/sub-lane/score
   assert.equal(bare.archetype, null);
 });
 
+// ── KNOWN-DEFECT GUARD (2026-09-28, operator-directed exit-capture root-cause audit) ────────────
+// `swingCalibrationRowFromLedger` — the ONLY function `swing-active-refresh/route.ts` calls to turn
+// a real closed `swing_positions` row into calibration-ladder input (confirmed: `graduatedRungs =
+// graduatedEdgeRungsFromReport(analyzeSwingCalibration(graded.map(swingCalibrationRowFromLedger)))`,
+// swing-active-refresh/route.ts:246-247, called on every 15-min live cron tick) — never populates
+// `manage_rung`. `SwingLedgerRowForCalibration` (its own declared input type, just above) does not
+// even carry a source field for it. Its own doc comment says so explicitly: "The exit-rung / gate /
+// rank / allocation buckets are not needed for the COMMIT floor graduation, so they are left
+// undefined here."
+//
+// Consequence, proven below: `analyzeSwingScaleOut` (verified two tests above to graduate correctly
+// GIVEN a `manage_rung`-populated row) buckets every row from `swingCalibrationRowFromLedger`'s real
+// output into `noRead` (`r.manage_rung == null`) for EVERY edge rung, unconditionally — so the on/off
+// buckets are permanently EMPTY (n=0) regardless of population size, win rate, or how long the desk
+// runs. `graduatedEdgeRungsFromReport` therefore returns `[]` on every real production tick — not
+// "hasn't cleared n>=10 yet", but structurally incapable of ever graduating, for `profit_ladder` or
+// any other edge rung, until this wiring gap closes. This is the reason a member can never have an
+// enforced profit-taking exit on a swing position: `manage.ts`'s `isEnforced()` requires the rung's
+// name to appear in `graduatedRungs`, which is always `[]`.
+//
+// This test intentionally PASSES today — it documents the current (broken) behavior as a guard, not
+// a RED/GREEN pair, because fixing it requires a real design decision (where does a per-row exit
+// rung get PINNED at grade/close time, and does `SwingLedgerRowForCalibration` gain a new field for
+// it) that this audit is deliberately not making unilaterally. Once that wiring lands, this test
+// MUST be rewritten to assert the opposite (a large, clean profit_ladder-favoring population DOES
+// graduate) — do not delete it silently; its failure is the fix's own regression proof.
+test("KNOWN DEFECT: swingCalibrationRowFromLedger never carries manage_rung, so NO exit rung can ever graduate from real production data, at any population size", () => {
+  // 60 real-shaped closed rows, 45 wins (75% WR) — comfortably clears every graduation bar this
+  // ladder uses elsewhere (n>=10, WR delta >=15pt) for every OTHER dimension (archetype/sub-lane/
+  // pillar weights all graduate on inputs like this, per the tests above). If manage_rung were
+  // wired, a population this lopsided reaching profit_ladder specifically would graduate it.
+  const closedLedgerRows = Array.from({ length: 60 }, (_, i) => ({
+    realized_pnl_pct: i < 45 ? 30 : -20,
+    graded_at: "2026-09-01T00:00:00Z",
+    archetype: "BREAKOUT",
+    sub_lane: "STANDARD",
+  }));
+  const report = analyzeSwingCalibration(closedLedgerRows.map(swingCalibrationRowFromLedger));
+  const graduated = graduatedEdgeRungsFromReport(report);
+  assert.deepEqual(
+    graduated,
+    [],
+    "documents the current defect: even a 60-row, 75%-WR closed population graduates ZERO exit " +
+      "rungs, because swingCalibrationRowFromLedger drops manage_rung and every row falls into the " +
+      "noRead bucket for every rung, unconditionally",
+  );
+  // Confirms the ROOT cause, not just the symptom: the mapped rows literally have no manage_rung.
+  for (const mapped of closedLedgerRows.map(swingCalibrationRowFromLedger)) {
+    assert.equal((mapped as { manage_rung?: unknown }).manage_rung, undefined);
+  }
+});
+
 // ── graded gate ──────────────────────────────────────────────────────────────────────────────
 test("isGradedSwingRow requires BOTH a grade stamp and a finite realized P&L", () => {
   assert.equal(isGradedSwingRow({ realized_pnl_pct: 10, graded_at: "x" }), true);
