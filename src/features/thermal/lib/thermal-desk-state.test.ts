@@ -4,7 +4,6 @@ import {
   THERMAL_COMPARE_TICKERS,
   buildThermalUrlSearch,
   honestLevelEmpty,
-  isThermalCompareTicker,
   isUsableGexHeatmapPayload,
   parseThermalLens,
   parseThermalTicker,
@@ -78,9 +77,6 @@ test("buildThermalUrlSearch writes ticker/lens/compare/compareSet and drops comp
 });
 
 test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
-  assert.equal(isThermalCompareTicker("SPY"), true);
-  assert.equal(isThermalCompareTicker("QQQ"), true);
-  assert.equal(isThermalCompareTicker("NVDA"), false);
   assert.equal(isUsableGexHeatmapPayload(null), false);
   assert.equal(isUsableGexHeatmapPayload({ available: true, strikes: [], expiries: ["2026-07-29"] }), false);
   assert.equal(

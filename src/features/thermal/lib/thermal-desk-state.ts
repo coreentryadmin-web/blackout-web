@@ -64,10 +64,6 @@ export type ThermalLayerFreshness = {
   };
 };
 
-export function isThermalCompareTicker(t: string): t is ThermalCompareTicker {
-  return (THERMAL_COMPARE_TICKERS as readonly string[]).includes(t.toUpperCase());
-}
-
 export function parseThermalLens(raw: string | null | undefined): ThermalLens | null {
   if (!raw) return null;
   const l = raw.trim().toLowerCase() as ThermalLens;
