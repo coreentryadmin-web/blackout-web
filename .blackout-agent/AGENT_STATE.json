@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-11T11:51:28.027Z",
+  "updated_at": "2026-10-11T13:13:19.350Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "11969bf6bd74823c375248d590651354fd389133",
+    "last_main_sha": "a03cc56e7d0ac170c6b1dad03c7eec77cb767d74",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-22T04:36:19.659Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-22T04:36:19.921Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-22T04:40:31.748Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-22T04:40:32.793Z",
       "type": "context_sync",
@@ -1271,6 +1253,24 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-11T13:13:09.091Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-11T13:13:15.043Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-11T13:13:19.350Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
@@ -1281,8 +1281,8 @@
       "author": "coreentryadmin-web",
       "agent": "claude",
       "draft": true,
-      "verify": "completed/failure",
-      "updated_at": "2026-10-08T02:42:06Z"
+      "verify": "unknown",
+      "updated_at": "2026-10-11T13:06:16Z"
     },
     {
       "number": 5547,
