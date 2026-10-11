@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-11T09:12:58.647Z",
+  "updated_at": "2026-10-11T10:31:46.288Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "2e6ccdae07f3d55354100bc8828c21f7716d7512",
+    "last_main_sha": "29f8c1249130d109fbb5641c864ebda5149ae4f9",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-22T03:07:18.069Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-22T03:07:18.609Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-22T03:49:42.709Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-09-22T03:49:43.701Z",
       "type": "context_sync",
@@ -1271,9 +1253,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-11T10:31:35.526Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-11T10:31:41.421Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-11T10:31:46.288Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
+    {
+      "number": 5839,
+      "title": "fix(helix,meridian): remove dead ContractPick type + MeridianHalo component",
+      "branch": "fix/helix-meridian-dead-contract-pick-and-halo",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-11T10:23:36Z"
+    },
     {
       "number": 5663,
       "title": "fix(swing): explicit mark_as_of column for staleness tracking",
