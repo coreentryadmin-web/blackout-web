@@ -103,8 +103,4 @@ export function marketingProductById(id: string): MarketingProduct | undefined {
   return MARKETING_PRODUCTS.find((p) => p.id === id);
 }
 
-export function marketingProductLearnHref(id: MarketingProductId): string {
-  return marketingProductById(id)?.learnHref ?? "/learn";
-}
-
 export { PRODUCT_MANIFEST, manifestSchemaFeatureList } from "@/lib/marketing/product-manifest";
