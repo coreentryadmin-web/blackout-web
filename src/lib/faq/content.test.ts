@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { FAQ_ITEMS, HOME_FAQ_IDS, PRICING_FAQ_IDS, selectFaqItems } from "./content.ts";
+import { MANIFEST_PRODUCT_ORDER, PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest.ts";
 
 test("every FAQ_ITEMS id is unique", () => {
   const ids = FAQ_ITEMS.map((i) => i.id);
@@ -44,4 +45,37 @@ test("home accordion and its JSON-LD share one id list — the exact drift this 
     "Is any of this financial advice?",
     "How do I get started in 5 minutes?",
   ]);
+});
+
+// Regression for a live GEO bug (2026-10-11): the "What exactly is BlackOut?" FAQ answer
+// (id platform-1) pre-enumerated 5 of the 7 live products by name in its own hardcoded lead
+// sentence, then appended manifestPlatformSummary()'s full 7-product list right after —
+// producing a redundant answer that named SPX Slayer/Night Hawk/Largo TWICE while Vector and
+// Meridian only ever appeared in the auto-generated tail, never in the descriptive sentence
+// naming them. This item is rendered unfiltered into FAQPageJsonLd on /faq (a real GEO surface
+// AI answer engines parse), so a lopsided answer is a real defect, not cosmetic. Same
+// "hardcoded prose not updated after Meridian" root cause as the email-template bug found
+// earlier this session — fixed here by making the lead sentence product-name-agnostic instead
+// of re-patching it with two more names that will go stale again at the next product launch.
+
+function platformIntroAnswer(): string {
+  const item = FAQ_ITEMS.find((i) => i.id === "platform-1");
+  assert.ok(item, "FAQ_ITEMS is missing platform-1 (\"What exactly is BlackOut?\")");
+  return item!.a;
+}
+
+test("FAQ platform-1 answer names every live product exactly once, never twice", () => {
+  const answer = platformIntroAnswer();
+  for (const id of MANIFEST_PRODUCT_ORDER) {
+    if (PRODUCT_MANIFEST[id].launchStatus !== "live") continue;
+    const label = PRODUCT_MANIFEST[id].label;
+    const occurrences = answer.split(label).length - 1;
+    assert.equal(occurrences, 1, `"${label}" should appear exactly once in the platform-1 answer, found ${occurrences}`);
+  }
+});
+
+test("FAQ platform-1 answer includes every live product, including ones launched after this answer was first written", () => {
+  const answer = platformIntroAnswer();
+  assert.match(answer, /Vector/);
+  assert.match(answer, /Meridian/);
 });
