@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-11T02:10:53.595Z",
+  "updated_at": "2026-10-11T02:44:46.089Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b7fd704dfdab314eb23201d73237020d09cd1166",
+    "last_main_sha": "8f80366222c4435ae02d54fc08b553f48cc29df5",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-22T00:19:09.637Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-22T00:19:10.397Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-09-22T00:45:48.556Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-22T00:45:49.149Z",
       "type": "context_sync",
@@ -1271,29 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-11T02:44:37.815Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-11T02:44:42.002Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-11T02:44:46.089Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
-    {
-      "number": 5807,
-      "title": "fix(vector): remove orphaned railMemo subsystem",
-      "branch": "fix/vector-dead-rail-memo",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-11T02:08:03Z"
-    },
-    {
-      "number": 5806,
-      "title": "fix(vector): remove dead trailForRank/trailForFlipLevel/trailForGammaFlip",
-      "branch": "fix/vector-dead-trail-functions",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-11T02:04:50Z"
-    },
     {
       "number": 5663,
       "title": "fix(swing): explicit mark_as_of column for staleness tracking",
