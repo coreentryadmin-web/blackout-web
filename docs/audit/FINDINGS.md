@@ -38,6 +38,344 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Vector `vector-wall-history.ts` — stale doc reference to a function removed earlier this cycle — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-stale-session-history-doc) |
+|---|---|
+
+**Symptom:** none live — a doc comment correctness issue found during a routine DISCOVERY-lane
+sweep, not a production defect.
+
+**Root cause:** `trimHistoryToSession`'s doc comment (`vector-wall-history.ts:844`) named
+`trailForFlipLevel` as one of the two consumers that only ever see the current session's
+`barTimes`. `trailForFlipLevel` was removed earlier in this same DISCOVERY cycle (PR #5806, dead
+code — superseded by direct `flipForLens` usage in `vector-wall-events.ts`/`vector-replay.ts`),
+leaving the comment referencing a function that no longer exists.
+
+**Evidence:** `grep -n "trailForFlipLevel" src/features/vector/lib/vector-wall-history.ts` → only
+this one comment line, post-#5806-merge.
+
+**Fix:** Updated the comment to name `flipForLens` (the actual current consumer of
+session-scoped `barTimes` for flip-related reads) instead of the removed function.
+
+**Fix rationale:** Doc-only correction, no logic changed.
+
+**Blast radius:** `src/features/vector/lib/vector-wall-history.ts` only (one comment line).
+
+**Regression guard:** `vector-wall-history.test.ts` 75/75 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Vector `vector-terminal-lines.ts` — whole module dead, never wired into any component — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-terminal-lines) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `buildVectorTerminalLines` (`vector-terminal-lines.ts`, the file's only export) was
+a fully implemented `VectorWallEvent → PlayTerminalLine[]` builder with its own icon/tone maps for
+every wall-event kind. The only other `PlayTerminalLine` producer in Vector, `VectorPulse.tsx`,
+builds its lines via a completely different function — `buildPlaybookTerminalLines`, SPX
+playbook-shadow based — so this wall-event variant was fully written but never wired into any
+component.
+
+**Evidence:** `grep -rn "buildVectorTerminalLines\|vector-terminal-lines" --include=*.ts
+--include=*.tsx src scripts` → only the file's own definition and its own direct test, before the
+fix. No component imported this module.
+
+**Fix:** Deleted `vector-terminal-lines.ts` and `vector-terminal-lines.test.ts` entirely —
+`buildVectorTerminalLines` was the file's only export, so nothing else was orphaned by removing the
+whole module.
+
+**Fix rationale:** Whole-file deletion rather than trimming, since the file had no other export to
+preserve.
+
+**Blast radius:** `src/features/vector/lib/vector-terminal-lines.ts`,
+`src/features/vector/lib/vector-terminal-lines.test.ts` (both deleted) only. Confirmed no barrel
+file (`src/features/vector/index.ts`) re-exported anything from this module.
+
+**Regression guard:** `tsc --noEmit` clean (confirms nothing else referenced the deleted module).
+
+## Vector `maxPctByTime` — leftover from an already-reverted contrast design — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-max-pct-by-time) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `maxPctByTime` (`vector-wall-rail-core.ts`) computed the strongest wall reading AT
+EACH BUCKET, shipped 2026-08-18 as the fix for session-wide contrast (so a wall that dominated at
+10:15 and was noise by 14:00 no longer rendered at the same brightness in both). Its only caller
+was `WallRailPaneView.project()`'s `_derivedCache` in `vector-wall-rail-primitive.ts`, which cached
+a `maxPctAtTime` value from it. The very next day (2026-08-19, per that file's own inline comments)
+the colour-contrast approach was reverted back to a per-SIDE book-peak denominator
+(`sidePctMaxima`/`sideMaxPct`) because the per-bucket version "flattened" colour signal — every row
+became the bucket king at some point in the session, painting at full brightness regardless of real
+strength. The per-bucket map's only caller was then explicitly deleted 2026-08-27 as CodeQL-flagged
+dead code ("nothing has read the per-bucket map since" — confirmed in `project()`'s current
+`_derivedCache` destructure, which only carries `earliest, callKingAt, putKingAt, liveTime`, no
+`maxPctAtTime`). The leftover export in `vector-wall-rail-core.ts` was simply never cleaned up in
+that same pass.
+
+**Evidence:** `grep -rn "\bmaxPctByTime\b" --include=*.ts --include=*.tsx src scripts` → only the
+definition and its own 3 direct unit tests, before the fix. `vector-wall-rail-primitive.ts`'s
+`project()` no longer references it at all.
+
+**Fix:** Removed `maxPctByTime` and its doc comment from `vector-wall-rail-core.ts`. Removed the 3
+tests exercising it directly from `vector-wall-rail-core.test.ts` and its now-unused import,
+replacing the stale "POINT-IN-TIME CONTRAST (2026-08-18)" section header with one that accurately
+describes the current size-vs-contrast channel split and notes the per-bucket design's supersession
+— the one surviving test in that section (`SIZE stays absolute while CONTRAST goes relative`)
+exercises the still-live `targetHalfPx`/`fillAlpha` behavior directly, not the removed function, so
+it is untouched.
+
+**Fix rationale:** Pure deletion — this is a low-severity leftover from an already-resolved,
+already-documented design revert (FINDINGS.md 2026-08-18/08-19/08-27), not a new defect.
+
+**Blast radius:** `src/features/vector/lib/vector-wall-rail-core.ts`,
+`src/features/vector/lib/vector-wall-rail-core.test.ts` only.
+
+**Regression guard:** `vector-wall-rail-core.test.ts` 68/68 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Vector `prepareVectorLiveHelixTape` — superseded flat tape, dead since the recent+ranked layout shipped — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-helix-tape-prep) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `prepareVectorLiveHelixTape` (`vector-helix-flows.ts`) built a single flat tape —
+filter, sort by premium, slice to a cap. The real caller, `VectorHelixRail.tsx`, imports and calls
+`pickVectorLiveHelixLayout` (same file) instead — the newer Recent-strip + premium-ranked-list
+layout, which splits the eligible pool into two independently-capped sections rather than one flat
+list, while reusing the same `compareLiveHelixByPremium` sort for its ranked half.
+
+**Evidence:** `grep -rln "prepareVectorLiveHelixTape" --include=*.tsx --include=*.ts src` → only
+`vector-helix-flows.ts` (its own definition) and `vector-helix-flows.test.ts` (its own tests), never
+`VectorHelixRail.tsx`, before the fix.
+
+**Fix:** Removed `prepareVectorLiveHelixTape`. `VECTOR_LIVE_HELIX_TAPE_CAP` (the constant it
+defaulted to) has other real callers (`use-vector-helix-flows.ts`, and a different function later
+in the same file) and is untouched. Removed its import and 5 direct tests from
+`vector-helix-flows.test.ts` — the file's `pickVectorLiveHelixLayout` tests, which exercise the
+real current behavior (leader-stays-#1, recent/ranked split, display caps), are untouched.
+
+**Fix rationale:** Pure deletion — no live caller to redirect; `pickVectorLiveHelixLayout` is the
+real entry point and already has its own coverage.
+
+**Blast radius:** `src/features/vector/lib/vector-helix-flows.ts`,
+`src/features/vector/lib/vector-helix-flows.test.ts` only.
+
+**Regression guard:** `vector-helix-flows.test.ts` 17/17 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Providers `isIndexFlowTicker` — dead export — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/providers-dead-exports-2) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `isIndexFlowTicker` (`src/lib/providers/flow-price-symbol.ts`) returned
+`flowPriceSymbol(ticker)?.isIndex === true` — a thin convenience wrapper over the real function,
+`flowPriceSymbol`, which already returns an `isIndex` field directly. No caller used the wrapper;
+every real caller of this module reads `.isIndex` off `flowPriceSymbol`'s own return value.
+
+**Evidence:** `grep -rn "isIndexFlowTicker" --include=*.ts --include=*.tsx src scripts` → only the
+definition and one direct assertion in its own test, before the fix.
+
+**Fix:** Removed `isIndexFlowTicker`. Removed its import and the one direct assertion from
+`flow-price-symbol.test.ts` — the same behavior is already asserted immediately above it via
+`flowPriceSymbol("ZZZZ")`'s own `isIndex: false` field.
+
+**Fix rationale:** Pure deletion — no live caller to redirect, and the removed assertion was
+redundant with an existing one in the same test.
+
+**Blast radius:** `src/lib/providers/flow-price-symbol.ts`,
+`src/lib/providers/flow-price-symbol.test.ts` only.
+
+**Regression guard:** `flow-price-symbol.test.ts` 9/9 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Largo `isRegularHours` — dead export — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/largo-temporal-dead-exports) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `isRegularHours` (`src/lib/largo/temporal/timeframe.ts`) checked whether an instant
+falls inside RTH on a weekday. Unlike its siblings `etTimeOnDay`/`sessionOpenMs`/`sessionCloseMs`/
+`previousWeekday` — each of which is called internally by the live `resolveTimeframe`/`RULES`
+machinery even though nothing outside this file imports them directly — `isRegularHours` has no
+internal caller either: it is not referenced anywhere in `timeframe.ts` itself, only in its own
+direct unit test.
+
+**Evidence:** `grep -n "isRegularHours(" src/lib/largo/temporal/timeframe.ts` → only the
+definition, before the fix (no internal call site, unlike the siblings checked alongside it).
+`grep -rwn "isRegularHours" --include=*.ts --include=*.tsx src scripts` → only the definition and
+its own test, before the fix.
+
+**Fix:** Removed `isRegularHours`. Removed its import and its one direct test from
+`timeframe.test.ts` — `etTimeOnDay`/`sessionOpenMs`/`sessionCloseMs`/`previousWeekday`/
+`nowTimeframe`, all confirmed to be internally wired into the live `resolveTimeframe` RULES engine
+(and separately unit-tested for that reason, matching the file's own stated testing philosophy —
+"EVERYTHING IS EXPLICIT-`now`... cannot be tested at a boundary"), are untouched.
+
+**Fix rationale:** Pure deletion — scoped to the one sibling with no live call path, internal or
+external, unlike every other export checked in the same pass.
+
+**Blast radius:** `src/lib/largo/temporal/timeframe.ts`,
+`src/lib/largo/temporal/timeframe.test.ts` only.
+
+**Regression guard:** `timeframe.test.ts` 19/19 pass (Node 20, `--experimental-test-module-mocks`).
+`tsc --noEmit` clean.
+
+## Largo core — 2 dead exports: `buildOccSymbol`, `nightHawkRead` — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/largo-core-dead-exports) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:**
+- `buildOccSymbol` (`src/lib/largo/core/entities.ts`) builds an OCC symbol — the inverse of
+  `parseOccSymbol`, which IS heavily used elsewhere in this file's real callers. Its own doc
+  comment ("Round-trips with parseOccSymbol — asserted by test") describes a test-only property,
+  not a production need; nothing in the repo ever constructs an OCC symbol from parts at runtime.
+- `nightHawkRead` (`src/lib/largo/core/system-reads.ts`) was a simple play-count directional read
+  taking a flat play list. Its sibling `nightHawkReconciledRead` (same file) — which reconciles
+  evening edition, 0DTE board, swing lane, and per-ticker state across multiple products — is the
+  one actually wired into `system-reads-extract.ts`; `nightHawkRead` is the superseded, simpler
+  earlier version.
+
+**Evidence:** `grep -rwn "buildOccSymbol"` and `grep -rwn "\bnightHawkRead\b"` across
+`--include=*.ts --include=*.tsx src scripts` → each name appeared only in its own definition and
+direct unit tests, before the fix. `system-reads-extract.ts`'s own import list confirms it pulls
+`helixFlowRead, vectorPlayRead, gammaRegimeRead, nightHawkReconciledRead, agreementOf` from
+`system-reads.ts` — `nightHawkRead` is the one name absent from that list.
+
+**Fix:** Removed both functions. Removed `buildOccSymbol`'s import and its 2 direct tests from
+`entities.test.ts` (the round-trip test and the refuses-invalid-input test); `sameTicker`,
+`canonicalSession`, `extractTickers`, `parseOccSymbol`, `canonicalTicker`, `formatEntityBlock` all
+confirmed to have real callers and are untouched. Removed `nightHawkRead`'s import and its 1 direct
+test from `system-reads.test.ts`; `SystemStance` (the type it used) has other real uses in the same
+file and is untouched.
+
+**Fix rationale:** Pure deletion in both cases — no live caller to redirect, and in the Night Hawk
+case the richer successor already covers the same ground.
+
+**Blast radius:** `src/lib/largo/core/entities.ts`, `src/lib/largo/core/entities.test.ts`,
+`src/lib/largo/core/system-reads.ts`, `src/lib/largo/core/system-reads.test.ts` only.
+
+**Regression guard:** `entities.test.ts` + `system-reads.test.ts` 28/28 pass combined;
+`cross-source.test.ts` + `system-reads-extract.test.ts` (both depend on these two files) 22/22 pass
+(Node 20, `--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Helix `helixTapeToJson` — dead export, no JSON-download feature exists — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/helix-dead-tape-to-json) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `helixTapeToJson` (`helix-csv-export.ts`) serialized the flow tape to a JSON string
+with each row's score context attached. Its sibling `helixTapeToCsv` (same file) is used by
+`downloadHelixCsv`, which `FlowFeed.tsx` calls on the member-facing CSV-export button — but no
+equivalent `downloadHelixJson` (or any other JSON-download UI) exists anywhere, so
+`helixTapeToJson` was never reachable from a real feature.
+
+**Evidence:** `grep -rn "helixTapeToJson\|downloadHelixCsv" --include=*.ts --include=*.tsx src` →
+`downloadHelixCsv` has a real caller (`FlowFeed.tsx:275`); `helixTapeToJson` has only its own
+definition and direct unit test, before the fix.
+
+**Fix:** Removed `helixTapeToJson` from `helix-csv-export.ts`. Removed its import and direct test
+from `helix-csv-export.test.ts` — the remaining `helixTapeToCsv` test, which covers the real
+export path, is untouched.
+
+**Fix rationale:** Pure deletion — there is no JSON-download feature to wire it into, and building
+one wasn't asked for; this sweep only removes dead code; a JSON-export feature would be a product
+decision for the Helix lane.
+
+**Blast radius:** `src/features/helix/lib/helix-csv-export.ts`,
+`src/features/helix/lib/helix-csv-export.test.ts` only.
+
+**Regression guard:** `helix-csv-export.test.ts` 1/1 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Audit scripts — 4 dead exports across 3 lib files: `mintClerkSessionViaPlaywright`, `buildCreativeCopy`+`nextCopyOpener`+`COPY_OPENERS`, `nextPanelPack` — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/audit-scripts-dead-exports) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep of
+`scripts/audit/lib/*.mjs` (the pure-logic helpers behind the audit scripts — real app-adjacent
+code, not disposable scripts), not a production defect.
+
+**Root cause:**
+- `mintClerkSessionViaPlaywright` (`admin-e2e-auth.mjs`) completes a Clerk ticket sign-in through a
+  headless Playwright browser. Zero callers anywhere — not even its own test file (none exists for
+  this module). The repo's real, documented auth pattern (CLAUDE.md "Access reality" §1) is the
+  pure-HTTP FAPI-ticket-exchange flow via `mintClerkPremiumSession` (imported at the top of this
+  same file from `prod-clerk-session.mjs`), which needs no browser — this Playwright-based
+  alternative appears to have been superseded by that and never removed.
+- `buildCreativeCopy` (`x-social-creative.mjs`) built X-post copy from a live story + captured
+  panels. Zero production callers — `composeCreativePack` (same file), the function `x-social-post.mjs`
+  actually imports, builds its pack without ever calling this copy builder. Its own exclusive
+  helper `nextCopyOpener` (LRU-rotating opener line picker) had no other caller either, and that
+  helper's own exclusive data array `COPY_OPENERS` had no other caller once `nextCopyOpener` is
+  gone — all three removed together rather than leaving two newly-orphaned siblings behind.
+- `nextPanelPack` (`x-social-post-kit.mjs`) picks the next panel pack by LRU rotation. Zero
+  production callers — `getPanelPack(slug)` (same file, explicit-slug lookup) is the one
+  `x-social-post.mjs` actually calls.
+
+**Evidence:** `grep -rn "<name>" scripts/` for each of the 4 removed names → only each definition
+and its own direct test (or, for `mintClerkSessionViaPlaywright`, no test at all), before the fix.
+
+**Fix:** Removed all 4 plus their now-orphaned exclusive dependents. Removed the corresponding
+imports and direct tests from `x-social-creative.test.mjs` and `x-social-post-kit.test.mjs`.
+Confirmed `loadCreativeState`/`saveCreativeState`/`lruPick` (x-social-creative.mjs) and
+`loadRotation`/`saveRotation`/`lruPick` (x-social-post-kit.mjs) each have other real callers within
+their own file and are untouched; `fmtPrem`/`fmtGex` (x-social-creative.mjs) are imported
+independently by `x-social-story-data.mjs` and are untouched.
+
+**Fix rationale:** Pure deletion in all 4 cases — each had a live sibling doing the real job
+(`mintClerkPremiumSession`, `composeCreativePack`, `getPanelPack`), so there was no call site to
+redirect.
+
+**Blast radius:** `scripts/audit/lib/admin-e2e-auth.mjs`, `scripts/audit/lib/x-social-creative.mjs`,
+`scripts/audit/lib/x-social-creative.test.mjs`, `scripts/audit/lib/x-social-post-kit.mjs`,
+`scripts/audit/lib/x-social-post-kit.test.mjs` only.
+
+**Regression guard:** `x-social-creative.test.mjs` + `x-social-post-kit.test.mjs` 4/4 pass (plain
+`node --test`, these are standalone `.mjs` audit-tooling files, not part of the TS build).
+
 ## 0DTE `isSingleRailWithoutFlow` — dead code left behind by G-17's score-band restructure — FIXED
 
 > **kind:** `FINDING`
