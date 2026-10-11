@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { flowPriceSymbol, isIndexFlowTicker, KNOWN_INDEX_FLOW_ROOTS } from "./flow-price-symbol";
+import { flowPriceSymbol, KNOWN_INDEX_FLOW_ROOTS } from "./flow-price-symbol";
 
 /**
  * Helix graded index signals against the EQUITY aggregates namespace, where they do not exist.
@@ -57,7 +57,6 @@ test("an UNKNOWN symbol stays on the equity path — it is never guessed into an
   // This map only claims to know index roots. An unrecognised symbol is far more likely to be an
   // ordinary equity, and inventing `I:WHATEVER` would turn a working lookup into a silent empty one.
   assert.deepEqual(flowPriceSymbol("ZZZZ"), { symbol: "ZZZZ", isIndex: false });
-  assert.equal(isIndexFlowTicker("ZZZZ"), false);
 });
 
 test("an unrecognised ticker is NEVER defaulted to SPX", () => {
