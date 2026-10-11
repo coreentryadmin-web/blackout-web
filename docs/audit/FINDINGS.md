@@ -4,6 +4,103 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Meridian — dead `MeridianHalo` component, superseded by its own 3D sibling in the same commit — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** `MeridianHalo` (`meridian-viz.tsx`) is a fully-implemented segmented-ring SVG
+component (per-signal arcs, an inner agreement arc, click handling, a substantial doc
+comment explaining its design) with zero references anywhere in `src/`, including
+`git log -S "<MeridianHalo "` across all history — it has never been rendered by any
+caller since it was added. No test file covers it.
+
+**Root cause:** `MeridianHalo` was added in commit `ab30af1d8` ("feat(meridian): earnings
+intelligence rebuild...") in the SAME commit as `MeridianHalo3D` (`meridian-spatial.tsx`),
+which IS actively used — confirmed imported by `MeridianEarningsReportPanel.tsx`. Both
+versions were built together and share the same underlying read
+(`haloFromSignals`/`arcPath` from `meridian-viz-core.ts`), but only the 3D version shipped
+into the UI; the 2D sibling was a finished, abandoned alternative, not in-progress work.
+
+**Evidence:** `grep -rn "\bMeridianHalo\b" src/` before the fix: only the definition.
+`grep -rln "MeridianHalo3D" src/` confirms it's imported by a real panel component.
+`haloFromSignals` (the shared halo-geometry helper both versions call) is confirmed to have
+its OTHER real caller in `meridian-spatial.tsx` — not orphaned by this removal.
+
+**Fix:** Removed the `MeridianHalo` function. Removed its now-unused `haloFromSignals` and
+`SignalLike` imports from `meridian-viz.tsx` specifically — both are still imported and used
+in `meridian-spatial.tsx` for the live 3D version, untouched. `arcPath`/`LEAN_CLASS`/
+`MeridianCountUp`/`Lean` (also used by `MeridianHalo`) all have other live callers in the
+same file (`MeridianRing`, etc.) and are untouched.
+
+**Fix rationale:** Pure deletion — a complete, confirmed-unrendered sibling of a component
+that actually shipped, sharing the exact same data layer.
+
+**Blast radius:** `src/features/meridian/components/meridian-viz.tsx` (one component +
+2 now-unused imports removed) only.
+
+**Regression guard:** None needed — `MeridianHalo3D`'s own test/usage coverage already
+protects the live replacement; the removed component had none.
+
+## Helix — dead `ContractPick` type export — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** `ContractDrilldownDrawer.tsx` exported `export type ContractPick = Pick<FlowAlert,
+"ticker" | "strike" | "expiry" | "option_type">;` with a comment claiming it was "kept for
+callers that only need the contract identity." Zero references anywhere in `src/` outside
+its own definition — not even internally within the same file. No test file covers it.
+
+**Root cause:** Introduced in the repo's original migration commit (`a05cf3245`) — long-
+standing dead code, not a recent regression or in-progress scaffolding. The claimed
+justification ("kept for callers that only need...") never materialized into a real caller.
+
+**Evidence:** `grep -rn "\bContractPick\b" src/` before the fix: only the definition line.
+
+**Fix:** Removed the type export. `FlowAlert` (the type it derived from) is still imported
+and used elsewhere in the same file — untouched.
+
+**Fix rationale:** Pure deletion — a never-adopted convenience export with no caller to
+redirect.
+
+**Blast radius:** `src/features/helix/components/ContractDrilldownDrawer.tsx` (one type
+export removed) only.
+
+**Regression guard:** None needed — no removed export had production behavior to guard.
+
 ## Night Hawk Swings — closed-deck roll-chain row paired a wrong contract's strike/expiry/occ with the preserved worst-leg loss — FIXED
 
 > **kind:** `FINDING`
@@ -208,40 +305,6 @@ already live in the one place that would have rendered it.
 **Blast radius:** `src/features/nighthawk/components/LegacyBoardChrome.tsx` (deleted) only.
 
 **Regression guard:** None needed — no removed component had production behavior to guard.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Vector — whole orphaned `VectorGexLadder` component, superseded 2026-08-14, still had a wasted bug fix applied 5 days later — FIXED
 
