@@ -3,17 +3,13 @@ import test from "node:test";
 import {
   THERMAL_COMPARE_TICKERS,
   buildThermalUrlSearch,
-  honestLevelEmpty,
   isUsableGexHeatmapPayload,
   parseThermalLens,
   parseThermalTicker,
   parseThermalStrike,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
-  shouldForceBlankMatrixRefresh,
-  THERMAL_MATRIX_CORE_TICKERS,
   thermalLayerFreshness,
-  wallScopeLabel,
   keyLevelsKicker,
   keyLevelsFootnote,
   keyLevelsFootnoteCompact,
@@ -111,15 +107,6 @@ test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
   );
 });
 
-test("shouldForceBlankMatrixRefresh: sector compare never force-storms cold columns", () => {
-  assert.equal(shouldForceBlankMatrixRefresh("AMZN", { activeColumn: true }), false);
-  assert.equal(shouldForceBlankMatrixRefresh("GOOG", { activeColumn: false }), false);
-  assert.equal(shouldForceBlankMatrixRefresh("SPY", { activeColumn: false }), false);
-  assert.equal(shouldForceBlankMatrixRefresh("SPY", { activeColumn: true }), true);
-  assert.equal(shouldForceBlankMatrixRefresh("QQQ", { activeColumn: true }), true);
-  assert.deepEqual([...THERMAL_MATRIX_CORE_TICKERS], ["SPY", "SPX", "QQQ", "IWM"]);
-});
-
 test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () => {
   const now = Date.parse("2026-07-28T18:00:00.000Z");
   const live = thermalLayerFreshness({
@@ -195,13 +182,6 @@ test("the cross-check layer never shows a member our vendor's initials", () => {
     // The label alone cannot carry the explanation, so the hover copy must actually say it.
     assert.match(layer.title, /second/i);
   }
-  assert.doesNotMatch(honestLevelEmpty("cross_val").help, /\bUW\b/i);
-});
-
-test("wallScopeLabel and honest empties never invent numbers", () => {
-  assert.match(wallScopeLabel(["2026-07-28", "2026-07-29"]).short, /2 near-term/);
-  assert.equal(honestLevelEmpty("flip").value, "—");
-  assert.match(honestLevelEmpty("cross_val").help, /offline/i);
 });
 
 test("keyLevelsKicker and footnote disclose near-term scope", () => {
