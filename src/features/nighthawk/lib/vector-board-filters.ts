@@ -120,24 +120,6 @@ export function filterVectorBoardRowsAdvanced(
   });
 }
 
-/** Equal-weight net premium % across rows with a P&L reading — session diagnostic strip. */
-export function vectorBoardNetPnl(rows: VectorBoardTableRow[]): number | null {
-  let sum = 0;
-  let n = 0;
-  for (const row of rows) {
-    if (row.premiumPct == null || !Number.isFinite(row.premiumPct)) continue;
-    sum += row.premiumPct;
-    n += 1;
-  }
-  if (n === 0) return null;
-  return Math.round(sum);
-}
-
-export function vectorBoardSessionPnl(rows: VectorBoardTableRow[], sessionDate: string | null): number | null {
-  if (!sessionDate) return null;
-  return vectorBoardNetPnl(rows.filter((r) => r.sessionDate.startsWith(sessionDate)));
-}
-
 export function vectorBoardActiveFilterCount(opts: {
   statusFilter: VectorBoardStatusFilter;
   tierFilter: VectorBoardTierFilter;

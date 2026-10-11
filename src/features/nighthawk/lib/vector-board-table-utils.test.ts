@@ -5,12 +5,10 @@ import {
   buildVectorBoardRows,
   closureStatus,
   closureToTableRow,
-  filterVectorBoardRows,
   leaderStatus,
   leaderToTableRow,
   vectorBoardCalendarBuckets,
   vectorBoardMeter,
-  vectorBoardSummary,
 } from "./vector-board-table-utils";
 
 function leader(overrides: Partial<VectorLeaderPlay> = {}): VectorLeaderPlay {
@@ -115,38 +113,12 @@ test("buildVectorBoardRows open section excludes closed picks", () => {
   assert.equal(open.filter((r) => r.kind === "closed").length, 0);
 });
 
-test("filterVectorBoardRows filters by ticker and session", () => {
-  const rows = [leaderToTableRow(leader()), closureToTableRow(closure())];
-  const byTicker = filterVectorBoardRows(rows, { tickerQuery: "int" });
-  assert.equal(byTicker.length, 1);
-  assert.equal(byTicker[0]!.ticker, "INTC");
-
-  const bySession = filterVectorBoardRows(rows, { sessionDate: "2026-08-27" });
-  assert.equal(bySession.length, 1);
-  assert.equal(bySession[0]!.ticker, "TSLA");
-});
-
 test("vectorBoardCalendarBuckets aggregates session tone", () => {
   const rows = [leaderToTableRow(leader()), closureToTableRow(closure({ premium_pct_from_entry: 10 }))];
   const buckets = vectorBoardCalendarBuckets(rows);
   assert.equal(buckets.length, 2);
   assert.equal(buckets.find((b) => b.session_date === "2026-08-28")?.tone, "up");
   assert.equal(buckets.find((b) => b.session_date === "2026-08-27")?.tone, "up");
-});
-
-test("vectorBoardSummary counts open, closed, and winners", () => {
-  const rows = [
-    leaderToTableRow(leader({ is_winner: true })),
-    leaderToTableRow(leader({ id: 2, ticker: "NVDA", is_winner: false, premium_pct_from_entry: 20, peak_premium_pct: 22 })),
-    closureToTableRow(closure()),
-  ];
-  const summary = vectorBoardSummary(rows);
-  assert.equal(summary.total, 3);
-  assert.equal(summary.winners, 1);
-  assert.equal(summary.open, 1);
-  assert.equal(summary.closed, 1);
-  assert.equal(summary.avgPct, 15);
-  assert.equal(summary.netPnl, 45);
 });
 
 test("vectorBoardMeter mirrors X Ads budget bar for peak and winner floor", () => {

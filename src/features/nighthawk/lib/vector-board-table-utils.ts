@@ -273,26 +273,6 @@ export function buildVectorBoardRows(input: {
   return rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
-export function filterVectorBoardRows(
-  rows: VectorBoardTableRow[],
-  opts: {
-    tickerQuery?: string;
-    sessionDate?: string | null;
-    statusFilter?: "all" | "open" | "closed";
-  }
-): VectorBoardTableRow[] {
-  const q = opts.tickerQuery?.trim().toUpperCase() ?? "";
-  return rows.filter((row) => {
-    if (opts.sessionDate && !row.sessionDate.startsWith(opts.sessionDate)) return false;
-    if (opts.statusFilter === "open" && (row.kind === "closed" || row.status === "closed")) return false;
-    if (opts.statusFilter === "closed" && row.kind !== "closed" && row.status !== "winner" && row.status !== "invalidated") {
-      if (row.status === "open" || row.status === "runner" || row.status === "caution") return false;
-    }
-    if (q && !row.ticker.toUpperCase().includes(q)) return false;
-    return true;
-  });
-}
-
 export function vectorBoardCalendarBuckets(rows: VectorBoardTableRow[]): VectorBoardCalendarBucket[] {
   const map = new Map<string, { sum: number; n: number; winners: number; closed: number }>();
   for (const row of rows) {
@@ -318,31 +298,6 @@ export function vectorBoardCalendarBuckets(rows: VectorBoardTableRow[]): VectorB
       };
     })
     .sort((a, b) => a.session_date.localeCompare(b.session_date));
-}
-
-export function vectorBoardSummary(rows: VectorBoardTableRow[]) {
-  let sumPct = 0;
-  let pctCount = 0;
-  let open = 0;
-  let closed = 0;
-  let winners = 0;
-  for (const row of rows) {
-    if (row.premiumPct != null && Number.isFinite(row.premiumPct)) {
-      sumPct += row.premiumPct;
-      pctCount += 1;
-    }
-    if (row.status === "open" || row.status === "runner" || row.status === "caution") open += 1;
-    if (row.kind === "closed" || row.status === "closed" || row.status === "invalidated") closed += 1;
-    if (row.status === "winner") winners += 1;
-  }
-  return {
-    total: rows.length,
-    avgPct: pctCount > 0 ? Math.round(sumPct / pctCount) : null,
-    netPnl: pctCount > 0 ? Math.round(sumPct) : null,
-    open,
-    closed,
-    winners,
-  };
 }
 
 export { formatPremiumPct, premiumPctTone };

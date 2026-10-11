@@ -6,8 +6,6 @@ import {
   sortVectorBoardRows,
   stepBoardSelectionIndex,
   vectorBoardActiveFilterCount,
-  vectorBoardNetPnl,
-  vectorBoardSessionPnl,
 } from "./vector-board-filters";
 
 function row(overrides: Partial<VectorBoardTableRow> = {}): VectorBoardTableRow {
@@ -54,23 +52,6 @@ test("filterVectorBoardRowsAdvanced filters status and tier", () => {
 
   const elite = filterVectorBoardRowsAdvanced(rows, { tierFilter: "elite" });
   assert.equal(elite.length, 1);
-});
-
-test("vectorBoardNetPnl sums premium readings", () => {
-  const net = vectorBoardNetPnl([
-    row({ premiumPct: 30 }),
-    row({ key: "k2", premiumPct: -10 }),
-    row({ key: "k3", premiumPct: null }),
-  ]);
-  assert.equal(net, 20);
-});
-
-test("vectorBoardSessionPnl scopes to session date", () => {
-  const net = vectorBoardSessionPnl(
-    [row({ premiumPct: 20 }), row({ key: "k2", sessionDate: "2026-08-27", premiumPct: 99 })],
-    "2026-08-28"
-  );
-  assert.equal(net, 20);
 });
 
 test("vectorBoardActiveFilterCount counts active filters", () => {
