@@ -76,10 +76,6 @@ import { formatFreshnessAge, marketSessionDisclosure } from "@/lib/bie/market-se
  */
 export type VectorFreshness = BieFreshness;
 
-/** Boundaries are `freshnessFromAgeMs`'s: live < 60s, recent < 10min, stale beyond. */
-export const VECTOR_FRESHNESS_LIVE_SEC = 60;
-export const VECTOR_FRESHNESS_RECENT_SEC = 10 * 60;
-
 export type VectorFreshnessBlock = {
   /**
    * When the Vector state was MEASURED, as an ISO instant. Null if unparseable.

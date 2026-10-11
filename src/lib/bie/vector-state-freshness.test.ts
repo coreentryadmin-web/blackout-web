@@ -1,11 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  describeVectorFreshness,
-  VECTOR_FRESHNESS_LIVE_SEC,
-  VECTOR_FRESHNESS_RECENT_SEC,
-} from "./vector-state-freshness";
+import { describeVectorFreshness } from "./vector-state-freshness";
 import { freshnessFromAgeMs } from "./answer-envelope";
 import {
   buildPulseSnapshot,
@@ -131,11 +127,16 @@ test("the full-state snapshot PERSISTS its ET anchor — contract C1, and it is 
 
 test("the tiers ARE freshnessFromAgeMs's — one classifier for the product, not a second", () => {
   const at = (sec: number) => describeVectorFreshness(new Date(T0).toISOString(), T0 + sec * 1000);
+  // Literal seconds, not a locally-exported constant: this module used to export
+  // VECTOR_FRESHNESS_LIVE_SEC/VECTOR_FRESHNESS_RECENT_SEC "for" these boundaries, but
+  // freshnessFromAgeMs (answer-envelope.ts) hardcodes its own 60_000/600_000ms inline and never
+  // read them — a real edit target pointing at nothing. Probing with literals here is honest
+  // about what actually sets the boundary (found + fixed 2026-10-11).
   assert.equal(at(0).freshness, "live");
-  assert.equal(at(VECTOR_FRESHNESS_LIVE_SEC - 1).freshness, "live");
-  assert.equal(at(VECTOR_FRESHNESS_LIVE_SEC).freshness, "recent");
-  assert.equal(at(VECTOR_FRESHNESS_RECENT_SEC - 1).freshness, "recent");
-  assert.equal(at(VECTOR_FRESHNESS_RECENT_SEC).freshness, "stale");
+  assert.equal(at(59).freshness, "live");
+  assert.equal(at(60).freshness, "recent");
+  assert.equal(at(599).freshness, "recent");
+  assert.equal(at(600).freshness, "stale");
   // The full TTL is reachable in practice and must read as stale, loudly.
   assert.equal(at(15 * 60).freshness, "stale");
   assert.match(at(15 * 60).note!, /15m ago/);
