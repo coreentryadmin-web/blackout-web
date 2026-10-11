@@ -45,7 +45,7 @@ test("fetchStockSnapshotPerformance passes isEtCashRth() — same AH-anchor fix 
   assert.match(
     block,
     /snapshotChangePctFromRow\(snap, cashSessionOpen\)/,
-    "fetchLeaderStockSnapshots/fetchBreadthUniverseSnapshots/fetchSectorPerformance all route through here",
+    "fetchBreadthUniverseSnapshots/fetchSectorPerformance all route through here",
   );
   assert.match(block, /isEtCashRth\(\)/);
 });

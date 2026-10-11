@@ -242,10 +242,6 @@ async function fetchStockSnapshotPerformance(
   });
 }
 
-export function fetchLeaderStockSnapshots() {
-  return fetchStockSnapshotPerformance(LEADER_STOCKS);
-}
-
 /** Mega-cap leaders + sector ETFs — used for breadth / TICK proxy. */
 export function fetchBreadthUniverseSnapshots() {
   return fetchStockSnapshotPerformance([...LEADER_STOCKS, ...SECTOR_ETFS]);

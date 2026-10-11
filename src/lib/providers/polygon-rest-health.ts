@@ -26,14 +26,6 @@
 
 export type PolygonUpstreamHealthState = "UNKNOWN" | "DOWN" | "DEGRADED" | "HEALTHY";
 
-/** Ordered, low→high, mirrors SOURCE_HEALTH_ORDER's "callers can compare recency/severity" shape. */
-export const POLYGON_UPSTREAM_HEALTH_ORDER: readonly PolygonUpstreamHealthState[] = [
-  "DOWN",
-  "DEGRADED",
-  "UNKNOWN",
-  "HEALTHY",
-] as const;
-
 /** Consecutive failures before DEGRADED (a real signal, not one flaky call). */
 const DEGRADED_THRESHOLD = 2;
 /** Consecutive failures before DOWN (matches the rate-limiter's own breaker threshold order of magnitude). */
