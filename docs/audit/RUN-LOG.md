@@ -4,6 +4,26 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-11 (06:16 UTC / Sun 02:16 ET) — [SEO] Lane heartbeat: third CLS transient investigated, inconclusive and non-reproducible — not a finding
+
+Sunday, market closed. Resynced to `origin/main` (`9d5474e` → `1132fb4`, other-lane ambient
+sync). **Step 1:** purged Cloudflare edge HTML; first CLS read **0.0133** (GOOD, one shift
+≥0.01) — the THIRD same-pattern elevated-but-GOOD transient seen this week (Fri 0.0131, Fri
+0.0556, now this). Re-measured immediately → **0.0005, GOOD**. Since this crossed a 3-instance
+threshold, wrote a one-off diagnostic (`/tmp/.../cls-attrib.cjs`, not committed) that captures
+`layout-shift` entry `sources[].node` attribution for any shift ≥0.005, then ran it 4x trying to
+catch the transient in the act — **all 4 came back completely clean (0.0003-0.0010, zero
+shifts ≥0.005 recorded at all)**. Could not reproduce or attribute to a specific element.
+Conclusion: genuinely intermittent, low-frequency, every single occurrence has stayed well
+within the GOOD band (worst case 0.0556, nowhere near the 0.1 NEEDS-IMPROVEMENT boundary) and
+none are reproducible on demand — per standing discipline, not escalating to a finding without
+reproducible evidence of a real defect. Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png`, real 1200×630 PNG — crawlable, confirmed on production.
+**Step 2 — PR sweep:** 3 open agent PRs fleet-wide, none this lane's own — #5663 (swing,
+CI-FAILED), #5831 (findings-fold, CI-RUNNING), #5537 (docs, CI-FAILED, long-confirmed
+intentional). Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found.
+No PR opened.
+
 ## 2026-10-11 (00:16 UTC / Sat 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Saturday night, market closed. Resynced to `origin/main` (`ab9b4b8` → `3eb406a`, other-lane
