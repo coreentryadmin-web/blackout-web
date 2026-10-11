@@ -4,6 +4,65 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Night Hawk — dead `useVectorBoardDetailTab` convenience hook — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** `VectorBoardDetailTabs.tsx` exported `useVectorBoardDetailTab(defaultTab)` —
+a one-line `useState<VectorBoardDetailTab>(defaultTab)` convenience wrapper — alongside the
+actively-used `VectorBoardDetailTabs` component. Zero callers anywhere, including within
+its own file, and no test file.
+
+**Root cause:** The real consumer, `VectorPlayDetailPanel.tsx`, manages its own
+`useState<VectorBoardDetailTab>` directly rather than using this hook (confirmed via
+`grep` — the hook's name matches nothing but its own definition). A leftover convenience
+export nobody ended up calling.
+
+**Evidence:** `grep -rn "useVectorBoardDetailTab" src/` before the fix: only the
+definition line.
+
+**Fix:** Removed the hook and its now-unused `useState` import. Left
+`VectorBoardDetailTabs` (the component) and the `VectorBoardDetailTab` type untouched —
+both confirmed live.
+
+**Fix rationale:** Pure deletion — no gap left, since the real consumer already manages
+its own state inline.
+
+**Blast radius:** `src/features/nighthawk/components/VectorBoardDetailTabs.tsx` (one
+export + its now-unused import removed) only.
+
+**Regression guard:** None needed — no removed export had production behavior to guard.
+
+## Night Hawk Legacy — whole orphaned `LegacyBoardChrome` component, superseded by `VectorBoardToolbar` — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** `LegacyBoardChrome.tsx` (a full toolbar/calendar-header component — edition
+scope buttons, date picker, play-count meta, calendar strip) is fully unrendered. Zero
+imports anywhere in `src/` outside its own definition, no test file.
+
+**Root cause:** The component this was presumably built for, `LegacyPickLogBoard.tsx`,
+imports and renders `VectorBoardToolbar` instead (`LegacyPickLogBoard.tsx:13,348`) — a
+different toolbar component that does the same job. `LegacyBoardChrome` was added in
+commit `7394c330c` ("feat(nighthawk): Legacy engine overhaul + Vector follow-ups #3286")
+but never got wired into the board it shares a naming convention with, and was never
+deleted once `VectorBoardToolbar` became the real one.
+
+**Evidence:** `grep -rn "LegacyBoardChrome" src/` before the fix: only the component's own
+definition. `grep -n "VectorBoardToolbar" src/features/nighthawk/components/LegacyPickLogBoard.tsx`
+confirms the real toolbar in use.
+
+**Fix:** Deleted `LegacyBoardChrome.tsx` entirely. Its only import,
+`VectorBoardCalendar`/`VectorBoardCalendarBucket`, has other real callers elsewhere
+(confirmed before deletion) — nothing orphaned by this removal.
+
+**Fix rationale:** Pure deletion — a whole component with a confirmed, named replacement
+already live in the one place that would have rendered it.
+
+**Blast radius:** `src/features/nighthawk/components/LegacyBoardChrome.tsx` (deleted) only.
+
+**Regression guard:** None needed — no removed component had production behavior to guard.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
