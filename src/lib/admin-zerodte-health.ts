@@ -30,18 +30,19 @@
 //
 // LAST-SCAN-TIME: there is no dedicated "zerodte" entry in cron-registry.ts —
 // warmZeroDteBoard() (scan.ts), the only path that calls persistZeroDteScan/
-// persistZeroDteRejections, is invoked exclusively from the "grid-warm" cron
-// (src/app/api/cron/grid-warm/route.ts's GET, alongside 8 unrelated
-// market-wide Grid warmers in the same Promise.allSettled tick). Per this
-// repo's standing instruction to mirror an existing logCronRun-based
+// persistZeroDteRejections, is invoked exclusively from the "zerodte-warm" cron
+// (src/app/api/cron/zerodte-warm/route.ts's GET, alongside other unrelated
+// market-wide warmers in the same Promise.allSettled tick — renamed from
+// "grid-warm" when classic Grid was deleted, 2026-07-07; see cron-registry.ts).
+// Per this repo's standing instruction to mirror an existing logCronRun-based
 // mechanism rather than invent a new one, this reuses buildCronHealthSnapshot()
 // (admin-cron-health.ts) — the SAME function AdminCronDashboard.tsx,
 // /api/admin/bie-report, and the cron-staleness-watchdog cron already read —
-// and picks out its "grid-warm" job entry verbatim (status/status_label/
+// and picks out its "zerodte-warm" job entry verbatim (status/status_label/
 // age_min/stale_after_min all come from that function's own market-hours-aware
 // staleness logic, not reimplemented here). The known imprecision this
-// inherits: a "healthy" grid-warm tick only proves THE CRON ran, not that the
-// 0DTE Command scan specifically found/logged anything that tick (grid-warm's
+// inherits: a "healthy" zerodte-warm tick only proves THE CRON ran, not that the
+// 0DTE Command scan specifically found/logged anything that tick (zerodte-warm's
 // own logCronRun payload has no per-warmer breakdown) — documented rather than
 // worked around by adding new instrumentation.
 //
@@ -74,7 +75,7 @@ export type ZeroDteHealthSnapshot = {
   generated_at: string;
   session_date: string;
   db_configured: boolean;
-  /** grid-warm cron status — the cron that runs warmZeroDteBoard() (see module doc). */
+  /** zerodte-warm cron status — the cron that runs warmZeroDteBoard() (see module doc). */
   scan: ZeroDteHealthScanSummary;
   /** Distinct tickers evaluated today: committed_count + rejected_count (union, a
    *  ticker that both failed a gate AND later made the board today counts once,
