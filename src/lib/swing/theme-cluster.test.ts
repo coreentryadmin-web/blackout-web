@@ -198,6 +198,33 @@ test("every other ticker's effective direction equals its nominal one, including
   assert.equal(effectiveDirection("NVDA", "SHORT"), "SHORT");
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-11): this file's own SOXS doc comment already
+// named SQQQ as the obvious next candidate, but SQQQ wasn't in ETF_PROXY_THEMES at all — it
+// resolved to an isolated NAME:SQQQ cluster, so a member holding LONG SQQQ (bearish Nasdaq/semis)
+// alongside a LONG QQQ/NVDA swing play got no book-context flag whatsoever, not even a backwards
+// one (sameThesis never saw the two positions as related in the first place). TQQQ (the bullish
+// 3x sibling) had the identical same-direction-concentration gap. Both now cluster with QQQ,
+// mirroring the existing SOXL/SOXS pair exactly.
+test("SQQQ is a known inverse-leverage ETF clustering with QQQ/semis; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(ETF_PROXY_THEMES.SQQQ, "semis");
+  assert.equal(resolveTheme("SQQQ"), "semis");
+  assert.equal(sameThesis("SQQQ", "QQQ"), true);
+  assert.equal(sameThesis("SQQQ", "NVDA"), true);
+  assert.equal(isInverseLeverageEtf("SQQQ"), true);
+  assert.equal(isInverseLeverageEtf("sqqq"), true); // case-insensitive
+  assert.equal(effectiveDirection("SQQQ", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("SQQQ", "SHORT"), "LONG");
+});
+
+test("TQQQ clusters with QQQ/semis but is NOT inverse — its effective direction equals its nominal one, like SOXL", () => {
+  assert.equal(ETF_PROXY_THEMES.TQQQ, "semis");
+  assert.equal(resolveTheme("TQQQ"), "semis");
+  assert.equal(sameThesis("TQQQ", "QQQ"), true);
+  assert.equal(isInverseLeverageEtf("TQQQ"), false);
+  assert.equal(effectiveDirection("TQQQ", "LONG"), "LONG");
+  assert.equal(effectiveDirection("TQQQ", "SHORT"), "SHORT");
+});
+
 test("clinical/commercial-stage biotech names cluster together, not each in its own isolated cluster (2026-10-10 live finding: NTLA+CRSP+VIR+MIRM+IONS+NVAX+IOVA+PCVX+TNGX+RLAY concurrent LONG book, no Book-context concentration flag beyond the two same-ticker repeats)", () => {
   assert.equal(resolveTheme("NTLA"), "biotech");
   assert.equal(resolveTheme("CRSP"), "biotech");
