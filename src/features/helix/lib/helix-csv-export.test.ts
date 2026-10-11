@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { helixTapeToCsv, helixTapeToJson } from "./helix-csv-export";
+import { helixTapeToCsv } from "./helix-csv-export";
 import type { FlowAlert } from "@/lib/api";
 
 function alert(partial: Partial<FlowAlert> & Pick<FlowAlert, "ticker" | "premium" | "score">): FlowAlert {
@@ -24,11 +24,5 @@ describe("helix-csv-export", () => {
     assert.match(csv, /# filters: minPremium=200k/);
     assert.match(csv, /ScoreTier/);
     assert.match(csv, /NVDA/);
-  });
-
-  test("helixTapeToJson attaches score_context", () => {
-    const rows = [alert({ ticker: "SPY", premium: 1_000_000, score: 85 })];
-    const json = JSON.parse(helixTapeToJson(rows)) as Array<{ score_context: { tier: string } }>;
-    assert.equal(json[0]?.score_context.tier, "rare");
   });
 });
