@@ -20,7 +20,6 @@ import {
   fillAlpha,
   kingKey,
   kingStrikeByTime,
-  maxPctByTime,
   withA,
   trailingRefs,
   rowPeakRefs,
@@ -641,31 +640,13 @@ test("a profile may still override the alpha curve explicitly", () => {
   assert.ok(fillAlpha(50, 100, custom) < fillAlpha(50, 100, BEAD_TUNING_DEFAULT));
 });
 
-// ── POINT-IN-TIME CONTRAST (2026-08-18) ──────────────────────────────────────────────────────
-// The rail knew which strike was king at each bucket (kingStrikeByTime) and used it only to draw a
-// crown; strength itself was scaled against the SESSION-WIDE maximum. So a wall that dominated the
-// board at 10:15 and was noise by 14:00 rendered at nearly the same brightness in both buckets.
-
-test("THE DEFECT: the same share reads differently in a loud bucket than in a quiet one", () => {
-  const trails = [
-    { points: [{ time: 100, pct: 30 }, { time: 200, pct: 8 }] }, // the row under test
-    { points: [{ time: 100, pct: 40 }, { time: 200, pct: 9 }] }, // the rest of the board
-  ];
-  const byTime = maxPctByTime(trails);
-  assert.equal(byTime.get(100), 40, "bucket 100 was loud");
-  assert.equal(byTime.get(200), 9, "bucket 200 was quiet");
-
-  // 8 of a 9-max bucket DOMINATED that moment; 30 of a 40-max bucket did not. Against a single
-  // session max (40) the quiet-bucket bead would have been the dimmest thing on the chart.
-  const quietBucketAlpha = fillAlpha(8, byTime.get(200));
-  const loudBucketAlpha = fillAlpha(30, byTime.get(100));
-  const sessionWideAlpha = fillAlpha(8, 40);
-  assert.ok(quietBucketAlpha > loudBucketAlpha, "dominating a quiet moment must read as dominant");
-  assert.ok(
-    quietBucketAlpha - sessionWideAlpha > 0.25,
-    "and must be clearly brighter than the session-wide scaling made it"
-  );
-});
+// ── SIZE VS CONTRAST CHANNELS ────────────────────────────────────────────────────────────────
+// SIZE and CONTRAST answer different questions on purpose: size says how big a wall is whenever
+// it occurred (comparing across TIME); contrast/colour says how much it dominates relative to its
+// own side's book peak (comparing across STRIKES). The per-bucket point-in-time contrast design
+// explored 2026-08-18 (`maxPctByTime`) was superseded 2026-08-19 by the per-side book-peak
+// denominator (`sidePctMaxima`, below) — `maxPctByTime` itself was removed as dead code once its
+// only caller (`project()`'s derived cache) stopped computing it.
 
 test("SIZE stays absolute while CONTRAST goes relative — the two channels differ on purpose", () => {
   // A huge wall must look huge whenever it happened (comparing across TIME), while brightness says
@@ -677,22 +658,6 @@ test("SIZE stays absolute while CONTRAST goes relative — the two channels diff
     fillAlpha(2, 2.2) > fillAlpha(9, 40),
     "but the small wall that owned its moment must out-shine the big one that did not"
   );
-});
-
-test("maxPctByTime ignores junk and covers both sides of the board", () => {
-  const m = maxPctByTime([
-    { points: [{ time: 1, pct: 5 }, { time: 1, pct: NaN }, { time: 2, pct: 0 }] },
-    { points: [{ time: 1, pct: 12 }, { time: 3, pct: 7 }] },
-  ]);
-  assert.equal(m.get(1), 12, "max across trails at that bucket");
-  assert.equal(m.get(2), undefined, "a non-positive share is not a maximum");
-  assert.equal(m.get(3), 7);
-});
-
-test("a bucket with no reference falls back to the frame max rather than throwing", () => {
-  const m = maxPctByTime([]);
-  assert.equal(m.get(999), undefined);
-  assert.ok(fillAlpha(5, m.get(999) ?? 20) > 0, "caller's ?? fallback keeps the bead drawable");
 });
 
 // ── ROW SWELL (2026-08-19) — competitor-style strength along a strike row ─────────────────────
