@@ -68,7 +68,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   platform: [
     {
       q: "What exactly is BlackOut?",
-      a: `BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It combines live options flow, SPX Slayer, dealer gamma positioning, dark-pool activity, Largo analysis, and Night Hawk's 0DTE Command desk into one surface — ${manifestPlatformSummary()} — what a professional desk sees, built for individual traders.`,
+      a: `BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It combines live options flow, dealer gamma positioning, dark-pool activity, and graded play intelligence into one surface — ${manifestPlatformSummary()} — what a professional desk sees, built for individual traders.`,
     },
     {
       q: "Who is BlackOut built for?",
