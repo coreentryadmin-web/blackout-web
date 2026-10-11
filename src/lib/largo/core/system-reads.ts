@@ -131,40 +131,6 @@ export function vectorPlayRead(
   };
 }
 
-/**
- * NIGHT HAWK — committed plays on this instrument, as a count, not a sentiment.
- *
- * Direction comes from the plays themselves. There is deliberately NO bar: a lane with one open
- * call is not "100% bullish", and mapping play count onto a 0-100 axis would say exactly that. The
- * count IS the read — a system with money on one side is a different claim from a system with a view.
- */
-export function nightHawkRead(
-  plays: ReadonlyArray<{ direction?: string | null; status?: string | null }> | null | undefined
-): SystemRead {
-  const base = { system: "NIGHT HAWK", kind: "directional" as const };
-  if (!plays) return { ...base, stance: "no-read", strength: null, basis: "—", reason: "lane unavailable" };
-  if (!plays.length) {
-    return { ...base, stance: "no-read", strength: null, basis: "no plays", reason: "no plays on this name" };
-  }
-
-  let bull = 0;
-  let bear = 0;
-  for (const p of plays) {
-    const d = String(p.direction ?? "").toLowerCase();
-    if (/bull|long|call/.test(d)) bull++;
-    else if (/bear|short|put/.test(d)) bear++;
-  }
-
-  const stance: SystemStance = bull > bear ? "bullish" : bear > bull ? "bearish" : "neutral";
-  const n = plays.length;
-  return {
-    ...base,
-    stance,
-    strength: null,
-    basis: `${n} ${n === 1 ? "play" : "plays"}${bull || bear ? ` · ${bull}L/${bear}S` : ""}`,
-  };
-}
-
 /** Night Hawk row reconciling evening edition, 0DTE board, and swing lane. */
 export function nightHawkReconciledRead(
   state: {
