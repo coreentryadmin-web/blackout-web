@@ -29,9 +29,6 @@ export const PLAN_RULES_TIME_STOP_ET_LABEL = `${Math.floor(PLAN_RULES.time_stop_
   PLAN_RULES.time_stop_et_minutes % 60
 ).padStart(2, "0")}`;
 
-/** 0DTE directional commits open at 10:00 ET (G-2 unlock). */
-export const ZERODTE_COMMIT_OPEN_ET_MINUTES = 10 * 60;
-
 /** No NEW 0DTE plays of ANY kind (including condor) after 15:30 ET — persist-layer backstop,
  *  discovery-layer condor-fresh-eligibility boundary (scan.ts), and directional commit cutoff
  *  (G-14 / confluence ENTRY_CUTOFF). Operator may tighten via
