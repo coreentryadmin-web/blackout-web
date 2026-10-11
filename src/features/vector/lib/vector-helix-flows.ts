@@ -155,17 +155,6 @@ export function compareLiveHelixByPremium(a: FlowAlert, b: FlowAlert): number {
   return flowAlertedMs(b) - flowAlertedMs(a);
 }
 
-/** Live Helix tape — ranked by premium (largest session print stays #1 all day). */
-export function prepareVectorLiveHelixTape(
-  flows: readonly FlowAlert[],
-  filters: VectorHelixFlowFilters,
-  cap = VECTOR_LIVE_HELIX_TAPE_CAP
-): FlowAlert[] {
-  return filterVectorHelixFlows(flows, filters)
-    .sort(compareLiveHelixByPremium)
-    .slice(0, cap);
-}
-
 export type VectorLiveHelixLayout = {
   recent: FlowAlert[];
   ranked: FlowAlert[];
