@@ -4,7 +4,6 @@ import {
   legacyPrimaryPeakPct,
   legacyPrimaryPnlPct,
   legacyPrimaryTroughPct,
-  legacyUsesOptionPnl,
 } from "./legacy-primary-pnl";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 
@@ -27,7 +26,6 @@ test("legacyPrimaryPnlPct prefers option premium over stock move", () => {
     42
   );
   assert.equal(legacyPrimaryPnlPct(play({ stockMovePct: 2 })), 2);
-  assert.equal(legacyUsesOptionPnl(play({ pnlPct: 10 })), true);
 });
 
 test("legacyPrimaryPeakPct uses option peak when premium PnL is live", () => {
