@@ -38,6 +38,395 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 0DTE `isSingleRailWithoutFlow` — dead code left behind by G-17's score-band restructure — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/zerodte-dead-single-rail-predicate) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `isSingleRailWithoutFlow` (`src/lib/zerodte/gates.ts`) was the rail-composition
+predicate G-17 originally used ("single-rail-without-flow needs the 75 prime floor; multi-rail/FLOW
+is exempt in 65-74"). The 2026-09-09 operator-approved CTO gate-architecture review (see
+`docs/audit/FINDINGS.md`'s "G-17's 75-floor exemption... removed" entry, and the RESTRUCTURED
+comment directly above G-17's current code in `gates.ts`) replaced that whole rail-composition
+check with a pure score-band architecture (<65 reject / 65-69 unconditional reject / 70-74
+conditional on confluence+tape+VIX+execution / 75+ prime) that reads only `input.score` — it never
+consults `discovery_origin` at all anymore. The restructure correctly updated G-17's block logic but
+left the now-orphaned predicate function sitting in the file.
+
+**Evidence:** `grep -rwn "isSingleRailWithoutFlow" --include=*.ts --include=*.tsx src scripts docs`
+→ only the function's own definition and 3 assertions in `gates.test.ts` (which tested the function
+directly, not anything it fed into — `evaluateZeroDteGates`'s actual G-17 block condition
+(`gates.ts`, the `score >= 65 && score < 70` / `70 <= score < 75` checks) never calls it). The paired
+constant `ZERODTE_SINGLE_RAIL_PRIME_MIN` is still read by that same gate logic and is untouched.
+
+**Fix:** Removed `isSingleRailWithoutFlow` from `gates.ts`. Removed its import and the 3 direct
+assertions from `gates.test.ts`'s G-17 test (the test's real coverage — asserting
+`ZERODTE_SINGLE_RAIL_PRIME_MIN` and running real candidates through `evaluateZeroDteGates` across the
+65-69/70-74/75+ bands — is untouched and still the thing that actually exercises G-17).
+
+**Fix rationale:** Deletion only — no behavior change, since the function had no caller in the real
+gate path. Left `ZERODTE_SINGLE_RAIL_PRIME_MIN` and every other G-17/G-18 constant/comment alone;
+this finding is scoped to the one orphaned predicate, not a broader G-17 audit.
+
+**Blast radius:** `src/lib/zerodte/gates.ts`, `src/lib/zerodte/gates.test.ts` only. No other file
+imported this function.
+
+**Regression guard:** `gates.test.ts` — 208/208 pass (Node 20, `--experimental-test-module-mocks`).
+`tsc --noEmit` clean.
+
+## Vector `vectorHasWsOracle` — dead, already-named replacement is the real path — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-ws-oracle-check) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `vectorHasWsOracle` (`src/features/vector/lib/vector-ticker.ts`) checked the
+STATIC `VECTOR_ORACLE_TICKERS` set (SPX/SPY/QQQ) and was already marked `@deprecated Use
+hasLiveGexStrikeExpiry from uw-socket.ts — dynamic subscription means ANY ticker can have a live WS
+oracle, not just the static set`. The real replacement is confirmed live with real callers across
+`gex-heatmap/route.ts`, `spx-desk.ts`, `vector-wall-sample-server.ts`, `vector-snapshot.ts`,
+`gex-positioning.ts`, and `spx-odte-uw-ladder.ts`.
+
+**Evidence:** `grep -rn "\bvectorHasWsOracle\b" --include=*.ts --include=*.tsx src scripts` → only
+the definition and its own direct unit test, before the fix.
+
+**Fix:** Removed `vectorHasWsOracle`. `VECTOR_ORACLE_TICKERS` (the set it read) has many other real
+callers (`vector-snapshot.ts`, `vector-wall-sample-server.ts`, `vector-wall-sample.ts`,
+`vector-cadence.ts`, `vector-rail-bootstrap.ts`, `vector-client-seed.ts`) and is untouched. Removed
+its import and direct test assertions from `vector-ticker.test.ts`.
+
+**Fix rationale:** Pure deletion — the function's own doc comment already named the replacement and
+the reason to prefer it; nothing called the deprecated version.
+
+**Blast radius:** `src/features/vector/lib/vector-ticker.ts`,
+`src/features/vector/lib/vector-ticker.test.ts` only.
+
+**Regression guard:** `vector-ticker.test.ts` 6/6 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Vector `vector-wall-history.ts` — superseded rank/flip trail trio, all dead — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-trail-functions) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `trailForRank`, `trailForFlipLevel`, and `trailForGammaFlip` (`@deprecated Use
+trailForFlipLevel(history, "gex")`) all projected wall history into plain `{time, strike[, pct]}`
+point arrays — an older, flatter trail shape. `VectorChart.tsx` (the real consumer of this file)
+imports a different set of trail functions from the same module —
+`composeHorizonTrail`/`narrowedHorizonTrail`/`beadRailHistoryForHorizon`/`trailsByStrike` — none of
+which call any of these three. The strike-keyed `trailsByStrike` (same file, right after the deleted
+`trailForRank`) superseded the rank-based projection specifically so a migrating wall renders as two
+distinct horizontal trails instead of a diagonal rank-scatter; the flip/gamma pair was similarly
+superseded by direct `flipForLens` usage in the real live-chart path (`vector-wall-events.ts`,
+`vector-replay.ts`).
+
+**Evidence:** `grep -rn "\btrailForFlipLevel\b\|\btrailForGammaFlip\b\|\btrailForRank\b"
+--include=*.ts --include=*.tsx src scripts` → only the 3 definitions and their own direct unit
+tests. `flipForLens` (the helper `trailForFlipLevel` wrapped) has its own separate real callers in
+`vector-wall-events.ts` and `vector-replay.ts` and is untouched.
+
+**Fix:** Removed `trailForRank`, `trailForFlipLevel`, and `trailForGammaFlip` from
+`vector-wall-history.ts`. Removed their imports and 5 direct unit tests from
+`vector-wall-history.test.ts` (75 remaining tests, covering `trailsByStrike`/the real trail
+functions/history management, are untouched).
+
+**Fix rationale:** Pure deletion — no other file referenced any of the three, so there was no call
+site to redirect.
+
+**Blast radius:** `src/features/vector/lib/vector-wall-history.ts`,
+`src/features/vector/lib/vector-wall-history.test.ts` only.
+
+**Regression guard:** `vector-wall-history.test.ts` 75/75 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Vector `vector-wall-persist.ts` — orphaned `railMemo` subsystem, drifted dead after the append-only rail migration — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-rail-memo) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `railMemo` (module-level `Map`), `RAIL_MEMO_RESYNC_MS`, `railMemoNeedsResync()`,
+and `nextRailMemoAt()` were built 2026-08-18 to remove ~488 whole-rail Redis GET+JSON.parse
+round-trips per 5s sweep by memoizing each session's rail in-process between writes. The very next
+day (2026-08-19, per the test file's own "APPEND-ONLY RAIL" comment) `appendSessionWallSample` was
+migrated to an O(1) Redis `RPUSH`-based append (`sharedListAppend`), which has no notion of a
+memoized rail at all — dedupe moved to the read side (`loadSessionWallHistory`). That migration
+orphaned the whole memo subsystem, but only its test-only reset hook was cleaned up at the time.
+
+**This is a regression since the last audit, not a freshly-missed item:** `docs/audit/FINDINGS.md`
+(2026-09-06, "Dead code: 9 Vector desk exports") explicitly removed `_resetWallRailMemoForTest` (a
+test-only reset hook for this same `railMemo`) and left `railMemo`/`railMemoNeedsResync`/
+`nextRailMemoAt` alone at that time — meaning the map itself was still considered live then (the
+2026-08-19 RPUSH migration predates that audit, so this should have been caught then too, but
+wasn't — the reset-hook removal looked at the map's test surface, not whether the map was still
+read anywhere in production code).
+
+**Evidence:** `grep -n "railMemo\b" src/features/vector/lib/vector-wall-persist.ts` → only the
+map's own declaration (line 281 pre-fix) — never read or written anywhere else in the file,
+confirming `appendSessionWallSample`'s real RPUSH path never touches it.
+
+**Fix:** Removed `railMemo`, `RAIL_MEMO_RESYNC_MS`, `railMemoNeedsResync()`, `nextRailMemoAt()`, and
+the now-stale comment block describing the GET-modify-write design they served. Removed the 4 tests
+exercising them and their now-unused imports from `vector-wall-persist.test.ts` (the "RAIL MEMO
+RESYNC CLOCK" section) — the adjacent "APPEND-ONLY RAIL" test section, which documents and tests
+the actual current behavior, is untouched.
+
+**Fix rationale:** Pure deletion — nothing in the real append/read path called any of these.
+
+**Blast radius:** `src/features/vector/lib/vector-wall-persist.ts`,
+`src/features/vector/lib/vector-wall-persist.test.ts` only.
+
+**Regression guard:** `vector-wall-persist.test.ts` 16/16 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Vector `vector-indicators-config.ts` — 7 more type-guard predicates went dead since the last audit — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-indicator-guards) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `isVectorOverlayId`, `isVectorOpeningRangeMinutes`, `isVectorLevelId`,
+`isVectorExpectedMoveConeId`, `isVectorGexHeatmapId`, `isVectorGammaRegimeId`, and
+`isVectorBeadDisplayId` were each a runtime type-guard beside their id union type. The only real
+consumer of these ids, `VectorIndicatorMenu.tsx`, builds its menu straight off the registry data
+(`VECTOR_INDICATOR_GROUPS`) and only calls ONE guard — `isVectorOverlayFamilyId` — to decide whether
+to run the moving-average bar-count availability check; every other item type (levels, structure,
+oscillators, confluence, flow, expected-move(-cone), gex-heatmap, gamma-regime, volume-profile,
+bead-display) renders generically with no per-type validation, because the ids it iterates come from
+the registry itself, never from unvalidated external input.
+
+**This directly contradicts the FINDINGS.md 2026-09-06 "Dead code: 9 Vector desk exports" entry**,
+which removed 6 *sibling* guards (`isVectorStructureId`, `isVectorOscillatorId`,
+`isVectorConfluenceId`, `isVectorFlowId`, `isVectorExpectedMoveId`, `isVectorVolumeProfileId`) and
+explicitly left these 7 alone because each "sits beside a used sibling (`isVectorOverlayId`,
+`isVectorLevelId`, etc.) that IS wired in." That is no longer true — whatever called these between
+2026-09-06 and now was itself removed or refactored away, leaving them exactly as dead as the ones
+already deleted that day.
+
+**Evidence:** `grep -rn "\bisVectorOverlayId\b\|\bisVectorOpeningRangeMinutes\b\|\bisVectorLevelId\b\|\bisVectorExpectedMoveConeId\b\|\bisVectorGexHeatmapId\b\|\bisVectorGammaRegimeId\b\|\bisVectorBeadDisplayId\b"
+--include=*.ts --include=*.tsx src scripts` → only the 7 definitions and their own direct unit
+tests, before the fix. `isVectorOverlayFamilyId` (NOT in this list) is confirmed still live via a
+real call in `VectorIndicatorMenu.tsx:97`.
+
+**Fix:** Removed all 7 guard functions from `vector-indicators-config.ts`, plus their now-orphaned
+backing `Set` constants (`OVERLAY_IDS`, `LEVEL_IDS`, each only read by the guard removed alongside
+it). Every id union TYPE (`VectorOverlayId`, `VectorLevelId`, etc.) and its doc comment is
+untouched — only the type + its guard are different things, and only the guards were dead.
+Updated `vector-indicators-config.test.ts`: removed the tests whose sole purpose was exercising a
+removed guard, and trimmed the handful of mixed tests that used a removed guard alongside a still-
+live assertion (e.g. `VECTOR_OVERLAY_FAMILIES`'s structural test used `isVectorOverlayId` only to
+assert an id is real — replaced with the equivalent direct `VECTOR_OVERLAYS.find` check it already
+had on the next line).
+
+**Fix rationale:** Pure deletion — these ids are registry-driven, not external input, so there is
+no live need for the guards and no live call site to redirect, exactly as the 2026-09-06 fix found
+for their 6 siblings.
+
+**Blast radius:** `src/features/vector/lib/vector-indicators-config.ts`,
+`src/features/vector/lib/vector-indicators-config.test.ts` only. No other file imported any of the
+7 removed functions.
+
+**Regression guard:** `vector-indicators-config.test.ts` 14/14 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean (confirms every consumer —
+`VectorIndicatorMenu.tsx`, `VectorToolbar.tsx`, `VectorBeadRailToggle.tsx`, `VectorChart.tsx`,
+`vector-key-levels.ts` — still compiles against the unchanged types).
+
+## Vector `buildVectorContractPicks` — dead legacy shim, same pattern as a sibling already removed — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/vector-dead-contract-picks-shim) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `buildVectorContractPicks` (`vector-contract-picks.ts`), doc-commented "Legacy
+shim: bias-only input → ranked picks with synthetic play shell," built a synthetic
+`VectorPlayPickContext` from a bare bias/conviction and delegated to the real ranker,
+`rankVectorPlayCandidates`. The real entry point, `buildRankedVectorPicks` (same file), is the one
+with actual callers. `legsForBias` — a different export in this same file, same "legacy shim"
+shape — was already removed 2026-09-06 for the identical reason (FINDINGS.md "Dead code: 9 Vector
+desk exports"); this one was missed in that pass.
+
+**Evidence:** `grep -rn "\bbuildVectorContractPicks\b" --include=*.ts --include=*.tsx src scripts`
+→ only the definition and its own 2 direct unit tests, before the fix.
+
+**Fix:** Removed `buildVectorContractPicks` — it was the last export in the file after the type
+definitions, so nothing else needed reordering. Removed its now-unused `VectorPlayBias`/
+`VectorDteHorizon` type imports (both were only referenced by this function's signature) and its 2
+direct tests from `vector-contract-picks.test.ts`. Updated the file's own header comment (which
+described itself as "public types + legacy entry for callers that only have bias/conviction") to
+drop the now-false "legacy entry" claim.
+
+**Fix rationale:** Pure deletion — `buildRankedVectorPicks` is the real, actively-called entry
+point into the same ranker; there was no live caller to redirect.
+
+**Blast radius:** `src/features/vector/lib/vector-contract-picks.ts`,
+`src/features/vector/lib/vector-contract-picks.test.ts` only.
+
+**Regression guard:** `vector-contract-picks.test.ts` 2/2 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Swing `gradeSwingScaleOut` — dead parity wrapper, real caller already bypasses it — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/swing-dead-grade-scale-out-wrapper) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `gradeSwingScaleOut` (`src/lib/swing/grade.ts`) was a thin pass-through wrapper
+over `gradeBangerScaleOut`, documented ("exists only so swing callers have a swing-named entry
+point") as the FINANCIAL truth family's intended route into the shared scale-out grader. The real
+caller — `gradeSwingPosition`'s inline financial-grading block, same file — calls
+`gradeBangerScaleOut` **directly**, bypassing the wrapper entirely; the wrapper's only consumer was
+its own parity test (`grade.test.ts`, asserting `gradeSwingScaleOut(...) === gradeBangerScaleOut(...)`,
+which is trivially true for a pass-through and exercises nothing the real financial-grading tests
+elsewhere in the same file don't already cover).
+
+**Evidence:** `grep -rwn "gradeSwingScaleOut" --include=*.ts --include=*.tsx --include=*.mjs
+--include=*.md src scripts docs` → the function's own definition/doc comment, its direct parity
+test, and 3 cross-file prose references (`docs/audit/OUTCOME-GRADING-SPEC.md`,
+`docs/audit/SWING-ENGINE.md`, `scripts/audit/swing-sim.mjs`'s header comment) all describing it as
+the production path — none of which is true: `swing-sim.mjs` imports and calls only
+`gradeSwingPosition` (the real caller), never this wrapper.
+
+**Fix:** Removed `gradeSwingScaleOut` from `grade.ts` and its now-unused `BangerScaleOutGrade` type
+import. Removed the parity test and its own now-unused imports from `grade.test.ts` (the file's
+other FINANCIAL-family tests already exercise the real `gradeBangerScaleOut` call inside
+`gradeSwingPosition`). Corrected the 3 stale cross-file references (`OUTCOME-GRADING-SPEC.md`,
+`SWING-ENGINE.md`, `swing-sim.mjs`'s header comment, plus `grade.ts`'s own header comment) to
+describe the actual call path — `gradeSwingPosition` calling `gradeBangerScaleOut` directly — rather
+than a wrapper that was never in the real path.
+
+**Fix rationale:** Pure deletion, no behavior change — the real financial-grading output is
+unchanged (it already came from the direct call, not the wrapper). Fixed the stale documentation
+in the same PR rather than leaving 3 files making a now-false claim about the call path, since that
+claim was the exact thing this finding falsifies.
+
+**Blast radius:** `src/lib/swing/grade.ts`, `src/lib/swing/grade.test.ts`,
+`docs/audit/OUTCOME-GRADING-SPEC.md`, `docs/audit/SWING-ENGINE.md`, `scripts/audit/swing-sim.mjs`
+(comment only in the last 3 — no executable logic changed in docs/scripts).
+
+**Regression guard:** `grade.test.ts` 16/16 pass (Node 20, `--experimental-test-module-mocks`).
+`tsc --noEmit` clean.
+
+## SPX `spx-play-lotto.ts` re-export shim — dead, deleted entirely (correction to a 2026-09-05 FINDINGS.md entry) — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/spx-dead-lotto-reexports) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `src/features/spx/lib/spx-play-lotto.ts` was a `@deprecated` one-file re-export
+shim re-exporting `evaluateSpxLotto`, `evaluateSpxLotto as evaluateLottoPlay`,
+`consumeLottoOnBuy`, and `type LottoPlayPayload` from `spx-lotto-engine.ts`. Of the two real
+importers of this file (`spx-play-engine.ts`, `spx-play-payload.ts`), both imported ONLY the
+`LottoPlayPayload` type — `import type { LottoPlayPayload } from ".../spx-play-lotto"` — never any
+of the 3 function re-exports. `evaluateLottoPlay` additionally already has its own direct alias in
+`spx-lotto-engine.ts` itself (`export const evaluateLottoPlay = evaluateSpxLotto;`), so even the
+one re-export with a "real" shape elsewhere was doubly redundant.
+
+**Correction to an existing finding:** `docs/audit/FINDINGS.md`'s 2026-09-05 "Eight more
+`@deprecated` exports" entry already examined this exact file and concluded it should be left
+alone because it had "real callers" (`spx-play-engine.ts`, `spx-play-payload.ts`) — but that check
+didn't distinguish a type-only import from a value import. Both real callers only ever imported the
+type; `git log -p` on `spx-play-engine.ts` shows it has done only the type-only import since this
+shim's own creation (`83d3dedf6`). The three function re-exports had zero real callers then and
+have zero now — this finding corrects that entry rather than treating it as newly discovered.
+
+**Evidence:** `grep -rn "from [\"']@/features/spx/lib/spx-play-lotto[\"']" --include=*.ts
+--include=*.tsx src scripts` → exactly 2 hits, both `import type { LottoPlayPayload }`.
+
+**Fix:** Redirected both importers to import `LottoPlayPayload` directly from
+`@/features/spx/lib/spx-lotto-engine` (where the type is actually defined) and deleted
+`spx-play-lotto.ts` entirely — once both type importers were redirected, nothing referenced the
+shim at all.
+
+**Fix rationale:** Deletion rather than trimming the shim down to just the type re-export, since a
+one-line re-export file whose only purpose was backward-compat for a migration that's long since
+finished buys nothing over importing the type from its real home directly.
+
+**Blast radius:** `src/features/spx/lib/spx-play-lotto.ts` (deleted),
+`src/features/spx/lib/spx-play-engine.ts`, `src/features/spx/lib/spx-play-payload.ts` (import path
+updated only — no behavior change, same type, same underlying module). No test file existed for the
+shim.
+
+**Regression guard:** `spx-play-engine.test.ts` 5/5 pass, `spx-play-payload.test.ts` 7/7 pass (Node
+20, `--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
+## Banger `bangerInputFromRow` — dead export, `live-sync.ts` hand-builds the same shape inline — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/banger-dead-input-from-row) |
+|---|---|
+
+**Symptom:** none live — pure dead code found during a routine DISCOVERY-lane sweep, not a
+production defect.
+
+**Root cause:** `bangerInputFromRow` (`src/lib/banger/discord-trade-notify.ts`) maps a
+`BangerPositionRow` (the DB ledger row) into the `BangerTradeDiscordInput` shape the Chief Trade
+Discord embed builder consumes. Its sibling `bangerInputFromInsert` (same file, same shape, built
+from the commit-time insert instead of the ledger row) IS live-wired — `commit.ts` calls it via
+`notifyBangerTradeOpenFromInsert` on a fresh open. But the Row-shaped half of the pair was never
+actually called: `live-sync.ts`'s scale-out notify path (`EXIT_RUNNER`/`STOP_OUT`/`TAKE_PARTIAL`)
+needs the exact same mapping but hand-builds the object literal inline instead, substituting the
+freshly-fetched live `mark` for the function's `row.last_mark` field (the one genuine difference —
+not a byte-identical duplicate, but the same structural mapping).
+
+**Evidence:** `grep -rwn "bangerInputFromRow" --include=*.ts --include=*.tsx src scripts docs` →
+only the function's own definition and its direct unit test/fixture usages in
+`discord-trade-notify.test.ts`. No production call site anywhere (confirmed `live-sync.ts:219-230`
+builds the payload inline instead of calling it).
+
+**Fix:** Removed `bangerInputFromRow` and the now-unused `BangerPositionRow` type import from
+`discord-trade-notify.ts`. In `discord-trade-notify.test.ts`, the 2 tests that used it purely as a
+fixture-builder for `buildBangerTradePayload` now use a local, test-only `inputFromRow` helper
+(same mapping, doc-commented as test infrastructure, not a reintroduction of the dead export); the
+one test that asserted on the function's own mapping logic directly is removed as redundant with
+that helper's own use.
+
+**Fix rationale:** Pure deletion of the production export. Did NOT wire `live-sync.ts` to call a
+kept version of this function instead — that would mean folding its own live-mark override into
+the shared helper, which is a design choice for the Banger lane to make, not something to do
+unilaterally inside a dead-code sweep.
+
+**Blast radius:** `src/lib/banger/discord-trade-notify.ts`,
+`src/lib/banger/discord-trade-notify.test.ts` only. `bangerInputFromInsert` and
+`buildBangerTradePayload` (the real, live-called exports in the same file) are untouched.
+
+**Regression guard:** `discord-trade-notify.test.ts` — 4/4 pass (Node 20,
+`--experimental-test-module-mocks`). `tsc --noEmit` clean.
+
 ## 2026-10-11 — [FINDING, P4 dead-code, shared providers] 7 dead exports across 4 shared provider files — FIXED
 
 > **kind:** `FINDING`
