@@ -57,7 +57,7 @@ export const gettingStartedGuide: LearnGuide = {
         {
           layer: "Surfaces",
           accent: "indigo",
-          items: ["SPX Slayer", "HELIX", "Thermal", "Night Hawk", "Largo"],
+          items: ["SPX Slayer", "HELIX", "Thermal", "Night Hawk", "Largo", "Vector", "Meridian"],
         },
       ],
     },
