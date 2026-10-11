@@ -4,6 +4,89 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Thermal — 3 dead `thermal-desk-state.ts` helpers + 1 exclusively-orphaned constant — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** `thermal-desk-state.ts` exported three functions with zero callers anywhere in
+`src/` outside their own definitions and their own direct unit tests:
+- `shouldForceBlankMatrixRefresh(ticker, opts)` — decides whether a blank sector-compare
+  matrix column for a core ticker (SPY/SPX/QQQ/IWM) should auto-escalate to a forced
+  (`?force=1`) Polygon refresh.
+- `wallScopeLabel(nearTermExpiries)` — builds the "Walls · N near-term" chip short/title
+  copy.
+- `honestLevelEmpty(kind)` — returns `{value:"—", help}` placeholder copy for a missing
+  flip/cross_val/shift key level.
+
+No component (`GexHeatmap.tsx` or any other Thermal component) imports any of the three —
+confirmed via `grep -rn` repo-wide and by checking internal call sites within the same
+file (none call each other either). Each had genuinely orphaned test coverage — the
+tests exercised the function's own logic directly, never a real consumer.
+
+**Root cause:** These read like leftover helpers from a refactor — components likely kept
+an inline copy of this logic or never wired these up — not deliberate ahead-of-adoption
+scaffolding. (One sibling export in the same directory, `thermalIntensityBlockCount` in
+`thermal-intensity.ts`, WAS checked and found to be self-declared scaffolding via its own
+doc comment — "for tests / optional text fallback" — and was correctly left alone, not
+part of this fix.)
+
+**Evidence:** `grep -rn "shouldForceBlankMatrixRefresh\|wallScopeLabel\|honestLevelEmpty\|THERMAL_MATRIX_CORE_TICKERS"
+src/` before the fix: only `thermal-desk-state.ts`'s own definitions and
+`thermal-desk-state.test.ts`'s own direct tests.
+
+**Fix:** Removed all three functions. Also removed `THERMAL_MATRIX_CORE_TICKERS`
+(`["SPY","SPX","QQQ","IWM"]`), exclusively used by `shouldForceBlankMatrixRefresh` with no
+other caller anywhere (cascading removal, same discipline as this session's other
+exclusively-orphaned-dependency cleanups). Removed the corresponding imports and test
+blocks; one assertion (`honestLevelEmpty("cross_val").help` not leaking the vendor name
+"UW") lived inside a different, still-valid test about `thermalLayerFreshness`'s
+cross-check label — removed only that one assertion, kept the rest of that test intact.
+
+**Fix rationale:** Pure deletion — no live behavior depended on any of the four removed
+exports, and no gap is left for a caller to miss.
+
+**Blast radius:** `src/features/thermal/lib/thermal-desk-state.ts` and
+`thermal-desk-state.test.ts` only.
+
+**Regression guard:** None needed — no removed export had production behavior to guard;
+the removed test assertions had no value beyond re-confirming the deleted functions' own
+bodies (or, for the one surviving-test assertion removed, a sub-point the test's remaining
+assertions already cover in spirit for the function that IS live).
+
 ## ALB tail-latency investigation — new angle measured (ECS rolling-deploy churn correlation), two call sites ruled out — investigation-status update, no source change
 
 > **kind:** `FINDING`
@@ -281,40 +364,6 @@ no gap to fill and no caller to redirect.
 **Regression guard:** None needed beyond the existing coverage —
 `deterministic-edition.test.ts` already exercises the real family-dedup behavior this
 removed function never actually provided in production.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Vector `vector-wall-history.ts` — stale doc reference to a function removed earlier this cycle — FIXED
 
