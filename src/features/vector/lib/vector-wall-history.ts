@@ -841,7 +841,7 @@ export function backfillRailGaps(
  * to the client. `combined`/`mergeWallHistory` retain up to MAX_HISTORY (~one RTH session at the oracle
  * 5s cadence; see the constant) for recorder resilience across restarts/replays, but a single-session Vector page (one
  * `sessionYmd`, one visible bar range) never renders a prior session's beads — every consumer
- * (`trailsByStrike`, `trailForFlipLevel`) only ever sees `barTimes` for the CURRENT session. Prior
+ * (`trailsByStrike`, `flipForLens`) only ever sees `barTimes` for the CURRENT session. Prior
  * sessions' full 20-strike-per-side ladders were riding along in the SSR payload as pure dead
  * weight (measured: 28-50MB HTML, 10-12s to download on `/vector` and the SPX Slayer embed).
  * `firstBarTime` is the current session's first bar — `backfillRailPrefix`'s modeled prefix always
