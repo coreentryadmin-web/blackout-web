@@ -38,6 +38,237 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing "Lane rank" section silently compared a play against a frozen last-scan population, with no staleness disclosure — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live `GET /api/market/swing/play-brief` for three different WATCH-bucket tickers (MRVL, IREN, VLO) all reported "**#X of 18** on WATCH lane" on 2026-10-11 (a Sunday) — but `GET /api/market/nighthawk/horizons?view=swings` showed `watchCount: 3` at the same moment, listing exactly those same 3 tickers. The Lane rank section's own "18" total never matched the live board's own count. |
+| **Root cause** | `laneRankSection`'s `laneRows` argument (`play-brief-lane-rank.ts`) is sourced, via `play-brief-resolve.ts`'s `loadLaneRows` → `getSwingServingLane` → `readSwingServingSnapshot()`, from the SAME shared Redis serving-lane snapshot last written by Friday's `swing-discovery` scan (`scanSessionDay: "2026-10-09"`, confirmed identical across all three briefs) — `swing-discovery` is `weekdays_only`, so the snapshot is frozen until Monday's scan runs. The sibling `dataFreshnessSection` already discloses exactly this staleness ("Swing scan: ... prior session 2026-10-09 — today's discovery not yet run"), gated by `isSwingPlayStaleCheckExempt`/`scanSessionDay !== sessionDate` — but `laneRankSection` was never given that same gate, so it silently presented a frozen 18-row ranking population as if it were current. |
+| **Why this matters** | This is the fourth live instance of the exact same bug class this file has already fixed three times (2026-09-12, 2026-09-19, 2026-10-07): a new/edited section not inheriting the staleness-disclosure gate its siblings already carry, producing an internal contradiction inside one envelope (one section says "today's scan not yet run," another presents a number sourced from that same un-refreshed scan with no caveat at all). A member reading "#12 of 18, -9.9 vs median" over a weekend has no way to know the ranking context is frozen from last Friday, not live. |
+| **Blast radius** | 2 production files: `play-brief-lane-rank.ts` (added the optional `scanContext` parameter + caveat line, imports `isSwingPlayStaleCheckExempt`/`etStampFromIso`), `play-brief-intel.ts` (one call site, passes `ctx.scanAsOf`/`ctx.scanSessionDay`/`ctx.sessionDate` through). The parameter is optional and backward-compatible — every existing test call (dozens, across `play-brief-lane-rank.test.ts`/`play-brief.test.ts`/`play-brief-intel.test.ts`) continues to pass unchanged, verified by a full swing-directory sweep (1757/1757 pass). |
+| **Fix** | `laneRankSection` now accepts an optional `{ scanAsOf, scanSessionDay, sessionDate }` and appends "Ranked against the last scan (**\<stamp\>**, prior session **\<date\>**) — today's discovery not yet run, so the live total may differ." when `scanSessionDay !== sessionDate` AND the play is not already exempt from staleness checks via `isSwingPlayStaleCheckExempt` (reusing the exact predicate `dataFreshnessSection` uses, so a CLOSED or dead-but-not-closed WATCH play — e.g. IREN, already `EXTENDED` past its entry window — correctly gets no caveat, matching the sibling section's own gating). |
+| **Fix rationale** | Deliberately did NOT attempt to recompute the ranking against live data (e.g. re-deriving from `horizons`'s fresher population) — that is a real architectural question (which population is "correct" to rank against, and whether the serving snapshot itself should refresh more eagerly) that this fix does not decide. The chosen fix is the narrower, already-established pattern: disclose the staleness honestly, exactly as the sibling section already does for the identical underlying data source, rather than leave one section silently out of step with the rest of the same envelope. |
+| **Regression guard** | RED→GREEN via `git stash` on `play-brief-lane-rank.ts`+`play-brief-intel.ts`: stashed → 34/35 pass, 1 fail (the new "discloses a stale scan" test); restored → 35/35 pass. Full `src/lib/swing/*.test.ts` sweep: 1757/1757 pass, `npx tsc --noEmit` clean. |
+| **Gates** | `npx tsx --experimental-test-module-mocks --test src/lib/swing/play-brief-lane-rank.test.ts` — 35/35 pass. `npx tsx --experimental-test-module-mocks --test $(find src/lib/swing -name "*.test.ts")` — 1757/1757 pass. `npx tsc --noEmit` — clean. |
+| **Status** | FIXED — branch `fix/swing-lane-rank-stale-scan-disclosure-2026-10-11`. |
+
+## Dead export removed + a second dead export's only reuse opportunity wired up — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Marketing — `src/lib/marketing/products.ts`, `src/components/landing/HomeLiveDeskStrip.tsx` |
+| **Severity** | P4 (dead code / minor duplication, no functional impact) |
+| **Status** | FIXED |
+
+### Root cause
+
+A repo-wide grep (`grep -rn "LIVE_MARKETING_PRODUCTS\|marketingProductLearnHref"`) found both
+exports from `products.ts` have zero callers outside their own definitions — no production
+code, no test. Two different shapes of the same "dead export" problem:
+
+- `marketingProductLearnHref(id)` (a thin `marketingProductById(id)?.learnHref ?? "/learn"`
+  wrapper) has genuinely zero call sites anywhere, and no sibling file duplicates its logic
+  either — nothing ever needed this exact lookup. Accidental dead code, no retention comment.
+- `LIVE_MARKETING_PRODUCTS` (`MARKETING_PRODUCTS.filter((p) => p.launchStatus === "live")`) is
+  also uncalled, but **the identical filter expression is duplicated inline** in
+  `HomeLiveDeskStrip.tsx:84` (`const modules = MARKETING_PRODUCTS.filter((p) => p.launchStatus
+  === "live")`) — a reuse opportunity, not pure dead code: the export existed, a consumer
+  needed exactly what it computes, and it re-derived the same thing by hand instead.
+
+### Evidence
+
+`grep -rn` confirmed the zero-caller claim for both exports before any edit. `tsc --noEmit`
+clean after removing `marketingProductLearnHref` (nothing referenced it). The existing
+`src/lib/marketing/products.test.ts` (7 tests) and `src/components/landing/
+HomeLiveDeskStrip.test.ts` (2 tests) both pass unchanged against the refactored code —
+confirming the `LIVE_MARKETING_PRODUCTS` swap is behavior-preserving (same source array, same
+predicate), not a new risk.
+
+### Blast radius
+
+Just these two files — the same grep that found both exports' zero-caller status covers the
+whole repo, not a partial search.
+
+### Fix rationale
+
+- Deleted `marketingProductLearnHref` outright — no reuse site exists for it, so there's
+  nothing to wire up; keeping an unused export around invites someone writing a THIRD
+  near-duplicate accessor later instead of noticing this one.
+- Did **not** delete `LIVE_MARKETING_PRODUCTS` — instead pointed `HomeLiveDeskStrip.tsx` at it,
+  removing the duplicated filter expression. This is the smaller, more conservative fix: same
+  runtime behavior, one less place the "which products count as live" logic is spelled out.
+- Deliberately left `products.test.ts`'s own inline `MARKETING_PRODUCTS.filter((p) =>
+  p.launchStatus === "live")` occurrences (lines 12, 22) untouched — those exist specifically
+  to independently re-derive the expected value as a test oracle; swapping them to use the
+  export they're partly testing against would weaken that independence for no real benefit.
+
+### Test
+
+No new test added — this is a pure mechanical simplification with no behavior change, verified
+by the two existing, unmodified test suites above plus a clean `tsc --noEmit`.
+
+## FAQ "What exactly is BlackOut?" answer redundantly named 3 products twice while omitting Vector/Meridian from its own lead sentence — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | GEO/SEO — `src/lib/faq/content.ts`, rendered unfiltered on `/faq`'s `FAQPageJsonLd` |
+| **Severity** | P3 (GEO/content-quality bug, no functional impact) |
+| **Status** | FIXED |
+
+### Root cause
+
+The `platform-1` FAQ item ("What exactly is BlackOut?") hand-wrote a lead sentence that named
+5 of the then-current products (options flow → HELIX, SPX Slayer, dealer gamma positioning →
+Thermal, dark-pool activity → HELIX, Largo analysis, Night Hawk's 0DTE Command desk), then
+appended `manifestPlatformSummary()` — a full, manifest-derived comma list of every live
+product's label — right after it with an em dash. When Meridian (and earlier, Vector) joined
+the manifest, `manifestPlatformSummary()`'s tail correctly grew to include them, but the
+hardcoded lead sentence was never touched, so SPX Slayer/Night Hawk/Largo ended up named
+**twice** in the same answer while Vector and Meridian were named only once, in the
+auto-generated tail, never in the descriptive sentence naming the others. Same "hardcoded
+prose not updated after a product launch" root cause already found this session in two email
+templates — found by an independent background sweep of SEO/GEO surfaces and re-verified
+directly against the source before fixing.
+
+### Evidence
+
+Direct `Read` of `src/lib/faq/content.ts:71` confirmed the exact text. `src/app/(marketing)/
+faq/page.tsx:18` confirmed `FAQ_ITEMS` is passed unfiltered into `FAQPageJsonLd` — a real
+`FAQPage` JSON-LD structured-data block AI answer engines and search crawlers parse, not a
+cosmetic surface. `manifestPlatformSummary()` (`product-manifest.ts:221-225`) confirmed it
+joins every live product's label in `MANIFEST_PRODUCT_ORDER` order with no de-duplication
+against anything the caller already said.
+
+### Blast radius
+
+Single answer string, one file. The background sweep's scope covered `llms.txt`, JSON-LD
+builders, `sitemap.ts`, `robots.ts`, and manifest-count usage on home/pricing/vs-others/FAQ —
+all other surfaces checked were either already manifest-derived (no drift possible) or static
+with no product enumeration. One secondary, lower-severity item was also flagged (`site.ts`'s
+shared `SITE.description`, reused across JSON-LD + `llms.txt`, names only 4 of 7 products but
+asserts no count — stale-reading but not factually wrong); left for a separate decision rather
+than folded into this fix, since it's a different file with a different risk profile (shared
+across more surfaces, worth a deliberate look rather than a drive-by edit).
+
+### Fix rationale
+
+Rather than patching the lead sentence to also name Vector and Meridian (which would just
+recreate the identical staleness risk at the next product launch), rewrote it to describe
+platform *capabilities* generically (options flow, dealer gamma positioning, dark-pool
+activity, 0DTE Command, graded play intelligence) without naming any specific **product**
+(SPX Slayer/Night Hawk/Largo) — leaving `manifestPlatformSummary()` as the single,
+already-correct place product *names* are enumerated. This removes the product-name
+redundancy entirely rather than just rebalancing it.
+
+One correction made mid-fix: the first draft dropped "0DTE Command" along with the product
+names, which broke an existing, unrelated regression test
+(`product-manifest-consistency.test.ts`'s "FAQ Night Hawk answer matches manifest lifecycle") —
+that test asserts the literal string "0DTE Command" appears somewhere in `content.ts`'s raw
+source (guarding against Night Hawk's description reverting to describing it as only an
+"overnight playbook"). "0DTE Command" is a *feature* name, not the bare product label
+("Night Hawk") `manifestPlatformSummary()` already lists, so restoring it as one of the
+capability phrases satisfies both constraints: no product named twice, and the feature-name
+regression guard still holds. Caught by CI (`verify`) on the first push, not local tests — the
+cross-file consistency test lives in a different file than the one being edited, so it reproduced instantly once the actual CI log was pulled.
+
+### Test
+
+Extended the existing `src/lib/faq/content.test.ts` (did not create a new file — it already
+existed with 6 tests covering `FAQ_ITEMS`/`selectFaqItems`/home-accordion-JSON-LD parity) with
+2 new tests: every live product's label appears in the `platform-1` answer exactly once (not
+duplicated), and Vector/Meridian are present. Proven RED→GREEN by temporarily reverting just
+the fixed sentence to its pre-fix text — the duplication test failed with "SPX Slayer... found
+2" against the old text, passed once restored. All 8/8 tests pass, plus the previously-broken
+`product-manifest-consistency.test.ts` ("FAQ Night Hawk answer matches manifest lifecycle") now
+passes too — re-ran the full `src/lib/marketing/*.test.ts src/lib/faq/*.test.ts` suite (35/35
+pass) and `tsc --noEmit` (clean) before re-pushing.
+
+## Stale "five engines" preheaders in two Premium email templates, contradicting their own body copy — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | Email / marketing — `src/lib/email/templates/welcome-premium.ts`, `src/lib/email/templates/downgrade.ts` |
+| **Severity** | P3 (member-visible copy bug, no functional/billing impact) |
+| **Status** | FIXED |
+
+### Root cause
+
+Commit `5103e7f8d` (#3307, 2026-09-01, "7-product registry") added Meridian as BlackOut
+Trades' 7th live product and bumped most of the hardcoded counts in these two email
+templates accordingly — but missed each file's **preheader** string (the hidden preview
+text `emailLayout` renders before the subject line), and `downgrade.ts`'s doc comment.
+The result: a member opening either email saw one count in the inbox preview and a
+contradicting one in the body.
+
+- `welcome-premium.ts` (fires on becoming Premium): subject says "All seven products,
+  live," the from-community opener says "the other six products," and the closing
+  paragraph says "full seven-product desk" — but `sharedParagraphs` (the shared engine
+  description) named only 5 engines with **Meridian completely absent**, and the
+  preheader said *"Thermal, HELIX, Night Hawk, Largo AI, Vector — five more engines…"*
+- `downgrade.ts` (fires on downgrading Premium→SPX Slayer): the body paragraph (line 19)
+  correctly lists all 6 non-SPX-Slayer engines including Meridian and says "Six
+  products, off your account as of now" — but the doc comment said "loses the other
+  five engines" and the member-facing preheader said *"…five engines went dark."*
+
+Not caught earlier because these templates only fire on a real billing event
+(becoming/downgrading Premium), so very few people see any one of them, and there is
+no dedicated test file for either — nothing exercises their rendered string content.
+
+### Evidence
+
+Direct `Read` of both files confirmed the exact contradicting strings quoted above.
+`git show 5103e7f8d -- src/lib/email/templates/welcome-premium.ts` confirms this commit
+touched the subject/opener/closing paragraph but not `sharedParagraphs` or the
+preheader. A repo-wide `grep -rn "five engine\|other five\|five more\|five products"
+src/lib/email/` found exactly these 3 occurrences across the 2 files — a closed set,
+not a partial fix.
+
+### Blast radius
+
+Two files, three strings total:
+- `welcome-premium.ts`: preheader (line 55) + a missing Meridian sentence in
+  `sharedParagraphs` (paragraph 2).
+- `downgrade.ts`: doc comment (line 9) + preheader (line 33).
+
+No other email template references a stale engine count — the same `grep` pattern
+above covered the entire `src/lib/email/` directory, not just the two files already
+suspected.
+
+### Fix
+
+- `welcome-premium.ts`: appended a Meridian-describing sentence to `sharedParagraphs`'
+  second paragraph (matching the sentence-construction style of the adjacent Night
+  Hawk/Largo AI/Vector sentences, drawing on `PRODUCT_MANIFEST.meridian`'s positioning
+  copy without copying it verbatim), and updated the preheader to name all 6 engines
+  and say "six more engines."
+- `downgrade.ts`: updated the doc comment and preheader from "five engines" to "six
+  engines," matching the body paragraph's already-correct "Six products" language.
+
+Deliberately did **not** refactor either template to pull product names/counts
+dynamically from `PRODUCT_MANIFEST`/`manifestProductCount()` — these templates
+consistently use hand-written prose matched to house voice (as do the other,
+already-correct parts of the same files), and introducing a dynamic-derivation
+architecture here would be a bigger change than this bug warrants. A future product
+addition will need the same manual string update this one missed; that tradeoff is
+unchanged by this fix.
+
+### Test
+
+New `src/lib/email/templates/welcome-premium-downgrade-product-count.test.ts` (3
+tests) asserts both templates' rendered HTML: preheader names Meridian / says "six
+more engines" and never "five more engines" (welcome-premium), preheader agrees with
+the body's "Six products" count (downgrade). Proven RED→GREEN via `git stash` to
+revert to the pre-fix strings — all 3 tests failed against the buggy copy, passed once
+restored.
+
 ## Stale "grid-warm" wording in `admin-zerodte-health.ts`'s module header, five sessions after the cron itself was renamed to `zerodte-warm` — FIXED
 
 > **kind:** `FINDING`
