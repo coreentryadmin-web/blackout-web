@@ -30,7 +30,6 @@ import {
   darkPoolTape,
   estimateDispersion,
   estimateTrajectory,
-  haloFromSignals,
   impliedVsRealized,
   layoutRailLabels,
   railLabelWidthPx,
@@ -50,7 +49,6 @@ import {
   type Domain,
   type LiveSignal,
   type PrintLike,
-  type SignalLike,
 } from "@/lib/meridian/meridian-viz-core";
 
 type Lean = "bullish" | "bearish" | "neutral";
@@ -128,75 +126,6 @@ export function MeridianCountUp({
     <span className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
       {shown === null ? "—" : `${prefix}${shown.toFixed(decimals)}${suffix}`}
     </span>
-  );
-}
-
-/* ── Intelligence halo ────────────────────────────────────────────────────────────────
- * A segmented ring where each signal owns arc proportional to its weight, plus an inner
- * AGREEMENT arc. The agreement number is the reason this is a halo and not a score: a
- * "bullish 68" from ten aligned signals and one from six-vs-four are different setups that a
- * single number cannot distinguish. Conflict shows as a ring of mixed colour with a short
- * inner arc; consensus shows as a near-solid ring with a long one.
- */
-export function MeridianHalo({
-  signals,
-  score,
-  verdict,
-  confidence,
-  size = 168,
-  onSegmentClick,
-}: {
-  signals: readonly SignalLike[] | null | undefined;
-  score: number | null;
-  verdict: Lean;
-  confidence?: string | null;
-  size?: number;
-  onSegmentClick?: (index: number) => void;
-}) {
-  const halo = useMemo(() => haloFromSignals(signals), [signals]);
-  if (!halo) return null;
-
-  const cx = size / 2;
-  const cy = size / 2;
-  const rOuter = size / 2 - 10;
-  const rInner = rOuter - 16;
-  const GAP = 1.6; // degrees of breathing room so adjacent same-lean segments stay countable
-
-  let cursor = 0;
-  const arcs = halo.segments.map((seg, i) => {
-    const sweep = seg.fraction * 360;
-    const path = arcPath(cx, cy, rOuter, cursor + GAP / 2, cursor + sweep - GAP / 2);
-    cursor += sweep;
-    return { path, lean: seg.lean as Lean, i };
-  });
-
-  const agreementArc = arcPath(cx, cy, rInner, 0, Math.max(halo.agreement * 360, 0.001));
-
-  return (
-    <div className="mv-halo" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img"
-           aria-label={`${verdict} ${score ?? ""}, ${Math.round(halo.agreement * 100)}% signal agreement`}>
-        <circle cx={cx} cy={cy} r={rOuter} className="mv-halo-track" />
-        {arcs.map((a) => (
-          <path
-            key={a.i}
-            d={a.path}
-            className={`mv-halo-seg ${LEAN_CLASS[a.lean]}${onSegmentClick ? " mv-halo-seg-click" : ""}`}
-            style={{ animationDelay: `${a.i * 42}ms` }}
-            onClick={onSegmentClick ? () => onSegmentClick(a.i) : undefined}
-          />
-        ))}
-        <circle cx={cx} cy={cy} r={rInner} className="mv-halo-track mv-halo-track-inner" />
-        <path d={agreementArc} className={`mv-halo-agree ${LEAN_CLASS[halo.dominant as Lean]}`} />
-      </svg>
-      <div className="mv-halo-center">
-        <span className={`mv-halo-verdict ${LEAN_CLASS[verdict]}`}>{verdict}</span>
-        <MeridianCountUp className="mv-halo-score" value={num(score)} />
-        <span className="mv-halo-agreement">
-          {Math.round(halo.agreement * 100)}% agree{confidence ? ` · ${confidence}` : ""}
-        </span>
-      </div>
-    </div>
   );
 }
 
