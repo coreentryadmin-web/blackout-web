@@ -48,6 +48,10 @@ export const CORRELATION_THEMES: Readonly<Record<string, ReadonlySet<string>>> =
  * ETFs whose concentration makes them a PROXY for a driver theme rather than their nominal index bucket.
  * These override sectorFor/governor so the ETF clusters with the names that actually move it. WHY each:
  *  - QQQ / QQQM / NDX: the Nasdaq-100 is ~50% mega-cap tech + semis; it lives and dies with NVDA/AAPL/MSFT.
+ *  - TQQQ / SQQQ: 3x leveraged bull/bear Nasdaq-100 funds — the exact same QQQ basket, just levered, so
+ *    they cluster with QQQ for the identical reason the SOXL/SOXS pair below clusters with SMH/SOXX
+ *    (added after the Ask Largo mandate's 2026-10-09 SOXS fix, whose own doc comment on
+ *    `INVERSE_LEVERAGE_ETFS` already named SQQQ as the next entry this file expected).
  *  - SMH / SOXX / SOXL / SOXS: pure semiconductor ETFs — literally the NVDA/AMD/AVGO basket.
  *  - XLK: tech-select sector SPDR, mega-cap-tech-dominated.
  *  - XRP / XRPZ / XXRP: three separate wrapper tickers on the SAME underlying token — not equities, so they
@@ -59,6 +63,8 @@ export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze(
   QQQ: "semis",
   QQQM: "semis",
   NDX: "semis",
+  TQQQ: "semis",
+  SQQQ: "semis",
   SMH: "semis",
   SOXX: "semis",
   SOXL: "semis",
@@ -85,11 +91,20 @@ export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze(
  * wager) — the trader-facing coaching text told a member to read risk in the wrong direction.
  * `effectiveDirection()` below flips the nominal direction for any ticker in this set before
  * `portfolio.ts` compares candidate vs. book row, so the same/opposed classification reflects the
- * REAL economic bet, not the raw long/short field on the option position. Scoped to the one
- * inverse-leverage name actually seeded above (SOXS) — add a new entry here, not a parallel list,
- * if another inverse ETF (e.g. SQQQ) is ever added to `ETF_PROXY_THEMES`.
+ * REAL economic bet, not the raw long/short field on the option position.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-11): this set was seeded with only SOXS even
+ * though this same doc comment already named SQQQ as the obvious next candidate — SQQQ (3x short
+ * Nasdaq-100) is one of the most commonly held retail inverse ETFs, far more so than SOXS, and
+ * until this fix it wasn't even in `ETF_PROXY_THEMES` at all: a member holding LONG SQQQ (bearish
+ * Nasdaq/semis) alongside a LONG QQQ or LONG NVDA swing play would get NO book-context flag at
+ * all, not even a backwards one — SQQQ resolved to its own isolated `NAME:SQQQ` cluster, so
+ * `sameThesis` never even saw the two positions as related. Added alongside TQQQ (its bullish 3x
+ * sibling, same direction as QQQ — no inverse-direction flag needed, exactly like SOXL's relation
+ * to SOXS) to `ETF_PROXY_THEMES` above, and SQQQ here, so the fix is a parallel pair just like
+ * SOXL/SOXS already is, not a one-sided patch.
  */
-export const INVERSE_LEVERAGE_ETFS: ReadonlySet<string> = new Set(["SOXS"]);
+export const INVERSE_LEVERAGE_ETFS: ReadonlySet<string> = new Set(["SOXS", "SQQQ"]);
 
 /** True when `ticker` is a known inverse/short-leveraged ETF (its nominal LONG/SHORT direction is
  *  the opposite of its real directional bet on the theme it clusters into). */
