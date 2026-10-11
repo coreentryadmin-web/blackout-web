@@ -1,5 +1,3 @@
-import type { Time } from "lightweight-charts";
-
 /** Trailing whitespace when volume profile is off — bead bands stop before the price axis. */
 export const VECTOR_BASE_RIGHT_OFFSET_BARS = 6;
 
@@ -88,5 +86,3 @@ export function volumeProfileBarRect(
   return { xLeft, width: gutter.rightX - xLeft };
 }
 
-/** Last display bar time passed into the volume-profile primitive. */
-export type VolumeProfileLastBarTime = Time | null;
