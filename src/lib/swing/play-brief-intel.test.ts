@@ -565,6 +565,83 @@ test("whyThisSetupSection: still reports pillar/signal content when present", ()
   assert.match(section.body, /Momentum/);
 });
 
+// PR #4076 comment 6107462205 (Ask Largo standing mandate, 2026-10-11): "Why this setup" read as a
+// flat key:value dump next to "Trade manager read"'s narrated voice. Fix (additive only — see
+// synthesizedSetupLede's own doc comment): a synthesized opening sentence for the simple, common
+// case, with the original flat lines ALWAYS surviving as a fallback for every edge case.
+test("whyThisSetupSection: synthesizes a lede sentence for the common case, replacing (not duplicating) Signals/Archetype/Sub-lane", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["NIGHT HAWK"],
+    archetype: "PULLBACK_CONTINUATION",
+    subLane: "STANDARD",
+    setupState: "FORMING",
+    score: 51,
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(
+    section.body,
+    /NIGHT HAWK flagged this as a forming pullback continuation setup \(Standard \(8.15d\)\), scoring 51\./,
+  );
+  // the lede subsumes these — they must not ALSO appear as separate flat lines
+  assert.doesNotMatch(section.body, /\*\*Signals fired:\*\*/);
+  assert.doesNotMatch(section.body, /\*\*Archetype:\*\*/);
+  assert.doesNotMatch(section.body, /\*\*Sub-lane:\*\*/);
+});
+
+test("whyThisSetupSection: 'Today's regime read' always stays its own separate line, even when the lede fires — pinned archetype vs fresh regime can diverge and that must stay visible", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    regime: "Event-driven directional · regime 0.6",
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(section.body, /flagged this as a breakout continuation setup/);
+  assert.match(section.body, /\*\*Today's regime read:\*\* Event-driven directional · regime 0\.6/);
+});
+
+test("whyThisSetupSection: lede stands down (falls back to flat lines) on a near-tie classification — that disclosure must not be smoothed over", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 3 },
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /flagged this as a/);
+  assert.match(section.body, /\*\*Signals fired:\*\* FLOW/);
+  assert.match(section.body, /\*\*Archetype:\*\* Breakout continuation/);
+  assert.match(section.body, /near-tie at entry/);
+});
+
+test("whyThisSetupSection: lede stands down on a thin-evidence entry — that disclosure must not be smoothed over", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    entryPresentPillars: 3,
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /flagged this as a/);
+  assert.match(section.body, /\*\*Signals fired:\*\* FLOW/);
+  assert.match(section.body, /thin read — \*\*3\/7\*\* pillars grounded/);
+});
+
+test("whyThisSetupSection: lede stands down when the score was withheld — never quotes a withheld score as real", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    scoreWithheld: true,
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /flagged this as a/);
+  assert.match(section.body, /\*\*Signals fired:\*\* FLOW/);
+});
+
+test("whyThisSetupSection: lede stands down when there's no discoveryOrigin or no recognized archetype — never fabricates signals/archetype that aren't there", () => {
+  const noSignals = whyThisSetupSection(fixturePlay({ archetype: "BREAKOUT" }));
+  assert.doesNotMatch(noSignals.body, /flagged this as a/);
+  const noArchetype = whyThisSetupSection(fixturePlay({ discoveryOrigin: ["FLOW"], archetype: null }));
+  assert.doesNotMatch(noArchetype.body, /flagged this as a/);
+});
+
 test("holdPlanSection: does not repeat recNote or Management-owned rails — unique time/theta coaching only", () => {
   const recNote = "live hold — thesis fading — tighten risk";
   const ctx: SwingPlayBriefContext = {

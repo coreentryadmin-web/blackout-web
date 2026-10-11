@@ -99,13 +99,67 @@ function vectorOf(ctx: SwingPlayBriefContext): VectorFullState | null {
 }
 
 /** Score pillars with signal provenance — the "why" behind the grade. */
+// GAP FOUND (Ask Largo standing mandate — PR #4076 comment 6107462205, 2026-10-11): raised as a
+// question for Cursor ("is this a deliberate terse metadata summary, or a narrative candidate like
+// crossDeskCoaching/counterThesisLine?"); no reply after 6+ hours, so taking the conservative half
+// of the proposal myself — same "took it myself after an unclaimed overnight comment" precedent
+// already set on this same thread (comment 6082520455).
+//
+// Deliberately NOT a full rewrite of this section: ~20 existing tests each pin one field's EXACT
+// bolded line (e.g. `/\*\*Archetype:\*\* Breakout continuation/`), several encoding hard-won bug
+// fixes (the SwingSubLane raw-enum leak, the archetype near-tie disclosure, the industry-read
+// rounding-consistency fix) — collapsing everything into one prose sentence would risk silently
+// dropping one of those disclosures, which is exactly the failure class this file's other comments
+// warn against. So this is PURELY ADDITIVE: a synthesized lede sentence for the common, simple case
+// only, prepended above the untouched flat lines — never replacing them. The lede explicitly stands
+// down (returns null, falling through to the original flat lines) whenever a genuinely informative
+// edge case is present (a near-tie classification, a thin-evidence entry, a withheld score) — those
+// are exactly the cases that deserve their OWN explicit callout, not a smoothed-over sentence.
+function synthesizedSetupLede(
+  play: TerminalPlay,
+  whyArchetypeLabel: string | null,
+  subLaneLabel: string | null,
+): string | null {
+  if (!play.discoveryOrigin?.length || !whyArchetypeLabel) return null;
+  // A withheld/near-tie/thin-evidence read is informative precisely BECAUSE it's unusual — folding
+  // it into one clean sentence would misrepresent how settled the read actually was.
+  if (play.scoreWithheld) return null;
+  if (play.archetypeNearTie) return null;
+  if (play.entryPresentPillars != null) return null;
+  const signals = play.discoveryOrigin.join("/");
+  const maturity = play.setupState ? play.setupState.toLowerCase() : null;
+  const archetypePhrase = maturity
+    ? `${maturity} ${whyArchetypeLabel.toLowerCase()}`
+    : whyArchetypeLabel.toLowerCase();
+  // Deliberately does NOT fold `play.regime` in here, even though it reads naturally alongside the
+  // archetype: `play.archetype` is PINNED at commit while `play.regime` is re-derived fresh on every
+  // scan (see the "Today's regime read" line's own comment below) and the two can genuinely diverge
+  // without either being wrong. That divergence is exactly the thing the separate, explicitly-labeled
+  // "Today's regime read" line exists to surface honestly — smashing both into one sentence here would
+  // reintroduce the "pinned archetype next to a silently different fresh read, no framing" bug this
+  // file already fixed once (2026-09-14, KR). `subLaneLabel` carries no such pinned/fresh split
+  // (sub-lane doesn't change after commit), so it's safe to fold in.
+  const contextStr = subLaneLabel ? ` (${subLaneLabel})` : "";
+  // play.score is the real, authoritative total — never re-summed from `factors` (the exact
+  // independently-rounded-related-quantities precision bug this file's own industry-read fix
+  // (2026-10-09) already warns about, one call site over).
+  const scoreStr = Number.isFinite(play.score) ? `, scoring ${Math.round(play.score)}` : "";
+  return `${signals} flagged this as a ${archetypePhrase} setup${contextStr}${scoreStr}.`;
+}
+
 export function whyThisSetupSection(play: TerminalPlay): RichSection {
   const lines: string[] = [];
-  if (play.discoveryOrigin?.length) {
-    lines.push(`**Signals fired:** ${play.discoveryOrigin.join(" · ")}`);
-  }
   const whyArchetypeLabel = archetypeLabelFromRaw(play.archetype);
-  if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
+  const subLaneLabel = subLaneLabelFromRaw(play.subLane);
+  const lede = synthesizedSetupLede(play, whyArchetypeLabel, subLaneLabel);
+  if (lede) {
+    lines.push(lede);
+  } else {
+    if (play.discoveryOrigin?.length) {
+      lines.push(`**Signals fired:** ${play.discoveryOrigin.join(" · ")}`);
+    }
+    if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
+  }
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): scoring/gating/calibration all partition on
   // this single pinned archetype label, but nothing on this brief ever disclosed HOW decisive the
   // classifier's own call was — see live-plays.ts's `archetypeNearTieFromFeatureVector` for the full
@@ -141,8 +195,8 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   // command-deck UI (`terminal-display.ts`) all render the identical field as "Tactical (5–7d)" —
   // see `subLaneLabelFromRaw`'s own doc comment (taxonomy.ts) for the full trace. Unrecognized/foreign
   // values render nothing here, same honest-absence discipline `archetypeLabelFromRaw` already uses.
-  const subLaneLabel = subLaneLabelFromRaw(play.subLane);
-  if (subLaneLabel) lines.push(`**Sub-lane:** ${subLaneLabel}`);
+  // (subLaneLabel is now computed once, at the top of this function, so the lede above can use it too.)
+  if (!lede && subLaneLabel) lines.push(`**Sub-lane:** ${subLaneLabel}`);
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the pre-entry WATCH note for the identical
   // fact ("thin read — N/7 pillars grounded", serving-ingest.ts) never survives WATCH→COMMIT — see
   // `entryPresentPillarsFromFeatureVector`'s own doc comment (live-plays.ts) for the full trace.
