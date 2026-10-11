@@ -53,5 +53,5 @@ Verifies:
 
 | **Status** | Fixed |
 |---|---|
-| **PR** | #XXXX |
+| **PR** | #5663 |
 | **Author** | Claude Haiku 4.5 |
