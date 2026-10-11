@@ -64,39 +64,6 @@ export type ChainContract = {
   underlying_asset?: { price?: number };
 };
 
-/**
- * Night's Watch chain fetch — the BATCHABLE valuation primitive. Returns a band of
- * contracts around spot for an underlying + expiry, plus the spot, so the caller can
- * match every saved strike for that (underlying, expiry) IN-MEMORY from a single call.
- *
- * This is intentionally NOT per-contract: it is wrapped by getNwChain() in
- * lib/nights-watch/chain-cache.ts with withServerCache, so 500 users holding contracts
- * on the same (underlying, expiry) collapse to ONE upstream fetch per TTL window.
- * Returns null when not configured or spot is unavailable — never fabricates.
- * (A future optimization can swap to /v3/snapshot/options/{underlying}/{contract}.)
- */
-export async function fetchNwOptionChain(
-  underlying: string,
-  expiry: string, // YYYY-MM-DD
-  bandPct = 0.35,
-  /** Held strikes for this (underlying, expiry) — expands the fetch band so deep OTM/ITM legs are in-cache for chain fallback. */
-  strikeHints: number[] = []
-): Promise<{ contracts: ChainContract[]; spot: number } | null> {
-  if (!polygonConfigured()) return null;
-  const root = underlying.toUpperCase();
-  const underlyingRoot = root === "SPX" ? "I:SPX" : root;
-
-  // Index roots (I:*) need the indices snapshot — the stocks snapshot returns no row for them
-  // (spot 0 → permanently null chain). resolveSpotSnapshot picks the right endpoint.
-  const snap = await resolveSpotSnapshot(underlyingRoot);
-  const spot = snap?.price ?? 0;
-  if (!(spot > 0)) return null; // no spot → can't center a band; report unavailable
-
-  const contracts = await fetchChainBand(underlyingRoot, spot, expiry, bandPct, strikeHints);
-  if (!contracts.length) return null;
-  return { contracts, spot };
-}
-
 type ChainResponse = {
   results?: ChainContract[];
   next_url?: string;

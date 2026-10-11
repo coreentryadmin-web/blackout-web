@@ -250,17 +250,6 @@ export async function fetchPolygonEma(
   });
 }
 
-export async function fetchPolygonSma(
-  symbol: string,
-  window: number,
-  timespan: "minute" | "hour" | "day" = "day"
-) {
-  return latestIndicator(`/v1/indicators/sma/${symToPath(symbol)}`, {
-    window: String(window),
-    timespan,
-  });
-}
-
 function symToPath(symbol: string): string {
   return symbol.toUpperCase();
 }

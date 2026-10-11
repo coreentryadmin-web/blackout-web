@@ -2,7 +2,7 @@ import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { computeVixTermStructure, type VixTermSnapshot } from "@/lib/vix-term-utils";
 export { computeVixTermStructure, type VixTermSnapshot } from "@/lib/vix-term-utils";
 import { polygonConfigured } from "./config";
-import { sessionStatsFromMinuteBars, todayEtYmd, priorEtYmd } from "./spx-session";
+import { todayEtYmd, priorEtYmd } from "./spx-session";
 import { smaFromCloses, emaFromCloses } from "./ma-math";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { logToken } from "@/lib/log-token";
@@ -746,14 +746,6 @@ export async function fetchBenzingaStructuredEarnings(opts: {
   }
 
   return { ...first, rows, nextUrl: null };
-}
-
-/** Legacy helper — rows only (empty when blocked). */
-export async function fetchBenzingaStructuredEarningsRows(
-  opts: Parameters<typeof fetchBenzingaStructuredEarnings>[0]
-): Promise<BenzingaStructuredEarnings[]> {
-  const res = await fetchBenzingaStructuredEarnings(opts);
-  return res.rows;
 }
 
 /** Corporate guidance — separate Benzinga SKU; fails closed to [] when not entitled. */
@@ -1734,23 +1726,6 @@ export async function fetchIndexSma(
   if (v != null) return v;
   // Fallback: derive from bars when the endpoint blips.
   return smaFromCloses(await indexClosesAsc(sym, window, timespan), window);
-}
-
-/** Polygon has no `/v1/indicators/vwap` for indices — derive from RTH minute aggregates. */
-export function computeIndexVwapFromBars(
-  bars: Array<{ t?: number; o: number; h: number; l: number; c: number; v?: number }>
-): number | null {
-  return sessionStatsFromMinuteBars(bars).vwap;
-}
-
-export async function fetchIndexVwap(symbol: string, timespan: "minute" | "day" = "minute") {
-  const sym = symbol.toUpperCase();
-  const today = todayEtYmd();
-  const bars =
-    timespan === "day"
-      ? await fetchIndexDailyBars(sym, today, today).catch(() => [])
-      : await fetchIndexMinuteBars(sym, today, today).catch(() => []);
-  return computeIndexVwapFromBars(bars);
 }
 
 export async function fetchIndexRsi(
