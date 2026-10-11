@@ -170,7 +170,7 @@ multi-session position, because a −50%/+100%/15:30-same-day outcome literally 
 | **PATH** | MFE/MAE walked on the UNDERLYING (not the option) over the graderTimeframe pinned per sub-lane (`SWING_SUB_LANES[x].grader`: minute/Tactical, hour/Standard, day/Extended). | Conservative intrabar stop-before-target — same discipline as `gradePlanFromBars`. |
 | **THESIS** | `CONFIRMED` (target hit first) / `INVALIDATED` (structural stop hit first) / `OPEN` — walked on the underlying, independent of P&L sign. | New — 0DTE has no thesis-vs-financial split (0DTE's underlying_target/invalid ARE the plan). |
 | **MANAGEMENT** | Did the live management state machine (structural stop → thesis stop → premium −60% backstop → advisory rungs) exit coherently? Can only grade what FINANCIAL could (survivorship guard). | — |
-| **FINANCIAL** | Realized option P&L under the SAME scale-out mechanics as the whole-market banger engine — `gradeBangerScaleOut`/`gradeScaleOut` (`scale-out.ts`), reused **verbatim**, `gradeSwingScaleOut` is a thin parity-tested pass-through, not a reimplementation. | `scale-out.ts` — see §7, the ONE shared production scale-out grader. |
+| **FINANCIAL** | Realized option P&L under the SAME scale-out mechanics as the whole-market banger engine — `gradeSwingPosition` (`grade.ts`) calls `gradeBangerScaleOut`/`gradeScaleOut` (`scale-out.ts`) directly and verbatim, never a reimplementation. | `scale-out.ts` — see §7, the ONE shared production scale-out grader. |
 
 **Why this is intentionally NOT reconciled with 0DTE's win/loss:** Swing's headline is never a
 single win/loss boolean — it is five coherent truths a member can read independently (a thesis can

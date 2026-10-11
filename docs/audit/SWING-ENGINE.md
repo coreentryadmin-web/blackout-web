@@ -139,7 +139,7 @@ Discipline for every PR: small, single-issue, `npx tsx --test` green, calibratio
 **PR-8 — Multi-truth grader**
 - Files: `src/lib/swing/grade.ts` (+ test); `scripts/audit/swing-sim.mjs` (`npm run sim:swing`).
 - Delivers: `gradeSwingPosition → SwingGrade` (five truth families) reusing `gradeBangerScaleOut` for the financial scale-out truth; `graderTimeframeForSubLane` `[R]` (SEV-9: pin Tactical→minute/hour once — use **hour** for Standard, **day** for Extended, **minute** for Tactical); conservative intrabar ordering (stop-before-target). Sim runs over real forward bars.
-- Verify: each truth family asserts on synthetic bars; ungradeable survivorship guard; `gradeSwingScaleOut` parity with `gradeBangerScaleOut`; `sim:swing --grade=DATE` prints archetype cuts.
+- Verify: each truth family asserts on synthetic bars; ungradeable survivorship guard; `sim:swing --grade=DATE` prints archetype cuts.
 - Stance: evidence-only (produces graded evidence; sizes nothing).
 
 **PR-9 — Serving section router (pure)**

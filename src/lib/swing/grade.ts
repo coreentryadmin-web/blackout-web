@@ -22,9 +22,9 @@
 // Each family carries its own gradeable/ungradeable flag with a reason, so a truncated OPTION series can
 // make financial+management ungradeable while path+thesis (walked on the UNDERLYING) still grade honestly.
 //
-// SURVIVORSHIP GUARD (the repo's standing law): the financial family reuses `gradeBangerScaleOut` — the
-// ONE production scale-out grader — verbatim (`gradeSwingScaleOut` is a thin parity wrapper, never a
-// reimplementation), and its `ungradeable` verdict is surfaced as-is: a missing entry premium, no
+// SURVIVORSHIP GUARD (the repo's standing law): the financial family calls `gradeBangerScaleOut` — the
+// ONE production scale-out grader — directly and verbatim, never a reimplementation, and its
+// `ungradeable` verdict is surfaced as-is: a missing entry premium, no
 // forward bars, or a series truncated before expiry is reported as `ungradeable` with the reason and
 // is NEVER imputed to a multiple. A null is honest; a fabricated 0/1× "realized" is a lie that inflates
 // the headline realized rate. Management inherits the same guard (it can only grade what financial could).
@@ -38,7 +38,7 @@ import type { GraderTimeframe } from "../horizons";
 import type { PlayDirection } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { SWING_SUB_LANES } from "./taxonomy";
-import { gradeBangerScaleOut, type BangerScaleOutGrade } from "../zerodte/banger-scale-out-grade";
+import { gradeBangerScaleOut } from "../zerodte/banger-scale-out-grade";
 import type { ScaleOutBar } from "../zerodte/scale-out";
 
 export const SWING_GRADE_VERSION = 1;
@@ -206,19 +206,6 @@ export interface SwingGradeInput {
   intradayOptionBars?: ScaleOutBar[];
   /** Contract expiry (YYYY-MM-DD) — the financial `hold_mult` baseline is hold-to-expiry. */
   expiryYmd?: string | null;
-}
-
-/**
- * Financial truth = the ONE production scale-out grader, reused verbatim. This wrapper exists only so
- * swing callers have a swing-named entry point; it MUST stay a pass-through (the parity test asserts it),
- * so the live ledger and the banger research can never drift on the realized-P&L basis.
- */
-export function gradeSwingScaleOut(
-  entryPremium: number | null,
-  bars: ScaleOutBar[],
-  expiryYmd?: string | null
-): BangerScaleOutGrade {
-  return gradeBangerScaleOut(entryPremium, bars, expiryYmd);
 }
 
 function usableUnderlying(bars: UnderlyingBar[] | undefined): UnderlyingBar[] {

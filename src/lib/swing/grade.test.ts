@@ -2,12 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   gradeSwingPosition,
-  gradeSwingScaleOut,
   graderTimeframeForSubLane,
   SWING_GRADE_VERSION,
   type SwingGradeInput,
 } from "./grade.ts";
-import { gradeBangerScaleOut, type BangerScaleOutGrade } from "../zerodte/banger-scale-out-grade.ts";
 import type { ScaleOutBar } from "../zerodte/scale-out.ts";
 
 // A minute-spaced forward bar series helper (t in epoch-ms).
@@ -170,15 +168,7 @@ test("thesis/path: a poisoned bar (non-finite t) is dropped; the good bars still
   assert.equal(g.thesis.outcome, "CONFIRMED"); // poisoned low 1 never breaches the stop — it was dropped
 });
 
-// ── FINANCIAL truth (gradeBangerScaleOut parity + survivorship guard) ────────────
-test("gradeSwingScaleOut is a verbatim parity wrapper over gradeBangerScaleOut", () => {
-  const entry = 1.0;
-  const bars = [optBar(1, 1.2, 0.9, 1.1), optBar(2, 2.2, 1.0, 2.0), optBar(3, 2.5, 1.1, 1.3)];
-  const a = gradeSwingScaleOut(entry, bars, "2026-08-21");
-  const b = gradeBangerScaleOut(entry, bars, "2026-08-21");
-  assert.deepEqual(a, b);
-});
-
+// ── FINANCIAL truth (gradeBangerScaleOut, called directly, + survivorship guard) ──
 test("financial: truncated forward series → ungradeable, NEVER imputed to a number (survivorship)", () => {
   // Last bar dated 2026-07-24 but expiry 2026-08-21 → forward_bars_truncated, per gradeBangerScaleOut.
   const t = Date.parse("2026-07-24T18:00:00Z");
