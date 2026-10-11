@@ -2318,7 +2318,16 @@ export function buildIntelSections(
   const cortexRead = safeSection("Cortex read", () => cortexReadSection(play), onFailure);
   if (cortexRead) out.push(cortexRead);
 
-  const rank = safeSection("Lane rank", () => laneRankSection(play, ctx.laneRows), onFailure);
+  const rank = safeSection(
+    "Lane rank",
+    () =>
+      laneRankSection(play, ctx.laneRows, {
+        scanAsOf: ctx.scanAsOf,
+        scanSessionDay: ctx.scanSessionDay,
+        sessionDate: ctx.sessionDate,
+      }),
+    onFailure,
+  );
   if (rank) out.push(rank);
 
   const technicals = safeSection(

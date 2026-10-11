@@ -5,6 +5,8 @@ import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { RichSection } from "@/lib/bie/rich-narrative";
 import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
+import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 
 export type LaneRankSnapshot = {
   rank: number;
@@ -225,7 +227,11 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
   };
 }
 
-export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): RichSection | null {
+export function laneRankSection(
+  play: TerminalPlay,
+  laneRows: HorizonPlay[],
+  scanContext?: { scanAsOf: string | null; scanSessionDay: string | null; sessionDate: string | null },
+): RichSection | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap) return null;
 
@@ -238,6 +244,30 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
     `**#${snap.rank} of ${snap.total}** on ${label} · score **${snap.playScore}** (${delta})`,
     `Lane median: **${snap.medianScore}**`,
   ];
+  // Ask Largo standing mandate, live repro 2026-10-11: `laneRows` (and therefore every number
+  // above) comes from `readSwingServingSnapshot()` — the SAME shared serving-lane snapshot the
+  // sibling `dataFreshnessSection` already discloses as stale via its own "Swing scan: ... prior
+  // session ... today's discovery not yet run" line (scanSessionDay !== sessionDate). This section
+  // never carried that same disclosure, so a member reading a WATCH-bucket brief over a weekend
+  // (or any gap since the last scan) saw "#12 of 18 on WATCH lane" with no hint that both the rank
+  // and the total reflect a frozen last-scan snapshot, not the live board's own current population
+  // (confirmed live: `GET /api/market/nighthawk/horizons?view=swings` showed `watchCount: 3` the
+  // same moment three different WATCH briefs each independently reported "of 18"). Reuses the exact
+  // same staleness predicate and exemption (`isSwingPlayStaleCheckExempt` — closed or
+  // dead-but-not-closed plays, e.g. an EXTENDED/expired-window WATCH candidate, get no caveat here
+  // either, matching dataFreshnessSection's own gating) so the two sections can never disagree
+  // about whether staleness is worth saying for this specific play.
+  if (
+    scanContext?.scanAsOf &&
+    scanContext.scanSessionDay &&
+    scanContext.sessionDate &&
+    scanContext.scanSessionDay !== scanContext.sessionDate &&
+    !isSwingPlayStaleCheckExempt(play)
+  ) {
+    lines.push(
+      `Ranked against the last scan (**${etStampFromIso(scanContext.scanAsOf)}**, prior session **${scanContext.scanSessionDay}**) — today's discovery not yet run, so the live total may differ.`,
+    );
+  }
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
     const caveat = snap.topLegacyExemptOnly
       ? " — structurally blocked from committing (a platform wiring gap, not a live gate)"
