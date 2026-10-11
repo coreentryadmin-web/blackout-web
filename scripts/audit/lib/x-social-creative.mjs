@@ -171,17 +171,6 @@ export const FAMILY_COMBOS = [
   ["thermal_breadth", "helix_analytics", "vector", "largo"],
 ];
 
-export const COPY_OPENERS = [
-  "Different panels today — not matrix + tape.",
-  "Four tabs you don't see on every post.",
-  "Rotating desks — live numbers, different lenses.",
-  "Today's stack: breadth + flow + catalyst + reconcile.",
-  "Not the usual screenshot carousel.",
-  "Cross-product read — four unrelated panels.",
-  "Pulled four different tabs off the desk.",
-  "Live data · different surface each attachment.",
-];
-
 function lruPick(items, recent, keyFn) {
   const lastUsed = (item) => {
     const k = keyFn(item);
@@ -281,15 +270,6 @@ export function composeCreativePack(ticker = "NVDA", hotRanked = []) {
   };
 }
 
-export function nextCopyOpener() {
-  const state = loadCreativeState();
-  const recent = state.recent_openers ?? [];
-  const opener = lruPick(COPY_OPENERS, recent, (o) => o);
-  state.recent_openers = [opener, ...recent.filter((o) => o !== opener)].slice(0, 10);
-  saveCreativeState(state);
-  return opener;
-}
-
 export function fmtPrem(n) {
   const v = Math.abs(Number(n));
   if (!Number.isFinite(v) || v === 0) return null;
@@ -342,30 +322,3 @@ export async function pickHotTicker(fetchJson, base) {
   return rows;
 }
 
-/**
- * Build copy from live story + the specific panels captured.
- */
-export function buildCreativeCopy(story, pack) {
-  const opener = nextCopyOpener();
-  const t = story.ticker ?? pack.ticker ?? "NVDA";
-  const sym = t === "SPX" ? "$SPX" : `$${t}`;
-  const spot = story.spot != null ? Number(story.spot).toFixed(t === "SPX" ? 2 : 2) : "—";
-  const gexStr = fmtGex(story.netGex);
-  const neg = Number(story.netGex) < 0;
-  const top = story.top ?? {};
-  const prem = fmtPrem(top.premium);
-  const typ = String(top.option_type ?? "CALL").toUpperCase();
-  const strike = top.strike;
-
-  const panelLine = pack.shots.map((s, i) => `${["①", "②", "③", "④"][i]} ${s.label}`).join("  ");
-
-  const dataHook =
-    prem && strike
-      ? `${sym} ${spot} · ${prem} ${typ} ${strike}${neg ? ` · short γ (${gexStr})` : gexStr ? ` · ${gexStr} net GEX` : ""}`
-      : `${sym} ${spot}${gexStr ? ` · ${neg ? "short" : "long"} gamma (${gexStr})` : ""}`;
-
-  const wallBit =
-    story.callWall && story.putWall ? `Walls ${story.putWall}/${story.callWall}.` : "";
-
-  return [opener, "", dataHook, wallBit, "", panelLine, "Four desks ↓"].filter(Boolean).join("\n");
-}

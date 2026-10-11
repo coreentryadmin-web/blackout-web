@@ -279,16 +279,6 @@ export function getPanelPack(slug) {
   return hit;
 }
 
-/** Pick the next panel pack (least recently used). */
-export function nextPanelPack() {
-  const state = loadRotation();
-  const recent = state.recent_packs ?? [];
-  const pack = lruPick(PANEL_PACKS, recent, (p) => p.slug);
-  state.recent_packs = [pack.slug, ...recent.filter((s) => s !== pack.slug)].slice(0, 16);
-  saveRotation(state);
-  return pack;
-}
-
 /**
  * Append BLACK50 + Whop to body; trim body lines until the whole post fits 280 (X-weighted).
  */

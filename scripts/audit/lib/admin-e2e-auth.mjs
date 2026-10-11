@@ -24,34 +24,6 @@ function isLocalhost(url) {
   }
 }
 
-/** Complete ticket sign-in in a headless browser — works for keyless + prod. */
-export async function mintClerkSessionViaPlaywright({
-  appUrl,
-  signInUrl,
-  cookieDomain,
-}) {
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto(signInUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
-  await page.waitForTimeout(2500);
-  const cookies = await context.cookies();
-  await browser.close();
-
-  const domain = cookieDomain ?? new URL(appUrl).hostname;
-  const session = cookies.find((c) => c.name === "__session" && (c.domain.includes(domain) || domain.includes(c.domain.replace(/^\./, ""))));
-  const clientUat = cookies.find((c) => c.name === "__client_uat");
-  if (!session?.value) {
-    return { skip: true, reason: "Playwright ticket sign-in did not set __session cookie" };
-  }
-  const uat = clientUat?.value ?? String(Math.floor(Date.now() / 1000));
-  return {
-    skip: false,
-    cookieHeader: `__session=${session.value}; __client_uat=${uat}`,
-  };
-}
-
 /** Visit keyless dev origin once so Clerk dev-browser cookies exist for Backend API sign-in. */
 async function bootstrapKeylessDevBrowser(appUrl) {
   const { chromium } = await import("playwright");
