@@ -12,7 +12,7 @@ import {
   firstGateBlockCategory,
 } from "@/features/spx/lib/playbook-gate-categories";
 import { isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
-import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
+import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
 import type { PlayConfirmationResult } from "@/features/spx/lib/spx-play-confirmations";

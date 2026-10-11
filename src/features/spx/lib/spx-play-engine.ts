@@ -29,7 +29,7 @@ import {
 } from "@/features/spx/lib/playbook-gate-categories";
 import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
 import { forceExitCutoffLabel, isPastForceExitCutoff, isBeforeCashOpen, isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
-import type { LottoPlayPayload } from "@/features/spx/lib/spx-play-lotto";
+import type { LottoPlayPayload } from "@/features/spx/lib/spx-lotto-engine";
 import type { PowerHourPlayPayload } from "@/features/spx/lib/spx-power-hour-engine";
 import { evaluatePlayConfirmations, flowAlignedForDirection } from "@/features/spx/lib/spx-play-confirmations";
 import { buildPlayTechnicals, type PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
