@@ -4,6 +4,200 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Night Hawk Vector board — 6 dead exports + 2 orphaned types across 3 files — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** Sweeping the "vector-board" cluster found 6 zero-caller functions and 2
+types left over once their only consumer was removed, across
+`vector-board-filters.ts`, `vector-board-table-utils.ts`, and
+`vector-pick-log-board-utils.ts`:
+- `vectorBoardSessionPnl` (`vector-board-filters.ts`) — zero callers anywhere outside
+  its own self-test.
+- `vectorBoardNetPnl` (same file) — `vectorBoardSessionPnl`'s only caller was itself
+  dead, and `vectorBoardNetPnl` had no OTHER caller either (confirmed separately — it
+  has its own direct self-test, so it wasn't exclusively a helper for
+  `vectorBoardSessionPnl`, but it was still never called by production code).
+- `filterVectorBoardRows` (`vector-board-table-utils.ts`) — zero callers anywhere,
+  including no test reference outside its own. The real, live filter components use is
+  `filterVectorBoardRowsAdvanced` (`vector-board-filters.ts`, confirmed wired into
+  `VectorPickLogBoard.tsx` and `LegacyPickLogBoard.tsx`) — a same-named-but-different
+  sibling in a different file, which is almost certainly why this one drifted dead
+  without anyone noticing (easy to assume the "Advanced" one supersedes it, which is
+  exactly what happened).
+- `vectorBoardSummary` (same file) — zero callers outside its own self-test.
+- `preferredVectorBoardSection` (`vector-pick-log-board-utils.ts`) — zero production
+  callers; only its own 4 self-tests.
+- `filterVectorClosureRows` / `sortVectorClosureRows` (same file) — zero callers
+  anywhere, not even a test.
+- `VectorBoardSection` (same file) — the type `preferredVectorBoardSection` returned;
+  no other reference anywhere once that function is gone.
+- `VectorClosureSort` (same file) — the type `sortVectorClosureRows` took; no other
+  reference anywhere once that function is gone.
+
+**Root cause:** Each had a live sibling doing the real job, or was never wired up after
+being built — not a correctness regression. `classifyVectorClosureReason` (same file as
+the two closure-row helpers) IS live (`vector-board-filters.ts:115`), confirming the
+closure-filtering/sorting logic itself did get built into production, just via a
+different, inline path rather than through these two named utilities.
+
+**Evidence:** `grep -rn "<name>"` per export, repo-wide, before the fix: each matched
+only its own definition (plus, where present, its own self-test). Cross-checked
+`VectorPickLogBoard.tsx` / `LegacyPickLogBoard.tsx` / `VectorBoardToolbar.tsx` /
+`VectorBoardFiltersDrawer.tsx` directly — none imports any of the 6 removed functions.
+
+**Fix:** Removed all 6 functions, both now-orphaned types, and their imports/tests.
+`vectorBoardNetPnl` and `vectorBoardSessionPnl` removed together since the former's
+only other justification (feeding the latter) was itself dead. Left
+`vectorBoardCalendarBuckets`, `vectorBoardMeter`, `filterVectorRunnerLeaders`,
+`classifyVectorClosureReason`, `filterVectorBoardRowsAdvanced` untouched — all confirmed
+live via real component imports.
+
+**Fix rationale:** Pure deletion throughout — no gap left behind, since every removed
+function's real job (where one existed) is already done by a live sibling.
+
+**Blast radius:** `vector-board-filters.ts` (+test), `vector-board-table-utils.ts`
+(+test), `vector-pick-log-board-utils.ts` (+test) only.
+
+**Regression guard:** None needed — no removed function had production behavior to
+guard; the self-tests removed had no value beyond re-confirming a now-deleted
+function's own body.
+
+## Night Hawk Legacy — 3 more dead exports (legacyUsesOptionPnl, formatIndexDossierBlock, priorEt) — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** Three more zero-caller exports found sweeping the Night Hawk Legacy cluster:
+- `legacyUsesOptionPnl` (`legacy-primary-pnl.ts`) — only referenced by its own direct unit
+  test (`assert.equal(legacyUsesOptionPnl(play({ pnlPct: 10 })), true)`), never by
+  production code or by another test exercising a different function.
+- `formatIndexDossierBlock` (`index-dossier.ts`) — zero callers anywhere, not even a test
+  file. Its sibling `fetchIndexDossiers` (same file) IS the real, live export —
+  `edition-builder.ts` imports and calls it; `formatIndexDossierBlock` never got wired
+  into whatever consumes that output.
+- `priorEt` (`session.ts`) — a thin same-signature wrapper around `priorEtYmd()`
+  (`spx-session.ts`). Zero callers anywhere, including `session.test.ts` (which exists
+  and tests every other export in this file).
+
+**Root cause:** All three are unadopted exports with a live sibling doing the real job —
+same shape as this cycle's other dead-code findings, not a correctness regression.
+
+**Evidence:** `grep -rn "<name>"` per function, repo-wide, before the fix: each matched
+only its own definition (plus, for `legacyUsesOptionPnl`, its own self-testing assertion).
+Checked internal call sites within each file too (the lesson from this cycle's
+`timeframe.ts` near-miss) — none of the three is called by a sibling function in its own
+file either.
+
+**Note on a related candidate NOT removed:** `isNightHawkView` (`nighthawk-view.ts`) was
+also checked and looked like the same pattern (zero production callers), but
+`nighthawk-view.test.ts:185` uses it as the assertion in "the token set and the parser
+cannot drift apart" — a genuine cross-check (every `KNOWN_NIGHTHAWK_VIEW_TOKENS` entry
+must parse to a real view), not mere self-testing. Removing it would mean re-implementing
+the same union-membership check inline in that test rather than reusing the one exported
+guard. Left alone.
+
+**Fix:** Removed all three plus their now-orphaned imports — `legacy-primary-pnl.test.ts`'s
+import line and one assertion inside an existing test (not a whole test block, since that
+test also covers `legacyPrimaryPnlPct`); `session.ts`'s now-fully-unused
+`priorEtYmd`/`todayEtYmd` import (note: `todayEtYmd` was *already* dead before this fix —
+`todayEt()` in the same file calls `formatEtDate(now)`, not `todayEtYmd()` — removing the
+import line catches both at once).
+
+**Fix rationale:** Pure deletion in all three cases; each had either a live sibling doing
+the real job (`fetchIndexDossiers`, `priorEtYmd` directly at call sites elsewhere) or no
+real job being done at all (`legacyUsesOptionPnl`'s boolean check is inlined wherever
+needed, nowhere).
+
+**Blast radius:** `legacy-primary-pnl.ts` (+test), `index-dossier.ts`, `session.ts` only.
+
+**Regression guard:** None needed — no removed function had production behavior to guard;
+the self-testing assertions removed had no value beyond re-confirming the deleted
+function's own one-line body.
+
+## Night Hawk Legacy — dead `GATE_PROMOTE_MIN_SCORE` static alias — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** `publish-gates.ts` exported `GATE_PROMOTE_MIN_SCORE`, a static alias to
+`MIN_PUBLISH_SCORE`, with a doc comment claiming the live gate-promote rescue path is
+"Locked to MIN_PUBLISH_SCORE so rescue cannot re-admit the diversity-hedge noise class
+(live AI@26 / SNDQ@20)." It had zero importers anywhere in the repo — only its own
+definition and a historical `docs/audit/FINDINGS.md` mention referenced the name.
+
+**Root cause:** The real gate-promote score floor is **dynamic**, not static. The one
+real call site, `promoteTopBlocked` (same file), reads `gatePromoteMinScore()`
+(`edition-quality.ts`), which returns `effectiveMinPublishScore()` — an env-overridable
+(`NH_MIN_PUBLISH_SCORE`) floor that also shifts to the measured overnight PRIME band
+(`NH_SCORE_PRIME_MIN`) under `legacyGlobalStrongest()`. The static constant was left
+behind, presumably from before the floor became dynamic, and nothing was ever updated to
+read it — not a correctness regression (the real mechanism is already correctly dynamic
+and well-tested), just a dead, stale-commented export.
+
+**Evidence:** `grep -rn "GATE_PROMOTE_MIN_SCORE"` (repo-wide) before the fix: only
+`publish-gates.ts:422` (its own definition) and one historical `FINDINGS.md` line. The
+real floor's call site (`publish-gates.ts:437`, `const minScore = gatePromoteMinScore();`)
+and its dynamic definition (`edition-quality.ts:88-90`) are both confirmed live and tested
+(`edition-quality.test.ts:93`, `assert.equal(gatePromoteMinScore(), 40)`).
+
+**Fix:** Removed `GATE_PROMOTE_MIN_SCORE` and its now-orphaned `MIN_PUBLISH_SCORE` import
+(the only other use of that import in this file). No other code change — the real,
+dynamic floor the rescue path actually uses is untouched.
+
+**Fix rationale:** Pure deletion — a dead static alias beside its own correctly-dynamic
+live replacement, with no caller to redirect.
+
+**Blast radius:** `src/features/nighthawk/lib/publish-gates.ts` only. No test referenced
+the removed export (`publish-gates.test.ts` already tests `promoteTopBlocked`'s real
+score-floor behavior directly — see "promoteTopBlocked rejects score-below-floor filler
+(AI@26 / SNDQ@20 class)").
+
+**Regression guard:** None needed beyond the existing `promoteTopBlocked`
+score-floor test, which already exercises the real `gatePromoteMinScore()` path this
+dead constant never touched.
+
+## Night Hawk Legacy — dead `deduplicateTickerFamilies`, and a stale FINDINGS.md record it corrects — FIXED
+
+> **kind:** `FINDING`
+
+**Symptom:** `play-constraints.ts` exported `deduplicateTickerFamilies(items)` — a
+post-hoc filter that drops later same-family tickers (GOOGL+GOOG, BRK.A+BRK.B, etc.) from
+a ranked list. It had zero real callers anywhere in the repo; only its own 4 direct unit
+tests called it. This also corrects a stale `docs/audit/FINDINGS.md` entry ("No
+ticker-family dedup — GOOGL + GOOG... FIXED", PR #400) which states the function is
+"Wired into both `buildDeterministicEditionPlays` and `buildRescuePlays`" — that wiring
+was true at the time but has since been refactored away without updating the record.
+
+**Root cause:** `deterministic-edition.ts` never imports `deduplicateTickerFamilies` —
+it imports `canonicalTicker` directly (same file, still genuinely live) and maintains its
+own running `selectedFamilies`/`finalFamilies` `Set<string>`, checking membership via
+`canonicalTicker()` BEFORE adding each candidate to the selection (an incremental,
+build-as-you-go dedup, functionally equivalent to — and simpler than — filtering a
+finished list after the fact). The real family-dedup BEHAVIOR is intact and correct in
+production (`deterministic-edition.ts:900-970,1018,1043-1045,1141-1210`); only the named
+utility function it was originally built alongside is unused. Not a correctness
+regression — a stale doc record describing an implementation detail that moved.
+
+**Evidence:** `grep -rn "deduplicateTickerFamilies" src/` before the fix returns only the
+definition (`play-constraints.ts:238`) and its own 4 tests
+(`play-constraints.test.ts`). `grep -n "canonicalTicker|selectedFamilies|finalFamilies"
+src/features/nighthawk/lib/deterministic-edition.ts` confirms the real inline dedup is
+live and exercised by `deterministic-edition.test.ts` (99/99 passing after this change,
+run together with `play-constraints.test.ts`).
+
+**Fix:** Removed `deduplicateTickerFamilies` and its 4 direct tests. Left `canonicalTicker`
+(same file) untouched — it is the one piece of this pair with a real production caller.
+
+**Fix rationale:** Pure deletion of the unused function; the live behavior it would have
+provided is already covered by `deterministic-edition.ts`'s own inline dedup, so there is
+no gap to fill and no caller to redirect.
+
+**Blast radius:** `src/features/nighthawk/lib/play-constraints.ts` and
+`play-constraints.test.ts` only. `canonicalTicker` and its own 4 tests are unchanged.
+
+**Regression guard:** None needed beyond the existing coverage —
+`deterministic-edition.test.ts` already exercises the real family-dedup behavior this
+removed function never actually provided in production.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
