@@ -48,9 +48,21 @@ across more surfaces, worth a deliberate look rather than a drive-by edit).
 Rather than patching the lead sentence to also name Vector and Meridian (which would just
 recreate the identical staleness risk at the next product launch), rewrote it to describe
 platform *capabilities* generically (options flow, dealer gamma positioning, dark-pool
-activity, graded play intelligence) without naming any specific product — leaving
-`manifestPlatformSummary()` as the single, already-correct place product names are
-enumerated. This removes the redundancy entirely rather than just rebalancing it.
+activity, 0DTE Command, graded play intelligence) without naming any specific **product**
+(SPX Slayer/Night Hawk/Largo) — leaving `manifestPlatformSummary()` as the single,
+already-correct place product *names* are enumerated. This removes the product-name
+redundancy entirely rather than just rebalancing it.
+
+One correction made mid-fix: the first draft dropped "0DTE Command" along with the product
+names, which broke an existing, unrelated regression test
+(`product-manifest-consistency.test.ts`'s "FAQ Night Hawk answer matches manifest lifecycle") —
+that test asserts the literal string "0DTE Command" appears somewhere in `content.ts`'s raw
+source (guarding against Night Hawk's description reverting to describing it as only an
+"overnight playbook"). "0DTE Command" is a *feature* name, not the bare product label
+("Night Hawk") `manifestPlatformSummary()` already lists, so restoring it as one of the
+capability phrases satisfies both constraints: no product named twice, and the feature-name
+regression guard still holds. Caught by CI (`verify`) on the first push, not local tests — the
+cross-file consistency test lives in a different file than the one being edited, so it reproduced instantly once the actual CI log was pulled.
 
 ### Test
 
@@ -59,4 +71,7 @@ existed with 6 tests covering `FAQ_ITEMS`/`selectFaqItems`/home-accordion-JSON-L
 2 new tests: every live product's label appears in the `platform-1` answer exactly once (not
 duplicated), and Vector/Meridian are present. Proven RED→GREEN by temporarily reverting just
 the fixed sentence to its pre-fix text — the duplication test failed with "SPX Slayer... found
-2" against the old text, passed once restored. All 8/8 tests pass, `tsc --noEmit` clean.
+2" against the old text, passed once restored. All 8/8 tests pass, plus the previously-broken
+`product-manifest-consistency.test.ts` ("FAQ Night Hawk answer matches manifest lifecycle") now
+passes too — re-ran the full `src/lib/marketing/*.test.ts src/lib/faq/*.test.ts` suite (35/35
+pass) and `tsc --noEmit` (clean) before re-pushing.
