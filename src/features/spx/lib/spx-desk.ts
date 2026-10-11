@@ -2179,9 +2179,22 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
         // the TRUE exclusive-of-today `pdc` before the override can replace `prior`, so
         // `prior_close` stays correct (yesterday's close) all evening while `price` still rolls
         // forward to today's own settled close.
+        //
+        // BUG (found 2026-10-11, DISCOVERY sweep): pdh/pdl here used to read `prior.pdh`/
+        // `prior.pdl` — the SAME `prior` object the cross-midnight re-snapshot block above (line
+        // ~2155, `if (todaysOwnClose.prior.pdc != null)`) corrects `priorDayLevels.pdh`/`pdl` FOR,
+        // but never writes back into `prior` itself (`prior.pdh`/`prior.pdl` were captured by
+        // value at the `prior = { ...todaysOwnClose, pdh: priorDayLevels.pdh, ... }` assignment
+        // above, BEFORE that correction runs). So for the entire cross-midnight stretch where the
+        // correction actually fires, `prior_close` correctly re-anchored to the true prior day
+        // while `pdh`/`pdl` stayed one session too recent — the exact sibling of the 2026-10-09
+        // `prior_close` bug directly above, just left unfixed for pdh/pdl when that fix landed.
+        // Fix: read pdh/pdl from the same already-corrected `priorDayLevels`, mirroring
+        // `prior_close` immediately above (outside the correction window the two are identical in
+        // value, so this changes nothing when the bug isn't live).
         prior_close: priorDayLevels.pdc,
-        pdh: prior.pdh,
-        pdl: prior.pdl,
+        pdh: priorDayLevels.pdh,
+        pdl: priorDayLevels.pdl,
         market_open: false,
         market_status: marketNow?.market ?? "closed",
         market_label: label,

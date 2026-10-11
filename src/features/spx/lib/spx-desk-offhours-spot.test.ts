@@ -136,6 +136,31 @@ test("buildSpxDeskPulse: EXTENDED-hours override must NOT roll prior_close forwa
   );
 });
 
+test("buildSpxDeskPulse: off-hours return must serve pdh/pdl from the corrected priorDayLevels, not the stale pre-correction `prior` (2026-10-11 fix)", () => {
+  // Sibling bug to the `prior_close` fix immediately above it in source, found by a DISCOVERY
+  // sweep: the cross-midnight re-snapshot block (`if (todaysOwnClose.prior.pdc != null) {
+  // priorDayLevels.pdh = todaysOwnClose.prior.pdh; ... }`) corrects `priorDayLevels.pdh/pdl`, but
+  // `prior.pdh`/`prior.pdl` were already captured BY VALUE a few lines earlier (`prior = {
+  // ...todaysOwnClose, pdh: priorDayLevels.pdh, pdl: priorDayLevels.pdl }`, before the
+  // correction), so mutating `priorDayLevels` afterward never updates `prior`. The final return
+  // used to read `pdh: prior.pdh, pdl: prior.pdl` — stale for the whole cross-midnight stretch —
+  // while `prior_close: priorDayLevels.pdc` on the line above it was already correctly reading
+  // the corrected object. Confirmed via git blame: `prior_close` was fixed to read
+  // `priorDayLevels.pdc` on 2026-10-08 (the sibling prior_close bug), but `pdh`/`pdl` were never
+  // updated to match — unchanged since 2026-09-05.
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /prior_close: priorDayLevels\.pdc,\s*\n\s*pdh: priorDayLevels\.pdh,\s*\n\s*pdl: priorDayLevels\.pdl,/,
+    "the off-hours return must serve pdh/pdl from the same corrected priorDayLevels object prior_close already uses, not the stale pre-correction `prior`"
+  );
+  assert.doesNotMatch(
+    src,
+    /prior_close: priorDayLevels\.pdc,\s*\n\s*pdh: prior\.pdh,\s*\n\s*pdl: prior\.pdl,/,
+    "must not regress back to reading pdh/pdl off the stale, pre-correction `prior` object — that is the exact bug this test guards against"
+  );
+});
+
 test("fetchTodaysOwnCloseIfSessionComplete: delegates to latestSessionAndItsOwnPrior, not a bare priorDayFromDailyBars(bars, today, true) (2026-10-09 midnight-rollover fix)", () => {
   // Pre-fix this called `priorDayFromDailyBars(bars, today, true)` directly and discarded the
   // bars — which worked fine for "today's own close" in isolation but left the CALLER's
