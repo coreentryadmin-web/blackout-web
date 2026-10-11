@@ -1,5 +1,3 @@
-import { priorEtYmd, todayEtYmd } from "@/lib/providers/spx-session";
-
 const ET = "America/New_York";
 
 /** NYSE full-day closures — extend annually. */
@@ -70,10 +68,6 @@ const EARLY_CLOSE_ET_MINUTES: Record<string, number> = {
 
 export function todayEt(now: Date = new Date()): string {
   return formatEtDate(now);
-}
-
-export function priorEt(): string {
-  return priorEtYmd();
 }
 
 export function formatEtDate(d: Date): string {
