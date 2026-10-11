@@ -194,23 +194,6 @@ function dedupeEvents(events: MacroEvent[]): MacroEvent[] {
   return out.slice(0, 8);
 }
 
-/** Resolve today's macro catalysts from curated schedule + headline keywords. */
-export async function resolveMacroEventsToday(input: {
-  headlines?: Array<{ title?: string }>;
-}): Promise<{ events: MacroEvent[]; source: "static" | "headlines" | "none" }> {
-  const staticHits = staticMacroToday();
-  if (staticHits.length > 0) {
-    return { events: staticHits, source: "static" };
-  }
-
-  const fromNews = macroFromHeadlines(input.headlines);
-  if (fromNews.length > 0) {
-    return { events: fromNews, source: "headlines" };
-  }
-
-  return { events: [], source: "none" };
-}
-
 /** Merge static schedule + headline keywords for desk macro rail. */
 export async function mergeMacroEventsToday(input: {
   headlines?: Array<{ title?: string }>;
