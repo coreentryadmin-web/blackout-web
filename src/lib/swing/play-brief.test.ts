@@ -144,6 +144,80 @@ test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the di
   );
 });
 
+// Live repro 2026-10-11 (Ask Largo standing mandate — AMD positionId 51 vs 52). Two
+// independently-committed positions on the same ticker, different archetypes/theses
+// (`commit.ts`'s own idempotency key correctly treats them as separate — see `swingThesisKey`),
+// that resolved to the IDENTICAL contract and filled within a half-cent of each other. Before the
+// fix, `siblingPositionsNote`'s self-test was "entry premium differs from mine by > 0.005" —  a
+// genuine sibling that fills within that half-cent band was wrongly treated as "self" and silently
+// dropped, so a member with two real live positions could see no disclosure at all. The fix prefers
+// an exact `positionId` match (from the CommandDeck `SWING:<TICKER>:<positionId>` row-id
+// convention) as the self-test whenever both sides carry one, which this test pins.
+test("composeSwingPlayBrief: a same-ticker sibling with a near-identical entry premium is still disclosed (positionId, not premium proximity, is the self-test)", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "AMD",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 68.1,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:AMD261016C00605000",
+      strike: 605,
+      expiry: "2026-10-16",
+      right: "C",
+      dte: 5,
+      mid: 15.95,
+      bid: 15.65,
+      ask: 16.25,
+      delta: 0.55,
+      gamma: 0.0114,
+      theta: -1.0217,
+      vega: 0.3356,
+      iv: 0.4145,
+      openInterest: 711,
+    },
+    scoreFloor: 60,
+    reason: "live hold — EVENT_DRIVEN thesis",
+    archetype: "EVENT_DRIVEN",
+    entryPremium: 17.73,
+    livePnlPct: -10.0,
+    liveStatus: "HOLD",
+    committedAt: "2026-10-09T16:05:57.000Z",
+    positionId: 51,
+  };
+  const ctx: SwingPlayBriefContext = {
+    // Entry premium deliberately within $0.005 of the sibling's $17.73 — pins the actual failure
+    // mode (the old self-test treated anything that close as "me").
+    play: fixturePlay({
+      id: "SWING:AMD:52",
+      ticker: "AMD",
+      status: "OPEN",
+      recommendation: "HOLD",
+      archetype: "PULLBACK_CONTINUATION",
+      entry: 17.7301,
+      mark: 15.95,
+      pnlPct: -8.7,
+    }),
+    asOf: "2026-10-11T08:46:58.000Z",
+    sessionDate: "2026-10-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(
+    sib,
+    "a genuine sibling position (different positionId) must be disclosed even when its entry " +
+      "premium is within $0.005 of this play's own entry",
+  );
+  assert.match(sib!.body, /605C 2026-10-16/);
+  assert.match(sib!.body, /2 concurrent live position/);
+});
+
 // BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
 // error boundary, in THIS file's own top-level composition instead. `managementSection`'s
 // `ep.trim_levels.map(...)` AND `blendedPnlPct`'s (called from `pnlSection`) `ep.trim_levels.

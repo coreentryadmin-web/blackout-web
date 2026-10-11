@@ -279,19 +279,45 @@ function blendedPnlPct(play: TerminalPlay): number | null {
  * separate DB sequences that can collide, so blindly trusting a banger id as a swing positionId
  * hint could resolve to a completely unrelated swing position). Instead: a purely additive
  * disclosure, using data already on `ctx.laneRows` (no new fetch), naming every OTHER live position
- * on the same ticker by its distinguishing contract + entry so nothing is hidden. Matches on
- * `entryPremium` (rounded) rather than a synthetic id, since two genuinely different positions on
- * one ticker always differ in strike/expiry/entry price in practice — good enough for an honest
- * disclosure, not a resolution key.
+ * on the same ticker by its distinguishing contract + entry so nothing is hidden.
+ *
+ * BUG FOUND 2026-10-11 (Ask Largo standing mandate — live AMD repro, positionId 51 vs 52). This
+ * function's self-exclusion used to rely ENTIRELY on `entryPremium` proximity (`> 0.005` away from
+ * `play.entry` = "a real sibling", otherwise assumed to be "me") — the doc text above used to
+ * justify this as "two genuinely different positions on one ticker always differ in strike/expiry/
+ * entry price in practice." Live data falsifies that assumption directly: AMD carried two
+ * independently-committed positions (#51 EVENT_DRIVEN, #52 PULLBACK_CONTINUATION — different
+ * archetypes, so `commit.ts`'s own idempotency key correctly treats them as separate theses, see
+ * `swingThesisKey`) that both resolved to the IDENTICAL contract (605C 2026-10-16) via
+ * `pickChainContract`, entered ~3h apart at entry premiums only $0.25 apart. That case happened to
+ * clear the `> 0.005` bar, but nothing stops two independently-committed positions from filling at
+ * premiums within a half-cent of each other (two orders hitting the same quoted mid) — in that
+ * narrower case the old filter would have wrongly treated the real sibling as "self" and silently
+ * dropped it, so a member with two live positions on a ticker could see NO disclosure at all
+ * (`!siblings.length` returns `null`) — the exact "absence must be disclosed, never silent"
+ * violation (C3) this section exists to prevent, just reached via a different gap than the one the
+ * comment above already names.
+ *
+ * Fix: prefer an exact `positionId` match as the self-test whenever both sides carry one (the
+ * CommandDeck row-identity convention stamps `id: "SWING:<TICKER>:<positionId>"` for any row with a
+ * real ledger position — `parseSwingPlayId` already recovers it elsewhere in this file, e.g. the
+ * `bookContextSection` overlap call below). This is a strictly more precise self-test than premium
+ * proximity and costs nothing when it's available. Only fall back to the premium heuristic when
+ * either side lacks a resolvable `positionId` — unchanged from before, and the one case this still
+ * can't disambiguate is itself the subject of the comment above (banger rows never carry one).
  */
 function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
   const { play } = ctx;
   if (play.entry == null || !Number.isFinite(play.entry)) return null;
   const ticker = play.ticker.toUpperCase();
+  const { positionId: selfPositionId } = parseSwingPlayId(play.id);
   const siblings = ctx.laneRows.filter((r) => {
     if (r.ticker.toUpperCase() !== ticker) return false;
     if (!r.liveStatus) return false; // only OTHER live/committed positions matter here
     if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+    if (selfPositionId != null && r.positionId != null) {
+      return r.positionId !== selfPositionId;
+    }
     return Math.abs(r.entryPremium - play.entry!) > 0.005;
   });
   if (!siblings.length) return null;
