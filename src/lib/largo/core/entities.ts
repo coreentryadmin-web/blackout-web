@@ -132,23 +132,6 @@ export function parseOccSymbol(input: string | null | undefined): CanonicalContr
   };
 }
 
-/** Build an OCC symbol. Round-trips with parseOccSymbol — asserted by test. */
-export function buildOccSymbol(o: {
-  ticker: string;
-  expiry: string;
-  right: "C" | "P";
-  strike: number;
-}): string | null {
-  const t = canonicalTicker(o.ticker);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(o.expiry.trim());
-  if (!t || !m || !Number.isFinite(o.strike) || o.strike <= 0) return null;
-  // Round to the nearest tenth of a cent before scaling: floating-point strikes like 230.0000001
-  // would otherwise produce a symbol no provider recognises.
-  const strike = String(Math.round(o.strike * 1000)).padStart(8, "0");
-  if (strike.length > 8) return null;
-  return `${t.key}${m[1]!.slice(2)}${m[2]}${m[3]}${o.right}${strike}`;
-}
-
 /** A trading session, keyed by its ET calendar date. The join key for anything per-day. */
 export function canonicalSession(input: string | null | undefined): string | null {
   if (typeof input !== "string") return null;
