@@ -38,6 +38,106 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-12 — [Security] x-intel cron echoed raw exception text in its HTTP response — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Security / cron hygiene | MEDIUM — authenticated-cron info leak | FIXED |
+
+**What's wrong.** `src/app/api/cron/x-intel/route.ts`'s catch block returned
+`{ ok: false, error: "X intel generation failed", detail: message }`, where `message` is the
+raw caught exception's `.message` — putting internal exception text directly into the cron's
+HTTP JSON response.
+
+**Why this is a regression of an already-fixed class, not a new category.** The 2026-07-29
+`[Security] Medium hygiene: cron redact + Largo budget + flows rate limit` FINDINGS.md entry
+fixed exactly this pattern across ~14 cron routes: "HTTP bodies no longer echo `err.message` /
+`detail`; `logCronRun` still keeps detail" (internal logging keeps the detail for ops;
+confirmed live: every other catch block checked — `banger-discovery`, `zerodte-grade`,
+`legacy-live-sync`, `welcome-sequence`, `spx-evaluate`, etc. — computes the detail once for
+`console.error`/`logCronRun` but returns only a generic string in `NextResponse.json(...)`).
+`x-intel/route.ts` was added **2026-08-24** (`#2823`), a month after that sweep, and shipped
+the exact same leak un-fixed — not because the original fix regressed, but because nothing
+re-applies that fix to a cron route added afterward.
+
+**Fix.** Removed `detail: message` from the HTTP response, matching the established pattern
+exactly — `logCronRun` (line 308-312, unchanged) still gets `message` for internal ops
+visibility; the HTTP caller now only sees the generic `"X intel generation failed"` string.
+
+**Regression guard added.** A new repo-wide test,
+`src/app/api/cron/cron-error-detail-redaction.test.ts`, scans every
+`src/app/api/cron/*/route.ts` (not just the ~14 originally fixed, nor just x-intel) for a
+caught-error identifier (bound via the `X instanceof Error ? X.message : ...` idiom) appearing
+as a bare property value inside a `NextResponse.json(...)` call. This closes the actual gap:
+the original fix was per-file and had no mechanism to catch a *future* cron route repeating the
+same mistake. Verified RED→GREEN: stashing just the x-intel fix fails the new test exactly on
+`x-intel/route.ts`; restoring it passes (1/1).
+
+**Blast radius.** `x-intel/route.ts` only. `tsc --noEmit` clean.
+
+**Verification.**
+```
+npx tsx --experimental-test-module-mocks --test src/app/api/cron/cron-error-detail-redaction.test.ts
+# 1 pass, 0 fail
+```
+
+Found while re-verifying the 2026-07-29 security-hygiene finding's claims against current
+source (standing DISCOVERY-lane practice of re-checking old FINDINGS.md entries) — the original
+5 claims all still held, but the sweep extended naturally into checking whether any newer cron
+route had drifted from the established pattern, which this one had.
+
+## 2026-10-12 — [Marketing] Stale "Six engines" anchor comment in StaticMarketingNav.tsx — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Marketing/SEO | P3 — dev-facing doc only, not user-visible | FIXED |
+
+**What's wrong.** `src/components/landing/StaticMarketingNav.tsx:7` carried a code comment
+documenting the `#modules` anchor's heading as the literal string `"Six engines. One edge."`.
+The real heading (`RedesignHome.tsx:122`) is `{modulesHeadline}<br />One edge.`, where
+`modulesHeadline` comes from `marketingModulesHeadline()` → `manifestModulesHeadline()`
+(`product-manifest.ts:216-219`), which derives dynamically from the live product count
+(currently 7 products: spx/helix/thermal/largo/hawk/vector/meridian → renders "Seven
+products."). "Six engines" is also one of the strings in `BANNED_PUBLIC_MARKETING_PHRASES`
+(`product-manifest.ts:248`) — i.e. it was deliberately scrubbed from real marketing copy at
+some point but left behind in this comment, which documents the anchor contract for future
+editors and could cause someone to "fix" the real copy to match the stale comment instead of
+the other way around.
+
+**Why it wasn't caught by the existing guard.** `product-manifest-consistency.test.ts`'s
+`PUBLIC_SURFACES` banned-phrase scan (the mechanism that's kept every OTHER banned phrase out
+of real marketing copy — see FINDINGS entries from 2026-08/09 adding "six trading modules"
+and "Earnings intelligence" to the ban list) does not include `StaticMarketingNav.tsx` — only
+files with actual rendered user-facing copy are in that list. This comment is dev
+documentation, not rendered copy, so it fell outside the scan's intended scope — not a gap in
+the scan logic itself.
+
+**Fix.** Rewrote the comment to describe the headline as dynamic (`<N> products. One edge.`,
+scaling with the live manifest count) instead of quoting a fixed string. Added
+`StaticMarketingNav.tsx` to `PUBLIC_SURFACES` in `product-manifest-consistency.test.ts` so a
+future stale/banned phrase re-introduced into this file's source (comment or otherwise) is
+caught the same way it already is everywhere else. Verified RED→GREEN: reverting the comment
+alone made `"public marketing surfaces do not contain banned absolute/stale phrases"` fail on
+`"Six engines"`; the fix make it pass (16/16 in that test file).
+
+**Note on the fix-of-the-fix.** First draft of the new comment explained the ban by literally
+naming the banned phrases ("Six engines"/"six modules" are stale...) — which itself tripped
+the same banned-phrase scan on "six modules" (the scan is a case-insensitive substring match,
+so it doesn't distinguish "this phrase is banned" from using the phrase). Rewrote to describe
+the mechanism without quoting any banned string.
+
+**Blast radius.** None — comment-only change plus one test-file addition. No rendered output
+changes.
+
+**Verification.** `npx tsx --experimental-test-module-mocks --test
+src/lib/marketing/product-manifest-consistency.test.ts` → 16/16 pass.
+
+Found via a background Explore-agent sweep of the marketing/SEO surface, independently
+re-verified (exact file/line, the real `#modules` heading, `manifestModulesHeadline()`'s
+derivation, and the `BANNED_PUBLIC_MARKETING_PHRASES` entry) before fixing.
+
 ## The entire x-intel CTA/franchise/visual-capture-catalog subsystem is built, tested, and completely bypassed by the live X-posting cron — OPEN (architecturally significant, not fixed here)
 
 > **kind:** `FINDING`
