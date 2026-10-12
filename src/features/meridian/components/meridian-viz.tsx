@@ -433,36 +433,54 @@ export function MeridianBeatHistory({
         </span>
       </div>
       <div className="mv-beats-rows">
-        {series.map((p, i) => (
-          <button
-            type="button"
-            key={p.date ?? i}
-            className="mv-beat-row"
-            onClick={onSelect && prints ? () => onSelect(prints[i]!) : undefined}
-            disabled={!onSelect}
-            title={
-              p.reactionAssumed
-                ? "Reaction measured on the report date — print timing unknown, so this may be pre-print drift"
-                : undefined
-            }
-          >
-            <span className="mv-beat-date">{p.date?.slice(2) ?? "—"}</span>
-            <span className="mv-beat-track">
-              <span
-                className={`mv-beat-bar ${p.beat === null ? "mv-neutral" : p.beat ? "mv-bull" : "mv-bear"}`}
-                style={{ transform: `scaleX(${p.magnitude})` }}
-              />
-            </span>
-            <span className={`mv-beat-surprise ${p.beat === null ? "" : p.beat ? "mv-bull" : "mv-bear"}`}>
-              {p.surprisePct === null ? "—" : fmtSignedPct(p.surprisePct)}
-            </span>
-            <span className={`mv-beat-reaction ${p.reactionPct === null ? "" : p.reactionPct >= 0 ? "mv-bull" : "mv-bear"}`}>
-              {fmtSignedPct(p.reactionPct)}
-              {/* An assumed anchoring is marked, never silently presented as measured. */}
-              {p.reactionAssumed && <span className="mv-beat-assumed" aria-hidden="true">~</span>}
-            </span>
-          </button>
-        ))}
+        {series.map((p, i) => {
+          const rowTitle = p.reactionAssumed
+            ? "Reaction measured on the report date — print timing unknown, so this may be pre-print drift"
+            : undefined;
+          const rowChildren = (
+            <>
+              <span className="mv-beat-date">{p.date?.slice(2) ?? "—"}</span>
+              <span className="mv-beat-track">
+                <span
+                  className={`mv-beat-bar ${p.beat === null ? "mv-neutral" : p.beat ? "mv-bull" : "mv-bear"}`}
+                  style={{ transform: `scaleX(${p.magnitude})` }}
+                />
+              </span>
+              <span className={`mv-beat-surprise ${p.beat === null ? "" : p.beat ? "mv-bull" : "mv-bear"}`}>
+                {p.surprisePct === null ? "—" : fmtSignedPct(p.surprisePct)}
+              </span>
+              <span className={`mv-beat-reaction ${p.reactionPct === null ? "" : p.reactionPct >= 0 ? "mv-bull" : "mv-bear"}`}>
+                {fmtSignedPct(p.reactionPct)}
+                {/* An assumed anchoring is marked, never silently presented as measured. */}
+                {p.reactionAssumed && <span className="mv-beat-assumed" aria-hidden="true">~</span>}
+              </span>
+            </>
+          );
+          // Neither current call site (Report, History) passes `onSelect`, so this used to render
+          // a `disabled` button — real markup for a control that can NEVER be activated: no click,
+          // no keyboard focus, nothing a `disabled` state would ever lift. Same fix as
+          // MeridianTargetRail's price-target dots and MeridianDarkPoolTape's prints
+          // (UI-UX-OPPORTUNITIES.md item 13): a `<span>` reports the same row honestly without
+          // claiming to be a control nothing can ever enable.
+          if (!onSelect || !prints) {
+            return (
+              <span key={p.date ?? i} className="mv-beat-row" title={rowTitle}>
+                {rowChildren}
+              </span>
+            );
+          }
+          return (
+            <button
+              type="button"
+              key={p.date ?? i}
+              className="mv-beat-row"
+              onClick={() => onSelect(prints[i]!)}
+              title={rowTitle}
+            >
+              {rowChildren}
+            </button>
+          );
+        })}
       </div>
       {series.some((p) => p.reactionAssumed) && (
         <p className="mv-note">~ reaction measured on the report session; print timing unknown</p>
