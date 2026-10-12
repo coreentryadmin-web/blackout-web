@@ -1,4 +1,4 @@
-## Vector: two of three regime consumers rendered the literal placeholder string "REGIME —" as if it were a real reading — FIXED
+## 2026-08-30 — [FINDING, P3 vector/ui] Vector: two of three regime consumers rendered the literal placeholder string "REGIME —" as if it were a real reading — FIXED
 
 > **kind:** `FINDING`
 

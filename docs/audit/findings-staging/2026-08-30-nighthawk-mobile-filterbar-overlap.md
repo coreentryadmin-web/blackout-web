@@ -1,4 +1,4 @@
-## Night Hawk: mobile status/direction filter bars overlap into illegible text — FIXED
+## 2026-08-30 — [FINDING, P2 night-hawk/ui] Night Hawk: mobile status/direction filter bars overlap into illegible text — FIXED
 
 > **kind:** `FINDING`
 
