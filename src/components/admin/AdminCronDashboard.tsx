@@ -28,10 +28,30 @@ const JOB_ICONS: Record<string, string> = {
 
 // Crons the admin run/warm endpoint (/api/admin/cron/run) can dispatch. Keep in sync with
 // CRON_DISPATCH in src/lib/cron-dispatch.ts — only these show a "Run now" button.
+// Can't import CRON_DISPATCH/DISPATCHABLE_CRONS directly: cron-dispatch.ts pulls in real cron
+// route handlers (next/server, DB-touching provider code) that must never reach this "use
+// client" component's bundle. admin-cron-dashboard-runnable-crons.test.ts statically diffs this
+// list against cron-dispatch.ts's own keys so the two can't drift silently again.
 const RUNNABLE_CRONS = new Set([
   "flow-ingest",
   "uw-cache-refresh",
   "heatmap-warm",
+  "meridian-warm",
+  "desk-warm",
+  "zerodte-warm",
+  "spx-evaluate",
+  "market-regime-detector",
+  "spx-signal-observe",
+  "vector-universe-snapshot",
+  "vector-full-state-snapshot",
+  "vector-walls-warm",
+  "vector-bead-record",
+  "vector-dark-pool-warm",
+  "vector-pick-sweep",
+  "coaching-alerts",
+  "bie-full-state-snapshot",
+  "swing-active-refresh",
+  "nighthawk-playbook",
 ]);
 
 function fmtTime(iso: string | null): string {
