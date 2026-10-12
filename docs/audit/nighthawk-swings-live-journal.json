@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T19:18Z",
-  "notes": "ASTS:53 continues steady monotonic decay: -23.1% (19:02) -> -28.3% (19:16), underlying adverse move only grew -2.6% -> -3.3% -- re-checked play-brief, same pure IV-decay story, stop cushion moved proportionally (47% -> 43% from mark), thesis still 'intact' at 67%. Nothing qualitatively new -- no escalation. WATCH list unchanged (GOOG/IREN/AMZN, same gate reasons). Ask Largo leverage/IV-decay narrative idea raised at 19:05 (ask_largo_enhancement_ideas_2026_10_12) still awaiting Cursor read.",
+  "last_updated": "2026-10-12T19:48Z",
+  "notes": "ASTS:53 decay continues proportionally: -28.3% (19:16) -> -33.5% (19:47), underlying adverse move -3.3% -> -4.1%, stop cushion 43% -> 38% from mark -- same pure IV-decay story each tick, thesis still 'intact' at 67%, no gate change. No escalation -- re-verify next tick since cumulative decay is now over a third of premium. WATCH list grew to 4: GOOGL joined GOOG, both blocked by the same real gate:G-S14:cortex_net_negative (sibling share classes sharing a cortex veto makes sense, not flagged as a bug). IREN/AMZN still blocked by the known legacy:exempt wiring gap. Ask Largo leverage/IV-decay narrative idea (raised 19:05, ask_largo_enhancement_ideas_2026_10_12) still awaiting Cursor read.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
