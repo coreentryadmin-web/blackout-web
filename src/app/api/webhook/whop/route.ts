@@ -11,6 +11,7 @@ import {
   markCancelAtPeriodEndNotified,
 } from "@/lib/whop-dunning";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
+import { isInternalAuditEmail } from "@/lib/internal-audit-email";
 import { recordApiCall } from "@/lib/api-telemetry";
 import { makeRedis } from "@/lib/make-redis";
 import { publishTierChanged } from "@/lib/tier-cache";
@@ -349,7 +350,7 @@ export async function POST(req: NextRequest) {
       // OWN cancel flow already asks for a reason (cancel_option enum + optional free-text
       // cancellation_reason) and this event fires the moment cancel_at_period_end flips —
       // we just weren't reading it.
-      if (shouldNotifyCancellation(event.type, event.data.cancel_at_period_end)) {
+      if (shouldNotifyCancellation(event.type, event.data.cancel_at_period_end) && !isInternalAuditEmail(email)) {
         void notifyOpsDiscord({
           title: "Membership cancellation started",
           body: buildCancellationNotificationBody({
