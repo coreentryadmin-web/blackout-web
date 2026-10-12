@@ -311,7 +311,7 @@ export async function GET(req: NextRequest) {
       postType,
     });
     return NextResponse.json(
-      { ok: false, error: "X intel generation failed", detail: message },
+      { ok: false, error: "X intel generation failed" },
       { status: 200 },
     );
   }
