@@ -49,8 +49,8 @@ test("the lock is released in a finally block so a thrown sweep still frees the 
   assert.match(routeSrc, finallyBlock, "release must run on both the success and error paths");
 });
 
-test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
-  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
+test("the lock TTL matches the cron's own stale_after_min safety net (25 min = 1500s)", () => {
+  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 1500/);
 });
 
 // REGRESSION 2026-09-03: the original 480s TTL was shorter than real observed runtime
@@ -58,11 +58,16 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
 // a second sweep start while the first was still in flight — the exact overlap this guard exists
 // to prevent, confirmed by overlapping log timestamps the same window. The TTL must stay
 // comfortably above the worst measured elapsed time, not just above the schedule interval.
-test("the lock TTL has real margin above the worst measured sweep runtime (694s observed)", () => {
+//
+// REGRESSION 2026-10-12: the 900s TTL this raised it to was itself undershot — elapsed=1036542ms
+// measured on prod 14:35-14:52 UTC RTH-open, with overlapping log timestamps confirming the same
+// lock-expires-mid-sweep mechanism recurred at a new peak. Updated the worst-observed floor to
+// match so this test keeps catching the NEXT undershoot rather than quietly passing on a stale bar.
+test("the lock TTL has real margin above the worst measured sweep runtime (1036s observed)", () => {
   const match = routeSrc.match(/OVERLAP_LOCK_TTL_SEC = (\d+)/);
   assert.ok(match, "OVERLAP_LOCK_TTL_SEC must be a bare numeric literal for this check to hold");
   const ttlSec = Number(match[1]);
-  const worstObservedSec = 694; // ceil(693684ms)
+  const worstObservedSec = 1037; // ceil(1036542ms)
   assert.ok(
     ttlSec > worstObservedSec,
     `TTL (${ttlSec}s) must exceed the worst measured runtime (${worstObservedSec}s) or the lock expires mid-sweep`
