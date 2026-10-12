@@ -95,7 +95,7 @@ export const largoAiGuide = defineToolGuide({
       purpose: "Audit trail of live data sources consulted for that answer.",
       shows: [
         "Human-readable labels: live desk feed, SPX desk, confluence engine, GEX map, HELIX flow tape, Night Hawk, etc.",
-        "Maps to ~70+ backend tools in LARGO_TOOL_DEFS grouped by SPX desk, flow, vol/macro, news, platform",
+        "Maps to ~130+ backend tools in LARGO_TOOL_DEFS grouped by SPX desk, flow, vol/macro, news, platform",
       ],
       cadence: "Set once per completed response",
       consume:
