@@ -38,6 +38,121 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-12 — [Night Hawk Swings / Ask Largo] WATCH play's "Entry window closes" line said "1 day left" with only hours remaining — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Night Hawk Swings / Ask Largo play-brief | P3 — misleading precision on a timing line a member would act on, not a wrong direction/value | FIXED |
+
+**What's wrong.** `watchEntrySection` (`src/lib/swing/play-brief.ts`) rendered a WATCH play's
+forward-looking entry-window line as:
+```
+const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
+`Entry window closes **${etStampFromIso(play.entryDeadline)}** (**${daysLeft} day${daysLeft === 1 ? "" : "s"}** left) — stale after that, wait for a fresh setup.`
+```
+`Math.ceil()` rounds ANY positive sub-24h remainder up to "1 day" — a deadline 4 hours away and one
+23 hours away both read identically to a deadline genuinely ~1.0 days out. **Live repro:** MRVL
+WATCH brief (`GET /api/market/swing/play-brief?playId=SWING:MRVL&ticker=MRVL&status=WATCH`),
+fetched 2026-10-12 05:03 ET — `entryDeadline` 2026-10-12 09:15 ET, same calendar day, ~4h12m away —
+rendered `Entry window closes **2026-10-12 09:15 ET** (**1 day** left)`. A member reading "1 day
+left" at 5am would reasonably plan to act later that day or the next morning; the real window
+closes before most members are even awake.
+
+**Fix.** New `entryWindowTimeLeftLabel(msLeft)` helper: below 24h remaining, renders hours
+(`Math.max(1, Math.ceil(msLeft / 3_600_000))`, so a genuine few-minutes-left case still floors to
+"1 hour" rather than "0 hours"); at/above 24h, keeps the original day-granularity phrasing
+unchanged (verified byte-identical for the pre-existing 5-day-out test case).
+
+**Second bug found while adding a determinism-pinned regression test.** The pre-existing 2026-09-18
+test for this same line never set `ctx.readMs`, so `composeSwingPlayBrief` silently fell through to
+the real `Date.now()` instead of the fixture's intended "now" (`asOf`) — it only stayed green
+because its assertion regex (`\d+ days?`) is loose enough to match "0 days" too, which is what the
+real clock (now long past that fixture's 2026-09-15 deadline) actually produced. Tracing *why*
+pinning `ctx.readMs` had no effect surfaced the real root cause: `watchEntrySection`'s call site
+(`composeSwingPlayBrief`, ~line 1379) passed the outer `readMs` local (always `Date.now()`) instead
+of `ctx.readMs`, which an earlier fix (play-brief-types.ts's `readMs` field doc comment) already
+stamps to an injected override when one is present — and that same doc comment already named "the
+other ~18 `Date.now()` call sites" as a known, deferred class of this exact gap. This is one
+concrete instance of that already-documented class, fixed because it was directly blocking this
+PR's own regression test from being meaningful; the other ~17 sites remain the documented follow-up,
+unchanged.
+
+**Fix (call site).** `watchEntrySection(play, readMs)` → `watchEntrySection(play, ctx.readMs ?? readMs)`.
+
+**Fix (test hygiene).** The 2026-09-18 test now explicitly sets `readMs: Date.parse(ctx.asOf)` so it
+asserts what its name claims (a 5-day-out deadline reads in days) instead of coasting on a loose
+regex and the accident of today's real date.
+
+**Regression guard.** New test in `src/lib/swing/play-brief.test.ts`: a sub-24h `entryDeadline`
+(4h12m out) asserts the line reads "5 hours" (ceil'd), not "1 day". RED→GREEN confirmed: reverting
+just `entryWindowTimeLeftLabel` to the old `Math.ceil(... / 86_400_000)` fails this new test with
+"1 hour" (clamped-to-zero artifact once combined with the readMs fix) or "1 day" (pre-readMs-fix);
+restoring it passes.
+
+**Verification.** `src/lib/swing/play-brief.test.ts` → 129/129 pass. Full `src/lib/swing/*.test.ts`
+→ 1685/1685 pass. `tsc --noEmit` clean.
+
+**Blast radius.** `watchEntrySection`'s one "Entry window closes" line, and the one test it exposed
+as non-deterministic. No other caller of `entryWindowTimeLeftLabel` (new, private to this file) or
+of the fixed call site exists.
+
+Found live during the standing Ask Largo deep-dive (5-engine monitor cycle), re-verified against
+the actual production response (not just the code) before fixing, and the root cause traced fully
+(not just patched at the symptom) once the fix's own regression test refused to pass for a reason
+unrelated to the fix itself.
+
+## 2026-10-12 — [Admin] AdminCronDashboard's "Run now" allowlist drifted to 3 of 19 dispatchable crons — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Admin console / incident tooling | P2 — hides a real self-heal affordance during incidents | FIXED |
+
+**What's wrong.** `src/components/admin/AdminCronDashboard.tsx`'s `RUNNABLE_CRONS` (a client-side
+allowlist gating the "Run now" button, `const runnable = RUNNABLE_CRONS.has(job.key)`) had only
+3 entries: `flow-ingest`, `uw-cache-refresh`, `heatmap-warm`. `src/lib/cron-dispatch.ts`'s
+`CRON_DISPATCH` — the actual backend dispatch table `/api/admin/cron/run` gates on via
+`isDispatchableCron()` — has grown to **19** entries over many follow-on PRs (`meridian-warm`,
+`desk-warm`, `zerodte-warm`, `spx-evaluate`, `market-regime-detector`, `spx-signal-observe`,
+`vector-universe-snapshot`, `vector-full-state-snapshot`, `vector-walls-warm`,
+`vector-bead-record`, `vector-dark-pool-warm`, `vector-pick-sweep`, `coaching-alerts`,
+`bie-full-state-snapshot`, `swing-active-refresh`, `nighthawk-playbook`, plus the original 3).
+The component's own comment ("Keep in sync with CRON_DISPATCH") was never honored after the
+initial ship — confirmed via git history: the Set hasn't changed since the feature's introducing
+commit, which still referenced an old handler name (`nights-watch-warm`) nobody updated either.
+
+**Impact.** An admin investigating a stale RTH-critical cron — e.g. `vector-universe-snapshot`
+or `swing-active-refresh`, both explicitly documented in `cron-dispatch.ts`'s own comments as
+self-heal-covered, idempotent warmers an admin should be able to re-nudge during an incident —
+saw no "Run now" button for them at all, even though the backend fully supports dispatching
+them. The gap fails silently (no button, no error), making it easy to miss mid-incident.
+
+**Fix.** Updated `RUNNABLE_CRONS` to the current, complete 19-entry list matching
+`CRON_DISPATCH` exactly.
+
+**Why not just import `DISPATCHABLE_CRONS` from `cron-dispatch.ts`?** `cron-dispatch.ts` pulls
+in the real cron route handlers (`next/server`, DB-touching provider code) to invoke them
+directly — importing it into `AdminCronDashboard.tsx` (a `"use client"` component) would pull
+that server-only code into the client bundle. Kept the two lists independent but added a
+regression guard instead.
+
+**Regression guard added.** New `src/components/admin/admin-cron-dashboard-runnable-crons.test.ts`
+(none existed): statically parses both files' source text and asserts the two key sets are
+identical — catches drift in either direction (missing or stale entries) without crossing the
+client/server import boundary. Verified RED→GREEN: reverting just the fix fails with the exact
+list of missing crons; restoring it passes (1/1).
+
+**Verification.** `tsc --noEmit` clean.
+
+**Blast radius.** `AdminCronDashboard.tsx`'s `RUNNABLE_CRONS` constant only — purely additive
+(more buttons now render); no change to the backend dispatch table or any cron's own behavior.
+
+Found via a background Explore-agent sweep of SEO plumbing and the admin dashboard,
+independently re-verified (counted `CRON_DISPATCH`'s real entries directly from source — 19, not
+the 20 the agent's report estimated — confirmed the backend gate via `isDispatchableCron()`, and
+confirmed the client/server import hazard that ruled out the most obvious fix) before fixing.
+
 ## 2026-10-12 — [Email] Welcome-sequence Day 4 email's "other N" count didn't match its own table — FIXED
 > **kind:** `FINDING`
 
