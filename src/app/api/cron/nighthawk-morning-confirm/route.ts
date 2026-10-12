@@ -32,6 +32,7 @@ import path from "path";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchIndexSnapshots, fetchStockSnapshots } from "@/lib/providers/polygon";
+import { resolveLiveIndexPrice } from "@/features/nighthawk/lib/morning-gap-source";
 import {
   computePlayVerdict,
   type PlayConfirmStatus,
@@ -97,8 +98,7 @@ async function fetchSpxPremarket(): Promise<number | null> {
   } catch { /* fall through */ }
   try {
     const snaps = await fetchIndexSnapshots(["I:SPX"]);
-    const spx = snaps["I:SPX"];
-    return spx?.price ?? null;
+    return resolveLiveIndexPrice(snaps["I:SPX"]);
   } catch {
     return null;
   }
