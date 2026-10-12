@@ -1025,6 +1025,25 @@
       "kind": "GREEN",
       "severity_assessment": "clean close, no escalation -- session gap over the weekend caught up",
       "summary": "2026-10-09 (Friday) final tally: 11 plays total, 0 ungraded (confirms PR #5732's same-day grading fix holds across a full session). 3 stops (TSLA/GME/CLF, already checked against the 3-instance bar at 16:46Z -- no miscalibration) + 8 ratchet wins (ORCL/FSLY/SPXW/MRNA/NVAX, plus 3 new near-close adds HIMS/PLTR/SNOW all flagged 14:58 ET, small positive ratchet exits). This session was idle through the weekend (11 queued trigger notifications drained on 2026-10-12 cold start, all same-mandate duplicates from the stale Friday afternoon + one fresh Monday firing) -- no action needed on the backlog since the trading day they covered is long closed. Weekend 0DTE-relevant commits reviewed: #5890/#5861/#5848/#5802, all minor dead-code/doc cleanups from other sessions, nothing requiring escalation."
+    },
+    "2026-10-12T14:13:00Z_RTH_OPEN_ZERO_COMMITS_BENIGN": {
+      "cycle": "RTH :00-offset trigger, 14:11:41 UTC firing",
+      "board": {
+        "heat_state": "RTH",
+        "heat_pct": 100,
+        "setups_scanned": 67,
+        "commits_today": 0,
+        "committed_open": 0,
+        "committed_closed": 0,
+        "live_top_block_code": "plan_no_quote",
+        "cumulative_funnel_top_gate": "opening_window (153, session-cumulative, pinned from pre-10:00 ET passes)"
+      },
+      "finding": "0 commits by 10:13 ET is benign, not a stall. Verified session_stats.top_block_code (the live per-pass blocker, per the 2026-09-17 session-board-stats.ts fix) reads plan_no_quote, NOT opening_window -- the latter is discovery_funnel.top_gate, a session-cumulative tally correctly documented as staying pinned to an early gate long after it stops being the real blocker. Read gates.ts planQualityGateBlocks: plan_no_quote fires whenever plan == null (G-9, 'evidence only, no committable plan') -- this is the default/expected state for any scanned setup that has not yet had a contract plan resolved, not a quote-fetch outage. No code read suggests a pipeline defect.",
+      "action": "No escalation. Routine early-RTH state, matches documented gate semantics exactly.",
+      "verified_against": [
+        "src/lib/zerodte/gates.ts:1427-1440 (planQualityGateBlocks)",
+        "src/lib/zerodte/session-board-stats.ts:85-96 (fromSetups vs funnelTopCode doc comment)"
+      ]
     }
   },
   "sessions": {
