@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T21:03Z",
-  "notes": "GOOGL:54/GOOG:55 still show mark unknown 24+ min after commit -- logged as a watch item (googl_goog_mark_refresh_watch_2026_10_12), not yet escalating since this could be normal refresh-cadence lag on brand-new commits. ASTS:53 unchanged -32.5%. WATCH list unchanged (IREN/SNOW/AMZN). Two Ask Largo ideas from this hour still awaiting Cursor read.",
+  "last_updated": "2026-10-12T21:18Z",
+  "notes": "Market closed ~16:00 ET (confirmed via markAsOf timestamps, not assumed) -- all native positions' live marks are now frozen until tomorrow's RTH open: ASTS:53 frozen at -32.5% (last real tick 20:00:39Z), GOOGL:54/GOOG:55 never got a live mark today (committed post-close 20:37:56Z). This is expected, not a bug -- see googl_goog_mark_refresh_watch_2026_10_12 for the full correction (I'd been mis-reporting ASTS's frozen number as live-confirmed-stable across the last several ticks before catching this). Overnight ticks should expect no live-P&L motion until market open -- shift forensic weight toward WATCH-list/gate correctness and the Ask Largo deep audit rather than re-polling a P&L number that cannot move. Two Ask Largo ideas from this hour still awaiting Cursor read (IV-decay narrative 19:05, crossDeskCoaching range-bias gap 20:08).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -606,6 +606,6 @@
   "googl_goog_mark_refresh_watch_2026_10_12": {
     "t": "2026-10-12T21:03Z",
     "finding": "GOOGL:54 and GOOG:55 (committed 20:37:56Z) still show markAsOf:null, bid/ask/mid:null, OI:0 on the raw horizons row 24+ minutes after commit (~1-2 swing-active-refresh cycles due). entryPremium is populated (10.325/9.425) so a real quote WAS captured at commit -- this is the LIVE refresh not yet landing a fresh quote, not a no-market commit. Play-brief narrative correctly discloses absence ('Mark: unknown -- sync quote, no live price yet -- do not read as flat'), not fabricated -- good C2/C3 behavior either way.",
-    "status": "WATCHING -- not yet escalating (single pair, could resolve on next refresh cycle). Will re-check next tick; escalate if still null after another full cycle."
+    "status": "RESOLVED, FALSE ALARM -- not a bug. Checked ASTS:53's own markAsOf alongside GOOGL/GOOG at 21:16Z: ASTS's mark is ALSO frozen, at 20:00:39Z -- i.e. every native position's live mark stopped refreshing around 16:00 ET, the market close (21:16 UTC = 17:16 ET, 1h16m post-close under EDT/UTC-4). This fully explains both: ASTS's unchanged -32.5% across five straight ticks (20:16/20:31/20:46/21:01/21:16) was NOT confirmed-stable live decay as I'd been reporting -- it was a frozen last-RTH-tick snapshot I mistook for live monitoring because I never checked markAsOf until now. GOOGL/GOOG's null marks are the same expected post-close absence (correctly disclosed, never fabricated), not a refresh-pipeline bug -- they were even committed post-close (20:37:56Z/16:37:56 ET), likely via an EOD/legacy-bridge promotion path, so they never had an RTH window to get a live quote today. LESSON LOGGED: always check markAsOf/the ET clock before reporting a P&L reading as 'confirmed live' -- a repeated identical number across ticks can mean 'stable' or 'frozen, nobody refreshed it' and those look identical without checking the timestamp. No code issue, no escalation."
   }
 }
