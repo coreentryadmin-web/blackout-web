@@ -38,6 +38,100 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-12 — [Email] Welcome-sequence Day 4 email's "other N" count didn't match its own table — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Email / member-facing copy | P3 — cosmetic, drip-campaign copy, not transactional | FIXED |
+
+**What's wrong.** `src/lib/email/templates/welcome-sequence.ts`'s Day 4 "tool tour" step (step 3,
+`delayDays: 4`) opened with:
+```
+Four days ago we handed you the gamma read ... That was one tool. Here's the other ${manifestProductCount() - 1}.
+```
+`manifestProductCount() - 1` evaluates to **6**, but the `engines` table immediately below it
+(the same `build` function's own `engines` array) lists all **7** current live products —
+SPX Slayer, Thermal, HELIX, Night Hawk, Largo AI, Vector, Meridian — including a full
+description of whichever tool the "-1" was meant to exclude. The stated count and the rendered
+table disagreed.
+
+**Same bug class as an already-fixed sibling.** `welcome-premium.ts`/`downgrade.ts` had an
+identical shape of bug (a hardcoded stale count contradicting the body copy), fixed in
+`welcome-premium-downgrade-product-count.test.ts` (commit `1b215b184`). This instance used a
+dynamic expression (`manifestProductCount() - 1`) rather than a hardcoded literal, but the
+subtraction itself had no real basis — Day 0's email (step 1, `delayDays: 0`) introduces the
+desk as a general concept ("dealer gamma exposure, live institutional options flow, and dark
+pool prints"), not one specific named tool, so there was never a clean "the one already shown"
+to subtract.
+
+**Fix.** Reworded to avoid the unsupported subtraction and tied the stated count directly to the
+table's own length (`engines.length`) instead of an independent expression that could drift from
+it again: *"That's one piece of a bigger board. Here's the whole thing: all `${engines.length}`."*
+
+**Regression guard added.** New `src/lib/email/templates/welcome-sequence-day4-product-count.test.ts`
+(none existed for this step): asserts the stated count matches `manifestProductCount()`, and that
+every live product name appears in the rendered table. Verified RED→GREEN: reverting just the
+copy fix fails the count assertion (1 pass / 1 fail); restoring it passes (2/2).
+
+**Verification.** Full email-templates suite (`src/lib/email/templates/*.test.ts
+src/lib/welcome-sequence.test.ts`) → 24/24 pass. `tsc --noEmit` clean.
+
+**Blast radius.** This one email step's opening paragraph only.
+
+Found via a background Explore-agent sweep of email templates and Learn content, independently
+re-verified (the exact subtraction, the table's real item count, and that Day 0's email doesn't
+name one specific tool to subtract) before fixing.
+
+## 2026-10-12 — [Learn] Vector/Meridian guide pages showed two different chapter numbers for themselves — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Learn/Academy | P2 — live, user-visible self-contradiction on two pages | FIXED |
+
+**What's wrong.** Every Learn guide declares its own `chapter` field, and `curriculum.ts`
+independently computes each guide's chapter from its position in `LEARN_NAV`
+(`CURRICULUM = LEARN_NAV.map((item, i) => ({ ..., chapter: i + 1 }))`). These two numbers are
+supposed to agree — and did, for 7 of 9 guides — but:
+- `src/lib/learn/guides/instruments/vector.ts:5` declared `chapter: 8`; computed position is **7**.
+- `src/lib/learn/guides/instruments/meridian.ts:5` declared `chapter: 9`; computed position is
+  **8** — colliding with `glossary.ts`'s own (correct) `chapter: 9`.
+- No guide anywhere declared `7`.
+
+**Why this is user-visible, not just an internal inconsistency.** `LearnGuideView.tsx:27` renders
+the page's own header badge as `guide.kicker ?? \`Chapter ${guide.chapter}\`` — the
+self-declared field — while `LearnSidebar.tsx` (`CURRICULUM.find(...).chapter`) and the
+prev/next chapter nav on the same page render the computed, authoritative position. Result:
+visiting `/learn/vector` showed **"Chapter 8"** in its own page header while the sidebar
+simultaneously showed it as **"Chapter 7 of 9"** — a direct on-page contradiction. `/learn/meridian`
+showed **"Chapter 9"** in its header, identical to Glossary's "Chapter 9 · Reference" header, while
+its own sidebar entry read "8".
+
+**Root cause.** Left over from when Meridian was inserted into `LEARN_NAV` as the curriculum's
+8th entry — `vector.ts`'s and `meridian.ts`'s own hardcoded `chapter` numbers were never
+reconciled to the shift (they still reflect what looks like a later intended position, or a
+simple off-by-one, rather than the actual insertion point).
+
+**Fix.** `vector.ts` chapter `8 → 7`; `meridian.ts` chapter `9 → 8`.
+
+**Regression guard added.** New `src/lib/learn/curriculum.test.ts` (none existed for this file):
+asserts every guide's self-declared `chapter` matches its `CURRICULUM`-computed position, and
+that no two guides declare the same number. Verified RED→GREEN: reverting just the two chapter
+fields fails both new assertions; restoring them passes (2/2).
+
+**Verification.** Full Learn test suite (`src/lib/learn/*.test.ts src/components/learn/*.test.ts`)
+→ 48/48 pass. `tsc --noEmit` clean.
+
+**Blast radius.** `vector.ts`/`meridian.ts` chapter fields only. No other guide's declared
+chapter needed correction (getting-started=1, spx-slayer=2, helix-flows=3, largo-ai=4,
+night-hawk=5, heat-maps=6 all already matched their computed positions).
+
+Found via a background Explore-agent sweep of email templates and Learn content, independently
+re-verified (every guide's declared vs. computed chapter number, both render sites in
+`LearnGuideView.tsx`/`LearnSidebar.tsx`, and that no other guide needed correction) before
+fixing.
+
 ## 2026-10-12 — [Vector] Stale "6 → 20" auto-ladder comment, contradicted by the real values — FIXED
 > **kind:** `FINDING`
 
