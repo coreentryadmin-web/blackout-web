@@ -4,6 +4,15 @@ import { FAQ_ITEMS, HOME_FAQ_IDS, PRICING_FAQ_IDS, selectFaqItems } from "./cont
 import { MANIFEST_PRODUCT_ORDER, PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest.ts";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing.ts";
 
+// CodeQL (js/incomplete-sanitization, 2026-10-12): `usd()` output was being turned into a regex
+// source via `.replace("$", "\\$")` — a non-global replace that only escapes the FIRST "$" and
+// leaves every other regex metacharacter (".", "(", etc., should `usd()` ever emit one) live. A
+// value with more than one such character would silently build a wrong/unsafe regex instead of
+// matching the literal price string. Escape every regex metacharacter, not just the leading "$".
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 test("every FAQ_ITEMS id is unique", () => {
   const ids = FAQ_ITEMS.map((i) => i.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -36,9 +45,9 @@ test("the 'How do I get access?' prices agree with the live MEMBERSHIP_PRICING, 
   const item = FAQ_ITEMS.find((i) => i.id === "member-1");
   assert.ok(item, "member-1 (How do I get access?) must exist");
   assert.ok(!/\{\{/.test(item!.a), "answer must not contain an unresolved {{token}}");
-  assert.match(item!.a, new RegExp(`${usd(MEMBERSHIP_PRICING.community).replace("$", "\\$")}/mo`));
-  assert.match(item!.a, new RegExp(`${usd(MEMBERSHIP_PRICING.monthly).replace("$", "\\$")}/mo`));
-  assert.match(item!.a, new RegExp(`${usd(MEMBERSHIP_PRICING.yearly).replace("$", "\\$")}/yr`));
+  assert.match(item!.a, new RegExp(`${escapeRegExp(usd(MEMBERSHIP_PRICING.community))}/mo`));
+  assert.match(item!.a, new RegExp(`${escapeRegExp(usd(MEMBERSHIP_PRICING.monthly))}/mo`));
+  assert.match(item!.a, new RegExp(`${escapeRegExp(usd(MEMBERSHIP_PRICING.yearly))}/yr`));
 });
 
 test("the SPX Slayer vs Premium price tokens resolve to real prices, never leak a raw {{token}}", () => {
