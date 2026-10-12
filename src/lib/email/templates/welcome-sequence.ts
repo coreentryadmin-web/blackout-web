@@ -166,7 +166,7 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const body =
         h1("Every light on the board is live, {{firstName}}.") +
         p(
-          `Four days ago we handed you the gamma read — the current under the price action nobody else points at. That was one tool. Here's the other ${manifestProductCount() - 1}. ${manifestProductCount()} products, one login, zero dead weight, every instrument built for the hours that actually move your account. No fluff modules nobody opens twice. Just the tape, read straight.`
+          `Four days ago we handed you the gamma read — the current under the price action nobody else points at. That's one piece of a bigger board. Here's the whole thing: all ${engines.length}. ${manifestProductCount()} products, one login, zero dead weight, every instrument built for the hours that actually move your account. No fluff modules nobody opens twice. Just the tape, read straight.`
         ) +
         emailScreenshot(vectorShot, "Live Vector chart — dealer gamma structure on SPX") +
         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">${items}</table>` +
