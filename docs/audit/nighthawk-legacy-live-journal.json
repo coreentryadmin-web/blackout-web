@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-10T11:09:12Z",
+  "lastUpdated": "2026-10-12T14:23:54Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -64,18 +64,18 @@
     }
   },
   "record": {
-    "lastChecked": "2026-09-10T04:06:47Z",
+    "lastChecked": "2026-10-12T14:23:54Z",
     "window_days": 14,
-    "total_resolved": 28,
-    "scoreable": 22,
-    "wins": 0,
-    "losses": 0,
+    "total_resolved": 32,
+    "scoreable": 26,
+    "wins": 2,
+    "losses": 2,
     "opens": 22,
     "unfilled": 2,
     "pulled": 4,
-    "win_rate_pct": null,
-    "avg_return_pct": -1.95,
-    "note": "decided=0 (0 wins + 0 losses out of scoreable=22) -- everything currently scoreable is still OPEN, not yet resolved either way. Not a calibration signal by itself; needs re-check on a later cycle once more of these 22 opens resolve. No 3+ instance pattern of thin picks-reasoning observed yet -- too early, cold start."
+    "win_rate_pct": 50,
+    "avg_return_pct": -1.07,
+    "note": "decided=4 (2 wins + 2 losses out of scoreable=26), low_n=true (CI [15%,85%]) -- still far too few decided to read as a calibration signal. debrief failure_modes over all 32 graded: wrong_direction=15, target_unreachable=7, pulled_correctly=3, stopped_normal=2, unfilled_never_traded_back=2, clean_win=1, gap_win=1, pulled_wrongly=1 -- the wrong_direction+target_unreachable share (68.75%) is the same already-documented geometry pattern from knownOpenItems.geometryWinRateGap_2026-08-06, reconfirmed this cycle, not a new finding."
   },
   "picksTaxonomySchema": {
     "_purpose": "v5 mandate addition (2026-09-10). For every RESOLVED next-day pick, classify into one of four buckets once outcome + reasoning-soundness are both known. Require 3+ instances of the SAME narrative pattern within an UNSOUND bucket before calling it systemic (existing noise-discipline threshold, unchanged).",
@@ -690,7 +690,7 @@
     }
   ],
   "knownOpenItems": {
-    "geometryWinRateGap_2026-08-06": "FINDINGS.md 2026-08-06 P1 (5-PR presentation-only recalibration campaign) -- the underlying geometry defect (targets unreachable inside the 1-session grading window, deliberately PARKED/not fixed by that campaign) is still active as of 2026-09-10 (60d window: 124 graded, wrong_direction=49 + target_unreachable=41 = 90/124, only 2 real wins). Not this session's to fix unilaterally -- it's a member-facing geometry/product decision the original campaign explicitly deferred, not a mechanical bug. Re-verify periodically (roughly monthly is plenty, this doesn't move week to week) rather than every cycle.",
+    "geometryWinRateGap_2026-08-06": "FINDINGS.md 2026-08-06 P1 (5-PR presentation-only recalibration campaign) -- the underlying geometry defect (targets unreachable inside the 1-session grading window, deliberately PARKED/not fixed by that campaign) is still active as of 2026-09-10 (60d window: 124 graded, wrong_direction=49 + target_unreachable=41 = 90/124, only 2 real wins). Not this session's to fix unilaterally -- it's a member-facing geometry/product decision the original campaign explicitly deferred, not a mechanical bug. Re-verify periodically (roughly monthly is plenty, this doesn't move week to week) rather than every cycle. RECONFIRMED 2026-10-12 (14d window, resolved=32, decided=4 only -- still early/low-n for this window): wrong_direction=15 + target_unreachable=7 = 22/32 (68.75%), same order of magnitude as the 09-10 60d check (72.6%) -- consistent, not worsening. Still parked, still not this session's to fix unilaterally. Next periodic re-check ~2026-11-12.",
     "legacyDte5Gap_2026-08-06": "FINDINGS.md 2026-08-06 P1 'Legacy->Swing promotion path admits dte<5 contracts' -- verified 2026-09-10 via code read of legacy-confirm-promote.ts (lines ~56-69): a minDte/maxDte filter against HORIZONS.SWING.dteMin/dteMax now exists at the chain-row filtering step, with an in-code comment referencing this exact finding. Appears FIXED since the 08-06 entry; FINDINGS.md itself was not updated to reflect this (still shows NOT FIXED). Live-confirmed clean 2026-09-10: only one Legacy-origin play currently on the Swing board (IREN, dte 8, well inside [5,30]), consistent with the fix holding (n=1, not yet a large sample). Not escalating a FINDINGS.md status correction as its own PR -- low priority, noted here for correlation; revisit if this file needs touching for another reason anyway.",
     "staleQuoteBasisGateWatch_2026_09_10": "WATCH (not a finding, not escalated): G-N3 stale_quote_basis publish gate (publish-gates.ts) blocked 7 plays over a live 60-day window; of the 6 that decided win/loss, 4 would have won (66.7%) per the product's own Debrief counterfactual (admin analytics gate_validation.blocked_value). n=6 is far below this audit lane's own >=30 reliability bar (used consistently by Helix/Swing sibling tools) even though the product's own LOW_N_THRESHOLD=5 does not badge it low_n -- so this is NOT being read as evidence the gate is miscalibrated. Re-check the same admin endpoint (GET /api/admin/nighthawk/analytics?window=60, debrief_report.gate_validation.blocked_value) roughly monthly as the decided-sample count grows; only escalate if the pattern persists past n=30 with the same direction.",
     "findingsStagingFormatSelfCorrection_2026_09_10": "RESOLVED/LESSON LEARNED 2026-09-10: this lane's staged findings must use the single-'## ' heading + one-table convention (see findings-staging/README.md and any successfully-folded FINDINGS.md entry for the shape) -- a '# Title' + multiple '## ' sub-sections silently fails findings-fold-staging.mjs's parser (its own documented guard: 'no ## heading, no kind line, and/or more than one ## line'). All 4 of this session's pre-existing staged files were fixed and folded 2026-09-10T12:xx (commit 0e7ec0e). Apply the correct format to every future staged finding from this lane.",
