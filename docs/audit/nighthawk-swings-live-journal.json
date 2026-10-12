@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T07:15:00.000Z",
+  "last_updated": "2026-10-12T08:10:00.000Z",
   "notes": "New native commit: AMD:51, committed 16:05:57Z, score 68.1, EVENT_DRIVEN/TACTICAL, entry premium 17.725, entry trigger underlying 610.91 / invalidation 595.78, signals FLOW+VECTOR+CATALYST. First native commit today. HOLD, +2.8% as of 16:17Z. Tracking for the day. Native book no longer flat.",
-  "checked_this_cycle_no_bug_found": false,
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -572,5 +572,10 @@
     "root_cause": "fetchBangerOpenCount() (positions-db.ts:332) is a raw SELECT count(*) WHERE status IN ('OPEN','PARTIAL') with ZERO expiry filter -- counts every DB-status-open row. The live board instead calls fetchBangerOpenBookRows() (same no-expiry-filter raw rows) then maps each through horizonPlayFromBangerPosition (banger-lane-merge.ts:57), which explicitly returns null (drops the row) when dte < 0, i.e. contract_expiry already passed as of today ET. So the 5-row gap = banger_positions rows still DB-status OPEN/PARTIAL whose option contract has already expired, pending the close-cron reconciliation tick -- exactly the zombie-row shape #5537 Issue 2 already named and proposed an invariant for (contract_expiry >= today ET required for any non-writer consumer to count a row as open).",
     "action": "NOT fixed -- this is squarely the already-identified, already-held #5537 Issue 2 scope (shared positions-db.ts helper, explicitly flagged as needing an operator sign-off on which shape -- client-side filter vs new query -- before touching). Posted as a confirming reply on #4076 linking this fresh live data point to #5537 rather than treating it as a new mystery or unilaterally fixing it.",
     "pr_comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-6118601546 (original question) -- follow-up linking to #5537 posted this cycle."
+  },
+  "ask_largo_deep_audit_amd51_2026_10_12": {
+    "t": "2026-10-12T08:10:00Z",
+    "status": "CLEAN -- pulled AMD:51 play-brief (GET /api/market/swing/play-brief?playId=SWING:AMD:51), audited full envelope vs LARGO-PRODUCT-CONTRACT.md C1-C10.",
+    "notes": "Book-context internal-conflict detection (SOXS LONG x2 opposing AMD LONG in semis theme) working correctly. Archetype near-tie disclosure (Event-driven beat Pullback by 4pts) honest. Strike-vs-flow divergence disclosed. degradedReadLine (\"Vector spot not wired on this tick\") fired consistent with unavailableSources listing both Vector snapshot and GEX matrix as stale this cycle -- NOT the #5620-class narrative/unavailableSources contradiction (that class is already fixed per the 2026-10-07 comment in play-brief-narrative.ts). No new gap found this pass."
   }
 }
