@@ -104,6 +104,39 @@ describe("compose: evidence decay (design §0 — alpha that expires)", () => {
     assert.equal(cortexDecayFactor(600, 600), 0.5);
     assert.equal(cortexDecayFactor(1200, 600), 0.25);
   });
+
+  // 2026-10-12 finding: gex-walls (and any source whose deriveXEvidence can return
+  // MULTIPLE items sharing one asOf/halfLifeSec — here a veto wall plus a regime-style
+  // oppose, both stamped from the same stale GEX snapshot) produced ONE identical
+  // "<source>: evidence stale ... self-silenced" string PER stale item, not per source.
+  // Found live on a real committed IONQ short (2026-10-12): entry_context.cortex.absent
+  // listed "gex-walls: evidence stale..." twice. This isn't just a confusing duplicate
+  // line — tiers.ts's CORTEX_THIN_EVIDENCE_MAX_ABSENT (6) and cortexAbsentCount both read
+  // `verdict.absent.length` directly (tiers.ts:476/334), so a source inflating its own
+  // absence count can push a play into the THIN_EVIDENCE A-tier cap earlier than the real
+  // "N of 8 sources" picture warrants.
+  test("a source whose evidence emits multiple stale items self-silences ONCE, not once per item", () => {
+    const staleAsOf = new Date(NOW_MS - 50 * 60_000).toISOString(); // 50min > 3 * 15min half-life
+    const v = composeCortexEvidence(
+      baseInputs({
+        direction: "long",
+        spot: 100,
+        expectedMovePts: 4,
+        gex: {
+          asOf: staleAsOf,
+          spot: 100,
+          // Both a blocking (veto) wall AND a long-gamma regime read fire at once —
+          // deriveGexWallsEvidence returns 2 items, same asOf, same halfLifeSec.
+          callWalls: [{ strike: 101.5, pct: 20 }],
+          putWalls: [],
+          gammaFlip: null,
+          regimePosture: "long",
+        },
+      })
+    );
+    const gexAbsences = v.absent.filter((a) => a.startsWith("gex-walls:"));
+    assert.equal(gexAbsences.length, 1, `expected exactly 1 gex-walls absence, got ${gexAbsences.length}: ${JSON.stringify(gexAbsences)}`);
+  });
 });
 
 describe("compose: family caps (NH-R11 — dealer-positioning sources can't stack)", () => {
