@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T19:48Z",
-  "notes": "ASTS:53 decay continues proportionally: -28.3% (19:16) -> -33.5% (19:47), underlying adverse move -3.3% -> -4.1%, stop cushion 43% -> 38% from mark -- same pure IV-decay story each tick, thesis still 'intact' at 67%, no gate change. No escalation -- re-verify next tick since cumulative decay is now over a third of premium. WATCH list grew to 4: GOOGL joined GOOG, both blocked by the same real gate:G-S14:cortex_net_negative (sibling share classes sharing a cortex veto makes sense, not flagged as a bug). IREN/AMZN still blocked by the known legacy:exempt wiring gap. Ask Largo leverage/IV-decay narrative idea (raised 19:05, ask_largo_enhancement_ideas_2026_10_12) still awaiting Cursor read.",
+  "last_updated": "2026-10-12T20:08Z",
+  "notes": "ASTS:53 ticked up slightly: -33.5% -> -32.5% (noise within the same decay trend), stop cushion 39%, thesis intact, put-wall support node shifted 50.00->45.00 (routine GEX recompute, not concerning). No escalation. WATCH list grew to 5 (GOOGL/GOOG/IREN/SNOW/AMZN) -- deep-audited the new SNOW WATCH play-brief for this cycle's Ask Largo hunt and found a second genuine enhancement idea (crossDeskCoaching range-bias tactical-collision gap, see ask_largo_enhancement_ideas_2026_10_12[1]), raised on #4076. Two ideas now awaiting Cursor read (IV-decay narrative idea from 19:05, this one from 20:08).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -594,6 +594,12 @@
       "t": "2026-10-12T19:05Z",
       "idea": "Swing play-brief trade-manager narrative has no sentence connecting premium P&L magnitude to the underlying's own move -- live example ASTS:53: underlying -2.6% adverse since entry but option P&L -23% (IV 75%, theta -0.13/day). The existing giveback/round-trip line (play-brief-narrative.ts ~L600-601) proves this kind of life-of-trade storytelling already works well; this is the missing leverage/IV-decay-vs-thesis-break distinction a trader needs to decide hold-through-decay vs something's-actually-wrong. Design-level (threshold/wording judgment), not a bug -- raised as an idea on #4076 rather than shipped directly since it touches a live-position-facing narrative surface.",
       "pr_comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-6130751739",
+      "status": "RAISED, awaiting Cursor/second read before drafting."
+    },
+    {
+      "t": "2026-10-12T20:08Z",
+      "idea": "crossDeskCoaching (play-brief-narrative-coaching.ts ~L714-715) only treats Vector as a directional conflict/alignment signal when vp.bias is 'long'/'short' -- correctly silent on 'range' bias per the 2026-09-15 TDOC/ASAN fix (no opinion != disagreement). But a narrower real gap remains: live example SWING:SNOW (WATCH) -- entry trigger 369.49 sits inside Vector's own range-play sell-rip zone (370, same as GEX call wall), i.e. the swing wants to buy almost exactly where Vector's structure read says breakouts get faded in long-gamma/range regime. Nothing compares entryTriggerUnderlyingPx against Vector's numeric range levels today -- entryZone is a formatted string (vector-play-engine.ts ~L656) but the underlying call/put wall numbers are already on the envelope, so this looks buildable without string-parsing. Design-level (new coaching function, not touching existing bias logic) -- raised on #4076 rather than shipped directly.",
+      "pr_comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-6131711926",
       "status": "RAISED, awaiting Cursor/second read before drafting."
     }
   ]
