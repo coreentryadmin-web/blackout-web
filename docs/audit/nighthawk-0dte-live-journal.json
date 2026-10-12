@@ -1055,6 +1055,11 @@
       },
       "finding": "First commit-eligible setup of the session: SPXW short, 7800P, score 77, gate.verdict COMMIT, blocks:[], live_commit_preconditions:[]. VECTOR aligned (5m down, VWAP hold), HELIX neutral (put 67% dom), g4_vix normal (15.39), g6_conflict none. Checked /api/market/zerodte/record?days=1 immediately after -- still 0 rows, so this is a scan-pass COMMIT verdict that has not yet been written to the ledger (expected lag between scan eligibility and the commit writer's own tick, not a defect). Watching for it to land in the ledger next cycle.",
       "action": "No escalation -- normal scan-to-commit lag. Will verify the SPXW commit lands cleanly on next cycle's record pull."
+    },
+    "2026-10-12T14:44:00Z_FIRST_COMMIT_IONQ_QUICK_STOPOUT": {
+      "cycle": "RTH :30-offset trigger, 14:43:46 UTC firing",
+      "finding": "Yesterday's watched SPXW candidate (14:16 cycle) never actually committed -- fell off eligibility before the commit writer's next tick, which is normal (spread/score conditions shift fast; no evidence of a missed-commit bug). First real commit of the session instead: IONQ short, score 79, Tier A (75-84 prime band, F-5's best-measured 63.6% WR surface), flagged 10:28 ET, exited via thesis_break:gex-walls at -6.73% just 11 min later (14:39:44) -- 'short target path crosses dominant put wall 35 (10.76% of ladder gamma) 1.35 pts below spot, inside 0.5x expected move'. This is exactly the documented veto behavior (protective exit on a thesis invalidation), working as designed. Single instance -- below the 3-instance noise-discipline floor, not escalating. Board now: 86 scanned, 0 commit_ready (top live blocker early_window_prime_score, G-18 -- legit, sub-prime scores held to a higher bar in the early window), 1 committed_closed, 0 open.",
+      "action": "No escalation. Single graded loss, correct veto mechanics, normal gate distribution."
     }
   },
   "sessions": {
