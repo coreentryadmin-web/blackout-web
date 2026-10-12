@@ -42,3 +42,14 @@ test("CreateUserModal's Tier select offers the same tiers as EditUserModal", () 
     );
   }
 });
+
+// Regression for 2026-10-12: the "Access type" filter's "community" option read "Community
+// (Discord)", but "community" is the paid SPX Slayer ($49) tier (TIER_LABELS.community in
+// src/lib/tiers.ts, admin-user-access.ts's own accessSummary: "SPX Slayer ($49) — SPX desk only")
+// — Discord is an unrelated free perk. AdminToolsPanel.tsx's own "community" filter option
+// already labels it correctly ("SPX Slayer ($49)"); this asserts UserManagement's never drifts
+// back to conflating the two again.
+test("UserManagement's 'community' access-type filter does not conflate the paid SPX Slayer tier with Discord", () => {
+  assert.doesNotMatch(SRC, /community.*Discord/is);
+  assert.match(SRC, /{ value: "community", label: "Community \(SPX Slayer\)" }/);
+});
