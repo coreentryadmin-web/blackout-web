@@ -1019,6 +1019,12 @@
       "kind": "GREEN",
       "severity_assessment": "clean, no escalation",
       "summary": "2026-10-09 RTH, as of 14:10 ET. 8 plays committed/closed: TSLA(stop,-49.79%), ORCL(ratchet,+4.48%), SPXW(ratchet,+6.81%), FSLY(ratchet,+2.63%), GME(stop,-53.12%), MRNA(ratchet,+2.38%), CLF(stop,-47.37%), NVAX(ratchet,+5.88%) -- 3 stops / 5 ratchet wins, all exits individually traced and coherent (protective-floor and plan_stop mechanics both firing correctly, multi-tranche banking confirmed on SPXW/NVAX). The 3-stop cluster (TSLA/GME/CLF) was checked against the standing 3-instance bar at 16:46Z -- verdict: no miscalibration, all three had appropriately-tiered entries (one Tier A clean, one correctly discounted for thin Cortex evidence, one correctly discounted for the known 85+ score-inversion). No new findings since. Board stable, upstream_ok consistently true all day."
+    },
+    "2026-10-09T23:00:00Z_FRIDAY_EOD_WRAP": {
+      "cycle_time": "2026-10-09T23:00:00Z",
+      "kind": "GREEN",
+      "severity_assessment": "clean close, no escalation -- session gap over the weekend caught up",
+      "summary": "2026-10-09 (Friday) final tally: 11 plays total, 0 ungraded (confirms PR #5732's same-day grading fix holds across a full session). 3 stops (TSLA/GME/CLF, already checked against the 3-instance bar at 16:46Z -- no miscalibration) + 8 ratchet wins (ORCL/FSLY/SPXW/MRNA/NVAX, plus 3 new near-close adds HIMS/PLTR/SNOW all flagged 14:58 ET, small positive ratchet exits). This session was idle through the weekend (11 queued trigger notifications drained on 2026-10-12 cold start, all same-mandate duplicates from the stale Friday afternoon + one fresh Monday firing) -- no action needed on the backlog since the trading day they covered is long closed. Weekend 0DTE-relevant commits reviewed: #5890/#5861/#5848/#5802, all minor dead-code/doc cleanups from other sessions, nothing requiring escalation."
     }
   },
   "sessions": {
