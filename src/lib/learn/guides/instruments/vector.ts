@@ -2,7 +2,7 @@ import { defineToolGuide, CROSS } from "@/lib/learn/guides/shared";
 
 export const vectorGuide = defineToolGuide({
   slug: "vector",
-  chapter: 8,
+  chapter: 7,
   title: "Vector",
   description:
     "Cross-ticker gamma and flow radar — a universe screener with ranked setups, GEX ladders, wall integrity scoring, and session replay.",
