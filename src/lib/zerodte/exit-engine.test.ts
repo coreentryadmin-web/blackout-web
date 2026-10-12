@@ -159,6 +159,53 @@ test("thesis break: a single VETO-class item exits even at a −20% loss", () =>
   assert.match(d.detail, /opposing wall building/);
 });
 
+test("thesis break: never moved favorably (peak <= 0%) says so in the detail", () => {
+  // Real shape from a live 2026-10-12 pair (IONQ/TTMI): committed, then vetoed within
+  // minutes with the peak never having cleared entry at all.
+  const d = evaluateExitState(
+    input({
+      currentMark: 4.0,
+      peakPremium: 4.0, // 0% peak — never moved favorably
+      cortexEvidence: evidence([{ stance: "veto", source: "gex-walls", detail: "wall crossing the path" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:gex-walls");
+  assert.match(d.detail, /\(never moved favorably before the thesis broke\)$/);
+});
+
+test("thesis break: a small peak below the ratchet's own arm threshold names the exact peak and threshold", () => {
+  // Real shape from a live 2026-10-12 play (QQQ): peaked +2.02% then reversed straight
+  // into a thesis_break veto — a real but sub-arm-threshold move, distinct from "never
+  // moved favorably" above.
+  const d = evaluateExitState(
+    input({
+      currentMark: 4.4, // +10%, above the floor this peak would arm (6%)
+      peakPremium: 4.6, // +15% peak — real, but below the 20% ratchet arm threshold
+      cortexEvidence: evidence([{ stance: "veto", source: "gex-walls", detail: "wall crossing the path" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:gex-walls");
+  assert.match(
+    d.detail,
+    /\(peaked at only \+15%, never cleared the ratchet's own \+20% arm threshold\)$/
+  );
+});
+
+test("thesis break: a real peak that cleared the ratchet's arm threshold is disclosed as a give-back", () => {
+  const d = evaluateExitState(
+    input({
+      currentMark: 4.6, // +15%, above the floor this peak would arm (10%)
+      peakPremium: 5.0, // +25% peak — cleared the 20% arm threshold
+      cortexEvidence: evidence([{ stance: "veto", source: "gex-walls", detail: "wall crossing the path" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:gex-walls");
+  assert.match(d.detail, /\(had reached a \+25% peak before the thesis broke\)$/);
+});
+
 test("thesis break: ≥2 opposing items whose combined weight beats the entry margin exit", () => {
   const d = evaluateExitState(
     input({
@@ -751,6 +798,12 @@ test("trim_scale: a thesis break with no tranche banked says nothing about banke
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "thesis_break:wall-trend");
   assert.doesNotMatch(d.detail, /already banked/);
+  // Parity with the ratchet-mode call site: trim_scale's own thesis_break detail gets
+  // the same peak-context clause (this function has its own, separate construction).
+  assert.match(
+    d.detail,
+    /\(peaked at only \+15%, never cleared the ratchet's own \+20% arm threshold\)$/
+  );
 });
 
 test("trim_scale: a play that never armed a tranche still scratches on the flat timeout", () => {
