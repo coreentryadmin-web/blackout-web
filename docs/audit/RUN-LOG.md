@@ -4,6 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-12 (00:16 UTC / Sun 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated incl. a parallel-session SEO merge, no SEO-lane PR action
+
+Sunday night, market closed. Resynced to `origin/main` (`cc72202` → `fbe61c8`) — main had
+advanced past a parallel SEO-lane session's own merge, #5873 ("SITE.description never mentioned
+catalyst intelligence or AI chat, across 5 real surfaces"), itself following an earlier #5866
+from the same session. **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0.0001, GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real
+1200×630 PNG — crawlable. Spot-checked #5873 live since it's squarely this lane's territory:
+homepage/`/pricing` carry their own meta-description overrides (unaffected, as expected), and
+`/llms.txt`'s summary line now reads "...catalyst intelligence, and AI-grounded chat..." —
+confirms the shared `SITE.description` fix deployed and is live correctly. **Step 2 — PR
+sweep:** 2 open agent PRs fleet-wide, none this lane's own — #5663 (swing, CONFLICTED — swing
+lane's to rebase), #5537 (docs, CI-FAILED, long-confirmed intentional). Nothing for this lane to
+rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened by this session.
+
 ## 2026-10-11 (18:16 UTC / Sun 14:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Sunday, market closed. Resynced to `origin/main` (`b0ef6fb` → `1c846de`, other-lane billing
