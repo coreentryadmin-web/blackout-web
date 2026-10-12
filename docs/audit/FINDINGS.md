@@ -38,6 +38,285 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-12 — [FINDING, P2 performance, Vector] `vector-pick-sweep`'s overlap-lock TTL (900s) undershot a new measured worst-case runtime (1036.5s), letting a second sweep start while the first was still in flight — FIXED
+
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| `vector-pick-sweep` cron (`src/app/api/cron/vector-pick-sweep/route.ts`) | P2 — recurrence of an already-fixed overlap mechanism at a new, higher peak, contributing to shared Polygon/UW rate-limiter contention | FIXED |
+
+**What's wrong.** Standing performance/latency audit pass, CloudWatch `/ecs/blackout-production`
+`elapsed=` filter, 12:40-15:25 UTC (RTH open). `vector-pick-sweep` logged two runs above its own
+`OVERLAP_LOCK_TTL_SEC = 900` (raised from 480s to 900s on 2026-09-03 for the identical reason):
+`elapsed=992393ms` (14:13:19→14:29:51) and `elapsed=1036542ms` (14:35:18→14:52:34). Reconstructing
+every run's start time as `finish_timestamp - elapsed_ms` (not just reading `elapsed=` in isolation)
+confirmed this was not merely "at risk" but genuinely overlapping:
+
+- The 992.4s run's lock (900s TTL) expired ~14:28:19, 93s before it actually finished at 14:29:51.
+  A scheduled fire at 14:29:18 acquired the now-free lock and started a second sweep while the first
+  was still running (confirmed: second sweep's own "done" line logs `elapsed=234818ms`, i.e. it
+  started while the first was mid-run and finished 33s before the first did).
+- A third sweep (started 14:31:18, elapsed=320433ms) overlapped the second the same way.
+- The 1036.5s run (started 14:35:18) overlapped a fourth sweep (started 14:37:18, elapsed=928437ms)
+  for nearly its entire 15-minute runtime — the two "done" lines are timestamped 14:52:34.997 and
+  14:52:46.941, 12 seconds apart, confirming both were genuinely in flight concurrently almost the
+  whole time.
+
+This is the exact mechanism the 2026-09-03 fix (PR referenced in `FINDINGS.md`, 480s→900s) targeted
+and partially resolved — a sweep outliving its own lock lets the next EventBridge fire (every 2 min
+during RTH, `schedule_cron_utc: "1-59/2 11-21 * * 1-5"`) acquire the freed lock and start a second,
+fully concurrent sweep. It has now recurred at a new peak (1036.5s vs the 2026-09-03 worst of 694s),
+consistent with this being an RTH-open-specific spike in the shared cluster-wide Polygon/UW
+rate-limiter contention every other elevated cron in the same window also showed (`zerodte-warm` up
+to 410s, `vector-full-state-snapshot` up to 253.8s, `vector-dark-pool-warm` up to 201.8s,
+`bie-full-state-snapshot` up to 153.9s, `meridian-warm` up to 101.3s — all already-documented
+cross-cutting contention, not a new root cause on their own) — every run after 14:53 UTC that same
+morning was back to a normal 60-180s range, so this was a transient ~40-minute escalation, not a
+sustained regression.
+
+**Fix.** Raised `OVERLAP_LOCK_TTL_SEC` from 900 to 1500 (25 min) — real margin above the new worst
+observed 1036.5s, proportionally similar to the ~1.3x margin the 2026-09-03 fix used (900/694).
+Raised the matching `stale_after_min` for `vector-pick-sweep` in `cron-registry.ts` from 15 to 25 to
+keep the two in lockstep, per the route file's own stated intent. Did not touch the sweep's own
+per-ticker work, the rate limiter, the schedule interval, or the overlap-guard mechanism itself
+(`sharedCacheSetNx`/fail-open/release-in-`finally`) — only the TTL constant that had again fallen
+behind real measured runtime changed, same scope discipline as the 2026-09-03 fix.
+
+**Blast radius.** `src/app/api/cron/vector-pick-sweep/route.ts` and its own `stale_after_min` entry
+in `src/lib/cron-registry.ts` only. No other route reads `vector:pick-sweep:running`. Checked every
+other cron's own numbers in the same 3-hour window against its own schedule/TTL — none of the other
+elevated crons listed above (`zerodte-warm`, `vector-full-state-snapshot`, `vector-dark-pool-warm`,
+`bie-full-state-snapshot`, `meridian-warm`) exceeded its own overlap-lock TTL or stale_after_min
+threshold in this window, so none needed a change; raising a TTL on a cron that isn't actually at
+risk would be scope creep per this repo's own standing anti-scope-creep discipline.
+
+**Regression guard.** `src/app/api/cron/vector-pick-sweep/route.test.ts`: updated the two existing
+TTL-specific tests (`the lock TTL matches the cron's own stale_after_min safety net` and `the lock
+TTL has real margin above the worst measured sweep runtime`) to assert 1500s and the new 1037s
+floor, so the next undershoot past today's measured peak is caught the same way this one was.
+Verified RED→GREEN via `git stash` (stashing the fix leaves 2 of 7 tests failing on the stale 900s
+assertion; popping restores 7/7).
+
+**Verification.** `npx tsc --noEmit` clean (Node 20.20.2). `npx tsx --experimental-test-module-mocks
+--test src/app/api/cron/vector-pick-sweep/route.test.ts` — 7/7 pass.
+
+## 2026-10-12 — [FINDING, P4 docs/discovery] `TrackRecordEmbed`'s doc comment named three consumers, all now wrong — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Public embeds | P4 — doc-only, no behavior change | FIXED |
+
+**What's wrong.** `src/components/embeds/TrackRecordEmbed.tsx`'s header comment claimed:
+
+```
+Presentational social-proof card. PURE props in (no fetching) so it renders
+both server-side (public /track-record page + iframe) and client-side
+(dashboard). No grey text per house rule — bull / cyan-400 / sky-300 / white.
+```
+
+All three named consumers are stale:
+- **"public /track-record page"** — `src/app/(site)/track-record/page.tsx` is now just
+  `redirect("/admin?tab=track-record")`; it's a legacy-URL redirect to the admin console, not a
+  public page.
+- **"iframe"** — the only iframe route, `src/app/embed/track-record/page.tsx`, is gated by its
+  layout's `requireAdmin()` call and is explicitly commented `"Admin-only embed preview (formerly
+  public social-proof iframe)"`. Not public anymore.
+- **"client-side (dashboard)"** — no client-side/dashboard usage exists anywhere in the tree
+  (repo-wide grep for `TrackRecordEmbed` found exactly two real call sites, both server-rendered).
+
+The actual real public consumer — `MethodologyContent.tsx`, rendered inside `/methodology` — went
+unmentioned.
+
+**Fix.** Rewrote the comment to name the two real current consumers: the public `/methodology`
+page (the real public surface) and the admin-only `/embed/track-record` iframe preview, noting the
+legacy public route now just redirects. Doc-only, no logic change.
+
+**Verification.** `tsc --noEmit` clean.
+
+**Blast radius.** One doc comment. No runtime behavior touched.
+
+**Separately verified, not re-flagged**: the same sweep confirmed the 2026-09-10 FINDINGS.md entry
+about `/methodology`'s `DatasetJsonLd`/`PropertyValue` schema is still correctly wired — gated
+behind `spxRecord.available`, every `PropertyValue` sourced from the same `buildPublicTrackRecord()`
+object `TrackRecordEmbed` renders, no drift. Also checked (no bugs found): the PWA manifest's icon
+references, the service worker's cache-shell list, `/offline`'s links, and the embed route +
+`/api/public/track-record`'s admin-gating (defense-in-depth, correctly matched, not over/under
+gated).
+
+Found via a background Explore-agent sweep of public embed/offline/PWA surfaces,
+independently re-verified (confirmed the exact stale comment text, the real two call sites via
+repo-wide grep, the admin-gated layout, and the legacy redirect) before fixing.
+
+## 2026-10-12 — [FINDING, P2 Night Hawk Legacy/correctness] Morning-confirm SPX premarket gap silently fell back to previous_close, fabricating a flat "0.00%" gap — FIXED
+
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Night Hawk Legacy morning-confirm cron (`nighthawk-morning-confirm/route.ts`) | P2 — fabricated market-context signal feeding both the member-facing macro badge and the per-play morning-confirm verdict | FIXED |
+
+**What's wrong.** Spotted live on the production Legacy board (`/nighthawk?view=legacy`, 2026-10-12
+mid-RTH via `proxy-browser.cjs`): the macro strip read `SPX gap +0.00 (0.00%)` while the SAME
+edition's recap text, rendered a few lines above it, read `Gap up 0.27% to 7786.36` — a visible
+contradiction on one page, and SPX's own live price at the time (7811.54, +0.59% per
+`GET /api/market/zerodte/board`) made an exact flat gap implausible on its face.
+
+Root cause: `fetchSpxPremarket()` (the route's own helper, WS-first then REST-snapshot) falls back
+to `fetchIndexSnapshots(["I:SPX"])` (`src/lib/providers/polygon.ts`) when the live WS candle isn't
+fresh yet — true for the entire window the morning-confirm cron runs in (~9:15 ET, before the first
+SPX index print of the session). `fetchIndexSnapshots`'s own price resolution is a fallback chain:
+```
+const price = Number(row.value ?? row.session?.close ?? row.session?.previous_close ?? 0);
+```
+Pre-market, both `row.value` (today's live print) and `row.session?.close` (today's session close)
+are genuinely absent, so this silently resolves to `row.session?.previous_close` — **yesterday's
+close** — and returns it as `quote.price` with no signal to the caller that it isn't a live figure.
+
+The route then computes `gapPts = spxPremarket - priorClose`, where `priorClose` is an
+*independently* fetched prior-session close (Polygon daily bars). When `spxPremarket` is secretly
+also the prior close, `gapPts` collapses to exactly `previous_close - previous_close = 0` — a
+fabricated "flat market" reading, not an honest "no live premarket print yet" state. This value
+then:
+1. Renders directly to members as `SPX gap +0.00 (0.00%)` in `LegacyMacroStrip.tsx`.
+2. Feeds `computePlayVerdict()` (`morning-confirm-verdict.ts`), which treats `gapPts` as a *real,
+   evaluated* gap check (`checksEvaluated++`, `Math.abs(gapPts) > GAP_PTS_THRESHOLD`) rather than
+   correctly abstaining — so a play could be recorded as having *passed* a gap-context check that
+   never actually ran.
+
+**Fix.** Added `resolveLiveIndexPrice()` (`src/features/nighthawk/lib/morning-gap-source.ts`), a
+pure helper that compares the returned `price` to the same quote's own `prev_close` field (which
+`fetchIndexSnapshots` already returns alongside `price`) — if they're identical, the "live" price is
+really just yesterday's close reflected back, so it returns `null` instead. Wired into
+`fetchSpxPremarket()`'s REST-fallback branch in place of the bare `spx?.price ?? null`. The WS-first
+branch (`getStockLiveCandle("SPX")`) is untouched — it already carries its own freshness guard and
+isn't the fallback path that produces this collision.
+
+With the fix, a genuine pre-market data gap now correctly produces `gapPts: null`, which
+`computePlayVerdict()` already handled everywhere it's used (`gapPts !== null` guards every
+read site — confirmed by code inspection, all 26 existing tests in
+`morning-confirm-verdict.test.ts` still pass unchanged) — so this converts a false "gap check
+passed" into a correct "gap check withheld," with zero blast radius outside this one call site.
+`fetchIndexSnapshots` itself (9 other call sites across Vector/SPX/Largo/0DTE) is untouched;
+confining the fix to Legacy's own `fetchSpxPremarket()` avoids any cross-product risk.
+
+**Regression guard.** New `src/features/nighthawk/lib/morning-gap-source.test.ts` (4 cases): returns
+the price when it genuinely differs from `prev_close`; returns `null` on the exact collision this
+bug produces; returns the price as-is when `prev_close` is unknown (can't detect the collision, so
+don't guess); returns `null` for a null/undefined quote. `npx tsx --experimental-test-module-mocks
+--test src/features/nighthawk/lib/morning-gap-source.test.ts` — 4/4 pass. Full `tsc --noEmit`
+clean (0 errors). Existing `morning-confirm-verdict.test.ts` — 26/26 pass unchanged.
+
+**Evidence captured.** Live screenshot of the contradiction (`/tmp/legacy-board-correct.png`, not
+committed — local-only audit artifact) via `proxy-browser.cjs 'https://blackouttrades.com/nighthawk?view=legacy'
+... --desktop`, cross-checked against `GET /api/market/nighthawk/edition`'s `recap_summary` text and
+`GET /api/market/zerodte/board`'s live SPX price, both fetched the same cycle.
+
+## Cortex `absent[]` double-counts a source that emits multiple stale items — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Area** | Night Hawk 0DTE — Cortex evidence composer (`src/lib/nighthawk/cortex/compose.ts`) |
+| **Severity** | P3 (deterministic code-logic bug, confirmed by reading source — not a gate-calibration claim, no 3-instance threshold needed) |
+
+### Root cause
+
+`composeCortexEvidence` (`compose.ts`) iterates every `EvidenceItem` a source's
+`deriveXEvidence` function returns and, for each item individually, decides whether it
+has decayed past `ABSENT_AFTER_HALF_LIVES` (3 half-lives) and should self-silence. When
+it has, the loop pushes `"<source>: evidence stale (older than 3 half-lives) — self-
+silenced"` onto the `absent: string[]` array — **once per item**, not once per source.
+
+Several sources can legitimately return more than one `EvidenceItem` from a single read.
+`gex-walls` (`sources/gex-walls.ts`) is the clearest case: `deriveGexWallsEvidence` can
+emit a wall-path veto/support item AND a separate regime-style oppose item
+(`regimePosture === "long"`) from the *same* GEX snapshot — both items share the exact
+same `asOf` and `halfLifeSec` (`const base = { source, halfLifeSec, asOf: gex.asOf }`).
+Because both items decay identically, if the snapshot is stale beyond 3 half-lives,
+**both** independently trip the staleness branch and push the byte-identical absence
+string twice.
+
+This is not just a cosmetic duplicate line. `src/lib/zerodte/tiers.ts` reads
+`verdict.absent.length` directly in two places:
+- `cortexAbsentCount = Array.isArray(c.absent) ? c.absent.length : null;` (line 476)
+- `CORTEX_THIN_EVIDENCE_MAX_ABSENT = 6` — "6+ absent means ≤2 answered" — caps a play
+  at Tier B regardless of score once `absent >= 6` (line 165/334).
+
+A source that duplicates its own absence inflates this count by +1 per extra duplicate
+item, which can push a borderline play over the 6-source thin-evidence threshold earlier
+than the real "N of 8 sources answered" picture warrants — a genuine (if narrow) risk to
+the A/B tier assignment, not merely a display nit.
+
+### Evidence
+
+Found live on a real committed play: `IONQ` short, flagged 10:28 ET 2026-10-12, Tier A,
+score 79. `GET /api/market/zerodte/record?days=1`'s `entry_context.cortex.absent` for
+that row listed:
+```
+"gex-walls: evidence stale (older than 3 half-lives) — self-silenced"
+"gex-walls: evidence stale (older than 3 half-lives) — self-silenced"
+```
+— the identical string twice, for a single source, among only 5 total entries (4
+distinct sources: gex-walls, wall-trend, catalyst-news, darkpool-confluence). On this
+particular row the distinct-vs-raw count (4 vs 5) didn't cross the 6-source
+`CORTEX_THIN_EVIDENCE_MAX_ABSENT` threshold either way, so the tier outcome happened to
+be unaffected here — but the mechanism that could push a different, more-borderline row
+across that threshold is real and was confirmed by reading `gex-walls.ts`'s `wallPathCheck`
+(a veto wall and a regime-style oppose can both fire from one read) and `compose.ts`'s
+per-item (not per-source) loop.
+
+Regression test added and proven RED→GREEN: `src/lib/nighthawk/cortex/compose.test.ts`
+— `"a source whose evidence emits multiple stale items self-silences ONCE, not once per
+item"`. Feeds a `gex` slice with a stale `asOf` (50 min, > 3×15min half-life), a blocking
+call wall, AND `regimePosture: "long"` (both a veto and a regime-oppose item from one
+source). Before the fix: `v.absent.filter(a => a.startsWith("gex-walls:"))` had length 2.
+After: length 1.
+
+### Fix
+
+`compose.ts`'s per-source loop now tracks pushed absence strings in a `Set<string>`
+scoped to that source's iteration (`pushedForSource`/`pushAbsentOnce`) and only pushes a
+given exact message once per source, regardless of how many items from that source
+independently trip the same absence condition (no valid `asOf`, stale beyond 3
+half-lives, or an explicit `stance: "absent"` item). This matches the design intent
+stated in the source's own comment: "the honest statement 'this source cannot answer
+right now'" is a per-source fact, not a per-item one.
+
+### Blast radius
+
+Every Cortex source is affected in principle (the loop is shared), but only sources that
+can emit >1 `EvidenceItem` from a single read are exposed in practice. Confirmed
+`gex-walls` can (veto/support wall + regime-style oppose, or even all three
+simultaneously). Did not find another source with the same multi-item-per-read shape in
+this pass (`flow-quality`, `sector-heat`, `catalyst-news`, `opening-harvest`, `vex-charm`,
+`darkpool-confluence`, `wall-trend` each return a single item per the registry's typical
+shape), but the fix is general — it dedupes by exact string per source regardless of
+which source structurally triggers it, so no other source needs its own fix even if one
+is later found to also multi-emit.
+
+### Fix rationale
+
+Dedup at the point of construction (compose.ts) rather than downstream in `tiers.ts` (the
+consumer) — the composer is the one place that knows "this is the same source speaking
+twice", and every downstream reader of `verdict.absent` (tiers.ts, pane.ts's narrative
+text, any future consumer) benefits automatically rather than needing its own dedup
+logic. Left `gex-walls.ts` itself unchanged — returning multiple distinct evidence items
+per read is correct and intentional (a veto and a regime-oppose are genuinely different
+claims when the data is fresh); the bug was only in how the composer's absence rollup
+degenerates when all of a source's items share one clock.
+
+### Verification
+
+- `npx tsx --experimental-test-module-mocks --test src/lib/nighthawk/cortex/compose.test.ts` — 16/16 pass (new test proven RED pre-fix, GREEN post-fix via git-stash).
+- Full `src/lib/nighthawk/cortex/*.test.ts` + `src/lib/nighthawk/cortex/sources/*.test.ts` — 129/129 pass.
+- Downstream consumers `src/lib/zerodte/tiers.test.ts` (27/27), `cortex-gate.test.ts` (36/36), `pane.test.ts` (29/29) — all pass, no regressions.
+- `npx tsc --noEmit -p .` — clean.
+- Full `npm test` run in progress at time of writing (background), Node 20.
+
 ## 2026-10-12 — [FINDING, P3 Learn/content-accuracy] Largo's Learn copy understated its own tool count by ~2x ("~70+" vs the real 138) — FIXED
 > **kind:** `FINDING`
 
