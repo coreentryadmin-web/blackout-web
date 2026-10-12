@@ -1081,6 +1081,11 @@
       "cycle": "RTH :45-offset trigger, 15:45:35 UTC firing",
       "finding": "4th commit: PENG long, flagged 11:46 ET, Tier B (thin-evidence capped: 6/8 Cortex sources absent, Prime score band + VIX calm band otherwise argued A). Currently OPEN, ungraded, too fresh to assess management (committed seconds before this cycle's check). Live confirmation the PR #5909 dedup fix is active in production: PENG's entry_context.cortex.absent lists 'gex-walls: evidence stale...' exactly ONCE among 6 total entries -- no duplication, matching the fixed behavior. Session: 2W/1L closed, 1 open (PENG).",
       "action": "No action needed. Watching PENG's management next cycle."
+    },
+    "2026-10-12T16:11:00Z_PENG_SCRATCH_TTMI_SCORE95_CORRECTLY_CAPPED": {
+      "cycle": "RTH :00-offset trigger, 16:10:52 UTC firing",
+      "finding": "PENG closed via flat_theta_bleed at -4.95% ('dipped to -12.94% intraday but recovered back inside the +/-10% band, peak +0.64%... a small scratch beats theta decay') -- correct 0DTE chop-management mechanics, not a loss worth flagging. New 5th commit: TTMI short, score 95, flagged 12:03 ET -- correctly discounted ('Score 85+ counts only as a mid-band positive... measured top-band inversion F-5') and tier-capped at B despite the eye-catching raw score, exactly matching the documented F-5 finding (85+ historically 33.3% WR vs 63.6% at 75-84). Still open, too fresh to assess management. Session: 2W/2L closed (IONQ loss, PENG scratch-loss, SPXW win, TSLA win), 1 open (TTMI). No issues found, no gate miscalibration, no code defects.",
+      "action": "No action needed. Watching TTMI's management next cycle."
     }
   },
   "sessions": {
