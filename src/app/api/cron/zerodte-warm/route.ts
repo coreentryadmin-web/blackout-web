@@ -88,12 +88,43 @@ const OFF_WINDOW_FORCE_COOLDOWN_SEC = 300;
  * Gated to cash RTH only — off-hours staleness is expected and harmless (`market_hours_stale`
  * itself is already suppressed off-window in `admin-cron-health.ts`), so there is nothing to
  * break there. `STEAL_ATTEMPT_KEY` is its own short-TTL NX claim so exactly one concurrent
- * invocation performs the clear even if many replicas observe `critical_stale` at once — it
- * never changes the cooldown/overlap claim logic itself, only pre-empties a wedge that would
- * otherwise persist for the rest of the lock's TTL.
+ * invocation performs the clear even if many replicas observe the staleness threshold crossed
+ * at once — it never changes the cooldown/overlap claim logic itself, only pre-empties a wedge
+ * that would otherwise persist for the rest of the lock's TTL. See `WEDGE_BREAKER_MIN_AGE_MS`
+ * below for the threshold itself and why it no longer reuses the shared heartbeat module's
+ * generic `critical_stale` flag.
  */
 const STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt";
 const STEAL_ATTEMPT_TTL_SEC = 30;
+
+/**
+ * WEDGE-BREAKER FALSE-POSITIVE FIX (2026-10-12, live measurement).
+ *
+ * The wedge-breaker originally gated on `heartbeat?.critical_stale` — a fixed 10-minute age
+ * threshold owned by `play-engine-heartbeat.ts` and tuned for the ADMIN DASHBOARD's generic
+ * "is this engine's tick stale" display, not for "is THIS run specifically dead." That
+ * reused threshold is now measurably too tight for this cron: `recordZeroDteScanTick` only
+ * fires ONCE per `warmZeroDteBoard()` call, right after `scanZeroDteBoard()` fully returns
+ * (scan.ts) — so the heartbeat cannot advance AT ALL while a scan is in flight, however long
+ * it legitimately takes. Measured live 2026-10-12 during ordinary RTH contention (no outage,
+ * no wedge): two real `[cron/zerodte-warm] background done` completions logged 26s apart with
+ * elapsed=321783ms and elapsed=646035ms — the slower one alone (10m46s) already exceeds the
+ * 10-minute `critical_stale` bar while still actively running and succeeding. Reconstructed
+ * start times show genuine overlap (the second run started ~5 min into the first one's still-
+ * in-flight ~10m46s execution), the exact shape #5213's own lock exists to prevent — meaning
+ * the wedge-breaker itself was the most likely mechanism letting it back in: a slow-but-alive
+ * run can make its OWN heartbeat look "critical_stale" before finishing, so any wedge-breaker
+ * check that fires mid-run steals the lock out from under it and admits a second overlapping
+ * execution, which then contends for the same rate-limited UW/HELIX upstream and makes BOTH
+ * runs slower — a self-reinforcing spiral rather than a recovery.
+ *
+ * Fix: gate the steal on the heartbeat's raw `age_ms` against a threshold OWNED by this route
+ * (not borrowed from the dashboard module), set comfortably above the worst real runtime
+ * measured above (646s) while still recovering meaningfully faster than waiting out the
+ * lock's own 900s natural TTL for a genuinely dead process (the #5213 case this was built for,
+ * where the ECS task is gone and nothing will ever tick again regardless of threshold).
+ */
+const WEDGE_BREAKER_MIN_AGE_MS = 12 * 60_000;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -115,13 +146,16 @@ export async function GET(req: NextRequest) {
 
   if (isEtCashRth()) {
     const heartbeat = await loadZeroDteScanHeartbeat().catch(() => null);
-    if (heartbeat?.critical_stale) {
+    if (heartbeat?.age_ms != null && heartbeat.age_ms > WEDGE_BREAKER_MIN_AGE_MS) {
       const wonSteal = await sharedCacheSetNx(
         STEAL_ATTEMPT_KEY,
         { startedAt: started },
         STEAL_ATTEMPT_TTL_SEC
       ).catch(() => false);
       if (wonSteal) {
+        console.warn(
+          `[cron/zerodte-warm] wedge-breaker stole the overlap lock — heartbeat age ${Math.round(heartbeat.age_ms / 1000)}s exceeds the ${WEDGE_BREAKER_MIN_AGE_MS / 1000}s floor`
+        );
         await Promise.all([
           sharedCacheDel(RERUN_COOLDOWN_KEY).catch(() => undefined),
           sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined),

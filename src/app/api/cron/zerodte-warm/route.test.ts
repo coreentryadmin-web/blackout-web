@@ -187,7 +187,7 @@ test("a force=1 call OUTSIDE the extended warm window is throttled at a much wid
 // attempt is silently blocked for up to the lock's 900s TTL regardless of how stale the scan
 // heartbeat gets. Measured live: zerodte_scan_heartbeat stuck 50+ minutes while cron_job_runs
 // kept logging ok/skipped every cycle.
-test("a critical_stale scan heartbeat during cash RTH steals and clears both wedged locks before the normal claim", () => {
+test("a stale scan heartbeat during cash RTH steals and clears both wedged locks before the normal claim", () => {
   assert.match(
     routeSrc,
     /import \{ isEtCashRth, isEtExtendedWarmHours \} from "@\/lib\/et-market-hours"/,
@@ -198,10 +198,14 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
     /import \{ loadZeroDteScanHeartbeat \} from "@\/lib\/play-engine-heartbeat"/
   );
   assert.match(routeSrc, /if \(isEtCashRth\(\)\) \{/);
-  assert.match(routeSrc, /heartbeat\?\.critical_stale/);
+  assert.match(
+    routeSrc,
+    /heartbeat\?\.age_ms != null && heartbeat\.age_ms > WEDGE_BREAKER_MIN_AGE_MS/,
+    "must gate on the route's own age threshold, not the shared heartbeat module's generic critical_stale flag"
+  );
 
   // The steal attempt must itself be NX-atomic (STEAL_ATTEMPT_KEY) so exactly one concurrent
-  // invocation performs the clear, even if many replicas observe critical_stale at once.
+  // invocation performs the clear, even if many replicas cross the age threshold at once.
   assert.match(routeSrc, /STEAL_ATTEMPT_KEY = "zerodte-warm:steal-attempt"/);
   assert.match(
     routeSrc,
@@ -211,7 +215,7 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
 
   // Only the winner clears both keys — RERUN_COOLDOWN_KEY and OVERLAP_LOCK_KEY.
   const wonStealIdx = routeSrc.indexOf("if (wonSteal) {");
-  const clearBlock = routeSrc.slice(wonStealIdx, wonStealIdx + 300);
+  const clearBlock = routeSrc.slice(wonStealIdx, wonStealIdx + 500);
   assert.match(clearBlock, /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/);
   assert.match(clearBlock, /sharedCacheDel\(OVERLAP_LOCK_KEY\)/);
 
@@ -220,6 +224,58 @@ test("a critical_stale scan heartbeat during cash RTH steals and clears both wed
   const stealBlockIdx = routeSrc.indexOf("if (isEtCashRth()) {");
   const cooldownClaimIdx = routeSrc.indexOf("const withinCooldown = !(await sharedCacheSetNx(");
   assert.ok(stealBlockIdx > 0 && cooldownClaimIdx > 0 && stealBlockIdx < cooldownClaimIdx);
+});
+
+// Regression (2026-10-12 live measurement, false-positive wedge-breaker): `recordZeroDteScanTick`
+// only fires ONCE per warmZeroDteBoard() call, right after scanZeroDteBoard() fully returns, so
+// the heartbeat cannot advance at all while a scan is legitimately still in flight however long
+// it takes. The shared play-engine-heartbeat module's `critical_stale` flag is a fixed 10-minute
+// age threshold tuned for the ADMIN DASHBOARD's generic display, not for "is this specific run
+// dead" — and real production runs have now been measured taking 646s (10m46s), already past
+// that bar while actively succeeding. Gating the steal on `critical_stale` would therefore
+// misfire on an ordinary slow-but-alive run, stealing the lock out from under it and admitting a
+// second overlapping execution — exactly the contention this lock exists to prevent, caused by
+// the mechanism meant to recover from a genuinely dead one (#5213).
+test("the wedge-breaker's own age floor is comfortably above a real measured legitimate runtime, and decoupled from the shared heartbeat module's generic threshold", () => {
+  assert.doesNotMatch(
+    routeSrc,
+    /if \(heartbeat\?\.critical_stale\)/,
+    "must not gate the steal condition on the shared dashboard threshold — it fires too early for this cron's own measured runtimes"
+  );
+  assert.match(
+    routeSrc,
+    /const WEDGE_BREAKER_MIN_AGE_MS = 12 \* 60_000;/,
+    "the floor must be an explicit, route-owned constant — not borrowed from play-engine-heartbeat.ts"
+  );
+  // 646035ms was the worst real elapsed= measured live (2026-10-12) for a legitimately
+  // succeeding run; the floor (12 * 60_000 = 720000ms) must sit comfortably above it, while
+  // still recovering meaningfully faster than waiting out the lock's own 900s natural TTL for
+  // a genuinely dead process (the #5213 case) — otherwise the steal buys nothing.
+  const MEASURED_WORST_REAL_RUNTIME_MS = 646_035;
+  const WEDGE_BREAKER_MIN_AGE_MS = 12 * 60_000;
+  assert.ok(
+    WEDGE_BREAKER_MIN_AGE_MS > MEASURED_WORST_REAL_RUNTIME_MS,
+    `floor (${WEDGE_BREAKER_MIN_AGE_MS}ms) must exceed the worst real measured runtime (${MEASURED_WORST_REAL_RUNTIME_MS}ms)`
+  );
+  assert.ok(
+    WEDGE_BREAKER_MIN_AGE_MS < 900_000,
+    "floor must still be meaningfully below the lock's own 900s TTL to recover faster than the natural expiry"
+  );
+});
+
+test("a steal is logged — the wedge-breaker previously had zero observability into firing at all", () => {
+  assert.match(
+    routeSrc,
+    /console\.warn\(\s*`\[cron\/zerodte-warm\] wedge-breaker stole the overlap lock/,
+    "a steal must be logged so a future audit can see it fired, instead of being silently invisible in CloudWatch"
+  );
+  const wonStealIdx = routeSrc.indexOf("if (wonSteal) {");
+  const warnIdx = routeSrc.indexOf("console.warn(");
+  const delIdx = routeSrc.indexOf("sharedCacheDel(RERUN_COOLDOWN_KEY)");
+  assert.ok(
+    wonStealIdx > 0 && warnIdx > wonStealIdx && warnIdx < delIdx,
+    "the log must fire inside the won-steal branch, before clearing the locks"
+  );
 });
 
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
