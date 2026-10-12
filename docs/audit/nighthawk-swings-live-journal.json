@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T20:48Z",
-  "notes": "GOOGL:54 and GOOG:55 just committed (OPEN, mark 'unknown -- sync quote, no live price yet', correctly not read as flat) -- both graduated off WATCH where they were blocked by gate:G-S14:cortex_net_negative. Checked both play-briefs: clean, well-formed commits, thesis health 91% on both, Persistence 'triggered', Entry geometry 'at trigger', regime fit 1.00 -- the cortex veto genuinely cleared, not a wiring artifact. No bug, no escalation. Native book now 3 positions (ASTS:53 unchanged -32.5%, GOOGL:54, GOOG:55 both fresh). WATCH list down to 3 (IREN/SNOW/AMZN, all legacy:exempt). Two Ask Largo ideas from this hour still awaiting Cursor read (IV-decay narrative 19:05, crossDeskCoaching range-bias gap 20:08).",
+  "last_updated": "2026-10-12T21:03Z",
+  "notes": "GOOGL:54/GOOG:55 still show mark unknown 24+ min after commit -- logged as a watch item (googl_goog_mark_refresh_watch_2026_10_12), not yet escalating since this could be normal refresh-cadence lag on brand-new commits. ASTS:53 unchanged -32.5%. WATCH list unchanged (IREN/SNOW/AMZN). Two Ask Largo ideas from this hour still awaiting Cursor read.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
@@ -602,5 +602,10 @@
       "pr_comment": "https://github.com/coreentryadmin-web/blackout-web/pull/4076#issuecomment-6131711926",
       "status": "RAISED, awaiting Cursor/second read before drafting."
     }
-  ]
+  ],
+  "googl_goog_mark_refresh_watch_2026_10_12": {
+    "t": "2026-10-12T21:03Z",
+    "finding": "GOOGL:54 and GOOG:55 (committed 20:37:56Z) still show markAsOf:null, bid/ask/mid:null, OI:0 on the raw horizons row 24+ minutes after commit (~1-2 swing-active-refresh cycles due). entryPremium is populated (10.325/9.425) so a real quote WAS captured at commit -- this is the LIVE refresh not yet landing a fresh quote, not a no-market commit. Play-brief narrative correctly discloses absence ('Mark: unknown -- sync quote, no live price yet -- do not read as flat'), not fabricated -- good C2/C3 behavior either way.",
+    "status": "WATCHING -- not yet escalating (single pair, could resolve on next refresh cycle). Will re-check next tick; escalate if still null after another full cycle."
+  }
 }
