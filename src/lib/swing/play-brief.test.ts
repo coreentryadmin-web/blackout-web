@@ -463,10 +463,18 @@ test("composeSwingPlayBrief: RESEARCH play narrates its real serving section, no
 // entry-validity deadline to derive `watchEntryExpired`, then discarded the actual date — a member
 // watching a still-live WATCH play had no forward-looking runway to weigh, only the EXPIRED badge
 // once it was already too late. Mirrors the "First flagged" age line directly above it.
+//
+// TEST FIX (2026-10-12, found while adding the sub-24h regression below): this test never set
+// `ctx.readMs`, so `composeSwingPlayBrief` fell through to the real `Date.now()` (play-brief.ts:1348)
+// instead of the fixture's intended "now" (`asOf`). It kept reporting green only because its
+// assertion's regex (`\d+ days?`) is loose enough to match "0 days" too — which is what the real
+// clock, now long past this fixture's 2026-09-15 deadline, actually produced. Pinning `readMs`
+// explicitly makes the test assert what its own name claims: a 5-day-out deadline reads in days.
 test("composeSwingPlayBrief: WATCH play with a live entryDeadline narrates the forward-looking entry window (2026-09-18 gap fix)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ entryDeadline: "2026-09-15T14:00:00.000Z", watchEntryExpired: false }),
     asOf: "2026-09-10T09:00:00.000Z",
+    readMs: Date.parse("2026-09-10T09:00:00.000Z"),
     sessionDate: "2026-09-10",
     scanAsOf: null,
     scanSessionDay: null,
@@ -479,6 +487,31 @@ test("composeSwingPlayBrief: WATCH play with a live entryDeadline narrates the f
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry, "expected Entry section");
   assert.match(entry!.body, /Entry window closes \*\*.+\*\* \(\*\*\d+ days?\*\* left\)/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-12): `Math.ceil(msLeft / 86_400_000)` rounded ANY
+// positive sub-24h remainder up to "1 day" — a deadline 4 hours away read identically to one nearly
+// 2 days away. Live repro: MRVL WATCH brief, fetched 2026-10-12 05:03 ET, `entryDeadline` 2026-10-12
+// 09:15 ET (same calendar day, ~4h12m away) — "Entry window closes ... (1 day left)". Below 24h the
+// line must say hours, not days.
+test("composeSwingPlayBrief: WATCH play with a sub-24h entryDeadline narrates hours left, not a misleading '1 day' (2026-10-12 bug fix, live MRVL repro)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ entryDeadline: "2026-10-12T13:15:00.000Z", watchEntryExpired: false }),
+    asOf: "2026-10-12T09:03:00.000Z",
+    readMs: Date.parse("2026-10-12T09:03:00.000Z"),
+    sessionDate: "2026-10-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(entry!.body, /Entry window closes \*\*.+\*\* \(\*\*5 hours\*\* left\)/);
+  assert.doesNotMatch(entry!.body, /Entry window closes.*\(\*\*1 day\*\* left\)/);
 });
 
 test("composeSwingPlayBrief: WATCH play already past its entry deadline omits the forward-looking line (EXPIRED badge owns that case)", () => {

@@ -564,6 +564,26 @@ function daysOnWatch(sinceIso: string | null | undefined, nowMs: number): number
   return Math.max(0, Math.floor((nowMs - sinceMs) / 86_400_000));
 }
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-12): `Math.ceil(msLeft / 86_400_000)` rounds ANY
+// positive sub-24h remainder up to "1 day" — a deadline 4 hours away and one 23 hours away both
+// rendered "1 day left", identical to a deadline genuinely ~1.0 days out. Live repro: MRVL WATCH
+// brief, fetched 2026-10-12 05:03 ET, `entryDeadline` 2026-10-12 09:15 ET (same calendar day, ~4h12m
+// away) — "Entry window closes ... (1 day left)". A member reading "1 day left" at 5am would
+// reasonably plan to act later that day or the next morning; the real window closes before most
+// members are even awake. Below 24h, switch to hours (still ceil'd, so "a few minutes left" never
+// reads as "0 hours" — same floor-at-1 discipline Math.ceil already gave the day case); at/above 24h,
+// keep the existing day-granularity phrasing unchanged (the sibling tests pinning "N days left" for
+// multi-day windows still pass byte-for-byte).
+function entryWindowTimeLeftLabel(msLeft: number): string {
+  const clamped = Math.max(0, msLeft);
+  if (clamped < 86_400_000) {
+    const hours = Math.max(1, Math.ceil(clamped / 3_600_000));
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.ceil(clamped / 86_400_000);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   const lines: string[] = [];
   // Computed once, up front: `deadPlayReason` is the authoritative "is this play already dead for
@@ -627,9 +647,9 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   if (!dead && play.entryDeadline) {
     const deadlineMs = Date.parse(play.entryDeadline);
     if (Number.isFinite(deadlineMs)) {
-      const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
+      const timeLeft = entryWindowTimeLeftLabel(deadlineMs - readMs);
       lines.push(
-        `Entry window closes **${etStampFromIso(play.entryDeadline)}** (**${daysLeft} day${daysLeft === 1 ? "" : "s"}** left) — stale after that, wait for a fresh setup.`,
+        `Entry window closes **${etStampFromIso(play.entryDeadline)}** (**${timeLeft}** left) — stale after that, wait for a fresh setup.`,
       );
     }
   }
@@ -1356,7 +1376,15 @@ export function composeSwingPlayBrief(
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
 
   if (bucket === "watch") {
-    const watchSection = safeCompose("Entry", () => watchEntrySection(play, readMs), null);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-12): used the outer `readMs` local (always the
+    // real `Date.now()` from this function's top) instead of `ctx.readMs`, which line ~1354 above
+    // deliberately stamps to an already-injected override when one is present — exactly the pattern
+    // play-brief-types.ts's `readMs` doc comment asks every downstream call site to follow, and the
+    // "other ~18 Date.now() call sites" note there already flagged this class of gap as a known,
+    // deferred sweep. Surfaced while adding a determinism-pinned regression test for the sub-24h
+    // entry-window fix below: a test that injects `ctx.readMs` to pin "now" silently had no effect
+    // on this section, which kept reading the real wall clock regardless.
+    const watchSection = safeCompose("Entry", () => watchEntrySection(play, ctx.readMs ?? readMs), null);
     if (watchSection) sections.push(watchSection);
   } else if (bucket === "open") {
     const mgmt = safeCompose("Management", () => managementSection(play), null);
