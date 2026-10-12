@@ -109,6 +109,13 @@ test("no scripts/audit/*.mjs POLYGON_API_BASE self-default is a non-URL placehol
  *  - `LearnPageShell` — `/learn`'s layout explicitly "drops the inner LearnPageShell/PageShell"
  *    per its own comment, to avoid a duplicate `<main id="main">` once `/learn` moved under the
  *    marketing group's shell.
+ *  - `ThermalCompareStrip` — removed 2026-10-12. Orphaned since commit `230726ee0` (2026-07-28,
+ *    "feat(thermal): SPY|SPX|QQQ triple desk"), which deleted its only render call site in
+ *    `GexHeatmap.tsx` in favor of `ThermalTripleDesk`, but never deleted the component file
+ *    itself. Went unnoticed for 2.5+ months — FINDINGS.md has at least five entries (2026-08-13,
+ *    2026-08-14, 2026-09-05 x2, 2026-10-06) describing real fixes shipped INTO this already-dead
+ *    file, none of which could ever render. `thermalCompareStripLabel` (`thermal-desk-state.ts`)
+ *    was this component's only caller and is removed with it, for the same reason.
  *
  * `src/components/ScrollProgressBar.tsx` is the SAME kind of zero-importer orphan and was found in
  * this same sweep, but is deliberately NOT on this list and was NOT removed — FINDINGS.md
@@ -128,6 +135,7 @@ test("known-orphaned modules stay removed", () => {
     "src/features/spx/lib/spx-sniper-backdrops.ts",
     "src/features/spx/lib/spx-session-phase.ts",
     "src/features/thermal/components/ThermalFreshnessBar.tsx",
+    "src/features/thermal/components/ThermalCompareStrip.tsx",
     "src/components/landing/LandingBackdrop.tsx",
     "src/components/learn/LearnPageShell.tsx",
     // src/lib/bie/decompose.ts — removed 2026-09-04; compound detection for Largo stress lives
