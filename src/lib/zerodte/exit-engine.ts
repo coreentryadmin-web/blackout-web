@@ -377,6 +377,26 @@ function floorReason(peakPnlPct: number, trimmed: boolean): string {
   return "ratchet_breakeven_floor";
 }
 
+/** A thesis_break's raw P&L alone can't tell a trader whether the play reversed from
+ *  a real move or never worked at all — unlike the floor-exit detail above (which
+ *  already states its arming peak), the thesis_break sentence omitted peak context
+ *  entirely even though `peakPnlPct` was already in scope at both call sites. Reuses
+ *  the ratchet's own arm threshold as the "real move" bar so the distinction matches
+ *  the mechanics a trader already sees elsewhere in the narrative. */
+function thesisBreakPeakClause(peakPnlPct: number | null): string {
+  if (peakPnlPct == null) return "";
+  if (peakPnlPct >= EXIT_RULES.ratchet_arm_pnl_pct) {
+    return ` (had reached a ${fmtPct(peakPnlPct)} peak before the thesis broke)`;
+  }
+  if (peakPnlPct > 0) {
+    return (
+      ` (peaked at only ${fmtPct(peakPnlPct)}, never cleared the ratchet's own ` +
+      `${fmtPct(EXIT_RULES.ratchet_arm_pnl_pct)} arm threshold)`
+    );
+  }
+  return " (never moved favorably before the thesis broke)";
+}
+
 /**
  * How many trim-scale tranches the LATCHED PEAK has armed (0/1/2) under the regime
  * schedule. Pure function of the monotonic peak — the same structural property as
@@ -739,6 +759,7 @@ function decideTrimScale(
       reason: `thesis_break:${broken.source}`,
       detail:
         `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting the remaining position at market, not hoping: ${broken.detail}` +
+        thesisBreakPeakClause(peakPnlPct) +
         (bankedTranchesClause ? ` (${bankedTranchesClause}.)` : ""),
     };
   }
@@ -904,7 +925,8 @@ export function evaluateExitState(input: ExitEngineInput): ExitDecision {
       floorPnlPct: floor,
       reason: `thesis_break:${broken.source}`,
       detail:
-        `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting at market, not hoping: ${broken.detail}`,
+        `Thesis broken (${broken.kind}) at ${fmtPct(pnlPct)} — exiting at market, not hoping: ${broken.detail}` +
+        thesisBreakPeakClause(peakPnlPct),
     };
   }
 
