@@ -1,4 +1,4 @@
-# 2026-08-29 — Largo `get_market_context` tool fitting applied — FIXED
+## 2026-08-29 — [FINDING, P4 largo/tools] Largo `get_market_context` tool fitting applied — FIXED
 
 > **kind:** `FINDING`
 

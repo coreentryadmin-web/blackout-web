@@ -1,4 +1,4 @@
-# 2026-08-29 — Largo `get_nighthawk_dossier` tool — COMPLETE
+## 2026-08-29 — [FINDING, P4 largo/tools] Largo `get_nighthawk_dossier` tool verification — COMPLETE
 
 > **kind:** `FINDING`
 

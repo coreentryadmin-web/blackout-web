@@ -1,4 +1,4 @@
-# 2026-08-29 — Largo `get_analyst_ratings` tool — COMPLETE
+## 2026-08-29 — [FINDING, P4 largo/tools] Largo `get_analyst_ratings` tool verification — COMPLETE
 
 > **kind:** `FINDING`
 

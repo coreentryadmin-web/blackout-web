@@ -1,4 +1,4 @@
-# 2026-08-29 — Largo 6-tool truncation fixes — IMPLEMENTED
+## 2026-08-29 — [FINDING, P2 largo/tools] Largo 6-tool truncation fixes implemented — FIXED & AWAITING VERIFICATION
 
 > **kind:** `FINDING`
 

@@ -1,6 +1,6 @@
-# Largo Truncation: 3 of 6 Tools Still Exceeding 16KB Cap
+## 2026-08-29 — [FINDING, P3 largo/tools] Largo truncation: 3 of 6 tools still exceeding 16KB cap — OPEN
 
-> **kind:** FINDINGS
+> **kind:** `FINDING`
 
 **Date:** 2026-08-29  
 **Root Cause:** Undersized caps from PR #3159 (measured production sizes + JSON overhead not accounted for)  
