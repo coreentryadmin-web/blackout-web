@@ -38,6 +38,145 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-12 — [Vector] Stale "6 → 20" auto-ladder comment, contradicted by the real values — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Vector / dev docs | P3 — comment-only, no behavior affected | FIXED |
+
+**What's wrong.** `src/features/vector/lib/vector-node-density.ts`'s header comment claimed:
+```
+The chart's automatic count (`wallCountForTimeframe`) already walks 6 → 20 with the timeframe
+```
+and
+```
+AUTO (default) follows the timeframe walk (6 → 20) on dense ladders like SPX.
+```
+`wallCountForTimeframe` (`vector-bar-timeframes.ts:51-78`) never returns `6` — its actual ladder
+is `8/11/13/16/20`. A sibling comment in the same subsystem already states this correctly:
+`vector-ticker.ts:68` — "the timeframe-driven AUTO ladder (`wallCountForTimeframe`, 8/11/13/16)".
+The claim that the manual `VECTOR_NODE_DENSITY_OPTIONS` ladder (`6/8/12/16/20`) is "a subset of
+that same walk" is also false independent of the 6-vs-8 slip: `12` isn't in the auto walk's
+values either (which has `11`/`13` instead) — the two ladders overlap only at `8`, `16`, `20`.
+Likely stale from an earlier revision of the auto walk before it was tuned to its current
+values (the file's sibling, `vector-bar-timeframes.ts`, documents several such tunings with git
+references).
+
+**Fix.** Corrected both "6 → 20" references to "8 → 20" and rewrote the subset claim to
+accurately describe the manual ladder as a separate, member-facing set of round numbers rather
+than a subset of the auto walk's own values — `nodeDensityLabel`'s "AUTO <n>" display is what
+actually keeps the two legible against each other, not a shared value set.
+
+**Verification.** `vector-node-density.test.ts` → 7/7 pass (unchanged — comment-only edit).
+`tsc --noEmit` clean.
+
+**Blast radius.** This file's header comment only. No behavior change.
+
+Found via a background Explore-agent sweep of the Vector/Thermal desk UI, independently
+re-verified (`wallCountForTimeframe`'s actual branches, the sibling correct comment in
+`vector-ticker.ts`, and that the manual/auto ladders only partially overlap) before fixing.
+
+## 2026-10-12 — [Vector] 0DTE wall-count override is a no-op at the desk's default 3m timeframe — OPEN (design question, not fixed here)
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Vector / visual density | P3 — comment is misleading; behavior may or may not be intentional | OPEN |
+
+**What's wrong.** `src/features/vector/lib/vector-bar-timeframes.ts:18-23` documents
+`VECTOR_0DTE_WALL_COUNT`:
+```ts
+/** Bead rows per side when a narrowed 0DTE horizon is active — wider than the 3m default (8) so the
+ *  desk opens on more of the intraday rail than a tight spot cluster. ... */
+export const VECTOR_0DTE_WALL_COUNT = 10;
+```
+But `VECTOR_DEFAULT_TIMEFRAME = 3` (line 16), and `wallCountForTimeframe` (line 51-78) already
+gives `tf<=3 → Math.max(VECTOR_0DTE_WALL_COUNT, 11) = 11` — the 3m default is **11**, not 8 (8 is
+the `tf<=1` value). Tracing `wallCountForHorizon` (line 81-86), which is what actually applies
+the 0DTE override:
+```ts
+export function wallCountForHorizon(tf: VectorTimeframeMinutes, horizon: VectorDteHorizon): number {
+  if (horizon === "0dte") {
+    return Math.max(wallCountForTimeframe(tf), Math.min(VECTOR_WALL_NODES_PER_SIDE, VECTOR_0DTE_WALL_COUNT));
+  }
+  return wallCountForTimeframe(tf);
+}
+```
+At `tf=3` (the live default), `wallCountForHorizon(3, "0dte")` = `Math.max(11, 10)` = **11** —
+identical to the non-0DTE case. The override has **zero effect at the desk's actual default
+timeframe**, directly contradicting the comment's stated purpose ("wider... so the desk opens on
+more of the intraday rail"). It only widens anything at `tf=1` (8 → 10); at every other
+timeframe `wallCountForTimeframe` alone already equals or exceeds 10.
+
+**Why this is a comment problem AND an open behavioral question, not just a typo.** The
+"(8)" in the comment is simply wrong (should read "11" to match the real 3m value) — that part
+is a safe, mechanical text fix. But fixing only the text leaves the deeper question unexamined:
+was the 0DTE override ever meant to widen the rail beyond 11 at the 3m default, and did a later
+tuning pass (the `tf<=3` branch's own floor of 11, per that function's extensive "THE WALK STEPS
+UP" / "RESTORED 2026-09-07" git-archaeology comments) silently absorb what `VECTOR_0DTE_WALL_COUNT`
+used to control? `VECTOR_0DTE_WALL_COUNT` itself carries its own revision history ("Was 12.
+Reduced to 10 (member-directed, 2026-08-09)") — it has been deliberately member-tuned before,
+so bumping it again to restore a real effect at tf=3 is a product/visual-density decision, not
+a drive-by fix. This file's `wallCountForTimeframe` has already absorbed several corrections
+from exactly this kind of entanglement (see its own comment: "#4460 mistakenly raised counts...
+thinking that was Sep-3" — a prior session changed a number here based on a misreading, and it
+visibly broke the chart's reference density until reverted).
+
+**Not fixed here** — per the standing "write up bigger findings/enhancements rather than
+unilaterally building them" discipline: changing `VECTOR_0DTE_WALL_COUNT` (or the `tf<=3` floor)
+to restore a real 0DTE-specific widening touches the SPX desk's live, carefully-tuned bead
+density, which has broken from well-intentioned changes before. The one safe, mechanical part
+(correcting "(8)" to "(11)" in the comment) is deliberately left for whoever resolves the
+behavioral question too, so the comment doesn't get marked "accurate" while the real question —
+should 0DTE widen the rail at the default timeframe at all — goes unexamined.
+
+**Recommended next step (not done here).** Either (a) raise `VECTOR_0DTE_WALL_COUNT` above 11 if
+0DTE really should widen the 3m view beyond the baseline, confirmed against a live SPX 0DTE
+session the way prior tunings in this file were (member screenshot comparison), or (b) if the
+`tf<=3` floor already does what 0DTE needed, document that explicitly and correct the comment to
+say the override is now effectively dormant except at `tf=1`, rather than leave it claiming an
+effect it doesn't have.
+
+**Verification.** Traced `wallCountForTimeframe`/`wallCountForHorizon`/`VECTOR_DEFAULT_TIMEFRAME`
+directly in `src/features/vector/lib/vector-bar-timeframes.ts`; confirmed `Math.max(11, 10) = 11`
+by direct computation, not inferred.
+
+Found via a background Explore-agent sweep of the Vector/Thermal desk UI, independently
+re-verified (recomputed the exact `wallCountForHorizon(3, "0dte")` result from source) before
+writing this up.
+
+## 2026-10-12 — [Thermal] GreeksDistributionPanel carried a dead required `ticker` prop — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Thermal / dead code | P3 — harmless at runtime, pure cleanup | FIXED |
+
+**What's wrong.** `src/features/thermal/components/GreeksDistributionPanel.tsx` declared
+`ticker: string` as a required prop, destructured it as `ticker: _ticker`, and never referenced
+it anywhere in the component body — confirmed via grep, the name appears exactly twice in the
+whole file (the type declaration and the underscore-prefixed destructure). Its parallel sibling
+`ThetaDistributionPanel` (same tab group, rendered as the alternate "pair-d" lens in
+`GexHeatmap.tsx`) has no `ticker` prop at all and renders fine without it — an inconsistency
+between two near-identical components where one carries a vestigial prop the other never
+needed. The caller (`GexHeatmap.tsx`) passed `ticker={ticker}` for no effect.
+
+**Fix.** Removed the `ticker` prop from `GreeksDistributionPanelProps`, the destructure, and the
+caller's pass-through in `GexHeatmap.tsx`. Updated the existing test helper
+(`GreeksDistributionPanel.test.tsx`) to stop passing the now-removed prop.
+
+**Verification.** `npx tsx --experimental-test-module-mocks --test
+src/features/thermal/components/GreeksDistributionPanel.test.tsx` → 13/13 pass (unchanged — the
+prop was never read, so removing it changes no rendered output). `tsc --noEmit` clean.
+
+**Blast radius.** `GreeksDistributionPanel.tsx`, its one caller in `GexHeatmap.tsx`, and its own
+test file. No other callers exist (confirmed via repo-wide grep for `GreeksDistributionPanel`).
+
+Found via a background Explore-agent sweep of the Vector/Thermal desk UI, independently
+re-verified (confirmed the prop's only two occurrences in the file, `ThetaDistributionPanel`'s
+lack of an equivalent prop, and the caller's pass-through) before fixing.
+
 ## 2026-10-12 — [Admin] CreateUserModal missing "community" tier option (EditUserModal has it) — FIXED
 > **kind:** `FINDING`
 
