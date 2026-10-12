@@ -143,21 +143,53 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
   });
 }
 
+/** Hard cap on warm operation completion time — fail-open with partial results vs 20+ min lock hold.
+ *  Each of the three parallel operations (timeline/GEX/desk) can independently timeout without
+ *  blocking the other two or the entire warm from returning. 10s timeout chosen as roughly 2× the
+ *  observed baseline <5s per operation, generous enough for normal latency but strict enough to
+ *  prevent cascade tail-latency from holding the OVERLAP_LOCK and stalling subsequent runs.
+ */
+const MERIDIAN_WARM_OPERATION_TIMEOUT_MS = 10_000;
+
 /** Pre-warm shared caches Meridian reads (Polygon GEX + desk enrichment + timeline). */
 export async function warmMeridianCaches(daysAhead = DEFAULT_WARM_DAYS): Promise<{
   timeline_ok: boolean;
   gex_ok: boolean;
   desk_ok: boolean;
 }> {
-  const [timelineResult, gexResult, deskResult] = await Promise.allSettled([
+  // Timeout each operation independently — a timeout returns undefined/false for that operation,
+  // but the other two complete normally. This prevents a single slow upstream from holding the
+  // OVERLAP_LOCK for 20-80s and blocking subsequent scheduled warm runs (see CLAUDE.md §A2).
+  const timelinePromise = Promise.race([
     loadMeridianTimelineResponse(daysAhead),
+    new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), MERIDIAN_WARM_OPERATION_TIMEOUT_MS)
+    ),
+  ]);
+
+  const gexPromise = Promise.race([
     fetchGexHeatmap("SPX"),
+    new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), MERIDIAN_WARM_OPERATION_TIMEOUT_MS)
+    ),
+  ]);
+
+  const deskPromise = Promise.race([
     prefetchSpxDeskEnrichment(),
+    new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), MERIDIAN_WARM_OPERATION_TIMEOUT_MS)
+    ),
+  ]);
+
+  const [timelineResult, gexResult, deskResult] = await Promise.allSettled([
+    timelinePromise,
+    gexPromise,
+    deskPromise,
   ]);
 
   return {
-    timeline_ok: timelineResult.status === "fulfilled",
+    timeline_ok: timelineResult.status === "fulfilled" && timelineResult.value != null,
     gex_ok: gexResult.status === "fulfilled" && gexResult.value != null,
-    desk_ok: deskResult.status === "fulfilled",
+    desk_ok: deskResult.status === "fulfilled" && deskResult.value != null,
   };
 }
