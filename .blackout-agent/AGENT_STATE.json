@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-12T02:36:34.089Z",
+  "updated_at": "2026-10-12T07:38:30.688Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "339b19d2a76b74d27fad6544af315ea1c15908b3",
+    "last_main_sha": "4a1bdca93902cb35a6082c22b6696a452782ca5d",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-23T05:33:31.043Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-23T05:33:31.551Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-23T06:45:27.763Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-23T06:45:28.430Z",
       "type": "context_sync",
@@ -1271,9 +1253,47 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-12T07:38:18.134Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-12T07:38:24.661Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-12T07:38:30.688Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
     }
   ],
   "open_prs": [
+    {
+      "number": 5890,
+      "title": "docs(findings): Vector 0DTE wall-count override is a no-op at the 3m default",
+      "branch": "docs/vector-0dte-wall-count-noop-finding",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-12T07:27:53Z"
+    },
+    {
+      "number": 5889,
+      "title": "docs(vector): fix stale 6-to-20 auto-ladder comment in node-density",
+      "branch": "fix/vector-node-density-stale-ladder-comment",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-12T07:26:42Z"
+    },
     {
       "number": 5663,
       "title": "fix(swing): explicit mark_as_of column for staleness tracking",
