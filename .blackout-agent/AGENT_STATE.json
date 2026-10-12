@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-12T18:37:46.475Z",
+  "updated_at": "2026-10-12T20:07:25.014Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6860ad929ceb9ef71f036e4e7de3486ec27054d6",
+    "last_main_sha": "2930366eba506bcadcf6c4e5e2f820639b6d1f91",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-26T22:59:23.387Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-26T22:59:23.721Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T02:11:48.839Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-09-27T02:11:49.426Z",
       "type": "context_sync",
@@ -1271,29 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-12T20:07:15.883Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-12T20:07:20.551Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-12T20:07:25.014Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
-    {
-      "number": 5924,
-      "title": "docs(findings): fold 1 staged finding from #5922",
-      "branch": "docs/fold-5922-2026-10-12",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-12T18:32:56Z"
-    },
-    {
-      "number": 5923,
-      "title": "fix(meridian): MeridianBeatHistory renders a span not a disabled button",
-      "branch": "fix/meridian-beat-history-tap-target",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-12T18:32:02Z"
-    },
     {
       "number": 5663,
       "title": "fix(swing): explicit mark_as_of column for staleness tracking",
