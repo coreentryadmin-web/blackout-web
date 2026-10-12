@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-12T12:48:06.303Z",
+  "updated_at": "2026-10-12T14:39:36.804Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,19 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "36fd0b7634150d3585cd2c96b16ba1dbbfc429dc",
+    "last_main_sha": "a65c659eaebdb8e9855c532472194ab6a39f3554",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-23T19:05:23.059Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
     {
       "at": "2026-09-23T19:05:23.306Z",
       "type": "context_sync",
@@ -1271,9 +1265,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-12T14:39:36.803Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
+    {
+      "number": 5907,
+      "title": "fix(learn): correct stale Largo tool-count claim (~70 -> ~130+)",
+      "branch": "fix/largo-tool-count-stale-learn-copy",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-12T14:28:33Z"
+    },
     {
       "number": 5663,
       "title": "fix(swing): explicit mark_as_of column for staleness tracking",
