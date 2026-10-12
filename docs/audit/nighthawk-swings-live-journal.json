@@ -1,9 +1,9 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T13:38:00.000Z",
+  "last_updated": "2026-10-12T13:52:00.000Z",
   "notes": "New native commit: AMD:51, committed 16:05:57Z, score 68.1, EVENT_DRIVEN/TACTICAL, entry premium 17.725, entry trigger underlying 610.91 / invalidation 595.78, signals FLOW+VECTOR+CATALYST. First native commit today. HOLD, +2.8% as of 16:17Z. Tracking for the day. Native book no longer flat.",
-  "checked_this_cycle_no_bug_found": false,
+  "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
     "as_of": "2026-09-10T06:20:00Z",
@@ -584,7 +584,7 @@
   },
   "amd_invalidation_watch_2026_10_12_rth_open": {
     "t": "2026-10-12T13:38:00Z",
-    "status": "ACTIVE WATCH, NOT YET A CONFIRMED FINDING -- same precedent/discipline as the 2026-10-08 msft_49_invalidation_watch item (that one resolved normally; do not pre-judge this one either way).",
+    "status": "RESOLVED 2026-10-12T13:52Z -- re-checked at the next tick (09:45 ET, ~15min later): AMD spot recovered to 596.13, back ABOVE the 595.78 invalidation level (it dipped to 592.71 only between the 09:30 and 09:45 ticks, per GEX levels timestamps). No tick ever sampled spot confirmed-below-invalidation at its own evaluated instant, so structural_stop correctly never fired -- this was transient open-volatility noise inside the ~15-min cron cadence, same shape as the 2026-10-08 MSFT precedent (which also self-resolved). Not a bug. AMD:51/AMD:52 both still HOLD, -40.9%/-40.8%, both deep red but thesis genuinely intact at every sampled tick. No further action.",
     "symptom": "RTH open (09:30 ET) hit both native AMD positions hard: AMD:51 P&L -10.0% -> -44.1% (mark $15.95->$9.90), AMD:52 -8.7% -> -37.9% (mark $14.75ish->$10.85). Both still liveStatus HOLD, both play-briefs still say 'What to watch: Thesis intact'. AMD:51's live GEX spot (levels array, 09:34 ET, freshness:live) is 592.71 -- BELOW its own pinned entry invalidationUnderlyingPx 595.78 (journal amd_51_2026_10_09 entry). AMD:52's archetype (Pullback continuation) already shows thesis health 57% 'fading', manage engine EXIT/SELL recommended but advisory-only (not enforced), still HOLD.",
     "investigation": "Read manage.ts: structural_stop is the HIGHEST-precedence GATE (fires EXIT at any P&L once underlying crosses), and manage-sync.ts:318 correctly sources structuralStopLevel from row.thesis_invalidation_px (the pinned commit-time level) when no live override is supplied -- the wiring itself looks correct, not an obvious dead-gate repeat of the #5537 profit_ladder class of bug (that defect is about the EDGE/profit rung, not this GATE rung). Most likely explanation: evaluateSwingManagement only runs on the swing-active-refresh CRON TICK (every 15 min), and the brief's own 'Option mark as of 09:30 ET' timestamp shows the LAST VERDICT was computed at the market-open tick itself -- spot may have still been at/above 595.78 at that exact sampled instant and only fallen below it in the few minutes since (levels spot is a fresher, independently-polled read at 09:34 ET). This would be the SAME inherent ~15-min cron cadence staleness documented everywhere else in this system, not a wiring defect -- but NOT YET CONFIRMED either way.",
     "next_step": "Re-check both AMD:51 and AMD:52 play-briefs at the NEXT full-mandate tick (~09:45-10:00 ET / 13:45-14:00 UTC), after the next active-refresh cron tick has had a chance to run with spot already below invalidation at its OWN sampled instant. If thesisLevel/liveStatus correctly flips to EXIT/structural_stop on that next tick -> this was pure tick-cadence lag, not a bug, close this watch item (same resolution as the 2026-10-08 MSFT precedent). If it does NOT flip despite a tick sampling spot clearly below invalidation -> that is a genuine, reportable downside invalidation-detection gap, same shape as the standing #5537-adjacent open question -- report on #4076, hold, do not touch manage.ts/manage-sync.ts without operator sign-off (live-trading-path, per CARVE-OUT)."
