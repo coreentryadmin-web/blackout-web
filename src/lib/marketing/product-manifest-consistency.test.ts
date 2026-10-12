@@ -25,6 +25,7 @@ const PUBLIC_SURFACES = [
   "src/lib/site.ts",
   "src/lib/upsell-features.ts",
   "src/components/landing/RedesignHome.tsx",
+  "src/components/landing/StaticMarketingNav.tsx",
   "src/components/upgrade/UpgradePageShell.tsx",
   "src/app/(marketing)/vs/others/page.tsx",
   "src/app/(marketing)/about/page.tsx",
