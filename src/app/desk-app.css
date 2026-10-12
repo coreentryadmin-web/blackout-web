@@ -2090,14 +2090,17 @@ html.nav-locked body { overflow: hidden; }
   display: grid; grid-template-columns: 3.8rem 1fr 3.4rem 3.6rem;
   align-items: center; gap: 0.5rem;
   padding: 0.18rem 0.3rem; border: 0; border-radius: 0.35rem;
-  background: transparent; color: inherit; text-align: left; cursor: pointer;
+  background: transparent; color: inherit; text-align: left;
   font-family: var(--font-mono, monospace); font-size: 0.72rem;
   transition: background-color 0.16s ease;
 }
 /* Clickable row — 19px measured live, under the 24px minimum target. */
 .mv-beat-row { min-height: 24px; }
-.mv-beat-row:disabled { cursor: default; }
-.mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
+/* Row renders as a plain <span> when no onSelect is passed (neither current call site passes
+   one) — never a disabled button. Same split as .mv-target-dot[type="button"]: only the real
+   <button type="button"> variant gets pointer/hover affordance. */
+.mv-beat-row[type="button"] { cursor: pointer; }
+.mv-beat-row[type="button"]:hover { background: rgba(125, 211, 252, 0.07); }
 /* nowrap: the 3.2rem column this replaced wrapped an 8-char yy-mm-dd date
    ("26-05-\n20") onto two lines — widened to 3.8rem and pinned to one line. */
 .mv-beat-date { color: rgba(125,211,252,0.88); white-space: nowrap; }
