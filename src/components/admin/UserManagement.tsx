@@ -808,6 +808,7 @@ function CreateUserModal({
             onChange={(e) => setTier(e.target.value)}
           >
             <option value="free">free</option>
+            <option value="community">community</option>
             <option value="premium">premium</option>
           </select>
         </div>
