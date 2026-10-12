@@ -4,6 +4,16 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-12 (16:35 UTC / Mon 12:36 ET) — [SEO] RTH wake (final before 13:00 close): gamma-snapshot live, CLS clean
+
+Confirmed clock myself: Mon 12:36 ET, last wake in today's window. Resynced to `origin/main`
+(`9fb0040` → `8b110b8`, other-lane whop fix). `/api/public/gex-snapshot` → `market_session: OPEN`,
+`degraded: false`, spot 7810.84, `change_pct` populated. Polled 5x at 3s intervals:
+`calculation_id` briefly reverted once (`...016412`→`...012996`, age rising to 20s), re-polled
+and resolved cleanly to a fresh higher value (`...034357`) — the known-harmless cache-read race.
+Purged Cloudflare edge, re-measured live-page homepage CLS — **0.0004, GOOD**. No defects found,
+no PR opened. Returning to normal search/authority posture at 13:00 ET.
+
 ## 2026-10-12 (15:35 UTC / Mon 11:36 ET) — [SEO] RTH wake: gamma-snapshot live, change_pct self-resolved, CLS clean
 
 Confirmed clock myself (Mon 11:36 ET, within 09:30-13:00). Resynced to `origin/main`
