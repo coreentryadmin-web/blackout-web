@@ -26,6 +26,16 @@ test("classifyAdminUserAccess: community without premium", () => {
   assert.equal(r.deskAccess, true);
 });
 
+test("classifyAdminUserAccess: tier=community set directly (admin manual grant, no membershipKind)", () => {
+  // Edit/Create User modal lets an admin set tier="community" directly without ever touching
+  // membershipKind (src/app/api/admin/users/[id]/route.ts's PATCH handler) — real desk access
+  // (tierAtLeast in src/lib/tiers.ts) is granted off tier alone, so the admin-facing label must
+  // match, not fall through to "free" just because membershipKind was never set.
+  const r = classifyAdminUserAccess({ tier: "community", membershipKind: null });
+  assert.equal(r.accessLabel, "community");
+  assert.equal(r.deskAccess, true);
+});
+
 test("classifyAdminUserAccess: free signup", () => {
   const r = classifyAdminUserAccess({ tier: "free", membershipKind: "free" });
   assert.equal(r.accessLabel, "free");
