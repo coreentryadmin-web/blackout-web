@@ -1044,6 +1044,17 @@
         "src/lib/zerodte/gates.ts:1427-1440 (planQualityGateBlocks)",
         "src/lib/zerodte/session-board-stats.ts:85-96 (fromSetups vs funnelTopCode doc comment)"
       ]
+    },
+    "2026-10-12T14:16:00Z_FIRST_COMMIT_READY_SPXW_WATCH": {
+      "cycle": "RTH :15-offset trigger, 14:16:55 UTC firing",
+      "board": {
+        "setups_scanned": 72,
+        "commit_ready": 1,
+        "gate_blocked": 71,
+        "committed_today_in_record": 0
+      },
+      "finding": "First commit-eligible setup of the session: SPXW short, 7800P, score 77, gate.verdict COMMIT, blocks:[], live_commit_preconditions:[]. VECTOR aligned (5m down, VWAP hold), HELIX neutral (put 67% dom), g4_vix normal (15.39), g6_conflict none. Checked /api/market/zerodte/record?days=1 immediately after -- still 0 rows, so this is a scan-pass COMMIT verdict that has not yet been written to the ledger (expected lag between scan eligibility and the commit writer's own tick, not a defect). Watching for it to land in the ledger next cycle.",
+      "action": "No escalation -- normal scan-to-commit lag. Will verify the SPXW commit lands cleanly on next cycle's record pull."
     }
   },
   "sessions": {
