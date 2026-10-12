@@ -38,6 +38,146 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-12 — [Admin] CreateUserModal missing "community" tier option (EditUserModal has it) — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Admin console / UX gap | P3 — admin workaround exists (create-then-edit), no data integrity risk | FIXED |
+
+**What's wrong.** `src/components/admin/UserManagement.tsx`'s `CreateUserModal` Tier `<select>`
+(around line 804-812) offered only `free`/`premium`:
+```tsx
+<option value="free">free</option>
+<option value="premium">premium</option>
+```
+while the near-identical `EditUserModal` Tier `<select>` (line 594-603) offers all three:
+`free`, `community`, `premium`. The backend fully supports creating a user directly at
+`"community"` tier — `POST /api/admin/users/create` (`route.ts:49,60,86`) calls
+`parseTier(tier)`, which recognizes `"community"` (`src/lib/tiers.ts:9-13`) — so this was a pure
+UI omission, not a backend limitation. An admin creating a manual SPX Slayer-tier account had to
+create the user at `free`/`premium` first and then switch to the Edit modal to set `community` —
+a copy-paste drift between two near-identical selects, not an intentional restriction.
+
+**Fix.** Added the missing `<option value="community">community</option>` to CreateUserModal's
+Tier select, matching EditUserModal exactly.
+
+**Regression guard added.** New `src/components/admin/UserManagement.test.ts` (no test file
+existed for this component before): scopes to each modal's own function body (`EditUserModal`
+vs `CreateUserModal`, split at the next top-level `function` declaration) and asserts both offer
+the same three tier options — source-text assertion, matching this repo's existing convention
+for component-local constants without a render harness (see `AdminLaunchStatusPanel.test.ts`).
+Verified RED→GREEN: reverting just the fix fails exactly on CreateUserModal (1 pass / 1 fail);
+restoring it passes (2/2).
+
+**Blast radius.** CreateUserModal's Tier select only. No change to EditUserModal or any backend
+route. `tsc --noEmit` clean.
+
+**Verification.**
+```
+npx tsx --experimental-test-module-mocks --test src/components/admin/UserManagement.test.ts
+# 2 pass, 0 fail
+```
+
+Found via the same background Explore-agent sweep of the billing/account/admin surface that
+found the `classifyAdminUserAccess` community-tier label gap (separate PR, same sweep) —
+independently re-verified (both select blocks, the backend's `parseTier` support, and that no
+test file existed for this component) before fixing.
+
+## 2026-10-12 — [Admin] Admin panel mislabels manually-set "community" tier users as "free" — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Admin console / tier labeling | P2 — cosmetic to the admin, but masks a real desk-access fact | FIXED |
+
+**What's wrong.** `classifyAdminUserAccess` (`src/lib/admin-user-access.ts`) collapsed any
+`tier` value other than `"premium"` straight to `"free"`:
+```ts
+const tier = input.tier === "premium" ? "premium" : "free";
+```
+and only ever inferred the `"community"` label from `membershipKind`, never from `tier` itself.
+That's correct for the normal Whop-webhook path (where `tier` metadata often legitimately stays
+`"free"` while `membershipKind` carries `"community"`) — but `PATCH /api/admin/users/[id]`
+(`src/app/api/admin/users/[id]/route.ts:135`, via `parseTier(body.tier)`) lets an admin set
+`tier: "community"` directly through the Edit User modal's Tier dropdown
+(`UserManagement.tsx:594-603`), without ever touching `membership_kind`. Real desk access
+(`tierAtLeast` in `src/lib/tiers.ts`, which `desk-tier-requirements.ts` uses to gate SPX at
+`"community"`) is granted purely off the raw `tier` value — so an admin who manually comps a
+user to `tier: "community"` (a support gesture, a pre-webhook grant) saw that user labeled
+**"Free — marketing site + /upgrade only" / "No desk"** in the admin table, while the user could
+actually already open `/dashboard` and the SPX desk. The label lied about a real access fact.
+
+**Why untested.** `admin-user-access.test.ts` had a case for `{tier: "free", membershipKind:
+"community"}` (the webhook path) but none for `{tier: "community", membershipKind: null}` (the
+admin-direct-set path) — the exact gap.
+
+**Fix.** `tier` now preserves `"community"` as its own value (not collapsed to `"free"`), and the
+community branch checks `tier === "community" || kind === "community"` instead of only `kind`.
+Order preserved: admin bypass first, then premium (tier wins over a stale membershipKind), then
+community from either source, then free. Added the missing test case. Verified RED→GREEN:
+reverting just `admin-user-access.ts` fails the new test (6 pass / 1 fail); restoring it passes
+(7/7).
+
+**Blast radius.** `classifyAdminUserAccess` has 2 real call sites (`src/lib/admin-users.ts`,
+and transitively the admin users list/detail API/UI) — label-only change, no change to the real
+access-gating logic (`tierAtLeast`/`desk-tier-requirements.ts`), which was already correct.
+`tsc --noEmit` clean.
+
+**Verification.**
+```
+npx tsx --experimental-test-module-mocks --test src/lib/admin-user-access.test.ts
+# 7 pass, 0 fail
+```
+
+Found via a background Explore-agent sweep of the billing/account/admin surface,
+independently re-verified (exact lines, the PATCH route's `parseTier` call, the
+`tierAtLeast`/`desk-tier-requirements.ts` real-access chain, and the test file's existing
+coverage) before fixing.
+
+## 2026-10-12 — [Dead code] Unused useAppAuth() destructure left in AccountProfilePanel — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Dead code | P3 — harmless at runtime, pure cleanup | FIXED |
+
+**What's wrong.** `src/components/account/AccountProfilePanel.tsx`:
+```tsx
+export function AccountProfilePanel() {
+  const { email, tier, signOut, isLoaded } = useAppAuth();
+
+  return <UserProfile appearance={CLERK_APPEARANCE} />;
+}
+```
+None of `email`, `tier`, `signOut`, `isLoaded` are referenced anywhere in the function body —
+the component just renders Clerk's `<UserProfile>`. Traced to commit `e168eab0f` ("retire the
+last of the Cognito switch", #1967), which deleted the branch that actually consumed these
+values (a Cognito fallback UI) but left the now-pointless `useAppAuth()` destructure behind.
+
+**Why nothing caught it.** `useAppAuth()` (`src/lib/auth-client.tsx:60-63`) is a pure
+`useContext` read with no side effects, so calling it or not makes no behavioral difference —
+and this repo's eslint config doesn't flag unused destructured variables here (confirmed:
+`npx eslint` on the file was clean both before and after this fix). Nothing short of reading the
+function body would surface it.
+
+**Fix.** Removed the dead destructure and the now-unused `useAppAuth` import. No behavior
+change — `useAppAuth()` has no side effects, so dropping the call changes nothing about what
+renders.
+
+**Verification.** `tsc --noEmit` clean; `npx eslint src/components/account/AccountProfilePanel.tsx`
+clean before and after (confirming this really was inert, not silently load-bearing). No test
+added — there is no behavioral surface to test for a pure dead-code deletion with a verified
+side-effect-free removed call.
+
+**Blast radius.** This file only — `AccountProfilePanel` has no other callers of the removed
+values.
+
+Found via a background Explore-agent sweep of the billing/account/admin surface, independently
+re-verified (confirmed zero references to the four destructured names in the function body, the
+hook's side-effect-free implementation, and the originating Cognito-removal commit) before
+fixing.
+
 ## 2026-10-12 — [Security] x-intel cron echoed raw exception text in its HTTP response — FIXED
 > **kind:** `FINDING`
 
