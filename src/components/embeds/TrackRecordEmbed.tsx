@@ -4,9 +4,11 @@ import { EmbedFrame } from "./EmbedFrame";
 import type { PublicTrackRecord } from "@/lib/track-record-public";
 
 /**
- * Presentational social-proof card. PURE props in (no fetching) so it renders
- * both server-side (public /track-record page + iframe) and client-side
- * (dashboard). No grey text per house rule — bull / cyan-400 / sky-300 / white.
+ * Presentational social-proof card. PURE props in (no fetching). Rendered server-side in two
+ * places: the public `/methodology` page (MethodologyContent.tsx, the real public surface) and
+ * the admin-only `/embed/track-record` iframe preview (gated by requireAdmin() — the legacy
+ * public `/track-record` route now just redirects to the admin console). No grey text per house
+ * rule — bull / cyan-400 / sky-300 / white.
  */
 export function TrackRecordEmbed({
   record,
