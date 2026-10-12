@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T19:05Z",
-  "notes": "ASTS:53 continues monotonic decline: -18.6% (18:31) -> -23.1% (19:02), underlying only -2.6% adverse since entry -- confirmed via play-brief this remains pure high-IV (75%) option decay/leverage, not a thesis break: premium stop $1.47 still 47% away from mark $2.83, thesis health 67% 'intact', structural put-wall support at 50.00 untouched (spot 52.18). No escalation. Used this exact divergence as the live example for a new Ask Largo enhancement idea (see ask_largo_enhancement_ideas_2026_10_12) raised on #4076: narrate the P&L-vs-underlying-move gap so traders don't have to infer leverage/IV decay themselves. WATCH list unchanged (GOOG blocked by real gate:G-S14:cortex_net_negative; IREN/AMZN blocked by the known legacy:exempt wiring gap, not real gates).",
+  "last_updated": "2026-10-12T19:18Z",
+  "notes": "ASTS:53 continues steady monotonic decay: -23.1% (19:02) -> -28.3% (19:16), underlying adverse move only grew -2.6% -> -3.3% -- re-checked play-brief, same pure IV-decay story, stop cushion moved proportionally (47% -> 43% from mark), thesis still 'intact' at 67%. Nothing qualitatively new -- no escalation. WATCH list unchanged (GOOG/IREN/AMZN, same gate reasons). Ask Largo leverage/IV-decay narrative idea raised at 19:05 (ask_largo_enhancement_ideas_2026_10_12) still awaiting Cursor read.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
