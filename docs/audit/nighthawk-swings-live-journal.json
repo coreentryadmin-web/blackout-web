@@ -1,7 +1,7 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T08:10:00.000Z",
+  "last_updated": "2026-10-12T11:05:00.000Z",
   "notes": "New native commit: AMD:51, committed 16:05:57Z, score 68.1, EVENT_DRIVEN/TACTICAL, entry premium 17.725, entry trigger underlying 610.91 / invalidation 595.78, signals FLOW+VECTOR+CATALYST. First native commit today. HOLD, +2.8% as of 16:17Z. Tracking for the day. Native book no longer flat.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
@@ -577,5 +577,9 @@
     "t": "2026-10-12T08:10:00Z",
     "status": "CLEAN -- pulled AMD:51 play-brief (GET /api/market/swing/play-brief?playId=SWING:AMD:51), audited full envelope vs LARGO-PRODUCT-CONTRACT.md C1-C10.",
     "notes": "Book-context internal-conflict detection (SOXS LONG x2 opposing AMD LONG in semis theme) working correctly. Archetype near-tie disclosure (Event-driven beat Pullback by 4pts) honest. Strike-vs-flow divergence disclosed. degradedReadLine (\"Vector spot not wired on this tick\") fired consistent with unavailableSources listing both Vector snapshot and GEX matrix as stale this cycle -- NOT the #5620-class narrative/unavailableSources contradiction (that class is already fixed per the 2026-10-07 comment in play-brief-narrative.ts). No new gap found this pass."
+  },
+  "watch_board_shrink_2026_10_12_premarket": {
+    "t": "2026-10-12T11:05:00Z",
+    "note": "WATCH list dropped from 3 (MRVL/VLO/IREN) to 1 (IREN only) and committed count dropped 146->145 between the 10:02 and 11:02 UTC pre-market checks. Confirmed MRVL/VLO are gone entirely (not promoted to committed) via a direct committed-array search. Checked whether this widened the record-vs-horizons banger open-count gap logged earlier today -- it did NOT: /record still reports bangerOpens=148, committed banger-origin rows still 143 (145 total - 2 native AMD), same 5-row gap as this morning, unchanged. So the committed-count drop is the VST pre-entry row (no liveStatus) dropping off, not a new banger expiry. Reads as expected pre-RTH serving-snapshot/entry-validity-window rotation (stale Friday WATCH candidates aging out), not a new bug -- no escalation."
   }
 }
