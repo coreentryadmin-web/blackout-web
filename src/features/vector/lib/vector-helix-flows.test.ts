@@ -12,10 +12,8 @@ import {
   VECTOR_HELIX_MIN_PREMIUM,
   VECTOR_HELIX_RANKED_MAX_DTE,
   VECTOR_HELIX_RECENT_MAX_DTE,
-  VECTOR_HELIX_WHALE_PREMIUM,
   VECTOR_LIVE_HELIX_RANKED_DISPLAY_N,
   VECTOR_LIVE_HELIX_RECENT_N,
-  vectorLiveHelixSubtitle,
 } from "./vector-helix-flows";
 import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
 import type { FlowAlert } from "@/lib/api";
@@ -38,36 +36,24 @@ function flow(partial: Partial<FlowAlert> & Pick<FlowAlert, "premium">): FlowAle
 
 const defaultFilters = {
   typeFilter: "ALL" as const,
-  whalesOnly: false,
-  dteOnly: false,
   minPremium: VECTOR_HELIX_MIN_PREMIUM,
 };
 
 const midday = Date.parse("2026-08-15T14:00:00-04:00");
 const sessionOpen = sessionOpenMs(midday);
 
-test("filterVectorHelixFlows: whales + side + 0DTE", () => {
+test("filterVectorHelixFlows: side filter", () => {
   const rows = [
     flow({ premium: 1_500_000, option_type: "CALL", dte: 0 }),
     flow({ premium: 900_000, option_type: "PUT", dte: 0 }),
     flow({ premium: 2_000_000, option_type: "CALL", dte: 5 }),
   ];
-  const whales = filterVectorHelixFlows(rows, {
-    typeFilter: "ALL",
-    whalesOnly: true,
-    dteOnly: false,
+  const calls = filterVectorHelixFlows(rows, {
+    typeFilter: "CALL",
     minPremium: 200_000,
   });
-  assert.equal(whales.length, 2);
-  assert.ok(whales.every((r) => r.premium >= VECTOR_HELIX_WHALE_PREMIUM));
-
-  const dte0 = filterVectorHelixFlows(rows, {
-    typeFilter: "ALL",
-    whalesOnly: false,
-    dteOnly: true,
-    minPremium: 200_000,
-  });
-  assert.equal(dte0.length, 2);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((r) => r.option_type === "CALL"));
 });
 
 test("isFlowSinceSessionOpen: rejects pre-open prints", () => {
@@ -132,14 +118,6 @@ test("pickVectorLiveHelixLayout: newest session leader stays ranked #1 not recen
   assert.equal(layout.ranked[0]!.premium, 800_000);
   assert.equal(layout.recent.length, 1);
   assert.equal(layout.recent[0]!.premium, 500_000);
-});
-
-test("vectorLiveHelixSubtitle: mentions Recent when strip populated", () => {
-  assert.match(
-    vectorLiveHelixSubtitle({ recent: [flow({ premium: 300_000 })], ranked: [] }, true),
-    /Recent/i
-  );
-  assert.match(vectorLiveHelixSubtitle({ recent: [], ranked: [] }, false), /session closed/i);
 });
 
 test("trimVectorHelixFlowPool: keeps largest prints not newest", () => {
