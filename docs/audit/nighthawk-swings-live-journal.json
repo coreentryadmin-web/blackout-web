@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-12T14:20:00.000Z",
-  "notes": "AMD:51 and AMD:52 BOTH CLOSED 2026-10-12T14:15:18Z, closedReason 'stopped', exitPnlPct -57.55%/-57.08% -- confirms the earlier invalidation-watch hypothesis cleanly: AMD spot broke below the pinned invalidationUnderlyingPx (595.78/595.99) and the structural_stop GATE correctly fired on the NEXT active-refresh tick (10:15 ET) after the ambiguous 10:00/10:03 ET window where spot was oscillating right on the line. Exit premium (~$7.5) landed ABOVE the raw -60% premium hard-stop floor ($7.09/$6.99), confirming it was the underlying-based structural_stop gate that fired, not the premium backstop -- the system worked exactly as designed, just on its normal ~15-min cron cadence. No bug. Native swing book is now flat (0 open native positions).",
+  "last_updated": "2026-10-12T17:05:00.000Z",
+  "notes": "New native commit: ASTS:53, HOLD, -2.7% as of 17:01:50Z. First new native commit since AMD:51/52 closed via structural_stop at 10:15 ET. Native book no longer flat. Tracking for the day. WATCH list now 3 (GOOG/IREN/AMZN) -- GOOG notably blocked by a REAL gate (gate:G-S14:cortex_net_negative, Cortex veto) rather than the structural legacy:exempt wiring gap, confirming the gate stack is actively discriminating, not just rubber-stamping everything through the known wiring issue.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
