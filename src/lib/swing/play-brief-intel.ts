@@ -1891,7 +1891,20 @@ export function meridianPeerSection(ctx: SwingPlayBriefContext): RichSection | n
   return { title: "Earnings peer lens", body };
 }
 
-/** Macro rates + market breadth when arsenal fetched index context. */
+/**
+ * Macro rates + market breadth when arsenal fetched index context.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-13): this section rendered `yield_10_year` and
+ * `cpi` with zero vintage disclosure, unlike every sibling freshness-aware section in this file
+ * (GEX/Vector/Meridian/fundamentals all carry a "Last snapshot ... may lag" or an explicit date).
+ * Live-verified the same day: treasury yields dated 2026-10-08 (5 days old) alongside a CPI print
+ * dated 2026-08-01 (73 days old) — CPI's own monthly cadence means that gap is normal, not a fetch
+ * failure, but a member reading "CPI **334.1**" with no date next to a 5-day-old rates line has no
+ * way to tell it apart from a current print. `EcosystemArsenalMacro.treasury_as_of`/`cpi_as_of`
+ * (ecosystem-context.ts) carry each series' own real date now — surfaced here per-value instead of
+ * the single combined `as_of` (which silently inherits the FRESHER series' date, see that field's
+ * own doc comment), same discipline `formatMeridianItem` already applies to earnings dates.
+ */
 export function macroTapeSection(eco: EcosystemContext | null): RichSection | null {
   const arsenal = eco?.arsenal;
   if (!arsenal) return null;
@@ -1899,9 +1912,15 @@ export function macroTapeSection(eco: EcosystemContext | null): RichSection | nu
   if (arsenal.macro) {
     const m = arsenal.macro;
     const parts: string[] = [];
-    if (m.yield_10_year != null) parts.push(`10Y **${m.yield_10_year.toFixed(2)}%**`);
+    if (m.yield_10_year != null) {
+      const asOf = m.treasury_as_of ? ` (${m.treasury_as_of})` : "";
+      parts.push(`10Y **${m.yield_10_year.toFixed(2)}%**${asOf}`);
+    }
     if (m.curve_10y_1y_spread != null) parts.push(`10s-1s **${m.curve_10y_1y_spread.toFixed(2)}**`);
-    if (m.cpi != null) parts.push(`CPI **${m.cpi.toFixed(1)}**`);
+    if (m.cpi != null) {
+      const asOf = m.cpi_as_of ? ` (${m.cpi_as_of} print)` : "";
+      parts.push(`CPI **${m.cpi.toFixed(1)}**${asOf}`);
+    }
     if (parts.length) lines.push(`Rates backdrop: ${parts.join(" · ")}`);
   }
   if (arsenal.breadth) {
