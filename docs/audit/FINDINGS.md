@@ -38,6 +38,114 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-13 — [FINDING, P4 dead-code, growth/marketing] Two real, tested-adjacent exports with zero callers — likely designed-ahead, not abandoned — OPEN
+
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Growth/marketing infrastructure | P4 — dead code, no runtime impact | OPEN — flagged for the growth/marketing lane owner |
+
+**What's wrong.** A repo-wide dead-export heuristic sweep of previously-unswept `src/lib/`
+directories found two real, deliberately-built pieces of growth/marketing infrastructure with
+zero callers anywhere in the repo:
+
+1. **`getExperimentVariant`** (`src/lib/experiments/client.ts:52`) — the entire public entry point
+   of a complete, cookie-backed A/B-testing client: `getOrCreateAnonId()` (stable 1yr anonymous ID,
+   cookie-backed, intentionally not tied to auth "which matters for experiments that touch
+   pre-signup surfaces (pricing copy, CTAs)"), deterministic variant assignment via `assignVariant`
+   (`./bucket.ts`), and once-per-page-load GA4 exposure tracking. Introduced by `9091e18e9`
+   ("feat(experiments): minimal A/B testing layer — deterministic bucketing + GA4 exposure", #1894).
+   Its own doc comment gives a concrete usage example naming a specific planned experiment:
+   `getExperimentVariant("pricing_guarantee_placement", ["control", "inline"])`. Nothing in the
+   repo calls it — no pricing page, no CTA, nothing branches on a variant. `bucket.test.ts` tests
+   the underlying `assignVariant` bucketing math, not whether anything uses it.
+2. **`appendUtmParams`** (`src/lib/analytics/utm.ts:89`) — a documented "server-safe UTM append"
+   function (no `sessionStorage`, so usable outside the browser). Its sibling,
+   `appendAttributionToUrl`, is the one actually wired into live marketing links (confirmed via
+   grep); `appendUtmParams` itself has zero callers, including from its own sibling.
+
+**Why write up, not delete.** Both pass the two signals this repo's own established precedent
+(the X-intel `scoreAttachmentPackage`/`viewsForSurface` entries, 2026-08-10 and since; the Meridian
+`suggestedPlayFromThermal` entry, 2026-09-03) uses to distinguish "abandoned" from "built ahead of
+the caller that will wire it in": each is a real, non-trivial, deliberately-documented capability
+(not a stray leftover), and `getExperimentVariant` in particular names a SPECIFIC planned use
+(`pricing_guarantee_placement`) rather than existing as generic unused scaffolding — the clearest
+version of "designed ahead" this session has found. Whether the pricing-guarantee experiment ran
+and was removed, is still planned, or was abandoned is a call only the growth/marketing lane can
+make; same for whether `appendUtmParams`'s server-safe variant is still needed for a surface
+`appendAttributionToUrl` doesn't cover (SSR email links, cron-generated content, etc.) or was a
+speculative parallel implementation that never found its caller.
+
+**Contrast with what WAS fixed this session.** `LIVE_SIGNAL_LABEL` (Meridian) and `stanceColor`/
+`toneColor`/`levelColor` (brand/tokens.ts) were deleted directly rather than deferred, because each
+had a specific, checkable, already-identified root cause (a mis-stated "still has consumers" claim
+in one case, a feature-removal commit that correctly kept the file but didn't audit every export in
+it in the other) — not an open-ended "is this designed ahead" judgment call. These two are the
+opposite: real capability, no disqualifying factual error, genuinely ambiguous intent.
+
+**Suggested next step.** For the growth lane: confirm whether `getExperimentVariant` is still
+wanted (wire it into the planned pricing-guarantee placement, or remove the whole unused client if
+abandoned). For whoever owns `appendUtmParams`: confirm whether `appendAttributionToUrl` already
+covers every real use case (delete the server-safe variant if so) or a genuine SSR/cron caller is
+still pending.
+
+**Blast radius / what's NOT claimed.** Not a correctness bug — nothing is broken by these being
+unwired. No code touched.
+
+Found via a repo-wide dead-export heuristic sweep (every `export function`/`export const` across
+previously-unswept `src/lib/` directories — correctness, journal, platform, social, research,
+brand, http, native-oauth, explain, confidence, bie, portfolio, meta, experiments, banger, ws,
+push, marketing, scan, mobile, faq, analytics, execution — checked for zero cross-file AND zero
+same-file references). The sweep's other ~55 candidates in this pass were all same-file false
+positives (a constant/helper used by a sibling function in the same file, missed by a naive
+cross-file-only grep) except these two and the three brand/tokens.ts functions fixed separately
+this session (`2026-10-13-brand-tokens-dead-card-colors.md`). `src/lib/bie/` candidates (21 of the
+~61 raw hits) were deliberately excluded from this write-up without individual verification — that
+directory's exports are Largo answer-composition machinery (`BIE_LARGO_ANSWER_TTL_MS`,
+`composeClarifyRead`, `LARGO_GROUNDING_COVERAGE_THRESHOLD`, etc.), adjacent to the standing Ask
+Largo ownership mandate this session does not touch.
+
+## 2026-10-13 — [FINDING, P4 dead-code] `stanceColor`/`toneColor`/`levelColor` (`brand/tokens.ts`) survived the Largo card-feature removal untouched, with zero callers left — FIXED
+
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Shared brand primitives / Largo card legacy | P4 — dead code, no runtime impact | FIXED |
+
+**What's wrong.** `src/lib/brand/tokens.ts` exported three colour-mapping functions —
+`stanceColor`, `toneColor` (plus its `Tone` type), and `levelColor` — with zero callers anywhere
+in the repo, not even in `tokens.test.ts`.
+
+**Root cause.** Commit `9935a7e68` ("chore(largo): remove the card/image-generation feature
+entirely", PR #2067, 2026-08-11) deleted the entire Largo visual/card-rendering pipeline (50 files)
+per an explicit operator decision, but deliberately **kept** `tokens.ts` whole — its own commit
+message explains why: *"`tokens.ts`, `font-buffers.ts`, `font-coverage.ts`... are BRAND primitives,
+not card code. `src/lib/x-desk-card.tsx` (used by the live `/api/cron/x-autopost` route) and
+`src/lib/thermal-discord-card.ts` both import them."* That reasoning is correct for the file's
+other exports (`C`, `FONT`, `GLYPH` — all still genuinely used by those two live satori-rendered
+card consumers), but the sweep that made that keep-vs-delete call evidently checked the FILE, not
+every individual export in it: `stanceColor`/`toneColor`/`levelColor` were part of the
+now-deleted Largo card templates' own rendering logic (stance strips, level markers, tone-coded
+text) and had no caller left once that templates tree was gone. They've been dead for ~2 months.
+
+**Fix.** Deleted `stanceColor`, `toneColor` + its `Tone` type (confirmed `Tone` itself had no other
+importer either), and `levelColor`. `C`, `FONT`, and `GLYPH` — the exports the #2067 commit
+message actually named as kept-for-a-reason — are untouched; `GLYPH` specifically still has a real
+consumer: `tokens.test.ts`'s own "every GLYPH codepoint exists in all three committed faces" guard.
+
+**Verification.** `tsc --noEmit` clean. `tokens.test.ts` + the two live satori-card consumers'
+test suites (`x-desk-card.test.ts`, `thermal-discord-card.test.ts`) — 23/23 pass.
+
+**Blast radius.** One file, three functions + one type removed. No change to `x-desk-card.tsx`,
+`thermal-discord-card.ts`, or any other consumer of `brand/tokens.ts`'s surviving exports.
+
+Found via a repo-wide dead-export heuristic sweep of previously-unswept `src/lib/` directories,
+independently re-verified before fixing: confirmed zero callers anywhere (including same-file) via
+grep, traced the exact commit and its own stated reasoning for why the file as a whole was kept,
+and confirmed the surviving exports (`C`/`FONT`/`GLYPH`) each have real, live consumers today.
+
 ## 2026-10-12 — [FINDING, P4 dead-code, docs-hygiene] `LIVE_SIGNAL_LABEL` (`meridian-viz-core.ts`) is fully dead — a prior fix's "has other live consumers" claim was factually wrong — FIXED
 
 > **kind:** `FINDING`
