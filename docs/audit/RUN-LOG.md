@@ -11,6 +11,49 @@ Confirmed market open myself (12:35 ET, ~25min to close). `/api/public/gex-snaps
 internally consistent. Purged Cloudflare edge HTML, measured live homepage CLS — **0.0004,
 GOOD**. No defect found. No PR opened.
 
+## 2026-10-13 (16:2x UTC) — [5-ENGINE MONITOR + ASK LARGO] CloudWatch clean, ALB tail-latency unchanged, swing play-brief ticker-history feature live-verified sound, #5954 deploy confirmed in progress
+
+**CloudWatch crash sweep** (`/ecs/blackout-production`, `TypeError`/`Unhandled`/`undefined is not`/
+`Cannot read prop`, trailing 15min): 0 hits.
+
+**ALB `TargetResponseTime`** (`blackout-production-app`, trailing ~55min, 5min buckets): p99 range
+14.6-79.9s, Max range 69-119s — statistically the same already-documented, already-corroborated
+RTH-open vector-pick-sweep/dark-pool-warm tail-latency pattern (p50 stayed <1.2s throughout, so
+still pure tail latency, not fleet capacity). No new finding — diagnosis unchanged from prior
+cycles.
+
+**Ask Largo deep-dive this cycle:** live-fetched two real swing play-briefs (`SWING:META` —
+WATCH/COMMIT-NOW, `SWING:INTC:56` — OPEN position) via `/api/market/swing/play-brief` and checked
+a feature not yet spot-checked this session: `tickerTrackRecordSection`/`loadTickerTrackRecord`
+(`play-brief-ticker-history.ts`, Ask Largo round 19, 2026-09-18 — ticker-scoped "has the desk
+traded this name before" citation, distinct from the archetype-level `archetypeTrackRecordSection`).
+Live INTC brief correctly rendered "desk has traded INTC 4 times before this play: 0W / 4L" —
+traced the chain-aware root-selection, self-exclusion, and the 2026-09-21 temporal-ordering fix
+(candidate chains must resolve strictly before the reviewed play, preventing the future-leak this
+file's own header documents from EWZ #26/#29) and confirmed `composite.outcome` is strictly binary
+(`"win"|"loss"|"open"`, breakeven folds into `loss` per `record.ts`'s own documented convention) so
+`wins + losses === priorClosedTrades` holds by construction — no reconciliation gap. **Sound,
+correctly wired, no defect.**
+
+**Apparent discrepancy investigated and resolved, not a new bug:** the same INTC brief's HELIX-tape
+bullet cited a stored `DIRECTIONAL_FLOW_SKEW` anomaly reading "16:1 call/put — $0.8M calls vs $0.1M
+puts" — 0.8/0.1 reconciles to 8:1 under #5954's just-shipped fix, not 16:1, which looked like the
+same display-precision bug recurring. Traced: the anomaly's `detected_at` is ~29min before the
+brief's `asOf` (≈11:55 ET / 15:55 UTC), while #5954's merge commit (`56f59377`) landed at
+**16:09:20 UTC** — this anomaly row was written by the cron ~14min *before* the fix even merged,
+let alone deployed, so it's a frozen pre-fix historical record (`flow_anomalies.detail` is stored
+at detection time, never recomputed on read) — expected, not a regression.
+
+**#5954 deploy confirmed actually rolling** (not just CI-green): `ecs.describe_services` on
+`blackout-production-web` shows task-def `:1972` (the post-#5954 image) `rolloutState: IN_PROGRESS`
+as of this cycle (desired 5, running 4) — the prior revision `:1971` is still `ACTIVE`/`COMPLETED`.
+Per the "a check seconds after deploy proves nothing" discipline, re-verify completion AND a fresh
+post-deploy anomaly's ratio on a later cycle rather than treating this as closed.
+
+**PR #5955** (fold 2 staged findings from #5952/#5954): open, non-draft, base already at #5954's
+merge SHA (no cross-PR ordering risk). CodeQL/triage/dispatch green; `verify` still `in_progress`
+~8min after open — normal for this pipeline, nothing to do yet, will merge once green on re-check.
+
 ## 2026-10-13 (15:35 UTC / Tue 11:35 ET) — [SEO] RTH wake: gamma-snapshot live and correct, CLS clean
 
 Confirmed market open myself (11:35 ET) before acting. **Public surface:**
