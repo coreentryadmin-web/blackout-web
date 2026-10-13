@@ -13,6 +13,7 @@ import {
   execSlippageCoaching,
   expectedMoveCoaching,
   flowPrintsCoaching,
+  ivLeverageDivergenceCoaching,
   ivRankCoaching,
   laneRankCoaching,
   magnetCoaching,
@@ -2769,6 +2770,108 @@ test("ivRankCoaching: fires when play carries ivRank", () => {
   assert.match(cheap!, /vol cheap/i);
 
   assert.equal(ivRankCoaching(play({ ivRank: null })), null);
+});
+
+// ivLeverageDivergenceCoaching (Ask Largo enhancement, PR #4076 comment 6130751739): connects a
+// steep option P&L to a much milder underlying move so a member doesn't have to infer the
+// leverage/IV mechanics themselves. Live repro shape: SWING:ASTS:53, 2026-10-12 (underlying
+// adverse excursion -2.6%, option P&L -23%, IV 75%, θ -0.13/day).
+test("ivLeverageDivergenceCoaching: fires on a steep loss far beyond the underlying's own adverse move (live ASTS shape)", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: -23,
+      underlyingExcursion: { mfePct: 0, maePct: -2.6 },
+      greeks: { delta: 0.5, gamma: 0.02, theta: -0.13, vega: 0.1, iv: 0.75 },
+    }),
+    "open",
+  );
+  assert.match(line!, /Option down more than the stock's own move would suggest/i);
+  assert.match(line!, /-23/);
+  assert.match(line!, /-2\.6/);
+  assert.match(line!, /IV \*\*75%\*\*/);
+  assert.match(line!, /θ -0\.13\/day/);
+  assert.match(line!, /not a thesis break/i);
+});
+
+test("ivLeverageDivergenceCoaching: symmetric on the gain side — a win far beyond the underlying's own favorable move", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: 60,
+      underlyingExcursion: { mfePct: 5, maePct: 0 },
+      greeks: { delta: 0.6, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.6 },
+    }),
+    "open",
+  );
+  assert.match(line!, /Option up more than the stock's own move would suggest/i);
+  assert.match(line!, /not extra thesis confirmation/i);
+});
+
+test("ivLeverageDivergenceCoaching: silent when the option moved roughly in proportion with the underlying (ratio floor)", () => {
+  // -20% option vs -10% underlying is only a 2x ratio, under the 3x floor.
+  assert.equal(
+    ivLeverageDivergenceCoaching(
+      play({
+        pnlPct: -20,
+        underlyingExcursion: { mfePct: 0, maePct: -10 },
+        greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+      }),
+      "open",
+    ),
+    null,
+  );
+});
+
+test("ivLeverageDivergenceCoaching: silent on a routine small move even with a high ratio (materiality floor)", () => {
+  // -10% option vs -1% underlying is a 10x ratio, but |pnlPct| never clears the 15-point floor.
+  assert.equal(
+    ivLeverageDivergenceCoaching(
+      play({
+        pnlPct: -10,
+        underlyingExcursion: { mfePct: 0, maePct: -1 },
+        greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+      }),
+      "open",
+    ),
+    null,
+  );
+});
+
+test("ivLeverageDivergenceCoaching: a near-flat underlying still fires once the materiality floor clears (denominator floored at 1pt)", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: -20,
+      underlyingExcursion: { mfePct: 0, maePct: -0.1 },
+      greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+    }),
+    "open",
+  );
+  assert.match(line!, /Option down more than the stock's own move would suggest/i);
+});
+
+test("ivLeverageDivergenceCoaching: honest-null on any missing input, never a fabricated comparison", () => {
+  const base = {
+    pnlPct: -30,
+    underlyingExcursion: { mfePct: 0, maePct: -5 },
+    greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+  };
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, pnlPct: null }), "open"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, pnlPct: 0 }), "open"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, underlyingExcursion: null }), "open"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, greeks: null }), "open"), null);
+  assert.equal(
+    ivLeverageDivergenceCoaching(play({ ...base, greeks: { ...base.greeks, iv: null } }), "open"),
+    null,
+  );
+});
+
+test("ivLeverageDivergenceCoaching: OPEN-only — never fires for WATCH or CLOSED", () => {
+  const args = {
+    pnlPct: -30,
+    underlyingExcursion: { mfePct: 0, maePct: -5 },
+    greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+  };
+  assert.equal(ivLeverageDivergenceCoaching(play(args), "watch"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play(args), "closed"), null);
 });
 
 // tickerHistoryCoaching (2026-09-22, Ask Largo standing mandate): a losing ticker-specific track
