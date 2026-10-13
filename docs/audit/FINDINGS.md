@@ -38,6 +38,190 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-13 — [Night Hawk Swings / Largo] Macro tape section shows CPI with zero vintage disclosure — the one combined `as_of` field silently borrows the FRESHER treasury date — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Night Hawk Swings — Ask Largo swing play-brief, `macroTapeSection` | P2 — silently misleading data vintage on a member-facing index/ETF brief | FIXED |
+
+### What was wrong
+
+`macroTapeSection` (`src/lib/swing/play-brief-intel.ts`) renders the index/ETF-scope "Rates
+backdrop" line — 10-year treasury yield, the 10s-1s curve spread, and CPI — with **zero freshness
+disclosure**, unlike every other data-bearing section in this same file family (GEX posture, Vector
+desk, chart levels, Meridian catalysts, fundamentals/short-interest all carry an explicit "Last
+snapshot … may lag" note or an inline date once the underlying read is old enough to matter).
+
+Live-verified the same day directly against Polygon's own reference endpoints (the same ones
+`fetchPolygonMacroBackdrop`, `src/lib/providers/polygon-macro.ts`, calls):
+
+```
+treasury row: date 2026-10-08   (5 days old)
+inflation row: date 2026-08-01  (73 days old)
+now: 2026-10-13
+```
+
+CPI is a monthly series with an inherent ~1-month publish lag, so a 73-day-old print is the
+*normal*, current reading — not a fetch failure. The bug is that the member sees no date at all:
+`CPI **334.1**` renders with the exact same unqualified confidence as the 5-day-old `10Y **5.22%**`
+sitting right next to it on the same line, with nothing to tell the two vintages apart.
+
+**Root cause:** `buildMacroBackdrop` (`polygon-macro.ts`) computes one combined
+`as_of: treasury.date ?? inflation.date ?? null`. Because the daily treasury series almost always
+has a `date`, this expression collapses to the TREASURY print's date even when the line is also
+reporting the CPI figure — so even if `macroTapeSection` had rendered `as_of`, it would have shown
+the misleadingly fresh 2026-10-08 next to a CPI number that is actually dated 2026-08-01. A single
+shared vintage field cannot honestly represent two independently-aged series; that's a stronger
+failure mode than simply omitting a date, since surfacing the wrong one actively asserts a false
+recency rather than leaving it unstated.
+
+This is the same freshness principle (Largo product contract) already enforced for
+`arsenal.fundamentals.as_of` (`catalystsSection`'s `fundamentalsAncient`/`fundamentalsFreshnessTag`
+staleness tiers) and `arsenal.news.as_of` (the 2026-09-18 fix referenced in that section's own
+comment) — macro was the one sibling arsenal leg that carried a computed `as_of` all the way
+through the type system (`EcosystemArsenalMacro.as_of`) and still never reached a renderer.
+
+### Fix
+
+- `src/lib/bie/ecosystem-context.ts` — `EcosystemArsenalMacro` gains two new, ADDITIVE fields
+  (Largo product contract: never flatten a more precise field away in favor of a coarser one) —
+  `treasury_as_of` and `cpi_as_of` — populated directly from `reads.macro.treasury.date` and
+  `reads.macro.inflation.date` in `assembleEcosystemArsenal`, instead of the single conflated
+  `as_of`. The existing `as_of` field is left untouched (still `treasury.date ?? inflation.date`)
+  since `src/lib/bie/verdict.ts` reads the same conflated value from `PolygonMacroBackdrop` directly
+  (a separate call site, out of scope here — noted below under blast radius).
+- `src/lib/swing/play-brief-intel.ts`'s `macroTapeSection` now appends each value's own date:
+  `10Y **5.22%** (2026-10-08)` and `CPI **334.1** (2026-08-01 print)`. No threshold/staleness-tier
+  machinery was added (unlike fundamentals) — CPI's vintage is *always* shown, every time, because
+  a monthly print with no attached date is ambiguous by nature, the same "always disclose, don't
+  gate on a threshold" treatment `formatMeridianItem` already applies to earnings dates elsewhere in
+  this file.
+
+### Evidence (RED → GREEN)
+
+Two new tests in `src/lib/swing/play-brief-intel.test.ts`:
+- `macroTapeSection: CPI and 10Y each disclose their OWN print date...` — asserts both dates render
+  distinctly. Verified RED against the pre-fix source (`git stash` on just the two source files,
+  tests kept): failed on the exact predicted line, `'Rates backdrop: 10Y **5.22%** · 10s-1s **0.78**
+  · CPI **334.1**'` — no dates anywhere. GREEN after restoring the fix.
+- `macroTapeSection: missing per-series dates render the figures with no false date...` — back-compat
+  guard: when `treasury_as_of`/`cpi_as_of` are null (e.g. an older fixture), no date is fabricated.
+- `ecosystem-context.test.ts`'s existing `assembleEcosystemArsenal(index): macro/breadth/catalysts
+  populate...` fixture updated to carry `treasury.date`/`inflation.date` and assert the two new
+  fields alongside the untouched `as_of`.
+
+Full suite: `npx tsc --noEmit` clean; targeted files 263/263 pass
+(`src/lib/swing/play-brief-intel.test.ts` + `src/lib/bie/ecosystem-context.test.ts`); full `npm test`
+run alongside this PR (see PR description for the exact count).
+
+### Blast radius
+
+- `src/lib/swing/play-brief-narrative-coaching.ts`'s `macroTapeCoaching` reads the same
+  `arsenal.macro` object but never renders CPI at all (only 10Y/curve/breadth tone) — left
+  untouched; the material gap (a 2+-month-old figure with zero disclosure) is specific to
+  `macroTapeSection`'s CPI line. Checked for duplication between the two renderers first:
+  `collapseRedundantIntelSections` (`play-brief-intel-collapse.ts`) already lists "Macro tape" in
+  `NARRATIVE_COVERED_TITLES`, so `macroTapeSection`'s standalone output is dropped whenever the
+  Trade-manager narrative (which folds in `macroTapeCoaching`) is leading — not a duplicate-fact bug
+  like the chart-technicals/Vector-desk one fixed earlier today, so no narrative-side change needed.
+- `src/lib/bie/verdict.ts`'s `macroSummary.date` reads `macro.as_of` directly off the raw
+  `PolygonMacroBackdrop` parameter (a different call site than `EcosystemArsenalMacro`) and inherits
+  the identical treasury-date-shadows-CPI-date conflation. Not touched by this PR — confirming
+  whether that `date` field is ever surfaced as member-facing text (vs. staying internal to the BIE
+  verdict engine) is a separate investigation, out of scope for this single-issue fix.
+
+### What was deliberately left unchanged
+
+`buildMacroBackdrop`'s combined `as_of` derivation (`polygon-macro.ts`) stays as-is — changing its
+return shape would ripple into `verdict.ts` and any other untraced consumer of `PolygonMacroBackdrop`
+directly. The additive per-series fields on `EcosystemArsenalMacro` solve the member-facing
+rendering gap without touching that shared root type.
+
+## 2026-10-13 — [Night Hawk Legacy] Momentum-quality scoring (acceleration + sustained-vs-exhausted) + 10-DTE ceiling — FIXED
+> **kind:** `FINDING`
+
+| **Area** | **Severity** | **Status** |
+|---|---|---|
+| Night Hawk Legacy / candidate scoring + contract selection | P3 — real product-quality gap, operator-requested | FIXED |
+
+### What was missing
+
+Operator asked Legacy to rank candidates on "relative volume, price acceleration, trend
+structure, breakout/breakdown confirmation... distinguish sustained moves from exhausted spikes,"
+then select "liquid 2-10 DTE contracts." Audited the current pipeline (`scorer.ts`,
+`technicals.ts`, `deterministic-edition.ts`) against each named criterion before writing anything:
+
+Already covered: relative volume, trend structure, breakout/breakdown confirmation
+(`scoreTechnicalSetup`), options flow + dealer positioning (`flow_score`/`pos_score`/
+`wall_proximity_score`/`vex_alignment_score`).
+
+Genuinely missing (grepped the whole scorer directory — zero matches for any acceleration or
+exhaustion concept): **price acceleration** and **distinguishing sustained moves from exhausted
+spikes**. Also confirmed missing: the **10-DTE ceiling** — `pickChainContract`'s own doc comment
+already named "2-10 DTE" as the product requirement and the 2-day floor (`MIN_DTE_CALENDAR_DAYS`)
+was real, but nothing enforced the ceiling; every expiry was pooled together and sorted by
+strike-distance-to-spot first, so a far-dated monthly whose strike happened to sit nearest to spot
+could win outright over a genuine 2-10 DTE weekly.
+
+### Fix
+
+**`momentum-quality.ts`** (new): pure, direction-aware scoring of price acceleration (recent
+3-day return vs. the prior 3-day return, same-direction only — a sign flip is a reversal, not a
+deceleration, handled explicitly) and volume pattern (today's volume elevated alongside 2+ of the
+prior 3 sessions = `sustained`; today alone elevated = `single_day_spike`, the exhaustion
+signature). Computed entirely from `TechnicalCard`'s already-fetched `daily_bars` (60 sessions) —
+zero new per-ticker network calls, deliberately, because a live 2026-10-12 incident (see the
+`fix/legacy-target-rescue-dead-cap` finding, same session) traced 6 of 20 candidates dropping out
+of an edition entirely to a 45s per-ticker dossier wall timeout; a new fetch here would make that
+exact failure mode worse. Wired additively into `scorer.ts`'s composite (`momentum_score`, bounded
++8/-5) and into both `factor_breakdown` call sites in `deterministic-edition.ts` so it's visible in
+the member-facing "why this play was picked" panel.
+
+**10-DTE ceiling** (`deterministic-edition.ts`): added `MAX_DTE_CALENDAR_DAYS = 10` and a
+`longDated` last-resort pool mirroring the floor's existing `shortDated` treatment — never a hard
+exclusion, just deprioritized behind anything inside the 2-10 DTE window. Extended the
+`preferAffordable` cost-preference tier (every Legacy call site opts in) with matching `longDated`
+passes preserving its existing liquidity-safety-first priority — 4 existing tests caught this when
+the ceiling alone silently broke that guarantee for chains whose only deeply-liquid expiries sat
+outside the window.
+
+### Live verification against real market data (not hypothetical)
+
+Ran the new `computeMomentumQuality`/`scoreMomentumQuality` against real Polygon daily bars for
+today's (2026-10-13) actual 42-ticker discovery pool (pulled from the admin candidate-leaderboard
+endpoint). Two concrete, retrospectively-checkable results:
+
+- **FIGS** scored the maximum +8 (accelerating +20.2% over the last 3 sessions, up from +9.9% the
+  prior 3 — genuinely sustained volume, 2+ of the prior 3 sessions elevated) — yet the CURRENT
+  composite score ranked it only #10 (score 16) in tonight's real build. The new signal would have
+  surfaced the single strongest momentum name in the pool, which the current system ranked near
+  the bottom.
+- **PENG** — one of only 2 organic plays that actually published tonight (via the merit-floor
+  backfill path, which deliberately skips the score/tier floor) — scored -3 (decelerating: +9.3%
+  recent vs. +17.9% prior, the move visibly losing steam). PENG was invalidated pre-market the same
+  morning (gapped through its own stop). The new signal would have flagged exactly this candidate
+  as weakening before the real-world failure, while GME (the other published play, +5, genuinely
+  accelerating) stayed open and confirmed.
+
+### Scoped out, disclosed, not fixed here
+
+- **Relative strength vs. the broader market** (RS vs. SPY/sector) — a real, separate gap. Needs a
+  shared SPY-bars fetch threaded through `market-wide.ts` → `edition-builder.ts` → `scorer.ts`
+  (not a per-ticker fetch, which would reintroduce the dossier-timeout risk above). Flagged as a
+  scoped follow-up.
+- **"Reasonable spread" liquidity gate** — `contractPremium`'s only spread check rejects a quote
+  wider than 100% of its own mid (a broken-data sanity floor, not a tradeable-spread bar). A
+  genuinely wide-but-under-100% spread (60-90% of mid) still passes today.
+
+### Verification
+
+`momentum-quality.test.ts`: 16/16. `deterministic-edition.test.ts`: 87/87 (2 new DTE-ceiling
+tests, RED→GREEN proven via `git stash`: failed against the pre-fix picker, pass after; 1 stale
+comment fix; 4 existing `preferAffordable` tests needed the `longDated` passes to stay green).
+Full `src/features/nighthawk` test directory: 2036/2036. `tsc --noEmit` clean. Full `npm test`
+alongside PR #5964.
+
 ## 2026-10-13 — [Night Hawk Legacy] `target_unreachable` gate-promote rescue is dead code again — FIXED
 > **kind:** `FINDING`
 
