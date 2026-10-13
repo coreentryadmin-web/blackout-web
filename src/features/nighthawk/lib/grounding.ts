@@ -416,20 +416,38 @@ export function groundPlay(
     // call/put/strike word, is NOT the grounded structured strike, and is NOT any real chain strike.
     // (We don't drop a prose number that merely echoes a different but real chain strike — that's
     // legitimate context, not a fabrication.)
-    const hasStrikeWord = /\b(call|put|strike)s?\b/i.test(`${mutated.thesis} ${mutated.key_signal}`);
-    if (groundedStrike != null && contractOnChain && hasStrikeWord) {
-      for (const n of proseNums) {
-        if (n.isPct || n.isDollar) continue;
-        if (spot > 0 && (n.value < spot * 0.5 || n.value > spot * 2)) continue; // not a strike-range value
-        const isGroundedStrike = Math.abs(n.value - groundedStrike) <= 0.05;
-        const isRealChainStrike = rows.some((r) => Math.abs(r.strike - n.value) <= 0.05);
-        if (!isGroundedStrike && !isRealChainStrike) {
-          issues.push({
-            check: "prose",
-            severity: "drop",
-            detail: `${play.ticker} prose references ${n.raw} near a strike claim but the grounded contract strike is ${groundedStrike} and ${n.raw} is not in the chain — dropping user-visible contradictory setup text.`,
-          });
-          break;
+    //
+    // SENTENCE-SCOPED, not whole-text (fixed 2026-10-13, live AXTI/BE false-drop — both scored
+    // higher than every play that actually published in the 2026-10-14 edition, see
+    // docs/audit/nighthawk-legacy-live-journal.json "legacyGroundingDropsTopScoredCandidates").
+    // The original check tested `hasStrikeWord` against the WHOLE combined thesis+key_signal text,
+    // then scanned for a strike-range number ANYWHERE in that same combined text — so a legitimate,
+    // unrelated catalyst/guidance figure ("guidance raised to 410") in one sentence, next to a
+    // completely unrelated "heavy call buying" in another, was indistinguishable from an actual
+    // contradictory strike echo ("calls at 410") and hard-dropped the entire play. Scoping both the
+    // strike-word test and the number extraction to the SAME sentence/clause keeps the real catch
+    // (a strike claim in the sentence that states it) while no longer misreading an unrelated number
+    // merely because a strike-word happens to appear somewhere else in the prose.
+    const strikeWordRe = /\b(call|put|strike)s?\b/i;
+    const sentences = `${mutated.thesis} ${mutated.key_signal}`
+      .split(/(?<=[.!?])\s+|\n+/)
+      .filter((s) => s.trim().length > 0);
+    if (groundedStrike != null && contractOnChain) {
+      outer: for (const sentence of sentences) {
+        if (!strikeWordRe.test(sentence)) continue;
+        for (const n of extractProseNumbers(sentence)) {
+          if (n.isPct || n.isDollar) continue;
+          if (spot > 0 && (n.value < spot * 0.5 || n.value > spot * 2)) continue; // not a strike-range value
+          const isGroundedStrike = Math.abs(n.value - groundedStrike) <= 0.05;
+          const isRealChainStrike = rows.some((r) => Math.abs(r.strike - n.value) <= 0.05);
+          if (!isGroundedStrike && !isRealChainStrike) {
+            issues.push({
+              check: "prose",
+              severity: "drop",
+              detail: `${play.ticker} prose references ${n.raw} near a strike claim but the grounded contract strike is ${groundedStrike} and ${n.raw} is not in the chain — dropping user-visible contradictory setup text.`,
+            });
+            break outer;
+          }
         }
       }
     }
