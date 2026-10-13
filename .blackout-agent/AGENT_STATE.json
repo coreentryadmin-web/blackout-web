@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-13T13:57:48.458Z",
+  "updated_at": "2026-10-13T16:37:21.952Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d1a177bc422ac7e1d5eb47a758c8540e209a2d0f",
+    "last_main_sha": "d90dcc9a7cd79cfdafe3a1ace5241ad30dfbbf5c",
     "last_deploy_status": "success",
     "last_deploy_at": "2026-10-13T13:33:27Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/38400896026",
     "last_deploy_sha": "d665a96e1e4390d6269ab6c7dc103600981bf277"
   },
   "events": [
-    {
-      "at": "2026-09-28T02:16:17.485Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T02:16:17.814Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T05:49:46.245Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-28T05:49:47.027Z",
       "type": "context_sync",
@@ -1271,9 +1253,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-13T16:37:11.702Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T16:37:17.168Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T16:37:21.952Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
+    {
+      "number": 5956,
+      "title": "docs(audit): log 5-engine monitor + Ask Largo cycle (2026-10-13 16:2x UTC)",
+      "branch": "docs/run-log-5-engine-cycle-2026-10-13-1620",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-13T16:28:07Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
@@ -1312,7 +1322,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "completed/failure",
-      "updated_at": "2026-09-29T15:15:00Z"
+      "updated_at": "2026-10-13T14:09:10Z"
     },
     {
       "number": 4477,
