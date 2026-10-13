@@ -59,6 +59,8 @@ export interface ChainContract {
   dayVolume?: number | null;
   /** Epoch ms of the quote observation — used by swing commit quote_stale gate when present. */
   quoteUpdatedMs?: number | null;
+  /** ISO timestamp of when the mark price was obtained (swing mark staleness tracking). */
+  markAsOf?: string | null;
 }
 
 /** Hard liquidity gate a contract must clear to be tradeable. */
