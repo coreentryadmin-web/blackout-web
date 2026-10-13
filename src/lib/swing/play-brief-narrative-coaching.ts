@@ -520,6 +520,89 @@ export function vectorPlayCoaching(
   return line;
 }
 
+/** Local to this file by design — see `rangeBiasEntryCollisionCoaching`'s own doc comment for why
+ *  this isn't just `collectFocalLevels(ctx, spot)` from play-brief-narrative.ts: that module
+ *  imports `collectCoachingBullets` FROM this file, so the reverse import would be circular (same
+ *  established fix pattern as this repo's other play-brief.ts/play-brief-narrative.ts sibling
+ *  cases — duplicate the minimal check locally rather than import across the cycle). Mirrors only
+ *  the call-wall/put-wall subset of that function's vec-first/GEX-matrix-fallback/staleness-gated
+ *  logic, not its full level list. */
+function callPutWallForCollisionCheck(
+  ctx: SwingPlayBriefContext,
+  vec: VectorFullState | null,
+  readMs: number,
+): { callWall: number | null; putWall: number | null } {
+  const gex = ctx.ecosystem?.gex_positioning;
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vecCallWall = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
+  return {
+    callWall: callWallFromStaleGex ? null : fin(vecCallWall ?? gex?.call_wall ?? null),
+    putWall: putWallFromStaleGex ? null : fin(vecPutWall ?? gex?.put_wall ?? null),
+  };
+}
+
+const RANGE_COLLISION_BAND_PCT = 2.5;
+
+/**
+ * Range-bias entry-trigger collision — a WATCH setup whose own entry trigger sits essentially AT
+ * the level Vector's own range-fade play would trade the OPPOSITE way at. Ask Largo enhancement
+ * idea, PR #4076 comment 6131711926 (live repro WATCH:SNOW, 2026-10-12): a LONG pullback-
+ * continuation setup's entry trigger (369.49) sat inside Vector's own "sell the rip" zone (call
+ * wall 370) — the setup wants to buy almost exactly where the desk reading dealer gamma structure
+ * says breakouts get faded in this regime.
+ *
+ * `crossDeskCoaching`/`vectorPlayCoaching` above only treat Vector as directionally in conflict
+ * when its bias is "long"/"short" — a "range" bias correctly earns neither the "aligned" nor the
+ * "cross-check" framing (Vector is genuinely declining to take a directional stance, 2026-09-15
+ * fix, see `vectorPlayCoaching`'s own doc comment) — but a range bias WITH specific numeric levels
+ * is a narrower, still-checkable claim this deliberately does NOT reuse that framing for (the
+ * message below says so explicitly): does the swing's own entry trigger collide with the specific
+ * rail Vector would fade. `vp.bias === "range"` is reached ONLY from the long-gamma branch of
+ * `resolveVectorPlaySetup` (vector-play-engine.ts) — so no separate gamma-posture check is needed
+ * here; a range bias already implies long gamma by construction.
+ *
+ * WATCH-bucket only — entry trigger is a pre-entry concept (same scoping as the "Entry"/"Watch
+ * levels" sections, play-brief-intel.ts). `RANGE_COLLISION_BAND_PCT=2.5` reads as "essentially at"
+ * the level, not merely in its general vicinity — a materiality floor, same spirit as
+ * `ivLeverageDivergenceCoaching`'s floors above.
+ */
+export function rangeBiasEntryCollisionCoaching(
+  ctx: SwingPlayBriefContext,
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed",
+  vec: VectorFullState | null,
+  readMs?: number,
+): string | null {
+  if (bucket !== "watch") return null;
+  const effectiveReadMs = readMs ?? Date.now();
+  if (vectorSnapshotStale(vec, effectiveReadMs, ctx.sessionDate)) return null;
+  if (vec?.play?.bias !== "range") return null;
+  const trigger = fin(play.entryTriggerUnderlyingPx);
+  if (trigger == null) return null;
+  if (play.direction !== "LONG" && play.direction !== "SHORT") return null;
+
+  const { callWall, putWall } = callPutWallForCollisionCheck(ctx, vec, effectiveReadMs);
+  const wall = play.direction === "LONG" ? callWall : putWall;
+  if (wall == null || wall <= 0) return null;
+
+  const distancePct = ((trigger - wall) / wall) * 100;
+  if (Math.abs(distancePct) > RANGE_COLLISION_BAND_PCT) return null;
+
+  const zoneLabel = play.direction === "LONG" ? "sell-the-rip" : "buy-the-dip";
+  const wallLabel = play.direction === "LONG" ? "call wall" : "put wall";
+  const action = play.direction === "LONG" ? "buy" : "sell";
+  return (
+    `**Range collision** — Vector reads this name as range-bound, fading extremes; your entry ` +
+    `trigger **${fmtPriceLevel(trigger)}** sits right at its **${zoneLabel}** level (${wallLabel} ` +
+    `**${fmtPriceLevel(wall)}**) — you'd ${action} almost exactly where that desk's structure read ` +
+    `says to do the opposite. Not a directional call either way, but worth weighing before this triggers.`
+  );
+}
+
 /**
  * Cross-desk conflicts are not all the same KIND of disagreement — each desk reads a different
  * evidence base on a different clock, and that difference is exactly what should drive how much
@@ -1571,6 +1654,7 @@ export function collectCoachingBullets(
     // day for the identical reason (a field genuinely live for a sibling lane, structurally never
     // populated for swing, read by a function called unconditionally in the swing assembly anyway).
     push(watchGateCoaching(play));
+    push(rangeBiasEntryCollisionCoaching(ctx, play, bucket, vec, ctx.readMs ?? undefined));
     // flagUnderlyingPx/entryStatus are NOT re-rendered here — watchForSection (play-brief-intel.ts,
     // "Watch levels") already renders the same two facts ("Flag anchor: X — track move from here"
     // / "Entry geometry: X") and both sections render together for every WATCH-bucket play. This
