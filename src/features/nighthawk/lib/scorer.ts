@@ -11,6 +11,7 @@ import type { PositioningSummary } from "./positioning";
 import type { TechnicalCard } from "./technicals";
 import { assignNighthawkTier } from "./nighthawk-tiers";
 import { classifySetupType, setupTypeInputFromScored } from "./setup-classification";
+import { scoreMomentumQuality } from "./momentum-quality";
 
 export type NightHawkRegimeContext = {
   vix_iv_rank: number | null;
@@ -46,6 +47,9 @@ export type ScoredCandidate = {
   vex_alignment_score?: number;
   /** Risk-reversal skew confirmation/penalty (±3). Stored for traceability. */
   skew_score?: number;
+  /** Momentum QUALITY — acceleration + volume-sustain, direction-aware (±8/-5). See
+   *  momentum-quality.ts. Distinct from tech_score's relative-volume PRESENCE check. */
+  momentum_score?: number;
   /** Earnings proximity penalty applied to catalyst_score. Set when earnings are tomorrow with matching expiry. */
   earnings_risk?: boolean;
   /** Count of scoring dimensions with material positive contribution (≥ threshold). */
@@ -101,6 +105,7 @@ export function scoredCandidateSnapshotPayload(c: ScoredCandidate): Record<strin
       wall_proximity_score: c.wall_proximity_score,
       vex_alignment_score: c.vex_alignment_score,
       skew_score: c.skew_score,
+      momentum_score: c.momentum_score,
       iv_adjustment: c.iv_adjustment,
       anomaly_penalty: c.anomaly_penalty,
       flow_conviction_bonus: c.flow_conviction_bonus,
@@ -1127,6 +1132,7 @@ export function scoreCandidate(
   }
 
   const techScore = scoreTechnicalSetup(tech, direction);
+  const momentumScore = tech?.momentum ? scoreMomentumQuality(tech.momentum, direction) : 0;
   const posScore = scoreOptionsPositioning(dossierExtras, direction);
   const newsScore = scoreNewsCatalyst(dossierExtras, direction);
   const smartMoneyScore = scoreSmartMoney(dossierExtras, direction, nowMs);
@@ -1248,7 +1254,8 @@ export function scoreCandidate(
     totalCatalystScore +
     ivAdjustment +
     anomalyPenalty +
-    flowConvictionBonus;
+    flowConvictionBonus +
+    momentumScore;
   const total = Math.min(100, Math.max(0, Math.round(preRegimeSum * dampenedRegime)));
   // 9-9: dossier_score folds ivAdjustment/anomalyPenalty/flowConvictionBonus and the regime
   // multiplier into `total`, but board.ts's `factor_breakdown` (the member-facing "why this play
@@ -1282,6 +1289,7 @@ export function scoreCandidate(
     shortInterestScore >= 2,
     wallProxScore >= 3,
     vexScore >= 2,
+    momentumScore >= 5,
   ].filter(Boolean).length;
 
   return {
@@ -1300,6 +1308,7 @@ export function scoreCandidate(
     catalyst_score: totalCatalystScore,
     catalyst_flags: catalystFlags,
     skew_score: skewAdj,
+    momentum_score: momentumScore,
     earnings_risk: earningsRisk,
     confirming_signals: confirmingSignals,
     conviction: assignNighthawkTier({

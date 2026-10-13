@@ -1,6 +1,7 @@
 import type { AggBar } from "@/lib/providers/polygon-largo";
 import { fetchPolygonMtfTechnicals } from "@/lib/providers/polygon-largo";
 import { formatEtDate } from "./session";
+import { computeMomentumQuality, type MomentumQualityRead } from "./momentum-quality";
 
 export type TechnicalCard = {
   ticker: string;
@@ -29,6 +30,11 @@ export type TechnicalCard = {
   ema50: number | null;
   ema200: number | null;
   summary: string;
+  /** Momentum QUALITY (distinct from presence — see momentum-quality.ts): is the move
+   *  accelerating/decelerating and is the volume behind it sustained across sessions or a
+   *  single-day spike. Null fields throughout when there isn't enough bar history to measure
+   *  it honestly (freshly-listed name, thin response) — never a guessed "steady"/"normal". */
+  momentum: MomentumQualityRead | null;
 };
 
 function swingLevels(bars: AggBar[], lookback = 30): { support: number[]; resistance: number[] } {
@@ -141,6 +147,7 @@ export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard 
   const dailyBars = mtf.daily_bars?.length ? mtf.daily_bars : [];
   const swings = swingLevels(dailyBars, 45);
   const relVol = mtf.rel_volume ?? null;
+  const momentum = computeMomentumQuality(dailyBars);
   const setupTags = classifySetup({
     price: mtf.price,
     ema20: mtf.emas?.ema20 ?? null,
@@ -197,5 +204,6 @@ export async function buildTechnicalCard(ticker: string): Promise<TechnicalCard 
     ema50: mtf.emas?.ema50 ?? null,
     ema200: mtf.emas?.ema200 ?? null,
     summary: buildTechnicalSummary(mtf.trend_stack ?? "mixed", setupTags),
+    momentum,
   };
 }

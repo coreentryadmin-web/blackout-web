@@ -377,8 +377,9 @@ test("pickChainContract returns null only when no rows have any quotes", () => {
 });
 
 test("pickChainContract accepts 2+ DTE contracts (MIN_DTE lowered from 5 to 2)", () => {
-  // Both 3-day and 30-day clear the 2-day floor. Deterministic tie-break: closest strike to
-  // spot then nearest expiry — so the 3-day contract wins (same strike, nearer expiry).
+  // 3-day clears both the 2-day floor and the 10-day ceiling (strict pool); 30-day clears the
+  // floor but not the ceiling, so it lands in the longDated last-resort pool instead — the
+  // 3-day contract wins outright (strict beats any last-resort pool), not via a tie-break.
   const today = new Date();
   const shortExpiry = new Date(today.getTime() + 3 * 86400_000).toISOString().slice(0, 10);
   const longExpiry = new Date(today.getTime() + 30 * 86400_000).toISOString().slice(0, 10);
@@ -392,6 +393,43 @@ test("pickChainContract accepts 2+ DTE contracts (MIN_DTE lowered from 5 to 2)",
   const c = pickChainContract(chain, "long");
   assert.ok(c != null);
   assert.equal(c!.expiry, shortExpiry, "3-day contract clears 2-day floor and wins tie-break");
+});
+
+// ── 10 DTE ceiling — the other half of "2-10 DTE" the floor above already names (constants.ts /
+// MAX_DTE_CALENDAR_DAYS). Before this, the per-row loop only ever rejected an expiry BELOW
+// minExpiry; nothing stopped a far-dated monthly whose strike happened to sit nearest to spot
+// from winning outright over a genuine 2-10 DTE weekly, since every expiry was pooled together
+// and sorted by strike-distance first. ───────────────────────────────────────────────────────
+test("pickChainContract prefers an in-window (2-10 DTE) strike over a nearer-to-spot but far-dated (>10 DTE) one", () => {
+  const today = new Date();
+  const inWindowExpiry = new Date(today.getTime() + 5 * 86400_000).toISOString().slice(0, 10);
+  const farExpiry = new Date(today.getTime() + 15 * 86400_000).toISOString().slice(0, 10);
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      // Exact ATM, but 15 DTE — strike-nearest to spot, so WOULD win under pure nearest-to-spot
+      // sorting if every expiry were pooled together without a ceiling.
+      row(100, { oi: 5_000, callAsk: 4, callBid: 3.6, expiry: farExpiry }),
+      // 5% OTM, but a real 5-DTE weekly inside the window.
+      row(105, { oi: 5_000, callAsk: 2, callBid: 1.8, expiry: inWindowExpiry }),
+    ],
+  };
+  const c = pickChainContract(chain, "long");
+  assert.ok(c != null);
+  assert.equal(c!.expiry, inWindowExpiry, "the in-window weekly must win over the nearer-to-spot but out-of-window monthly");
+  assert.equal(c!.strike, 105);
+});
+
+test("pickChainContract: a far-dated (>10 DTE) contract is still picked, with no caveat, when NOTHING quotable exists inside the 2-10 DTE window", () => {
+  const farExpiry = new Date(Date.now() + 25 * 86400_000).toISOString().slice(0, 10);
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { oi: 5_000, callAsk: 4, callBid: 3.6, expiry: farExpiry })],
+  };
+  const c = pickChainContract(chain, "long");
+  assert.ok(c != null, "the 2-10 DTE ceiling is a deprioritization, never a hard exclusion");
+  assert.equal(c!.expiry, farExpiry);
+  assert.equal(c!.caveat, undefined, "a real, liquid, affordable longDated pick carries no caveat — same as a strict-pool in-window pick");
 });
 
 test("pickChainContract rejects same-day expiry but accepts 3-day", () => {
