@@ -99,7 +99,7 @@ Synthesized Thermal analysis brief for one ticker, answering "what is dealer gam
 2. **Compute "stability" fields** (new)
    - Regime stability: is this regime hours-old (stable) or minutes-old (fragile)?
    - Wall stability: GEX magnitude + wall-history duration → firm/moderate/thin
-   - Use existing wall_integrity from Vector when available; fall back to GEX magnitude bands
+   - **Integration note:** Wall integrity scoring exists in `src/features/vector/lib/vector-wall-integrity.ts` (`scoreWallIntegrity`, produces firm/moderate/thin tier + 0-100 score). Currently only used for Vector desk wall visualization, not exposed to Thermal API. Will reuse this exact scoring logic + shared refMaxPct derivation so the verdict is identical across surfaces (no drift between Vector and Thermal).
 
 3. **Add `intraday_context` synthesis**
    - Read `get_gex_matrix_changes` for material deltas since last snapshot
@@ -111,9 +111,10 @@ Synthesized Thermal analysis brief for one ticker, answering "what is dealer gam
    - Wire in Largo's run-tool.ts dispatch
    - Document in tool-defs.ts
 
-5. **Audit dead-wire fields**
-   - Check if any computed fields in the Thermal codebase (e.g., regime stability, wall-build rate, transition certainty) are being computed but not exposed
-   - Ensure all relevant fields reach the API response
+5. **Audit dead-wire fields** ✓ COMPLETED
+   - **FOUND:** Wall integrity scoring (firm/moderate/thin tier + 0-100 score + factors: strength/persistence/isolation) is computed in `src/features/vector/lib/vector-wall-integrity.ts` but NOT exposed to Thermal API
+   - **ACTION:** Will reuse in get_thermal_brief implementation
+   - All other Thermal positioning fields (flip, walls, near_term_expiries, shift_summary, intraday_adjusted, cross_validation) are already properly exposed through gex-positioning.ts → /api/market/gex-positioning route
 
 ## Trader Perspective Justification
 
