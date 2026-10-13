@@ -38,6 +38,79 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-13 — [FINDING, P3 Vector, re-verification] `vector-pick-sweep` RTH-open overrun — confirmed RTH-open-specific, now with a second live sample showing the 2026-10-12 TTL-raise scenario recurring — OPEN, write-up only
+
+> **kind:** `FINDING`
+
+### What this re-verifies
+
+Directly answers the open question in the 2026-10-05 FINDINGS.md entry ("`vector-pick-sweep` still
+multi-minute over its 120s schedule post-RPS-bump") — "is this RTH-open-specific (self-resolving)
+or does it persist mid-day?" — with a fresh live sample pulled during today's actual RTH open
+(2026-10-13, market opened 13:30 UTC).
+
+### Data (CloudWatch Logs, `/ecs/blackout-production`, `"vector-pick-sweep"` filter, 13:30-14:19 UTC)
+
+Seven completions in the first ~29 minutes after open, `elapsed=` against the 120,000ms (120s)
+schedule:
+
+| Time (UTC) | elapsed (ms) | vs 120s schedule |
+|---|---|---|
+| 13:39:14 | 476,169 | 4.0x over |
+| 13:41:39 | 141,616 | 1.2x over |
+| 13:47:38 | 260,276 | 2.2x over |
+| 13:51:42 | 143,869 | 1.2x over |
+| 13:55:00 | 102,460 | **under** |
+| 13:56:55 | 97,615 | **under** |
+| 13:58:38 | 79,919 | **under** |
+
+A clean decay curve — the cron starts at ~4x schedule right at open and crosses under its own
+120s budget by ~25 minutes in, confirming the RTH-open-specific hypothesis for THIS portion of the
+window: the original 2026-10-05 sample (62s-793s range) and this session's early values
+(142s-476s) are consistent in shape even though the absolute peak differs session to session.
+
+### Second finding within the same sample: the cron then went silent for 20+ minutes
+
+After the 13:58:38 completion, **zero further `vector-pick-sweep` log lines of any kind
+(`done` or `REJECTED`) appeared for the rest of the observed window** (checked repeatedly through
+14:18:39, a 20-minute gap against a cron scheduled every ~2 minutes,
+`schedule_cron_utc: "1-59/2 11-21 * * 1-5"`). Confirmed this is not a logging/ingestion gap — the
+log group was actively receiving unrelated traffic (UW queue-timing lines, polygon-gex escalations)
+throughout the same window.
+
+Read `src/app/api/cron/vector-pick-sweep/route.ts`'s own header comment (not touched by this
+entry): this exact shape — a single sweep running far longer than its 2-minute schedule, with every
+subsequent scheduled fire silently skipped by the cross-replica overlap guard
+(`sharedCacheSetNx(OVERLAP_LOCK_KEY, ..., 1500)`) rather than logging anything — is the SAME pattern
+the file's own 2026-10-12 TTL raise (900s → 1500s) was written to tolerate, after that day's
+CloudWatch sample showed two sweeps running 992s and 1036.5s during a 12:40-15:25 UTC RTH-open
+window. The file's own comment notes that incident "settled back to 60-180s normal" after ~14:53
+UTC that day. Corroborating evidence from the SAME window as today's silence: `[uw] queue wait`
+log lines spiked to 50+ in a 10-minute sample (14:08-14:18 UTC), with individual waits up to
+10,610ms — consistent with the shared UW rate-limiter being the live bottleneck stalling whichever
+sweep is currently in flight, exactly as the route's own header comment attributes the pattern to.
+
+### Why not fixed here
+
+This is the identical shared-infra scope boundary the 2026-10-05 entry already drew: `uw-rate-
+limiter.ts`'s `GLOBAL_MAX_RPS` is read by 0DTE, Vector, and Helix alike, and the overlap-guard TTL
+has already been raised twice this month by the owning lane in direct response to measured
+CloudWatch evidence of exactly this shape. A third data point confirming the same pattern recurring
+is useful evidence for that lane's own next tuning decision (e.g. whether 1500s remains sufficient,
+or whether the RTH-open spike itself needs addressing via cron staggering or a dedicated priority
+lane) — it is not, on its own, grounds for DISCOVERY to re-tune shared rate-limiter infra.
+
+### Evidence
+
+CloudWatch Logs, `/ecs/blackout-production`, `"vector-pick-sweep"` filter, 13:30-14:19 UTC
+2026-10-13 (7 completions + a confirmed 20-minute-and-growing silence); companion `"[uw] queue
+wait"` filter, 14:08-14:18 UTC (50 lines, waits up to 10,610ms); `src/app/api/cron/vector-pick-
+sweep/route.ts` lines 1-115 (overlap-guard mechanism and its own documented tuning history, read
+not modified); `src/lib/cron-registry.ts` lines 491-500 (`stale_after_min: 25` confirms the
+registry's own alerting threshold is already in lockstep with the route's 1500s TTL).
+
+| **Status** | **OPEN — write-up only, no code changed.** Recommend the Vector/owning lane treat this as a third corroborating sample (after 2026-09-01 and 2026-10-12) that the RTH-open spike recurs on a roughly weekly cadence and is not yet resolved by the TTL raises alone — those raises prevent cascading overlap but do not address the underlying contention. |
+
 ## 2026-10-13 — [FINDING, P3 swing/Ask Largo, data-honesty] Swing play-brief's "Lane rank" section vanished on a transient fetch failure with no disclosure, indistinguishable from an honestly-thin lane — fix/swing-lane-rank-fetch-failed-disclosure (#5947)
 
 > **kind:** `FINDING`
