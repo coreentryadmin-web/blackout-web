@@ -153,6 +153,7 @@ test("mapNighthawkCandidateCoverageRow: counts arrive as Postgres bigint/int and
     rejection_reason: null,
     n: "12",
     n_graded: "9",
+    n_sentinel: "0",
     n_editions: "2",
     first_edition: "2026-09-21",
     last_edition: "2026-09-22",
@@ -160,9 +161,36 @@ test("mapNighthawkCandidateCoverageRow: counts arrive as Postgres bigint/int and
   assert.equal(row.n, 12);
   assert.equal(typeof row.n, "number");
   assert.equal(row.n_graded, 9);
+  assert.equal(row.n_sentinel, 0);
   assert.equal(row.n_editions, 2);
   assert.equal(row.first_edition, "2026-09-21");
   assert.equal(row.last_edition, "2026-09-22");
+});
+
+test("mapNighthawkCandidateCoverageRow: n_sentinel coerces from Postgres bigint and defaults to 0 when absent", () => {
+  const withSentinel = mapNighthawkCandidateCoverageRow({
+    stage: "bearish_posture_shadow",
+    rejection_reason: null,
+    n: "17",
+    n_graded: "0",
+    n_sentinel: "17",
+    n_editions: "16",
+    first_edition: "2026-09-22",
+    last_edition: "2026-10-13",
+  });
+  assert.equal(withSentinel.n_sentinel, 17);
+  assert.equal(typeof withSentinel.n_sentinel, "number");
+
+  const withoutField = mapNighthawkCandidateCoverageRow({
+    stage: "discovery",
+    rejection_reason: null,
+    n: "5",
+    n_graded: "5",
+    n_editions: "1",
+    first_edition: "2026-09-22",
+    last_edition: "2026-09-22",
+  });
+  assert.equal(withoutField.n_sentinel, 0);
 });
 
 test("mapNighthawkCandidateCoverageRow: null rejection_reason and null date bounds stay null, never coerced", () => {
@@ -206,6 +234,10 @@ test("fetchNighthawkCandidateSnapshotCoverage: date range is parameterized, aggr
   // COUNT(forward_returns) relies on the column being NULL until graded -- COUNT skips NULLs,
   // so this is a genuine graded-row count, not a total-row count under a different name.
   assert.match(body, /COUNT\(forward_returns\)::int AS n_graded/);
+  // The __EDITION__ sentinel row (bearish-posture-shadow.ts, candidates-breakout-shadow.ts) can
+  // never acquire forward_returns -- counted separately so a reader doesn't read "always 0%
+  // graded" as a stuck job.
+  assert.match(body, /COUNT\(\*\) FILTER \(WHERE ticker = '__EDITION__'\)::int AS n_sentinel/);
   assert.match(body, /COUNT\(DISTINCT edition_for\)::int AS n_editions/);
 });
 
