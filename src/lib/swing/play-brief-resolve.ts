@@ -15,7 +15,7 @@ import {
   discoverSwingFromPersisted,
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
+import { fetchBangerOpenBookRowsSettled } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
@@ -233,7 +233,7 @@ async function loadLaneRows(ticker: string): Promise<{
     fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
     fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
     fetchBangerPositions: isBangerEngineEnabled()
-      ? () => fetchBangerOpenBookRows().catch(() => [])
+      ? () => fetchBangerOpenBookRowsSettled().catch(() => [])
       : undefined,
     vectorLeaders,
     bangerWatchPlays: bangerWatchSnap?.plays ?? [],

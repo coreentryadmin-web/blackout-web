@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { mapBangerPositionRow } from "./positions-db.ts";
+
+// Source-inspection: fetchBangerOpenCount/fetchBangerOpenBookRowsSettled run raw SQL this sandbox
+// cannot exercise against live Postgres — same idiom as src/lib/db.test.ts for DB-query code.
+const SRC = readFileSync(fileURLToPath(new URL("./positions-db.ts", import.meta.url)), "utf8");
 
 test("mapBangerPositionRow coerces numeric/jsonb columns and defaults status", () => {
   const row = mapBangerPositionRow({
@@ -246,4 +252,24 @@ test("mapBangerPositionRow defaults status to OPEN when the column is missing", 
     updated_at: "2026-08-04T00:00:00.000Z",
   });
   assert.equal(row.status, "OPEN");
+});
+
+test("fetchBangerOpenCount filters out expired-but-still-OPEN/PARTIAL rows via contract_expiry >= today (ET), not status alone", () => {
+  const fn = SRC.slice(SRC.indexOf("export async function fetchBangerOpenCount"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /status IN \('OPEN','PARTIAL'\) AND contract_expiry >= \$1::date/);
+  assert.match(body, /todayEt\(\)/, "must use the shared ET-anchored today helper, not a UTC/local Date");
+});
+
+test("fetchBangerOpenBookRowsSettled filters out expired-but-still-OPEN/PARTIAL rows, both the limited and unlimited query branches", () => {
+  const fn = SRC.slice(SRC.indexOf("export async function fetchBangerOpenBookRowsSettled"));
+  const body = fn.slice(0, fn.indexOf("\nexport "));
+  const matches = body.match(/status IN \('OPEN','PARTIAL'\) AND contract_expiry >= \$\d::date/g) ?? [];
+  assert.equal(matches.length, 2, "both the LIMIT and no-LIMIT branches must carry the expiry filter");
+});
+
+test("fetchBangerOpenBookRows (the UNFILTERED sibling live-marks-active.ts depends on) is untouched — no expiry filter added to it", () => {
+  const start = SRC.indexOf("export async function fetchBangerOpenBookRows(");
+  const fn = SRC.slice(start, SRC.indexOf("\n}\n", start) + 3);
+  assert.ok(!fn.includes("contract_expiry"), "the raw reader live-marks-active.ts uses must keep seeing expired rows to force-settle them");
 });

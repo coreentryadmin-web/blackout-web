@@ -25,7 +25,7 @@ mock.module("../../../../../lib/banger/flag", {
   namedExports: { isBangerEngineEnabled: () => false },
 });
 mock.module("../../../../../lib/banger/positions-db", {
-  namedExports: { fetchBangerBoardRows: async () => [], fetchBangerOpenBookRows: async () => [] },
+  namedExports: { fetchBangerBoardRows: async () => [], fetchBangerOpenBookRowsSettled: async () => [] },
 });
 mock.module("../../../../../lib/banger/watch-cache", {
   namedExports: { readBangerWatchSnapshot: async () => null },

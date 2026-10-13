@@ -6,7 +6,7 @@ import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { fetchOpenSwingPositions, fetchSwingPositionById, fetchSwingPositionChain } from "@/lib/db";
 import { buildSwingRecord } from "./record";
-import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
+import { fetchBangerOpenBookRowsSettled } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
@@ -69,7 +69,7 @@ async function loadOpenBook(): Promise<PortfolioPosition[] | null> {
     let bangerPositions: PortfolioPosition[] = [];
     if (isBangerEngineEnabled()) {
       try {
-        const bangerRows = await fetchBangerOpenBookRows();
+        const bangerRows = await fetchBangerOpenBookRowsSettled();
         // `positionId` is deliberately left UNSET here (never `bangerRow.id`) — banger_positions
         // and swing_positions are separate DB sequences that CAN collide on numeric id, and
         // `checkPortfolioOverlap`'s `excludePositionId` trusts that id as an exact identity match;

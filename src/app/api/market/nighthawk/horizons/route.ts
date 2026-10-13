@@ -16,7 +16,7 @@ import {
 } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
 import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
-import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
+import { fetchBangerOpenBookRowsSettled } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
       fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       fetchBangerPositions: isBangerEngineEnabled()
-        ? () => fetchBangerOpenBookRows().catch(() => [])
+        ? () => fetchBangerOpenBookRowsSettled().catch(() => [])
         : undefined,
       vectorLeaders,
       bangerWatchPlays: bangerWatchSnap?.plays ?? [],
