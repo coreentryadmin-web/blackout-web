@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-13T20:22Z",
-  "notes": "RTH continuing. Native committed count swung 54->84 in one ~15min window with zero new closures -- traced it: 81 of 84 committed rows are banger-origin (positionId 1400-1700 range), only 3 native swing (INTC/GOOG/GOOGL unchanged) -- confirms the swing is Banger-engine commit/exit volume (a different, faster-churning engine sharing the same SWING lane view), not a data glitch (re-ran the check 3x within seconds, stable at 84). Bonus: record.summary.opens (84) now exactly matches horizons committed count (84) -- the previously-tracked record-vs-horizons gap (#4700-adjacent) has closed to zero, continuing the narrowing trend (5->1->0). Posted corroborating update to #4076 (comment 6154374064). WATCH list dropped IREN (5->4, SKHY/AVGO/WULF/AMZN remain) -- routine WATCH-list churn (window expiry or rank cutoff as SKHY/WULF entered), not investigated further given no anomaly signal. No bugs found.",
+  "last_updated": "2026-10-13T21:05Z",
+  "notes": "Market closed, book frozen (INTC/GOOG/GOOGL unchanged since last tick). Full-mandate cycle: deep-audited the CLOSED play-brief for today's only closure, ASTS:53 (stopped -65.7%, peak +0.7%). Found no bugs -- the narrative is genuinely diagnostic, not a bullet dump: correctly distinguishes 'a trim rail would not have helped' (peak never reached the +100% trigger) from 'review entry timing' (thin +6.2% invalidation cushion at commit = an already-extended entry), honestly discloses 'No pillar breakdown on this row -- grade is from lane score only' (C6 omission, not fabrication), and the Since-it-closed section confirms the stop wasn't premature (spot stayed through the 50.22 invalidation level post-exit). This is the 5-truth-grader-quality bar working as intended on a real loss -- no escalation needed. WATCH list unchanged (SKHY/AVGO/WULF/AMZN). Market closed for the day; next session will resume the ~15min cadence at tomorrow's open.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
