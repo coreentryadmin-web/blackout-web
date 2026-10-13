@@ -145,6 +145,9 @@
     },
     "2026-10-13T19:11:00Z_TTMI_LONG_CLOSED_WIN_ALL_TODAY_RESOLVED": {
       "note": "TTMI long closed: ratchet, +3.9% \u2014 a clean win, consistent with its clean entry (cortex PASS +0.4, prime score band, vex-charm correctly supportive) logged last cycle. 0 OPEN now \u2014 all 5 of today's (2026-10-13) plays resolved: MU(thesis_break -16.2%), ORCU(flat_scratch -1.32%), SPXW(stopped -50.45%), SSRM(flat_scratch -7.89%), TTMI(ratchet +3.9%). 1W/4L on single-leg plays today (TTMI the only winner) \u2014 small sample, no pattern worth flagging yet. Board blocker rotated to plan_no_quote (the default/benign state, not an outage) with discovery_funnel.top_gate now thesis_rank_reject \u2014 both are the known session-cumulative/live-pass distinction already documented, not evidence of anything broken. Clean cycle, nothing to escalate."
+    },
+    "2026-10-13T19:44:00Z_QQQ_WOLF_CLOSED_RATCHET_WINS_CLEAN": {
+      "note": "2 new plays today, both already closed as wins by the time of this check: QQQ long +18.42% (ratchet_breakeven_floor \u2014 peaked +43.42%, 1/2 tranche banked on the way up via trim_scale, the runner's protective floor caught the pullback at +18.42% instead of giving back the whole peak; textbook-correct trim+ratchet interaction on a strong mover). WOLF long +3.23% (ratchet_early_profit_floor \u2014 peaked +8.06%, floor armed +3.22%, exited +3.23%; correct early-profit-floor behavior on a smaller move). Both cortex PASS, clean entries, no issues. Today's running tally: 3W(QQQ,TTMI,WOLF)/2L(MU,SPXW)/2 scratch(ORCU,SSRM) = 7 plays, 0 open. Clean cycle, nothing to escalate."
     }
   },
   "sessions": {
