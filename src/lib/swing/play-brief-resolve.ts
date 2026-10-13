@@ -214,6 +214,7 @@ async function loadLaneRows(ticker: string): Promise<{
   rows: HorizonPlay[];
   scanAsOf: string | null;
   scanSessionDay: string | null;
+  fetchFailed: boolean;
 }> {
   const snap = await readSwingServingSnapshot().catch(() => null);
   const engineV2 = isSwingEngineV2Enabled();
@@ -238,14 +239,23 @@ async function loadLaneRows(ticker: string): Promise<{
     bangerWatchPlays: bangerWatchSnap?.plays ?? [],
     spotsByTicker: snap?.spotsByTicker,
   }).catch(() => null);
+  // `null` here means the Promise rejected and the `.catch` above swallowed it — a real fetch
+  // failure, distinct from `getSwingServingLane` resolving with a genuinely cold/empty lane.
+  const fetchFailed = lane == null;
 
   if (!lane?.sections) {
-    return { rows: [], scanAsOf: lane?.scanAsOf ?? null, scanSessionDay: lane?.scanSessionDay ?? null };
+    return {
+      rows: [],
+      scanAsOf: lane?.scanAsOf ?? null,
+      scanSessionDay: lane?.scanSessionDay ?? null,
+      fetchFailed,
+    };
   }
   return {
     rows: rowsForSwingSection(lane.sections, "ALL"),
     scanAsOf: lane.scanAsOf ?? null,
     scanSessionDay: lane.scanSessionDay ?? null,
+    fetchFailed,
   };
 }
 
@@ -315,6 +325,7 @@ export async function resolveSwingPlayForBrief(
   scanAsOf: string | null;
   scanSessionDay: string | null;
   laneRows: HorizonPlay[];
+  laneRowsFetchFailed: boolean;
 } | null> {
   const parsed = parseSwingPlayId(input.playId);
   // Blank ticker from the route must not block playId-derived resolution (Largo tool omits ?ticker=).
@@ -329,7 +340,7 @@ export async function resolveSwingPlayForBrief(
   const strike = input.strike != null && Number.isFinite(input.strike) ? input.strike : null;
   const status = input.status ?? null;
 
-  const [{ rows, scanAsOf, scanSessionDay }, openPlay] = await Promise.all([
+  const [{ rows, scanAsOf, scanSessionDay, fetchFailed: laneRowsFetchFailed }, openPlay] = await Promise.all([
     loadLaneRows(ticker),
     loadOpenTerminalPlay(ticker, {
       positionId,
@@ -348,11 +359,11 @@ export async function resolveSwingPlayForBrief(
   // would silently return the WRONG, unrelated play (live repro: SWING:INTC — see FINDINGS).
   if (positionId != null) {
     const closed = await loadClosedPlay(ticker, positionId);
-    if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows };
+    if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }
 
   if (openPlay && (!status || WORKING.has(status.toUpperCase()))) {
-    return { play: openPlay, scanAsOf, scanSessionDay, laneRows: rows };
+    return { play: openPlay, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }
 
   // MULTI-ROLL CHAIN FALLBACK (see resolveChainRootId's doc comment) — only reached when the direct
@@ -363,10 +374,10 @@ export async function resolveSwingPlayForBrief(
     if (chainRootId !== positionId) {
       const chainOpenPlay = await loadOpenTerminalPlay(ticker, { positionId: chainRootId, strike, right, status });
       if (chainOpenPlay && (!status || WORKING.has(status.toUpperCase()))) {
-        return { play: chainOpenPlay, scanAsOf, scanSessionDay, laneRows: rows };
+        return { play: chainOpenPlay, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
       }
       const chainClosed = await loadClosedPlay(ticker, chainRootId);
-      if (chainClosed) return { play: chainClosed, scanAsOf, scanSessionDay, laneRows: rows };
+      if (chainClosed) return { play: chainClosed, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
     }
   }
 
@@ -416,16 +427,17 @@ export async function resolveSwingPlayForBrief(
       scanAsOf,
       scanSessionDay,
       laneRows: rows,
+      laneRowsFetchFailed,
     };
   }
 
   if (positionId != null || input.playId.includes("CLOSED")) {
     const closed = await loadClosedPlay(ticker, positionId);
-    if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows };
+    if (closed) return { play: closed, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
   }
 
   const closedFallback = await loadClosedPlay(ticker, null);
-  if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows };
+  if (closedFallback) return { play: closedFallback, scanAsOf, scanSessionDay, laneRows: rows, laneRowsFetchFailed };
 
   return null;
 }

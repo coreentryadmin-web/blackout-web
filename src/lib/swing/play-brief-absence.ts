@@ -766,6 +766,22 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const flipAbsence = collectGexFlipAbsence(gex, readMs);
     if (flipAbsence) out.push(flipAbsence);
   }
+  // GAP FOUND (Ask Largo standing mandate, live repro AMD:51, 2026-10-12, PR #4076 comment
+  // 6116699649): `laneRankSection` silently renders nothing whenever `computeLaneRank` finds
+  // fewer than 2 peers — indistinguishable from "the underlying getSwingServingLane() read
+  // itself failed" (loadLaneRows's own `.catch(() => null)`, play-brief-resolve.ts), which is
+  // exactly what happened live: the member-facing board (`/horizons?view=swings`) showed 145
+  // real peers at the same instant this play's own independent lane-rows read came back empty,
+  // with nothing in unavailableSources explaining the vanished "Lane rank" section. Unlike GEX/
+  // Vector-desk above, there was previously no disclosure chip for this absence at all.
+  if (!isNotLive && ctx.laneRowsFetchFailed) {
+    out.push({
+      source: "Lane rank",
+      reason: "swing serving-lane snapshot unavailable",
+      what_is_missing: "a fresh read of the swing lane peer snapshot for ranking",
+      retryable: true,
+    });
+  }
   // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.
   if (!isNotLive && !ctx.vectorFetchFailed && ctx.ecosystem && !hasVectorDeskState(ctx)) {
