@@ -23,6 +23,17 @@ export type SwingPlayBriefContext = {
   scanSessionDay: string | null;
   /** Full serving-lane rows for comparative rank. */
   laneRows: HorizonPlay[];
+  /**
+   * True when the underlying `getSwingServingLane()` read behind `laneRows` itself threw
+   * (network, timeout, a transient snapshot-read error) rather than `laneRows` legitimately
+   * having fewer than 2 peers today. `laneRankSection` silently renders nothing either way
+   * (`computeLaneRank` returns null on `peers.length < 2`), so without this flag a real fetch
+   * failure and an honestly-thin lane are indistinguishable from the outside — live repro
+   * 2026-10-12 (PR #4076 comment 6116699649): the live board's own `/horizons?view=swings`
+   * read showed 145 real peers at the same instant this play's own independent lane-rows read
+   * came back empty, with no disclosure anywhere in the envelope.
+   */
+  laneRowsFetchFailed?: boolean;
   /** Meridian catalyst calendar slice for this ticker. */
   meridian: SwingMeridianCatalystSlice | null;
   /** Sector peer earnings cohort when an earnings catalyst is within 14d. */

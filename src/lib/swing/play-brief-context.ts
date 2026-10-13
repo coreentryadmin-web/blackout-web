@@ -332,6 +332,7 @@ export async function loadSwingPlayBriefContext(
     ecosystem,
     vector,
     laneRows: resolved.laneRows,
+    laneRowsFetchFailed: resolved.laneRowsFetchFailed,
     meridian,
     meridianPeer,
     openBook,

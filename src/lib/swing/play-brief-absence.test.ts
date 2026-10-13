@@ -852,6 +852,28 @@ test("collectBriefUnavailableSources: ctx.vector satisfies Vector desk state whe
   assert.ok(!sources.some((s) => s.source === "Vector desk state"));
 });
 
+test("collectBriefUnavailableSources: laneRowsFetchFailed surfaces a Lane rank chip", () => {
+  const ctx = {
+    laneRowsFetchFailed: true,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) => s.source === "Lane rank" && s.reason === "swing serving-lane snapshot unavailable",
+    ),
+  );
+});
+
+test("collectBriefUnavailableSources: a genuinely thin lane (fetchFailed undefined) does not surface a Lane rank chip", () => {
+  const ctx = {
+    laneRowsFetchFailed: undefined,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(!sources.some((s) => s.source === "Lane rank"));
+});
+
 test("collectBriefUnavailableSources: forwards Vector unavailable_sections to envelope", () => {
   const ctx = {
     vector: {
