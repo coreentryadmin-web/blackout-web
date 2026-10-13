@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-13T04:48:19.467Z",
+  "updated_at": "2026-10-13T06:10:19.792Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ba8a41514511a126a7f42e0d482d8a76b0e3cdb0",
+    "last_main_sha": "de86fef58d4d126c909708b3ddb96a2fa916a2db",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-27T08:47:17.752Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T08:47:18.007Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T08:53:09.893Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-27T08:53:10.407Z",
       "type": "context_sync",
@@ -1271,6 +1253,24 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T06:10:10.533Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T06:10:15.330Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T06:10:19.792Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
@@ -1302,7 +1302,7 @@
       "agent": "human",
       "draft": false,
       "verify": "completed/failure",
-      "updated_at": "2026-09-29T00:28:27Z"
+      "updated_at": "2026-10-13T05:27:52Z"
     },
     {
       "number": 5545,
@@ -1332,7 +1332,7 @@
       "agent": "human",
       "draft": false,
       "verify": "completed/failure",
-      "updated_at": "2026-09-29T00:27:43Z"
+      "updated_at": "2026-10-13T05:41:41Z"
     }
   ],
   "pr_activity": {
