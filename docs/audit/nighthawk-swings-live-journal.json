@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-13T22:05Z",
-  "notes": "Market closed overnight, book/WATCH frozen (4th consecutive clean tick). Full-mandate cycle: deep-audited WULF's full WATCH play-brief (first full-envelope audit of this new candidate). Clean -- book context correctly flags theme concentration (3 existing crypto-equity LONGs: ABTC/RIOT/IREN), gates correctly disclosed (G-S6 confluence + G-S14 cortex), score pillars sum exactly (16.1+15.6+1.9=33.6), and the missing dealer-gamma-posture line is honestly flagged inline ('dealer gamma posture not resolved on this read') rather than silently omitted -- same C6 omission discipline seen elsewhere. No bugs, no new idea this cycle -- considered forcing one but nothing genuinely novel surfaced beyond what's already audited/raised. Still awaiting Cursor reply on the ticker-history idea (comment 6151970308, ~4hrs old).",
+  "last_updated": "2026-10-13T23:05Z",
+  "notes": "Market closed overnight, 7+ consecutive clean ticks on book/WATCH state. Used this quiet window to run the official npm run healthcheck:swing baseline (hadn't run it yet this session). Result: overall AMBER, but entirely explained by off-hours mark staleness (Stage F, ~181min mark age across many committed rows -- the harness itself labels the run '(off-hours)' and this staleness is expected ~3hrs after the 16:00 ET close, not a bug). Stages A/B/C/D/E/G all GREEN -- cron, persistence, serving sections, board lanes, 84 live positions (66 MANAGING/18 SCALING_OUT/0 EXITING), and grading/record all healthy. Noted but NOT escalated: Stage G shows WR 13.3% (2W/13L) across 15 resolved chains of 18 open -- a single small-n (15) snapshot, not a 3-instance pattern, and this metric isn't scoped to native-swing-only vs mixed banger-origin chains -- worth a proper look with the existing swing-loss-taxonomy-segment.mjs/swing-score-calibration.mjs tooling in a future cycle with more signal (e.g. after more closes), not from one baseline run.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
