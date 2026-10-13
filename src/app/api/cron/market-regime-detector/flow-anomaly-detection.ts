@@ -56,6 +56,15 @@ function millions(v: number): string {
 }
 
 /**
+ * The same rounding `millions()` applies, as a number — 0 when the value is too small to render
+ * as a non-zero `$X.XM` figure (the `millions()` "<$0.1M" branch), never a false precise zero.
+ */
+function roundedMillions(v: number): number {
+  if (v > 0 && v < 50_000) return 0;
+  return Math.round(v / 100_000) / 10;
+}
+
+/**
  * Member-facing text for a directional skew.
  *
  * WHY THIS IS NOT AN INLINE TEMPLATE ANY MORE. The ratio was rendered unconditionally as
@@ -69,6 +78,15 @@ function millions(v: number): string {
  *
  * The gating is untouched — the sentinel still clears the threshold and the same anomalies fire,
  * with the same `metric_value`. Only what the member is told changes.
+ *
+ * SAME CLASS OF DEFECT, A DIFFERENT SHAPE (live repro 2026-10-13, MSTR): the ratio was still
+ * rendered from the EXACT, unrounded premiums while the two dollar amounts beside it are each
+ * independently rounded to 1 decimal via `millions()` — "extreme call skew (29:1 call/put) —
+ * $1.6M calls vs $0.1M puts", where 1.6/0.1 is 16, not 29. The precise ratio is correct and still
+ * drives gating/`metric_value`; what a member is TOLD must reconcile with the two numbers shown
+ * beside it, so the printed ratio is now derived from those same rounded figures — falling back
+ * to the precise ratio only when the smaller side rounds to zero (the `<$0.1M` branch), where
+ * there is no rounded denominator to reconcile against in the first place.
  */
 function skewDetail(
   ticker: string,
@@ -81,8 +99,10 @@ function skewDetail(
   if (otherPrem <= 0) {
     return `${ticker}: one-sided ${dominant} flow — ${millions(dominantPrem)} ${dominant}s vs no ${other} premium`;
   }
+  const roundedOther = roundedMillions(otherPrem);
+  const displayRatio = roundedOther > 0 ? roundedMillions(dominantPrem) / roundedOther : ratio;
   return (
-    `${ticker}: extreme ${dominant} skew (${ratio.toFixed(0)}:1 ${dominant}/${other}) — ` +
+    `${ticker}: extreme ${dominant} skew (${displayRatio.toFixed(0)}:1 ${dominant}/${other}) — ` +
     `${millions(dominantPrem)} ${dominant}s vs ${millions(otherPrem)} ${other}s`
   );
 }
