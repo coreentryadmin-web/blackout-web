@@ -3460,6 +3460,87 @@ test("watchForSection: closed-bucket fallback distinguishes stale-and-withheld G
   assert.match(genuinelyAbsent.body, /No gamma flip \/ GEX wall read available/i);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-13): "Since it closed" told a member where
+// spot sits vs the gamma flip and vs a live structural level, but never the one question that
+// actually matters after a stop — did the underlying keep moving in the stop's direction
+// (confirming the exit) or reverse back through it (the exit may have been early)?
+// `play.invalidationUnderlyingPx` is the exact stop level the position closed under — pinned at
+// commit, static, already valid post-close (the same field closedCoaching's "Stop fired... a X%
+// cushion at commit" line already reads) — comparing it to the spot this section already
+// resolves answers it directly.
+test("watchForSection: closed+stopped LONG reports spot has reclaimed the stop level since close", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "LONG",
+        closedReason: "stopped",
+        invalidationUnderlyingPx: 90,
+      }),
+      asOf: "2026-10-13 10:00 ET",
+      sessionDate: "2026-10-13",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 95 } } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.match(section.body, /reclaimed the stop level/i);
+  assert.match(section.body, /\*\*90\.00\*\*/);
+  assert.match(section.body, /\*\*95\.00\*\*/);
+  assert.match(section.body, /exit may have been early/i);
+});
+
+test("watchForSection: closed+stopped SHORT reports spot remains through the stop level, confirming the exit", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "SHORT",
+        closedReason: "stopped",
+        invalidationUnderlyingPx: 110,
+      }),
+      asOf: "2026-10-13 10:00 ET",
+      sessionDate: "2026-10-13",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 118 } } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.match(section.body, /remains through the stop level/i);
+  assert.match(section.body, /confirming the exit/i);
+});
+
+test("watchForSection: reclaim framing omitted when the play closed for a reason other than a stop", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "LONG",
+        closedReason: "target",
+        invalidationUnderlyingPx: 90,
+      }),
+      asOf: "2026-10-13 10:00 ET",
+      sessionDate: "2026-10-13",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 95 } } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.doesNotMatch(section.body, /stop level/i);
+});
+
 test("watchForSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
   const section = watchForSection(
     {
