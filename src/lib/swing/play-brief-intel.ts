@@ -669,16 +669,22 @@ export function chartTechnicalsSection(
   // disclosure with nothing to disclose about would itself be a fabricated-looking line.
   const closedDisclosure = "_Current chart read — not the technicals this trade closed under._";
   const lines: string[] = [];
-  if (vectorStale) {
-    const ageLabel = ageSecondsLabel(vec?.dataAgeMs);
-    lines.push(
-      `**Last snapshot**${ageLabel != null ? ` (~${ageLabel} old)` : ""} — chart read may lag spot.`,
-    );
-    if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}** (from prior snapshot)`);
-    if (!lines.length) return null;
-    if (bucket === "closed") lines.unshift(closedDisclosure);
-    return { title: "Chart technicals", body: lines.join("\n"), bias: "neutral" };
-  }
+  // FIX (Ask Largo standing mandate, 2026-10-13, live repro ASTS:53 CLOSED brief): this used to
+  // render "Last snapshot ... chart read may lag spot" + "Vector desk grade: X (from prior
+  // snapshot)" — but `vectorDeskSection` (below) independently renders the exact same "Last
+  // snapshot ... Vector desk read may lag spot" + "Vector desk grade: X (from prior snapshot)"
+  // pair under its own title for the identical stale condition. The two sections grew this
+  // near-identical "honest degrade" fallback on different dates with neither referencing the
+  // other, so any brief where both render standalone (every CLOSED brief; any OPEN/WATCH brief
+  // not desk-detail-folded into "Trade manager read") showed the same fact twice under two
+  // section titles — live-confirmed on ASTS:53 (CLOSED, Vector ~1426s stale): both "Chart
+  // technicals" and "Vector desk" read "Vector desk grade: C (from prior snapshot)". `grade` is
+  // the play engine's own field, not "chart technicals" data — its one canonical home is
+  // vectorDeskSection. When stale there is no fresh EMA/VWAP/RSI/MACD/structure to show either,
+  // so this section has nothing left to add beyond what vectorDeskSection (the grade) and
+  // dataFreshnessSection (the staleness itself) already say — omit it entirely, the same
+  // no-real-content path this function already takes elsewhere.
+  if (vectorStale) return null;
   if (vec.spot != null) lines.push(`Spot: **${fmtPriceLevel(vec.spot)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
   if (t?.vwap != null) {
