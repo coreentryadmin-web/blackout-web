@@ -850,3 +850,36 @@ test("livePlayFromSwingPosition: suppresses flow-strike provenance on a rolled l
   )!;
   assert.deepEqual(rootLegStillWorks.topFlowProvenance, { topFlowStrike: 180, matchedPick: true });
 });
+
+test("livePlayFromSwingPosition: markAsOf prefers snapshot mark_as_of over quote asOf (swing mark staleness tracking)", () => {
+  const snapshotMarkAsOf = "2026-09-24T14:30:00.000Z";
+  const quoteAsOf = "2026-09-24T14:15:00.000Z";
+
+  // Snapshot has mark_as_of, quote has asOf → prefer snapshot
+  const play1 = livePlayFromSwingPosition(
+    row({ last_mark: 5.5 }),
+    178,
+    { mark_as_of: snapshotMarkAsOf, quote: { bid: 5.4, ask: 5.6, asOf: quoteAsOf } as any },
+  )!;
+  assert.equal(play1.contract.markAsOf, snapshotMarkAsOf, "prefer snapshot.mark_as_of");
+
+  // Only snapshot has mark_as_of → use it
+  const play2 = livePlayFromSwingPosition(
+    row({ last_mark: 5.5 }),
+    178,
+    { mark_as_of: snapshotMarkAsOf } as any,
+  )!;
+  assert.equal(play2.contract.markAsOf, snapshotMarkAsOf);
+
+  // Only quote has asOf (no snapshot mark_as_of) → use quote.asOf
+  const play3 = livePlayFromSwingPosition(
+    row({ last_mark: 5.5 }),
+    178,
+    { quote: { bid: 5.4, ask: 5.6, asOf: quoteAsOf } as any },
+  )!;
+  assert.equal(play3.contract.markAsOf, quoteAsOf, "fall back to quote.asOf when mark_as_of absent");
+
+  // Neither present → null (marks staleness is unknown)
+  const play4 = livePlayFromSwingPosition(row({ last_mark: 5.5 }), 178, {})!;
+  assert.equal(play4.contract.markAsOf, null, "null when both absent (off-hours, no refresh)");
+});

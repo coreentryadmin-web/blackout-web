@@ -538,6 +538,11 @@ export function livePlayFromSwingPosition(
   const quote = liveQuoteFromEvent(manageEvent);
   const contract = contractFromRow(row, quote);
   if (!contract) return null;
+  // Prefer ledger's recorded mark timestamp, then snapshot's explicit mark_as_of (populated every refresh from
+  // the quote timestamp), then the quote's own asOf timestamp, then null. The ledger's last_mark_at is the
+  // authoritative timestamp for when the mark was last observed; the snapshot's mark_as_of carries the mark
+  // timestamp independently of whether a fresh quote was available this tick (off-hours, no refresh = stale mark + null quote).
+  contract.markAsOf = row.last_mark_at ?? (manageEvent?.mark_as_of as string | null | undefined) ?? quote?.asOf ?? null;
   const direction: PlayDirection = row.direction === "short" ? "SHORT" : "LONG";
   const liveStatus = liveStatusOf(row.status)!;
   const dirLc = row.direction === "short" ? "short" : "long";
@@ -591,7 +596,6 @@ export function livePlayFromSwingPosition(
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
-  const markAsOf = row.last_mark_at ?? quote?.asOf ?? null;
 
   // Pinned at commit (commit.ts's buildCommitInsert) as `entry_context.signal_kinds` — the same
   // discovery-provenance kinds the G-S6 confluence gate graduated on. Read back here so
@@ -645,7 +649,7 @@ export function livePlayFromSwingPosition(
     livePnlPct: livePnlPct(entry, mark),
     peakPremium: row.peak_premium,
     troughPremium: row.trough_premium,
-    markAsOf,
+    markAsOf: contract.markAsOf,
     signalKinds,
   };
 }

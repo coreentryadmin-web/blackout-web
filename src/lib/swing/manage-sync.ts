@@ -387,6 +387,7 @@ export function planManageSync(
     dte_remaining: numOrNull(reads.dte),
     underlying_px: numOrNull(reads.underlyingPrice),
     option_mark: numOrNull(reads.mark),
+    mark_as_of: reads.quote?.asOf ?? null,
     running_mfe: excursion.mfePct,
     running_mae: excursion.maePct,
     thesis_state: thesisState,
