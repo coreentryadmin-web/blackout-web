@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-13 (15:35 UTC / Tue 11:35 ET) — [SEO] RTH wake: gamma-snapshot live and correct, CLS clean
+
+Confirmed market open myself (11:35 ET) before acting. **Public surface:**
+`/api/public/gex-snapshot?ticker=SPX` — `market_session: "OPEN"`, `degraded: false`,
+`snapshot_data_age_seconds` 0-10s. `change_pct` now REST-anchored (-0.24 to -0.27, no longer
+the fail-closed null from earlier today) and **cross-checked against SPY: both read -0.24 at
+the same instant** — real agreement, not coincidence. Spot ratio SPX 7788.89 / SPY 776.21 ≈
+10.03, consistent with the standing SPX≈10×SPY invariant. Polled 3x over ~12s: `calculation_id`
+advanced each time, spot ticked — refresh is live. **CLS:** purged Cloudflare edge HTML,
+measured live with real data rendering — **0.0002, GOOD**. No defect found. No PR opened.
+
 ## 2026-10-13 (14:09 UTC / Tue 10:09 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
 
 Same 3 striking-distance queries (dealer gamma, gamma three trading, is 0dte gambling), same
