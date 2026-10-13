@@ -57,7 +57,7 @@ mock.module("../../../../../lib/banger/flag", {
 });
 mock.module("../../../../../lib/banger/positions-db", {
   namedExports: {
-    fetchBangerOpenBookRows: async (limit: number) => OPEN_ROWS.slice(0, limit),
+    fetchBangerOpenBookRowsSettled: async (limit: number) => OPEN_ROWS.slice(0, limit),
     fetchBangerClosedBoardRows: async (limit: number) => CLOSED_ROWS.slice(0, limit),
   },
 });

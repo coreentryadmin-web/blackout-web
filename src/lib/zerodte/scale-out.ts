@@ -189,8 +189,15 @@ export function deriveScaleOutAction(input: {
     if (lastMark <= entryPremium * hard_stop_mult) {
       return { action: "STOP_OUT", reason: `mark ≤ ${(hard_stop_mult).toFixed(2)}× entry (hard stop −${((1 - hard_stop_mult) * 100).toFixed(0)}%)` };
     }
-    if (lastMark >= entryPremium * scale_at_mult) {
-      return { action: "TAKE_PARTIAL", reason: `mark ≥ ${scale_at_mult}× entry — realize ${(scale_fraction * 100).toFixed(0)}%, trail the runner` };
+    // Trigger on the PEAK ever observed since entry, not just this tick's mark — peakPremium is
+    // already a ratchet (every call site passes Math.max(priorPeak, thisTickMark) or the DB's own
+    // GREATEST(...) column), so peakPremium >= lastMark always holds here. Using lastMark alone
+    // made a 2x-then-retrace invisible: a position that spiked to 2x+ and pulled back before the
+    // NEXT tick sampled it never triggered TAKE_PARTIAL at all — the correct scale-out verdict was
+    // simply never computed, not merely unenforced. Root-caused live on NRG:34/BE:46/HUT:43 (real
+    // production positions, 2026-09-28/29) — see the staged finding for the full trace.
+    if (peakPremium >= entryPremium * scale_at_mult) {
+      return { action: "TAKE_PARTIAL", reason: `peak ≥ ${scale_at_mult}× entry — realize ${(scale_fraction * 100).toFixed(0)}%, trail the runner` };
     }
     return { action: "HOLD", reason: "below the 2× partial and above the hard stop" };
   }

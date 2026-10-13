@@ -75,6 +75,16 @@ test("live: pre-scale in between → HOLD", () => {
   assert.equal(a.action, "HOLD");
 });
 
+test("live: a peak that already crossed 2x, then retraced, still triggers TAKE_PARTIAL (NRG:34's real shape — entry 4.9, peak 11.4, retraced to 6.0)", () => {
+  const a = deriveScaleOutAction({ entryPremium: 4.9, peakPremium: 11.4, lastMark: 6.0, scaledAlready: false });
+  assert.equal(a.action, "TAKE_PARTIAL");
+});
+
+test("live: a peak that crossed 2x then crashed THROUGH the hard stop still STOPs OUT — the hard stop keeps precedence over a missed partial", () => {
+  const a = deriveScaleOutAction({ entryPremium: 1, peakPremium: 2.2, lastMark: 0.3, scaledAlready: false });
+  assert.equal(a.action, "STOP_OUT");
+});
+
 test("live: post-scale runner retraces to 50% of peak → EXIT_RUNNER", () => {
   const a = deriveScaleOutAction({ entryPremium: 1, peakPremium: 4, lastMark: 2.0, scaledAlready: true });
   assert.equal(a.action, "EXIT_RUNNER");

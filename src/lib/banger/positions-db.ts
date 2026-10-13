@@ -11,6 +11,7 @@
 
 import type { QueryResultRow } from "pg";
 import { dbQuery, isoDateString, isoTimestampString, toJsonbParam } from "@/lib/db";
+import { todayEt } from "@/lib/et-date";
 
 export type BangerStatus = "OPEN" | "PARTIAL" | "CLOSED_RUNNER" | "STOPPED";
 
@@ -328,10 +329,19 @@ export async function fetchOpenBangerPositions(): Promise<BangerPositionRow[]> {
  * Measured 2026-08-10: Largo reported "40 open positions" in one answer and "20 open positions" in
  * another ~60 seconds later, because it was reading a page-limited tally through a field named
  * `open_count`.
+ *
+ * ALSO filters `contract_expiry >= today` (ET) — status alone is not enough. A row can sit in
+ * `PARTIAL`/`OPEN` past its own contract's expiry whenever `runBangerLiveSync` hasn't ticked it
+ * since expiring (e.g. a quote gap right at the boundary); until that tick runs, this is a REAL,
+ * live bug symptom, not a hypothetical: KLAC/LRCX/SOXL each reported "already holding 8 same-
+ * direction positions" in theme "semis" when 3 of the 8 were already-expired rows still reading as
+ * open (2026-09-28). No other consumer of this function needs the raw count — see
+ * `fetchBangerOpenBookRowsSettled`'s header for the one consumer that does need the unfiltered set.
  */
 export async function fetchBangerOpenCount(): Promise<number> {
   const res = await dbQuery<{ n: string }>(
-    `SELECT count(*)::text AS n FROM banger_positions WHERE status IN ('OPEN','PARTIAL')`,
+    `SELECT count(*)::text AS n FROM banger_positions WHERE status IN ('OPEN','PARTIAL') AND contract_expiry >= $1::date`,
+    [todayEt()],
   );
   const n = Number(res.rows[0]?.n ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -385,6 +395,45 @@ export async function fetchBangerOpenBookRows(limit?: number): Promise<BangerPos
           `SELECT * FROM banger_positions
            WHERE status IN ('OPEN','PARTIAL')
            ORDER BY session_date DESC, id DESC`,
+        );
+  return res.rows.map(mapBangerPositionRow);
+}
+
+/**
+ * Same as `fetchBangerOpenBookRows`, plus `contract_expiry >= today` (ET) — for every consumer
+ * that only ever COUNTS or LISTS a row as "open" and never writes to it. Deliberately a SEPARATE
+ * function rather than adding the filter to `fetchBangerOpenBookRows` itself: `live-marks-active.ts`
+ * calls that one specifically BECAUSE it needs to see an already-expired OPEN/PARTIAL row — it
+ * applies its own `occAlreadyExpired` guard afterward so it can still force-settle a row sitting
+ * past expiry, and filtering here would hide exactly the rows it exists to catch.
+ *
+ * Every other consumer (the Swing Command board, the Banger board itself, book-context
+ * concentration, legacy serving-lane resolution) has no such need and was reading a real, live
+ * defect: a `banger_positions` row can sit in `PARTIAL`/`OPEN` past its own contract's expiry
+ * whenever `runBangerLiveSync` hasn't force-settled it yet, and every one of those reads counted it
+ * as a currently-held position. Measured 2026-09-28: KLAC/LRCX/SOXL each reported "already holding
+ * 8 same-direction positions" in theme "semis" via `play-brief-context.ts`'s book-context check —
+ * 3 of the 8 were rows already past `contract_expiry`, inflating a real concentration gate off
+ * stale state. `GET /api/market/swing/record`'s `summary.bangerOpens` showed the identical
+ * inflation (61 reported == 61 raw unfiltered, confirming the gap reaches the member-facing count
+ * too, not just the internal concentration check).
+ */
+export async function fetchBangerOpenBookRowsSettled(limit?: number): Promise<BangerPositionRow[]> {
+  const today = todayEt();
+  const res =
+    limit != null
+      ? await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL') AND contract_expiry >= $2::date
+           ORDER BY session_date DESC, id DESC
+           LIMIT $1`,
+          [limit, today],
+        )
+      : await dbQuery<QueryResultRow>(
+          `SELECT * FROM banger_positions
+           WHERE status IN ('OPEN','PARTIAL') AND contract_expiry >= $1::date
+           ORDER BY session_date DESC, id DESC`,
+          [today],
         );
   return res.rows.map(mapBangerPositionRow);
 }

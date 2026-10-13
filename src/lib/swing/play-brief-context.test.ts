@@ -101,7 +101,11 @@ function swingRow(ticker: string, id: number, direction: "long" | "short" = "lon
   };
 }
 
-function bangerRow(ticker: string, id: number): BangerPositionRow {
+function bangerRow(
+  ticker: string,
+  id: number,
+  overrides: Partial<Pick<BangerPositionRow, "contract_expiry" | "status">> = {}
+): BangerPositionRow {
   return {
     id,
     commit_key: `b-${ticker}-${id}`,
@@ -112,7 +116,12 @@ function bangerRow(ticker: string, id: number): BangerPositionRow {
     discovery_dollar_vol: 5_000_000,
     discovery_close_strength: 0.8,
     contract_strike: 50,
-    contract_expiry: "2026-09-25",
+    // Far-future on purpose, not tied to session_date — a fixture with a plausible-but-fixed
+    // calendar date would itself lapse into "expired" once real time passes it, silently flipping
+    // this row out of ctx.openBook in every test that uses the default and has nothing to do with
+    // expiry. Tests exercising the NEW expiry filter override this explicitly (see the regression
+    // test below).
+    contract_expiry: overrides.contract_expiry ?? "2099-12-31",
     contract_occ: `O:${ticker}260925C00050000`,
     entry_premium: 2.1,
     last_mark: 2.6,
@@ -125,13 +134,14 @@ function bangerRow(ticker: string, id: number): BangerPositionRow {
     realized_pnl_pct: null,
     realized_pnl_usd: null,
     entry_context: {},
-    status: "OPEN",
+    status: overrides.status ?? "OPEN",
     first_seen_at: "2026-09-10T13:31:00.000Z",
     committed_at: "2026-09-10T13:31:00.000Z",
     closed_at: null,
     updated_at: "2026-09-11T20:00:00.000Z",
   };
 }
+
 
 mock.module("../db", {
   namedExports: {
@@ -148,9 +158,15 @@ mock.module("../db", {
 
 mock.module("../banger/positions-db", {
   namedExports: {
-    fetchBangerOpenBookRows: async () => {
+    // Mirrors the real fetchBangerOpenBookRowsSettled's SQL filter (status IN OPEN/PARTIAL AND
+    // contract_expiry >= today) so a test asserting an expired row is excluded actually exercises
+    // the fix, not just that this mock hands back whatever it's given.
+    fetchBangerOpenBookRowsSettled: async () => {
       if (bangerFetchShouldThrow) throw new Error("banger fetch failed");
-      return mockBangerRows;
+      const today = new Date().toISOString().slice(0, 10);
+      return mockBangerRows.filter(
+        (r) => (r.status === "OPEN" || r.status === "PARTIAL") && r.contract_expiry >= today
+      );
     },
   },
 });
@@ -243,6 +259,23 @@ describe("loadSwingPlayBriefContext: openBook merges swing_positions AND banger_
 
     const crsr = book!.find((p) => p.ticker === "CRSR");
     assert.ok(crsr, "banger-origin CRSR row must be present");
+  });
+
+  it("excludes an already-expired banger row from ctx.openBook even while its status is still OPEN/PARTIAL (KLAC/LRCX/SOXL shape, 2026-09-28)", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [
+      bangerRow("ALAB", 1153, { contract_expiry: "2020-01-01", status: "PARTIAL" }),
+      bangerRow("KLAC", 1272),
+    ];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+    assert.ok(ctx, "context must resolve");
+    const book = ctx!.openBook;
+    assert.ok(book, "openBook must not be null");
+    assert.equal(book!.length, 1, "the expired ALAB row must not count as an open position");
+    assert.equal(book![0].ticker, "KLAC");
   });
 
   it("respects isBangerEngineEnabled() — disabled Engine B leaves the book swing-only", async () => {

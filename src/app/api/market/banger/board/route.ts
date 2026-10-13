@@ -8,7 +8,7 @@ import { requireDatabaseInProduction } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import {
-  fetchBangerOpenBookRows,
+  fetchBangerOpenBookRowsSettled,
   fetchBangerClosedBoardRows,
   type BangerPositionRow,
 } from "@/lib/banger/positions-db";
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     // was dropping. Fetching open and closed as two separately-limited queries means the closed
     // backlog can never crowd a real open position out of the board.
     const [open, closed] = await Promise.all([
-      fetchBangerOpenBookRows(),
+      fetchBangerOpenBookRowsSettled(),
       fetchBangerClosedBoardRows(60),
     ]);
     return NextResponse.json(
