@@ -231,9 +231,27 @@ function formatOptionsPlay(ticker: string, contract: PickedContract | null): str
 // that the old 5-day floor rejected — starving the edition on short weeks / near-expiry chains.
 const MIN_DTE_CALENDAR_DAYS = 2;
 
+/** 10 DTE ceiling — the other half of the SAME "2-10 DTE" product requirement the floor above
+ *  already names, never previously enforced: the per-row loop below only ever rejected an expiry
+ *  BELOW minExpiry (pushing it to the shortDated last-resort pool), nothing rejected or even
+ *  deprioritized an expiry past this ceiling, and the candidate pool mixes every expiry together,
+ *  sorted purely by strike-distance-to-spot first — so a far-dated monthly whose strike happened
+ *  to sit closest to spot could win outright over a genuine 2-10 DTE weekly. Mirrors the floor's
+ *  own last-resort-pool treatment (never a hard exclusion — a ticker whose ONLY quotable chain is
+ *  outside the window still gets a contract, just from the lowest-priority pool) rather than
+ *  silently dropping the ticker, matching this function's existing never-return-"no options data
+ *  available"-if-avoidable design. */
+const MAX_DTE_CALENDAR_DAYS = 10;
+
 function minExpiryDate(today: string): string {
   const d = new Date(today + "T12:00:00Z");
   d.setUTCDate(d.getUTCDate() + MIN_DTE_CALENDAR_DAYS);
+  return d.toISOString().slice(0, 10);
+}
+
+function maxExpiryDate(today: string): string {
+  const d = new Date(today + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + MAX_DTE_CALENDAR_DAYS);
   return d.toISOString().slice(0, 10);
 }
 
@@ -246,8 +264,10 @@ function addCalendarDaysYmd(ymd: string, days: number): string {
 
 /**
  * Pick the best contract for a play. `maxDte` selects the EXPIRY WINDOW:
- *   • null / > 1  → OVERNIGHT SWING window: expiry ≥ today+5 calendar days (needs time value);
- *                   shorter-dated contracts drop to a last-resort pool. (unchanged legacy behavior)
+ *   • null / > 1  → OVERNIGHT SWING window: expiry in [today+MIN_DTE_CALENDAR_DAYS,
+ *                   today+MAX_DTE_CALENDAR_DAYS] (2-10 DTE — needs real time value but stays out
+ *                   of monthly-expiry territory); expiries outside that window drop to their own
+ *                   last-resort pools (shortDated / longDated) rather than being excluded outright.
  *   • 0 or 1      → DAY / 0DTE window: expiry in [today, today+maxDte]. This is REQUIRED for the
  *                   intraday day-trade agent — without it the picker forced a ≥5-DTE swing contract
  *                   even for a "0DTE day trade", which the day filter then dropped, emptying the
@@ -284,6 +304,7 @@ export function pickChainContract(
   const dayMode = maxDte != null && maxDte <= 1;
   const dayMaxExpiry = dayMode ? addCalendarDaysYmd(today, Math.max(0, Math.floor(maxDte!))) : null;
   const minExpiry = minExpiryDate(today);
+  const maxExpiry = maxExpiryDate(today);
   const distanceRef = targetStrike != null && Number.isFinite(targetStrike) ? targetStrike : spot;
 
   type Candidate = PickedContract & { dist: number; delta: number | null; oi: number };
@@ -294,6 +315,10 @@ export function pickChainContract(
   // Short-dated fallback: contracts between today and minExpiry (DTE too low for swing). Unused in
   // day mode (the whole window IS short-dated; there is no "too short" last resort).
   const shortDated: Candidate[] = [];
+  // Long-dated fallback: contracts past maxExpiry (DTE too high for the 2-10 DTE swing window) —
+  // the ceiling's own last-resort pool, mirroring shortDated's treatment of the floor. Unused in
+  // day mode for the same reason shortDated is.
+  const longDated: Candidate[] = [];
 
   for (const row of chain.rows) {
     if (dayMode) {
@@ -320,6 +345,18 @@ export function pickChainContract(
     if (!dayMode && row.expiry < minExpiry) {
       // Too short-dated for overnight swing — last-resort pool.
       if (premOk) shortDated.push(entry);
+      continue;
+    }
+    if (!dayMode && row.expiry > maxExpiry) {
+      // Too far-dated for the 2-10 DTE swing window — last-resort pool, the ceiling's mirror of
+      // the short-dated branch above. Carries the SAME oi/premium caveat tiers the main ladder
+      // uses (rather than shortDated's blunter premOk-only gate) so a far-dated-only chain still
+      // returns its best-effort pick with an honest caveat instead of silently dropping the row —
+      // same "always something beats nothing" guarantee every other pool here already makes.
+      if (oiOk && premOk) longDated.push(entry);
+      else if (oiOk && !premOk) longDated.push({ ...entry, caveat: "premium_high" });
+      else if (!oiOk && premOk) longDated.push({ ...entry, caveat: "low_liquidity" });
+      else longDated.push({ ...entry, caveat: "premium_high_low_liquidity" });
       continue;
     }
     if (oiOk && premOk) strict.push(entry);
@@ -355,9 +392,31 @@ export function pickChainContract(
       const best = relaxedAffordable[0]!;
       return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
     }
+    // Passes 3-4: a far-dated (outside the 2-10 DTE window) but otherwise real, affordable
+    // contract — longDated carries the SAME oi/premium caveat tiers as strict/relaxedOi (just for
+    // rows outside the window), so mirror the SAME two-tier priority as passes 1-2: a real,
+    // deeply-liquid candidate (no caveat) still beats a thinner one even if the thin one happens
+    // to sit nearer to spot — liquidity safety comes first here too, not just within the window.
+    // Without these passes, a chain whose only deeply-liquid or thin-but-real expiries happen to
+    // sit outside the window would silently abandon the cost-preference guarantee entirely and
+    // fall through to the plain nearest-to-spot ladder below.
+    const longDatedStrictAffordable = longDated.filter((c) => c.caveat == null && isAffordable(c));
+    if (longDatedStrictAffordable.length) {
+      longDatedStrictAffordable.sort(sortFn);
+      const best = longDatedStrictAffordable[0]!;
+      return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
+    }
+    const longDatedRelaxedAffordable = longDated.filter(
+      (c) => isAffordable(c) && c.oi >= PREFERRED_OPTION_RELAXED_MIN_OI
+    );
+    if (longDatedRelaxedAffordable.length) {
+      longDatedRelaxedAffordable.sort(sortFn);
+      const best = longDatedRelaxedAffordable[0]!;
+      return { strike: best.strike, side: best.side, expiry: best.expiry, premium: best.premium, caveat: best.caveat };
+    }
   }
 
-  for (const pool of [strict, relaxedPremium, relaxedOi, anyQuoted, shortDated]) {
+  for (const pool of [strict, relaxedPremium, relaxedOi, anyQuoted, shortDated, longDated]) {
     if (pool.length) {
       pool.sort(sortFn);
       const best = pool[0]!;
@@ -831,6 +890,7 @@ function buildPlay(
       ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
       ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
       ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+      ...(scored.momentum_score != null ? { momentum: scored.momentum_score } : {}),
       ...(scored.iv_adjustment != null ? { iv_adjustment: scored.iv_adjustment } : {}),
       ...(scored.anomaly_penalty != null ? { anomaly_penalty: scored.anomaly_penalty } : {}),
       ...(scored.flow_conviction_bonus != null ? { flow_conviction_bonus: scored.flow_conviction_bonus } : {}),
@@ -1196,6 +1256,7 @@ export function buildRescuePlays(params: {
         ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
         ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
         ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+        ...(scored.momentum_score != null ? { momentum: scored.momentum_score } : {}),
         ...(scored.iv_adjustment != null ? { iv_adjustment: scored.iv_adjustment } : {}),
         ...(scored.anomaly_penalty != null ? { anomaly_penalty: scored.anomaly_penalty } : {}),
         ...(scored.flow_conviction_bonus != null ? { flow_conviction_bonus: scored.flow_conviction_bonus } : {}),
