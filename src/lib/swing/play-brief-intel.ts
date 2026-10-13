@@ -1346,6 +1346,34 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
   }
 
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-13): this section told a member where spot
+  // sits vs the gamma flip and vs a live structural level for a closed play, but never answered
+  // the one question that actually matters after a stop — did the underlying keep moving in the
+  // stop's direction (confirming the exit) or reverse back through it (the exit may have been
+  // early)? `play.invalidationUnderlyingPx` is the exact stop level the position closed under —
+  // pinned at commit, static, already valid post-close (the same field `closedCoaching`'s "Stop
+  // fired... a X% cushion at commit" line already reads, in "Trade manager read" above, which
+  // answers a DIFFERENT question — whether the entry was extended at commit, not what the
+  // underlying has done since) — comparing it to the spot this section already resolves answers
+  // it directly instead of leaving the member to re-derive it from a separate chart. Scoped to
+  // `closedReason === "stopped"/"stop"` only: a target/time-stop/thesis exit has no "was the stop
+  // too tight" question to answer, so the framing would be a non sequitur there.
+  if (
+    bucket === "closed" &&
+    (play.closedReason === "stopped" || play.closedReason === "stop") &&
+    spot != null &&
+    play.invalidationUnderlyingPx != null
+  ) {
+    const inval = play.invalidationUnderlyingPx;
+    const reclaimed = play.direction === "SHORT" ? spot < inval : spot > inval;
+    const pctFromInval = Math.abs(((spot - inval) / inval) * 100);
+    lines.push(
+      reclaimed
+        ? `Spot has since reclaimed the stop level (**${fmtPriceLevel(inval)}**) — now **${fmtPriceLevel(spot)}**, ${pctFromInval.toFixed(1)}% back through it; the exit may have been early.`
+        : `Spot remains through the stop level (**${fmtPriceLevel(inval)}**) — now **${fmtPriceLevel(spot)}**, confirming the exit.`,
+    );
+  }
+
   if (bucket === "open" && play.exitPolicy?.stop_premium != null) {
     const stop = play.exitPolicy.stop_premium;
     // Cushion = how far (%) the current mark could still fall before hitting the stop — the
