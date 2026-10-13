@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-13T06:57:55.825Z",
+  "updated_at": "2026-10-13T12:30:20.901Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,49 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f747dc074d056baea11e890f6a57555e0f2e804f",
+    "last_main_sha": "776e71a18c13ec0798512a3387a86de82bb903d7",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-07T19:57:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
     "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
   },
   "events": [
-    {
-      "at": "2026-09-27T18:16:02.053Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T18:16:02.374Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T19:40:09.135Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T19:40:09.776Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T19:40:10.098Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T21:52:09.432Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-27T21:52:10.135Z",
       "type": "context_sync",
@@ -1271,18 +1235,54 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T12:20:06.014Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T12:20:12.473Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T12:20:17.369Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T12:30:09.026Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T12:30:14.590Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T12:30:20.901Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
     {
-      "number": 5663,
-      "title": "fix(swing): explicit mark_as_of column for staleness tracking",
-      "branch": "claude/nh-frwl68",
+      "number": 5946,
+      "title": "docs(findings): fold 1 staged finding from #5663",
+      "branch": "docs/fold-5663-2026-10-13",
       "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-10-11T13:06:16Z"
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-13T12:19:41Z"
     },
     {
       "number": 5547,
