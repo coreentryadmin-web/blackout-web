@@ -4,22 +4,6 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-10-13 — [FINDING, P1 correctness, live-capital-affecting] Two implemented fixes from PR #5537's root-cause audit: `deriveScaleOutAction`'s peak-blind pre-scale trigger, and expired `banger_positions` rows counted as open — FIXED
-
-> **kind:** `FINDING`
-
-| Field | Detail |
-|---|---|
-| **What prompted this** | A coordinator check-in after this session had been idle ~6 weeks (standing Night Hawk Swings ownership mandate) flagged resuming the lane. PR #5537 (a different session, 2026-09-28/29) had already done the full root-cause audit — live-verified multiple times on real production positions (NRG:34, HUT:43, BE:46) with no counter-evidence — and explicitly deferred the fix for sign-off on two independent changes: a small, mechanical, shared-function fix (this finding's Issue 1) and a genuine schema/architecture decision (NOT touched here, see below). The PR sat for two weeks with no sign-off ever posted. Re-verified both defects were still live in `main` before doing anything (per this repo's "verify against main, never trust a stale list" discipline) — both were. |
-| **Issue 1 — root cause** | `deriveScaleOutAction`'s pre-scale branch (`src/lib/zerodte/scale-out.ts`) tested `lastMark >= entryPremium * scale_at_mult` for the TAKE_PARTIAL trigger — only the CURRENT tick's mark, never `peakPremium`, despite every call site already passing a genuinely ratcheted peak (`Math.max(priorPeak, thisTickMark)` in `banger/live-sync.ts` and `legacy-live-sync.ts`; the DB's own `GREATEST(peak_premium, mark)` column feeding `swing/manage.ts`). A position that spiked to 2×+ entry and retraced before the NEXT tick sampled it never triggered TAKE_PARTIAL at all — not merely unenforced, the correct verdict was never even computed. Live-verified on BE:46 (held ≥2× across multiple consecutive ticks, `TAKE_PARTIAL`/`profit_ladder` computed every tick, never enforced) and HUT:43 (closed −50.91% after 90+ minutes of an unenforced, correctly-computed `TAKE_PARTIAL`). |
-| **Issue 1 — fix** | Changed the trigger check from `lastMark >= entryPremium * scale_at_mult` to `peakPremium >= entryPremium * scale_at_mult`. Safe because every current call site already ratchets peak to include the current tick before calling this function (verified all four: `banger/live-sync.ts`, `features/nighthawk/lib/legacy-live-sync.ts`, `swing/manage.ts`, and the DB column feeding it) — `peakPremium >= lastMark` always holds, so this is strictly more permissive, never less. The hard-stop check (checked first, unchanged, still on `lastMark`) keeps precedence: a position that spiked to 2×+ then crashed through the hard stop still `STOP_OUT`s rather than pretending it caught a partial it missed — added a dedicated test for this ordering since it's easy to get backwards. |
-| **Issue 2 — root cause** | `fetchBangerOpenCount`/`fetchBangerOpenBookRows` (`src/lib/banger/positions-db.ts`) filtered only on `status IN ('OPEN','PARTIAL')`, with no expiry check — a row can sit in that status past its own `contract_expiry` whenever `runBangerLiveSync` hasn't force-settled it yet. Measured live 2026-09-28: KLAC/LRCX/SOXL each reported "already holding 8 same-direction positions" in theme "semis" via the book-context concentration check, 3 of the 8 already past expiry; `GET /api/market/swing/record`'s member-facing `summary.bangerOpens` showed the identical inflation (61 reported == 61 raw unfiltered). One consumer, `swing/live-marks-active.ts`, correctly needs the UNFILTERED rows — it applies its own `occAlreadyExpired` guard afterward specifically so it can still force-settle a pending-expiry row; filtering at the shared query would have broken that path. |
-| **Issue 2 — fix** | Added `fetchBangerOpenBookRowsSettled()` (status filter + `contract_expiry >= today::date`, ET-anchored via the shared `todayEt()`) as a sibling to the existing `fetchBangerOpenBookRows()`, which is left completely unfiltered and untouched. Also added the same expiry filter directly into `fetchBangerOpenCount()`'s SQL (no consumer of that one needs the raw count). Switched the four consumers that only ever count/list a row as open — `nighthawk/horizons/route.ts`, `banger/board/route.ts`, `swing/play-brief-resolve.ts`, `swing/play-brief-context.ts` — to the new settled variant. `live-marks-active.ts` is untouched, still reading the raw, unfiltered rows it needs. |
-| **Not implemented — a real, separate design decision** | PR #5537's Issue 1 also traces a SECOND, deeper defect: the exit-rung calibration ladder (`swingCalibrationRowFromLedger`, `calibration.ts`) never populates `manage_rung` from any real production write path, so `graduatedRungs` is structurally always `[]` and every EDGE rung (`profit_ladder`, `rel_strength_loss`, `catalyst_shift`, `regime_shift`, `flow_decay`, `vol_collapse`) can never become `enforced:true` — this is WHY the peak-blind trigger above could run for 90+ minutes unenforced on HUT:43 before a GATE rung finally caught it. Fixing it requires deciding WHERE a real per-row exit rung gets pinned at grade/close time and threaded through to the calibration input — a genuine schema/architecture choice the original PR explicitly declined to make unilaterally. **Not decided or touched here either** — this finding fixes only the two mechanically-separable, low-risk pieces; the calibration-wiring question remains open and should go back to the operator/#4076 thread for the design call, not get bundled into a correctness fix. |
-| **Evidence** | `scale-out.test.ts`: added the exact NRG:34-shaped RED→GREEN test (entry 4.9, peak 11.4, retraced to 6.0 → now TAKE_PARTIAL) plus a precedence test (peak crossed 2× then crashed through the hard stop → still STOP_OUT). `positions-db.test.ts`: 3 new source-inspection tests (the established idiom for DB-query code untestable against live Postgres here) — `fetchBangerOpenCount` and `fetchBangerOpenBookRowsSettled` both carry the expiry filter, and `fetchBangerOpenBookRows` explicitly does NOT (proving the unfiltered sibling stayed untouched). `play-brief-context.test.ts`: added the exact KLAC/LRCX/SOXL-shaped RED→GREEN test (an expired PARTIAL row excluded from `ctx.openBook`), and hardened the shared `bangerRow()` fixture's default expiry to a far-future placeholder — its old hardcoded `"2026-09-25"` had itself lapsed into the past by the time this session ran, which would have silently broken every OTHER test using the default fixture once my expiry filter went live. Full regression: `node scripts/run-tests.mjs` full suite, no new failures beyond the two intentional ones already fixed. |
-| **Blast radius** | `deriveScaleOutAction` is the shared state machine for swing, Banger, and Legacy — the fix applies uniformly to all three with no call-site change needed (verified peak is already ratcheted at every one). The expiry fix touches exactly the four read-only consumers that needed it; `live-marks-active.ts` (the one consumer with a real reason to see unfiltered rows) is unchanged by inspection and by its own test suite. |
-| **Status** | FIXED (both issues). The calibration-wiring question (how `profit_ladder`/every edge rung ever earns `enforced:true` in production) remains OPEN — flagged above, not resolved here. |
-
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
@@ -53,6 +37,76 @@ Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so
 PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-13 — [FINDING, P2 Vector, re-verification] `vector-dark-pool-warm` failure rate does NOT self-resolve across RTH — persists near-total through 1h45m post-open, contradicting the 2026-10-05 entry's recovery trend — OPEN, write-up only
+
+> **kind:** `FINDING`
+
+### What this re-verifies
+
+Companion to this session's earlier `vector-pick-sweep` RTH-open re-verification. Directly
+re-checks the 2026-10-05 FINDINGS.md entry ("`vector-dark-pool-warm`'s `GLOBAL_MAX_RPS=2→4` fix
+(PR #5579) only partially restored success rate — still near-total failure in the first ~25min of
+RTH"), which sampled three runs in the FIRST 45 MINUTES after open and found an *improving*
+trend: `warmed=1/55` (1.8%) → `warmed=0/55` (0%) → `warmed=33/55` (60.0%), and recommended the
+owning lane "re-check this specific metric across a few more RTH opens (to separate 'always bad at
+9:30–10:00 ET' from 'was just this morning')."
+
+### Data (CloudWatch Logs, `/ecs/blackout-production`, `"vector-dark-pool-warm"` filter, 13:30-15:17 UTC 2026-10-13, i.e. open through 1h47m post-open)
+
+| Time (UTC) | warmed | failed | batch | success rate |
+|---|---|---|---|---|
+| 13:32:25 | 14 | 14 | 28/55 | 50.0% |
+| 13:53:36 | 1 | 27 | 28/55 | 3.6% |
+| 14:13:54 | 0 | 28 | 28/55 | 0% |
+| 14:53:42 | 1 | 27 | 28/55 | 3.6% |
+| 15:14:06 | 0 | 28 | 28/55 | 0% |
+
+(The `batch=28/55` on every line is the already-shipped half-universe rotation from PR #5579 —
+`warmed`/`failed` are measured against that half, 28, not the full 55; this entry does not touch
+or question that rotation.)
+
+Today's sample does **not** reproduce the 2026-10-05 recovery curve. The only run with a
+non-trivial success rate is the FIRST one of the day (50.0% at 13:32:25, 2 minutes after open) —
+every run since has been 0-3.6%, including one as late as **15:14:06, 1 hour 44 minutes after
+open**, well past both the original sample's 45-minute window and the point where that sample
+observed 60% recovery. Taken together with the 2026-10-05 sample, the two days now disagree on
+the basic question that entry's own "Status" line asked to be settled: whether the failure is
+"always bad at 9:30-10:00 ET" or "was just that morning." Today's evidence points toward
+**persistent**, not RTH-open-specific-and-self-resolving — the opposite conclusion from
+2026-10-05's own trend, on the same metric, measured the same way.
+
+### Why not fixed here
+
+Same shared-infra scope boundary as the 2026-10-05 entry and this cycle's companion
+`vector-pick-sweep` re-verification: `uw-rate-limiter.ts`'s `GLOBAL_MAX_RPS` is shared across
+0DTE/Vector/Helix, and the right next step (a further RPS bump, verifying real provider headroom,
+or cron staggering per the Phase-2 follow-on already flagged in a separate FINDINGS.md entry)
+needs the owning lane's own context, not a DISCOVERY-lane unilateral retune.
+
+### Evidence
+
+CloudWatch Logs, `/ecs/blackout-production`, `"vector-dark-pool-warm"` filter, 13:30-15:17 UTC
+2026-10-13 (5 completions, table above); cross-referenced against the 2026-10-05 FINDINGS.md entry
+(same filter pattern, same metric) for the direct day-over-day comparison.
+
+| **Status** | **OPEN — write-up only, no code changed.** Two independent RTH-open samples (2026-10-05, 2026-10-13) now disagree on self-resolution; recommend the Vector/owning lane treat "always bad, not RTH-open-specific" as the working hypothesis going forward unless a third sample shows recovery, and prioritize the Phase-2 cron-staggering follow-on over a further RPS bump given today's failure persisted well past the window a schedule-overlap spike alone would explain. |
+
+## 2026-10-13 — [FINDING, P1 correctness, live-capital-affecting] Two implemented fixes from PR #5537's root-cause audit: `deriveScaleOutAction`'s peak-blind pre-scale trigger, and expired `banger_positions` rows counted as open — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | A coordinator check-in after this session had been idle ~6 weeks (standing Night Hawk Swings ownership mandate) flagged resuming the lane. PR #5537 (a different session, 2026-09-28/29) had already done the full root-cause audit — live-verified multiple times on real production positions (NRG:34, HUT:43, BE:46) with no counter-evidence — and explicitly deferred the fix for sign-off on two independent changes: a small, mechanical, shared-function fix (this finding's Issue 1) and a genuine schema/architecture decision (NOT touched here, see below). The PR sat for two weeks with no sign-off ever posted. Re-verified both defects were still live in `main` before doing anything (per this repo's "verify against main, never trust a stale list" discipline) — both were. |
+| **Issue 1 — root cause** | `deriveScaleOutAction`'s pre-scale branch (`src/lib/zerodte/scale-out.ts`) tested `lastMark >= entryPremium * scale_at_mult` for the TAKE_PARTIAL trigger — only the CURRENT tick's mark, never `peakPremium`, despite every call site already passing a genuinely ratcheted peak (`Math.max(priorPeak, thisTickMark)` in `banger/live-sync.ts` and `legacy-live-sync.ts`; the DB's own `GREATEST(peak_premium, mark)` column feeding `swing/manage.ts`). A position that spiked to 2×+ entry and retraced before the NEXT tick sampled it never triggered TAKE_PARTIAL at all — not merely unenforced, the correct verdict was never even computed. Live-verified on BE:46 (held ≥2× across multiple consecutive ticks, `TAKE_PARTIAL`/`profit_ladder` computed every tick, never enforced) and HUT:43 (closed −50.91% after 90+ minutes of an unenforced, correctly-computed `TAKE_PARTIAL`). |
+| **Issue 1 — fix** | Changed the trigger check from `lastMark >= entryPremium * scale_at_mult` to `peakPremium >= entryPremium * scale_at_mult`. Safe because every current call site already ratchets peak to include the current tick before calling this function (verified all four: `banger/live-sync.ts`, `features/nighthawk/lib/legacy-live-sync.ts`, `swing/manage.ts`, and the DB column feeding it) — `peakPremium >= lastMark` always holds, so this is strictly more permissive, never less. The hard-stop check (checked first, unchanged, still on `lastMark`) keeps precedence: a position that spiked to 2×+ then crashed through the hard stop still `STOP_OUT`s rather than pretending it caught a partial it missed — added a dedicated test for this ordering since it's easy to get backwards. |
+| **Issue 2 — root cause** | `fetchBangerOpenCount`/`fetchBangerOpenBookRows` (`src/lib/banger/positions-db.ts`) filtered only on `status IN ('OPEN','PARTIAL')`, with no expiry check — a row can sit in that status past its own `contract_expiry` whenever `runBangerLiveSync` hasn't force-settled it yet. Measured live 2026-09-28: KLAC/LRCX/SOXL each reported "already holding 8 same-direction positions" in theme "semis" via the book-context concentration check, 3 of the 8 already past expiry; `GET /api/market/swing/record`'s member-facing `summary.bangerOpens` showed the identical inflation (61 reported == 61 raw unfiltered). One consumer, `swing/live-marks-active.ts`, correctly needs the UNFILTERED rows — it applies its own `occAlreadyExpired` guard afterward specifically so it can still force-settle a pending-expiry row; filtering at the shared query would have broken that path. |
+| **Issue 2 — fix** | Added `fetchBangerOpenBookRowsSettled()` (status filter + `contract_expiry >= today::date`, ET-anchored via the shared `todayEt()`) as a sibling to the existing `fetchBangerOpenBookRows()`, which is left completely unfiltered and untouched. Also added the same expiry filter directly into `fetchBangerOpenCount()`'s SQL (no consumer of that one needs the raw count). Switched the four consumers that only ever count/list a row as open — `nighthawk/horizons/route.ts`, `banger/board/route.ts`, `swing/play-brief-resolve.ts`, `swing/play-brief-context.ts` — to the new settled variant. `live-marks-active.ts` is untouched, still reading the raw, unfiltered rows it needs. |
+| **Not implemented — a real, separate design decision** | PR #5537's Issue 1 also traces a SECOND, deeper defect: the exit-rung calibration ladder (`swingCalibrationRowFromLedger`, `calibration.ts`) never populates `manage_rung` from any real production write path, so `graduatedRungs` is structurally always `[]` and every EDGE rung (`profit_ladder`, `rel_strength_loss`, `catalyst_shift`, `regime_shift`, `flow_decay`, `vol_collapse`) can never become `enforced:true` — this is WHY the peak-blind trigger above could run for 90+ minutes unenforced on HUT:43 before a GATE rung finally caught it. Fixing it requires deciding WHERE a real per-row exit rung gets pinned at grade/close time and threaded through to the calibration input — a genuine schema/architecture choice the original PR explicitly declined to make unilaterally. **Not decided or touched here either** — this finding fixes only the two mechanically-separable, low-risk pieces; the calibration-wiring question remains open and should go back to the operator/#4076 thread for the design call, not get bundled into a correctness fix. |
+| **Evidence** | `scale-out.test.ts`: added the exact NRG:34-shaped RED→GREEN test (entry 4.9, peak 11.4, retraced to 6.0 → now TAKE_PARTIAL) plus a precedence test (peak crossed 2× then crashed through the hard stop → still STOP_OUT). `positions-db.test.ts`: 3 new source-inspection tests (the established idiom for DB-query code untestable against live Postgres here) — `fetchBangerOpenCount` and `fetchBangerOpenBookRowsSettled` both carry the expiry filter, and `fetchBangerOpenBookRows` explicitly does NOT (proving the unfiltered sibling stayed untouched). `play-brief-context.test.ts`: added the exact KLAC/LRCX/SOXL-shaped RED→GREEN test (an expired PARTIAL row excluded from `ctx.openBook`), and hardened the shared `bangerRow()` fixture's default expiry to a far-future placeholder — its old hardcoded `"2026-09-25"` had itself lapsed into the past by the time this session ran, which would have silently broken every OTHER test using the default fixture once my expiry filter went live. Full regression: `node scripts/run-tests.mjs` full suite, no new failures beyond the two intentional ones already fixed. |
+| **Blast radius** | `deriveScaleOutAction` is the shared state machine for swing, Banger, and Legacy — the fix applies uniformly to all three with no call-site change needed (verified peak is already ratcheted at every one). The expiry fix touches exactly the four read-only consumers that needed it; `live-marks-active.ts` (the one consumer with a real reason to see unfiltered rows) is unchanged by inspection and by its own test suite. |
+| **Status** | FIXED (both issues). The calibration-wiring question (how `profit_ladder`/every edge rung ever earns `enforced:true` in production) remains OPEN — flagged above, not resolved here. |
 
 ## 2026-10-13 — [FINDING, P3 Vector, re-verification] `vector-pick-sweep` RTH-open overrun — confirmed RTH-open-specific, now with a second live sample showing the 2026-10-12 TTL-raise scenario recurring — OPEN, write-up only
 
