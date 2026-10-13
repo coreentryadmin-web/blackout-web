@@ -4,6 +4,14 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-13 (14:09 UTC / Tue 10:09 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
+
+Same 3 striking-distance queries (dealer gamma, gamma three trading, is 0dte gambling), same
+CTR-gap noise (what is dealer gamma, spx am settlement, spx slayers, gex flip, helix flow — all
+3-20imp, already assessed repeatedly as below the thin-sample threshold). `robots.txt` still
+serves `Allow: /api/og`. 28-day avgpos 11.2 (18cl/1403imp), within the established noisy
+11.0-11.2 band — no material movement since the last reading (17cl/1389imp/11.0). No PR opened.
+
 ## 2026-10-13 (13:36 UTC / Tue 09:36 ET) — [SEO] RTH wake: gamma-snapshot live, CLS clean
 
 Confirmed market open myself (09:36 ET, 2026-10-13 not in `US_MARKET_HOLIDAYS`) before acting.
