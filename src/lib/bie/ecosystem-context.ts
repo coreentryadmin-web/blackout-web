@@ -217,6 +217,18 @@ export type EcosystemArsenalMacro = {
   curve_10y_1y_spread: number | null;
   cpi: number | null;
   as_of: string | null;
+  /**
+   * `as_of` ABOVE is `treasury.date ?? inflation.date` (PolygonMacroBackdrop's own derivation) —
+   * daily treasury yields almost always carry a `date`, so `as_of` collapses to the TREASURY
+   * print's date even when it is reporting the CPI figure alongside it. CPI is a monthly series
+   * with its own independent, much-older vintage (measured live 2026-10-13: treasury date 5 days
+   * old, CPI date 73 days old, same read) — a single combined `as_of` makes the CPI number look as
+   * fresh as the treasury one. These two per-series dates are additive (Largo product contract:
+   * never flatten away a more precise field in favor of a coarser one) so a renderer can disclose
+   * each number's own real vintage instead of inheriting the other series' recency.
+   */
+  treasury_as_of: string | null;
+  cpi_as_of: string | null;
 };
 export type EcosystemArsenalBreadth = { tone: string; summary: string; as_of: string };
 export type EcosystemArsenalNews = {
@@ -376,6 +388,8 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           curve_10y_1y_spread: reads.macro.treasury.curve_10y_1y_spread,
           cpi: reads.macro.inflation.cpi,
           as_of: reads.macro.as_of,
+          treasury_as_of: reads.macro.treasury.date,
+          cpi_as_of: reads.macro.inflation.date,
         }
       : (unavailable.push({
           source: "macro backdrop",
