@@ -69,8 +69,18 @@ test("the lock TTL has real margin above the worst measured sweep runtime (694s 
   );
 });
 
-test("event loop yields are added between ticker batches to prevent blocking incoming requests", () => {
-  // Read the actual sweep implementation file
+// REGRESSION corrected 2026-10-06: the original version of this test asserted the OLD manual
+// batch-loop shape (`SWEEP_CONCURRENCY` + an explicit `setImmediate` yield between batches).
+// PR #5592 (Phase 1 UW concurrency throttling, 2026-10-05) replaced that loop with
+// `runUwPool(tasks, UW_POOL_MAX_CONCURRENCY)` — the original concern this test guards
+// (don't run every ticker's CPU-bound work back-to-back with no event-loop yield) is now
+// satisfied structurally rather than by an explicit setImmediate: `runUwPool`'s own worker loop
+// (uw-rate-limiter.ts) does `out[i] = await tasks[i]()` per ticker, and each ticker task is a real
+// network fetch (sweepVectorPickForTicker), so the event loop yields on every single ticker's
+// own I/O await — more frequently than the old every-8-tickers setImmediate, not less. Asserting
+// the literal old pattern here would force a strictly worse yield cadence back into the code
+// just to keep this test green.
+test("ticker sweep work runs through a bounded-concurrency pool, not one unbounded fan-out", () => {
   const sweepSrc = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "../../../../lib", "vector", "vector-pick-sweep.ts"),
     "utf8"
@@ -78,12 +88,18 @@ test("event loop yields are added between ticker batches to prevent blocking inc
 
   assert.match(
     sweepSrc,
-    /await new Promise\(\(resolve\) => setImmediate\(resolve\)\)/,
-    "must yield the event loop between batches using setImmediate to prevent blocking"
+    /import \{ runUwPool \} from "@\/lib\/providers\/uw-rate-limiter"/,
+    "must route per-ticker sweep work through the shared bounded-concurrency UW pool"
   );
   assert.match(
     sweepSrc,
-    /if \(i \+ SWEEP_CONCURRENCY < tickers\.length\)/,
-    "yields must only occur between batches, not after the final batch"
+    /runUwPool\(\s*tickers\.map/,
+    "runUwPool must be called over the full ticker list, not a manual sliced batch loop"
+  );
+  const concurrencyMatch = sweepSrc.match(/UW_POOL_MAX_CONCURRENCY\s*=\s*(\d+)/);
+  assert.ok(concurrencyMatch, "concurrency must be a bare numeric literal, not unbounded");
+  assert.ok(
+    Number(concurrencyMatch[1]) < 100,
+    "concurrency must be genuinely bounded, not a number large enough to fan out every ticker at once"
   );
 });
