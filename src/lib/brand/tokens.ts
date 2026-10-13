@@ -54,56 +54,6 @@ export const FONT = {
   mono: "JetBrains Mono",
 } as const;
 
-/** Tone → colour. One place, so every primitive resolves a tone identically. */
-export type Tone = "neutral" | "positive" | "negative" | "caution" | "info";
-export function toneColor(tone: Tone | null | undefined): string {
-  switch (tone) {
-    case "positive":
-      return C.bull;
-    case "negative":
-      return C.bear;
-    case "caution":
-      return C.warn;
-    case "info":
-      return C.info;
-    default:
-      return C.primary;
-  }
-}
-
-/** Level kind → colour. Resistance is above, support below — the desk's convention. */
-export function levelColor(kind: string): string {
-  switch (kind) {
-    case "resistance":
-      return C.bear;
-    case "support":
-      return C.bull;
-    case "pivot":
-      return C.warn;
-    case "spot":
-      return C.info;
-    default:
-      return C.muted;
-  }
-}
-
-/** Stance → colour, for the system-attribution strip. `regime` is amber because a regime is a
- *  condition, not a vote — the same rule `system-reads.ts` enforces in the answer layer. */
-export function stanceColor(stance: string): string {
-  switch (stance) {
-    case "bullish":
-      return C.bull;
-    case "bearish":
-      return C.bear;
-    case "regime":
-      return C.warn;
-    case "neutral":
-      return C.muted;
-    default:
-      return C.faint;
-  }
-}
-
 /**
  * A restrained glyph set. Text marks, not emoji — the brief was explicit that this must not look
  * like a Discord signals bot, and an emoji also rasterises inconsistently across platforms.
