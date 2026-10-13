@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-13T12:30:20.901Z",
+  "updated_at": "2026-10-13T13:57:48.458Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "776e71a18c13ec0798512a3387a86de82bb903d7",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-07T19:57:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/34157564620",
-    "last_deploy_sha": "18ba5c386c7221c48223e873ebec379a10431f4c"
+    "last_main_sha": "d1a177bc422ac7e1d5eb47a758c8540e209a2d0f",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-10-13T13:33:27Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/38400896026",
+    "last_deploy_sha": "d665a96e1e4390d6269ab6c7dc103600981bf277"
   },
   "events": [
-    {
-      "at": "2026-09-27T21:52:10.135Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-27T21:52:10.446Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T02:16:16.944Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-28T02:16:17.485Z",
       "type": "context_sync",
@@ -1271,19 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-13T13:57:33.483Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-13T13:57:41.950Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-13T13:57:48.458Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
-    {
-      "number": 5946,
-      "title": "docs(findings): fold 1 staged finding from #5663",
-      "branch": "docs/fold-5663-2026-10-13",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-10-13T12:19:41Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
