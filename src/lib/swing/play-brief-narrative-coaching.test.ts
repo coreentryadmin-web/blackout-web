@@ -18,6 +18,7 @@ import {
   laneRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
+  rangeBiasEntryCollisionCoaching,
   shortInterestCoaching,
   thesisBreakCoaching,
   tickerHistoryCoaching,
@@ -2187,6 +2188,114 @@ test("vectorPlayCoaching: a 'range' bias behaves the same as 'neutral' — neith
   assert.ok(line);
   assert.doesNotMatch(line!, /cross-check/i);
   assert.doesNotMatch(line!, /aligned with swing lane/i);
+});
+
+// rangeBiasEntryCollisionCoaching (Ask Largo enhancement idea #2, PR #4076 comment 6131711926):
+// a WATCH setup's own entry trigger colliding with the specific rail Vector's range-fade play
+// would trade the opposite way at. Live repro shape: WATCH:SNOW, 2026-10-12 (LONG entry trigger
+// 369.49 sitting right at Vector's own range call wall 370 — "sell the rip" zone).
+test("rangeBiasEntryCollisionCoaching: fires on a LONG entry trigger sitting at Vector's range call wall (live SNOW shape)", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }),
+    "watch",
+    vec,
+  );
+  assert.match(line!, /Range collision/i);
+  assert.match(line!, /369\.49/);
+  assert.match(line!, /370/);
+  assert.match(line!, /sell-the-rip/i);
+  assert.doesNotMatch(line!, /cross-check/i, "must not reuse the directional-conflict framing");
+  assert.doesNotMatch(line!, /aligned with swing lane/i);
+});
+
+test("rangeBiasEntryCollisionCoaching: symmetric on SHORT vs the put wall (buy-the-dip zone)", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "SHORT", entryTriggerUnderlyingPx: 331 }),
+    "watch",
+    vec,
+  );
+  assert.match(line!, /Range collision/i);
+  assert.match(line!, /buy-the-dip/i);
+  assert.match(line!, /put wall/i);
+});
+
+test("rangeBiasEntryCollisionCoaching: silent when the entry trigger has real room from the wall (outside the band)", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "LONG", entryTriggerUnderlyingPx: 350 }),
+    "watch",
+    vec,
+  );
+  assert.equal(line, null);
+});
+
+test("rangeBiasEntryCollisionCoaching: silent on a directional Vector bias ('long'/'short') — this is NOT crossDeskCoaching's job", () => {
+  const vec = {
+    play: { bias: "long" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }),
+    "watch",
+    vec,
+  );
+  assert.equal(line, null);
+});
+
+test("rangeBiasEntryCollisionCoaching: OPEN/CLOSED-only buckets never fire — entry trigger is a pre-entry concept", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const args = play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 });
+  assert.equal(rangeBiasEntryCollisionCoaching(ctx(), args, "open", vec), null);
+  assert.equal(rangeBiasEntryCollisionCoaching(ctx(), args, "closed", vec), null);
+});
+
+test("rangeBiasEntryCollisionCoaching: honest-null on any missing input, never a fabricated comparison", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  // No entry trigger yet.
+  assert.equal(
+    rangeBiasEntryCollisionCoaching(ctx(), play({ direction: "LONG", entryTriggerUnderlyingPx: null }), "watch", vec),
+    null,
+  );
+  // No Vector snapshot at all.
+  assert.equal(
+    rangeBiasEntryCollisionCoaching(ctx(), play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }), "watch", null),
+    null,
+  );
+  // No call wall for a LONG setup to collide with.
+  const noCallWall = {
+    play: { bias: "range" },
+    gexWalls: { putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  assert.equal(
+    rangeBiasEntryCollisionCoaching(
+      ctx(),
+      play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }),
+      "watch",
+      noCallWall,
+    ),
+    null,
+  );
 });
 
 test("vectorPlayCoaching: returns null when the ONLY content is the headline and it was already noted elsewhere", () => {
