@@ -31,6 +31,7 @@ import { formatFixedNonZero } from "./format-nonzero";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
 import { deadPlayReason } from "./entry-enterability";
 import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
+import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -1082,6 +1083,59 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
 }
 
 /**
+ * Divergence between the option's own P&L and the underlying's own matching-direction excursion
+ * since entry — attributes a steep option move to leverage/IV rather than leaving a member to
+ * read it as a thesis break (or an outsized thesis confirmation) and infer the leverage/IV
+ * mechanics themselves. Ask Largo enhancement idea, PR #4076 comment 6130751739 (live repro
+ * SWING:ASTS:53, 2026-10-12: underlying adverse excursion only -2.6% while the option itself sat
+ * at -23%, IV 75%, θ -0.13/day — nothing in the brief connected the two numbers).
+ *
+ * Reuses `play.underlyingExcursion` (manage-sync.ts's `signedExcursionPct`, direction-aware,
+ * already wired for swing/LEAPS — see its live call site in play-brief.ts's Management section)
+ * rather than the Legacy-only `stockMovePct`/`stockPeakPct`/`stockTroughPct` fields a prior,
+ * REMOVED attempt at this same idea (`underlyingExcursionCoaching`, dead-code-removed
+ * 2026-09-15, see the doc comment a few lines above `collectCoachingBullets`) read — those are
+ * never populated for swing/LEAPS, which is why that attempt could never actually fire.
+ *
+ * OPEN-bucket only (a live-position-facing comparison; WATCH has no P&L yet and CLOSED already
+ * gets the round-trip/giveback aside via `mfeCaptureOutcome`, a premium-only comparison this is
+ * deliberately distinct from). Honest-null on any missing input — never a fabricated comparison.
+ * Gated on BOTH a materiality floor (|pnlPct| >= 15, so a routine few-point wiggle never fires
+ * this) and a ratio floor (the option move must be at least 3x the underlying's own
+ * matching-direction move, that move floored at 1pt so a near-zero denominator can't produce a
+ * meaningless ratio) — a position where premium and underlying moved roughly in proportion needs
+ * no special explanation; that's just delta working normally.
+ */
+export function ivLeverageDivergenceCoaching(
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed",
+): string | null {
+  if (bucket !== "open") return null;
+  const pnlPct = fin(play.pnlPct);
+  if (pnlPct == null || pnlPct === 0) return null;
+  const excursion = play.underlyingExcursion;
+  if (!excursion) return null;
+  // mfePct is the favorable extreme (>= 0 by construction), maePct the adverse one (<= 0) —
+  // match the excursion figure to the CURRENT P&L's own sign (signedExcursionPct's doc comment).
+  const underlyingPct = fin(pnlPct > 0 ? excursion.mfePct : excursion.maePct);
+  if (underlyingPct == null) return null;
+  const iv = normalizeImpliedVol(play.greeks?.iv ?? null);
+  if (iv == null) return null;
+
+  const MATERIALITY_FLOOR = 15;
+  const RATIO_FLOOR = 3;
+  if (Math.abs(pnlPct) < MATERIALITY_FLOOR) return null;
+  if (Math.abs(pnlPct) < RATIO_FLOOR * Math.max(Math.abs(underlyingPct), 1)) return null;
+
+  const theta = fin(play.greeks?.theta ?? null);
+  const greeksClause = `IV **${Math.round(iv * 100)}%**${theta != null ? ` · θ ${theta.toFixed(2)}/day` : ""}`;
+
+  return pnlPct < 0
+    ? `**Option down more than the stock's own move would suggest** — ${fmtPct(pnlPct)} on the option vs ${fmtPct(underlyingPct)} on the underlying; ${greeksClause} — leverage/IV, not a thesis break.`
+    : `**Option up more than the stock's own move would suggest** — ${fmtPct(pnlPct)} on the option vs ${fmtPct(underlyingPct)} on the underlying; ${greeksClause} — leverage/IV, not extra thesis confirmation.`;
+}
+
+/**
  * Ticker-specific losing track record — surfaced in the narrative, not just the bare evidence
  * fact. `ctx.tickerTrackRecord` (play-brief-ticker-history.ts, Largo C10) is already rendered as
  * a standalone "Ticker track record" section (play-brief-intel.ts's `tickerTrackRecordSection`)
@@ -1505,6 +1559,7 @@ export function collectCoachingBullets(
   push(thesisBreakCoaching(play));
   push(thesisPillarCoaching(play));
   push(troughResilienceCoaching(play, bucket));
+  push(ivLeverageDivergenceCoaching(play, bucket));
 
   if (bucket === "watch") {
     // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `morningConfirmCoaching` (formerly
