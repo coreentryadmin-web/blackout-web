@@ -992,11 +992,18 @@ test("assembleEcosystemArsenal(index): macro/breadth/catalysts populate; single-
     fundamentals: null,
     related: null,
     news: { items: [{ headline: "FOMC minutes" }], asOf: "2026-07-13T00:00:00Z", newest: "2026-07-12T00:00:00Z" } as unknown as NewsResult,
-    macro: { as_of: "2026-07-11", treasury: { yield_10_year: 4.2, curve_10y_1y_spread: -0.3 }, inflation: { cpi: 3.1 } } as unknown as PolygonMacroBackdrop,
+    macro: { as_of: "2026-07-11", treasury: { yield_10_year: 4.2, curve_10y_1y_spread: -0.3, date: "2026-07-11" }, inflation: { cpi: 3.1, date: "2026-05-01" } } as unknown as PolygonMacroBackdrop,
     breadth: { as_of: "2026-07-13", tone: "risk_on", summary: "Market breadth: 62% advancing — risk on." } as unknown as MarketBreadthBundle,
   });
   assert.equal(ars.scope, "index");
-  assert.deepEqual(ars.macro, { yield_10_year: 4.2, curve_10y_1y_spread: -0.3, cpi: 3.1, as_of: "2026-07-11" });
+  assert.deepEqual(ars.macro, {
+    yield_10_year: 4.2,
+    curve_10y_1y_spread: -0.3,
+    cpi: 3.1,
+    as_of: "2026-07-11",
+    treasury_as_of: "2026-07-11",
+    cpi_as_of: "2026-05-01",
+  });
   assert.equal(ars.breadth?.tone, "risk_on");
   assert.equal(ars.news?.count, 1);
   assert.equal(ars.earnings, null);

@@ -15,6 +15,7 @@ import {
   gexPostureSection,
   holdPlanSection,
   lessonsSection,
+  macroTapeSection,
   meridianCatalystSection,
   meridianPeerSection,
   tickerTrackRecordSection,
@@ -1703,6 +1704,84 @@ function fixtureVec(overrides: Partial<VectorFullState> = {}): VectorFullState {
     ...overrides,
   } as unknown as VectorFullState;
 }
+
+test("macroTapeSection: CPI and 10Y each disclose their OWN print date, not a single combined vintage (Ask Largo standing mandate, live repro 2026-10-13)", () => {
+  // Live-verified the day this test was written: Polygon's own /fed/v1/treasury-yields returned
+  // date 2026-10-08 (5 days old) while /fed/v1/inflation returned date 2026-08-01 (73 days old) —
+  // same read. The old render showed neither date, so a member had no way to tell the CPI figure
+  // was ~2.5 months older than the rates line sitting right next to it.
+  const section = macroTapeSection({
+    ticker: "SPX",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "index",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: null,
+      macro: {
+        yield_10_year: 5.22,
+        curve_10y_1y_spread: 0.78,
+        cpi: 334.1,
+        as_of: "2026-10-08",
+        treasury_as_of: "2026-10-08",
+        cpi_as_of: "2026-08-01",
+      },
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /10Y \*\*5\.22%\*\* \(2026-10-08\)/);
+  assert.match(section!.body, /CPI \*\*334\.1\*\* \(2026-08-01 print\)/);
+});
+
+test("macroTapeSection: missing per-series dates render the figures with no false date (back-compat with fixtures predating treasury_as_of/cpi_as_of)", () => {
+  const section = macroTapeSection({
+    ticker: "SPX",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "index",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: null,
+      macro: {
+        yield_10_year: 5.22,
+        curve_10y_1y_spread: 0.78,
+        cpi: 334.1,
+        as_of: "2026-10-08",
+        treasury_as_of: null,
+        cpi_as_of: null,
+      },
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /10Y \*\*5\.22%\*\*(?!\s*\()/);
+  assert.match(section!.body, /CPI \*\*334\.1\*\*(?!\s*\()/);
+});
 
 test("catalystsSection: short vol ratio renders as a sane percent from a 0–1 fraction (audit #12)", () => {
   const section = catalystsSection({
