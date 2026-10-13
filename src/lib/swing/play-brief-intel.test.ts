@@ -3081,7 +3081,23 @@ test("gexPostureSection: CLOSED bucket prefixes a current-not-as-traded disclosu
   assert.doesNotMatch(openSection!.body, /Current dealer posture/, "open/watch buckets are unchanged");
 });
 
-test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits live-looking technicals (Largo C2)", () => {
+// FIX (Ask Largo standing mandate, 2026-10-13, live repro ASTS:53 CLOSED brief): this stale branch
+// used to render "Last snapshot ... chart read may lag spot" + "Vector desk grade: X (from prior
+// snapshot)" — but `vectorDeskSection`'s OWN stale branch (below in this file) independently
+// renders the exact same "Last snapshot ... Vector desk read may lag spot" + "Vector desk grade: X
+// (from prior snapshot)" pair under its own title. The two sections evolved these near-identical
+// "honest degrade" fallbacks on different dates (this one 2026-09-06ish, vectorDeskSection's
+// 2026-09-20) with neither referencing the other, so a brief where BOTH sections render standalone
+// (not folded into "Trade manager read" — true for every CLOSED brief and any OPEN/WATCH brief that
+// isn't desk-detail-folded) showed the identical fact twice under two different section titles —
+// live-confirmed on ASTS:53 (CLOSED, Vector stale ~1426s): "Chart technicals" and "Vector desk"
+// both read "Vector desk grade: C (from prior snapshot)". `grade` is not "chart technicals" data in
+// the first place (it's the play engine's own field, whose canonical home is vectorDeskSection) —
+// when stale there is no fresh EMA/VWAP/RSI/MACD/structure to show, so this section now has
+// nothing left to say that isn't already said by vectorDeskSection (the grade) or
+// dataFreshnessSection (the staleness itself) and returns null instead, the same "no real content"
+// path this function already takes elsewhere (see the CLOSED-bucket-no-content test above).
+test("chartTechnicalsSection: stale Vector snapshot returns null — grade belongs to vectorDeskSection, not duplicated here (Largo C2, 2026-10-13)", () => {
   const vec = fixtureVec({
     spot: 95,
     dataAgeMs: 200_000,
@@ -3095,28 +3111,49 @@ test("chartTechnicalsSection: stale Vector snapshot neutralizes bias and omits l
       structure: { type: "CHOCH", direction: "up", level: 94 },
     },
   });
-  const section = chartTechnicalsSection(vec);
-  assert.equal(section?.bias, "neutral");
-  assert.match(section!.body, /Last snapshot/i);
-  assert.match(section!.body, /200s old/i);
-  assert.match(section!.body, /from prior snapshot/i);
-  assert.doesNotMatch(section!.body, /Spot:/i, "stale Vector spot must not render as live");
-  assert.doesNotMatch(section!.body, /EMA 9\/21\/50/i, "stale EMA stack must not render as live");
-  assert.doesNotMatch(section!.body, /VWAP/i, "stale VWAP must not render as live");
-  assert.doesNotMatch(section!.body, /RSI:/i, "stale RSI must not render as live");
+  assert.equal(chartTechnicalsSection(vec), null, "stale + no fresh technicals must omit, not duplicate vectorDeskSection's grade line");
 });
 
-test("chartTechnicalsSection: future-skewed Vector dataAgeMs (Infinity) renders 'clock-skewed', never the literal 'Infinitys' (Largo C2, 2026-09-16)", () => {
+test("chartTechnicalsSection: future-skewed Vector dataAgeMs (Infinity) also returns null, not a clock-skewed stub (Largo C2, 2026-10-13)", () => {
   const vec = fixtureVec({
     spot: 95,
     dataAgeMs: Number.POSITIVE_INFINITY,
     play: { grade: "A" },
   });
-  const section = chartTechnicalsSection(vec);
-  assert.ok(section);
-  assert.match(section!.body, /Last snapshot/i);
-  assert.match(section!.body, /\(~clock-skewed old\)/i);
-  assert.doesNotMatch(section!.body, /Infinitys/i);
+  assert.equal(chartTechnicalsSection(vec), null);
+});
+
+test("chartTechnicalsSection + vectorDeskSection: stale Vector never renders the same grade fact under both titles (Largo C2, live repro ASTS:53)", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    dataAgeMs: 1_426_000,
+    play: {
+      bias: "long",
+      headline: "Ride momentum",
+      grade: "C",
+      conviction: "high",
+      thesis: "Breakout continuation",
+      entryZone: "100-102",
+      targets: ["110"],
+      invalidation: "below 98",
+      starred: ["watch 105"],
+    },
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  } as Partial<VectorFullState>);
+
+  const chart = chartTechnicalsSection(vec);
+  const desk = vectorDeskSection(vec);
+
+  assert.equal(chart, null, "Chart technicals has nothing left to say once stale — grade lives in Vector desk only");
+  assert.ok(desk, "Vector desk remains the one place that reports the stale grade");
+  assert.match(desk!.body, /Vector desk grade: \*\*C\*\* \(from prior snapshot\)/);
 });
 
 test("chartLevelsSection: stale Vector omits max pain / dark pool / confluence (Largo C2)", () => {
