@@ -99,6 +99,14 @@ type CacheOpts = {
    * pre-publish empty shells with available:false).
    */
   shouldCache?: (value: unknown) => boolean;
+  /**
+   * Test-only override for the staleness ceiling every `return hit.value` site in this function
+   * enforces (default MAX_STALE_AGE_MS, 10 minutes). Mirrors `peekServerCache`'s own `maxStaleMs`
+   * option — lets a unit test exercise the ceiling with a real (tiny) elapsed time instead of a
+   * real 10-minute wait. No production caller should ever need to pass this; the shared default
+   * is what keeps every site in this function agreeing on "how old is too old."
+   */
+  maxStaleAgeMs?: number;
 };
 
 /**
@@ -148,6 +156,7 @@ export async function withServerCache<T>(
   const swr = opts.staleWhileRevalidate !== false;
   const localOnly = opts.localOnly === true;
   const shouldCache = opts.shouldCache;
+  const maxStaleAgeMs = opts.maxStaleAgeMs ?? MAX_STALE_AGE_MS;
   if (ttlMs <= 0) return loader();
 
   const now = Date.now();
@@ -169,8 +178,28 @@ export async function withServerCache<T>(
     }
   }
 
-  // Fast lanes: always await a fresh build once TTL expires (no stale handoff).
-  if (hit && hit.expiresAt <= now && !swr) {
+  // Fast lanes: always await a fresh build once TTL expires (no stale handoff) — but only for a
+  // hit that is still within MAX_STALE_AGE_MS. BUG (found live 2026-10-08, /api/market/spx/play):
+  // before this ceiling existed, BOTH `return hit.value` sub-paths below served the in-memory
+  // entry completely unconditionally, however old it was — unlike the SWR branch a few lines
+  // down, which has always enforced MAX_STALE_AGE_MS via the "FIX 5a" guard. Every caller that
+  // combines `staleWhileRevalidate:false` with `staleOnInflight`/`maxBlockMs` (today just
+  // spx-service.ts's getSpxPlayState, the sole `staleWhileRevalidate:false` caller) hits this
+  // exact fast lane. When its loader (evaluateSpxPlayStateCrossReplica) routinely lost its race
+  // against its own 800ms maxBlockMs — already documented inline at that call site as "a routine
+  // outcome, not a rare one" — the background refresh scheduled here kept failing to land before
+  // the NEXT poll arrived, so this replica's in-memory `hit` just sat there, un-aged-out, served
+  // forever. Measured live: `/api/market/spx/play`'s `as_of` up to ~27 minutes stale and
+  // inconsistent across replicas (each replica frozen at whenever ITS OWN background refresh last
+  // happened to succeed), `assessed: true` and indistinguishable from a fresh read the whole time,
+  // while `/api/market/spx/desk` (same underlying desk snapshot, but a route that does not pass
+  // staleWhileRevalidate:false) stayed current throughout the identical polling window — proving
+  // the staleness was this cache path's own gap, not an upstream data problem. Falling through
+  // past the ceiling re-enters the SAME bounded cold-path logic a genuinely-cold key already uses
+  // below (the `pending`/maxBlockMs-raced rebuild, then fallback, with the ceiling re-checked
+  // before any remaining `hit`-as-last-resort step — see the matching fix at each of those sites)
+  // instead of a third, unbounded way to serve `hit.value`.
+  if (hit && hit.expiresAt <= now && !swr && now - hit.refreshedAt <= maxStaleAgeMs) {
     if (inflight.has(key)) {
       if (opts.staleOnInflight) return hit.value;
       if (opts.maxBlockMs != null && opts.fallback) return opts.fallback() as Promise<T>;
@@ -189,9 +218,17 @@ export async function withServerCache<T>(
   // FIX 5a: Enforce a maximum stale age. If the entry is older than MAX_STALE_AGE_MS
   // since its last successful refresh, do not serve it; fall through to a blocking
   // fetch so callers are never permanently stuck on stale data.
-  if (hit && hit.expiresAt <= now && !inflight.has(key)) {
+  // `&& swr` restricts this block to stale-while-revalidate callers specifically (it always
+  // implicitly was, in effect, since the fast lane above used to consume every `!swr` hit
+  // unconditionally and never fell through to here — now that the fast lane itself has a
+  // staleness ceiling, an explicit `swr` check keeps a too-stale `!swr` hit routing to the
+  // `pending`/maxBlockMs cold-path logic further down instead of this block's own unbounded
+  // `return refreshCache(...)` on the "not yet degraded" branch, which has no maxBlockMs race at
+  // all and would silently reintroduce the exact unbounded-block failure mode PR #5061/#5065
+  // fixed for every `maxBlockMs` caller).
+  if (hit && hit.expiresAt <= now && swr && !inflight.has(key)) {
     const staleAge = now - hit.refreshedAt;
-    if (staleAge > MAX_STALE_AGE_MS) {
+    if (staleAge > maxStaleAgeMs) {
       // When the upstream is already degraded (3+ consecutive failures), a blocking
       // refresh will almost certainly fail again, adding latency for no benefit.
       // Return the stale entry and kick off a non-blocking refresh attempt instead.
@@ -218,7 +255,13 @@ export async function withServerCache<T>(
   const pending = inflight.get(key) as Promise<T> | undefined;
   if (pending) {
     if (opts.staleOnInflight || (opts.maxBlockMs != null && opts.fallback)) {
-      if (hit) return hit.value;
+      // Same MAX_STALE_AGE_MS ceiling as the fast-lane fix above — this branch is reachable by
+      // ANY caller with staleOnInflight/maxBlockMs+fallback configured (not just !swr ones, e.g.
+      // spx-desk-loader.ts, nighthawk/edition/route.ts, flows-member-cache.ts, admin-health.ts),
+      // whenever a build happens to already be inflight. An ancient `hit` here is just as
+      // unbounded-stale as the fast-lane one was; treat it as unusable past the ceiling and fall
+      // through to the Redis/fallback logic below instead of serving it unconditionally.
+      if (hit && now - hit.refreshedAt <= maxStaleAgeMs) return hit.value;
       if (!localOnly) {
         const redisHit = await readRedisCache<T>(key);
         if (redisHit != null) {
@@ -288,7 +331,11 @@ export async function withServerCache<T>(
       // Fallback also blew the cap — fall through to stale/background-refresh below rather
       // than waiting on it further.
     }
-    if (hit) return hit.value;
+    // Same MAX_STALE_AGE_MS ceiling as the two sites above — this is the cold-start mirror of the
+    // "already inflight" fix just above (reachable by any maxBlockMs caller once both the fresh
+    // build and the fallback have blown the cap), and had the identical unbounded `if (hit) return
+    // hit.value` gap.
+    if (hit && now - hit.refreshedAt <= maxStaleAgeMs) return hit.value;
     // Never await the slow cold build after the cap — keep refreshing in background.
     refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
     const pending = inflight.get(key) as Promise<T> | undefined;

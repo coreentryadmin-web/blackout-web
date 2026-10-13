@@ -252,8 +252,13 @@ matrix TTL). It:
 - Is therefore **O(distinct tickers)** at the matrix TTL regardless of caller
   count — 500 consumers collapse to the one shared matrix.
 
-This matches the discipline of `getNwTickerGex`
-(`src/lib/nights-watch/position-context.ts`), the reference cache-reader.
+This matches the discipline of what was formerly the reference cache-reader,
+`getNwTickerGex` — the whole Night's Watch subsystem it lived in (including
+`src/lib/nights-watch/position-context.ts`) was removed 2026-07-06
+("feat(nighthawk): absorb 0DTE Command from Grid; remove Night's Watch",
+`f10458db9`). `getNwTickerGex` has zero remaining call sites or definitions
+anywhere in `src/` — `getGexPositioning` is now the only live implementation
+of this discipline, not a second instance of it.
 
 ---
 
@@ -267,15 +272,24 @@ existing summary shape, so **call sites stay unchanged**.
 
 ### Inconsistency A — Night Hawk `fetchPositioningSummary` — OTHER-SESSION-OWNED
 
-- **File:** `src/lib/nighthawk/positioning.ts`
-- **Function:** `fetchPositioningSummary(ticker): Promise<PositioningSummary>`
+- **File:** `src/features/nighthawk/lib/positioning.ts` (moved from
+  `src/lib/nighthawk/positioning.ts` by the 2026-07-07 modular-monolith
+  feature-folder migration, `681530b7f`/#684 — this doc's paths below were
+  never updated for that move)
+- **Function:** `fetchPositioningSummary(ticker): Promise<PositioningSummary | null>`
 - **What it does today:** calls `fetchPolygonPositioningBundle(sym)` (a **second
   upstream**, a different banded chain fetch than `fetchGexHeatmap`), then
   recomputes net GEX / flip / regime / walls / max-pain / net VEX via
   `analyzeStrikeGexRows` + `computeGammaFlip` + `gammaRegime` + `topGexWalls`.
+  The function's own comments now describe this as a **fallback** path "when
+  the shared cache is cold" rather than the unconditional path described
+  below — re-verify the current primary/fallback split before acting on this
+  item, the mechanism may have moved on further than this doc tracks.
 - **Call sites:**
-  - `src/lib/nighthawk/dossier.ts:226` (per-ticker dossier `positioning` field)
-  - `src/lib/nighthawk/index-dossier.ts:42` (index/ETF dossier)
+  - `src/features/nighthawk/lib/dossier.ts:363` (per-ticker dossier
+    `positioning` field; moved from `src/lib/nighthawk/dossier.ts`)
+  - `src/features/nighthawk/lib/index-dossier.ts:42` (index/ETF dossier;
+    moved from `src/lib/nighthawk/index-dossier.ts`)
 - **Risk:** different band + different flip/wall math → the dossier can report a
   flip, walls, or net GEX that don't match the Heat Maps screen for the same
   ticker at the same moment.
@@ -299,10 +313,15 @@ existing summary shape, so **call sites stay unchanged**.
 ### Inconsistency B — Largo `get_positioning` tool — OTHER-SESSION-OWNED
 
 - **File:** `src/lib/largo/run-tool.ts`
-- **Tool case:** `get_positioning` (`run-tool.ts:1210-1213`) →
-  `return { ticker: sym, ...(await fetchPositioningSummary(sym)) }`
-- **What it does today:** reuses the same Night Hawk `fetchPositioningSummary`,
-  inheriting the same off-band recompute.
+- **Tool case:** `get_positioning` (`run-tool.ts:1765-1769`, line numbers have
+  shifted since this doc was written) →
+  `const full = await getGexPositioning(sym); if (full) return full; return { ticker: sym, ...(await fetchPositioningSummary(sym)) };`
+- **What it does today:** already tries the canonical `getGexPositioning(sym)`
+  first (added 2026-07-20, `a412703da`/#834) and only falls back to the Night
+  Hawk `fetchPositioningSummary` when that returns falsy — this is a partial
+  convergence this doc never recorded, not the unconditional reuse described
+  below. Re-verify how often the fallback actually fires before treating this
+  item as fully open.
 - **Risk:** Largo's `get_positioning` answers can disagree with the Heat Maps
   screen and the Heat Maps explain narrative for the same ticker.
 - **Recommended convergence (OTHER-SESSION-OWNED):** once Inconsistency A is
@@ -322,8 +341,8 @@ existing summary shape, so **call sites stay unchanged**.
 | `src/app/api/market/gex-positioning/route.ts` (canonical endpoint) | **HEATMAP-OWNED — done** |
 | `src/app/api/market/gex-heatmap/explain/route.ts` (core GEX context deduped onto `gexContextBlock`) | **HEATMAP-OWNED — done** |
 | `HEATMAP_DATA_CONTRACT.md` (this doc) | **HEATMAP-OWNED — done** |
-| `src/lib/nighthawk/positioning.ts` → adapter over `getGexPositioning` | **OTHER-SESSION-OWNED — Night Hawk action** |
-| `src/lib/nighthawk/dossier.ts` / `index-dossier.ts` call sites | **OTHER-SESSION-OWNED — unchanged once adapter lands** |
+| `src/features/nighthawk/lib/positioning.ts` → adapter over `getGexPositioning` | **OTHER-SESSION-OWNED — Night Hawk action** |
+| `src/features/nighthawk/lib/dossier.ts` / `index-dossier.ts` call sites | **OTHER-SESSION-OWNED — unchanged once adapter lands** |
 | `src/lib/largo/run-tool.ts` `get_positioning` | **OTHER-SESSION-OWNED — Largo action (inherits the adapter)** |
 
 ---

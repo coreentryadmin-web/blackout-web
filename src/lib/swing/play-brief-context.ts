@@ -12,6 +12,7 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext, SwingRollHistory } from "./play-brief-types";
 import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
+import { reconcileLivePnlPctWithDisplayMark } from "./play-brief-resolve-pure";
 import { fetchMeridianForTicker } from "./play-brief-meridian";
 import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
@@ -122,11 +123,46 @@ function positionIdFromPlayId(id: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function loadRollHistory(positionId: number | null | undefined): Promise<SwingRollHistory | null> {
+// BUG FOUND (Ask Largo standing mandate, 2026-10-08): `positionIdFromPlayId` above extracts the
+// trailing numeric id from `resolved.play.id` regardless of WHICH table that id actually belongs
+// to. For a banger-origin SWING-lane row, `terminalPlayFromHorizon`/`banger-lane-merge.ts` bakes
+// the row's `banger_positions.id` into that exact same `${horizon}:${ticker}:${positionId}` shape
+// (banger-lane-merge.ts line ~115: `positionId: row.id`) — `play-brief-context.test.ts`'s own
+// `loadOpenBook()` regression already documents this precisely ("a banger row's own id must NOT
+// be stamped as positionId — banger_positions and swing_positions are separate id sequences that
+// CAN collide") and fixed it for the book-context overlap check, but `loadRollHistory` and
+// `resolveRootPositionId` below were never given the same guard: both call
+// `fetchSwingPositionById(positionId)`, which is a flat `SELECT * FROM swing_positions WHERE id =
+// $1` — for a banger-origin play that id has NOTHING to do with `swing_positions`, so any row it
+// happens to match there (by sheer numeric coincidence, once that table's own sequence grows far
+// enough) belongs to a COMPLETELY UNRELATED position, possibly a different ticker/direction/
+// strike entirely. `resolveRootPositionId`'s mis-resolution is low-blast-radius (its only use is a
+// ticker-scoped self-exclusion, so a wrong, unrelated-ticker root id just fails to match anything
+// and is a harmless no-op) — but `loadRollHistory`'s is NOT: its output renders verbatim as
+// "Trade manager read"'s roll-history disclosure (`rollHistoryLine`, play-brief-narrative.ts) with
+// zero downstream ticker cross-check, so a collision would show the member someone else's real
+// strike/expiry/P&L as if it were THIS play's own prior leg — a direct Largo product-contract
+// IDENTITY violation (LARGO-PRODUCT-CONTRACT.md), not merely cosmetic. Not currently live-
+// triggered (verified 2026-10-08: `swing_positions`'s own native sequence sits in the low tens —
+// GET /api/market/swing/record's closedDeck/records top out at positionId 50 — while
+// `banger_positions` is already past 1550, so the ranges don't overlap TODAY), but it is a live
+// landmine with no guard against ever firing, and exactly the same identity-collision class this
+// file already treats as a real bug everywhere else it's found (see `loadOpenBook`'s own comment
+// just above, and `rowContractMatches`/`normalizeRight`'s fail-closed discipline in
+// play-brief-resolve.ts). Fix: require the ticker on the row that `fetchSwingPositionById`
+// returns to match the reviewed play's own ticker before trusting it — the EXACT same fail-closed
+// identity check this codebase already applies to strike/right matches, just extended to this one
+// remaining id-based lookup. A mismatch (or a genuinely nonexistent row) returns the same honest
+// `null` either function already returns for "no ledger row" — never fabricated, per this file's
+// standing Largo C6 omission discipline.
+async function loadRollHistory(
+  positionId: number | null | undefined,
+  ticker: string,
+): Promise<SwingRollHistory | null> {
   if (positionId == null) return null;
   try {
     const row = await fetchSwingPositionById(positionId);
-    if (!row) return null;
+    if (!row || row.ticker.toUpperCase() !== ticker.toUpperCase()) return null;
     const rootId = row.root_position_id ?? row.id;
     const chain = await fetchSwingPositionChain(rootId);
     if (chain.length < 2) return null; // never rolled — nothing to disclose
@@ -151,12 +187,16 @@ async function loadRollHistory(positionId: number | null | undefined): Promise<S
  * (play-brief-ticker-history.ts). A WATCH/lane-only candidate has no `positionId` at all (nothing
  * to exclude — every closed chain on the ticker is genuinely "prior"). Best-effort like every
  * other context read here: a DB hiccup returns `null` (no exclusion applied) rather than failing.
+ * Same banger/swing id-collision guard as `loadRollHistory` just above — see its comment for the
+ * full story; here a mismatch is lower-stakes (a wrongly-resolved root id just fails to match
+ * anything in the ticker-scoped history it's meant to exclude from), but there's no reason to
+ * leave this call site exposed to the same bug class once it's fixed next door.
  */
-async function resolveRootPositionId(positionId: number | null): Promise<number | null> {
+async function resolveRootPositionId(positionId: number | null, ticker: string): Promise<number | null> {
   if (positionId == null) return null;
   try {
     const row = await fetchSwingPositionById(positionId);
-    if (!row) return null;
+    if (!row || row.ticker.toUpperCase() !== ticker.toUpperCase()) return null;
     return row.root_position_id ?? row.id;
   } catch {
     return null;
@@ -175,7 +215,26 @@ export async function loadSwingPlayBriefContext(
   const resolved = await resolveSwingPlayForBrief(input);
   if (!resolved) return null;
 
-  const ticker = resolved.play.ticker.toUpperCase();
+  // BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): every
+  // section downstream (`composeSwingPlayBrief` and the ~6 call sites across
+  // play-brief-narrative.ts/-coaching.ts/-intel.ts that read `play.pnlPct` for "current P&L"
+  // framing) must see the SAME reconciled number `positionSection`'s own `pnlForDisplay` already
+  // shows — reconciled here, once, at the single point every live brief passes through, rather
+  // than left for each section to (not) redo. See `reconcileLivePnlPctWithDisplayMark`'s own doc
+  // comment (play-brief-resolve-pure.ts) for the full live repro and why this is the safe choke
+  // point (every existing section-level unit test builds its own fixture and calls
+  // `composeSwingPlayBrief` directly, bypassing this loader entirely, so none of them are
+  // affected by this change).
+  const play = {
+    ...resolved.play,
+    pnlPct: reconcileLivePnlPctWithDisplayMark({
+      entry: resolved.play.entry,
+      mark: resolved.play.mark,
+      pnlPct: resolved.play.pnlPct,
+    }),
+  };
+
+  const ticker = play.ticker.toUpperCase();
 
   // PERFORMANCE FIX (standing latency mandate, 2026-09-22): `meridian` and `meridianPeer` used to
   // be `await`ed one after another BEFORE the `Promise.all` below ever started — meridianPeer
@@ -200,7 +259,7 @@ export async function loadSwingPlayBriefContext(
   // rejection is just another throw here, so it flows through the same failed-flag path.
   let ecosystemFetchFailed = false;
   let vectorFetchFailed = false;
-  const positionId = positionIdFromPlayId(resolved.play.id);
+  const positionId = positionIdFromPlayId(play.id);
   const [
     meridian,
     meridianPeer,
@@ -241,7 +300,7 @@ export async function loadSwingPlayBriefContext(
     withBriefSourceTimeout(readSwingArchetypeTrackRecord()).catch(() => null),
     // Best-effort like the read above — a DB hiccup degrades to "no roll history cited" rather
     // than failing the whole brief; loadRollHistory already wraps its own try/catch.
-    withBriefSourceTimeout(loadRollHistory(positionId)).catch(() => null),
+    withBriefSourceTimeout(loadRollHistory(positionId, ticker)).catch(() => null),
     // Ask Largo C10 (historical context, TICKER-scoped) — see play-brief-ticker-history.ts's
     // header for why this is a plain, best-effort live read rather than a cron-distilled cache
     // like archetypeTrackRecord above. Self-excludes the reviewed play's own chain (resolved via
@@ -251,11 +310,11 @@ export async function loadSwingPlayBriefContext(
     // never be cited as "traded before this play" — see play-brief-ticker-history.ts's TEMPORAL
     // ORDERING note for the live future-leak this closes.
     withBriefSourceTimeout(
-      resolveRootPositionId(positionId).then((rootId) =>
+      resolveRootPositionId(positionId, ticker).then((rootId) =>
         loadTickerTrackRecord(
-          resolved.play.ticker,
+          play.ticker,
           rootId,
-          resolved.play.exitAt ? (Date.parse(resolved.play.exitAt) || null) : null,
+          play.exitAt ? (Date.parse(play.exitAt) || null) : null,
         ),
       ),
     ).catch(() => null),
@@ -265,7 +324,7 @@ export async function loadSwingPlayBriefContext(
   // Largo C1: brief read time on the market clock — same convention as Vector/BIE tools.
   const asOf = etStamp(nowMs) ?? new Date(nowMs).toISOString();
   return {
-    play: resolved.play,
+    play,
     asOf,
     sessionDate: etSessionDate(nowMs),
     scanAsOf: resolved.scanAsOf,

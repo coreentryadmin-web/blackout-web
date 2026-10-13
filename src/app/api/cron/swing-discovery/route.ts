@@ -38,7 +38,12 @@ import { bangerTickersFromGroupedDaily } from "@/lib/swing/v2/origins/banger-scr
 import { vectorTickersFromPickLeaders } from "@/lib/swing/v2/origins/vector-screen-fetch";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
-import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
+import {
+  carryLegacyPromotedIntoSnapshot,
+  legacyPromotedTriplesFromSnapshot,
+  removeCommittedLegacyFromSnapshot,
+} from "@/lib/swing/legacy-confirm-promote";
+import { isSwingLegacyCommitBridgeEnabled } from "@/lib/swing/v2/config";
 import { swingThesisKey } from "@/lib/swing/accumulation-store";
 import {
   fetchRecentFlows,
@@ -106,7 +111,12 @@ function ymdDaysAgo(nowMs: number, days: number): string {
 }
 
 /** Wire the live providers + ledger accessors into the injected discovery deps (all IO lives here). */
-function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDiscoveryDeps["phase"]): SwingDiscoveryDeps {
+function buildDiscoveryDeps(
+  nowMs: number,
+  sessionDay: string,
+  phase: SwingDiscoveryDeps["phase"],
+  legacyTriples: SwingDiscoveryDeps["legacyTriples"],
+): SwingDiscoveryDeps {
   const to = todayEt(new Date(nowMs));
   const from = ymdDaysAgo(nowMs, DAILY_BAR_LOOKBACK_DAYS);
   // Memoize daily closes per ticker for the WHOLE scan. The name, SPY, and every SECTOR_ROTATION benchmark
@@ -282,6 +292,7 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
       promoteSwingCandidate(accum, ticker, direction, positionId, archetype),
     insertShadowPosition: insertSwingShadowPosition,
     budget: resolveProductionPortfolioBudget(),
+    legacyTriples,
     nowMs,
     sessionDay,
     phase,
@@ -385,7 +396,16 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!);
+    // Read the PRIOR serving snapshot BEFORE the scan (not after, the pre-fix order) so any
+    // Legacy-promoted theses it carries can be offered to THIS scan's own commit loop — see
+    // `legacyTriples`'s doc comment on SwingDiscoveryDeps for why the prior "after" order left the
+    // graduation bridge (#5577) permanently unwired. Reused below (never re-read) for the
+    // carry-forward persist, so this is a pure hoist, not an extra read.
+    const existing = await readSwingServingSnapshot();
+    const legacyTriples =
+      isSwingLegacyCommitBridgeEnabled() && existing ? legacyPromotedTriplesFromSnapshot(existing) : [];
+
+    const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!, legacyTriples);
     // Runs inline (not after()) so phase-claim release on failure is synchronous — an ALB abort
     // that never reaches catch must not leave a DONE marker without a snapshot (prod 2026-07-29).
     // UW REST (IV rank / earnings history) is tagged as a background sweep so live traffic keeps
@@ -428,7 +448,6 @@ export async function GET(req: NextRequest) {
       }),
     );
 
-    const existing = await readSwingServingSnapshot();
     const flagAnchorsByThesisKey: Record<string, number> = {
       ...(existing?.flagAnchorsByThesisKey ?? {}),
     };
@@ -438,6 +457,23 @@ export async function GET(req: NextRequest) {
       const px = spotsByTicker[cand.ticker.toUpperCase()];
       if (px != null && Number.isFinite(px) && px > 0) flagAnchorsByThesisKey[key] = px;
     }
+
+    // A Legacy triple this scan just bridged into a REAL committed position must not also keep
+    // carrying forward as a WATCH row — `removeCommittedLegacyFromSnapshot` is #5577's own named
+    // counterpart to `reconcileDiscoveryAfterCommit`'s organic-candidate cleanup below it, applied
+    // the same way: strip it from `existing` BEFORE `carryLegacyPromotedIntoSnapshot` re-derives the
+    // carried set from `existing`, or the same thesis shows twice (a live position AND a stale WATCH
+    // duplicate of itself).
+    const legacyTickerSet = new Set(legacyTriples.map((t) => t.watch.ticker.toUpperCase()));
+    const committedLegacyTickers = new Set(
+      (result.commit?.committed ?? [])
+        .map((c) => c.ticker.toUpperCase())
+        .filter((t) => legacyTickerSet.has(t)),
+    );
+    const existingForCarry =
+      existing && committedLegacyTickers.size > 0
+        ? removeCommittedLegacyFromSnapshot(existing, committedLegacyTickers)
+        : existing;
 
     const persisted = await persistSwingServingSnapshot(
       carryLegacyPromotedIntoSnapshot(
@@ -451,7 +487,7 @@ export async function GET(req: NextRequest) {
           spotsByTicker,
           flagAnchorsByThesisKey,
         },
-        existing,
+        existingForCarry,
       ),
     );
     if (!persisted) {

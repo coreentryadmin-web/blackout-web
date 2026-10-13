@@ -396,13 +396,6 @@ export function scoreFloorForOrigins(origins: readonly string[] | null | undefin
  *  weak-score population from the floor that governs everyone else in that band. */
 export const ZERODTE_SINGLE_RAIL_PRIME_MIN = envInt("ZERODTE_SINGLE_RAIL_PRIME_MIN", 75);
 
-/** True when discovery_origin is exactly one non-FLOW rail (BREAKOUT or PIN alone). Pure. */
-export function isSingleRailWithoutFlow(origins: readonly string[] | null | undefined): boolean {
-  const set = Array.isArray(origins) ? origins : [];
-  if (set.includes("FLOW")) return false;
-  return set.length === 1 && (set[0] === "BREAKOUT" || set[0] === "PIN");
-}
-
 export type ZeroDteGateBlock = {
   /** Machine-readable code — same namespace as the evidence gates' gate_failed. */
   code: ZeroDteGateFailure;

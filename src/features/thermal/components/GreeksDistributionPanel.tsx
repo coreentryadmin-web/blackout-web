@@ -13,13 +13,11 @@ import { clsx } from "clsx";
 interface GreeksDistributionPanelProps {
   cells: GexCells | null;
   spot: number | null;
-  ticker: string;
 }
 
 export function GreeksDistributionPanel({
   cells,
   spot,
-  ticker: _ticker,
 }: GreeksDistributionPanelProps) {
   const analysis = useMemo(() => {
     if (!cells || !spot) return null;

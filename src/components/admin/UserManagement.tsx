@@ -242,7 +242,7 @@ export function UserManagement() {
               { value: "", label: "All access types" },
               { value: "premium", label: "Premium (full desk)" },
               { value: "free", label: "Free (marketing only)" },
-              { value: "community", label: "Community (Discord)" },
+              { value: "community", label: "Community (SPX Slayer)" },
               { value: "admin", label: "Admins" },
             ]}
           />
@@ -808,6 +808,7 @@ function CreateUserModal({
             onChange={(e) => setTier(e.target.value)}
           >
             <option value="free">free</option>
+            <option value="community">community</option>
             <option value="premium">premium</option>
           </select>
         </div>

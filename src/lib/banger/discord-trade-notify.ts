@@ -8,7 +8,7 @@
  *
  * Fire-and-forget: never throws into discovery/live-sync crons.
  */
-import type { BangerPositionInsert, BangerPositionRow } from "@/lib/banger/positions-db";
+import type { BangerPositionInsert } from "@/lib/banger/positions-db";
 import type { ScaleOutAction } from "@/lib/zerodte/scale-out";
 import { SCALE_OUT_RULES } from "@/lib/zerodte/scale-out";
 import {
@@ -48,21 +48,6 @@ function bangerAuthorName(): string {
 
 /** Engine B breakout plays are always long calls. */
 const BANGER_DIRECTION = "long" as const;
-
-export function bangerInputFromRow(row: BangerPositionRow): BangerTradeDiscordInput | null {
-  const premium = row.entry_premium;
-  if (premium == null || !Number.isFinite(premium) || premium <= 0) return null;
-  return {
-    session_date: row.session_date,
-    position_id: row.id,
-    ticker: row.ticker.toUpperCase(),
-    contract_strike: row.contract_strike,
-    contract_expiry: row.contract_expiry,
-    entry_premium: premium,
-    last_mark: row.last_mark,
-    scaled_already: row.scaled_already,
-  };
-}
 
 export function bangerInputFromInsert(
   positionId: number,

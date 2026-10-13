@@ -13,10 +13,12 @@ import {
   execSlippageCoaching,
   expectedMoveCoaching,
   flowPrintsCoaching,
+  ivLeverageDivergenceCoaching,
   ivRankCoaching,
   laneRankCoaching,
   magnetCoaching,
   manageLifecycleCoaching,
+  rangeBiasEntryCollisionCoaching,
   shortInterestCoaching,
   thesisBreakCoaching,
   tickerHistoryCoaching,
@@ -2188,6 +2190,114 @@ test("vectorPlayCoaching: a 'range' bias behaves the same as 'neutral' — neith
   assert.doesNotMatch(line!, /aligned with swing lane/i);
 });
 
+// rangeBiasEntryCollisionCoaching (Ask Largo enhancement idea #2, PR #4076 comment 6131711926):
+// a WATCH setup's own entry trigger colliding with the specific rail Vector's range-fade play
+// would trade the opposite way at. Live repro shape: WATCH:SNOW, 2026-10-12 (LONG entry trigger
+// 369.49 sitting right at Vector's own range call wall 370 — "sell the rip" zone).
+test("rangeBiasEntryCollisionCoaching: fires on a LONG entry trigger sitting at Vector's range call wall (live SNOW shape)", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }),
+    "watch",
+    vec,
+  );
+  assert.match(line!, /Range collision/i);
+  assert.match(line!, /369\.49/);
+  assert.match(line!, /370/);
+  assert.match(line!, /sell-the-rip/i);
+  assert.doesNotMatch(line!, /cross-check/i, "must not reuse the directional-conflict framing");
+  assert.doesNotMatch(line!, /aligned with swing lane/i);
+});
+
+test("rangeBiasEntryCollisionCoaching: symmetric on SHORT vs the put wall (buy-the-dip zone)", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "SHORT", entryTriggerUnderlyingPx: 331 }),
+    "watch",
+    vec,
+  );
+  assert.match(line!, /Range collision/i);
+  assert.match(line!, /buy-the-dip/i);
+  assert.match(line!, /put wall/i);
+});
+
+test("rangeBiasEntryCollisionCoaching: silent when the entry trigger has real room from the wall (outside the band)", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "LONG", entryTriggerUnderlyingPx: 350 }),
+    "watch",
+    vec,
+  );
+  assert.equal(line, null);
+});
+
+test("rangeBiasEntryCollisionCoaching: silent on a directional Vector bias ('long'/'short') — this is NOT crossDeskCoaching's job", () => {
+  const vec = {
+    play: { bias: "long" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const line = rangeBiasEntryCollisionCoaching(
+    ctx(),
+    play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }),
+    "watch",
+    vec,
+  );
+  assert.equal(line, null);
+});
+
+test("rangeBiasEntryCollisionCoaching: OPEN/CLOSED-only buckets never fire — entry trigger is a pre-entry concept", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  const args = play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 });
+  assert.equal(rangeBiasEntryCollisionCoaching(ctx(), args, "open", vec), null);
+  assert.equal(rangeBiasEntryCollisionCoaching(ctx(), args, "closed", vec), null);
+});
+
+test("rangeBiasEntryCollisionCoaching: honest-null on any missing input, never a fabricated comparison", () => {
+  const vec = {
+    play: { bias: "range" },
+    gexWalls: { callWalls: [{ strike: 370 }], putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  // No entry trigger yet.
+  assert.equal(
+    rangeBiasEntryCollisionCoaching(ctx(), play({ direction: "LONG", entryTriggerUnderlyingPx: null }), "watch", vec),
+    null,
+  );
+  // No Vector snapshot at all.
+  assert.equal(
+    rangeBiasEntryCollisionCoaching(ctx(), play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }), "watch", null),
+    null,
+  );
+  // No call wall for a LONG setup to collide with.
+  const noCallWall = {
+    play: { bias: "range" },
+    gexWalls: { putWalls: [{ strike: 330 }] },
+  } as unknown as Parameters<typeof rangeBiasEntryCollisionCoaching>[3];
+  assert.equal(
+    rangeBiasEntryCollisionCoaching(
+      ctx(),
+      play({ direction: "LONG", entryTriggerUnderlyingPx: 369.49 }),
+      "watch",
+      noCallWall,
+    ),
+    null,
+  );
+});
+
 test("vectorPlayCoaching: returns null when the ONLY content is the headline and it was already noted elsewhere", () => {
   const vec = {
     play: {
@@ -2610,6 +2720,15 @@ test("dataHonestyCoaching: fresh Vector compute during a CLOSED market surfaces 
   assert.match(line!, /market is CLOSED as of this read/i);
   // Must not ALSO claim Vector is stale — the compute genuinely is fresh, only the market is shut.
   assert.doesNotMatch(line!, /Vector \*\*\d/i);
+  // BUG FOUND 2026-10-08 (same cycle, live repro `GET /api/market/swing/play-brief` MU): the
+  // closed-market note (market-session-disclosure.ts's `marketSessionDisclosure` /
+  // play-brief-absence.ts's `gexMarketSessionNote`) already ends in its own period ("...however
+  // fresh the compute looks."). This function's closing sentence unconditionally appends
+  // ". Treat levels as indicative until refresh." after `warnings.join(" · ")`, so whenever the
+  // closed-market note is the LAST warning pushed (it always is — pushed after every other check)
+  // the two periods collide into a literal "..", live-confirmed verbatim in the MU COMMIT-NOW
+  // brief's "Trade manager read" bullet: "...however fresh the compute looks.. Treat levels...".
+  assert.doesNotMatch(line!, /\.\./, "must not double up the closed-market note's own trailing period");
 });
 
 test("dataHonestyCoaching: GEX-only market_session_note surfaces when Vector gives none", () => {
@@ -2760,6 +2879,108 @@ test("ivRankCoaching: fires when play carries ivRank", () => {
   assert.match(cheap!, /vol cheap/i);
 
   assert.equal(ivRankCoaching(play({ ivRank: null })), null);
+});
+
+// ivLeverageDivergenceCoaching (Ask Largo enhancement, PR #4076 comment 6130751739): connects a
+// steep option P&L to a much milder underlying move so a member doesn't have to infer the
+// leverage/IV mechanics themselves. Live repro shape: SWING:ASTS:53, 2026-10-12 (underlying
+// adverse excursion -2.6%, option P&L -23%, IV 75%, θ -0.13/day).
+test("ivLeverageDivergenceCoaching: fires on a steep loss far beyond the underlying's own adverse move (live ASTS shape)", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: -23,
+      underlyingExcursion: { mfePct: 0, maePct: -2.6 },
+      greeks: { delta: 0.5, gamma: 0.02, theta: -0.13, vega: 0.1, iv: 0.75 },
+    }),
+    "open",
+  );
+  assert.match(line!, /Option down more than the stock's own move would suggest/i);
+  assert.match(line!, /-23/);
+  assert.match(line!, /-2\.6/);
+  assert.match(line!, /IV \*\*75%\*\*/);
+  assert.match(line!, /θ -0\.13\/day/);
+  assert.match(line!, /not a thesis break/i);
+});
+
+test("ivLeverageDivergenceCoaching: symmetric on the gain side — a win far beyond the underlying's own favorable move", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: 60,
+      underlyingExcursion: { mfePct: 5, maePct: 0 },
+      greeks: { delta: 0.6, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.6 },
+    }),
+    "open",
+  );
+  assert.match(line!, /Option up more than the stock's own move would suggest/i);
+  assert.match(line!, /not extra thesis confirmation/i);
+});
+
+test("ivLeverageDivergenceCoaching: silent when the option moved roughly in proportion with the underlying (ratio floor)", () => {
+  // -20% option vs -10% underlying is only a 2x ratio, under the 3x floor.
+  assert.equal(
+    ivLeverageDivergenceCoaching(
+      play({
+        pnlPct: -20,
+        underlyingExcursion: { mfePct: 0, maePct: -10 },
+        greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+      }),
+      "open",
+    ),
+    null,
+  );
+});
+
+test("ivLeverageDivergenceCoaching: silent on a routine small move even with a high ratio (materiality floor)", () => {
+  // -10% option vs -1% underlying is a 10x ratio, but |pnlPct| never clears the 15-point floor.
+  assert.equal(
+    ivLeverageDivergenceCoaching(
+      play({
+        pnlPct: -10,
+        underlyingExcursion: { mfePct: 0, maePct: -1 },
+        greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+      }),
+      "open",
+    ),
+    null,
+  );
+});
+
+test("ivLeverageDivergenceCoaching: a near-flat underlying still fires once the materiality floor clears (denominator floored at 1pt)", () => {
+  const line = ivLeverageDivergenceCoaching(
+    play({
+      pnlPct: -20,
+      underlyingExcursion: { mfePct: 0, maePct: -0.1 },
+      greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+    }),
+    "open",
+  );
+  assert.match(line!, /Option down more than the stock's own move would suggest/i);
+});
+
+test("ivLeverageDivergenceCoaching: honest-null on any missing input, never a fabricated comparison", () => {
+  const base = {
+    pnlPct: -30,
+    underlyingExcursion: { mfePct: 0, maePct: -5 },
+    greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+  };
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, pnlPct: null }), "open"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, pnlPct: 0 }), "open"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, underlyingExcursion: null }), "open"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play({ ...base, greeks: null }), "open"), null);
+  assert.equal(
+    ivLeverageDivergenceCoaching(play({ ...base, greeks: { ...base.greeks, iv: null } }), "open"),
+    null,
+  );
+});
+
+test("ivLeverageDivergenceCoaching: OPEN-only — never fires for WATCH or CLOSED", () => {
+  const args = {
+    pnlPct: -30,
+    underlyingExcursion: { mfePct: 0, maePct: -5 },
+    greeks: { delta: 0.5, gamma: 0.02, theta: -0.1, vega: 0.1, iv: 0.5 },
+  };
+  assert.equal(ivLeverageDivergenceCoaching(play(args), "watch"), null);
+  assert.equal(ivLeverageDivergenceCoaching(play(args), "closed"), null);
 });
 
 // tickerHistoryCoaching (2026-09-22, Ask Largo standing mandate): a losing ticker-specific track
@@ -3054,4 +3275,42 @@ test("laneRankCoaching: below-median wording keeps 'confirm before adding size' 
   const line = laneRankCoaching(play({ ticker: "NN", score: 3, status: "HOLD", manageAction: "HOLD" }), lanes);
   assert.ok(line);
   assert.match(line, /confirm before adding size/, "a plain HOLD is still a legitimate add-size caution");
+});
+
+// Live repro 2026-10-08 (Ask Largo standing mandate, raised on #4076 comment 6067024911): GOOGL's
+// own brief (score 36, WATCH) named "Leader: VST @ 76 — confirm before adding size" while VST sat
+// on the SAME WATCH board unable to ever commit (commitGateBlockedBy: ["legacy:exempt"], the #5577
+// Legacy graduation-bridge wiring gap, not a real gate rejection) — reads as "go confirm this, it's
+// close to triggering" about a ticker that structurally cannot fire a commit right now for a
+// plumbing reason unrelated to its own setup quality.
+test("laneRankCoaching: below-median leader line caveats a named leader whose ONLY block is the #5577 legacy:exempt wiring gap", () => {
+  const lanes = [
+    laneRow({ ticker: "VST", score: 76, status: "WATCH", setupState: "TRIGGERED", commitGateBlockedBy: ["legacy:exempt"] }),
+    laneRow({ ticker: "GOOGL", score: 36, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(line);
+  assert.match(line, /Leader: \*\*VST\*\* @ \*\*76\*\*/);
+  assert.match(line, /structurally blocked from committing.*a platform wiring gap/);
+  assert.doesNotMatch(line, /confirm before adding size/, "the caveat replaces the misleading 'go confirm it' framing");
+});
+
+test("laneRankCoaching: below-median leader line keeps 'confirm before adding size' when the named leader is ALSO blocked by a real gate", () => {
+  // A peer blocked by legacy:exempt ALONGSIDE a real gate is not "only" a plumbing block — the real
+  // gate rejection would have stopped it anyway, so the caveat must not fire (narrow gating: exactly
+  // one block reason, that exact one).
+  const lanes = [
+    laneRow({
+      ticker: "VST",
+      score: 76,
+      status: "WATCH",
+      setupState: "TRIGGERED",
+      commitGateBlockedBy: ["legacy:exempt", "gate:G-S4:regime_degraded"],
+    }),
+    laneRow({ ticker: "GOOGL", score: 36, status: "WATCH", setupState: "TRIGGERED" }),
+  ];
+  const line = laneRankCoaching(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(line);
+  assert.match(line, /confirm before adding size/);
+  assert.doesNotMatch(line, /structurally blocked/);
 });

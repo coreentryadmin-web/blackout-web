@@ -38,9 +38,29 @@ export const maxDuration = 180;
  * safety net (a genuinely crashed/stuck sweep still self-heals within 15 minutes instead of never).
  * `stale_after_min` in cron-registry.ts is raised to 15 to match, per this file's own stated intent
  * of keeping the two in lockstep.
+ *
+ * TTL RAISED AGAIN 2026-10-12 (900s -> 1500s): CloudWatch (`/ecs/blackout-production`, `elapsed=`
+ * filter, 12:40-15:25 UTC RTH-open window) found the 900s TTL itself now undershot — two sweeps
+ * logged elapsed=992393ms and elapsed=1036542ms, both above the 900s lock lifetime, in the same
+ * 2026-10-12 14:13-14:53 UTC span. Reconstructing start times from each "done" line's own
+ * `finish - elapsed` confirmed real cascading overlap, not just an at-risk measurement: a sweep
+ * starting 14:13:19 (finishing 14:29:51, elapsed=992393ms) had its lock expire ~14:28:19, letting a
+ * fire at 14:29:18 acquire it and start a second sweep while the first was still running; that
+ * second sweep (finishing 14:33:13) itself overlapped a THIRD sweep that started 14:31:18; and a
+ * sweep starting 14:35:18 (finishing 14:52:34, elapsed=1036542ms) overlapped a fourth that started
+ * 14:37:18 and finished 14:52:46 (elapsed=928437ms) — 12 seconds apart, confirming two full sweeps
+ * ran concurrently for most of a 15-minute span. Same mechanism as the 2026-09-03 fix (a sweep
+ * outliving its own lock lets the next scheduled fire start a second one), recurring at a new,
+ * higher peak — consistent with this being an RTH-open-specific spike in the shared Polygon/UW
+ * rate-limiter contention (every run after 14:53 UTC that same morning was back to 60-180s normal).
+ * 1500s gives real margin above the new worst observed 1036.5s (a ~45% cushion, proportionally
+ * similar to the 900/694 margin the 2026-09-03 raise used) without weakening the safety net beyond
+ * what it already tolerates (a genuinely stuck sweep still self-heals within 25 minutes, not never).
+ * `stale_after_min` in cron-registry.ts is raised to 25 to match, per this file's own stated intent
+ * of keeping the two in lockstep.
  */
 const OVERLAP_LOCK_KEY = "vector:pick-sweep:running";
-const OVERLAP_LOCK_TTL_SEC = 900;
+const OVERLAP_LOCK_TTL_SEC = 1500;
 
 async function runPickSweep(started: number): Promise<void> {
   try {

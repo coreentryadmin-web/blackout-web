@@ -127,24 +127,3 @@ export function lottoWinStatusMessage(targetPts: number): string {
   return `Target reached — +${targetPts}pt from entry. Manage your own exit.`;
 }
 
-export function lottoPanelLoadingCopy(): LottoCopyLine {
-  return {
-    kicker: "Acquiring",
-    headline: "Scoring catalysts, flow, and the overnight gap…",
-    thesis: "Stand by — the scan surfaces a setup or stands down.",
-    footnote: "Scanning pre-market intel",
-  };
-}
-
-export function lottoPanelOffHoursCopy(): LottoCopyLine {
-  return lottoNoneCopy("off_hours");
-}
-
-export function lottoPanelEmptyCopy(engineHeadline?: string | null): LottoCopyLine {
-  const base = lottoNoneCopy("no_qualify");
-  if (!engineHeadline || engineHeadline === "No lottos today") return base;
-  return {
-    ...base,
-    thesis: engineHeadline,
-  };
-}

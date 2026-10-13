@@ -6,7 +6,7 @@ import type { EmailAttachment } from "@/lib/email/resend-client";
 export type DowngradeContext = { firstName?: string | null };
 
 /** Fires when a Premium member downgrades to SPX Slayer — still paying
- *  $49/mo, keeps the 0DTE desk, loses the other five engines. Respectful,
+ *  $49/mo, keeps the 0DTE desk, loses the other six engines. Respectful,
  *  no retention pitch dressed as a confirmation. */
 export function downgradeEmail(ctx: DowngradeContext): { subject: string; html: string; attachments: EmailAttachment[] } {
   const tokens = { firstName: ctx.firstName?.trim() || "Trader" };
@@ -30,7 +30,7 @@ export function downgradeEmail(ctx: DowngradeContext): { subject: string; html: 
   `;
 
   const layout = emailLayout({
-    preheader: "Full 0DTE desk, full A-F grading — five engines went dark. Here's the exact scope.",
+    preheader: "Full 0DTE desk, full A-F grading — six engines went dark. Here's the exact scope.",
     bodyHtml: body,
   });
   return { subject, html: layout.html, attachments: layout.attachments };

@@ -649,9 +649,23 @@ export async function fetchUwNope(ticker = "SPX") {
     const row = Array.isArray(block) ? block[block.length - 1] : block;
     if (!row || typeof row !== "object") return null;
     const r = row as Record<string, unknown>;
+    // `net_delta` is NOT a real field UW returns here — same class of dead-field-lookup bug as
+    // `summarizeGroupGreekFlow`'s `net_delta`/`net_gamma` (PR #3290, 2026-09-02). Live-verified
+    // 2026-10-08 against the real `/api/stock/{t}/nope` row shape: `timestamp`, `call_delta`,
+    // `put_delta`, `call_vol`, `put_vol`, `stock_vol`, `call_fill_delta`, `put_fill_delta`,
+    // `nope_fill`, `nope` — there is no `net_delta` key anywhere on it, so `r.net_delta ?? 0`
+    // ALWAYS evaluated to the fabricated fallback. Every caller (SPX desk's `nope_net_delta`,
+    // and Largo's `get_nope` tool directly for every non-SPX ticker) rendered "net delta flow =
+    // 0" — perfectly balanced dealer positioning — on literally every call, never a measured
+    // number. Net option delta flow is the sum of the two signed per-side components UW's own
+    // `nope` is itself derived from (same inputs, same row) — compute it when at least one side
+    // is present, and OMIT (null) rather than fabricate when neither is, per the absence
+    // principle (docs/audit/LARGO-PRODUCT-CONTRACT.md).
+    const callDelta = r.call_delta != null ? Number(r.call_delta) : null;
+    const putDelta = r.put_delta != null ? Number(r.put_delta) : null;
     return {
       nope: Number(r.nope ?? 0),
-      net_delta: Number(r.net_delta ?? 0),
+      net_delta: callDelta != null || putDelta != null ? (callDelta ?? 0) + (putDelta ?? 0) : null,
     };
   });
 }

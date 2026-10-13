@@ -594,17 +594,6 @@ export const LIVE_SIGNAL_GLYPH: Record<LiveSignal, string> = {
   rank_falling: "↘",
 };
 
-export const LIVE_SIGNAL_LABEL: Record<LiveSignal, string> = {
-  accelerating: "accelerating",
-  deteriorating: "deteriorating",
-  anomaly: "anomaly",
-  top_performer: "top performer",
-  newly_changed: "newly changed",
-  approaching_threshold: "approaching threshold",
-  rank_improving: "rank improving",
-  rank_falling: "rank falling",
-};
-
 /**
  * Derive a momentum signal from a current value and its prior.
  *

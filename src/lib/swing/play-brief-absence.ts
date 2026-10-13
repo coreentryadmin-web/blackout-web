@@ -483,10 +483,25 @@ export function collectOptionMarkStalenessAbsence(
       source: "option mark",
       reason: "sync quote without freshness timestamp",
       what_is_missing: "a live option-quote sync with a mark_as_of timestamp",
-      // Whether the NEXT sync carries a timestamp depends on the lane's own schema (banger-lane
-      // rows have no mark_as_of column at all, per the comment above) — not something a retry of
-      // THIS read can fix, so this is honestly not retryable from the brief's own vantage point.
-      retryable: false,
+      // FIX (found live 2026-10-08, Ask Largo standing mandate — repro: a BANGER batch committed
+      // by banger-discovery at 20:15 ET, all 74 rows markIsSync:true, markAsOf:null). This used to
+      // be hardcoded `false` on the premise that "banger-lane rows have no mark_as_of column at
+      // all" — true before the 2026-09-11 fix (FINDINGS 2026-09-11, which added
+      // banger_positions.last_mark_at / row.last_mark_at specifically so this lane could carry a
+      // real timestamp), false ever since. The live symptom this staleness caused: the SAME 74
+      // rows, read again after banger-live-sync's next on-schedule RTH tick, DO carry a real
+      // markAsOf (confirmed live against the 33 banger rows committed on an earlier session day,
+      // all stamped ~16:00:44 ET) — so "retry later" genuinely resolves this, it just isn't
+      // retryable WITHIN THE SAME off-hours instant. That is exactly the "wait for more data"
+      // shape this file's own GEX `insufficient_data` chip already treats as retryable:true (see
+      // the test file's header comment distinguishing it from the truly-structural
+      // `net_short_everywhere` case) — a never-synced mark is the transient case, not the
+      // structural one, in BOTH lanes: native swing_positions rows hit this exact branch too for a
+      // position committed between swing-active-refresh's own 15-min RTH-gated ticks, and resolve
+      // the same way. Mislabeling it non-retryable told Largo (and any UI reading this chip) that
+      // re-asking is pointless, when the lane's own next scheduled refresh is the one thing that
+      // fixes it — the same kind of false permanence C3 exists to prevent.
+      retryable: true,
     };
   }
   if (optionMarkIsStale(play, readMs)) {
@@ -609,6 +624,67 @@ function collectGexStalenessAbsence(
   };
 }
 
+/**
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-08 cycle): `gex-positioning.ts`'s own
+ * `flip_reason` field exists specifically so a caller can tell a genuine computation gap
+ * (`insufficient_data`, `crossings_far` — a refetch/rebuild might resolve it) apart from an
+ * honest, real market-structure fact (`net_short_everywhere`/`net_long_everywhere` — the book
+ * never crosses zero gamma because dealers sit on one side at EVERY strike; that file's own doc
+ * comment calls this out: "no gamma flip, dealers net short at EVERY strike" is itself a finding,
+ * not an absence of one). `play-brief.ts`'s `levelsFromContext` reads only `gex?.flip` when
+ * building the "gamma flip" level and silently drops the entry whenever it is null — collapsing
+ * both cases to the exact same silence `flip_reason` was built to distinguish, and leaving
+ * `envelope.levels`/`unavailableSources` with NOTHING that tells a reader (or the model) whether
+ * "no gamma flip shown" means "we don't have it yet" or "there genuinely isn't one, which is
+ * itself worth knowing." Live-reproduced 2026-10-08: INTC's GEX read had a FRESH, non-stale
+ * matrix (call wall/put wall/GEX king all present with `freshness: "live"`) and `gamma_posture:
+ * "short"`, yet `levels` carried no "gamma flip" entry and `unavailableSources` said nothing about
+ * it — compared against a sibling MSFT read in the same cycle where flip WAS present, the two
+ * were indistinguishable from "missing" alone.
+ *
+ * Scoped narrowly: only fires when the matrix itself is fresh (a stale matrix already gets its
+ * own `collectGexStalenessAbsence` chip above — piling a second, flip-specific one on a stale read
+ * would duplicate that signal rather than add to it, the same ordering `gexMarketSessionNote`
+ * already uses for its own staleness-suppression). Only a documented `flip_reason` code is
+ * surfaced — an unrecognized future code is left un-reported rather than guessed at, per C6
+ * ("if a product cannot produce a calibrated read, omit the field — fabrication is worse than
+ * nothing").
+ */
+const GEX_FLIP_REASON_DISCLOSURE: Record<string, { reason: string; retryable: boolean }> = {
+  net_short_everywhere: {
+    reason: "no gamma flip in range — dealers are net short gamma at every strike (a real structural read, not a missing fetch)",
+    retryable: false,
+  },
+  net_long_everywhere: {
+    reason: "no gamma flip in range — dealers are net long gamma at every strike (a real structural read, not a missing fetch)",
+    retryable: false,
+  },
+  insufficient_data: {
+    reason: "not enough strikes in the chain to compute a gamma flip",
+    retryable: true,
+  },
+  crossings_far: {
+    reason: "the book does cross zero gamma, but every crossing sits outside the plausible range near spot",
+    retryable: true,
+  },
+};
+
+function collectGexFlipAbsence(
+  gex: GexPositioning | null | undefined,
+  readMs: number,
+): BieUnavailableSource | null {
+  if (!gex || gex.flip != null) return null;
+  if (gexMatrixStale(gex, readMs)) return null; // already covered by collectGexStalenessAbsence
+  const disclosure = gex.flip_reason ? GEX_FLIP_REASON_DISCLOSURE[gex.flip_reason] : null;
+  if (!disclosure) return null;
+  return {
+    source: "GEX gamma flip",
+    reason: disclosure.reason,
+    what_is_missing: "a gamma-flip level for this ticker/session",
+    retryable: disclosure.retryable,
+  };
+}
+
 /** Aggregate every honest absence signal for the swing play brief envelope (Largo C3). */
 export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieUnavailableSource[] {
   const out: BieUnavailableSource[] = [...(ctx.ecosystem?.arsenal?.unavailable_sources ?? [])];
@@ -687,6 +763,8 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
     const gex = ctx.ecosystem?.gex_positioning;
     const gexStale = collectGexStalenessAbsence(gex, readMs);
     if (gexStale) out.push(gexStale);
+    const flipAbsence = collectGexFlipAbsence(gex, readMs);
+    if (flipAbsence) out.push(flipAbsence);
   }
   // Missing Vector desk state is distinct from vectorFetchFailed — ecosystem read succeeded but
   // neither ctx.vector nor ecosystem.vector_full_state carried a live spot.

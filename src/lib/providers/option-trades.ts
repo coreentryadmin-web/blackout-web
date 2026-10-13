@@ -77,19 +77,6 @@ const CANCELED_LATE_CONDITIONS = new Set<number>([
   201, 202, 203, 204, 205, 206, 207, // canceled / late / OOO / opening-trade-canceled variants
 ]);
 
-/** A single reconstructed option print. */
-export type OptionTradePrint = {
-  occ: string;
-  strike: number;
-  type: "call" | "put";
-  price: number;
-  size: number;
-  /** price × size × 100. */
-  premium: number;
-  /** epoch ms (sip_timestamp is nanoseconds upstream). */
-  tsMs: number;
-};
-
 /** Per-strike premium split. */
 export type StrikePremium = {
   strike: number;

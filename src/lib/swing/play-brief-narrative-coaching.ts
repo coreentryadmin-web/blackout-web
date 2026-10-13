@@ -31,6 +31,7 @@ import { formatFixedNonZero } from "./format-nonzero";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
 import { deadPlayReason } from "./entry-enterability";
 import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
+import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -254,14 +255,27 @@ export function manageLifecycleCoaching(play: TerminalPlay, bucket: "watch" | "o
   return `**Manage plan** — ${parts.join(" · ")}.`;
 }
 
-/** WATCH gate unblock path with reasons, not just codes. */
+/**
+ * WATCH gate unblock path with reasons, not just codes.
+ *
+ * THE one full-text home for `play.gateBlocks` codes+reasons (Ask Largo standing mandate,
+ * 2026-10-08) — both "Entry" (`watchEntrySection`, play-brief.ts) and "Watch levels"
+ * (`watchForSection`, play-brief-intel.ts) now render only a count + a pointer here, having
+ * previously each kept their OWN full copy (live repro: AMD WATCH brief, 2026-10-08 — "Entry"
+ * and "Trade manager read" both carried the verbatim `entry_window_expired` reason text). See
+ * `watchEntrySection`'s own comment for the full account of why this direction was chosen over
+ * the reverse. Note the `g.unlock_et` branch below is currently always inert for swing in
+ * practice — `SwingEntryGateBlock` (entry-verdict.ts, the only producer of swing `gateBlocks`)
+ * has no `unlock_et` field at all, so this only fires if some future swing gate source starts
+ * populating it; left in rather than removed since the type (shared with other TerminalPlay
+ * producers) still allows it and a real value should still render if one ever arrives.
+ */
 export function watchGateCoaching(play: TerminalPlay): string | null {
   if (!play.gateBlocks?.length) return null;
   // BUG FIX (Ask Largo standing mandate, 2026-10-07): this used to `.slice(0, 3)` before mapping,
   // silently dropping every gate past the third with no "+N more" marker — while the sibling
   // "Entry stance" bullet (actionNarrative, play-brief-narrative.ts) states the TRUE gate count
-  // (`play.gateBlocks.length`, uncapped) and the "Entry" section (watchEntrySection, play-brief.ts)
-  // renders the FULL list uncapped too. A 4-gate WATCH play (live repro: WDC, 2026-10-07 — g_s12
+  // (`play.gateBlocks.length`, uncapped). A 4-gate WATCH play (live repro: WDC, 2026-10-07 — g_s12
   // halt-feed-stale, g_s4 regime, g_s6 confluence, g_s14 cortex) therefore told the member "4 gates
   // blocking entry — see below" and then only explained 3, silently omitting the Cortex veto — the
   // single most decisive one, since it is the only gate here with no "clears when X" unlock story.
@@ -504,6 +518,89 @@ export function vectorPlayCoaching(
     line += " — **aligned** with swing lane.";
   }
   return line;
+}
+
+/** Local to this file by design — see `rangeBiasEntryCollisionCoaching`'s own doc comment for why
+ *  this isn't just `collectFocalLevels(ctx, spot)` from play-brief-narrative.ts: that module
+ *  imports `collectCoachingBullets` FROM this file, so the reverse import would be circular (same
+ *  established fix pattern as this repo's other play-brief.ts/play-brief-narrative.ts sibling
+ *  cases — duplicate the minimal check locally rather than import across the cycle). Mirrors only
+ *  the call-wall/put-wall subset of that function's vec-first/GEX-matrix-fallback/staleness-gated
+ *  logic, not its full level list. */
+function callPutWallForCollisionCheck(
+  ctx: SwingPlayBriefContext,
+  vec: VectorFullState | null,
+  readMs: number,
+): { callWall: number | null; putWall: number | null } {
+  const gex = ctx.ecosystem?.gex_positioning;
+  const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  const gexStale = gexMatrixStale(gex, readMs);
+  const vecCallWall = vectorStale ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
+  const vecPutWall = vectorStale ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
+  const callWallFromStaleGex = vecCallWall == null && gex?.call_wall != null && gexStale;
+  const putWallFromStaleGex = vecPutWall == null && gex?.put_wall != null && gexStale;
+  return {
+    callWall: callWallFromStaleGex ? null : fin(vecCallWall ?? gex?.call_wall ?? null),
+    putWall: putWallFromStaleGex ? null : fin(vecPutWall ?? gex?.put_wall ?? null),
+  };
+}
+
+const RANGE_COLLISION_BAND_PCT = 2.5;
+
+/**
+ * Range-bias entry-trigger collision — a WATCH setup whose own entry trigger sits essentially AT
+ * the level Vector's own range-fade play would trade the OPPOSITE way at. Ask Largo enhancement
+ * idea, PR #4076 comment 6131711926 (live repro WATCH:SNOW, 2026-10-12): a LONG pullback-
+ * continuation setup's entry trigger (369.49) sat inside Vector's own "sell the rip" zone (call
+ * wall 370) — the setup wants to buy almost exactly where the desk reading dealer gamma structure
+ * says breakouts get faded in this regime.
+ *
+ * `crossDeskCoaching`/`vectorPlayCoaching` above only treat Vector as directionally in conflict
+ * when its bias is "long"/"short" — a "range" bias correctly earns neither the "aligned" nor the
+ * "cross-check" framing (Vector is genuinely declining to take a directional stance, 2026-09-15
+ * fix, see `vectorPlayCoaching`'s own doc comment) — but a range bias WITH specific numeric levels
+ * is a narrower, still-checkable claim this deliberately does NOT reuse that framing for (the
+ * message below says so explicitly): does the swing's own entry trigger collide with the specific
+ * rail Vector would fade. `vp.bias === "range"` is reached ONLY from the long-gamma branch of
+ * `resolveVectorPlaySetup` (vector-play-engine.ts) — so no separate gamma-posture check is needed
+ * here; a range bias already implies long gamma by construction.
+ *
+ * WATCH-bucket only — entry trigger is a pre-entry concept (same scoping as the "Entry"/"Watch
+ * levels" sections, play-brief-intel.ts). `RANGE_COLLISION_BAND_PCT=2.5` reads as "essentially at"
+ * the level, not merely in its general vicinity — a materiality floor, same spirit as
+ * `ivLeverageDivergenceCoaching`'s floors above.
+ */
+export function rangeBiasEntryCollisionCoaching(
+  ctx: SwingPlayBriefContext,
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed",
+  vec: VectorFullState | null,
+  readMs?: number,
+): string | null {
+  if (bucket !== "watch") return null;
+  const effectiveReadMs = readMs ?? Date.now();
+  if (vectorSnapshotStale(vec, effectiveReadMs, ctx.sessionDate)) return null;
+  if (vec?.play?.bias !== "range") return null;
+  const trigger = fin(play.entryTriggerUnderlyingPx);
+  if (trigger == null) return null;
+  if (play.direction !== "LONG" && play.direction !== "SHORT") return null;
+
+  const { callWall, putWall } = callPutWallForCollisionCheck(ctx, vec, effectiveReadMs);
+  const wall = play.direction === "LONG" ? callWall : putWall;
+  if (wall == null || wall <= 0) return null;
+
+  const distancePct = ((trigger - wall) / wall) * 100;
+  if (Math.abs(distancePct) > RANGE_COLLISION_BAND_PCT) return null;
+
+  const zoneLabel = play.direction === "LONG" ? "sell-the-rip" : "buy-the-dip";
+  const wallLabel = play.direction === "LONG" ? "call wall" : "put wall";
+  const action = play.direction === "LONG" ? "buy" : "sell";
+  return (
+    `**Range collision** — Vector reads this name as range-bound, fading extremes; your entry ` +
+    `trigger **${fmtPriceLevel(trigger)}** sits right at its **${zoneLabel}** level (${wallLabel} ` +
+    `**${fmtPriceLevel(wall)}**) — you'd ${action} almost exactly where that desk's structure read ` +
+    `says to do the opposite. Not a directional call either way, but worth weighing before this triggers.`
+  );
 }
 
 /**
@@ -1069,6 +1166,59 @@ export function ivRankCoaching(play: TerminalPlay): string | null {
 }
 
 /**
+ * Divergence between the option's own P&L and the underlying's own matching-direction excursion
+ * since entry — attributes a steep option move to leverage/IV rather than leaving a member to
+ * read it as a thesis break (or an outsized thesis confirmation) and infer the leverage/IV
+ * mechanics themselves. Ask Largo enhancement idea, PR #4076 comment 6130751739 (live repro
+ * SWING:ASTS:53, 2026-10-12: underlying adverse excursion only -2.6% while the option itself sat
+ * at -23%, IV 75%, θ -0.13/day — nothing in the brief connected the two numbers).
+ *
+ * Reuses `play.underlyingExcursion` (manage-sync.ts's `signedExcursionPct`, direction-aware,
+ * already wired for swing/LEAPS — see its live call site in play-brief.ts's Management section)
+ * rather than the Legacy-only `stockMovePct`/`stockPeakPct`/`stockTroughPct` fields a prior,
+ * REMOVED attempt at this same idea (`underlyingExcursionCoaching`, dead-code-removed
+ * 2026-09-15, see the doc comment a few lines above `collectCoachingBullets`) read — those are
+ * never populated for swing/LEAPS, which is why that attempt could never actually fire.
+ *
+ * OPEN-bucket only (a live-position-facing comparison; WATCH has no P&L yet and CLOSED already
+ * gets the round-trip/giveback aside via `mfeCaptureOutcome`, a premium-only comparison this is
+ * deliberately distinct from). Honest-null on any missing input — never a fabricated comparison.
+ * Gated on BOTH a materiality floor (|pnlPct| >= 15, so a routine few-point wiggle never fires
+ * this) and a ratio floor (the option move must be at least 3x the underlying's own
+ * matching-direction move, that move floored at 1pt so a near-zero denominator can't produce a
+ * meaningless ratio) — a position where premium and underlying moved roughly in proportion needs
+ * no special explanation; that's just delta working normally.
+ */
+export function ivLeverageDivergenceCoaching(
+  play: TerminalPlay,
+  bucket: "watch" | "open" | "closed",
+): string | null {
+  if (bucket !== "open") return null;
+  const pnlPct = fin(play.pnlPct);
+  if (pnlPct == null || pnlPct === 0) return null;
+  const excursion = play.underlyingExcursion;
+  if (!excursion) return null;
+  // mfePct is the favorable extreme (>= 0 by construction), maePct the adverse one (<= 0) —
+  // match the excursion figure to the CURRENT P&L's own sign (signedExcursionPct's doc comment).
+  const underlyingPct = fin(pnlPct > 0 ? excursion.mfePct : excursion.maePct);
+  if (underlyingPct == null) return null;
+  const iv = normalizeImpliedVol(play.greeks?.iv ?? null);
+  if (iv == null) return null;
+
+  const MATERIALITY_FLOOR = 15;
+  const RATIO_FLOOR = 3;
+  if (Math.abs(pnlPct) < MATERIALITY_FLOOR) return null;
+  if (Math.abs(pnlPct) < RATIO_FLOOR * Math.max(Math.abs(underlyingPct), 1)) return null;
+
+  const theta = fin(play.greeks?.theta ?? null);
+  const greeksClause = `IV **${Math.round(iv * 100)}%**${theta != null ? ` · θ ${theta.toFixed(2)}/day` : ""}`;
+
+  return pnlPct < 0
+    ? `**Option down more than the stock's own move would suggest** — ${fmtPct(pnlPct)} on the option vs ${fmtPct(underlyingPct)} on the underlying; ${greeksClause} — leverage/IV, not a thesis break.`
+    : `**Option up more than the stock's own move would suggest** — ${fmtPct(pnlPct)} on the option vs ${fmtPct(underlyingPct)} on the underlying; ${greeksClause} — leverage/IV, not extra thesis confirmation.`;
+}
+
+/**
  * Ticker-specific losing track record — surfaced in the narrative, not just the bare evidence
  * fact. `ctx.tickerTrackRecord` (play-brief-ticker-history.ts, Largo C10) is already rendered as
  * a standalone "Ticker track record" section (play-brief-intel.ts's `tickerTrackRecordSection`)
@@ -1144,9 +1294,20 @@ export function laneRankCoaching(play: TerminalPlay, laneRows: SwingPlayBriefCon
     );
   }
   if (snap.deltaFromMedian < -15) {
+    // Found live 2026-10-08 (Ask Largo standing mandate, raised on #4076 comment 6067024911):
+    // GOOGL's own brief named "Leader: VST @ 76 — confirm before adding size" while VST sat on the
+    // WATCH board unable to ever commit (commitGateBlockedBy: ["legacy:exempt"], the #5577
+    // graduation-bridge wiring gap, not a real gate) — reads as "go confirm this, it's about to
+    // trigger" about a ticker that structurally cannot fire a commit right now for a plumbing
+    // reason unrelated to its own setup quality. Caveat rather than suppress: the score/rank
+    // comparison is still honest context, it's specifically the "go look at this one" implication
+    // that needed the disclosure.
+    const caveat = snap.topLegacyExemptOnly
+      ? " (structurally blocked from committing — a platform wiring gap, not a live gate)"
+      : " — confirm before adding size";
     return (
       `**Below lane median** — **#${snap.rank}/${snap.total}** (score **${snap.playScore}**, ` +
-      `${snap.deltaFromMedian} vs median). Leader: **${snap.topTicker ?? "—"}** @ **${snap.topScore ?? "—"}** — confirm before adding size.`
+      `${snap.deltaFromMedian} vs median). Leader: **${snap.topTicker ?? "—"}** @ **${snap.topScore ?? "—"}**${caveat}.`
     );
   }
   if (snap.rank <= 3 && snap.deltaFromMedian >= 10 && !snap.selfReducing) {
@@ -1336,7 +1497,17 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   }
 
   if (!warnings.length) return null;
-  return `**Data caveat** — ${warnings.join(" · ")}. Treat levels as indicative until refresh.`;
+  // BUG FIX (2026-10-08, Ask Largo standing mandate, live repro `GET /api/market/swing/play-brief`
+  // MU COMMIT-NOW brief): the closed-market note pushed above (`market-session-disclosure.ts`'s
+  // `marketSessionDisclosure` / `play-brief-absence.ts`'s `gexMarketSessionNote`) already ends in
+  // its own sentence-terminating period ("...however fresh the compute looks."). It is always the
+  // LAST entry pushed into `warnings` (every other check above it runs first), so joining with
+  // " · " and then unconditionally appending ". Treat levels..." collided the two periods into a
+  // literal "..", live-confirmed verbatim: "...however fresh the compute looks.. Treat levels as
+  // indicative until refresh.". Strip any warning's own trailing period(s) before joining so this
+  // closing sentence is the only place a period gets added, regardless of which warning lands last.
+  const body = warnings.map((w) => w.replace(/\.+$/, "")).join(" · ");
+  return `**Data caveat** — ${body}. Treat levels as indicative until refresh.`;
 }
 
 /** Closed play post-mortem coaching. */
@@ -1471,6 +1642,7 @@ export function collectCoachingBullets(
   push(thesisBreakCoaching(play));
   push(thesisPillarCoaching(play));
   push(troughResilienceCoaching(play, bucket));
+  push(ivLeverageDivergenceCoaching(play, bucket));
 
   if (bucket === "watch") {
     // DEAD CODE REMOVED (2026-09-15, Ask Largo standing mandate): `morningConfirmCoaching` (formerly
@@ -1482,6 +1654,7 @@ export function collectCoachingBullets(
     // day for the identical reason (a field genuinely live for a sibling lane, structurally never
     // populated for swing, read by a function called unconditionally in the swing assembly anyway).
     push(watchGateCoaching(play));
+    push(rangeBiasEntryCollisionCoaching(ctx, play, bucket, vec, ctx.readMs ?? undefined));
     // flagUnderlyingPx/entryStatus are NOT re-rendered here — watchForSection (play-brief-intel.ts,
     // "Watch levels") already renders the same two facts ("Flag anchor: X — track move from here"
     // / "Entry geometry: X") and both sections render together for every WATCH-bucket play. This

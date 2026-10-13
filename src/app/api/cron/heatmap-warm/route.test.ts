@@ -135,6 +135,50 @@ test("a force=1 call OUTSIDE the extended warm window is throttled at a much wid
 // (sharedCacheSetNx, real in-memory NX+TTL semantics here since no REDIS_URL is set in tests) with
 // the identical key format the route claims, pinned above by the source-text assertions, to prove
 // the throttle genuinely refuses a rapid-fire replay rather than merely asserting the code shape.
+// Regression (2026-10-08): the "rest" ticker fetch — the BULK of the shared universe (everything
+// outside the small priority/CORE set, typically 70-100+ names) — used to fan out via a bare,
+// unbounded `Promise.allSettled` over every `fetchGexHeatmap` call at once, no concurrency cap. Live
+// CloudWatch evidence (AWS/ECS Container Insights per-task `CpuUtilized`, 2026-10-08 10:55-11:00
+// UTC) showed the single ECS task running this sweep spike from an idle ~12-15 CPU units to
+// 700-860 (out of a 2048 reservation — roughly 0.7-0.85 of one full vCPU) for the ENTIRE ~60-90s
+// warm-pass duration, precisely time-correlated (to the minute) with AWS/ApplicationELB
+// TargetResponseTime p99/Max spiking to 8.6s-80.4s on `blackout-production-app` — while sibling
+// ECS tasks serving ordinary traffic in the same window stayed at their normal ~10-20 CPU-unit
+// baseline. This is the exact "unbounded batch fan-out starves concurrent live traffic on the same
+// replica" bug class `runPolygonPool`'s own doc comment (polygon-rate-limiter.ts) says was already
+// found and fixed for the Vector universe snapshot build on 2026-09-04 — this route was simply
+// never migrated to the same fix. Routing through the shared, already-proven `runPolygonPool`
+// (POOL_MAX_CONCURRENCY=8 default) bounds how many of those real per-ticker synchronous costs
+// (chain-response JSON parse, GEX matrix build, the documented "~33x chain-size... 55-370ms" depth
+// ladder) can land on one task's event loop at once, the same way it already does for that other
+// call site.
+test("the bulk 'rest' ticker fetch is bounded by the shared Polygon pool, not an unbounded fan-out", () => {
+  assert.match(
+    routeSrc,
+    /import \{ runPolygonPool \} from "@\/lib\/providers\/polygon-rate-limiter"/,
+    "must import the SAME bounded-concurrency helper already used for the Vector universe build"
+  );
+  // The unbounded pattern must be gone, not merely supplemented — a stray second unbounded
+  // Promise.allSettled fan-out over `rest` would quietly reintroduce the exact burst this fixes.
+  assert.doesNotMatch(
+    routeSrc,
+    /Promise\.allSettled\(rest\.map/,
+    "the bare, unbounded per-ticker fan-out over the bulk universe must not remain"
+  );
+  assert.match(
+    routeSrc,
+    /const restResults = await runPolygonPool\(\s*\n\s*rest\.map\(/,
+    "the bulk ticker fetch must be dispatched through runPolygonPool, not a raw unbounded map"
+  );
+  // Must not override the pool's own concurrency default (POOL_MAX_CONCURRENCY=8) — this route
+  // should inherit the SAME proven cap as the Vector universe build, not invent its own number.
+  assert.doesNotMatch(
+    routeSrc,
+    /runPolygonPool\([\s\S]{0,400}?,\s*\d+\s*\)/,
+    "must not pass an explicit concurrency override — inherit the shared default"
+  );
+});
+
 test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
   const { sharedCacheSetNx, sharedCacheDel } = await import("@/lib/shared-cache");
   const key = `heatmap-warm:cooldown:test:${Date.now()}:${Math.random()}`;

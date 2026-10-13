@@ -15,7 +15,8 @@ export function classifyAdminUserAccess(input: {
   role?: string | null;
   emailAdmin?: boolean;
 }): AdminUserAccessInfo {
-  const tier = input.tier === "premium" ? "premium" : "free";
+  const tier =
+    input.tier === "premium" ? "premium" : input.tier === "community" ? "community" : "free";
   const kind = input.membershipKind ?? "";
   const isAdmin = input.role === "admin" || Boolean(input.emailAdmin);
 
@@ -27,19 +28,24 @@ export function classifyAdminUserAccess(input: {
     };
   }
 
-  if (kind === "community" && tier !== "premium") {
-    return {
-      accessLabel: "community",
-      deskAccess: true,
-      accessSummary: "SPX Slayer ($49) — SPX desk only",
-    };
-  }
-
   if (tier === "premium") {
     return {
       accessLabel: "premium",
       deskAccess: true,
       accessSummary: "Premium — full web desk (HELIX, SPX, Largo, etc.)",
+    };
+  }
+
+  // Community can be signaled either by the Whop membershipKind (the normal webhook path,
+  // where `tier` metadata itself often stays "free") or by `tier` directly (an admin manually
+  // setting tier=community via the Edit/Create User modal, which never touches membershipKind) —
+  // real desk access (tierAtLeast in src/lib/tiers.ts) is granted purely off `tier`, so this label
+  // must recognize that path too, not just the webhook-driven membershipKind one.
+  if (tier === "community" || kind === "community") {
+    return {
+      accessLabel: "community",
+      deskAccess: true,
+      accessSummary: "SPX Slayer ($49) — SPX desk only",
     };
   }
 

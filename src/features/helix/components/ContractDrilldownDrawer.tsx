@@ -46,9 +46,6 @@ import {
 import { executionFillDetail } from "@/features/helix/lib/helix-execution-quality";
 import { etClock } from "@/lib/et-clock";
 
-/** Kept for callers that only need the contract identity (ticker/strike/expiry/type). */
-export type ContractPick = Pick<FlowAlert, "ticker" | "strike" | "expiry" | "option_type">;
-
 function fmtExpiryShort(expiry: string): string {
   const [y, m, d] = expiry.split("-");
   if (!y || !m || !d) return expiry;

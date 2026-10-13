@@ -110,20 +110,21 @@ function closedReasonFromRow(row: SwingPositionRow): string | null {
   return "flat";
 }
 
-/** Map one graded CLOSED ledger row to a deck source. Null when not reconstructible. */
-export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckSource | null {
-  if (row.status !== "CLOSED" || !row.graded_at) return null;
+/**
+ * Pure contract identity (strike/right/expiry/dte/occ) for ANY row — not gated on CLOSED status,
+ * unlike `closedDeckSourceFromRow` below. Honest-null when `contract_type` can't be resolved to
+ * call/put or strike/expiry are missing, same rule that function already applies for its own
+ * (terminal-leg) contract. Extracted (Ask Largo standing mandate, 2026-10-11) so
+ * `closedDeckSourcesFromChains` can resolve a NON-terminal leg's own contract too — see that
+ * function's own "BUG FOUND 2026-10-11" note for why the terminal leg's contract is wrong to reuse
+ * when the worst leg is a different, earlier, rolled-away contract.
+ */
+function contractBundleFromRow(
+  row: SwingPositionRow,
+): { strike: number; right: "C" | "P"; expiry: string; dte: number; occ: string | null } | null {
   const expiry = row.contract_expiry;
   const strike = row.contract_strike;
   if (!expiry || strike == null || !Number.isFinite(strike)) return null;
-  // BUG FIX (2026-09-22, Ask Largo standing mandate — Largo C3 absence, same shape as #5401's
-  // roll-history fix). `contract_type` is a genuinely nullable DB column (`TEXT`, no `NOT NULL` —
-  // see db.ts's schema + `SwingPositionRow.contract_type: string | null`); the old
-  // `row.contract_type === "put" ? "P" : "C"` ternary fabricated "C" (call) for ANY row whose
-  // contract_type was null or an unrecognized value, never actually checking for "call". This
-  // function already returns null for every other "not reconstructible" case above (missing
-  // expiry/strike) — a missing right is the same absence, not a license to guess, so it now joins
-  // that pattern instead of inventing a direction a trader would read as real.
   if (row.contract_type !== "call" && row.contract_type !== "put") return null;
   const right = row.contract_type === "put" ? "P" : "C";
   // FINDINGS 2026-09-06 (swing-closed-dte-negative): a CLOSED position's DTE must be frozen to its
@@ -138,6 +139,16 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
   // shrinking on every subsequent view).
   const exitAt = row.closed_at ?? row.graded_at;
   const dte = calendarDte((exitAt ?? etYmd()).slice(0, 10), expiry.slice(0, 10));
+  return { strike, right, expiry, dte, occ: row.contract_occ };
+}
+
+/** Map one graded CLOSED ledger row to a deck source. Null when not reconstructible. */
+export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckSource | null {
+  if (row.status !== "CLOSED" || !row.graded_at) return null;
+  const bundle = contractBundleFromRow(row);
+  if (!bundle) return null;
+  const { strike, right, expiry, dte } = bundle;
+  const exitAt = row.closed_at ?? row.graded_at;
   const score =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
@@ -180,7 +191,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     entryPremium: row.entry_premium,
     peakPremium: row.peak_premium,
     troughPremium: row.trough_premium,
-    occ: row.contract_occ,
+    occ: bundle.occ,
     exitAt,
     exitPnlPct: exitPnl,
     closedReason: closedReasonFromRow(row),
@@ -253,6 +264,31 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     const terminalPnl = fin(terminal.realized_pnl_pct);
     const worstLegIsTerminal =
       compositePnl != null && terminalPnl != null && round2(terminalPnl) === compositePnl;
+    // BUG FOUND (Ask Largo standing mandate, 2026-10-11, live repro AMZN root 44/terminal 48): the
+    // 2026-09-15 fix above correctly stopped pairing the TERMINAL leg's price bounds with a worse,
+    // earlier leg's P&L — but left `contract`/`occ` untouched, which carries the identical mismatch
+    // one layer deeper. Live: root 44 (entry $5.15 -> exit $3.73, -27.67%, ROLLED) rolled into
+    // terminal 48 (entry $5.80 -> exit $10.00, +72.41%, CLOSED); the composite correctly reports
+    // -27.67% (the preserved worst leg), but the served row paired that -27.67% with leg 48's OWN
+    // contract (`occ: "AMZN261009C00245000"`, its real strike/expiry) — a contract that never lost
+    // 27.67%; that loss belongs to leg 44's different, earlier, rolled-away strike/expiry entirely.
+    // A member/Largo reading the row sees "245C 2026-10-09, exited -27.67%, stopped" — a specific,
+    // checkable, and simply false claim about that contract. Fix: when the worst leg isn't the
+    // terminal leg, resolve ITS OWN contract bundle (same `contractBundleFromRow` helper used for
+    // single-leg rows) and use that leg's strike/right/expiry/dte/occ instead of the terminal's —
+    // correct identity for the P&L being shown, not just an honest omission (the worst leg's own
+    // contract IS knowable here, unlike entryPremium/peakPremium/troughPremium above, which have no
+    // per-leg equivalent to borrow). Falls back to omitting `occ` (nullable) only in the defensive
+    // case where the worst leg's own row can't yield a contract bundle either (malformed/legacy
+    // data) — `contract` itself stays non-optional per its type, so the terminal's bundle is kept
+    // rather than left absent, same trade-off `SwingClosedDeckSource.contract` already makes.
+    const worstLegRow = worstLegIsTerminal
+      ? null
+      : (ordered.find((r) => {
+          const pnl = fin(r.realized_pnl_pct);
+          return pnl != null && round2(pnl) === compositePnl;
+        }) ?? null);
+    const worstLegBundle = worstLegRow ? contractBundleFromRow(worstLegRow) : null;
     out.push({
       ...src,
       exitPnlPct: compositePnl ?? src.exitPnlPct,
@@ -261,6 +297,20 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
       troughPremium: worstLegIsTerminal ? src.troughPremium : null,
       closedReason: compositeReason,
       reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
+      ...(worstLegBundle
+        ? {
+            contract: {
+              ...src.contract,
+              strike: worstLegBundle.strike,
+              right: worstLegBundle.right,
+              expiry: worstLegBundle.expiry,
+              dte: worstLegBundle.dte,
+            },
+            occ: worstLegBundle.occ,
+          }
+        : worstLegIsTerminal
+          ? {}
+          : { occ: null }),
     });
   }
   return out.sort((a, b) => {

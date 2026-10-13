@@ -4,6 +4,9 @@
 import type { HorizonPlay } from "@/lib/horizon-plays";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import type { RichSection } from "@/lib/bie/rich-narrative";
+import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
+import { isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 
 export type LaneRankSnapshot = {
   rank: number;
@@ -24,6 +27,18 @@ export type LaneRankSnapshot = {
    *  manage engine EXIT_RUNNER — "Lane leader ... Desk attention follows the top row" directly
    *  contradicted the same brief's "Desk says TRIM ... protect what's left" three lines above it). */
   selfReducing: boolean;
+  /** True when the NAMED leader peer's only commit-gate block is the structural #5577 Legacy
+   *  graduation-bridge wiring gap (`commitGateBlockedBy` is exactly `["legacy:exempt"]`), not a
+   *  real gate rejection (regime/cortex/confluence/etc). Found live 2026-10-08 (Ask Largo standing
+   *  mandate, raised on #4076 comment 6067024911): GOOGL's own brief named "Desk leader: VST @ 76
+   *  — confirm before adding size" while VST sat on the WATCH board unable to ever commit for a
+   *  plumbing reason unrelated to its own setup quality (the commit-loop wiring for Legacy-promoted
+   *  theses was shipped+tested in #5577 but never called) — a trader reading a DIFFERENT ticker's
+   *  brief had no way to know the named leader couldn't actually fire. Gated narrowly (exactly one
+   *  block reason, that exact one) so a peer blocked by a real gate ALONGSIDE legacy:exempt still
+   *  reads as a normal (uncaveated) leader — this flag means "the only thing stopping it is
+   *  plumbing," not "it also happens to carry this tag." */
+  topLegacyExemptOnly: boolean;
 };
 
 const OPEN_STATUSES = new Set(["OPEN", "HOLD", "TRIM"]);
@@ -190,6 +205,9 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
       !INVALIDATED_SETUP_STATES.has(r.setupState ?? ""),
   );
   const top = leaderCandidates[0] ?? others[0] ?? null;
+  const topBlockedBy = top?.commitGateBlockedBy ?? [];
+  const topLegacyExemptOnly =
+    topBlockedBy.length === 1 && topBlockedBy[0] === LEGACY_COMMIT_GATE_EXEMPT;
 
   return {
     rank: Math.min(rank, sorted.length),
@@ -205,10 +223,15 @@ export function computeLaneRank(play: TerminalPlay, laneRows: HorizonPlay[] | nu
     deltaFromMedian: Math.round((playScore - medianScore) * 10) / 10,
     selfInvalidated: play.setupState === "INVALIDATED",
     selfReducing: REDUCE_MANAGE_ACTIONS.has(play.manageAction ?? ""),
+    topLegacyExemptOnly,
   };
 }
 
-export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): RichSection | null {
+export function laneRankSection(
+  play: TerminalPlay,
+  laneRows: HorizonPlay[],
+  scanContext?: { scanAsOf: string | null; scanSessionDay: string | null; sessionDate: string | null },
+): RichSection | null {
   const snap = computeLaneRank(play, laneRows);
   if (!snap) return null;
 
@@ -221,8 +244,35 @@ export function laneRankSection(play: TerminalPlay, laneRows: HorizonPlay[]): Ri
     `**#${snap.rank} of ${snap.total}** on ${label} · score **${snap.playScore}** (${delta})`,
     `Lane median: **${snap.medianScore}**`,
   ];
+  // Ask Largo standing mandate, live repro 2026-10-11: `laneRows` (and therefore every number
+  // above) comes from `readSwingServingSnapshot()` — the SAME shared serving-lane snapshot the
+  // sibling `dataFreshnessSection` already discloses as stale via its own "Swing scan: ... prior
+  // session ... today's discovery not yet run" line (scanSessionDay !== sessionDate). This section
+  // never carried that same disclosure, so a member reading a WATCH-bucket brief over a weekend
+  // (or any gap since the last scan) saw "#12 of 18 on WATCH lane" with no hint that both the rank
+  // and the total reflect a frozen last-scan snapshot, not the live board's own current population
+  // (confirmed live: `GET /api/market/nighthawk/horizons?view=swings` showed `watchCount: 3` the
+  // same moment three different WATCH briefs each independently reported "of 18"). Reuses the exact
+  // same staleness predicate and exemption (`isSwingPlayStaleCheckExempt` — closed or
+  // dead-but-not-closed plays, e.g. an EXTENDED/expired-window WATCH candidate, get no caveat here
+  // either, matching dataFreshnessSection's own gating) so the two sections can never disagree
+  // about whether staleness is worth saying for this specific play.
+  if (
+    scanContext?.scanAsOf &&
+    scanContext.scanSessionDay &&
+    scanContext.sessionDate &&
+    scanContext.scanSessionDay !== scanContext.sessionDate &&
+    !isSwingPlayStaleCheckExempt(play)
+  ) {
+    lines.push(
+      `Ranked against the last scan (**${etStampFromIso(scanContext.scanAsOf)}**, prior session **${scanContext.scanSessionDay}**) — today's discovery not yet run, so the live total may differ.`,
+    );
+  }
   if (snap.topTicker && snap.topScore != null && snap.rank > 1) {
-    lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**`);
+    const caveat = snap.topLegacyExemptOnly
+      ? " — structurally blocked from committing (a platform wiring gap, not a live gate)"
+      : "";
+    lines.push(`Desk leader: **${snap.topTicker}** @ **${snap.topScore}**${caveat}`);
   }
   if (snap.rank === 1 && snap.total > 1 && !snap.selfInvalidated && !snap.selfReducing) {
     lines.push("Top-ranked play in this bucket — size and attention follow score.");

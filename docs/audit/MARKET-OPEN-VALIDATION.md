@@ -1,3 +1,694 @@
+## WATCH LIST — 2026-10-09 Swing archetype-drift board disappearance (RCL/SNDK/XAR) fixed — deploy pending validation
+
+**What was fixed:** `discoverSwingFromPersisted` (`serving-lane.ts`) joined `snap.plays` (one
+HorizonPlay per ticker, classified under THIS scan's fresh archetype read) against `snap.watch`/
+`snap.observed` (the accumulation store's persistence-cleared/below-floor candidates, keyed by
+`ticker|direction|archetype`) on the EXACT thesis key only. Live-confirmed 2026-10-09: `RCL`,
+`SNDK`, `XAR` were all present in `snap.watch`/`snap.observed` per `GET /api/admin/swing/
+discovery-debug` (same scan, `scanAsOf` matched the real board's own `scanAsOf` byte-for-byte —
+not a staleness artifact), yet absent from EVERY section of `GET /api/market/nighthawk/
+horizons?view=swings` (confirmed via a full-string search of the whole board payload). Root
+cause: a real, disclosed behavior (archetype can be reclassified session-to-session — the swing
+narrative's own "near-tie at entry... priority order broke the tie") meant this scan's single
+play's archetype no longer matched whichever archetype actually had the accumulation history, so
+the exact thesis key missed both lists and the ticker vanished from the board with zero
+disclosure anywhere. Fix: `discoverSwingFromPersisted` now falls back to a ticker+direction-only
+match (`tickerDirectionKey`, accumulation-store.ts) ONLY when the exact thesis key misses both
+lists — surfacing the play (never granting it `cleared`/WATCH status under the mismatched
+archetype) rather than letting it disappear outright. A genuinely untracked single-sighting name
+(no accumulation evidence under ANY archetype) still never surfaces — regression-guarded by a new
+test. Full write-up: `docs/audit/findings-staging/2026-10-09-swing-archetype-drift-board-
+disappearance.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/admin/swing/discovery-debug`'s
+`watchTickers` alongside `GET /api/market/nighthawk/horizons?view=swings` during live RTH
+discovery (any scan after the fix is live) and confirm every name in `watchTickers` — and every
+name in a fresh `GET /api/admin/swing/accumulation-export` pull with `promoted_position_id: null`
+and `distinct_session_days >= 1` — appears SOMEWHERE in the board's seven sections (most likely
+RESEARCH for a freshly-drifted archetype, not necessarily WATCH). A ticker present in the
+accumulation export but absent from every board section again would mean either a genuinely new
+gap, or this fix's `trackedTickerDirections` fallback not firing as expected — re-open the staged
+finding above rather than assuming it is new.
+
+---
+
+## WATCH LIST — 2026-10-09 Night Hawk Swings Legacy graduation bridge (#5577) now actually wired, but SHIPS DISARMED (flag OFF) — deploy pending an explicit arm decision, not RTH validation
+
+**What was fixed:** `legacyCommitCandidatesFromSnapshot`/`removeCommittedLegacyFromSnapshot`
+(`legacy-confirm-promote.ts`, #5577, 2026-10-01) were built and fully unit-tested to let a Legacy-
+morning-confirm-promoted swing thesis, once it reaches live `setupState: "TRIGGERED"` +
+`entryStatus: "AT_TRIGGER"`, actually reach the real G-S3/G-S4/G-S6/G-S12/G-S14 commit gates — but
+neither function had a single call site anywhere outside their own tests, so every Legacy-promoted
+play stayed permanently `commitGateBlockedBy: ["legacy:exempt"]` no matter what price did. Live-
+confirmed 2026-10-09: VST (promoted 2026-10-07) sat at live `TRIGGERED`/`AT_TRIGGER` while
+`GET /api/market/nighthawk/horizons?view=swings` still served `legacy:exempt`/WAIT for it. Fix wires
+the bridge into `discovery.ts`'s commit loop (fed via a hoisted `readSwingServingSnapshot()` in
+`swing-discovery/route.ts`) — but gates the ENTIRE change behind a new flag,
+`isSwingLegacyCommitBridgeEnabled()` (`SWING_LEGACY_COMMIT_BRIDGE_ENABLED`), **OFF by default**,
+because this touches real-money commit logic and the operator's own prior instruction (recorded
+against #5577) was explicit: don't change production behavior on this path until asked. Full
+write-up: `docs/audit/findings-staging/2026-10-09-swing-legacy-commit-bridge-wiring.md`.
+
+**Specific thing to check once this deploys:** with the flag left OFF (the shipped default),
+Legacy-promoted TRIGGERED plays (e.g. the next VST-shaped row) should behave EXACTLY as before —
+still `legacy:exempt`/WAIT, nothing opens differently. This is NOT a behavior change to validate at
+market open; it is dormant, tested capability. **Do not flip `SWING_LEGACY_COMMIT_BRIDGE_ENABLED=1`
+without a fresh, explicit operator go-ahead** — if/when that's given, the validation to run is:
+confirm a live TRIGGERED Legacy play's `commitGateBlockedBy` actually clears to real gate codes
+(or opens) instead of `legacy:exempt`, and that `GET /api/market/swing/record`/`horizons` never
+shows the same thesis twice (once as a committed position, once still carried as WATCH).
+
+---
+
+## WATCH LIST — 2026-10-09 SPX Slayer `/desk` + `/merged` `prior_close`/`pdh`/`pdl` collapse onto today's own close after ET midnight — deploy pending validation
+
+**What was fixed:** The EXTENDED-hours fix immediately below this entry (#5729/#5735) only
+touched `buildSpxDeskPulse` (`/api/market/spx/pulse`). Its sibling `buildSpxDesk` (`/api/market/
+spx/desk` — the shared cache lane also feeding `/api/market/spx/play` and `/api/admin/spx/
+dashboard`) computed its own `prior` via a bare `priorDayFromDailyBars(dailyBars)` with no
+EXTENDED-hours awareness at all, so it carried the IDENTICAL latent bug, invisible until the
+first cross-midnight EXTENDED window after the pulse fix shipped. Live-confirmed 2026-10-09
+~06:43 UTC (02:43 ET): `GET /api/market/spx/desk` AND `GET /api/market/spx/merged` both served
+`price=prior_close=7765.36, pdh=7797.79, pdl=7731.26` (all four fields 2026-10-08's OWN
+close/high/low) while `GET /api/market/spx/pin` (independent computation) correctly reported
+`priorClose=7801.77` (2026-10-07's real prior close) for the same instant — note the earlier
+#5735 entry below this one recommends cross-checking `/pulse` against `/desk` as a trustworthy
+oracle; that recommendation is **retroactively wrong for this exact window** (both were broken
+the same way) until THIS fix deploys. Fix: `buildSpxDesk` now derives its `prior` via the same
+already-tested `latestSessionAndItsOwnPrior` (`spx-session.ts`) whenever `marketStatusLabel()`
+reports `"EXTENDED"`, reusing the exact logic the pulse fix already shipped rather than a new,
+possibly-divergent heuristic. Full write-up:
+`docs/audit/findings-staging/2026-10-09-spx-desk-merged-extended-midnight-prior-close.md`.
+
+**Specific thing to check once this deploys:** tonight, in the early-morning cross-midnight
+window (~12:30-2:30am ET), pull `GET /api/market/spx/desk`, `GET /api/market/spx/merged`, and
+`GET /api/market/spx/pulse` all three — confirm `prior_close`/`pdh`/`pdl` AGREE across all three
+routes, are all DIFFERENT from `price`, and match the true two-sessions-back close/high/low
+(cross-check against real Polygon daily bars, or against `GET /api/market/spx/pin`'s independent
+`priorClose`, which was never affected by either bug). `spx_change_pct`/`gap_pct` on `/desk` and
+`/merged` should also read a real nonzero value, not a false `0`.
+
+---
+
+## WATCH LIST — 2026-10-09 SPX Slayer EXTENDED-hours `prior_close` collapses onto `price` again after ET midnight — deploy pending validation
+
+**What was fixed:** The SAME-DAY-EARLIER fix (#5729, this file's next entry down) stopped the
+EXTENDED-hours override from overwriting `priorDayLevels.pdc` with today's own close — but
+`priorDayLevels` itself was snapshotted from `priorDayForPulseLane()`, which anchors its
+"exclusive of today" walk-back to raw `todayEtYmd()`. That anchor rolls to the NEXT calendar
+date at ET midnight, several hours before `marketStatusLabel`'s EXTENDED window itself rolls
+(PT-clock-driven, ~3am ET) — so for that whole cross-midnight stretch (roughly 00:00-03:00 ET),
+`priorDayLevels` was ALREADY wrong (one session too recent) before the override even ran. Live-
+confirmed 2026-10-09 ~04:29 UTC (00:29 ET), on the already-deployed #5729 fix: `GET
+/api/market/spx/pulse` served `price=7765.36, prior_close=7765.36` (both 2026-10-08's close)
+while the true prior day (2026-10-07) closed at 7801.77 — the exact symptom #5729 shipped to fix,
+reincarnated one layer deeper, a few hours after that fix deployed. Fix: added
+`latestSessionAndItsOwnPrior` (`spx-session.ts`), which derives the true prior session by
+anchoring to the MATCHED latest-session bar's own date, never to the (possibly already-rolled-
+over) wall-clock `todayYmd` — so the two lookups can never collapse onto the same bar regardless
+of what time the request lands. Full write-up:
+`docs/audit/findings-staging/2026-10-09-spx-extended-midnight-rollover-prior-close.md`.
+
+**Specific thing to check once this deploys:** tonight, after the regular session closes (4pm
+ET+), pull `GET /api/market/spx/pulse` TWICE — once in the ordinary evening EXTENDED window
+(e.g. ~8-10pm ET, to confirm the earlier #5729 fix still holds) and once in the early-morning
+cross-midnight window (~12:30-2:30am ET) — and confirm `prior_close` is DIFFERENT from `price`
+and matches the true two-sessions-back close in BOTH checks, not just the first. Cross-check
+against real Polygon daily closes or the sibling `GET /api/market/spx/desk` route for the same
+instant. This is the one window the #5729 fix's own validation entry could not have caught,
+since it was written and merged entirely within the ordinary pre-midnight EXTENDED evening.
+
+---
+
+## WATCH LIST — 2026-10-09 Night Hawk Swings Ask Largo play-brief `Position` section's `P&L:` didn't reconcile with the displayed `Mark:` — deploy pending validation
+
+**What was fixed:** `pnlSection` (`src/lib/swing/play-brief.ts`, the "Position" section of
+`GET /api/market/swing/play-brief`) showed `Entry:`/`Mark:`/`P&L:` as three adjacent lines, but
+`P&L:` was computed upstream from the RAW, full-precision option mid (e.g. `$0.575`, a normal
+bid/ask midpoint) while `Mark:` displayed that same mid rounded to the cent (`$0.57`) — so the
+two numbers stopped reconciling by hand whenever the true mid landed on a fractional cent. Live-
+confirmed 2026-10-09, `GET /api/market/swing/play-brief?playId=SWING:SG&ticker=SG` (positionId
+1396, a live committed BANGER-origin position): showed `Entry: $0.33` / `Mark: $0.57` /
+`P&L: +74.2%`, but `(0.57-0.33)/0.33 = +72.7%`. Fix: `P&L:` is now redisplayed from the SAME
+rounded-to-cent mark the `Mark:` line already shows (guarded so the WS-10 executable-lane P&L
+fallback, a genuinely different basis, is never touched). Full write-up:
+`docs/audit/findings-staging/2026-10-09-swing-position-pnl-mark-roundtrip.md`.
+
+**Specific thing to check once this deploys:** during RTH tomorrow, pull a handful of live
+`GET /api/market/swing/play-brief?playId=SWING:<ticker>&ticker=<ticker>` requests for OPEN/HOLD/
+TRIM swing or BANGER-origin positions (the ones most likely to carry a fresh bid/ask-midpoint
+mark with a fractional cent, unlike a static post-close mark) and hand-verify `(Mark - Entry) /
+Entry` equals the displayed `P&L:` to within rounding — it should now always reconcile. Also spot-
+check a position known to have gone through a trim (the "Blended P&L" line a few lines below
+`P&L:`) to confirm that composite is unaffected (it deliberately still uses the raw, unrounded
+mark internally — only the plain runner-only `P&L:` line was changed).
+
+---
+
+## WATCH LIST — 2026-10-09 Night Hawk Swings Ask Largo play-brief "Trade manager read" narrative showed a different current P&L than the "Position" section, in the SAME brief — deploy pending validation
+
+**What was fixed:** the fix immediately above only reconciled the "Position" section's own local
+`P&L:` display variable — it never touched `play.pnlPct` itself, the raw field every OTHER
+narrative section reads for "current P&L" framing (`mfeCaptureOutcome`'s "Round-tripped past
+breakeven"/"Gave back X% of peak" lines in `play-brief-narrative.ts`, mirrored in
+`play-brief-narrative-coaching.ts` and `play-brief-intel.ts`, plus the "rail already cleared"
+line). Live-confirmed 2026-10-09 ~05:56 UTC: `GET /api/market/swing/play-brief?playId=SWING:CTVA&
+ticker=CTVA&positionId=1483` — "Position" showed `P&L: -21.7%` (reconciled) while "Trade manager
+read" in the SAME response said "now **-24%**" (the raw, unrounded -23.9 mark/entry-1 read) — a
+2.2pp disagreement between two sections of one brief for the identical position at the identical
+instant. Fix: `reconcileLivePnlPctWithDisplayMark()` (`play-brief-resolve-pure.ts`), applied once
+in `loadSwingPlayBriefContext` (`play-brief-context.ts`) — the single choke point every live brief
+passes through — so `play.pnlPct` itself is reconciled before any section builder runs. Full
+write-up: `docs/audit/findings-staging/2026-10-09-swing-play-brief-narrative-pnl-not-reconciled.md`.
+
+**Specific thing to check once this deploys:** during RTH, pull a live `GET /api/market/swing/
+play-brief` for an OPEN/HOLD/TRIM swing or BANGER-origin position with a sub-few-dollar mark
+(the kind most likely to land on a fractional cent) and confirm EVERY section quoting "current
+P&L" — Position, Trade manager read / narrative giveback lines, coaching bullets, the Intel
+section's giveback line — all agree with each other and with `(Mark - Entry) / Entry` computed by
+hand from the displayed `Mark:`. Previously only the Position section was guaranteed to agree;
+now all of them should.
+
+---
+
+## WATCH LIST — 2026-10-09 0DTE Night Hawk `zerodte-grade` cron could never grade TODAY's own session — every play's `plan_outcome` lagged a full calendar day — deploy pending validation
+
+**What was fixed:** `fetchUngradedZeroDteRows(beforeDate, limit)` (`src/lib/db.ts`) filters
+`WHERE graded_at IS NULL AND session_date < $1::date` — a strict less-than. `gradeZeroDteLedger`
+called it with `today = todayEt()` as the bound, so today's own `session_date = today` rows could
+never satisfy `session_date < today` — they only became eligible the NEXT calendar day. Live-
+confirmed 2026-10-08: the dedicated post-close cron (`/api/cron/zerodte-grade`, 16:00-18:45 ET,
+"so post-close rows grade promptly") ran 12 times that day and graded exactly 0 rows each time;
+all 7 of that session's own CLOSED plays (WOLF, SPY, CIFR, SPXW, QQQ, IONQ, AMD) stayed
+`plan_outcome: null` while the prior two sessions (2026-10-06, 2026-10-07) were each fully graded
+6/6 — a continuous, invisible one-day lag on every single 0DTE outcome since this grader shipped
+(2026-08-01). Fix: added an opt-in `gradeThroughToday` parameter to `gradeZeroDteLedger`; when
+true, the fetch boundary shifts to `nextTradingDayEt(today)` (tomorrow) so today's own rows satisfy
+the query. Only the dedicated post-close cron opts in — `warmZeroDteBoard`'s mid-RTH opportunistic
+call (which can fire while today's session is still open) is deliberately left unchanged, so an
+in-progress position is never prematurely graded against a partial day's bars. Full write-up:
+`docs/audit/findings-staging/2026-10-09-zerodte-grade-today-exclusion.md`.
+
+**Specific thing to check once this deploys:** tomorrow, within the 16:00-18:45 ET window after
+the next regular session closes, pull `GET /api/market/zerodte/board` and confirm that session's
+own CLOSED ledger rows show `graded: true` and a real `plan_outcome` (doubled/stopped/time_stop/
+ratchet-close, etc.) the SAME evening — not `plan_outcome: null` until the following day. Cross-
+check via `POST /api/admin/zerodte/tier-export?days=1` (admin) that `plan_outcome` is non-null for
+every row whose `session_date` is that same day. Also confirm the PRIOR day's rows (which graded
+correctly even before this fix, since the lag always resolved itself one day later) are unaffected
+— this fix only changes WHEN today's own rows become eligible, not the grading math itself.
+
+---
+
+## WATCH LIST — 2026-10-09 SPX Slayer `/api/market/spx/pulse` EXTENDED-hours `prior_close` silently equaled today's own close — deploy pending validation
+
+**What was fixed:** `buildSpxDeskPulse()`'s post-close EXTENDED-hours branch (after 4pm ET,
+before midnight ET, same calendar day) served `prior_close` straight off `prior.pdc` — the SAME
+field the branch had just overridden two lines above with TODAY's own settled close (so the
+`price` tile shows a live-looking close instead of a stale prior-day one). That made `price` and
+`prior_close` IDENTICAL all evening. Live-confirmed 2026-10-09 ~22:32 UTC: `GET /api/market/spx/pulse`
+served `price=7765.36, prior_close=7765.36` (both today's own close) while the sibling
+`GET /api/market/spx/desk` correctly served `prior_close=7801.77` (yesterday's real close) for the
+exact same instant. `pulseChangePctFromPriorClose` (`spx-change-anchor.ts`) derives change% as
+`(price - priorClose) / priorClose`, which silently reads exactly 0.00% whenever the two inputs are
+equal — hiding the real day change (-0.47% that evening) behind a false "flat" read, the 2026-08-07
+P0 shape. Fix: `priorDayLevels` (already snapshotting the true exclusive-of-today `pdh`/`pdl` per
+the 2026-10-07 sibling fix, #5646) now also snapshots `pdc`, and the EXTENDED branch's return
+serves `prior_close` from that untouched snapshot instead of the overridden `prior.pdc`. `price`
+still rolls forward to today's own close unchanged. Full write-up:
+`docs/audit/findings-staging/2026-10-09-spx-extended-prior-close-today-close.md`. Shipped in
+PR #5729 (merged).
+
+**Specific thing to check once this deploys:** this evening after today's regular session closes
+(4pm ET+), pull `GET /api/market/spx/pulse` directly and confirm `prior_close` is now DIFFERENT
+from `price` and matches the true previous session's close (cross-check against
+`GET /api/market/spx/desk`'s `prior_close` for the same moment — they should now agree) — not
+identical to `price` as before this fix. Also confirm `pdh`/`pdl` still correctly stay pinned to
+the true prior day throughout the EXTENDED window (the already-shipped 2026-10-07 behavior,
+unchanged by this fix) and that the main dashboard's live header tile (fed via
+`mergeDeskLayers`/`mergePulseIntoDesk`, which already read `prior_close` from the base `/desk`
+layer rather than the raw pulse payload — this bug's blast radius was the raw `/pulse` endpoint
+and anything reading it directly, not the merged dashboard) still shows the correct nonzero
+overnight change% rather than a false 0.00%.
+
+---
+
+## WATCH LIST — 2026-10-09 Ask Largo swing play-brief "What to watch"'s "Structural support node" hardcoded put wall while the authoritative Break watch level (and `envelope.invalidation`) can cite a nearer GEX king or dark-pool print — deploy pending validation
+
+**What was fixed:** `watchForSection`'s "Structural support node" (LONG) / "Structural resistance
+node" (SHORT) line (`play-brief-intel.ts`, the "What to watch" section) independently computed
+put wall / call wall and rendered it unconditionally — unaware that `breakTrigger`'s "Break watch"
+bullet and the headline `envelope.invalidation` field (`play-brief-narrative.ts`) were fixed on
+2026-09-15 to instead pick whichever of put wall / dark pool / GEX king sits NEAREST spot, because
+the king or a dark-pool print can legitimately be the closer, more relevant real risk. Live-
+confirmed 2026-10-08 on `GET /api/market/swing/play-brief?playId=SWING:TNGX:1611&ticker=TNGX&status=OPEN`
+(real committed BANGER-origin LONG position, spot $22.57, GEX king $22.00 at -2.5%, put wall
+$20.00 at -11.4%): `envelope.invalidation`/"Break watch" correctly read "lose 22.00" (the nearer
+king) while "What to watch", in the SAME envelope, read "Structural support node: put wall
+20.00" — two different numbers for what both sections present as THE one structural level that
+matters, with nothing telling the member they're reading two different concepts. Fix:
+`watchForSection` now calls the same shared `resolveInvalidationFocalLevel`/`collectFocalLevels`
+selection `breakTrigger` uses (both newly exported), rendering whichever level wins under its own
+label (put wall / GEX king / dark pool) instead of a hardcoded "put wall"/"call wall" string — the
+two sections can no longer disagree. Full write-up:
+`docs/audit/findings-staging/2026-10-09-swing-watch-structural-level-king-mismatch.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for a real
+LONG OPEN/HOLD swing position whose GEX king (or a live dark-pool print) sits materially NEARER
+spot than its put wall (TNGX-shaped: king within a few %, put wall 10%+ away) and confirm "What to
+watch"'s "Structural support node" line now names the SAME level and price as "Trade manager
+read"'s "Break watch" bullet in the same response — not a second, independently-derived number.
+Also spot-check a position where the put wall genuinely IS the nearest level (e.g. SOXS/KOLD/
+ETHD/AAOZ/XRPN-shaped, all confirmed unaffected this cycle) and confirm it still renders exactly
+"Structural support node: put wall $X" as before — this fix only changes which level wins when a
+king/dark-pool print is nearer, it should not alter anything for the common case.
+
+---
+
+## WATCH LIST — 2026-10-09 Ask Largo swing play-brief "Break watch" could cite an invalidation price with zero supporting narration when MAX_BULLETS dropped the exact level it depends on — deploy pending validation
+
+**What was fixed:** `tradeManagerNarrativeSection`'s "Trade manager read" loop narrates each GEX/
+structure level (put wall, call wall, GEX king, max pain, etc.) into its own bullet, sorted
+nearest-first from spot and capped at `MAX_BULLETS` (14). The section's separate, always-shown
+"Break watch" bullet is built independently by `breakTrigger`, which picks the one real structural
+stop from the SAME sorted level array regardless of the cap. For a LONG breakout, resistance
+levels (call wall/GEX king/max pain) commonly cluster near spot while the one real support (put
+wall) sits much farther away — so on a ticker with a couple of extra coaching bullets ahead of it
+(short interest, a confluence node), put wall was reliably the LAST level the capped loop reached,
+and got silently dropped while Break watch (unaffected by the cap) still cited its price. Live-
+confirmed 2026-10-08 on `GET /api/market/swing/play-brief?playId=SWING:PROF&ticker=PROF&status=OPEN`
+(real committed BANGER-origin position): the "Trade manager read" section's 14 bullets covered Call
+wall $7.50 and GEX king $7.50 (the same strike, twice) but had NO Put wall bullet, immediately
+followed by `**Break watch** — lose **5.00** on a closing basis → structural support failed; exit
+or cut size.` with nothing in the section explaining what $5.00 is. Fix: the loop now identifies
+the exact level `breakTrigger` will cite (via a new shared `resolveInvalidationFocalLevel` helper,
+also used by `breakTrigger` itself so the two selections can't drift apart) and reserves its bullet
+past the cap, the same bypass Break watch/Counter-thesis already use. Full write-up:
+`docs/audit/findings-staging/2026-10-09-swing-break-watch-invalidation-level-dropped.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for a real
+LONG OPEN/HOLD swing position whose put wall sits materially farther from spot than its call wall/
+GEX king/max pain cluster (PROF-shaped: resistance within ~10%, support 20%+ away) and confirm the
+"Trade manager read" section now carries its own "Put wall $X ... dealer support / put wall"
+bullet alongside the "Break watch — lose $X" line, not just the bare reserved line alone. Also
+spot-check a position where the put wall is already the NEAREST level (e.g. PLAY/GMEU-shaped) and
+confirm it still renders exactly as before — this fix only adds a bullet when the cap would
+otherwise have dropped it, it should not duplicate or reorder anything for a ticker that was never
+affected.
+
+---
+
+## WATCH LIST — 2026-10-08 Ask Largo swing play-brief Management section's "Rails: ... target $X" line showed an already-banked trim level as a fresh, unmet objective, contradicting the "Trim ladder: +100% ✓" line directly above it — deploy pending validation
+
+**What was fixed:** `managementSection` (`play-brief.ts`) rendered `exitPolicy.target_premium` as a
+bare, un-annotated dollar figure in its "Rails: stop $X · target $Y" line regardless of whether a
+fired trim had already reached it. Swing's single-rung `SWING_SCALE_OUT_POLICY` prices its one trim
+trigger identically to the policy's overall target (both 100%), so once that rung fires, the fired
+trim's own premium and `target_premium` are the SAME dollar level — live-confirmed 2026-10-08 on
+`GET /api/market/swing/play-brief?playId=SWING:EXTR&ticker=EXTR&status=OPEN` (real committed
+BANGER-origin position, entry $0.15, mark $0.38, +150% P&L, trim already fired at $0.30): the
+Management section rendered `Trim ladder: +100% ✓` immediately followed by `Rails: stop $0.06 ·
+target $0.30` with nothing indicating the two lines describe the same already-crossed level — a
+member reading top-to-bottom sees a "still ahead" target beside its own "already done" disclosure.
+`play-brief-intel.ts`'s separate "What to watch" section (further down the SAME envelope) already
+fixed this exact self-contradiction for its own "Premium target rail" line on 2026-09-22, but this
+earlier, more prominent Management-section line was never given the equivalent treatment — grep
+confirmed it as the only other call site rendering `target_premium` as a bare value. Fix: annotate
+the target with the ladder's own "✓ (reached)" convention whenever a fired trim's premium has
+already met or passed it; a target not yet reached (confirmed live on RGNX/BSP) still renders as
+a bare figure, unchanged. Full write-up:
+`docs/audit/findings-staging/2026-10-08-swing-rails-target-reached-self-contradiction.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any
+real OPEN/SCALING_OUT swing position whose single trim rung has already fired (check `GET
+/api/market/nighthawk/horizons?view=swings` for a `SWING`-lane committed row with `serving:
+"SCALING_OUT"`, or the swing record for a leg with `trim_levels[].fired: true`) and confirm its
+Management section now reads `Rails: stop $X · target $Y ✓ (reached)` rather than a bare `target
+$Y`. Also spot-check a genuinely still-open position whose trim hasn't fired yet (e.g. a fresh
+MANAGING-state row) and confirm it still shows the bare `target $Y` with no "reached" annotation —
+this fix only adds the annotation when the contradiction would otherwise exist, it should not
+touch a still-forward-looking target.
+
+---
+
+## CORRECTION / REOPENED — 2026-10-08 ALB tail-latency investigation: #5686 confirmed DEPLOYED LIVE but did NOT measurably reduce `TargetResponseTime` p99/Max — this thread is OPEN, not done
+
+**Read this before trusting any "the arc is done" impression from chat, a stale trigger-prompt
+reference, or the entry immediately below this one.** The entry directly below (`heatmap-warm`'s
+unbounded `rest`-tier fan-out, PR #5686) is a REAL, well-evidenced, correctly-fixed bug — the
+single-task CPU saturation it found and fixed genuinely existed and is genuinely gone. It is **not**
+however the dominant driver of the CURRENT sustained ALB tail-latency pattern, confirmed by a live
+post-deploy re-measurement this cycle. Nothing in this correction asks anyone to revert #5686 or
+re-open it as broken — it is a correct, narrow fix for a real bug that simply was not (or was not
+only) the cause of this specific symptom.
+
+### Part 1 — #5686 deployed, confirmed live, re-measured: NO improvement
+
+**Deployment confirmed independently this cycle** (not merely asserted): `ecs.describe_services`
+on `blackout-production-web` shows the #5686 image
+(`177922194517.dkr.ecr.us-east-1.amazonaws.com/blackout-web:bb61d961b7674da07cc73c111ac34f5c8154ac9a`
+— `bb61d961b` is exactly PR #5686's merge commit, `fix(perf): heatmap-warm's bulk ticker fetch used
+an unbounded fan-out, starving the task it ran on`) was deployed as task-definition revision 1865,
+and the service's own event log shows that rollout **reached steady state at 12:54:07 UTC**
+(`(deployment ecs-svc/9166911404125338068) deployment completed` / `has reached a steady state`) —
+i.e. all 8 running web tasks were on the fixed image from 12:54:07 UTC onward, well inside the
+window measured below.
+
+**Independently re-pulled `AWS/ApplicationELB TargetResponseTime` (1-min granularity,
+`blackout-production-app` target group) for the window immediately AFTER that steady-state
+timestamp** — this is a fresh pull this cycle, not a re-quote of an earlier number:
+
+| minute (UTC) | p50 | p99 | Max |
+| --- | --- | --- | --- |
+| 12:54 | 0.018 | 68.89 | 69.52 |
+| 12:55 | 0.042 | 7.87 | 8.01 |
+| 12:56 | 0.024 | 68.58 | 68.90 |
+| 12:57 | 0.228 | 48.35 | 48.55 |
+| 12:58 | 0.047 | 34.41 | 34.44 |
+| 12:59 | 0.018 | 0.31 | 0.31 |
+| 13:00 | 0.019 | 60.68 | 61.33 |
+| 13:01 | 0.276 | 32.46 | 32.65 |
+| 13:02 | 0.017 | 49.14 | 49.49 |
+
+p50 stayed under 0.3s in every one of these minutes — confirming (again) that this is a
+tail-latency signature, not fleet capacity. **This is statistically indistinguishable from the
+pre-deploy baseline** measured earlier the same morning (11:00-11:55 UTC, before #5686's rollout
+even started): p99/Max repeatedly 50-100s in that window too (e.g. 11:05 p99=80.28/Max=80.40, 11:45
+p99=97.97/Max=100.21, 12:30 p99=65.39/Max=91.22). A companion live run (a sibling cycle, reported
+the same morning) independently measured the same post-deploy non-improvement across a wider
+12:22-12:57 UTC window (p99/Max 57-91s throughout) — corroborating, not duplicating, the numbers
+above. **Zero `HTTPCode_Target_5XX_Count` across the entire trailing 3 hours of this pull** (summed
+metric = 0) — before AND after the #5686 deploy. This has never been an outage; it is pure,
+recurring tail latency, continuing unabated after a real, correctly-targeted, fully-deployed fix.
+
+**What this means:** #5686's root-cause theory (unbounded `Promise.allSettled` fan-out on
+`heatmap-warm`'s bulk `rest` tier spiking one ECS task's CPU to 700-860/2048 units for 60-90s,
+stalling co-located requests) was real and is now fixed — but is shown by this live
+before/after to NOT be the dominant mechanism behind the CURRENT sustained p99/Max pattern. Two
+honest readings, neither confirmed over the other yet: (a) #5686 was never the dominant driver of
+THIS specific symptom — a real bug, correctly fixed, that happened to share a measurement window
+with a larger, still-unidentified cause; or (b) there is a compounding/masking second mechanism that
+#5686 alone cannot address. **Do not guess between these — the next session with capacity should
+profile rather than patch further**, per this file's own standing #5061/#5065 caution against
+shipping a second speculative fix without a confirmed mechanism.
+
+### Part 2 — cron-schedule-collision hypothesis (#5692): read-only correlation test this cycle, result is WEAK/MIXED, not a confirmation
+
+Per this cycle's explicit instruction, no AWS write was attempted (the `events.put_rule` stagger
+fix remains fully designed and ready, still blocked on this sandbox's "Modify Shared Resources"
+permission classifier — confirmed blocked on two independent sessions a month apart, see #5692; do
+**not** re-attempt the write from this sandbox). Instead, pulled CloudWatch Logs `/ecs/blackout-
+production` `elapsed=` completion lines for the four crons #5692 names as colliding
+(`desk-warm`/`meridian-warm`/`zerodte-warm` all on `cron(*/5 11-21 ? * MON-FRI *)`,
+`swing-active-refresh` on `cron(*/15 ...)`, `market_hours_only: true`) over a 4h10m window
+(09:00-13:09 UTC, 2026-10-08) matching 251 one-minute `AWS/ApplicationELB TargetResponseTime`
+buckets, and tested whether ALB p99/Max spike minutes (p99>=20s) show MORE overlapping elapsed-time
+from these crons than non-spike minutes — the same overlap-correlation technique PR #5684's own
+write-up used for the `heatmap-warm` duty-cycle hypothesis (and which found no correlation there).
+
+**Real, disclosed limitation: only a 2-way test was possible this cycle, not the full 4-way.**
+`swing-active-refresh` is `market_hours_only` (cash RTH) and had not fired even once in this window
+— cash open is 13:30 UTC and this window ends 13:09 UTC — so it structurally could not
+participate in any collision today before this analysis was run. More surprisingly,
+`desk-warm`'s own EventBridge-triggered heavy pass (the `[cron/desk-warm] background done —
+...elapsed=Nms` line, historically 9-24s+ per its own route comment) logged **zero** completions
+in the full 4h10m window, despite `AWS/Events Invocations` confirming EventBridge itself fired the
+rule's Lambda target 26 times in that span with 0 `FailedInvocations` — every `desk-warm`-related
+log line in the window was instead the in-app leader's cheap `[rth-warm-leader] backup warm
+'desk-warm' ok (Nms)` check (138 of them, all under 200ms). This is an unconfirmed anomaly, not a
+root-caused finding — plausibly the leader's own freshness checks are satisfying desk-warm's
+staleness bar before EventBridge's own trigger ever needs to do real work, or the real pass is
+being silently skipped by `OVERLAP_LOCK`/`shouldRunCacheWarmer` every single time — but it means
+**desk-warm's real heavy pass could not be observed overlapping anything this cycle either**.
+Flagging as a lead for a future cycle to actually root-cause (it touches `desk-warm`'s own overlap
+semantics, not the ALB-latency investigation directly) rather than guessing here.
+
+**With only `meridian-warm` (25 runs, 19.8-79.2s each, mean ~40s) and `zerodte-warm` (46 runs, mostly
+0.6-3s, one 81.6s outlier) actually producing measurable elapsed-time in this window:**
+
+- Mean number of these crons concurrently active: **0.52** during spike minutes (n=81) vs **0.30**
+  during non-spike minutes (n=169) — a real but modest ~1.7x enrichment. Overlap count never
+  exceeded 2 in this window (never the 3-way or 4-way collision #5692 actually describes).
+- Only **7 of 251** minutes had BOTH `meridian-warm` and `zerodte-warm` active at once. Of those 7:
+  **4 coincided with a real spike** (41-61s) and **3 did not** (1.3-6.5s) — small-n and mixed, not a
+  clean confirmation either way.
+- Breaking the two crons out individually: `meridian-warm` was active in **35.8%** of spike minutes
+  vs only **8.9%** of non-spike minutes (a real ~4x enrichment — but this is the SAME correlation
+  this file's own 2026-10-07 entries already found and partially investigated for meridian-warm's
+  long `elapsed=` runs, not new information). `zerodte-warm` showed **no positive correlation at
+  all** (16.0% active during spike vs 21.4% during non-spike — if anything slightly negative).
+
+**Verdict: WEAK/MIXED, reported honestly rather than rounded up to a confirmation.** The
+correlation that does exist in this data is attributable to `meridian-warm`'s own already-documented
+long elapsed runtime (a symptom this file's 2026-10-07 entries already connected to the shared
+GEX-heatmap/SPX-desk build path, and which a direct benchmark already showed is NOT explained by
+per-contract Black-Scholes cost alone) — not to a demonstrated multi-cron pile-up effect layered on
+top of it. 53% of all spike minutes (43/81) had ZERO overlapping elapsed-time from any of these four
+crons at all, which argues against the identical-minute collision being the DOMINANT mechanism,
+though it does not rule out a secondary contributing role once `desk-warm`'s real heavy pass and
+`swing-active-refresh` (post-13:30-UTC) can both be included in a cleaner re-run. **#5692 remains the
+leading unconfirmed alternative/compounding hypothesis** — not ruled out, not confirmed, and its own
+fix (EventBridge minute-stagger) remains blocked on the same operator-actionable AWS permission
+boundary named above. **Do not re-attempt the AWS write from this sandbox.**
+
+### Standing operator-actionable blockers (both still open, both named here so a future session
+doesn't re-discover them from scratch)
+
+1. **The #5692 cron-minute-stagger fix** — fully designed, ready to apply via `events.put_rule`,
+   blocked twice (a month apart, two independent sessions) by this sandbox's own "Modify Shared
+   Resources" permission classifier. Needs operator action (either grant the AWS write permission in
+   this sandbox, or apply the designed change directly) — not a code or research gap.
+2. **ALB access logging** — identified since 2026-09-02 (see this file's own history) as the
+   single highest-leverage next step for this entire investigation: real per-request attribution
+   (path, latency, target, status) would let a future session directly identify WHICH requests are
+   slow and WHICH upstream call they're blocked on, instead of inferring from minute-level
+   CloudWatch metric correlation. Also blocked on an AWS permission boundary in this sandbox (per
+   this cycle's explicit instruction, NOT re-attempted here). This is the standing,
+   operator-actionable blocker for making further progress on this specific symptom from this
+   sandbox — a future session should not spend more cycles on correlation inference without first
+   checking whether this has been enabled.
+
+### Status going forward: **OPEN — not resolved, not closed, not "the arc is done."**
+
+Any future session (or trigger-prompt text) that reads a prior cycle's work on this investigation
+and concludes it is finished should re-read this entry first and re-verify against live
+`TargetResponseTime` data before saying so again. The six 5-engine-monitor trigger prompts
+(`trig_01NNvznmA6eMsH61cLe7yb6z` and its 5 siblings) were checked this cycle and already correctly
+avoid declaring this closed — their Vector-board instruction already says "the downstream
+contention mechanism is still open... do not attempt a speculative fix to it from this trigger,"
+which remains accurate and needed no correction. Full write-up:
+`docs/audit/findings-staging/2026-10-08-alb-latency-investigation-reopened-5686-no-improvement.md`.
+
+---
+
+## WATCH LIST — 2026-10-08 A net-negative-relief 0DTE commit gets instantly reversed by the exit engine's oppose-cluster check, defeating the relief it was just granted — deploy pending validation
+
+**What was fixed:** `applyCortexCommitRelief` lets a 0DTE setup commit despite a net-negative
+Cortex composite when regime/vector tape alignment overrides it ("full Cortex relief (gex veto
+strip + net-negative pass)"). The exit-time thesis check's VETO arm got a grace period for this on
+2026-09-09 (SHOP/MSTR), but its OPPOSE_CLUSTER arm did not — so any relief commit's negative entry
+score collapses the thesis-break margin to the bare noise floor (0.5), and the next exit-sync tick
+almost always re-finds the SAME opposing evidence that made the entry negative, closing the
+position in seconds. Live-confirmed 2026-10-08 on the SAME DAY's full 7-row committed ledger
+(`GET /api/market/zerodte/board`): **WOLF** (entry score -0.76, relieved) flagged→closed in
+**0.509s**, net 0%; **SPY** (entry score -0.31, relieved) flagged→closed in **2.775s**, net -1.33%
+— via a completely different oppose pair (sector-heat + opening-harvest, no gex-walls at all),
+proving a gex-walls-specific fix would not have caught it. Every non-negative-score commit that
+same day (SPXW/QQQ/IONQ/AMD) ran 25-40+ minutes before its own real exit. Fix: `detectThesisBreak`
+now skips the oppose_cluster check entirely when `entryCortexScore < 0` (proof-by-construction of a
+relief commit — the normal pipeline can never produce a committed row with a negative score
+otherwise). Full write-up:
+`docs/audit/findings-staging/2026-10-08-zerodte-relief-commit-oppose-cluster-instant-exit.md`.
+
+**Specific thing to check once this deploys:** during live RTH, watch `GET
+/api/market/zerodte/board`'s `ledger` for a fresh commit whose `entry_context.cortex.score` is
+negative (a relief commit — check `gex_walls_veto_relieved: true`, or just a negative `score` with
+`decision: "PASS"`) and confirm it is no longer closed within the same 1-3 second window it was
+flagged in via `exit_reason: "thesis"` — it should hold at least long enough for a real mark tick to
+move, and if it does eventually exit via `thesis_break`, the reason should be a genuinely NEW veto,
+never the immediate oppose_cluster re-fire this fix removes. Also spot-check that a NON-relieved
+commit (positive/zero entry score) still gets a real thesis_break exit when warranted — this fix
+must not have silently gone broader than negative-score rows.
+
+---
+
+## WATCH LIST — 2026-10-08 `vector:full-state` cache TTL (15min) was ~11x shorter than the measured warm-cron rotation lap (~160min), leaving the same-day rotation-starvation fix's own target gap still at 100% failure — deploy pending validation
+
+**What was fixed:** the same-day earlier fix (`rotateTickersForWarmPass`) correctly stops the
+`vector-full-state-snapshot` cron from starving the same ~2 tickers forever — confirmed live, the
+cursor genuinely advances run over run (`cursor=22,26,28,30,32,34,36,38` across ~30 minutes). But
+each ~5-min run still only completes ONE `TICKER_CONCURRENCY=2 x 4 horizons` batch before its own
+50s budget is blown by the real per-ticker chain-fetch cost (`elapsed=51050-117676ms` per run,
+measured live) — so a full rotation lap over the 64-ticker universe takes ~160 minutes, eleven
+times longer than the 15-minute cache TTL. Re-probed `GET /api/market/swing/play-brief` on six
+fresh tickers this cycle (MSFT, PBR, WING, CTVA, MU, AMD) AFTER the rotation fix had deployed:
+**all six** still carried `unavailableSources: ["ecosystem context", "Vector state"]` — the
+identical 100% failure rate the rotation fix was built to close, now confirmed to persist even
+after that fix shipped and is confirmed working. Raised `VECTOR_FULL_STATE_CACHE_TTL_SEC` from 15
+minutes to 4 hours — safe because `describeVectorFreshness` labels staleness purely from the
+snapshot's own `observed_at`, independent of this TTL, so a longer-lived entry is never
+misrepresented as live; it is just less often deleted before it can be served at all. Full
+write-up: `docs/audit/findings-staging/2026-10-08-vector-full-state-ttl-rotation-mismatch.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for several
+committed/watch swing tickers (e.g. off `GET /api/market/nighthawk/horizons?view=swings`'s SWING
+lane) during RTH and confirm `unavailableSources` no longer routinely lists both "ecosystem
+context" and "Vector state" with `"reason":"fetch failed"` — an occasional miss right after a
+ticker's own rotation turn is still expected and fine, but it should no longer be the common case
+across an arbitrary sample. Also spot-check that when a Vector/ecosystem read IS served from an
+older cache entry, the brief's `confidence`/freshness disclosure correctly reflects its real age
+(via `age_seconds`/`freshness: "stale"`) rather than presenting it as live — this fix should never
+make a stale read look fresher than it is, only make a stale-but-labeled read available instead of
+a hard timeout.
+
+---
+
+## WATCH LIST — 2026-10-08 `heatmap-warm`'s bulk "rest" ticker fetch fanned out via an UNBOUNDED `Promise.allSettled` — the confirmed downstream contention mechanism behind the recurring ALB tail-latency spikes #5680/#5684 left open — deploy pending validation
+
+**What was fixed:** picks up exactly where #5680 ("found the trigger, contention mechanism still
+open") and #5684 (duty-cycle fix, explicitly NOT an ALB-latency fix per its own honest
+correlation test) left off. Live evidence THIS cycle: `AWS/ECS` Container Insights per-task
+`CpuUtilized` for the specific ECS task running a `heatmap-warm` pass spiked from an idle ~8-18 CPU
+units (of 2048 reserved) to **700-860** — 0.7-0.85 of one full vCPU, sustained for the entire
+60-90s run — while four sibling tasks serving ordinary live traffic in the SAME minutes stayed at
+their own normal baseline. This directly corrects #5680's "ECS CPU 1-min averages stayed low
+(2-8% avg)" read, which was fleet-average and dilutes exactly this kind of single-task spike down
+to a low-single-digit-percent number (750/8 tasks ≈ 94, consistent with what was reported). The CPU
+spike precisely time-correlates (to the minute, lagging slightly as the stalled request completes
+after the CPU-heavy work clears) with `AWS/ApplicationELB` `TargetResponseTime` p99/Max spiking to
+8.6s-80.4s on `blackout-production-app` — independently re-pulled this cycle and matching the
+investigating prompt's own cited 10:56Z/11:00Z/11:01Z numbers exactly. Root cause:
+`heatmap-warm`'s own per-ticker sweep (`src/app/api/cron/heatmap-warm/route.ts`) fanned the BULK
+"rest" tier of its ~100-130-ticker universe (typically 70-100+ names) out via a bare, **unbounded**
+`Promise.allSettled` — no concurrency cap at all — the exact "unbounded batch fan-out starves
+concurrent live traffic on the same replica" bug class `runPolygonPool`'s own doc comment says was
+already found and fixed for the Vector universe snapshot build on 2026-09-04; this route was simply
+never migrated to the same fix. Up to 48 of those ~100 `fetchGexHeatmap` calls (the Polygon
+per-process admission ceiling) land in flight on ONE task at once, and each one's real synchronous
+per-ticker cost (chain-response JSON parse, GEX matrix build, the documented "~33x chain-size...
+55-370ms" depth ladder) piles up back-to-back on that task's single event loop with nothing pacing
+it. Fix: routed `rest` through the same, already-proven `runPolygonPool` (`POOL_MAX_CONCURRENCY=8`
+default, not overridden) the Vector-universe build already uses for the identical reason. Full
+write-up: `docs/audit/findings-staging/2026-10-08-heatmap-warm-unbounded-rest-fanout-per-task-cpu-contention.md`.
+
+**Specific thing to check once this deploys, during RTH (11:00-21:59 UTC / ~7am-5:59pm ET, when
+`heatmap-warm` runs every ~60-110s via EventBridge):** catch the NEXT live `heatmap-warm` run by
+watching CloudWatch Logs for `[rth-warm-leader] backup warm 'heatmap-warm' ok` (or the equivalent
+EventBridge-triggered completion) and pull `AWS/ECS` Container Insights per-task `CpuUtilized` for
+whichever task's log stream carries that run's `[polygon-gex] full-chain escalation ADOPTED` lines
+— confirm the single-task CPU spike shrinks materially below the measured 700-860/2048 baseline
+(a smaller, more spread-out rise is expected; it will not go fully to zero since the SAME total
+Polygon work still has to happen, just paced 8-at-a-time instead of ~70-100-at-once). In the SAME
+window, pull `AWS/ApplicationELB` `TargetResponseTime` p99/Max at 1-min granularity and confirm the
+corresponding spike shrinks or disappears. **If the ALB spike persists at a similar magnitude
+despite the CPU bound taking effect, that is real evidence the dominant mechanism is something
+OTHER than synchronous per-ticker processing bursts** (e.g. libuv-threadpool/DNS/gzip contention
+even at 8-at-a-time, or Polygon admission-queue wait time itself, per #5650's still-open
+hypotheses) — do not conclude this fix failed without that live re-measurement, and per this file's
+own standing discipline (the #5061/#5065 precedent), do not guess a second fix without it; document
+the re-measurement result (either way) as the next dated finding instead.
+
+---
+
+## WATCH LIST — 2026-10-08 Ask Largo swing WATCH brief's "Entry" section could say the entry window had already closed AND, two lines below, that it still had "1 day left" — deploy pending validation
+
+**What was fixed:** `watchEntrySection` (`play-brief.ts`) gated its forward-looking "Entry window
+closes **DATE** (**N days** left)" line on `!play.watchEntryExpired` alone — but that flag is set
+`true` by only ONE of `entry-enterability.ts`'s several dead-play branches (the calendar-deadline-
+expired one). A DIFFERENT branch, EXTENDED-chase (`setupState === "EXTENDED"` /
+`entryStatus === "EXTENDED_CHASE"` — price moved too far from the entry zone), leaves
+`watchEntryExpired` false while still carrying a real future `entryDeadline`, so the forward-
+looking line rendered anyway — directly beside the SAME section's "Also gate-blocked (moot —
+extended past the valid entry window)" line and the brief's own top-level `invalidation` text
+("Extended past the valid entry window — this setup is no longer live."). Both facts were each
+independently correct (two different kinds of "window": calendar-deadline vs. price-extension),
+but sharing the word "window" in the same section about the same play read as the brief flatly
+contradicting itself. Live-confirmed 2026-10-08 (Ask Largo health-check deep-dive): `GET
+/api/market/swing/play-brief?playId=SWING:NTAP&ticker=NTAP` showed exactly this — "Entry window
+closes 2026-10-08 09:15 ET (1 day left)" three lines above the brief's own invalidation line
+saying that same window had already closed. Fix: gate the forward-looking line on
+`deadPlayReason(play)` (the authoritative "is this play dead for ANY reason" check, already used
+a few lines below for the gate-block qualifier) instead of the narrower `watchEntryExpired` flag.
+Full write-up:
+`docs/audit/findings-staging/2026-10-08-swing-watch-entry-window-wording-collision.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any
+real WATCH-bucket candidate currently in an EXTENDED/EXTENDED_CHASE state (check
+`GET /api/market/nighthawk/horizons?view=swings` for a committed/watch row with
+`setupState: "EXTENDED"` or `entryStatus: "EXTENDED_CHASE"`) and confirm its "Entry" section no
+longer shows a forward-looking "Entry window closes ... (N days left)" line — only the "Also
+gate-blocked (moot — extended past the valid entry window)" line and the top-level invalidation
+text, with nothing nearby claiming time is still left. Also spot-check a genuinely still-live
+WATCH play (not EXTENDED, not past its calendar deadline) and confirm it STILL shows the
+forward-looking line as before — this fix narrows the suppression condition, it should not
+remove the line from plays that are actually still enterable.
+
+---
+
+## WATCH LIST — 2026-10-08 `heatmap-warm`'s 20s in-app-leader heal threshold made it "overdue" the instant any normal run finished, driving a ~70% near-continuous duty cycle during the pre-EventBridge pre-market window — deploy pending validation
+
+**What was fixed:** `RTH_WRITER_HEAL_AFTER_MIN["heatmap-warm"]` (`rth-warm-leader-logic.ts`) was `20/60` (20s) — copied from `vector-walls-warm`'s entry (justified there by a ~900ms cache TTL) rather than derived from `heatmap-warm`'s own real cost. A real `heatmap-warm` run sweeps the shared ~100-ticker universe through Polygon and has always taken 60-110s (p50=46.5s/p90=81.1s/p99=181.1s/max=209.2s, measured 2026-09-03). `rthWriterOverdue()`'s age calc reads `cron_job_runs.started_at`, which is actually stamped by a bare SQL `now()` default at INSERT time — i.e. at the run's COMPLETION (`logCronRun` is called at the very end of the handler), not its true start. So with a 20s threshold and 60-110s real runtime, every run was already "overdue" by the instant it finished, and the in-app leader's own 15s tick re-commissioned a fresh full sweep almost every time. Live-confirmed 2026-10-08, 08:00-09:48 UTC (the pre-EventBridge 4-7am ET pre-market window — AWS-confirmed `AWS/Events` `Invocations`=0 for this rule's `cron(*/1 11-21 ? * MON-FRI *)` the entire window, so this ran ENTIRELY off the leader, isolating it as the sole cause): 70 consecutive full runs, zero skips, median runtime 60.9s, ~68-70% wall-clock duty cycle, median gap between completion and next start only ~30s. Checked the original hypothesis that this was measurably driving ALB latency spikes with a proper 2-hour correlation: it does NOT hold up (spike-minute heatmap-warm-overlap rate ≈ non-spike-minute rate at every threshold tested, 5-20s Max) — reported honestly rather than retrofit; the fix stands on its own duty-cycle/backup-semantics merits instead. Fix: raised the threshold to 81s (the job's own measured p90), matching the design of every sibling entry in this map. Full write-up: `docs/audit/findings-staging/2026-10-08-heatmap-warm-heal-threshold-duty-cycle.md`.
+
+**Specific thing to check once this deploys:** during the next pre-market window (4-7am ET, before EventBridge's own 11:00 UTC start), pull CloudWatch Logs for `[rth-warm-leader] backup warm 'heatmap-warm'` and confirm the gap between one run's completion and the next run's start has widened from ~30s to roughly 80-95s (not still ~30s — that would mean the fix didn't deploy or another path is re-triggering it sooner), and that the duty cycle has dropped from ~70% toward ~40-45%. Also spot-check that Thermal SPY/SPX/QQQ (the force-refreshed CORE set every run still warms first) still read a reasonably fresh `asof` during that window — the fix should not visibly change RTH freshness at all (EventBridge governs that independently once it starts at 11:00 UTC), only the needless pre-market churn.
+
+---
+
+## WATCH LIST — 2026-10-08 `ensureWebBootWarm()` warmed the 0DTE board unconditionally on every ECS cold start, causing periodic GEX full-chain-escalation CPU/ALB-latency bursts overnight — deploy pending validation
+
+**What was fixed:** `src/lib/web-boot-warm.ts`'s `ensureWebBootWarm()` runs on every ECS web-tier process cold start with no time-of-day gate, and called `getZeroDteBoardPayload()` unconditionally. 0DTE discovery crons are market-hours-only, so outside the 4am-8pm ET extended window the shared Redis board snapshot is always stale past `BOARD_STALE_SERVE_MAX_AGE_MS` (10 min) — every boot therefore triggered a full cold board rebuild (`buildAndPublishBoard` → `scanZeroDteBoard`, a multi-engine FLOW/BREAKOUT/PIN discovery pass) that fans the shared GEX-heatmap chain fetch out across dozens of tickers, several escalating to a full unfiltered chain pull. Root-caused live 2026-10-08: CloudWatch Logs Insights showed bursts of 20-100+ `[polygon-gex] full-chain escalation ADOPTED` lines within ~15s, repeating every ~15-20 min through 03:30-06:30 UTC overnight (zero RTH relevance), time-correlated with the ALB TargetResponseTime Max spikes (22-55s) a prior cycle had flagged but not yet diagnosed. Confirmed by exact ECS task ID cross-reference (`describe_services` events) that the ECS service was doing a near-continuous one-task-at-a-time rolling replacement the whole window (driven by a cascade of small merged PRs each triggering its own deploy), and that each freshly-started task's boot-warm independently reproduced the burst right as it was registered as a live ALB target. Fix: gated the `getZeroDteBoardPayload()` boot-warm call behind `isEtExtendedWarmHours()` — the same gate every sibling warm cron (`heatmap-warm`/`desk-warm`/`zerodte-warm`/`vector-walls-warm`) already uses; the other cheap cache-reader boot-warm tasks are left unconditional. Full write-up: `docs/audit/findings-staging/2026-10-08-boot-warm-zerodte-board-off-hours-gex-latency.md`.
+
+**Specific thing to check once this deploys:** during the next overnight/off-hours window (outside 4am-8pm ET), watch CloudWatch Logs Insights for `/ecs/blackout-production` filtered on `full-chain escalation ADOPTED` across any ECS task-replacement event (a merge/deploy, or just natural task recycling) and confirm the burst no longer appears off-hours — it should now only appear during the 4am-8pm ET window (when it's legitimate: real members, real warm crons). Also pull `AWS/ApplicationELB` `TargetResponseTime` (Max, 1-min granularity) for `blackout-production-app` across the next several ECS deploys and confirm no more off-hours Max spikes coincide with a task's `has started 1 tasks`/`registered 1 targets` service events (cross-reference via `ecs.describe_services`). This does not address the underlying continuous-rolling-deploy cadence itself (a cascade of small merges each triggering its own deploy) — that is a separate, out-of-scope release-cadence question — so some task churn is still expected; the validation here is specifically that each task's OWN boot no longer pays the expensive 0DTE-board cost off-hours.
+
+---
+
+## WATCH LIST — 2026-10-08 UW NOPE `net_delta` read a field the real provider response never carries — always fabricated `0` — deploy pending validation
+
+**What was fixed:** `fetchUwNope` (`src/lib/providers/unusual-whales.ts`) computed `net_delta: Number(r.net_delta ?? 0)` against the raw UW `/api/stock/{t}/nope` row. Live-verified 2026-10-08 against the real upstream response (SPY): the row carries `call_delta`/`put_delta`/`nope`/etc. but **no `net_delta` key at all**, so `net_delta` was always exactly `0` — fabricating "perfectly balanced dealer delta flow" on a row that was actually ~+227.6M net-long (`call_delta + put_delta`). Confirmed live on the SPX desk: `GET /api/market/spx/desk` showed `"nope": -0.65` (a real, non-zero reading) right beside `"nope_net_delta": 0`. This field feeds Largo's `get_nope` tool directly for every non-SPX ticker, and the SPX desk's own `nope_net_delta` for SPX. Fix: compute `net_delta` as `call_delta + put_delta` (the same two signed inputs `nope` itself is derived from) when at least one is present; return `null` (never fabricate `0`) when neither is. Full write-up: `docs/audit/findings-staging/2026-10-08-uw-nope-net-delta-dead-field.md`.
+
+**Specific thing to check once this deploys, during RTH (NOPE is an intraday-only metric, empty overnight/weekends):** pull `GET /api/market/spx/desk` (or ask Largo "what's NOPE on SPY/a liquid ticker right now") and confirm `nope_net_delta`/`net_delta` is a real, non-zero number whose sign matches the live `call_delta`/`put_delta` skew (check the raw UW response directly if available) rather than a suspicious exact `0` on a ticker with clearly directional flow. Also spot-check a genuinely flow-quiet ticker to confirm `net_delta` can still legitimately read near zero there (a real balanced read, not distinguishable from the old bug by magnitude alone — the real test is whether a SKEWED ticker now shows a skewed number).
+
+---
+
+## WATCH LIST — 2026-10-08 Ask Largo swing play-brief roll history could resolve to an unrelated ticker's position on a banger/swing id collision — deploy pending validation
+
+**What was fixed:** `loadRollHistory`/`resolveRootPositionId` (`play-brief-context.ts`) resolved a reviewed play's ledger row with a bare `fetchSwingPositionById(positionId)` — a flat numeric-id lookup into `swing_positions`, with no check that the row found actually belongs to the ticker under review. For a BANGER-origin SWING-lane play, that `positionId` is really a `banger_positions.id` (`banger-lane-merge.ts` deliberately reuses it so the row survives into the shared `${horizon}:${ticker}:${id}` shape every lane uses) — `banger_positions` and `swing_positions` are separate, independently-incrementing id sequences that CAN collide on a shared numeric value. Not yet live-triggered (confirmed 2026-10-08: `swing_positions`' native sequence tops out around id 50 while `banger_positions` is already past 1550, so the ranges don't currently overlap), but a genuine identity-collision defect with no guard against ever firing — exactly the risk this same file's `loadOpenBook()` already treats as a real bug for the book-context merge (its own comment: "a banger row's own id must NOT be stamped as positionId"), just never extended to this second call site. A real collision would surface someone else's real strike/expiry/P&L as this play's own prior roll leg — a direct Largo product-contract IDENTITY violation. Fix: both functions now require the fetched row's `ticker` to match the reviewed play's own ticker before trusting it. Full write-up: `docs/audit/findings-staging/2026-10-08-swing-roll-history-banger-id-collision.md`.
+
+**Specific thing to check once this deploys:** this fix is defensive against a collision that hasn't happened yet, so there's no single live symptom to re-check post-deploy the way the other entries here have. Instead: (1) spot-check a handful of real rolled positions' play-briefs (any ticker with `rollCount > 0` in its brief, or cross-reference `GET /api/market/swing/record`'s chains with `legs.length > 1`) and confirm the roll-history disclosure still cites the CORRECT ticker's own prior leg(s), unchanged from before this fix — this guards the happy path, which the fix's own second test already covers but is worth a live sanity check too. (2) As the closed/open position count keeps growing over the coming weeks, periodically re-check whether `swing_positions`' native id range has grown anywhere near `banger_positions`' current range (`GET /api/market/swing/record` vs `GET /api/market/nighthawk/horizons?view=swings`'s banger-origin `positionId`s) — if they ever do start overlapping, this fix is exactly what prevents it from becoming a visible bug, so confirming the ranges stay apart (or that a brief stays correct if they don't) is the real validation here.
+
+---
+
+## WATCH LIST — 2026-10-08 Ask Largo swing WATCH brief duplicated the gate-block reason text across "Entry" and "Trade manager read" — deploy pending validation
+
+**What was fixed:** `watchEntrySection` ("Entry" section, `play-brief.ts`) and `watchGateCoaching` ("Trade manager read" section, `play-brief-narrative-coaching.ts`) both independently rendered the FULL `code: reason` gate-block list, unconditionally, for every WATCH-bucket play — so a gated candidate carried the identical sentence twice, three lines apart. Live-confirmed on `GET /api/market/swing/play-brief?playId=SWING:AMD&ticker=AMD&status=WATCH` (2026-10-08, ~00:25 ET): both sections read "...entry_window_expired: This setup triggered, but its entry window already lapsed — the thesis wasn't rejected, the clean-fill opportunity closed." verbatim. Fix: converged on ONE full-text home (`watchGateCoaching`/"Trade manager read") and converted both "Entry" and the pre-existing "Watch levels" pointer to count+pointer references at it. Full write-up: `docs/audit/findings-staging/2026-10-08-swing-watch-gate-block-entry-vs-trade-manager-read-dedup.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any real WATCH-bucket candidate with at least one active commit-gate block (e.g. `g_s4_regime`, `g_s6_confluence`, `g_s12_halt_feed_stale`, or an entry-window-expired "moot" gate) and confirm the "Entry" section now reads a short pointer ("Gates blocking entry: N gate(s) — see Trade manager read below." or the "Also gate-blocked (moot — ...)" variant) while the full `code: reason` text (plus any `unlock_et` hint, if ever populated) appears exactly once, in "Trade manager read." Also re-check the "Watch levels" section's own pointer now reads "see Trade manager read above" rather than "see Entry section above."
+
+---
+
+## WATCH LIST — 2026-10-08 `withServerCache`'s fast lane served a stale hit of unbounded age (`/api/market/spx/play` measured ~27min stale) — deploy pending validation
+
+**What was fixed:** `withServerCache` (`server-cache.ts`) had three `return hit.value` sites with no staleness ceiling at all — the fast-lane block (`staleWhileRevalidate:false` callers, e.g. `/api/market/spx/play`'s `getSpxPlayState`), the "already inflight" cold-path branch, and the cold-start branch's final fallback — unlike the SWR branch a few lines away, which has always enforced `MAX_STALE_AGE_MS` (10 minutes). Live-confirmed 2026-10-08: `GET /api/market/spx/play` served `assessed:true` payloads with `as_of` up to ~27 minutes stale and inconsistent across replicas/polls, while the sibling `GET /api/market/spx/desk` (same underlying desk snapshot, a route that does not use `staleWhileRevalidate:false`) stayed current throughout the identical polling window. Fix: added the same `MAX_STALE_AGE_MS` ceiling (configurable via a new test-only `maxStaleAgeMs` opt) to all three sites — past the ceiling, each now falls through to the existing bounded `maxBlockMs`-raced rebuild/fallback logic instead of serving the ancient hit. Full write-up: `docs/audit/findings-staging/2026-10-08-server-cache-unbounded-stale-serve.md`.
+
+**Specific thing to check once this deploys:** poll `GET /api/market/spx/play` repeatedly (every 2-3s) for at least a minute, ideally spanning a period where CloudWatch (`/ecs/blackout-production`) shows `[server-cache] spx-play-read:<date>: cold miss exceeded maxBlockMs` — confirm every `assessed:true` response's `as_of` stays within a few seconds of `GET /api/market/spx/desk`'s own `as_of` polled at the same moment (no multi-minute divergence), and that a response is either genuinely fresh or honestly `degraded:true`/`"Desk warming"`, never a stale-but-confident read. Also worth a quick spot-check on `/api/market/nighthawk/edition` and `/api/admin/health` (other `staleOnInflight`/`maxBlockMs` callers sharing the same primitive) for the same "never silently ancient" property, though those were not independently repro'd stale pre-fix.
+
+---
+
+## WATCH LIST — 2026-10-08 Night Hawk Swings Command Deck showed a confident "+$0.00" on BANGER-origin positions with no live mark yet (`mid = mark ?? entry` fabrication) — deploy pending validation
+
+**What was fixed:** `horizonPlayFromBangerPosition` (`banger-lane-merge.ts`) set `contract.mid = mark ?? entry` — the exact SEV-1 pattern FINDINGS 2026-08-06 already found and fixed in this file's sibling, `live-plays.ts`'s `contractFromRow` ("NEVER substitute entry for an absent mark — a fabricated mark is worse than a missing one"), but that fix never touched this file. Live-confirmed 2026-10-08 via `GET /api/market/nighthawk/horizons?view=swings`: every BANGER-origin MANAGING/SCALING_OUT row with no live mark sync (CIEG, APPX, FUBO, CRNC, and the overwhelming majority of the committed Swing book) carried `contract.mid === entry_premium` exactly, `markAsOf: null`. Downstream, `markDollarPnl` (`terminal-display.ts`) computed `mark - entry = 0` (not `null`), so `TradeSummaryHero`'s primary "Current" P&L tile rendered a confident "+$0.00" instead of the honest "—" its own null-mark fallback already provides for every non-banger-origin row. Ask Largo's play-brief narrative already correctly says "Mark: unknown" via a separate `markIsSync`/`markAsOf==null` check, which is why this was invisible there — only the raw numeric field was fabricated. Fix: `mid = mark` (no fallback). Full write-up: `docs/audit/findings-staging/2026-10-08-banger-lane-mark-fabrication.md`.
+
+**Specific thing to check once this deploys:** open `/nighthawk` → Swings → select any BANGER-origin MANAGING position that has never had a live mark sync (check `markAsOf`/`markIsSync` via the API, or look for a position whose entry premium is a round, illiquid-looking number like the $0.30/$0.33/$0.11 cluster) and confirm the Trade Summary Hero's "Current" tile shows "—" (unknown), not "+$0.00". Cross-check the SAME position's Ask Largo play-brief Position section still correctly says "Mark: unknown" (unchanged — this fix only affects the raw numeric field other consumers read directly). Also confirm a position that DOES have a real live mark (non-banger-origin, or a banger row that has synced at least once) still shows its real dollar P&L unchanged.
+
+---
+
+## WATCH LIST — 2026-10-08 Ask Largo swing play-brief "Data caveat" bullet doubled its own trailing period on a closed-market read — deploy pending validation
+
+**What was fixed:** `dataHonestyCoaching` (`play-brief-narrative-coaching.ts`) builds its "Data caveat" bullet by joining a list of staleness warnings and unconditionally appending its own closing `". Treat levels as indicative until refresh."`. The same-day #5654 fix (below in this file) added the closed-market note as the LAST warning in that list, and that note's own text (`market-session-disclosure.ts`) already ends in a period — so the two periods collided into a literal `".."`. Live-confirmed verbatim on `GET /api/market/swing/play-brief?playId=SWING:MU&ticker=MU` (2026-10-07 22:17 ET, market CLOSED): "...however fresh the compute looks.. Treat levels as indicative until refresh." Fix: strip any warning's own trailing period(s) before joining, so only the function's own closing sentence adds one. Full write-up: `docs/audit/findings-staging/2026-10-08-swing-data-caveat-double-period.md`.
+
+**Specific thing to check once this deploys:** pull `GET /api/market/swing/play-brief` for any real swing candidate/position during a CLOSED market (evening/weekend self-warm, the routine case) and confirm the "Trade manager read" narrative's "Data caveat" bullet reads as one clean sentence ending in a single period before "Treat levels as indicative until refresh." — no `".. "` anywhere in the bullet, on both the structured `envelope.sections` body and the rendered `markdown` field.
+
+---
+
 ## WATCH LIST — 2026-10-08 Ask Largo swing play-brief told a pre-entry WATCH candidate to "size down" and wait for its "next trim rail" — positions that don't exist yet — deploy pending validation
 
 **What was fixed:** `crossDeskCoaching`'s "structure" conflict resolution (`play-brief-narrative-coaching.ts`) unconditionally rendered "watch for it to flip back before your next trim rail — until then, size down" whenever Vector's gamma-regime read conflicted with the swing's thesis — language that presupposes an existing, sized position with an armed trim ladder. `crossDeskCoaching` runs for the WATCH bucket too (`collectCoachingBullets` only short-circuits `"closed"`), so a pre-entry candidate with no position yet got told to manage one. Live-confirmed on `GET /api/market/swing/play-brief?playId=SWING:NET&ticker=NET&status=WATCH` (2026-10-07 ~21:08 ET): NET was still gated behind two unresolved entry gates (`g_s12_halt_feed_stale`, `g_s6_confluence`, `positionId: null`), yet its "Cross-desk friction" bullet said "...until then, size down." Full write-up: `docs/audit/findings-staging/2026-10-08-swing-crossdesk-watch-trim-language.md`.
@@ -152,6 +843,100 @@ NOT resolve the tail latency, and a direct benchmark shows its root-cause theory
   `__test_vannaPerShare`/`__test_charmPerShare` looped 11,500× with `process.hrtime.bigint()` timing,
   spot=6700, strikes/IV/expiry varied across the loop — reproducible by any future session in under a
   minute via `npx tsx` against the real exported test hooks, no fixture file needed.
+
+**RE-MEASURED 2026-10-08 ~06:00-07:52 UTC (coordinator cycle — SPX Slayer lane was asked to
+root-cause a SEPARATE-looking symptom, `/api/market/spx/desk` spiking ~40-44s on a cold-cache hit;
+this is the SAME open item, not a new bug, and this pass found the concrete TRIGGER #5650 did not
+have — the downstream contention mechanism is still the same open hypothesis):**
+- **First ruled out every boot/cron explanation specific to the 0DTE board** (the thing the prior
+  coordinator cycle *had* just fixed, PR #5678): confirmed the running ECS image
+  (`blackout-web:8303ee76efaf28dd792c2b0be53bbf100cbc7507`, task def `blackout-production-web:1862`,
+  registered 07:27:23 UTC) is byte-identical to the `main` commit carrying #5678/#5666/#5065/#5061 —
+  so those four fixes are genuinely live, not stale. Yet `AWS/ApplicationELB` `TargetResponseTime`
+  Max still spiked to 42-44s repeatedly through the morning (06:23, 06:33, 06:39, 06:42, 06:53, 07:00,
+  07:10, 07:18, 07:23, **and 07:52 — on an already-8/8-stable fleet with zero task churn in flight**),
+  always with p50 under 0.5s (tail latency, not fleet capacity) and ECS CPU 1-min averages staying
+  low (2-8% avg, 20-55% max) — same signature #5650 already established for the meridian-warm/
+  zerodte-warm case. Cross-checked every candidate boot-triggered GEX scan directly against ECS
+  service events: the bursts of `[polygon-gex] full-chain escalation ADOPTED` lines that time-align
+  with these spikes hit MULTIPLE different log streams simultaneously (five ECS tasks aged 23m, 17m,
+  12m, 6m and one about to drain, all firing the same ~30-ticker sequence within a 20s window at
+  07:50:08-07:50:27) — ages too varied for a per-task boot-warm event, which rules #5678's own call
+  site back out as the current cause (it is fixed and working).
+- **Ruled out every EventBridge-scheduled cron as the trigger.** Pulled the full deployed rule set
+  (`events.list_rules`, not `cron-registry.ts`'s mirror, per this file's own standing DST-audit
+  caution): every rule touching GEX/Thermal/Vector (`heatmap-warm`, `gex-alerts`, `desk-warm`,
+  `vector-full-state-snapshot`, `vector-walls-warm`, `vector-dark-pool-warm`, `vector-universe-snapshot`,
+  `thermal-discord`) is windowed to `11-21 ? * MON-FRI` (≈7am-5pm ET) — none can fire at 06:xx/07:xx
+  UTC (≈2-3am ET) at all. The only unconditional-schedule crons (`cron-staleness-watchdog`,
+  `platform-warm`, both `*/5 * * * ? *` 24/7) were read end-to-end: both correctly gate their GEX-
+  relevant work behind `isEtCashRth()`/`isEtExtendedWarmHours()` (confirmed in `admin-cron-health.ts`'s
+  `inMarketHoursEt`/`market_hours_stale` computation and `rth-warm-leader.ts`/
+  `vector-bead-recorder-leader.ts`'s own tick gates) — none of them can explain a 3am ET fan-out
+  either. `dispatchCronWarm`'s only ungated caller, `/api/admin/cron/run`, requires live admin auth
+  per-call and was not the source here (no matching request evidence).
+- **Found the actual trigger: `GET /api/market/vector/universe`'s cache-miss inline rebuild — a cost
+  lever the route's own code already names.** `src/app/api/market/vector/universe/route.ts`:
+  `loadVectorUniverseSnapshot()` is a bare Redis read with no fallback; when it returns `null` (the
+  normal state at 3am ET, since every Vector warm cron above is itself window-gated to 7am-5pm ET)
+  the route falls through to `refreshVectorUniverseSnapshot()` — the route's own comment: *"force is
+  a 21-ticker heatmap fan-out per request — a loopable cost lever if any authorized member can pull
+  it... with an inline rebuild only on a genuine cache miss"* — i.e. this fires for ANY authorized
+  premium/admin caller, not just `force=1`+cron, on exactly the condition that is guaranteed true
+  outside the warm window. `refreshVectorUniverseSnapshot` → `buildVectorUniverseSnapshot` calls
+  `fetchGexHeatmap(ticker)` once per ticker in the shared universe (static allowlist ∪ ≤100 dynamic
+  Vector-tracked names — the same universe `heatmap-warm` warms), which is exactly the ticker set
+  seen in every burst: bank/industrial presets (JPM, WFC, BAC, GE, NOC, MMM, RTX, PEP, DAL, COF, GM,
+  PNC, USB, TFC, SCHW, MS, CB, BNY, PLD, TRV, FAST, NFLX, DPZ, HDB, IBN, MRSH, PGR) plus dynamic/swing
+  names (BRZE, CAPR, PGNY, EXTR, BKSY, STXL, …). Confirmed this is driven by real authenticated HTTP
+  traffic, not an internal job: `[clerk-webhook] Event: user.created ... claude-audit-temp+ip5h5@…`
+  fired at **07:50:02.990**, that temp user was deleted at **07:50:29.036**, and the GEX-escalation
+  burst on five ECS tasks ran **07:50:08-07:50:27** — inside that exact session window, to the
+  second. Same pattern at the 07:17 burst (`claude-audit-temp+gaupj@…`, created 07:17:05.76, one
+  second before the first escalation line at 07:17:06.775). `claude-audit-temp+<id>@…` is this
+  toolkit's own standard temp-Clerk-user naming convention (`scripts/audit/lib/clerk-audit-user.mjs`)
+  — i.e. this is coordinator/audit-session traffic, consistent with (though not individually
+  attributed to) the standing 5-engine monitor's own per-cycle instruction to check
+  `/api/market/vector/universe` "if time permits," run by sibling hourly-offset sessions around the
+  clock, including hours Vector's own warm crons are intentionally idle.
+- **The downstream contention mechanism — why this makes an UNRELATED `/api/market/spx/desk` cold
+  rebuild on the SAME replica pay ~40s instead of the few seconds `withServerCache`'s own
+  `maxBlockMs` races are designed to cap it at — is still #5650's open, unconfirmed hypothesis, now
+  with one more supporting (not conclusive) data point.** Checked the live ECS task definition
+  (`blackout-production-web:1862`) directly: `UV_THREADPOOL_SIZE` is **not set** anywhere in its
+  container env (only `NODE_OPTIONS=--max-old-space-size=2560`), so it defaults to Node's built-in
+  **4**. `polygon-rate-limiter.ts`'s own `MAX_CONCURRENCY` is 48 by design ("Polygon Advanced is
+  effectively unlimited... raised 40 → 150 to let the parallelizable heavy paths... drain faster") —
+  i.e. the app is deliberately built to fan out up to 48 concurrent outbound HTTPS calls per
+  replica, all of which still have to share libuv's 4-thread pool for DNS resolution and gzip/brotli
+  inflate of every response body. A ~30-100-ticker universe rebuild firing that many concurrent
+  full-chain fetches at once is a plausible way to starve that 4-thread pool long enough to stall an
+  unrelated request's own DNS/gzip work on the same replica for tens of seconds, invisible to both
+  the JS event loop and to 1-minute-averaged ECS CPU% — but this is the SAME unconfirmed hypothesis
+  #5650 already named, not newly proven here; no profiler or direct libuv-queue-depth measurement was
+  taken this pass either.
+- **No fix shipped this pass, intentionally.** Per the standing caution two prior SPX-desk-specific
+  attempts (#5061, #5065) already demonstrate — do not guess a fix without a confirmed root cause.
+  The TRIGGER is now confirmed; the CONTENTION MECHANISM is not. Two concrete, low-risk next steps
+  for whichever session re-opens this, in order of cost:
+  1. **Cheap experiment, no code change**: bump `UV_THREADPOOL_SIZE` on the ECS task definition (e.g.
+     16 or 32) and re-measure ALB `TargetResponseTime` p99/Max during/after the next
+     `/api/market/vector/universe` cold-cache hit outside Vector's warm window — if the libuv-
+     contention hypothesis is right, the spike magnitude should drop sharply; if it doesn't, that
+     disproves it the same way #5650's benchmark disproved #5625, cheaply and reversibly.
+  2. **Product/perf decision, needs its own scoped PR, not guessed here**: `/api/market/vector/
+     universe`'s inline-rebuild-on-cache-miss is a real, self-documented cost lever reachable by any
+     authorized premium member or audit session outside the warm window — consider gating it the
+     same way other expensive cold-build fallbacks in this codebase already are (serve a "warming"
+     placeholder + background-refresh instead of inline-blocking the caller on a ~30-100-ticker
+     fan-out), independent of whatever the libuv experiment in (1) finds.
+  3. **Process note for the standing audit mandate itself**: the 5-engine monitor's own per-cycle
+     instruction to check `/api/market/vector/universe` "if time permits" is, on this evidence, a
+     repeat trigger of the exact cost lever named in (2) when run outside Vector's 7am-5pm ET warm
+     window (which these hourly-offset cycles do, by design, around the clock) — worth the
+     coordinator's attention independent of whether (1)/(2) ship, since the audit mandate causing the
+     outage it exists to catch is the same shape of problem the UW-rate-limiter incident (2026-09-17,
+     this file's Environment-realities section) already documents for a different provider.
 
 ---
 
@@ -6724,8 +7509,103 @@ this file documents).
 - **What changed:** added `SMCX`/`MULL`/`AVGX` to the existing `semis` bucket (AVGX proactive — same wrapper shape on AVGO, not yet live in the book) and `AMZU` to the existing `megatech` bucket (also proactive, on AMZN). Added a new `corning: ["GLW", "GLWG"]` own-pair bucket (GLW has no existing themed peer here, so it follows the established roblox/gamestop/sofi precedent rather than an unrelated theme).
 - **RTH check:** once deployed, pull `GET /api/market/swing/play-brief?playId=SWING:GLW&ticker=GLW` (or `SWING:SMCI`) and confirm the Book-context section's concentration evidence now names the paired leveraged wrapper (GLWG / SMCX) as a same-theme same-direction position, not "no book overlap" — the live GLW+GLWG and SMCI+SMCX pairs were both still open in `MANAGING` at the time this was written, so this should be directly checkable the next time either play-brief is pulled post-deploy.
 
+### 366. Confirmed-404 Polygon ticker-detail lookups (WBS, SOND) were never cached — retried on every single Meridian earnings-lane build, forever — fix/meridian-sic-404-cache — 2026-10-08
+
+- **What was broken:** `classifyOne` (`meridian-sector-classify.ts`) returned bare `null` for every upstream failure shape alike, so `withServerCache`'s "don't cache a thrown loader" guard (deliberately built to protect against freezing a *transient* blip into a week of "unclassified") also swallowed a *confirmed, repeated, cross-provider* `HTTP 404` from `/v3/reference/tickers/{t}` — live-verified against both Polygon/Massive providers that WBS and SOND (two real, actively-traded tickers with real price data, just missing a reference-detail record) 404 on every call, 426 repeat hits across 7 days of CloudWatch logs, each one a wasted call against the shared, rate-limited Polygon budget that was never going to succeed.
+- **What changed:** `fetchPolygonTickerDetails` now threads an optional `onFailure` reason callback (additive, existing call sites unaffected). `classifyOne` captures it and, when the reason is exactly `"HTTP 404"`, returns the same `{majorGroup:null,...}` "unclassifiable" shape a 200-with-no-`sic_code` response already gets — a real, cacheable classification stored for the existing 7-day TTL — rather than `null` (uncached, retried forever). Every other failure reason (5xx, network error, circuit-breaker-open) is untouched and still retries next build.
+- **RTH check:** once deployed, pull a few hours of `/ecs/blackout-production` CloudWatch logs filtered on `"tickers/WBS"` or `"tickers/SOND"` and confirm the 404 log line now appears at most once per 7-day TTL window per ticker, not repeating every few minutes. Also confirm via `GET` on a Meridian earnings-lane page/API that includes either ticker that nothing regressed — the ticker should simply join no sector cohort, exactly as before.
+
 ### 365. Cortex `darkpool-confluence` evidence stamped the whole Vector state's fresh `asOf` instead of the dark-pool cache's own fetchedAt — permanently defeated the source's own staleness decay/self-exclusion at commit time — fix/cortex-darkpool-confluence-asof-leak — 2026-10-08
 
 - **What was broken:** tracing #357's (2026-10-06) swing-brief dark-pool staleness fix for blast radius beyond the narrative layer found `src/lib/nighthawk/cortex/fetch.ts`'s `fetchCortexInputs()` — the shared Cortex evidence assembler for BOTH 0DTE's and Swing's commit-time gate (`vectorHorizonForCortexCommit`) — stamping `darkPool.asOf` from `vector.asOf` (the whole `VectorFullState`'s fresh compute timestamp) rather than `vector.darkPoolAsOf` (that one field's own looser ~25min-TTL/10min-cadence fetchedAt, the exact field #357 added for this purpose). `compose.ts`'s evidence weighting is a real exponential half-life decay keyed off this `asOf` (`cortexDecayFactor`, 60min half-life for `darkpool-confluence`), and the SAME `asOf` also gates that source's own staleness self-exclusion (`ageSec > halfLifeSec * ABSENT_AFTER_HALF_LIVES`). With the mis-stamped fresh `asOf`, computed age was always ~0 regardless of how old the underlying dark-pool read actually was — silently over-weighting the confluence bonus on stale reads and permanently disabling the source's own staleness check.
 - **What changed:** `fetch.ts` now stamps `darkPool.asOf` from `vector.darkPoolAsOf` (converted to ISO) when known, falling back to `vector.asOf` only when `darkPoolAsOf` is 0/unset — same "unknown never reads as stale" discipline `vector-absent-sections.ts` already applies to this identical field. No change to `compose.ts`'s decay math or `darkpool-confluence.ts`'s own logic, both already correct on a mis-wired input.
 - **RTH check:** once deployed, during RTH pull a Cortex read for a ticker whose Vector state was just recomputed (fresh `vector.asOf`) but whose dark-pool cache entry is several minutes old (checkable via `GET /api/market/vector/universe` or a direct Vector full-state read showing `darkPoolAsOf` lagging `asOf`) and confirm the `darkpool-confluence` evidence item's effective weight in the Cortex verdict reflects real decay proportional to that lag — not the ~undiscounted weight a same-instant read would carry. Also worth checking that a sufficiently stale dark-pool cache entry (well past the 60min half-life × `ABSENT_AFTER_HALF_LIVES`) can now actually be excluded as absent, where before this fix it structurally could never be.
+
+### 367. `mergePulseIntoDesk` transported pulse's own null/stale derived fields (`spx_change_pct`, `vix_change_pct`, `above_vwap`) instead of recomputing them off the merged desk — fix/spx-pulse-change-pct-fallback — 2026-10-08
+
+- **What was broken:** live `GET /api/market/spx/merged` off-hours (03:36 UTC) showed internally-inconsistent numbers: `price` 7801.77 genuinely above `vwap` 7790.74, yet `above_vwap: false`; `price`/`prior_close` (7818.93) and `vix` (15.08) all real, yet `spx_change_pct`/`vix_change_pct` both `null` — while the Legacy edition's recap text, built from the same underlying numbers at the same instant, correctly read "SPX 7801.77 (-0.22%) ... VIX 15.08 (+0.5%)". `mergePulseIntoDesk` served these three fields straight from `pulse.*` (which computes them against pulse's OWN often-null off-hours vwap/vix/prior-close anchor) instead of falling back to `base.*` the way `vix` itself (and `above_gamma_flip`, same function) already correctly do.
+- **What changed:** `spx_change_pct`/`vix_change_pct` now fall back to `base.spx_change_pct`/`base.vix_change_pct` whenever pulse's own anchor was unavailable (the latter sharing the exact condition that already gates `vix`'s own fallback, so the two can never disagree about which source won); `above_vwap` is now recomputed from the already-resolved merged `price`/`vwap` rather than transported from pulse's own flag.
+- **RTH check:** the live symptom is specific to off-hours/extended-session reads (pulse's fast lane has no live vwap/vix/prior-close basis then) — confirm it's now fixed with an OFF-HOURS or PRE-MARKET read of `/api/market/spx/merged` (pre-open tomorrow is a good window): `spx_change_pct`/`vix_change_pct` should show a real, non-null percentage whenever `price`+`prior_close` (or `vix`) are both real in the same payload, and `above_vwap` should agree with `price >= vwap` using the SAME `price`/`vwap` the payload reports. Also spot-check the live SPX Slayer header (desktop + iOS) during that same pre-market window for a colored (non-neutral) day-change % — it was previously always neutral "—" off-hours regardless of the real direction.
+
+---
+
+### 366. MTSI (MACOM Technology Solutions) was unmapped in the semis sector-map — a real 7-name same-direction concentration was invisible to its own Book Context — fix/mtsi-semis-sector-map — 2026-10-08
+
+- **What was broken:** Ask Largo standing-mandate deep-dive on a fresh batch of live committed-book tickers not previously audited this cycle. `GET /api/market/swing/play-brief?playId=SWING:MTSI&ticker=MTSI` (MTSI, LONG, COMMIT/MANAGING, Breakout continuation) rendered NO "Book context" section at all, while the SAME live sweep's `GET /api/market/swing/play-brief?playId=SWING:SMCI&ticker=SMCI` correctly reported 5 same-direction semis positions (INTC/SMCX/MULL/AVGX/MRVL). The live committed book (`GET /api/market/nighthawk/horizons?view=swings`) holds MTSI concurrently with all of those names — a real 7-name same-direction semis concentration — invisible only on MTSI's own brief. Same gap shape as entries #363/#364 above (ALAB/CRDO/KLAC, SMCX/MULL/AVGX, GLW/GLWG, ASST): `src/lib/portfolio/sector-map.ts`'s `semis` array simply hadn't caught up to this name yet. MTSI's identity was confirmed via Polygon reference (`sic_code: "3674"`, "SEMICONDUCTORS & RELATED DEVICES") before touching the map, not guessed from the symbol — and the SAME live play-brief's own independently-sourced "Peers" line already named LRCX and KLAC, both already in this array.
+- **What changed:** added `"MTSI"` to the existing `semis` array, following the file's own established dated-comment convention.
+- **RTH check:** once deployed, pull `GET /api/market/swing/play-brief?playId=SWING:MTSI&ticker=MTSI` (as long as MTSI is still committed in the live book alongside at least one other semis name) and confirm the "Book context" section now reports the real same-direction semis concentration, not an absent section.
+
+### 368. RESEARCH-section swing plays silently dropped real, live commit-gate evidence (G-S12/G-S4/G-S14) from the play-brief Entry section — fix/swing-research-gate-blocks-drop-real-gates — 2026-10-08
+
+- **What was broken:** Ask Largo standing-mandate deep-dive on a fresh RESEARCH-section ticker (AMD, not previously audited this cycle). Live `GET /api/market/swing/play-brief?playId=SWING:AMD&ticker=AMD&status=WATCH&right=P&strike=660` showed "Entry stance — HOLD. **1 gate blocking entry**" / "entry_window_expired" only, while the SAME moment's `GET /api/market/nighthawk/horizons?view=SWING` showed AMD's raw `commitGateBlockedBy` carrying 3 real active gates (G-S12 halt_feed_stale, G-S4 regime_degraded, G-S14 cortex_net_negative) that never reached the brief. Root cause: `swingEntryVerdict`'s RESEARCH-section early return (`entry-verdict.ts`) used only `researchGateBlocks(input)`'s single-reason priority ladder and never consulted `input.commitGateBlockedBy` at all — the identical "real gate evidence silently dropped" defect the function's own WATCH-section `dont_buy` branch was already fixed for (live MU repro, 2026-09-11), just never applied to this earlier RESEARCH branch.
+- **What changed:** the RESEARCH-section branch now additionally resolves `resolveSwingCommitGateBlockedBy`/`commitGateBlocksForVerdict` (the same pair the WATCH-section fix already uses) and APPENDS those real gate blocks after `researchGateBlocks`'s primary reason — never replacing it, so existing single-reason assertions on `gateBlocks[0]` stay valid.
+- **RTH check:** once deployed, pull `GET /api/market/swing/play-brief?playId=SWING:AMD&ticker=AMD&status=WATCH&right=P&strike=660` (or any other RESEARCH-section play whose live horizons row carries real `commitGateBlockedBy` G-S* codes alongside an entry-window-expired/invalidated/persistence-gap primary reason) and confirm the "Entry"/"Trade manager read" sections now name the real structural gates (e.g. "g_s4_regime: Broad-market regime degraded...") in addition to the primary reason, not just the primary reason alone.
+
+### 369. The 5-engine live monitor's own six standing trigger prompts instructed hitting the confirmed-expensive `GET /api/market/vector/universe` 24/7 — the exact repeat-trigger #5680 named as its own next step but had not yet silenced — trigger-prompt fix (no app-code PR), finding staged separately — 2026-10-08
+
+- **What was broken:** PR #5680 (merged earlier the same day) confirmed `/api/market/vector/universe`'s cache-miss inline rebuild as the TRIGGER for the recurring ~40-44s ALB tail-latency spikes, and named — without actioning — a "process note" next step: the standing audit mandate's own per-cycle instruction to hit that endpoint "if time permits" is a repeat cause, since Vector's warm crons that would otherwise keep it cache-hot are gated to ~7am-5pm ET while the mandate's own triggers fire 24/7. This cycle re-measured and reconfirmed the spikes recurring both inside AND well outside that warm window (e.g. 41.45s @ 03:06 UTC / 23:06 ET the prior evening, 55.49s @ 04:46 UTC / 00:46 ET — both many hours before the 7am ET warm window opens), then read all six "5-engine live monitor + Largo mandate" trigger prompts directly (`get_trigger` on `trig_01NNvznmA6eMsH61cLe7yb6z`/`trig_01WGjfwktrCd74jbcKZYG9oD`/`trig_01SWdcjYLEDvQQdcVgJrvePG`/`trig_01W7YgRzu4DCFS7ptwhd8nnm`/`trig_01VMUdKayggjNzGUxDx1WFHx`/`trig_01HARTBLJXB3jx1k246iXkrf`) and found all six byte-identical, still instructing `GET /api/market/vector/universe` on every firing — 6 times/hour, every hour, with no market-hours gate on the trigger's own cron (`* * * * *`-style, hourly offset only).
+- **What changed:** rewrote all six trigger prompts via `update_trigger` — item 4 ("Vector board") now explicitly says **DO NOT call** `/api/market/vector/universe`, names the confirmed #5680 finding as the reason, redirects to a narrow single-ticker `gex-heatmap`/`contract-picks` check only when there's a concrete reason, and tells future firings not to re-attempt the two already-failed speculative SPX-desk fixes (#5061/#5065). Verified all six updates by reading back each `update_trigger` response's `derived_state.prompt`.
+- **This is a config/process fix, not an application-code change** — there is no source file, so no code PR branch/test applies to the fix itself; the staged finding (`docs/audit/findings-staging/2026-10-08-vector-universe-trigger-prompt-source.md`) and this entry are the only artifacts. See that file for the full root-cause write-up and the explicit scope note: this does NOT fix the underlying route's own inline-rebuild-on-cache-miss behavior (#5680's separate, still-open next-step #2) — it only stops the standing monitor's own repeat 24/7 trigger of it.
+- **RTH/next-cycle check:** confirm via `get_trigger` on the six IDs above that the "DO NOT call" language is still present (a future edit or trigger recreation could silently drop it). Separately, re-pull `AWS/ApplicationELB` `TargetResponseTime` Max over the following 24-48h and check whether the ~40-44s spike FREQUENCY drops now that this specific 6×/hour self-inflicted source is silenced — a reduced-but-nonzero rate would point at other callers (real member traffic, other tooling) rather than this mandate; a rate unchanged would mean this was never the dominant source and the downstream contention mechanism needs attention on its own merits regardless.
+
+### 371. `reliableMarkFromSnapshot`'s 10x backstop-quote divergence guard missed a thin one-lot ask, fabricating a +409.1% Swing P&L and a real TAKE_PARTIAL/SCALING_OUT trade-management flip live during RTH — fix/banger-quote-thin-ask-divergence — 2026-10-08
+
+- **What was broken:** standing Ask Largo deep-dive, live repro on CRI (`O:CRI261016C00035000`, committed Swing/Banger position `SWING:CRI:1510`). The provider's bid=0/one-lot-ask quote (`bid:0, ask:5.60, ask_size:1`) produced a $2.80 mid — only 5.09x the contract's real last trade ($0.55, from 2 days earlier since nothing had traded above it today) — comfortably under `reliableMarkFromSnapshot`'s existing 10x divergence bar, so it was passed through as "reliable." An independent Black-Scholes check from the snapshot's own inputs priced the contract at ~$0.21, confirming $2.80 was never real. Live consequence: `banger-live-sync` acted on it, permanently ratcheted `peak_premium` to $2.80 (a one-way ratchet), and flipped the position from HOLD to TAKE_PARTIAL/SCALING_OUT — a real Discord trade-alert notification may have fired off this fabricated signal — while the Swing play-brief confidently rendered "Recommended: TRIM... Trim ladder: +100% ✓."
+- **What changed:** added a narrower, ADDITIVE guard — when the ask's own quoted size is `<= THIN_ASK_SIZE_MAX` (1), a tighter `THIN_ASK_DIVERGENCE_MULTIPLE` (3x) applies instead of the general 10x bar. The general 10x bar (well-reasoned for a quote with real size behind it) is untouched; `askSize` is optional, so a caller with no size info (the WS mark stream) is unaffected.
+- **RTH check:** once deployed, confirm CRI's (or any other thin-quoted Banger-origin position's) `peak_premium`/`manageAction` do NOT ratchet further off a bid=0/one-lot-ask quote. Note: the already-corrupted $2.80 peak written for CRI before this fix is NOT retroactively corrected by it (peak tracking has no correction path) — worth a manual look at that specific position's displayed numbers, since they will remain wrong going forward even though no FURTHER corruption should occur.
+
+### 372. Command Deck's Swing "Thesis Monitor" rendered "✓ thesis intact" for Banger-origin positions off the same hardcoded constant #5693 fixed in Ask Largo's play-brief narrative, but in a different consumer — fix/swing-banger-thesis-intact-command-deck — 2026-10-08
+
+- **What was broken:** standing 5-engine live monitor cycle, verifying #5693's fix was holding across the Banger-origin book (78/81 of live committed Swing positions). `GET /api/market/nighthawk/horizons?view=swings` showed every Banger-origin committed row (`regime: "BREAKOUT · BANGER"`) still carrying `thesisLevel: "intact"` regardless of real P&L — including `SWING:CRI:1510` at **-59.1%**, `SWING:GLW:1479` at **-56.1%**, `SWING:NEBX` at **-55.9%**, `SWING:MTSI` at **-55.9%**, `SWING:AI` at **-52.5%**. Tracing the render path (`containers.tsx` → `terminalPlayFromHorizon` → `PlayTerminal.tsx`'s `ThesisPanel`) confirmed this reaches the live Command Deck UI as a literal green "✓ thesis intact" badge — #5693 only patched the Ask Largo play-brief narrative's rendering of the same upstream hardcoded constant (`horizonPlayFromBangerPosition`'s unconditional `thesisLevel: "intact"`); the Command Deck adapter had no equivalent guard.
+- **What changed:** `terminalPlayFromHorizon`'s `thesisBreakResolved` now overrides to `{level: "unknown", note: <kept>}` whenever `src.regime === BANGER_LEDGER_REGIME_LABEL` — the same sentinel check #5693 and `thesisHealthUncalibrated()` already use — so the Command Deck renders the existing honest "• thesis not monitored" state instead of a fabricated "intact". The real mechanical note (e.g. "below the 2× partial and above the hard stop") is preserved; a native (non-Banger) position's real thesis read is untouched (regression test proves both).
+- **RTH check:** once deployed, open the live Command Deck (`/nighthawk`, Swings tab) during RTH and find a Banger-origin position with a material loss (check `signalKinds`/`regime` via the API first, or look for the "BANGER" discovery-origin badge) — its Thesis Monitor panel should read "• thesis not monitored" (amber), never a green "✓ thesis intact", while the mechanical stop/target note still prints beneath it. Also spot-check a native (non-Banger) Swing position in the same session and confirm its real "✓ thesis intact"/"✗ THESIS DEGRADING" read is unchanged.
+
+### 373. `vector-full-state-snapshot`'s cache-warm cron permanently starved every ticker after its first time-budget batch — Ask Largo's swing play-brief silently dropped Vector/ecosystem evidence 100% of the time (13/13 sampled over 3+ hours), including for a real open-capital position — fix/vector-full-state-warm-starvation — 2026-10-08
+
+- **What was broken:** standing Ask Largo deep-dive. `GET /api/market/swing/play-brief` for three fresh tickers (NET/WATCH, INTC/OPEN real position `positionId 50`, BE/CLOSED) all carried identical `unavailableSources` ("ecosystem context"/"Vector state", both "fetch failed"). CloudWatch confirmed the cause on all three and on every other `swing-play-brief` invocation logged over 3+ hours (13/13, 100%): `SwingBriefSourceTimeout: brief source read exceeded 8000ms`. Traced to `vector-full-state-snapshot`'s own cron logs: 13 consecutive runs each logged `written=8` (exactly one `TICKER_CONCURRENCY=2 × 4 horizons` batch) against a 59-62-ticker universe, `elapsed=77220-146306ms` (1.5-3x the 50s `TIME_BUDGET_MS`), `budgetHit=true` every time — because the cron always iterates the SAME fixed order (static allowlist first, then dynamic/open-swing-position names appended) and its budget check only runs between batches, it dies on the same first ~2 static tickers EVERY run, forever, never reaching anything after them. That silently falsified the cron's own stated recovery invariant ("the next run fills whatever this run didn't reach") and reproduced the exact gap this file's own header says was already fixed for HUT (2026-09-26) — INTC, a real OPEN swing position held with member capital, was in the merged ticker list but never reachable.
+- **What changed:** `rotateTickersForWarmPass(tickers, cursor)` (new pure helper, 9 unit tests) rotates the ticker list to start at a persisted Redis cursor instead of always index 0; the cron now reads/advances that cursor each run (fail-open to 0 on a Redis miss) so each run resumes where the previous run's budget cutoff left off. Does NOT touch the actual slow call (`fetchReconstructChain`'s paginated Polygon chain fetch, likely connected to the already-open ALB tail-latency investigation) — only fixes the starvation so every ticker eventually gets a turn instead of some never getting one at all.
+- **RTH check:** once deployed, during RTH pull `GET /api/market/swing/play-brief` for several swing tickers OUTSIDE the first 1-2 static allowlist names (especially any real OPEN position) and confirm `unavailableSources` no longer names "ecosystem context"/"Vector state" on every single pull — some should now show real Vector/GEX evidence in the "Why this setup"/"Book context" sections. Also check CloudWatch for `[cron/vector-full-state-snapshot]` log lines post-deploy: `cursor=` should advance run to run (not reset to 0 every time) and, over several hours, different tickers should show up in the `written=` count's actual coverage rather than the same first 2 every run.
+
+### 374. `counterThesisLine()` only ever checked EMA stack for chart-technical disagreement — missed MACD and market-structure direction, silently dropping real corroborating evidence — fix/swing-counter-thesis-macd-structure — 2026-10-09
+
+- **What was broken:** Ask Largo standing mandate deep-dive on a fresh batch of live committed Swing positions (SRPT/DKNG/CMG/GDDY). GDDY's live brief (`GET /api/market/swing/play-brief?playId=SWING:GDDY:1599&ticker=GDDY`) showed its own "Chart read" bullet correctly saying `chart reads bearish (conflicts with swing direction)` (MACD bearish + CHOCH-down structure, EMA stack merely "mixed"), yet the SAME response's "Counter-thesis" bullet two lines below said `"a single, uncorroborated signal"` — the chart disagreement never counted toward corroboration, because `counterThesisLine()` only ever read `emaStack`, never `macd` or `structure.direction`, the other two votes `technicalsBias()` (the function that produced the "conflicts with swing direction" verdict) also counts.
+- **What changed:** added MACD and market-structure-direction as two more independent counter-thesis reasons in `counterThesisLine()` (`src/lib/swing/play-brief-narrative.ts`), gated by the same `vectorSnapshotStale()` freshness check the existing EMA-stack reason already uses.
+- **RTH check:** once deployed, re-pull `GET /api/market/swing/play-brief?playId=SWING:GDDY:1599&ticker=GDDY&status=COMMIT` (or any other live position whose "Chart read" bullet says "conflicts with swing direction" off MACD/structure alone, EMA stack not "down"/"up") and confirm the "Counter-thesis" bullet now names "bear MACD on chart" / "bearish structure break (CHOCH down)" (or the bull-side mirror) and reports the correct, higher corroboration count instead of silently matching the chart bullet to nothing.
+
+### 375. BANGER-origin committed Swing positions recomputed `subLane` from the LIVE dte every tick instead of freezing it at entry, silently dropping the entry-liquidity-bar comparison on final-day positions — fix/banger-sublane-entry-freeze — 2026-10-09
+
+- **What was broken:** Ask Largo standing mandate deep-dive, live sweep of fresh SWING-lane tickers via `GET /api/market/nighthawk/horizons?horizon=SWING`. Six BANGER-origin committed rows all at dte=0 ("closing soon") — XP, PBR, CIEN, SG, PSX, PSKY — served `subLane: undefined`. Traced to `horizonPlayFromBangerPosition` (`banger-lane-merge.ts`) computing `subLane: subLaneForDte(dte)` off **today's live dte** on every read rather than the dte the contract actually had at entry; `banger_positions` has no persisted `sub_lane` column (unlike `swing_positions.sub_lane`, read as-stored and never recomputed by `live-plays.ts`), so an aging position's classification drifts (STANDARD→TACTICAL as dte crosses 7) and then vanishes entirely once dte falls under TACTICAL's own 5-day floor. Confirmed live on a fresh, still-TACTICAL 7DTE position (RGNX) that the feature this breaks is real and working when `subLane` resolves: the play-brief's execution-quality line read *"Spread: 200.0% ($0.00/$0.15) — this sub-lane's own entry liquidity bar was 18%, so current execution is now wider than it."* — exactly the comparison that silently disappears once `subLane` goes `undefined`.
+- **What changed:** `horizonPlayFromBangerPosition` now derives `subLane` from `calendarDte(row.session_date, row.contract_expiry)` — `session_date` is the position's own first-write-wins-pinned commit-day column — instead of from today's live `dte`, falling back to the live `dte` only if `session_date` is unparseable. `horizonPlayFromBangerWatch` (pre-entry discovery) was untouched — its dte already IS the entry dte by construction.
+- **RTH check:** once deployed, during RTH pull `GET /api/market/nighthawk/horizons?horizon=SWING` and find a BANGER-origin committed row that has aged to dte < 5 ("closing soon" in its `reason` string) — confirm it now reports a real `subLane` (`TACTICAL` or `STANDARD`, whichever it was entered under), not `undefined`. Cross-check the same ticker's `GET /api/market/swing/play-brief` and confirm the "Position" section's execution-quality line (the "this sub-lane's own entry liquidity bar was N%..." comparison) now renders for that final-day position instead of falling back to a bare "Quote: ..." line with no gate comparison.
+
+### 376. Helix "Flow Anomalies Detected" banner silently never rendered — `roundFloats()` flattened every `detectedAt` into `{}` — fix/helix-anomalies-roundfloats-date — 2026-10-11
+
+- **What was broken:** routine Helix-desk live audit (Sunday market-closed check, real data from Friday 2026-10-09's session). `GET /api/market/anomalies` returned 20 real, fresh anomalies (up to CRITICAL severity — a $6.1M SPXW call print), but every row's `detectedAt` field was a bare `{}` instead of an ISO timestamp. Root cause: `roundFloats()` (the shared response-rounding helper, 160 call sites repo-wide) walked a raw `Date` (node-postgres's native type for a `timestamp`/`timestamptz` column, passed straight through by `anomalies/route.ts` with no `.toISOString()`) into its generic "walk this object's own properties" branch — a `Date` has zero own enumerable properties, so `Object.entries(date)` returned `[]` and the rebuilt value was `{}`. Consequence: `FlowAnomalyBanner.tsx` filters anomalies through `isFlowAnomalyRecent(a.detectedAt)`, which does `new Date(detectedAt).getTime()` — `new Date({}).getTime()` is `NaN`, so EVERY anomaly read as "not recent," the filtered array was always empty, and the banner (`if (anomalies.length === 0) return null`) silently rendered nothing, unconditionally, regardless of how real or fresh the underlying anomaly actually was. A real production alert surface was producing zero visible output with no error anywhere in the chain.
+- **What changed:** added a `Date` passthrough branch to `roundFloats`'s walk (`if (v instanceof Date) return v;`), checked before the generic-object branch — `JSON.stringify`/`NextResponse.json` already correctly serializes a `Date` via `toJSON()` into an ISO string when left untouched. Fixed at the shared helper (not just `anomalies/route.ts`) since all 160 call sites share the identical latent defect for any raw `Date` passed through.
+- **RTH check:** once deployed, during RTH (or any live window with real flow-anomaly activity), pull `GET /api/market/anomalies` and confirm `detectedAt` is a real ISO string on every row, not `{}`. Then open the live site logged in as a member and confirm the "Flow Anomalies Detected" banner actually appears (amber or pulsing red for CRITICAL) when a real anomaly was detected within the last 15 minutes (`FLOW_ANOMALY_RECENCY_MS`) — this banner has very likely never visibly fired in production until this fix, so the first real RTH sighting of it is itself the confirmation.
+
+### 378. Swing "Since it closed" never answered whether a stop-out was confirmed or reversed since the exit — feat/swing-closed-stop-level-since-close — 2026-10-13
+
+- **What was broken:** Ask Largo standing-mandate deep-dive across OPEN/WATCH/CLOSED swing play-briefs (AMD, MSFT, INTC, BE, IREN, GOOG — the first full sweep across all three brief buckets this session). Every real production CLOSED play-brief's "Since it closed" section reported spot vs the gamma flip and vs a live structural (GEX/dark-pool) level, but never the one question that matters most for a stopped-out position: did the underlying keep moving in the stop's direction since the exit (confirming it), or reverse back through the stop level (meaning the exit may have been early)? Live AMD example: entry $611.09, stop/invalidation $595.99, exited -57.1%, and the section only said "Structural support node: put wall 560.00" — leaving the member to manually cross-reference today's spot against the stop level themselves. `play.invalidationUnderlyingPx` (pinned at commit, static, valid post-close) was already read elsewhere in the same brief for a different question (`closedCoaching`'s "cushion at commit" line); the current spot `watchForSection` already resolves a few lines above was never compared against it.
+- **What changed:** added one gated line to `watchForSection`'s closed bucket (`src/lib/swing/play-brief-intel.ts`), firing only when `closedReason` is `stopped`/`stop` and both spot and `invalidationUnderlyingPx` are known — direction-aware reclaim (exit may have been early) vs confirmed (remains through the stop) framing. Additive only; no existing line touched.
+- **RTH check:** live-verified the CONFIRMED branch post-deploy (AMD: "Spot remains through the stop level (**595.99**) — now **594.24**, confirming the exit.") — the RECLAIMED branch (spot back through the stop in the member's favor-of-doubt direction) was only unit-tested, never seen on a real position yet. Once a real stopped-out closed position has its spot reclaim the stop level, confirm the "the exit may have been early" framing renders correctly and reads naturally against that position's real numbers. **CONFIRMED LIVE 2026-10-13 10:50 UTC (market closed, overnight marks):** swept all 5 live stopped-out closed positions (AMD/MSFT/INTC/AMZN/HUT) — AMD/INTC/HUT correctly render the CONFIRMED branch, MSFT now renders the first live RECLAIMED instance ("Spot has since reclaimed the stop level (**520.63**) — now **541.93**, 4.1% back through it; the exit may have been early."), and AMZN (a `target` exit, not `stopped`) correctly omits the section entirely — the bucket-scoping gate holds. Both branches verified against real production data; item closed.
+
+### 377. Night Hawk Legacy's morning-confirm SPX premarket gap silently fell back to `previous_close`, fabricating a flat "0.00%" gap — fix/nighthawk-legacy-spx-premarket-gap-fallback — 2026-10-12
+
+- **What was broken:** standing Night Hawk Legacy live monitor, mid-RTH live-UI inspection via `proxy-browser.cjs` on `/nighthawk?view=legacy`. The macro strip read `SPX gap +0.00 (0.00%)` while the SAME edition's recap text, rendered a few lines above it, read `Gap up 0.27% to 7786.36` — a visible contradiction on one page, and SPX's own live price at the time (+0.59%) made an exact flat gap implausible. Root cause: `fetchSpxPremarket()` (`nighthawk-morning-confirm/route.ts`) falls back to `fetchIndexSnapshots(["I:SPX"])` (`polygon.ts`) when the live WS candle isn't fresh — true for the entire pre-market window the morning-confirm cron runs in (~9:15 ET, before the first SPX index print). `fetchIndexSnapshots`'s own price-resolution chain (`row.value ?? row.session?.close ?? row.session?.previous_close ?? 0`) silently falls all the way to **yesterday's close** pre-market, with no signal to the caller that it isn't live. The route then computes `gapPts = spxPremarket - priorClose`, where `priorClose` is an independently fetched prior-session close — when `spxPremarket` secretly resolves to that same prior close, `gapPts` collapses to exactly `0`, a fabricated flat-market reading. This fabricated value also fed `computePlayVerdict()` as a real, evaluated gap check rather than correctly abstaining, so a play could be recorded as having passed a gap-context check that never actually ran.
+- **What changed:** new pure helper `resolveLiveIndexPrice()` (`src/features/nighthawk/lib/morning-gap-source.ts`) detects the `price === prev_close` collision (both fields are already returned by `fetchIndexSnapshots`) and returns `null` instead — wired only into Legacy's own `fetchSpxPremarket()` REST-fallback branch. `fetchIndexSnapshots` itself and its 9 other call sites (Vector/SPX/Largo/0DTE) are untouched; `computePlayVerdict()` already guarded every `gapPts` read with `!== null`, so this converts a false "gap check passed" into a correct "gap check withheld" with zero new failure modes.
+- **RTH check:** the natural validation window is PRE-MARKET, not RTH — once deployed, watch the next morning-confirm cron run (~9:15 ET) and pull `GET /api/market/nighthawk/edition` or view `/nighthawk?view=legacy` live: the macro strip should now show either a real nonzero `SPX gap` (when a genuine gap exists) or should correctly omit the gap bullet entirely (when no live premarket print is available yet) — never another fabricated `+0.00 (0.00%)` that contradicts the edition's own recap text. Cross-check against the recap's own "Gap up/down X%" prose for consistency.
+
+### 379. Ask Largo swing play-brief had no sentence connecting option P&L magnitude to the underlying's own move when IV/leverage amplify the divergence — fix/swing-iv-leverage-divergence-coaching (#5934) — 2026-10-13
+
+- **What was broken:** Ask Largo standing deep-audit, live repro on OPEN position `SWING:ASTS:53` (2026-10-12): underlying adverse excursion only **-2.6%**, option P&L **-23%**, `IV 75%`, `θ -0.13/day`. Both halves of the comparison were already independently wired (`play.underlyingExcursion`, `play.greeks`) but never joined into one sentence — a member reading "-23%" next to a barely-moved underlying had to infer leverage/IV decay themselves, with real risk of misreading a sharp option loss as a broken thesis the underlying itself never confirmed. Raised as an enhancement idea on #4076 (comment 6130751739); unanswered by Cursor after 7.5+ hours, implemented per the standing NEVER-SIT-IDLE/ownership-mandate precedent.
+- **What changed:** new `ivLeverageDivergenceCoaching(play, bucket)` in `play-brief-narrative-coaching.ts`, OPEN-bucket only, gated on a materiality floor (`|pnlPct| >= 15`) AND a 3x ratio floor against the underlying's own matching-direction move (floored at 1pt to avoid a near-zero-denominator blowup), honest-null on any missing input. No gate/score/exit logic touched.
+- **RTH check:** once ASTS:53 (or any other OPEN swing position) next shows a live P&L move that clears both floors, pull `GET /api/market/swing/play-brief?playId=SWING:<TICKER>:<id>&ticker=<TICKER>` during RTH and confirm the Position/Management section now carries a sentence naming IV/theta as the amplifier (not a thesis break) — distinct from the existing giveback/round-trip line. Also confirm it stays silent on a position whose option and underlying moved roughly in proportion (delta working normally, no special call-out needed). **CONFIRMED LIVE 2026-10-13 09:02 UTC** (market closed, off last RTH marks): `SWING:ASTS:53`'s "Trade manager read" now reads *"Option down more than the stock's own move would suggest — -32.5% on the option vs -4.1% on the underlying; IV 73% · θ -0.12/day — leverage/IV, not a thesis break."* — fires correctly, no RTH wait needed to prove it.
+
+### 380. Ask Largo swing play-brief never flagged a WATCH entry trigger colliding with Vector's own range-fade rail — fix/swing-range-bias-entry-collision-coaching (#5936) — 2026-10-13
+
+- **What was broken:** Ask Largo standing deep-audit, live repro on WATCH candidate `SWING:SNOW` (2026-10-12): a LONG pullback-continuation setup with entry trigger **369.49**, while the same brief's Vector desk read was `POSITION · range — fade extremes toward 350 range mid`, entry zone `buy dips 330 · sell rips 370` — the swing's own entry trigger sat essentially inside Vector's "sell the rip" zone (370, same as the GEX call wall), i.e. the setup wanted to buy almost exactly where Vector's structure read said breakouts get faded in a long-gamma regime. `crossDeskCoaching` only treats Vector as directional when `bias` is `"long"`/`"short"` (correctly silent on `"range"` per the 2026-09-15 fix) — but a range bias *with specific numeric levels* colliding with the swing's own trigger was never checked at all. Raised as an enhancement idea on #4076 (comment 6131711926); unanswered by Cursor after 8.5+ hours, implemented per the same precedent.
+- **What changed:** new `rangeBiasEntryCollisionCoaching(...)` in `play-brief-narrative-coaching.ts`, WATCH-bucket only, fires when Vector's bias is `"range"` (fresh snapshot required) and the swing's `entryTriggerUnderlyingPx` is within 2.5% of the matching-direction wall (call wall for LONG, put wall for SHORT) — deliberately avoids the existing "aligned"/"cross-check" directional framing since a range bias isn't a directional claim. `crossDeskCoaching`'s existing bias logic untouched.
+- **RTH check:** spot-checked live 2026-10-13 (overnight, market closed) on SNOW's own WATCH play-brief — entry trigger 369.49 still sits within 2.5% of the 370.00 call wall, but the bullet correctly did NOT fire because Vector's snapshot is currently stale (~8207s old) and the freshness gate suppresses it on stale data — confirms the gate works, but does NOT yet confirm the bullet actually fires on fresh data. Once Vector data is fresh again at the next RTH open, re-pull SNOW's (or any WATCH candidate matching this shape) play-brief and confirm the new bullet now renders with the "sell-the-rip"/"buy-the-dip" framing naming both the trigger and the wall.
+
+_(Note: this file briefly had two "### 378" entries after a numbering collision with a concurrent lane's entry — renumbered these two to 379/380 on 2026-10-13 to resolve it; no content changed.)_

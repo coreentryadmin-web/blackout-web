@@ -144,21 +144,35 @@ export function composeCortexEvidence(input: CortexInputs): CortexVerdict {
       absent.push(`${source}: no evidence emitted`);
       continue;
     }
+    // Per-source dedup: a source can return several items sharing one asOf/halfLifeSec
+    // (e.g. gex-walls emitting a veto wall AND a regime-style oppose from the same GEX
+    // snapshot) — if that snapshot goes stale, every item decays identically and would
+    // otherwise push the SAME "<source>: evidence stale..." string once per item. The
+    // design is one absence per SOURCE ("this source cannot answer right now"), not per
+    // item — and tiers.ts's CORTEX_THIN_EVIDENCE_MAX_ABSENT reads verdict.absent.length
+    // directly, so a duplicated string would inflate a real tier-discount decision, not
+    // just the display. Found live 2026-10-12 on a real committed IONQ short.
+    const pushedForSource = new Set<string>();
+    const pushAbsentOnce = (msg: string) => {
+      if (pushedForSource.has(msg)) return;
+      pushedForSource.add(msg);
+      absent.push(msg);
+    };
     for (const item of items) {
       if (item.stance === "absent") {
-        absent.push(`${source}: ${item.detail}`);
+        pushAbsentOnce(`${source}: ${item.detail}`);
         continue;
       }
       const asOfMs = Date.parse(item.asOf);
       if (!Number.isFinite(asOfMs)) {
         // Unstamped evidence cannot decay honestly → it cannot participate (§0:
         // the composite is recomputed from live asOf stamps, never from trust).
-        absent.push(`${source}: evidence had no valid asOf stamp`);
+        pushAbsentOnce(`${source}: evidence had no valid asOf stamp`);
         continue;
       }
       const ageSec = Math.max(0, (nowMs - asOfMs) / 1000);
       if (ageSec > item.halfLifeSec * ABSENT_AFTER_HALF_LIVES) {
-        absent.push(`${source}: evidence stale (older than ${ABSENT_AFTER_HALF_LIVES} half-lives) — self-silenced`);
+        pushAbsentOnce(`${source}: evidence stale (older than ${ABSENT_AFTER_HALF_LIVES} half-lives) — self-silenced`);
         continue;
       }
       const effective = round(item.weight * cortexDecayFactor(ageSec, item.halfLifeSec), 3);

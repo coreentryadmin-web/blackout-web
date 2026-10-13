@@ -722,6 +722,24 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   Unlike the merge-base failure above, there is **no loud error to catch this one** — the script
   exits 0 and prints a plausible-looking file. **Run `git fetch --unshallow -q origin` before
   running EITHER date generator, not just before a merge-base check.**
+- **CONCURRENT AGENTS IN THIS SANDBOX SHARE ONE GIT WORKING DIRECTORY — a sibling agent's checkout
+  can silently wipe your uncommitted changes mid-task (confirmed twice, 2026-10-09).** There is one
+  on-disk repo clone per container, not one per agent; two agents dispatched in the same
+  coordinator cycle both operate on it. An investigation agent working a branch
+  (`fix/spx-prior-close-non-rth-label`) had its uncommitted edits disappear and the working tree
+  silently reset to `main` partway through — traced to another concurrently-running agent doing its
+  own `git checkout`/`git reset` on the shared tree, not a crash or a tool error on either side. It
+  happened WHILE a long local test run was executing, so the loss wasn't even visible until the
+  agent went to commit. Recovered that time via a saved patch file + re-applying the two edits that
+  weren't captured in it — not a guaranteed save. **Consequence: don't leave real work
+  uncommitted on a feature branch in this sandbox for long** — commit and push promptly once a
+  change is in a working state, rather than iterating for many tool calls with uncommitted diffs
+  sitting in the tree. If a background agent is handed a fix-and-verify task, prefer landing WIP as
+  a stash or a real commit before running anything multi-minute (a full test suite, a live-poll
+  loop) that leaves a window for a sibling agent's `git` commands to land in between. This is a
+  variant of this section's other "don't trust prior-turn git state" traps, but the cause here is
+  live concurrency, not a container restart — `git status`/`git branch --show-current` can look
+  correct at the start of a turn and still be invalidated by another agent before that turn ends.
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.

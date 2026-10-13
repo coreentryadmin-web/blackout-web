@@ -144,6 +144,80 @@ test("composeSwingPlayBrief: OPEN play with no same-ticker siblings omits the di
   );
 });
 
+// Live repro 2026-10-11 (Ask Largo standing mandate — AMD positionId 51 vs 52). Two
+// independently-committed positions on the same ticker, different archetypes/theses
+// (`commit.ts`'s own idempotency key correctly treats them as separate — see `swingThesisKey`),
+// that resolved to the IDENTICAL contract and filled within a half-cent of each other. Before the
+// fix, `siblingPositionsNote`'s self-test was "entry premium differs from mine by > 0.005" —  a
+// genuine sibling that fills within that half-cent band was wrongly treated as "self" and silently
+// dropped, so a member with two real live positions could see no disclosure at all. The fix prefers
+// an exact `positionId` match (from the CommandDeck `SWING:<TICKER>:<positionId>` row-id
+// convention) as the self-test whenever both sides carry one, which this test pins.
+test("composeSwingPlayBrief: a same-ticker sibling with a near-identical entry premium is still disclosed (positionId, not premium proximity, is the self-test)", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "AMD",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 68.1,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:AMD261016C00605000",
+      strike: 605,
+      expiry: "2026-10-16",
+      right: "C",
+      dte: 5,
+      mid: 15.95,
+      bid: 15.65,
+      ask: 16.25,
+      delta: 0.55,
+      gamma: 0.0114,
+      theta: -1.0217,
+      vega: 0.3356,
+      iv: 0.4145,
+      openInterest: 711,
+    },
+    scoreFloor: 60,
+    reason: "live hold — EVENT_DRIVEN thesis",
+    archetype: "EVENT_DRIVEN",
+    entryPremium: 17.73,
+    livePnlPct: -10.0,
+    liveStatus: "HOLD",
+    committedAt: "2026-10-09T16:05:57.000Z",
+    positionId: 51,
+  };
+  const ctx: SwingPlayBriefContext = {
+    // Entry premium deliberately within $0.005 of the sibling's $17.73 — pins the actual failure
+    // mode (the old self-test treated anything that close as "me").
+    play: fixturePlay({
+      id: "SWING:AMD:52",
+      ticker: "AMD",
+      status: "OPEN",
+      recommendation: "HOLD",
+      archetype: "PULLBACK_CONTINUATION",
+      entry: 17.7301,
+      mark: 15.95,
+      pnlPct: -8.7,
+    }),
+    asOf: "2026-10-11T08:46:58.000Z",
+    sessionDate: "2026-10-11",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(
+    sib,
+    "a genuine sibling position (different positionId) must be disclosed even when its entry " +
+      "premium is within $0.005 of this play's own entry",
+  );
+  assert.match(sib!.body, /605C 2026-10-16/);
+  assert.match(sib!.body, /2 concurrent live position/);
+});
+
 // BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
 // error boundary, in THIS file's own top-level composition instead. `managementSection`'s
 // `ep.trim_levels.map(...)` AND `blendedPnlPct`'s (called from `pnlSection`) `ep.trim_levels.
@@ -389,10 +463,18 @@ test("composeSwingPlayBrief: RESEARCH play narrates its real serving section, no
 // entry-validity deadline to derive `watchEntryExpired`, then discarded the actual date — a member
 // watching a still-live WATCH play had no forward-looking runway to weigh, only the EXPIRED badge
 // once it was already too late. Mirrors the "First flagged" age line directly above it.
+//
+// TEST FIX (2026-10-12, found while adding the sub-24h regression below): this test never set
+// `ctx.readMs`, so `composeSwingPlayBrief` fell through to the real `Date.now()` (play-brief.ts:1348)
+// instead of the fixture's intended "now" (`asOf`). It kept reporting green only because its
+// assertion's regex (`\d+ days?`) is loose enough to match "0 days" too — which is what the real
+// clock, now long past this fixture's 2026-09-15 deadline, actually produced. Pinning `readMs`
+// explicitly makes the test assert what its own name claims: a 5-day-out deadline reads in days.
 test("composeSwingPlayBrief: WATCH play with a live entryDeadline narrates the forward-looking entry window (2026-09-18 gap fix)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ entryDeadline: "2026-09-15T14:00:00.000Z", watchEntryExpired: false }),
     asOf: "2026-09-10T09:00:00.000Z",
+    readMs: Date.parse("2026-09-10T09:00:00.000Z"),
     sessionDate: "2026-09-10",
     scanAsOf: null,
     scanSessionDay: null,
@@ -405,6 +487,31 @@ test("composeSwingPlayBrief: WATCH play with a live entryDeadline narrates the f
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry, "expected Entry section");
   assert.match(entry!.body, /Entry window closes \*\*.+\*\* \(\*\*\d+ days?\*\* left\)/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-12): `Math.ceil(msLeft / 86_400_000)` rounded ANY
+// positive sub-24h remainder up to "1 day" — a deadline 4 hours away read identically to one nearly
+// 2 days away. Live repro: MRVL WATCH brief, fetched 2026-10-12 05:03 ET, `entryDeadline` 2026-10-12
+// 09:15 ET (same calendar day, ~4h12m away) — "Entry window closes ... (1 day left)". Below 24h the
+// line must say hours, not days.
+test("composeSwingPlayBrief: WATCH play with a sub-24h entryDeadline narrates hours left, not a misleading '1 day' (2026-10-12 bug fix, live MRVL repro)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ entryDeadline: "2026-10-12T13:15:00.000Z", watchEntryExpired: false }),
+    asOf: "2026-10-12T09:03:00.000Z",
+    readMs: Date.parse("2026-10-12T09:03:00.000Z"),
+    sessionDate: "2026-10-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry, "expected Entry section");
+  assert.match(entry!.body, /Entry window closes \*\*.+\*\* \(\*\*5 hours\*\* left\)/);
+  assert.doesNotMatch(entry!.body, /Entry window closes.*\(\*\*1 day\*\* left\)/);
 });
 
 test("composeSwingPlayBrief: WATCH play already past its entry deadline omits the forward-looking line (EXPIRED badge owns that case)", () => {
@@ -423,6 +530,46 @@ test("composeSwingPlayBrief: WATCH play already past its entry deadline omits th
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
   assert.doesNotMatch(entry!.body, /Entry window closes/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): the forward-looking line above was gated on
+// `!play.watchEntryExpired` alone — but `watchEntryExpired` is ONLY set true by the calendar-deadline
+// path (entry-enterability.ts's `pastEntryDeadline` check). A play already dead for a DIFFERENT
+// reason (EXTENDED-chase: `setupState === "EXTENDED"` / `entryStatus === "EXTENDED_CHASE"`) leaves
+// `watchEntryExpired` false while still carrying a future `entryDeadline`, so this line rendered
+// "Entry window closes ... (N days left)" directly alongside — in the SAME "Entry" section, a few
+// lines below — the "Also gate-blocked (moot — extended past the valid entry window)" line (which
+// reuses the word "window" for the unrelated price-extension concept) and the brief's own top-level
+// invalidation text ("Extended past the valid entry window — this setup is no longer live."). Live
+// repro: NTAP, 2026-10-08, `setupState: "EXTENDED"`, `entryStatus: "EXTENDED_CHASE"`,
+// `watchEntryExpired: false`, `entryDeadline` ~2 hours in the future — the brief told the member in
+// one breath the entry window had already closed and in the next that it still had a day left.
+// `deadPlayReason` (already imported, already used a few lines below for the gate-block "moot"
+// qualifier) is the authoritative "is this play already dead for ANY reason" check, so gate the
+// forward-looking line on it instead of the narrower `watchEntryExpired` flag.
+test("composeSwingPlayBrief: WATCH play that is EXTENDED (chase risk) omits the forward-looking entry-window line even with a live entryDeadline (2026-10-08 gap fix)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "EXTENDED",
+      entryStatus: "EXTENDED_CHASE",
+      watchEntryExpired: false,
+      entryDeadline: "2026-09-10T13:15:00.000Z",
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.doesNotMatch(entry!.body, /Entry window closes/);
+  // The moot gate-block qualifier (same section) should still name the real reason.
+  assert.match(entry!.body, /extended past the valid entry window/);
 });
 
 test("composeSwingPlayBrief: WATCH play without entryDeadline omits the forward-looking line entirely (never fabricated)", () => {
@@ -481,8 +628,8 @@ test("composeSwingPlayBrief: Entry section reframes gates as moot once the entry
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\):/);
-  assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/, "must not read as an active/clearable blocker");
+  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — entry-validity window expired\) — see Trade manager read below\./);
+  assert.doesNotMatch(entry!.body, /^\*\*Gates blocking entry/, "must not read as an active/clearable blocker");
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-09-18): the top-level `envelope.invalidation` line
@@ -548,8 +695,52 @@ test("composeSwingPlayBrief: Entry section still frames gates as the live blocke
   const brief = composeSwingPlayBrief(ctx);
   const entry = brief.envelope.sections.find((s) => s.title === "Entry");
   assert.ok(entry);
-  assert.match(entry!.body, /\*\*Gates blocking entry:\*\*/);
+  assert.match(entry!.body, /\*\*Gates blocking entry:\*\* 1 gate — see Trade manager read below\./);
   assert.doesNotMatch(entry!.body, /Also gate-blocked/);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-08): the full `code: reason` text has exactly
+  // one home now — "Trade manager read" (watchGateCoaching) — so it must not also appear here.
+  // Live repro: AMD WATCH brief, 2026-10-08 — this section and "Trade manager read" both carried
+  // the verbatim gate reason text.
+  assert.doesNotMatch(entry!.body, /Bucket not graduated/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-08): full end-to-end proof, through the real
+// composeSwingPlayBrief assembly (not just watchEntrySection in isolation), that a WATCH play's
+// gate reason text appears in exactly ONE of the brief's sections — "Trade manager read" — never
+// also in "Entry". Live repro: AMD WATCH brief, 2026-10-08 (`GET /api/market/swing/play-brief?
+// playId=SWING:AMD&ticker=AMD&status=WATCH`), both "## Entry" and "## Trade manager read" carried
+// the verbatim `entry_window_expired`/`g_s4_regime`-style reason text for the SAME gate. RED
+// before the fix (`git stash` on play-brief.ts alone reproduces the duplicate — the reason text
+// matches twice across the full envelope markdown), GREEN after.
+test("composeSwingPlayBrief: gate-block reason text appears in exactly one section, not duplicated across Entry + Trade manager read", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "Broad-market regime degraded — desk will not open new swings (WATCH only)." },
+      ],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: { spot: 50 } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  const narrative = brief.envelope.sections.find((s) => s.title === "Trade manager read");
+  assert.ok(entry);
+  assert.ok(narrative);
+  const needle = "Broad-market regime degraded";
+  assert.doesNotMatch(entry!.body, new RegExp(needle), "the reason text must not render in Entry");
+  const hits = (narrative!.body.match(new RegExp(needle, "g")) ?? []).length;
+  assert.equal(hits, 1, `expected the gate reason to appear exactly once in Trade manager read, found ${hits}`);
+  // NOTE: deliberately not asserting on the full `envelope.markdown`/`invalidation` here — the
+  // top-level "**Invalidation:**" callout has its own, already-tested, separate fallback to
+  // `play.gateBlocks?.[0]?.reason` (a different envelope field with a different UI purpose, not
+  // a third copy of this section-duplication bug) and asserting across it would conflate the two.
 });
 
 test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
@@ -3146,6 +3337,91 @@ test("composeSwingPlayBrief: absolute premium prices (entry/mark/stop/target) ne
   );
 });
 
+// Live repro 2026-10-08 (Ask Largo standing mandate, EXTR OPEN brief): swing's single-rung
+// SWING_SCALE_OUT_POLICY prices its one trim rung's `trigger_pct` identically to `target_pct`
+// (both 100), so once that rung fires, the fired trim's `premium` and `exitPolicy.target_premium`
+// are the SAME dollar level. `managementSection`'s "Rails: stop X · target Y" line used to print
+// that level as a bare, un-annotated figure right below "Trim ladder: +100% ✓" — the exact
+// self-contradiction play-brief-intel.ts's "What to watch" section already fixed on 2026-09-22 for
+// its own "Premium target rail" line, but this earlier, more prominent summary line never got the
+// same treatment.
+test("composeSwingPlayBrief: Rails target already reached by a fired trim is annotated, not shown as a bare unmet figure (live EXTR repro)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "TRIM",
+      entry: 0.15,
+      mark: 0.38,
+      pnlPct: 150,
+      peak: 150,
+      manageAction: "TAKE_PARTIAL",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 0.3, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 0.06,
+        target_premium: 0.3,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-08T23:15:00.000Z",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(
+    management!.body,
+    /Rails: stop \$0\.06 · target \$0\.30 ✓ \(reached\)/,
+    `target already hit by the fired trim must say so, not read as a fresh unmet objective, got: ${management!.body}`,
+  );
+});
+
+// A target NOT yet reached by any fired trim must still render as a bare, un-annotated figure —
+// the fix above must not suppress or annotate a genuinely forward-looking target.
+test("composeSwingPlayBrief: Rails target not yet reached renders as a bare figure (no false 'reached' annotation)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 0.15,
+      mark: 0.2,
+      pnlPct: 33.3,
+      peak: 33.3,
+      manageAction: "HOLD",
+      exitPolicy: {
+        policy: "trim_scale",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 0.3, fired: false }],
+        runner_fraction: 0.5,
+        stop_premium: 0.06,
+        target_premium: 0.3,
+        time_stop_et: "15:50",
+      },
+    }),
+    asOf: "2026-10-08T23:15:00.000Z",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const management = brief.envelope.sections.find((s) => s.title === "Management");
+  assert.ok(management, "expected Management section");
+  assert.match(management!.body, /Rails: stop \$0\.06 · target \$0\.30$/m, `got: ${management!.body}`);
+  assert.doesNotMatch(management!.body, /reached/, `got: ${management!.body}`);
+});
+
 // ─── Roll-candidate advisory (Ask Largo standing mandate, 2026-09-18): manage.ts's dte_migration/
 // roll_intent — the SAME signal roll.ts's live executor acts on — never reached the brief; only
 // past, already-executed rolls were ever disclosed (play-brief-narrative.ts's rollLine).
@@ -4048,7 +4324,187 @@ test("composeSwingPlayBrief: Position section does not call a mark 'unknown' whe
     `Mark must not read "unknown" when a real P&L was derived from it, got: ${position!.body}`,
   );
   assert.match(position!.body, /Mark: \*\*\$5\.22\*\*/, `got: ${position!.body}`);
-  assert.match(position!.body, /P&L: \*\*-35\.9%\*\*/, `got: ${position!.body}`);
+  // -36.0%, not the fixture's input -35.9: (5.22-8.15)/8.15 = -35.9509%, which rounds to -36.0 at
+  // 1dp. Tightened by the 2026-10-09 SG-repro fix (see pnlSection's own comment) — P&L is now
+  // redisplayed from the SAME displayed Mark/Entry so hand arithmetic always reconciles; -35.9
+  // was the fixture's hand-picked approximation, not what these exact entry/mark values imply.
+  assert.match(position!.body, /P&L: \*\*-36\.0%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L reconciles with the displayed Mark, not the raw unrounded mid (live SG repro 2026-10-09)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:SG (positionId 1396) — entry
+  // $0.33, true mid $0.575 (a normal bid/ask midpoint, computed as `livePnlPct(entry, mark)`
+  // upstream in banger-lane-merge.ts/adapters.ts BEFORE the mark is rounded to the cent for
+  // display here). Pre-fix this rendered "Mark: **$0.57**" / "P&L: **+74.2%**" — but
+  // (0.57-0.33)/0.33 = +72.7%, not +74.2%, a ~1.5pp gap a member doing the obvious hand-check
+  // on the two numbers directly above/below each other would hit immediately. Fixed: P&L is
+  // redisplayed from the SAME rounded-to-cent mark the Mark: line shows, so the two numbers
+  // always reconcile by hand.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "SG",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.33,
+      mark: 0.575,
+      pnlPct: 74.2,
+      peak: 81.8,
+      trough: -39.4,
+      markIsSync: false,
+      markAsOf: "2026-10-08T16:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T04:00:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.57\*\*/, `got: ${position!.body}`);
+  // +72.7% is (0.57 - 0.33) / 0.33 — the hand-check a member would do against the displayed
+  // Mark and Entry. The pre-fix body showed +74.2% here (the raw-mid-derived figure), which does
+  // not reconcile with the displayed $0.57 mark.
+  assert.match(position!.body, /P&L: \*\*\+72\.7%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+74\.2%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L is left untouched when it does not round-trip from the raw mark (executable-lane fallback, not a mark/entry read)", () => {
+  // Guard test for the SG-repro fix above: when `pnlPct` is NOT simply mark/entry-1 (e.g. the
+  // WS-10 executable-lane `exec.pnl_pct` fallback — a bid/ask-fill-based number with a genuinely
+  // different basis from the mid), recomputing from the mark would silently REPLACE a correct
+  // number with a wrong one. `markRoundTripsPnl`'s tolerance guard must refuse to touch this case.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "XYZ",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 1.0,
+      mark: 1.5, // would imply +50% if treated as a plain mark/entry read
+      pnlPct: 12.3, // a genuinely different basis (e.g. exec.pnl_pct) — far outside rounding noise
+      peak: 20,
+      trough: -5,
+      markIsSync: false,
+      markAsOf: "2026-10-08T16:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T04:00:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$1\.50\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /P&L: \*\*\+12\.3%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L never overstates the canonical pnlPct when the cent-rounded Mark rounds UP (live CNXC repro 2026-10-09, Ask Largo standing mandate)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:CNXC (positionId 1624) — entry
+  // $0.30, raw mid $0.425 EXACTLY equal to this position's own peak_premium/trough_premium (it
+  // has never moved off this single post-entry mark — confirmed live via a fresh
+  // GET /api/market/nighthawk/horizons?view=swing read showing entryPremium:0.3,
+  // peakPremium:0.425, troughPremium:0.425, livePnlPct:41.7 for the SAME positionId at the SAME
+  // moment). The canonical, cross-surface value for this fact is +41.7% — it's what Peak/Trough
+  // show two lines below, what PlayTerminal.tsx's Command Deck card renders directly off
+  // `play.pnlPct`, and what the horizons API itself reports.
+  //
+  // The 2026-10-09 SG-repro fix (PR #5734, pnlSection's `markRoundTripsPnl`/`pnlForDisplay`)
+  // redisplays P&L from `Math.round(play.mark * 100) / 100` — i.e. from the Mark figure AFTER
+  // cent-rounding, not before. `Math.round(42.5)` is 43 (JS rounds .5 away from zero, and
+  // 0.425 * 100 lands on an exact 42.5 in IEEE-754 here, unlike the SG repro's 0.575 * 100 which
+  // instead lands just BELOW its own .5 boundary and rounds down) — so the cent-rounded Mark
+  // becomes $0.43, and (0.43 / 0.30 - 1) * 100 = 43.3%, a full +1.6pp ABOVE the true, canonical
+  // 41.7% every other surface agrees on. The SG repro only ever exercised the round-DOWN case;
+  // this is the symmetric round-UP case, and because Peak/Trough (adapters.ts's `peakDisplay`/
+  // `troughDisplay`) are computed from the RAW, un-rounded premium (not re-derived from a rounded
+  // Mark), this makes "P&L: +43.3%" visibly exceed "Peak: +41.7%" in the SAME brief — a position
+  // reads as CURRENTLY ABOVE its own all-time high, which is incoherent on its face, and overstates
+  // the member's real P&L on the exact number they'd act on.
+  //
+  // Fix: P&L must always show the canonical `play.pnlPct` (rounded only at the percentage level,
+  // identically to Peak/Trough and to PlayTerminal.tsx's own renderer) — never a second
+  // recomputation from an independently cent-rounded dollar figure. A rounded 2dp Mark sitting a
+  // bounded, SYMMETRIC fraction of a percentage point off a 1dp-rounded P&L is an inherent,
+  // harmless display-precision artifact (present in virtually every financial UI); silently
+  // inflating or deflating the one number a member most directly acts on to paper over it is worse
+  // than the cosmetic mismatch it "fixes".
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "CNXC",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.3,
+      mark: 0.425,
+      pnlPct: 41.7,
+      peak: 41.7,
+      trough: 41.7,
+      markIsSync: false,
+      markAsOf: "2026-10-09T17:51:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T17:55:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.43\*\*/, `got: ${position!.body}`);
+  // P&L must match Peak/Trough exactly — never exceed the position's own recorded high.
+  assert.match(position!.body, /P&L: \*\*\+41\.7%\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /Peak: \*\*\+41\.7%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+43\.3%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L never overstates Peak — second independent live repro (EXTR, positionId distinct contract, found same cycle)", () => {
+  // Found independently the SAME cycle, unprompted, while sweeping other fresh tickers — not a
+  // hand-picked edge case. GET /api/market/swing/play-brief?playId=SWING:EXTR&ticker=EXTR: entry
+  // $0.15, raw mark $0.375 (0.375 is exactly representable in IEEE-754 — 3/8 — so
+  // `0.375 * 100` lands on an exact `37.5`, rounds UP to a displayed $0.38 the same way CNXC's
+  // $0.425 did) showed "P&L: +153.3% / Peak: +150.0%" live — P&L exceeding its own recorded peak
+  // by 3.3pp, confirming the CNXC repro above is a systemic class (any BANGER-origin position
+  // whose raw mark happens to round up at the cent boundary), not a one-off.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "EXTR",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.15,
+      mark: 0.375,
+      pnlPct: 150.0,
+      peak: 150.0,
+      trough: 33.3,
+      markIsSync: false,
+      markAsOf: "2026-10-09T18:10:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-09T18:15:00.000Z",
+    sessionDate: "2026-10-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.38\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /P&L: \*\*\+150\.0%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+153\.3%\*\*/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Thesis health section carries no bias for a healthy SHORT (Largo C5 — a non-directional quality score must never badge bullish on a bearish trade)", () => {
@@ -4404,6 +4860,47 @@ test("composeSwingPlayBrief: a levels-build failure is disclosed via unavailable
 
   // confidence must also reflect the failure (reads the same merged unavailableSources), never the
   // "high — every live source resolved cleanly" read a bare [] would otherwise have produced.
+  assert.equal(brief.envelope.confidence?.level, "moderate");
+  assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-10): the test above proved `safeCompose`'s
+// `onFailure` disclosure for evidence/levels; `buildIntelSections`'s own 20 `safeSection` calls
+// (play-brief-intel.ts) had no equivalent hook at all until now, so a thrown intel section (e.g.
+// "Why this setup" on the same malformed-`factors` shape #5288 found) vanished from the TOP-LEVEL
+// envelope with zero record — not in `unavailableSources`, not in `confidence` — exactly the gap
+// Largo C3 names as dangerous. Proves the fix end-to-end through the real `composeSwingPlayBrief`
+// entry point, not just `buildIntelSections` in isolation.
+test("composeSwingPlayBrief: an intel-section build failure is disclosed via unavailableSources, not silently omitted with no trace (Largo C3)", () => {
+  const throwingPlay = fixturePlay({
+    status: "WATCH",
+    factors: undefined as unknown as TerminalPlay["factors"],
+  });
+  const ctx: SwingPlayBriefContext = {
+    play: throwingPlay,
+    asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  // The broken section still doesn't appear — the fix is disclosure, not fabrication.
+  assert.ok(!brief.envelope.sections.some((s) => s.title === "Why this setup"));
+
+  const disclosed = brief.envelope.unavailableSources?.find((s) => s.what_is_missing === "Why this setup");
+  assert.ok(
+    disclosed,
+    "expected a disclosed unavailableSources entry naming the failed 'Why this setup' build, not silence",
+  );
+  assert.match(disclosed!.reason, /failed to build/);
+  assert.equal(disclosed!.retryable, true);
+
   assert.equal(brief.envelope.confidence?.level, "moderate");
   assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
 });

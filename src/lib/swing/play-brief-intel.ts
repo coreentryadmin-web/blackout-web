@@ -29,7 +29,11 @@ import {
 import type { SwingPlayBriefContext } from "./play-brief-types";
 import type { LargoTimelineItem } from "@/lib/largo/meridian-timeline-for-largo";
 import { laneRankSection } from "./play-brief-lane-rank";
-import { tradeManagerNarrativeSection } from "./play-brief-narrative";
+import {
+  tradeManagerNarrativeSection,
+  collectFocalLevels,
+  resolveInvalidationFocalLevel,
+} from "./play-brief-narrative";
 import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
@@ -49,6 +53,7 @@ import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 import {
   archetypeLabelFromRaw,
   subLaneLabelFromRaw,
@@ -94,13 +99,67 @@ function vectorOf(ctx: SwingPlayBriefContext): VectorFullState | null {
 }
 
 /** Score pillars with signal provenance — the "why" behind the grade. */
+// GAP FOUND (Ask Largo standing mandate — PR #4076 comment 6107462205, 2026-10-11): raised as a
+// question for Cursor ("is this a deliberate terse metadata summary, or a narrative candidate like
+// crossDeskCoaching/counterThesisLine?"); no reply after 6+ hours, so taking the conservative half
+// of the proposal myself — same "took it myself after an unclaimed overnight comment" precedent
+// already set on this same thread (comment 6082520455).
+//
+// Deliberately NOT a full rewrite of this section: ~20 existing tests each pin one field's EXACT
+// bolded line (e.g. `/\*\*Archetype:\*\* Breakout continuation/`), several encoding hard-won bug
+// fixes (the SwingSubLane raw-enum leak, the archetype near-tie disclosure, the industry-read
+// rounding-consistency fix) — collapsing everything into one prose sentence would risk silently
+// dropping one of those disclosures, which is exactly the failure class this file's other comments
+// warn against. So this is PURELY ADDITIVE: a synthesized lede sentence for the common, simple case
+// only, prepended above the untouched flat lines — never replacing them. The lede explicitly stands
+// down (returns null, falling through to the original flat lines) whenever a genuinely informative
+// edge case is present (a near-tie classification, a thin-evidence entry, a withheld score) — those
+// are exactly the cases that deserve their OWN explicit callout, not a smoothed-over sentence.
+function synthesizedSetupLede(
+  play: TerminalPlay,
+  whyArchetypeLabel: string | null,
+  subLaneLabel: string | null,
+): string | null {
+  if (!play.discoveryOrigin?.length || !whyArchetypeLabel) return null;
+  // A withheld/near-tie/thin-evidence read is informative precisely BECAUSE it's unusual — folding
+  // it into one clean sentence would misrepresent how settled the read actually was.
+  if (play.scoreWithheld) return null;
+  if (play.archetypeNearTie) return null;
+  if (play.entryPresentPillars != null) return null;
+  const signals = play.discoveryOrigin.join("/");
+  const maturity = play.setupState ? play.setupState.toLowerCase() : null;
+  const archetypePhrase = maturity
+    ? `${maturity} ${whyArchetypeLabel.toLowerCase()}`
+    : whyArchetypeLabel.toLowerCase();
+  // Deliberately does NOT fold `play.regime` in here, even though it reads naturally alongside the
+  // archetype: `play.archetype` is PINNED at commit while `play.regime` is re-derived fresh on every
+  // scan (see the "Today's regime read" line's own comment below) and the two can genuinely diverge
+  // without either being wrong. That divergence is exactly the thing the separate, explicitly-labeled
+  // "Today's regime read" line exists to surface honestly — smashing both into one sentence here would
+  // reintroduce the "pinned archetype next to a silently different fresh read, no framing" bug this
+  // file already fixed once (2026-09-14, KR). `subLaneLabel` carries no such pinned/fresh split
+  // (sub-lane doesn't change after commit), so it's safe to fold in.
+  const contextStr = subLaneLabel ? ` (${subLaneLabel})` : "";
+  // play.score is the real, authoritative total — never re-summed from `factors` (the exact
+  // independently-rounded-related-quantities precision bug this file's own industry-read fix
+  // (2026-10-09) already warns about, one call site over).
+  const scoreStr = Number.isFinite(play.score) ? `, scoring ${Math.round(play.score)}` : "";
+  return `${signals} flagged this as a ${archetypePhrase} setup${contextStr}${scoreStr}.`;
+}
+
 export function whyThisSetupSection(play: TerminalPlay): RichSection {
   const lines: string[] = [];
-  if (play.discoveryOrigin?.length) {
-    lines.push(`**Signals fired:** ${play.discoveryOrigin.join(" · ")}`);
-  }
   const whyArchetypeLabel = archetypeLabelFromRaw(play.archetype);
-  if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
+  const subLaneLabel = subLaneLabelFromRaw(play.subLane);
+  const lede = synthesizedSetupLede(play, whyArchetypeLabel, subLaneLabel);
+  if (lede) {
+    lines.push(lede);
+  } else {
+    if (play.discoveryOrigin?.length) {
+      lines.push(`**Signals fired:** ${play.discoveryOrigin.join(" · ")}`);
+    }
+    if (whyArchetypeLabel) lines.push(`**Archetype:** ${whyArchetypeLabel}`);
+  }
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): scoring/gating/calibration all partition on
   // this single pinned archetype label, but nothing on this brief ever disclosed HOW decisive the
   // classifier's own call was — see live-plays.ts's `archetypeNearTieFromFeatureVector` for the full
@@ -136,8 +195,8 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
   // command-deck UI (`terminal-display.ts`) all render the identical field as "Tactical (5–7d)" —
   // see `subLaneLabelFromRaw`'s own doc comment (taxonomy.ts) for the full trace. Unrecognized/foreign
   // values render nothing here, same honest-absence discipline `archetypeLabelFromRaw` already uses.
-  const subLaneLabel = subLaneLabelFromRaw(play.subLane);
-  if (subLaneLabel) lines.push(`**Sub-lane:** ${subLaneLabel}`);
+  // (subLaneLabel is now computed once, at the top of this function, so the lede above can use it too.)
+  if (!lede && subLaneLabel) lines.push(`**Sub-lane:** ${subLaneLabel}`);
   // GAP FOUND (Ask Largo standing mandate, 2026-09-18): the pre-entry WATCH note for the identical
   // fact ("thin read — N/7 pillars grounded", serving-ingest.ts) never survives WATCH→COMMIT — see
   // `entryPresentPillarsFromFeatureVector`'s own doc comment (live-plays.ts) for the full trace.
@@ -192,8 +251,26 @@ export function whyThisSetupSection(play: TerminalPlay): RichSection {
       );
     } else {
       const verb = f.deltaPct >= 0 ? "leading" : "lagging";
+      // BUG FIX (Ask Largo standing mandate, 2026-10-09): this used to round `f.deltaPct` (the raw,
+      // unrounded nameReturnPct − groupReturnPct) to 1dp INDEPENDENTLY of the 1dp-rounded
+      // `fmtPct(nameReturnPct)`/`fmtPct(groupReturnPct)` shown right beside it — the same
+      // independently-rounded-related-quantities precision bug `fmtPct`'s and `fmtPriceLevel`'s own
+      // headers already name as a recurring class here (C9), just not yet caught at THIS call site.
+      // Live repro (2026-10-09, real AAPL WATCH brief): "lagging Technology (XLK) by 0.2% over 10
+      // sessions (+1.3% vs +1.6%)" — a member doing the subtraction themselves from the two
+      // displayed numbers gets 1.6 − 1.3 = 0.3, not the stated 0.2; raw nameReturnPct=1.34,
+      // groupReturnPct=1.55 reproduces it exactly (raw delta −0.21 rounds to "0.2" alone, while each
+      // operand independently rounds to 1.3/1.6, which subtract to 0.3). Fix: round the two operands
+      // ONCE (the same rounding `fmtPct` applies) and derive the displayed delta from THOSE rounded
+      // values, never from the raw delta — guarantees "by X%" always equals the subtraction a reader
+      // does from the two numbers right next to it. The second `Math.round(... * 10) / 10` after
+      // subtracting is not a second independent rounding, just float-noise cleanup (1.6 − 1.3 ===
+      // 0.2999999999999998 in IEEE 754) before `.toFixed(1)` would otherwise need to re-round it.
+      const roundedName = Math.round(f.nameReturnPct * 10) / 10;
+      const roundedGroup = Math.round(f.groupReturnPct * 10) / 10;
+      const roundedDelta = Math.round((roundedName - roundedGroup) * 10) / 10;
       lines.push(
-        `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(f.deltaPct).toFixed(1)}% ` +
+        `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(roundedDelta).toFixed(1)}% ` +
           `over 10 sessions (${fmtPct(f.nameReturnPct)} vs ${fmtPct(f.groupReturnPct)}).`,
       );
     }
@@ -1134,9 +1211,18 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
       // exact duplication shape `play-brief-narrative.ts`'s own "Entry stance" bullet was already
       // fixed to avoid (see its comment: "the reason text has exactly one home below") — just a
       // second, previously-unchecked instance of it, in a different pair of sections. State the
-      // count + a pointer here; the full reason text's one home stays the Entry section above.
+      // count + a pointer here.
+      //
+      // REPOINTED (Ask Largo standing mandate, 2026-10-08): the "Entry section above" this
+      // pointer named was itself found duplicating the SAME full gate text against "Trade manager
+      // read" (play-brief.ts's `watchEntrySection`, see its own 2026-10-08 comment) — the "Entry
+      // section" was never actually the sole full-text home this comment assumed. Fixed by making
+      // `watchEntrySection` ALSO a pointer rather than a third full-text copy, so the one real home
+      // is now "Trade manager read" (`watchGateCoaching`, play-brief-narrative-coaching.ts), which
+      // renders unconditionally for every watch-bucket play and sits earlier in section order than
+      // this "Watch levels" section — repointing here, not re-introducing a second full copy.
       const n = play.gateBlocks.length;
-      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Entry section above.`);
+      lines.push(`**Before entry, clear:** ${n} gate${n === 1 ? "" : "s"} — see Trade manager read above.`);
     }
     // BUG FIX (Ask Largo standing mandate, 2026-09-17): this used to re-render `play.entryStatus`
     // as its own "Entry geometry" bullet — but `watchEntrySection` (play-brief.ts, "Entry" section,
@@ -1172,7 +1258,32 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // contract violation (identity/direction: whose thesis, and is it live) — so it's closed-bucket-
   // only suppressed; watch/open plays are still evaluating entry, where "is there a live setup here
   // right now" is exactly the right question.
-  if (bucket !== "closed" && (play.thesisBreak?.note || play.thesisBreak?.level)) {
+  //
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 and
+  // SWING:GLW:1479): the above holds for a NATIVE swing position, where `thesisBreak.level` really
+  // is computed from a live multi-signal read. For a Banger-origin merged row it is not —
+  // `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps `thesisLevel: "intact"` as a fixed
+  // literal on EVERY row regardless of price action (there is no per-position thesis dossier for
+  // this lane, same root cause `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already
+  // exist to catch for the aggregate Thesis-health panel — see thesis-health.ts). Left unguarded
+  // here, this line renders unconditionally, so this section printed `Thesis **intact** — below
+  // the 2× partial and above the hard stop` for CRI at -59.1% live P&L (mark $0.23 vs stop-rail
+  // $0.22 — a 2% cushion from stopping out) and for GLW at -56.1% — a member reads "intact" as a
+  // calibrated green light right where this exact section's own next two lines ("Premium stop
+  // rail"/"Premium target rail") already state the real, honest mechanical fact (how close to the
+  // ladder's own stop/target) far more precisely. Since the label can never say anything but
+  // "intact" for this lane until the scale-out engine itself force-exits, and the only substantive
+  // content it carries duplicates those two rail lines verbatim, suppress it for Banger-origin rows
+  // (`play.regime === BANGER_LEDGER_REGIME_LABEL`, the same sentinel check `thesisHealthUncalibrated`
+  // and `serving-lane.ts`'s `attachThesisExplanation` guard already use) rather than let it overclaim
+  // a per-position judgment the lane cannot calibrate — the C6 absence principle (omission over
+  // fabrication) applied to this one line, not just the aggregate panel.
+  const bangerOriginNoRealThesis = play.regime === BANGER_LEDGER_REGIME_LABEL;
+  if (
+    bucket !== "closed" &&
+    !bangerOriginNoRealThesis &&
+    (play.thesisBreak?.note || play.thesisBreak?.level)
+  ) {
     lines.push(
       `Thesis **${play.thesisBreak.level ?? "unknown"}**${play.thesisBreak.note ? ` — ${play.thesisBreak.note}` : ""}`,
     );
@@ -1215,18 +1326,52 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(watch);
   }
 
-  const vecPutWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.putWalls?.[0]?.strike;
-  const vecCallWall = vectorStaleForWalls ? undefined : vec?.gexWalls?.callWalls?.[0]?.strike;
-  const putWall = vecPutWall ?? gexForLevels?.put_wall;
-  const callWall = vecCallWall ?? gexForLevels?.call_wall;
-  const gexStaleForLevels = gexMatrixStale(gexForLevels, readMs);
-  const putWallFromStaleGex = vecPutWall == null && gexForLevels?.put_wall != null && gexStaleForLevels;
-  const callWallFromStaleGex = vecCallWall == null && gexForLevels?.call_wall != null && gexStaleForLevels;
-  if (play.direction === "LONG" && putWall != null && !putWallFromStaleGex) {
-    lines.push(`Structural support node: put wall **${fmtPriceLevel(putWall)}**`);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-08 :40 cycle, live repro SWING:TNGX:1611): this
+  // used to hardcode put wall (LONG) / call wall (SHORT) as THE structural level, unaware that
+  // `breakTrigger`'s own "Break watch" bullet (and the headline `envelope.invalidation` field)
+  // was fixed on 2026-09-15 to pick whichever of put wall/dark pool/GEX king actually sits
+  // NEAREST spot — see `resolveInvalidationFocalLevel`'s own doc comment for the full account.
+  // Live TNGX repro: GEX king (22.00) sat nearer spot (22.57) than the put wall (20.00), so
+  // `envelope.invalidation`/"Break watch" correctly cited 22.00 while this line, in the SAME
+  // envelope, said "Structural support node: put wall 20.00" — two different numbers for what
+  // both sections present as THE one structural level that matters, with nothing telling the
+  // member they're reading two different concepts. Calling the SAME selection here (instead of
+  // re-deriving a put-wall-only version) means the two can never again disagree.
+  const invalidationLevel =
+    spot != null ? resolveInvalidationFocalLevel(play, collectFocalLevels(ctx, spot)) : undefined;
+  if (play.direction === "LONG" && invalidationLevel != null) {
+    lines.push(`Structural support node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
   }
-  if (play.direction === "SHORT" && callWall != null && !callWallFromStaleGex) {
-    lines.push(`Structural resistance node: call wall **${fmtPriceLevel(callWall)}**`);
+  if (play.direction === "SHORT" && invalidationLevel != null) {
+    lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
+  }
+
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-13): this section told a member where spot
+  // sits vs the gamma flip and vs a live structural level for a closed play, but never answered
+  // the one question that actually matters after a stop — did the underlying keep moving in the
+  // stop's direction (confirming the exit) or reverse back through it (the exit may have been
+  // early)? `play.invalidationUnderlyingPx` is the exact stop level the position closed under —
+  // pinned at commit, static, already valid post-close (the same field `closedCoaching`'s "Stop
+  // fired... a X% cushion at commit" line already reads, in "Trade manager read" above, which
+  // answers a DIFFERENT question — whether the entry was extended at commit, not what the
+  // underlying has done since) — comparing it to the spot this section already resolves answers
+  // it directly instead of leaving the member to re-derive it from a separate chart. Scoped to
+  // `closedReason === "stopped"/"stop"` only: a target/time-stop/thesis exit has no "was the stop
+  // too tight" question to answer, so the framing would be a non sequitur there.
+  if (
+    bucket === "closed" &&
+    (play.closedReason === "stopped" || play.closedReason === "stop") &&
+    spot != null &&
+    play.invalidationUnderlyingPx != null
+  ) {
+    const inval = play.invalidationUnderlyingPx;
+    const reclaimed = play.direction === "SHORT" ? spot < inval : spot > inval;
+    const pctFromInval = Math.abs(((spot - inval) / inval) * 100);
+    lines.push(
+      reclaimed
+        ? `Spot has since reclaimed the stop level (**${fmtPriceLevel(inval)}**) — now **${fmtPriceLevel(spot)}**, ${pctFromInval.toFixed(1)}% back through it; the exit may have been early.`
+        : `Spot remains through the stop level (**${fmtPriceLevel(inval)}**) — now **${fmtPriceLevel(spot)}**, confirming the exit.`,
+    );
   }
 
   if (bucket === "open" && play.exitPolicy?.stop_premium != null) {
@@ -1345,9 +1490,26 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   }
 
   if (!lines.length) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro SWING:NVDA:42 CLOSED brief):
+    // the flip/wall lines above are suppressed whenever the GEX matrix is stale
+    // (`flipFromStaleGex`/`putWallFromStaleGex`/`callWallFromStaleGex`), which is correct — but
+    // this fallback used to say "No gamma flip / GEX wall read available" unconditionally,
+    // claiming an outright absence even when a (merely stale) read genuinely exists. That is a
+    // real, reproducible self-contradiction within the SAME envelope: `gexPostureSection` reads
+    // the identical `ctx.ecosystem.gex_positioning` object and, in that exact case, renders
+    // "**Last snapshot** (~163s old) — dealer posture may lag spot" — i.e. it discloses a read
+    // DOES exist, just withheld for freshness. "No data" and "data withheld because stale" are
+    // different Largo C3 claims; collapsing them to the same sentence is the defect. Distinguish
+    // genuine absence (no gex_positioning object at all for this ticker) from stale-and-withheld
+    // (object present, past GEX_MATRIX_STALE_MS) and word the closed-bucket fallback honestly.
+    const gexAgeMs = gexMatrixAgeMs(gexForLevels, readMs);
+    const gexExistsButStale = gexForLevels != null && gexMatrixStale(gexForLevels, readMs);
+    const staleAgeLabel = gexExistsButStale ? ageSecondsLabel(gexAgeMs) : null;
     lines.push(
       bucket === "closed"
-        ? "No gamma flip / GEX wall read available for this name since the play closed."
+        ? gexExistsButStale
+          ? `GEX read for this name is currently stale${staleAgeLabel != null ? ` (~${staleAgeLabel} old)` : ""} — today's dealer posture withheld, not absent.`
+          : "No gamma flip / GEX wall read available for this name since the play closed."
         : "Watch spot vs gamma flip and nearest GEX wall — no extra triggers wired on this row.",
     );
   }
@@ -2122,11 +2284,27 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
  * evidence/levels builders are a separate, smaller surface not touched here — a natural follow-up,
  * not folded in to keep this a single-issue PR.
  */
-function safeSection<T>(title: string, build: () => T): T | null {
+// BUG FOUND (Ask Largo standing mandate, 2026-10-10): the 2026-10-07 fix on `safeCompose`
+// (play-brief.ts) gave evidence/levels an `onFailure` hook specifically because a silent []
+// fallback is indistinguishable from "we checked and there's genuinely nothing" — but that same
+// fix explicitly deferred extending the identical pattern to THIS function's 20 `safeSection`
+// calls ("not duplicated here (single-issue PRs, per this repo's standing policy)"). The gap it
+// described applies here unchanged: when a section builder throws (#5288's own repro — a
+// malformed/degraded upstream row at runtime despite a required-field type), the section is
+// omitted with no record anywhere the model-facing envelope reads — not `unavailableSources`, not
+// `confidence` — so the member/Largo reading the brief cannot tell a dropped "Chart technicals" or
+// "Catalysts & news" apart from a bucket that was never meant to show one. Zero live occurrences
+// found in 7 days of CloudWatch `/ecs/blackout-production` logs for `"intel section"` at time of
+// writing — this is a latent disclosure-contract gap, not an active one — but the fix is the same
+// proven, already-shipped `onFailure` pattern, so completing it here is the natural scoped follow-up
+// rather than a new design. `onFailure` defaults to a no-op so every existing caller (including the
+// many direct `buildIntelSections(ctx, bucket)` calls in this file's own tests) is unaffected.
+function safeSection<T>(title: string, build: () => T, onFailure?: (label: string) => void): T | null {
   try {
     return build();
   } catch (error) {
     console.error(`[swing/play-brief] intel section "${title}" threw — omitting it, not failing the brief`, error);
+    onFailure?.(title);
     return null;
   }
 }
@@ -2135,78 +2313,104 @@ function safeSection<T>(title: string, build: () => T): T | null {
 export function buildIntelSections(
   ctx: SwingPlayBriefContext,
   bucket: "watch" | "open" | "closed",
-  opts?: { collapseIntel?: boolean },
+  opts?: { collapseIntel?: boolean; onFailure?: (label: string) => void },
 ): RichSection[] {
   const { play, ecosystem } = ctx;
   const vec = vectorOf(ctx);
   const out: RichSection[] = [];
+  const onFailure = opts?.onFailure;
 
-  const narrative = safeSection("Trade manager read", () => tradeManagerNarrativeSection(ctx, bucket));
+  const narrative = safeSection("Trade manager read", () => tradeManagerNarrativeSection(ctx, bucket), onFailure);
   if (narrative) out.push(narrative);
 
-  const whySetup = safeSection("Why this setup", () => whyThisSetupSection(play));
+  const whySetup = safeSection("Why this setup", () => whyThisSetupSection(play), onFailure);
   if (whySetup) out.push(whySetup);
 
-  const book = safeSection("Book context", () => bookContextSection(play, ctx.openBook));
+  const book = safeSection("Book context", () => bookContextSection(play, ctx.openBook), onFailure);
   if (book) out.push(book);
 
-  const trackRecord = safeSection("Archetype track record", () =>
-    archetypeTrackRecordSection(play, ctx.archetypeTrackRecord),
+  const trackRecord = safeSection(
+    "Archetype track record",
+    () => archetypeTrackRecordSection(play, ctx.archetypeTrackRecord),
+    onFailure,
   );
   if (trackRecord) out.push(trackRecord);
 
-  const tickerRecord = safeSection("Ticker track record", () =>
-    tickerTrackRecordSection(play, ctx.tickerTrackRecord),
+  const tickerRecord = safeSection(
+    "Ticker track record",
+    () => tickerTrackRecordSection(play, ctx.tickerTrackRecord),
+    onFailure,
   );
   if (tickerRecord) out.push(tickerRecord);
 
-  const cortexRead = safeSection("Cortex read", () => cortexReadSection(play));
+  const cortexRead = safeSection("Cortex read", () => cortexReadSection(play), onFailure);
   if (cortexRead) out.push(cortexRead);
 
-  const rank = safeSection("Lane rank", () => laneRankSection(play, ctx.laneRows));
+  const rank = safeSection(
+    "Lane rank",
+    () =>
+      laneRankSection(play, ctx.laneRows, {
+        scanAsOf: ctx.scanAsOf,
+        scanSessionDay: ctx.scanSessionDay,
+        sessionDate: ctx.sessionDate,
+      }),
+    onFailure,
+  );
   if (rank) out.push(rank);
 
-  const technicals = safeSection("Chart technicals", () =>
-    chartTechnicalsSection(vec, ctx.sessionDate, bucket, ctx),
+  const technicals = safeSection(
+    "Chart technicals",
+    () => chartTechnicalsSection(vec, ctx.sessionDate, bucket, ctx),
+    onFailure,
   );
   if (technicals) out.push(technicals);
 
-  const levels = safeSection("Chart levels", () => chartLevelsSection(ctx));
+  const levels = safeSection("Chart levels", () => chartLevelsSection(ctx), onFailure);
   if (levels) out.push(levels);
 
-  const gex = safeSection("GEX posture", () => gexPostureSection(ctx));
+  const gex = safeSection("GEX posture", () => gexPostureSection(ctx), onFailure);
   if (gex) out.push(gex);
 
-  const walls = safeSection("Wall dynamics", () => wallDynamicsSection(vec, ctx.sessionDate, bucket, ctx));
+  const walls = safeSection(
+    "Wall dynamics",
+    () => wallDynamicsSection(vec, ctx.sessionDate, bucket, ctx),
+    onFailure,
+  );
   if (walls) out.push(walls);
 
-  const vdesk = safeSection("Vector desk", () => vectorDeskSection(vec, ctx.sessionDate, bucket, ctx));
+  const vdesk = safeSection(
+    "Vector desk",
+    () => vectorDeskSection(vec, ctx.sessionDate, bucket, ctx),
+    onFailure,
+  );
   if (vdesk) out.push(vdesk);
 
-  const flow = safeSection("Flow intel", () => flowIntelSection(ecosystem, play, ctx.sessionDate));
+  const flow = safeSection("Flow intel", () => flowIntelSection(ecosystem, play, ctx.sessionDate), onFailure);
   if (flow) out.push(flow);
 
-  const catalysts = safeSection("Catalysts", () => catalystsSection(ecosystem, ctx));
+  const catalysts = safeSection("Catalysts", () => catalystsSection(ecosystem, ctx), onFailure);
   if (catalysts) out.push(catalysts);
 
-  const meridian = safeSection("Meridian catalyst", () => meridianCatalystSection(ctx));
+  const meridian = safeSection("Meridian catalyst", () => meridianCatalystSection(ctx), onFailure);
   if (meridian) out.push(meridian);
 
-  const meridianPeer = safeSection("Meridian peer", () => meridianPeerSection(ctx));
+  const meridianPeer = safeSection("Meridian peer", () => meridianPeerSection(ctx), onFailure);
   if (meridianPeer) out.push(meridianPeer);
 
-  const macro = safeSection("Macro tape", () => macroTapeSection(ecosystem));
+  const macro = safeSection("Macro tape", () => macroTapeSection(ecosystem), onFailure);
   if (macro) out.push(macro);
 
-  const consensus = safeSection("Desk consensus", () =>
-    deskConsensusSection(ecosystem, play, bucket, ctx.sessionDate),
+  const consensus = safeSection(
+    "Desk consensus",
+    () => deskConsensusSection(ecosystem, play, bucket, ctx.sessionDate),
+    onFailure,
   );
   if (consensus) out.push(consensus);
 
-  const fresh = safeSection("Data freshness", () => dataFreshnessSection(ctx));
+  const fresh = safeSection("Data freshness", () => dataFreshnessSection(ctx), onFailure);
   if (fresh) out.push(fresh);
 
-  const watchFor = safeSection("Watch for", () => watchForSection(ctx, bucket));
+  const watchFor = safeSection("Watch for", () => watchForSection(ctx, bucket), onFailure);
   if (watchFor) out.push(watchFor);
 
   if (bucket === "open") {
@@ -2220,12 +2424,15 @@ export function buildIntelSections(
     // repro (any OPEN play with a HOLD-class recommendation and health < 45).
     const tightenAlreadyNoted =
       narrative?.body?.includes("Health fading — tighten stop or trim into any bounce") ?? false;
-    const hold = safeSection("Hold plan", () =>
-      holdPlanSection(ctx, {
-        roundTrip: roundTripAlreadyNoted,
-        capture: captureAlreadyNoted,
-        tighten: tightenAlreadyNoted,
-      }),
+    const hold = safeSection(
+      "Hold plan",
+      () =>
+        holdPlanSection(ctx, {
+          roundTrip: roundTripAlreadyNoted,
+          capture: captureAlreadyNoted,
+          tighten: tightenAlreadyNoted,
+        }),
+      onFailure,
     );
     if (hold) out.push(hold);
   }
@@ -2260,8 +2467,11 @@ export function buildIntelSections(
     // Closes the capture>=75 "Strong exit discipline" gap the flags above left open — see
     // lessonsSection's own doc comment (2026-09-18) for the live repro (CRWD:19).
     const captureAlreadyNoted = narrative?.body?.includes("replicate trim timing") ?? false;
-    const lessons = safeSection("Lessons", () =>
-      lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted, captureAlreadyNoted),
+    const lessons = safeSection(
+      "Lessons",
+      () =>
+        lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted, captureAlreadyNoted),
+      onFailure,
     );
     if (lessons) out.push(lessons);
   }

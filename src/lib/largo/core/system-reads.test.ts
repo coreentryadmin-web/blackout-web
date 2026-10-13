@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   helixFlowRead,
   vectorPlayRead,
-  nightHawkRead,
   gammaRegimeRead,
   agreementOf,
   type SystemRead,
@@ -56,19 +55,6 @@ test("VECTOR cites its own conviction and never invents one", () => {
 
   assert.equal(vectorPlayRead(null).stance, "no-read");
   assert.equal(vectorPlayRead({ bias: "" }).reason, "no play derived");
-});
-
-test("NIGHT HAWK reports a count, never a sentiment bar", () => {
-  const r = nightHawkRead([{ direction: "long" }, { direction: "call" }, { direction: "short" }]);
-  assert.equal(r.stance, "bullish");
-  // One open call is not "100% bullish"; mapping play count onto 0-100 would say exactly that.
-  assert.equal(r.strength, null);
-  assert.equal(r.basis, "3 plays · 2L/1S");
-
-  assert.equal(nightHawkRead([]).stance, "no-read");
-  assert.equal(nightHawkRead(null).reason, "lane unavailable");
-  // An even split is a real finding, not an absence.
-  assert.equal(nightHawkRead([{ direction: "call" }, { direction: "put" }]).stance, "neutral");
 });
 
 test("GAMMA is a regime row and can never become a directional vote", () => {

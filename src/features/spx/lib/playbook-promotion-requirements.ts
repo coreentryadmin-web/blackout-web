@@ -81,24 +81,3 @@ export const PROMOTION_LIMITED_LIVE_THRESHOLDS: PlaybookPromotionThresholds = {
   p5_return_floor_pts: envNum("PLAYBOOK_PROMO_P5_FLOOR_PTS_LL", -10),
 };
 
-export const PROMOTION_TIER_ORDER: readonly PlaybookPromotionTier[] = [
-  "insufficient",
-  "research",
-  "staging_qualified",
-  "limited_live",
-  "production",
-];
-
-export function thresholdsForTier(tier: PlaybookPromotionTier): PlaybookPromotionThresholds | null {
-  switch (tier) {
-    case "research":
-      return PROMOTION_RESEARCH_THRESHOLDS;
-    case "staging_qualified":
-      return PROMOTION_STAGING_THRESHOLDS;
-    case "limited_live":
-    case "production":
-      return PROMOTION_LIMITED_LIVE_THRESHOLDS;
-    default:
-      return null;
-  }
-}

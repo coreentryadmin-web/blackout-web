@@ -31,6 +31,7 @@ import type { PaneCortexView } from "@/lib/zerodte/pane";
 import { catalystCoaching, collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { tradeManagerNarrativeSection } from "./play-brief-narrative";
 import type { SwingArchetypeTrackRecordSnapshot, SwingTrackRecordEntry } from "./calibration-cache";
+import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -562,6 +563,83 @@ test("whyThisSetupSection: still reports pillar/signal content when present", ()
   });
   const section = whyThisSetupSection(play);
   assert.match(section.body, /Momentum/);
+});
+
+// PR #4076 comment 6107462205 (Ask Largo standing mandate, 2026-10-11): "Why this setup" read as a
+// flat key:value dump next to "Trade manager read"'s narrated voice. Fix (additive only — see
+// synthesizedSetupLede's own doc comment): a synthesized opening sentence for the simple, common
+// case, with the original flat lines ALWAYS surviving as a fallback for every edge case.
+test("whyThisSetupSection: synthesizes a lede sentence for the common case, replacing (not duplicating) Signals/Archetype/Sub-lane", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["NIGHT HAWK"],
+    archetype: "PULLBACK_CONTINUATION",
+    subLane: "STANDARD",
+    setupState: "FORMING",
+    score: 51,
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(
+    section.body,
+    /NIGHT HAWK flagged this as a forming pullback continuation setup \(Standard \(8.15d\)\), scoring 51\./,
+  );
+  // the lede subsumes these — they must not ALSO appear as separate flat lines
+  assert.doesNotMatch(section.body, /\*\*Signals fired:\*\*/);
+  assert.doesNotMatch(section.body, /\*\*Archetype:\*\*/);
+  assert.doesNotMatch(section.body, /\*\*Sub-lane:\*\*/);
+});
+
+test("whyThisSetupSection: 'Today's regime read' always stays its own separate line, even when the lede fires — pinned archetype vs fresh regime can diverge and that must stay visible", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    regime: "Event-driven directional · regime 0.6",
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(section.body, /flagged this as a breakout continuation setup/);
+  assert.match(section.body, /\*\*Today's regime read:\*\* Event-driven directional · regime 0\.6/);
+});
+
+test("whyThisSetupSection: lede stands down (falls back to flat lines) on a near-tie classification — that disclosure must not be smoothed over", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    archetypeNearTie: { secondaryLabel: "Pullback continuation", marginPct: 3 },
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /flagged this as a/);
+  assert.match(section.body, /\*\*Signals fired:\*\* FLOW/);
+  assert.match(section.body, /\*\*Archetype:\*\* Breakout continuation/);
+  assert.match(section.body, /near-tie at entry/);
+});
+
+test("whyThisSetupSection: lede stands down on a thin-evidence entry — that disclosure must not be smoothed over", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    entryPresentPillars: 3,
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /flagged this as a/);
+  assert.match(section.body, /\*\*Signals fired:\*\* FLOW/);
+  assert.match(section.body, /thin read — \*\*3\/7\*\* pillars grounded/);
+});
+
+test("whyThisSetupSection: lede stands down when the score was withheld — never quotes a withheld score as real", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["FLOW"],
+    archetype: "BREAKOUT",
+    scoreWithheld: true,
+  });
+  const section = whyThisSetupSection(play);
+  assert.doesNotMatch(section.body, /flagged this as a/);
+  assert.match(section.body, /\*\*Signals fired:\*\* FLOW/);
+});
+
+test("whyThisSetupSection: lede stands down when there's no discoveryOrigin or no recognized archetype — never fabricates signals/archetype that aren't there", () => {
+  const noSignals = whyThisSetupSection(fixturePlay({ archetype: "BREAKOUT" }));
+  assert.doesNotMatch(noSignals.body, /flagged this as a/);
+  const noArchetype = whyThisSetupSection(fixturePlay({ discoveryOrigin: ["FLOW"], archetype: null }));
+  assert.doesNotMatch(noArchetype.body, /flagged this as a/);
 });
 
 test("holdPlanSection: does not repeat recNote or Management-owned rails — unique time/theta coaching only", () => {
@@ -3324,6 +3402,145 @@ test("watchForSection: stale Vector + stale GEX must not resolve spot from GEX f
   assert.doesNotMatch(section.body, /Lose gamma flip/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro SWING:NVDA:42 CLOSED brief):
+// when a closed play's GEX matrix exists but is stale (above GEX_MATRIX_STALE_MS), this
+// section's own numeric lines (flip/wall) are correctly suppressed — but the fallback text it
+// falls back to, "No gamma flip / GEX wall read available for this name since the play
+// closed," claims an outright ABSENCE. That is false: `gexPostureSection` (same ctx, same
+// request) reads the identical `ctx.ecosystem.gex_positioning` object and renders "**Last
+// snapshot** (~163s old) — dealer posture may lag spot" — i.e. a read DOES exist, it is just
+// withheld here for freshness. Two sections of the SAME envelope disagreeing about whether
+// a read exists for this ticker is exactly the Largo C2/C3 class this file exists to prevent:
+// "no data" and "intentionally withheld because stale" are different claims, and this message
+// collapsed them to the former. Must distinguish genuine absence (no gex_positioning object at
+// all) from stale-and-withheld (object present, past the freshness cutoff).
+test("watchForSection: closed-bucket fallback distinguishes stale-and-withheld GEX from genuine absence (Largo C2/C3)", () => {
+  const staleButPresent = watchForSection(
+    {
+      play: fixturePlay({ status: "CLOSED", direction: "LONG" }),
+      asOf: "2026-10-08 18:10 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          flip: 99,
+          put_wall: 98,
+          matrix_age_sec: 163,
+          freshness: "cached",
+        },
+      } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  // Must not claim outright absence when a (stale) read genuinely exists.
+  assert.doesNotMatch(staleButPresent.body, /No gamma flip \/ GEX wall read available/i);
+  assert.match(staleButPresent.body, /stale/i);
+  assert.match(staleButPresent.body, /163s/);
+
+  const genuinelyAbsent = watchForSection(
+    {
+      play: fixturePlay({ status: "CLOSED", direction: "LONG" }),
+      asOf: "2026-10-08 18:10 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {} as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  // Genuine absence (no gex_positioning object at all) keeps the original "no read" framing.
+  assert.match(genuinelyAbsent.body, /No gamma flip \/ GEX wall read available/i);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-13): "Since it closed" told a member where
+// spot sits vs the gamma flip and vs a live structural level, but never the one question that
+// actually matters after a stop — did the underlying keep moving in the stop's direction
+// (confirming the exit) or reverse back through it (the exit may have been early)?
+// `play.invalidationUnderlyingPx` is the exact stop level the position closed under — pinned at
+// commit, static, already valid post-close (the same field closedCoaching's "Stop fired... a X%
+// cushion at commit" line already reads) — comparing it to the spot this section already
+// resolves answers it directly.
+test("watchForSection: closed+stopped LONG reports spot has reclaimed the stop level since close", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "LONG",
+        closedReason: "stopped",
+        invalidationUnderlyingPx: 90,
+      }),
+      asOf: "2026-10-13 10:00 ET",
+      sessionDate: "2026-10-13",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 95 } } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.match(section.body, /reclaimed the stop level/i);
+  assert.match(section.body, /\*\*90\.00\*\*/);
+  assert.match(section.body, /\*\*95\.00\*\*/);
+  assert.match(section.body, /exit may have been early/i);
+});
+
+test("watchForSection: closed+stopped SHORT reports spot remains through the stop level, confirming the exit", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "SHORT",
+        closedReason: "stopped",
+        invalidationUnderlyingPx: 110,
+      }),
+      asOf: "2026-10-13 10:00 ET",
+      sessionDate: "2026-10-13",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 118 } } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.match(section.body, /remains through the stop level/i);
+  assert.match(section.body, /confirming the exit/i);
+});
+
+test("watchForSection: reclaim framing omitted when the play closed for a reason other than a stop", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "LONG",
+        closedReason: "target",
+        invalidationUnderlyingPx: 90,
+      }),
+      asOf: "2026-10-13 10:00 ET",
+      sessionDate: "2026-10-13",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 95 } } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.doesNotMatch(section.body, /stop level/i);
+});
+
 test("watchForSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
   const section = watchForSection(
     {
@@ -3457,6 +3674,63 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
     "watch",
   );
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 at -59.1% P&L and
+// SWING:GLW:1479 at -56.1% P&L): `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps
+// `thesisLevel: "intact"` as a fixed literal on every Banger-origin row regardless of price action
+// — there is no real per-position thesis dossier for this lane, the same gap
+// `thesisHealthUncalibrated()`/`BANGER_LEDGER_REGIME_LABEL` already exist to catch for the
+// aggregate Thesis-health panel. Left unguarded, this section rendered "Thesis **intact** — below
+// the 2× partial and above the hard stop" for a position 2% from stopping out — overclaiming a
+// calibrated judgment the lane cannot produce, and purely restating the honest "Premium stop
+// rail"/"Premium target rail" lines two lines below it. Must suppress regardless of bucket
+// (watch/open) and regardless of whether thesisBreak carries a note.
+test("watchForSection: Banger-origin thesis line is suppressed, not fabricated (Largo C6, live repro CRI/GLW)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: BANGER_LEDGER_REGIME_LABEL,
+        thesisBreak: { level: "intact", note: "below the 2× partial and above the hard stop" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.doesNotMatch(section.body, /Thesis \*\*/);
+  assert.doesNotMatch(section.body, /below the 2× partial/);
+});
+
+// Sibling guard: a NATIVE swing position's real, live-derived thesisBreak must still render —
+// the suppression above is scoped to the Banger-ledger sentinel, not to "intact" generally.
+test("watchForSection: a NATIVE position's thesis line still renders (suppression is Banger-scoped only)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: "Pullback continuation · regime 1.00",
+        thesisBreak: { level: "intact", note: "structure holding" },
+      }),
+      asOf: "2026-10-08 08:30 ET",
+      sessionDate: "2026-10-08",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.match(section.body, /Thesis \*\*intact\*\* — structure holding/);
 });
 
 test("watchForSection: entry trigger phrasing mirrors below for SHORT direction", () => {
@@ -3615,8 +3889,12 @@ test("watchForSection: gate-block bullet is a count + pointer, not a second full
     },
     "watch",
   );
-  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Entry section above\./);
-  // The full reason text must NOT be duplicated here — its one home is the Entry section.
+  // REPOINTED (Ask Largo standing mandate, 2026-10-08): "Entry section above" was never actually
+  // the sole full-text home this test's own comment assumed — "Trade manager read" independently
+  // rendered the same codes+reasons too (see play-brief.ts's `watchEntrySection` 2026-10-08
+  // comment). Repointed at "Trade manager read", the real one true home now.
+  assert.match(section.body, /\*\*Before entry, clear:\*\* 2 gates — see Trade manager read above\./);
+  // The full reason text must NOT be duplicated here — its one home is Trade manager read.
   assert.doesNotMatch(section.body, /Broad-market regime degraded/);
   assert.doesNotMatch(section.body, /Cortex preflight vetoed/);
 });
@@ -4368,6 +4646,34 @@ test("whyThisSetupSection: still surfaces a live, legitimate industry read (non-
     }),
   );
   assert.match(section.body, /\*\*Industry read:\*\* lagging \*\*Semiconductors\*\* \(SMH\) by 4\.0% over 10 sessions \(\+1\.6% vs \+5\.6%\)\./);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-09, live AAPL WATCH brief): `deltaPct` is
+// nameReturnPct − groupReturnPct computed on RAW, unrounded returns (industry-group-rs.ts), then
+// this section rounded it to 1dp INDEPENDENTLY of the already-1dp-rounded `fmtPct` display of the
+// two operands beside it — so the stated "by X%" lag/lead magnitude could silently disagree with
+// the subtraction a reader does themselves from the two percentages right next to it. Real example
+// (live production, same numbers reproduced here): raw nameReturnPct=1.34/groupReturnPct=1.55 (a
+// real pair that independently round to the DIFFERENT display values "+1.3%"/"+1.6%", a 0.3 spread)
+// used to render "by 0.2%" (1.34−1.55=−0.21, rounded alone) instead of the "0.3%" that actually
+// subtracts from what's displayed — a Largo-contract C9 precision violation.
+test("whyThisSetupSection: industry-read lag/lead magnitude always equals the displayed name/group delta, even when raw and rounded deltas disagree", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      ticker: "AAPL",
+      sectorLeadershipFacts: {
+        benchmarkEtf: "XLK",
+        benchmarkLabel: "Technology",
+        kind: "sector",
+        nameReturnPct: 1.34,
+        groupReturnPct: 1.55,
+        deltaPct: 1.34 - 1.55, // raw, unrounded — exactly what industry-group-rs.ts produces
+      },
+    }),
+  );
+  // Must read "0.3%" (1.6 − 1.3), never "0.2%" (the raw delta rounded in isolation).
+  assert.match(section.body, /\*\*Industry read:\*\* lagging \*\*Technology\*\* \(XLK\) by 0\.3% over 10 sessions \(\+1\.3% vs \+1\.6%\)\./);
+  assert.doesNotMatch(section.body, /by 0\.2%/);
 });
 
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18, fresh angle: `dossier.ts`'s commit-time
@@ -5483,6 +5789,41 @@ test("buildIntelSections: a single section throwing does not take down the whole
   assert.ok(sections.some((s) => s.title === "Watch levels"), "other sections still render");
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-10-10): the test above proves the error BOUNDARY
+// works (one throw doesn't take down the whole brief) but not that the failure is DISCLOSED —
+// pre-fix, `safeSection` had no `onFailure` hook at all, so a thrown section vanished with zero
+// record anywhere the model-facing envelope reads (not `unavailableSources`, not `confidence`),
+// identical to the gap the 2026-10-07 `safeCompose`/`onFailure` fix closed for evidence/levels but
+// explicitly deferred extending to this function's own 20 `safeSection` calls. Reuses the exact
+// same malformed-`factors` repro as the test above.
+test("buildIntelSections: a thrown section is reported via onFailure, not silently indistinguishable from a real absence", () => {
+  const play = fixturePlay({
+    status: "WATCH",
+    factors: undefined as unknown as TerminalPlay["factors"],
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-09-20T14:00:00.000Z",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const failures: string[] = [];
+  const sections = buildIntelSections(ctx, "watch", { onFailure: (label) => failures.push(label) });
+
+  assert.ok(!sections.some((s) => s.title === "Why this setup"), "broken section still omitted, not fabricated");
+  assert.deepEqual(failures, ["Why this setup"], "the broken section's own label is reported exactly once");
+
+  // Omitting `onFailure` entirely (every pre-existing call site in this file) must stay a no-op —
+  // the hook is additive, never required.
+  assert.doesNotThrow(() => buildIntelSections(ctx, "watch"));
+});
+
 // BUG FOUND (2026-09-21, Ask Largo standing mandate — 4th instance of the #5362/#4261 duplication
 // class, live repro pattern: any OPEN play with a HOLD recommendation and a calibrated thesis
 // health below 45). actionNarrative's HOLD branch (play-brief-narrative.ts, feeds "Trade manager
@@ -5588,4 +5929,58 @@ test("bookContextSection: a large same-theme overlap caps the rendered name list
   const renderedNames = crypto.filter((t) => section!.body.includes(`${t} LONG`));
   assert.equal(renderedNames.length, 8, "must cap the rendered names, not list every overlap");
   assert.match(section!.body, /\+ 2 more/, "the remainder must be folded into an honest count");
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-08 :40 cycle, live repro SWING:TNGX:1611):
+// breakTrigger (play-brief-narrative.ts), the narrative's authoritative "Break watch" bullet AND
+// the headline `envelope.invalidation` field, was fixed on 2026-09-15 to pick whichever real
+// support level — put wall, dark pool, or GEX king — is actually NEAREST spot (see
+// resolveInvalidationFocalLevel's own doc comment: "the king sat 8x nearer than the put wall" on
+// a live CRWD repro). `watchForSection`'s own "Structural support node"/"Structural resistance
+// node" line was never updated to match — it still hardcodes put wall (LONG) / call wall (SHORT)
+// unconditionally, with no awareness that a nearer GEX king (or dark-pool print) exists. Live
+// TNGX repro (spot 22.57, GEX king 22.00, put wall 20.00): `envelope.invalidation` correctly read
+// "Break watch — lose 22.00" (the nearer, real risk) while "What to watch" in the SAME envelope
+// said "Structural support node: put wall 20.00" — two different numbers for what both sections
+// present as THE structural level that matters for this play, with no indication to the member
+// that they're reading two different concepts. Reproduced here with the identical shape (king
+// nearer than put wall for a LONG).
+test("watchForSection: Structural support node matches breakTrigger's nearest-level selection, not a hardcoded put wall (Largo identity/precision)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ direction: "LONG", status: "OPEN" }),
+    asOf: "2026-10-08 20:44 ET",
+    sessionDate: "2026-10-08",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gex_king_strike: 102,
+        put_wall: 90,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: {
+      spot: 100,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      gexWalls: { putWalls: [{ strike: 90 }], callWalls: [] },
+      ladder: { rows: [{ strike: 97, isKing: true }] },
+    } as unknown as VectorFullState,
+  };
+
+  const watch = watchForSection(ctx, "open");
+  const narrative = tradeManagerNarrativeSection(ctx, "open");
+
+  assert.ok(narrative);
+  // The narrative's authoritative Break watch bullet picks the nearer king (97), not the put wall.
+  assert.match(narrative!.body, /\*\*Break watch\*\* — lose \*\*97\.00\*\*/);
+
+  // "What to watch" must cite the SAME level the authoritative Break watch bullet names — never a
+  // second, independently-selected number for what both sections call "the" structural support.
+  assert.match(watch.body, /Structural support node: GEX king \*\*97\.00\*\*/);
+  assert.doesNotMatch(watch.body, /put wall \*\*90\.00\*\*/);
 });

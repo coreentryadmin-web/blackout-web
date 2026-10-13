@@ -45,6 +45,35 @@ test("passes through non-numeric leaves unchanged", () => {
   });
 });
 
+// ── Date passthrough — live-caught P1: /api/market/anomalies detectedAt -> {} ──────
+//
+// A `Date` has no own enumerable properties, so the generic object-walk branch used to
+// rebuild it via `Object.entries()` into an empty plain object. That silently destroyed
+// every `detectedAt` timestamp served by /api/market/anomalies (a raw pg `Date`, never
+// stringified before reaching roundFloats()), which in turn made `isFlowAnomalyRecent`
+// (`new Date({}).getTime()` -> NaN) always report "not recent" and made FlowAnomalyBanner
+// render nothing regardless of how fresh the real anomaly was. Confirmed live 2026-10-11.
+
+test("passes a raw Date through unchanged, instead of flattening it to {}", () => {
+  const d = new Date("2026-10-09T23:59:45.000Z");
+  const out = roundFloats({ detectedAt: d, premium: 123.456 }) as { detectedAt: Date; premium: number };
+  assert.ok(out.detectedAt instanceof Date, "detectedAt must still be a Date, not a plain object");
+  assert.equal(out.detectedAt.toISOString(), "2026-10-09T23:59:45.000Z");
+  assert.equal(out.premium, 123.46);
+  // The actual wire format the bug corrupted: JSON.stringify calls Date.prototype.toJSON().
+  assert.equal(JSON.stringify(out), '{"detectedAt":"2026-10-09T23:59:45.000Z","premium":123.46}');
+});
+
+test("walks arrays of Dates (the actual anomalies/route.ts shape) without flattening any of them", () => {
+  const rows = [
+    { id: "1", detectedAt: new Date("2026-10-09T10:00:00.000Z") },
+    { id: "2", detectedAt: new Date("2026-10-09T11:30:00.000Z") },
+  ];
+  const out = roundFloats({ anomalies: rows }) as { anomalies: { id: string; detectedAt: Date }[] };
+  assert.equal(out.anomalies[0].detectedAt.toISOString(), "2026-10-09T10:00:00.000Z");
+  assert.equal(out.anomalies[1].detectedAt.toISOString(), "2026-10-09T11:30:00.000Z");
+});
+
 // ── reconcileStrikeTotal — live-caught P0: NVDA GEX Σstrike_totals != total ────────
 
 test("reconcileStrikeTotal: reproduces the live NVDA bug — independently-rounded total drifts from the sum of rounded strike_totals, and gets fixed", () => {

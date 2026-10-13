@@ -14,7 +14,11 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { logCronRun } from "@/lib/cron-run";
 import { runBangerLiveSync } from "@/lib/banger/live-sync";
-import { fetchOpenBangerPositions, updateBangerLiveState } from "@/lib/banger/positions-db";
+import {
+  fetchOpenBangerPositions,
+  updateBangerLiveState,
+  updateBangerQuoteFields,
+} from "@/lib/banger/positions-db";
 import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchOpenClose } from "@/lib/providers/polygon-largo";
 import { buildBangerQuoteTickRow, persistBangerQuoteTick } from "@/lib/banger/quote-tick-log";
@@ -38,10 +42,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Populated by `fetchOpenPositions` below and read by `fetchMarks` — safe because
+  // runBangerLiveSync always awaits fetchOpenPositions() to completion before calling fetchMarks()
+  // (live-sync.ts: `const rows = await deps.fetchOpenPositions(); ... const marks = await
+  // deps.fetchMarks(occs);`), so this map is fully built before anything reads it. Lets the
+  // bid/ask/greeks carriage below (FINDINGS 2026-10-09 / migration 017) identify WHICH position
+  // row a given OCC belongs to without changing live-sync.ts's typed Map<occ, mark> contract at
+  // all — zero risk to the scale-out decision engine's existing signature/tests.
+  const occToId = new Map<string, number>();
+
   try {
     const result = await runBangerLiveSync({
       fetchOpenPositions: async () => {
         const rows = await fetchOpenBangerPositions();
+        occToId.clear();
+        for (const r of rows) occToId.set(r.contract_occ, r.id);
         return rows.map((r) => ({
           id: r.id,
           session_date: r.session_date,
@@ -74,6 +89,26 @@ export async function GET(req: NextRequest) {
           void persistBangerQuoteTick(buildBangerQuoteTickRow(occ, snap, polledAt)).catch((err) => {
             console.warn(`[banger-quote-tick-log] persist failed for ${occ}:`, err);
           });
+          // FINDINGS 2026-10-09 (Ask Largo standing mandate): carry the SAME snapshot's bid/ask/OI/
+          // greeks onto the live position row — see migration 017's header for the full history.
+          // Fire-and-forget, best-effort, additive-only (never read by the decision path above);
+          // a missing occToId entry (shouldn't happen — occToId is populated from the exact `rows`
+          // this `occs` list was derived from) is a silent no-op rather than a thrown error.
+          const positionId = occToId.get(occ);
+          if (positionId != null) {
+            void updateBangerQuoteFields(positionId, {
+              bid: snap.bid,
+              ask: snap.ask,
+              openInterest: snap.openInterest,
+              delta: snap.delta,
+              gamma: snap.gamma,
+              theta: snap.theta,
+              vega: snap.vega,
+              iv: snap.iv,
+            }).catch((err) => {
+              console.warn(`[banger-quote-fields] persist failed for ${occ}:`, err);
+            });
+          }
         }
         return marks;
       },

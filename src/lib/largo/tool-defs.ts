@@ -118,7 +118,12 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_net_prem_ticks", "UW ONLY — tick-level net premium velocity.", T, ["ticker"]),
 
-  t("get_nope", "UW ONLY — Net Options Pricing Effect.", T, ["ticker"]),
+  t(
+    "get_nope",
+    "Net Options Pricing Effect. For SPX/SPXW: NOPE + net delta from the live SPX Sniper desk cache when available (source 'spx_sniper_desk'); falls back to a fresh Unusual Whales pull otherwise. For every other ticker: UW ONLY, no desk/Polygon equivalent.",
+    T,
+    ["ticker"]
+  ),
 
   t("get_flow_per_strike", "UW ONLY — intraday premium flow by strike.", T, ["ticker"]),
 

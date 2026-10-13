@@ -30,7 +30,6 @@ import {
   darkPoolTape,
   estimateDispersion,
   estimateTrajectory,
-  haloFromSignals,
   impliedVsRealized,
   layoutRailLabels,
   railLabelWidthPx,
@@ -47,11 +46,9 @@ import {
   wallInversionNote,
   targetRail,
   LIVE_SIGNAL_GLYPH,
-  LIVE_SIGNAL_LABEL,
   type Domain,
   type LiveSignal,
   type PrintLike,
-  type SignalLike,
 } from "@/lib/meridian/meridian-viz-core";
 
 type Lean = "bullish" | "bearish" | "neutral";
@@ -129,87 +126,6 @@ export function MeridianCountUp({
     <span className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
       {shown === null ? "—" : `${prefix}${shown.toFixed(decimals)}${suffix}`}
     </span>
-  );
-}
-
-/* ── Live signal chip ─────────────────────────────────────────────────────────────── */
-export function MeridianSignalChip({ signal, detail }: { signal: LiveSignal; detail?: string }) {
-  return (
-    <span className={`mv-chip mv-chip-${signal}`} title={detail ?? LIVE_SIGNAL_LABEL[signal]}>
-      <span className="mv-chip-glyph" aria-hidden="true">
-        {LIVE_SIGNAL_GLYPH[signal]}
-      </span>
-      {LIVE_SIGNAL_LABEL[signal]}
-    </span>
-  );
-}
-
-/* ── Intelligence halo ────────────────────────────────────────────────────────────────
- * A segmented ring where each signal owns arc proportional to its weight, plus an inner
- * AGREEMENT arc. The agreement number is the reason this is a halo and not a score: a
- * "bullish 68" from ten aligned signals and one from six-vs-four are different setups that a
- * single number cannot distinguish. Conflict shows as a ring of mixed colour with a short
- * inner arc; consensus shows as a near-solid ring with a long one.
- */
-export function MeridianHalo({
-  signals,
-  score,
-  verdict,
-  confidence,
-  size = 168,
-  onSegmentClick,
-}: {
-  signals: readonly SignalLike[] | null | undefined;
-  score: number | null;
-  verdict: Lean;
-  confidence?: string | null;
-  size?: number;
-  onSegmentClick?: (index: number) => void;
-}) {
-  const halo = useMemo(() => haloFromSignals(signals), [signals]);
-  if (!halo) return null;
-
-  const cx = size / 2;
-  const cy = size / 2;
-  const rOuter = size / 2 - 10;
-  const rInner = rOuter - 16;
-  const GAP = 1.6; // degrees of breathing room so adjacent same-lean segments stay countable
-
-  let cursor = 0;
-  const arcs = halo.segments.map((seg, i) => {
-    const sweep = seg.fraction * 360;
-    const path = arcPath(cx, cy, rOuter, cursor + GAP / 2, cursor + sweep - GAP / 2);
-    cursor += sweep;
-    return { path, lean: seg.lean as Lean, i };
-  });
-
-  const agreementArc = arcPath(cx, cy, rInner, 0, Math.max(halo.agreement * 360, 0.001));
-
-  return (
-    <div className="mv-halo" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img"
-           aria-label={`${verdict} ${score ?? ""}, ${Math.round(halo.agreement * 100)}% signal agreement`}>
-        <circle cx={cx} cy={cy} r={rOuter} className="mv-halo-track" />
-        {arcs.map((a) => (
-          <path
-            key={a.i}
-            d={a.path}
-            className={`mv-halo-seg ${LEAN_CLASS[a.lean]}${onSegmentClick ? " mv-halo-seg-click" : ""}`}
-            style={{ animationDelay: `${a.i * 42}ms` }}
-            onClick={onSegmentClick ? () => onSegmentClick(a.i) : undefined}
-          />
-        ))}
-        <circle cx={cx} cy={cy} r={rInner} className="mv-halo-track mv-halo-track-inner" />
-        <path d={agreementArc} className={`mv-halo-agree ${LEAN_CLASS[halo.dominant as Lean]}`} />
-      </svg>
-      <div className="mv-halo-center">
-        <span className={`mv-halo-verdict ${LEAN_CLASS[verdict]}`}>{verdict}</span>
-        <MeridianCountUp className="mv-halo-score" value={num(score)} />
-        <span className="mv-halo-agreement">
-          {Math.round(halo.agreement * 100)}% agree{confidence ? ` · ${confidence}` : ""}
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -517,36 +433,54 @@ export function MeridianBeatHistory({
         </span>
       </div>
       <div className="mv-beats-rows">
-        {series.map((p, i) => (
-          <button
-            type="button"
-            key={p.date ?? i}
-            className="mv-beat-row"
-            onClick={onSelect && prints ? () => onSelect(prints[i]!) : undefined}
-            disabled={!onSelect}
-            title={
-              p.reactionAssumed
-                ? "Reaction measured on the report date — print timing unknown, so this may be pre-print drift"
-                : undefined
-            }
-          >
-            <span className="mv-beat-date">{p.date?.slice(2) ?? "—"}</span>
-            <span className="mv-beat-track">
-              <span
-                className={`mv-beat-bar ${p.beat === null ? "mv-neutral" : p.beat ? "mv-bull" : "mv-bear"}`}
-                style={{ transform: `scaleX(${p.magnitude})` }}
-              />
-            </span>
-            <span className={`mv-beat-surprise ${p.beat === null ? "" : p.beat ? "mv-bull" : "mv-bear"}`}>
-              {p.surprisePct === null ? "—" : fmtSignedPct(p.surprisePct)}
-            </span>
-            <span className={`mv-beat-reaction ${p.reactionPct === null ? "" : p.reactionPct >= 0 ? "mv-bull" : "mv-bear"}`}>
-              {fmtSignedPct(p.reactionPct)}
-              {/* An assumed anchoring is marked, never silently presented as measured. */}
-              {p.reactionAssumed && <span className="mv-beat-assumed" aria-hidden="true">~</span>}
-            </span>
-          </button>
-        ))}
+        {series.map((p, i) => {
+          const rowTitle = p.reactionAssumed
+            ? "Reaction measured on the report date — print timing unknown, so this may be pre-print drift"
+            : undefined;
+          const rowChildren = (
+            <>
+              <span className="mv-beat-date">{p.date?.slice(2) ?? "—"}</span>
+              <span className="mv-beat-track">
+                <span
+                  className={`mv-beat-bar ${p.beat === null ? "mv-neutral" : p.beat ? "mv-bull" : "mv-bear"}`}
+                  style={{ transform: `scaleX(${p.magnitude})` }}
+                />
+              </span>
+              <span className={`mv-beat-surprise ${p.beat === null ? "" : p.beat ? "mv-bull" : "mv-bear"}`}>
+                {p.surprisePct === null ? "—" : fmtSignedPct(p.surprisePct)}
+              </span>
+              <span className={`mv-beat-reaction ${p.reactionPct === null ? "" : p.reactionPct >= 0 ? "mv-bull" : "mv-bear"}`}>
+                {fmtSignedPct(p.reactionPct)}
+                {/* An assumed anchoring is marked, never silently presented as measured. */}
+                {p.reactionAssumed && <span className="mv-beat-assumed" aria-hidden="true">~</span>}
+              </span>
+            </>
+          );
+          // Neither current call site (Report, History) passes `onSelect`, so this used to render
+          // a `disabled` button — real markup for a control that can NEVER be activated: no click,
+          // no keyboard focus, nothing a `disabled` state would ever lift. Same fix as
+          // MeridianTargetRail's price-target dots and MeridianDarkPoolTape's prints
+          // (UI-UX-OPPORTUNITIES.md item 13): a `<span>` reports the same row honestly without
+          // claiming to be a control nothing can ever enable.
+          if (!onSelect || !prints) {
+            return (
+              <span key={p.date ?? i} className="mv-beat-row" title={rowTitle}>
+                {rowChildren}
+              </span>
+            );
+          }
+          return (
+            <button
+              type="button"
+              key={p.date ?? i}
+              className="mv-beat-row"
+              onClick={() => onSelect(prints[i]!)}
+              title={rowTitle}
+            >
+              {rowChildren}
+            </button>
+          );
+        })}
       </div>
       {series.some((p) => p.reactionAssumed) && (
         <p className="mv-note">~ reaction measured on the report session; print timing unknown</p>

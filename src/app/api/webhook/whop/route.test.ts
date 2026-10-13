@@ -183,6 +183,27 @@ describe("POST /api/webhook/whop — route-level signature + secret handling", (
     assert.match(failOpen, /idempotency fail-open/i);
   });
 
+  // Regression for 2026-10-12: every other notifyOpsDiscord call site added after
+  // isInternalAuditEmail shipped (2026-08-28) gates on it — the Clerk webhook's "New member
+  // signed up"/welcome-email/Whop-sync calls all do — but "Membership cancellation started"
+  // (added 2026-08-07, before isInternalAuditEmail existed) was never backfilled, so the
+  // scripts/audit/*.mjs harnesses that mint disposable Whop-linked accounts against
+  // production could page ops on every synthetic cancellation. Source-text assertion, same
+  // style as the CQ-114 test above, since mocking a full membership.cancel_at_period_end_changed
+  // event through this route's heavy module-mocked signature-verification harness would add a
+  // lot of setup for a call-site gate.
+  test("'Membership cancellation started' ops alert is gated on isInternalAuditEmail (source contract)", () => {
+    const src = readFileSync("src/app/api/webhook/whop/route.ts", "utf8");
+    const start = src.indexOf("Membership cancellation started");
+    assert.ok(start >= 0, "cancellation-started notify block not found");
+    const guardWindow = src.slice(Math.max(0, start - 400), start);
+    assert.match(
+      guardWindow,
+      /isInternalAuditEmail/,
+      "the cancellation-started ops alert must be gated on isInternalAuditEmail, same as every other ops alert in this file"
+    );
+  });
+
   test("returns 200 with warning in non-production when WHOP_WEBHOOK_SECRET is unset", async () => {
     process.env.WHOP_WEBHOOK_SECRET = "";
     process.env.NODE_ENV = "development";

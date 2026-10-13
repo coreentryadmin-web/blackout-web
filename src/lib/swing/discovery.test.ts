@@ -20,6 +20,9 @@ import {
   type TierZeroSeed,
 } from "./discovery.ts";
 import { assembleSwingDossierInput } from "./swing-ingest.ts";
+import { buildLegacySwingArtifacts } from "./legacy-confirm-promote.ts";
+import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
+import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import { parseEarningsWindows } from "./swing-catalyst.ts";
 import type { SwingAccumAccessors } from "./accumulation-store.ts";
 import type { SwingAccumRow, SwingPositionInsert } from "../db.ts";
@@ -840,4 +843,196 @@ test("runSwingDiscoveryScan: dailyBarComplete is per-ticker — NVDA blocked whe
     if (prevDailyBar === undefined) delete process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR;
     else process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR = prevDailyBar;
   }
+});
+
+// ─── LEGACY GRADUATION BRIDGE WIRING (2026-10-09, Ask Largo mandate — live VST repro) ──────────────
+// PR #5577 built `legacyCommitCandidatesFromSnapshot` (legacy-confirm-promote.ts) + its own full-
+// lifecycle tests, but deliberately left the live wiring into THIS file's commit loop as a named
+// follow-up (docs/audit/FINDINGS.md, 2026-10-01). These two tests prove the wiring itself — that a
+// `deps.legacyTriples` triple actually reaches `commitCandidates`/`computeSwingCommitPlan` — gated
+// by `isSwingLegacyCommitBridgeEnabled()` (OFF by default, per that flag's own doc comment on why the
+// operator-requested caution applies to the WIRING, not just the pure function).
+
+const legacyChainRows: ChainStrikeRow[] = [
+  {
+    // dte from editionFor 2026-07-24 → 9 days — inside HORIZONS.SWING's [5,15] dteMin/dteMax window
+    // (the 2026-08-14 expiry other fixtures use is only valid relative to THEIR later editionFor).
+    expiry: "2026-08-02",
+    strike: 100,
+    call_bid: 1.2,
+    call_ask: 1.3,
+    call_delta: 0.55,
+    call_oi: 3000,
+    call_iv: 0.35,
+    put_bid: 0.8,
+    put_ask: 0.9,
+    put_delta: -0.45,
+    put_oi: 2500,
+    put_iv: 0.38,
+  },
+];
+
+function legacyPlayFixture(over: Partial<PlaybookPlay> = {}): PlaybookPlay {
+  return {
+    rank: 1,
+    ticker: "ZS",
+    direction: "LONG",
+    conviction: "HIGH",
+    play_type: "stock",
+    thesis: "Flow accumulation",
+    key_signal: "Multi-day call flow",
+    entry_range: "$98.00-$100.00",
+    target: "110",
+    stop: "95",
+    options_play: "Aug 14 100C",
+    score: 85,
+    flow_streak_days: 3,
+    ...over,
+  };
+}
+
+/** A TRIGGERED+AT_TRIGGER Legacy triple — the same bridge-eligible shape
+ *  `legacyCommitCandidatesFromSnapshot`'s own "FULL LIFECYCLE" tests use. */
+function triggeredLegacyTriples() {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlayFixture(),
+    checkedAt: "2026-07-24T20:16:00.000Z",
+    editionFor: "2026-07-24",
+    spot: 97,
+    chainRows: legacyChainRows,
+    chainSpot: 97,
+  })!;
+  const triggeredPlay = { ...artifact.play, setupState: "TRIGGERED" as const, entryStatus: "AT_TRIGGER" as const };
+  return [{ ...artifact, play: triggeredPlay }];
+}
+
+/** G-S6 confluence legitimately blocks a Legacy-only candidate with zero independent corroboration
+ *  (proven separately by legacy-confirm-promote.test.ts's own FULL LIFECYCLE test) — disabled here
+ *  so these two tests isolate exactly what they're testing: does the candidate reach the gate stack
+ *  AT ALL, gated on the bridge flag, not on confluence. */
+function withConfluenceDisabled<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE;
+  process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE = "0";
+  return fn().finally(() => {
+    if (prev === undefined) delete process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE;
+    else process.env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE = prev;
+  });
+}
+
+test("runSwingDiscoveryScan: isSwingLegacyCommitBridgeEnabled OFF (default) — a TRIGGERED Legacy triple never reaches the commit gate, stays permanently serve-only", async () => {
+  await withConfluenceDisabled(async () => {
+    const prevBridge = process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+    delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED; // explicit default: unset ⇒ OFF
+    try {
+      const { accessors } = makeFakeAccum();
+      const opened: SwingPositionInsert[] = [];
+      const deps: SwingDiscoveryDeps = {
+        ...makeDeps("2026-07-25", accessors),
+        legacyTriples: triggeredLegacyTriples(),
+        fetchGradedHistory: async () => [],
+        fetchOpenBook: async () => [],
+        insertPosition: async (pos) => {
+          opened.push(pos);
+          return opened.length;
+        },
+        budget: PRODUCTION_PORTFOLIO_BUDGET,
+      };
+      const res = await runSwingDiscoveryScan(deps);
+      assert.equal(
+        opened.filter((p) => p.ticker === "ZS").length,
+        0,
+        "bridge flag OFF: the TRIGGERED Legacy candidate must not be merged into commitCandidates",
+      );
+      assert.equal(
+        res.commit?.committed.some((c) => c.ticker === "ZS"),
+        false,
+      );
+    } finally {
+      if (prevBridge === undefined) delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+      else process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = prevBridge;
+    }
+  });
+});
+
+test("runSwingDiscoveryScan: SWING_LEGACY_COMMIT_BRIDGE_ENABLED=1 — a TRIGGERED Legacy triple reaches the REAL commit gate and opens (the #5577 follow-up, now wired)", async () => {
+  await withConfluenceDisabled(async () => {
+    const prevBridge = process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+    process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = "1";
+    try {
+      const { accessors } = makeFakeAccum();
+      const opened: SwingPositionInsert[] = [];
+      const deps: SwingDiscoveryDeps = {
+        ...makeDeps("2026-07-25", accessors),
+        legacyTriples: triggeredLegacyTriples(),
+        fetchGradedHistory: async () => [],
+        fetchOpenBook: async () => [],
+        insertPosition: async (pos) => {
+          opened.push(pos);
+          return opened.length;
+        },
+        budget: PRODUCTION_PORTFOLIO_BUDGET,
+      };
+      const res = await runSwingDiscoveryScan(deps);
+      assert.equal(
+        opened.filter((p) => p.ticker === "ZS").length,
+        1,
+        "bridge flag ON: the TRIGGERED Legacy candidate is merged into commitCandidates and opens through the real gate stack",
+      );
+      assert.ok(res.commit?.committed.some((c) => c.ticker === "ZS"));
+    } finally {
+      if (prevBridge === undefined) delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+      else process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = prevBridge;
+    }
+  });
+});
+
+test("runSwingDiscoveryScan: an organic candidate for the SAME ticker|direction wins over a Legacy triple (no duplicate/override)", async () => {
+  await withConfluenceDisabled(async () => {
+    const prevBridge = process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+    process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = "1";
+    try {
+      const { accessors } = makeFakeAccum();
+      await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+      await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors)); // NVDA WATCH (organic)
+      const nvda = (await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors))).dossiers.find(
+        (d) => d.ticker === "NVDA",
+      )!;
+
+      // A Legacy triple for the SAME ticker|direction NVDA already has organic coverage for.
+      const legacyArtifact = buildLegacySwingArtifacts({
+        play: legacyPlayFixture({ ticker: "NVDA", score: 10 }), // deliberately a worse score to detect an override
+        checkedAt: "2026-07-24T20:16:00.000Z",
+        editionFor: "2026-07-24",
+        spot: 97,
+        chainRows: legacyChainRows,
+        chainSpot: 97,
+      })!;
+      const legacyTriggeredPlay = {
+        ...legacyArtifact.play,
+        setupState: "TRIGGERED" as const,
+        entryStatus: "AT_TRIGGER" as const,
+      };
+
+      const opened: SwingPositionInsert[] = [];
+      const deps: SwingDiscoveryDeps = {
+        ...makeDeps("2026-07-25", accessors),
+        fetchChainRows: async () => nvdaChain(),
+        legacyTriples: [{ ...legacyArtifact, play: legacyTriggeredPlay }],
+        fetchGradedHistory: async () => gradedRows(nvda.archetype.archetype!, nvda.subLane!),
+        fetchOpenBook: async () => [],
+        insertPosition: async (pos) => {
+          opened.push(pos);
+          return opened.length;
+        },
+        budget: PRODUCTION_PORTFOLIO_BUDGET,
+      };
+      const res = await runSwingDiscoveryScan(deps);
+      const nvdaOpens = opened.filter((p) => p.ticker === "NVDA");
+      assert.equal(nvdaOpens.length, 1, "exactly one NVDA position opens — never duplicated");
+      assert.ok(res.commit?.committed.some((c) => c.ticker === "NVDA"));
+    } finally {
+      if (prevBridge === undefined) delete process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED;
+      else process.env.SWING_LEGACY_COMMIT_BRIDGE_ENABLED = prevBridge;
+    }
+  });
 });

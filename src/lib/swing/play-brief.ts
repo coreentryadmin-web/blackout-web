@@ -162,7 +162,29 @@ function managementSection(play: TerminalPlay): RichSection {
       .join(" · ");
     if (trims) lines.push(`Trim ladder: ${trims}`);
     if (ep.stop_premium != null || ep.target_premium != null) {
-      lines.push(`Rails: stop ${fmtUsd(ep.stop_premium)} · target ${fmtUsd(ep.target_premium)}`);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-08, live repro EXTR OPEN brief): once a
+      // trim rung priced at/above `target_premium` has already fired, this line still printed
+      // the bare, un-annotated "target $X" — on the SAME single-rung swing exit policy
+      // (SWING_SCALE_OUT_POLICY: one rung at +100%, target_pct also 100, so the fired trim's
+      // `premium` and `target_premium` are the literal same dollar level — see
+      // play-brief-intel.ts's symmetric 2026-09-22 fix for this exact shape), the member reads
+      // "Trim ladder: +100% ✓" one line above "Rails: ... target $0.30" with nothing telling
+      // them the target in that second line is the SAME level the checkmark above already says
+      // fired — it reads as a fresh, unmet objective directly beside its own "already done"
+      // disclosure. play-brief-intel.ts's "What to watch" section already fixed this exact
+      // self-contradiction for its own "Premium target rail" line (omitting the room% once
+      // fired) but this earlier, more prominent Management-section summary line was never
+      // given the equivalent treatment — confirmed by grep, it is the only other call site
+      // that renders `target_premium` as a bare value. Mirror the ladder's own "✓" convention
+      // (already used two words to the left on the same line, for the identical fact) rather
+      // than inventing new wording or suppressing the real number.
+      const targetAlreadyFired =
+        ep.target_premium != null &&
+        ep.trim_levels.some((t) => t.fired === true && t.premium != null && t.premium >= ep.target_premium!);
+      const targetLabel = targetAlreadyFired
+        ? `${fmtUsd(ep.target_premium)} ✓ (reached)`
+        : fmtUsd(ep.target_premium);
+      lines.push(`Rails: stop ${fmtUsd(ep.stop_premium)} · target ${targetLabel}`);
     }
   }
   if (play.progress != null && Number.isFinite(play.progress)) {
@@ -257,19 +279,45 @@ function blendedPnlPct(play: TerminalPlay): number | null {
  * separate DB sequences that can collide, so blindly trusting a banger id as a swing positionId
  * hint could resolve to a completely unrelated swing position). Instead: a purely additive
  * disclosure, using data already on `ctx.laneRows` (no new fetch), naming every OTHER live position
- * on the same ticker by its distinguishing contract + entry so nothing is hidden. Matches on
- * `entryPremium` (rounded) rather than a synthetic id, since two genuinely different positions on
- * one ticker always differ in strike/expiry/entry price in practice — good enough for an honest
- * disclosure, not a resolution key.
+ * on the same ticker by its distinguishing contract + entry so nothing is hidden.
+ *
+ * BUG FOUND 2026-10-11 (Ask Largo standing mandate — live AMD repro, positionId 51 vs 52). This
+ * function's self-exclusion used to rely ENTIRELY on `entryPremium` proximity (`> 0.005` away from
+ * `play.entry` = "a real sibling", otherwise assumed to be "me") — the doc text above used to
+ * justify this as "two genuinely different positions on one ticker always differ in strike/expiry/
+ * entry price in practice." Live data falsifies that assumption directly: AMD carried two
+ * independently-committed positions (#51 EVENT_DRIVEN, #52 PULLBACK_CONTINUATION — different
+ * archetypes, so `commit.ts`'s own idempotency key correctly treats them as separate theses, see
+ * `swingThesisKey`) that both resolved to the IDENTICAL contract (605C 2026-10-16) via
+ * `pickChainContract`, entered ~3h apart at entry premiums only $0.25 apart. That case happened to
+ * clear the `> 0.005` bar, but nothing stops two independently-committed positions from filling at
+ * premiums within a half-cent of each other (two orders hitting the same quoted mid) — in that
+ * narrower case the old filter would have wrongly treated the real sibling as "self" and silently
+ * dropped it, so a member with two live positions on a ticker could see NO disclosure at all
+ * (`!siblings.length` returns `null`) — the exact "absence must be disclosed, never silent"
+ * violation (C3) this section exists to prevent, just reached via a different gap than the one the
+ * comment above already names.
+ *
+ * Fix: prefer an exact `positionId` match as the self-test whenever both sides carry one (the
+ * CommandDeck row-identity convention stamps `id: "SWING:<TICKER>:<positionId>"` for any row with a
+ * real ledger position — `parseSwingPlayId` already recovers it elsewhere in this file, e.g. the
+ * `bookContextSection` overlap call below). This is a strictly more precise self-test than premium
+ * proximity and costs nothing when it's available. Only fall back to the premium heuristic when
+ * either side lacks a resolvable `positionId` — unchanged from before, and the one case this still
+ * can't disambiguate is itself the subject of the comment above (banger rows never carry one).
  */
 function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
   const { play } = ctx;
   if (play.entry == null || !Number.isFinite(play.entry)) return null;
   const ticker = play.ticker.toUpperCase();
+  const { positionId: selfPositionId } = parseSwingPlayId(play.id);
   const siblings = ctx.laneRows.filter((r) => {
     if (r.ticker.toUpperCase() !== ticker) return false;
     if (!r.liveStatus) return false; // only OTHER live/committed positions matter here
     if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+    if (selfPositionId != null && r.positionId != null) {
+      return r.positionId !== selfPositionId;
+    }
     return Math.abs(r.entryPremium - play.entry!) > 0.005;
   });
   if (!siblings.length) return null;
@@ -338,6 +386,60 @@ function pnlSection(play: TerminalPlay): RichSection {
   // risking drift) a second time — see that function's own comment for the EBS repro that made a
   // second call site necessary.
   const markGenuinelyUnknown = optionMarkGenuinelyUnknown(play);
+  // BUG FOUND (2026-10-09, Ask Largo standing mandate — live SG repro, positionId 1396): `Mark:`
+  // above renders `play.mark` (the raw, full-precision mid — e.g. $0.575, a normal bid/ask
+  // midpoint, NOT an edge case) through `fmtUsd`, which rounds to the cent for display ("$0.57").
+  // `P&L:` renders `play.pnlPct`, which was computed upstream (banger-lane-merge.ts's
+  // `livePnlPct`/adapters.ts's `livePnl`) from that SAME raw, UNROUNDED mid — so the two displayed
+  // numbers stop reconciling whenever the true mid lands on a fractional cent. Live repro: entry
+  // $0.33, mid $0.575 showed "Mark: **$0.57**" / "P&L: **+74.2%**", but a member doing the obvious
+  // hand-check gets (0.57-0.33)/0.33 = +72.7%, a ~1.5pp gap right under the two numbers that most
+  // directly invite that check. Fix: redisplay `P&L:` from the SAME rounded-to-cent mark the
+  // `Mark:` line already shows, so hand arithmetic on the two displayed dollar figures always
+  // reproduces the displayed percentage — the exact self-consistency principle `reconcileStrikeTotal`
+  // (round-floats.ts) already applies one layer up ("a member could manually add up... always
+  // agree"), extended to this narrative pairing. Guarded by `markRoundTripsPnl`: only trust that
+  // `play.pnlPct` really is the plain mark/entry-1 read (and so is safe to redisplay this way) when
+  // recomputing it from the RAW mark already lands within ordinary 1dp rounding noise of the stored
+  // value — `exec.pnl_pct` (adapters.ts's WS-10 executable-lane fallback, a bid/ask-fill-based
+  // number with a different basis entirely) would NOT pass this check, so it is left untouched.
+  const markRoundTripsPnl =
+    !markGenuinelyUnknown &&
+    play.entry != null &&
+    Number.isFinite(play.entry) &&
+    play.entry !== 0 &&
+    play.mark != null &&
+    Number.isFinite(play.mark) &&
+    play.pnlPct != null &&
+    Number.isFinite(play.pnlPct) &&
+    Math.abs((play.mark / play.entry - 1) * 100 - play.pnlPct) <= 0.5;
+  let pnlForDisplay = markRoundTripsPnl
+    ? (Math.round(play.mark! * 100) / 100 / play.entry! - 1) * 100
+    : play.pnlPct;
+  // GUARD (2026-10-09, Ask Largo standing mandate — live CNXC repro, positionId 1624): the
+  // recompute above rounds `play.mark` to the cent BEFORE dividing, and standard half-up rounding
+  // can push the result either direction relative to the raw mid — the SG repro above only ever
+  // exercised the round-DOWN case (mid $0.575 -> displayed $0.57, understating P&L). The symmetric
+  // round-UP case (mid $0.425 -> displayed $0.43, entry $0.30) OVERSTATES: recompute gives +43.3%
+  // while this position's own `peak`/`trough` (adapters.ts's `peakDisplay`/`troughDisplay`,
+  // computed from the RAW un-rounded premium, never re-derived from a rounded Mark) both correctly
+  // read +41.7% — so the brief showed a current P&L visibly ABOVE the position's own recorded
+  // all-time high two lines below, which is a logical impossibility (the current mark IS one of
+  // the samples peak/trough were latched from, so the canonical `play.pnlPct` always lies inside
+  // [trough, peak] by construction — only this cent-rounded recompute can escape that range).
+  // Fall back to the canonical value whenever the recompute would contradict the position's own
+  // recorded extremes; left untouched (same as before this guard) when peak/trough aren't
+  // available to check against, or when the recompute stays inside bounds (the common case this
+  // guard must NOT regress — e.g. the original SG repro, whose round-trip stays well inside
+  // [-39.4, 81.8]). The 0.05pp tolerance absorbs peak/trough's own 1dp display rounding.
+  if (
+    pnlForDisplay != null &&
+    Number.isFinite(pnlForDisplay) &&
+    ((play.peak != null && Number.isFinite(play.peak) && pnlForDisplay > play.peak + 0.05) ||
+      (play.trough != null && Number.isFinite(play.trough) && pnlForDisplay < play.trough - 0.05))
+  ) {
+    pnlForDisplay = play.pnlPct;
+  }
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
     markGenuinelyUnknown
@@ -345,7 +447,7 @@ function pnlSection(play: TerminalPlay): RichSection {
       : markUnsynced
         ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
         : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
-    `P&L: **${fmtPct(play.pnlPct)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
+    `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
     `Peak: **${fmtPct(play.peak)}**`,
     // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
     // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
@@ -462,8 +564,43 @@ function daysOnWatch(sinceIso: string | null | undefined, nowMs: number): number
   return Math.max(0, Math.floor((nowMs - sinceMs) / 86_400_000));
 }
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-12): `Math.ceil(msLeft / 86_400_000)` rounds ANY
+// positive sub-24h remainder up to "1 day" — a deadline 4 hours away and one 23 hours away both
+// rendered "1 day left", identical to a deadline genuinely ~1.0 days out. Live repro: MRVL WATCH
+// brief, fetched 2026-10-12 05:03 ET, `entryDeadline` 2026-10-12 09:15 ET (same calendar day, ~4h12m
+// away) — "Entry window closes ... (1 day left)". A member reading "1 day left" at 5am would
+// reasonably plan to act later that day or the next morning; the real window closes before most
+// members are even awake. Below 24h, switch to hours (still ceil'd, so "a few minutes left" never
+// reads as "0 hours" — same floor-at-1 discipline Math.ceil already gave the day case); at/above 24h,
+// keep the existing day-granularity phrasing unchanged (the sibling tests pinning "N days left" for
+// multi-day windows still pass byte-for-byte).
+function entryWindowTimeLeftLabel(msLeft: number): string {
+  const clamped = Math.max(0, msLeft);
+  if (clamped < 86_400_000) {
+    const hours = Math.max(1, Math.ceil(clamped / 3_600_000));
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.ceil(clamped / 86_400_000);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   const lines: string[] = [];
+  // Computed once, up front: `deadPlayReason` is the authoritative "is this play already dead for
+  // ANY reason" check (INVALIDATED, calendar-deadline-expired, contract-expired, or EXTENDED-chase)
+  // — already used a few lines below for the gate-block "moot" qualifier. Reused here (BUG FIX, Ask
+  // Largo standing mandate, 2026-10-08) to gate the forward-looking "Entry window closes" line too,
+  // instead of the narrower `play.watchEntryExpired` flag that only covers the calendar-deadline
+  // case. `watchEntryExpired` false does NOT mean the play is still live — an EXTENDED-chase play
+  // (setupState "EXTENDED" / entryStatus "EXTENDED_CHASE") leaves it false while still carrying a
+  // real future `entryDeadline`, so the old guard let this section say "Entry window closes ... (N
+  // days left)" a few lines above — and the brief's own top-level invalidation line say "Extended
+  // past the valid entry window — this setup is no longer live" — about the SAME play, in the SAME
+  // response. Both lines were independently correct in isolation (two different kinds of "window":
+  // calendar-deadline vs. price-extension), but reusing the word "window" for both meanings read as
+  // a flat self-contradiction to a member. Live repro: NTAP, 2026-10-08 (Ask Largo health-check
+  // deep-dive) — see docs/audit/findings-staging/2026-10-08-swing-watch-entry-window-wording-collision.md.
+  const dead = deadPlayReason(play);
   const label =
     swingActionDisplay(play)?.label ??
     play.swingEntryAction?.toUpperCase() ??
@@ -503,14 +640,16 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
   // hear about the deadline was the EXPIRED badge itself, after it had already passed. Mirrors the
   // days-on-watch fix directly above it (same section, same "a real computed fact was silently
   // dropped before reaching the model" shape) — forward-looking instead of backward-looking. Only
-  // shown while NOT already expired (the EXPIRED badge + `deadPlayReason` below already own that
-  // case) and only when a real deadline was resolvable (never fabricated).
-  if (!play.watchEntryExpired && play.entryDeadline) {
+  // shown while NOT already dead for ANY reason (`dead`, computed at the top of this function —
+  // the EXPIRED badge + `deadPlayReason`'s gate-block qualifier below already own every dead case,
+  // not just the calendar-deadline one; see that computation's own comment for why `watchEntryExpired`
+  // alone used to under-cover this) and only when a real deadline was resolvable (never fabricated).
+  if (!dead && play.entryDeadline) {
     const deadlineMs = Date.parse(play.entryDeadline);
     if (Number.isFinite(deadlineMs)) {
-      const daysLeft = Math.max(0, Math.ceil((deadlineMs - readMs) / 86_400_000));
+      const timeLeft = entryWindowTimeLeftLabel(deadlineMs - readMs);
       lines.push(
-        `Entry window closes **${etStampFromIso(play.entryDeadline)}** (**${daysLeft} day${daysLeft === 1 ? "" : "s"}** left) — stale after that, wait for a fresh setup.`,
+        `Entry window closes **${etStampFromIso(play.entryDeadline)}** (**${timeLeft}** left) — stale after that, wait for a fresh setup.`,
       );
     }
   }
@@ -524,10 +663,32 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
     // g_s4_regime..." sat in the same section with nothing marking the gate as moot. Same root
     // cause `entryTriggerDeadReason` (play-brief-intel.ts) already fixed for the Entry-trigger
     // line one section down — `deadPlayReason` is the shared check both now use.
-    const dead = deadPlayReason(play);
+    //
+    // BUG FIX (Ask Largo standing mandate, 2026-10-08): this used to ALSO render the full
+    // `code: reason` list here — but `watchGateCoaching` (play-brief-narrative-coaching.ts),
+    // which composeSwingPlayBrief always places immediately after this "Entry" section (inside
+    // "Trade manager read") for a WATCH play, independently renders the exact same
+    // `play.gateBlocks` codes+reasons in full too. Both are gated on the identical
+    // `play.gateBlocks?.length` check with no coordination between the two files — live repro:
+    // AMD WATCH brief, 2026-10-08, "## Entry" and "## Trade manager read" both carried the
+    // verbatim `entry_window_expired` reason text. This is the exact same duplication shape the
+    // 2026-09-12 `watchForSection` fix (below, "Watch levels") already removed from a THIRD
+    // location — that fix made "Watch levels" defer to this section ("see Entry section above")
+    // on the premise this section was the one true home, but never noticed this section and
+    // "Trade manager read" were ALSO duplicating each other the whole time. Resolved the other
+    // way around this time: `watchGateCoaching`'s rendering is the richer of the two (it already
+    // states "moot" framing identically, and per its own comment was kept as "the single source
+    // of truth" on 2026-10-07) and renders for EVERY watch-bucket play unconditionally (see
+    // `actionNarrative`'s watch branch, play-brief-narrative.ts), so pointing this section at it
+    // — rather than the reverse — loses no information and needs no new plumbing. The
+    // "Watch levels" pointer below was repointed at "Trade manager read" too, so there is now
+    // exactly one full-text home instead of two independent ones.
+    // `dead` reused from the top of this function (same value — computed once, not re-derived).
+    const gateCount = play.gateBlocks.length;
     lines.push(
-      (dead ? `**Also gate-blocked** (moot — ${dead}):\n` : "**Gates blocking entry:**\n") +
-        play.gateBlocks.map((g) => `• ${g.code}: ${g.reason}`).join("\n"),
+      dead
+        ? `**Also gate-blocked** (moot — ${dead}) — see Trade manager read below.`
+        : `**Gates blocking entry:** ${gateCount} gate${gateCount === 1 ? "" : "s"} — see Trade manager read below.`,
     );
   } else if (play.recommendation === "BUY") {
     lines.push("No mechanical gates blocking entry on this read.");
@@ -1215,7 +1376,15 @@ export function composeSwingPlayBrief(
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
 
   if (bucket === "watch") {
-    const watchSection = safeCompose("Entry", () => watchEntrySection(play, readMs), null);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-12): used the outer `readMs` local (always the
+    // real `Date.now()` from this function's top) instead of `ctx.readMs`, which line ~1354 above
+    // deliberately stamps to an already-injected override when one is present — exactly the pattern
+    // play-brief-types.ts's `readMs` doc comment asks every downstream call site to follow, and the
+    // "other ~18 Date.now() call sites" note there already flagged this class of gap as a known,
+    // deferred sweep. Surfaced while adding a determinism-pinned regression test for the sub-24h
+    // entry-window fix below: a test that injects `ctx.readMs` to pin "now" silently had no effect
+    // on this section, which kept reading the real wall clock regardless.
+    const watchSection = safeCompose("Entry", () => watchEntrySection(play, ctx.readMs ?? readMs), null);
     if (watchSection) sections.push(watchSection);
   } else if (bucket === "open") {
     const mgmt = safeCompose("Management", () => managementSection(play), null);
@@ -1231,7 +1400,17 @@ export function composeSwingPlayBrief(
     if (closed) sections.push(closed);
   }
 
-  sections.push(...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel }));
+  // BUG FIX (Ask Largo standing mandate, 2026-10-10): declared here, BEFORE buildIntelSections,
+  // rather than down at the evidence/levels composition below (where this pair originated for the
+  // 2026-10-07 fix) — buildIntelSections' own 20 safeSection calls needed the identical `onFailure`
+  // hook (see its own doc comment, play-brief-intel.ts), and declaring one shared collector that
+  // every composer call feeds is what lets `unavailableSources` below see ALL of them, not just
+  // evidence/levels'.
+  const buildFailures: string[] = [];
+  const trackBuildFailure = (label: string) => buildFailures.push(label);
+  sections.push(
+    ...buildIntelSections(ctx, bucket, { collapseIntel: !opts?.expandIntel, onFailure: trackBuildFailure }),
+  );
 
   // Prefer a real per-ticker technical break level (put wall/gamma flip/call wall — same
   // computation the "Trade manager read" narrative's own "Break watch" bullet uses) over the
@@ -1277,11 +1456,10 @@ export function composeSwingPlayBrief(
 
   // BUG FIX continued (Ask Largo standing mandate, 2026-10-07): evidence/levels are now composed
   // BEFORE unavailableSources rather than inline inside the envelope literal, so a build failure
-  // recorded via `buildFailures` can be folded into the SAME `unavailableSources` list the
+  // recorded via `buildFailures` (declared above, now ALSO fed by buildIntelSections — see the
+  // 2026-10-10 comment on that call) can be folded into the SAME `unavailableSources` list the
   // envelope field and `confidence` both read — otherwise a build failure would have nowhere
   // honest to surface (the pre-existing `[]` fallback alone looks identical to a real empty read).
-  const buildFailures: string[] = [];
-  const trackBuildFailure = (label: string) => buildFailures.push(label);
   const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, readMs), [], trackBuildFailure);
   const levels = safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), [], trackBuildFailure);
 

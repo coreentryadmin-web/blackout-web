@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   isPremarketBriefFresh,
+  latestSessionAndItsOwnPrior,
   priorDayFromDailyBars,
   widenSessionExtremesWithSpot,
 } from "./spx-session";
@@ -150,6 +151,76 @@ describe("priorDayFromDailyBars", () => {
       pdl: 5,
       pdc: 8,
     });
+  });
+});
+
+describe("latestSessionAndItsOwnPrior", () => {
+  // noon ET keeps the bar unambiguously on its calendar date regardless of conversion
+  const bar = (ymd: string, h: number, l: number, c: number) => ({
+    t: Date.parse(`${ymd}T12:00:00-04:00`),
+    o: 0,
+    h,
+    l,
+    c,
+  });
+
+  it("live 2026-10-09 repro: a naive second priorDayFromDailyBars(bars, todayYmd, false) call collides with `latest` once todayYmd has rolled past the matched bar's own date", () => {
+    // Real closes: Oct 6 7818.93, Oct 7 7801.77 (the TRUE prior day), Oct 8 7765.36 (the most
+    // recently settled session — what `price` should show during the EXTENDED evening).
+    const bars = [
+      bar("2026-10-06", 7844.52, 7805.96, 7818.93),
+      bar("2026-10-07", 7807.02, 7763.34, 7801.77),
+      bar("2026-10-08", 7797.79, 7731.26, 7765.36),
+    ];
+    // `todayYmd` has ALREADY rolled to 2026-10-09 (past ET midnight), even though the caller is
+    // still inside the same EXTENDED evening that started when Oct 8 closed.
+    const rolledOverToday = "2026-10-09";
+    // THE BUG this function exists to fix, demonstrated directly: anchoring the second lookup
+    // to the rolled-over `todayYmd` (what the pre-fix code effectively did, one layer up) lands
+    // on the SAME bar `latest` already matched — not one real session further back.
+    const latest = priorDayFromDailyBars(bars, rolledOverToday, true);
+    assert.deepEqual(latest, { pdh: 7797.79, pdl: 7731.26, pdc: 7765.36 }, "sanity: latest is Oct 8");
+    const naiveSecondLookup = priorDayFromDailyBars(bars, rolledOverToday, false);
+    assert.equal(
+      naiveSecondLookup.pdc,
+      latest.pdc,
+      "demonstrates the bug: a naive second lookup anchored to the same rolled-over todayYmd collides with `latest` instead of landing on Oct 7"
+    );
+    // THE FIX: anchor the second lookup to the MATCHED bar's own date (Oct 8), not to the
+    // rolled-over wall-clock today (Oct 9) — lands on the true prior session, Oct 7.
+    const result = latestSessionAndItsOwnPrior(bars, rolledOverToday);
+    assert.deepEqual(result.latest, { pdh: 7797.79, pdl: 7731.26, pdc: 7765.36 }, "Oct 8 — unaffected by the fix");
+    assert.deepEqual(
+      result.prior,
+      { pdh: 7807.02, pdl: 7763.34, pdc: 7801.77 },
+      "Oct 7 — the true prior day, not Oct 8 again"
+    );
+    assert.notEqual(result.prior.pdc, result.latest.pdc, "price and prior_close must never collapse onto the same session");
+  });
+
+  it("ordinary same-evening case (todayYmd not yet rolled over) is unaffected: still returns the true prior day", () => {
+    const bars = [
+      bar("2026-10-06", 7844.52, 7805.96, 7818.93),
+      bar("2026-10-07", 7807.02, 7763.34, 7801.77),
+      bar("2026-10-08", 7797.79, 7731.26, 7765.36),
+    ];
+    // todayYmd still correctly says "2026-10-08" (the ordinary case — called before ET midnight).
+    const result = latestSessionAndItsOwnPrior(bars, "2026-10-08");
+    assert.deepEqual(result.latest, { pdh: 7797.79, pdl: 7731.26, pdc: 7765.36 });
+    assert.deepEqual(result.prior, { pdh: 7807.02, pdl: 7763.34, pdc: 7801.77 });
+  });
+
+  it("returns a null prior when there is no session before the latest one (short history)", () => {
+    const bars = [bar("2026-10-08", 7797.79, 7731.26, 7765.36)];
+    const result = latestSessionAndItsOwnPrior(bars, "2026-10-09");
+    assert.deepEqual(result.latest, { pdh: 7797.79, pdl: 7731.26, pdc: 7765.36 });
+    assert.deepEqual(result.prior, { pdh: null, pdl: null, pdc: null });
+  });
+
+  it("returns nulls throughout for empty input", () => {
+    const result = latestSessionAndItsOwnPrior([], "2026-10-09");
+    assert.deepEqual(result.latest, { pdh: null, pdl: null, pdc: null });
+    assert.deepEqual(result.prior, { pdh: null, pdl: null, pdc: null });
   });
 });
 

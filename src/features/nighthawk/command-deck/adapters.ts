@@ -48,6 +48,7 @@ import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-r
 import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
 import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
 import { vectorSideToDirection } from "@/lib/zerodte/vector-commit-boost";
+import { BANGER_LEDGER_REGIME_LABEL } from "@/lib/swing/banger-lane-merge";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -948,7 +949,29 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     status === "TRIM" || src.trimEnforcedBeforeClose === true
       ? rawExitPolicy
       : { ...rawExitPolicy, trim_levels: rawExitPolicy.trim_levels.map((t) => ({ ...t, fired: false })) };
-  const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
+  // BUG (found live 2026-10-08, Ask Largo standing mandate — sibling of #5693): #5693 fixed the
+  // fabricated "Thesis intact" sentence in Ask Largo's play-brief narrative (watchForSection,
+  // play-brief-intel.ts) by suppressing it when `play.regime === BANGER_LEDGER_REGIME_LABEL` —
+  // but that was ONE consumer. `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps
+  // `thesisLevel: "intact"` on EVERY Banger-origin ledger row unconditionally (there is no
+  // per-position thesis dossier for this lane, just a mechanical price trigger — see its own
+  // header comment), and this adapter forwarded that straight through via `src.thesisBreak ?? ...`
+  // with no equivalent guard. That value feeds `TerminalPlay.thesisBreak`, which PlayTerminal.tsx's
+  // ThesisPanel renders VERBATIM as "✓ thesis intact" for the Command Deck's Swing lane — live
+  // repro 2026-10-08: SWING:CRI:1510 at -59.1% P&L, SWING:GLW:1479 at -56.1%, SWING:NEBX at
+  // -55.9%, SWING:AI at -52.5%, all rendering the same green "✓ thesis intact" badge regardless
+  // of real price action. 78/81 of the live committed Swing book is Banger-origin (CLAUDE.md),
+  // so this is the dominant rendered state of the lane's own thesis-health line, not an edge case.
+  // Fix: same sentinel check #5693 already established — when `regime` IS the stamped-constant
+  // Banger fingerprint, treat the level as "unknown" (an existing, already-rendered honest state:
+  // "• thesis not monitored") instead of trusting the fabricated "intact" — mirrors
+  // `thesisHealthUncalibrated()`'s (thesis-health.ts) identical guard for the aggregate score.
+  // The mechanical `note` (e.g. "below the 2× partial and above the hard stop") is real, useful
+  // information and is kept; only the misleading green "intact" level is suppressed.
+  const thesisBreakResolved =
+    src.regime === BANGER_LEDGER_REGIME_LABEL
+      ? { level: "unknown" as ThesisLevel, note: src.thesisBreak?.note }
+      : (src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon));
   // Ask Largo standing mandate (#4076): a committed row's WATCH-lane dossier state (setupState)
   // never survives the WATCH→COMMIT transition — src.setupState is structurally null for every
   // live SWING position, permanently withholding computeSwingThesisHealth's persistence pillar.

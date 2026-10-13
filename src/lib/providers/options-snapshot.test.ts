@@ -509,6 +509,44 @@ test("reliableMarkFromSnapshot: just past the 10x boundary falls through", async
   assert.equal(reliableMarkFromSnapshot(snap), 0.1);
 });
 
+// Live repro 2026-10-08 (Ask Largo standing mandate): CRI 261016C00035000 showed bid:0 (size 0),
+// ask:5.60 (size 1) -> mid $2.80, while the contract's own last trade was $0.55 -- a 5.09x
+// divergence, comfortably under the general 10x bar, so it was NOT caught by the pre-fix guard
+// and fed a fabricated +409.1% P&L (and a real TAKE_PARTIAL/SCALING_OUT trade-management flip,
+// banger-live-sync's peak_premium ratchet) into the live Swing book. An independent Black-Scholes
+// check (same snapshot's own strike $35/DTE 8/IV 0.5308/spot $32.27) priced the contract at ~$0.21,
+// confirming $2.80 was never a real valuation.
+test("reliableMarkFromSnapshot: thin one-lot ask (askSize<=1) applies the tighter 3x bar — CRI live repro", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: 1, last: 0.55 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.55, "a 5.09x divergence on a one-lot ask must fall through to the real last trade");
+});
+
+test("reliableMarkFromSnapshot: the SAME 5.09x divergence with normal ask size still keeps the 10x bar (no regression)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: 25, last: 0.55 });
+  assert.equal(snap.askSize, 25);
+  assert.equal(reliableMarkFromSnapshot(snap), 2.8, "real size behind the ask must keep the existing 10x tolerance untouched");
+});
+
+test("reliableMarkFromSnapshot: askSize absent (unknown, e.g. WS stream) keeps the existing 10x behavior — no false positive from missing data", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 2.8, bid: 0, ask: 5.6, askSize: null, last: 0.55 });
+  assert.equal(reliableMarkFromSnapshot(snap), 2.8, "absent size must never be read as thin — falls back to the unchanged 10x bar");
+});
+
+test("reliableMarkFromSnapshot: thin ask (size<=1) exactly at the new 3x boundary is kept (inclusive)", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 0.3, bid: 0, ask: 0.6, askSize: 1, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.3);
+});
+
+test("reliableMarkFromSnapshot: thin ask (size<=1) just past the new 3x boundary falls through", async () => {
+  const { reliableMarkFromSnapshot } = await import("./options-snapshot");
+  const snap = baseSnap({ mark: 0.301, bid: 0, ask: 0.602, askSize: 1, last: 0.1 });
+  assert.equal(reliableMarkFromSnapshot(snap), 0.1);
+});
+
 // ---------------------------------------------------------------------------
 // reliableMarkFromQuote — the generic form reliableMarkFromSnapshot delegates to, extracted
 // 2026-09-15 so a non-OptionSnapshot quote shape (the WS mark stream, {mark, bid, last}, no
@@ -538,4 +576,18 @@ test("reliableMarkFromQuote: bid=0, no reference at all -> mark passes through",
 test("reliableMarkFromQuote: bid=0, reference <= 0 -> mark passes through (nothing honest to fall back to)", async () => {
   const { reliableMarkFromQuote } = await import("./options-snapshot");
   assert.equal(reliableMarkFromQuote(7.5, 0, 0), 7.5);
+});
+
+// CRI live repro (generic-signature form — see reliableMarkFromSnapshot's own test above for the
+// full incident writeup).
+test("reliableMarkFromQuote: thin one-lot ask (askSize<=1) applies the tighter 3x bar", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  assert.equal(reliableMarkFromQuote(2.8, 0, 0.55, 1), 0.55);
+});
+
+test("reliableMarkFromQuote: askSize omitted entirely (WS stream shape) keeps the unchanged 10x behavior", async () => {
+  const { reliableMarkFromQuote } = await import("./options-snapshot");
+  // Same 5.09x divergence as the thin-ask test above, but called exactly as the WS mark stream
+  // does (legacy-option-mark-row.ts) — no 4th argument at all, not even `undefined`/`null`.
+  assert.equal(reliableMarkFromQuote(2.8, 0, 0.55), 2.8);
 });

@@ -483,6 +483,58 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     );
   });
 
+  // BUG FIX (2026-10-08, Ask Largo standing mandate, live repro NTAP 2026-10-08): setupState
+  // EXTENDED / entryStatus EXTENDED_CHASE is a DIFFERENT dead-reason than the calendar-deadline
+  // `watchEntryExpired` case above (price moved too far past the trigger to enter cleanly, not a
+  // calendar deadline) but previously fell through to the identical generic "WAIT" pill — the
+  // same member-facing ambiguity the EXPIRED fix above exists to prevent. entry-enterability.ts's
+  // `deadPlayReason` (the broader check play-brief.ts/entry-verdict.ts/serving.ts already use for
+  // this exact play) treats both as dead; this pill must distinguish them from a live WAIT.
+  it("WATCH with setupState EXTENDED → EXTENDED pill, not generic WAIT", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+          setupState: "EXTENDED",
+        }),
+      ),
+      { label: "EXTENDED", tone: "watch" },
+    );
+  });
+
+  it("WATCH with entryStatus EXTENDED_CHASE → EXTENDED pill, not generic WAIT (live repro: NTAP, entryStatus EXTENDED_CHASE, watchEntryExpired false)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: false,
+          entryStatus: "EXTENDED_CHASE",
+        }),
+      ),
+      { label: "EXTENDED", tone: "watch" },
+    );
+  });
+
+  it("calendar-deadline EXPIRED still wins over EXTENDED when both happen to be set (EXPIRED check runs first)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "WATCH",
+          recommendation: "HOLD",
+          watchEntryExpired: true,
+          entryStatus: "EXTENDED_CHASE",
+        }),
+      ),
+      { label: "EXPIRED", tone: "watch" },
+    );
+  });
+
   it("live OPEN with swingEntryAction still_buy → STILL BUY pill (not HOLD)", () => {
     assert.deepEqual(
       swingActionDisplay(

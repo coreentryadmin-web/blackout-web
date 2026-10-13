@@ -56,10 +56,48 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
   // continuity for an already-open position, not a new discovery admission.
   if (!Number.isFinite(dte) || dte < 0 || dte > HORIZONS.SWING.dteMax) return null;
   const closingSoon = dte < HORIZONS.SWING.dteMin;
+  // FIX (found live 2026-10-09, Ask Largo standing mandate): subLane must be derived from the
+  // DTE AT ENTRY (`row.session_date`, first-write-wins pinned — see this module's own accessor
+  // header), never from today's live `dte`. `banger_positions` has no persisted `sub_lane` column
+  // (unlike `swing_positions.sub_lane`, which `live-plays.ts` reads as-stored and never
+  // recomputes), so this used to call `subLaneForDte(dte)` with the LIVE dte every tick — which
+  // silently reclassifies an aging position (STANDARD -> TACTICAL as dte crosses 7) and then
+  // DROPS the classification entirely (`undefined`) once dte falls under TACTICAL's own 5-day
+  // floor, exactly the "closing soon" window the header comment above says must stay visible.
+  // Reproduced live 2026-10-09: every BANGER-origin dte=0 "closing soon" row on prod
+  // (XP/PBR/CIEN/SG/PSX/PSKY) served `subLane: undefined`. This isn't cosmetic:
+  // `play-brief.ts` looks up `SWING_SUB_LANES[play.subLane]?.liquidity.maxSpreadPct` to compare
+  // the CURRENT spread against the entry-time liquidity bar the contract was picked under — once
+  // subLane goes undefined that comparison silently disappears from the brief, precisely on the
+  // final-day positions where spread-vs-liquidity scrutiny matters most. Falls back to the live
+  // `dte` only if `session_date` is somehow unparseable, so a malformed row still gets a best-effort
+  // read rather than silently losing subLane altogether.
+  const entryDte = calendarDte(row.session_date, row.contract_expiry);
+  const subLaneDte = Number.isFinite(entryDte) ? entryDte : dte;
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
-  const mid = mark ?? entry;
+  // BUG (found live 2026-10-08, Ask Largo standing mandate): this used to be `mark ?? entry` — the
+  // EXACT SEV-1 pattern FINDINGS 2026-08-06 already found and fixed in this file's sibling,
+  // live-plays.ts's `contractFromRow` ("this was `mark ?? entry`, which LAUNDERED 'no live mark
+  // yet' into 'the mark is exactly the entry'... NEVER substitute entry for an absent mark — a
+  // fabricated mark is worse than a missing one") — but that fix never touched this file, so the
+  // identical bug has been live here the whole time, on the lane that dominates the committed
+  // Swing book. Confirmed live 2026-10-08: every BANGER-origin MANAGING/SCALING_OUT row with no
+  // live mark sync (e.g. CIEG/APPX/FUBO/CRNC/GO/CAPR/... the overwhelming majority of the
+  // committed book — the "~85 of ~90" figure the `factors` comment a few lines below already
+  // measured) carried `contract.mid === entry_premium` exactly, `markAsOf: null`. Downstream,
+  // `markDollarPnl` (terminal-display.ts) computes `mark - entry` and TradeSummaryHero's PRIMARY
+  // "Current" P&L tile renders whatever that returns UNLESS it is `null` — so a fabricated
+  // mid-equals-entry made it compute `0`, not `null`, and the live Command Deck showed a
+  // confident "+$0.00" instead of the honest "—" (unknown) its own null-mark fallback already
+  // provides and already uses correctly for every non-banger-origin row. `markIsSync`
+  // (adapters.ts, keyed on `markAsOf == null`) already lets Ask Largo's play-brief narrative
+  // correctly say "Mark: unknown" in prose — but that guard was never applied to this raw numeric
+  // field, so any consumer reading `play.mark`/`contract.mid` directly (not just the narrative)
+  // got fooled. `livePnlPct` two lines below already uses the honest `mark` (not this `mid`), so
+  // it was never affected — only this one field needed the fix.
+  const mid = mark;
   const gainPct = row.discovery_gain != null ? Math.round(row.discovery_gain * 1000) / 10 : null;
   const liveStatus = row.status === "PARTIAL" || row.scaled_already ? "TRIM" : "OPEN";
   const manageAction =
@@ -106,17 +144,24 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
       right: "C",
       dte,
       mid,
-      delta: null,
-      gamma: null,
-      theta: null,
-      vega: null,
-      iv: null,
-      bid: null,
-      ask: null,
-      openInterest: 0,
+      // FIX (2026-10-09, Ask Largo standing mandate — FINDINGS 2026-10-09 / migration 017): these
+      // used to be hardcoded null/0 regardless of what the provider actually quoted — not because
+      // the data was unavailable, but because banger_positions had no column to hold it. The cron
+      // (banger-live-sync) already fetches this exact snapshot every tick for the quote-tick log;
+      // `updateBangerQuoteFields` now carries it onto this row instead of discarding it. Honest
+      // null when a tick hasn't landed yet (pre-migration row, or a quote-less tick) — never
+      // fabricated, same discipline every other field on this row already follows.
+      delta: row.quote_delta,
+      gamma: row.quote_gamma,
+      theta: row.quote_theta,
+      vega: row.quote_vega,
+      iv: row.quote_iv,
+      bid: row.bid,
+      ask: row.ask,
+      openInterest: row.open_interest ?? 0,
     },
     archetype: "BREAKOUT",
-    subLane: subLaneForDte(dte) ?? undefined,
+    subLane: subLaneForDte(subLaneDte) ?? undefined,
     setupState: "TRIGGERED",
     entryStatus: "AT_TRIGGER",
     serving: row.scaled_already ? "SCALING_OUT" : "MANAGING",

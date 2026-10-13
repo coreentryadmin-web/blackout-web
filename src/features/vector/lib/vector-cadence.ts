@@ -3,14 +3,8 @@
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
 
-/** SSE hub tick — spot + forming candle for every ticker. */
-export const VECTOR_SPOT_TICK_MS = 1_000;
-
 /** Wall bead trail sample — shared universe + oracle names (server + client). */
 export const VECTOR_WALL_TRAIL_SEC = 5;
-
-/** Wall bead trail sample — any non-oracle ticker outside the always-on universe recorder. */
-export const VECTOR_NON_UNIVERSE_WALL_TRAIL_SEC = 15;
 
 /** Scoped DTE walls + wall-history REST poll — oracle / universe names. */
 export const VECTOR_WALLS_SCOPE_POLL_MS = 5_000;
@@ -34,9 +28,6 @@ export const VECTOR_GEX_HEATMAP_POLL_MS = 5_000;
  * this competitive with the tick-driven overlays.
  */
 export const VECTOR_EXPECTED_MOVE_POLL_MS = 30_000;
-
-/** SPY share-volume backfill poll for SPX chart proxy. */
-export const VECTOR_SPY_VOLUME_BACKFILL_MS = 60_000;
 
 /** Redis TTL for vector strike×time heatmap (server). */
 export const VECTOR_GEX_HEATMAP_CACHE_SEC = 5;

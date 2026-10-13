@@ -15,15 +15,6 @@ export const TOOL_ROUTES: Record<
   meridian: "/meridian",
 };
 
-export const SITE_ROUTES = {
-  home: "/",
-  learn: "/learn",
-  account: "/account",
-  upgrade: "/upgrade",
-  signIn: "/sign-in",
-  admin: "/admin",
-} as const;
-
 export function toolRoute(slug: LearnSlug): string | null {
   if (slug === "getting-started" || slug === "glossary") return null;
   return TOOL_ROUTES[slug as keyof typeof TOOL_ROUTES] ?? null;
@@ -55,6 +46,16 @@ export const PRIMARY_NAV: LearnNavItem[] = [
     label: "Night Hawk",
     href: "/nighthawk",
     description: "Evening playbook plus 0DTE Command always-on scanner.",
+  },
+  {
+    label: "Vector",
+    href: "/vector",
+    description: "Live SPX chart with dealer gamma and vanna structure overlaid on price.",
+  },
+  {
+    label: "Meridian",
+    href: "/meridian",
+    description: "Catalyst structure desk — earnings, macro releases, OpEx, and FDA decisions.",
   },
   {
     label: "Learn",

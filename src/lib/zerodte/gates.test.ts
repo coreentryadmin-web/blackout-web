@@ -36,7 +36,6 @@ import {
   ZERODTE_SCORE_FLOOR_BREAKOUT,
   ZERODTE_SCORE_FLOOR_PIN,
   ZERODTE_SINGLE_RAIL_PRIME_MIN,
-  isSingleRailWithoutFlow,
   getNullConfluencePassCount,
   LATE_AFTERNOON_BLOCK_ET_MINUTES,
   type ZeroDteGateInput,
@@ -754,9 +753,6 @@ test("G-17: the 65-74 band blocks REGARDLESS of rail corroboration; 75+ commits 
   // (41.0% WR) — the FLOW/multi-rail exemption from this band was never buying safety, so it's
   // gone. Every origin combo now needs the same 75 floor in this band; corroboration no longer
   // buys an early commit at 65-74. See ZERODTE_SINGLE_RAIL_PRIME_MIN's doc comment for the numbers.
-  assert.equal(isSingleRailWithoutFlow(["BREAKOUT"]), true);
-  assert.equal(isSingleRailWithoutFlow(["FLOW", "BREAKOUT"]), false);
-  assert.equal(isSingleRailWithoutFlow(["BREAKOUT", "PIN"]), false);
   assert.equal(ZERODTE_SINGLE_RAIL_PRIME_MIN, 75);
 
   const soloMid = evaluateZeroDteGates(

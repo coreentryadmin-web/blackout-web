@@ -35,6 +35,9 @@ const state = {
   updateCalls: [] as Array<{ session_date: string; ticker: string; patch: unknown }>,
   // gradeZeroDteLedger wiring (index-root mapping test below)
   ungradedRows: [] as LedgerRow[],
+  /** Every `beforeDate` arg gradeZeroDteLedger passed to fetchUngradedZeroDteRows —
+   *  the gradeThroughToday boundary-date regression asserts on this directly. */
+  ungradedFetchDates: [] as string[],
   gradeCalls: [] as Array<{ sessionDate: string; ticker: string; grade: Record<string, unknown> }>,
   aggBarCalls: [] as Array<{ symbol: string; timespan: string }>,
   dailyBars: new Map<string, Array<{ t: number; o: number; h: number; l: number; c: number }>>(),
@@ -71,6 +74,7 @@ function resetState() {
   state.liveMarksByOcc = new Map();
   state.updateCalls = [];
   state.ungradedRows = [];
+  state.ungradedFetchDates = [];
   state.gradeCalls = [];
   state.aggBarCalls = [];
   state.dailyBars = new Map();
@@ -122,7 +126,10 @@ mock.module("../db", {
     fetchLatestNighthawkEdition: async () => null,
     fetchOpenSpxPlay: async () => null,
     fetchRecentFlows: async () => state.flows,
-    fetchUngradedZeroDteRows: async () => state.ungradedRows,
+    fetchUngradedZeroDteRows: async (beforeDate: string) => {
+      state.ungradedFetchDates.push(beforeDate);
+      return state.ungradedRows;
+    },
     gradeZeroDteSetupRow: async (sessionDate: string, ticker: string, grade: Record<string, unknown>) => {
       state.gradeCalls.push({ sessionDate, ticker, grade });
     },
@@ -712,6 +719,53 @@ test("gradeZeroDteLedger: an EQUITY with empty daily bars still stamps a grade (
   assert.equal(graded, 1, "an equity with no daily bar is a real gap — still stamped (not retried forever)");
   assert.equal(state.gradeCalls.length, 1);
   assert.equal((state.gradeCalls[0]!.grade as { direction_hit: boolean | null }).direction_hit, null);
+});
+
+// 2026-10-09 finding: fetchUngradedZeroDteRows(beforeDate) is a STRICT `session_date <
+// beforeDate` filter. The default (gradeThroughToday omitted/false) call — what
+// warmZeroDteBoard's own ~2-min RTH-cadence lazy pass uses — must keep passing TODAY so an
+// in-progress session is never fetched for grading (same-day 15:50 ET time-stop grading
+// against a PARTIAL day would permanently pin a premature outcome). Live-confirmed
+// 2026-10-08: with this old/default behavior, 7/7 of TODAY's own CLOSED 0DTE rows
+// (WOLF/SPY/CIFR/SPXW/QQQ/IONQ/AMD) stayed ungraded through 12 same-day cron runs, one full
+// calendar day after the prior two sessions each graded 6/6.
+test("gradeZeroDteLedger: default (no gradeThroughToday) fetches ungraded rows strictly BEFORE today — today's own session is never included", async () => {
+  resetState();
+  state.ungradedRows = [];
+  const { gradeZeroDteLedger } = await mod();
+  await gradeZeroDteLedger(true);
+  assert.deepEqual(
+    state.ungradedFetchDates,
+    ["2026-07-06"],
+    "must fetch rows strictly before TODAY (mocked todayEt) — unchanged, pre-fix behavior"
+  );
+});
+
+// The fix: the dedicated post-close cron (/api/cron/zerodte-grade) opts into
+// gradeThroughToday=true, which must shift the fetch boundary to TOMORROW so today's own
+// (now `session_date < tomorrow`) rows are included — this is the only call site that may
+// ever do this, and only because it is scheduled strictly in the 16:00-18:45 ET post-close
+// band, when today's session is by construction already finished.
+test("gradeZeroDteLedger: gradeThroughToday=true shifts the fetch boundary to tomorrow, so today's own closed rows become gradeable", async () => {
+  resetState();
+  state.ungradedRows = [
+    baseRow({
+      ticker: "AMD",
+      session_date: "2026-07-06", // == mocked todayEt() — today's own session
+      plan_outcome: "stopped",
+      plan_pnl_pct: -50,
+      plan_json: { occ: "O:AMD260706P00150000" },
+    }),
+  ];
+  const { gradeZeroDteLedger } = await mod();
+  const graded = await gradeZeroDteLedger(true, true);
+  assert.deepEqual(
+    state.ungradedFetchDates,
+    ["2026-07-07"],
+    "gradeThroughToday must pass TOMORROW (mocked nextTradingDayEt) as the exclusive bound, " +
+      "so today's own session_date satisfies `< tomorrow` and is actually fetched"
+  );
+  assert.equal(graded, 1, "today's own closed row must actually get graded once included");
 });
 
 // ── PR-F commit-time tier stamp (persistZeroDteScan → entry_context.tier) ──────────

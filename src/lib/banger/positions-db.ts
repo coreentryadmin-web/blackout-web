@@ -57,6 +57,19 @@ export type BangerPositionRow = {
    *  closed-play "Drawdown before outcome" line even when the DB genuinely had the data,
    *  because the column to hold it never existed upstream. */
   trough_premium: number | null;
+  /** Live NBBO + greeks carried from the SAME options-unified-snapshot banger-live-sync already
+   *  fetches every tick (see updateBangerQuoteFields below and FINDINGS 2026-10-09) — purely
+   *  additive evidence for the member board / Ask Largo, never read by the scale-out decision
+   *  path (deriveScaleOutAction reads only `mark`). NULL = no quote has landed yet on this row
+   *  (pre-migration row, or a tick where the snapshot had no usable value) — never fabricated. */
+  bid: number | null;
+  ask: number | null;
+  open_interest: number | null;
+  quote_delta: number | null;
+  quote_gamma: number | null;
+  quote_theta: number | null;
+  quote_vega: number | null;
+  quote_iv: number | null;
   scaled_already: boolean;
   scale_out_action: string | null;
   scale_out_reason: string | null;
@@ -105,6 +118,14 @@ export function mapBangerPositionRow(r: QueryResultRow): BangerPositionRow {
     last_mark_at: isoTimestampString(r.last_mark_at),
     peak_premium: num(r.peak_premium),
     trough_premium: num(r.trough_premium),
+    bid: num(r.bid),
+    ask: num(r.ask),
+    open_interest: num(r.open_interest),
+    quote_delta: num(r.quote_delta),
+    quote_gamma: num(r.quote_gamma),
+    quote_theta: num(r.quote_theta),
+    quote_vega: num(r.quote_vega),
+    quote_iv: num(r.quote_iv),
     scaled_already: Boolean(r.scaled_already),
     scale_out_action: r.scale_out_action != null ? String(r.scale_out_action) : null,
     scale_out_reason: r.scale_out_reason != null ? String(r.scale_out_reason) : null,
@@ -232,6 +253,57 @@ export async function updateBangerLiveState(id: number, s: BangerLiveStateUpdate
       s.partialRealizedPremium ?? null,
       s.realizedPnlPct ?? null,
       s.realizedPnlUsd ?? null,
+    ],
+  );
+}
+
+export type BangerQuoteFieldsUpdate = {
+  bid?: number | null;
+  ask?: number | null;
+  openInterest?: number | null;
+  delta?: number | null;
+  gamma?: number | null;
+  theta?: number | null;
+  vega?: number | null;
+  iv?: number | null;
+};
+
+/**
+ * Carry the live NBBO + greeks onto a banger position — PURELY ADDITIVE evidence, same discipline
+ * as `banger_quote_tick_log` (quote-tick-log.ts): best-effort, fire-and-forget, never on the
+ * scale-out decision path (updateBangerLiveState above remains the sole writer of `mark`/status/
+ * realized P&L). See FINDINGS 2026-10-09 / migration 017 for why this exists — banger-live-sync's
+ * cron already fetches this exact snapshot every tick for the quote-tick log; this just stops
+ * throwing the rest of it away for the LIVE row.
+ *
+ * Unlike updateBangerLiveState's COALESCE/ratchet semantics, this is a plain overwrite: a quote
+ * field represents "the market right now", not a running extremum, so a field absent on THIS tick
+ * (e.g. the provider stopped quoting bid/ask momentarily but still returned greeks) is written as
+ * NULL rather than silently preserving a stale prior value that would misrepresent the current
+ * tick as quoted when it was not.
+ */
+export async function updateBangerQuoteFields(id: number, q: BangerQuoteFieldsUpdate): Promise<void> {
+  await dbQuery(
+    `UPDATE banger_positions SET
+       bid = $2,
+       ask = $3,
+       open_interest = $4,
+       quote_delta = $5,
+       quote_gamma = $6,
+       quote_theta = $7,
+       quote_vega = $8,
+       quote_iv = $9
+     WHERE id = $1`,
+    [
+      id,
+      q.bid ?? null,
+      q.ask ?? null,
+      q.openInterest ?? null,
+      q.delta ?? null,
+      q.gamma ?? null,
+      q.theta ?? null,
+      q.vega ?? null,
+      q.iv ?? null,
     ],
   );
 }

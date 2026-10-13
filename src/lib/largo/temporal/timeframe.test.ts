@@ -4,7 +4,6 @@ import { LARGO_CAPABILITIES } from "@/lib/largo/registry/capability-registry";
 import {
   etTimeOnDay,
   formatTemporalBlock,
-  isRegularHours,
   nowTimeframe,
   previousWeekday,
   resolveTimeframe,
@@ -27,15 +26,6 @@ test("session boundaries are correct under BOTH DST regimes", () => {
   assert.equal(sessionCloseMs(WED_11ET), Date.UTC(2026, 7, 12, 20, 0), "summer close is 20:00Z");
   assert.equal(sessionOpenMs(WED_11ET_WINTER), Date.UTC(2026, 0, 14, 14, 30), "winter open is 14:30Z");
   assert.equal(sessionCloseMs(WED_11ET_WINTER), Date.UTC(2026, 0, 14, 21, 0), "winter close is 21:00Z");
-});
-
-test("regular hours excludes weekends and respects the 09:30/16:00 ET bounds", () => {
-  assert.equal(isRegularHours(WED_11ET), true);
-  assert.equal(isRegularHours(etTimeOnDay(WED_11ET, 9, 29)), false, "09:29 is pre-open");
-  assert.equal(isRegularHours(etTimeOnDay(WED_11ET, 9, 30)), true, "09:30 is open");
-  assert.equal(isRegularHours(etTimeOnDay(WED_11ET, 16, 0)), false, "16:00 is closed");
-  const sat = Date.UTC(2026, 7, 15, 15, 0);
-  assert.equal(isRegularHours(sat), false, "Saturday is never RTH");
 });
 
 test("previousWeekday skips the weekend", () => {

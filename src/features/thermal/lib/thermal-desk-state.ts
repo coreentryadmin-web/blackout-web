@@ -28,24 +28,6 @@ export const MATRIX_FORCE_REFRESH_AGE_MS = 5_000;
 /** Client-side spacing between force attempts (matches server FORCE_THROTTLE_MS). */
 export const MATRIX_FORCE_THROTTLE_MS = 5_000;
 
-/** Indices desk names where a lone blank column may still request ?force=1. */
-export const THERMAL_MATRIX_CORE_TICKERS = ["SPY", "SPX", "QQQ", "IWM"] as const;
-
-/**
- * May a blank column auto-escalate to ?force=1?
- *
- * Sector compare grids open 3–7 tickers at once. Forcing every blank column fans out parallel
- * cold Polygon rebuilds (~55s each) and wedges the whole desk in "Syncing …" — even when Redis
- * already holds a warm matrix for the normal (non-force) read path.
- */
-export function shouldForceBlankMatrixRefresh(
-  ticker: string,
-  opts: { activeColumn?: boolean } = {}
-): boolean {
-  const t = ticker.trim().toUpperCase();
-  if (!(THERMAL_MATRIX_CORE_TICKERS as readonly string[]).includes(t)) return false;
-  return opts.activeColumn === true;
-}
 /** Overlay cache is ~30s — treat as live under 45s. */
 export const OVERLAY_LIVE_MS = 45_000;
 export const OVERLAY_STALE_MS = 90_000;
@@ -63,10 +45,6 @@ export type ThermalLayerFreshness = {
     title: string;
   };
 };
-
-export function isThermalCompareTicker(t: string): t is ThermalCompareTicker {
-  return (THERMAL_COMPARE_TICKERS as readonly string[]).includes(t.toUpperCase());
-}
 
 export function parseThermalLens(raw: string | null | undefined): ThermalLens | null {
   if (!raw) return null;
@@ -270,29 +248,6 @@ export function horizonWallsSummary(
  * `ThermalTripleDesk.tsx` does). Unknown must never render as live: claiming live and correcting
  * it a tick later is the failure we are fixing.
  */
-/**
- * The compare strip's cadence/liveness label.
- *
- * Same defect as the matrix panel badge, on a second component: the strip rendered a hardcoded
- * `Live matrix · 5s` with no condition on anything. It could never be right or wrong from data —
- * it simply always claimed live, including at 20:41 ET over a settled 16:00 close. (The payload
- * type even declares `asof`, and the component never reads it.)
- *
- * The CADENCE half is a real fact and is kept: the strip does poll every 5s in and out of session
- * (`usePollIntervalMs(5_000, 5_000)`). Only the LIVENESS half is conditional.
- *
- * `marketOpen: null` means not yet known (pre-hydration) and must not render as live — see
- * thermalQuoteBadge for why.
- */
-export function thermalCompareStripLabel(input: {
-  marketOpen: boolean | null;
-  pollSeconds: number;
-}): string {
-  const cadence = `${Math.max(1, Math.round(input.pollSeconds))}s`;
-  return input.marketOpen === true
-    ? `Live matrix · ${cadence}`
-    : `Matrix · ${cadence} · market closed`;
-}
 
 export type ThermalQuoteBadgeState = "live" | "market-closed" | "quote-only" | "offline";
 
@@ -409,26 +364,6 @@ export function thermalLayerFreshness(input: {
   };
 }
 
-/** Wall-scope chip copy — near-term only (matches server wall math). */
-export function wallScopeLabel(nearTermExpiries: readonly string[] | null | undefined): {
-  short: string;
-  title: string;
-} {
-  const n = nearTermExpiries?.length ?? 0;
-  if (n <= 0) {
-    return {
-      short: "Walls · near-term",
-      title: "Call/put walls are computed from the near-term expiry set (not far monthly OpEx).",
-    };
-  }
-  const sample = nearTermExpiries!.slice(0, 3).join(", ");
-  const more = n > 3 ? ` +${n - 3} more` : "";
-  return {
-    short: `Walls · ${n} near-term`,
-    title: `Call/put walls scoped to near-term expiries: ${sample}${more}. Far monthly/quarterly OpEx is excluded so walls stay consistent with γ flip.`,
-  };
-}
-
 /**
  * What the key-levels row is actually scoped to, when the member has picked ONE expiry.
  * `nearSpotGammaShare` is that expiry's 0-1 share of the near-spot dealer gamma (the pin contest).
@@ -509,28 +444,6 @@ export function keyLevelsFootnote(
     `Flip, walls, net GEX, and King node sum near-term expiries — far monthly OpEx is excluded. ` +
     `Matrix gold/purple cell peaks can land on any expiry column. ${mp}`
   );
-}
-
-/** Honest empty copy for missing key levels — never invent a number. */
-export function honestLevelEmpty(
-  kind: "flip" | "cross_val" | "shift"
-): { value: string; help: string } {
-  if (kind === "flip") {
-    return {
-      value: "—",
-      help: "Gamma flip undetermined — chain has not printed a clean dealer-gamma zero-crossing. Walls still show when available.",
-    };
-  }
-  if (kind === "cross_val") {
-    return {
-      value: "—",
-      help: "Cross-check offline — the second data source's live strike ladder is unavailable (common after hours). Walls come from the primary source's near-term expiries only.",
-    };
-  }
-  return {
-    value: "—",
-    help: "Intraday shift collecting — needs ≥2 matrix snapshots in session. Blank outside RTH by design.",
-  };
 }
 
 /** True when a heatmap payload can paint a matrix (never treat empty as "good"). */

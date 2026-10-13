@@ -79,7 +79,12 @@ export function buildBangerQuoteTickRow(occ: string, snap: OptionSnapshot, polle
   const dayClose = finite(snap.dayClose) ? snap.dayClose : null;
   const mid = midOf(bid, ask);
   const rawMark = mid ?? last ?? dayClose ?? null;
-  const reliableMark = rawMark == null ? null : reliableMarkFromQuote(rawMark, bid, last ?? dayClose);
+  // Pass `snap.askSize` through — reliableMarkFromSnapshot does the same (THIN_ASK_SIZE_MAX
+  // guard, options-snapshot.ts) and this function's own doc comment promises byte-identical
+  // output for the same snapshot; omitting it here would silently break that guarantee for any
+  // thin-ask (`askSize <= 1`) row the moment that guard engages.
+  const reliableMark =
+    rawMark == null ? null : reliableMarkFromQuote(rawMark, bid, last ?? dayClose, snap.askSize);
   return {
     contract_occ: occ,
     polled_at: polledAt.toISOString(),

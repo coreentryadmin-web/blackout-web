@@ -159,6 +159,53 @@ test("thesis break: a single VETO-class item exits even at a −20% loss", () =>
   assert.match(d.detail, /opposing wall building/);
 });
 
+test("thesis break: never moved favorably (peak <= 0%) says so in the detail", () => {
+  // Real shape from a live 2026-10-12 pair (IONQ/TTMI): committed, then vetoed within
+  // minutes with the peak never having cleared entry at all.
+  const d = evaluateExitState(
+    input({
+      currentMark: 4.0,
+      peakPremium: 4.0, // 0% peak — never moved favorably
+      cortexEvidence: evidence([{ stance: "veto", source: "gex-walls", detail: "wall crossing the path" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:gex-walls");
+  assert.match(d.detail, /\(never moved favorably before the thesis broke\)$/);
+});
+
+test("thesis break: a small peak below the ratchet's own arm threshold names the exact peak and threshold", () => {
+  // Real shape from a live 2026-10-12 play (QQQ): peaked +2.02% then reversed straight
+  // into a thesis_break veto — a real but sub-arm-threshold move, distinct from "never
+  // moved favorably" above.
+  const d = evaluateExitState(
+    input({
+      currentMark: 4.4, // +10%, above the floor this peak would arm (6%)
+      peakPremium: 4.6, // +15% peak — real, but below the 20% ratchet arm threshold
+      cortexEvidence: evidence([{ stance: "veto", source: "gex-walls", detail: "wall crossing the path" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:gex-walls");
+  assert.match(
+    d.detail,
+    /\(peaked at only \+15%, never cleared the ratchet's own \+20% arm threshold\)$/
+  );
+});
+
+test("thesis break: a real peak that cleared the ratchet's arm threshold is disclosed as a give-back", () => {
+  const d = evaluateExitState(
+    input({
+      currentMark: 4.6, // +15%, above the floor this peak would arm (10%)
+      peakPremium: 5.0, // +25% peak — cleared the 20% arm threshold
+      cortexEvidence: evidence([{ stance: "veto", source: "gex-walls", detail: "wall crossing the path" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:gex-walls");
+  assert.match(d.detail, /\(had reached a \+25% peak before the thesis broke\)$/);
+});
+
 test("thesis break: ≥2 opposing items whose combined weight beats the entry margin exit", () => {
   const d = evaluateExitState(
     input({
@@ -751,6 +798,12 @@ test("trim_scale: a thesis break with no tranche banked says nothing about banke
   assert.equal(d.action, "EXIT");
   assert.equal(d.reason, "thesis_break:wall-trend");
   assert.doesNotMatch(d.detail, /already banked/);
+  // Parity with the ratchet-mode call site: trim_scale's own thesis_break detail gets
+  // the same peak-context clause (this function has its own, separate construction).
+  assert.match(
+    d.detail,
+    /\(peaked at only \+15%, never cleared the ratchet's own \+20% arm threshold\)$/
+  );
 });
 
 test("trim_scale: a play that never armed a tranche still scratches on the flat timeout", () => {
@@ -1228,6 +1281,79 @@ test("evaluateExitState: a play entered via gex-walls relief does not instantly 
   assert.ok(
     !withFix.reason.startsWith("thesis_break"),
     `expected no thesis_break exit, got reason=${withFix.reason}`
+  );
+});
+
+// Live-monitor finding, 2026-10-08 (WOLF/SPY): the 2026-09-09 fix above only grafted the
+// grace period onto the VETO arm of detectThesisBreak (`skipGexWallsVeto`). It never
+// touched the OPPOSE_CLUSTER arm just below it — and a commit can only reach this
+// function with a NEGATIVE `entryCortexScore` if applyCortexCommitRelief's net-negative-
+// pass branch forced it through (cortex-gate.ts's assessCortexVerdict always returns
+// NET_NEGATIVE — blocked — for a genuinely negative score; see its line `if
+// (verdict.score < 0) return { decision: "NET_NEGATIVE", ... }`). So for EVERY relief
+// commit with a negative entry score, the oppose_cluster margin
+// (`Math.max(entryCortexScore, thesis_min_oppose_weight)`) collapses to the bare 0.5
+// noise floor — the WEAKEST possible cushion — and the very next exit-sync tick
+// recomposes nearly-identical fresh evidence (seconds later, negligible decay) and
+// almost always re-finds >=2 opposing items clearing that floor, because those same
+// opposing items are exactly what made the entry's score negative in the first place.
+// Live same-day proof (GET /api/market/zerodte/board ledger, 2026-10-08): WOLF
+// (entry_context.cortex.score -0.76, gex_walls_veto_relieved:true) closed in 0.509s on
+// "2 opposing readings... combined weight 0.75 > entry margin 0.5" (gex-walls + vex-
+// charm); SPY (score -0.31, also relieved) closed in 2.775s on a DIFFERENT oppose pair
+// entirely (sector-heat + opening-harvest — neither is gex-walls), proving the gap is
+// not specific to the gex-walls source the 2026-09-09 fix targeted. Both netted ~0%,
+// the exact "relief grants entry, the next tick immediately reverses it" failure the
+// 2026-09-09 fix was meant to close — just via the arm it didn't cover.
+test("detectThesisBreak: a NEGATIVE entryCortexScore (proof-by-construction of a relief commit) skips the oppose-cluster check too, not just the veto arm", () => {
+  // SPY-shaped: two non-gex-walls opposes (sector-heat 0.5 + opening-harvest 0.21 =
+  // 0.71) against a negative entry score (-0.31) — margin floors to 0.5, 0.71 > 0.5
+  // would otherwise break. No gex-walls involved at all, so this isn't fixable by
+  // special-casing that one source.
+  const b = detectThesisBreak(
+    evidence([
+      { stance: "opposes", source: "sector-heat", weight: 0.5, detail: "market breadth is negative" },
+      { stance: "opposes", source: "opening-harvest", weight: 0.21, detail: "bearish open character" },
+    ]),
+    -0.31
+  );
+  assert.equal(b, null, "a relief-commit's own already-known-negative evidence must not re-break the thesis on the next tick");
+
+  // A genuinely clean, non-relieved entry (positive score) must still be protected —
+  // this fix must not silently disable oppose_cluster for ordinary commits.
+  const stillBreaks = detectThesisBreak(
+    evidence([
+      { stance: "opposes", source: "sector-heat", weight: 0.5, detail: "market breadth is negative" },
+      { stance: "opposes", source: "opening-harvest", weight: 0.21, detail: "bearish open character" },
+    ]),
+    0.1
+  );
+  assert.ok(stillBreaks, "a normal (non-negative-score) commit must keep its real oppose_cluster protection");
+  assert.equal(stillBreaks!.kind, "oppose_cluster");
+});
+
+test("evaluateExitState: a net-negative relief commit (WOLF-shaped) does not instantly thesis-break on the evidence its own entry already knew was negative", () => {
+  const opposeCluster = evidence([
+    { stance: "opposes", source: "gex-walls", weight: 0.36, detail: "momentum short in a long-gamma tape" },
+    { stance: "opposes", source: "vex-charm", weight: 0.4, detail: "net dealer VEX is positive — fights a short" },
+  ]);
+  // RED (pre-fix behavior): the entry's own negative score is clamped UP to the bare
+  // noise floor as the margin, so the SAME evidence that made the entry negative
+  // immediately re-clears that weaker bar and exits.
+  const withoutFix = evaluateExitState(
+    input({ cortexEvidence: opposeCluster, entryCortexScore: 0.1 }) // positive stand-in for "not a relief commit"
+  );
+  assert.equal(withoutFix.action, "EXIT");
+  assert.equal(withoutFix.reason, "thesis_break:vex-charm");
+  // GREEN (the fix): the real WOLF shape — entryCortexScore is NEGATIVE (-0.76, the
+  // pinned entry score for an actual relief commit) — must not instantly reverse.
+  const withFix = evaluateExitState(
+    input({ cortexEvidence: opposeCluster, entryCortexScore: -0.76, entryGexWallsVetoRelieved: true })
+  );
+  assert.notEqual(withFix.action, "EXIT");
+  assert.ok(
+    !withFix.reason.startsWith("thesis_break"),
+    `expected no thesis_break exit on a relief commit's own already-priced-in evidence, got reason=${withFix.reason}`
   );
 });
 

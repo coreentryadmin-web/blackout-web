@@ -6,6 +6,8 @@ import {
   BROAD_MARKET_THEME,
   ETF_PROXY_THEMES,
   CORRELATION_THEMES,
+  isInverseLeverageEtf,
+  effectiveDirection,
 } from "./theme-cluster.ts";
 
 test("SEV-9 invariant: sameThesis('QQQ','NVDA') === true", () => {
@@ -160,4 +162,89 @@ test("GLW + GLWG are the literal same stock (plain vs 2x-leveraged wrapper) and 
   assert.equal(sameThesis("GLW", "GLWG"), true);
   // Not merged into an unrelated theme just because both are "tech"-adjacent.
   assert.equal(sameThesis("GLW", "NVDA"), false);
+});
+
+test("MTSI (MACOM Technology Solutions) clusters into semis, not its own isolated NAME: cluster (2026-10-08 live finding: MTSI LONG concurrent with SMCI/INTC/SMCX/MULL/AVGX/MRVL, no Book-context concentration flag on MTSI's own play-brief)", () => {
+  assert.equal(resolveTheme("MTSI"), "semis");
+  assert.equal(sameThesis("MTSI", "SMCI"), true);
+  assert.equal(sameThesis("MTSI", "NVDA"), true); // joins the WHOLE semis cluster, not just one peer
+  // Corroborated by the live play-brief's own independently-sourced peer list (LRCX, KLAC).
+  assert.equal(sameThesis("MTSI", "LRCX"), true);
+  assert.equal(sameThesis("MTSI", "KLAC"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("MTSI", "AAPL"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-09): SOXS correctly shares the "semis" theme
+// with NVDA/MRVL (it is driven by the exact same basket) but is a -3x INVERSE fund, so a nominal
+// LONG SOXS position is an economically BEARISH bet — the opposite of a nominal LONG NVDA/MRVL
+// position. `effectiveDirection` flips the nominal direction for exactly this case so a caller
+// comparing REAL economic bets (portfolio.ts's same/opposed-direction classification) gets the
+// right answer. Live-reproduced on a real MRVL play-brief: see portfolio.test.ts's sibling test
+// for the end-to-end narrative-level repro.
+test("SOXS is a known inverse-leverage ETF; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(isInverseLeverageEtf("SOXS"), true);
+  assert.equal(isInverseLeverageEtf("soxs"), true); // case-insensitive
+  assert.equal(effectiveDirection("SOXS", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("SOXS", "SHORT"), "LONG");
+});
+
+test("every other ticker's effective direction equals its nominal one, including SOXS's own bull sibling SOXL", () => {
+  assert.equal(isInverseLeverageEtf("SOXL"), false);
+  assert.equal(isInverseLeverageEtf("NVDA"), false);
+  assert.equal(isInverseLeverageEtf(null), false);
+  assert.equal(isInverseLeverageEtf(undefined), false);
+  assert.equal(effectiveDirection("SOXL", "LONG"), "LONG");
+  assert.equal(effectiveDirection("NVDA", "SHORT"), "SHORT");
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-11): this file's own SOXS doc comment already
+// named SQQQ as the obvious next candidate, but SQQQ wasn't in ETF_PROXY_THEMES at all — it
+// resolved to an isolated NAME:SQQQ cluster, so a member holding LONG SQQQ (bearish Nasdaq/semis)
+// alongside a LONG QQQ/NVDA swing play got no book-context flag whatsoever, not even a backwards
+// one (sameThesis never saw the two positions as related in the first place). TQQQ (the bullish
+// 3x sibling) had the identical same-direction-concentration gap. Both now cluster with QQQ,
+// mirroring the existing SOXL/SOXS pair exactly.
+test("SQQQ is a known inverse-leverage ETF clustering with QQQ/semis; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(ETF_PROXY_THEMES.SQQQ, "semis");
+  assert.equal(resolveTheme("SQQQ"), "semis");
+  assert.equal(sameThesis("SQQQ", "QQQ"), true);
+  assert.equal(sameThesis("SQQQ", "NVDA"), true);
+  assert.equal(isInverseLeverageEtf("SQQQ"), true);
+  assert.equal(isInverseLeverageEtf("sqqq"), true); // case-insensitive
+  assert.equal(effectiveDirection("SQQQ", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("SQQQ", "SHORT"), "LONG");
+});
+
+test("TQQQ clusters with QQQ/semis but is NOT inverse — its effective direction equals its nominal one, like SOXL", () => {
+  assert.equal(ETF_PROXY_THEMES.TQQQ, "semis");
+  assert.equal(resolveTheme("TQQQ"), "semis");
+  assert.equal(sameThesis("TQQQ", "QQQ"), true);
+  assert.equal(isInverseLeverageEtf("TQQQ"), false);
+  assert.equal(effectiveDirection("TQQQ", "LONG"), "LONG");
+  assert.equal(effectiveDirection("TQQQ", "SHORT"), "SHORT");
+});
+
+test("clinical/commercial-stage biotech names cluster together, not each in its own isolated cluster (2026-10-10 live finding: NTLA+CRSP+VIR+MIRM+IONS+NVAX+IOVA+PCVX+TNGX+RLAY concurrent LONG book, no Book-context concentration flag beyond the two same-ticker repeats)", () => {
+  assert.equal(resolveTheme("NTLA"), "biotech");
+  assert.equal(resolveTheme("CRSP"), "biotech");
+  assert.equal(resolveTheme("VIR"), "biotech");
+  assert.equal(resolveTheme("MIRM"), "biotech");
+  assert.equal(resolveTheme("IONS"), "biotech");
+  assert.equal(resolveTheme("NVAX"), "biotech");
+  assert.equal(resolveTheme("IOVA"), "biotech");
+  assert.equal(resolveTheme("PCVX"), "biotech");
+  assert.equal(resolveTheme("TNGX"), "biotech");
+  assert.equal(resolveTheme("RLAY"), "biotech");
+  assert.equal(sameThesis("NTLA", "CRSP"), true);
+  assert.equal(sameThesis("VIR", "IOVA"), true);
+  assert.equal(sameThesis("IONS", "RLAY"), true); // joins the WHOLE biotech cluster, not just one peer
+  // Not merged into an unrelated theme just because both are "healthcare"-adjacent.
+  assert.equal(sameThesis("NTLA", "MRNA"), false);
+  // Deliberately NOT folded in: different risk driver than a clinical/regulatory binary catalyst
+  // (bioprocessing tools, diagnostics services, and a drug-discovery platform business, not a
+  // trial-readout bet) — each stays its own isolated cluster rather than a false merge.
+  assert.equal(sameThesis("NTLA", "RGEN"), false);
+  assert.equal(sameThesis("NTLA", "GRAL"), false);
+  assert.equal(sameThesis("NTLA", "ABSI"), false);
 });

@@ -53,7 +53,7 @@ Key files:
 
 - Orchestrator: `src/lib/largo-terminal.ts`
 - Router: `src/lib/bie/router.ts`
-- Composers: `src/lib/bie/composers.ts`
+- Composers: ~~`src/lib/bie/composers.ts`~~ — deleted 2026-08-30 as confirmed-dead legacy code (#3203); router intents are handled directly, not via composers
 - Platform plane: `src/lib/bie/platform-context.ts`
 - Tools: `src/lib/largo/tool-defs.ts`, `src/lib/largo/run-tool.ts`
 - Policy: `src/lib/ai-env.ts` (`largoBieOnly()`, `claudeEnabled()`)

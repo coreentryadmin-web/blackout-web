@@ -246,6 +246,48 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.troughPremium, null);
   });
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-11, live repro AMZN root 44/terminal 48): the
+  // 2026-09-15 fix just above nulls entryPremium/peakPremium/troughPremium when the worst leg isn't
+  // the terminal leg, but left `contract`/`occ` untouched — the IDENTICAL mismatch one layer
+  // deeper. Live: leg 44 (strike 605, expiry 2026-10-16, -27.67%, ROLLED) rolled into leg 48 (a
+  // DIFFERENT contract — strike 245, expiry 2026-10-09, +72.41%, CLOSED); the served row paired the
+  // composite's correctly-preserved -27.67% loss with leg 48's OWN contract/occ — a contract that
+  // never lost 27.67%. Must resolve leg 44's own contract/occ instead, not the terminal's.
+  it("resolves the WORST leg's own contract/occ when it is a genuinely different contract than the terminal leg (mismatched-leg contract identity)", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      contract_strike: 605,
+      contract_expiry: "2026-10-16",
+      contract_type: "call",
+      contract_occ: "O:AMZN261016C00605000",
+      entry_premium: 5.15,
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z",
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      contract_strike: 245,
+      contract_expiry: "2026-10-09",
+      contract_type: "call",
+      contract_occ: "AMZN261009C00245000",
+      entry_premium: 5.8,
+      closed_at: "2026-10-07T13:30:39.000Z",
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -27.67, "worst leg (parent) still drives the reported exit P&L");
+    assert.equal(out[0]!.occ, "O:AMZN261016C00605000", "occ must identify the leg that actually lost -27.67%, not the terminal leg's own contract");
+    assert.equal(out[0]!.contract.strike, 605, "strike must match the contract the P&L belongs to");
+    assert.equal(out[0]!.contract.expiry, "2026-10-16");
+  });
+
   it("keeps entry/peak/trough premium when the worst leg IS the terminal leg (no mismatch to omit)", () => {
     const parent = row({
       id: 40,

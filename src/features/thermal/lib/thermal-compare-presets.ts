@@ -181,7 +181,7 @@ export function orderComparePresetTickers(
  * call per entry, on a path that has already been trimmed once for timing out Largo turns at ~120s.
  * While this was `presets.find("indices").tickers`, adding IWM to a UI preset silently made a Largo
  * tool do more upstream work — a grid decision reaching into an unrelated subsystem with nothing in
- * between to notice. `isThermalCompareTicker` reads it too.
+ * between to notice.
  *
  * The presets are free to grow; this triple is a separate, deliberate contract. Change it only for
  * its own reasons.

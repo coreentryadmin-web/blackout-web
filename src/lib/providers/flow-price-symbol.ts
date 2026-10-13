@@ -69,10 +69,5 @@ export function flowPriceSymbol(ticker: string | null | undefined): FlowPriceSym
   return mapped ? { symbol: mapped, isIndex: true } : { symbol: raw, isIndex: false };
 }
 
-/** True when this flow-tape ticker is an index product rather than an equity. */
-export function isIndexFlowTicker(ticker: string | null | undefined): boolean {
-  return flowPriceSymbol(ticker)?.isIndex === true;
-}
-
 /** The roots this module claims to know — exported so tests can assert coverage. */
 export const KNOWN_INDEX_FLOW_ROOTS: readonly string[] = Object.freeze(Object.keys(INDEX_PRICE_SYMBOL));

@@ -23,7 +23,3 @@ export function legacyPrimaryTroughPct(play: TerminalPlay): number | null {
   }
   return play.stockTroughPct ?? play.trough ?? null;
 }
-
-export function legacyUsesOptionPnl(play: TerminalPlay): boolean {
-  return play.pnlPct != null && Number.isFinite(play.pnlPct);
-}

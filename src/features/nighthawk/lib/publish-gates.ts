@@ -21,7 +21,6 @@
 //    plays too (PASS with margins), so counterfactual grading can judge the gates later —
 //    same skip-grading philosophy as the 0DTE rejection funnel.
 
-import { MIN_PUBLISH_SCORE } from "./constants";
 import { gatePromoteMinScore, legacyMinPublishTier } from "./edition-quality";
 import { publishGateBlockedRecapReason } from "./edition-funnel";
 import type { PlaybookPlay } from "./types";
@@ -413,13 +412,6 @@ function promotionBadness(b: NighthawkGateBlockedPlay): number {
   const score = b.play.score ?? 0;
   return failCount * 1000 - score;
 }
-
-/**
- * Minimum score for a gate_promoted rescue. Soft geometry failures may promote, but a
- * low-score play is not "best available" — it's filler. Locked to MIN_PUBLISH_SCORE so
- * rescue cannot re-admit the diversity-hedge noise class (live AI@26 / SNDQ@20).
- */
-export const GATE_PROMOTE_MIN_SCORE = MIN_PUBLISH_SCORE;
 
 /**
  * Promote the top-scoring blocked plays into publishable plays with gate_promoted

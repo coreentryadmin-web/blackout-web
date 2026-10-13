@@ -55,15 +55,6 @@ export function vectorPolygonMinuteSymbol(ticker: string): string {
   return t;
 }
 
-/**
- * True when UW WS gex_strike_expiry ladder is expected for this ticker.
- * @deprecated Use `hasLiveGexStrikeExpiry` from uw-socket.ts — dynamic subscription
- * means ANY ticker can have a live WS oracle, not just the static set.
- */
-export function vectorHasWsOracle(ticker: string): boolean {
-  return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker));
-}
-
 /** Opening DTE horizon: intraday desk defaults to 0DTE for every symbol (matrix + beads match session view). */
 export function defaultVectorDteHorizon(_raw: string | null | undefined): VectorDteHorizon {
   return "0dte";

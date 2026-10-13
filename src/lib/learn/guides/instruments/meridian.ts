@@ -2,7 +2,7 @@ import { defineToolGuide, CROSS } from "@/lib/learn/guides/shared";
 
 export const meridianGuide = defineToolGuide({
   slug: "meridian",
-  chapter: 9,
+  chapter: 8,
   title: "Meridian",
   description:
     "Catalyst timeline covering earnings, macro releases, OpEx, and FDA decisions — with a five-tab earnings sub-desk as the deepest workflow.",

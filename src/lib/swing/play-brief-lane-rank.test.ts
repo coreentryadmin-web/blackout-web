@@ -33,6 +33,7 @@ function row(
   // Pass `null` explicitly to build a floor-cleared-but-still-pre-entry WATCH row (status COMMIT,
   // no liveStatus) — the live LITE repro this fix addresses.
   liveStatus: HorizonPlay["liveStatus"] | null = status === "COMMIT" ? "OPEN" : undefined,
+  commitGateBlockedBy?: string[],
 ): HorizonPlay {
   const c = contract ?? { strike: 100, right: "C" as const };
   return {
@@ -46,6 +47,7 @@ function row(
     manageAction,
     setupState,
     liveStatus: liveStatus ?? undefined,
+    commitGateBlockedBy,
   };
 }
 
@@ -390,6 +392,40 @@ test("computeLaneRank: a play whose OWN score is withheld (0 fallback) returns n
   assert.equal(snap, null, "AAPL's own withheld score must not produce a fabricated rank");
 });
 
+// Live repro 2026-10-08 (Ask Largo standing mandate, raised on #4076 comment 6067024911): GOOGL's
+// own brief named VST (score 76) as the named leader while VST's commitGateBlockedBy was exactly
+// ["legacy:exempt"] — the #5577 Legacy graduation-bridge wiring gap, not a real gate rejection.
+test("computeLaneRank: topLegacyExemptOnly is true when the named leader's ONLY block is legacy:exempt", () => {
+  const lanes = [
+    row("VST", 76, "WATCH", undefined, undefined, "TRIGGERED", undefined, ["legacy:exempt"]),
+    row("GOOGL", 36, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topTicker, "VST");
+  assert.equal(snap!.topLegacyExemptOnly, true);
+});
+
+test("computeLaneRank: topLegacyExemptOnly is false when the named leader also carries a real gate block", () => {
+  const lanes = [
+    row("VST", 76, "WATCH", undefined, undefined, "TRIGGERED", undefined, [
+      "legacy:exempt",
+      "gate:G-S4:regime_degraded",
+    ]),
+    row("GOOGL", 36, "WATCH", undefined, undefined, "TRIGGERED"),
+  ];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topLegacyExemptOnly, false, "a real gate alongside legacy:exempt is not a PURELY structural block");
+});
+
+test("computeLaneRank: topLegacyExemptOnly is false when the named leader has no block at all", () => {
+  const lanes = [row("VST", 76, "WATCH"), row("GOOGL", 36, "WATCH")];
+  const snap = computeLaneRank(play({ ticker: "GOOGL", score: 36, status: "WATCH" }), lanes);
+  assert.ok(snap);
+  assert.equal(snap!.topLegacyExemptOnly, false);
+});
+
 test("computeLaneRank: a withheld PEER is excluded from the pool so it cannot drag down another play's median/rank", () => {
   const lanes = [
     row("AAPL", 0, "COMMIT"), // withheld peer — must not count toward AMD's peer pool
@@ -401,4 +437,48 @@ test("computeLaneRank: a withheld PEER is excluded from the pool so it cannot dr
   assert.ok(snap);
   assert.equal(snap!.total, 2, "withheld AAPL must not be counted as a real peer");
   assert.equal(snap!.medianScore, (79.9 + 79.5) / 2, "median must be computed only over real-scored peers");
+});
+
+// Ask Largo standing mandate, live repro 2026-10-11: `laneRows` is sourced from the shared
+// serving-lane snapshot, the SAME data dataFreshnessSection already discloses as stale — but
+// laneRankSection never carried that disclosure, so a member could read "#12 of 18" over a
+// weekend with no hint the lane's own total was frozen at last Friday's scan.
+test("laneRankSection: discloses a stale scan when scanSessionDay predates sessionDate, for a LIVE (non-exempt) play", () => {
+  const sec = laneRankSection(
+    play({ ticker: "NRG", score: 51, status: "WATCH" }),
+    [row("NRG", 51, "WATCH"), row("X", 60, "WATCH")],
+    { scanAsOf: "2026-10-09T20:30:00.000Z", scanSessionDay: "2026-10-09", sessionDate: "2026-10-11" },
+  );
+  assert.ok(sec);
+  assert.match(sec!.body, /Ranked against the last scan/);
+  assert.match(sec!.body, /prior session \*\*2026-10-09\*\*/);
+});
+
+test("laneRankSection: no stale-scan caveat when scanSessionDay matches sessionDate", () => {
+  const sec = laneRankSection(
+    play({ ticker: "NRG", score: 51, status: "WATCH" }),
+    [row("NRG", 51, "WATCH"), row("X", 60, "WATCH")],
+    { scanAsOf: "2026-10-11T14:30:00.000Z", scanSessionDay: "2026-10-11", sessionDate: "2026-10-11" },
+  );
+  assert.ok(sec);
+  assert.doesNotMatch(sec!.body, /Ranked against the last scan/);
+});
+
+test("laneRankSection: no stale-scan caveat for a play already exempt from staleness checks (e.g. CLOSED or dead-but-not-closed)", () => {
+  // CLOSED returns null before the caveat is ever reached (existing "null for closed plays" test
+  // already covers that) — this covers the OTHER exemption shape: a dead-but-not-closed WATCH play
+  // (watchEntryExpired), matching dataFreshnessSection's own gating via isSwingPlayStaleCheckExempt.
+  const sec = laneRankSection(
+    play({ ticker: "NRG", score: 51, status: "WATCH", watchEntryExpired: true }),
+    [row("NRG", 51, "WATCH"), row("X", 60, "WATCH")],
+    { scanAsOf: "2026-10-09T20:30:00.000Z", scanSessionDay: "2026-10-09", sessionDate: "2026-10-11" },
+  );
+  assert.ok(sec);
+  assert.doesNotMatch(sec!.body, /Ranked against the last scan/);
+});
+
+test("laneRankSection: no stale-scan caveat when scan context is omitted (backward-compatible call shape)", () => {
+  const sec = laneRankSection(play({ ticker: "NRG", score: 70 }), [row("NRG", 70, "COMMIT"), row("X", 40, "COMMIT")]);
+  assert.ok(sec);
+  assert.doesNotMatch(sec!.body, /Ranked against the last scan/);
 });
