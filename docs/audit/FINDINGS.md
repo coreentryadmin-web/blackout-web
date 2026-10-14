@@ -38,6 +38,261 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## VEX/DEX/CHARM content silently dropped for OPEN/WATCH swing briefs — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** PR #5994 (same day, Ask Largo standing mandate) extended `gexPostureSection`
+(`play-brief-intel.ts`) to render `net_vex`/`vanna_regime_read`, `net_dex`/`dex_regime_read`, and
+`net_charm`/`charm_regime_read` — fields already loaded into every swing brief's
+`ctx.ecosystem.gex_positioning` (via the same `getGexPositioning` Thermal's own desk reads) but
+never surfaced in the swing brief. That fix shipped correctly in isolation, but
+`collapseRedundantIntelSections` (`play-brief-intel-collapse.ts`) drops the **whole** "GEX posture"
+section for OPEN/WATCH buckets whenever a narrative is present (`NARRATIVE_COVERED_TITLES`
+includes `"GEX posture"`), appending a note that its detail was "folded into Trade manager read
+above." That note was false for VEX/DEX/CHARM: `dealerPostureLine` (`play-brief-narrative.ts`,
+the function behind "Trade manager read"'s dealer-posture bullet) narrated gamma posture + gamma
+flip only — it never read `net_vex`/`net_dex`/`net_charm` or their regime-read strings at all. So
+for the common case (an OPEN or WATCH play with a narrative present — the large majority of real
+briefs), the brand-new VEX/DEX/CHARM content from #5994 was computed, rendered into a section, and
+then immediately discarded with a note claiming it had been preserved elsewhere. Only CLOSED briefs
+(`collapseRedundantIntelSections` returns early for `bucket === "closed"`) and the rare
+narrative-absent case ever actually saw it.
+
+**Evidence.** `composeSwingPlayBrief` for any OPEN/WATCH play with `hasNarrative: true` (the normal
+case) ran VEX/DEX/CHARM through `gexPostureSection`, then `collapseRedundantIntelSections` filtered
+the whole section out via its title-match against `NARRATIVE_COVERED_TITLES`, and the only
+remaining trace was the generic "folded into Trade manager read above" note — a false claim for
+these three fields, confirmed by reading `dealerPostureLine`'s full source: it builds `mechanic`
+(gamma posture text) and `flipBit` (gamma flip) only, with no reference to `net_vex`/`net_dex`/
+`net_charm`/`vanna_regime_read`/`dex_regime_read`/`charm_regime_read` anywhere before this fix.
+
+**Blast radius.** Single call site — `dealerPostureLine`'s return string, which feeds the one
+"Trade manager read" dealer-posture bullet. No other section or consumer reads
+`vanna_regime_read`/`dex_regime_read`/`charm_regime_read` for swing (Thermal's own desk reads the
+same `GexPositioning` object through its own independent formatter and is unaffected).
+
+**Fix.** Appended the three regime-read strings (not the raw `$` figures — parity with `net_gex`'s
+own dollar value, which is likewise never narrated in this bullet, by design: `gexPostureSection`'s
+`Net GEX: **$NM**` line is the one place for the number, this bullet is the one place for the
+qualitative "what it means" read) to `dealerPostureLine`'s output, gated on the SAME
+`gexMatrixStale` check `gexPostureSection` already uses for these fields — a stale matrix's regime
+reads are exactly as unreliable in the narrative as in the standalone section. Each field is
+independently null-gated (C3-safe omission), matching the existing `net_gex`/`gamma_posture`
+pattern in the same function.
+
+**Fix rationale.** The alternative (special-casing `collapseRedundantIntelSections` to keep "GEX
+posture" rendered whenever it carries non-null VEX/DEX/CHARM) would have left the "folded into
+Trade manager read" note literally false in the kept-but-partial case and complicated the collapse
+function's single, simple title-match rule. Threading the content into the narrative itself makes
+the existing claim true instead of carving an exception to it — the narrower, more honest fix.
+
+**Tests.** `play-brief-narrative.test.ts` gained 2 tests: one proving all three regime-read strings
+now appear in the narrative body (with a parity check that the raw `$` figures do NOT), and one
+proving they're suppressed while the GEX matrix is stale (`matrix_age_sec: 200`), mirroring the
+existing Largo C2 staleness-suppression tests in the same file. RED→GREEN proven: `git stash` of
+the `play-brief-narrative.ts` fix failed exactly 1 of 114 tests (the new positive-content
+assertion; the staleness-suppression test passes vacuously either way, as expected for a
+suppression guard); restoring the fix brought all 114 back to green. Also ran the full
+`play-brief-intel-collapse`/`play-brief-intel`/`play-brief` test suites (364 tests) clean.
+`tsc --noEmit` clean on Node 20.
+
+## `banger-live-sync` silently drops live quote updates for one of two positions sharing an option contract — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `banger-live-sync/route.ts`'s quote-fields carriage (FINDINGS 2026-10-09 / migration 017)
+built `occToId = new Map<string, number>()` keyed by `contract_occ`, populated by a plain
+`occToId.set(r.contract_occ, r.id)` loop over every open `banger_positions` row. Two **different**
+open positions can legitimately reference the **identical** `contract_occ` — e.g. two separate
+entries into the same strike/expiry on different session days. A `Map<string, number>` can only
+hold one value per key, so the second row's `.set()` call silently overwrote the first — whichever
+position was iterated last "won," and its sibling's id was gone from the map entirely. The
+quote-write loop then read `occToId.get(occ)` once and updated only that one surviving id; the
+other position's `bid`/`ask`/`openInterest`/greeks fields were never touched again, leaving them
+stuck at their fabricated `null`/`0` defaults forever (this is a best-effort, additive-only
+carriage — nothing re-backfills a row once the cron stops reaching it).
+
+**Evidence.** Live repro, ticker MUZ, contract `O:MUZ261016C00008000`: position id 1613 correctly
+carried `bid 0.75 / ask 0.90 / openInterest 557`, while position id 1695 — the second open row on
+the exact same contract — showed `openInterest: 0` and all-null greeks, despite both positions
+being fetched in the same `fetchOpenBangerPositions()` call and both their occs being requested in
+the same `fetchOptionsUnifiedSnapshot(occs)` batch. The snapshot data was available for both; only
+the id-tracking map silently dropped one.
+
+**Blast radius.** Single call site — the quote-fields write loop inside the `fetchMarks` callback
+in `route.ts`. No other consumer reads `occToId`/`occToIds` (it's local to this route, not exported
+previously). The decision-making engine (`runBangerLiveSync`/`live-sync.ts`'s scale-out logic) is
+untouched — it keys off `contract_occ` directly via its own typed `Map<occ, mark>` contract, which
+this carriage was always careful not to change (see the route's own pre-existing comment). Only the
+best-effort live-quote-field carriage onto the DB row was affected.
+
+**Fix.** Added an exported pure function `occToPositionIds(rows): Map<string, number[]>` that groups
+ALL ids sharing an occ into an array instead of overwriting. Renamed the local map `occToId` →
+`occToIds` (now populated via this function, not a manual clear+loop). Changed the write site from a
+single `if (positionId != null)` to `for (const positionId of positionIds)`, so every position
+sharing a contract gets the same live snapshot applied. No other behavior changed — RTH gating,
+auth, the kill-switch, and the decision-engine call are byte-identical.
+
+**Why this fix, not an alternative.** Keeping the id→array grouping local and pure (rather than,
+say, changing `fetchOptionsUnifiedSnapshot` or `live-sync.ts`'s contract) keeps the fix scoped to
+exactly the carriage logic that was wrong, with zero risk to the scale-out decision engine's
+existing signature or tests — the same discipline the original migration-017 carriage used.
+
+**Tests.** `route.test.ts` gained: 4 pure-function tests for `occToPositionIds` (two positions
+sharing a contract — using the exact live repro ids 1613/1695 — distinct contracts, three positions
+on one contract, and an absent-occ lookup), plus a source-scan regression test asserting the new
+write-loop pattern exists and the old single-value `occToId.set(r.contract_occ, r.id)` pattern is
+gone. RED→GREEN proven: `git stash` of the `route.ts` fix dropped 5/7 tests to failing (4 on the
+missing `occToPositionIds` export, 1 on the missing write-loop pattern); restoring the fix brought
+all 7 back to green. `tsc --noEmit` clean on Node 20.
+
+## 2026-10-13 — [FINDING, Thermal/Largo] Thermal Largo synthesis gap — no intelligent analysis brief — OPEN
+> **kind:** `FINDING`
+> **Owner:** Claude (Ask Largo mandate)
+> **Phase:** OPEN — Design + Implementation
+
+| Field | Detail |
+|---|---|
+| **Status** | OPEN — design proposal only, no code change made; tracked for the standing Ask Largo mandate |
+
+### Summary
+
+Thermal exposes 6 raw-data Largo tools (positioning, heatmap, comparison strip, wall dynamics, regime events, matrix changes) with excellent LARGO-PRODUCT-CONTRACT compliance for individual fields. However, there is **no synthesized analysis brief** equivalent to Night Hawk's `get_swing_play_brief` or SPX Slayer's `get_spx_play` that intelligently combines dealer gamma, regime, wall dynamics, and intraday transitions into a cohesive narrative answer.
+
+**Impact:** Members must assemble the story from 6 separate tool calls. A member asking "what is dealer gamma telling us on NVDA right now" receives 6 raw snapshots, not one analyst-synthesized read. Violates the mandate: "the feature has to be extremely powerful and helpful."
+
+**Evidence:**
+- `get_positioning` returns current dealer posture + regime label + nearest wall + flip distance
+- `get_gex_regime_events` returns historical flip/wall/regime transitions
+- `get_thermal_compare` returns multi-ticker regime comparison
+- No tool exists that says: "dealer is SHORT gamma [consequence], walls are building [evidence: what changed intraday], flip is 250bps away [implication], watch for X if [regime risk]"
+
+### Scope
+
+This finding does NOT include:
+- Per-strike ladder presentation (already served by `get_gex_heatmap` with correct C1-C10 compliance)
+- UI/rendering improvements (separate product work)
+- Volatility regime calibration (already in `get_positioning`)
+
+This finding DOES include:
+- **New tool:** synthesized Thermal brief combining all signals into a narrative answer
+- **Audit:** whether any computed fields (e.g., regime stability, wall-build confidence, transition causality) are being dropped before reaching the API
+- **Standards:** whether the synthesized answer meets the LARGO-PRODUCT-CONTRACT's 10 points
+
+### Root Cause
+
+Night Hawk's brief layers flow-accumulation + risk-assessment + thesis synthesis into connected paragraphs (`play-brief-narrative.ts`). SPX Slayer's play layers confluence scoring + option-selection logic. Thermal's Largo surface was built as 6 independent tools — a **raw-data transport layer**, not an **analysis layer** — because the Thermal UI itself serves raw data (strike ladders, lens toggles). The Largo side inherited that architecture without synthesizing for the text-reasoning use case.
+
+### Proposed Solution
+
+**New tool: `get_thermal_brief`**
+
+Synthesized Thermal analysis brief for one ticker, answering "what is dealer gamma telling us right now." Returns:
+
+```ts
+{
+  ticker: string;
+  session_date: string;
+  as_of_et: string;
+  freshness: "live" | "cached" | "stale";
+
+  // The synthesized narrative (NOT a bullet list)
+  analysis: {
+    regime: {
+      current: "long_gamma" | "short_gamma" | "transition";
+      stability: "stable" | "fragile" | "transitioning"; // new computed field
+      explanation: string; // prose: why this regime, how long held, what triggers a flip
+    };
+
+    walls: {
+      dominant_pressure: "call_wall" | "put_wall" | "balanced";
+      call_wall: { strike: number; gex_magnitude: string; relative_to_spot: string } | null;
+      put_wall: { strike: number; gex_magnitude: string; relative_to_spot: string } | null;
+      nearest_to_spot: number; // strike of the closer wall, signed point distance
+      distance_to_flip: { percentage: number; magnitude_dollars: number }; // reproduced from get_positioning for context
+      stability: "firm" | "moderate" | "thin"; // from Vector wall_integrity when available, fallback to GEX magnitude
+    };
+
+    intraday_context: {
+      what_changed: string; // prose: material matrix changes since market open (from get_gex_matrix_changes + regime_events)
+      transitions: Array<{ event: string; at_et: string; magnitude: string }>; // regime flips, wall breaks, new formations
+    };
+
+    cross_ticker_context: string | null; // When applicable: how this ticker's regime aligns/diverges from sector/index
+
+    trader_perspective: string; // Synthesized: what this regime favors, what to watch, caution points
+  };
+
+  // Contract compliance
+  unavailable?: { reason: string; what_is_missing: string; retryable: boolean };
+}
+```
+
+**Characteristics:**
+- C1 (Time): `as_of_et` + `session_date` supplied
+- C2 (Freshness): `freshness` flag + implicit age via matrix_age_sec from underlying positioning call
+- C3 (Absence): Explicit `unavailable` when ticker is cold
+- C4 (Identity): `ticker` canonical
+- C5 (Direction): Explicit `regime.current` + rich `stability` context
+- C6 (Confidence): OMITTED (no calibrated confidence on regime labels — appropriately per contract)
+- C7 (Evidence): Specific wall magnitudes, distances, and intraday-change magnitudes
+- C8 (Provenance): Source: aggregate of Polygon positioning + wall dynamics + regime events, cohort: multi-expiry
+- C9 (Precision): No rounding before boundary
+- C10 (Historical): Distinct from `get_gex_regime_events` (which is the durable log); this brief contextualizes the current state against the day's history
+
+### Implementation Steps
+
+1. **Define the brief schema** (src/lib/thermal/thermal-brief.ts)
+   - Types: ThermalBrief, RegimeAssessment, WallContext, IntraDayContext
+   - Synthesize function: `analyzeThermalForBrief(positioning, regimeEvents, matrixChanges, compare?) => ThermalBrief`
+
+2. **Compute "stability" fields** (new)
+   - Regime stability: is this regime hours-old (stable) or minutes-old (fragile)?
+   - Wall stability: GEX magnitude + wall-history duration → firm/moderate/thin
+   - **Integration note:** Wall integrity scoring exists in `src/features/vector/lib/vector-wall-integrity.ts` (`scoreWallIntegrity`, produces firm/moderate/thin tier + 0-100 score). Currently only used for Vector desk wall visualization, not exposed to Thermal API. Will reuse this exact scoring logic + shared refMaxPct derivation so the verdict is identical across surfaces (no drift between Vector and Thermal).
+
+3. **Add `intraday_context` synthesis**
+   - Read `get_gex_matrix_changes` for material deltas since last snapshot
+   - Read `get_gex_regime_events` for today's transitions
+   - Prose-format the changes: "regime flipped 45min ago at SPY 580, walls built $2M call side while put wall faded, GEX still short"
+
+4. **Route the tool**
+   - Add to THERMAL_ENGINE_TOOL_NAMES
+   - Wire in Largo's run-tool.ts dispatch
+   - Document in tool-defs.ts
+
+5. **Audit dead-wire fields** ✓ COMPLETED
+   - **FOUND:** Wall integrity scoring (firm/moderate/thin tier + 0-100 score + factors: strength/persistence/isolation) is computed in `src/features/vector/lib/vector-wall-integrity.ts` but NOT exposed to Thermal API
+   - **ACTION:** Will reuse in get_thermal_brief implementation
+   - All other Thermal positioning fields (flip, walls, near_term_expiries, shift_summary, intraday_adjusted, cross_validation) are already properly exposed through gex-positioning.ts → /api/market/gex-positioning route
+
+### Trader Perspective Justification
+
+**Why this matters:**
+- A trader reading "dealer is SHORT gamma, walls are thin, regime is fragile" gets the story that drives risk management decisions
+- Bullet-list of raw fields (`regime: short_gamma`, `flip_distance: 250`, `call_wall_gex: $3M`) requires them to synthesize the implications themselves
+- Night Hawk brief narrates the flow story; SPX play narrates the confluence story; Thermal brief should narrate the dealer-gamma story
+
+**Testability:**
+- Unit tests comparing synthesized brief against known market snapshots
+- E2E test: live Thermal read → brief → Largo LLM → verify the answer matches the narrative (LLM does not hallucinate fields or flip the direction)
+
+### Next Steps
+
+1. Review this finding with Cursor (collaboration mandate)
+2. Design the schema (feedback on prose style, field completeness, trader-relevance)
+3. Implement synthesize function + route
+4. Audit for dead-wire fields in thermal codebase
+5. Test live against production Thermal reads
+6. Merge and validate live
+
 ## 2026-10-14 — [Ask Largo / Swing] Dealer VEX/DEX/CHARM were computed and already in every swing brief's hands, but never surfaced — FIXED
 
 > **kind:** `FINDING`
