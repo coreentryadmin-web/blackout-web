@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-13T23:05Z",
-  "notes": "Market closed overnight, 7+ consecutive clean ticks on book/WATCH state. Used this quiet window to run the official npm run healthcheck:swing baseline (hadn't run it yet this session). Result: overall AMBER, but entirely explained by off-hours mark staleness (Stage F, ~181min mark age across many committed rows -- the harness itself labels the run '(off-hours)' and this staleness is expected ~3hrs after the 16:00 ET close, not a bug). Stages A/B/C/D/E/G all GREEN -- cron, persistence, serving sections, board lanes, 84 live positions (66 MANAGING/18 SCALING_OUT/0 EXITING), and grading/record all healthy. Noted but NOT escalated: Stage G shows WR 13.3% (2W/13L) across 15 resolved chains of 18 open -- a single small-n (15) snapshot, not a 3-instance pattern, and this metric isn't scoped to native-swing-only vs mixed banger-origin chains -- worth a proper look with the existing swing-loss-taxonomy-segment.mjs/swing-score-calibration.mjs tooling in a future cycle with more signal (e.g. after more closes), not from one baseline run.",
+  "last_updated": "2026-10-14T00:20Z",
+  "notes": "First real state change since market close: AVGO and WULF now both show a NEW gate not seen before this session -- gate:G-S12:halt_feed_stale -- alongside their existing blocks. Plausible, expected overnight behavior (a halt-feed freshness check correctly reads stale hours after RTH close, fail-closed) rather than a bug -- only 2 instances, below the 3-instance noise threshold, so not escalating yet; will watch whether it clears cleanly at tomorrow's open (would confirm the fail-closed read) or persists into RTH (would be a real gap worth investigating). SKHY dropped off the visible WATCH lane listing but confirmed still alive via its own play-brief ('At trigger, but commit gates have not cleared') -- likely rank-cutoff churn as AVGO/WULF scores moved, not an invalidation. Native book unchanged (INTC/GOOG/GOOGL same P&L, still post-close frozen marks).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
