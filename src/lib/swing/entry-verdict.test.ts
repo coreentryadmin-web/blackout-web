@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { swingEntryVerdict, resolveSwingServingSection } from "./entry-verdict";
+import {
+  swingEntryVerdict,
+  resolveSwingServingSection,
+  commitGateBlocksForVerdict,
+} from "./entry-verdict";
 
 describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
   it("COMMIT_NOW → WATCH + BUY", () => {
@@ -164,6 +168,52 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.actionLabel, "WAIT");
     assert.equal(v?.recommendation, "HOLD");
     assert.equal(v?.gateBlocks?.[0]?.code, "g_s6_confluence");
+  });
+
+  it("swingEntryVerdict end-to-end: WAIT branch threads signalKinds/archetype into the G-S6 reason", () => {
+    const v = swingEntryVerdict({
+      servingSection: "WATCH",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW"],
+      archetype: "SECTOR_ROTATION",
+      commitGateBlockedBy: ["gate:G-S6:confluence"],
+    });
+    assert.equal(v?.gateBlocks?.[0]?.code, "g_s6_confluence");
+    assert.match(v?.gateBlocks?.[0]?.reason ?? "", /needs 2 more kind\(s\) — have FLOW/);
+  });
+
+  it("G-S6 block without signal-kind context falls back to the flat reason (no diagnostic to compute)", () => {
+    const blocks = commitGateBlocksForVerdict(["gate:G-S6:confluence"]);
+    assert.equal(
+      blocks[0]?.reason,
+      "Independent signal confluence below commit threshold — desk will not open."
+    );
+  });
+
+  it("G-S6 block enriched with the real confluence diagnostic when signal kinds are supplied (#4076 ask)", () => {
+    const blocks = commitGateBlocksForVerdict(["gate:G-S6:confluence"], {
+      signalKinds: ["FLOW", "STRUCTURE"],
+      archetype: "SECTOR_ROTATION",
+    });
+    assert.equal(blocks[0]?.code, "g_s6_confluence");
+    // SECTOR_ROTATION requires 3 independent kinds; FLOW+STRUCTURE is 2, so this is 1 short —
+    // the member now sees exactly how close the setup is, not just that it's blocked.
+    assert.equal(
+      blocks[0]?.reason,
+      "Independent signal confluence below commit threshold — needs 1 more kind(s) — have FLOW+STRUCTURE."
+    );
+  });
+
+  it("G-S6 block for an event archetype needing CATALYST reports the catalyst-specific diagnostic", () => {
+    const blocks = commitGateBlocksForVerdict(["gate:G-S6:confluence"], {
+      signalKinds: ["FLOW", "STRUCTURE"],
+      archetype: "EVENT_DRIVEN",
+    });
+    assert.equal(
+      blocks[0]?.reason,
+      "Independent signal confluence below commit threshold — event archetype needs CATALYST kind + 1 other — have FLOW+STRUCTURE."
+    );
   });
 
   it("desk committed + AT_TRIGGER → STILL BUY label", () => {
