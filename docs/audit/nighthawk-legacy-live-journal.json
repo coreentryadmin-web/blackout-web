@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-14T19:58:00Z",
+  "lastUpdated": "2026-10-14T21:52:20Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -751,6 +751,10 @@
     {
       "at": "2026-10-14T19:58:00Z",
       "summary": "AGGRESSIVE MODE enhancement hunt continues: shipped PR #6008, wiring the live admin route around #6005's command-center-table composer -- Phase 2F part 2 (operator priority #14) now fully wired end to end. Healthcheck this cycle: A GREEN, B AMBER (CLS stale, VST/AMD fresh -- same already-root-caused liquidity flicker), C GREEN resolved=30, D GREEN."
+    },
+    {
+      "at": "2026-10-14T21:52:20Z",
+      "summary": "Tonight's edition (2026-10-15, 4 plays) published within the predicted ~21:30-23:30 UTC self-heal window -- A_edition flipped AMBER->GREEN, same daily RTH-close->next-edition lifecycle already documented on 2026-10-12/13/14. New tickers (UNH/WMT/GTLB/ETSY) all read AMBER stale (expected first-look-post-close no-live-quote state, market closed); D SKIPPED (morning confirm not yet run for the new date, expected). C GREEN resolved=33. No new investigation needed -- mechanism behaving exactly as documented."
     }
   ],
   "knownOpenItems": {
