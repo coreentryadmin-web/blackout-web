@@ -213,6 +213,48 @@ test("served (post-roundFloats) worstLegPnlPct never shows 0 for a chain summary
   assert.notEqual(served.records[1].composite.worstLegPnlPct, 0);
 });
 
+// ─── Live-caught 2026-10-14 (Ask Largo deep-dive): composite.sumPnlPct/compoundedReturnPct must
+// reconcile with the served (post-roundFloats) legs[].realizedPnlPct ──────────────────────────
+// Same class of bug as the worstLegPnlPct fix above, for a different pair of fields: before this
+// fix, sumPnlPct/compoundedReturnPct were computed from RAW (unrounded) per-leg P&Ls inside
+// buildSwingRecord, while legs[].realizedPnlPct was independently rounded for display by the API
+// boundary's roundFloats(). Rounding is not distributive over addition/compounding, so a raw pair
+// of leg P&Ls that EACH round down independently can still round UP in aggregate — live repro:
+// rootPositionId=37 (AAPL) legs displayed -22.3/47.37 (sum 25.07 by hand) served
+// composite.sumPnlPct 25.06. Fixed by rounding realizedPnlPct to 2dp AT SOURCE (the field
+// composite.sumPnlPct/compoundedReturnPct are now computed FROM), making roundFloats() a no-op on
+// an already-2dp value — the same "single point of truth" discipline worstLegPnlPct already uses.
+test("served (post-roundFloats) composite.sumPnlPct and compoundedReturnPct reconcile exactly with the sum/compound of served legs[].realizedPnlPct", () => {
+  // Chosen so each leg independently rounds DOWN (10.004 -> 10.00) but their RAW sum rounds UP
+  // (20.008 -> 20.01) -- the exact shape of the live discrepancy, reproduced deterministically.
+  const root = 20;
+  const parent = leg({ id: root, root_position_id: null, roll_seq: 0, status: "ROLLED", realized_pnl_pct: 10.004 });
+  const child = leg({ id: 21, root_position_id: root, parent_position_id: root, roll_seq: 1, realized_pnl_pct: 10.004 });
+  const rec = buildSwingRecord([parent, child]);
+
+  const served = roundFloats({ records: [rec] }) as {
+    records: Array<{
+      legs: Array<{ realizedPnlPct: number }>;
+      composite: { sumPnlPct: number; compoundedReturnPct: number };
+    }>;
+  };
+  const servedRecord = served.records[0]!;
+  const servedLegSum = servedRecord.legs.reduce((a, l) => a + l.realizedPnlPct, 0);
+  assert.equal(
+    Math.round(servedLegSum * 100) / 100,
+    servedRecord.composite.sumPnlPct,
+    "summing the served legs by hand must land on the served composite.sumPnlPct exactly",
+  );
+
+  const servedCompounded =
+    (servedRecord.legs.reduce((acc, l) => acc * (1 + l.realizedPnlPct / 100), 1) - 1) * 100;
+  assert.equal(
+    Math.round(servedCompounded * 100) / 100,
+    servedRecord.composite.compoundedReturnPct,
+    "compounding the served legs by hand must land on the served composite.compoundedReturnPct exactly",
+  );
+});
+
 test("buildSwingRecordSummary: methodology text documents that a 0% leg counts as a loss in this view", () => {
   const summary = buildSwingRecordSummary([], { since: "2026-08-10", through: "2026-09-09", days: 30 });
   assert.match(summary.methodology, /0% .*(counts as a LOSS|breakeven)/i);
