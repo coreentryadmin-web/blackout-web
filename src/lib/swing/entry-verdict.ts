@@ -108,12 +108,21 @@ export function commitGateBlocksForVerdict(
           paths.length > 0
             ? evaluateSwingConfluence(paths, (diagnostics?.archetype as SwingArchetype) ?? null)
             : null;
-        return {
-          code: "g_s6_confluence",
-          reason: verdict
+        // GAP FOUND (2026-10-14, live verification of this same enrichment, AVGO repro):
+        // `signalKinds` on a served WATCH row can accumulate past the last gate-evaluation pass
+        // (gates stamp `commitGateBlockedBy` once per discovery scan; signal kinds can keep growing
+        // between scans), and this function's own simple type-filter also doesn't replicate
+        // `discoveryPathsForConfluence`'s POSITIONING-direction-mismatch drop. Either gap can make
+        // this recompute disagree with the real, already-fired block — live repro showed AVGO
+        // rendering "5/3 kinds agree (...)" (a PASSING-shaped label) directly inside a sentence
+        // explaining why entry is still blocked, which reads as self-contradictory to a trader.
+        // Only trust the enriched label when it AGREES the gate should still be failing; otherwise
+        // fall back to the flat text rather than assert a passing count next to a live block.
+        const reason =
+          verdict && !verdict.pass
             ? `Independent signal confluence below commit threshold — ${verdict.label}.`
-            : "Independent signal confluence below commit threshold — desk will not open.",
-        };
+            : "Independent signal confluence below commit threshold — desk will not open.";
+        return { code: "g_s6_confluence", reason };
       }
       if (b.startsWith("gate:G-S3:")) {
         return {
