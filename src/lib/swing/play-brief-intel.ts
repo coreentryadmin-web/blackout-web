@@ -48,7 +48,7 @@ import { trustedHelixFlow, zerodteLiveForSession, relativeAgeLabel } from "./pla
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
-import { formatDealerDollars, formatFixedNonZero } from "./format-nonzero";
+import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
