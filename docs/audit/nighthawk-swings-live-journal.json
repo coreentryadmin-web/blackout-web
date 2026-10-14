@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-14T13:20Z",
-  "notes": "Pre-market morning-confirm activity picking up as market open approaches (13:30 UTC/9:30 ET). AMZN rolled off WATCH entirely -- confirmed correct: its play-brief now reads RESEARCH/entry_window_expired (first flagged 2026-10-12 09:15 ET, window lapsed right around today 09:15 ET as the pending check from earlier in this session predicted), with the legacy_exempt gate still shown as 'moot' additional context -- exactly the additive-not-replacing behavior documented in entry-verdict.ts's 2026-10-08 gap-fix comments. AMD appeared fresh (TRIGGERED/AT_TRIGGER/score 56, legacy_exempt gate, first-flagged today 09:15 ET -- a new Legacy morning-confirm promotion). Its play-brief is fully formed and correct: counter-thesis line correctly weighs 3 corroborated bearish reads (EMA/MACD/CHOCH) against the LONG thesis, book-context correctly flags both the 5-position same-direction semis concentration AND the SOXS internal conflict (same book-context logic verified earlier on AVGO). No bugs. Native book (INTC/GOOG/GOOGL) unchanged.",
+  "last_updated": "2026-10-14T13:50Z",
+  "notes": "Market open +17min: native book P&L (INTC/GOOG/GOOGL) still frozen at the exact same values as overnight (15.3/6.6/8.7%). Checked INTC:56's play-brief -- honestly disclosed, not a silent bug: 'Option mark stale -- last synced 2026-10-13 16:00 ET' (yesterday's close), Vector 6850s stale. Plausibly just the mark-refresh cron hasn't ticked yet this early in RTH -- watching next cycle to confirm it clears; if marks are still stale several ticks into RTH that would become a real finding worth escalating (not yet, first instance). committedCount keeps dropping fast at the open (86->81->71) -- consistent with established Banger-engine churn pattern, not re-investigated given it's already a confirmed non-bug this session. WATCH roster churning normally: AMZN expired (confirmed last cycle), AMD + now VST appeared as fresh legacy morning-confirm promotions.",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
