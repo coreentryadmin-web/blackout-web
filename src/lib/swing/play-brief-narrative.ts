@@ -25,7 +25,7 @@ import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
-import { formatFixedNonZero } from "./format-nonzero";
+import { formatDealerDollars } from "./format-nonzero";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -247,9 +247,14 @@ function dealerPostureLine(
   // here — collectFocalLevels/narrateWall already narrate the nearest call/put wall from the same
   // vector-first/GEX-fallback precedence elsewhere in this section, so that content is genuinely
   // (if differently-framed) covered already.
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14): a large net GEX (SPY/SPX-scale tickers
+  // routinely clear 1B+) rendered as e.g. "-17545.3M" under a fixed /1e6-then-"M" format —
+  // formatDealerDollars picks M/B/T by magnitude instead, so this reads "-17.5B". See its header
+  // for the live GOOGL/TSLA/AAPL/SPY repro (net CHARM is the most extreme case, but net GEX hits
+  // the same defect on index-scale tickers).
   const netGexBit =
     !gexStale && gex?.net_gex != null
-      ? ` · net GEX **${formatFixedNonZero(gex.net_gex / 1_000_000, 1)}M**`
+      ? ` · net GEX **${formatDealerDollars(gex.net_gex)}**`
       : "";
   const sessionChangeBit =
     !gexStale && gex?.change_pct != null ? ` · session **${fmtPct(gex.change_pct)}**` : "";
