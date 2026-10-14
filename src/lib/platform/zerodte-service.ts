@@ -10,6 +10,7 @@ import { condorFlagEnabled } from "@/lib/zerodte/condor";
 import { ironCondorProductForLargo, liveCondorForLargo } from "@/lib/largo/zerodte-condor-for-largo";
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
+import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { zerodteBoardMaxBlockMs } from "@/lib/providers/config";
 import { readGridEarnings } from "@/lib/zerodte/earnings";
@@ -1078,6 +1079,15 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   if (shared && shared.ageMs <= BOARD_SHARED_SNAPSHOT_STALE_MAX_AGE_MS) {
     kickColdBoardBuild();
     return rememberGoodBoard(shared.value);
+  }
+
+  // Off-hours with no fresh snapshot: serve last-good board stale rather than expensive rebuild.
+  // The snapshot is only refreshed by discovery crons (market-hours only), so off-hours reads
+  // would pay the full cold-build cost (polygon-gex full-chain escalation) on every poll.
+  // Instead, serve the per-replica fallback board if it's still servable (within 10m).
+  if (!isEtExtendedWarmHours()) {
+    const local = readLastGoodBoardLocal();
+    if (local) return local;
   }
 
   if (!coldBuildInflight) {
