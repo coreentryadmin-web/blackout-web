@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-14T15:33:47.935Z",
+  "updated_at": "2026-10-14T17:17:33.797Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "aab07f1ead7ce564c97a910cabd9ae42b7b8c38e",
+    "last_main_sha": "448465f3a03b810294a16fe010497a8c915a73b9",
     "last_deploy_status": "success",
     "last_deploy_at": "2026-10-13T13:33:27Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/38400896026",
     "last_deploy_sha": "d665a96e1e4390d6269ab6c7dc103600981bf277"
   },
   "events": [
-    {
-      "at": "2026-09-28T22:53:42.012Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T22:53:42.328Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T23:54:44.142Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-28T23:54:44.863Z",
       "type": "context_sync",
@@ -1271,29 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-14T17:17:25.266Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-14T17:17:30.060Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-14T17:17:33.796Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
-    {
-      "number": 5992,
-      "title": "fix(spx-slayer): stop caching a degraded zero flow-per-strike aggregate",
-      "branch": "fix/spx-slayer-flow0dte-zero-cache",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-14T15:32:34Z"
-    },
-    {
-      "number": 5991,
-      "title": "fix(swing): give swing-active-refresh its own heavy-cron slot",
-      "branch": "fix/swing-active-refresh-starvation",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-14T15:32:19Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
