@@ -107,3 +107,70 @@ test("fails OPEN on a Redis error — a missed concurrency guard is safer than a
   const slot = await acquireHeavyCronSlot("vector-pick-sweep", 900);
   assert.ok(slot, "a Redis error acquiring the guard must not block the cron from running at all");
 });
+
+// Regression for the 2026-10-14 starvation bug: swing-active-refresh competed for the same 2
+// shared slots as crons that can hold one for 15+ minutes, got skipped 54.5% of the time, and
+// Ask Largo's own swing play-briefs served sign-inverted, ~19.5h-stale P&L as a result. A
+// dedicated reserved slot must never contend with, or count against, the shared pool.
+
+test("swing-active-refresh gets a slot even when the shared pool is fully held by two other crons", async () => {
+  store = new Map();
+  setNxCalls = [];
+  forceRedisError = false;
+  const { acquireHeavyCronSlot } = await import("./heavy-cron-concurrency-guard");
+
+  const first = await acquireHeavyCronSlot("vector-pick-sweep", 900);
+  const second = await acquireHeavyCronSlot("zerodte-warm", 900);
+  assert.ok(first && second, "setup: both shared slots must be held");
+
+  const reserved = await acquireHeavyCronSlot("swing-active-refresh", 900);
+  assert.ok(reserved, "a reserved cron must not be starved by an exhausted shared pool");
+  assert.equal(reserved!.cronName, "swing-active-refresh");
+  assert.equal(
+    store.get("cron:heavy-slot:reserved:swing-active-refresh")?.cronName,
+    "swing-active-refresh",
+    "must use its own dedicated key, not one of the numbered shared-pool keys"
+  );
+});
+
+test("swing-active-refresh holding its reserved slot does not consume a shared-pool slot for other crons", async () => {
+  store = new Map();
+  setNxCalls = [];
+  forceRedisError = false;
+  const { acquireHeavyCronSlot } = await import("./heavy-cron-concurrency-guard");
+
+  const reserved = await acquireHeavyCronSlot("swing-active-refresh", 900);
+  assert.ok(reserved);
+
+  const first = await acquireHeavyCronSlot("vector-pick-sweep", 900);
+  const second = await acquireHeavyCronSlot("zerodte-warm", 900);
+  assert.ok(first, "the shared pool must still have both its own slots free");
+  assert.ok(second, "the shared pool must still have both its own slots free");
+});
+
+test("swing-active-refresh still cannot overlap with itself — its reserved slot is single-occupancy", async () => {
+  store = new Map();
+  setNxCalls = [];
+  forceRedisError = false;
+  const { acquireHeavyCronSlot } = await import("./heavy-cron-concurrency-guard");
+
+  const first = await acquireHeavyCronSlot("swing-active-refresh", 900);
+  assert.ok(first);
+  const second = await acquireHeavyCronSlot("swing-active-refresh", 900);
+  assert.equal(second, null, "a second concurrent swing-active-refresh run must still be refused");
+});
+
+test("releasing swing-active-refresh's reserved slot frees it for the next run", async () => {
+  store = new Map();
+  setNxCalls = [];
+  forceRedisError = false;
+  const { acquireHeavyCronSlot } = await import("./heavy-cron-concurrency-guard");
+
+  const first = await acquireHeavyCronSlot("swing-active-refresh", 900);
+  assert.ok(first);
+  await first!.release();
+  assert.equal(store.has("cron:heavy-slot:reserved:swing-active-refresh"), false);
+
+  const second = await acquireHeavyCronSlot("swing-active-refresh", 900);
+  assert.ok(second, "a freed reserved slot must be claimable again");
+});
