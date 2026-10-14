@@ -38,6 +38,154 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Six heavy crons had no cross-cron concurrency cap — correlated with the ALB tail-latency P1 and the "feature times out mid-session" symptom — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Two live-reported member symptoms, investigated together per the operator's explicit instruction not to assume a shared cause: (1) SPX Slayer sometimes fails to navigate to; (2) a member already using a feature sometimes gets a mid-session timeout and has to refresh, with no navigation involved. Live CloudWatch (2026-10-13 13:35-13:56 UTC) during an ALB tail-latency window showed six independently self-overlap-guarded heavy crons — `vector-pick-sweep`, `zerodte-warm`, `vector-dark-pool-warm`, `vector-full-state-snapshot`, `bie-full-state-snapshot`, `swing-active-refresh` — all in flight on the shared ECS web tier AT THE SAME TIME, each one fanning out across the same cluster-wide Polygon/UW rate limiters (`GLOBAL_MAX_RPS`/`GLOBAL_MAX_CONCURRENCY`) that live member HTTP requests depend on for the exact same data. |
+| **Root cause** | Each of the six crons already has its OWN per-cron self-overlap guard (`sharedCacheSetNx` against a cron-specific lock key — e.g. `vector:pick-sweep:running`, `zerodte-warm:running`) — these correctly stop a SINGLE cron from overlapping with itself across scheduled fires. None of them had any awareness of the OTHER five crons. Each cron's background work runs via `after(dispatch)` (or a bare fire-and-forget for `zerodte-warm`) in the SAME Node.js process/event-loop that serves live member HTTP requests on this ECS Fargate deployment — a long-lived standalone Next.js server, not a serverless platform where each invocation gets an isolated runtime. So six crons landing on overlapping ~5-15 minute schedules (all RTH-gated, several on 2-10 minute intervals per their own doc comments) could — and per the CloudWatch evidence, did — run concurrently on one or more ECS tasks, each one independently correctly-guarded against itself but collectively saturating the shared rate-limited upstream clients and the event loop at once. This matches the ALB `TargetResponseTime` tail-latency pattern already tracked as a standing P1 in `FINDINGS.md`, and plausibly explains both reported member symptoms: a feature's own API route competing with six heavy background sweeps for the same rate limiter slots / event-loop time can both fail an initial navigation fetch (SPX Slayer) and time out a request made mid-session on an already-loaded feature. |
+| **Why this matters** | Six correctly-implemented per-cron locks gave a false sense that cron overlap was already handled — the actual contention was never visible from any single cron's own logs or lock state, only from a cross-cron CloudWatch view. A fix that only re-checked each cron's own self-overlap guard (the obvious first read of "crons are overlapping") would have found nothing wrong and missed the real problem entirely. |
+| **Blast radius** | New shared primitive `src/lib/cron/heavy-cron-concurrency-guard.ts` (`acquireHeavyCronSlot`/`HeavyCronSlot`, `MAX_CONCURRENT_HEAVY_CRONS = 2`) — a numbered-slot Redis NX lock (`cron:heavy-slot:1`, `cron:heavy-slot:2`) any heavy cron can claim, capping how many of the six can run at once cluster-wide regardless of which ECS task or trigger source fired them. Wired into all six identified routes, each AFTER its own existing self-overlap guard (never replacing it): `src/app/api/cron/vector-pick-sweep/route.ts`, `src/app/api/cron/zerodte-warm/route.ts`, `src/app/api/cron/vector-dark-pool-warm/route.ts`, `src/app/api/cron/vector-full-state-snapshot/route.ts`, `src/app/api/cron/bie-full-state-snapshot/route.ts`, `src/app/api/cron/swing-active-refresh/route.ts`. A lost cross-cron race releases that cron's own self-overlap lock immediately (so the NEXT scheduled fire — not this one — gets a clean shot) and returns an honest `skipped: true` idempotent-skip payload rather than silently proceeding without a slot. `swing-active-refresh` has a structurally different shape (its self-overlap claim is taken INSIDE the background function, not in `GET`), so its slot is acquired in `GET` before dispatch and threaded through as a parameter, with release on both the early self-overlap-claim-lost path and the function's main `finally` block — two release sites are correct there, not a bug, since either path can be the one actually holding the slot. |
+| **Fix** | `acquireHeavyCronSlot(cronName, ttlSec)` tries each of `MAX_CONCURRENT_HEAVY_CRONS` (2) numbered slot keys in order via `sharedCacheSetNx`, returning the first successful claim as a `HeavyCronSlot` (with an idempotent `release()`) or `null` if all slots are held. Fails OPEN on a Redis error (`.catch(() => true)`), matching every sibling overlap lock's own stated rationale ("a missed overlap guard is safer than a stuck cron"). TTL is the caller's own existing overlap-lock TTL (already tuned per-cron against each cron's measured worst-case runtime), so the cap can never outlive the work it is capping. |
+| **Fix rationale** | A global cap of 2 concurrent heavy crons (rather than, say, a priority queue or per-cron concurrency weights) was chosen because it is the smallest change that directly addresses the measured problem (six at once, cluster-wide rate limiters saturated) without redesigning how any of the six crons schedule or run — each cron's own internal logic, UW-sweep tagging, and self-overlap TTL are left completely untouched. A numbered-slot NX lock (rather than a semaphore/counter) was chosen because it reuses the exact same `sharedCacheSetNx` primitive every sibling lock in this codebase already uses, with no new Redis data structure or atomic-decrement logic to get wrong. Deliberately NOT touched: `uw-cache-refresh` (confirmed via grep to have no self-overlap guard at all — a distinct, smaller gap, out of scope here) and any cron outside the six named in the live evidence window. |
+| **Regression guard** | New `src/lib/cron/heavy-cron-concurrency-guard.test.ts` (6 tests, Node 20 + `--experimental-test-module-mocks`, mocking `shared-cache`): acquires slot 1 when free; falls through to slot 2 when slot 1 is held; a third concurrent cron is refused (`null`); `release()` frees a slot for reuse; `release()` is idempotent and never double-frees a later holder; fails OPEN on a simulated Redis error. Each of the 6 touched route test files got new/updated source-pattern-regex assertions (matching this repo's established convention for cron route tests) confirming the slot is acquired after the self-overlap lock and before dispatch, released in the correct `finally`/`.finally()` location, and that a lost race skips honestly. RED→GREEN proved via `git stash` on just the 6 `route.ts` implementation files (keeping the new/updated tests in place): 15 of the new/updated assertions failed against the pre-fix route sources (RED), then passed cleanly once restored (GREEN) — full combined run 60/60 pass. |
+| **Gates** | `node --import tsx --experimental-test-module-mocks --test src/lib/cron/heavy-cron-concurrency-guard.test.ts src/app/api/cron/vector-pick-sweep/route.test.ts src/app/api/cron/zerodte-warm/route.test.ts src/app/api/cron/vector-dark-pool-warm/route.test.ts src/app/api/cron/vector-full-state-snapshot/route.test.ts src/app/api/cron/bie-full-state-snapshot/route.test.ts src/app/api/cron/swing-active-refresh/route.test.ts` (Node 20) — 60/60 pass. `npx tsc --noEmit` — clean. `npx eslint` on all touched files — clean. Full `npm test` — see PR for the final run result. |
+| **Status** | FIXED — branch `fix/heavy-cron-concurrency-cap`. Live verification of both original member symptoms (SPX Slayer navigation + staying on a feature for an extended session) is tracked separately, after this fix and the in-flight session-recovery fix are both deployed. |
+
+## Client-side API fetchers had zero recovery from a 401 — a single stale session token permanently stranded an already-loaded feature — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A member already using a feature (no navigation involved) sometimes gets a mid-session timeout and has to manually refresh the page to recover — investigated per the operator's explicit instruction to verify this independently from the separately-reported SPX Slayer navigation symptom, not assume a shared cause. |
+| **Root cause** | `src/lib/api.ts`'s two shared client-side fetchers — `marketFetch` (backs nearly every `/api/market/*` desk hook: SPX desk/play/pulse, Vector contract picks, Night Hawk edition/record, dark pool, flows, Largo, etc.) and `intelFetch` (backs `/api/engine/*`) — had NO recovery path for a `401 Unauthorized` response. `marketFetch` already had bespoke retry-with-backoff, but ONLY for `403` (tier-gate cache propagation); a 401 was thrown immediately with no retry. `intelFetch` had no retry logic of any kind. Every desk's `useSWR` hook calls one of these two fetchers as its fetcher function, so a thrown 401 becomes SWR's `error` state and the panel sits in a degraded/error placeholder — there is no app-level global SWR config, fetch interceptor, or axios interceptor anywhere in the codebase that could have caught this centrally. Separately, Clerk's own client SDK refreshes the `__session` cookie on a background timer ahead of its expiry — but a request that lands in the gap just before that timer fires still carries the stale token and gets a real 401 from the server's `auth()` check, even though the member is not actually signed out. With no recovery code anywhere, that single unlucky-timing request permanently stranded the panel until the member manually reloaded the page — which matches the reported symptom exactly. |
+| **Why this matters** | This is a genuine, independent product gap, not an artifact of how it was investigated: an earlier live repro (Playwright navigating between desk pages) also captured a 401 cascade, but that repro used a test-harness-minted Clerk JWT with a fixed ~50-90s lifetime that does NOT self-refresh like a real browser's Clerk SDK (`scripts/audit/lib/prod-clerk-session.mjs`'s own comments record three PRIOR incidents where this exact harness artifact was misdiagnosed as a product bug). The navigation-page repro is most likely dominated by that harness limitation. The in-page, no-navigation symptom this fix addresses is not explained by the harness at all — it describes a real browser session, mid-use, with no test harness involved — so it stands on its own evidence regardless of how the harness-affected repro is read. |
+| **Blast radius** | `src/lib/api.ts` — both shared fetchers. Every exported wrapper function that calls either one (the large majority of the file: `fetchSpxDesk`, `fetchSpxBootstrap`, `fetchSpxPlay`, `fetchVectorContractPicks`, `fetchNightHawkEdition`, `fetchNightHawkPlays`, `fetchFlows`, `fetchDarkPoolPrints`, `queryLargoStream`'s non-streaming callers via the same pattern, etc.) gets the fix automatically with no per-call-site change needed, since the fix lives at the shared chokepoint both already funnel through. SSE/EventSource-based live streams (`createFlowEventSource`, `createVectorEventSource`, `createPulseEventSource`, `createSpotStreamEventSource`) are NOT touched — they have their own independent reconnect-with-backoff logic already (`createReconnectingEventSource`) and are a different transport (no per-request 401 to recover from in the same way). |
+| **Fix** | Added `attemptSilentSessionRefresh()` — if `window.Clerk?.session` exists, calls `session.getToken({ skipCache: true })` (the framework-agnostic global Clerk's `ClerkProvider` sets in the browser, documented for use outside a React component tree; forces an immediate token mint + cookie update, the same operation the SDK's background timer performs, just on demand) and reports whether the attempt succeeded. `marketFetch` now attempts this once on a 401, rewinding its own `attempt` counter so the one extra try is never charged against the unrelated 403 retry budget; a second 401 after a successful refresh is terminal (session genuinely revoked/signed out) and is never retried again. `intelFetch` gets the same one-shot refresh-and-retry via a small `doFetch()` closure, since it had no retry loop to thread through. Both fail closed to the original behavior (throw immediately) when there is no `window` (SSR), no `window.Clerk.session` (fully signed out), or the refresh attempt itself throws. |
+| **Fix rationale** | Scoped to the client-side fetch layer only — no change to `src/middleware-clerk.ts`'s navigation-time `auth.protect()` handling, which already has a working recovery flow of its own (clear stale cookies, 307-redirect to `/sign-in?redirect_url=<original path>`, so the member lands back where they were after re-authenticating) and for which no actionable bug was found distinct from the harness-affected repro. A middleware-side silent-refresh-and-retry isn't a natural fit regardless: the refresh has to happen in the browser's Clerk client BEFORE the request reaches the server, not after middleware already sees a failed `auth.protect()` call. The 401-specific retry is deliberately kept independent of the existing 403 retry loop (rewinding the counter rather than sharing a budget) so the already-tested tier-gate-propagation behavior is provably undisturbed — confirmed by a dedicated regression test asserting the 403 path still retries exactly as before. |
+| **Regression guard** | New `src/lib/api-session-refresh.test.ts` (6 tests): `marketFetch`/`intelFetch` each get a successful one-shot refresh-and-retry on 401; a second 401 after a successful refresh is terminal and never retried further; no `window.Clerk` session (SSR or fully signed out) throws immediately with no retry; a refresh attempt that itself throws falls through to the original error without retrying; the pre-existing 403 tier-gate retry-with-backoff is unchanged (still retries exactly 3 times). RED→GREEN proved via `git stash` on just `src/lib/api.ts`: 3 of the 6 new tests failed against the pre-fix source (RED — the other 3 describe behavior that was already correct or trivially satisfied), all 6 passed once restored (GREEN). Broader `src/lib/api*.test.ts` sweep (35 tests across this file and its siblings) — all pass, no regression in nearby fetch/stream helpers. |
+| **Gates** | `node --import tsx --experimental-test-module-mocks --test src/lib/api-session-refresh.test.ts` (Node 20) — 6/6 pass. `node --import tsx --experimental-test-module-mocks --test src/lib/api*.test.ts` — 35/35 pass. `npx tsc --noEmit` — clean. `npx eslint src/lib/api.ts src/lib/api-session-refresh.test.ts` — clean. |
+| **Status** | FIXED — branch `fix/client-401-silent-session-refresh`. Live verification of both original member symptoms (SPX Slayer navigation + staying on a feature for an extended session) is tracked separately, after this fix and the already-merged-or-in-review cross-cron concurrency fix (#5975) are both deployed. |
+
+## React error-boundary ChunkLoadError self-heal never resets — a session surviving one deploy-skew reload could never self-heal a second, unrelated one — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Component** | `src/lib/chunk-load-error.ts` (`autoReloadOnceOnChunkError`), `src/app/global-error.tsx` (its own inlined copy), consumed by `src/components/route-error-boundary.tsx` |
+| **Status** | FIXED — this PR |
+
+**What prompted this.** Investigating what actually happens on a client-side Next.js (App Router,
+`next@15.5.25`) navigation when a browser tab that loaded its HTML from one ECS deploy clicks to a
+route whose JS chunk only exists in a *later* deploy — the classic "session opened before
+deployment, does navigating between desks still work afterward" scenario.
+
+**Two layers already handle most of this correctly, confirmed by reading Next's own compiled
+source, not guessed:**
+1. **Next's own client router already self-heals the RSC-data half of this, with no custom code
+   needed.** `node_modules/next/dist/client/components/router-reducer/fetch-server-response.js`
+   compares the just-fetched flight response's own build id (`response.b`) against the tab's
+   build id (`getAppBuildId()`, captured once at initial load) on **every** client-side
+   navigation; a mismatch — or a non-RSC/non-200 response — returns `doMpaNavigation(...)`, and
+   `app-router.js`'s `pushRef.mpaNavigation` branch does a real `window.location.assign/replace`
+   (a full browser reload), independent of any error boundary in this repo.
+   `node_modules/next/dist/client/app-build-id.js`'s own header comment states the intent
+   verbatim: "if the incoming data has a different build ID, we perform an MPA
+   navigation/refresh." **This answers computed-task question 1 directly: yes, Next's client
+   router has a built-in automatic MPA fallback for a failed/stale navigation fetch, independent
+   of any app-level error-boundary code.**
+2. **Every lazy desk panel in this repo (`next/dynamic`, `src/features/{helix,nighthawk,
+   vector,thermal,spx}/.../*PageShell.tsx` and siblings — 20 call sites, `grep -rn "next/dynamic"
+   src/features src/components`) is declared at module scope and rendered inline in JSX**, never
+   invoked from inside a raw `import()` in an event handler or effect (repo-wide grep for
+   `await import(`/`= import(`/`` import(` `` under `src/` found none in a client `.tsx` outside
+   one server-only OG-image route). `next/dynamic` wraps its loader in `React.lazy`
+   (`node_modules/next/dist/shared/lib/lazy-dynamic/loadable.js`), and a rejected `React.lazy`
+   promise is a documented React render-phase throw, caught by the nearest **error boundary**
+   regardless of whether a `Suspense` boundary also wraps it — so in THIS codebase, as currently
+   written, a failed lazy chunk for a desk panel is guaranteed to reach `RouteErrorBoundary`/
+   `global-error.tsx`, never silently becoming an invisible `unhandledrejection`. **This answers
+   computed-task question 2 for the code as it exists today**: the theoretical "error boundaries
+   can't see an async-callback rejection" gap genuinely exists in React in general, but nothing in
+   this repo currently exercises it.
+
+**The actual, confirmed bug: the error-boundary layer's own self-heal never resets.**
+`src/lib/chunk-load-error.ts`'s `autoReloadOnceOnChunkError` (added 2026-08-24, PR #2842) sets a
+bare `sessionStorage` flag (`bo-chunk-error-reload-attempted`) the first time it reloads for a
+`ChunkLoadError`, and **nothing anywhere ever clears it.** `global-error.tsx` inlines an identical,
+independent copy of the same bug (its own "no imports beyond react" rule means it can't share the
+logic). This predates the fix by over a month: `src/lib/chunk-reload.ts` (the OLDER, canonical
+mechanism wired into `app/layout.tsx`'s inline `<head>` script, shipped 2026-07-17, run #770) has
+always done this correctly — it reads the tab's live build id off its own `<script
+src="/_next/static/<id>/...">` tag and **resets its retry counter whenever that id changes**,
+specifically so a member can self-heal through more than one independent incident in the same tab.
+The 2026-08-24 PR added a second, narrower, non-build-id-aware mechanism for the exact same class
+of failure without reconciling it against the existing one, and `chunk-reload.test.ts`'s own
+"kept in sync" parity test only covers the inline script, not this file — so the two were free to
+drift, and did.
+
+**Concrete failure this caused:** a tab self-heals from its FIRST `ChunkLoadError` (e.g. Desk A's
+lazy panel, caught by `RouteErrorBoundary`, one reload fires, flag set). Later in the SAME tab —
+navigating to a different, not-yet-visited desk, whether still mid the same rollout or across a
+genuinely later, separate deploy (this repo's own fast merge-queue cadence, documented elsewhere in
+`CLAUDE.md`, makes a second rollout within one browsing session plausible, not a remote edge case)
+— that desk's own first-time lazy chunk load fails too. `autoReloadOnceOnChunkError` sees the flag
+already set and **does nothing**: no reload, member stuck on the manual "Try again" screen for an
+incident the mechanism's own design intent says should have self-healed, exactly the failure mode
+the canonical `chunk-reload.ts` guard was built a month earlier to prevent.
+
+**Fix.** Scoped the guard to the build id it last fired for, in both copies:
+- `chunk-load-error.ts`: new `currentBuildId(win)` reads the live page's own `/_next/static/<id>/`
+  script src (same signal `chunk-reload.ts` uses), via the already-injectable `win` parameter
+  (extended with an optional `document`); the stored guard value is now that build id (or `"1"`
+  when no id signal is available, preserving the pre-fix "once ever" fallback for a test
+  environment or an unexpected page shape — never worse than before this fix). A reload is skipped
+  only when the stored value matches the CURRENT build id; a different (newer) build id gets a
+  fresh one-shot attempt.
+- `global-error.tsx`: identical logic, inlined (no import — same `isChunkLoadError` constraint as
+  before).
+- Both `isChunkLoadError` implementations were also widened from the bare `ChunkLoadError`/"Loading
+  chunk N failed" subset to the full canonical `CHUNK_ERROR_PATTERN_SOURCE` set (`chunk-reload.ts`:
+  CSS-chunk 404s, a failed dynamic `import()`, a MIME-refused script/style, a stale Server Action
+  id) — a rejected `next/dynamic` loader is exactly the kind of failure that can reach ONLY a React
+  error boundary (never the inline script's `unhandledrejection`/resource-error listeners, since
+  React consumes that promise internally), so under-matching here meant some of these genuinely
+  never got a self-heal attempt through this layer, not just a slower one.
+
+**Evidence.** `src/lib/chunk-load-error.test.ts`: new tests prove the exact RED→GREEN —
+`git stash` on `chunk-load-error.ts` alone: 2 of the (now 15) tests fail pre-fix (the widened-
+pattern match, and the multi-incident self-heal across two different build ids), 15/15 pass
+restored. The multi-incident test reproduces the scenario literally: incident #1 on `build-A`
+reloads, incident #2 on `build-B` (a different, later build) ALSO reloads, a repeat of incident #2
+on the SAME `build-B` still does NOT reload (infinite-loop protection preserved). A dedicated
+`global-error.tsx` source-text test confirms the duplicate inline copy picked up the same fix
+(`currentBuildId`, the same `stored && (!buildId || stored === buildId)` guard condition).
+`npx tsc --noEmit` and `npx eslint` both clean on all three touched files. Full `npm test` run
+separately to confirm no unrelated regression.
+
+**Blast radius.** `RouteErrorBoundary` (`src/components/route-error-boundary.tsx`, used by every
+`app/error.tsx` and `app/(site)/error.tsx` segment — i.e. every desk/marketing route) picks up the
+fix automatically via its existing `autoReloadOnceOnChunkError` import; `global-error.tsx` (root
+layout crash, the most severe case since it takes down the whole app shell) was fixed in step with
+it since it can't share the import. `src/lib/chunk-reload.ts`/`app/layout.tsx`'s own inline-script
+mechanism (the canonical, already-correct one) is untouched — this fix brings the error-boundary
+layer up to the same standard, not a change to the canonical one.
+
+**What was deliberately left unchanged.** Did not collapse the two mechanisms into one (e.g. having
+`RouteErrorBoundary` read/write the inline script's own `blackout:chunk-reload`/`blackout:build-id`
+keys instead of its own) — they protect genuinely different failure surfaces (the inline script
+reacts to `<script>`/`<link>` resource-load DOM events and generic `unhandledrejection`s, fired
+before React even mounts; the error-boundary layer reacts to a React render-phase throw after a
+component actually tried to use the failed module) and a deeper merge is a larger, separate
+refactor than this fix's root cause warrants. Did not change the "cap at 1 reload, no backoff"
+behavior of the React-boundary layer to match the inline script's "cap at 3, 8s apart" — the bug
+fixed here is specifically that the guard never reset for a NEW incident, not that one attempt per
+incident is too few.
+
 ## Swing play-brief "Ticker history" coaching implies direction/archetype comparability it doesn't have — FIXED
 
 > **kind:** `FINDING`
