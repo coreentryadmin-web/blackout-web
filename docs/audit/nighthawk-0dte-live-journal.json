@@ -154,6 +154,9 @@
     },
     "2026-10-14T18:43:00Z_CLS_HUT_CLEAN_WINS_3_OPEN_REMAINING": {
       "note": "CLS +5.93% and HUT +12.39%, both clean ratchet wins. Wednesday single-leg tally now very strong: ~14 wins, 1 real loss (AFRM -4.22%), 4 scratches (ORCL, GRRR, IREX all small-negative; CIEN/MARA positive-scratch per earlier clarification) across 18 closed plays. 3 still open (ORCX, PENG, WOLF). Every exit mechanism checked today \u2014 ratchet floors, trim_scale tranches, flat_theta_bleed, thesis_break (both gex-walls and vex-charm variants) \u2014 has been internally coherent and correctly calibrated. Nothing to escalate this cycle."
+    },
+    "2026-10-14T19:10:00Z_AMSC_WIN_BEX_STRONG_NEGATIVE_RESOLVED": {
+      "note": "AMSC closed clean +4.82% ratchet. BEX opened with cortex score -0.99 (notably more negative than anything seen today, prior worst was -0.4) -- checked and resolved: it's two already-documented factors stacking, not a new issue. (1) the standing market-wide vex-charm-opposes-shorts condition (0.39, same as every other short today) PLUS (2) a separate self-disclosed provisional signal: 'charm pin-risk heuristic: after 14:30 ET with spot near king node, inside 0.3x expected move -- long premium bleeds into the pin (heuristic until the real charm lens ships)' (0.6) -- this is the SAME provisional near-close pin-risk detector flagged on GLWG earlier this week (logged then as 'self-aware/documented, not escalated'). Relief applied as expected (gex_walls_veto_relieved:true), tier correctly capped at B via the F-5 top-band discount. No new issue -- compounding of two KNOWN factors, not a new pattern. 2 new opens (BEX, FLEX), 10 open total. Board blocker now confluence_floor -- a new gate state this cycle, not investigated further (not anomalous on its face, G-6 per the gate sequence)."
     }
   },
   "sessions": {
