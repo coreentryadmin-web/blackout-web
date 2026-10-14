@@ -158,6 +158,122 @@ test("tradeManagerNarrativeSection: stale GEX matrix suppresses vanna/delta/char
   assert.doesNotMatch(section!.body, /charm pinning builds into expiry/i);
 });
 
+// Largo deep-dive #2 (2026-10-14) found the SAME "folded into Trade manager read above" false
+// claim also covers net_gex's own $ figure and the underlying session change% -- neither ever
+// reached the narrative either, confirmed live on RKLB/GME (default envelope said "dealer gamma
+// posture not resolved" while expandIntel=1 revealed real Net GEX/session-change content hidden
+// behind the collapse note). Fixed by appending both (unlike VEX/DEX/CHARM's raw $ figures, which
+// stay out -- their regime-read text already carries the "what it means" signal; net_gex has no
+// such text elsewhere, so its number is the one still missing).
+test("tradeManagerNarrativeSection: carries net GEX $ and session change% so the 'folded into Trade manager read' note is no longer false (2026-10-14)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          net_gex: -6_100_000,
+          change_pct: 2.34,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /net GEX \*\*-6\.1M\*\*/i);
+  assert.match(section!.body, /session \*\*\+2\.3%\*\*/i);
+});
+
+test("tradeManagerNarrativeSection: stale GEX matrix suppresses net GEX $ and session change% (Largo C2 parity)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          matrix_age_sec: 200,
+          freshness: "cached",
+          net_gex: -6_100_000,
+          change_pct: 2.34,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /net GEX/i);
+  assert.doesNotMatch(section!.body, /session \*\*\+2\.3%\*\*/i);
+});
+
+// Live repro (2026-10-14): SWING:AMD, WATCH bucket, setupState EXTENDED / entryStatus
+// EXTENDED_CHASE (a dead watch per deadPlayReason), spot resolved via the GEX-matrix fallback
+// (Vector's own snapshot stale, GEX matrix fresh) -- dealerPostureLine rendered "**Last snapshot**
+// (~Ns old) — spot ... dealers short gamma..." while the SAME envelope's confidence/
+// unavailableSources claimed every live source resolved cleanly. degradedReadLine already gates on
+// isSwingPlayStaleCheckExempt (#5620's fix, extracted 2026-10-07 after the identical contradiction
+// in dataFreshnessSection) but dealerPostureLine -- a sibling function in this same file -- never
+// was updated, making it a fourth call site repeating the same disagreement.
+test("tradeManagerNarrativeSection: dead-but-not-closed WATCH does not say 'Last snapshot' when Vector is stale but GEX-fallback spot is fresh (2026-10-14, live AMD repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "WATCH", entryStatus: "EXTENDED_CHASE", setupState: "EXTENDED" }),
+      vector: {
+        dataAgeMs: 180_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "AMD",
+        gex_positioning: {
+          spot: 570.18,
+          gamma_posture: "short",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Right now/i, "a dead watch has nothing left to refresh -- no stale-snapshot caveat to assert");
+  assert.doesNotMatch(section!.body, /Last snapshot/i);
+  assert.match(section!.body, /short gamma/i);
+});
+
+test("tradeManagerNarrativeSection: a LIVE (not dead) WATCH play still says 'Last snapshot' under the identical Vector-stale/GEX-fresh shape (regression guard)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "WATCH" }),
+      vector: {
+        dataAgeMs: 180_000,
+        freshness: "stale",
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "AMD",
+        gex_positioning: {
+          spot: 570.18,
+          gamma_posture: "short",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "watch",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Last snapshot/i, "a genuinely live watch candidate must still disclose Vector staleness");
+  assert.doesNotMatch(section!.body, /Right now/i);
+});
+
 test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE spot as 'support' (2026-09-11)", () => {
   // breakTrigger picked the NEAREST put_wall/dark_pool match by unsigned distance without checking
   // which side of spot it sat on. A dark-pool print can be printed above OR below spot (see
