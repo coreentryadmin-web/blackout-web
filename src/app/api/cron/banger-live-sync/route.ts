@@ -27,6 +27,27 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Groups open-position ids by their option contract. Two DIFFERENT open banger_positions rows can
+ * legitimately reference the IDENTICAL contract_occ (e.g. two separate entries into the same
+ * strike/expiry on different days) — a plain `Map<string, number>` keyed by occ silently drops
+ * every id but the last one written, so only one of the colliding positions ever gets its live
+ * bid/ask/greeks/openInterest refreshed; its siblings are stuck with fabricated null/0 forever
+ * (FINDINGS 2026-10-14, live MUZ repro: positionId 1695 showed openInterest:0 and all-null greeks
+ * on the exact same contract positionId 1613 was correctly quoting bid 0.75/ask 0.90/OI 557 on).
+ */
+export function occToPositionIds(
+  rows: ReadonlyArray<{ contract_occ: string; id: number }>
+): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  for (const r of rows) {
+    const ids = map.get(r.contract_occ);
+    if (ids) ids.push(r.id);
+    else map.set(r.contract_occ, [r.id]);
+  }
+  return map;
+}
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -47,16 +68,16 @@ export async function GET(req: NextRequest) {
   // (live-sync.ts: `const rows = await deps.fetchOpenPositions(); ... const marks = await
   // deps.fetchMarks(occs);`), so this map is fully built before anything reads it. Lets the
   // bid/ask/greeks carriage below (FINDINGS 2026-10-09 / migration 017) identify WHICH position
-  // row a given OCC belongs to without changing live-sync.ts's typed Map<occ, mark> contract at
-  // all — zero risk to the scale-out decision engine's existing signature/tests.
-  const occToId = new Map<string, number>();
+  // row(s) a given OCC belongs to without changing live-sync.ts's typed Map<occ, mark> contract at
+  // all — zero risk to the scale-out decision engine's existing signature/tests. Keyed to an ARRAY
+  // of ids (occToPositionIds), not a single id — two open positions can share one contract.
+  let occToIds = new Map<string, number[]>();
 
   try {
     const result = await runBangerLiveSync({
       fetchOpenPositions: async () => {
         const rows = await fetchOpenBangerPositions();
-        occToId.clear();
-        for (const r of rows) occToId.set(r.contract_occ, r.id);
+        occToIds = occToPositionIds(rows);
         return rows.map((r) => ({
           id: r.id,
           session_date: r.session_date,
@@ -92,10 +113,11 @@ export async function GET(req: NextRequest) {
           // FINDINGS 2026-10-09 (Ask Largo standing mandate): carry the SAME snapshot's bid/ask/OI/
           // greeks onto the live position row — see migration 017's header for the full history.
           // Fire-and-forget, best-effort, additive-only (never read by the decision path above);
-          // a missing occToId entry (shouldn't happen — occToId is populated from the exact `rows`
-          // this `occs` list was derived from) is a silent no-op rather than a thrown error.
-          const positionId = occToId.get(occ);
-          if (positionId != null) {
+          // a missing occToIds entry (shouldn't happen — occToIds is populated from the exact
+          // `rows` this `occs` list was derived from) is a silent no-op rather than a thrown error.
+          // Writes to EVERY position sharing this occ (FINDINGS 2026-10-14) — not just one.
+          const positionIds = occToIds.get(occ) ?? [];
+          for (const positionId of positionIds) {
             void updateBangerQuoteFields(positionId, {
               bid: snap.bid,
               ask: snap.ask,
@@ -106,7 +128,7 @@ export async function GET(req: NextRequest) {
               vega: snap.vega,
               iv: snap.iv,
             }).catch((err) => {
-              console.warn(`[banger-quote-fields] persist failed for ${occ}:`, err);
+              console.warn(`[banger-quote-fields] persist failed for ${occ} (position ${positionId}):`, err);
             });
           }
         }
