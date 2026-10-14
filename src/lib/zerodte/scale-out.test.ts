@@ -156,3 +156,40 @@ test("bangerScaleOutNote: the mechanical rule sentence itself is unchanged regar
   assert.ok(rulePrefix.length > 0, "sanity: rule prefix extracted");
   assert.ok(withContext.startsWith(rulePrefix), "rule sentence (percentages/multiples) must not drift with DTE context");
 });
+
+// ── bangerScaleOutNote (2026-10-14: moneyness-aware descriptor) ────────────────────
+// Live repro, Night Hawk Legacy, ticker ETSY: spot ~82.93 (today's close — the same value
+// resolveLevels() centers entry_range on), LONG direction, picked contract $78 CALL (struck BELOW
+// spot — in-the-money, not OTM) at $5.05/share. The unconditional "cheap OTM weeklies" claim was
+// flatly wrong for that specific contract — same bug SHAPE as the 2026-09-22 DTE fix above, this
+// time for moneyness instead of DTE.
+test("bangerScaleOutNote: otm:false (verified ITM/ATM) swaps the OTM claim for an honest moneyness note", () => {
+  const note = bangerScaleOutNote({ dte: 8, otm: false });
+  // "not a pure OTM lotto" legitimately contains the substring "OTM" in a negation — the real
+  // assertion is that the ORIGINAL false claim ("cheap OTM weeklies") is gone.
+  assert.doesNotMatch(note, /cheap OTM weeklies/, "must not claim 'cheap OTM weeklies' for a verified non-OTM contract");
+  assert.match(note, /already in-the-money/i);
+});
+
+test("bangerScaleOutNote: otm:true (verified OTM) keeps the original weekly framing, byte-for-byte", () => {
+  const note = bangerScaleOutNote({ dte: 8, otm: true });
+  assert.match(note, /These cheap OTM weeklies spike then decay — the exit is the edge\.$/);
+});
+
+test("bangerScaleOutNote: otm omitted/null (moneyness unknown — every pre-existing caller) is unaffected, byte-for-byte", () => {
+  assert.equal(bangerScaleOutNote({ dte: 4 }), bangerScaleOutNote({ dte: 4, otm: null }));
+  assert.equal(bangerScaleOutNote({ dte: 4 }), bangerScaleOutNote({ dte: 4, otm: undefined }));
+  assert.match(bangerScaleOutNote({ dte: 4 }), /These cheap OTM weeklies spike then decay — the exit is the edge\.$/);
+});
+
+test("bangerScaleOutNote: otm:false only changes the <=10 DTE branch — far-dated text is untouched (it never claimed OTM)", () => {
+  const far = bangerScaleOutNote({ dte: 25, otm: false });
+  assert.match(far, /This 25-DTE contract can still spike/);
+});
+
+test("bangerScaleOutNote: otm:false — the mechanical rule sentence is still unchanged", () => {
+  const withoutContext = bangerScaleOutNote();
+  const itm = bangerScaleOutNote({ dte: 8, otm: false });
+  const rulePrefix = withoutContext.split("These cheap")[0];
+  assert.ok(itm.startsWith(rulePrefix), "rule sentence must not drift with the moneyness descriptor");
+});

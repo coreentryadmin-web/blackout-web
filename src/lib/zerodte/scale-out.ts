@@ -44,19 +44,37 @@ export const SCALE_OUT_RULES = {
  *  play — the exact contract-cost complaint already being tracked, but in the narrative text this
  *  time rather than the pick itself. Omitting `context` (every existing caller, e.g. the whole-market
  *  weekly-banger board at `banger/board/route.ts`, where the descriptor genuinely IS accurate by
- *  construction) reproduces the original text byte-for-byte — zero behavior change there. */
-export function bangerScaleOutNote(context?: { dte?: number | null }): string {
+ *  construction) reproduces the original text byte-for-byte — zero behavior change there.
+ *
+ *  `context.otm`, when explicitly `false`, corrects the SAME sentence for moneyness instead of DTE —
+ *  the sibling of the DTE bug above, found the same way (live Night Hawk Legacy spot-check,
+ *  2026-10-14, ticker ETSY): `pickChainContract`'s `preferAffordable` ladder (deterministic-edition.ts)
+ *  can land on a strike on the WRONG side of spot for a "cheap OTM weekly" claim — live repro: spot
+ *  ~82.93 (today's close, the same value `resolveLevels` centers `entry_range` on), LONG direction,
+ *  picked contract struck at $78 (a CALL struck BELOW spot is in-the-money, not OTM) at $5.05/share —
+ *  the member-facing risk_note still read "These cheap OTM weeklies spike then decay," a factually
+ *  wrong moneyness claim about the exact contract being recommended. Only `false` (verified ITM/ATM
+ *  by the caller, who has both `contract.strike` and `spot`) changes the text; `true`/`null`/omitted
+ *  (moneyness unknown or confirmed OTM — every pre-existing caller) reproduces the original text
+ *  byte-for-byte, same backward-compatibility guarantee the `dte` parameter already gives. Exempt by
+ *  the SAME construction argument as the DTE fix: `banger/board/route.ts` and `largo/product-reads.ts`
+ *  read an already-committed contract from that lane's own discovery pipeline, not
+ *  `pickChainContract`'s Legacy-only affordability ladder, so they are not known to need it. */
+export function bangerScaleOutNote(context?: { dte?: number | null; otm?: boolean | null }): string {
   const { scale_at_mult, scale_fraction, trail_from_peak, hard_stop_mult } = SCALE_OUT_RULES;
   const rule =
     `Banger exit — scale out, don't hold to expiry: realize ${(scale_fraction * 100).toFixed(0)}% at ` +
     `${scale_at_mult}×, trail the runner at ${(trail_from_peak * 100).toFixed(0)}% of its peak, hard stop ` +
     `−${((1 - hard_stop_mult) * 100).toFixed(0)}%.`;
   const dte = context?.dte;
+  const otm = context?.otm;
   // <=10 DTE reads as "weekly" for this purpose; the descriptor is otherwise silent about DTE, so
   // no context (dte === undefined) keeps the original weekly framing for every pre-existing caller.
   const descriptor =
     dte == null || dte <= 10
-      ? "These cheap OTM weeklies spike then decay — the exit is the edge."
+      ? otm === false
+        ? "This contract is already in-the-money, not a pure OTM lotto — expect smaller spike/decay swings than a cheap weekly, but the same scale-out discipline applies."
+        : "These cheap OTM weeklies spike then decay — the exit is the edge."
       : `This ${dte}-DTE contract can still spike and give the move back fast — the exit is the edge, not the target.`;
   return `${rule} ${descriptor}`;
 }
