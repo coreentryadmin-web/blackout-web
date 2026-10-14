@@ -4,6 +4,15 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-14 (13:35 UTC / Wed 09:35 ET) — [SEO] RTH wake: gamma-snapshot live, CLS clean
+
+Confirmed market open myself (09:35 ET, 2026-10-14 not in `US_MARKET_HOLIDAYS`).
+`/api/public/gex-snapshot?ticker=SPX` — `market_session: "OPEN"`, `degraded: false`,
+`snapshot_data_age_seconds` 1-8s. `change_pct: null` — expected this early in the session
+(pre-REST-anchor, already root-caused as the fail-closed guard). Polled twice over ~12s:
+`calculation_id` advanced, spot ticked (7773.68 → 7773.07) — refresh is live. Purged Cloudflare
+edge HTML, measured live homepage CLS — **0.0008, GOOD**. No defect found. No PR opened.
+
 ## 2026-10-14 (12:17 UTC / Wed 08:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Pre-market. Resynced to `origin/main` (`86b6665` → `42b68c7`, other-lane cron overlap-guard
