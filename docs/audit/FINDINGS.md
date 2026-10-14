@@ -38,6 +38,218 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing play-brief: Net GEX/VEX/DEX/CHARM render as 6-7 digit "M" figures on real tickers — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** Every "Net GEX/VEX/DEX/CHARM" line in the swing play-brief divided the raw dealer-
+exposure dollar figure by `1_000_000` and suffixed a bare `"M"`, with no regard for how large the raw
+figure actually is: `play-brief-intel.ts`'s `gexPostureSection` (4 lines — GEX/VEX/DEX/CHARM),
+`play-brief.ts`'s `tradeManagerNarrativeSection` (1 line — GEX), and `play-brief-narrative.ts`'s
+`dealerPostureLine` (1 line — GEX). Net CHARM in particular is *structurally* 10-1000x larger than net
+GEX at the SAME instant for the SAME ticker — a property of how charm/delta-decay sensitivity is
+computed, not a per-ticker anomaly — so "M" is routinely the wrong unit for it, and "M" is the wrong
+unit for net GEX itself on index-scale tickers (SPY/SPX).
+
+**Evidence.** Live `GET /api/market/gex-positioning?ticker=<T>` (2026-10-14, Ask Largo standing deep-
+dive, no AWS/DB access needed — plain authenticated API reads), 4 real tickers, all same GEX << DEX <
+VEX << CHARM magnitude ordering:
+
+| ticker | net_gex | net_vex | net_dex | net_charm |
+|---|---|---|---|---|
+| GOOGL | 230.4M | 16.3B | -4.3B | **-217.5B** |
+| TSLA | -172.3M | 8.8B | 828.0M | **-292.1B** |
+| AAPL | 2.2B | 25.1B | -31.4B | **-283.9B** |
+| SPY | -17.5B | 292.5B | 36.6B | **-3.2T** |
+
+Under the old `/1e6` + `"M"` format, these render as `Net CHARM (pinning): **-217513.8M**` (GOOGL — the
+exact string observed in a live `GET /api/market/swing/play-brief?playId=SWING:GOOGL:54` closed-play
+read this cycle) and would render `**-3211296.7M**` for SPY — six and seven significant digits in
+front of the decimal. Every individual number is *correct*; the *unit* is wrong. This directly works
+against the Largo mandate's "connected trade-manager prose" bar: a figure like `-217513.8M` reads as a
+data glitch, not a dealer-exposure reading, and a member/Largo cannot sanity-check it at a glance the
+way `-217.5B` can be.
+
+Net GEX hits the same defect at smaller scale but real impact on index-scale tickers — SPY's own net
+GEX (`-17.5B` raw) would render `-17545.3M` under the old format.
+
+**Blast radius.** All 6 call sites share the identical root pattern (verified via
+`grep -rn "/ 1_000_000, 1)}M\|/1e6, 1)}M" src/lib/swing/` before the fix, confirmed empty after):
+`play-brief-intel.ts` (Net GEX, Net VEX, Net DEX, Net CHARM — 4 lines), `play-brief.ts`
+(`tradeManagerNarrativeSection`'s net GEX bit), `play-brief-narrative.ts` (`dealerPostureLine`'s net
+GEX bit). All 6 fixed in this PR — not just the one (`gexPostureSection`'s Net CHARM line) first
+reproduced live.
+
+**Fix.** Added `formatDealerDollars(raw: number): string` to the shared `format-nonzero.ts` (already
+imported by all 3 affected files): picks M/B/T by magnitude (`>=1e12` → T, `>=1e9` → B, else M),
+reusing `formatFixedNonZero` at whichever scale is chosen so the existing false-zero-widening
+behavior (a real, small net GEX must never collapse to `"0.0"`) still applies at every scale. All 6
+call sites now pass the RAW dollar figure to `formatDealerDollars` instead of pre-dividing by `1e6`
+and hardcoding the `"M"` suffix.
+
+**Fix rationale.** A shared formatter at the one file (`format-nonzero.ts`) all 3 call sites already
+imported is the smallest change that fixes every instance of the same root cause at once, rather than
+patching the one `gexPostureSection`/Net CHARM line that happened to reproduce first. Kept the
+existing caller-side `"+"` sign prefixing (`play-brief.ts`'s `tradeManagerNarrativeSection`) unchanged
+— `formatDealerDollars` itself only emits `"-"` for negative values, same as the old
+`formatFixedNonZero` call it replaces, so callers that want an explicit `"+"` for positive values
+still add it themselves. Did not touch Thermal's own `formatPositioningBlock`
+(`src/lib/bie/thermal-read.ts`) — it uses a different convention entirely (full comma-separated raw
+numbers, no M/B suffix at all) and is a different lane's owned surface; flagging it is out of scope
+for a single-issue swing-lane PR.
+
+**Tests.** `format-nonzero.test.ts` gained 5 new tests for `formatDealerDollars`: unchanged M-scale
+behavior under $1B (including the existing false-zero-widening case), the exact live GOOGL/AAPL B-scale
+values, and the exact live SPY T-scale value. RED→GREEN proven via `git stash` of the fix: the 4 new
+`formatDealerDollars` tests failed with `is not a function` on the pre-fix source (5 pre-existing
+`formatFixedNonZero` tests stayed green, confirming the stash didn't touch that function); restoring
+the fix brought all 9 back to green. Full suite of the 4 touched files
+(`format-nonzero.test.ts`, `play-brief-intel.test.ts`, `play-brief.test.ts`,
+`play-brief-narrative.test.ts`) — 488/488 pass, including every existing VEX/DEX/CHARM fixture
+(`2.0M`/`-1.5M`/`0.8M` from `gexPostureSection`'s own test) unchanged at M-scale. `tsc --noEmit` clean
+on Node 20.
+
+## Night Hawk Legacy — morning command-center table, Phase 2F part 2 (safe half) — SHIPPED
+
+> **kind:** `FINDING`
+
+| **Status** | SHIPPED (pure composer + 8 unit tests; admin route wiring is a separate, follow-on PR) |
+
+### Root cause / gap
+
+The operator's 2026-09-18 continuous-learning mandate (`legacyContinuousLearningMandate_2026_09_18T0621Z`
+in `docs/audit/nighthawk-legacy-live-journal.json`) names two distinct output surfaces under
+Phase 2F:
+
+- Item #15, "automatic post-market learning report" — shipped as Phase 2F part 1, PR #5200
+  (daily learning digest to ops Discord).
+- Item #14, "a compact table (TICKER/DIRECTION/SCORE/ENTRY/STOP/TARGETS/WHY NOW/INVALIDATION),
+  not paragraphs, plus WATCHING/REJECTED/MARKET REGIME/SYSTEM CONFIDENCE sections" — the
+  **pre-market** command-center view. Grepping all merged/open PR history for "Phase 2F" /
+  "command center" / "morning command" found only part 1; part 2 was never started. This PR
+  ships it.
+
+### Evidence
+
+Checked the data this table needs already exists, scattered across four places that have never
+been assembled together:
+
+- `src/features/nighthawk/lib/types.ts`'s `PlaybookPlay` already carries `ticker`/`direction`/
+  `score`/`entry_range`/`target`/`stop`/`key_signal` — everything ACTIVE needs except a direct
+  INVALIDATION field (see Fix rationale below).
+- `src/features/nighthawk/lib/candidate-leaderboard.ts` (Phase 2D safe half, PR #5187/#5197)
+  already classifies every candidate into WATCH/READY/TRIGGERED/ACTIVE/REJECTED with a
+  `rejection_reason` on the terminal `rejected` trajectory point — exactly WATCHING/REJECTED.
+- `src/features/nighthawk/lib/market-regime.ts` (Phase 2A part 2, PR #5177) already stamps a
+  `market_regime` tag onto every `nighthawk_candidate_snapshot` row at edition-build time —
+  MARKET REGIME, zero recompute needed.
+- `src/app/api/market/nighthawk/record/route.ts` already computes a by-conviction Wilson CI
+  (`wilsonLowerBound`/`wilsonUpperBound` from `@/lib/swing/calibration`) on win rate — SYSTEM
+  CONFIDENCE, reused as-is.
+
+### Fix / what shipped
+
+`src/features/nighthawk/lib/command-center-table.ts` — a PURE composer, `buildCommandCenterTable`,
+taking the four already-fetched-elsewhere inputs above and assembling the operator's exact table
+shape. Zero new I/O (same "safe half" discipline as every prior Phase 2 sub-step: 2A/2B/2D/2F part 1
+each shipped their pure compute primitive before a route wired it to live data). `ACTIVE`-status
+leaderboard entries are excluded from WATCHING/REJECTED to avoid double-listing a ticker already
+in `active` (built from `plays`).
+
+`src/features/nighthawk/lib/command-center-table.test.ts` — 8 unit tests: column mapping, the
+no-`risk_note`→`invalidation: null` honesty guard, WATCH/READY/TRIGGERED routing, REJECTED
+reason extraction off the trajectory's own `rejected` point, ACTIVE-entry de-duplication, regime/
+confidence pass-through verbatim, and empty-input safety.
+
+### Fix rationale — what was deliberately left unchanged
+
+- **No admin route in this PR.** Every prior Phase 2 sub-step (2D, 2F part 1) shipped its pure
+  primitive first and wired a route in a separate, smaller follow-on PR — same discipline here,
+  keeping this PR reviewable and zero-risk (no new fetch, no new DB query, no live behavior
+  change at all).
+- **INVALIDATION mapped from `risk_note`, disclosed as a proxy, not the real thing.**
+  `PlaybookPlay` has no dedicated invalidation field. `risk_note` is the closest existing field
+  (a cautionary prose note already shown to members) and reads `null`, never fabricated, when a
+  play carries none — the module header states this mapping explicitly so a future session
+  doesn't mistake it for an operator-specified field.
+- **No change to any gate, score, or publish behavior.** This is read-only composition of data
+  the pipeline already produces; it cannot change which plays publish or how many.
+
+### Blast radius
+
+New file only (`command-center-table.ts` + its test) — nothing else imports it yet, so this PR
+cannot regress any existing route or page.
+
+### Next step
+
+A follow-on PR wires an admin route (`GET /api/admin/nighthawk/command-center`, consistent with
+the existing `candidate-leaderboard`/`direction-failure-diagnosis` admin-route pattern) that
+fetches today's edition plays, today's `nighthawk_candidate_snapshot` rows (for both the
+leaderboard and the `market_regime` tag), and the `/record` route's by-conviction Wilson CI, then
+calls `buildCommandCenterTable`. Not done in this PR, per the safe-half discipline above.
+
+## Night Hawk Legacy — morning command-center admin route (Phase 2F part 2, route wiring) — SHIPPED
+
+> **kind:** `FINDING`
+
+| **Status** | SHIPPED (admin route wiring `buildCommandCenterTable` to live data; follow-on to #6005) |
+
+### Root cause / gap
+
+PR #6005 shipped `buildCommandCenterTable`, the pure safe-half composer for operator priority
+#14's morning command-center table, deliberately WITHOUT a route — same two-step pattern every
+prior Phase 2 sub-step used (pure primitive first, route wiring as a separate PR). This PR is
+that follow-on.
+
+### Evidence / what shipped
+
+`src/app/api/admin/nighthawk/command-center/route.ts` — admin-gated (`requireAdminApi`), read-only
+GET, same structural pattern as the existing `candidate-leaderboard`/`direction-failure-diagnosis`
+admin routes (fetch → pure compute → `roundFloats` → JSON). Wires the composer's four inputs to
+real data:
+
+- **ACTIVE** — `resolveNighthawkEdition(...).plays`, the SAME member-facing, overlay-applied
+  (pulled/morning-confirm) plays the public `/api/market/nighthawk/edition` route serves. Not a
+  raw pre-overlay DB row — admin tooling should see what members see, not a stale approximation.
+- **WATCHING/REJECTED** — `buildCandidateLeaderboard` over `fetchNighthawkCandidateSnapshots(servedEditionFor)`.
+- **MARKET REGIME** — read off the `market_regime` object on a `discovery`-stage snapshot row's
+  `snapshot_json`. Confirmed via `rank-bucket-analysis-extended.ts`'s own established comment:
+  "the ONLY stage that carries the full `market_regime` object — every later stage only keeps the
+  scalar `regime_multiplier`." Reused that exact read pattern rather than inventing a new one.
+- **SYSTEM CONFIDENCE** — `getNighthawkMetrics(days).by_conviction` mapped through the identical
+  Wilson-CI back-derivation the `/record` route already uses (wins derived from `win_rate × decided`,
+  never from `n`, which also counts opens — multiplying by `n` would fabricate wins).
+
+**`edition_for` key consistency**: the route resolves the edition first, then uses
+`edition.served_for ?? edition.edition_for ?? requestedEditionFor` as the key for the
+`candidate_snapshot` fetch — not the raw requested/computed date. `resolveNighthawkEdition` can
+carry yesterday's edition forward until close (`carry_until_close`), and candidate_snapshot rows
+are written under the date they were actually discovered for, so keying off the raw request would
+silently return an empty leaderboard/regime whenever a carry-forward is in effect.
+
+### Fix rationale — what was deliberately left unchanged
+
+- No new tests for this file — consistent with the existing `candidate-leaderboard`/
+  `direction-failure-diagnosis` admin routes, which are intentionally thin glue with no dedicated
+  test file; the real logic (`buildCommandCenterTable`) already carries 8 unit tests from #6005.
+- No change to any member-facing route, gate, score, or publish behavior — purely additive,
+  admin-gated, read-only.
+
+### Blast radius
+
+New file only. Nothing else imports or calls this route, so it cannot regress any existing
+surface. `npx tsc --noEmit` clean; the composer's own test suite (23 tests across
+`command-center-table.test.ts` + `candidate-leaderboard.test.ts`) still passes unchanged.
+
+### Next step
+
+None required by this PR — Phase 2F part 2 (operator priority #14) is now fully wired end to end
+(pure composer + live route). A UI surface for this admin route (if the operator wants to actually
+view it, vs. just having it queryable) would be a separate, UI-scoped follow-on.
+
 ## 2026-10-14 — [FINDING, infra/UW rate limiter] 8 RTH crons contended for a 4 RPS global ceiling, causing 10–19s queue waits and missed cron execution windows — FIXED
 
 > **kind:** `FINDING`
