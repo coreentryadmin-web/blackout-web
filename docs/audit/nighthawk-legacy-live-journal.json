@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-14T14:38:00Z",
+  "lastUpdated": "2026-10-14T14:53:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -731,6 +731,10 @@
     {
       "at": "2026-10-14T14:38:00Z",
       "summary": "3-INSTANCE INVESTIGATION, CLOSED (noise discipline triggered, root-caused same cycle): CLS flickered stale 3x this RTH session. Pulled raw legacy-marks directly -- CLS has a ~$1.55 wide bid-ask spread (thin liquidity) vs AMD's 8-cent spread (liquid, never went stale). VST also read stale in this same direct pull despite grading GREEN one cycle earlier -- confirms staleness tracks each name's OWN quote-tick frequency, not a shared outage. Same already-documented LEGACY_QUOTE_STALE_MS mechanism as the known post-close case, now observed intraday on a thin name. Not a bug, no code change. See knownOpenItems."
+    },
+    {
+      "at": "2026-10-14T14:53:00Z",
+      "summary": "TRANSIENT, SELF-HEALED (1 instance, not a pattern): 14:52:18Z healthcheck read degraded:true on GET /api/market/nighthawk/edition, A_edition AMBER + B_marks reporting zero resolvable OCCs. Re-pulled the SAME endpoint directly ~60-90s later: clean response, carry_until_close:true, served_for:2026-10-14, 3 real plays (CLS/VST/AMD unchanged), no degraded/stale field present at all. This is exactly the documented degraded-flag purpose (legacy-healthcheck-eval.mjs's own header cites a 2026-09-08 incident: a brief mid-session read failure, not a sustained outage) -- caught correctly, recovered on its own within a minute. No action needed, no code bug. Watching for a 2nd/3rd instance before treating this as a pattern worth escalating."
     }
   ],
   "knownOpenItems": {
