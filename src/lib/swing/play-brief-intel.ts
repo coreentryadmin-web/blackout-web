@@ -2045,6 +2045,30 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   // call site; this GEX-posture evidence block computes the identical ratio from the identical
   // gex.net_gex field independently and had the same defect.
   if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${formatFixedNonZero(gex.net_gex / 1_000_000, 1)}M**`);
+  // Ask Largo research finding (2026-10-14, 5-engine monitor cycle): VEX/DEX/CHARM are computed
+  // into this SAME gex_positioning object (getGexPositioning — the identical function Thermal's
+  // own formatPositioningBlock reads for its "Net GEX / VEX / DEX / CHARM" desk line) and were
+  // already loaded into every swing brief's ctx.ecosystem with no extra fetch, but never surfaced
+  // here — a dead-wired-data gap, not an absent data source. CHARM in particular matters for a
+  // multi-day swing hold: charm-driven dealer delta decay intensifies pinning/acceleration as
+  // expiry nears, which a 0DTE-only reader would never need to know. Same false-zero-safe
+  // formatter + null-gating as net_gex above; vanna/dex/charm regime-read text rides alongside
+  // the number when present, and the whole line omits cleanly when the field is null (C3).
+  if (!stale && gex.net_vex != null) {
+    lines.push(
+      `Net VEX (vanna): **${formatFixedNonZero(gex.net_vex / 1_000_000, 1)}M**${gex.vanna_regime_read ? ` — ${gex.vanna_regime_read}` : ""}`,
+    );
+  }
+  if (!stale && gex.net_dex != null) {
+    lines.push(
+      `Net DEX (delta): **${formatFixedNonZero(gex.net_dex / 1_000_000, 1)}M**${gex.dex_regime_read ? ` — ${gex.dex_regime_read}` : ""}`,
+    );
+  }
+  if (!stale && gex.net_charm != null) {
+    lines.push(
+      `Net CHARM (pinning): **${formatFixedNonZero(gex.net_charm / 1_000_000, 1)}M**${gex.charm_regime_read ? ` — ${gex.charm_regime_read}` : ""}`,
+    );
+  }
   // Recompute "nearest wall" from the SAME preferred (Vector-ladder-first) call/put walls
   // "Levels on chart" renders, instead of the raw `gex.nearest_wall` (GEX-matrix-only call_wall/
   // put_wall) — see preferredGexWalls' header for the live MSTR:33 evidence this fixes.
