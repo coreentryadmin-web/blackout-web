@@ -41,9 +41,12 @@ const MAX_RPS = envNumber("UW_MAX_RPS", 2);
  *  GLOBAL_MAX_RPS=2 oversubscription. Background sweeps already reserve concurrency slots
  *  via runWithBackgroundUwSweep; increasing RPS headroom from 2→4 closes the rate-limit gap
  *  without additional architectural changes, and stays within the upstream UW provider's
- *  advertised rate capacity.
+ *  advertised rate capacity. Further increased 4→8 on 2026-10-14 (#FINDINGS 2026-10-14):
+ *  8 RTH crons contending for shared ceiling cause queue waits of 10–19s with 4 RPS,
+ *  missing scheduled execution windows. Peak aggregate load ~2 RPS; 8 RPS provides 2× headroom
+ *  without affecting upstream (UW has no rate limit on this flow).
  */
-const GLOBAL_MAX_RPS = envNumber("UW_GLOBAL_MAX_RPS", 4);
+const GLOBAL_MAX_RPS = envNumber("UW_GLOBAL_MAX_RPS", 8);
 /** Live replica count of this service — divides the global budget across replicas on Redis loss. */
 const REPLICA_COUNT = Math.max(1, Math.floor(envNumber("REPLICA_COUNT", 1)));
 
