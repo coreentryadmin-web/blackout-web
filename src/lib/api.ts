@@ -13,9 +13,50 @@ type LargoVisualDirective = {
 const INTEL_BASE = "/api/engine";
 const MARKET_BASE = "/api/market";
 
+/**
+ * Minimal shape of the global `window.Clerk` instance `@clerk/nextjs`'s `ClerkProvider` sets in
+ * the browser — the framework-agnostic escape hatch Clerk documents for code outside a React
+ * component tree. Declared locally (not imported from `@clerk/types`) because only `getToken` is
+ * needed here, and importing the full `Clerk` interface would couple this plain fetch helper to
+ * the SDK's whole client surface for one method call.
+ */
+declare global {
+  interface Window {
+    Clerk?: {
+      session?: {
+        getToken: (options?: { skipCache?: boolean }) => Promise<string | null>;
+      } | null;
+    };
+  }
+}
+
+/**
+ * Attempts ONE silent Clerk session-token refresh before a 401 from `marketFetch`/`intelFetch`
+ * becomes terminal. Root cause: Clerk's own client SDK refreshes the `__session` cookie on a
+ * background timer ahead of expiry, but a request that lands in the gap just before that timer
+ * fires still gets a stale token — the member is NOT actually signed out, the cookie is just
+ * momentarily behind. `getToken({ skipCache: true })` forces an immediate synchronous mint +
+ * cookie update via Clerk's FAPI, which is the same operation the background timer performs, just
+ * triggered on demand instead of waited for. Returns `true` only when a refresh was attempted
+ * AND did not throw — the caller still treats a second 401 after a successful refresh as
+ * terminal (session genuinely revoked/signed-out), never retrying more than once.
+ */
+async function attemptSilentSessionRefresh(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const session = window.Clerk?.session;
+  if (!session) return false;
+  try {
+    await session.getToken({ skipCache: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function marketFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const maxRetries = 3;
   let lastError: Error | null = null;
+  let triedSessionRefresh = false;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const res = await fetch(`${MARKET_BASE}${path}`, {
@@ -31,6 +72,19 @@ async function marketFetch<T>(path: string, options?: RequestInit): Promise<T> {
     });
 
     if (res.ok) return res.json();
+
+    // On 401 (stale/expired session token), attempt ONE silent Clerk refresh and retry the SAME
+    // request before falling through to the 403/throw logic below. Deliberately NOT counted
+    // against the 403 retry budget (`attempt` is rewound) — a successful refresh means this
+    // attempt never had a fair shot with a valid token, so it shouldn't cost a slot shared with
+    // the unrelated 403 tier-gate-propagation case.
+    if (res.status === 401 && !triedSessionRefresh) {
+      triedSessionRefresh = true;
+      if (await attemptSilentSessionRefresh()) {
+        attempt -= 1;
+        continue;
+      }
+    }
 
     // On 403 (tier gate), retry with exponential backoff to allow cache
     // invalidation to propagate across replicas after payment webhook
@@ -49,11 +103,20 @@ async function marketFetch<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 async function intelFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${INTEL_BASE}${path}`, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    cache: "no-store",
-  });
+  const doFetch = () =>
+    fetch(`${INTEL_BASE}${path}`, {
+      ...options,
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      cache: "no-store",
+    });
+
+  let res = await doFetch();
+  // Same one-shot silent-refresh-and-retry as marketFetch, for the same reason — see
+  // attemptSilentSessionRefresh's own comment. intelFetch has no existing retry loop to thread
+  // this through, so it's a simple re-fetch rather than a rewound counter.
+  if (!res.ok && res.status === 401 && (await attemptSilentSessionRefresh())) {
+    res = await doFetch();
+  }
   if (!res.ok) throw new Error(`Intel ${path} → ${res.status}`);
   return res.json();
 }
