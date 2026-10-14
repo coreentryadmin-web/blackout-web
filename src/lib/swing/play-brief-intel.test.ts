@@ -3036,6 +3036,105 @@ test("gexPostureSection: a small nonzero net GEX never renders as a false '0.0M'
   assert.doesNotMatch(section!.body, /Net GEX: \*\*-?0\.0M\*\*/, "must never render the false-zero '0.0M'/'-0.0M' shape");
 });
 
+// FINDING (Ask Largo monitor cycle, 2026-10-14): VEX/DEX/CHARM are computed into the same
+// gex_positioning object every swing brief already loads (Thermal reads the identical fields for
+// its own desk), but gexPostureSection never surfaced them — dead-wired data, not an absence.
+test("gexPostureSection: renders VEX/DEX/CHARM with their regime-read text when present", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        net_vex: 2_000_000,
+        vanna_regime_read: "vanna tailwind on rallies",
+        net_dex: -1_500_000,
+        dex_regime_read: "dealers net short delta",
+        net_charm: 800_000,
+        charm_regime_read: "charm supports pinning into expiry",
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Net VEX \(vanna\): \*\*2\.0M\*\* — vanna tailwind on rallies/);
+  assert.match(section!.body, /Net DEX \(delta\): \*\*-1\.5M\*\* — dealers net short delta/);
+  assert.match(section!.body, /Net CHARM \(pinning\): \*\*0\.8M\*\* — charm supports pinning into expiry/);
+});
+
+test("gexPostureSection: omits VEX/DEX/CHARM cleanly when null, never fabricates a zero (Largo C3 omission discipline)", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        net_vex: null,
+        vanna_regime_read: null,
+        net_dex: null,
+        dex_regime_read: null,
+        net_charm: null,
+        charm_regime_read: null,
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Net VEX/);
+  assert.doesNotMatch(section!.body, /Net DEX/);
+  assert.doesNotMatch(section!.body, /Net CHARM/);
+});
+
+test("gexPostureSection: VEX/DEX/CHARM are suppressed while the matrix is stale, same as gamma posture/net GEX (Largo C2)", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        net_vex: 2_000_000,
+        vanna_regime_read: "vanna tailwind on rallies",
+        net_dex: -1_500_000,
+        dex_regime_read: "dealers net short delta",
+        net_charm: 800_000,
+        charm_regime_read: "charm supports pinning into expiry",
+        matrix_age_sec: 200,
+        freshness: "cached",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Net VEX/, "stale matrix numeric fields must not render as live");
+  assert.doesNotMatch(section!.body, /Net DEX/);
+  assert.doesNotMatch(section!.body, /Net CHARM/);
+});
+
 test("gexPostureSection: future-skewed GEX matrix age renders 'clock-skewed', not a negative number (Largo C2, 2026-09-16)", () => {
   const section = gexPostureSection({
     play: fixturePlay(),
