@@ -10910,6 +10910,13 @@ export type NighthawkCandidateCoverageRow = {
   rejection_reason: string | null;
   n: number;
   n_graded: number;
+  /** Rows carrying the `__EDITION__` sentinel ticker — a single build-level diagnostic row
+   *  (bearish-posture-shadow.ts, candidates-breakout-shadow.ts) rather than a real per-ticker
+   *  candidate. `candidate-forward-grade.ts`'s grading pass fetches minute bars BY TICKER, so a
+   *  sentinel row can never acquire forward_returns no matter how long it waits — it isn't
+   *  "stuck," it was never gradable. Counted separately so a reader can tell that apart from a
+   *  real stage that genuinely isn't grading. */
+  n_sentinel: number;
   n_editions: number;
   first_edition: string | null;
   last_edition: string | null;
@@ -10938,6 +10945,7 @@ export async function fetchNighthawkCandidateSnapshotCoverage(
     SELECT stage, rejection_reason,
            COUNT(*)::int AS n,
            COUNT(forward_returns)::int AS n_graded,
+           COUNT(*) FILTER (WHERE ticker = '__EDITION__')::int AS n_sentinel,
            COUNT(DISTINCT edition_for)::int AS n_editions,
            MIN(edition_for) AS first_edition,
            MAX(edition_for) AS last_edition
@@ -10959,6 +10967,7 @@ export function mapNighthawkCandidateCoverageRow(r: Record<string, unknown>): Ni
     rejection_reason: r.rejection_reason != null ? String(r.rejection_reason) : null,
     n: Number(r.n),
     n_graded: Number(r.n_graded),
+    n_sentinel: Number(r.n_sentinel ?? 0),
     n_editions: Number(r.n_editions),
     first_edition: r.first_edition != null ? isoDateString(r.first_edition) : null,
     last_edition: r.last_edition != null ? isoDateString(r.last_edition) : null,

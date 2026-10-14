@@ -29,6 +29,13 @@ export type StageCoverageSummary = {
   rejection_reason: string | null;
   n: number;
   n_graded: number;
+  /** Rows in this bucket carrying the `__EDITION__` sentinel ticker (a single build-level
+   *  diagnostic row, not a real candidate) — structurally ungradeable, never a sign the grading
+   *  job is stuck. See `NighthawkCandidateCoverageRow.n_sentinel`. */
+  n_sentinel: number;
+  /** grading_pct over the GRADABLE rows only (n - n_sentinel) — a bucket that is ALL sentinel
+   *  rows (e.g. bearish_posture_shadow, breakout_confluence_shadow) reports null here, never a
+   *  misleading 0%, since there is no gradable denominator to measure. */
   grading_pct: number | null;
   n_editions: number;
   first_edition: string | null;
@@ -49,6 +56,9 @@ export type CandidateCoverageReport = {
   min_distinct_editions: number;
   first_edition: string | null;
   last_edition: string | null;
+  /** Sum of every bucket's `n_sentinel` — rows that were never gradable in the first place,
+   *  excluded from `overall_grading_pct`'s denominator for the same reason as the per-stage one. */
+  total_sentinel_rows: number;
   by_stage: StageCoverageSummary[];
   /** True when the widest first-to-last-edition span across every bucket is under this many
    *  calendar days — a plain honesty flag, not a verdict, mirroring the low_n convention used
@@ -78,7 +88,8 @@ export function buildCandidateCoverageReport(
     rejection_reason: r.rejection_reason,
     n: r.n,
     n_graded: r.n_graded,
-    grading_pct: pct(r.n_graded, r.n),
+    n_sentinel: r.n_sentinel,
+    grading_pct: pct(r.n_graded, r.n - r.n_sentinel),
     n_editions: r.n_editions,
     first_edition: r.first_edition,
     last_edition: r.last_edition,
@@ -86,6 +97,7 @@ export function buildCandidateCoverageReport(
 
   const total_rows = rows.reduce((sum, r) => sum + r.n, 0);
   const total_graded = rows.reduce((sum, r) => sum + r.n_graded, 0);
+  const total_sentinel_rows = rows.reduce((sum, r) => sum + r.n_sentinel, 0);
 
   let first_edition: string | null = null;
   let last_edition: string | null = null;
@@ -104,10 +116,11 @@ export function buildCandidateCoverageReport(
     window_days: windowDays,
     total_rows,
     total_graded,
-    overall_grading_pct: pct(total_graded, total_rows),
+    overall_grading_pct: pct(total_graded, total_rows - total_sentinel_rows),
     min_distinct_editions,
     first_edition,
     last_edition,
+    total_sentinel_rows,
     by_stage: by_stage.sort((a, b) => b.n - a.n),
     thin_history: spanDays < THIN_HISTORY_DAY_FLOOR,
   };

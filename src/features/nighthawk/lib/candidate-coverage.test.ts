@@ -9,6 +9,7 @@ function row(overrides: Partial<NighthawkCandidateCoverageRow>): NighthawkCandid
     rejection_reason: null,
     n: 10,
     n_graded: 0,
+    n_sentinel: 0,
     n_editions: 1,
     first_edition: "2026-09-21",
     last_edition: "2026-09-21",
@@ -111,6 +112,46 @@ describe("buildCandidateCoverageReport", () => {
     assert.equal(report.last_edition, null);
     assert.equal(report.min_distinct_editions, 0);
     assert.equal(report.thin_history, true);
+    assert.equal(report.total_sentinel_rows, 0);
     assert.deepEqual(report.by_stage, []);
+  });
+
+  // A build-level diagnostic row (bearish-posture-shadow.ts, candidates-breakout-shadow.ts) writes
+  // ticker="__EDITION__" — one row per edition, never a real candidate, and structurally can never
+  // acquire forward_returns (candidate-forward-grade.ts fetches minute bars BY TICKER). Live evidence
+  // 2026-10-13: bearish_posture_shadow/breakout_confluence_shadow sat at a flat 0% grading_pct across
+  // 14-17 editions (~3 weeks) while every other stage graded 94-100% over the identical window — this
+  // read as a stuck grading job until tracing the write side showed the sentinel ticker, not a bug.
+  test("a bucket that is ALL sentinel rows reports grading_pct null, never a misleading 0%", () => {
+    const report = buildCandidateCoverageReport(
+      [row({ stage: "bearish_posture_shadow", n: 17, n_graded: 0, n_sentinel: 17 })],
+      90
+    );
+    assert.equal(report.by_stage[0]!.grading_pct, null);
+    assert.equal(report.by_stage[0]!.n_sentinel, 17);
+  });
+
+  test("sentinel rows are excluded from overall_grading_pct's denominator", () => {
+    const report = buildCandidateCoverageReport(
+      [
+        row({ stage: "discovery", n: 100, n_graded: 100, n_sentinel: 0 }),
+        row({ stage: "bearish_posture_shadow", n: 17, n_graded: 0, n_sentinel: 17 }),
+      ],
+      90
+    );
+    // Without the sentinel exclusion this would read 100/117 = 85.5%, wrongly penalizing a
+    // fully-graded real population for rows that could never be graded in the first place.
+    assert.equal(report.overall_grading_pct, 100);
+    assert.equal(report.total_rows, 117);
+    assert.equal(report.total_sentinel_rows, 17);
+  });
+
+  test("a stage mixing real and sentinel rows computes grading_pct over the gradable subset only", () => {
+    const report = buildCandidateCoverageReport(
+      [row({ stage: "mixed", n: 10, n_graded: 8, n_sentinel: 2 })],
+      90
+    );
+    // 8 graded out of (10 - 2) = 8 gradable rows -> 100%, not 80%.
+    assert.equal(report.by_stage[0]!.grading_pct, 100);
   });
 });
