@@ -212,13 +212,32 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       ? ` · γ-flip **${fmtPriceLevel(flip)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
       : "";
 
+  // Ask Largo standing mandate (2026-10-14): parity fix for PR #5994's VEX/DEX/CHARM additions to
+  // gexPostureSection (play-brief-intel.ts) — collapseRedundantIntelSections
+  // (play-brief-intel-collapse.ts) drops the WHOLE "GEX posture" section for OPEN/WATCH buckets
+  // whenever this narrative is present, under a "folded into Trade manager read" note, but this
+  // line never actually carried any vanna/dex/charm content — the VEX/DEX/CHARM fields silently
+  // vanished rather than folding into anything. Same interpretive-read pattern as `mechanic`
+  // above: a qualitative regime READ, not the raw $ figure (net_gex's own dollar value is likewise
+  // never narrated here, by design — gexPostureSection's `Net GEX: **$NM**` line is the one place
+  // for the number; this line is the one place for the "what it means" read). Gated on the SAME
+  // `gexMatrixStale` check gexPostureSection uses for these fields — a stale matrix's regime reads
+  // are exactly as unreliable here as there.
+  const gexStale = gexMatrixStale(gex, readMs);
+  const regimeBits = [
+    !gexStale && gex?.vanna_regime_read ? `vanna: ${gex.vanna_regime_read}` : null,
+    !gexStale && gex?.dex_regime_read ? `delta: ${gex.dex_regime_read}` : null,
+    !gexStale && gex?.charm_regime_read ? `charm: ${gex.charm_regime_read}` : null,
+  ].filter((bit): bit is string => bit != null);
+  const regimeBit = regimeBits.length ? ` · ${regimeBits.join(" · ")}` : "";
+
   const snapshotStale = vectorStale;
   const snapshotAgeLabel = snapshotStale ? ageSecondsLabel(vec?.dataAgeMs) : null;
   const lead = snapshotStale
     ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
 
-  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}`;
+  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${regimeBit}`;
 }
 
 function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): string {
