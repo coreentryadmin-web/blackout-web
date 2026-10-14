@@ -99,7 +99,13 @@ describe("loadTickerTrackRecord", () => {
     mockRows = [winRow];
     mockChains = { 3: [winRow] };
     const result = await loadTickerTrackRecord("AAPL", null);
-    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 1, wins: 1, losses: 0 });
+    assert.deepEqual(result, {
+      ticker: "AAPL",
+      priorClosedTrades: 1,
+      wins: 1,
+      losses: 0,
+      directions: ["long"],
+    });
   });
 
   it("counts a resolved LOSS chain", async () => {
@@ -107,18 +113,30 @@ describe("loadTickerTrackRecord", () => {
     mockRows = [lossRow];
     mockChains = { 4: [lossRow] };
     const result = await loadTickerTrackRecord("AAPL", null);
-    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 1, wins: 0, losses: 1 });
+    assert.deepEqual(result, {
+      ticker: "AAPL",
+      priorClosedTrades: 1,
+      wins: 0,
+      losses: 1,
+      directions: ["long"],
+    });
   });
 
   it("aggregates across multiple independent chains, excludes the reviewed one, ignores still-open ones", async () => {
     const win1 = row({ id: 10, realized_pnl_pct: 25 });
-    const loss1 = row({ id: 11, realized_pnl_pct: -15 });
+    const loss1 = row({ id: 11, realized_pnl_pct: -15, direction: "short" });
     const reviewed = row({ id: 12, realized_pnl_pct: 60 }); // this play's OWN chain — must be excluded
     const stillOpen = row({ id: 13, status: "OPEN", realized_pnl_pct: null, graded_at: null });
     mockRows = [win1, loss1, reviewed, stillOpen];
     mockChains = { 10: [win1], 11: [loss1], 12: [reviewed], 13: [stillOpen] };
     const result = await loadTickerTrackRecord("AAPL", 12);
-    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 2, wins: 1, losses: 1 });
+    assert.deepEqual(result, {
+      ticker: "AAPL",
+      priorClosedTrades: 2,
+      wins: 1,
+      losses: 1,
+      directions: ["long", "short"],
+    });
   });
 
   it("collapses a rolled chain (multiple legs, one root) into ONE prior trade, not one per leg", async () => {
@@ -130,7 +148,13 @@ describe("loadTickerTrackRecord", () => {
     mockRows = [parent, child];
     mockChains = { 20: [parent, child] };
     const result = await loadTickerTrackRecord("AAPL", null);
-    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 1, wins: 0, losses: 1 });
+    assert.deepEqual(result, {
+      ticker: "AAPL",
+      priorClosedTrades: 1,
+      wins: 0,
+      losses: 1,
+      directions: ["long"],
+    });
   });
 
   it("upper-cases the ticker in the returned record regardless of input casing", async () => {
@@ -177,7 +201,13 @@ describe("loadTickerTrackRecord", () => {
       29,
       Date.parse("2026-09-03T11:00:00.000Z"),
     );
-    assert.deepEqual(reviewingLater, { ticker: "EWZ", priorClosedTrades: 1, wins: 0, losses: 1 });
+    assert.deepEqual(reviewingLater, {
+      ticker: "EWZ",
+      priorClosedTrades: 1,
+      wins: 0,
+      losses: 1,
+      directions: ["long"],
+    });
   });
 
   it("applies no cutoff (asOfMs omitted/null) for a still-open reviewed play — every resolved chain counts", async () => {
@@ -186,7 +216,13 @@ describe("loadTickerTrackRecord", () => {
     mockRows = [win1, win2];
     mockChains = { 40: [win1], 41: [win2] };
     const result = await loadTickerTrackRecord("AAPL", null, null);
-    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 2, wins: 2, losses: 0 });
+    assert.deepEqual(result, {
+      ticker: "AAPL",
+      priorClosedTrades: 2,
+      wins: 2,
+      losses: 0,
+      directions: ["long", "long"],
+    });
   });
 
   it("keeps a candidate chain with no parseable resolution timestamp rather than dropping it silently", async () => {
@@ -194,6 +230,12 @@ describe("loadTickerTrackRecord", () => {
     mockRows = [undated];
     mockChains = { 50: [undated] };
     const result = await loadTickerTrackRecord("AAPL", null, Date.parse("2026-09-20T00:00:00.000Z"));
-    assert.deepEqual(result, { ticker: "AAPL", priorClosedTrades: 1, wins: 1, losses: 0 });
+    assert.deepEqual(result, {
+      ticker: "AAPL",
+      priorClosedTrades: 1,
+      wins: 1,
+      losses: 0,
+      directions: ["long"],
+    });
   });
 });

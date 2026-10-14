@@ -1243,7 +1243,21 @@ export function tickerHistoryCoaching(ctx: SwingPlayBriefContext): string | null
   if (!record || record.priorClosedTrades === 0) return null;
   if (record.losses <= record.wins) return null;
   const n = record.priorClosedTrades;
-  return `**Ticker history** — ${record.ticker} is ${record.wins}W / ${record.losses}L across ${n} prior closed trade${n === 1 ? "" : "s"} — the desk hasn't found an edge on this exact name yet; weigh that against the current setup.`;
+  const base = `**Ticker history** — ${record.ticker} is ${record.wins}W / ${record.losses}L across ${n} prior closed trade${n === 1 ? "" : "s"}`;
+  // DIRECTION MISMATCH (2026-10-14, Ask Largo standing mandate, PR #4076 comment 6151970308): a
+  // SHORT loss says nothing about whether today's LONG thesis on the same ticker works — citing a
+  // direction-mixed or direction-opposed record as "the desk hasn't found an edge on this exact
+  // name" implies a comparability the count doesn't have (Largo C9 precision). Only the WORDING
+  // changes here, never the count itself — `directions` is optional so a caller/fixture that
+  // predates it falls back to the original, undifferentiated phrasing rather than a crash.
+  const playDirection = ctx.play.direction.toLowerCase();
+  const directions = record.directions;
+  const allSameDirection = directions != null && directions.every((d) => d === playDirection);
+  if (directions != null && !allSameDirection) {
+    const mixed = new Set(directions).size > 1 ? "mixed long/short" : `all ${directions[0]}`;
+    return `${base} (${mixed}) — not all directly comparable to today's ${ctx.play.direction} setup.`;
+  }
+  return `${base} — the desk hasn't found an edge on this exact name yet; weigh that against the current setup.`;
 }
 
 /** Recent wall dynamics — last 2 bead events for live structure shifts. */
