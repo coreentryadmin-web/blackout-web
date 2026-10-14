@@ -160,6 +160,9 @@
     },
     "2026-10-14T19:15:00Z_BEX_FLEX_CLOSED_SCRATCHES_CLEAN": {
       "note": "BEX closed flat_scratch -1.73% (consistent with its already-explained weak -0.99 entry last cycle -- a modest loss is the unsurprising outcome, not new information). FLEX closed flat_scratch -8.33% (larger than typical but still within the documented +/-10% band threshold the scratch mechanism allows). Nothing anomalous. 8 open remaining. Clean cycle."
+    },
+    "2026-10-14T19:43:00Z_APPROACHING_CLOSE_SIMO_NEW_OPEN": {
+      "note": "15:44 ET, ~16min to close, late_afternoon G-14 active as expected. New open: SIMO (no anomaly signals). 26 closed today, 4 open (incl. SIMO, WOLF). Board remains clean across the whole session -- every exit mechanism checked today behaved correctly. Holding the full EOD wrap for the next cycle once the session is fully closed out."
     }
   },
   "sessions": {
