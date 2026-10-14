@@ -38,6 +38,149 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Night Hawk Legacy — grounding CHECK 6 hard-drops a play over an unrelated catalyst number — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P1 (live, cost two higher-scored candidates their publication) |
+| **Surface** | `src/features/nighthawk/lib/grounding.ts` — CHECK 6 (prose-vs-structured strike divergence) |
+
+### Root cause
+
+CHECK 6 tests `hasStrikeWord` (does `/\b(call|put|strike)s?\b/i` appear anywhere in the
+**combined** `thesis + " " + key_signal` text) and then scans **every** numeric token in that
+same combined text for a value that: sits in the plausible strike range (`[spot*0.5, spot*2]`),
+is not `%`/`$`, isn't the grounded strike, and isn't any real chain strike. If it finds one, it
+hard-drops the whole play with "prose references N near a strike claim ... dropping user-visible
+contradictory setup text."
+
+Nothing in the check required the flagged number and the strike-word to be in the **same
+sentence** — only that both exist somewhere in the combined text. So a completely unrelated,
+legitimate catalyst/guidance figure in one sentence ("guidance raised to 410"), paired with an
+unrelated "heavy call buying" mention in a different sentence, reads identically to an actual
+contradictory strike echo ("calls at 410") to this check.
+
+### Evidence
+
+Live: tonight's (2026-10-14 edition) CloudWatch det-edition build log showed AXTI (score 73,
+`rank_governor` #1) and BE (score 69, #2) — both higher-scored than every play that actually
+published (CLS 59, VST 59, AMD 56) — built successfully then dropped by this exact check:
+"AXTI prose references 74 near a strike claim but the grounded contract strike is 65 and 74 is
+not in the chain" / "BE prose references 315.4 ... grounded contract strike is 265." Journaled as
+`legacyGroundingDropsTopScoredCandidates_2026_10_14` (REPORT AND HOLD) pending a controlled
+reproduction.
+
+Reproduced directly against `groundPlay()` with a synthetic play (real NBIS fixture already in
+`grounding.test.ts`, strike 300):
+```
+thesis: "Heavy call buying ahead of earnings signals bullish positioning."
+key_signal: "Management raised full-year guidance to 410 in yesterday's update."
+```
+→ `severity: "drop"`, `"NBIS prose references 410 near a strike claim but the grounded contract
+strike is 300 and 410 is not in the chain — dropping user-visible contradictory setup text."` —
+410 has nothing to do with the strike; it's a guidance figure in an entirely separate sentence
+from the word "call." This is a byte-for-byte reproduction of the AXTI/BE shape.
+
+### Fix
+
+Scope both the `hasStrikeWord` test and the number extraction to the **same sentence/clause**
+(split on `.`/`!`/`?`/newline) instead of the whole combined text. A genuine same-sentence strike
+echo ("Calls at 410 are the trigger") still drops — covered by the pre-existing test
+("groundPlay drops contradictory user-visible prose strike claims"). A cross-sentence unrelated
+number no longer does — new test ("groundPlay does NOT drop an unrelated catalyst number merely
+because a strike word appears in a different sentence").
+
+### Blast radius
+
+Single call site — CHECK 6 is only read inside `groundPlay()`, batch-wrapped by `groundPlays()`
+(which removes any `severity: "drop"` play from the published list). No other check in this file
+shares this pattern closely enough to need the same fix: CHECK 6's own IV-rank sub-check (just
+above, lines ~398-413) tests `/iv\s*rank|ivr|implied/i` against the combined text too, but that
+one's own number scan is already localized to %-tokens specifically flagged against a single
+`groundedIv` value, not an open-ended strike-range scan — left unchanged, out of scope for this
+fix (no live evidence of a problem there).
+
+### Not fixed/changed
+
+The grounding layer itself is a deliberate safety layer, not disabled or loosened — a real
+contradictory strike claim in the same sentence as the number still hard-drops exactly as before.
+Nothing about CHECK 1-5 touched.
+
+## Night Hawk Legacy — candidate-coverage report misreads sentinel shadow rows as a stuck grading job — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 (diagnostic-report clarity, not a functional defect) |
+| **Surface** | `src/lib/db.ts` (`fetchNighthawkCandidateSnapshotCoverage`), `src/features/nighthawk/lib/candidate-coverage.ts` |
+
+### What was observed
+
+`GET /api/admin/nighthawk/candidate-coverage` (Phase 3 of the continuous-learning mandate, built
+2026-09-23) showed two stages flat at `grading_pct: 0` across 14-17 editions / ~16 calendar days
+(`bearish_posture_shadow`, `breakout_confluence_shadow`), while every other stage over the
+identical window graded 94-100%. That shape — consistent 0% over weeks, not "still
+accumulating" — reads exactly like a stuck/broken grading pass, and was investigated as one.
+
+### Root cause (not a bug in the grading pipeline)
+
+Both stages write exactly ONE row per edition build with `ticker: "__EDITION__"` — a sentinel
+value, deliberately chosen (per each module's own doc comment) to "never collide with a real
+ticker," because these are single BUILD-LEVEL diagnostic comparisons (what would the
+bearish-posture / breakout-confluence gate have decided), not per-ticker candidates with a real
+price path.
+
+`candidate-forward-grade.ts`'s stage-agnostic grading pass (`gradeNighthawkCandidateForwardReturns`)
+groups ungraded rows by `(edition_for, ticker)` and fetches that TICKER's minute bars to compute
+`forward_returns`. A `__EDITION__` row can never have real market bars — there is no such
+ticker — so it is permanently `skipped` (never force-graded with a fabricated entry, correctly).
+This is working exactly as designed: these two stages were never meant to carry an outcome, only
+to log a counterfactual decision. The coverage *report*, however, had no way to distinguish
+"structurally ungradeable sentinel row" from "real row that hasn't graded yet," so it displayed a
+genuinely alarming 0% for a non-issue.
+
+### Fix
+
+`fetchNighthawkCandidateSnapshotCoverage`'s aggregate now also counts
+`COUNT(*) FILTER (WHERE ticker = '__EDITION__') AS n_sentinel` per `(stage, rejection_reason)`
+bucket. `buildCandidateCoverageReport` computes each bucket's `grading_pct` over the GRADABLE
+subset (`n - n_sentinel`) instead of the raw row count — a bucket that is ALL sentinel rows now
+reports `grading_pct: null` (no gradable denominator) instead of a misleading `0`, and exposes
+`n_sentinel` so a reader can see why. The overall `overall_grading_pct` rollup excludes sentinel
+rows from its denominator too (`total_sentinel_rows` now reported separately), so a handful of
+structurally-ungradeable diagnostic rows can no longer drag down the headline number for the real
+population.
+
+### Evidence
+
+Live `GET /api/admin/nighthawk/candidate-coverage?days=90` pull (2026-10-13, 17 editions,
+2026-09-21..2026-10-13): `bearish_posture_shadow` n=17/n_graded=0 (16 editions), 
+`breakout_confluence_shadow` n=14/n_graded=0 (14 editions) — both 0% across the FULL observed
+window, versus `discovery` 97.7%, `rank_governor`/`scored` 94.8%, `rank_final` 100% over the
+identical window. Confirmed via source read: both stages' builder functions
+(`buildBearishPostureShadowSnapshotRow`, `candidates-breakout-shadow.ts`'s equivalent) hard-code
+`ticker: "__EDITION__"`.
+
+### Blast radius
+
+Two call sites read `NighthawkCandidateCoverageRow`/the coverage report: the admin route (passes
+the report straight through, no change needed) and this module's own test suite. No other reader
+of `nighthawk_candidate_snapshot` is affected — the grading pipeline itself (`candidate-forward-
+grade.ts`) is unchanged; this is a reporting-only fix.
+
+### Not changed
+
+The shadow-tracking modules themselves (`bearish-posture-shadow.ts`, `candidates-breakout-
+shadow.ts`) are untouched — their sentinel-ticker design is correct for what they're doing
+(one build-level verdict comparison per edition, not a per-ticker outcome to track). Nothing about
+the grading pipeline's actual behavior changed; this fixes only how the coverage report presents
+rows it can prove are structurally ungradeable.
+
 ## 2026-10-13 — [Night Hawk Swings / Largo] Macro tape section shows CPI with zero vintage disclosure — the one combined `as_of` field silently borrows the FRESHER treasury date — FIXED
 > **kind:** `FINDING`
 
