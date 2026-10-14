@@ -4,6 +4,51 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-14 (16:35 UTC / Wed 12:36 ET) — [SEO] RTH wake (near close): gamma-snapshot live, CLS clean
+
+Confirmed market open myself (12:36 ET, ~24min to close). Same `flip: null` short-gamma-at-
+every-strike condition persisting from the prior wake (still `market_session: "OPEN"`,
+`degraded: false`, 1s fresh) — consistent, not a regression. Purged Cloudflare edge HTML,
+measured live homepage CLS — **0.0002, GOOD**. No defect found. No PR opened.
+
+## 2026-10-14 (15:36 UTC / Wed 11:36 ET) — [SEO] RTH wake: gamma-snapshot live and honestly handled, CLS clean
+
+Confirmed market open myself (11:36 ET). `/api/public/gex-snapshot?ticker=SPX` —
+`market_session: "OPEN"`, `degraded: false`, fresh. Notable but NOT a defect: `flip: null` on
+both SPX and SPY at the same instant, with `read` text explaining "dealers are net short gamma
+at EVERY strike, so there is no long-gamma region above spot" — a genuine, honestly-represented
+market condition (no flip point exists today), not a null-handling bug; cross-checked
+`change_pct` agreement (SPX -0.83, SPY -0.82) confirms real, consistent data. Polled 3x over
+~10s: `calculation_id` advanced, spot ticked (7740.97 → 7737.85) — refresh is live. Purged
+Cloudflare edge HTML, measured live homepage CLS — **0, perfectly clean**. No defect found. No
+PR opened.
+
+## 2026-10-14 (14:06 UTC / Wed 10:06 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
+
+Same 3 striking-distance queries (dealer gamma, gamma three trading, is 0dte gambling), same
+CTR-gap noise, all already assessed. `robots.txt` still serves `Allow: /api/og`. CLS already
+live-verified this morning's RTH wake (within rule 6's 3-day window) — skipped redundant
+re-check. 28-day avgpos 11.2 (16cl/1410imp), within the established noisy band — no material
+movement from yesterday's reading (18cl/1403imp/11.2). No PR opened.
+
+## 2026-10-14 (13:35 UTC / Wed 09:35 ET) — [SEO] RTH wake: gamma-snapshot live, CLS clean
+
+Confirmed market open myself (09:35 ET, 2026-10-14 not in `US_MARKET_HOLIDAYS`).
+`/api/public/gex-snapshot?ticker=SPX` — `market_session: "OPEN"`, `degraded: false`,
+`snapshot_data_age_seconds` 1-8s. `change_pct: null` — expected this early in the session
+(pre-REST-anchor, already root-caused as the fail-closed guard). Polled twice over ~12s:
+`calculation_id` advanced, spot ticked (7773.68 → 7773.07) — refresh is live. Purged Cloudflare
+edge HTML, measured live homepage CLS — **0.0008, GOOD**. No defect found. No PR opened.
+
+## 2026-10-14 (12:17 UTC / Wed 08:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Pre-market. Resynced to `origin/main` (`86b6665` → `42b68c7`, other-lane cron overlap-guard
+fix). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0001,
+GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real 1200×630
+PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 1 open agent PR fleet-wide,
+not this lane's own — #5537 (docs, CI-FAILED, long-confirmed intentional). Nothing for this
+lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
 ## 2026-10-14 (06:17 UTC / Tue 02:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Market closed overnight. Resynced to `origin/main` (`9af710d` → `2a37937`, other-lane swing

@@ -28,6 +28,7 @@ import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
  * scheduled fire, a few minutes later — never queued or blocked in-process.
  */
 const SLOT_KEY_PREFIX = "cron:heavy-slot:";
+const RESERVED_SLOT_KEY_PREFIX = "cron:heavy-slot:reserved:";
 
 /** How many heavy crons may run at once, cluster-wide. Six crons contending for 1-2 ECS web
  *  tasks is the measured problem; capping concurrent heavy work at 2 leaves one slot for a
@@ -35,11 +36,53 @@ const SLOT_KEY_PREFIX = "cron:heavy-slot:";
  *  than serializing everything behind a single lock and multiplying worst-case staleness. */
 export const MAX_CONCURRENT_HEAVY_CRONS = 2;
 
+/**
+ * Crons that get their OWN dedicated slot instead of contending with the shared numbered pool
+ * above. Added 2026-10-14 for `swing-active-refresh` after it was found chronically starved
+ * behind the other five crons here — each of which can legitimately hold a shared slot for
+ * minutes (vector-pick-sweep measured up to ~900s) while swing-active-refresh's own measured
+ * elapsed= runtime across 18 real runs (2026-10-13, 24h window) was 4-66s, never once close to
+ * the others' durations. Competing for the same 2 keys meant a slow cron routinely occupied both
+ * slots across swing-active-refresh's entire 15-minute cadence: live cron-health showed a 54.5%
+ * skip rate (24 of 44 fires in 24h), and because this cron is the ONLY writer of live option
+ * marks for open swing positions, the result was a real, severe member-facing bug — Ask Largo's
+ * own swing play-briefs (`/api/market/swing/play-brief`) showed SIGN-INVERTED, ~19.5h-stale P&L
+ * for the desk's native swing positions (INTC/GOOG/GOOGL: brief said +15.3%/+6.6%/+8.7%, the
+ * live marks feed said -20.63%/-0.27%/-0.24% for the same instant) — confirmed via CloudWatch
+ * (last successful background-done log 2026-10-13 20:01 UTC, nothing since despite 16 on-schedule
+ * fires), EventBridge (rule enabled, firing on schedule), and `GET /api/admin/cron-health`
+ * (`last_message: "heavy-cron concurrency slot unavailable (idempotent skip)"`).
+ *
+ * A dedicated slot bounds total concurrent heavy work to AT MOST 3 (2 shared + this 1) rather
+ * than the original uncapped 6 this guard was built against — still a real, bounded mitigation of
+ * the ALB-tail-latency problem, while no longer forcing a cheap, correctness-critical cron to wait
+ * behind ones that can occupy a slot an order of magnitude longer. It keeps its own self-overlap
+ * semantics (the shared logic below already serializes a cron against itself via the same atomic
+ * SET NX primitive) — this does not change how many swing-active-refresh runs can be in flight at
+ * once, only who it has to wait on.
+ */
+const RESERVED_SLOT_CRONS = new Set<string>(["swing-active-refresh"]);
+
 export type HeavyCronSlot = { readonly cronName: string; release(): Promise<void> };
 
+function slotHandle(cronName: string, key: string): HeavyCronSlot {
+  let released = false;
+  return {
+    cronName,
+    release: async () => {
+      if (released) return;
+      released = true;
+      await sharedCacheDel(key).catch(() => undefined);
+    },
+  };
+}
+
 /**
- * Try to claim one of the fixed heavy-cron slots. Returns `null` when every slot is already held
- * — the caller should skip this run (same shape as its own pre-existing self-overlap guard).
+ * Try to claim a heavy-cron slot. A name in `RESERVED_SLOT_CRONS` gets its own dedicated key,
+ * independent of the shared numbered pool, so it never contends with (or counts against) the
+ * other crons' slots. Every other cron name claims one of the fixed shared-pool slots as before.
+ * Returns `null` when the relevant slot(s) are already held — the caller should skip this run
+ * (same shape as its own pre-existing self-overlap guard).
  *
  * Fail-open per slot attempt on a Redis error, matching every sibling overlap guard in this repo
  * (`.catch(() => true)`): a missed concurrency guard is safer than a cron that silently stops
@@ -49,22 +92,19 @@ export async function acquireHeavyCronSlot(
   cronName: string,
   ttlSec: number
 ): Promise<HeavyCronSlot | null> {
+  if (RESERVED_SLOT_CRONS.has(cronName)) {
+    const key = `${RESERVED_SLOT_KEY_PREFIX}${cronName}`;
+    const acquired = await sharedCacheSetNx(key, { cronName, startedAt: Date.now() }, ttlSec).catch(
+      () => true
+    );
+    return acquired ? slotHandle(cronName, key) : null;
+  }
   for (let slot = 1; slot <= MAX_CONCURRENT_HEAVY_CRONS; slot++) {
     const key = `${SLOT_KEY_PREFIX}${slot}`;
     const acquired = await sharedCacheSetNx(key, { cronName, startedAt: Date.now() }, ttlSec).catch(
       () => true
     );
-    if (acquired) {
-      let released = false;
-      return {
-        cronName,
-        release: async () => {
-          if (released) return;
-          released = true;
-          await sharedCacheDel(key).catch(() => undefined);
-        },
-      };
-    }
+    if (acquired) return slotHandle(cronName, key);
   }
   return null;
 }

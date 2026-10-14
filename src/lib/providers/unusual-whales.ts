@@ -717,11 +717,38 @@ export function aggregateFlowPerStrikeRows(rows: ReadonlyArray<Record<string, un
   return { call_premium: calls, put_premium: puts, net: calls - puts };
 }
 
+/**
+ * A flow-per-strike aggregate with BOTH sides exactly 0 is a transient empty/degraded upstream
+ * read (live 0DTE flow essentially never nets to exact zero on both legs), not a genuine "no
+ * flow" reading. Caching it verbatim under `UW_CACHE_TTL.flowPerStrike` (120s) would overwrite a
+ * real aggregate for the full TTL and silently corrupt every downstream reader — confirmed live
+ * 2026-10-14: SPX Slayer's desk `flow_0dte_net` field (and the score factor + gate block it
+ * drives) flipped between a real multi-hundred-million value and exactly 0/0/0 every ~2 minutes,
+ * 1:1 matching this TTL, with every response still reporting `feed_stalled:false` — the bad poll
+ * was accepted and served as valid.
+ */
+export function isDegenerateFlowAggregate(agg: { call_premium: number; put_premium: number }): boolean {
+  return agg.call_premium === 0 && agg.put_premium === 0;
+}
+
+/** Per-process last-good flow-per-strike aggregate, keyed by ticker — the same in-process sticky
+ *  pattern `spx-desk.ts` already uses for GEX walls/flip/unified tape (`lastGoodGexWalls` etc.),
+ *  applied here so a single degenerate poll substitutes the prior real value before it ever
+ *  reaches the shared Redis cache that every replica and both callers (spx-desk, Largo's
+ *  run-tool) read from. */
+const lastGoodFlow0dteByTicker = new Map<string, { call_premium: number; put_premium: number; net: number }>();
+
 export async function fetchUwFlow0dte(ticker = "SPX") {
   const redis = await getUwCacheRedis();
+  const key = safeTicker(ticker);
   return uwCacheGet(redis, UW_KEYS.flowPerStrike(ticker), UW_CACHE_TTL.flowPerStrike, async () => {
-    const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/flow-per-strike-intraday`, {});
-    return aggregateFlowPerStrikeRows(extractRows(data));
+    const data = await uwGetSafe<unknown>(`/api/stock/${key}/flow-per-strike-intraday`, {});
+    const fresh = aggregateFlowPerStrikeRows(extractRows(data));
+    if (!isDegenerateFlowAggregate(fresh)) {
+      lastGoodFlow0dteByTicker.set(key, fresh);
+      return fresh;
+    }
+    return lastGoodFlow0dteByTicker.get(key) ?? fresh;
   });
 }
 

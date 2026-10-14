@@ -14,6 +14,8 @@ import {
   fetchUwNope,
   emptyDarkPoolSnapshot,
   darkPoolBias,
+  fetchUwFlow0dte,
+  isDegenerateFlowAggregate,
 } from "./unusual-whales";
 import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
@@ -166,6 +168,78 @@ test("fetchUwIvRank caches within TTL: two sequential calls → ONE underlying f
     if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
     if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
     if (prevTtl === undefined) delete process.env.UW_IV_RANK_CACHE_SEC; else process.env.UW_IV_RANK_CACHE_SEC = prevTtl;
+  }
+});
+
+// ── 0DTE flow-per-strike zero-cache poisoning (2026-10-14) ──────────────────────────────────
+// WHY: live-confirmed SPX Slayer defect — flow_0dte_net flipped between a real multi-hundred-
+// million value and exactly 0/0/0 every ~2 minutes (the flowPerStrike TTL), because a transient
+// empty/degraded UW poll was cached verbatim and served as valid for the full TTL to every
+// downstream reader (desk score factor, gate block, Largo's run-tool). isDegenerateFlowAggregate
+// is the shared guard both fetchUwFlow0dte and the uw-cache-refresh cron now apply before caching.
+
+test("isDegenerateFlowAggregate: true only when BOTH sides are exactly zero", () => {
+  assert.equal(isDegenerateFlowAggregate({ call_premium: 0, put_premium: 0 }), true);
+  assert.equal(isDegenerateFlowAggregate({ call_premium: 0, put_premium: 500 }), false);
+  assert.equal(isDegenerateFlowAggregate({ call_premium: 500, put_premium: 0 }), false);
+  assert.equal(isDegenerateFlowAggregate({ call_premium: -200, put_premium: 100 }), false);
+});
+
+test("fetchUwFlow0dte: a degenerate both-zero poll substitutes the prior real aggregate instead of serving zero", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevRedis = process.env.REDIS_URL;
+  process.env.UW_API_KEY = "test-uw-key";
+  delete process.env.REDIS_URL; // force the in-process-only path so every call reaches the mocked fetch directly
+
+  let callCount = 0;
+  mock.method(globalThis, "fetch", async () => {
+    callCount += 1;
+    const body =
+      callCount === 1
+        ? { data: [{ strike: 100, call_premium: "500000000", put_premium: "200000000" }] }
+        : { data: [] }; // empty rows → aggregateFlowPerStrikeRows → {0, 0, 0}, the degenerate shape
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  try {
+    const first = await fetchUwFlow0dte("FLOWZEROTEST");
+    assert.equal(first.call_premium, 500_000_000);
+    assert.equal(first.put_premium, 200_000_000);
+
+    const second = await fetchUwFlow0dte("FLOWZEROTEST");
+    assert.deepEqual(
+      second,
+      first,
+      "a degenerate 0/0 poll must substitute the last real aggregate, never serve a bare zero over it"
+    );
+    assert.equal(callCount, 2, "both calls must have actually reached the upstream fetch (no Redis caching active)");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
+  }
+});
+
+test("fetchUwFlow0dte: a genuinely degenerate FIRST poll (no prior good value yet) is served honestly as zero", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevRedis = process.env.REDIS_URL;
+  process.env.UW_API_KEY = "test-uw-key";
+  delete process.env.REDIS_URL;
+
+  mock.method(globalThis, "fetch", async () => {
+    return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  try {
+    // Unique ticker — guaranteed no sticky value from another test could leak in.
+    const result = await fetchUwFlow0dte("FLOWZEROCOLDSTART");
+    assert.equal(result.call_premium, 0);
+    assert.equal(result.put_premium, 0);
+    assert.equal(result.net, 0, "with no prior good value to fall back to, an honest zero is correct — never fabricate one");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
   }
 });
 

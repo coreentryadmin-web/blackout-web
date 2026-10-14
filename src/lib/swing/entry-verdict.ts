@@ -10,6 +10,7 @@ import type { SwingSetupState, SwingEntryState, SwingArchetype, SwingSubLane } f
 import type { SwingDiscoveryPath } from "./discovery";
 import { isSwingConfluenceEnforced } from "./v2/config";
 import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
+import { evaluateSwingConfluence } from "./v2/confluence";
 import {
   evaluateSwingEntryEnterability,
   swingEntryActionLabel,
@@ -75,8 +76,20 @@ const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
   "VECTOR",
 ]);
 
+/** Context needed to enrich a G-S6 confluence block with its real, already-computed diagnostic
+ *  (how many independent kinds are present vs required) instead of the flat static reason —
+ *  `evaluateSwingConfluence` computes this at gate-evaluation time and it was being thrown away
+ *  before reaching the member-facing text. Optional: omitting it keeps the prior flat reason. */
+export type SwingGateBlockDiagnosticContext = {
+  signalKinds?: readonly string[] | null;
+  archetype?: SwingArchetype | string | null;
+};
+
 /** Map commit `blockedBy` tokens to member-facing gate blocks. */
-export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingEntryGateBlock[] {
+export function commitGateBlocksForVerdict(
+  blockedBy: readonly string[],
+  diagnostics?: SwingGateBlockDiagnosticContext
+): SwingEntryGateBlock[] {
   return blockedBy
     .filter((b) => b.startsWith("gate:G-S") || b === LEGACY_COMMIT_GATE_EXEMPT)
     .map((b) => {
@@ -88,10 +101,28 @@ export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingE
         };
       }
       if (b.startsWith("gate:G-S6:")) {
-        return {
-          code: "g_s6_confluence",
-          reason: "Independent signal confluence below commit threshold — desk will not open.",
-        };
+        const paths = (diagnostics?.signalKinds ?? []).filter((k): k is SwingDiscoveryPath =>
+          DISCOVERY_PATH_KINDS.has(k as SwingDiscoveryPath)
+        );
+        const verdict =
+          paths.length > 0
+            ? evaluateSwingConfluence(paths, (diagnostics?.archetype as SwingArchetype) ?? null)
+            : null;
+        // GAP FOUND (2026-10-14, live verification of this same enrichment, AVGO repro):
+        // `signalKinds` on a served WATCH row can accumulate past the last gate-evaluation pass
+        // (gates stamp `commitGateBlockedBy` once per discovery scan; signal kinds can keep growing
+        // between scans), and this function's own simple type-filter also doesn't replicate
+        // `discoveryPathsForConfluence`'s POSITIONING-direction-mismatch drop. Either gap can make
+        // this recompute disagree with the real, already-fired block — live repro showed AVGO
+        // rendering "5/3 kinds agree (...)" (a PASSING-shaped label) directly inside a sentence
+        // explaining why entry is still blocked, which reads as self-contradictory to a trader.
+        // Only trust the enriched label when it AGREES the gate should still be failing; otherwise
+        // fall back to the flat text rather than assert a passing count next to a live block.
+        const reason =
+          verdict && !verdict.pass
+            ? `Independent signal confluence below commit threshold — ${verdict.label}.`
+            : "Independent signal confluence below commit threshold — desk will not open.";
+        return { code: "g_s6_confluence", reason };
       }
       if (b.startsWith("gate:G-S3:")) {
         return {
@@ -245,7 +276,10 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
     // reason — e.g. "thesis invalidated" — stays first and authoritative; the commit-gate detail
     // is additive context a member can act on, same as the WATCH-section sibling already does).
     const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
-    const realGateBlocks = commitGateBlockedBy.length ? commitGateBlocksForVerdict(commitGateBlockedBy) : [];
+    const gateDiagnostics = { signalKinds: input.signalKinds, archetype: input.archetype };
+    const realGateBlocks = commitGateBlockedBy.length
+      ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+      : [];
     return {
       deckStatus: "SKIP",
       recommendation: "HOLD",
@@ -257,6 +291,7 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
   }
 
   const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
+  const gateDiagnostics = { signalKinds: input.signalKinds, archetype: input.archetype };
   const enter = evaluateSwingEntryEnterability(enterabilityInputFromVerdict(input));
 
   switch (enter.action) {
@@ -275,7 +310,9 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
         deckStatus: "WATCH",
         recommendation: "HOLD",
         recNote: enter.reason,
-        gateBlocks: commitGateBlockedBy.length ? commitGateBlocksForVerdict(commitGateBlockedBy) : null,
+        gateBlocks: commitGateBlockedBy.length
+          ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+          : null,
         actionLabel: "WAIT",
         entryAction: "wait",
       };
@@ -306,7 +343,9 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
         // stay the deadline-expired text (that's still the primary, correct verdict); this only
         // restores the secondary gate detail so play-brief/play-brief-intel/narrative-coaching
         // (all gated on `play.gateBlocks?.length`) can surface it instead of rendering nothing.
-        gateBlocks: commitGateBlockedBy.length ? commitGateBlocksForVerdict(commitGateBlockedBy) : null,
+        gateBlocks: commitGateBlockedBy.length
+          ? commitGateBlocksForVerdict(commitGateBlockedBy, gateDiagnostics)
+          : null,
         actionLabel: "WAIT",
         entryAction: "dont_buy",
       };
