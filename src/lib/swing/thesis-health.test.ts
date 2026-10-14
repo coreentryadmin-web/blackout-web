@@ -365,4 +365,65 @@ describe("computeSwingThesisHealth", () => {
       assert.deepEqual(kept, [], "persistence's manage-driven label must not exempt a Banger-origin row from the full withhold");
     });
   });
+
+  // Live repro 2026-10-14, Ask Largo standing mandate, SWING:INTC:56: peak +15.3% -> trough -36.6%,
+  // currently -36.5% (3.5pts short of the -40 capital-backstop trigger, thesisBreak still "intact" so
+  // persistence never diverges either) -- none of `moves`'s own triggers fire, so the aggregate
+  // headline (`thesisHealthSection`, play-brief.ts) read "unchanged since commit" for a position that
+  // had just round-tripped through one of its most volatile days, directly contradicting the SAME
+  // brief's "Trade manager read" section one scroll down. `roundTripSinceCommit` is this payload's own
+  // independent signal for that exact case -- see its doc comment (zerodte/thesis-health.ts) for the
+  // full structural account of why `moves` alone can never catch it.
+  describe("roundTripSinceCommit", () => {
+    test("true when pnlPct is negative despite a real positive peak (round-tripped past breakeven)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW", "VECTOR", "CATALYST"],
+        thesisBreak: { level: "intact" },
+        pnlPct: -36.5,
+        peak: 15.3,
+        dte: 9,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, true);
+      // Sanity anchor on the exact failure mode: moves stays at its "unchanged" fallback even
+      // though a real round-trip happened, because none of its own triggers (pillar
+      // faded/lost, a non-HOLD manage action, or pnlPct <= -40) fire for this input -- that gap
+      // is precisely why a separate, explicit signal was needed.
+      assert.deepEqual(h!.moves, ["All swing pillars unchanged since commit."]);
+    });
+
+    test("false for a genuinely flat position (no peak ever recorded)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        pnlPct: -5,
+        peak: null,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false);
+    });
+
+    test("false when currently favorable (peak and pnlPct both positive -- no round trip yet)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        pnlPct: 9.1,
+        peak: 9.1,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false);
+    });
+  });
 });
