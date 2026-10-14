@@ -1,8 +1,8 @@
 {
   "lane": "night-hawk-swings",
   "schema": 1,
-  "last_updated": "2026-10-14T00:20Z",
-  "notes": "First real state change since market close: AVGO and WULF now both show a NEW gate not seen before this session -- gate:G-S12:halt_feed_stale -- alongside their existing blocks. Plausible, expected overnight behavior (a halt-feed freshness check correctly reads stale hours after RTH close, fail-closed) rather than a bug -- only 2 instances, below the 3-instance noise threshold, so not escalating yet; will watch whether it clears cleanly at tomorrow's open (would confirm the fail-closed read) or persists into RTH (would be a real gap worth investigating). SKHY dropped off the visible WATCH lane listing but confirmed still alive via its own play-brief ('At trigger, but commit gates have not cleared') -- likely rank-cutoff churn as AVGO/WULF scores moved, not an invalidation. Native book unchanged (INTC/GOOG/GOOGL same P&L, still post-close frozen marks).",
+  "last_updated": "2026-10-14T01:05Z",
+  "notes": "Traced G-S12:halt_feed_stale to its source (v2/halt-read.ts) -- it reads isTradingHaltChannelStale() off the UW WS halt-channel cluster-freshness check, the same primitive 0DTE's scan.ts uses. Confirms the hypothesis from the last tick: this is a real-time WS feed that naturally goes stale when markets are closed and no halt events are being broadcast -- correctly fail-closed, not a bug. Expect it to clear once the UW cluster starts delivering fresh halt-channel heartbeats around premarket/open. Will confirm at tomorrow's open rather than escalate further overnight. Native book/WATCH state unchanged from last several ticks (INTC/GOOG/GOOGL frozen, AVGO/WULF/AMZN same gate states).",
   "checked_this_cycle_no_bug_found": true,
   "findings_filed_this_cycle": false,
   "loss_taxonomy": {
