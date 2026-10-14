@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-14T13:22:00Z",
+  "lastUpdated": "2026-10-14T13:38:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -723,6 +723,10 @@
     {
       "at": "2026-10-14T13:22:00Z",
       "summary": "RTH-OPEN TRANSITION (routine, not a bug): D_pull_status flipped SKIPPED->GREEN -- morning-confirmation cron has now run for 2026-10-14's edition (CLS/VST/AMD), all three CONFIRMED<->pulled=false agree, no mismatches. Expected daily lifecycle event around market open, logged for continuity only. B_marks still AMBER (no live two-sided quote yet on all three OCCs) -- normal open-of-session latency, watch next cycle for it to clear as the option market makes markets. A_edition GREEN, C_record GREEN unchanged."
+    },
+    {
+      "at": "2026-10-14T13:38:00Z",
+      "summary": "RTH-OPEN TRANSITION (routine, not a bug): overall AMBER->GREEN. B_marks cleared (CLS mark=2.05 in [1.15,2.95], VST mark=0.84 in [0.67,1.01], AMD mark=2.03 in [1.95,2.1] -- all three now have live two-sided quotes, as predicted last cycle). A_edition/C_record/D_pull_status unchanged GREEN. Full board clean for the first time this session."
     }
   ],
   "knownOpenItems": {
