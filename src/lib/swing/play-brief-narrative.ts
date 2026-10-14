@@ -303,8 +303,32 @@ function narrateWall(level: FocalLevel, play: TerminalPlay, spot: number): strin
   const isCall = level.kind === "call_wall";
   const near = Math.abs(level.distancePct) < 1.5;
   const verb = isCall ? "caps upside" : "dealer support / put wall";
-  const action =
-    play.direction === "LONG"
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14, live repro: AMD WATCH brief). A call wall's
+  // canonical side is ABOVE spot (resistance still ahead); a put wall's is BELOW (support still
+  // underfoot). `near` alone (|distancePct| < 1.5) does not check which side the level is
+  // actually on, so once price has genuinely traded THROUGH a level — e.g. a put wall sitting
+  // ABOVE spot because price fell below what used to be support — the old code still picked the
+  // "near, canonical side" text and said the opposite of reality: "support underfoot — hold while
+  // above" for a support that had already given way. Live repro (GET /api/market/swing/play-brief
+  // ?ticker=AMD, 2026-10-14): spot 558.15, put wall 560.00 (+0.3%, so "near"), LONG — this wrote
+  // "Support underfoot — hold while above" in the SAME brief whose own "Vector desk: starred
+  // level" bullet, two lines later, read "Lost the 560 put wall ... support gave way" — two
+  // bullets in one section flatly contradicting each other about the same level. `breached` is
+  // true exactly when the level is on the WRONG side of its canonical relationship to spot (a put
+  // wall at/above spot, or a call wall at/below it), independent of `near`/`isCall` combos that
+  // still assume the canonical side below.
+  const breached = isCall ? level.distancePct <= 0 : level.distancePct >= 0;
+  const action = breached
+    ? isCall
+      ? // Call wall now at/below spot: resistance has already been cleared on the way up.
+        play.direction === "LONG"
+          ? "cleared — former resistance, now potential support if it holds"
+          : "reclaimed — resistance broken; short thesis at risk"
+      : // Put wall now at/above spot: support has already given way on the way down.
+        play.direction === "LONG"
+          ? "support broken — now overhead; reclaim to get back in play, else expect continued downside"
+          : "already broke — downside target cleared; watch for a bounce or continuation"
+    : play.direction === "LONG"
       ? isCall
         ? near
           ? "into strength — trim if rejected here"
