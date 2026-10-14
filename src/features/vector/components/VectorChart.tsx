@@ -207,6 +207,7 @@ import {
   VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS,
   VECTOR_WALL_TRAIL_SEC,
   vectorComparePerfPollMs,
+  liveTickDisplayRecomputeDue,
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
@@ -1623,6 +1624,8 @@ export function VectorChart({
   /** Canonical 1m session bars — SSE live ticks and Polygon seed write here only. */
   const minuteBarsRef = useRef<VectorBar[]>(initialBars);
   const displayBarTimeRef = useRef<number>(0);
+  /** Throttle gate for the live-tick display-bar/volume recompute — see vector-cadence.ts. */
+  const lastDisplayRecomputeAtRef = useRef<number>(0);
   const timeframeRef = useRef<VectorTimeframeMinutes>(initialTimeframe);
   // Tracks the timeframe the time scale was last fitContent()'d to, so the timeframe effect can
   // tell a GENUINE timeframe switch (refit expected) from a re-run triggered by a dependency's
@@ -4407,7 +4410,16 @@ export function VectorChart({
         }
         minuteBarsRef.current = upsertBar(minuteBarsRef.current, snap.candle as VectorBar);
         setSessionBars(minuteBarsRef.current);
-        if (!inReplay) {
+        // THROTTLED (2026-10-14): displayBarsFromMinute + the volume rebuild below are O(n) full
+        // rebuilds of the whole bar history, not incremental — see vector-cadence.ts's own comment
+        // on VECTOR_LIVE_TICK_DISPLAY_RECOMPUTE_THROTTLE_MS for the measured production impact of
+        // running this ungated on every SSE tick (main thread pinned near 100%, which starves
+        // Next.js's low-priority nav transition and makes clicking away from a long-open SPX
+        // Slayer tab silently do nothing). Gating to 5Hz keeps the chart visually live while
+        // bounding the rebuild's cost regardless of tick frequency.
+        const nowTick = Date.now();
+        if (!inReplay && liveTickDisplayRecomputeDue(lastDisplayRecomputeAtRef.current, nowTick)) {
+          lastDisplayRecomputeAtRef.current = nowTick;
           const displayBars = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
           const lastDisplay = displayBars[displayBars.length - 1];
           if (lastDisplay) {
