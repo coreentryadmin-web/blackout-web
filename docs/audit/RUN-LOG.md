@@ -4,6 +4,21 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-14 (18:16 UTC / Wed 14:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, draft jam flagged (not this lane's)
+
+Market closed for the day. Resynced to `origin/main` (`2018404` → `756006d`, other-lane
+journal). **Step 1:** purged Cloudflare edge HTML, measured live homepage CLS — first two reads
+came back elevated (**0.0062, 0.0067** — still GOOD, but a step up from the usual 0.0001-0.0008
+floor), re-measured a third time and it settled to **0.0006** — no homepage-affecting commit in
+recent history (checked `git log` on `src/components/`/`src/app/` — only backend fixes), so this
+is a non-reproducible transient consistent with the previously-documented pattern, not escalated.
+Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real 1200×630 PNG —
+crawlable, confirmed on production. **Step 2 — PR sweep:** 2 open agent PRs fleet-wide, neither
+this lane's own — #6000 (cron/platform-warm, READY-BUT-DRAFT, green CI — a genuine jam, flagged
+here per standing discipline but not acted on since it's another lane's PR and undrafting is the
+coordinator's call), #5537 (docs, CI-FAILED, long-confirmed intentional). **Step 3:** no new
+SEO-lane gap found. No PR opened.
+
 ## 2026-10-14 (16:35 UTC / Wed 12:36 ET) — [SEO] RTH wake (near close): gamma-snapshot live, CLS clean
 
 Confirmed market open myself (12:36 ET, ~24min to close). Same `flip: null` short-gamma-at-
