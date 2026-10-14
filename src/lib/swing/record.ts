@@ -129,13 +129,24 @@ export function buildSwingRecord(chain: SwingLegRowLike[]): SwingRecord {
 
   const legs: SwingLegGrade[] = ordered.map((r) => {
     const graded = r.graded_at != null && finite(r.realized_pnl_pct);
+    // FIX (Ask Largo standing mandate, 2026-10-14): round at this SAME single point of truth as
+    // worstLegPnlPct below, for the identical reason — composite.sumPnlPct/compoundedReturnPct
+    // (further down) are computed from these per-leg values, and the API boundary's roundFloats()
+    // independently re-rounds this SAME field again for display. Without rounding here first, the
+    // composite (built from RAW per-leg P&Ls) can disagree with the DISPLAYED (separately-rounded)
+    // legs by a cent — live repro 2026-10-14: rootPositionId=37 (AAPL) legs shown as -22.3/47.37
+    // (sum 25.07 by hand) served composite.sumPnlPct 25.06, because rounding is not distributive
+    // over addition/compounding. `win` deliberately still checks the RAW `r.realized_pnl_pct`, not
+    // this rounded value — isSwingWin's strict `>0` must not flip on an ultra-tiny P&L that rounds
+    // to 0.00.
+    const realizedPnlPct = finite(r.realized_pnl_pct) ? round2(r.realized_pnl_pct) : null;
     return {
       positionId: r.id,
       rollSeq: r.roll_seq,
       ticker: r.ticker,
       direction: r.direction,
       status: r.status,
-      realizedPnlPct: finite(r.realized_pnl_pct) ? r.realized_pnl_pct : null,
+      realizedPnlPct,
       graded,
       win: graded && isSwingWin(r.realized_pnl_pct),
       grade: r.grade_json,
