@@ -1244,6 +1244,13 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       provenance: { source: "Swing ledger", asOf: ctx.asOf, freshness: "recent" },
     });
   }
+  if (ctx.play.rollCandidate) {
+    out.push({
+      kind: "fact",
+      text: `Theta vs thesis alert — candidate for rolling to later expiry.`,
+      provenance: { source: "Swing lane", asOf: ctx.asOf, freshness: "recent" },
+    });
+  }
   return out;
 }
 
@@ -1500,6 +1507,8 @@ export function composeSwingPlayBrief(
         () => swingPlayBriefConfidence(play, bucket, unavailableSources),
         undefined
       ),
+      // Largo C4 (IDENTITY): swings are always equities.
+      ticker_class: "equity",
     }),
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,

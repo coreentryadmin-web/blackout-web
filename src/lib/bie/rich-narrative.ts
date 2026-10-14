@@ -43,6 +43,12 @@ export type BuildRichEnvelopeInput = {
    * the missing wire, not a new UI concept.
    */
   unavailableSources?: BieUnavailableSource[];
+  /**
+   * Asset class of the ticker this envelope describes (Largo C4 IDENTITY).
+   * Enables cross-product asset-class filtering and schema joins.
+   * Absent when the envelope does not describe a specific ticker.
+   */
+  ticker_class?: "index" | "equity" | "etf" | null;
 };
 
 /**
@@ -68,5 +74,7 @@ export function buildRichEnvelope(input: BuildRichEnvelopeInput): BieAnswerEnvel
     invalidation: input.invalidation ?? null,
     followups: input.followups,
     unavailableSources: input.unavailableSources,
+    // Largo C4: forward ticker_class only if provided (preserve optional semantics).
+    ...(input.ticker_class !== undefined ? { ticker_class: input.ticker_class } : {}),
   });
 }
