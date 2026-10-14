@@ -157,6 +157,9 @@
     },
     "2026-10-14T19:10:00Z_AMSC_WIN_BEX_STRONG_NEGATIVE_RESOLVED": {
       "note": "AMSC closed clean +4.82% ratchet. BEX opened with cortex score -0.99 (notably more negative than anything seen today, prior worst was -0.4) -- checked and resolved: it's two already-documented factors stacking, not a new issue. (1) the standing market-wide vex-charm-opposes-shorts condition (0.39, same as every other short today) PLUS (2) a separate self-disclosed provisional signal: 'charm pin-risk heuristic: after 14:30 ET with spot near king node, inside 0.3x expected move -- long premium bleeds into the pin (heuristic until the real charm lens ships)' (0.6) -- this is the SAME provisional near-close pin-risk detector flagged on GLWG earlier this week (logged then as 'self-aware/documented, not escalated'). Relief applied as expected (gex_walls_veto_relieved:true), tier correctly capped at B via the F-5 top-band discount. No new issue -- compounding of two KNOWN factors, not a new pattern. 2 new opens (BEX, FLEX), 10 open total. Board blocker now confluence_floor -- a new gate state this cycle, not investigated further (not anomalous on its face, G-6 per the gate sequence)."
+    },
+    "2026-10-14T19:15:00Z_BEX_FLEX_CLOSED_SCRATCHES_CLEAN": {
+      "note": "BEX closed flat_scratch -1.73% (consistent with its already-explained weak -0.99 entry last cycle -- a modest loss is the unsurprising outcome, not new information). FLEX closed flat_scratch -8.33% (larger than typical but still within the documented +/-10% band threshold the scratch mechanism allows). Nothing anomalous. 8 open remaining. Clean cycle."
     }
   },
   "sessions": {
