@@ -115,7 +115,7 @@ function auditC3Absence(envelope) {
   }
 
   // Check narrative doesn't claim data missing while structured says it's available
-  const narrativeText = (envelope?.narrative_sections || []).map(s => s.body || "").join(" ");
+  const narrativeText = (envelope?.sections || []).map(s => s.body || "").join(" ");
   const isNarrativeUnavailable = /\b(unavailable|missing|unable|cannot access)\b/i.test(narrativeText);
   const isStructuredUnavailable = unavail && unavail.length > 0;
 
@@ -135,13 +135,13 @@ function auditC3Absence(envelope) {
  * ticker: string (uppercase canonical root: "SPX", never "I:SPX" or "SPXW")
  * ticker_class: "index" | "equity" | "etf"
  */
-function auditC4Identity(envelope) {
+function auditC4Identity(responseData) {
   const findings = [];
-  const ticker = envelope?.ticker;
-  const ticker_class = envelope?.ticker_class;
+  const ticker = responseData?.ticker;
+  const ticker_class = responseData?.ticker_class;
 
   if (!ticker) {
-    findings.push({ code: "C4-missing-ticker", severity: "RED", detail: "envelope.ticker missing" });
+    findings.push({ code: "C4-missing-ticker", severity: "RED", detail: "root.ticker missing" });
   } else if (!/^[A-Z]+$/.test(ticker)) {
     findings.push({ code: "C4-non-uppercase-ticker", severity: "RED", detail: `ticker not uppercase: ${ticker}` });
   } else if (ticker.includes("I:") || ticker.includes("W")) {
@@ -149,7 +149,7 @@ function auditC4Identity(envelope) {
   }
 
   if (!ticker_class) {
-    findings.push({ code: "C4-missing-ticker-class", severity: "RED", detail: "envelope.ticker_class missing" });
+    findings.push({ code: "C4-missing-ticker-class", severity: "AMBER", detail: "root.ticker_class not present (may not be computed yet)" });
   } else if (!["index", "equity", "etf"].includes(ticker_class)) {
     findings.push({ code: "C4-invalid-ticker-class", severity: "RED", detail: `ticker_class invalid: ${ticker_class}` });
   }
@@ -159,22 +159,23 @@ function auditC4Identity(envelope) {
 
 /**
  * CONTRACT AUDIT: C5 DIRECTION
- * direction: "bullish" | "bearish" | "neutral"
+ * bias: "bullish" | "bearish" | "neutral"
  * Keep product's native richer notion alongside it
  */
-function auditC5Direction(envelope) {
+function auditC5Direction(responseData) {
   const findings = [];
-  const direction = envelope?.direction;
+  const envelope = responseData?.envelope;
+  const bias = envelope?.bias;
 
-  if (!direction) {
-    findings.push({ code: "C5-missing-direction", severity: "AMBER", detail: "envelope.direction missing (may be unavailable)" });
-  } else if (!["bullish", "bearish", "neutral"].includes(direction)) {
-    findings.push({ code: "C5-invalid-direction", severity: "RED", detail: `direction invalid: ${direction}` });
+  if (!bias) {
+    findings.push({ code: "C5-missing-direction", severity: "AMBER", detail: "envelope.bias missing (may be unavailable)" });
+  } else if (!["bullish", "bearish", "neutral"].includes(bias)) {
+    findings.push({ code: "C5-invalid-direction", severity: "RED", detail: `bias invalid: ${bias}` });
   }
 
-  // Check for raw signs (positive/negative/plus/minus)
-  const narrativeText = (envelope?.narrative_sections || []).map(s => s.body || "").join(" ");
-  if (/\b([+-]\d+%|positive|negative|[+−])\b/.test(narrativeText) && direction) {
+  // Check for raw signs (positive/negative/plus/minus) in narrative
+  const narrativeText = (envelope?.sections || []).map(s => s.body || "").join(" ");
+  if (/\b([+-]\d+%|positive|negative|[+−])\b/.test(narrativeText) && bias) {
     // This is OK — product's richer notion alongside labeled direction
   }
 
@@ -186,11 +187,14 @@ function auditC5Direction(envelope) {
  * confidence?: { score: number; basis: string; sample_size: number | null }
  * OMIT if not calibrated — never fabricate
  */
-function auditC6Confidence(envelope) {
+function auditC6Confidence(responseData) {
   const findings = [];
+  const envelope = responseData?.envelope;
   const conf = envelope?.confidence;
 
-  if (conf) {
+  if (!conf) {
+    findings.push({ code: "C6-missing-confidence", severity: "AMBER", detail: "envelope.confidence not present (may not be calibrated yet)" });
+  } else {
     if (typeof conf.score !== "number" || conf.score < 0 || conf.score > 1) {
       findings.push({ code: "C6-invalid-confidence-score", severity: "RED", detail: `confidence.score invalid: ${conf.score}` });
     }
@@ -201,7 +205,7 @@ function auditC6Confidence(envelope) {
   }
 
   // Check narrative doesn't claim high confidence while structured is low (or vice versa)
-  const narrativeText = (envelope?.narrative_sections || []).map(s => s.body || "").join(" ");
+  const narrativeText = (envelope?.sections || []).map(s => s.body || "").join(" ");
   const narrativeHighConf = /\b(confident|certain|clear|strong|definitely)\b/i.test(narrativeText);
   const structuredHighConf = conf && conf.score >= 0.7;
 
@@ -220,12 +224,13 @@ function auditC6Confidence(envelope) {
  * CONTRACT AUDIT: C7 EVIDENCE
  * evidence: string[] — specific numbers, not restatements
  */
-function auditC7Evidence(envelope) {
+function auditC7Evidence(responseData) {
   const findings = [];
+  const envelope = responseData?.envelope;
   const evidence = envelope?.evidence;
 
   if (!Array.isArray(evidence)) {
-    findings.push({ code: "C7-missing-evidence", severity: "AMBER", detail: "envelope.evidence not an array" });
+    findings.push({ code: "C7-missing-evidence", severity: "AMBER", detail: "envelope.evidence not an array (may extract from sections)" });
     return findings;
   }
 
@@ -249,9 +254,11 @@ function auditC7Evidence(envelope) {
  * source: "polygon" | "unusual_whales" | "benzinga" | "internal_db" | "redis" | "computed"
  * cohort: required alongside rates/coverage/fill numbers
  */
-function auditC8Provenance(envelope) {
+function auditC8Provenance(responseData) {
   const findings = [];
+  const envelope = responseData?.envelope;
   const source = envelope?.source;
+  const intent = envelope?.intent;
 
   if (!source) {
     findings.push({ code: "C8-missing-source", severity: "AMBER", detail: "envelope.source missing" });
@@ -259,12 +266,18 @@ function auditC8Provenance(envelope) {
     findings.push({ code: "C8-invalid-source", severity: "RED", detail: `source invalid: ${source}` });
   }
 
+  if (!intent) {
+    findings.push({ code: "C8-missing-intent", severity: "AMBER", detail: "envelope.intent missing" });
+  } else if (intent !== "swing_play_brief") {
+    findings.push({ code: "C8-unexpected-intent", severity: "AMBER", detail: `intent unexpected: ${intent}` });
+  }
+
   // Check if claims include rates/coverage/fill without cohort
-  const narrativeText = (envelope?.narrative_sections || []).map(s => s.body || "").join(" ");
+  const narrativeText = (envelope?.sections || []).map(s => s.body || "").join(" ");
   const hasCoverage = /\b(\d+%|coverage|fill|rate)\b/i.test(narrativeText);
   const hasCohort = envelope?.cohort !== undefined && envelope.cohort !== null;
 
-  if (hasCoverage && !hasCohort && envelope?.source === "internal_db") {
+  if (hasCoverage && !hasCohort && source === "internal_db") {
     findings.push({
       code: "C8-missing-cohort",
       severity: "AMBER",
@@ -279,11 +292,12 @@ function auditC8Provenance(envelope) {
  * CONTRACT AUDIT: C9 PRECISION
  * No rounding inside providers — only at tool boundary
  */
-function auditC9Precision(envelope) {
+function auditC9Precision(responseData) {
   // This would require deep inspection of how numbers are computed
   // For now, just check for obviously-rounded numbers in narrative
   const findings = [];
-  const narrativeText = (envelope?.narrative_sections || []).map(s => s.body || "").join(" ");
+  const envelope = responseData?.envelope;
+  const narrativeText = (envelope?.sections || []).map(s => s.body || "").join(" ");
 
   // Check for suspicious rounding (x.00%, x.0%, whole numbers where decimals expected)
   const roundedNumbers = narrativeText.match(/\b\d+\.00%|\b\d+\.0%\b/g) || [];
@@ -302,12 +316,13 @@ function auditC9Precision(envelope) {
  * CONTRACT AUDIT: C10 HISTORICAL CONTEXT
  * If available, should be exposed as a tool, not baked into prose
  */
-function auditC10HistoricalContext(envelope) {
+function auditC10HistoricalContext(responseData) {
   const findings = [];
-  const narrativeText = (envelope?.narrative_sections || []).map(s => s.body || "").join(" ");
+  const envelope = responseData?.envelope;
+  const narrativeText = (envelope?.sections || []).map(s => s.body || "").join(" ");
 
   // Check if narrative bakes historical reasoning without tool
-  if (/\b(historically|past sessions|precedent|similar conditions)\b/i.test(narrativeText) && !envelope?.historical_tool) {
+  if (/\b(historically|past sessions|precedent|similar conditions|archetype|win rate|track record)\b/i.test(narrativeText) && !envelope?.historical_tool) {
     findings.push({
       code: "C10-baked-historical-context",
       severity: "AMBER",
