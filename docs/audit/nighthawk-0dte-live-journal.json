@@ -124,6 +124,9 @@
     },
     "2026-10-14T13:11:00Z_WEDNESDAY_COLD_START": {
       "note": "Wednesday cold start, checked 9:11 ET pre-market \u2014 board correctly shows 0 scanned/0 plays (discovery's opening_window G-2 doesn't unlock until 10:00 ET), /record?days=1 shows only yesterday's 7 resolved plays. Normal, nothing to report. NOTED (not acted on, not mine to touch): overnight commit c75b3632c (#5981, shared NIGHT HAWK OWNER lane) shipped a real perf fix touching src/lib/platform/zerodte-service.ts within my scope \u2014 off-hours (8pm-4am ET, via isEtExtendedWarmHours) board reads now serve the existing bounded per-replica last-good-board fallback (localBoardIsServable, same staleness-ceiling mechanism already used elsewhere in this file) instead of triggering an expensive cold rebuild on every poll. Evidence cited: ALB p99 climbed 2.4s->8.3s over 3hrs off-hours. Reviewed the diff: sound, correctly bounded (falls through to the honest upstream_ok:false empty board past the staleness ceiling, never serves unboundedly stale data as current), and the warm-hours window (4am-8pm ET) fully covers RTH so it won't affect daytime forensic reads. No action needed from me."
+    },
+    "2026-10-14T14:10:00Z_CRWV_SPXW_FAST_OPENING_RATCHET_WINS": {
+      "note": "Wednesday session underway. 2 new plays, both flagged 10:02 ET (right at the opening_window G-2 unlock) and both already closed within ~5min as fast ratchet_early_profit_floor wins: CRWV short +5.08% (peaked +13.28%, floor caught the pullback), SPXW short +5.65% (peaked +14.04%, floor caught it). Both clean cortex PASS entries, textbook floor mechanics on volatile opening-range action. No issue. Current blocker: early_window_prime_score (G-18, sub-prime scores held to a higher bar in the early window) \u2014 expected mechanics this time of day, not an anomaly. Nothing to escalate this cycle."
     }
   },
   "sessions": {
