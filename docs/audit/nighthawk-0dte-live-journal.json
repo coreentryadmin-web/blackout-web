@@ -133,6 +133,9 @@
     },
     "2026-10-14T15:10:00Z_SOFI_WIN_QQQ_TEM_OPEN_CLEAN": {
       "note": "SOFI short closed +6.25% ratchet, tier A, clean entry. 2 new OPEN positions: QQQ short (cortex net-negative -0.01 but committed PASS \u2014 same known Vector-relief mechanism as SSRM 2026-10-13, tier-capped via F-5 top-band discount) and TEM long (clean +0.13 cortex support, prime score band, thin-evidence honestly disclosed 6/8 absent). Both well-formed, nothing anomalous. Today running 6 plays so far: 4W(CRWV,SPXW,SPY,SOFI)/1L(AFRM thesis_break:gex-walls, the 5th-instance pattern logged last cycle)/1scratch(ORCL), 2 open. No new escalation this cycle \u2014 watching QQQ/TEM to resolution."
+    },
+    "2026-10-14T15:44:00Z_QQQ_BIG_WIN_ENPH_WIN_3_NEW_OPENS_CLEAN": {
+      "note": "QQQ closed +38.81% via ratchet_profit_floor (peaked +96.64%, floor correctly caught the pullback) \u2014 a large, well-managed winner, textbook ratchet mechanics on a strong mover. ENPH short also closed clean +3.13% ratchet. 3 new OPEN positions (CRWG, DELL, DOCN), all cortex PASS, no vetoes (CRWG +0.4, DELL +0.26, DOCN -0.25 but still PASS, same relief pattern already understood). TEM still open from last cycle. Today running tally: 7W(CRWV,SPXW,SPY,SOFI,QQQ,ENPH + more)/1L(AFRM)/1scratch(ORCL), 4 open (CRWG,DELL,DOCN,TEM). Strong session so far. No new escalation."
     }
   },
   "sessions": {
