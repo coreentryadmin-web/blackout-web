@@ -84,6 +84,80 @@ test("tradeManagerNarrativeSection: narrates dark pool + dealer posture", () => 
   assert.match(section!.body, /Break watch/i);
 });
 
+// PR #5994 added net_vex/net_dex/net_charm + their regime-read strings to gexPostureSection
+// ("GEX posture"), but collapseRedundantIntelSections drops that WHOLE section for OPEN/WATCH
+// buckets once a narrative is present, under a "folded into Trade manager read" note -- and
+// dealerPostureLine (this file) never actually carried any vanna/dex/charm content, so the fields
+// silently vanished for most members instead of folding into anything. Fixed by appending the
+// same interpretive regime-read strings (not the raw $ figures -- parity with net_gex's own
+// dollar value, which is likewise never narrated here) to the dealer-posture bullet itself.
+test("tradeManagerNarrativeSection: carries vanna/delta/charm regime reads so collapsing 'GEX posture' doesn't lose them (2026-10-14)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          net_vex: 2_000_000,
+          vanna_regime_read: "vanna tailwind on rallies",
+          net_dex: -1_500_000,
+          dex_regime_read: "dealers short delta, hedging adds supply on bounces",
+          net_charm: 800_000,
+          charm_regime_read: "charm pinning builds into expiry",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /vanna: vanna tailwind on rallies/i);
+  assert.match(section!.body, /delta: dealers short delta, hedging adds supply on bounces/i);
+  assert.match(section!.body, /charm: charm pinning builds into expiry/i);
+  // Parity check: the raw $ figures stay out of the narrative (gexPostureSection's "Net GEX"/
+  // "Net VEX"/etc. $-figure lines are the one place for those, same as net_gex already is).
+  assert.doesNotMatch(section!.body, /\$2\.0M|\$1\.5M|\$0\.8M/);
+});
+
+test("tradeManagerNarrativeSection: stale GEX matrix suppresses vanna/delta/charm regime reads (Largo C2 parity)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          matrix_age_sec: 200,
+          freshness: "cached",
+          net_vex: 2_000_000,
+          vanna_regime_read: "vanna tailwind on rallies",
+          net_dex: -1_500_000,
+          dex_regime_read: "dealers short delta, hedging adds supply on bounces",
+          net_charm: 800_000,
+          charm_regime_read: "charm pinning builds into expiry",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /vanna tailwind on rallies/i);
+  assert.doesNotMatch(section!.body, /dealers short delta, hedging adds supply on bounces/i);
+  assert.doesNotMatch(section!.body, /charm pinning builds into expiry/i);
+});
+
 test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE spot as 'support' (2026-09-11)", () => {
   // breakTrigger picked the NEAREST put_wall/dark_pool match by unsigned distance without checking
   // which side of spot it sat on. A dark-pool print can be printed above OR below spot (see
