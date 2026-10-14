@@ -186,6 +186,12 @@ export type BieAnswerEnvelope = {
    * (no DB configured, or a path that does not store).
    */
   turnId?: number | null;
+  /**
+   * Asset class of the ticker this envelope describes (Largo C4 IDENTITY).
+   * Enables cross-product asset-class filtering and schema joins.
+   * Absent when the envelope does not describe a specific ticker.
+   */
+  ticker_class?: "index" | "equity" | "etf" | null;
   /** When the envelope was assembled (ISO). */
   asOf: string;
   /**
