@@ -3112,3 +3112,179 @@ test("tradeManagerNarrativeSection: capture-branch giveback line keeps the unqua
   assert.match(section!.body, /Gave back \*\*85%\*\* of peak — consider protecting runner\./);
   assert.doesNotMatch(section!.body, /already banked at a profit/);
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-14, live repro: AMD WATCH brief). narrateWall
+// picked its "action" text purely from `near = |distancePct| < 1.5`, never checking which SIDE of
+// spot the level actually sits on. A put wall's canonical side is BELOW spot (real support); a
+// call wall's is ABOVE (real resistance). Once price has actually traded through the level —
+// e.g. a put wall now sits ABOVE spot because price fell below what used to be support — the
+// level is on the WRONG side of its canonical relationship, and picking on `near` alone produced
+// the exact opposite of reality: "support underfoot — hold while above" when the support had
+// already broken. Live AMD repro (2026-10-14, GET /api/market/swing/play-brief?...ticker=AMD):
+// spot 558.15, put wall 560.00 (+0.3% from spot, so "near"), direction LONG — this function wrote
+// "Put wall 560.00 (+0.3% from spot) — dealer support / put wall. Support underfoot — hold while
+// above." in the SAME brief whose own "Vector desk: starred level" bullet, two lines later, read
+// "Lost the 560 put wall (0.33% overhead) — support gave way; dealers stop cushioning, watch for
+// continuation lower." — two bullets in one section flatly contradicting each other about whether
+// the exact same level is currently holding or already broken.
+test("tradeManagerNarrativeSection: LONG put wall ABOVE spot reads as broken support, not 'hold while above' (2026-10-14, live AMD repro)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 558.15,
+        gammaFlip: 557.55,
+        regime: { posture: "short", label: "SHORT GAMMA" },
+        gexWalls: {
+          // Put wall now ABOVE spot (+0.3%) -- support already lost, not "near and holding".
+          putWalls: [{ strike: 560, gex: 1 }],
+          callWalls: [{ strike: 620, gex: 1 }],
+        },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "AMD",
+        recent_flow: null,
+        gex_positioning: { spot: 558.15, flip: 557.55, gamma_posture: "short", gex_king_strike: 560 },
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  const wallLine = section!.body.split("\n").find((l) => l.includes("**Put wall 560.00**"));
+  assert.ok(wallLine, "expected a narrated Put wall 560.00 bullet");
+  assert.doesNotMatch(
+    wallLine!,
+    /support underfoot — hold while above/i,
+    "price is BELOW a put wall that is now overhead -- it is not holding anything up",
+  );
+  assert.match(
+    wallLine!,
+    /support broken|already broke|no longer holding|now overhead/i,
+    "an above-spot put wall on a LONG must read as broken support, not a healthy floor",
+  );
+});
+
+test("tradeManagerNarrativeSection: LONG call wall BELOW spot reads as cleared resistance, not 'trim if rejected' (2026-10-14)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+        gexWalls: {
+          // Call wall now BELOW spot (-0.5%) -- resistance already cleared on the way up.
+          callWalls: [{ strike: 99.5, gex: 1 }],
+          putWalls: [{ strike: 90, gex: 1 }],
+        },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TEST",
+        recent_flow: null,
+        gex_positioning: { spot: 100, flip: 98, gamma_posture: "long", gex_king_strike: 99.5 },
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  const wallLine = section!.body.split("\n").find((l) => l.includes("**Call wall 99.50**"));
+  assert.ok(wallLine, "expected a narrated Call wall 99.50 bullet");
+  assert.doesNotMatch(
+    wallLine!,
+    /into strength — trim if rejected here/i,
+    "a call wall already BELOW spot has been cleared, not approached from below",
+  );
+  assert.match(
+    wallLine!,
+    /cleared|reclaimed|already broke/i,
+    "a below-spot call wall on a LONG must read as already-cleared resistance",
+  );
+});
+
+test("tradeManagerNarrativeSection: SHORT call wall BELOW spot reads as reclaimed resistance, not 'rejection zone' (2026-10-14)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 102,
+        regime: { posture: "short", label: "SHORT GAMMA" },
+        gexWalls: {
+          // Call wall now well BELOW spot (-6%) -- the short's own resistance already broke.
+          callWalls: [{ strike: 94, gex: 1 }],
+          putWalls: [{ strike: 85, gex: 1 }],
+        },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TEST",
+        recent_flow: null,
+        gex_positioning: { spot: 100, flip: 102, gamma_posture: "short", gex_king_strike: 94 },
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  const wallLine = section!.body.split("\n").find((l) => l.includes("**Call wall 94.00**"));
+  assert.ok(wallLine, "expected a narrated Call wall 94.00 bullet");
+  assert.doesNotMatch(
+    wallLine!,
+    /target zone for shorts/i,
+    "a call wall already behind the short (below spot) is not still a target ahead of it",
+  );
+  assert.match(
+    wallLine!,
+    /reclaimed|broken|already broke/i,
+    "a below-spot call wall on a SHORT must read as already-broken resistance, risk to the thesis",
+  );
+});
+
+test("tradeManagerNarrativeSection: SHORT put wall ABOVE spot reads as already broken, not 'invalidates weak short' (2026-10-14)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT" }),
+      vector: {
+        spot: 100,
+        gammaFlip: 102,
+        regime: { posture: "short", label: "SHORT GAMMA" },
+        gexWalls: {
+          // Put wall now ABOVE spot (+3%) -- the short already traded through its own downside target.
+          putWalls: [{ strike: 103, gex: 1 }],
+          callWalls: [{ strike: 110, gex: 1 }],
+        },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "TEST",
+        recent_flow: null,
+        gex_positioning: { spot: 100, flip: 102, gamma_posture: "short", gex_king_strike: 103 },
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  const wallLine = section!.body.split("\n").find((l) => l.includes("**Put wall 103.00**"));
+  assert.ok(wallLine, "expected a narrated Put wall 103.00 bullet");
+  assert.doesNotMatch(
+    wallLine!,
+    /support too close — invalidates weak short/i,
+    "a put wall already behind the short (above spot) has already broken, it is not a nearby invalidation risk ahead",
+  );
+  assert.match(
+    wallLine!,
+    /already broke|broken|cleared/i,
+    "an above-spot put wall on a SHORT must read as already-cleared downside, not a future invalidation risk",
+  );
+});
