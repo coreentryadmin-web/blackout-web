@@ -139,6 +139,9 @@
     },
     "2026-10-14T16:10:00Z_DOCN_WIN_STRONG_SESSION_CONTINUES": {
       "note": "DOCN closed clean +18.18% (trim_scale_dead_zone_floor, peaked +36.36%, floor correctly caught the pullback). Today's tally now 10W/6L overall on the ledger (includes yesterday's carryover in the days=1 window) \u2014 single-leg session today specifically: 8W(CRWV,SPXW,SPY,SOFI,QQQ,ENPH,DOCN+1)/1L(AFRM)/1scratch(ORCL), 3 still open (CRWG,DELL,TEM). Strong day, exit mechanics clean across every closed play checked this session. No new escalation."
+    },
+    "2026-10-14T16:43:00Z_ASTS_CRWG_WINS_EXCEPTIONAL_WEDNESDAY_TALLY": {
+      "note": "ASTS +11.76% and CRWG +16.44%, both clean ratchet wins. Wednesday single-leg tally now 10W(CRWV,SPXW,SPY,SOFI,QQQ,ENPH,DOCN,ASTS,CRWG+1)/1L(AFRM)/1scratch(ORCL) across 12 closed plays \u2014 an exceptionally strong, consistently clean session; every exit checked this session showed coherent, correctly-calibrated ratchet/floor/scratch mechanics with no anomalies. Only DELL and TEM remain open. Nothing to escalate \u2014 noting the strong day for the record but not treating a good outcome streak as itself a finding (per the same discipline that stops a loss streak from being over-read as a bug without evidence)."
     }
   },
   "sessions": {
