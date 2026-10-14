@@ -343,6 +343,52 @@ describe("analyzePhase2EarlyRead", () => {
     assert.equal(report.by_target_atr_gate.under_gate.rate_pct, 0);
   });
 
+  test("over_gate_by_promotion splits the over_gate population by gate_promoted, never blending rescued and non-rescued over-gate rows into one rate", () => {
+    const rows: DebriefAggregateRow[] = [
+      row({
+        ticker: "RESCUED_WIN",
+        outcome: "open",
+        debrief: debrief("target_unreachable"),
+        publish_context: pc({ gate_promoted: true, gates: { checks: [{ code: "target_unreachable", value: 2.3 }] } }),
+      }),
+      row({
+        ticker: "RESCUED_LOSS",
+        outcome: "open",
+        debrief: debrief("wrong_direction"),
+        publish_context: pc({ gate_promoted: true, gates: { checks: [{ code: "target_unreachable", value: 2.4 }] } }),
+      }),
+      row({
+        ticker: "OTHER_PATH_WIN",
+        outcome: "open",
+        debrief: debrief("gap_win"),
+        publish_context: pc({ gate_promoted: false, gates: { checks: [{ code: "target_unreachable", value: 3.5 }] } }),
+      }),
+      row({
+        ticker: "UNDER_GATE",
+        outcome: "open",
+        debrief: debrief("wrong_direction"),
+        publish_context: pc({ gate_promoted: false, gates: { checks: [{ code: "target_unreachable", value: 1.1 }] } }),
+      }),
+    ];
+    const report = analyzePhase2EarlyRead(rows, 90);
+    // Over-gate population is RESCUED_WIN + RESCUED_LOSS + OTHER_PATH_WIN (value > 2.0); UNDER_GATE stays out.
+    assert.equal(report.by_target_atr_gate.over_gate.n, 3);
+    // Promoted-split: 2 promoted (1 win, 1 loss -> 50%), 1 not-promoted (1 win -> 100%) -- distinct
+    // from each other and from the blended 66.7% over_gate rate, proving the split is real.
+    assert.equal(report.over_gate_by_promotion.promoted.n, 2);
+    assert.equal(report.over_gate_by_promotion.promoted.rate_pct, 50);
+    assert.equal(report.over_gate_by_promotion.not_promoted.n, 1);
+    assert.equal(report.over_gate_by_promotion.not_promoted.rate_pct, 100);
+  });
+
+  test("over_gate_by_promotion is zeroed, never throws, when there are no over-gate rows", () => {
+    const report = analyzePhase2EarlyRead([], 90);
+    assert.equal(report.over_gate_by_promotion.promoted.n, 0);
+    assert.equal(report.over_gate_by_promotion.promoted.rate_pct, null);
+    assert.equal(report.over_gate_by_promotion.not_promoted.n, 0);
+    assert.equal(report.over_gate_by_promotion.not_promoted.rate_pct, null);
+  });
+
   test("by_dte splits weekly (<=10 calendar days) vs longer (>10), parsed from the pinned options_play string anchored to edition_for", () => {
     const rows: DebriefAggregateRow[] = [
       row({

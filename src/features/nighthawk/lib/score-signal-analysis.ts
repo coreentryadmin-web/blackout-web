@@ -300,6 +300,12 @@ export type Phase2Report = {
   by_total_score: { summary: BucketSummary[]; verdict: BucketVerdict };
   by_flow_dominance: { summary: BucketSummary[]; verdict: BucketVerdict };
   by_target_atr_gate: { under_gate: BucketSummary; over_gate: BucketSummary };
+  // Cross-tab of the over_gate population only, by whether the row carries gate_promoted=true
+  // (the PR #5961 gate-promote rescue path) vs false (published over-gate by some other route,
+  // e.g. the still-open backfillBypassesPublishGates_2026_09_17T1815Z finding) -- added so a raw
+  // over_gate favorable-rate number is never read as "the rescue is helping" without first
+  // knowing which published-over-gate mechanism actually produced each row.
+  over_gate_by_promotion: { promoted: BucketSummary; not_promoted: BucketSummary };
   by_dte: { weekly_lte_10: BucketSummary; longer_gt_10: BucketSummary };
   interaction_high_flow_dominance: { summary: BucketSummary[]; verdict: BucketVerdict };
   interaction_low_flow_dominance: { summary: BucketSummary[]; verdict: BucketVerdict };
@@ -341,6 +347,8 @@ export function analyzePhase2EarlyRead(rows: DebriefAggregateRow[], windowDays: 
 
   const underGate = withTag.filter((r) => r.target_atr_multiple != null && !r.over_target_atr_gate);
   const overGate = withTag.filter((r) => r.over_target_atr_gate);
+  const overGatePromoted = overGate.filter((r) => r.gate_promoted);
+  const overGateNotPromoted = overGate.filter((r) => !r.gate_promoted);
   const weekly = withTag.filter((r) => r.dte != null && r.dte <= 10);
   const longer = withTag.filter((r) => r.dte != null && r.dte > 10);
 
@@ -378,6 +386,10 @@ export function analyzePhase2EarlyRead(rows: DebriefAggregateRow[], windowDays: 
     by_target_atr_gate: {
       under_gate: { bucket: "under_gate (<=2.0x ATR)", ordinal: 1, n: underGate.length, rate_pct: favRate(underGate) },
       over_gate: { bucket: "over_gate (>2.0x ATR)", ordinal: 2, n: overGate.length, rate_pct: favRate(overGate) },
+    },
+    over_gate_by_promotion: {
+      promoted: { bucket: "over_gate, gate_promoted=true", ordinal: 1, n: overGatePromoted.length, rate_pct: favRate(overGatePromoted) },
+      not_promoted: { bucket: "over_gate, gate_promoted=false", ordinal: 2, n: overGateNotPromoted.length, rate_pct: favRate(overGateNotPromoted) },
     },
     by_dte: {
       weekly_lte_10: { bucket: "weekly (dte<=10)", ordinal: 1, n: weekly.length, rate_pct: favRate(weekly) },
