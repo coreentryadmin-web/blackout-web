@@ -5,6 +5,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import { buildBieFullState } from "@/lib/bie/full-platform-snapshot";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { acquireHeavyCronSlot, type HeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
 
 // 24/7 full-platform snapshot — the "brain of BlackOut" feed (task #54).
 //
@@ -38,7 +39,7 @@ export const maxDuration = 60;
 const OVERLAP_LOCK_KEY = "bie-full-state-snapshot:running";
 const OVERLAP_LOCK_TTL_SEC = 900;
 
-async function runBieFullStateSnapshot(started: number): Promise<void> {
+async function runBieFullStateSnapshot(started: number, slot: HeavyCronSlot): Promise<void> {
   try {
     const state = await buildBieFullState();
     console.info(
@@ -51,6 +52,7 @@ async function runBieFullStateSnapshot(started: number): Promise<void> {
     console.error(`[cron/bie-full-state-snapshot] background REJECTED: ${detail}`);
   } finally {
     await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    await slot.release();
   }
 }
 
@@ -82,6 +84,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Cross-CRON concurrency cap — distinct from the self-overlap lock just above. Live CloudWatch
+  // (2026-10-13 13:35-13:56 UTC) showed this cron and 5 OTHER heavy crons in flight at once on
+  // the shared web tier, 1:1 correlated with sustained ALB tail latency — see
+  // heavy-cron-concurrency-guard.ts's header for the full evidence.
+  const slot = await acquireHeavyCronSlot("bie-full-state-snapshot", OVERLAP_LOCK_TTL_SEC);
+  if (!slot) {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "heavy-cron concurrency slot unavailable (idempotent skip)",
+    };
+    await logCronRun("bie-full-state-snapshot", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // buildBieFullState() fans out across desk/GEX/Vector loaders and can exceed Cloudflare's
   // ~100s origin timeout when caches are cold — mirror zerodte-warm's fire-and-forget handshake.
   //
@@ -89,7 +107,7 @@ export async function GET(req: NextRequest) {
   // UW concurrency slot reachable for live member traffic even while mid-run — see
   // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatchSnapshot = () => {
-    void runWithBackgroundUwSweep(() => runBieFullStateSnapshot(started)).catch((error) => {
+    void runWithBackgroundUwSweep(() => runBieFullStateSnapshot(started, slot)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/bie-full-state-snapshot] background snapshot REJECTED: ${detail}`);
     });

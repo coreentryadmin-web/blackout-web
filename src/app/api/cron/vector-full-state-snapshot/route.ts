@@ -13,6 +13,7 @@ import { computeVectorFullState } from "@/lib/bie/vector-full-state";
 import { writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
 import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { acquireHeavyCronSlot, type HeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
 
 // Continuous Vector full-state ingestion — the "non-stop feed" behind Largo-BIE.
 //
@@ -75,7 +76,7 @@ const OVERLAP_LOCK_TTL_SEC = 900;
 const WARM_CURSOR_KEY = "vector:full-state-snapshot:cursor";
 const WARM_CURSOR_TTL_SEC = 7 * 24 * 3600;
 
-async function runVectorFullStateSnapshot(started: number): Promise<void> {
+async function runVectorFullStateSnapshot(started: number, slot: HeavyCronSlot): Promise<void> {
   try {
     // Static allowlist ∪ dynamic (member-viewed) ∪ real open swing positions — see
     // vector-full-state-warm-universe.ts's header for the gap this closes (a committed swing
@@ -148,6 +149,7 @@ async function runVectorFullStateSnapshot(started: number): Promise<void> {
     );
   } finally {
     await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    await slot.release();
   }
 }
 
@@ -179,6 +181,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Cross-CRON concurrency cap — distinct from the self-overlap lock just above. Live CloudWatch
+  // (2026-10-13 13:35-13:56 UTC) showed this cron and 5 OTHER heavy crons in flight at once on
+  // the shared web tier, 1:1 correlated with sustained ALB tail latency — see
+  // heavy-cron-concurrency-guard.ts's header for the full evidence.
+  const slot = await acquireHeavyCronSlot("vector-full-state-snapshot", OVERLAP_LOCK_TTL_SEC);
+  if (!slot) {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "heavy-cron concurrency slot unavailable (idempotent skip)",
+    };
+    await logCronRun("vector-full-state-snapshot", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // computeVectorFullState × universe × horizons can exceed Cloudflare's ~100s origin timeout
   // when caches are cold (ops #1355: market_hours_stale with no fresh cron_job_runs row). Mirror
   // bie-full-state-snapshot / vector-dark-pool-warm: handshake in seconds, sweep in after().
@@ -187,7 +205,7 @@ export async function GET(req: NextRequest) {
   // UW concurrency slot reachable for live member traffic even while mid-run — see
   // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatchSnapshot = () => {
-    void runWithBackgroundUwSweep(() => runVectorFullStateSnapshot(started)).catch((error) => {
+    void runWithBackgroundUwSweep(() => runVectorFullStateSnapshot(started, slot)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/vector-full-state-snapshot] background snapshot REJECTED: ${detail}`);
     });

@@ -47,8 +47,32 @@ test("the overlap lock fails OPEN on a Redis error rather than wedging the cron 
 });
 
 test("the lock is released in a finally block so a thrown snapshot still frees the next run", () => {
-  const finallyBlock = /\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*\}/;
+  const finallyBlock =
+    /\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*await slot\.release\(\);\s*\}/;
   assert.match(routeSrc, finallyBlock, "release must run on both the success and error paths");
+});
+
+test("a cross-cron concurrency slot is acquired after the self-overlap lock and released alongside it", () => {
+  // Regression for the cross-CRON overlap the self-overlap lock above never covered — live
+  // CloudWatch (2026-10-13 13:35-13:56 UTC) showed this cron and 5 OTHER heavy crons in flight at
+  // once on the shared web tier, 1:1 correlated with sustained ALB tail latency — see
+  // heavy-cron-concurrency-guard.ts's header for the full evidence.
+  assert.match(
+    routeSrc,
+    /const slot = await acquireHeavyCronSlot\("bie-full-state-snapshot", OVERLAP_LOCK_TTL_SEC\);/,
+    "must acquire a named heavy-cron slot using this cron's own overlap-lock TTL"
+  );
+  const acquireIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  assert.ok(
+    acquireIdx > 0 && slotIdx > acquireIdx,
+    "the cross-cron slot must be acquired AFTER the self-overlap lock, not before or instead of it"
+  );
+  assert.match(
+    routeSrc,
+    /if \(!slot\) \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);/,
+    "a lost cross-cron race must release the self-overlap lock immediately so the NEXT fire gets a clean shot"
+  );
 });
 
 test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {

@@ -84,6 +84,7 @@ import {
   activeRefreshClaimTtlSec,
   SWING_ACTIVE_REFRESH_CLAIM_KEY,
 } from "@/lib/swing/active-refresh-claim";
+import { acquireHeavyCronSlot, type HeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -175,7 +176,7 @@ function sessionsHeldFromRow(row: SwingPositionRow, nowMs: number): number | nul
   return Math.max(0, Math.round((nowMs - t) / 86_400_000));
 }
 
-async function runSwingActiveRefreshCron(started: number): Promise<void> {
+async function runSwingActiveRefreshCron(started: number, slot: HeavyCronSlot): Promise<void> {
   const nowMs = started;
   const claimPayload = { status: "running" as const, at: nowMs };
   const acquired = await sharedCacheSetNx(
@@ -187,6 +188,7 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     console.info(
       "[cron/swing-active-refresh] skipped — another refresh pass is still running (Q37 singleton claim)",
     );
+    await slot.release();
     return;
   }
   try {
@@ -504,6 +506,7 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     console.error(`[cron/swing-active-refresh] background REJECTED: ${detail}`);
   } finally {
     await sharedCacheDel(SWING_ACTIVE_REFRESH_CLAIM_KEY).catch(() => undefined);
+    await slot.release();
   }
 }
 
@@ -522,11 +525,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Cross-CRON concurrency cap — distinct from the self-overlap claim taken inside
+  // runSwingActiveRefreshCron itself. Live CloudWatch (2026-10-13 13:35-13:56 UTC) showed this
+  // cron and 5 OTHER heavy crons in flight at once on the shared web tier, 1:1 correlated with
+  // sustained ALB tail latency — see heavy-cron-concurrency-guard.ts's header for the full
+  // evidence. Acquired here (before the self-overlap claim, which lives inside the background
+  // function) and released either on an early self-overlap skip or in that function's own finally.
+  const slot = await acquireHeavyCronSlot("swing-active-refresh", activeRefreshClaimTtlSec());
+  if (!slot) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "heavy-cron concurrency slot unavailable (idempotent skip)",
+    };
+    await logCronRun("swing-active-refresh", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // Per-position Polygon/UW reads + serving-spot refresh + beta warm can exceed Cloudflare's ~100s
   // origin timeout when the open book is non-empty (ops #1364: market_hours_stale with no fresh row).
   // Mirror coaching-alerts / vector-universe-snapshot: handshake in seconds, refresh in after().
   const dispatchRefresh = () => {
-    void runWithBackgroundUwSweep(() => runSwingActiveRefreshCron(started)).catch((error) => {
+    void runWithBackgroundUwSweep(() => runSwingActiveRefreshCron(started, slot)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/swing-active-refresh] background refresh REJECTED: ${detail}`);
     });
