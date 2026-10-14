@@ -25,6 +25,7 @@ import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { formatFixedNonZero } from "./format-nonzero";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -180,7 +181,11 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
   return out.sort((a, b) => Math.abs(a.distancePct) - Math.abs(b.distancePct));
 }
 
-function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | null {
+function dealerPostureLine(
+  ctx: SwingPlayBriefContext,
+  spot: number,
+  bucket: "watch" | "open" | "closed",
+): string | null {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
   // Same #5351/#5353-class fix as counterThesisLine above: prefer the request-wide
@@ -231,13 +236,45 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
   ].filter((bit): bit is string => bit != null);
   const regimeBit = regimeBits.length ? ` · ${regimeBits.join(" · ")}` : "";
 
-  const snapshotStale = vectorStale;
+  // Ask Largo standing mandate (2026-10-14, Largo deep-dive #2): same parity-fix class as the
+  // regimeBit fix above — gexPostureSection's `Net GEX: **$NM**` and `Underlying session: **pct%**`
+  // lines are ALSO content the "GEX posture" section's "folded into Trade manager read above" note
+  // (play-brief-intel-collapse.ts) claims this bullet replaced, but neither was ever narrated here
+  // either. Unlike the gamma-posture/VEX/DEX/CHARM qualitative reads, net_gex is itself the specific
+  // $ figure the contract's precision principle (C9) asks for — appending it keeps this the one
+  // place a member sees "why" dealers are long/short gamma without `expandIntel=1`. change_pct is
+  // likewise never duplicated anywhere else in the narrative. Nearest-wall distance is NOT added
+  // here — collectFocalLevels/narrateWall already narrate the nearest call/put wall from the same
+  // vector-first/GEX-fallback precedence elsewhere in this section, so that content is genuinely
+  // (if differently-framed) covered already.
+  const netGexBit =
+    !gexStale && gex?.net_gex != null
+      ? ` · net GEX **${formatFixedNonZero(gex.net_gex / 1_000_000, 1)}M**`
+      : "";
+  const sessionChangeBit =
+    !gexStale && gex?.change_pct != null ? ` · session **${fmtPct(gex.change_pct)}**` : "";
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14, live AMD repro): dealerPostureLine is a FOURTH
+  // call site reading the same "is today's live desk state current" fact `isSwingPlayStaleCheckExempt`
+  // was extracted (2026-10-07) to guard — degradedReadLine (this file, below) already gates on it,
+  // but this sibling function never was. A dead-but-not-closed WATCH play (setupState EXTENDED /
+  // entryStatus EXTENDED_CHASE) with a spot resolved via the GEX-matrix fallback (gexMatrixStale
+  // false) while Vector's own snapshot is stale rendered "**Last snapshot** (~7209s old) — spot
+  // **570.18** · dealers **short gamma**..." in the SAME envelope whose `confidence.why` read "Every
+  // live source this brief reads from resolved cleanly this cycle" and `unavailableSources: []` —
+  // the exact structured-chip-vs-free-text contradiction #5620 fixed twice already for sibling call
+  // sites, recurring here because this one was never updated. A dead WATCH candidate has nothing
+  // left to refresh, so "Last snapshot (~Ns old)" implies an active polling cadence that no longer
+  // applies — gate on the shared predicate exactly like degradedReadLine does, rather than inventing
+  // a fourth local check.
+  const staleCheckExempt = bucket === "watch" && isSwingPlayStaleCheckExempt(ctx.play);
+  const snapshotStale = vectorStale && !staleCheckExempt;
   const snapshotAgeLabel = snapshotStale ? ageSecondsLabel(vec?.dataAgeMs) : null;
   const lead = snapshotStale
     ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
 
-  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${regimeBit}`;
+  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${regimeBit}${netGexBit}${sessionChangeBit}`;
 }
 
 function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): string {
@@ -1218,7 +1255,7 @@ export function tradeManagerNarrativeSection(
   for (const line of collectCoachingBullets(ctx, bucket, spot)) add(line);
 
   if (spot != null) {
-    const posture = dealerPostureLine(ctx, spot);
+    const posture = dealerPostureLine(ctx, spot, bucket);
     if (posture) add(posture);
   } else {
     const degraded = degradedReadLine(play, bucket);
