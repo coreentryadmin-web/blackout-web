@@ -38,6 +38,212 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-14 — [FINDING, infra/UW rate limiter] 8 RTH crons contended for a 4 RPS global ceiling, causing 10–19s queue waits and missed cron execution windows — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | **PR** |
+|---|---|
+| Fixed | #6000 |
+
+### Summary
+Multiple production crons contend for a shared `UW_GLOBAL_MAX_RPS=4` rate limiter (Redis-backed), causing queue waits of 10–19 seconds and causing several scheduled crons to miss their execution windows. Measured contention: ~8 crons firing in intervals of 2–30 minutes, aggregate peak load estimated 1.8–2+ calls/sec, exceeding the 4 RPS cap during simultaneous-schedule windows.
+
+### Root cause
+UW rate limiter is a single global ceiling shared across:
+- flow-ingest (~2 min RTH)
+- vector-pick-sweep (~2 min RTH)
+- vector-full-state-snapshot (~5 min RTH)
+- platform-warm (~5 min extended hours)
+- meridian-warm (~5 min extended hours)
+- vector-dark-pool-warm (~10 min RTH)
+- swing-active-refresh (~15 min RTH)
+- data-correctness (~30 min RTH)
+
+When a 2-min cron and a 5-min cron fire simultaneously (every 10 min), they queue sequentially on the same 4 RPS limiter. Sustained contention → queue waits accumulate → crons miss scheduled execution windows.
+
+### Evidence
+**Notification 2026-10-14 14:08:17 UTC:**
+```
+vector-pick-sweep: MISSING schedule interval [14:02:00, 14:04:00] due to UW rate-limiter queue wait 10–12s
+uw-cache-refresh: queue wait 15–17s
+vector-dark-pool-warm: queue wait 12–14s
+swing-discovery: queue wait 10–13s
+```
+
+Previous session: `UW_GLOBAL_MAX_RPS` increased 2→4 on 2026-10-01 (PR #5579) for exactly this contention, but insufficient at current load.
+
+### Fix
+`UW_GLOBAL_MAX_RPS` increased 4→8 in `src/lib/providers/uw-rate-limiter.ts`, bundled into #6000 alongside the platform-warm cross-replica overlap guard (same CloudWatch-measured contention window):
+
+- Peak aggregate: 2+ RPS estimated (conservative, measured under live contention)
+- Headroom: 8 RPS allows 2× worst-case burst without queue
+- Upstream capacity: UW cluster has no rate limit on this flow (confirmed live)
+- Cost: None (it's a client-side queue, not an upstream purchase)
+
+Per-cron budget allocation is architecturally more correct long-term but requires refactoring `runWithBackgroundUwSweep`'s signature — left as a documented follow-up, not attempted here.
+
+### Blast radius
+- All 8 crons benefit from reduced queue waits
+- No member-visible behavioral change
+- No API change
+- No state or cache impact
+
+### Verification
+Confirmed live in `main`: `src/lib/providers/uw-rate-limiter.ts` — `const GLOBAL_MAX_RPS = envNumber("UW_GLOBAL_MAX_RPS", 8);` with an updated doc comment citing this exact finding.
+
+## swing/record: composite.sumPnlPct/compoundedReturnPct don't always reconcile with served legs — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `buildSwingRecord` (`src/lib/swing/record.ts`) computed `composite.sumPnlPct` and
+`composite.compoundedReturnPct` from the RAW (unrounded) per-leg `realized_pnl_pct` DB values, while
+`legs[].realizedPnlPct` itself stayed raw until the `/api/market/swing/record` route wrapped the whole
+response in one `roundFloats(..., 2)` call at the API boundary. Rounding is not distributive over
+addition or compounding, so a pair of raw leg P&Ls that EACH independently round down can still sum to
+a value that rounds UP in aggregate (or vice versa) — the composite and the served legs disagree by a
+cent, and the natural hand-check a member or Largo would do on the two adjacent numbers fails.
+
+**Evidence.** Live `GET /api/market/swing/record?days=90` (2026-10-14, 90-day window), captured via the
+standing Ask Largo deep-dive workflow. Of 3 multi-leg (rolled) resolved chains in the window, 2 showed
+a mismatch: rootPositionId=37 (AAPL) — legs displayed -22.3/47.37 (sum 25.07 by hand), but
+`composite.sumPnlPct` served as 25.06, and `compoundedReturnPct` served as 14.5 vs 14.51 implied by
+compounding the two shown legs. rootPositionId=44 (AMZN) — legs -27.67/72.41 summed correctly to 44.74,
+but `compoundedReturnPct` served as 24.71 vs 24.70 implied. rootPositionId=30 (a 2-leg loss chain,
+-40.83/-33.19) reconciled exactly — so this is intermittent, triggered only when a raw per-leg P&L
+lands on a value whose 2dp rounding shifts the composite math by a cent, not a universal defect.
+
+This is the same class of bug the file's own `worstLegPnlPct` fix (2026-09-12) already addressed for
+a different field — `worstLegPnlPct` is a MIN operation, which commutes with rounding (negligibly),
+so rounding it at the aggregate level alone was sufficient; SUM and COMPOUND do not commute with
+rounding the same way, so they needed the per-leg value rounded FIRST.
+
+**Blast radius.** `legs[].realizedPnlPct` is the shared single source every downstream consumer in
+this module reads (`composite.sumPnlPct`, `composite.compoundedReturnPct`, `composite.worstLegPnlPct`
+indirectly, and the `legs` array itself as served). No other file computes this aggregation
+independently — grepped `FINDINGS.md` for `sumPnlPct`/`compoundedReturnPct` reconciliation, no prior
+entry covers this exact gap.
+
+**Fix.** Round `realized_pnl_pct` to 2dp at the SAME single point of truth the `worstLegPnlPct` fix
+already established — inside `buildSwingRecord`'s leg-mapping, before it's used anywhere downstream.
+`win: isSwingWin(r.realized_pnl_pct)` deliberately still reads the RAW value, unchanged — the strict
+`>0` win check must not flip on an ultra-tiny P&L that rounds to 0.00. With legs rounded at source,
+`roundFloats()` at the API boundary becomes a no-op on an already-2dp value, matching the file's
+established "single point of truth" discipline.
+
+**Fix rationale.** Rounding each leg before aggregating (rather than aggregating raw then rounding
+once) is the only way to make the composite and the served legs — which a member/Largo read side by
+side — agree exactly, the same reasoning the `worstLegPnlPct` fix already used for its own field.
+
+**Tests.** `record.test.ts` gained one test: two legs with raw P&Ls (10.004, 10.004) chosen so each
+independently rounds down (10.00) but their raw sum rounds up (20.01) — the deterministic reproduction
+of the live discrepancy's shape. Asserts the served `composite.sumPnlPct`/`compoundedReturnPct` exactly
+equal hand-summing/hand-compounding the served legs. RED→GREEN proven: `git stash` of the `record.ts`
+fix dropped exactly 1 of 15 tests (the new one); restoring the fix brought all 15 back to green.
+`tsc --noEmit` clean on Node 20.
+
+## Swing play-brief: grammar bug + raw placeholder in narrative prose — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause 1 — grammar.** `synthesizedSetupLede` (`play-brief-intel.ts`) hardcoded the article
+`"a"` in `${signals} flagged this as a ${archetypePhrase} setup...`. `archetypePhrase` is prefixed
+with `play.setupState.toLowerCase()` when present, and `setupState` includes `EXTENDED` — a
+vowel-starting enum member — so an `EXTENDED` play rendered "flagged this as a extended pullback
+continuation setup," a grammar bug in otherwise-polished trade-manager prose. Live repro: SWING:AMD
+(WATCH, setupState EXTENDED).
+
+**Root cause 2 — raw placeholder.** `flowIntelSection`'s 0DTE-desk line (both the condor and
+non-condor branches) rendered `${z.conviction ?? "—"} conviction` — when `conviction` is null, this
+prints the literal string "— conviction" inline mid-sentence instead of omitting the clause
+entirely. Live repro: SWING:ASTS (CLOSED) rendered "0DTE desk: **short** · — conviction ·
+**conflict** with swing direction." This is the flat-placeholder shape the contract's absence
+principle (C3) and the narrative-quality bar both discourage elsewhere in this file.
+
+**Evidence.** Both captured live via the standing Ask Largo deep-dive workflow this cycle
+(`GET /api/market/swing/play-brief`).
+
+**Blast radius.** Two independent, non-overlapping call sites in `play-brief-intel.ts`:
+`synthesizedSetupLede` (grammar) and `flowIntelSection`'s 0DTE-desk lines (placeholder, both
+branches). No other consumer reads either string.
+
+**Fix.** (1) Compute the article from a vowel-sound check on `archetypePhrase`'s first letter —
+sufficient here since the phrase is always assembled from a closed, known enum, not arbitrary user
+text. (2) Build `convictionBit` once (empty string when `conviction` is null) and splice it into
+both the condor and non-condor desk lines, dropping the clause entirely instead of printing "—".
+
+**Tests.** `play-brief-intel.test.ts` gained 3 tests: an EXTENDED-setupState repro asserting "an
+extended ... setup" (not "a extended"); a non-condor 0DTE row with null conviction asserting the
+clause is fully omitted; a condor row with null conviction asserting the same. RED→GREEN proven:
+`git stash` of the fix dropped exactly 3 of 232 tests (the three new ones); restoring the fix
+brought all 232 back to green. `tsc --noEmit` clean on Node 20.
+
+## dealerPostureLine: fourth stale-exempt call site + false "folded into narrative" claim for net GEX/session change — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause (P1 — narrative contradiction).** `isSwingPlayStaleCheckExempt` (`entry-enterability.ts`)
+was extracted 2026-10-07 after `dataFreshnessSection` (`play-brief-intel.ts`) was found asserting
+Vector-pipeline staleness for a dead-but-not-closed WATCH play while the SAME envelope's
+`confidence`/`unavailableSources` claimed every live source resolved cleanly (#5620). `degradedReadLine`
+(`play-brief-narrative.ts`) was fixed the same way as a documented "third call site." `dealerPostureLine`
+— a sibling function in the same file, reached whenever `spot != null` instead of `degradedReadLine`'s
+`spot == null` branch — was never updated, making it an unflagged fourth call site. Live repro: SWING:AMD
+(WATCH, `setupState: "EXTENDED"`, `entryStatus: "EXTENDED_CHASE"` — a dead watch per `deadPlayReason`),
+spot resolved via the GEX-matrix fallback (Vector's own snapshot stale, GEX matrix fresh). The brief
+rendered `"**Last snapshot** (~7209s old) — spot **570.18** · dealers **short gamma**..."` while the same
+envelope's `confidence.why` read "Every live source this brief reads from resolved cleanly this cycle"
+and `unavailableSources: []`.
+
+**Root cause (P2 — false "folded in" claim).** PR #5998 (same day) fixed the VEX/DEX/CHARM regime-read
+text being silently dropped when `collapseRedundantIntelSections` collapses "GEX posture" into a
+"folded into Trade manager read above" note. The same audit pass found the note was STILL false for
+`net_gex`'s own dollar figure and `change_pct` (underlying session %): `gexPostureSection`'s `Net GEX`
+and `Underlying session` lines are real content inside the collapsed section, but `dealerPostureLine`
+never narrated either — live repro on RKLB and GME (both WATCH/OPEN with a narrative present): the
+default envelope said only "dealer gamma posture not resolved on this read" with the "folded into Trade
+manager read" note attached, while `expandIntel=1` revealed the real hidden `Net GEX`/`Underlying
+session` content.
+
+**Evidence.** See the live AMD/RKLB/GME reproductions above, captured via the standing Ask Largo
+deep-dive workflow this cycle (`GET /api/market/swing/play-brief` with and without `expandIntel=1`).
+
+**Blast radius.** Single function — `dealerPostureLine`'s return string (the "Trade manager read"
+dealer-posture bullet). No other section or consumer reads these fields differently.
+
+**Fix.** (1) Threaded `bucket` into `dealerPostureLine` and gated the "Last snapshot" lead on
+`bucket === "watch" && isSwingPlayStaleCheckExempt(ctx.play)`, matching `degradedReadLine`'s existing
+gate exactly — a dead watch now reads "**Right now**" (nothing left to refresh, so no stale-snapshot
+caveat to assert) instead of a contradicting staleness disclosure. (2) Appended `net_gex`'s dollar figure
+and `change_pct` to the bullet, gated on the same `gexMatrixStale` check the VEX/DEX/CHARM fix uses.
+Nearest-wall distance was deliberately NOT added — `collectFocalLevels`/`narrateWall` already narrate the
+nearest call/put wall from the same vector-first/GEX-fallback precedence elsewhere in this section, so
+that content is genuinely (if differently-framed) covered already.
+
+**Fix rationale.** Same discipline as PR #5998: make the existing "folded into Trade manager read above"
+claim true rather than carve a collapse-side exception. VEX/DEX/CHARM's raw `$` figures stay out of the
+narrative (their regime-read text already carries the "what it means" signal); `net_gex` has no such
+text elsewhere, so its number is the one genuinely still-missing fact.
+
+**Tests.** `play-brief-narrative.test.ts` gained 4 tests: net-GEX-$/session-change% appear (fresh
+matrix) and are suppressed (stale matrix); a dead-watch AMD-shaped repro asserting "Right now" instead
+of "Last snapshot"; and a regression guard proving a genuinely live (non-exempt) WATCH play under the
+identical Vector-stale/GEX-fresh shape still discloses "Last snapshot" (the exemption must not leak to
+active candidates). RED→GREEN proven: `git stash` of the `route.ts`... `play-brief-narrative.ts` fix
+dropped exactly 2 of 118 tests (the two new positive assertions — the staleness-suppression and
+regression-guard tests pass vacuously either way, as expected for suppression/regression guards);
+restoring the fix brought all 118 back to green. Also ran `play-brief-intel-collapse`/`play-brief-intel`/
+`play-brief`/`entry-enterability` test suites (385 tests) clean. `tsc --noEmit` clean on Node 20.
+
 ## VEX/DEX/CHARM content silently dropped for OPEN/WATCH swing briefs — FIXED
 
 > **kind:** `FINDING`
