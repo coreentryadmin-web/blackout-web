@@ -38,6 +38,198 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing play-brief: "Thesis health" can claim "unchanged since commit" for a position that just round-tripped past breakeven, contradicting the SAME brief's "Trade manager read" section — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `computeSwingThesisHealth` (`src/lib/swing/thesis-health.ts`) scores five pillars
+per committed position (persistence, entry geometry, flow corroboration/"Signal stack", regime/
+"Regime fit", theta budget). Four of the five compute their `commit` and `current` scores from the
+exact same single live-state input every call — `signalScore`/`regimeScore` literally
+`return { commit: score, current: score, ... }` off one shared `score` variable (structurally
+impossible to ever diverge), and `setupPersistenceScore`/`entryGeometryScore`'s switch-case
+branches set `commit === current` for every real enum value. Only `theta_budget` (DTE decay) is
+engineered to genuinely diverge, per that function's own comment ("Unlike the other score
+functions in this file, theta budget's commit and current SCORES genuinely diverge..."). The 2026-
+10-07 fix (same file) correctly disclosed when all five pillar deltas read zero ("— unchanged
+since commit"), but it trusts `h.moves` staying at its fallback sentinel as proof nothing moved —
+and `moves` can only be populated by a pillar flipping to "faded"/"lost" status (impossible for the
+four structurally-static pillars outside two narrow overrides: `thesisBreak` hitting warn/break,
+or `setupState` becoming `INVALIDATED`), a non-HOLD `manageAction`, or `pnlPct <= -40`. A real
+round-trip through a genuine favorable peak into a current loss can fall through every one of
+those triggers at once, leaving the headline to assert "unchanged" for a position that visibly has
+not been.
+
+**Evidence.** Live `GET /api/market/swing/play-brief?playId=SWING:INTC:56` (2026-10-14 ~20:42 UTC,
+Ask Largo standing deep-dive, this cycle's hold-plan/thesis-health close read), real OPEN position:
+peak **+15.3%**, trough **-36.6%**, currently **-36.5%** (3.5pts short of the -40% backstop
+trigger; `thesisBreak` still reads "intact" per the live gate, so persistence never diverges
+either). The "Thesis health" section rendered:
+
+> **67%** · Weakening — unchanged since commit
+>
+> • **Persistence** — forming (Δ +0.0 pts)
+> • **Entry geometry** — pre-trigger (Δ +0.0 pts)
+> • **Signal stack** — FLOW+VECTOR+CATALYST (Δ +0.0 pts)
+> • **Regime fit** — Regime (Δ +0.0 pts)
+> • **Theta budget** — 9DTE runway (Δ +0.0 pts)
+
+directly above the SAME brief's own "Trade manager read" section, which correctly narrates:
+
+> **Hold the line** — thesis health 67%. Let the trade work while structure holds.
+> **Round-tripped past breakeven** — was up 15% at peak, now -37% — consider protecting what's left.
+
+Two sections of one envelope disagreeing about the single most important fact about the trade
+right now ("has anything changed since I opened this") is exactly the narrative-self-contradiction
+class this codebase has repeatedly fixed in the OTHER direction (duplicate restatement across
+sections — see e.g. the `narrativeAlreadyNoted.roundTrip`/`.capture` guards already in this file);
+this is the same class as a false negative instead of a duplicate positive.
+
+**Blast radius.** `computeSwingThesisHealth` has exactly one real call site
+(`src/features/nighthawk/command-deck/adapters.ts`, confirmed via
+`grep -rn "computeSwingThesisHealth(" src --include="*.ts"` excluding its own definition and test
+files) — `terminalPlayFromHorizon`, which builds every live SWING/LEAPS `TerminalPlay`. The payload
+type (`ThesisHealthPayload`, `src/lib/zerodte/thesis-health.ts`) is shared with 0DTE's own
+thesis-health panel; the new field is optional and 0DTE never sets it, so its own 883-test
+collateral suite (thesis-health/adapters/terminal-display) is unaffected — confirmed green,
+unchanged pass count. `h.moves` has a second, independent consumer
+(`thesisPillarCoaching`/"What moved" in `play-brief-narrative-coaching.ts`) that already renders
+this exact round-trip fact via its own path (`mfeCaptureOutcome`-driven, same as "Trade manager
+read"'s own callout) — the fix deliberately does NOT thread the round-trip signal into `moves`
+itself, to avoid reopening a NEW duplicate-narration bug of the exact kind this file has repeatedly
+closed elsewhere.
+
+**Fix.** Added `peak?: number | null` to `SwingThesisHealthInput` and computed a new,
+independent `roundTripSinceCommit: boolean` on the returned payload via the SAME
+`mfeCaptureOutcome(pnlPct, peak, null)?.kind === "round_trip"` check already used elsewhere in this
+codebase to detect this exact condition (`play-brief-intel.ts`'s `holdPlanSection`/lessons
+section). `play-brief.ts`'s `thesisHealthSection` now requires `!h.roundTripSinceCommit` in
+addition to the existing `h.moves[0].includes("unchanged")` check before asserting "— unchanged
+since commit"; when round-tripped, the headline falls back to `**{health}%** · {rungLabel}` with
+no claim either way (consistent with this file's existing "omit, don't fabricate" discipline —
+there is still no real historical comparison to report, so the fix states nothing false rather
+than inventing a replacement claim). Threaded `peak` through the one real call site
+(`adapters.ts`'s `terminalPlayFromHorizon`) using the identical peak-%-formula `peakDisplay`
+(defined later in the same function) already uses from `src.peakPremium`/`entry`.
+
+**Fix rationale.** Did not attempt to make the four structurally-static pillars (persistence,
+entry geometry, signal stack, regime fit) genuinely time-varying — that would need a real "value
+at actual commit time" snapshot persisted per position (a larger, separate schema/DB change, out
+of scope for a single-issue PR) rather than the current lookup-table-from-current-state
+reconstruction. The chosen fix closes the concrete, demonstrated contradiction (two sections of
+one brief disagreeing) at its narrowest correct point — the headline's own "nothing changed" claim
+— without touching pillar scoring, gates, or the aggregate `health`/`rung` computation at all.
+
+**Tests.** `src/lib/swing/thesis-health.test.ts`: new `roundTripSinceCommit` describe block, 3
+tests — true for the live-repro shape (negative pnlPct, real positive peak, `moves` still at its
+"unchanged" fallback — pins the exact gap this fix closes), false for a flat position with no
+recorded peak, false when currently favorable (peak and pnlPct both positive, no round-trip yet).
+`src/lib/swing/play-brief.test.ts`: new test pinning a `thesisHealth` fixture with
+`roundTripSinceCommit: true` and the "unchanged" `moves` sentinel (mirroring the adjacent
+2026-10-07 test's structure) — asserts the rendered headline does NOT contain "unchanged since
+commit" while still showing the real health %/band. RED→GREEN proven via `git stash` on the three
+source files (`thesis-health.ts`, `play-brief.ts`, `zerodte/thesis-health.ts`, `adapters.ts`) with
+the new tests left in place: pre-fix, 3 new `thesis-health.test.ts` subtests failed
+(`roundTripSinceCommit` read `undefined`, not `true`/`false`) and the new `play-brief.test.ts` test
+failed with the actual pre-fix output `**67%** · Weakening — unchanged since commit`; post-fix, all
+green. Full collateral run (`thesis-health.test.ts` + `play-brief.test.ts` +
+`play-brief-intel.test.ts` + `play-brief-narrative.test.ts` +
+`play-brief-narrative-coaching.test.ts` + `play-brief-resolve.test.ts` +
+`play-brief-confidence.test.ts` + `roll-plan.test.ts` + `zerodte/thesis-health.test.ts` +
+`adapters.test.ts` + `terminal-display.test.ts`): **913/913 pass**. `npx tsc --noEmit` clean on
+Node 20. `eslint` clean on every touched file.
+
+## SPX Slayer desk: a broken prior-day high/low keeps its hardcoded "resistance"/"support" label even after price trades through it, feeding wrong structure confirmations into real play logic — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `buildLevels()` (`src/features/spx/lib/spx-desk-levels.ts`) assigns every desk
+level a `kind` ("support"/"resistance"/"neutral") as a hardcoded per-label constant: `PDH` is
+always `"resistance"`, `PDL` is always `"support"`, regardless of where price currently sits
+relative to them. That is correct for `HOD`/`LOD` — today's own session high/low are
+tautologically bounded by today's own price (price can never trade below LOD or above HOD), so
+their kind can never actually invert. It is NOT correct for `PDH`/`PDL` — these are PRIOR-session
+reference levels, and price is free to gap or trend through either of them. Once price has
+genuinely traded through a prior-day level, that level's real role inverts (an old high broken
+from below becomes support underneath; an old low broken from above becomes resistance overhead),
+exactly the "role reversal" `#80` already partially addressed for the GEX King node by marking it
+neutral rather than hardcoding a direction (see that fix's own comment in the same file). PDH/PDL
+never got the equivalent treatment, and — unlike the King node — their correct role IS computable
+once you know which side of the level price is on, so this fix computes it instead of assuming
+the common "price inside yesterday's range" case.
+
+**Evidence.** Live `GET /api/market/spx/desk` (2026-10-14 ~21:32 UTC, after-hours/extended
+session, this cycle's standing SPX-desk coherence check): `price: 7718.94`, `pdh: 7814.15`,
+`pdl: 7786.11` — a genuine breakdown day where price sits BELOW the entire prior session's range
+(both PDH and PDL above spot). The served `levels` array included:
+
+```json
+{ "label": "PDL", "value": 7786.11, "kind": "support", "distance_pct": 0.87 }
+```
+
+PDL sits 67.17 points (0.87%) ABOVE price, i.e. broken-through overhead resistance — yet it was
+labeled `"support"`, the opposite of its actual current role. `HOD`/`PDH` (also above price)
+correctly read `"resistance"` in the same payload, and `LOD` (below price, tautologically) correctly
+read `"support"` — only `PDL` was wrong, because it is the one label whose hardcoded assumption
+("PDL sits below price") had actually been violated that session.
+
+Confirmed in the existing test suite that this was never covered: `spx-desk-levels.test.ts`'s only
+fixture before this fix (`LEVELS_INPUT`) has `price: 7428.78` strictly between `pdl: 7405` and
+`pdh: 7435` — the common, in-range case — so the PDH/PDL-outside-range scenario had no regression
+test at all.
+
+**Why this is not cosmetic — blast radius into real play logic.** `l.kind === "support"` /
+`"resistance"` is read directly by two live SPX Slayer play-generation call sites, not just display:
+- `src/features/spx/lib/spx-play-confirmations.ts`'s `structureAligned()`: `supports = (desk.levels
+  ?? []).filter(l => l.kind === "support")`, then `atSupport = supports.some(l => nearLevel(price,
+  l.value))` — within `playStructureProximityPts()` (10pts) of a mislabeled PDL, this reads "Long
+  near PDL support" and PASSES the long structural confirmation off a level that is, in fact,
+  overhead resistance the price had just broken down through (the mirror bug applies to a
+  broken-out PDH for short confirmations).
+- `src/features/spx/lib/spx-play-mtf.ts`'s `keyLevelForDirection()`: falls back to `desk.levels
+  ?.find(l => l.kind === "support")?.value` as the long MTF trigger anchor whenever `desk.vwap` is
+  null (a real, if less common, desk state) — same wrong-level risk.
+
+Dormant in this exact snapshot only because PDL's 67pt distance exceeds the 10pt proximity gate and
+`vwap` was non-null, not because the underlying logic was safe — the bug activates on any session
+where price later drifts back within 10pts of the broken level, or where `vwap` is temporarily
+unavailable.
+
+**Fix.** Added `priorSessionLevelKind(value, price, fallback)` — `price >= value ? "support" :
+"resistance"` — and used it for `PDH`/`PDL` only; `HOD`/`LOD` keep their unconditional hardcoded
+kind (correct by construction, no fix needed there) and every neutral-kind level (`King node`,
+`Max Pain`, `γ Flip`, EMAs/SMAs, `VWAP`) is untouched. The common in-range case is unaffected by
+construction (`price >= pdl` is true when price is inside yesterday's range, same as the old
+hardcoded `"support"`; `price >= pdh` is false in-range, same as the old hardcoded `"resistance"`)
+— confirmed by the pre-existing `LEVELS_INPUT` fixture test still passing unchanged.
+
+**Fix rationale.** Considered marking PDH/PDL neutral instead (the King node's treatment) but
+rejected it: unlike the King node (whose role genuinely depends on dealer positioning the desk
+cannot cheaply classify), a prior-session level's role IS fully determined by price's current side
+of it — computing the correct answer is strictly better than discarding the signal to neutral, and
+preserves the existing "support"/"resistance" semantics every consumer (`structureAligned`,
+`keyLevelForDirection`, the rendered level ladder) already expects. `HOD`/`LOD` were deliberately
+left hardcoded rather than "fixed" the same way — they cannot actually invert, so applying the same
+dynamic check would be inert complexity with no behavior change, confirmed by re-reading
+`sessionHodLod`-style construction: today's own price is always within `[lod, hod]` by definition.
+
+**Tests.** `src/features/spx/lib/spx-desk-levels.test.ts`: renamed the existing in-range test to
+clarify its scope, and added two new regression tests — a breakdown case (PDL above price, both
+PDH/PDL above price) asserting `PDL -> "resistance"`, `PDH -> "resistance"` (unchanged), `HOD ->
+"resistance"`, `LOD -> "support"`; and the mirror breakout case (PDH/PDL both below price) asserting
+`PDH -> "support"`, `PDL -> "support"`. RED→GREEN proven via `git stash push -u --
+spx-desk-levels.ts`: pre-fix, the two new tests failed (`PDL` read `"support"` expected
+`"resistance"`; `PDH` read `"resistance"` expected `"support"`); post-fix (stash pop), 6/6 pass.
+Full collateral run (`spx-desk-levels.test.ts` + `spx-desk-merge.test.ts` +
+`spx-play-confirmations.test.ts` + `spx-signals.test.ts` + `spx-play-engine.test.ts`): 32 + 3 + 5 =
+all green, 0 fail. `npx tsc --noEmit` clean on Node 20.
+
 ## 0DTE board: "Why this play was picked" factor_breakdown silently omits momentum_score, a 7th real scorer component — FIXED
 
 > **kind:** `FINDING`
