@@ -4,6 +4,18 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-14 (15:36 UTC / Wed 11:36 ET) — [SEO] RTH wake: gamma-snapshot live and honestly handled, CLS clean
+
+Confirmed market open myself (11:36 ET). `/api/public/gex-snapshot?ticker=SPX` —
+`market_session: "OPEN"`, `degraded: false`, fresh. Notable but NOT a defect: `flip: null` on
+both SPX and SPY at the same instant, with `read` text explaining "dealers are net short gamma
+at EVERY strike, so there is no long-gamma region above spot" — a genuine, honestly-represented
+market condition (no flip point exists today), not a null-handling bug; cross-checked
+`change_pct` agreement (SPX -0.83, SPY -0.82) confirms real, consistent data. Polled 3x over
+~10s: `calculation_id` advanced, spot ticked (7740.97 → 7737.85) — refresh is live. Purged
+Cloudflare edge HTML, measured live homepage CLS — **0, perfectly clean**. No defect found. No
+PR opened.
+
 ## 2026-10-14 (14:06 UTC / Wed 10:06 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
 
 Same 3 striking-distance queries (dealer gamma, gamma three trading, is 0dte gambling), same
