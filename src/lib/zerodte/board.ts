@@ -1524,6 +1524,14 @@ export type SetupDossierView = {
     anomaly_penalty?: number;
     flow_conviction_bonus?: number;
     regime_adjustment?: number;
+    // Ask Largo standing mandate (2026-10-14): scoreCandidate added momentum_score as a
+    // SEVENTH component folded into `preRegimeSum`/`total` (and into `confirmingSignals`'s own
+    // `momentumScore >= 5` check) without a matching update here — the exact same "real score
+    // component, no typed path into factor_breakdown" gap the 9-8/9-9 comments above already
+    // describe fixing twice. deterministic-edition.ts's two factor_breakdown builders (Legacy)
+    // already carry `momentum: scored.momentum_score`; this view had simply drifted out of sync
+    // with that pattern again, not omitted it on purpose. See enrichSetup's mapping below.
+    momentum_score?: number;
   } | null;
   /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
   price_target?: string | null;
@@ -1901,6 +1909,10 @@ export function enrichSetup(
             ? { flow_conviction_bonus: scored.flow_conviction_bonus }
             : {}),
           ...(scored.regime_adjustment != null ? { regime_adjustment: scored.regime_adjustment } : {}),
+          // Ask Largo standing mandate (2026-10-14): the 7th scorer component — see the
+          // `momentum_score` field doc on SetupDossierView["scored"] above for the full
+          // root-cause. Mirrors deterministic-edition.ts's own `momentum: scored.momentum_score`.
+          ...(scored.momentum_score != null ? { momentum: scored.momentum_score } : {}),
         }
       : null,
     trend: tech?.trend ?? null,

@@ -764,6 +764,55 @@ test("enrich: factor_breakdown omits (not zero-fills) subscores the scorer never
   assert.ok(!("skew" in (e.factor_breakdown ?? {})));
 });
 
+// Ask Largo standing mandate (2026-10-14, live 5-engine monitor cycle, real-board repro):
+// scoreCandidate (scorer.ts) folds a SEVENTH component — momentum_score — into `preRegimeSum`
+// (and therefore `total`/dossier_score) and even counts it in `confirmingSignals`
+// (`momentumScore >= 5`), but neither `SetupDossierView["scored"]` nor enrichSetup's
+// factor_breakdown mapping ever declared or read it — the exact same "real score component with
+// no rendered line item" defect already fixed twice in this file (the 9-8 six-subscore gap above
+// and the 9-9 iv/anomaly/flow-conviction/regime-adjustment gap above), recurring because this one
+// field was added to scorer.ts without the same mirroring pass. deterministic-edition.ts (Legacy's
+// two factor_breakdown builders — the "already-shipped mapping" the 9-8 comment above references)
+// already carries `momentum: scored.momentum_score` at both its own call sites; board.ts is the
+// one surface that drifted out of sync again. Live measured 2026-10-14 ~19:52 ET: QQQ
+// factor_breakdown summed to 56.2 against a live dossier_score of 61 (gap 4.8), SMH 56.0 vs 61
+// (gap 5.0), SPY 25.6 vs 31 (gap 5.4), IWM 39.6 vs 45 (gap 5.4) — all FLOW-origin setups with a
+// real nonzero momentum_score never surfaced; SPXW/MU/TSLA (momentum ≈ 0 that cycle) showed no gap.
+test("enrich: factor_breakdown carries momentum_score and sums to dossier_score (7th scorer component)", () => {
+  const dossier = fakeDossier({
+    scored: {
+      score: 66,
+      direction: "long",
+      conviction: "HIGH",
+      flow_score: 30,
+      tech_score: 18,
+      pos_score: 10,
+      news_score: 8,
+      smart_money_score: 12,
+      momentum_score: -12,
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.factor_breakdown, {
+    flow: 30,
+    tech: 18,
+    positioning: 10,
+    news: 8,
+    smart_money: 12,
+    momentum: -12,
+  });
+  const sum = Object.values(e.factor_breakdown ?? {}).reduce((a, b) => a + b, 0);
+  assert.equal(sum, e.dossier_score, "factor_breakdown must reconcile to dossier_score once momentum is included");
+});
+
+// Same "absent vs real zero" convention as the other optional dimensions: a dossier whose scorer
+// never evaluated momentum (field absent, matching every pre-existing `scored` fixture in this
+// file) must not render a fabricated "momentum: 0" bar.
+test("enrich: factor_breakdown omits momentum when the scorer never returned it", () => {
+  const e = enrichSetup(baseSetup(), fakeDossier());
+  assert.ok(!("momentum" in (e.factor_breakdown ?? {})));
+});
+
 test("enrich: earnings + hot-news extras pass through", () => {
   const e = enrichSetup(baseSetup(), null, {
     earnings: { when: "afterhours", report_date: "2026-07-06", expected_move_pct: 8.2 },
