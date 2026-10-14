@@ -8,7 +8,7 @@ import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/ve
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
-import { formatFixedNonZero } from "@/lib/swing/format-nonzero";
+import { formatDealerDollars } from "@/lib/swing/format-nonzero";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
@@ -1029,13 +1029,16 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   if (gammaPosture) {
     const parts: string[] = [`γ ${gammaPosture}`];
     if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
-      const netM = gex.net_gex / 1e6;
       // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real,
       // signed net GEX under ~$50k (common on lower-priced/small-cap tickers) rounded to "0.0M" via
       // a plain toFixed(1) — reading as "no dealer exposure" when the sign and magnitude are both
-      // real and meaningful for the posture read. formatFixedNonZero widens precision only when
-      // the fixed rounding would otherwise collapse a real nonzero value to a false zero.
-      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${formatFixedNonZero(netM, 1)}M`);
+      // real and meaningful for the posture read. formatFixedNonZero (inside formatDealerDollars)
+      // widens precision only when the fixed rounding would otherwise collapse a real nonzero
+      // value to a false zero.
+      // BUG FOUND (Ask Largo standing mandate, 2026-10-14): a large net GEX (routinely the case on
+      // SPY/SPX-scale tickers) rendered as e.g. "-17545.3M" under a fixed /1e6-then-"M" format —
+      // formatDealerDollars picks M/B/T by magnitude instead, so this reads "-17.5B".
+      parts.push(`net GEX ${gex.net_gex >= 0 ? "+" : ""}${formatDealerDollars(gex.net_gex)}`);
     }
     if (gex && !gexStale) {
       // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative

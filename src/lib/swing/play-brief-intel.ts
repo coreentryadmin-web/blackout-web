@@ -48,7 +48,7 @@ import { trustedHelixFlow, zerodteLiveForSession, relativeAgeLabel } from "./pla
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
-import { formatFixedNonZero } from "./format-nonzero";
+import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
@@ -2056,7 +2056,7 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   // as "no dealer exposure" when a real signed value exists. That fix only touched the narrative
   // call site; this GEX-posture evidence block computes the identical ratio from the identical
   // gex.net_gex field independently and had the same defect.
-  if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${formatFixedNonZero(gex.net_gex / 1_000_000, 1)}M**`);
+  if (!stale && gex.net_gex != null) lines.push(`Net GEX: **${formatDealerDollars(gex.net_gex)}**`);
   // Ask Largo research finding (2026-10-14, 5-engine monitor cycle): VEX/DEX/CHARM are computed
   // into this SAME gex_positioning object (getGexPositioning — the identical function Thermal's
   // own formatPositioningBlock reads for its "Net GEX / VEX / DEX / CHARM" desk line) and were
@@ -2068,17 +2068,17 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   // the number when present, and the whole line omits cleanly when the field is null (C3).
   if (!stale && gex.net_vex != null) {
     lines.push(
-      `Net VEX (vanna): **${formatFixedNonZero(gex.net_vex / 1_000_000, 1)}M**${gex.vanna_regime_read ? ` — ${gex.vanna_regime_read}` : ""}`,
+      `Net VEX (vanna): **${formatDealerDollars(gex.net_vex)}**${gex.vanna_regime_read ? ` — ${gex.vanna_regime_read}` : ""}`,
     );
   }
   if (!stale && gex.net_dex != null) {
     lines.push(
-      `Net DEX (delta): **${formatFixedNonZero(gex.net_dex / 1_000_000, 1)}M**${gex.dex_regime_read ? ` — ${gex.dex_regime_read}` : ""}`,
+      `Net DEX (delta): **${formatDealerDollars(gex.net_dex)}**${gex.dex_regime_read ? ` — ${gex.dex_regime_read}` : ""}`,
     );
   }
   if (!stale && gex.net_charm != null) {
     lines.push(
-      `Net CHARM (pinning): **${formatFixedNonZero(gex.net_charm / 1_000_000, 1)}M**${gex.charm_regime_read ? ` — ${gex.charm_regime_read}` : ""}`,
+      `Net CHARM (pinning): **${formatDealerDollars(gex.net_charm)}**${gex.charm_regime_read ? ` — ${gex.charm_regime_read}` : ""}`,
     );
   }
   // Recompute "nearest wall" from the SAME preferred (Vector-ladder-first) call/put walls
