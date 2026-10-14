@@ -4,6 +4,50 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-14 (~01:20 UTC) — [5-engine monitor + Ask Largo] All 5 systems clean; confirmed Banger-origin thesis-health withhold still holds live; one perf tail-latency lead routed to Night Hawk
+
+Market closed (21:20 ET). No `TypeError`/`Unhandled`/`undefined is not` in `/ecs/blackout-production`
+in the trailing 15 min across any of the five systems.
+
+**Health checks:** SPX Slayer `/api/market/spx/desk` — fresh (`as_of` seconds old), internals
+coherent (GEX walls/levels/EMA stack all present, no NaN). Legacy `/api/market/nighthawk/edition` —
+`edition_for: 2026-10-14`, published 21:36 ET prior session, recap/market_recap populated;
+`legacy-marks` correctly empty (`available:false`) with no open Legacy positions right now, not a
+broken fetch. 0DTE `/api/market/zerodte/board` — `upstream_ok:true`, 11 live setups, sampled one
+(SPXW) and its condor/flow_quality/factor_breakdown all internally consistent; `/record?days=7`
+grading math holds exactly (wins 23 + losses 21 + breakeven 3 = graded 47 = total_flagged,
+ungraded 0). Night Hawk Swings `/api/market/nighthawk/horizons?view=swings` — SKHY's score (61.2)
+sums its own `factors[]` exactly, `commitGateBlockedBy` lists real gate codes
+(`g_s12_halt_feed_stale` matches the nighthawk lane's own same-day journal entry tracing that gate
+to a UW WS cluster-freshness condition, already confirmed not a bug); `/api/market/swing/record` —
+chains 18, resolved 15, wins 2 + losses 13 = 15, consistent.
+
+**Ask Largo deep-dive (standing sub-mandate):** pulled `play-brief` for one WATCH (AVGO) and one
+COMMIT (ALAB) swing play. Both envelopes carry the full expected section set for their bucket
+(WATCH: Verdict/Entry/Trade manager read/Why this setup/Book context/Catalysts/Meridian
+catalysts/Data freshness/Watch levels; COMMIT adds Management/Thesis health/Position and swaps
+Watch levels for What to watch) — dealer/dark-pool read and flow/positioning are correctly folded
+into the single "Trade manager read" narrative per the #4084 redesign, not missing. All absences
+(`unavailableSources`) are honestly labeled with reason/retryable, nothing silently null.
+Specifically chased down ALAB's "Thesis health: Inputs not wired for committed positions" render —
+confirmed via the raw horizons row that `setupState`/`entryStatus`/`signalKinds` are all POPULATED
+(`TRIGGERED`/`AT_TRIGGER`/`["BANGER"]`), which could look like a regression of the AAPL/#5336 partial-
+pillar fix — but `regime` is the exact `BANGER_LEDGER_REGIME_LABEL` sentinel (`"BREAKOUT · BANGER"`),
+so `calibratedThesisPillars()` correctly identifies this as a Banger-ledger-origin row (fixed
+constants stamped on every Banger row, no real per-position dossier) and withholds the whole
+breakdown — exactly the 2026-09-22 "SECOND GAP FOUND" fix (`thesis-health.ts`) working as intended,
+not a bug. No new Largo gap found this cycle.
+
+**Performance:** measured a real ALB tail-latency pattern (p99 2.4→8.3s, Max 26-43s across six
+30-min buckets, last 3h) correlating with 1773 `[polygon-gex] full-chain escalation ADOPTED` log
+lines, mostly explained by tonight's merge-cascade-driven ECS task churn re-triggering the already-
+gated (`isEtExtendedWarmHours`) boot-warm 0DTE board prefetch — but a ~170-line tail continued a
+full hour past the 20:00 ET window close, with a live `[zerodte-board-fallback] cold build still
+running past maxBlockMs` hit at 20:52 ET. Routed the full evidence + an unverified working
+hypothesis (off-hours live-read-path polling never converging to a cached board since discovery
+crons are market-hours-only) to the Night Hawk lane rather than blind-fixing `zerodte-service.ts`
+myself — not confirmed who's calling it that often off-hours.
+
 ## 2026-10-14 (00:16 UTC / Tue 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Market closed for the day. Resynced to `origin/main` (`98f07ec` → `64baecb`, other-lane swing
