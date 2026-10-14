@@ -4,6 +4,13 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-14 (16:35 UTC / Wed 12:36 ET) — [SEO] RTH wake (near close): gamma-snapshot live, CLS clean
+
+Confirmed market open myself (12:36 ET, ~24min to close). Same `flip: null` short-gamma-at-
+every-strike condition persisting from the prior wake (still `market_session: "OPEN"`,
+`degraded: false`, 1s fresh) — consistent, not a regression. Purged Cloudflare edge HTML,
+measured live homepage CLS — **0.0002, GOOD**. No defect found. No PR opened.
+
 ## 2026-10-14 (15:36 UTC / Wed 11:36 ET) — [SEO] RTH wake: gamma-snapshot live and honestly handled, CLS clean
 
 Confirmed market open myself (11:36 ET). `/api/public/gex-snapshot?ticker=SPX` —
