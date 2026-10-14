@@ -136,6 +136,9 @@
     },
     "2026-10-14T15:44:00Z_QQQ_BIG_WIN_ENPH_WIN_3_NEW_OPENS_CLEAN": {
       "note": "QQQ closed +38.81% via ratchet_profit_floor (peaked +96.64%, floor correctly caught the pullback) \u2014 a large, well-managed winner, textbook ratchet mechanics on a strong mover. ENPH short also closed clean +3.13% ratchet. 3 new OPEN positions (CRWG, DELL, DOCN), all cortex PASS, no vetoes (CRWG +0.4, DELL +0.26, DOCN -0.25 but still PASS, same relief pattern already understood). TEM still open from last cycle. Today running tally: 7W(CRWV,SPXW,SPY,SOFI,QQQ,ENPH + more)/1L(AFRM)/1scratch(ORCL), 4 open (CRWG,DELL,DOCN,TEM). Strong session so far. No new escalation."
+    },
+    "2026-10-14T16:10:00Z_DOCN_WIN_STRONG_SESSION_CONTINUES": {
+      "note": "DOCN closed clean +18.18% (trim_scale_dead_zone_floor, peaked +36.36%, floor correctly caught the pullback). Today's tally now 10W/6L overall on the ledger (includes yesterday's carryover in the days=1 window) \u2014 single-leg session today specifically: 8W(CRWV,SPXW,SPY,SOFI,QQQ,ENPH,DOCN+1)/1L(AFRM)/1scratch(ORCL), 3 still open (CRWG,DELL,TEM). Strong day, exit mechanics clean across every closed play checked this session. No new escalation."
     }
   },
   "sessions": {
