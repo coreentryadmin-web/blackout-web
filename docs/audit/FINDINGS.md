@@ -4,6 +4,99 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-14 — [Ask Largo / Swing] G-S6 confluence gate block threw away its own already-computed diagnostic before reaching the trader — FIXED
+
+> **kind:** `FINDING`
+
+### Root cause
+
+Live repro (WULF, WATCH, blocked by `gate:G-S6:confluence`): the play-brief's Trade-manager-read
+bullet rendered a flat, identical string for every G-S6-blocked ticker regardless of how close it
+actually was to clearing:
+
+> **g_s6_confluence**: Independent signal confluence below commit threshold — desk will not open.
+
+`commitGateBlocksForVerdict` (`src/lib/swing/entry-verdict.ts`) maps the raw `gate:G-S6:*` token
+to that static reason, keyed only on the token prefix. But the gate itself computes a much richer,
+already-tested diagnostic one layer down: `evaluateSwingConfluence` (`src/lib/swing/v2/confluence.ts`)
+returns `{kinds, count, required, pass, label}`, where `label` reads e.g. `"needs 1 more kind(s) —
+have FLOW+STRUCTURE"` — exactly what a trader watching a WATCH candidate wants to know (how far from
+commit-eligible, which independent reads already agree) — computed, tested, and then discarded
+before the member-facing text was built. All 3 call sites of `commitGateBlocksForVerdict` already had
+`signalKinds`/`archetype` in scope (`SwingEntryVerdictInput` carries both) — the data just wasn't
+threaded through.
+
+### Fix
+
+`commitGateBlocksForVerdict` now takes an optional second argument, `SwingGateBlockDiagnosticContext
+{ signalKinds, archetype }`. When present and the block is G-S6, it filters `signalKinds` down to
+real `SwingDiscoveryPath` values (same filter `resolveSwingCommitGateBlockedBy` already uses) and
+calls `evaluateSwingConfluence(paths, archetype)`, folding its `label` into the reason additively:
+
+> Independent signal confluence below commit threshold — needs 1 more kind(s) — have FLOW+STRUCTURE.
+
+Omitting the context (or supplying no recognized signal kinds) keeps the prior flat reason —
+backward compatible, never a required argument. All 3 call sites in `swingEntryVerdict`
+(RESEARCH-branch real-gate-blocks, the `wait` case, and the `dont_buy` case) now pass
+`{ signalKinds: input.signalKinds, archetype: input.archetype }`.
+
+### Blast radius
+
+`src/lib/swing/entry-verdict.ts` only — the three call sites that already build `SwingEntryGateBlock[]`
+from `commitGateBlockedBy`. No gate/commit logic touched; this is purely a richer reason string on an
+already-blocked verdict. Every consumer of `TerminalPlay.gateBlocks` (play-brief Entry section,
+play-brief-intel's "Before entry, clear:", play-brief-narrative-coaching) benefits automatically since
+they all just render `gateBlocks[].reason`.
+
+### Test
+
+4 new tests in `entry-verdict.test.ts`: the flat fallback with no context, the enriched reason for a
+standard 3-kind archetype, the event-archetype CATALYST-specific wording, and an end-to-end
+`swingEntryVerdict` repro threading `signalKinds`/`archetype` through to the rendered gate block.
+Full swing suite: 1764/1764 pass. `tsc --noEmit` clean.
+
+| **Status** | Fixed |
+|---|---|
+| **PR** | pending |
+| **Origin** | Raised as a design-level idea on #4076 (comment 6161315873, 2026-10-14 05:04 UTC), implemented after ~8h with no reply per the standing "NEVER SIT IDLE" / Ask Largo ownership mandate — same precedent as the two prior same-day implementations on that thread (comments 6137797103, 6138564491). |
+
+---
+_Generated by [Claude Code](https://claude.com/claude-code)_
+
 ## 2026-10-14 — [Platform / Cache Warmers] `platform-warm` cron had no cross-replica overlap guard — ALB p99 escalated 51s → 100s — FIXED
 
 > **kind:** `FINDING`
@@ -68,40 +161,6 @@ limiter budget.
 
 ---
 _Generated by [Claude Code](https://claude.com/claude-code)_
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-10-14 — [0DTE / Night Hawk] Off-hours board reads triggered expensive cold rebuilds instead of serving the stale-but-available fallback — p99 latency climbed 2.4s → 8.3s over 3 hours — FIXED
 
