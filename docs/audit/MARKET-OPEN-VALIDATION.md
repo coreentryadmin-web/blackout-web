@@ -1,3 +1,30 @@
+## WATCH LIST — 2026-10-14 platform-warm cross-replica overlap guard (ALB p99 51s→100s) fixed — deploy pending validation
+
+**What was fixed:** `platform-warm` cron fired every 5 minutes on every web-tier replica with no
+cross-replica dedup, each replica independently calling `loadBootstrapBundle()` wrapped in
+`runWithBackgroundUwSweep()` and stacking on the shared `UW_GLOBAL_MAX_RPS` rate limiter. Measured
+live (CloudWatch, 2026-10-14 11:37Z): ALB `TargetResponseTime` p99 escalated 51s → 67s → 68s →
+93.7s → peaking at 100s Max over the hour, with individual `platform-warm` runs logging 67-100s
+elapsed against a documented "~2-5s cold" design expectation; `meridian-warm` (same
+`runWithBackgroundUwSweep` wrapping, already has its own overlap guard) showed consistently
+elevated ~10s runs in the same window, corroborating shared rate-limiter contention rather than a
+`platform-warm`-only defect. Fix (#5984): ported the proven `OVERLAP_LOCK`/`RERUN_COOLDOWN`
+(`sharedCacheSetNx`/`sharedCacheDel`) pattern already live on `meridian-warm` onto `platform-warm`,
+so only one replica rebuilds the bootstrap bundle at a time instead of N competing for the same UW
+rate-limiter budget. Full write-up: `docs/audit/FINDINGS.md`'s 2026-10-14 `platform-warm` entry.
+
+**Specific thing to check once this deploys:** pull `AWS/ApplicationELB` `TargetResponseTime`
+(Average/p90/p99/Max) for `blackout-production-app` over a comparable multi-hour window post-
+deploy and confirm the same escalating-tail-latency shape (p99 climbing past ~50-60s, Max pinned
+near 100s) does NOT recur. Also grep CloudWatch Logs for `[cron/platform-warm] background done —
+elapsed=` and confirm individual runs return to the ~2-5s cold / sub-second warm range instead of
+the 67-100s observed pre-fix, and that `"previous platform warm still in flight (idempotent skip)"`
+starts appearing in the logs during any window where two replica ticks would otherwise overlap —
+its absence over a long enough window would mean the lock is either never contending (fine) or
+never firing (re-open the finding).
+
+---
+
 ## WATCH LIST — 2026-10-09 Swing archetype-drift board disappearance (RCL/SNDK/XAR) fixed — deploy pending validation
 
 **What was fixed:** `discoverSwingFromPersisted` (`serving-lane.ts`) joined `snap.plays` (one
