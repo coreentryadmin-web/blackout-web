@@ -13,8 +13,38 @@ import { useEffect } from "react";
 // manifest and clears it. Reproduced live 2026-08-24: this exact screen crashed a real page load
 // during an in-progress production deploy (`ChunkLoadError: Loading chunk 6750 failed.`); a retry
 // with no deploy in flight loaded cleanly.
+//
+// Widened 2026-10-14 to the same canonical pattern `src/lib/chunk-reload.ts` uses (kept manually in
+// sync here rather than imported — same "no imports beyond react" constraint), and the reload guard
+// below is now scoped to the build id live when it fires, not a bare "ever reloaded" flag — see
+// `chunk-load-error.ts`'s header comment for the full root cause: an unscoped flag that never reset
+// meant this boundary could self-heal the FIRST stale-chunk crash in a tab but never a second,
+// unrelated one later (a later deploy, after the member kept the tab open) — it fell straight to
+// the manual "Try again" dead end instead of reloading, exactly the gap found while confirming a
+// session opened before a deployment can still navigate the app afterward.
 function isChunkLoadError(error: unknown): boolean {
-  return error instanceof Error && (error.name === "ChunkLoadError" || /Loading chunk [\w-]+ failed/i.test(error.message));
+  return (
+    error instanceof Error &&
+    (error.name === "ChunkLoadError" ||
+      /ChunkLoadError|Loading chunk [\w-]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module|error loading dynamically imported module|Refused to execute script|Refused to apply style|Importing a module script failed|UnrecognizedActionError|Server Action [^ ]+ was not found/i.test(
+        error.message
+      ))
+  );
+}
+
+/** Build id the document is actually running, read off its own `/_next/static/<id>/...` script
+ * src — same signal `chunk-reload.ts`'s inline head script and `chunk-load-error.ts` use. "" (never
+ * throws) if it can't be determined, in which case the guard below falls back to the old
+ * "ever reloaded in this tab" behavior rather than guessing. */
+function currentBuildId(): string {
+  try {
+    const script = document.querySelector('script[src*="/_next/static/"]');
+    const src = script?.getAttribute("src") ?? "";
+    const match = /\/_next\/static\/([^/]+)\//.exec(src);
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
 }
 
 export default function GlobalError({
@@ -29,8 +59,12 @@ export default function GlobalError({
     if (isChunkLoadError(error)) {
       try {
         const key = "bo-chunk-error-reload-attempted";
-        if (!window.sessionStorage.getItem(key)) {
-          window.sessionStorage.setItem(key, "1");
+        const buildId = currentBuildId();
+        const stored = window.sessionStorage.getItem(key);
+        // Skip the reload only when we've already tried for THIS build id (or have no build id
+        // signal at all); a later failure on a newer build gets its own fresh attempt.
+        if (!(stored && (!buildId || stored === buildId))) {
+          window.sessionStorage.setItem(key, buildId || "1");
           window.location.reload();
         }
       } catch {
