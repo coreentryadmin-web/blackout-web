@@ -114,7 +114,19 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   // play-brief-narrative-coaching.ts's thesisPillarCoaching already gates its own "What moved" line
   // on) but this section never read it. Surface it right next to the band label instead of leaving
   // a reader to infer "unchanged" by checking all five deltas are exactly zero themselves.
-  const noDriftSinceCommit = h.moves?.[0]?.includes("unchanged") ?? false;
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14): `h.moves` staying at its fallback
+  // "unchanged" sentinel is NOT proof nothing moved — four of the five pillars can never trip it
+  // (see `roundTripSinceCommit`'s doc comment, zerodte/thesis-health.ts, for the full structural
+  // account) and a real round-trip through a genuine favorable peak falls through every one of
+  // `moves`'s own triggers unless it happens to cross the -40% backstop or flip thesisBreak.
+  // Live repro 2026-10-14, SWING:INTC:56 (peak +15.3% -> trough -36.6%, currently -36.5%): this
+  // line read "unchanged since commit" in the SAME envelope whose "Trade manager read" section
+  // correctly narrates "Round-tripped past breakeven ... consider protecting what's left" — two
+  // sections of one brief disagreeing about the same fact. `roundTripSinceCommit` is computed
+  // independently (not via `moves`, which has a second consumer — thesisPillarCoaching's "What
+  // moved" line — that already renders this same fact; reusing `moves` here would duplicate it).
+  const noDriftSinceCommit = (h.moves?.[0]?.includes("unchanged") ?? false) && !h.roundTripSinceCommit;
   const headline = noDriftSinceCommit
     ? `**${h.health}%** · ${h.rungLabel} — unchanged since commit`
     : `**${h.health}%** · ${h.rungLabel}`;

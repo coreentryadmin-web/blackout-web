@@ -2982,6 +2982,79 @@ test("composeSwingPlayBrief: Thesis health headline discloses 'unchanged since c
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-14, live repro SWING:INTC:56): the "unchanged since
+// commit" disclosure the test above added (2026-10-07) is itself wrong whenever the position has
+// round-tripped from a real favorable peak into a current loss — `moves` stays at its "unchanged"
+// fallback (none of its own triggers fire for a swing that falls short of the -40% backstop and
+// never flips thesisBreak) even though the SAME envelope's "Trade manager read" section correctly
+// narrates the round-trip two sections later. `roundTripSinceCommit` (set by computeSwingThesisHealth,
+// thesis-health.ts) is the independent signal that closes this gap; this test pins the fixture's
+// `thesisHealth` directly (same pattern as the test above) so it exercises ONLY `thesisHealthSection`'s
+// own headline logic, not the full computeSwingThesisHealth pipeline (covered separately in
+// thesis-health.test.ts's roundTripSinceCommit suite).
+test("composeSwingPlayBrief: Thesis health headline omits 'unchanged since commit' when the position has round-tripped past breakeven (live repro 2026-10-14, SWING:INTC:56)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.72,
+      mark: 3.0,
+      pnlPct: -36.5,
+      peak: 15.3,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 67,
+        entryIndex: 67,
+        currentIndex: 67,
+        delta: 0,
+        rung: "WEAKENING",
+        rungLabel: "Weakening",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.55,
+            currentScore: 0.55,
+            commitLabel: "forming",
+            currentLabel: "forming",
+            status: "intact",
+            contributionPts: 15.4,
+            deltaPts: 0,
+          },
+        ],
+        // The exact fallback string thesis-health.ts stamps when no pillar faded/lost — still fires
+        // here (same gap the fix addresses), which is why the headline must key off
+        // `roundTripSinceCommit` instead of trusting this string alone.
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 13, 4:10 PM",
+        computedAtEt: "Oct 14, 4:42 PM",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "multi-day thesis intact",
+        roundTripSinceCommit: true,
+      },
+    }),
+    asOf: "2026-10-14T20:42:00.000Z",
+    sessionDate: "2026-10-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.doesNotMatch(
+    thesis!.body,
+    /unchanged since commit/i,
+    `Thesis health headline must NOT claim 'unchanged since commit' once the position has round-tripped past breakeven, got: ${thesis!.body}`,
+  );
+  assert.match(thesis!.body, /67%.*Weakening/is, `headline must still show the real health %/band, got: ${thesis!.body}`);
+});
+
 test("composeSwingPlayBrief: partially-calibrated Thesis health keeps real pillars and only withholds the aggregate % (2026-09-21 live gap, AAPL position 40 SECTOR_ROTATION)", () => {
   // Live repro (2026-09-21, Ask Largo standing mandate): a committed non-Banger position can have
   // BOTH setupState AND entryStatus live-derived (real, calibrated) while signalKinds is genuinely
