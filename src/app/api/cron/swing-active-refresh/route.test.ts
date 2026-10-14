@@ -28,13 +28,70 @@ test("swing-active-refresh background dispatch is wrapped in runWithBackgroundUw
     routeSrc,
     /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/
   );
-  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingActiveRefreshCron\(started\)\)/);
+  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingActiveRefreshCron\(started, slot\)\)/);
 });
 
 test("swing-active-refresh acquires singleton claim before work (Q37)", () => {
   assert.match(routeSrc, /SWING_ACTIVE_REFRESH_CLAIM_KEY/);
   assert.match(routeSrc, /sharedCacheSetNx\(/);
   assert.match(routeSrc, /another refresh pass is still running/);
+});
+
+// Regression (2026-10-13/14): the Q37 singleton claim above lives INSIDE the background
+// function and only ever stopped THIS cron from overlapping with itself. Live CloudWatch
+// (2026-10-13 13:35-13:56 UTC) showed this cron and 5 OTHER heavy crons in flight at once on the
+// shared web tier, 1:1 correlated with sustained ALB tail latency — see
+// heavy-cron-concurrency-guard.ts's header for the full evidence. Unlike the other 5 wired
+// routes, this one's self-overlap claim is taken INSIDE the background function rather than in
+// GET, so the cross-cron slot must be acquired in GET (before dispatch) and threaded through.
+test("a cross-cron concurrency slot is acquired in GET before dispatch and threaded into the background function", () => {
+  assert.match(
+    routeSrc,
+    /import \{ acquireHeavyCronSlot, type HeavyCronSlot \} from "@\/lib\/cron\/heavy-cron-concurrency-guard"/,
+    "must import the shared cross-cron concurrency guard"
+  );
+  assert.match(
+    routeSrc,
+    /const slot = await acquireHeavyCronSlot\("swing-active-refresh", activeRefreshClaimTtlSec\(\)\);/,
+    "must acquire a named heavy-cron slot using the same TTL as the Q37 singleton claim"
+  );
+  const gateAt = routeSrc.indexOf("isEtCashRth()");
+  const slotAt = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const dispatchAt = routeSrc.indexOf("const dispatchRefresh");
+  assert.ok(
+    gateAt >= 0 && slotAt > gateAt && slotAt < dispatchAt,
+    "the slot must be acquired after the RTH gate and before dispatch is defined"
+  );
+  assert.match(
+    routeSrc,
+    /async function runSwingActiveRefreshCron\(started: number, slot: HeavyCronSlot\): Promise<void> \{/,
+    "the background function must accept the slot so it can release it when done"
+  );
+});
+
+test("a lost cross-cron concurrency race in GET skips the run with an honest idempotent-skip payload", () => {
+  assert.match(
+    routeSrc,
+    /if \(!slot\) \{\s*const payload = \{\s*ok: true,\s*skipped: true,\s*reason: "heavy-cron concurrency slot unavailable \(idempotent skip\)",\s*\};/,
+    "a lost race must skip honestly before ever calling the background function, not proceed without a slot"
+  );
+});
+
+test("the slot is released both on the early self-overlap-claim-lost return and in the main finally block", () => {
+  // Two release sites are correct here, not a bug: the slot is acquired once in GET, but the
+  // Q37 singleton claim inside the background function can ALSO lose its own race (another
+  // refresh pass already running) — that early return must still free the slot GET just handed
+  // it, or a held slot would leak every time this specific race is lost.
+  assert.match(
+    routeSrc,
+    /another refresh pass is still running \(Q37 singleton claim\)",?\s*\);\s*await slot\.release\(\);\s*return;/,
+    "losing the Q37 claim after already holding a slot must release that slot before returning"
+  );
+  assert.match(
+    routeSrc,
+    /await sharedCacheDel\(SWING_ACTIVE_REFRESH_CLAIM_KEY\)\.catch\(\(\) => undefined\);\s*await slot\.release\(\);\s*\}\s*\}/,
+    "the main finally block must release the slot alongside the Q37 claim on both success and error paths"
+  );
 });
 
 test("swing-active-refresh gates on isEtCashRth before dispatching Polygon/UW refresh", () => {

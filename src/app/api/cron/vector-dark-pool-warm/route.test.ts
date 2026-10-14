@@ -88,3 +88,43 @@ test("the rotation cursor is persisted across runs via the shared cache, not per
     "must persist the next cursor so the following run continues coverage instead of restarting at 0"
   );
 });
+
+// Regression (2026-10-13/14): this cron's own self-overlap lock only ever stopped IT from
+// overlapping with itself. Live CloudWatch (2026-10-13 13:35-13:56 UTC) showed this cron and 5
+// OTHER heavy crons in flight at once on the shared web tier, 1:1 correlated with sustained ALB
+// tail latency — see heavy-cron-concurrency-guard.ts's header for the full evidence.
+test("a cross-cron concurrency slot is acquired after the self-overlap lock, before dispatch", () => {
+  assert.match(
+    routeSrc,
+    /import \{ acquireHeavyCronSlot, type HeavyCronSlot \} from "@\/lib\/cron\/heavy-cron-concurrency-guard"/,
+    "must import the shared cross-cron concurrency guard"
+  );
+  assert.match(
+    routeSrc,
+    /const slot = await acquireHeavyCronSlot\("vector-dark-pool-warm", 610\);/,
+    "must acquire a named heavy-cron slot with the same TTL as the self-overlap lock"
+  );
+  const overlapClaimIdx = routeSrc.indexOf('"cron:vector-dark-pool-warm:lock"');
+  const slotIdx = routeSrc.indexOf("const slot = await acquireHeavyCronSlot(");
+  const dispatchIdx = routeSrc.indexOf("const dispatchWarm = () => {");
+  assert.ok(
+    overlapClaimIdx > 0 && slotIdx > overlapClaimIdx && slotIdx < dispatchIdx,
+    "the cross-cron slot must be acquired AFTER the self-overlap lock and BEFORE dispatch is defined"
+  );
+});
+
+test("a lost cross-cron concurrency race skips the run instead of dispatching a second heavy warm", () => {
+  assert.match(
+    routeSrc,
+    /if \(!slot\) \{\s*const payload = \{ ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable \(idempotent skip\)" \};/,
+    "a lost race must skip honestly, not silently proceed without a slot"
+  );
+});
+
+test("the heavy-cron slot is released alongside the background warm, in the inner function's finally block", () => {
+  assert.match(
+    routeSrc,
+    /async function runVectorDarkPoolWarm\(started: number, slot: HeavyCronSlot\): Promise<void> \{\s*try \{\s*await runVectorDarkPoolWarmInner\(started\);\s*\} finally \{\s*await slot\.release\(\);\s*\}\s*\}/,
+    "release must run on both the success and error paths, wrapping the real work rather than inlined into it"
+  );
+});

@@ -7,6 +7,7 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 import { runUwPool, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { halfBatchSize, selectDarkPoolWarmBatch } from "./rotation";
+import { acquireHeavyCronSlot, type HeavyCronSlot } from "@/lib/cron/heavy-cron-concurrency-guard";
 
 const ROTATION_CURSOR_KEY = "cron:vector-dark-pool-warm:cursor";
 // Persist well past the ~10min schedule so a single missed/overlapping run doesn't reset coverage.
@@ -39,7 +40,15 @@ export const maxDuration = 120;
  * halves the per-run ticker count — full universe coverage every 2 runs instead of every 1 — which
  * halves this cron's own total admission-queue commitment without touching the shared limiter.
  */
-async function runVectorDarkPoolWarm(started: number): Promise<void> {
+async function runVectorDarkPoolWarm(started: number, slot: HeavyCronSlot): Promise<void> {
+  try {
+    await runVectorDarkPoolWarmInner(started);
+  } finally {
+    await slot.release();
+  }
+}
+
+async function runVectorDarkPoolWarmInner(started: number): Promise<void> {
   const allTickers = vectorUniverseTickers();
   const cursor = (await sharedCacheGet<number>(ROTATION_CURSOR_KEY).catch(() => null)) ?? 0;
   const { batch: tickers, nextCursor } = selectDarkPoolWarmBatch(
@@ -109,11 +118,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Cross-CRON concurrency cap — distinct from the self-overlap lock just above. Live CloudWatch
+  // (2026-10-13 13:35-13:56 UTC) showed this cron and 5 OTHER heavy crons in flight at once on
+  // the shared web tier, 1:1 correlated with sustained ALB tail latency — see
+  // heavy-cron-concurrency-guard.ts's header for the full evidence.
+  const slot = await acquireHeavyCronSlot("vector-dark-pool-warm", 610);
+  if (!slot) {
+    const payload = { ok: true, skipped: true, reason: "heavy-cron concurrency slot unavailable (idempotent skip)" };
+    await logCronRun("vector-dark-pool-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
   // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
   // UW concurrency slot reachable for live member traffic even while mid-run — see
   // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatchWarm = () => {
-    void runWithBackgroundUwSweep(() => runVectorDarkPoolWarm(started)).catch((error) => {
+    void runWithBackgroundUwSweep(() => runVectorDarkPoolWarm(started, slot)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/vector-dark-pool-warm] background warm REJECTED: ${detail}`);
     });
