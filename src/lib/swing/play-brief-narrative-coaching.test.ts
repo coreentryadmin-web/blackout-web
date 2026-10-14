@@ -3028,6 +3028,71 @@ test("tickerHistoryCoaching: no prior trades / no record at all → null, never 
   assert.equal(tickerHistoryCoaching(ctx({ tickerTrackRecord: null })), null);
 });
 
+// DIRECTION MISMATCH (2026-10-14, Ask Largo standing mandate, PR #4076 comment 6151970308): live
+// repro was SWING:INTC:56 (today's play LONG) citing a 0W/4L record where 2 of the 4 losses were
+// SHORT and the only archetype match was also the opposite direction — zero of the 4 shared both
+// direction and archetype with the reviewed play, yet the prose read as a verdict on "this exact
+// setup." These tests pin the wording BEFORE softening it so the fix is provably RED→GREEN.
+test("tickerHistoryCoaching: cited losses all opposite direction from today's play → softened wording, not an edge verdict", () => {
+  const line = tickerHistoryCoaching(
+    ctx({
+      play: play({ direction: "LONG" }),
+      tickerTrackRecord: {
+        ticker: "INTC",
+        priorClosedTrades: 4,
+        wins: 0,
+        losses: 4,
+        directions: ["short", "short", "short", "short"],
+      },
+    }),
+  );
+  assert.match(line!, /INTC is 0W \/ 4L across 4 prior closed trades/);
+  assert.match(line!, /\(all short\)/);
+  assert.match(line!, /not all directly comparable to today's LONG setup/);
+  assert.doesNotMatch(line!, /hasn't found an edge on this exact name/);
+});
+
+test("tickerHistoryCoaching: cited losses are a mix of long and short → 'mixed long\\/short', not an edge verdict", () => {
+  const line = tickerHistoryCoaching(
+    ctx({
+      play: play({ direction: "LONG" }),
+      tickerTrackRecord: {
+        ticker: "INTC",
+        priorClosedTrades: 4,
+        wins: 0,
+        losses: 4,
+        directions: ["long", "short", "long", "short"],
+      },
+    }),
+  );
+  assert.match(line!, /\(mixed long\/short\)/);
+  assert.match(line!, /not all directly comparable to today's LONG setup/);
+});
+
+test("tickerHistoryCoaching: cited losses all SAME direction as today's play → original 'no edge' wording stands", () => {
+  const line = tickerHistoryCoaching(
+    ctx({
+      play: play({ direction: "LONG" }),
+      tickerTrackRecord: {
+        ticker: "AAPL",
+        priorClosedTrades: 2,
+        wins: 0,
+        losses: 2,
+        directions: ["long", "long"],
+      },
+    }),
+  );
+  assert.match(line!, /hasn't found an edge on this exact name yet/);
+  assert.doesNotMatch(line!, /not all directly comparable/);
+});
+
+test("tickerHistoryCoaching: directions omitted (older call site/fixture) → falls back to original wording, never crashes", () => {
+  const line = tickerHistoryCoaching(
+    ctx({ tickerTrackRecord: { ticker: "AAPL", priorClosedTrades: 2, wins: 0, losses: 2 } }),
+  );
+  assert.match(line!, /hasn't found an edge on this exact name yet/);
+});
+
 test("technicalsCoaching: bias reads bullish from tape on SHORT play (Largo C5 — chart evidence, not position direction)", () => {
   const vec = {
     spot: 95,

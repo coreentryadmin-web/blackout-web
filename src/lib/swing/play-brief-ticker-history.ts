@@ -58,6 +58,12 @@ export type SwingTickerTrackRecord = {
   priorClosedTrades: number;
   wins: number;
   losses: number;
+  /** Each cited chain's own entry direction (its first leg's), same order as the underlying
+   *  chains — lets a caller (tickerHistoryCoaching) tell whether the cited record actually shares
+   *  the reviewed play's direction before implying it's a directly comparable "no edge on this
+   *  setup" verdict. Optional so older call sites/fixtures that predate this field still satisfy
+   *  the type; a caller that omits it falls back to the undifferentiated wording. */
+  directions?: ("long" | "short")[];
 };
 
 /** Cap on how many roots this reads chains for in one request — a ticker-scoped population is
@@ -121,7 +127,12 @@ export async function loadTickerTrackRecord(
 
     const wins = ordered.filter(({ record }) => record.composite.outcome === "win").length;
     const losses = ordered.filter(({ record }) => record.composite.outcome === "loss").length;
-    return { ticker: ticker.toUpperCase(), priorClosedTrades: ordered.length, wins, losses };
+    // Each chain's ENTRY direction (its first leg's) — a roll keeps the same directional thesis,
+    // so the first leg is the chain's representative direction. Never empty when `ordered` isn't:
+    // buildSwingRecord's `legs` is derived 1:1 from the fetched chain, which `nonEmptyChains`
+    // already guaranteed is non-empty.
+    const directions = ordered.map(({ record }) => record.legs[0].direction);
+    return { ticker: ticker.toUpperCase(), priorClosedTrades: ordered.length, wins, losses, directions };
   } catch {
     return null;
   }
