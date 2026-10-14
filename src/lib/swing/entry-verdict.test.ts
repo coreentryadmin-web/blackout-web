@@ -216,6 +216,24 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     );
   });
 
+  it("G-S6 block falls back to the flat reason when the recomputed verdict disagrees it should still fail (live AVGO repro, 2026-10-14)", () => {
+    // Live repro: a served WATCH row carried commitGateBlockedBy=["gate:G-S6:confluence"] (stamped
+    // at the last discovery scan) alongside signalKinds that had since accumulated to 5 kinds —
+    // enough to PASS the standard 3-kind SECTOR_ROTATION threshold. Recomputing the diagnostic
+    // naively produced "5/3 kinds agree (...)" — a passing-shaped label rendered directly inside
+    // the sentence explaining why entry was still blocked. The enrichment must never assert a
+    // passing count next to a live block; it should fall back to the flat text instead.
+    const blocks = commitGateBlocksForVerdict(["gate:G-S6:confluence"], {
+      signalKinds: ["CATALYST", "FLOW", "POSITIONING", "STRUCTURE", "VECTOR"],
+      archetype: "SECTOR_ROTATION",
+    });
+    assert.equal(blocks[0]?.code, "g_s6_confluence");
+    assert.equal(
+      blocks[0]?.reason,
+      "Independent signal confluence below commit threshold — desk will not open."
+    );
+  });
+
   it("desk committed + AT_TRIGGER → STILL BUY label", () => {
     const v = swingEntryVerdict({
       servingSection: "COMMIT_NOW",
