@@ -131,6 +131,13 @@ function synthesizedSetupLede(
   const archetypePhrase = maturity
     ? `${maturity} ${whyArchetypeLabel.toLowerCase()}`
     : whyArchetypeLabel.toLowerCase();
+  // FIX (Ask Largo standing mandate, 2026-10-14, live AMD repro): `setupState` includes EXTENDED,
+  // a vowel-starting value, so the hardcoded "a" article ("a extended pullback continuation setup")
+  // read as a grammar bug in otherwise-polished trade-manager prose. `archetypePhrase` always
+  // starts with `maturity` (a lowercased setupState enum member) when present, so a simple
+  // vowel-sound check on its first letter is sufficient here — this is prose assembled from a
+  // closed, known enum, not arbitrary user text.
+  const article = /^[aeiou]/i.test(archetypePhrase) ? "an" : "a";
   // Deliberately does NOT fold `play.regime` in here, even though it reads naturally alongside the
   // archetype: `play.archetype` is PINNED at commit while `play.regime` is re-derived fresh on every
   // scan (see the "Today's regime read" line's own comment below) and the two can genuinely diverge
@@ -144,7 +151,7 @@ function synthesizedSetupLede(
   // independently-rounded-related-quantities precision bug this file's own industry-read fix
   // (2026-10-09) already warns about, one call site over).
   const scoreStr = Number.isFinite(play.score) ? `, scoring ${Math.round(play.score)}` : "";
-  return `${signals} flagged this as a ${archetypePhrase} setup${contextStr}${scoreStr}.`;
+  return `${signals} flagged this as ${article} ${archetypePhrase} setup${contextStr}${scoreStr}.`;
 }
 
 export function whyThisSetupSection(play: TerminalPlay): RichSection {
@@ -1010,6 +1017,11 @@ export function flowIntelSection(
 
   const z = zerodteLiveForSession(eco.zerodte_today, sessionDate);
   if (z) {
+    // FIX (Ask Largo standing mandate, 2026-10-14, live ASTS repro): `${z.conviction ?? "—"}
+    // conviction` printed a raw em-dash placeholder inline ("— conviction") whenever conviction was
+    // null, instead of omitting the clause entirely — the flat-placeholder shape C3's absence
+    // principle and the narrative-quality bar both discourage. Omit the whole clause when unknown.
+    const convictionBit = z.conviction != null ? ` · ${z.conviction} conviction` : "";
     if (z.is_condor === true) {
       // A committed CONDOR's `direction` column is NOMINAL provenance only (the fade side of
       // the pin it came from) — the structure is delta-neutral, so comparing it against swing's
@@ -1017,14 +1029,14 @@ export function flowIntelSection(
       // signal the 0DTE desk never actually took (board.ts's own ZeroDteSetup.direction comment:
       // "the directional gates ... do NOT apply to it"). Report the desk's real posture instead.
       lines.push(
-        `0DTE desk: **sold iron condor** (structure-neutral, not a directional call) · ${z.conviction ?? "—"} conviction`,
+        `0DTE desk: **sold iron condor** (structure-neutral, not a directional call)${convictionBit}`,
       );
     } else {
       const aligned =
         (play.direction === "LONG" && z.direction === "long") ||
         (play.direction === "SHORT" && z.direction === "short");
       lines.push(
-        `0DTE desk: **${z.direction}** · ${z.conviction ?? "—"} conviction${aligned ? " · **aligned**" : " · **conflict** with swing direction"}`,
+        `0DTE desk: **${z.direction}**${convictionBit}${aligned ? " · **aligned**" : " · **conflict** with swing direction"}`,
       );
     }
   }

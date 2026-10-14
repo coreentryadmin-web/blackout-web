@@ -589,6 +589,22 @@ test("whyThisSetupSection: synthesizes a lede sentence for the common case, repl
   assert.doesNotMatch(section.body, /\*\*Sub-lane:\*\*/);
 });
 
+// FIX (Ask Largo standing mandate, 2026-10-14, live AMD repro): setupState EXTENDED (a vowel-
+// starting enum member) used to render "flagged this as a extended pullback continuation setup" --
+// a grammar bug in otherwise-polished trade-manager prose.
+test("whyThisSetupSection: uses 'an' (not 'a') before a vowel-starting setupState", () => {
+  const play = fixturePlay({
+    discoveryOrigin: ["NIGHT HAWK"],
+    archetype: "PULLBACK_CONTINUATION",
+    subLane: "STANDARD",
+    setupState: "EXTENDED",
+    score: 56,
+  });
+  const section = whyThisSetupSection(play);
+  assert.match(section.body, /flagged this as an extended pullback continuation setup/);
+  assert.doesNotMatch(section.body, /flagged this as a extended/);
+});
+
 test("whyThisSetupSection: 'Today's regime read' always stays its own separate line, even when the lede fires — pinned archetype vs fresh regime can diverge and that must stay visible", () => {
   const play = fixturePlay({
     discoveryOrigin: ["FLOW"],
@@ -5103,6 +5119,56 @@ test("flowIntelSection: a non-condor directional 0DTE row still renders the alig
   const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
   assert.ok(section);
   assert.match(section!.body, /\*\*aligned\*\*/);
+});
+
+// FIX (Ask Largo standing mandate, 2026-10-14, live ASTS repro): `${z.conviction ?? "—"}
+// conviction` printed a raw em-dash placeholder inline ("— conviction") whenever conviction was
+// null, instead of omitting the clause entirely -- a flat placeholder the narrative-quality bar
+// discourages elsewhere in this file.
+test("flowIntelSection: omits the conviction clause entirely (never '— conviction') when conviction is null, non-condor row", () => {
+  const eco = {
+    ticker: "ASTS",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-11",
+      direction: "short",
+      score: 78,
+      conviction: null,
+      status: "committed",
+      first_flagged_at: "2026-09-11T14:00:00Z",
+      is_condor: false,
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
+  assert.ok(section);
+  assert.match(section!.body, /0DTE desk: \*\*short\*\* · \*\*conflict\*\* with swing direction/);
+  assert.doesNotMatch(section!.body, /— conviction/);
+  assert.doesNotMatch(section!.body, /conviction/);
+});
+
+test("flowIntelSection: omits the conviction clause entirely when conviction is null, condor row", () => {
+  const eco = {
+    ticker: "SPY",
+    flow_feed_fresh: true,
+    recent_flow: null,
+    zerodte_today: {
+      session_date: "2026-09-11",
+      direction: "long",
+      score: 78,
+      conviction: null,
+      status: "committed",
+      first_flagged_at: "2026-09-11T14:00:00Z",
+      is_condor: true,
+    },
+  } as EcosystemContext;
+
+  const section = flowIntelSection(eco, fixturePlay({ direction: "LONG" }), "2026-09-11");
+  assert.ok(section);
+  assert.match(section!.body, /sold iron condor\*\* \(structure-neutral, not a directional call\)/);
+  assert.doesNotMatch(section!.body, /— conviction/);
+  assert.doesNotMatch(section!.body, /conviction/);
 });
 
 test("flowIntelSection: a persisting anomaly re-written across two 30min cron cycles must render once, not twice", () => {
