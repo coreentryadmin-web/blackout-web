@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-14T08:53:00Z",
+  "lastUpdated": "2026-10-14T13:22:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -719,6 +719,10 @@
     {
       "at": "2026-10-14T08:53:00Z",
       "summary": "AGGRESSIVE-MODE CONCLUSION (genuine state transition, closes a flagged open question): PR #5982 deployed; live re-pull shows over_gate_by_promotion promoted n=0 / not_promoted n=31 (58.1%) -- the elevated over_gate favorable rate has ZERO contribution from the PR #5961 gate-promote rescue (it never fired in this 90-day window, consistent with the separately-already-fixed 2026-10-13 dead-code finding whose fix landed only yesterday). All 31 over-gate rows came through some other bypass, almost certainly the still-open backfillBypassesPublishGates_2026_09_17T1815Z finding. Does not change that finding's severity or status (early-read favorable != final profitability, n=31 is not large) -- noted as informative context only. See knownOpenItems for the full resolution. Healthcheck this cycle: repeat-clean (A GREEN, B AMBER expected post-close staleness, C GREEN resolved=30, D SKIPPED pre-morning-confirm)."
+    },
+    {
+      "at": "2026-10-14T13:22:00Z",
+      "summary": "RTH-OPEN TRANSITION (routine, not a bug): D_pull_status flipped SKIPPED->GREEN -- morning-confirmation cron has now run for 2026-10-14's edition (CLS/VST/AMD), all three CONFIRMED<->pulled=false agree, no mismatches. Expected daily lifecycle event around market open, logged for continuity only. B_marks still AMBER (no live two-sided quote yet on all three OCCs) -- normal open-of-session latency, watch next cycle for it to clear as the option market makes markets. A_edition GREEN, C_record GREEN unchanged."
     }
   ],
   "knownOpenItems": {
