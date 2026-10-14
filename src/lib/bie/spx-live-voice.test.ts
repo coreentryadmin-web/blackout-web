@@ -653,6 +653,48 @@ describe("deriveWatchLevels", () => {
     assert.deepEqual(deriveWatchLevels(mkSnap()), []);
     assert.deepEqual(deriveWatchLevels(mkSnap({ price: 7500 })), []);
   });
+
+  // BUG FIX (2026-10-14, Ask Largo standing mandate — live repro, SPX desk, price 7718.94 /
+  // PDL 7786.11, both measured live): PDL is a PRIOR-SESSION level, not a tautological bound like
+  // LOD — price is free to trade through it (see spx-desk-levels.ts's `priorSessionLevelKind` doc
+  // comment, fixed for the `kind` field by #6013). This is the narration-layer SIBLING of that same
+  // bug class: the "already broken through" branch of PDL's `meaning()` callback read "yesterday's
+  // low reclaimed — holding above it repairs the damage" — text describing a RECLAIM (price back
+  // ABOVE PDL) — but that branch fires exactly when `side === "above"`, i.e. PDL sits ABOVE price,
+  // meaning price is STILL BELOW PDL (broken down, not reclaimed). The rendered line therefore
+  // self-contradicted: "47.7 pts overhead" (PDL above price) directly beside "holding above it
+  // repairs the damage" (implies price above PDL). Root cause: the text was seemingly modeled on
+  // LOD's own symmetric branch (`"reclaimed low — holding above it repairs the tape"`), which is
+  // safe there only because LOD is tautologically <= price (that branch is practically
+  // unreachable for LOD) — the same assumption does not hold for PDL, which can genuinely sit
+  // above price. Fix mirrors PDH's already-correct symmetric branch ("yesterday's high is now
+  // support — holding above it keeps the breakout alive") for the bearish/breakdown direction.
+  test("PDL already broken below price narrates overhead resistance, not a false 'reclaimed' claim", () => {
+    const levels = deriveWatchLevels(mkSnap({ price: 7512.3, pdl: 7560 }));
+    assert.equal(levels.length, 1);
+    const pdl = levels[0]!;
+    assert.equal(pdl.label, "PDL");
+    assert.equal(pdl.side, "above"); // PDL sits ABOVE price -> already broken DOWN through it
+    assert.doesNotMatch(
+      pdl.line,
+      /reclaimed/i,
+      "must not claim the low was reclaimed while price is still below it"
+    );
+    assert.match(
+      pdl.line,
+      /now resistance/i,
+      "broken-down PDL should narrate its new overhead-resistance role, symmetric to PDH's 'now support' branch"
+    );
+    assertGrounded(pdl.line, mkSnap({ price: 7512.3, pdl: 7560 }));
+  });
+
+  test("PDL not yet broken (still below price) keeps the forward-looking 'lose it' warning — unchanged by the fix", () => {
+    const levels = deriveWatchLevels(mkSnap({ price: 7512.3, pdl: 7490 }));
+    assert.equal(levels.length, 1);
+    const pdl = levels[0]!;
+    assert.equal(pdl.side, "below"); // PDL sits below price -> not broken yet
+    assert.match(pdl.line, /lose it and it's a multi-day breakdown/);
+  });
 });
 
 describe("composeExpectedMoveContext", () => {
