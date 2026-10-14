@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { occToPositionIds } from "./route";
+import { occToPositionIds } from "./occ-to-position-ids";
 
 const routeSrc = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "route.ts"),
