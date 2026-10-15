@@ -51,6 +51,12 @@ let meridianDelayMs = 0;
 let ecosystemDelayMs = 0;
 let ecosystemShouldThrow = false;
 let vectorShouldThrow = false;
+// REGRESSION (Ask Largo standing mandate, 2026-10-15): these two simulate the OUTER
+// `withBriefSourceTimeout(...)` race in play-brief-context.ts rejecting (a real timeout, or any
+// other failure reaching that race) — distinct from `fetchMeridianForTicker`'s own mock above
+// resolving to `null`, which simulates the function's own (never-thrown) "no data" return.
+let meridianShouldThrow = false;
+let meridianPeerShouldThrow = false;
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -199,14 +205,37 @@ mock.module("../bie/vector-full-state", {
 mock.module("./play-brief-meridian", {
   namedExports: {
     fetchMeridianForTicker: async () => {
+      if (meridianShouldThrow) throw new Error("meridian fetch failed");
       if (meridianDelayMs > 0) await delay(meridianDelayMs);
       return null;
     },
+    // `play-brief-context.ts` imports this directly (its outer-timeout catch calls it) — mocking
+    // the whole module means it must be supplied here too, or that import resolves to `undefined`
+    // and the catch handler itself throws. Shape mirrors the real sentinel
+    // (play-brief-meridian.ts); exact `as_of` value doesn't matter to any test in this file.
+    meridianUnavailableSlice: () => ({
+      as_of: "2026-01-01 00:00 ET",
+      items: [],
+      total_matched: 0,
+      unavailable: true,
+    }),
   },
 });
 
 mock.module("./play-brief-meridian-peer", {
-  namedExports: { fetchMeridianPeerForBrief: async () => null },
+  namedExports: {
+    fetchMeridianPeerForBrief: async () => {
+      if (meridianPeerShouldThrow) throw new Error("meridian peer fetch failed");
+      return null;
+    },
+    // Same reason as `meridianUnavailableSlice` above — play-brief-context.ts's outer-timeout
+    // catch for the peer read calls this directly.
+    meridianPeerUnavailableSlice: () => ({
+      available: false,
+      error: "fetch_failed",
+      note: "mock meridian peer failure",
+    }),
+  },
 });
 
 mock.module("./calibration-cache", {
@@ -412,6 +441,82 @@ describe("loadSwingPlayBriefContext: a genuine ecosystem/vector fetch failure is
     } finally {
       vectorShouldThrow = false;
       restore.mock.restore();
+    }
+  });
+});
+
+// REGRESSION (Ask Largo standing mandate, 2026-10-15): `fetchMeridianForTicker`/
+// `fetchMeridianPeerForBrief` never legitimately resolve to `null` on their OWN failure paths —
+// both catch their own errors internally and return a typed `{unavailable/available: false, ...}`
+// sentinel so `collectBriefUnavailableSources` (play-brief-absence.ts) can disclose the failure.
+// But the OUTER `withBriefSourceTimeout(...)` race this file wraps around each call used to
+// `.catch(() => null)` — collapsing a timeout (or any other rejection reaching that race) to a
+// bare `null`, indistinguishable from `ctx.meridian`/`ctx.meridianPeer` legitimately holding no
+// data. `collectBriefUnavailableSources` has no check at all for a null `ctx.meridian`
+// (`null?.unavailable` is `undefined`), so this silently dropped the ONE failure mode this race
+// exists to bound — the live repro-driving performance fix (2026-09-22) accidentally reopened the
+// exact absence-disclosure gap `ecosystemFetchFailed`/`vectorFetchFailed` were built to close for
+// the sibling reads in the SAME file. Proven here by rejecting the (mocked) underlying fetch
+// directly rather than waiting out the real 8s timeout — `withBriefSourceTimeout` forwards a
+// rejection from the wrapped promise identically to its own timer firing, so this exercises the
+// same `.catch()` chain the real timeout does.
+describe("loadSwingPlayBriefContext: a Meridian/Meridian-peer outer-timeout rejection surfaces as a real unavailable sentinel, never a bare null", () => {
+  let mod: typeof import("./play-brief-context");
+
+  before(async () => {
+    mod = await import("./play-brief-context");
+  });
+
+  it("converges ctx.meridian on the unavailable sentinel instead of null when the outer race rejects", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+    meridianShouldThrow = true;
+    meridianPeerShouldThrow = false;
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+      assert.ok(ctx, "context must still resolve despite the fetch failure");
+      assert.notEqual(
+        ctx!.meridian,
+        null,
+        "a real outer-race rejection must not collapse to the SAME null a legitimate empty read produces",
+      );
+      assert.equal(
+        ctx!.meridian?.unavailable,
+        true,
+        "must carry the same disclosed-failure sentinel fetchMeridianForTicker's own internal catch uses",
+      );
+    } finally {
+      meridianShouldThrow = false;
+    }
+  });
+
+  it("converges ctx.meridianPeer on the unavailable sentinel instead of null when the outer race rejects", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+    meridianShouldThrow = false;
+    meridianPeerShouldThrow = true;
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+      assert.ok(ctx, "context must still resolve despite the fetch failure");
+      assert.notEqual(
+        ctx!.meridianPeer,
+        null,
+        "a real outer-race rejection must not collapse to the SAME null a legitimate " +
+          "no-nearby-earnings-catalyst read produces",
+      );
+      assert.equal(
+        ctx!.meridianPeer?.available,
+        false,
+        "must carry the same disclosed-failure sentinel fetchMeridianPeerForBrief's own internal catch uses",
+      );
+    } finally {
+      meridianPeerShouldThrow = false;
     }
   });
 });
