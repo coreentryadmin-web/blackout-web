@@ -13,6 +13,5 @@ export function storeAge(updatedAt: number | null): { label: string; ok: boolean
   if (s < 60) return { label: `${s}s ago`, ok: true };
   const m = Math.floor(s / 60);
   if (m < 5) return { label: `${m}m ago`, ok: true };
-  if (m < 15) return { label: `${m}m ago`, ok: false };
   return { label: `${m}m ago`, ok: false };
 }
