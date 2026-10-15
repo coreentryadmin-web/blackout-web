@@ -315,6 +315,80 @@ test("diffBriefSnapshots: a roll watch reason restating tick-to-tick (still weig
   assert.ok(!lines.some((l) => l.includes("Roll watch")));
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-15): gateBlocks narrowing (still net-blocked)
+// used to produce no diff line at all -- recommendation stays HOLD/WAIT the whole time, so
+// nothing else diffed here ever caught it. See BriefSnapshot.gateBlocks' own doc comment.
+test("diffBriefSnapshots: a blocking-gate set narrowing (still net-blocked) is narrated", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s12_halt", reason: "halted" },
+        { code: "g_s4_regime", reason: "regime mismatch" },
+        { code: "g_s6_confluence", reason: "thin confluence" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(env(), play({ gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }] }));
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line, "must narrate the gate-set narrowing even though the play is still blocked");
+  assert.match(line!, /cleared g_s12_halt, g_s6_confluence/);
+  assert.match(line!, /3 → 1 gate blocking entry/);
+});
+
+test("diffBriefSnapshots: a new gate appearing is narrated", () => {
+  const prev = snapshotFromBrief(env(), play({ gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }] }));
+  const next = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "regime mismatch" },
+        { code: "g_s6_confluence", reason: "thin confluence" },
+      ],
+    }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line);
+  assert.match(line!, /now also blocked by g_s6_confluence/);
+  assert.match(line!, /1 → 2 gates blocking entry/);
+});
+
+test("diffBriefSnapshots: the same gate set (even a different order) is not re-narrated", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s4_regime", reason: "regime mismatch" },
+        { code: "g_s6_confluence", reason: "thin confluence" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({
+      gateBlocks: [
+        { code: "g_s6_confluence", reason: "thin confluence" },
+        { code: "g_s4_regime", reason: "regime mismatch" },
+      ],
+    }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(!lines.some((l) => l.includes("Entry gates shifted")));
+});
+
+test("diffBriefSnapshots: all gates clearing still names which ones cleared, alongside the recommendation shift", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({ gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }], recommendation: "HOLD" }),
+  );
+  const next = snapshotFromBrief(env(), play({ gateBlocks: [], recommendation: "BUY" }));
+  const lines = diffBriefSnapshots(prev, next);
+  assert.ok(lines.some((l) => l.includes("Entry gates shifted") && l.includes("cleared g_s4_regime")));
+  assert.ok(lines.some((l) => l.includes("Desk action shifted") && l.includes("BUY")));
+});
+
 test("diffBriefSnapshots: option mark shift narrates built/slipped, not a bare delta", () => {
   const up = diffBriefSnapshots(
     snapshotFromBrief(env(), play({ mark: 5.9 })),
@@ -507,6 +581,41 @@ test("loadPersistedBriefSnapshot: rejects a stored snapshot missing sectionTitle
     // snapshot missing sectionTitles fed straight into diffBriefSnapshots as `prev` throws.
     const nextSnap = snapshotFromBrief(env(), play());
     assert.throws(() => diffBriefSnapshots({ headline: "old schema" } as never, nextSnap));
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): same shape as the sectionTitles guard above,
+// for the gateBlocks field this same PR adds — a snapshot persisted by OLDER client code (before
+// this field existed) would parse back with `gateBlocks: undefined`, and diffBriefSnapshots's
+// `prev.gateBlocks.join(",")` would throw. Caught and fixed before shipping, not found live.
+test("loadPersistedBriefSnapshot: rejects a stored snapshot missing gateBlocks (pre-dates this field) instead of returning it", () => {
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    store.set(
+      "swing-brief-snap:SWING:TEST:2:2026-09-14",
+      JSON.stringify({ headline: "old schema", sectionTitles: ["Verdict"] }),
+    );
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:2:2026-09-14");
+    assert.equal(stored, null, "a snapshot missing gateBlocks must be rejected, not handed back as a usable prev");
+
+    const nextSnap = snapshotFromBrief(env(), play());
+    assert.throws(() =>
+      diffBriefSnapshots({ headline: "old schema", sectionTitles: ["Verdict"] } as never, nextSnap),
+    );
   } finally {
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
   }
