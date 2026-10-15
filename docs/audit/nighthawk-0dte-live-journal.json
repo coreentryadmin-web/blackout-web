@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-10-15T14:50:00Z",
+  "updated_at": "2026-10-15T15:11:00Z",
   "watch_stage_tracking": {
     "2026-10-13T15:11:00Z_TUESDAY_FIRST_COMMIT_MU_LARGE_LOSS_PLUS_PR5921_LIVE_CONFIRMED": {
       "cycle": "RTH :00-offset trigger, 15:11:06 UTC firing -- Tuesday 2026-10-13 cold start",
@@ -91,6 +91,12 @@
       "note": "One board poll (~14:50:06Z) briefly reported top_block_code=vix_unavailable (168/171 setups blocked on it) instead of the steady-state vix_elevated -- a different G-4 fail-closed code path (day-open VIX read failing entirely vs. VIX read successfully but above the elevated threshold). Self-resolved within ~30s on the next poll (back to vix_elevated, commit_ready back to 1, this time on META long score 77 -- APP from the prior cycle had already rotated out of the scan window, which is expected churn in a rolling live-discovery scan, not a bug). Direct Polygon I:VIX prev-close fetch from this sandbox succeeded cleanly at the same time, so the gap (if real) was specific to whatever snapshot/real-time read the board's own day-open VIX capture uses, not a blanket Polygon outage.",
       "instance_count": 1,
       "action": "WATCHING -- 3-instance noise threshold not met, no finding filed. If this recurs 2 more times, investigate the board's specific VIX day-open fetch path (zerodte gate code, not generic Polygon reachability) for a real transient-handling gap."
+    },
+    "2026-10-15T15:11:00Z_FIRST_REAL_COMMITS_THURSDAY_10_POSITIONS": {
+      "note": "First real commits of Thursday landed: 10 total (committed_open=8, committed_closed=2 as of this check). APP(86)/CRCL(100,closed)/META(78)/NOW(83)/NVDA(85)/RGTI(83)/SHOP(77)/TEM(100,closed)/TTD(79)/USAR(99), all longs, all triple-confirmed confluence, all cleared the elevated-VIX G-4 score floor (VIX day-open 17.55). Cortex conviction spread wide but all PASS (CRCL/NVDA +0.66, META/SHOP/USAR +0.59, TEM +0.56, APP +0.47, TTD +0.17, NOW +0.11, RGTI +0.07) -- low-but-nonnegative PASS scores are expected/intentional per the decision table (PASS doesn't require strong conviction, just non-negative/non-vetoed), not a pattern worth flagging.",
+      "CRCL_108pct_win_verified_blended_not_final_tranche_only": "CRCL closed 'doubled' at +108.03% -- deliberately cross-checked against the Wednesday DELL self-correction (where entry_context.exit.pnl_pct was scoped to the FINAL TRANCHE only under trim_scale exit mode, and the true blended figure lived in managed_pnl_pct/plan_pnl_pct instead). CRCL's exit_policy_at_commit is 'ratchet' (not trim_scale) -- a single 50%-fraction trim at +100% trigger baked into the ratchet policy itself (exit_policy_snapshot.trim_levels: [{fraction:0.5, trigger_pct:100}], runner_fraction 0.5), then the remaining runner re-tagged the target and closed in full ('tagged the target 2.74 again after the trim -- runner banked in full', reason plan_target_final). All three figures agree exactly: managed_pnl_pct, plan_pnl_pct (implied), and entry_context.exit.pnl_pct are all 108.03 -- confirmed this IS the correct blended figure, not a tranche-scoped one. No bug.",
+      "TEM_ratchet_floor_clean": "TEM closed via ratchet_early_profit_floor at +2.44%, armed off a +6.1% peak -- textbook correct ratchet behavior (locks in a floor off a real peak so a green trade can't finish red). No issue.",
+      "verdict": "NO_BUG -- clean, correctly-managed first wins of the day; verification habit from the DELL self-correction paid off (confirmed CRCL's headline figure is genuinely blended before writing it down)."
     }
   },
   "sessions": {
