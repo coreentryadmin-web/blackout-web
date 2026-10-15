@@ -218,6 +218,86 @@ test("composeSwingPlayBrief: a same-ticker sibling with a near-identical entry p
   assert.match(sib!.body, /2 concurrent live position/);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-10-15 — same deep-dive that found #6023's
+// ownContractExpiry gap, same root cause, a second independent call site). `siblingPositionsNote`
+// (and its envelope.evidence twin just below it in play-brief.ts) both early-return/gate on
+// `play.entry != null` — but `TerminalPlay.entry` is pnl-anchor-only, populated starting at commit
+// (see #6023's own doc comment on `ownContractExpiry`), so it is ALWAYS null for a pre-entry WATCH
+// candidate. That made this disclosure structurally unreachable for every WATCH row, even when a
+// real, live, same-ticker sibling position already exists in `ctx.laneRows` — exactly the kind of
+// book-overlap fact a member deciding whether to open a NEW position on a ticker they already hold
+// needs to see, arguably more than an already-committed position needs it. The early-return is also
+// unnecessary for correctness: a WATCH row is never itself committed, so it can never appear in
+// `ctx.laneRows` with `liveStatus` set — there is no "self" for the entry-premium proximity test to
+// accidentally exclude, so a plain same-ticker + `liveStatus` match is already a safe, genuine
+// sibling test with no risk of self-matching. Live repro shape: CLS WATCH (2026-10-14/15) sits
+// beside several tickers (ETSY/SOXS/MRNA/MUZ) that genuinely carry 2+ concurrent committed
+// positions right now — had CLS itself collided with one of those tickers, the brief would have
+// silently said nothing, the same "absence must be disclosed, never silent" (C3) violation this
+// function has already been fixed for twice (2026-09-11, 2026-10-11) via a different gap each time.
+test("composeSwingPlayBrief: a WATCH candidate (no entry premium yet) with a same-ticker live sibling still discloses it", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "CLS",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 71,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:CLS261016C00300000",
+      strike: 300,
+      expiry: "2026-10-16",
+      right: "C",
+      dte: 2,
+      mid: 12.4,
+      bid: 12.1,
+      ask: 12.7,
+      delta: 0.58,
+      gamma: 0.0098,
+      theta: -1.21,
+      vega: 0.19,
+      iv: 0.61,
+      openInterest: 412,
+    },
+    scoreFloor: 60,
+    reason: "live hold — PULLBACK_CONTINUATION thesis",
+    archetype: "PULLBACK_CONTINUATION",
+    entryPremium: 9.1,
+    livePnlPct: 36.3,
+    liveStatus: "HOLD",
+    committedAt: "2026-10-08T14:30:00.000Z",
+    positionId: 40,
+  };
+  const ctx: SwingPlayBriefContext = {
+    // A WATCH row: no positionId, no entry premium — deliberately mirrors the real serving shape
+    // (`entryStatus: "PRE_TRIGGER"`, pre-commit) that reaches play-brief in production.
+    play: fixturePlay({
+      id: "SWING:CLS",
+      ticker: "CLS",
+      status: "WATCH",
+      recommendation: "BUY",
+    }),
+    asOf: "2026-10-15T02:00:00.000Z",
+    sessionDate: "2026-10-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(
+    sib,
+    "a WATCH candidate with a real live sibling on the same ticker must disclose it — a member " +
+      "deciding whether to open a new position needs to know they already hold one",
+  );
+  assert.match(sib!.body, /300C 2026-10-16/);
+  assert.match(sib!.body, /2 concurrent live position/);
+  const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
+  assert.ok(sibEvidence, "the WATCH-row sibling claim must carry a matching evidence entry too (Largo C7)");
+});
+
 // BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
 // error boundary, in THIS file's own top-level composition instead. `managementSection`'s
 // `ep.trim_levels.map(...)` AND `blendedPnlPct`'s (called from `pnlSection`) `ep.trim_levels.
