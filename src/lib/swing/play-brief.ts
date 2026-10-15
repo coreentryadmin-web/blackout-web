@@ -1597,6 +1597,8 @@ export function composeSwingPlayBrief(
       // Largo C4 (IDENTITY): swings are always equities.
       ticker_class: "equity",
     }),
+    // Largo C8 (PROVENANCE): the brief is computed by the Swing Play Intelligence engine.
+    source: "computed",
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,
     // Structure Ladder widget (Ask Largo standing mandate, 2026-09-12) — null on CLOSED plays and
@@ -1621,6 +1623,7 @@ export function composeSwingPlayBrief(
   return {
     playId: play.id,
     ticker: play.ticker,
+    ticker_class: "equity" as const,
     envelope,
     asOf: ctx.asOf,
     sessionDate: ctx.sessionDate,
