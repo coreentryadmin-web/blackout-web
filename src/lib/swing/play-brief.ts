@@ -317,11 +317,28 @@ function blendedPnlPct(play: TerminalPlay): number | null {
  * proximity and costs nothing when it's available. Only fall back to the premium heuristic when
  * either side lacks a resolvable `positionId` — unchanged from before, and the one case this still
  * can't disambiguate is itself the subject of the comment above (banger rows never carry one).
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-10-15 — same deep-dive that found #6023's
+ * `ownContractExpiry` gap, same root cause, a second independent call site). The early
+ * `play.entry == null` return above made this disclosure structurally unreachable for every WATCH
+ * candidate: `TerminalPlay.entry` is pnl-anchor-only, populated starting at commit, so it is ALWAYS
+ * null pre-entry. That silently hid a real, live, same-ticker sibling position from a member
+ * deciding whether to open a NEW position on a ticker they already hold — arguably more actionable
+ * than the already-committed case this function was built for. The guard is also unnecessary for
+ * correctness: a WATCH row is never itself committed, so it can never appear in `ctx.laneRows` with
+ * `liveStatus` set — there is no "self" for the entry-premium proximity test to accidentally
+ * exclude, so a same-ticker + `liveStatus` match alone is already a safe, genuine sibling test. Fix:
+ * only apply the positionId/premium self-test when THIS play actually has an entry premium to test
+ * against (i.e. it is itself a live/committed row that could appear in laneRows); a pre-entry WATCH
+ * play skips straight to "every live same-ticker row is a genuine sibling". This function-level fix
+ * is necessary but NOT sufficient on its own — `composeSwingPlayBrief`'s `bucket === "watch"` branch
+ * never called this function at all (only the `bucket === "open"` branch did), so the call site
+ * itself needed the same fix; see that branch below.
  */
 function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
   const { play } = ctx;
-  if (play.entry == null || !Number.isFinite(play.entry)) return null;
   const ticker = play.ticker.toUpperCase();
+  const hasOwnEntry = play.entry != null && Number.isFinite(play.entry);
   const { positionId: selfPositionId } = parseSwingPlayId(play.id);
   const siblings = ctx.laneRows.filter((r) => {
     if (r.ticker.toUpperCase() !== ticker) return false;
@@ -330,6 +347,7 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
     if (selfPositionId != null && r.positionId != null) {
       return r.positionId !== selfPositionId;
     }
+    if (!hasOwnEntry) return true; // pre-entry WATCH row: self can't be in laneRows, nothing to exclude
     return Math.abs(r.entryPremium - play.entry!) > 0.005;
   });
   if (!siblings.length) return null;
@@ -1206,16 +1224,25 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       });
     }
   }
-  if (
-    statusBucket(ctx.play) === "open" &&
-    ctx.play.entry != null &&
-    Number.isFinite(ctx.play.entry)
-  ) {
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-15 — paired with the identical fix on
+  // `siblingPositionsNote` above): this evidence[] feeder is supposed to carry "Same gating as the
+  // sections themselves" (see the Largo C7 comment above the book-overlap block just above), but it
+  // was STRICTER than `siblingPositionsNote` on two counts — `=== "open"` instead of `!== "closed"`,
+  // and an unconditional `ctx.play.entry != null` requirement — so for a WATCH candidate it would
+  // have silently disagreed with the section once that section was fixed to fire pre-entry: the
+  // member would read the "Other concurrent position(s)" section body but find no matching
+  // evidence[] entry backing it, the exact split this file's own C7 comment says must never happen.
+  // Fixed in lockstep: gate on non-closed (matching book overlap) and only require an entry premium
+  // for the self-test, not as a precondition to look at all — a pre-entry WATCH row can never
+  // appear in laneRows with liveStatus set, so there is no self to accidentally exclude.
+  if (statusBucket(ctx.play) !== "closed") {
     const ticker = ctx.play.ticker.toUpperCase();
+    const hasOwnEntry = ctx.play.entry != null && Number.isFinite(ctx.play.entry);
     const siblingCount = ctx.laneRows.filter((r) => {
       if (r.ticker.toUpperCase() !== ticker) return false;
       if (!r.liveStatus) return false;
       if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+      if (!hasOwnEntry) return true;
       return Math.abs(r.entryPremium - ctx.play.entry!) > 0.005;
     }).length;
     if (siblingCount > 0) {
@@ -1408,6 +1435,13 @@ export function composeSwingPlayBrief(
     // on this section, which kept reading the real wall clock regardless.
     const watchSection = safeCompose("Entry", () => watchEntrySection(play, ctx.readMs ?? readMs), null);
     if (watchSection) sections.push(watchSection);
+    // BUG FOUND (Ask Largo standing mandate, 2026-10-15): `siblingPositionsNote` was never even
+    // CALLED from this branch — the function-level `play.entry == null` guard fixed just above is
+    // necessary but not sufficient, because the call site itself only invoked this section for
+    // `bucket === "open"`. Added here so a WATCH candidate on a ticker that already carries a real
+    // committed sibling position gets the same disclosure an open position would.
+    const watchSiblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null);
+    if (watchSiblings) sections.push(watchSiblings);
   } else if (bucket === "open") {
     const mgmt = safeCompose("Management", () => managementSection(play), null);
     if (mgmt) sections.push(mgmt);
