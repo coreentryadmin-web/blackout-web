@@ -192,6 +192,12 @@ export type BieAnswerEnvelope = {
    * Absent when the envelope does not describe a specific ticker.
    */
   ticker_class?: "index" | "equity" | "etf" | null;
+  /**
+   * Origin of the brief (Largo C8 PROVENANCE).
+   * Examples: "computed" (for deterministic engines), "model" (for Anthropic-generated reads).
+   * Indicates the primary source/methodology of the answer.
+   */
+  source?: string | null;
   /** When the envelope was assembled (ISO). */
   asOf: string;
   /**
