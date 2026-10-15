@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-09-28T17:11:00Z",
+  "updated_at": "2026-10-15T14:44:00Z",
   "watch_stage_tracking": {
     "2026-10-13T15:11:00Z_TUESDAY_FIRST_COMMIT_MU_LARGE_LOSS_PLUS_PR5921_LIVE_CONFIRMED": {
       "cycle": "RTH :00-offset trigger, 15:11:06 UTC firing -- Tuesday 2026-10-13 cold start",
@@ -81,6 +81,11 @@
     },
     "2026-10-15T14:16:00Z_VIX_ELEVATED_REGIME_CONFIRMED_GENUINE": {
       "note": "New blocker state this cycle: vix_elevated (G-4), not seen yet this week, with 0 commits today despite 148 setups scanned. Checked market_state: regime_vol='ELEVATED_IV', regime_structure='RANGE' -- confirms this is a genuinely elevated-volatility session today, not a gate misfire. The G-4 hard block correctly fail-closing new commits in response to real elevated VIX conditions is exactly the documented, intentional behavior. No action needed -- watching for the regime to normalize or for the first genuine commit of the day."
+    },
+    "2026-10-15T14:44:00Z_FIRST_COMMIT_READY_SETUP_APP": {
+      "note": "First commit_ready setup of Thursday 2026-10-15 surfaced (board.commit_ready went 0->1 this cycle): APP long, score 78, cortex PASS +0.76, confluence triple-confirmed (timing+VWAP+market), plan not illiquid (spread 12.99%). Not yet in committed_open/committed_closed -- this is a point-in-time board snapshot mid-pass, actual commit will land on a subsequent scan tick.",
+      "g4_vix_floor_confirmed_working_as_designed": "Board's gate.calibration.g4_vix for APP: day_open_vix 17.55 (tier 'elevated'), would_block=false, note: 'VIX 17.55 >= 17: score >= 75 -- clears canonicalized G-4 (uniform floor, every ticker/instrument type).' This confirms the prior cycle's ELEVATED_IV finding precisely: elevated VIX is NOT an absolute block, it raises the score floor to 75 -- APP's 78 clears it while the other 189 scanned setups (mostly below that raised floor) are correctly gated at vix_elevated/score_floor. No bug; this is the mechanism working exactly as designed, now observed producing its first qualifying setup of the day.",
+      "verdict": "NO_BUG -- correct gate behavior observed end-to-end, watching for the actual commit next cycle"
     }
   },
   "sessions": {
