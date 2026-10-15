@@ -664,7 +664,18 @@ export function cortexReadSection(play: TerminalPlay): RichSection | null {
   const opposeCount = v.opposes?.length ?? 0;
   if (vetoCount === 0 && opposeCount === 0) return null; // clean/supportive read — nothing to flag
 
-  const header = `Cortex ${view.decision ?? "read"} at commit — net score ${v.score >= 0 ? "+" : ""}${v.score}, conviction ${v.conviction}, ${vetoCount} veto${vetoCount === 1 ? "" : "es"} · ${opposeCount} opposing item${opposeCount === 1 ? "" : "s"}.`;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-15): `v.absent` (which sources couldn't answer
+  // this turn — the Largo C3 absence principle) was computed and pinned on every verdict this
+  // section already reads, but never surfaced here — unlike every other verdict-to-prose renderer
+  // of this exact CortexVerdict type (bie/cortex-read.ts's assembleVerdictEnvelope/buildPinnedCortex
+  // Envelope/composeCortexForTicker all state an absent-source count in their headline). A real,
+  // measured production shape: cortex-source-timeout-outcome-ab.mjs found 19% of graded 0DTE
+  // commits carried a real CortexSourceTimeout via the same shared fetchVectorFullState fan-out
+  // swing's gex-walls/wall-trend/darkpool-confluence sources use — so a veto/oppose-bearing swing
+  // Cortex read with simultaneous absent sources is a realistic production shape, not theoretical.
+  const absentCount = v.absent?.length ?? 0;
+  const absentSuffix = absentCount > 0 ? ` · ${absentCount} source${absentCount === 1 ? "" : "s"} absent` : "";
+  const header = `Cortex ${view.decision ?? "read"} at commit — net score ${v.score >= 0 ? "+" : ""}${v.score}, conviction ${v.conviction}, ${vetoCount} veto${vetoCount === 1 ? "" : "es"} · ${opposeCount} opposing item${opposeCount === 1 ? "" : "s"}${absentSuffix}.`;
   const narrativeLines = Array.isArray(v.narrative) ? v.narrative.filter((l) => typeof l === "string" && l.trim()) : [];
   const evidenceLines =
     narrativeLines.length > 0
