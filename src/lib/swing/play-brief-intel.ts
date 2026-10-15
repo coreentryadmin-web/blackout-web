@@ -66,6 +66,7 @@ import {
   graduatedArchetypeEntry,
   graduatedSubLaneEntry,
   type SwingArchetypeTrackRecordSnapshot,
+  type SwingTrackRecordEntry,
 } from "./calibration-cache";
 import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
 import {
@@ -522,7 +523,32 @@ export function bookContextSection(
  * omitted on its own if its own bucket hasn't graduated — the archetype line can render alone, the
  * sub-lane line can render alone, both can render, or (most common while the closed-swing
  * population is still small) neither can.
+ *
+ * STRUCTURED FORM (Largo C10, follow-up — Ask Largo standing mandate): the prose above and the
+ * `evidence[]` fact `play-brief.ts` separately stamps (search "Largo C10 (historical context)
+ * enhancement") both carry these same numbers only as a formatted TEXT string with provenance —
+ * citable, but a consumer still has to parse/regex the string to recover the discrete wins/losses/
+ * n/winRatePct/wilsonLbPct/pointDeltaPts values. `BieSection.table` (answer-envelope.ts) is the
+ * established, already-rendered (`renderEnvelopeMarkdown`/`dynamic-format.ts`) mechanism this
+ * contract already has for exactly that — genuinely structured, directly-bindable rows — it was
+ * simply never wired through `RichSection`/`buildRichEnvelope` (the shared layer every
+ * deterministic composer routes through) until now. Attached ADDITIVELY alongside `body`: the
+ * prose is unchanged, a consumer that ignores `table` sees nothing different.
  */
+function trackRecordTableRow(
+  scope: string,
+  entry: SwingTrackRecordEntry,
+): [string, string, string, string, string, string] {
+  return [
+    scope,
+    `${entry.wins}W / ${entry.losses}L`,
+    String(entry.n),
+    entry.winRatePct != null ? `${entry.winRatePct.toFixed(0)}%` : "—",
+    `${entry.wilsonLbPct.toFixed(0)}%`,
+    entry.pointDeltaPts != null ? `+${entry.pointDeltaPts.toFixed(0)} pts` : "—",
+  ];
+}
+
 export function archetypeTrackRecordSection(
   play: TerminalPlay,
   snapshot: SwingArchetypeTrackRecordSnapshot | null | undefined,
@@ -540,6 +566,7 @@ export function archetypeTrackRecordSection(
   if (!archetypeEntry && !subLaneEntry) return null;
 
   const blocks: string[] = [];
+  const rows: [string, string, string, string, string, string][] = [];
   if (archetypeEntry && archetype) {
     const label = ARCHETYPE_META[archetype].label;
     const sampleNote =
@@ -554,6 +581,7 @@ export function archetypeTrackRecordSection(
       );
     }
     blocks.push(lines.join("\n"));
+    rows.push(trackRecordTableRow(label, archetypeEntry));
   }
   if (subLaneEntry && subLane) {
     const label = SWING_SUB_LANES[subLane].label;
@@ -569,8 +597,14 @@ export function archetypeTrackRecordSection(
       );
     }
     blocks.push(lines.join("\n"));
+    rows.push(trackRecordTableRow(`${label} sub-lane`, subLaneEntry));
   }
-  return { title: "Track record", body: blocks.join("\n\n"), bias: "neutral" };
+  return {
+    title: "Track record",
+    body: blocks.join("\n\n"),
+    bias: "neutral",
+    table: { headers: ["Scope", "Record", "N", "Win rate", "Wilson LB", "Edge"], rows },
+  };
 }
 
 /**
@@ -583,6 +617,9 @@ export function archetypeTrackRecordSection(
  * principle governing `archetypeTrackRecordSection` doesn't apply; omission here is purely about
  * absence of data (zero prior resolved trades on this ticker), never about withholding evidence
  * that exists but isn't yet trustworthy enough to cite.
+ *
+ * Carries the same structured `table` as `archetypeTrackRecordSection` above, for the same reason
+ * (Largo C10 follow-up — a joinable row, not just a parsed string).
  */
 export function tickerTrackRecordSection(
   play: TerminalPlay,
@@ -596,7 +633,15 @@ export function tickerTrackRecordSection(
     `The desk has traded **${ticker}** **${priorClosedTrades}** ${plural} before this play: **${wins}W / ${losses}L**` +
       (winRatePct != null ? ` (${winRatePct}% win rate on this ticker specifically).` : "."),
   ];
-  return { title: "Ticker track record", body: lines.join("\n\n"), bias: "neutral" };
+  return {
+    title: "Ticker track record",
+    body: lines.join("\n\n"),
+    bias: "neutral",
+    table: {
+      headers: ["Ticker", "Record", "N", "Win rate"],
+      rows: [[ticker, `${wins}W / ${losses}L`, String(priorClosedTrades), winRatePct != null ? `${winRatePct}%` : "—"]],
+    },
+  };
 }
 
 /**

@@ -360,6 +360,36 @@ test("archetypeTrackRecordSection: renders a 'Track record' section citing wins/
   assert.match(section?.body ?? "", /\+22 pts/, "point-Δ edge cited");
 });
 
+// ── structured `table` (Largo C10 follow-up — same numbers as the prose above, but joinable) ──
+test("archetypeTrackRecordSection: attaches a structured table carrying the same wins/losses/n/winRate/Wilson-LB/edge as the prose", () => {
+  const snap = trackRecordSnapshot({
+    BREAKOUT: trackRecordEntry({ wins: 45, losses: 15, n: 60, winRatePct: 75, wilsonLbPct: 63.2, pointDeltaPts: 22.4 }),
+  });
+  const section = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap);
+  assert.ok(section?.table);
+  assert.deepEqual(section?.table?.headers, ["Scope", "Record", "N", "Win rate", "Wilson LB", "Edge"]);
+  assert.equal(section?.table?.rows.length, 1);
+  assert.deepEqual(section?.table?.rows[0], ["Breakout continuation", "45W / 15L", "60", "75%", "63%", "+22 pts"]);
+});
+
+test("archetypeTrackRecordSection: table carries a row for EACH graduated dimension (archetype + sub-lane), matching the two prose blocks", () => {
+  const snap = snapshotWithSubLanes(
+    { BREAKOUT: trackRecordEntry({ wins: 45, losses: 15, n: 60 }) },
+    { TACTICAL: trackRecordEntry({ wins: 1, losses: 4, n: 5, winRatePct: 20, wilsonLbPct: 5.7 }) },
+  );
+  const play = fixturePlay({ archetype: "BREAKOUT", subLane: "TACTICAL" });
+  const section = archetypeTrackRecordSection(play, snap);
+  assert.equal(section?.table?.rows.length, 2);
+  assert.equal(section?.table?.rows[0]?.[0], "Breakout continuation");
+  assert.equal(section?.table?.rows[1]?.[0], "Tactical (5–7d) sub-lane");
+});
+
+test("archetypeTrackRecordSection: table's point-Δ cell reads '—' when pointDeltaPts is null, same honest-omission as the prose", () => {
+  const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ pointDeltaPts: null }) });
+  const section = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap);
+  assert.equal(section?.table?.rows[0]?.[5], "—");
+});
+
 test("archetypeTrackRecordSection: a BROAD-tier bucket says 'broad sample'; LIMITED says 'limited sample'", () => {
   const broadPlay = fixturePlay({ archetype: "BREAKOUT" });
   const broadSnap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ tier: "BROAD", n: 80 }) });
@@ -465,6 +495,14 @@ test("tickerTrackRecordSection: singular 'time' when exactly one prior trade", (
       ?.body ?? "";
   assert.match(body, /\*\*1\*\* time before/);
   assert.doesNotMatch(body, /1 times/);
+});
+
+test("tickerTrackRecordSection: attaches a structured table carrying the ticker/record/n/winRate, joinable without parsing the prose", () => {
+  const play = fixturePlay();
+  const section = tickerTrackRecordSection(play, { ticker: "NVDA", priorClosedTrades: 3, wins: 2, losses: 1 });
+  assert.ok(section?.table);
+  assert.deepEqual(section?.table?.headers, ["Ticker", "Record", "N", "Win rate"]);
+  assert.deepEqual(section?.table?.rows, [["NVDA", "2W / 1L", "3", "67%"]]);
 });
 
 // ── cortexReadSection (swing Cortex-visibility fix — the entry_context.cortex pinned at commit,
