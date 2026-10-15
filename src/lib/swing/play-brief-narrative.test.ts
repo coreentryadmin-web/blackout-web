@@ -1882,6 +1882,61 @@ test("counterThesisLine: stale HELIX flow must not steelman call-led / put-led",
   assert.equal(line, null, "stale HELIX must not appear in counter-thesis");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): this function's own HELIX put/call-led gate
+// used a 1.2x threshold while EVERY OTHER HELIX call/put-heavy check in this exact file (and its
+// two sibling files, play-brief-intel.ts/play-brief.ts/play-brief-narrative-coaching.ts) uses 1.3x
+// — `flowNarrative` (this file, the "HELIX tape" bullet landing in the SAME "Trade manager read"
+// bullet list this function also feeds), `flowIntelSection`'s "Flow & positioning" bias label, and
+// `crossDeskCoaching`'s "Cross-desk friction" conflict check all agree on 1.3x; only this one
+// isolated call site drifted to 1.2x, with no comment explaining a deliberate difference (unlike
+// every other place in this file that intentionally differs from a sibling, which documents why).
+// At a ratio between 1.2x and 1.3x, the brief said two incompatible things about the identical
+// flow numbers in the SAME section: `flowNarrative` labels the tape "balanced" (1.3x not cleared)
+// while this function steelmanned "HELIX put-led" as a counter-thesis reason (1.2x cleared) —
+// a visible self-contradiction a member could read in one document. Standardized on the 1.3x every
+// other call site already uses rather than picking a third number.
+test("counterThesisLine: HELIX put/call-led threshold matches flowNarrative's 1.3x — a ratio between 1.2x and 1.3x must not steelman a reason the sibling 'HELIX tape' bullet calls balanced", () => {
+  const ecosystem = {
+    ticker: "NRG",
+    flow_feed_fresh: true,
+    recent_flow: {
+      window_hours: 24,
+      print_count: 10,
+      // put/call ratio = 1.25 — clears the old 1.2x gate but not the 1.3x every sibling uses.
+      call_premium: 1_000_000,
+      put_premium: 1_250_000,
+      unknown_premium: 0,
+    },
+    nighthawk_recent: null,
+    zerodte_today: null,
+    gex_positioning: null,
+    arsenal: null,
+    vector_full_state: null,
+  } as SwingPlayBriefContext["ecosystem"];
+
+  const belowConsistentThreshold = counterThesisLine(ctx({ ecosystem }), play({ direction: "LONG" }), null);
+  assert.equal(
+    belowConsistentThreshold,
+    null,
+    "a 1.25x put/call ratio must not steelman HELIX put-led — flowNarrative's sibling bullet calls this same ratio 'balanced'",
+  );
+
+  // Past the shared 1.3x threshold, the reason must still fire — this only tightens the gate to
+  // match the rest of the file, it doesn't disable the check.
+  const aboveThreshold = counterThesisLine(
+    ctx({
+      ecosystem: {
+        ...ecosystem,
+        recent_flow: { ...ecosystem!.recent_flow!, call_premium: 1_000_000, put_premium: 1_350_000 },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ direction: "LONG" }),
+    null,
+  );
+  assert.ok(aboveThreshold);
+  assert.match(aboveThreshold!, /HELIX put-led/i);
+});
+
 test("counterThesisLine: prior-session 0DTE must not steelman desk friction (Largo C2)", () => {
   const line = counterThesisLine(
     ctx({
