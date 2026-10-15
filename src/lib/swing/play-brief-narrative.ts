@@ -1062,9 +1062,19 @@ export function counterThesisLine(
   // it's `reasons.length`, the same array already gathered above — so this only labels evidence
   // strength honestly, the same discipline as the Largo product contract's confidence-omission
   // rule (state real weight, never invent it, never flatten it away either).
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-15): the comment above has always said the count
+  // is `reasons.length` — the code read `shown.length` instead, which this file's own `.slice(0,3)`
+  // two lines up pins at a max of 3. `reasons` can independently collect up to 10 distinct votes
+  // (HELIX flow, Night Hawk, 0DTE, Vector bias, a wall, EMA, MACD, structure break, dealer posture,
+  // fading pillar), all push-gated separately with nothing capping them before this point — so any
+  // time 4+ genuinely corroborate, a member saw "corroborated across 3 independent reads" while the
+  // real count was higher, understating conviction exactly when the counter-thesis is strongest.
+  // Only the DISPLAYED clauses are capped at 3 for join-string length; the count label now reflects
+  // the full evidence gathered, same precision discipline as everywhere else in this function.
   const weight =
-    shown.length >= 2
-      ? `corroborated across ${shown.length} independent reads — `
+    reasons.length >= 2
+      ? `corroborated across ${reasons.length} independent reads — `
       : "a single, uncorroborated signal — ";
   return `**Counter-thesis (${side} case)** — ${weight}${shown.join(" · ")}. If this wins, honor invalidation — don't hope.`;
 }
