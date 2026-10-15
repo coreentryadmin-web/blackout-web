@@ -815,3 +815,32 @@ test("parseZeroDteRejectionCounterfactual: an invalid pnl_pct (NaN/non-number) i
   });
   assert.deepEqual(parsed, { verdict: "would_have_lost", outcome: "stopped", pnl_pct: null, basis: "premium" });
 });
+
+// ─── SEV-2 (FINDINGS 2026-10-15, Ask Largo/Night Hawk Swings standing mandate): banger_positions'
+// premium watermarks must be BRACKETED BY ENTRY — the EXACT SAME shape FINDINGS 2026-08-06 already
+// fixed on swing_positions (src/lib/db-swing-ledger.test.ts's own "watermark backfill" test below
+// is the direct template for this one), never ported to this sibling table until now. Live proof
+// 2026-10-15 (GET /api/market/nighthawk/horizons?view=swings): 7 real committed rows
+// (SLS/METU/SNXX/MUU/ALAB/CBRS/WDC) showed peak_premium < entry_premium and 2 (ORKA/SOXS) showed
+// trough_premium > entry_premium — arithmetically impossible, since the entry fill itself IS an
+// observed mark of the contract. insertBangerPosition now seeds both from entry_premium at commit
+// (positions-db.test.ts covers that half); this backfill repairs rows written before that fix. ───
+
+test("ensureSchema: the banger_positions watermark backfill only ever WIDENS the bracket, and converges to a no-op", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const stmt = src.slice(
+    src.indexOf("UPDATE banger_positions\n       SET peak_premium"),
+    src.indexOf("Prospective NBBO quote-tick log"),
+  );
+  assert.ok(stmt.length > 0, "the converge backfill must exist in ensureSchema");
+  // GREATEST on the peak / LEAST on the trough: a genuinely-ratcheted extreme can never be narrowed.
+  assert.match(stmt, /peak_premium = GREATEST\(COALESCE\(peak_premium, entry_premium\), entry_premium\)/);
+  assert.match(stmt, /trough_premium = LEAST\(COALESCE\(trough_premium, entry_premium\), entry_premium\)/);
+  // Guarded so a converged table matches zero rows — safe to re-run on every boot.
+  assert.match(stmt, /WHERE entry_premium IS NOT NULL/);
+  assert.match(stmt, /peak_premium < entry_premium/);
+  assert.match(stmt, /trough_premium > entry_premium/);
+  // NEVER fabricates: a row with no entry premium has no observed mark to bracket around, so it is
+  // left entirely alone rather than seeded from a mark it never traded at.
+  assert.doesNotMatch(stmt, /entry_premium IS NULL/);
+});

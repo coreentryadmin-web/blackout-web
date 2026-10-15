@@ -2537,6 +2537,33 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS quote_iv NUMERIC;
   `);
+  // FINDINGS 2026-10-15 (Ask Largo/Night Hawk Swings standing mandate): banger_positions has the
+  // EXACT SAME SEV-2 unbracketed-watermark shape FINDINGS 2026-08-06 already fixed on
+  // swing_positions (see the converge-in-place UPDATE a few hundred lines up) — never ported to
+  // this sibling table. insertBangerPosition never seeded peak_premium/trough_premium at INSERT,
+  // and updateBangerLiveState's ratchet (positions-db.ts) only ever seeds them from
+  // COALESCE(peak_premium, $3)/(trough_premium, $3) — the FIRST OBSERVED MARK, not entry_premium.
+  // A position whose contract gapped against it before the first live-sync tick ever sampled it
+  // therefore seeded peak_premium BELOW its own entry (or trough_premium ABOVE it) —
+  // arithmetically impossible for a watermark that is supposed to bracket the contract's whole
+  // life since entry, since the entry fill itself IS an observed mark of that contract.
+  // Live proof 2026-10-15 (Ask Largo play-brief sweep, GET /api/market/nighthawk/horizons?view=
+  // swings): 7 real committed rows (SLS/METU/SNXX/MUU/ALAB/CBRS/WDC) showed
+  // peak_premium < entry_premium and 2 (ORKA/SOXS) showed trough_premium > entry_premium — same
+  // shape, same root cause, different table. insertBangerPosition now seeds both from
+  // entry_premium directly (positions-db.ts), so this backfill only needs to repair rows written
+  // before that fix — same converge-in-place, widen-only (GREATEST/LEAST) discipline as the
+  // swing_positions UPDATE above, a no-op once converged, safe to re-run on every boot.
+  await p.query(`
+    UPDATE banger_positions
+       SET peak_premium = GREATEST(COALESCE(peak_premium, entry_premium), entry_premium),
+           trough_premium = LEAST(COALESCE(trough_premium, entry_premium), entry_premium)
+     WHERE entry_premium IS NOT NULL
+       AND (peak_premium IS NULL
+            OR trough_premium IS NULL
+            OR peak_premium < entry_premium
+            OR trough_premium > entry_premium);
+  `);
   // Prospective NBBO quote-tick log (015_banger_quote_tick_log.sql), inlined for ECS standalone cold
   // starts. Persists the SAME options-unified-snapshot data banger-live-sync already fetches every
   // tick (zero additional Polygon calls) so a future exit-rule validation can replay production's own
