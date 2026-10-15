@@ -103,6 +103,23 @@ mock.module("../../features/nighthawk/lib/session", {
     nextTradingDayEt: () => "2026-07-08",
   },
 });
+// getZeroDteBoardPayload()'s off-hours branch calls isEtExtendedWarmHours() with NO `now`
+// argument, so it defaults to the REAL `new Date()` — the session mock above (fixed at a
+// simulated 11:30 ET) never reaches it. Left unmocked, this file's assertions pass or fail
+// depending on the REAL wall-clock time the suite happens to run at: outside the real
+// 4:00 AM-8:00 PM ET window, getZeroDteBoardPayload() serves the remembered
+// `lastGoodBoardLocal` instead of cold-building, so a second call within the SAME test (e.g.
+// "liveness: ... ADVANCES across cycles", after `sharedState.store.clear()` simulates a
+// shared-snapshot expiry) wrongly returns the FIRST call's board instead of rebuilding.
+// Mocked true so every test in this file exercises the warm-hours (cold-build) path regardless
+// of when it actually runs — the same hermeticity this file's own header claims.
+// isEtCashRth is mocked too (also true) since replacing a module's named exports drops any NOT
+// listed here to undefined — live-marks.ts's background mark refresh (reached via async
+// activity this file's board builds kick off) calls isEtCashRth() and would otherwise throw
+// "is not a function" after the triggering test has already ended.
+mock.module("../et-market-hours", {
+  namedExports: { isEtExtendedWarmHours: () => true, isEtCashRth: () => true },
+});
 
 async function waitFor(pred: () => boolean, ms = 1_000): Promise<void> {
   const deadline = Date.now() + ms;
