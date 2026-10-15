@@ -1,3 +1,27 @@
+## WATCH LIST — 2026-10-15 Ask Largo swing play-brief MFE capture clamped at 100% (ORCL/NOW closed positions) fixed — deploy pending validation
+
+**What was fixed:** two real closed swing positions (ORCL positionId 9, NOW positionId 21) rendered
+an impossible "captured >100% of peak" MFE-capture number in their Ask Largo play-briefs —
+"**Strong discipline** — captured **+101.4%** of peak; replicate trim timing." and "MFE capture:
+**+101.4%** of peak move" for NOW, whose own `Exited +1.7% vs peak +1.7%` line sat directly above it
+in the same response. Root cause: `mfeCaptureOutcome` (`src/lib/swing/mfe-capture.ts`) divides the
+DB's raw `exit_pnl_pct` by a DIFFERENTLY-derived, 1dp-rounded `peak` (adapters.ts's `peakDisplay`,
+rounded off the raw premium ratio) with no upper bound — a rounding/precision mismatch between two
+derivations of the same fact, not a real move past the position's own recorded high (which
+`exitPnlPct` is, by construction, always one of the samples). Fix: clamp the ratio-fallback
+capture to `Math.min(100, ...)`, in the single shared function all 5 narrative call sites read
+from. Full write-up: `docs/audit/findings-staging/2026-10-15-swing-mfe-capture-over-100.md`.
+
+**Specific thing to check once this deploys:** re-pull the live play-briefs for ORCL positionId 9
+and NOW positionId 21 (`GET /api/market/swing/play-brief?playId=SWING:<ticker>:<positionId>&
+ticker=<ticker>&positionId=<positionId>&status=CLOSED&expandIntel=1`) and confirm "MFE capture"/
+"captured X% of peak" now reads `100%` (or less), never anything above it, for both. Also worth a
+sweep of any NEWLY closed positions over the following sessions for the same class of small-nickel/
+low-DTE rounding gap between `exit_pnl_pct` and the displayed peak — any that still show a number
+above 100% is a new, unfixed instance of this class, not a regression of this specific clamp.
+
+---
+
 ## WATCH LIST — 2026-10-15 Ask Largo swing play-brief Peak/Trough bracket guard (ENOV, BANGER-origin) fixed — deploy pending validation
 
 **What was fixed:** a live committed ENOV swing position (BANGER-origin, positionId 1739,

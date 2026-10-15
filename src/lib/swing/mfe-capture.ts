@@ -39,5 +39,24 @@ export function mfeCaptureOutcome(
   if (exitPnlPct < 0) {
     return { kind: "round_trip", peakPct: peak, exitPnlPct };
   }
-  return { kind: "capture", capturePct: (exitPnlPct / peak) * 100 };
+  // BUG FIX (Ask Largo standing mandate, 2026-10-15): live production repro, two REAL closed swing
+  // positions off GET /api/market/swing/record — ORCL positionId 9 (entry 9.03, peakPremium 9.15,
+  // exitPnlPct 1.39) and NOW positionId 21 (entry 11.6, peakPremium 11.8, exitPnlPct 1.72). `peak`
+  // here is the DISPLAYED peak — adapters.ts's `peakDisplay`, `Math.round(((peakPremium / entry -
+  // 1) * 100) * 10) / 10` (1dp-rounded from the raw premium ratio) — while `exitPnlPct` is read
+  // straight off the DB's own `exit_pnl_pct` column, a DIFFERENT derivation of conceptually the
+  // same quantity. `exitPnlPct` is itself always one of the samples `peak` was latched from (the
+  // position's own all-time-high watermark — the same invariant play-brief.ts's own
+  // pnlForDisplay/peakForDisplay guard states explicitly: "the current mark IS one of the samples
+  // peak/trough were latched from, so ... pnlPct always lies inside [trough, peak] by
+  // construction"), so `exitPnlPct` can never TRULY exceed `peak` — any ratio above 100% here is a
+  // rounding/precision artifact between the two derivations, not a real excursion past the
+  // position's own recorded high. Unclamped, this rendered live as "Exited +1.7% vs peak +1.7%"
+  // immediately followed by "**Strong discipline** — captured **+101.4%** of peak; replicate trim
+  // timing." — not just odd phrasing but a literally impossible claim (capturing more than 100% of
+  // your own peak) in closedCoaching/lessonsSection, the exact sections built to teach correct
+  // trade-management lessons. Clamped here, the single shared function all 5 call sites
+  // (play-brief-narrative.ts x2, play-brief-intel.ts x2, play-brief-narrative-coaching.ts) read
+  // from, so every "captured X% of peak" bullet is fixed at once rather than patched per call site.
+  return { kind: "capture", capturePct: Math.min(100, (exitPnlPct / peak) * 100) };
 }
