@@ -200,7 +200,6 @@ function dealerPostureLine(
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
   if (!posture || posture === "unknown") {
-    if (spot == null) return null;
     // Ask Largo standing mandate (2026-10-15): live repro GOOG, posture unresolved
     // (flip_reason=crossings_far_from_spot — the book's one crossing sits ~12.6% from spot, just
     // outside the ±12% plausibility window cumulativeGammaFlipDetail uses to call a stable flip).
