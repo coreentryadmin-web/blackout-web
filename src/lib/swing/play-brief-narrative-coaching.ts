@@ -32,6 +32,7 @@ import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
 import { deadPlayReason } from "./entry-enterability";
 import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
+import { parseOccSymbol, sameTicker } from "@/lib/largo/core/entities";
 
 function fin(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -859,13 +860,32 @@ export function crossDeskCoaching(ctx: SwingPlayBriefContext, play: TerminalPlay
 }
 
 /**
- * Resolves THIS brief's own contract expiry (YYYY-MM-DD) by matching `ctx.play` against
- * `ctx.laneRows` on ticker + entry premium — the same disambiguation key `siblingPositionsNote`
- * (play-brief.ts) uses, since `TerminalPlay.contract` is a human label string ("110C · 13DTE"),
- * not a structured `{expiry}` the earnings comparison below can read directly.
+ * Resolves THIS brief's own contract expiry (YYYY-MM-DD). `TerminalPlay.contract` is a human
+ * label string ("110C · 13DTE"), not a structured `{expiry}` the earnings comparison below can
+ * read directly, so this parses `play.occ` (threaded onto every TerminalPlay row — WATCH or
+ * committed — by adapters.ts, built straight off that row's own `contract.expiry/right/strike`)
+ * first, falling back to the ticker + entry-premium match against `ctx.laneRows`
+ * (`siblingPositionsNote` in play-brief.ts uses the same disambiguation key) for the rare row
+ * with no occ at all.
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-10-15, live repro CLS WATCH): the laneRows/
+ * entry-premium match used to be the ONLY path, and it structurally cannot resolve a WATCH
+ * candidate — a pre-entry row has no `entry` premium (TerminalPlay.entry is pnl-anchor-only,
+ * populated starting at commit), so the match predicate below could never succeed for it. That
+ * made `catalystCoaching`'s `noGapExposure` safety check unreachable for every WATCH row, even
+ * when the prospective contract's own expiry — already known and rendered elsewhere in the SAME
+ * brief (the Verdict header's "350C 9DTE") — showed zero exposure. Live repro: CLS WATCH
+ * (2026-10-14/15), prospective contract 350C expiring 2026-10-23, earnings 2026-10-26
+ * (afterhours) — 3 days AFTER this contract already expires, genuinely zero gap exposure, yet the
+ * live brief said "size down or exit before report" because this function returned null and the
+ * safety check never evaluated. Parsing `occ` fixes WATCH and is strictly more reliable for
+ * committed rows too (an exact per-row key, no entry-premium coincidence match needed).
  */
 function ownContractExpiry(ctx: SwingPlayBriefContext): string | null {
   const { play } = ctx;
+  const parsed = parseOccSymbol(play.occ ?? null);
+  if (parsed && sameTicker(parsed.ticker, play.ticker)) return parsed.expiry;
+
   if (play.entry == null || !Number.isFinite(play.entry)) return null;
   const ticker = play.ticker.toUpperCase();
   const own = ctx.laneRows.find((r) => {
