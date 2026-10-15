@@ -1,3 +1,34 @@
+## WATCH LIST — 2026-10-15 Swing `thesisLevel` stale "break" vs authoritative HOLD snapshot fixed — deploy pending validation
+
+**What was fixed:** a live committed INTC swing position (`positionId:56`) showed `thesisLevel:
+"break"` while the SAME tick's authoritative manage-sync snapshot said `thesis_state:"INTACT"`/
+`rung:"hold"` with `manageReasonDetail:"thesis intact, premium above the 0.4× backstop, ample
+time — hold"` — and the live Ask Largo play-brief for the same position rendered "Management:
+Recommended: HOLD" right next to "Trade manager read: Thesis BREAK — thesis broken. Exit" in the
+same response. Root cause: `manageObservablesFromEvent` (`live-plays.ts`) seeds `thesisLevel` from
+a crude spot-vs-pinned-invalidation-price fallback, then only ever moves it TOWARD `"break"` —
+nothing reset it back to `"intact"` when a present, authoritative snapshot (which checks an
+ex-dividend-adjusted structural stop the fallback doesn't model) disagreed. Also mis-routed the
+board row into the `EXITING` serving section via `serving.ts`'s `thesisLevel === "break"` check.
+Fix: added a `thesisState === "INTACT"` branch that resets `thesisLevel` to `"intact"`. Full
+write-up: `docs/audit/findings-staging/2026-10-15-swing-thesislevel-stale-break-vs-authoritative-
+hold.md`.
+
+**Specific thing to check once this deploys:** re-pull `GET /api/market/nighthawk/horizons?
+view=swings` for INTC (`positionId:56`, if still open) or any other live HOLD/TRIM swing position
+and confirm `thesisLevel` now reads `"intact"` whenever `manageReasonDetail`/the persisted
+snapshot's own text says the thesis is intact — i.e. no live row should show `thesisLevel:"break"`
+in the SWING lane's `committed[]` while its own `manageReasonDetail` says "thesis intact ... hold"
+in the same object. Also re-pull the Ask Largo brief (`GET /api/market/swing/play-brief?
+playId=SWING:<ticker>&ticker=<ticker>&positionId=<id>`) for any such position and confirm the
+"Management" and "Trade manager read" sections no longer disagree (no "Thesis BREAK" bullet next
+to a "Recommended: HOLD" verdict). If a live row still shows the contradiction post-deploy, check
+whether its snapshot's `thesis_state` is something other than `"INTACT"` (e.g. a `WATCH`-tagged
+advisory edge rung) — this fix deliberately did not touch those states, so that would be a new,
+narrower gap rather than a regression of this fix.
+
+---
+
 ## WATCH LIST — 2026-10-14 platform-warm cross-replica overlap guard (ALB p99 51s→100s) fixed — deploy pending validation
 
 **What was fixed:** `platform-warm` cron fired every 5 minutes on every web-tier replica with no

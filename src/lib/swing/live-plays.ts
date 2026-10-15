@@ -295,6 +295,34 @@ export function manageObservablesFromEvent(
   } else if (thesisState === "EXPIRY_RISK" || rung === "expiry_risk") {
     manageAction = manageAction ?? "EXIT";
     manageEnforced = true;
+  } else if (thesisState === "INTACT") {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-15): live repro on a real committed INTC
+    // position (entryTriggerUnderlyingPx 101.25, thesis_invalidation_px/invalidationUnderlyingPx
+    // 96.88, liveSpot 95.77 — below the pinned invalidation price). The spot-only fallback
+    // (structuralBreakFromSpot, livePlayFromSwingPosition) correctly flags that single-price
+    // comparison as "broken" and seeds spotFallback.thesisLevel = "break" — but the SAME tick's
+    // authoritative manage-sync snapshot had already run the real evaluateSwingManagement, which
+    // checks the underlying against its own structuralStopLevel through underlyingPriceForStructuralStop
+    // (ex-dividend-adjusted, manage.ts's structuralStopBroken) and against the archetype-specific
+    // thesis_stop signal — neither fired, so manage-sync.ts's thesisStateOf() correctly stamped
+    // thesis_state:"INTACT" (rung "hold"/"insufficient_data") onto the snapshot. Every branch
+    // above this one only ever moves thesisLevel TOWARD "break"; none of them ever reset it back
+    // when the authoritative read disagrees with the cruder fallback, so thesisLevel stayed
+    // "break" while manageReasonDetail (the exact same tick's `reason` string) read verbatim
+    // "thesis intact, premium above the 0.4x backstop, ample time — hold" — a direct, member-
+    // visible contradiction. Worse: serving.ts's sectionForSwingPlay routes purely off
+    // `thesisLevel === "break"` into the EXITING bucket, so the live position was mis-served as
+    // "being exited" while every other field on the same row said HOLD. This function's own
+    // header doc already states the intended precedence ("Spot-based structural break remains
+    // the fallback when no snapshot exists yet") — i.e. once a snapshot DOES exist, it should be
+    // authoritative, including resetting a false-positive spot-only "break" back to "intact".
+    // Scoped to thesis_state "INTACT" only (rung hold/insufficient_data) — the one state
+    // manage-sync.ts stamps specifically to mean "the real structural/thesis check ran and did
+    // NOT find a break" (manage-sync.ts's thesisStateOf() doc comment). STOPPED/EXPIRY_RISK and
+    // the WATCH-tagged edge rungs (catalyst_shift/regime_shift/...) are deliberately left
+    // untouched here — no live repro backs changing those, and widening this reset beyond the
+    // one state with direct evidence would be scope creep.
+    thesisLevel = "intact";
   }
 
   // Carry the deciding rung forward so narrative text (play-brief-narrative.ts) can state the REAL
