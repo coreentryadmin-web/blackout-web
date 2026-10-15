@@ -200,8 +200,24 @@ function dealerPostureLine(
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
   if (!posture || posture === "unknown") {
-    if (spot != null) return `Spot **${fmtPriceLevel(spot)}** — dealer gamma posture not resolved on this read.`;
-    return null;
+    // Ask Largo standing mandate (2026-10-15): live repro GOOG, posture unresolved
+    // (flip_reason=crossings_far_from_spot — the book's one crossing sits ~12.6% from spot, just
+    // outside the ±12% plausibility window cumulativeGammaFlipDetail uses to call a stable flip).
+    // gex-positioning.ts's own field doc for flip_nearest says it is "[a]lso populated when flip
+    // is null because every crossing sits outside the ... plausibility window: it names the
+    // closest crossing even when it was rejected as the headline flip" — this branch used to
+    // discard that specific, already-computed level and fall back to a bare "not resolved"
+    // message. Gated on gexMatrixStale the same way fragileBit below is: a stale matrix's
+    // crossing location is exactly as unreliable as its flip.
+    const nearestCrossingBit =
+      gex?.flip_nearest != null && !gexMatrixStale(gex, readMs)
+        ? ` — chain's only crossing sits at **${fmtPriceLevel(gex.flip_nearest)}**${
+            gex.distance_to_nearest_flip_pct != null
+              ? ` (${fmtPct(gex.distance_to_nearest_flip_pct)} away)`
+              : ""
+          }, too far from spot to call a stable regime`
+        : "";
+    return `Spot **${fmtPriceLevel(spot)}** — dealer gamma posture not resolved on this read${nearestCrossingBit}.`;
   }
 
   const aboveFlip = flip != null ? spot >= flip : null;
