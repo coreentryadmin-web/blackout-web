@@ -29,6 +29,7 @@ import {
   clampedCacheAgeSec,
   gexHeatmapCacheEntryStale,
   gexHeatmapCacheEntryWithinTtl,
+  shouldStartHeatmapBackgroundRebuild,
 } from "./polygon-options-gex";
 
 function contract(
@@ -184,6 +185,61 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
   assert.match(src, /sharedCacheSetNx/, "CQ-112: cluster build lock for cross-replica herd");
   assert.match(src, /gex:heatmap:build-lock:/);
   assert.match(src, /pollPeerHeatmapCache/);
+});
+
+// REGRESSION (2026-10-15): tryStaleWhileRevalidateHeatmap's detached background rebuild had NO
+// concurrency cap at all — unlike the fully-cold branch below it in fetchGexHeatmap, which is
+// bounded by both heatmap-warm's own `runPolygonPool(8)` (shipped 2026-10-08) and a cross-replica
+// sharedCacheSetNx lock. Because heatmap-warm's real sweep cadence (46-209s measured) vastly
+// exceeds the 5s per-ticker TTL but mostly stays under the 90s max-stale ceiling, nearly every
+// ticker in a single pass lands in THIS branch, each firing an independent, uncapped detached
+// Polygon rebuild. Live-caught 2026-10-15: a single rth-warm-leader backup dispatch of
+// heatmap-warm logged 100+ "[polygon-gex] full-chain escalation ADOPTED" lines across unrelated
+// tickers within ~4 minutes, time-correlated with a 79.5s ALB TargetResponseTime Max / 6.43s
+// AVERAGE spike — the same cross-request-stall mechanism already documented for the Vector
+// `/universe` and boot-warm paths, firing through this third, previously-uncapped entry point.
+test("shouldStartHeatmapBackgroundRebuild: refuses once the global in-flight count hits the cap", () => {
+  assert.equal(shouldStartHeatmapBackgroundRebuild(0, 8), true);
+  assert.equal(shouldStartHeatmapBackgroundRebuild(7, 8), true);
+  assert.equal(
+    shouldStartHeatmapBackgroundRebuild(8, 8),
+    false,
+    "at the cap — must not start another detached rebuild on top of 8 already in flight"
+  );
+  assert.equal(shouldStartHeatmapBackgroundRebuild(50, 8), false);
+});
+
+test("shouldStartHeatmapBackgroundRebuild: default cap honors GEX_HEATMAP_MAX_CONCURRENT_BUILDS env override", () => {
+  const prev = process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+  try {
+    process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = "2";
+    assert.equal(shouldStartHeatmapBackgroundRebuild(1), true);
+    assert.equal(shouldStartHeatmapBackgroundRebuild(2), false);
+
+    delete process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+    assert.equal(shouldStartHeatmapBackgroundRebuild(7), true, "default cap is 8");
+    assert.equal(shouldStartHeatmapBackgroundRebuild(8), false, "default cap is 8");
+
+    process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = "not-a-number";
+    assert.equal(shouldStartHeatmapBackgroundRebuild(7), true, "garbage env falls back to default 8");
+  } finally {
+    if (prev === undefined) delete process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS;
+    else process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS = prev;
+  }
+});
+
+test("tryStaleWhileRevalidateHeatmap: the detached rebuild kickoff is actually gated by the cap (wiring proof)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  // The gate must wrap the SAME kickoff the old, uncapped code used (heatmapInflight.has +
+  // starting `build`), not just exist somewhere unrelated in the file.
+  assert.match(
+    src,
+    /!heatmapInflight\.has\(cacheKey\)\s*&&\s*\n\s*shouldStartHeatmapBackgroundRebuild\(heatmapInflight\.size\)/,
+    "the background-rebuild kickoff inside tryStaleWhileRevalidateHeatmap must be gated by shouldStartHeatmapBackgroundRebuild(heatmapInflight.size)"
+  );
 });
 
 test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () => {

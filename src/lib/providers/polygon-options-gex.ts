@@ -1762,7 +1762,53 @@ function gexHeatmapRedisTtlSec(): number {
   return Math.max(1, Math.ceil(gexHeatmapMaxStaleMs() / 1000));
 }
 
-/** Serve an expired matrix immediately and kick off a background rebuild (single-flight). */
+/**
+ * Global cap on CONCURRENT detached background rebuilds this stale-while-revalidate branch may
+ * start at once, across EVERY ticker and EVERY caller — not per-ticker (heatmapInflight already
+ * dedupes that) and not per-caller (heatmap-warm's own `runPolygonPool(8)` loop only bounds how
+ * many of its AWAITED `fetchGexHeatmap()` calls are in flight; a call that resolves via THIS
+ * branch returns almost instantly with the stale payload, freeing that pool slot immediately
+ * while the real rebuild below keeps running detached and un-pooled).
+ *
+ * ROOT CAUSE (measured live 2026-10-15): heatmap-warm's real full-sweep cadence (46-209s
+ * measured, p50=46.5s/p90=81.1s/p99=181.1s/max=209.2s — see RTH_WRITER_HEAL_AFTER_MIN's doc
+ * comment in rth-warm-leader-logic.ts) vastly exceeds this file's own 5s per-ticker TTL
+ * (gexHeatmapCacheMs) but mostly stays under the 90s max-stale ceiling (gexHeatmapMaxStaleMs) —
+ * so on nearly every single pass, most of the shared ~100-ticker universe lands in the "stale but
+ * within maxStaleMs" bucket below, and EACH ONE independently fired an uncapped, unlocked detached
+ * rebuild: no `runPolygonPool` bound and no `sharedCacheSetNx` cross-replica lock apply here — both
+ * guard only the fully-cold branch further down in `fetchGexHeatmap`, added for THAT branch by the
+ * 2026-10-08 concurrency fix (see heatmap-warm/route.ts's own "CONCURRENCY (fixed 2026-10-08)"
+ * comment), which never covered this one. A single rth-warm-leader backup dispatch of
+ * `heatmap-warm` at 11:00:23 UTC that day logged 100+ "[polygon-gex] full-chain escalation
+ * ADOPTED" lines across dozens of unrelated tickers within ~4 minutes, time-correlated with a
+ * 79.5s ALB TargetResponseTime Max / 6.43s AVERAGE spike at 11:01 UTC — the same "full-chain
+ * escalation stalls an unrelated request on the same replica" mechanism already documented for
+ * the Vector `/universe` and boot-warm paths, firing through this THIRD, previously-uncapped
+ * entry point.
+ *
+ * Capping here is safe precisely because the stale-while-revalidate contract is "never block the
+ * caller, serve what we have" either way: skipping a refresh this cycle only means the SAME
+ * (still-under-90s) stale data keeps being served a little longer — the very next caller (this
+ * cron's own next tick, at most ~60-81s away, or any other reader of the same ticker) retries once
+ * a slot frees up. `heatmapInflight.size` is already a live, accurate, process-wide count of every
+ * build currently in flight (both this branch and the cold-build branch insert into the same map),
+ * so no new tracking structure is needed — just a check before adding to it.
+ */
+function heatmapMaxConcurrentBuilds(): number {
+  const n = Number(process.env.GEX_HEATMAP_MAX_CONCURRENT_BUILDS ?? 8);
+  return Number.isFinite(n) && n > 0 ? Math.max(1, Math.floor(n)) : 8;
+}
+
+/** Pure so the cap decision is unit-testable without a network or a fake clock. */
+export function shouldStartHeatmapBackgroundRebuild(
+  inflightCount: number,
+  cap: number = heatmapMaxConcurrentBuilds()
+): boolean {
+  return inflightCount < cap;
+}
+
+/** Serve an expired matrix immediately and kick off a background rebuild (single-flight, capped). */
 function tryStaleWhileRevalidateHeatmap(
   cacheKey: string,
   root: string,
@@ -1784,7 +1830,10 @@ function tryStaleWhileRevalidateHeatmap(
   }
   if (!best) return null;
 
-  if (!heatmapInflight.has(cacheKey)) {
+  if (
+    !heatmapInflight.has(cacheKey) &&
+    shouldStartHeatmapBackgroundRebuild(heatmapInflight.size)
+  ) {
     const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(() => {
       heatmapInflight.delete(cacheKey);
     });
@@ -1793,6 +1842,8 @@ function tryStaleWhileRevalidateHeatmap(
       /* stale already returned — background refresh failure is non-fatal */
     });
   }
+  // else: at the concurrency cap — serve the stale data without refreshing this cycle; the next
+  // caller retries once a slot frees up (see heatmapMaxConcurrentBuilds's doc comment above).
 
   if (redisHit && (!mem || redisHit.at >= mem.at)) {
     setCachedHeatmap(cacheKey, redisHit);
