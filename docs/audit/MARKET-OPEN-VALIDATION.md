@@ -1,3 +1,46 @@
+## WATCH LIST — 2026-10-15 Polygon rate-limiter background-sweep reservation (vector-bead-recorder saturation starving 0DTE/SPX/Thermal) shipped — deploy pending validation
+
+**What was fixed:** standing performance/latency audit mandate — cross-cutting shared-infra fix
+for the previously-escalated, deliberately-unshipped finding "Live ALB tail-latency incident
+(2026-10-15...): Vector bead recorder's 5s universe-wide GEX polling structurally saturates the
+shared Polygon rate limiter" (`FINDINGS.md`, docs-only PRs #6065/#6066, `#4076` comments
+6197984130/6199692739). `vector-bead-recorder-leader.ts`'s continuous 5s/15s universe-wide GEX
+polling (shared with 0DTE/SPX/Thermal/Helix/Meridian/Largo through `fetchGexHeatmap`) structurally
+saturated `polygon-rate-limiter.ts`'s global RPS AND local concurrency admission stages at once
+(47-87 full-chain escalations/min sustained 3.5+ hours; dozens of unrelated tickers hitting
+`rate-limiter queue budget exceeded` in the same millisecond as the recorder's own churn; two
+confirmed live-RTH `GET /api/market/zerodte/board upstream_ok:false` incidents, both self-healed).
+Fix (PR #6068): ported the already-proven `runWithBackgroundUwSweep`/`reserveForLiveTraffic`
+background-sweep-reservation mechanism from `uw-rate-limiter.ts` to `polygon-rate-limiter.ts` —
+an `AsyncLocalStorage`-tagged caller (now: the bead-recorder's two fan-out call sites) sees a
+REDUCED admission ceiling at both stages (default: half, via `POLYGON_BACKGROUND_SWEEP_MAX_SHARE`,
+env-tunable); every untagged caller (0DTE, SPX, Thermal, Helix, Meridian, Largo tools, interactive
+member reads) sees the ceiling completely unchanged. No cadence or total-ceiling change — this
+reallocates existing shared budget between caller classes. Full write-up:
+`docs/audit/findings-staging/2026-10-15-polygon-rate-limiter-background-sweep-reservation.md`.
+
+**Specific thing to check once this deploys:** (1) Re-run the original finding's three CloudWatch
+queries against `/ecs/blackout-production` during RTH: `[polygon-gex] full-chain escalation
+ADOPTED` rate (expect it to no longer sustain 47-87/min for hours — the recorder's OWN rebuild
+volume should now self-throttle sooner under its reduced reservation, rather than running
+unconstrained), `[vector-bead-recorder] SWEEP OVER BUDGET` frequency (may initially appear MORE
+often, not less — the recorder is now deliberately rate-limited harder when contended, which is
+the intended tradeoff; watch that it doesn't go fully dark/zero-samples instead, which would mean
+the reservation is starving it rather than just slowing it), and `[polygon] rate-limiter queue
+budget exceeded at global_rps`/`at local_slot` lines tagged to OTHER desks' tickers (expect these
+to recede or disappear — this is the actual thing being fixed). (2) Check whether
+`GET /api/market/zerodte/board` shows any further `upstream_ok:false` incidents during RTH in the
+days following deploy — zero further occurrences (over a comparable number of RTH hours to the
+two seen pre-fix) is the clearest possible confirmation. (3) Confirm
+`GET /api/admin/health`'s Polygon rate-limiter stats surface the new `backgroundSweepMaxShare: 0.5`
+field (or whatever `POLYGON_BACKGROUND_SWEEP_MAX_SHARE` is set to), proving the deployed code path
+actually includes this change rather than serving a stale build. (4) If the recorder's own bead
+density visibly degrades (large gaps in Vector's wall-history rails during RTH, beyond what was
+already being measured pre-fix), that would argue the default 0.5 share is too aggressive for the
+recorder's genuine needs — widen it via the env var rather than reverting the mechanism.
+
+---
+
 ## WATCH LIST — 2026-10-15 `fetchUwMacroIndicators` serial fan-out (stacked UW rate-limiter admission waits, correlated with 40-43s ALB TargetResponseTime Max spikes) fixed — deploy pending validation
 
 **What was fixed:** performance/latency audit mandate follow-up on a recurring ALB

@@ -22,6 +22,7 @@
  * notePolygon429()/notePolygonOk() does NOT double-count: there is exactly one breaker.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { trackedFetch, type TrackedFetchOptions } from "@/lib/api-tracked-fetch";
 import { mergePolyBreakerOpenUntil } from "./polygon-breaker-merge";
 import {
@@ -82,6 +83,82 @@ const MIN_SPACING_MS = Math.max(0, Math.floor(envNumber("POLYGON_MIN_SPACING_MS"
 /** Absorbs the old reactive breaker: 5 CONSECUTIVE 429s → pause. */
 const CIRCUIT_429_THRESHOLD = Math.max(3, Math.floor(envNumber("POLYGON_CIRCUIT_429_THRESHOLD", 5)));
 const CIRCUIT_PAUSE_MS = Math.max(10_000, Math.floor(envNumber("POLYGON_CIRCUIT_PAUSE_MS", 60_000)));
+
+/**
+ * Background-sweep admission reservation — guarantees live/foreground traffic can always reach a
+ * meaningful share of this shared limiter even while a continuous background sweep is at its own
+ * ceiling. Mirrors `reserveForLiveTraffic`/`runWithBackgroundUwSweep` in uw-rate-limiter.ts
+ * (AsyncLocalStorage tag, not a threaded parameter, for the same reason that file gives: a sweep
+ * calls many layers deep into shared library code — recordSharedUniverseWallSamples ->
+ * recordVectorUniverseWallSample -> buildVectorUniverseRow -> fetchGexHeatmap -> polygonTrackedFetch
+ * — that cannot practically be threaded with an explicit flag).
+ *
+ * WHY THIS EXISTS (live incident, 2026-10-15; FINDINGS.md "Live ALB tail-latency incident"
+ * entry + #4076 comments 6197984130/6199692739). `vector-bead-recorder-leader.ts` sweeps the
+ * shared ~100-122-ticker Vector universe every 5s and calls the same shared `fetchGexHeatmap()`
+ * this limiter guards for every ticker; the cache's own TTL is also 5s, so on nearly every tick
+ * the whole universe is already stale and re-triggers a real rebuild. Measured live: 47-87
+ * full-chain escalations/min sustained for 3.5+ hours, and dozens of UNRELATED tickers (names
+ * outside Vector's own universe — 0DTE/SPX/Thermal/other desks' own GEX reads) hitting
+ * `rate-limiter queue budget exceeded at global_rps`/`at local_slot` in the same millisecond as
+ * the recorder's own churn. Two confirmed live-RTH incidents of `GET /api/market/zerodte/board`
+ * returning `upstream_ok:false` with empty discovery/governor output (both self-healed in
+ * minutes) were time-correlated with this same saturation window.
+ *
+ * WHY A FRACTION, NOT UW's FLAT "-1". UW's version of this mechanism reserves exactly one unit
+ * (`Math.max(1, ceiling - 1)`), which is a real ~50% reservation there because
+ * `UW_GLOBAL_MAX_CONCURRENCY` defaults to 2. Polygon's ceilings are 24-75x larger
+ * (`MAX_CONCURRENCY`=48, `GLOBAL_MAX_RPS`=150) — subtracting a flat 1 would reserve under ~2% of
+ * the budget, which the measured incident (a continuous tens-of-req/s structural saturator) would
+ * blow through immediately, making the "fix" a no-op in practice while looking identical to UW's
+ * proven pattern in the diff. A FRACTION of the ceiling scales with whichever value is configured
+ * (either ceiling is independently env-overridable) and stays a meaningful floor regardless.
+ *
+ * DEFAULT-SAFE: `reserveForLiveTraffic` returns the ceiling UNCHANGED for any caller that is not
+ * explicitly wrapped in `runWithBackgroundPolygonSweep` — i.e. every existing caller (0DTE, SPX,
+ * Thermal, Helix, Meridian, Largo tools, interactive member reads, and even Vector's OWN
+ * interactive reads) is completely unaffected by this change until a call site opts in. The one
+ * call site wired to opt in by this same fix (vector-bead-recorder-leader.ts's tick()/activeTick())
+ * never has its ceiling reduced to zero (`Math.max(1, ...)`), so a sweep can always make SOME
+ * progress — it is reallocated, never starved, and a misconfigured `POLYGON_BACKGROUND_SWEEP_MAX_SHARE`
+ * can only ever move the split, never block the recorder outright or drop a request that would
+ * otherwise have been admitted (the existing QueueBudget timeout/retry handling is unchanged).
+ */
+const BACKGROUND_SWEEP_MAX_SHARE = clampShare(envNumber("POLYGON_BACKGROUND_SWEEP_MAX_SHARE", 0.5));
+
+/** Clamp to a sane (0, 1) band so a misconfigured env value can't reserve ~0% (no protection for
+ *  live traffic) or ~100% (the sweep could never make progress at all). */
+function clampShare(x: number): number {
+  if (!Number.isFinite(x)) return 0.5;
+  return Math.min(0.95, Math.max(0.05, x));
+}
+
+const backgroundPolygonSweepStore = new AsyncLocalStorage<true>();
+
+/**
+ * Run `fn` tagged as a bulk background sweep rather than live/foreground traffic — see the block
+ * comment on BACKGROUND_SWEEP_MAX_SHARE above. Use for whole-universe background pollers (the
+ * Vector bead-recorder's 5s/15s universe sweeps); do NOT use for a live per-request code path,
+ * which must always compete for the FULL ceiling.
+ */
+export function runWithBackgroundPolygonSweep<T>(fn: () => Promise<T>): Promise<T> {
+  return backgroundPolygonSweepStore.run(true, fn);
+}
+
+/** True while executing inside `runWithBackgroundPolygonSweep`. */
+function isBackgroundPolygonSweep(): boolean {
+  return backgroundPolygonSweepStore.getStore() === true;
+}
+
+/**
+ * Reserve a meaningful share of `ceiling` for live traffic when the caller is a tagged background
+ * sweep; returns `ceiling` UNCHANGED for every untagged (i.e. every EXISTING) caller. Exported so
+ * the reservation math + AsyncLocalStorage isolation are unit-testable directly, without needing
+ * to mock Redis or the local token bucket — mirrors uw-rate-limiter.ts's identically-named export.
+ */
+export function reserveForLiveTraffic(ceiling: number): number {
+  return isBackgroundPolygonSweep() ? Math.max(1, Math.floor(ceiling * BACKGROUND_SWEEP_MAX_SHARE)) : ceiling;
+}
 
 const SUMMARY_WINDOW_MS = 60_000;
 
@@ -218,7 +295,13 @@ async function acquireGlobalRedisSlot(): Promise<boolean> {
   if (!client) return true; // FAIL-OPEN: no Redis → no global ceiling.
 
   try {
-    return await acquireSlidingWindowRedisSlot(client, "blackout:polygon:rps", GLOBAL_MAX_RPS);
+    // reserveForLiveTraffic: a background-sweep-tagged caller (vector-bead-recorder) compares the
+    // SAME shared sliding-window counter against a reduced ceiling, so it can never claim more
+    // than its reserved share — live/foreground traffic (which always checks the FULL
+    // GLOBAL_MAX_RPS) is unaffected and can still take the rest. See the block comment on
+    // BACKGROUND_SWEEP_MAX_SHARE above for the live incident this fixes and why a fraction (not
+    // UW's flat "-1") is the right shape at Polygon's much larger ceiling.
+    return await acquireSlidingWindowRedisSlot(client, "blackout:polygon:rps", reserveForLiveTraffic(GLOBAL_MAX_RPS));
   } catch {
     // Redis died mid-session: arm the backoff so getSharedRedis() falls back to
     // local-only pacing for SHARED_REDIS_RETRY_BACKOFF_MS instead of awaiting a
@@ -260,6 +343,17 @@ async function waitMinSpacing(signal?: AbortSignal): Promise<void> {
   lastStartMs = Date.now();
 }
 
+/** Per-process concurrency cap this caller is admitted against — reduced for a tagged background
+ *  sweep via reserveForLiveTraffic (see the block comment on BACKGROUND_SWEEP_MAX_SHARE above),
+ *  unchanged (MAX_CONCURRENCY) for every other caller. This is the LOCAL half of the same
+ *  reservation whose Redis-global half lives in acquireGlobalRedisSlot — Polygon has no Redis
+ *  concurrency semaphore (unlike UW's acquireGlobalRedisConcurrencySlot), so this per-process
+ *  check is the only concurrency gate there is, and the live incident's own evidence showed BOTH
+ *  `global_rps` and `local_slot` admission failing in the same millisecond. */
+function effectiveMaxConcurrency(): number {
+  return reserveForLiveTraffic(MAX_CONCURRENCY);
+}
+
 async function acquireLocalSlot(budget: QueueBudget, signal?: AbortSignal): Promise<void> {
   for (;;) {
     if (signal?.aborted) throw abortedWhileQueuedError(signal);
@@ -268,7 +362,8 @@ async function acquireLocalSlot(budget: QueueBudget, signal?: AbortSignal): Prom
     // truncates waiting, never a successful acquisition.
     budget.assertWithinBudget("local_slot");
     refillTokens();
-    if (inFlight < MAX_CONCURRENCY && tokens >= 1) {
+    const concurrencyCap = effectiveMaxConcurrency();
+    if (inFlight < concurrencyCap && tokens >= 1) {
       // Reserve the slot synchronously BEFORE pacing so no concurrent acquirer can
       // observe the un-consumed token/concurrency across the await and overshoot.
       tokens -= 1;
@@ -283,7 +378,7 @@ async function acquireLocalSlot(budget: QueueBudget, signal?: AbortSignal): Prom
       }
       return;
     }
-    const delay = inFlight >= MAX_CONCURRENCY ? 50 : waitMsForToken();
+    const delay = inFlight >= concurrencyCap ? 50 : waitMsForToken();
     await sleepAbortable(budget.clampSleepMs(delay), signal);
   }
 }
@@ -569,6 +664,10 @@ export function polygonRateLimiterStats(): {
   consecutive429: number;
   /** NH-R3: the additive upstream health snapshot (evidence-only — see polygon-rest-health.ts). */
   upstreamHealth: PolygonUpstreamHealthSnapshot;
+  /** Fraction of a ceiling a tagged background sweep (vector-bead-recorder) may use at admission —
+   *  see BACKGROUND_SWEEP_MAX_SHARE's block comment. Exposed so a live post-deploy check (e.g.
+   *  /api/admin/health) can confirm the configured split without reading env vars off the task. */
+  backgroundSweepMaxShare: number;
 } {
   refillTokens();
   const now = Date.now();
@@ -590,6 +689,7 @@ export function polygonRateLimiterStats(): {
     circuitOpenUntil: now < circuitOpenUntil ? circuitOpenUntil : null,
     consecutive429,
     upstreamHealth: polygonUpstreamHealth().snapshot(),
+    backgroundSweepMaxShare: BACKGROUND_SWEEP_MAX_SHARE,
   };
 }
 
