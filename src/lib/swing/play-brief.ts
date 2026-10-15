@@ -470,6 +470,44 @@ function pnlSection(play: TerminalPlay): RichSection {
   ) {
     pnlForDisplay = play.pnlPct;
   }
+  // GUARD #2 (2026-10-15, Ask Largo standing mandate — live ENOV repro, positionId 1739, BANGER-
+  // origin TRIM/PARTIAL). The guard above only protects against the CENT-ROUNDING RECOMPUTE
+  // introducing a NEW violation on top of an otherwise-in-bounds canonical `play.pnlPct` — its
+  // fallback target IS `play.pnlPct`, so whenever the canonical value itself is what's already
+  // out of bounds (no recompute involved, or the recompute happens to land back on the same
+  // canonical number), that fallback is a no-op: it reassigns the violating value to itself.
+  // Live repro: ENOV entry $0.05, mark $0.33 (a clean, non-cent-ambiguous value — `markRoundTripsPnl`
+  // is TRUE here, recompute reproduces play.pnlPct exactly), so the guard above fires and
+  // "falls back" to play.pnlPct = +560.0% — identical to what it already was. Meanwhile
+  // `play.peak` (adapters.ts's `peakDisplay`, derived from the ledger's own `peak_premium`
+  // watermark) reads +550.0% — ten points BELOW the P&L it's supposed to bound. Root cause traced
+  // to `src/lib/banger/positions-db.ts`'s `updateBangerLiveState`: its SQL ratchets
+  // `peak_premium = GREATEST(peak_premium, $3)` and `last_mark = $3` in the SAME statement using
+  // the SAME bound parameter, which is provably atomic and self-consistent per write — so this can
+  // only mean some tick that advanced `last_mark` to its current value did not, for whatever reason
+  // (a question that needs raw production DB access this read-only audit session doesn't have, and
+  // is out of scope for this fix per this finding's own write-up), carry that same mark into the
+  // peak ratchet. Whatever the upstream trigger, the member-facing contract this file's own
+  // `markRoundTripsPnl` comment states — "the current mark IS one of the samples peak/trough were
+  // latched from, so ... `pnlPct` always lies inside [trough, peak] by construction" — must hold
+  // for what Largo actually DISPLAYS, independent of whether the upstream ledger watermark has
+  // caught up yet. Fix: WIDEN the displayed Peak/Trough to bracket the final displayed P&L — never
+  // the reverse (clamping P&L down to a stale Peak would UNDERSTATE the member's real gain, the
+  // same mistake this file's other absence/precision guards exist to avoid). This is the identical
+  // "widen-only, converge-in-place" discipline `positions-db.ts`'s own entry_premium-bracket fix
+  // (PR #6027, `db.ts`'s boot-time backfill UPDATE) already applies to the SAME ratchet pair at the
+  // storage layer — applied here at the display layer instead, since the task scope for this fix is
+  // this file, not a second, unconfirmed change to the live ledger's write path.
+  let peakForDisplay = play.peak;
+  let troughForDisplay = play.trough;
+  if (pnlForDisplay != null && Number.isFinite(pnlForDisplay)) {
+    if (peakForDisplay != null && Number.isFinite(peakForDisplay) && pnlForDisplay > peakForDisplay) {
+      peakForDisplay = pnlForDisplay;
+    }
+    if (troughForDisplay != null && Number.isFinite(troughForDisplay) && pnlForDisplay < troughForDisplay) {
+      troughForDisplay = pnlForDisplay;
+    }
+  }
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
     markGenuinelyUnknown
@@ -478,7 +516,7 @@ function pnlSection(play: TerminalPlay): RichSection {
         ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
         : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
-    `Peak: **${fmtPct(play.peak)}**`,
+    `Peak: **${fmtPct(peakForDisplay)}**`,
     // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
     // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
     // computed symmetrically alongside `peakDisplay` on every TerminalPlay row, condor-aware) was
@@ -488,7 +526,7 @@ function pnlSection(play: TerminalPlay): RichSection {
     // don't flinch on the next drawdown scare") that the data already supports; mirrors Peak's own
     // unconditional render (fmtPct handles null as "—" — same convention, both null together when
     // entry/premium data is missing).
-    `Trough: **${fmtPct(play.trough)}**`,
+    `Trough: **${fmtPct(troughForDisplay)}**`,
   ];
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.greeks` (DeckGreeks: delta/gamma/
   // theta/vega/iv) is a real, live per-contract read for every open swing position — the active-
