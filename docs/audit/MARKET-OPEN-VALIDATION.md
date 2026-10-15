@@ -29,6 +29,25 @@ unchanged (which would mean this was a real but non-dominant contributor, and th
 mechanism is still open — same "re-measure, don't assume" discipline as the `RUN-LOG.md` #5686/
 heatmap-warm thread).
 
+**VALIDATED 2026-10-15, ~55-75 min post-deploy (two independent re-pulls, same conclusion):**
+PR #6039 deployed via `ecr-push-production.yml` run 38707324498 (commit 3e322a432), completed
+09:16:07 UTC. Pre-deploy baseline re-confirmed live over a 5h window (03:54–08:36 UTC): the 40-43s
+`TargetResponseTime` Max spike recurred on an almost metronomic ~25-50min cadence with zero misses
+(04:32, 04:39, 05:01, 05:35-37 cluster, 06:06, 06:53, 07:44, 08:36 — the last just 4 minutes before
+the deploy). Post-deploy, two separate re-pulls found no recurrence: a first check (09:16-09:36,
+one full inter-spike interval) found Max never exceeded 8.56s; a second, independent re-pull
+(08:43-09:33, 11×5-min buckets, ~55 min of post-deploy data covering 1-2 inter-spike intervals) found
+Max topping out at 10.5s (09:03 bucket), with ECS CPU/Memory flat and unremarkable throughout. UW
+`[uw] queue wait` admission waits of 10-17s are still occurring post-deploy (expected — real UW
+rate-limiter contention from other callers wasn't eliminated, only the GDP/CPI/UNRATE fan-out's own
+serial stacking was), but none of the post-deploy ALB minutes show the combined 40s+ signature.
+**Verdict: RECEDING — a real, falsifiable, satisfied prediction, but still only ~1-2 inter-spike
+intervals of evidence, not a long baseline.** The fix's own finding already disclosed it wasn't
+proven to be the sole driver; this result is consistent with "real contributor, meaningfully reduced
+the stacked-magnitude tail" without fully ruling out a secondary cause for any future recurrence.
+**Next check:** re-pull over a longer window (several hours, ideally spanning full RTH) before
+closing this thread out for good — one clean afternoon is encouraging, not definitive.
+
 ---
 
 ## WATCH LIST — 2026-10-15 Ask Largo swing play-brief MFE capture clamped at 100% (ORCL/NOW closed positions) fixed — deploy pending validation
