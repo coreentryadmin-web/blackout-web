@@ -183,6 +183,35 @@ test("livePlayFromSwingPosition: latest manage snapshot overrides spot-only inta
   assert.equal(play.thesisLevel, "intact");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): live repro, real committed INTC position
+// (entry_underlying_px 101.25, thesis_invalidation_px 96.88, live spot 95.77 — below the pinned
+// invalidation price, so structuralBreakFromSpot's crude single-price compare calls it "broken").
+// The same tick's authoritative manage-sync snapshot had already run the real engine (which checks
+// an ex-dividend-adjusted structural stop, not the raw pinned price) and found the thesis NOT
+// broken — thesis_state:"INTACT", rung:"hold" — yet thesisLevel stayed "break" because no branch
+// in manageObservablesFromEvent ever reset it back once the spot fallback had set it. That made
+// serving.ts route the position into the EXITING bucket while manageReasonDetail, from the exact
+// same tick, read "thesis intact, premium above the 0.4x backstop, ample time — hold" — a direct,
+// member-visible contradiction. Asserts the authoritative INTACT snapshot now wins.
+test("livePlayFromSwingPosition: authoritative INTACT snapshot overrides a stale spot-only break read (live INTC repro, 2026-10-15)", () => {
+  const play = livePlayFromSwingPosition(
+    row({ status: "HOLD" }),
+    160, // below the 165 invalidation price -> spot-only fallback alone would call this "break"
+    {
+      action: "HOLD",
+      rung: "hold",
+      thesis_state: "INTACT",
+      reason: "thesis intact, premium above the 0.4x backstop, ample time - hold",
+    },
+  )!;
+  assert.equal(play.thesisLevel, "intact");
+  assert.equal(play.manageAction, undefined);
+  assert.ok(
+    !play.reason.includes("exit"),
+    `reason must not say "exit" once the authoritative snapshot confirms the thesis is intact, got: ${play.reason}`,
+  );
+});
+
 test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledger row", () => {
   const play = livePlayFromSwingPosition(row(), 178)!;
   assert.ok(play.contract.dte >= 0);
