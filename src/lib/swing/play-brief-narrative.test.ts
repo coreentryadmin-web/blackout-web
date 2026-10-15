@@ -1856,6 +1856,53 @@ test("counterThesisLine: steelmans bear case for LONG when desks disagree", () =
   assert.match(line!, /bear EMA stack/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): `weight` used to be computed from
+// `shown.length` (the join-string array, capped at 3 by `.slice(0,3)`) while the function's own
+// comment always said the count was `reasons.length` — so whenever 4+ of the ~10 independently
+// gated votes corroborated, the label understated the real count. This test stacks 4 independent
+// reasons (HELIX flow, Night Hawk, 0DTE, EMA stack) and asserts the label says "4", not "3".
+test("counterThesisLine: evidence-count label reflects the full reasons count, not the display-capped shown count", () => {
+  const line = counterThesisLine(
+    ctx({
+      ecosystem: {
+        ticker: "NRG",
+        recent_flow: {
+          window_hours: 24,
+          print_count: 10,
+          call_premium: 400_000,
+          put_premium: 1_200_000,
+          unknown_premium: 0,
+        },
+        nighthawk_recent: {
+          edition_for: "2026-09-05",
+          direction: "short",
+          conviction: "high",
+          outcome: "bearish",
+          score: null,
+        },
+        zerodte_today: {
+          session_date: "2026-09-05",
+          direction: "short",
+          score: 70,
+          conviction: "high",
+          status: "flagged",
+          first_flagged_at: "2026-09-05T14:00:00Z",
+        },
+        gex_positioning: null,
+        arsenal: null,
+        flow_feed_fresh: true,
+        vector_full_state: null,
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: { spot: 100, technicals: { emaStack: "down" } } as SwingPlayBriefContext["vector"],
+    }),
+    play({ direction: "LONG" }),
+    100,
+  );
+  assert.ok(line);
+  assert.match(line!, /corroborated across 4 independent reads/i, "must count all 4 real reasons, not the 3 displayed");
+  assert.doesNotMatch(line!, /corroborated across 3 independent reads/i, "must not understate the count to the display cap");
+});
+
 test("counterThesisLine: stale HELIX flow must not steelman call-led / put-led", () => {
   const line = counterThesisLine(
     ctx({
