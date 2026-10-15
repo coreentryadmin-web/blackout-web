@@ -629,9 +629,26 @@ export function tickerTrackRecordSection(
   const { ticker, priorClosedTrades, wins, losses } = record;
   const plural = priorClosedTrades === 1 ? "time" : "times";
   const winRatePct = priorClosedTrades > 0 ? Math.round((wins / priorClosedTrades) * 100) : null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-15): `record.directions` is computed and
+  // populated unconditionally by play-brief-ticker-history.ts specifically so a caller can "tell
+  // whether the cited record actually shares the reviewed play's direction before implying it's a
+  // directly comparable 'no edge on this setup' verdict" (that file's own doc comment) — the exact
+  // precision gap play-brief-narrative-coaching.ts's tickerHistoryCoaching() already guards
+  // against for its OWN "Trade manager read" mention of this same record, but this dedicated
+  // section/table (the one place a member sees the bare count with no qualifier at all) never did.
+  // A 0W/2L record built entirely from SHORT trades says nothing about today's LONG thesis on the
+  // same ticker — stating the bare count without this disclosure implies a comparability the data
+  // doesn't have (Largo C9 precision). Wording only; the count itself never changes.
+  const playDirection = play.direction.toLowerCase();
+  const directions = record.directions;
+  const allSameDirection = directions != null && directions.length > 0 && directions.every((d) => d === playDirection);
+  const directionNote =
+    directions != null && directions.length > 0 && !allSameDirection
+      ? ` (${new Set(directions).size > 1 ? "mixed long/short" : `all ${directions[0]}`} — not all directly comparable to today's ${play.direction} setup)`
+      : "";
   const lines = [
     `The desk has traded **${ticker}** **${priorClosedTrades}** ${plural} before this play: **${wins}W / ${losses}L**` +
-      (winRatePct != null ? ` (${winRatePct}% win rate on this ticker specifically).` : "."),
+      (winRatePct != null ? ` (${winRatePct}% win rate on this ticker specifically)${directionNote}.` : `${directionNote}.`),
   ];
   return {
     title: "Ticker track record",
