@@ -921,6 +921,31 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS trough_premium NUMERIC;
   `);
+  // FINDINGS 2026-10-15 (Ask Largo/Night Hawk standing mandate): zerodte_setup_log has the EXACT
+  // SAME SEV-2 unbracketed-watermark shape FINDINGS 2026-08-06 already fixed on swing_positions
+  // (see the converge-in-place UPDATE a few hundred lines up) — never ported here, and a THIRD
+  // table found carrying this bug the same session as the banger_positions companion fix. Both
+  // write paths to this table (ZERODTE_SETUP_LOG_UPSERT_SQL's single-row INSERT and
+  // upsertZeroDteSetupLog's batched multi-row INSERT) now seed peak_premium/trough_premium from
+  // entry_premium at INSERT, so this backfill only needs to repair rows written before that fix —
+  // same converge-in-place, widen-only (GREATEST/LEAST) discipline as the swing_positions UPDATE
+  // above, a no-op once converged, safe to re-run on every boot. Live proof 2026-10-15 (GET
+  // /api/market/zerodte/board, 30-row ledger): CRWV (trough 1.80 > entry 1.77), FLEX (peak 2.38 <
+  // entry 2.40), APLD (peak 0.56 < entry 0.59) — small gaps (0DTE positions move tick-to-tick, not
+  // overnight-gap-to-gap like banger's weekly contracts), but the same arithmetically-impossible
+  // shape: the entry fill itself IS an observed mark, so neither watermark should ever land on the
+  // wrong side of it. A row with no entry_premium (e.g. an iron condor's credit structure, which
+  // carries no single entry premium — see scan.ts's own comment on this population) is left alone.
+  await p.query(`
+    UPDATE zerodte_setup_log
+       SET peak_premium = GREATEST(COALESCE(peak_premium, entry_premium), entry_premium),
+           trough_premium = LEAST(COALESCE(trough_premium, entry_premium), entry_premium)
+     WHERE entry_premium IS NOT NULL
+       AND (peak_premium IS NULL
+            OR trough_premium IS NULL
+            OR peak_premium < entry_premium
+            OR trough_premium > entry_premium);
+  `);
   // Context-at-entry (decision doc C-2): day-open VIX, SPY session bias, gamma
   // regime, commit-time score, ET commit stamp — pinned at FIRST flag like the
   // plan columns, because the whole point is what the desk looked like when the
@@ -6346,13 +6371,28 @@ export type ZeroDteSetupLogUpsert = {
 // (upsertZeroDteSetupLog) and the WS-01 atomic transactional path (commitFreshZeroDteRows
 // Atomic) run byte-identical SQL — the pinning COALESCEs must never drift between a fresh
 // commit and a refresh tick, and duplicating this string invited exactly that drift.
+// SEV-2 FIX (Ask Largo/Night Hawk standing mandate, 2026-10-15): peak_premium/trough_premium are
+// supposed to bracket a contract's premium SINCE ENTRY — the entry fill itself IS an observed mark,
+// so neither watermark should ever land on the wrong side of entry_premium. This table used to leave
+// both columns NULL at insert, so updateZeroDteLiveState's ratchet (GREATEST(COALESCE(peak_premium,
+// $4), $4)) seeded peak_premium from the FIRST OBSERVED MARK instead — below entry whenever the
+// contract moved against the position before the first live-sync tick ever sampled it. Live proof
+// 2026-10-15 (GET /api/market/zerodte/board, 30-row ledger): CRWV (trough 1.80 > entry 1.77), FLEX
+// (peak 2.38 < entry 2.40), APLD (peak 0.56 < entry 0.59) — the exact same shape FINDINGS 2026-08-06
+// already fixed on swing_positions (and this session's companion fix on banger_positions), never
+// ported to this THIRD table carrying the identical peak_premium/trough_premium GREATEST/LEAST
+// ratchet. Seeded here ($13, entry_premium, reused — same convention as $6/$11 above) at insert;
+// NOT added to any ON CONFLICT pinned column below, so the live ratchet still owns both after
+// commit. A row with no entry_premium (e.g. an iron condor's credit structure — see scan.ts's own
+// comment on why that population carries no single entry premium) simply seeds NULL, same as today.
 const ZERODTE_SETUP_LOG_UPSERT_SQL = `
       INSERT INTO zerodte_setup_log (
         session_date, ticker, direction, top_strike, expiry, score, score_max,
         dossier_score, conviction, gross_premium, spike, underlying_at_flag,
         underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
-        gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
+        gate_calibration_json, entry_context, feature_vector, peak_premium, trough_premium,
+        first_flagged_at, last_seen_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,$13,$13,NOW(),NOW())
       ON CONFLICT (session_date, ticker) DO UPDATE SET
         score = EXCLUDED.score,
         score_max = GREATEST(zerodte_setup_log.score_max, EXCLUDED.score),
@@ -6456,7 +6496,12 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         r.entry_context ?? null,
         r.feature_vector ?? null
       );
-      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},$${b + 16},$${b + 17},$${b + 18},NOW(),NOW())`;
+      // $13,$13 (reusing entry_premium, same convention as the $6/$11 reuses above) seeds
+      // peak_premium/trough_premium from entry_premium — see ZERODTE_SETUP_LOG_UPSERT_SQL's
+      // header comment for the full rationale; this batched path carries the identical fix so
+      // the two write paths never drift (the bug this guards against is EXACTLY a case of two
+      // paths to the same table silently diverging).
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},$${b + 16},$${b + 17},$${b + 18},$${b + 13},$${b + 13},NOW(),NOW())`;
     })
     .join(", ");
 
@@ -6466,7 +6511,8 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
       session_date, ticker, direction, top_strike, expiry, score, score_max,
       dossier_score, conviction, gross_premium, spike, underlying_at_flag,
       underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
-      gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
+      gate_calibration_json, entry_context, feature_vector, peak_premium, trough_premium,
+      first_flagged_at, last_seen_at
     ) VALUES ${tuples}
     ON CONFLICT (session_date, ticker) DO UPDATE SET
       score = EXCLUDED.score,
