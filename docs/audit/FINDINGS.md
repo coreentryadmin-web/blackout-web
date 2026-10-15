@@ -38,6 +38,278 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Swing play-brief `tickerTrackRecordSection` implied comparability across mismatched directions (Largo C9) — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — precision gap: a bare factual count implied a comparison the data doesn't support |
+| **File** | `src/lib/swing/play-brief-intel.ts` (`tickerTrackRecordSection`) |
+| **Found by** | Workflow-based "dead-wired data" hunt, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-15 |
+
+### Root cause
+
+`SwingTickerTrackRecord.directions` (`play-brief-ticker-history.ts`) is computed and populated
+unconditionally whenever the record exists — its own doc comment states its exact purpose: letting
+a caller "tell whether the cited record actually shares the reviewed play's direction before
+implying it's a directly comparable 'no edge on this setup' verdict." The sibling narrative function
+`tickerHistoryCoaching` (`play-brief-narrative-coaching.ts`, feeding "Trade manager read") already
+consumes `directions` correctly to soften its wording on a mixed/opposite-direction record — proving
+the field is real, populated, and meaningful. But the DEDICATED "Ticker track record" section/table
+in `play-brief-intel.ts` — the one place a member sees the bare win/loss count with no other
+qualifier at all — destructured only `{ ticker, priorClosedTrades, wins, losses }` and never read
+`directions`. A 0W/2L record built entirely from SHORT trades said nothing about today's LONG thesis
+on the same ticker, yet rendered as if it did (Largo C9 precision — don't imply a comparison the
+data doesn't support).
+
+### Evidence
+
+New regression tests (`play-brief-intel.test.ts`). Pre-fix (RED, verified via `git stash`
+isolation): an all-short prior record for a LONG play rendered no direction qualifier at all. Post-
+fix (GREEN): renders "(all short — not all directly comparable to today's LONG setup)"; a mixed
+long/short record renders "(mixed long/short — ...)"; a same-direction record and a record that
+omits `directions` entirely (older fixture/call site) both render with no qualifier, unchanged.
+
+### Fix
+
+Added the same direction-mismatch check `tickerHistoryCoaching` already uses (optional field, falls
+back to the original undifferentiated wording when absent) and appended a parenthetical qualifier to
+the existing prose line. The count itself (`wins`/`losses`/`priorClosedTrades`) and the structured
+table are unchanged — wording only.
+
+### Blast radius
+
+Single call site — `tickerTrackRecordSection` is only called from `buildIntelSections` in the same
+file. No other function renders `SwingTickerTrackRecord` to prose besides the already-correct
+`tickerHistoryCoaching`.
+
+## Swing play-brief "What changed" diff never caught a shrinking/shifting gate-block set — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — a materially actionable fact ("only 1 gate left blocking entry") was invisible to the live diff pulse |
+| **File** | `src/lib/swing/play-brief-diff.ts` (`BriefSnapshot`, `snapshotFromBrief`, `diffBriefSnapshots`, `loadPersistedBriefSnapshot`) |
+| **Found by** | Workflow-based "dead-wired data" hunt, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-15 |
+
+### Root cause
+
+`BriefSnapshot` had no field for `TerminalPlay.gateBlocks` (the gates currently blocking entry on a
+WATCH play). `snapshotFromBrief` built the snapshot straight from `play` but never read
+`play.gateBlocks`, and `diffBriefSnapshots` had no code path referencing gate blocks anywhere.
+
+For a WATCH play, `gateBlocks` is recomputed fresh every discovery cycle and can narrow (gates
+clearing one at a time) or shift to a different binding gate — a real, previously-observed
+production shape (`entry-verdict.ts`'s own comment cites a live MU repro with 3 active commit gates
+narrowing independently session to session). But narrowing the gate list (e.g. 3 blocking gates → 1,
+still net-blocked) produced **no change anywhere else the diff engine checks**:
+`recommendation` for a WATCH play only flips BUY once ALL gates clear (not when the set merely
+shrinks), and the headline's action-label component stays "WAIT" regardless of gate count/codes. So
+a real, materially actionable fact — "only 1 gate left blocking entry" vs "3 gates", or a different
+gate now being the binding one — could change session-to-session for the same WATCH play and produce
+zero "What changed" lines, the same "silently identical to a refresh where nothing happened" shape
+this file's own comments already fixed for `rollCandidateReason`, headline-DTE, and section
+add/remove — just not caught for this field.
+
+### Evidence
+
+New regression tests (`play-brief-diff.test.ts`). Pre-fix (RED, verified via `git stash` isolation):
+a gate set narrowing from 3 codes to 1, or a new gate appearing, or a gate set clearing to zero
+alongside a recommendation flip, all produced no "Entry gates shifted" line. Post-fix (GREEN): all
+three narrate correctly, a same-set-different-order comparison correctly does NOT re-narrate
+(order-independent), and a `sessionStorage`-persisted snapshot predating this field is correctly
+rejected rather than crashing `diffBriefSnapshots`'s new `.join(",")` call (the same
+`loadPersistedBriefSnapshot` guard shape already in place for `sectionTitles`, extended here).
+
+### Fix
+
+Added `gateBlocks: string[]` (sorted codes, order-independent comparison) to `BriefSnapshot`,
+populated from `play?.gateBlocks` in `snapshotFromBrief`, diffed in `diffBriefSnapshots` (narrates
+added/cleared codes and the before/after count — fires even when the set clears to zero alongside a
+recommendation flip, since the two lines state different things and neither makes the other
+redundant), and added the same missing-field rejection guard to `loadPersistedBriefSnapshot` that
+already protects `sectionTitles`.
+
+### Blast radius
+
+`BriefSnapshot` is constructed in exactly one place (`snapshotFromBrief`) and consumed by
+`diffBriefSnapshots`, `briefContentKey` (unchanged — deliberately excludes several existing fields
+including `rollCandidateReason`, so `gateBlocks` was not added there either, keeping this fix scoped
+to the diff-narration gap only), and `loadPersistedBriefSnapshot`/`persistBriefSnapshot`
+(`useSwingPlayBrief.ts`). No other file constructs a `BriefSnapshot` literal.
+
+## Swing play-brief `narrateWall` carried an unused `spot` parameter — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P5 — dead code, zero behavioral impact |
+| **File** | `src/lib/swing/play-brief-narrative.ts` (`narrateWall`) |
+| **Found by** | Workflow-based "dead-wired data" hunt, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-15 |
+
+### Root cause
+
+`narrateWall(level, play, spot)` took a `spot: number` parameter like its siblings
+(`narrateDarkPool`, `narrateMaxPain`, `narrateFlip` — which all genuinely compare against `spot`),
+but every branch inside `narrateWall` reads only `level.distancePct`/`level.price` (the signed
+distance already computed from spot elsewhere) — `spot` itself was never referenced in the function
+body. No `tsconfig.json` `noUnusedParameters` flag catches this at build time, so it survived
+silently. Most likely leftover from the 2026-10-14 BUG FIX documented in the same function, which
+rewrote the `breached` logic to use `distancePct`'s sign instead of a fresh spot comparison — a
+plausible mechanism for how the parameter stopped being read while the signature itself was left
+unchanged.
+
+### Fix
+
+Removed the unused parameter from the function signature and both call sites. No behavioral change —
+verified by the full existing `play-brief-narrative.test.ts` suite (123 tests) passing unchanged,
+which is the correct evidence for a pure dead-code removal (there is no observable difference to
+write a new RED→GREEN test against, since nothing changed).
+
+### Blast radius
+
+`narrateWall` is not exported — internal to `play-brief-narrative.ts`, called only from its own
+`tradeManagerNarrativeSection`. Both call sites updated in the same commit.
+
+## Swing play-brief `counterThesisLine` understated its own evidence-weight label — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 — member-visible, incorrect conviction signal in the Ask Largo swing play-brief |
+| **File** | `src/lib/swing/play-brief-narrative.ts` (`counterThesisLine`) |
+| **Found by** | Workflow-based "dead-wired data" hunt, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-15 |
+
+### Root cause
+
+`counterThesisLine` gathers up to ~10 independently-gated counter-thesis votes into `reasons: string[]`
+(HELIX flow, Night Hawk, 0DTE, Vector bias, a wall, EMA stack, MACD, structure break, dealer posture,
+fading pillar — each pushed by its own independent conditional, nothing capping the array before the
+weight label is computed). It then slices to `shown = reasons.slice(0, 3)` purely for join-string
+display length, and used to compute the "corroborated across N independent reads" label from
+`shown.length` — which is pinned at a maximum of 3 — while the function's own adjacent comment
+explicitly asserted "The count itself is never fabricated — it's `reasons.length`". Whenever 4 or
+more of the ~10 votes genuinely corroborated for one ticker/direction (a realistic, not theoretical,
+shape — live production examples already exist in this file's own history, e.g. the GDDY 2026-10-09
+EMA/MACD/structure case the file documents elsewhere), a member saw "corroborated across 3 independent
+reads" when the real count was 4, 5, or more — understating conviction exactly when the counter-thesis
+evidence was strongest, and directly contradicting this function's own stated Largo-contract precision
+discipline (state real evidence weight, never invent it, never flatten it away).
+
+### Evidence
+
+New regression test (`play-brief-narrative.test.ts`) stacks 4 independent reasons (HELIX put-led flow,
+Night Hawk bearish, 0DTE short bias, bear EMA stack) for one LONG play. Pre-fix (RED, verified via
+`git stash` isolation): rendered `"corroborated across 3 independent reads"`. Post-fix (GREEN): renders
+`"corroborated across 4 independent reads"`, while the displayed clause list is unchanged (still only
+the first 3 reasons joined, for prose length) — only the count label changed.
+
+### Fix
+
+One-line change: compute `weight` from `reasons.length` (the full, pre-slice array) instead of
+`shown.length` (the post-slice, display-capped array). `shown.join(" · ")` — the actual rendered
+clause list — is untouched; only the count label now matches what the comment already claimed it did.
+
+### Blast radius
+
+Single call site (`counterThesisLine` is only called from `tradeManagerNarrativeSection` in the same
+file). No other function in `play-brief-narrative.ts`/`play-brief-narrative-coaching.ts` uses this
+slice-then-count pattern (confirmed via the same workflow's adversarial verification pass).
+
+## Swing play-brief `cortexReadSection` never surfaced absent Cortex sources (Largo C3) — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — completeness gap against the Largo product contract's absence principle |
+| **File** | `src/lib/swing/play-brief-intel.ts` (`cortexReadSection`) |
+| **Found by** | Workflow-based "dead-wired data" hunt, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-15 |
+
+### Root cause
+
+`cortexReadSection` reads `play.cortex.verdict` (`CortexVerdict`), which carries `absent: string[]` —
+the sources that couldn't produce a read this turn (the Largo C3 absence principle: "if it can't see
+something, say so, don't silently drop it"). Every other verdict-to-prose renderer of this exact
+`CortexVerdict` type in the codebase (`src/lib/bie/cortex-read.ts`'s `assembleVerdictEnvelope`,
+`buildPinnedCortexEnvelope`, `composeCortexForTicker`) states an absent-source count in its headline
+or confidence rationale — an established house pattern for this type. `cortexReadSection`'s header
+built from `vetoCount`/`opposeCount`/`v.score`/`v.conviction` only, and never touched `v.absent` —
+not gated by any staleness/bucket/absence comment, just never wired.
+
+This is a realistic production shape, not theoretical: `cortex-source-timeout-outcome-ab.mjs`
+(already in the audit toolkit) measured ~19% of graded 0DTE commits carrying a real
+`CortexSourceTimeout` via the same shared `fetchVectorFullState` fan-out that swing's
+`gex-walls`/`wall-trend`/`darkpool-confluence` Cortex sources also read — so a veto/oppose-bearing
+swing Cortex read with simultaneously absent sources is not a rare corner case.
+
+### Evidence
+
+New regression tests (`play-brief-intel.test.ts`). Pre-fix (RED, verified via `git stash` isolation):
+a verdict with 2 absent sources rendered no mention of them at all. Post-fix (GREEN): header states
+"2 sources absent"; a verdict with zero absent sources still renders no absent-source clause at all
+(no fabrication for the clean case).
+
+### Fix
+
+Appended a `· N source(s) absent` clause to the existing header string, gated on `absentCount > 0`
+(omitted entirely when nothing was absent — matches the Largo contract's omission-over-fabrication
+discipline). No other logic touched.
+
+### Blast radius
+
+Single call site — `cortexReadSection` only reads `play.cortex`, only called from
+`buildIntelSections` in the same file. No other function in `play-brief-intel.ts` renders a
+`CortexVerdict` to prose.
+
+## Swing play-brief `archetypeTrackRecordSection` dropped lane-wide graded-play context — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P4 — minor enhancement, not a correctness bug (the bucket's own n/W/L/Wilson-LB were already correct) |
+| **File** | `src/lib/swing/play-brief-intel.ts` (`archetypeTrackRecordSection`) |
+| **Found by** | Workflow-based "dead-wired data" hunt, Ask Largo × Night Hawk Swings standing ownership mandate, 2026-10-15 |
+
+### Root cause
+
+`SwingArchetypeTrackRecordSnapshot.gradedPlays` (`calibration-cache.ts`) is the whole-lane graded-play
+count at write time, documented on the type itself: "context for how broad the evidence base is
+overall, independent of any one bucket's own `n`." `archetypeTrackRecordSection` receives the full
+`snapshot` object but only ever forwarded it into `graduatedArchetypeEntry(snapshot, archetype)` /
+`graduatedSubLaneEntry(snapshot, subLane)` — it never read `gradedPlays` itself when building the
+section. A member reading "across 12 graded plays" on a thin archetype bucket had no way to tell if
+that was 12 of a lane with 70 total graded plays, or 12 of a lane with only 15 — exactly the context
+this field exists to supply, and not gated by any absence/degraded comment.
+
+### Evidence
+
+New regression test (`play-brief-intel.test.ts`). Pre-fix (RED, verified via `git stash` isolation):
+body never mentioned the lane-wide count. Post-fix (GREEN): body states "Across 70 lane-wide graded
+plays as of this read."
+
+### Fix
+
+Appended one line to the section's body, gated on `snapshot` being present (it always is when this
+section renders at all, since both graduation lookups already require it). No change to the existing
+per-bucket prose, table, or computed entries.
+
+### Blast radius
+
+Single call site — `archetypeTrackRecordSection` only called from `buildIntelSections` in the same
+file.
+
 ## Meridian macro-history panel: two of four Promise.all siblings left unguarded while the other two already degrade gracefully — FIXED
 
 > **kind:** `FINDING`
