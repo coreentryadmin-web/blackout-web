@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-10-15T18:45:00Z",
+  "updated_at": "2026-10-15T19:44:00Z",
   "watch_stage_tracking": {
     "2026-10-13T15:11:00Z_TUESDAY_FIRST_COMMIT_MU_LARGE_LOSS_PLUS_PR5921_LIVE_CONFIRMED": {
       "cycle": "RTH :00-offset trigger, 15:11:06 UTC firing -- Tuesday 2026-10-13 cold start",
@@ -132,6 +132,10 @@
       "note": "ACN closed 4th loser: plan_stop -53.39% (mark hit the printed stop 1.48, peak never exceeded 0% -- coherent, standard hard-stop mechanics). RGTI closed a win: ratchet +26.32%. All 20 Thursday positions now closed. Session final-so-far tally: 16W-4L.",
       "upstream_ok_2nd_instance_root_cause_identified": "/board returned upstream_ok:false AGAIN at ~18:44-18:45Z (2nd instance today, same shape as the 17:44Z one: empty setups/ledger, as_of genuinely advancing). This time traced the likely ROOT CAUSE via a sibling lane's just-folded finding: docs/audit/findings-staging/2026-10-15-vector-bead-recorder-gex-rate-limiter-saturation.md (PRs #6065/#6066, NOT FIXED, escalated to #4076) documents a sustained (13:30 UTC onward) shared Polygon global-rate-limiter saturation caused by vector-bead-recorder's 5s universe-wide GEX polling, and EXPLICITLY names '0DTE discovery/commit' among the affected cross-product consumers via live rate-limiter queue-exceeded errors on dozens of concurrent tickers. Both of today's 0DTE upstream_ok incidents fall inside that documented window and match its described symptom shape (upstream read failures, self-recovering/recurring, governor unavailable) far better than a 0DTE-specific bug would. Posted corroborating 0DTE-side evidence (both incident timestamps + healthcheck stage detail) to the #4076 collaboration thread (comment id 6199692739) rather than filing a duplicate/competing finding -- this is the SAME cross-cutting incident from a second consumer's vantage point, additive evidence for the existing escalated design-decision thread, not a new 0DTE bug.",
       "action": "Evidence posted to #4076. No 0DTE-side fix to file -- root cause lives in the shared Polygon rate-limiter layer, already escalated by the Vector lane. Continue watching for further occurrences and keep reporting them to #4076 if they recur."
+    },
+    "2026-10-15T19:44:00Z_RATELIMITER_FIX_SHIPPED_VERIFIED": {
+      "note": "PR #6068 ('fix(polygon): reserve live-traffic headroom in the shared Polygon rate limiter') merged (d62fffed7) -- the real fix for the shared-Polygon-rate-limiter saturation incident this lane corroborated earlier today (#4076 comment 6199692739, cited directly in the PR body alongside 6197984130). Commit message explicitly references both 0DTE upstream_ok:false incidents as part of the evidence. Post-deploy board check: upstream_ok:true, 20 Thursday positions intact, no regression. Closing this watch thread -- root cause fixed, 0DTE-side evidence contributed directly to the fix, verified healthy post-deploy.",
+      "verdict": "RESOLVED (real fix shipped, not just a self-heal) -- #4076 collaboration produced a concrete outcome."
     }
   },
   "sessions": {
