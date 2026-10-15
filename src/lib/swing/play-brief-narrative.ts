@@ -229,6 +229,27 @@ function dealerPostureLine(
   // `gexMatrixStale` check gexPostureSection uses for these fields — a stale matrix's regime reads
   // are exactly as unreliable here as there.
   const gexStale = gexMatrixStale(gex, readMs);
+
+  // Ask Largo standing mandate (2026-10-15): gex-positioning.ts computes flip_crossings/
+  // flip_nearest/distance_to_nearest_flip_pct unconditionally for every ticker/brief
+  // ("the regime is more fragile than the single flip implies... read flip_nearest/
+  // distance_to_nearest_flip_pct before calling [flip] a comfortable distance from flipping")
+  // but this narrative line only ever cited the single stable `flip` above -- "a flip about to
+  // re-cross" is a genuinely different risk shape than "a stable flip", so it earns its own
+  // clause rather than silently riding inside flipBit. Raised on PR #4076 (comment 6175832614,
+  // 2026-10-14); implemented here after ~22h with no reply, per this same thread's established
+  // NEVER-SIT-IDLE precedent (comment 6168890076: implement after a reasonable wait rather than
+  // block indefinitely on a design-call reply). Gated on the same gexStale check as the sibling
+  // regime reads below -- a stale matrix's crossing count is as unreliable as its flip.
+  const fragileBit =
+    !gexStale && gex?.flip_crossings != null && gex.flip_crossings > 1 && gex?.flip_nearest != null
+      ? ` · fragile flip — nearer crossing **${fmtPriceLevel(gex.flip_nearest)}**${
+          gex.distance_to_nearest_flip_pct != null
+            ? ` (${fmtPct(gex.distance_to_nearest_flip_pct)} away)`
+            : ""
+        }`
+      : "";
+
   const regimeBits = [
     !gexStale && gex?.vanna_regime_read ? `vanna: ${gex.vanna_regime_read}` : null,
     !gexStale && gex?.dex_regime_read ? `delta: ${gex.dex_regime_read}` : null,
@@ -279,7 +300,7 @@ function dealerPostureLine(
     ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
 
-  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${regimeBit}${netGexBit}${sessionChangeBit}`;
+  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${fragileBit}${regimeBit}${netGexBit}${sessionChangeBit}`;
 }
 
 function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): string {

@@ -219,6 +219,91 @@ test("tradeManagerNarrativeSection: stale GEX matrix suppresses net GEX $ and se
   assert.doesNotMatch(section!.body, /session \*\*\+2\.3%\*\*/i);
 });
 
+// Largo deep-dive follow-up (2026-10-15, PR #4076 comment 6175832614): gex-positioning.ts computes
+// flip_crossings/flip_nearest/distance_to_nearest_flip_pct unconditionally for every brief, and a
+// crossings count > 1 means the regime is more fragile than the single stable `flip` implies -- but
+// dealerPostureLine only ever cited that single flip. A SHORT-gamma book with a second nearby
+// crossing should surface it as its own clause, distinct from a stable single-crossing flip.
+test("tradeManagerNarrativeSection: fragile flip (multiple crossings) surfaces the nearer crossing distance", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "short", label: "SHORT GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "short",
+          flip_crossings: 3,
+          flip_nearest: 101.5,
+          distance_to_nearest_flip_pct: -1.5,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /fragile flip — nearer crossing \*\*101\.50\*\* \(-1\.5% away\)/i);
+});
+
+test("tradeManagerNarrativeSection: a single stable crossing (flip_crossings<=1) never says fragile flip", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "long", label: "LONG GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "long",
+          flip_crossings: 1,
+          flip_nearest: 98,
+          distance_to_nearest_flip_pct: 2.0,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /fragile flip/i);
+});
+
+test("tradeManagerNarrativeSection: stale GEX matrix suppresses the fragile-flip clause (Largo C2 parity)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: {
+        spot: 100,
+        gammaFlip: 98,
+        regime: { posture: "short", label: "SHORT GAMMA" },
+      } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: 98,
+          gamma_posture: "short",
+          matrix_age_sec: 200,
+          freshness: "cached",
+          flip_crossings: 3,
+          flip_nearest: 101.5,
+          distance_to_nearest_flip_pct: -1.5,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /fragile flip/i);
+});
+
 // Live repro (2026-10-14): SWING:AMD, WATCH bucket, setupState EXTENDED / entryStatus
 // EXTENDED_CHASE (a dead watch per deadPlayReason), spot resolved via the GEX-matrix fallback
 // (Vector's own snapshot stale, GEX matrix fresh) -- dealerPostureLine rendered "**Last snapshot**
