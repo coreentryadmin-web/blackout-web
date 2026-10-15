@@ -505,6 +505,58 @@ test("tickerTrackRecordSection: attaches a structured table carrying the ticker/
   assert.deepEqual(section?.table?.rows, [["NVDA", "2W / 1L", "3", "67%"]]);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): `record.directions` lets a caller tell whether
+// the cited record actually shares today's play direction before implying a directly comparable
+// verdict (same precision gap tickerHistoryCoaching already guards against for its own mention of
+// this record) — this dedicated section never read it at all.
+test("tickerTrackRecordSection: discloses an opposite-direction record instead of implying direct comparability (Largo C9)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const body =
+    tickerTrackRecordSection(play, {
+      ticker: "NVDA",
+      priorClosedTrades: 2,
+      wins: 0,
+      losses: 2,
+      directions: ["short", "short"],
+    })?.body ?? "";
+  assert.match(body, /all short/);
+  assert.match(body, /not all directly comparable to today's LONG setup/);
+});
+
+test("tickerTrackRecordSection: discloses a mixed-direction record", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const body =
+    tickerTrackRecordSection(play, {
+      ticker: "NVDA",
+      priorClosedTrades: 2,
+      wins: 1,
+      losses: 1,
+      directions: ["short", "long"],
+    })?.body ?? "";
+  assert.match(body, /mixed long\/short/);
+});
+
+test("tickerTrackRecordSection: no direction note when every prior trade shares today's direction", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const body =
+    tickerTrackRecordSection(play, {
+      ticker: "NVDA",
+      priorClosedTrades: 2,
+      wins: 2,
+      losses: 0,
+      directions: ["long", "long"],
+    })?.body ?? "";
+  assert.doesNotMatch(body, /not all directly comparable/);
+});
+
+test("tickerTrackRecordSection: no direction note at all when directions is omitted (older fixture/call site)", () => {
+  const play = fixturePlay({ direction: "LONG" });
+  const body =
+    tickerTrackRecordSection(play, { ticker: "NVDA", priorClosedTrades: 3, wins: 2, losses: 1 })?.body ?? "";
+  assert.doesNotMatch(body, /not all directly comparable/);
+  assert.doesNotMatch(body, /mixed long\/short/);
+});
+
 // ── cortexReadSection (swing Cortex-visibility fix — the entry_context.cortex pinned at commit,
 // previously computed honestly server-side but never reaching the play-brief; see PR comment
 // thread on #4076, 2026-09-11 cycle) ───────────────────────────────────────────────────────────
