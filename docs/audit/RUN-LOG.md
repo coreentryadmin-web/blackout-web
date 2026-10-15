@@ -4,6 +4,22 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-15 (15:35 UTC / Thu 11:36 ET) — [SEO] RTH wake: SPX change_pct null investigated (index-vs-stock path, not a defect), CLS clean
+
+Confirmed market open myself (11:36 ET). `/api/public/gex-snapshot?ticker=SPX` —
+`market_session: "OPEN"`, `degraded: false`, but `change_pct: null` persisting 2+ hours into
+the session with `spot_source: "redis_cluster"` (age climbing 22s→33s across two polls).
+Cross-checked SPY/QQQ at the same instant: both real `change_pct` (0.02, -0.64), `spot_source:
+"ws"`. Traced via code (`resolveSpotSnapshot` in `polygon-options-gex.ts`): SPX is an INDEX,
+routed through `liveWsIndexSpot` → cross-replica `redis_cluster` fallback when this replica has
+no local index WS tick, which is fail-closed-null by design (`clusterIndexSpotChangePct`
+requires `open_source === "rest"`, already root-caused in a prior cycle). SPY/QQQ are STOCKS,
+routed through the separate `liveWsStockSpot` path entirely — not a like-for-like comparison,
+so their having real values doesn't imply SPX is broken. Zero public-render impact (already
+confirmed: no component renders `change_pct`). Not a new finding — same documented pattern
+recurring, not escalated. Purged Cloudflare edge HTML, measured live homepage CLS — **0.0003,
+GOOD**. No PR opened.
+
 ## 2026-10-15 (14:06 UTC / Thu 10:06 ET) — [SEO] Daily growth cycle: one new thin striking-distance entry, no action
 
 New striking-distance entry: "gex" (pos 15.7, **6imp 1cl**) — falls in the same thin-sample
