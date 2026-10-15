@@ -10,6 +10,7 @@ import {
 } from "@/components/admin/AdminUi";
 import { franchiseWordmark } from "@/lib/x-intel/franchises";
 import { X_INTEL_QUEUE_FIXTURES } from "@/lib/x-intel/queue-fixtures";
+import { shouldShowXIntelFixtures } from "@/lib/x-intel/queue-fixtures-gate";
 import type {
   XIntelAttachment,
   XIntelMark,
@@ -422,10 +423,14 @@ export function AdminXIntelQueuePanel() {
     };
   }, [rows]);
 
-  // With no rows yet the panel shows the hand-written fixtures, clearly labelled. The reviewer
-  // surface shipped before the generator, so an empty table is the expected first state — and a
-  // blank page would leave nobody able to tell a working page from a broken one.
-  const showFixtures = rows != null && rows.length === 0;
+  // With no rows yet at all (status "ALL") the panel shows the hand-written fixtures, clearly
+  // labelled. The reviewer surface shipped before the generator, so an empty table is the expected
+  // first state — and a blank page would leave nobody able to tell a working page from a broken
+  // one. A specific status filter (e.g. "SKIP") returning zero matches is a different claim — the
+  // queue has real rows, just none in this bucket this cycle — and must not show fixtures mislabeled
+  // "no queue rows yet", nor fixture rows of OTHER statuses under a filter the admin explicitly chose.
+  const showFixtures = shouldShowXIntelFixtures(status, rows);
+  const filteredEmpty = !showFixtures && status !== "ALL" && rows != null && rows.length === 0;
   const display = showFixtures ? X_INTEL_QUEUE_FIXTURES : (rows ?? []);
 
   return (
@@ -461,6 +466,13 @@ export function AdminXIntelQueuePanel() {
           No queue rows yet — showing hand-written FIXTURES so the surface is reviewable before the
           generator exists. These are not live packages.
         </p>
+      )}
+
+      {filteredEmpty && (
+        <EmptyDeck
+          title={`No ${status} rows this cycle`}
+          hint="The queue has rows — none currently match this status filter. Not an empty queue."
+        />
       )}
 
       {!error && rows == null && <EmptyDeck title="Loading queue…" />}
