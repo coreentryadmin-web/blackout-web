@@ -921,9 +921,19 @@ export function counterThesisLine(
 
   const flow = trustedHelixFlow(eco);
   if (flow) {
-    if (play.direction === "LONG" && flow.put_premium > flow.call_premium * 1.2) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-15): this was the only HELIX call/put-heavy
+    // gate in this file (or its play-brief-intel.ts/play-brief.ts/play-brief-narrative-coaching.ts
+    // siblings) using 1.2x — every other one (flowNarrative two screens up in this same file,
+    // flowIntelSection's "Flow & positioning" bias label, crossDeskCoaching's "Cross-desk
+    // friction" conflict check) uses 1.3x, with no comment here explaining a deliberate
+    // divergence. At a ratio between 1.2x and 1.3x the brief said two contradictory things about
+    // the identical flow numbers in the SAME "Trade manager read" bullet list this reason also
+    // renders into: flowNarrative's "HELIX tape" bullet calls it "balanced" while this steelmanned
+    // a "HELIX put-led"/"HELIX call-led" counter-thesis reason — a visible self-contradiction a
+    // member could read in one document. Standardized on the 1.3x every other call site uses.
+    if (play.direction === "LONG" && flow.put_premium > flow.call_premium * 1.3) {
       reasons.push(`HELIX put-led (${fmtFlowUsd(flow.put_premium)} vs ${fmtFlowUsd(flow.call_premium)} calls)`);
-    } else if (play.direction === "SHORT" && flow.call_premium > flow.put_premium * 1.2) {
+    } else if (play.direction === "SHORT" && flow.call_premium > flow.put_premium * 1.3) {
       reasons.push(`HELIX call-led (${fmtFlowUsd(flow.call_premium)} vs ${fmtFlowUsd(flow.put_premium)} puts)`);
     }
   }
