@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-10-15T16:10:00Z",
+  "updated_at": "2026-10-15T16:44:00Z",
   "watch_stage_tracking": {
     "2026-10-13T15:11:00Z_TUESDAY_FIRST_COMMIT_MU_LARGE_LOSS_PLUS_PR5921_LIVE_CONFIRMED": {
       "cycle": "RTH :00-offset trigger, 15:11:06 UTC firing -- Tuesday 2026-10-13 cold start",
@@ -110,6 +110,10 @@
     "2026-10-15T16:10:00Z_FIRST_LOSER_CVNA_COHERENT": {
       "note": "19 Thursday positions now, first loser of the day: CVNA flat_theta_bleed -6.94% -- dipped to -25% intraday, recovered back inside the +-10% band by minute 31, exited on the flat-timeout family (peak never exceeded 0%). Exit detail matches the documented flat_theta_bleed mechanism exactly (25min timeout inside the band, 'a small scratch beats theta decay'). Coherent, no bug. 14 more wins since last check: ETSY +6.78%, MSTR +2.94%, MU +4.68%, RDDT +7.01% (all ratchet). Still 15 wins / 1 loss on the day, 4 open (ACN/BB/NVDA/RGTI). Nothing new to escalate.",
       "verdict": "NO_BUG -- clean session continues, 15W-1L."
+    },
+    "2026-10-15T16:44:00Z_SECOND_LOSER_BB_COHERENT": {
+      "note": "BB closed flat_theta_bleed -5% (28min, dipped -15% intraday, recovered, peak never exceeded 0%) -- same coherent mechanism as CVNA, not a new pattern. 14W-2L on the day, 3 still open (ACN/NVDA/RGTI). Both losses are small, well-understood flat-timeout scratches, not thesis breaks or gate issues. Nothing to escalate.",
+      "verdict": "NO_BUG -- 14W-2L, both losses coherent flat-timeout exits."
     }
   },
   "sessions": {
