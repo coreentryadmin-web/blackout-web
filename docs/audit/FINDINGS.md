@@ -38,6 +38,226 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing play-brief: a Meridian catalyst/peer-cohort read that times out collapses to the SAME `null` as a legitimate "no data" read — the outer race around two already-absence-aware fetches silently ate their own disclosure — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `fetchMeridianForTicker` (`src/lib/swing/play-brief-meridian.ts`) and
+`fetchMeridianPeerForBrief` (`src/lib/swing/play-brief-meridian-peer.ts`) each already handle their
+own failures honestly: both wrap their real upstream read in a `try/catch` and, on a thrown error,
+return a typed sentinel (`{ unavailable: true, items: [], total_matched: 0 }` /
+`{ available: false, error: "fetch_failed", ... }`) rather than `null` — exactly the shape
+`collectBriefUnavailableSources` (`play-brief-absence.ts`) checks via `ctx.meridian?.unavailable` /
+`ctx.meridianPeer?.available === false` to push a disclosed "Meridian catalysts ... timeline read
+failed" / "Meridian peer cohort ... fetch_failed" chip into `envelope.unavailableSources` (the one
+place the UI's `UnavailableChip` and Largo both read absence from).
+
+But `play-brief-context.ts` wraps BOTH calls in a second, OUTER
+`withBriefSourceTimeout(...).catch(() => null)` race (added 2026-09-22, PR performance fix, to bound
+a read that had shown real p99 stalls to 90-104s — see that file's own header comment). That outer
+race's `.catch()` collapsed ANY rejection reaching it — in practice, almost always its own 8s
+timeout firing, since neither wrapped function itself ever rejects — to a bare `null`. For
+`ctx.meridian`, `null` has no legitimate meaning at all: `fetchMeridianForTicker`'s own
+implementation never returns it (every path returns a real slice, even its own internal-failure
+path). For `ctx.meridianPeer`, `null` is ALSO the function's own, far more common, perfectly
+legitimate "no nearby earnings catalyst to look peers up for" return — so the outer timeout's bare
+`null` is not just undisclosed, it is indistinguishable from the single most common non-failure
+state that field holds. `collectBriefUnavailableSources` has literally no branch for either case
+(`null?.unavailable` / `null?.available` both evaluate to `undefined`, which is falsy) — a timed-out
+Meridian read renders as a brief with no Meridian section and NOTHING in `unavailableSources`
+explaining why, the exact Largo C3 ("never return `[]`/`null`/`{}` for unavailable... any fallback
+that returns a degraded result the caller cannot distinguish from a real one is a defect even when
+every test passes") violation this lane has already fixed for `ecosystemFetchFailed`/
+`vectorFetchFailed` on the immediately adjacent lines of the SAME file — the 2026-09-22 performance
+fix reopened the identical gap for Meridian specifically, one layer removed from where the original
+fix pattern lives.
+
+**Evidence.** Traced the full call graph in `play-brief-context.ts`:
+`const meridianPromise = withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() => null);`
+and `withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() => null)` chained
+off it. Confirmed `fetchMeridianForTicker`'s body has exactly two return paths (both real slices,
+never `null`) and `fetchMeridianPeerForBrief`'s body has its own internal `try/catch` producing
+`{available:false, error:"fetch_failed", ...}` on a real upstream throw — so the ONLY way either
+promise given to `withBriefSourceTimeout` can reject is the wrapper's own 8s timer. Confirmed
+`collectBriefUnavailableSources`'s meridian/meridianPeer checks read `ctx.meridian?.unavailable` /
+`ctx.meridianPeer?.available === false` with no `null`-specific branch, and the existing unit test
+(`play-brief-absence.test.ts`, "Meridian timeline failure surfaces in envelope") only ever
+constructs the `unavailable:true` shape directly — never `meridian: null` — so the undisclosed path
+had no coverage. A companion test in `play-brief-absence.test.ts`
+("`meridianCatalystStale`: null slice is not stale (absence is a separate signal)") even names the
+expectation that absence should be "a separate signal" while no code implemented one for this
+specific path. Reproduced with a git-stash RED→GREEN pair of regression tests in
+`play-brief-context.test.ts` (mocking `fetchMeridianForTicker`/`fetchMeridianPeerForBrief` to reject,
+exercising the exact same `.catch()` chain a real 8s timeout drives) — both FAIL against the
+pre-fix code (`ctx.meridian`/`ctx.meridianPeer` come back `null`) and PASS after the fix (both carry
+the real disclosed-failure sentinel), isolated via
+`git stash push -- src/lib/swing/play-brief-context.ts src/lib/swing/play-brief-meridian.ts src/lib/swing/play-brief-meridian-peer.ts`
+/ `git stash pop` (never the test files).
+
+**Blast radius.** Both call sites live in the same function (`loadSwingPlayBriefContext`,
+`play-brief-context.ts`) and share the identical root cause (the 2026-09-22 perf-fix's outer
+timeout race), so both are fixed together rather than fixing one and leaving the other — the exact
+"duplicated logic in a second file/call site counts, fix and note all of them" blast-radius
+discipline this repo's PR write-up policy calls for. No other call site in the repo wraps either
+function in its own independent timeout race (confirmed via grep for both function names
+repo-wide) — `play-brief-resolve.ts`/other swing files never call them directly, only
+`play-brief-context.ts` does. The archetype-track-record/roll-history/ticker-track-record reads in
+the SAME `Promise.all` are explicitly, correctly exempt from this fix: each carries its own doc
+comment stating they are deliberately best-effort with "no dedicated `*FetchFailed` flag because a
+miss here is never surfaced as an absence/error to the member" (an ungraduated/cold track record
+omits its section the same as a position with no track record to cite at all, which is a different,
+intentional design choice, not an oversight) — Meridian catalyst/peer data has no such exemption
+documented anywhere, and already had the opposite design intent (its own internal catch disclosing
+failure) before this outer race accidentally undid it.
+
+**Fix rationale.** Extract the exact sentinel each function's own internal catch already produces
+into a small exported helper (`meridianUnavailableSlice()` in `play-brief-meridian.ts`,
+`meridianPeerUnavailableSlice()` in `play-brief-meridian-peer.ts`) and have `play-brief-context.ts`'s
+outer `.catch()` call that helper instead of returning a bare `null`. This converges the OUTER
+timeout failure path onto the exact SAME disclosed shape the INNER failure path already uses — no
+new `ctx` flag, no change to `collectBriefUnavailableSources` (which already knows how to render
+this shape correctly), and no risk of the two failure paths drifting into two different-looking
+"Meridian is broken" messages. Deliberately did NOT add a parallel `meridianFetchFailed` boolean
+(the pattern `ecosystemFetchFailed`/`vectorFetchFailed` use) — those two fields exist because
+`ecosystem`/`vector` being `null` has no internal "I tried and failed" sentinel of their own to
+converge on; Meridian already has one, so reusing it is more minimal and keeps exactly one source
+of truth for "what does a Meridian failure look like" instead of introducing a second. Left
+unchanged: `fetchMeridianPeerForBrief`'s own two legitimate `null` early-returns (no catalyst item /
+no nearby earnings) — those are real, common, honest absences, not failures, and remain `null`
+exactly as before; only the OUTER race's failure path changed.
+
+**Evidence of no regression.** `npx tsc --noEmit` (Node 20): clean. Targeted tests —
+`play-brief-context.test.ts` (13 pass, incl. 2 new), `play-brief-meridian.test.ts` (3 pass, incl. 1
+new), `play-brief-meridian-peer.test.ts` (10 pass, unchanged), `play-brief-absence.test.ts` (102
+pass, unchanged) — all green. Full swing play-brief suite
+(`src/lib/swing/play-brief*.test.ts`, 15 suites / 939 tests): all pass. Full `npm test` (Node 20,
+`scripts/run-tests.mjs`): see companion run-log entry for the exact count.
+
+## `fetchGexHeatmap`'s stale-while-revalidate background rebuild had no concurrency cap — 100+ full-chain escalations in one `heatmap-warm` pass, time-correlated with a 79.5s ALB latency spike — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P1 — measured ALB TargetResponseTime 79.5s Max / 6.43s AVERAGE (a high average means many requests were slow, not one outlier) |
+| **File** | `src/lib/providers/polygon-options-gex.ts` (`tryStaleWhileRevalidateHeatmap`, new `shouldStartHeatmapBackgroundRebuild`/`heatmapMaxConcurrentBuilds`) |
+| **Found by** | Standing performance/latency audit mandate — investigation of a live 2026-10-15 ALB spike |
+
+### Root cause
+
+Two independent, correctly-measured threshold tunings both already shipped 2026-10-08 for
+`heatmap-warm`: `RTH_WRITER_HEAL_AFTER_MIN["heatmap-warm"]` was raised from a nonsensical 20s to the
+job's own measured p90 runtime (81s), and `heatmap-warm/route.ts`'s bulk ticker loop was migrated
+from a bare unbounded `Promise.allSettled` to `runPolygonPool(8)`. Both were real fixes for the
+problem they targeted (the cron's own re-dispatch churn, and its own ticker loop's fan-out) — but
+neither covers the branch this incident actually hit.
+
+`fetchGexHeatmap()` (shared by every caller: `heatmap-warm`, the Vector universe build, desk
+loaders, member GET requests) serves a per-ticker matrix cached with a 5s TTL
+(`GEX_HEATMAP_CACHE_SEC ?? 5`) and a 90s max-stale ceiling (`gexHeatmapMaxStaleMs`). When an
+entry's age falls inside `[5s, 90s)`, `tryStaleWhileRevalidateHeatmap` returns the stale payload
+**immediately** and kicks off a **detached** background rebuild
+(`buildGexHeatmapUncached`, fire-and-forget via `void build.catch(...)`) to refresh it. That detached
+rebuild is NOT the branch `runPolygonPool(8)` bounds — the pool only bounds the `await
+fetchGexHeatmap(t)` call in `heatmap-warm`'s loop, which resolves almost instantly here (stale
+payload served), freeing the pool slot immediately while the real rebuild keeps running
+un-pooled. It is also not covered by the cross-replica `sharedCacheSetNx` build lock used by the
+fully-cold branch further down in the same function — that lock is only acquired on the path below
+this one.
+
+`heatmap-warm`'s real full-sweep cadence is 46–209s measured (p50=46.5s/p90=81.1s/p99=181.1s/
+max=209.2s) — far longer than the 5s TTL but, for most tickers most of the time, still under the
+90s max-stale ceiling. So on nearly every single pass, most of the shared ~100-ticker universe
+lands in exactly this uncapped branch, and each ticker independently fires its own detached
+Polygon rebuild with zero cross-ticker throttling. When a rebuild's banded strike pull comes back
+thin (`shouldEscalateToFullChain`, <45 in-band strikes), it re-fetches the FULL unfiltered chain —
+the escalation already named in `CLAUDE.md` as the confirmed trigger for the repo's recurring
+~40-44s ALB tail-latency spikes, here firing through a third, previously uncapped entry point (the
+other two — Vector `/universe`'s own fan-out and `ensureWebBootWarm()`'s unconditional board build
+— were already fixed, the latter also on 2026-10-08).
+
+### Evidence
+
+Live, 2026-10-15: `rth-warm-leader` backup-dispatched `heatmap-warm` at 11:00:23 UTC (judged
+overdue past its 81s heal threshold); that single dispatch took 67,775ms. Starting immediately
+after and continuing ~4 minutes (11:00:55–11:04:30), CloudWatch Logs Insights on
+`/ecs/blackout-production` showed 100+ `[polygon-gex] full-chain escalation ADOPTED` lines across
+dozens of unrelated tickers (CBRS, CRWV, PL, NET, WGS, SAP, INTC, TXN, LRCX, NFLX, T, PM, NEE, RTX,
+NOC, MCO, IBM, ELV, DHR, CSX, CME, ABT, MMM, COF, GM, USB, and more). `ecs.describe_services`
+confirmed no new deployment/task-start event was in progress at 10:58:58 (8/8 steady state, no
+pending tasks), ruling out a fresh-task boot-warm burst as the cause. AWS/ApplicationELB
+TargetResponseTime measured 79.5s Max / 6.43s AVERAGE at 11:01 UTC — a high average means many
+concurrent requests were slow, consistent with an uncapped fan-out saturating a replica's event
+loop/Polygon rate budget, not one random outlier.
+
+Regression test (`polygon-options-gex.test.ts`), RED→GREEN verified via `git stash` isolation on
+`src/lib/providers/polygon-options-gex.ts` alone: pre-fix, the new
+`shouldStartHeatmapBackgroundRebuild` export does not exist (3 test failures — import + its two
+unit tests + the wiring-proof source-text test). Post-fix, all pass (73/73 in the file).
+
+### Fix
+
+Added `shouldStartHeatmapBackgroundRebuild(inflightCount, cap)` — a pure, unit-tested decision
+function — and gated the detached-rebuild kickoff in `tryStaleWhileRevalidateHeatmap` on it,
+reading the existing `heatmapInflight.size` (already a live, accurate, process-wide count of every
+heatmap build in flight — both this branch and the cold-build branch insert into the same map, so
+no new tracking structure was needed). Default cap 8 (matches `runPolygonPool`'s
+`POOL_MAX_CONCURRENCY`), env-overridable via `GEX_HEATMAP_MAX_CONCURRENT_BUILDS`.
+
+Capping here is safe because the stale-while-revalidate contract is "never block the caller, serve
+what we have" either way: when the cap is hit, the branch simply skips starting a new rebuild and
+serves the same still-under-90s stale data for a little longer — the next caller for that ticker
+(this cron's own next tick, at most ~60-81s away, or any other reader) retries once a slot frees up.
+Nothing a normal (non-storm) caller does would ever approach a cap of 8 concurrent rebuilds, so
+ordinary single-ticker member traffic is unaffected; only a mass-simultaneous-staleness event (a
+cold/overdue `heatmap-warm` sweep, or several callers racing the same stale universe at once) is
+throttled, spreading the real Polygon/CPU cost over wall-clock time instead of letting it fan out
+unbounded in one burst.
+
+### Blast radius
+
+Fixed at the shared layer (`fetchGexHeatmap`/`tryStaleWhileRevalidateHeatmap`), not inside
+`heatmap-warm`'s own route — every caller of `fetchGexHeatmap` benefits (Vector universe build,
+desk loaders, member GET requests), not just this one cron. No caller's observable contract
+changes: every path still returns promptly (stale-serve or a capped/bounded rebuild), never blocks
+longer than before. Narrow, single-function change; no gate, schedule, or threshold elsewhere was
+touched — the two 2026-10-08 fixes in this neighborhood (heal-threshold raise, `runPolygonPool` on
+`heatmap-warm`'s loop) are unaffected and remain correct for the problems they targeted.
+
+## Post-deploy verification of PR #6055: `heatmap-warm`'s own runtime genuinely fixed, but ALB TargetResponseTime p99/Max has NOT improved — plus a new, distinct candidate found (deep-mode Largo chat turns, 24-53s synchronous)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Where** | Follow-up verification of PR #6055 (`src/lib/providers/polygon-options-gex.ts`, `shouldStartHeatmapBackgroundRebuild`), which itself followed up PR #6054 (the original ALB-latency write-up this session logged). Per CLAUDE.md's own standing rule — **"A merge is not a verification. After merging anything whose correctness depends on the state of `main`, re-run the affected check AGAINST `origin/main` rather than trusting that the merge did what you expected."** — re-measured against `main` post-deploy rather than assuming the fix worked because it merged clean. |
+| **What was verified (and genuinely fixed)** | PR #6055 deployed at 11:45 UTC (`ecs.describe_services`: PRIMARY deployment `rolloutState=COMPLETED`, createdAt 11:45:00Z, 8/8 running). Its OWN target metric is fixed and confirmed via live logs: `[rth-warm-leader] backup warm 'heatmap-warm'` measured **7-26ms** on every dispatch from 11:45:33 through 12:11:58 (7 samples) — down from the pre-fix 29.6s-78.8s measured continuously over the prior 2+ hours (same log line, same format, directly comparable). The fix did exactly what its write-up claimed for the metric it targeted. |
+| **What was NOT verified — the ALB symptom persists** | Re-pulled `AWS/ApplicationELB TargetResponseTime` (same dims as the original #6054 measurement: `TargetGroup=targetgroup/blackout-production-app/8841ca2aeba05d87` + `LoadBalancer=app/blackout-production-alb/65b1d270965603b8`) for the post-deploy window (11:45-12:15 UTC, confirmed real traffic throughout via earlier `RequestCount` checks): **p99 ranged 55-80.6s and Max ranged 57-90.9s across all seven 5-min buckets since deploy — no improvement over the pre-fix 56-79s range, and the 12:00-12:10 buckets (p99 71.7-80.6s, Max 82.4-90.9s) are if anything slightly worse than anything measured pre-fix.** This is the actual member-facing symptom both #6054 and #6055 were chasing, and it has not moved. |
+| **Why the fix's own mechanism may not be the (sole) lever** | Checked whether the full-chain escalation storm (#6055's named mechanism) is actually gone post-fix: it is not. `"full-chain escalation ADOPTED"` log lines still numbered **202 in an 18-minute post-deploy window** (11:58-12:16 UTC) — a volume comparable to pre-fix. However, the TIMING pattern looks different: sampling a 20-second slice (12:00:00-12:00:20), 14 escalations landed with gaps mostly in the 800ms-2s range (one 99ms pair, one 3ms pair) rather than dozens landing within the same second — consistent with the new `GEX_HEATMAP_MAX_CONCURRENT_BUILDS` cap (default 8) actually pacing concurrency as designed, rather than doing nothing. So the fix plausibly IS working on ITS mechanism (bounding concurrent rebuilds) — but the *total sustained volume* of escalations across the shared ~100-ticker universe remains high enough that real per-replica Polygon-fetch + JSON-parse + GEX-matrix-build cost stays elevated near-continuously rather than in one burst, which may still be enough to measurably degrade concurrent real-traffic latency even when properly paced. This is a plausible but **not confirmed** explanation — distinguishing "the cap works but the sustained volume is still the bottleneck" from "something else entirely is now dominant" needs more investigation than this pass did. |
+| **A new, independently-concerning candidate found** | While tracing the 12:00-12:10 UTC window's raw logs for anything else slow, found `[largo/turn-phases] {"depth":"deep","prefetch_ms":1807,"loop_ms":22076,"total_ms":23883,"tools":5,"answered":true}` (11:59:55 UTC) and `{"depth":"deep","prefetch_ms":1361,"loop_ms":51655,"total_ms":53016,"tools":6,"answered":true}` (12:00:15 UTC) — two "Ask Largo" deep-mode chat turns taking **23.9s and 53.0s total**. Unlike `heatmap-warm` (a background cron that never blocks an HTTP response once SWR-capped), a Largo chat turn **is** a synchronous member/caller-facing HTTP request — the ALB directly measures its full duration as `TargetResponseTime`. A 53-second response to any route is mechanically a far more direct, certain contributor to a p99/Max spike than a background job ever was. **Checked and ruled out as the explanation for the ORIGINAL pre-fix incident**: zero `"turn-phases"` log lines matched any of the four originally-measured pre-fix spike windows (08:30-08:42, 09:55-10:02, 10:35-10:42, 10:55-11:16 UTC) — so Largo turns did not cause the incident #6054/#6055 were built on. But they are a real, newly-observed, independently-worth-investigating candidate for at least part of the POST-fix residual latency, and arguably a correctness/UX concern in their own right regardless of the ALB-correlation question (a 53-second wait for a Largo answer is slow by any standard). Only 2 data points so far — thin evidence, disclosed as such, not a conclusion. |
+| **Why not fixed directly** | Multiple real, only-partially-understood threads now exist (sustained-volume escalation cost even when paced; Largo deep-turn latency; whether these two are related, e.g. a Largo tool call itself triggering `fetchGexHeatmap` for several tickers synchronously inside its own tool-loop) — picking one to fix without first isolating which dominates would repeat exactly the "fix from a guess" risk the standing performance mandate warns against, especially right after a previous attempt (#6055) that fixed its own target metric but not the measured symptom. |
+| **Suggested next step** | (1) Instrument or query whether Largo's deep-mode tool loop calls `fetchGexHeatmap`/`get_vector_full_state`/similar GEX-reading tools, and whether ITS multi-second `loop_ms` is itself gated by the same UW rate-limiter queue (`[uw] queue wait` lines of 686ms-3.25s were abundant in the same window) — if so, Largo's own latency may be a downstream symptom of the same shared-resource contention, not an independent cause. (2) Gather more `turn-phases` samples across a longer window (this pass only had budget for a handful of targeted pulls) to establish whether 20-50s deep-mode turns are routine or this session's particular anomaly. (3) Only after isolating which of (escalation sustained-volume, Largo turn latency, UW rate-limiter queue depth) actually drives ALB p99 should a fix be attempted — this write-up intentionally stops short of proposing one. |
+| **Gates** | Read-only measurement (CloudWatch `get_metric_data`, `ecs.describe_services`, `logs.filter_log_events`, via boto3 with session-supplied AWS creds) + direct log/code reading. No code changed. |
+| **Status** | **OPEN — write-up only, no code changed.** PR #6055's own fix is confirmed working on its target metric and should NOT be reverted or second-guessed on this evidence; this entry documents that the broader ALB-latency symptom it was meant to resolve persists, and flags a second, independent, higher-confidence-mechanism candidate (Largo deep-turn latency) for whichever lane picks up the next investigation step. |
+
+## `heatmap-warm`'s in-process long-running sweep correlates near-perfectly with live ALB TargetResponseTime p99/Max spikes (56-79s) during real traffic — NEEDS INVESTIGATION, not fixed
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Where** | `src/app/api/cron/heatmap-warm/route.ts` (invoked in-process by `src/lib/rth-warm-leader.ts` via `dispatchCronWarm`) vs. `AWS/ApplicationELB TargetResponseTime` on `blackout-production-app` |
+| **What was measured** | Pulled real CloudWatch metrics (not a guess — per the standing performance mandate's "measure before guessing" method), 2026-10-15 ~08:18-11:15 UTC (pre-market, real traffic: 33-87 requests/5min bucket throughout, confirmed via `RequestCount`, not an idle window). ALB `TargetResponseTime` (dims `TargetGroup=targetgroup/blackout-production-app/8841ca2aeba05d87` + `LoadBalancer=app/blackout-production-alb/65b1d270965603b8`, both dimensions required together — `TargetGroup` alone returns zero datapoints) shows a classic **tail-latency, not fleet-capacity** shape exactly as the mandate's own methodology predicts: p50 avg 113ms / max 360ms (healthy) vs. **p99 avg 12.9s, max 75.64s over the 3h window, escalating to 56-79s sustained across four consecutive 5-min buckets at 10:58-11:13 UTC** (67.49/70.91, 75.06/79.45, 56.62/59.29, 57.1/58.92 — p99/Max respectively). ECS `CPUUtilization`/`MemoryUtilization` for `blackout-production-web` stayed low-moderate (avg 8-15%, individual-task bursts to 60-90%) during the same window — ruling out fleet-wide resource starvation, consistent with one specific slow operation rather than general overload. Cross-referencing `/ecs/blackout-production` logs for the exact same window: `[rth-warm-leader] backup warm 'heatmap-warm' ok (73037ms)` at 10:57:42 and `(74099ms)` at 10:54:58 — the two closest-matching log timestamps to the 10:58-11:13 ALB spike, and a full `"heatmap-warm"` log sweep over 09:00-11:16 UTC shows this is CONTINUOUS, not a one-off: every single run in that 2h+ window (except three short-circuited-by-cooldown 8-12ms skips) measured 29.6s-78.8s. |
+| **Why this is flagged as NEEDS INVESTIGATION, not a fresh bug to fix** | `heatmap-warm/route.ts`'s own header comments already extensively document this exact slowness as a KNOWN, MEASURED, PARTIALLY-MITIGATED design tradeoff — not something this pass discovered: a 2026-09-03 48h/n=1000 measurement is quoted inline (`p50=46.5s, p90=81.1s, p99=181.1s, max=209.2s`), an overlap lock (`OVERLAP_LOCK_KEY`, 240s TTL) and a 10s rerun-cooldown floor are already shipped, and the route was already migrated from an unbounded `Promise.allSettled` fan-out to the bounded `runPolygonPool` (`POOL_MAX_CONCURRENCY=8`) specifically to stop it from starving concurrent live traffic (2026-10-08, per the inline comment). So the underlying cron being slow is known; **what had not been measured before, as far as this pass found, is whether that already-known slowness actually shows up in the ALB's OWN member-facing `TargetResponseTime`** — the route's own comments measure the cron's OWN runtime distribution via `cron_job_runs`, not the real-traffic latency impact on the ALB target group members' requests land on. This pass measured that second thing directly and found a correlation close enough (to the same order of magnitude, same rough time windows) to be worth a dedicated investigation, but not close enough (exact-second alignment wasn't established — ALB metrics are 5-min buckets, logs are per-event) to call it PROVEN causation from this pass alone. |
+| **Why not fixed directly this cycle** | Two real candidate mechanisms, and distinguishing them needs more than this pass's read-only CloudWatch/log pull: **(a)** `dispatchCronWarm` invokes `heatmapWarmGet` as a plain in-process function call (not a network `fetch()`) from inside `rth-warm-leader.ts`'s `setInterval` tick loop, which itself runs inside the SAME always-on Node.js web-server process that serves real member HTTP requests on that replica — so any synchronous CPU cost inside the warm sweep (the route's own comment: per-ticker GEX-matrix-build is "~33x chain-size closed-form evaluations... 55-370ms" of SYNCHRONOUS work) shares the one event loop with concurrent real requests, meaning `runPolygonPool`'s concurrency-8 bound caps how many ticker-fetches are IN FLIGHT at once but does not eliminate bursts of synchronous blocking stacking up across each pool "wave" (~100 tickers ÷ 8 ≈ 12+ waves, each wave's synchronous cost potentially summing with whatever real request happens to be mid-flight at that instant); **(b)** separately, the fact every single run in a 2h+ pre-market window (low real traffic relative to RTH) measured 30-78s suggests the shared Redis matrix cache may not be staying warm between cycles the way the route's own design assumes ("warm names are Redis-cache-first (near-free)") — if the universe is effectively cold-sweeping on every cycle instead of serving mostly cache hits, that is itself a separate, more tractable finding (a cache-TTL/eviction mismatch) worth checking before touching the concurrency bound. Picking between "lower `POOL_MAX_CONCURRENCY`", "move this warmer off the request-serving process entirely (a dedicated worker, not `rth-warm-leader`'s in-process dispatch)", or "fix why the cache isn't staying warm" without first confirming which mechanism actually dominates would be exactly the "fix from a guess when the metric is one API call away" anti-pattern the standing performance mandate warns against — the ALB number was one API call away and is now measured, but the CAUSAL step from "this cron is slow" to "therefore real requests measurably slow down" still needs either live profiling (event-loop lag metric, not available from this read-only CloudWatch pull) or a controlled before/after (disable the in-process `rth-warm-leader` dispatch of this one key temporarily and re-measure ALB p99) to confirm before any code change ships. |
+| **Suggested next step for whichever lane/session picks this up** | (1) Check whether `fetchGexHeatmap`'s Redis cache is actually being hit on these in-process warm cycles (instrument/log a cache-hit-rate counter, or check the existing Redis `gex-matrix:*` key TTLs against the ~1min cron cadence) to settle mechanism (b) above first, since it is cheaper to investigate than event-loop profiling. (2) If the universe is genuinely cold-sweeping every cycle, that is likely the primary lever — fixing why warm names aren't staying warm would shrink BOTH the cron's own runtime AND its concurrent-traffic impact, without touching the already-hard-won overlap-lock/cooldown/pool-concurrency design. (3) Only if the cache IS staying warm as designed and the route still runs 30-78s per cycle should the event-loop-sharing hypothesis (mechanism a) be investigated directly — e.g. by moving this specific in-process dispatch path off the request-serving Node process. |
+| **Gates** | Read-only measurement (CloudWatch `get_metric_data`/`get_metric_statistics`, `logs.filter_log_events`, via boto3 with session-supplied AWS creds) + direct code reading. No code changed. |
+| **Status** | **OPEN — write-up only, no code changed.** Recommend the owning performance/infra lane settle the cache-warmth question (suggested next step 1 above) before touching `runPolygonPool`'s concurrency or `rth-warm-leader`'s in-process dispatch — those are the hard-won, already-documented mitigations and should not be loosened on a guess. |
+
 ## Swing play-brief `tickerTrackRecordSection` implied comparability across mismatched directions (Largo C9) — FIXED
 
 > **kind:** `FINDING`
