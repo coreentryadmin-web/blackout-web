@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-10-15T16:44:00Z",
+  "updated_at": "2026-10-15T17:44:00Z",
   "watch_stage_tracking": {
     "2026-10-13T15:11:00Z_TUESDAY_FIRST_COMMIT_MU_LARGE_LOSS_PLUS_PR5921_LIVE_CONFIRMED": {
       "cycle": "RTH :00-offset trigger, 15:11:06 UTC firing -- Tuesday 2026-10-13 cold start",
@@ -114,6 +114,11 @@
     "2026-10-15T16:44:00Z_SECOND_LOSER_BB_COHERENT": {
       "note": "BB closed flat_theta_bleed -5% (28min, dipped -15% intraday, recovered, peak never exceeded 0%) -- same coherent mechanism as CVNA, not a new pattern. 14W-2L on the day, 3 still open (ACN/NVDA/RGTI). Both losses are small, well-understood flat-timeout scratches, not thesis breaks or gate issues. Nothing to escalate.",
       "verdict": "NO_BUG -- 14W-2L, both losses coherent flat-timeout exits."
+    },
+    "2026-10-15T17:44:00Z_LIVE_INCIDENT_upstream_ok_false_discovery_stalled": {
+      "note": "REPORTING WITH EVIDENCE, HOLDING (ambiguous/live-trading-path per escalation rule) -- /api/market/zerodte/board started returning upstream_ok:false with EMPTY setups[]/ledger[] during active RTH (session.heat.state='RTH', 'Desk hot', 'All engines live'), confirmed across 3 consecutive fresh polls ~1-2min apart (17:44:20Z, 17:45:05Z, 17:45:28Z -- as_of advancing each time, so the route IS live/responding, just reporting a genuine degraded state, not a stale cache). Cross-checked with the dedicated healthcheck tool (zerodte-e2e-healthcheck.mjs): overall AMBER -- Stage B DISCOVERY '0 live FLOW setups * heat=RTH * governor unavailable', Stage E EXIT MGMT '0 ledger rows', Stage F IRON CONDOR 'board has 0 live setups'. Stage D LIVE MARKS+P&L is GREEN though (mark age 0.7-1.2s, matched Polygon within tolerance for ETSY/ACN/SOXS, real pnl% shown) -- the live mark-tick cron is healthy and still pricing real open positions correctly; ONLY the board's own discovery/ledger-compose read path and its governor are affected. Confirmed via /record (separate, more durable endpoint) that the 20 real Thursday positions (4 open: ACN/COIN/NVDA/RGTI) are intact and correctly tracked there -- no data loss, this is specifically the live /board DISPLAY/discovery path degrading, not the underlying ledger/DB.",
+      "pattern_match": "Matches the EXACT documented incident shape in CLAUDE.md's UW rate-limiter section: 'discovery/commit path stalled... self-heal zerodte-warm dispatched' -- a known, previously-observed, self-healing failure mode (governor/discovery pipeline stalls, live marks/positions unaffected, a warm-up cron re-primes it). Not calling this a NEW bug or filing a fix -- holding per the ambiguous/live-trading-path rule, watching for self-resolution next cycle. If this does NOT clear by the next 15-min check, or recurs as a 3rd+ instance across different days, that crosses into needing active investigation/escalation rather than just watching.",
+      "action": "WATCHING -- will re-check board upstream_ok on the next trigger firing."
     }
   },
   "sessions": {
