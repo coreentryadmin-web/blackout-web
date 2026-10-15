@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-14T17:17:33.797Z",
+  "updated_at": "2026-10-15T10:33:29.926Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "448465f3a03b810294a16fe010497a8c915a73b9",
+    "last_main_sha": "b42fedf3a83c72a33b04d061ccb1fda4a034d9ec",
     "last_deploy_status": "success",
     "last_deploy_at": "2026-10-13T13:33:27Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/38400896026",
     "last_deploy_sha": "d665a96e1e4390d6269ab6c7dc103600981bf277"
   },
   "events": [
-    {
-      "at": "2026-09-28T23:54:44.863Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T23:54:45.350Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-29T00:58:48.866Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-29T00:58:49.736Z",
       "type": "context_sync",
@@ -1271,9 +1253,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-15T10:33:21.279Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-15T10:33:25.835Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-15T10:33:29.926Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
+    {
+      "number": 6035,
+      "title": "audit: Largo swing play-brief contract validator + three critical C6/C7/C3 violations",
+      "branch": "audit/largo-swing-brief-contract-validator",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "completed/failure",
+      "updated_at": "2026-10-15T07:36:50Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
@@ -1303,16 +1313,6 @@
       "draft": false,
       "verify": "completed/failure",
       "updated_at": "2026-10-05T10:11:50Z"
-    },
-    {
-      "number": 5537,
-      "title": "docs(audit): root-cause + invariant for exit-capture and expired-open-position defects (no logic changed)",
-      "branch": "docs/exit-capture-and-expiry-root-cause-2026-09-28",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/failure",
-      "updated_at": "2026-10-13T14:09:10Z"
     },
     {
       "number": 4477,
