@@ -5,6 +5,7 @@ import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { fetchUwEconomyIndicator } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
 import { spxReactionsForDates } from "@/lib/meridian/meridian-reaction";
+import type { SessionReaction } from "@/lib/meridian/meridian-reaction-core";
 import { macroIntradayReactions } from "@/lib/meridian/meridian-intraday-reaction";
 import type { MeridianCatalystHeadline, MeridianMacroRelease } from "@/features/meridian/lib/meridian-types";
 
@@ -68,8 +69,8 @@ export async function loadMeridianMacroHistory(input: {
 
   const indicatorId = macroIndicatorIdForEvent(input.event);
   const [reactions, intradayMap, indicator, news] = await Promise.all([
-    spxReactionsForDates(dates),
-    macroIntradayReactions(dates, input.releaseTimeEt ?? null),
+    spxReactionsForDates(dates).catch(() => new Map<string, SessionReaction>()),
+    macroIntradayReactions(dates, input.releaseTimeEt ?? null).catch(() => new Map<string, number | null>()),
     indicatorId
       ? fetchUwEconomyIndicator(indicatorId).catch(() => null)
       : Promise.resolve(null),
