@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-15T21:08:47Z",
+  "lastUpdated": "2026-10-15T21:37:53Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -787,6 +787,11 @@
       "ts": "2026-10-15T21:08:47Z",
       "cycle": "21:06 offset",
       "summary": "CLOSED OUT STALE nextConcreteCheck (no bug, no PR): PR #6008 (command-center admin route, Phase 2F part 2) was already merged 2026-10-14T20:08:50Z per direct PR lookup, but the journal top-level nextConcreteCheck field still described it as pending/to-watch -- stale content left over from before the merge. Verified live: GET /api/admin/nighthawk/command-center returns 200, all 6 expected fields present, edition_for matches todays active edition, active array carries the real 4 plays with correct data. Updated nextConcreteCheck to reflect reality per this files own verify-against-main discipline. Healthcheck this cycle: repeat-clean (A/B AMBER post-close as already explained and journaled, C GREEN resolved=35, D GREEN all 4 agree)."
+    },
+    {
+      "ts": "2026-10-15T21:37:53Z",
+      "cycle": "21:36 offset",
+      "summary": "NEW TRADING DAY EDITION PUBLISHED, no bug: A_edition flipped AMBER->GREEN this cycle as the overnight build published the 2026-10-16 edition (editionFor rolled 10-15->10-16) -- confirms the root-cause analysis from the 20:08Z cycle (tomorrow isnt built yet right after close) resolved exactly as predicted. 4 brand-new plays, entirely different tickers than yesterday (AI/EWY/MRNA/SHOP replacing UNH/WMT/GTLB/ETSY): AI LONG score66(B) entry 11.93-12.39 target12.98 stop11.20; EWY SHORT score64(B) entry153.84-158.60 target148.77 stop164.17; MRNA LONG score63(B) entry230.59-242.41 target258.04 stop213.53; SHOP LONG score60(B) entry175.26-181.02 target187.15 stop168.53. Direction logic verified sane on all 4 (LONGs: target above entry band, stop below; EWY SHORT: target below entry band, stop above -- correctly inverted). edition.stale/degraded both undefined (clean, not a fallback). B_marks AMBER on all 4 new OCCs -- expected, no live quote has ticked yet for a just-minted edition outside RTH. D_pull_status correctly SKIPPED (\"morning confirmation not yet run for this date\") -- the 9:15am ET morning-confirm cron hasnt fired for 10-16 yet, same pattern documented every prior morning this session. C_record GREEN, resolved=35 unchanged (todays plays dont resolve until next close). No action needed -- watch for B to populate at/after RTH open and D to flip GREEN at 9:15am ET tomorrow, per the established pattern."
     }
   ],
   "knownOpenItems": {
