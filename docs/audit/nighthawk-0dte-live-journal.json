@@ -1,6 +1,6 @@
 {
   "_comment": "Durable rolling journal for the Night Hawk 0DTE forensic lane. Read via `git show origin/main:docs/audit/nighthawk-0dte-live-journal.json` at the start of every firing \u2014 never trust a stale local copy. Update in place and commit+push directly to main (state file, no PR, same pattern as .blackout-agent/HEARTBEAT). Prune sessions older than ~2 trading days. Cold start on 2026-09-10 \u2014 no prior continuity existed before this file.",
-  "updated_at": "2026-10-15T14:44:00Z",
+  "updated_at": "2026-10-15T14:50:00Z",
   "watch_stage_tracking": {
     "2026-10-13T15:11:00Z_TUESDAY_FIRST_COMMIT_MU_LARGE_LOSS_PLUS_PR5921_LIVE_CONFIRMED": {
       "cycle": "RTH :00-offset trigger, 15:11:06 UTC firing -- Tuesday 2026-10-13 cold start",
@@ -86,6 +86,11 @@
       "note": "First commit_ready setup of Thursday 2026-10-15 surfaced (board.commit_ready went 0->1 this cycle): APP long, score 78, cortex PASS +0.76, confluence triple-confirmed (timing+VWAP+market), plan not illiquid (spread 12.99%). Not yet in committed_open/committed_closed -- this is a point-in-time board snapshot mid-pass, actual commit will land on a subsequent scan tick.",
       "g4_vix_floor_confirmed_working_as_designed": "Board's gate.calibration.g4_vix for APP: day_open_vix 17.55 (tier 'elevated'), would_block=false, note: 'VIX 17.55 >= 17: score >= 75 -- clears canonicalized G-4 (uniform floor, every ticker/instrument type).' This confirms the prior cycle's ELEVATED_IV finding precisely: elevated VIX is NOT an absolute block, it raises the score floor to 75 -- APP's 78 clears it while the other 189 scanned setups (mostly below that raised floor) are correctly gated at vix_elevated/score_floor. No bug; this is the mechanism working exactly as designed, now observed producing its first qualifying setup of the day.",
       "verdict": "NO_BUG -- correct gate behavior observed end-to-end, watching for the actual commit next cycle"
+    },
+    "2026-10-15T14:50:00Z_TRANSIENT_VIX_UNAVAILABLE_BLIP_INSTANCE1": {
+      "note": "One board poll (~14:50:06Z) briefly reported top_block_code=vix_unavailable (168/171 setups blocked on it) instead of the steady-state vix_elevated -- a different G-4 fail-closed code path (day-open VIX read failing entirely vs. VIX read successfully but above the elevated threshold). Self-resolved within ~30s on the next poll (back to vix_elevated, commit_ready back to 1, this time on META long score 77 -- APP from the prior cycle had already rotated out of the scan window, which is expected churn in a rolling live-discovery scan, not a bug). Direct Polygon I:VIX prev-close fetch from this sandbox succeeded cleanly at the same time, so the gap (if real) was specific to whatever snapshot/real-time read the board's own day-open VIX capture uses, not a blanket Polygon outage.",
+      "instance_count": 1,
+      "action": "WATCHING -- 3-instance noise threshold not met, no finding filed. If this recurs 2 more times, investigate the board's specific VIX day-open fetch path (zerodte gate code, not generic Polygon reachability) for a real transient-handling gap."
     }
   },
   "sessions": {
