@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-15T18:08:35Z",
+  "lastUpdated": "2026-10-15T19:09:22Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -772,6 +772,11 @@
       "ts": "2026-10-15T18:08:35Z",
       "cycle": "18:06 offset",
       "summary": "B_marks full-rotation confirmation, no bug: GTLB and ETSY -- stuck AMBER for 3 consecutive cycles (17:24/17:36/17:52 UTC) and flagged in the prior cycle as approaching the 3-instance noise-discipline threshold -- both flipped AMBER->GREEN this cycle (18:08 UTC), while UNH (GREEN for the prior 3 cycles) flipped GREEN->AMBER. A direct marks pull during the 17:52 cycle had already shown GTLB ticking fresh with a real bid/ask seconds after reading stale, and ETSY stale-but-real (bid 10.1/ask 12.9, no NaN/sign-error/frozen value) -- this cycle confirms that diagnosis fully: every one of the 4 names independently cycles AMBER<->GREEN as its own quote ticks, never frozen, never fabricated. No two names are stuck simultaneously and no name has gone 4+ cycles without a real tick. Closing out this watch as explained, non-actionable per-ticker quote-tick staggering against the 30s LEGACY_QUOTE_STALE_MS bar -- not a calibration issue, not a bug. A_edition/C_record/D_pull_status all GREEN, resolved=31 unchanged."
+    },
+    {
+      "ts": "2026-10-15T19:09:22Z",
+      "cycle": "19:06 offset",
+      "summary": "RESEARCH THREAD CLOSED (no bug, no PR): the open question from the continuous-learning FOLLOW-UP DIG -- \"over-ATR-gate published plays (n=31) show a HIGHER early-favorable rate than normal plays (58.1% vs 37.7%), flagged as likely rescue/backfill-bypassed, needs a gate_promoted cross-tab before it says anything about PR #5961 rescue-cap change\" -- is now answered with real data. Pulled GET /api/admin/nighthawk/score-signal-analysis?days=90 (n_early_read=148, 61 favorable/87 adverse, low_n=false): phase2.over_gate_by_promotion shows promoted.n=0 / not_promoted.n=31 (58.1% rate) -- EVERY single over-ATR-gate play in the full 90-day window has gate_promoted=false. PR #5961 rescue mechanism has never fired on this population (consistent with the separate standing watch that gate_promoted sits at n=0 fleet-wide). CONCLUSION: whatever drives the over-gate cohorts higher early-favorable rate is NOT PR #5961 rescue/promotion -- that hypothesis is ruled out by this cross-tab, not confirmed. The real driver (if any -- n=31 is still thin) is some other property correlated with a wide target_atr_multiple (e.g. DTE, score composition) and remains open for a future cycle to dig into if volume grows, but the specific rescue-cap concern from PR #5961 is closed. Healthcheck this cycle: repeat-clean (A GREEN 4 plays, B AMBER with 3/4 marks GREEN -- UNH/WMT/ETSY, GTLB stale -- continuing the established per-ticker staggering, C GREEN resolved=31, D GREEN all 4 agree)."
     }
   ],
   "knownOpenItems": {
