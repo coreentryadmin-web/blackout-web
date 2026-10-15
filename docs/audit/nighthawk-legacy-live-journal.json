@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-15T19:09:22Z",
+  "lastUpdated": "2026-10-15T20:09:17Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -777,6 +777,11 @@
       "ts": "2026-10-15T19:09:22Z",
       "cycle": "19:06 offset",
       "summary": "RESEARCH THREAD CLOSED (no bug, no PR): the open question from the continuous-learning FOLLOW-UP DIG -- \"over-ATR-gate published plays (n=31) show a HIGHER early-favorable rate than normal plays (58.1% vs 37.7%), flagged as likely rescue/backfill-bypassed, needs a gate_promoted cross-tab before it says anything about PR #5961 rescue-cap change\" -- is now answered with real data. Pulled GET /api/admin/nighthawk/score-signal-analysis?days=90 (n_early_read=148, 61 favorable/87 adverse, low_n=false): phase2.over_gate_by_promotion shows promoted.n=0 / not_promoted.n=31 (58.1% rate) -- EVERY single over-ATR-gate play in the full 90-day window has gate_promoted=false. PR #5961 rescue mechanism has never fired on this population (consistent with the separate standing watch that gate_promoted sits at n=0 fleet-wide). CONCLUSION: whatever drives the over-gate cohorts higher early-favorable rate is NOT PR #5961 rescue/promotion -- that hypothesis is ruled out by this cross-tab, not confirmed. The real driver (if any -- n=31 is still thin) is some other property correlated with a wide target_atr_multiple (e.g. DTE, score composition) and remains open for a future cycle to dig into if volume grows, but the specific rescue-cap concern from PR #5961 is closed. Healthcheck this cycle: repeat-clean (A GREEN 4 plays, B AMBER with 3/4 marks GREEN -- UNH/WMT/ETSY, GTLB stale -- continuing the established per-ticker staggering, C GREEN resolved=31, D GREEN all 4 agree)."
+    },
+    {
+      "ts": "2026-10-15T20:09:17Z",
+      "cycle": "20:06 offset",
+      "summary": "EXPECTED EOD TRANSITION, no bug: A_edition flipped GREEN->AMBER this cycle (20:08 UTC = 4:08pm ET, right at/after market close -- corroborated by the sibling Swings lane EOD wrap commit landing in the same minute). Root-caused via direct code read (edition/route.ts:120): GET /api/market/nighthawk/edition with no ?date= resolves editionFor to nextTradingDayEt(todayEt()) -- i.e. TOMORROW, not today, since Legacy is a next-day digest board by design. Tomorrow's edition has not been built yet (overnight build job runs later), so resolveNighthawkEdition correctly serves todays last-good edition (edition_for=2026-10-15, 4 plays) as the honest fallback and stamps stale:true because its own edition_for does not match the requested next-trading-day editionFor -- exactly the intended behavior, consistent with timeoutFallbackEdition/resolve-edition.ts logic already documented in the route's own comments. All 4 B_marks also went AMBER simultaneously this cycle, consistent with quoting winding down post-close rather than a new defect. C_record GREEN (resolved=31), D_pull_status GREEN (all 4 agree). No action needed -- expect A_edition to clear once the overnight next-day build publishes a fresh edition_for=2026-10-16."
     }
   ],
   "knownOpenItems": {
