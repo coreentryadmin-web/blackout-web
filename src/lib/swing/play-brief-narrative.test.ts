@@ -642,6 +642,80 @@ test("tradeManagerNarrativeSection: stale GEX-only matrix does not say Right now
   assert.doesNotMatch(section!.body, /Right now/i);
 });
 
+test("tradeManagerNarrativeSection: unresolved posture still surfaces flip_nearest — live repro GOOG (crossings_far_from_spot)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "GOOG",
+        gex_positioning: {
+          spot: 344.87,
+          flip: null,
+          gamma_posture: null,
+          flip_crossings: 1,
+          flip_nearest: 388.43,
+          distance_to_nearest_flip_pct: -12.63,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /dealer gamma posture not resolved on this read/i);
+  assert.match(
+    section!.body,
+    /chain's only crossing sits at \*\*388\.43\*\* \(-12\.6% away\), too far from spot to call a stable regime/i,
+  );
+});
+
+test("tradeManagerNarrativeSection: unresolved posture with no flip_nearest stays a plain message", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: null,
+      ecosystem: {
+        ticker: "NRG",
+        gex_positioning: {
+          spot: 100,
+          flip: null,
+          gamma_posture: null,
+          flip_crossings: 0,
+          flip_nearest: null,
+          distance_to_nearest_flip_pct: null,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /dealer gamma posture not resolved on this read\./i);
+  assert.doesNotMatch(section!.body, /chain's only crossing/i);
+});
+
+test("tradeManagerNarrativeSection: stale GEX matrix suppresses the unresolved-posture nearest-crossing bit too", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      vector: { spot: 344.87 } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        ticker: "GOOG",
+        gex_positioning: {
+          spot: 344.87,
+          flip: null,
+          gamma_posture: null,
+          matrix_age_sec: 200,
+          freshness: "cached",
+          flip_crossings: 1,
+          flip_nearest: 388.43,
+          distance_to_nearest_flip_pct: -12.63,
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /dealer gamma posture not resolved on this read\./i);
+  assert.doesNotMatch(section!.body, /chain's only crossing/i);
+});
+
 test(
   "tradeManagerNarrativeSection: dealer posture line's spot matches roundFloats' rounding, not " +
     "plain toFixed(2) — live repro SPCX 2026-09-21 (Ask Largo standing mandate)",
