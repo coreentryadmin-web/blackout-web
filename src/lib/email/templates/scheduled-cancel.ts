@@ -22,7 +22,7 @@ export function scheduledCancelEmail(ctx: ScheduledCancelContext): {
   const subject = t("Cancellation confirmed — you're in until {{accessUntil}}");
   const paragraphs = [
     "{{firstName}}, it's done — the cancellation is in, no further charges headed your way. But nobody's cutting the feed tonight. The screens stay lit, the grades keep posting, the desk stays exactly as loud as you left it.",
-    "You've got full access through {{accessUntil}}. Every engine you're paying for stays live — SPX Slayer, Thermal, HELIX, Night Hawk, Largo AI, Vector — same GEX reads, same live flow, same A-F grades logged before the outcome's known. Nothing throttles, nothing clips early.",
+    "You've got full access through {{accessUntil}}. Every engine you're paying for stays live — SPX Slayer, Thermal, HELIX, Night Hawk, Largo AI, Vector, Meridian — same GEX reads, same live flow, same A-F grades logged before the outcome's known. Nothing throttles, nothing clips early.",
     `If a setup prints between now and then and you remember why you were here — undoing this is one click on your billing page. No call, no retention pitch, no "are you sure" theater.`,
   ]
     .map((p) => `<p style="margin:0 0 18px;color:${EMAIL_BRAND.body};">${t(p)}</p>`)
