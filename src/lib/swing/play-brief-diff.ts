@@ -52,6 +52,22 @@ export type BriefSnapshot = {
    * "Since last read" pulse this diff engine exists to spare them from having to do.
    */
   rollCandidateReason: string | null;
+  /**
+   * `play.gateBlocks`' own codes, sorted (order-independent comparison) — Ask Largo standing
+   * mandate, GAP FOUND 2026-10-15. A WATCH play's blocking-gate SET can narrow or shift
+   * session-to-session independent of `recommendation` (`entry-verdict.ts`'s recommendation only
+   * flips BUY once ALL gates clear, and `swingActionDisplay` — `play-card-lifecycle.ts` — stays
+   * "WAIT" regardless of which or how many gates remain) — e.g. 3 blocking gates narrowing to 1,
+   * still net-blocked, or a different gate becoming the binding one. Until this field existed,
+   * that shift was invisible to every diffed field: `sectionTitles` only diffs section TITLES
+   * (not body content), and neither the headline nor `recommendation` embeds gate count/codes.
+   * Real, observed production shape (not theoretical) — `entry-verdict.ts`'s own comment cites a
+   * live MU repro with 3 active commit gates narrowing independently session to session. Codes
+   * only (not the full reason text) — matches `sectionTitles`' own string-array comparison shape,
+   * cheap to diff, and the actual reason text is already rendered in full by `watchGateCoaching`
+   * every refresh regardless (this only narrates the SET changing, not re-states the reasons).
+   */
+  gateBlocks: string[];
   sectionTitles: string[];
 };
 
@@ -266,6 +282,7 @@ export function snapshotFromBrief(
     flowPutPremium: fin(extras?.flowPutPremium),
     trimsFired: fin(extras?.trimsFired),
     rollCandidateReason: play?.rollCandidate?.reason ?? null,
+    gateBlocks: (play?.gateBlocks ?? []).map((g) => g.code).sort(),
     sectionTitles: envelope.sections.map((s) => s.title),
   };
 }
@@ -391,6 +408,25 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     // separate "Desk action shifted" rule above already narrates that exit accurately in the same
     // pulse. Asserting a specific cause here would contradict it. Peer review, PR #5191.
     lines.push(`**Roll watch cleared** — no longer being weighed.`);
+  }
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-15): see BriefSnapshot.gateBlocks' own doc
+  // comment for the full gap this closes — a WATCH play's blocking-gate SET can narrow, widen, or
+  // shift to a different binding gate independent of `recommendation`/`actionLabel`, and nothing
+  // else diffed here ever caught it. Fires on ANY code-set change (added, removed, or both in the
+  // same tick), including the edge where it narrows all the way to zero — still a real,
+  // informative fact (which specific gates cleared) even though `recommendationChanged` above
+  // will likely also fire for that same tick's BUY flip; the two lines state different things
+  // (WHICH gates cleared vs. the resulting desk action) and neither makes the other redundant.
+  if (prev.gateBlocks.join(",") !== next.gateBlocks.join(",")) {
+    const cleared = prev.gateBlocks.filter((c) => !next.gateBlocks.includes(c));
+    const added = next.gateBlocks.filter((c) => !prev.gateBlocks.includes(c));
+    const parts: string[] = [];
+    if (cleared.length) parts.push(`cleared ${cleared.join(", ")}`);
+    if (added.length) parts.push(`now also blocked by ${added.join(", ")}`);
+    const gateWord = next.gateBlocks.length === 1 ? "gate" : "gates";
+    lines.push(
+      `**Entry gates shifted** — ${parts.join("; ")} (${prev.gateBlocks.length} → ${next.gateBlocks.length} ${gateWord} blocking entry).`,
+    );
   }
   // BUG FIX (Ask Largo standing mandate, 2026-09-18): the raw headline is
   // `${action?.label ?? play.recommendation ?? play.status} — ${playContractHeadline(play)}`
@@ -551,11 +587,17 @@ export function loadPersistedBriefSnapshot(key: string): BriefSnapshot | null {
     // with no null guard, unlike every other field here. sessionStorage outlives a deploy — a
     // snapshot written by an older schema, or corrupted by devtools/an extension, must be rejected
     // as unusable rather than handed back and crashing the diff on the next read.
+    //
+    // `gateBlocks` (added 2026-10-15) gets the SAME guard for the SAME reason: diffBriefSnapshots
+    // calls `prev.gateBlocks.join(",")` unconditionally, and a snapshot persisted by client code
+    // from before this field existed would parse back with `gateBlocks: undefined` — exactly the
+    // crash this guard already exists to prevent for `sectionTitles`, just one field over.
     if (
       !parsed ||
       typeof parsed !== "object" ||
       typeof parsed.headline !== "string" ||
-      !Array.isArray(parsed.sectionTitles)
+      !Array.isArray(parsed.sectionTitles) ||
+      !Array.isArray(parsed.gateBlocks)
     ) {
       return null;
     }
