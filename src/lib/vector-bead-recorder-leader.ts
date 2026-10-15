@@ -35,6 +35,7 @@ import {
   VECTOR_BEAD_SHARD_COUNT,
   beadShardsForReplica,
 } from "@/features/vector/lib/vector-bead-shard";
+import { runWithBackgroundPolygonSweep } from "@/lib/providers/polygon-rate-limiter";
 
 /**
  * SLOT, not an exclusive lead.
@@ -270,7 +271,14 @@ async function tick(): Promise<void> {
     // peers idle. Orphaned shards (a slot no replica holds) are adopted by the lowest live slot,
     // so a single surviving task still covers the whole universe.
     const shards = beadShardsForReplica(mySlot, await readHeldSlots());
-    const result = await recordSharedUniverseWallSamples({ shards });
+    // Tagged as a background sweep so the shared Polygon rate limiter (polygon-rate-limiter.ts)
+    // never lets this continuous ~100-122-ticker poll claim more than its reserved share of the
+    // global RPS/concurrency ceiling — see BACKGROUND_SWEEP_MAX_SHARE's block comment there for
+    // the live incident (2026-10-15) this protects against: this sweep's own fetchGexHeatmap()
+    // churn was starving OTHER desks' (0DTE/SPX/Thermal) chain fetches of the same shared budget.
+    // Every nested call this reaches (recordVectorUniverseWallSample -> buildVectorUniverseRow ->
+    // fetchGexHeatmap -> polygonTrackedFetch) inherits the tag via AsyncLocalStorage.
+    const result = await runWithBackgroundPolygonSweep(() => recordSharedUniverseWallSamples({ shards }));
     if (
       result.total > 0 &&
       result.recorded === 0 &&
@@ -341,7 +349,10 @@ async function activeTick(): Promise<void> {
   concurrentActiveSweeps += 1;
   activeRecordInFlight = true;
   try {
-    const result = await recordActiveNonUniverseWallSamples();
+    // Same background-sweep tag as the universe lane above — this lane polls on-demand/active
+    // viewer tickers every 15s and shares the identical fetchGexHeatmap()/Polygon rate-limiter
+    // path, so it is just as structural a contributor to the saturation this fixes.
+    const result = await runWithBackgroundPolygonSweep(() => recordActiveNonUniverseWallSamples());
     if (
       result.total > 0 &&
       result.recorded === 0 &&
