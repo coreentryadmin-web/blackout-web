@@ -38,6 +38,164 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo swing play-brief: Peak can display BELOW the current P&L for a BANGER-origin position — the existing cent-rounding guard's fallback is a no-op when the CANONICAL pnlPct itself is the value out of bounds — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `pnlSection` (`src/lib/swing/play-brief.ts`) carries a guard (added 2026-10-09,
+live CNXC/SG repros) whose stated contract is: "the current mark IS one of the samples peak/trough
+were latched from, so the canonical `play.pnlPct` always lies inside [trough, peak] by
+construction" — and whose fallback, on a violation, is `pnlForDisplay = play.pnlPct`. That guard
+only protects against ONE failure mode: a cent-rounding RECOMPUTE (`Math.round(play.mark*100)/100`)
+introducing a NEW violation on top of an otherwise-in-bounds canonical value. Its fallback target
+is the canonical `play.pnlPct` itself — so whenever the canonical value is what's ALREADY out of
+bounds (no recompute error involved, or the recompute simply reproduces the same canonical number),
+the "fallback" reassigns the violating value to itself. Nothing in the function ever widens or
+otherwise reconciles `play.peak`/`play.trough` against the P&L actually being shown.
+
+**Evidence.** Live repro, 2026-10-15, SWING:ENOV (positionId 1739, BANGER-origin, status
+PARTIAL/TRIM): `GET /api/market/swing/play-brief?playId=SWING:ENOV:1739&ticker=ENOV&positionId=1739&status=OPEN`
+rendered, stably across repeated reads several minutes apart (market closed, no new ticks running —
+ruling out a mid-tick race):
+
+```
+Entry: $0.05
+Mark: $0.33 (2026-10-14 16:00 ET)
+P&L: +560.0% (open runner only — trim already banked, see below)
+Peak: +550.0%
+Trough: 0.0%
+```
+
+`markRoundTripsPnl` evaluates TRUE for this row (mark $0.33 is a clean, non-cent-ambiguous value —
+`Math.round(0.33*100)/100/0.05-1)*100` reproduces `560.0` exactly), so the existing guard's
+cent-rounding recompute path never even engages; the violation is already present in the canonical
+`play.pnlPct` (560.0) vs `play.peak` (550.0) going in. The existing guard fires (`560.0 > 550.0 +
+0.05`) and "falls back" to `play.pnlPct` — i.e. 560.0 again, a no-op.
+
+Cross-checked against the raw ledger row, `GET /api/market/banger/board`: `entry_premium: 0.05,
+last_mark: 0.33, peak_premium: 0.33` — the two premiums agree once rounded to the cent that route's
+`roundFloats(payload, 2)` call displays at (both round to `$0.33`), but `pnlSection`'s arithmetic
+runs on full precision, where a half-cent of raw difference on a nickel-sized entry premium swings
+the displayed percentage by a full 10 points (`$0.005 / $0.05 = 10%`). Traced the write path
+(`updateBangerLiveState`, `src/lib/banger/positions-db.ts`): its SQL ratchets `peak_premium =
+GREATEST(peak_premium, $3)` and `last_mark = $3` in the SAME statement off the SAME bound
+parameter, which is provably atomic/self-consistent per write — so this repo's own write path
+cannot explain, from read-only production access, which specific tick left `last_mark` ahead of
+`peak_premium`'s ratchet for this row; that remains an open question for whoever has raw DB access,
+not something this fix guesses at or changes. Reproduced the exact invariant failure with a
+git-stash RED→GREEN pair of regression tests in `src/lib/swing/play-brief.test.ts` using these
+exact live numbers (and a symmetric synthetic trough case) — both FAIL against the pre-fix code and
+PASS after the fix, isolated via `git stash push -u -- src/lib/swing/play-brief.ts` /
+`git stash apply` (not the test file).
+
+**Blast radius.** Checked every other rendered consumer of `play.peak`/`play.trough` in this
+directory for the same class of defect: `play-brief-intel.ts` and `play-brief-narrative.ts` both
+call `mfeCaptureOutcome(play.pnlPct, play.peak, null)` for the "MFE capture" / "gave back the move"
+narrative — on the SAME live ENOV data this would compute `capturePct = (560/550)*100 = 101.8%`
+rather than show two directly-contradicting numbers side by side the way the Position card's
+`P&L:`/`Peak:` lines do; it's a single derived percentage reading slightly over 100%, not an
+on-its-face logical contradiction, and the live ENOV brief's own narrative section does not surface
+this specific line in this request. Left unchanged — flagging it here for blast-radius completeness
+per this file's PR write-up policy, not fixing it, since it's a different section computing a
+different (single-number, not directly-contradictory) output and the task this fix addresses is
+scoped to the Position card's literal invariant violation. `src/lib/banger/positions-db.ts`'s
+ratchet SQL and `insertBangerPosition` were deliberately NOT touched (confirmed correct on paper,
+and already the subject of a separate, just-shipped fix today, PR #6027, for the unrelated
+insert-time entry-bracket bug) — this fix does not re-open that file.
+
+**Fix rationale.** Widen the DISPLAYED Peak/Trough to bracket the final displayed P&L whenever the
+canonical value itself escapes the ledger's own watermark — never the reverse (clamping the P&L
+down to a stale Peak would UNDERSTATE the member's real gain, exactly the mistake this file's other
+absence/precision guards already exist to avoid). This is the same "widen-only, converge-in-place"
+principle `positions-db.ts`'s own entry-bracket fix (PR #6027, same day) already applies to this
+identical ratchet pair at the storage layer, applied here at the display layer instead — the task
+scope for this fix is `play-brief.ts`, and the exact upstream write-path trigger could not be
+confirmed from read-only production access within this fix's scope. Left unchanged: the existing
+cent-rounding guard above it (still correct and still needed for the CNXC/SG/EXTR class of bug it
+was built for) and every other section of the brief.
+
+**Evidence of no regression.** `npx tsc --noEmit`: clean. `src/lib/swing/play-brief.test.ts`:
+135 pass / 0 fail (133 pre-existing + 2 new). Full `npm test` (Node 20, `scripts/run-tests.mjs`):
+see companion run-log entry for the exact count.
+
+## Ask Largo swing play-brief: MFE capture can read above 100% ("captured 101.4% of peak") on real closed positions — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `mfeCaptureOutcome` (`src/lib/swing/mfe-capture.ts`) computes the ratio-fallback
+capture percentage as `(exitPnlPct / peak) * 100` with no upper bound. `exitPnlPct` is read straight
+off the DB's own `exit_pnl_pct` column; the displayed `peak` is a **different derivation** of
+conceptually the same quantity — `adapters.ts`'s `peakDisplay`:
+`Math.round(((peakPremium / entry - 1) * 100) * 10) / 10`, a 1dp-rounded ratio off the raw premium.
+The two percentages describe the same underlying fact through two different computation paths and
+can disagree by a fraction of a point even though `exitPnlPct` is, by construction, always one of
+the samples `peak` was latched from — the identical watermark invariant `play-brief.ts`'s own
+`pnlForDisplay`/`peakForDisplay` guard states explicitly ("the current mark IS one of the samples
+peak/trough were latched from, so ... pnlPct always lies inside [trough, peak] by construction").
+Capture can never legitimately exceed 100%; any computed excess here is a rounding/precision
+artifact, never a real move past the position's own recorded high.
+
+This is the exact gap flagged, but deliberately left unfixed as out-of-scope, by this same session's
+earlier `2026-10-15-swing-play-brief-peak-trough-bracket-guard.md` finding (PR #6029): *"on the SAME
+live ENOV data this would compute `capturePct = (560/550)*100 = 101.8%` ... Left unchanged ...
+flagging it here for blast-radius completeness ... not fixing it, since it's a different section
+computing a different ... output."* This finding closes that gap.
+
+**Evidence.** Pulled `GET /api/market/swing/record?days=365` live (2026-10-15) and replicated
+`adapters.ts`'s exact `peakDisplay` formula against every `closedDeck` row (52 closed positions in
+the 365-day window). Two real, currently-public positions violate the bracket:
+
+- **ORCL** positionId 9: entry 9.03, peakPremium 9.15 → peakDisplay **1.3**, exitPnlPct **1.39**
+  (ratio capture 106.9%)
+- **NOW** positionId 21: entry 11.6, peakPremium 11.8 → peakDisplay **1.7**, exitPnlPct **1.72**
+  (ratio capture 101.4%)
+
+Confirmed live against the real play-brief API
+(`GET /api/market/swing/play-brief?playId=SWING:NOW:21&positionId=21&ticker=NOW&status=CLOSED&expandIntel=1`).
+Before this fix, production rendered verbatim, to real members:
+
+```
+Exited **+1.7%** vs peak **+1.7%**
+**Strong discipline** — captured **+101.4%** of peak; replicate trim timing.
+...
+MFE capture: **+101.4%** of peak move
+```
+
+Not just odd phrasing — a literally impossible claim (capturing more than 100% of your own peak),
+rendered in the exact sections (`closedCoaching` / `lessonsSection`) built to teach correct
+trade-management lessons.
+
+**Blast radius.** `mfeCaptureOutcome` is the single shared function all 5 call sites read from:
+`play-brief-narrative.ts`'s live-giveback bullet (open-play "Gave back X%" line, two call sites
+including the TRIM-rail round-trip guard), `play-brief-intel.ts`'s Hold-plan giveback bullet (open)
+and closed-play Lessons section, and `play-brief-narrative-coaching.ts`'s `closedCoaching` verdict
+line. Fixing the shared function fixes every one of them at once. Checked every test file for the
+five call sites (`play-brief.test.ts`, `play-brief-intel.test.ts`, `play-brief-narrative.test.ts`,
+`play-brief-narrative-coaching.test.ts`, `thesis-health.test.ts`) for any assertion of an
+over-100% capture value — none exists, so the clamp introduces no regression against existing
+expectations.
+
+**Fix rationale.** Clamp the ratio-fallback branch to `Math.min(100, (exitPnlPct / peak) * 100)`.
+Deliberately left unchanged: the authoritative `mfeCapturePct` branch (server-supplied, currently
+never populated per the file's own header comment — dead code in production today; a future real
+overshoot there would need its own investigation, not a blind clamp copied from the ratio branch);
+the `round_trip` outcome kind (negative exits — already a distinct, correctly-handled branch); and
+every normal (non-overshoot) capture computation, which the clamp cannot affect (verified by the
+pre-existing "positive exit falls back to the exit/peak ratio" test, unchanged and still passing).
+
+**Evidence of no regression.** New regression test in `mfe-capture.test.ts`: RED before the fix
+(live ORCL repro asserted `capturePct === 100`, actual `106.92...`), GREEN after, plus a
+big-overshoot case, an exact-at-peak boundary case, and confirmation normal captures are untouched.
+`src/lib/swing/{play-brief,play-brief-intel,play-brief-narrative,play-brief-narrative-coaching,
+thesis-health}.test.ts` (691 tests): all pass. Full `npm test` (Node 20, `scripts/run-tests.mjs`):
+16067 pass / 0 fail / 3 skipped. `npx tsc --noEmit`: clean.
+
 ## zerodte_setup_log peak_premium/trough_premium could land outside [entry_premium, ...) — same SEV-2 shape FINDINGS 2026-08-06 already fixed on swing_positions, never ported here — THIRD table found with this bug this session — FIXED
 
 > **kind:** `FINDING`
