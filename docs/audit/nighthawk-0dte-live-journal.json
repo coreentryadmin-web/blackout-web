@@ -78,6 +78,9 @@
     },
     "2026-10-15T14:10:00Z_WEDNESDAY_FINAL_SETTLEMENT_PLUS_THURSDAY_LIVE": {
       "note": "Wednesday's 3 pending positions (ORCX, PENG, WOLF, carried over from the EOD wrap) all resolved via time_stop (the hard 3:50 ET close) -- all three closed GREEN: +17.79%, +21.6%, +25.45%. Final Wednesday single-leg tally: 20 graded, 15W/5L -- a strong, cleanly-managed session end to end. Thursday now live: discovery scanning (168 setups), opening_window has cleared, current blocker plan_no_quote (the default/benign state, not an outage) -- normal post-unlock mechanics. No commits yet today. Nothing to escalate."
+    },
+    "2026-10-15T14:16:00Z_VIX_ELEVATED_REGIME_CONFIRMED_GENUINE": {
+      "note": "New blocker state this cycle: vix_elevated (G-4), not seen yet this week, with 0 commits today despite 148 setups scanned. Checked market_state: regime_vol='ELEVATED_IV', regime_structure='RANGE' -- confirms this is a genuinely elevated-volatility session today, not a gate misfire. The G-4 hard block correctly fail-closing new commits in response to real elevated VIX conditions is exactly the documented, intentional behavior. No action needed -- watching for the regime to normalize or for the first genuine commit of the day."
     }
   },
   "sessions": {
