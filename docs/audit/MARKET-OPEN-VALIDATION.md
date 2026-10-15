@@ -1,3 +1,36 @@
+## WATCH LIST — 2026-10-15 `fetchUwMacroIndicators` serial fan-out (stacked UW rate-limiter admission waits, correlated with 40-43s ALB TargetResponseTime Max spikes) fixed — deploy pending validation
+
+**What was fixed:** performance/latency audit mandate follow-up on a recurring ALB
+`TargetResponseTime` Max spike pattern (40-43s, roughly every 25-50 minutes, outside the known
+11-21 UTC cron window). Traced via CloudWatch Logs correlation to `fetchUwMacroIndicators`
+(`src/lib/providers/unusual-whales.ts`) fanning its 3-indicator list (GDP/CPI/UNRATE) out through
+`runUwSequential` instead of `runUwPool` — live-measured two of the three indicators independently
+paying 13.6s/17.3s UW rate-limiter admission waits back-to-back inside ONE `fetchDeskEnrichmentFields`
+pass (the SPX desk's background enrichment sweep), stacking to ~31s of pure queue dead time,
+coincident minute-for-minute with the ALB spikes. Fix: switch the internal fan-out to `runUwPool`
+so the three admission waits can overlap instead of stack — no behavior/return-type change for
+either caller (`spx-desk.ts`, nighthawk `market-wide.ts`). Full write-up:
+`docs/audit/findings-staging/2026-10-15-uw-macro-indicators-sequential-fanout.md`. **Note: this
+fix was NOT proven to be the sole/dominant driver of the ALB number** — the mechanism connecting
+this background sweep's duration to an ALB-tracked response time is evidenced (shared UW
+concurrency/RPS contention) but not fully traced end-to-end; it ships on its own merits as a real,
+measured stacking defect regardless.
+
+**Specific thing to check once this deploys:** (1) grep `/ecs/blackout-production` CloudWatch
+Logs for `[uw] queue wait` lines on `/api/economy/gdp`/`/api/economy/cpi`/`/api/economy/unemployment`
+— post-deploy, these three should no longer show large (>5s) waits landing within the same few
+seconds of each other inside one pass (some individual admission wait is still possible under real
+contention; what should disappear is TWO OR THREE of them stacking back-to-back for the same
+`fetchDeskEnrichmentFields` call). (2) Re-pull `AWS/ApplicationELB` `TargetResponseTime` Max (1-min
+granularity, `blackout-production-app`) for a few hours post-deploy and check whether the specific
+40-43s-magnitude spike cluster recedes, shrinks to a smaller magnitude (e.g. ~15-20s, matching a
+single un-stacked 20s admission-budget ceiling instead of two-to-three stacked ones), or persists
+unchanged (which would mean this was a real but non-dominant contributor, and the dominant
+mechanism is still open — same "re-measure, don't assume" discipline as the `RUN-LOG.md` #5686/
+heatmap-warm thread).
+
+---
+
 ## WATCH LIST — 2026-10-15 Ask Largo swing play-brief MFE capture clamped at 100% (ORCL/NOW closed positions) fixed — deploy pending validation
 
 **What was fixed:** two real closed swing positions (ORCL positionId 9, NOW positionId 21) rendered

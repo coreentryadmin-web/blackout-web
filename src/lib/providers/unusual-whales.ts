@@ -8,7 +8,7 @@ import {
   buildUwRequestKey,
   isUwCircuitOpen,
   noteUw429,
-  runUwSequential,
+  runUwPool,
   throttleUwCoalesced,
 } from "@/lib/providers/uw-rate-limiter";
 import { rateLimiterEnvNumber } from "@/lib/providers/provider-rate-limiter-shared";
@@ -2397,10 +2397,31 @@ export async function fetchUwEconomyIndicator(indicator: string): Promise<UwMacr
   return parseEconomyIndicatorRows(id, label, rows);
 }
 
+/**
+ * BUG FIX (Ask Largo standing performance mandate, 2026-10-15, live repro: `[uw] queue wait
+ * 13581ms (background sweep)` / `17303ms` on GDP + CPI inside ONE `fetchDeskEnrichmentFields`
+ * pass, coincident minute-for-minute with that session's AWS/ApplicationELB `TargetResponseTime`
+ * Max spiking to 40-43s): this used to fan `UW_MACRO_INDICATORS` out through `runUwSequential`
+ * (`await task()` one at a time), so each indicator's own rate-limiter admission wait was paid
+ * back-to-back rather than overlapped — with 3 indicators that can nearly TRIPLE the worst-case
+ * wall time under real contention, exactly the shape measured live. This function is shared by a
+ * latency-critical caller (`spx-desk.ts`'s `fetchDeskEnrichmentFields`, already documented
+ * elsewhere in this codebase as needing the pooled primitive for exactly this reason) and a batch
+ * one (nighthawk `market-wide.ts`, which can tolerate either shape) — it had defaulted to the
+ * slower, serializing shape for BOTH. `runUwPool` lets the fixed, small list (today: GDP/CPI/
+ * UNRATE) overlap their admission waits instead of stacking them, with no behavior change for
+ * either caller (same results, same per-task `.catch(() => null)` resilience) — just less total
+ * time spent competing for the shared UW rate limiter. Deliberately left at `runUwPool`'s own
+ * default concurrency (shared `MAX_CONCURRENCY`, currently 3 — matching today's 3-indicator list
+ * exactly) rather than passing `indicators.length` explicitly, so a future longer indicator list
+ * still respects the shared concurrency ceiling instead of silently bypassing it. See the
+ * regression test in unusual-whales.test.ts for a RED/GREEN reproduction of the stacking vs.
+ * overlap difference.
+ */
 export async function fetchUwMacroIndicators(
   indicators: string[] = UW_MACRO_INDICATORS.map((m) => m.id)
 ): Promise<UwMacroIndicatorSnapshot[]> {
-  const results = await runUwSequential(
+  const results = await runUwPool(
     indicators.map((id) => () => fetchUwEconomyIndicator(id).catch(() => null))
   );
   return results.filter((r): r is UwMacroIndicatorSnapshot => r != null);
