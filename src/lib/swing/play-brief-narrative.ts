@@ -299,7 +299,15 @@ function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): s
   );
 }
 
-function narrateWall(level: FocalLevel, play: TerminalPlay, spot: number): string {
+// CLEANUP (Ask Largo standing mandate, 2026-10-15): this used to take a `spot` parameter like its
+// siblings (narrateDarkPool/narrateMaxPain/narrateFlip, which all genuinely compare against it) —
+// but every branch here reads only `level.distancePct`/`level.price` (the signed distance already
+// computed from spot elsewhere), and `spot` itself was never referenced in the function body. Most
+// likely leftover from the 2026-10-14 BUG FIX above, which rewrote the `breached` logic to use
+// `distancePct`'s sign instead of a fresh spot comparison. No tsconfig `noUnusedParameters` catches
+// this at build time, so it survived; removed rather than left as unused cruft (both call sites
+// updated, no behavior change).
+function narrateWall(level: FocalLevel, play: TerminalPlay): string {
   const isCall = level.kind === "call_wall";
   const near = Math.abs(level.distancePct) < 1.5;
   const verb = isCall ? "caps upside" : "dealer support / put wall";
@@ -1349,10 +1357,10 @@ export function tradeManagerNarrativeSection(
         add(narrateDarkPool(level, play, spot), { reserved: isInvalidationLevel });
         used.add("dark_pool");
       } else if (level.kind === "put_wall" && !used.has("put_wall")) {
-        add(narrateWall(level, play, spot), { reserved: isInvalidationLevel });
+        add(narrateWall(level, play), { reserved: isInvalidationLevel });
         used.add("put_wall");
       } else if (level.kind === "call_wall" && !used.has("call_wall")) {
-        add(narrateWall(level, play, spot), { reserved: isInvalidationLevel });
+        add(narrateWall(level, play), { reserved: isInvalidationLevel });
         used.add("call_wall");
       } else if (level.kind === "magnet" && !used.has("magnet") && !bullets.some((b) => /Gamma magnet/i.test(b))) {
         add(narrateMagnet(level, resolveGammaPosture(ctx, vec)));
