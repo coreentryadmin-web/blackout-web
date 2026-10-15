@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-15 (13:35 UTC / Thu 09:35 ET) — [SEO] RTH wake: gamma-snapshot live, calculation_id non-monotonic blip self-resolved
+
+Confirmed market open myself (09:35 ET, 2026-10-15 not in `US_MARKET_HOLIDAYS`).
+`/api/public/gex-snapshot?ticker=SPX` — `market_session: "OPEN"`, `degraded: false`. Same
+`flip: null` short-gamma-at-every-strike condition as the last two days (already understood,
+not a defect); `change_pct: null` expected this early pre-REST-anchor. Polled 6x over ~40s to
+check refresh cadence: first 3 reads showed `calculation_id` briefly non-monotonic (age jumped
+to 18-49s then dropped) — the already-documented backend-replica/cache-read race, not a new
+issue — the last 3 reads settled clean and monotonic (age 2s, 0.4s, 0.8s). Purged Cloudflare
+edge HTML, measured live homepage CLS — **0.0002, GOOD**. No defect found. No PR opened.
+
 ## 2026-10-15 (12:17 UTC / Thu 08:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Pre-market. Resynced to `origin/main` (`1cd8b234` → `e0e88df5`, other-lane swing/Largo fix).
