@@ -579,6 +579,27 @@ test("cortexReadSection: falls back to a constructed summary when narrative is e
   assert.match(body, /Opposed — \[wall-trend\] trend fading into resistance/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): `v.absent` (Largo C3 absence principle — which
+// sources couldn't answer this turn) was computed and pinned on every verdict this section reads,
+// but never surfaced — unlike every other CortexVerdict-to-prose renderer in the codebase
+// (bie/cortex-read.ts always states an absent-source count in its headline). A real, measured
+// production shape: ~19% of graded 0DTE commits carry a real CortexSourceTimeout via the same
+// shared fetchVectorFullState fan-out swing's own sources use.
+test("cortexReadSection: states the absent-source count in the header when sources were absent (Largo C3)", () => {
+  const view = opposedCortexView();
+  const withAbsent: PaneCortexView = {
+    ...view,
+    verdict: { ...view.verdict, absent: ["darkpool-confluence", "catalyst-news"] },
+  };
+  const body = cortexReadSection(fixturePlay({ cortex: withAbsent }))?.body ?? "";
+  assert.match(body, /2 sources absent/);
+});
+
+test("cortexReadSection: no absent-source clause at all when nothing was absent", () => {
+  const body = cortexReadSection(fixturePlay({ cortex: opposedCortexView() }))?.body ?? "";
+  assert.doesNotMatch(body, /source.*absent/i);
+});
+
 // SWING-SYSTEM-CTO-AUDIT-style finding (found live 2026-09-06 on NRG SWING_NRG_34): `recNote` is
 // already rendered verbatim by managementSection (open bucket) or the Verdict section (watch
 // bucket) — see play-brief.ts lines 64 and 292. whyThisSetupSection pushed the SAME string again
