@@ -4,6 +4,56 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## 2026-10-15 — [FINDING, P3 Night Hawk Swings/Largo] Archetype/ticker track record (Largo C10) was citable only as prose text — no structured field a consumer could join without parsing it — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Context — avoiding duplicate work** | This closes out an item from the standing Ask Largo mandate (`CLAUDE.md`), raised on the swing play-brief contract-validator PR (#6035): C10 ("historical context") was flagged there as "real, scoped narrower than 'a tool'" with a proposed fix of adding a bespoke `historicalContext` field to the envelope. Investigating that proposal before building it surfaced that its own premise was already stale (see next row) — a live instance of the exact staleness trap this file's own "ASK LARGO" section warns about, caught before it caused duplicate work rather than after. |
+| **Symptom / what was actually still missing** | `archetypeTrackRecordSection`/`tickerTrackRecordSection` (`src/lib/swing/play-brief-intel.ts`) compute real numbers — wins, losses, n, winRatePct, wilsonLbPct, pointDeltaPts — but only ever emitted them baked into a prose `RichSection.body` string. `play-brief.ts` separately stamps the SAME archetype numbers into `evidence[]` as a text fact with real provenance (shipped 2026-09-20, `git blame` confirms this predates today) — so the numbers ARE already citable with a source/asOf/freshness stamp, contrary to the PR's framing that "a consumer can't join/verify/cite them without parsing prose." But even that evidence-fact form is still a single formatted STRING (`text: "Archetype track record: Breakout continuation 45W / 15L across 60 graded plays..."`) — a consumer still has to regex it to recover the discrete `wins`/`losses`/`n`/`wilsonLbPct` values as typed data. |
+| **Root cause** | The envelope contract already has a mechanism for exactly this: `BieSection.table` (`src/lib/bie/answer-envelope.ts`, `BieTable = {headers: string[], rows: string[][]}`), rendered by both `renderEnvelopeMarkdown` (inline markdown tables) and the live-chat composer family (`dynamic-format.ts`'s `formatPlaySuggestTable`/`formatTechnicalsTable`/etc.) — genuinely structured, directly-bindable rows, not prose. But `RichSection` (`src/lib/bie/rich-narrative.ts`) — the type every deterministic composer (concept answers, the swing play brief) builds its sections from — never had a `table` field, and `buildRichEnvelope` (the ONE shared constructor all of them route through) never forwarded one even if a caller tried to pass it. So no composer in the `buildRichEnvelope` family could ever attach a table, even though the mechanism the contract needed already existed elsewhere in the same file. Same shape of gap as the `unavailableSources` forwarding bug this same file's own header comment already documents (field existed on the contract, builder never wired it through) — this is the second missing wire in the identical shared layer. |
+| **Fix** | (1) `RichSection` gains an optional `table?: BieTable | null`, additive alongside `body`/`bias`. (2) `buildRichEnvelope` forwards `s.table` onto the built `BieSection` when present (no change when absent — no fabricated empty table). (3) `archetypeTrackRecordSection` now also returns a `table` (`headers: ["Scope", "Record", "N", "Win rate", "Wilson LB", "Edge"]`) with one row per graduated dimension (archetype and/or sub-lane, matching exactly which prose blocks render — a dimension that hasn't graduated contributes neither a prose block nor a table row, same C6 omission discipline). (4) `tickerTrackRecordSection` now also returns a one-row `table` (`["Ticker", "Record", "N", "Win rate"]`). The prose `body` in both is completely unchanged — this is additive, not a replacement, per the product contract's own "wrap, don't flatten" rule. |
+| **Blast radius** | `buildRichEnvelope` is the shared constructor for every deterministic rich composer in the repo, so the `table`-forwarding wire benefits any future composer that wants to attach one, not just swing. The two swing sections are the only current callers that populate `table` — no other section in `play-brief-intel.ts`/`play-brief.ts` was touched, and no existing consumer of these two sections' `body` text is affected (markdown rendering of the table is additive content appended after the prose, same as `renderEvidence`/`renderLevels` are additive after a section's own body). |
+| **Fix rationale — why not the PR's proposed bespoke `historicalContext` field** | `BieEvidence` (`{kind, text, provenance}`) and every existing `evidence[]` item in this envelope use a text+provenance shape with no precedent for numeric sub-fields anywhere in the contract — a one-off field just for this data would be inconsistent with how every other fact in the envelope works. `BieSection.table` is the contract's OWN established answer to "I need genuinely structured, joinable data," already used elsewhere (`dynamic-format.ts`) and already rendered by the markdown pipeline — reusing it is strictly more consistent and required less new surface area than inventing a parallel field. |
+| **Regression guard** | New `src/lib/bie/rich-narrative.test.ts` (4 tests: table forwarded onto the built section; no table ⇒ no fabricated empty table; table renders into derived markdown; a blank-body section with a table is still dropped — `body` stays the sole drop gate). `src/lib/swing/play-brief-intel.test.ts` gains 3 tests (archetype table matches the prose numbers exactly; table carries one row per graduated dimension, matching which prose blocks render; point-Δ cell reads `"—"` on the same honest-omission path as the prose) plus 1 for `tickerTrackRecordSection`'s table. All 8 new assertions RED→GREEN proven via `git stash` isolating the production fix from the tests (2 rich-narrative + 4 play-brief-intel tests failed pre-fix, same count passed post-fix). |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2) · `rich-narrative.test.ts` 4/4, `play-brief-intel.test.ts` 240/240, `play-brief.test.ts`+`play-brief-context.test.ts`+`dynamic-format.test.ts`+`answer-envelope.test.ts` 155/155 · `eslint` clean on all 4 changed/added files · full `npm test` run alongside this write-up. |
+| **Status** | FIXED — see PR. |
+
 ## 2026-10-15 — [Ask Largo / Swing] `counterThesisLine`'s HELIX put/call-led gate used a 1.2x threshold while every sibling check in the same file (and its two neighbor files) uses 1.3x, producing a self-contradicting brief — FIXED
 
 > **kind:** `FINDING`
@@ -87,40 +137,6 @@ unaffected (reason still fires, confirmed by the added test's second assertion).
   post-fix).
 - `npx tsc --noEmit -p .` — clean.
 - Full `npm test` — run alongside this fix; see PR CI for the authoritative result.
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## Ask Largo swing play-brief: Peak can display BELOW the current P&L for a BANGER-origin position — the existing cent-rounding guard's fallback is a no-op when the CANONICAL pnlPct itself is the value out of bounds — FIXED
 
