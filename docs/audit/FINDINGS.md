@@ -38,6 +38,22 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-15 — [FINDING, P3, billing email] `scheduledCancelEmail`'s hardcoded engine list omitted Meridian, the 7th live product — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P3 — cosmetic/trust defect, not a billing or access bug (the real entitlement is untouched; only the email's own copy was wrong). |
+| **Trigger** | DISCOVERY-lane sweep of billing-lifecycle email templates, prompted by `welcome-premium-downgrade-product-count.test.ts`'s own regression comment describing a 2026-10-11 live bug where Meridian shipped as the 7th live product (commit `5103e7f8d`) and `welcome-premium.ts`/`downgrade.ts` needed their subject/opener/paragraph counts bumped from six→seven and five→six. That fix covered those two templates but not every sibling template with a hardcoded engine list. |
+| **Root cause** | `scheduled-cancel.ts`'s body paragraph ("Every engine you're paying for stays live — …") hardcodes the engine names rather than deriving them from `src/lib/marketing/product-manifest.ts`'s `MANIFEST_PRODUCT_ORDER`/`manifestPremiumIncludes()`. It listed "SPX Slayer, Thermal, HELIX, Night Hawk, Largo AI, Vector" — six names — and was never updated when Meridian shipped as the 7th live product, so it had no test guarding the count the way `welcome-premium-downgrade-product-count.test.ts` already does for `welcome-premium.ts`/`downgrade.ts`. |
+| **Evidence** | Confirmed `welcome-premium.ts`'s own preheader uses the identical ordering ("Thermal, HELIX, Night Hawk, Largo AI, Vector, Meridian — six more engines") as the canonical list, which `scheduled-cancel.ts` matched exactly except for the trailing `, Meridian`. Checked sibling templates for the same gap: `cancel-reversed.ts` and `trial-ending-soon.ts` both use generic phrasing ("every engine on your plan") with no hardcoded list, so they were not affected. |
+| **Fix** | `scheduled-cancel.ts`: added `, Meridian` to the engine list so a member who schedules a cancellation and is told "every engine you're paying for stays live" actually sees all seven engines named, matching the canonical ordering used by `welcome-premium.ts`. |
+| **Evidence (tests)** | New `scheduled-cancel-engine-list.test.ts`: asserts all seven engine names (including Meridian) appear in the rendered HTML. RED→GREEN proven via `git stash` (pre-fix: 1 failed; post-fix: 1 passed). Full email-templates suite: 12/12 pass. `npx tsc --noEmit -p .` clean. |
+| **Blast radius** | One file changed (`scheduled-cancel.ts`), one new test file. No other templates affected (confirmed above). No behavior/entitlement change — copy-only fix. |
+| **Fix rationale** | Matched the exact wording/ordering the canonical fix (`welcome-premium.ts`) already uses, rather than inventing new phrasing, so the engine list reads consistently across every billing-lifecycle email a member might receive. Did not refactor the hardcoded list into a manifest-derived one in this pass — the labels in `product-manifest.ts` (`"BlackOut Thermal"`, `"Largo"`) don't match this template's established copy voice (`"Thermal"`, `"Largo AI"`) verbatim, so a mechanical derivation would itself change customer-facing wording; scoped this fix to the one-line omission instead. |
+| **Status** | FIXED |
+
 ## 2026-10-15 — [FINDING, P3, Ask Largo Night Hawk Swings] `dealerPostureLine()` discarded `flip_nearest`/`distance_to_nearest_flip_pct` whenever gamma posture was unresolved — live repro GOOG — FIXED
 
 > **kind:** `FINDING`
