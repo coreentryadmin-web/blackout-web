@@ -599,6 +599,17 @@ export function archetypeTrackRecordSection(
     blocks.push(lines.join("\n"));
     rows.push(trackRecordTableRow(`${label} sub-lane`, subLaneEntry));
   }
+  // BUG FIX (Ask Largo standing mandate, 2026-10-15): `snapshot.gradedPlays` — the whole-lane
+  // graded-play count at write time, documented on the type itself as existing specifically to
+  // give "context for how broad the evidence base is overall, independent of any one bucket's own
+  // n" — was computed and threaded all the way to this function, which received the full
+  // `snapshot` object, but only ever forwarded it into `graduatedArchetypeEntry`/
+  // `graduatedSubLaneEntry` and never read it directly. A member reading "across 12 graded plays"
+  // on a thin archetype bucket had no way to tell that was 12 of a lane with (say) 70 total graded
+  // plays vs 12 of a lane with only 15 — the exact context this field exists to supply.
+  if (snapshot) {
+    blocks.push(`*Across ${snapshot.gradedPlays} lane-wide graded plays as of this read.*`);
+  }
   return {
     title: "Track record",
     body: blocks.join("\n\n"),

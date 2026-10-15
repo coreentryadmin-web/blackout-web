@@ -405,6 +405,17 @@ test("archetypeTrackRecordSection: omits the point-Δ line when pointDeltaPts is
   assert.doesNotMatch(body, /pts.*edge/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-15): `snapshot.gradedPlays` (the whole-lane
+// graded-play count, documented on the type as existing to give context for how broad the
+// evidence base is overall, independent of any one bucket's own n) was computed and threaded all
+// the way here but never read directly — a member reading "60 graded plays" on a bucket had no
+// way to tell whether that was most of the lane's evidence or a small slice of it.
+test("archetypeTrackRecordSection: states the lane-wide graded-play count for context (Largo historical-context breadth)", () => {
+  const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ n: 60 }) });
+  const body = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap)?.body ?? "";
+  assert.match(body, /across 70 lane-wide graded plays/i);
+});
+
 // ── sub-lane citation (graduatedSubLaneEntry — previously wired write-side/tested but never read
 // from a brief section; see this file's header comment on why it now ships as an additive line
 // alongside the archetype citation rather than replacing it) ──────────────────────────────────────
