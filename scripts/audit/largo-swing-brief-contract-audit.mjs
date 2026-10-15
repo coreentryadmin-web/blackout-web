@@ -97,18 +97,27 @@ function auditC2Freshness(responseData) {
  *
  * CRITICAL: Absence must be explicitly structured
  */
-function auditC3Absence(envelope) {
+function auditC3Absence(responseData) {
   const findings = [];
+  const envelope = responseData?.envelope;
   const unavail = envelope?.unavailableSources;
 
-  // unavailableSources is a list of {code, reason, what_is_missing} objects
+  // unavailableSources is a list of {source, reason, what_is_missing?, retryable?} objects
+  // BieUnavailableSource requires source + reason (per answer-envelope.ts:107-112)
   if (unavail && Array.isArray(unavail)) {
     unavail.forEach((item, i) => {
-      if (!item.code || !item.reason || item.what_is_missing === undefined) {
+      if (!item.source || typeof item.source !== "string") {
         findings.push({
-          code: "C3-incomplete-absence-structure",
+          code: "C3-incomplete-absence-source",
           severity: "RED",
-          detail: `unavailableSources[${i}] missing required fields. Has: ${Object.keys(item).join(", ")}`,
+          detail: `unavailableSources[${i}] missing or invalid source field`,
+        });
+      }
+      if (!item.reason || typeof item.reason !== "string") {
+        findings.push({
+          code: "C3-incomplete-absence-reason",
+          severity: "RED",
+          detail: `unavailableSources[${i}] missing or invalid reason field`,
         });
       }
     });
@@ -195,25 +204,28 @@ function auditC6Confidence(responseData) {
   if (!conf) {
     findings.push({ code: "C6-missing-confidence", severity: "AMBER", detail: "envelope.confidence not present (may not be calibrated yet)" });
   } else {
-    if (typeof conf.score !== "number" || conf.score < 0 || conf.score > 1) {
-      findings.push({ code: "C6-invalid-confidence-score", severity: "RED", detail: `confidence.score invalid: ${conf.score}` });
+    // BieConfidence has level + why (not score + basis)
+    // Level must be one of: "high" | "moderate" | "low" | "insufficient"
+    if (!conf.level || typeof conf.level !== "string") {
+      findings.push({ code: "C6-invalid-confidence-level", severity: "RED", detail: `confidence.level invalid: ${conf.level}` });
+    } else if (!["high", "moderate", "low", "insufficient"].includes(conf.level)) {
+      findings.push({ code: "C6-invalid-confidence-level-value", severity: "RED", detail: `confidence.level not in enum: ${conf.level}` });
     }
-    if (!conf.basis || typeof conf.basis !== "string") {
-      findings.push({ code: "C6-missing-confidence-basis", severity: "RED", detail: "confidence.basis missing or not string" });
+    if (!conf.why || typeof conf.why !== "string") {
+      findings.push({ code: "C6-missing-confidence-why", severity: "RED", detail: "confidence.why missing or not string" });
     }
-    // sample_size may be null — that's OK
   }
 
   // Check narrative doesn't claim high confidence while structured is low (or vice versa)
   const narrativeText = (envelope?.sections || []).map(s => s.body || "").join(" ");
   const narrativeHighConf = /\b(confident|certain|clear|strong|definitely)\b/i.test(narrativeText);
-  const structuredHighConf = conf && conf.score >= 0.7;
+  const structuredLowConf = conf && (conf.level === "low" || conf.level === "insufficient");
 
-  if (narrativeHighConf !== structuredHighConf && conf) {
+  if (narrativeHighConf && structuredLowConf) {
     findings.push({
       code: "C6-narrative-structured-mismatch",
-      severity: "AMBER",
-      detail: `Narrative confidence=${narrativeHighConf}, structured score=${conf.score}. Should align.`,
+      severity: "RED",
+      detail: `Narrative claims high confidence, structured has level=${conf.level}. Must agree.`,
     });
   }
 
@@ -222,7 +234,8 @@ function auditC6Confidence(responseData) {
 
 /**
  * CONTRACT AUDIT: C7 EVIDENCE
- * evidence: string[] — specific numbers, not restatements
+ * evidence: BieEvidence[] — { kind: "fact"|"calc"|"inference"|"scenario"; text: string; provenance?: {...} }
+ * Specific numbers/facts, not restatements
  */
 function auditC7Evidence(responseData) {
   const findings = [];
@@ -235,14 +248,35 @@ function auditC7Evidence(responseData) {
   }
 
   if (evidence.length === 0) {
-    findings.push({ code: "C7-empty-evidence", severity: "AMBER", detail: "envelope.evidence is empty — no specific numbers" });
+    findings.push({ code: "C7-empty-evidence", severity: "AMBER", detail: "envelope.evidence is empty — no specific items" });
   }
 
   evidence.forEach((item, i) => {
-    if (typeof item !== "string") {
-      findings.push({ code: "C7-non-string-evidence", severity: "RED", detail: `evidence[${i}] is not a string` });
-    } else if (!/\d/.test(item)) {
-      findings.push({ code: "C7-evidence-no-numbers", severity: "AMBER", detail: `evidence[${i}] contains no numbers: "${item.slice(0, 50)}"` });
+    // BieEvidence should be {kind, text, provenance?}
+    if (typeof item !== "object" || !item) {
+      findings.push({ code: "C7-invalid-evidence-type", severity: "RED", detail: `evidence[${i}] is not an object` });
+      return;
+    }
+
+    // Check kind field (required, must be one of the enum values)
+    if (!item.kind || typeof item.kind !== "string") {
+      findings.push({ code: "C7-invalid-evidence-kind", severity: "RED", detail: `evidence[${i}].kind invalid: ${item.kind}` });
+    } else if (!["fact", "calc", "inference", "scenario"].includes(item.kind)) {
+      findings.push({ code: "C7-invalid-evidence-kind-value", severity: "RED", detail: `evidence[${i}].kind not in enum: ${item.kind}` });
+    }
+
+    // Check text field (required, must be string)
+    if (!item.text || typeof item.text !== "string") {
+      findings.push({ code: "C7-invalid-evidence-text", severity: "RED", detail: `evidence[${i}].text invalid: ${typeof item.text}` });
+    } else if (!/\d/.test(item.text)) {
+      findings.push({ code: "C7-evidence-no-numbers", severity: "AMBER", detail: `evidence[${i}].text contains no numbers: "${item.text.slice(0, 50)}"` });
+    }
+
+    // Check provenance is optional but if present, must be {source, asOf?, freshness?}
+    if (item.provenance && typeof item.provenance === "object") {
+      if (!item.provenance.source || typeof item.provenance.source !== "string") {
+        findings.push({ code: "C7-invalid-evidence-provenance-source", severity: "RED", detail: `evidence[${i}].provenance.source invalid` });
+      }
     }
   });
 
@@ -365,26 +399,28 @@ async function auditPlayBriefs() {
         continue;
       }
 
-      const envelope = await res.json();
-      if (!envelope) continue;
+      const responseData = await res.json();
+      if (!responseData) continue;
 
       results.total_plays += 1;
       const findings = [];
 
       // Run all contract audits
-      findings.push(...auditC1Time(envelope));
-      findings.push(...auditC2Freshness(envelope));
-      findings.push(...auditC3Absence(envelope));
-      findings.push(...auditC4Identity(envelope));
-      findings.push(...auditC5Direction(envelope));
-      findings.push(...auditC6Confidence(envelope));
-      findings.push(...auditC7Evidence(envelope));
-      findings.push(...auditC8Provenance(envelope));
-      findings.push(...auditC9Precision(envelope));
-      findings.push(...auditC10HistoricalContext(envelope));
+      // Note: functions receive full responseData and extract envelope internally via responseData?.envelope
+      findings.push(...auditC1Time(responseData));
+      findings.push(...auditC2Freshness(responseData));
+      findings.push(...auditC3Absence(responseData));
+      findings.push(...auditC4Identity(responseData));
+      findings.push(...auditC5Direction(responseData));
+      findings.push(...auditC6Confidence(responseData));
+      findings.push(...auditC7Evidence(responseData));
+      findings.push(...auditC8Provenance(responseData));
+      findings.push(...auditC9Precision(responseData));
+      findings.push(...auditC10HistoricalContext(responseData));
 
       if (findings.length > 0) {
-        results.plays_with_findings.push({ ticker, playId: envelope.playId, findings });
+        const playId = responseData?.playId || responseData?.envelope?.playId;
+        results.plays_with_findings.push({ ticker, playId, findings });
         findings.forEach(f => {
           results.findings_by_code[f.code] = (results.findings_by_code[f.code] || 0) + 1;
         });
