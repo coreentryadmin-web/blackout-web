@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-15T13:22:47Z",
+  "lastUpdated": "2026-10-15T13:37:00Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -763,6 +763,10 @@
     {
       "at": "2026-10-15T13:22:47Z",
       "summary": "D_pull_status transitioned SKIPPED->GREEN as expected: morning-confirm cron (9:15am ET) fired on schedule for the 2026-10-15 edition. All 4 plays (UNH/WMT/GTLB/ETSY) resolved -- 3 CONFIRMED + 1 DEGRADED (WMT), all agree with pulled=false (no pre-market invalidation triggered a pull). B_marks stays AMBER (still no live two-sided quote on any of the 4 OCC symbols, bid=0/ask=0, mark sourced from last trade/close) -- premarket quoting for these names has not populated yet this morning; watch for B_marks to clear once RTH quoting starts at 9:30am ET. No bug, no action -- clean on-schedule transition matching every prior documented morning-confirm self-heal pattern this session."
+    },
+    {
+      "at": "2026-10-15T13:37:00Z",
+      "summary": "RTH open (9:30am ET) B_marks partial transition: UNH flipped AMBER->GREEN (mark=9.3, within expected [8.6,10] range) -- first of the 4 open plays to get a live quote. WMT/GTLB/ETSY still AMBER (mark flagged stale by the API), expected to clear individually as each name trades. D_pull_status stays GREEN (unchanged from the 9:15am morning-confirm transition). No bug -- normal per-ticker liquidity staggering at the open, watching for the remaining 3 to clear over the next few cycles."
     }
   ],
   "knownOpenItems": {
