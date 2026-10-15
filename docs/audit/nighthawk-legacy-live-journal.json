@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-14T23:22:00Z",
+  "lastUpdated": "2026-10-15T13:22:47Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -759,6 +759,10 @@
     {
       "at": "2026-10-14T23:22:00Z",
       "summary": "Absorbed PR #6016 via git sync (merged by a concurrent session) -- genuine Legacy correctness fix: risk_note falsely claimed 'OTM' on an ITM-picked banger contract, repro'd on ETSY (tonight's own play). Already fixed/merged, no action needed. Healthcheck this cycle: repeat-clean (A GREEN, B AMBER overnight stale marks, C GREEN resolved=33, D SKIPPED morning-confirm-not-yet-run -- all expected pre-market-open)."
+    },
+    {
+      "at": "2026-10-15T13:22:47Z",
+      "summary": "D_pull_status transitioned SKIPPED->GREEN as expected: morning-confirm cron (9:15am ET) fired on schedule for the 2026-10-15 edition. All 4 plays (UNH/WMT/GTLB/ETSY) resolved -- 3 CONFIRMED + 1 DEGRADED (WMT), all agree with pulled=false (no pre-market invalidation triggered a pull). B_marks stays AMBER (still no live two-sided quote on any of the 4 OCC symbols, bid=0/ask=0, mark sourced from last trade/close) -- premarket quoting for these names has not populated yet this morning; watch for B_marks to clear once RTH quoting starts at 9:30am ET. No bug, no action -- clean on-schedule transition matching every prior documented morning-confirm self-heal pattern this session."
     }
   ],
   "knownOpenItems": {
