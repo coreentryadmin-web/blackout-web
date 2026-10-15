@@ -1578,6 +1578,56 @@ test("catalystCoaching: same-day UNKNOWN timing never claims already-printed", (
   assert.doesNotMatch(line!, /already printed/i);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-10-15, live repro CLS WATCH): `ownContractExpiry`
+// resolved THIS brief's own contract expiry by matching `ctx.laneRows` on ticker + `play.entry`
+// (the position's entry PREMIUM) — but a pre-entry WATCH candidate has no entry premium at all
+// (TerminalPlay.entry is pnl-anchor-only, populated starting at commit), so this match structurally
+// could never succeed for any WATCH row. That made the `noGapExposure` safety check above
+// unreachable for every WATCH candidate, even when the row's own prospective contract (known and
+// already rendered elsewhere in the SAME brief, e.g. the Verdict header's "350C 9DTE") would show
+// zero exposure. Live repro: CLS WATCH (2026-10-14/15) — prospective contract 350C expiring
+// 2026-10-23, earnings 2026-10-26 (afterhours), i.e. 3 days AFTER this contract already expires —
+// genuinely zero gap exposure, yet the live brief said "size down or exit before report" because
+// `ownContractExpiry` returned null and the safety check never evaluated. Fixed by resolving the
+// expiry from `play.occ` (parsed via the shared `parseOccSymbol`) FIRST — every TerminalPlay row,
+// WATCH or committed, carries an occ built straight off its own `contract.expiry/right/strike`
+// (adapters.ts) — falling back to the old laneRows/entryPremium match only when occ is absent.
+test("catalystCoaching: WATCH candidate (no entry premium yet) resolves expiry via occ — no gap-exposure instruction, not the generic warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      // No `entry` at all — exactly the real WATCH shape (TerminalPlay.entry is unset pre-commit).
+      play: play({ ticker: "CLS", status: "WATCH", occ: "O:CLS261023C00350000" }),
+      laneRows: [], // no committed row to match against either — the real WATCH-only situation.
+      ecosystem: {
+        ticker: "CLS",
+        arsenal: {
+          earnings: { days_until: 12, earnings_date: "2026-10-26", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /expires 2026-10-23/);
+  assert.match(line!, /no earnings-gap exposure/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: WATCH candidate with occ expiry still AFTER the print — original warning fires correctly", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ ticker: "CLS", status: "WATCH", occ: "O:CLS261030C00350000" }), // expiry 2026-10-30, after the print
+      laneRows: [],
+      ecosystem: {
+        ticker: "CLS",
+        arsenal: {
+          earnings: { days_until: 12, earnings_date: "2026-10-26", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /no earnings-gap exposure/i);
+});
+
 test("closedCoaching: MFE capture lesson", () => {
   const line = closedCoaching(
     play({
