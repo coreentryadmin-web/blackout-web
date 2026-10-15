@@ -4660,6 +4660,89 @@ test("composeSwingPlayBrief: Position section's P&L never overstates Peak — se
   assert.doesNotMatch(position!.body, /P&L: \*\*\+153\.3%\*\*/, `got: ${position!.body}`);
 });
 
+// Live repro 2026-10-15 (Ask Largo standing mandate, SWING:ENOV:1739, BANGER-origin TRIM/PARTIAL).
+// Unlike the CNXC/EXTR cases above — where the CANONICAL `play.pnlPct` was always safely inside
+// [trough, peak] and only the CENT-ROUNDING RECOMPUTE escaped it — this is the case the existing
+// guard's fallback (`pnlForDisplay = play.pnlPct`) cannot fix: entry $0.05, mark $0.33 is a clean
+// value with no cent-rounding ambiguity (`markRoundTripsPnl` is TRUE and the recompute reproduces
+// `play.pnlPct` exactly), so the guard fires and "falls back" to the SAME +560.0% it already had —
+// a no-op — while `play.peak` (adapters.ts's `peakDisplay`, off the ledger's own `peak_premium`
+// watermark) independently reads +550.0%, ten points below. Confirmed live via
+// `GET /api/market/swing/play-brief?playId=SWING:ENOV:1739&ticker=ENOV&positionId=1739&status=OPEN`
+// (stable across repeated reads — not a mid-tick race) and cross-checked against the raw ledger row
+// (`GET /api/market/banger/board`: entry_premium 0.05, last_mark 0.33, peak_premium 0.33 — the two
+// premiums agree once rounded to the cent the board API displays at, but the P&L arithmetic here
+// runs on full, un-rounded precision, where a half-cent of difference on a nickel-sized entry
+// premium swings the displayed percentage by a full 10 points). This file's own `markRoundTripsPnl`
+// comment states the contract: "the current mark IS one of the samples peak/trough were latched
+// from, so ... pnlPct always lies inside [trough, peak] by construction" — this test is that
+// contract violated for the canonical value itself, not just the recompute.
+test("composeSwingPlayBrief: Position section's Peak/Trough always bracket the displayed P&L, even when the canonical pnlPct itself (not just the cent-rounding recompute) outruns the ledger's own peak watermark (live ENOV repro 2026-10-15, Ask Largo standing mandate)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "ENOV",
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 0.05,
+      mark: 0.33,
+      pnlPct: 560.0,
+      peak: 550.0,
+      trough: 0.0,
+      markIsSync: false,
+      markAsOf: "2026-10-14T20:00:00.000Z",
+      manageAction: "TAKE_PARTIAL",
+    }),
+    asOf: "2026-10-15T03:46:00.000Z",
+    sessionDate: "2026-10-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /P&L: \*\*\+560\.0%\*\*/, `got: ${position!.body}`);
+  // Peak must never read BELOW the P&L it's supposed to bound — the ledger's own stale +550.0%
+  // watermark is widened to the live reading instead of being shown as a false ceiling.
+  assert.match(position!.body, /Peak: \*\*\+560\.0%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Peak: \*\*\+550\.0%\*\*/, `got: ${position!.body}`);
+});
+
+// Symmetric case: a stale TROUGH (worst-excursion watermark) sitting ABOVE the current, more
+// negative P&L — the mirror image of the ENOV repro above, same root cause, opposite direction.
+test("composeSwingPlayBrief: Position section's Trough widens to bracket a P&L that reads BELOW the ledger's stale trough watermark", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "ZZZZ",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.1,
+      mark: 0.02,
+      pnlPct: -80.0,
+      peak: 20.0,
+      trough: -70.0,
+      markIsSync: false,
+      markAsOf: "2026-10-15T15:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-15T15:05:00.000Z",
+    sessionDate: "2026-10-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /P&L: \*\*-80\.0%\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*-80\.0%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Trough: \*\*-70\.0%\*\*/, `got: ${position!.body}`);
+});
+
 test("composeSwingPlayBrief: Thesis health section carries no bias for a healthy SHORT (Largo C5 — a non-directional quality score must never badge bullish on a bearish trade)", () => {
   // Live defect (2026-09-15, Ask Largo standing mandate): thesisHealthSection mapped h.health
   // (a direction-agnostic "is the setup intact" score) straight to bullish/bearish. A SHORT play

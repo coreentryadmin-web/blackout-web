@@ -1,3 +1,35 @@
+## WATCH LIST — 2026-10-15 Ask Largo swing play-brief Peak/Trough bracket guard (ENOV, BANGER-origin) fixed — deploy pending validation
+
+**What was fixed:** a live committed ENOV swing position (BANGER-origin, positionId 1739,
+status PARTIAL/TRIM) showed `P&L: +560.0%` immediately above `Peak: +550.0%` in its Ask Largo
+play-brief's "Position" card — the current reading reading HIGHER than the position's own
+recorded all-time high, a logical impossibility by this file's own stated contract ("the current
+mark IS one of the samples peak/trough were latched from... pnlPct always lies inside
+[trough, peak]"). Root cause: the existing 2026-10-09 cent-rounding guard in `pnlSection`
+(`src/lib/swing/play-brief.ts`) only protects against a RECOMPUTE introducing a new violation on
+top of an in-bounds canonical `play.pnlPct` — its fallback is `pnlForDisplay = play.pnlPct`, which
+is a no-op whenever the CANONICAL value is already the one out of bounds (as it was here: mark
+$0.33 is a clean, non-cent-ambiguous value, so the recompute path never even engaged). Fix: widen
+the DISPLAYED Peak/Trough to bracket the final displayed P&L whenever the canonical value escapes
+the ledger's own watermark, rather than leaving a stale Peak/Trough sitting on screen as a false
+ceiling/floor. Full write-up: `docs/audit/findings-staging/2026-10-15-swing-play-brief-peak-
+trough-bracket-guard.md`.
+
+**Specific thing to check once this deploys:** pull a fresh Ask Largo play-brief for any live
+BANGER-origin or native SWING TRIM/COMMIT position (`GET /api/market/swing/play-brief?
+playId=SWING:<ticker>:<positionId>&ticker=<ticker>&positionId=<positionId>&status=OPEN`) and
+confirm the Position card's `Peak:` line is never numerically below its own `P&L:` line, and
+`Trough:` is never numerically above it — i.e. the current reading always sits inside
+`[Trough, Peak]` as displayed, even for a position whose ledger-side `peak_premium`/
+`trough_premium` watermark might still be lagging the live mark for whatever upstream reason. If
+ENOV (positionId 1739) is still open, specifically re-check it: Peak should now read `+560.0%`
+(matching P&L), not the stale `+550.0%` this fix was built against. Also worth a quick sweep of a
+few other BANGER-origin TRIM/PARTIAL positions with very small entry premiums (sub-$0.10, where
+a half-cent of raw imprecision swings the displayed percentage by double digits) for the same
+previously-silent class of violation, now caught and corrected by the same guard.
+
+---
+
 ## WATCH LIST — 2026-10-15 Swing `thesisLevel` stale "break" vs authoritative HOLD snapshot fixed — deploy pending validation
 
 **What was fixed:** a live committed INTC swing position (`positionId:56`) showed `thesisLevel:
