@@ -4,6 +4,16 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-15 (14:06 UTC / Thu 10:06 ET) — [SEO] Daily growth cycle: one new thin striking-distance entry, no action
+
+New striking-distance entry: "gex" (pos 15.7, **6imp 1cl**) — falls in the same thin-sample
+band (3-7imp) as prior noted-but-not-acted-on entries, consistent with the standing "don't
+churn on thin signals" rule; also a bare generic term already well-covered by the existing
+glossary/dealer-gamma pillar content. Noting it, not acting. Same CTR-gap/deep-demand register
+otherwise. CLS/robots.txt already verified this morning's RTH wake (within rule 6's 3-day
+window) — skipped redundant re-check. 28-day avgpos 11.3 (17cl/1424imp), within the established
+noisy band — no material movement. No PR opened.
+
 ## 2026-10-15 (13:35 UTC / Thu 09:35 ET) — [SEO] RTH wake: gamma-snapshot live, calculation_id non-monotonic blip self-resolved
 
 Confirmed market open myself (09:35 ET, 2026-10-15 not in `US_MARKET_HOLIDAYS`).
