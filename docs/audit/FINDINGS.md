@@ -38,6 +38,21 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-15 — [FINDING, P2, admin UI] AdminXIntelQueuePanel showed unrelated FIXTURE rows labeled "No queue rows yet" whenever a status filter had zero matches — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P2 — admin-only UI defect, no member/data impact, but it directly contradicts the panel's own documented design rule ("a reviewer must be able to act WITHOUT asking the pipeline a question") and could mislead a reviewer into thinking the X intel pipeline produced nothing this cycle when it actually did. |
+| **Trigger** | DISCOVERY-lane sweep of admin dashboard components, reading `AdminXIntelQueuePanel.tsx`'s own file-header design-philosophy comment ("Absence is a finding... a blank invites the reader to supply their own number") and checking whether the component's own empty-state logic lives up to it. |
+| **Root cause** | `showFixtures = rows != null && rows.length === 0` did not account for the `status` filter dropdown (ALL/READY/REVIEW/SKIP). The `/api/admin/x-intel/queue` route filters server-side by the selected status (confirmed via `parseStatus`/`listQueueRows`), so filtering to e.g. "SKIP" when the queue has zero SKIP rows this cycle — but real READY/REVIEW rows exist — returned `rows=[]`. The component then showed `X_INTEL_QUEUE_FIXTURES` (a hand-written mix of READY/READY/SKIP/REVIEW rows, not live data) under the banner "No queue rows yet — showing hand-written FIXTURES... These are not live packages", which is false (the queue is not empty) and misleading twice over (fixture rows of OTHER statuses render under a filter the admin explicitly chose to narrow). |
+| **Fix** | Extracted the gate into a pure, exported, testable helper `shouldShowXIntelFixtures(status, rows)` in new file `src/lib/x-intel/queue-fixtures-gate.ts` — now `true` only when `status === "ALL"` and `rows.length === 0` (genuinely no data has ever been generated). Added a `filteredEmpty` branch in the component for the other case (a specific filter with zero matches): renders an honest `EmptyDeck` — `"No {status} rows this cycle"` / `"The queue has rows — none currently match this status filter. Not an empty queue."` — instead of fixtures. |
+| **Evidence (tests)** | New `src/lib/x-intel/queue-fixtures-gate.test.ts`: 4 cases (genuinely empty + ALL → true; non-ALL filter with zero matches → false even though real rows could exist elsewhere; real rows present → false regardless of filter; rows still loading (`null`) → false). RED→GREEN proven by temporarily reverting the helper to the old `rows.length === 0` formula (ignoring `status`) — 3 pass / 1 fail — then restoring the fix — 4/4 pass. Full `src/lib/x-intel/*.test.ts` suite: 225/225 pass. `npx tsc --noEmit -p .` clean. |
+| **Blast radius** | New file `queue-fixtures-gate.ts` + its test. Modified `AdminXIntelQueuePanel.tsx`: removed the inline boolean, imported the new helper, added one new conditional render branch (`filteredEmpty`). No other component reads this gate; no change to the API route, the fixtures themselves, or any other admin panel. |
+| **Fix rationale** | Followed this repo's established convention for "use client" component logic (seen in `AdminLaunchStatusPanel.test.ts`'s own comment: source-text assertion / extracted pure helpers, no React Testing Library) by moving the decision into a plain, importable, unit-testable `.ts` file rather than exporting it from the `.tsx` component or writing a render test. Chose a dedicated `EmptyDeck` message for the filtered-empty case over silently falling back to an empty list, consistent with the component's own stated principle that every absence state needs its own honest label rather than reusing a different one. |
+| **Status** | FIXED |
+
 ## 2026-10-15 — [FINDING, P3, billing email] `scheduledCancelEmail`'s hardcoded engine list omitted Meridian, the 7th live product — FIXED
 
 > **kind:** `FINDING`
