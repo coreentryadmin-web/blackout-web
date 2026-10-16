@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { ApiDashboardPayload } from "@/lib/admin-api-dashboard";
-import type { RegistryEndpointRow } from "@/lib/admin-endpoint-registry";
+import type { RegistryEndpointRow, RegistryProbeStatus } from "@/lib/admin-endpoint-registry";
 import {
   ActionButton,
   HealthMeter,
@@ -19,7 +19,7 @@ import { AdminApiCallTimeline } from "@/components/admin/AdminApiCallTimeline";
 
 type ViewTab = "overview" | "registry" | "internal";
 type UsageFilter = "all" | "used" | "unused" | "candidates" | "risks";
-type ProbeFilter = "all" | "ok" | "fail" | "blocked" | "unknown";
+type ProbeFilter = "all" | RegistryProbeStatus;
 type SortField = "runtime" | "probe" | "ms" | "name";
 type SortDir = "asc" | "desc";
 
@@ -492,7 +492,7 @@ export function AdminApiDashboard() {
                   ))}
                 </div>
                 <div className="admin-provider-tabs admin-ep-filter-tabs">
-                  {(["all", "ok", "fail", "blocked", "unknown"] as const).map((f) => (
+                  {(["all", "ok", "fail", "blocked", "rate_limited", "unknown"] as const).map((f) => (
                     <button key={f} type="button" className={probeFilter === f ? "admin-vivid-tab-active" : "admin-vivid-tab"} onClick={() => setProbeFilter(f)}>{f}</button>
                   ))}
                 </div>
