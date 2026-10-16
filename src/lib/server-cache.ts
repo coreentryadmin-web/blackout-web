@@ -100,11 +100,16 @@ type CacheOpts = {
    */
   shouldCache?: (value: unknown) => boolean;
   /**
-   * Test-only override for the staleness ceiling every `return hit.value` site in this function
-   * enforces (default MAX_STALE_AGE_MS, 10 minutes). Mirrors `peekServerCache`'s own `maxStaleMs`
-   * option — lets a unit test exercise the ceiling with a real (tiny) elapsed time instead of a
-   * real 10-minute wait. No production caller should ever need to pass this; the shared default
-   * is what keeps every site in this function agreeing on "how old is too old."
+   * Override for the staleness ceiling every `return hit.value` site in this function enforces
+   * (default MAX_STALE_AGE_MS, 10 minutes). Mirrors `peekServerCache`'s own `maxStaleMs` option —
+   * originally added test-only, to exercise the ceiling with a real (tiny) elapsed time instead
+   * of a real 10-minute wait. It also has a real production use: a caller that ALSO reads this
+   * same cache key via `peekServerCache`/`peekXState`-style code with its OWN tighter freshness
+   * bound must pass the identical bound here too, or the two call sites disagree on "how old is
+   * too old" for one entry and the looser one wins on fallthrough — found live 2026-10-16
+   * (`getSpxPlayState`/`peekSpxPlayState` disagreeing on the `spx-play-read:<date>` key, 20s vs
+   * the 10-minute default, serving snapshots up to ~238s stale). When in doubt, leave this unset
+   * — the shared default is still correct for a key only one call site ever reads.
    */
   maxStaleAgeMs?: number;
 };

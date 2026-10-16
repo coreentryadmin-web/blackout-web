@@ -260,6 +260,17 @@ export async function getSpxPlayState() {
     staleOnInflight: true,
     maxBlockMs: playMemberReadMaxBlockMs(),
     fallback: spxPlayReadFallback,
+    // BUG (found live 2026-10-16, Ask Largo standing mandate): without this, withServerCache's
+    // own `!swr` fast lane (server-cache.ts) measures staleness against the generic
+    // MAX_STALE_AGE_MS (10 minutes) for this exact cache key — a much looser bound than
+    // peekSpxPlayState() enforces one call earlier in the same request via
+    // playMemberPeekMaxAgeSec() (20s). So a snapshot peekSpxPlayState() had just correctly
+    // rejected as too stale was served anyway by this fallback, unchanged, because the two
+    // call sites touching the SAME `spx-play-read:<date>` entry disagreed on "how old is too
+    // old." Live-reproduced: `as_of` jumping backward up to ~238s across consecutive polls of
+    // GET /api/market/spx/play. Passing the same bound here closes the gap at the source
+    // rather than relying on the generic 10-minute default to coincidentally agree.
+    maxStaleAgeMs: playMemberPeekMaxAgeSec() * 1000,
     // BUG (found live 2026-10-08, ~50% degraded rate measured via repeated polling):
     // evaluateSpxPlayStateCrossReplica() INTENTIONALLY RESOLVES (never throws) to
     // degradedPlayPayload() when this replica loses the cross-replica Redis lock and
