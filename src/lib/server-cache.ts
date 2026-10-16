@@ -136,11 +136,54 @@ async function readRedisCache<T>(key: string): Promise<{ value: T; remainingTtlS
   }
 }
 
-async function writeRedisCache<T>(key: string, value: T, ttlMs: number): Promise<void> {
+/**
+ * Cross-replica generation guard key — tracks which refresh's upstream read is newest,
+ * so a slower-but-older refresh can never clobber a faster-but-newer one in Redis.
+ */
+function genKeyFor(key: string): string {
+  return `server-gen:${key}`;
+}
+
+/**
+ * BUG (found live 2026-10-15, SPX desk `as_of` reverting backward across consecutive polls,
+ * confirmed reproducible via the live production monitor): every withServerCache-backed key is
+ * refreshed independently by EACH ECS replica's own background refresh (`refreshCache`), and this
+ * write was previously unconditional last-writer-wins (`sharedCacheSet` is a bare `redis.set`, no
+ * ordering guard — see shared-cache.ts). A refresh that STARTS earlier (reads an older upstream
+ * snapshot) but happens to COMPLETE later than a sibling replica's refresh (e.g. a slower Polygon
+ * round trip on that replica) could clobber the sibling's already-written NEWER result — so two
+ * near-simultaneous requests, or two routes documented as sharing one cache lane
+ * (`/api/market/spx/desk` and `/api/market/spx/play`), could serve different generations of the
+ * same snapshot, with the freshness signal (`as_of`) jumping backward with no error anywhere.
+ *
+ * Fix: stamp each refresh with `generatedAt` = when ITS OWN loader call STARTED (set by the caller
+ * in `refreshCache`, below) — start time correlates with upstream data vintage; completion time is
+ * confounded by per-replica request latency, which is exactly what let the slower-but-newer-ask
+ * refresh lose the race before. Before overwriting the shared Redis copy, check the generation
+ * already stored there; skip the write if it is already at least as new as this refresh's own. The
+ * main `server:${key}` value's shape is UNCHANGED (still raw T) so this is fully compatible with
+ * replicas mid-rollout still running the old code (they simply never read/write the new
+ * `server-gen:${key}` key and keep racing unconditionally, exactly as before, until the rollout
+ * completes) — only the generation key is new. Not perfectly atomic (GET-then-SET, not a single
+ * Redis command), but narrows the clobber window from "always loses to last writer" down to the
+ * one round trip between this GET and this SET, which is the same best-effort tradeoff this module
+ * already makes elsewhere (REDIS_GET_RACE_MS) rather than adding a new Lua/EVAL capability for it.
+ */
+/** Exported for the cross-replica generation-guard regression test — not a public cache API. */
+export async function writeRedisCache<T>(key: string, value: T, ttlMs: number, generatedAt: number): Promise<void> {
   if (!process.env.REDIS_URL?.trim() || ttlMs <= 0) return;
   try {
-    const { sharedCacheSet } = await import("./shared-cache");
-    await sharedCacheSet(`server:${key}`, value, Math.max(1, Math.round(ttlMs / 1000)));
+    const { sharedCacheGet, sharedCacheSet } = await import("./shared-cache");
+    const ttlSec = Math.max(1, Math.round(ttlMs / 1000));
+    const genKey = genKeyFor(key);
+    const existingGen = await sharedCacheGet<number>(genKey);
+    if (typeof existingGen === "number" && existingGen > generatedAt) {
+      return; // a newer refresh (this or another replica) already won this key — don't regress it
+    }
+    await Promise.all([
+      sharedCacheSet(`server:${key}`, value, ttlSec),
+      sharedCacheSet(genKey, generatedAt, ttlSec),
+    ]);
   } catch {
     // ignore redis write failures
   }
@@ -464,13 +507,16 @@ async function refreshCache<T>(
   const existing = inflight.get(key) as Promise<T> | undefined;
   if (existing) return existing;
 
+  // Stamped before the loader runs — see writeRedisCache's own comment for why generation
+  // ordering must be keyed off when the upstream read STARTED, not when it completed.
+  const startedAt = Date.now();
   const promise = loader()
     .then((value) => {
       const refreshedAt = Date.now();
       if (!shouldCache || shouldCache(value)) {
         setStoreEntry(key, { value, expiresAt: refreshedAt + ttlMs, refreshedAt });
         // localOnly keys never propagate to Redis (replica-local, ephemeral, high-cardinality).
-        if (!localOnly) void writeRedisCache(key, value, ttlMs);
+        if (!localOnly) void writeRedisCache(key, value, ttlMs, startedAt);
       }
       // FIX 5b: Successful refresh — reset failure tracking for this key.
       failureCount.delete(key);

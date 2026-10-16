@@ -1,3 +1,28 @@
+## WATCH LIST — 2026-10-16 SPX desk cross-replica Redis generation guard shipped — deploy pending validation
+
+**What was fixed:** 5-engine live monitor cycle (Ask Largo × Night Hawk standing mandate, SPX
+Slayer check) found `GET /api/market/spx/desk`'s own freshness signal (`as_of`) reverting
+backward across consecutive live polls — a cross-replica Redis last-writer-wins race in
+`withServerCache` (`src/lib/server-cache.ts`): a refresh that started earlier but completed later
+than a sibling replica's refresh could clobber the sibling's already-written newer snapshot.
+Fixed by stamping each refresh with `generatedAt` (loader start time) and skipping the Redis write
+when a newer generation is already stored, via a new additive `server-gen:<key>` key (main
+`server:<key>` value shape unchanged — no deploy-rollout hazard). Full write-up:
+`docs/audit/findings-staging/2026-10-16-spx-desk-redis-cross-replica-generation-guard.md`.
+
+**Specific thing to check once this deploys:** (1) Repeat the live repro that found this —
+poll `GET /api/market/spx/desk` ~10-15 times over ~30s during RTH and confirm `as_of` only ever
+advances, never reverts backward. (2) Fetch `/api/market/spx/desk` and `/api/market/spx/play`
+within a few seconds of each other and confirm their breadth internals (TRIN/ADD/TICK) agree —
+no more "two routes serving different generations of the same snapshot" split. (3) Since the fix
+is in shared cache infra (`withServerCache`, used by Night Hawk edition/legacy-marks,
+flows-member-cache, admin-health, and others beyond SPX), watch for any OTHER desk's freshness
+signal or cache-dependent read regressing post-deploy — none is expected (the guard is additive
+and only ever SKIPS a write that would have regressed data), but this is the first live RTH
+exercise of the new `server-gen:<key>` path across all callers at once.
+
+---
+
 ## WATCH LIST — 2026-10-15 Polygon rate-limiter background-sweep reservation (vector-bead-recorder saturation starving 0DTE/SPX/Thermal) shipped — deploy pending validation
 
 **What was fixed:** standing performance/latency audit mandate — cross-cutting shared-infra fix
