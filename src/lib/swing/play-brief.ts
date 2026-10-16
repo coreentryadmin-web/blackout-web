@@ -871,12 +871,30 @@ function levelsFromContext(
       });
     }
   }
-  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  // Cast to include VectorFreshnessBlock's `market_session_note` (PR #5306, vector-state-
+  // freshness.ts) — same cast `evidenceFromContext` already applies to its own `vec`, see that
+  // function's comment for why the declared `VectorFullState` type predates this runtime field.
+  const vec = (ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null) as
+    | (VectorFullState & Partial<VectorFreshnessBlock>)
+    | null;
   const gex = ctx.ecosystem?.gex_positioning;
   const vecFresh = vectorFreshness(vec, readMs);
   const gexFresh = gexFreshness(gex, readMs);
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  // BUG FIX (Largo Product Contract C2, 2026-10-16, Ask Largo standing mandate — live TSM/BBWI
+  // repro): every level below stamped `freshness: vecFresh`/`gexFresh` even in the exact
+  // after-hours scenario `gexMarketSessionNote`/`vec.market_session_note` already exist to catch
+  // — a matrix recomputed moments ago off a CLOSED market's last-session tape reads "live" with
+  // no caveat anywhere a consumer of the STRUCTURED `levels[]`/`provenance` fields (as opposed to
+  // the free-text evidence fact below, which already narrates this) would ever see it. Computed
+  // once here, same gating as `vecFresh`/`gexFresh`'s own stale checks (`gexMarketSessionNote`
+  // already returns null once `gexMatrixStale` is true, same as `vectorStale` below gates the
+  // Vector side), and threaded onto every GEX/Vector-sourced `provenance` alongside — never
+  // instead of — `freshness`, per `BieProvenance.market_session_note`'s own doc comment (ADDITIVE,
+  // not a new freshness value).
+  const vecSessionNote = vectorStale ? null : (vec?.market_session_note ?? null);
+  const gexSessionNote = gexMarketSessionNote(gex, readMs);
   // Null at the SOURCE when Vector is stale (not a separate suppression flag) so a live GEX
   // value for the same level still falls through via `??` instead of the whole entry being
   // dropped just because the Vector side happened to be present-but-stale.
@@ -905,6 +923,7 @@ function levelsFromContext(
         source: "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecCallWall != null ? "vector" : "gex"),
         freshness: vecCallWall != null ? vecFresh : gexFresh,
+        market_session_note: vecCallWall != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -916,6 +935,7 @@ function levelsFromContext(
         source: "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecPutWall != null ? "vector" : "gex"),
         freshness: vecPutWall != null ? vecFresh : gexFresh,
+        market_session_note: vecPutWall != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -927,6 +947,7 @@ function levelsFromContext(
         source: "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecFlip != null ? "vector" : "gex"),
         freshness: vecFlip != null ? vecFresh : gexFresh,
+        market_session_note: vecFlip != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -940,6 +961,7 @@ function levelsFromContext(
         source: vecSpot != null ? "Vector" : "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecSpot != null ? "vector" : "gex"),
         freshness: vecSpot != null ? vecFresh : gexFresh,
+        market_session_note: vecSpot != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -948,7 +970,12 @@ function levelsFromContext(
       levels.push({
         label: confluenceZoneLabel(z, { callWall, putWall }),
         price: z.center,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+        provenance: {
+          source: "Vector",
+          asOf: levelProvenanceAsOf(gex, vec, "vector"),
+          freshness: vecFresh,
+          market_session_note: vecSessionNote,
+        },
       });
     }
     // BUG FIX (2026-10-06, Ask Largo standing mandate): this used to stamp the WHOLE Vector
@@ -962,7 +989,12 @@ function levelsFromContext(
         levels.push({
           label: "dark pool",
           price: dp.strike,
-          provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+          provenance: {
+            source: "Vector",
+            asOf: levelProvenanceAsOf(gex, vec, "vector"),
+            freshness: vecFresh,
+            market_session_note: vecSessionNote,
+          },
         });
       }
     }
@@ -974,7 +1006,12 @@ function levelsFromContext(
       levels.push({
         label: "gamma magnet",
         price: vec.magnet.strike,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+        provenance: {
+          source: "Vector",
+          asOf: levelProvenanceAsOf(gex, vec, "vector"),
+          freshness: vecFresh,
+          market_session_note: vecSessionNote,
+        },
       });
     }
   }
@@ -990,6 +1027,7 @@ function levelsFromContext(
         // Largo C8 fix (2026-09-15) — same vec-side test as call/put wall and gamma flip above.
         asOf: levelProvenanceAsOf(gex, vec, vecKing != null ? "vector" : "gex"),
         freshness: vecKing != null ? vecFresh : gexFresh,
+        market_session_note: vecKing != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -997,7 +1035,12 @@ function levelsFromContext(
     levels.push({
       label: "max pain",
       price: vec.maxPain,
-      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      provenance: {
+        source: "Vector",
+        asOf: levelProvenanceAsOf(gex, vec, "vector"),
+        freshness: vecFresh,
+        market_session_note: vecSessionNote,
+      },
     });
   }
   return levels.slice(0, 10);
@@ -1062,6 +1105,13 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     | null;
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  // BUG FIX (Largo Product Contract C2, 2026-10-16, Ask Largo standing mandate — live TSM/BBWI
+  // repro): same fix as `levelsFromContext`'s own identically-named consts — see that function's
+  // comment for the full write-up. Threaded onto the dealer-posture `calc` fact and the two
+  // standalone market-session-note `fact` entries below, so every GEX/Vector-sourced provenance
+  // block in this function carries the same additive disclosure `levelsFromContext` now does.
+  const vecSessionNote = vectorStale ? null : (vec?.market_session_note ?? null);
+  const gexSessionNote = gexMarketSessionNote(gex, readMs);
   // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): this used to
   // compute `postureFromVec` as `vec?.regime?.posture != null ? ... : null`, treating the literal
   // string "unknown" (Vector genuinely could not resolve a regime) as an equally-resolved answer
@@ -1126,6 +1176,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
           etStampFromIso(gex?.asof) ??
           ctx.asOf,
         freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+        market_session_note: postureFromVec ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -1146,6 +1197,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
         source: "Vector",
         asOf: vec.asOfEt ?? etStampFromIso(vec.asOf) ?? ctx.asOf,
         freshness: vectorFreshness(vec, readMs),
+        market_session_note: vecSessionNote,
       },
     });
   }
@@ -1157,15 +1209,15 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // Friday's closing chain while the market itself has been shut for hours. Gated `!gexStale` for
   // the same reason the Vector block is gated `!vectorStale` — this can never surface a caveat
   // about a GEX read the rest of this function has already excluded as untrustworthy.
-  const gexMarketSessionNoteText = gexMarketSessionNote(gex, readMs);
-  if (!gexStale && gexMarketSessionNoteText) {
+  if (!gexStale && gexSessionNote) {
     out.push({
       kind: "fact",
-      text: gexMarketSessionNoteText,
+      text: gexSessionNote,
       provenance: {
         source: "GEX",
         asOf: gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? ctx.asOf,
         freshness: gexFreshness(gex, readMs),
+        market_session_note: gexSessionNote,
       },
     });
   }
