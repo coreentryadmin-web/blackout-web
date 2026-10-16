@@ -1433,6 +1433,12 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     direction: src.direction,
     horizon: src.horizon,
     score: src.score,
+    // See SwingClosedDeckSource.scoreWithheld's doc comment (closed-plays.ts) — without this,
+    // terminalPlayFromHorizon's own scoreWithheld forward (below) always received `undefined` for
+    // a CLOSED swing play, so a rolled chain's fabricated `score:0` reached TerminalPlay/the UI
+    // with no honest-absence flag at all (live repro: AMZN root-44/terminal-48, AAPL
+    // root-37/terminal-40, 2026-10-16).
+    scoreWithheld: src.scoreWithheld,
     status: src.status,
     reason: src.reason,
     contract: src.contract,

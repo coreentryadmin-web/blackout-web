@@ -61,6 +61,36 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.exitPnlPct, 30);
     assert.equal(src?.closedReason, "target");
     assert.equal(src?.positionId, 1);
+    assert.equal(src?.score, 82, "a real evidence_score is carried through unchanged");
+    assert.equal(src?.scoreWithheld, false, "a genuinely-scored row must not be flagged withheld");
+  });
+
+  // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16): a ROLLED chain's terminal leg
+  // never has its own `feature_vector` (roll-plan.ts's `buildRollPlan` never sets it on the child
+  // row's insert spec), so `evidence_score` was unconditionally defaulted to the literal `0` with
+  // no flag distinguishing it from a real, measured zero-conviction score. Live `GET
+  // /api/market/swing/record` on 2026-10-16 showed exactly this: AMZN positionId 48 (rootPositionId
+  // 44) and AAPL positionId 40 (rootPositionId 37) both served `"score": 0` verbatim while every
+  // other field (reason/contract/archetype) was populated normally — a member reading the Closed
+  // tab saw "SCORE 0" implying zero conviction/evidence at commit, which was simply false. Must
+  // report `scoreWithheld: true`, same honest-absence idiom live-plays.ts's
+  // `livePlayFromSwingPosition` already ships for the open-position sibling of this exact gap.
+  it("flags scoreWithheld (not a fabricated 0) when the terminal leg's feature_vector is empty — the rolled-chain shape", () => {
+    const rolled = closedDeckSourceFromRow(row({ feature_vector: null, roll_seq: 1, parent_position_id: 44, root_position_id: 44 }));
+    assert.equal(rolled?.score, 0, "score still falls back to 0 — a non-nullable field needs SOME value");
+    assert.equal(rolled?.scoreWithheld, true, "but it must be flagged as withheld, not presented as a real zero");
+  });
+
+  it("flags scoreWithheld when feature_vector exists but carries no numeric evidence_score (malformed/legacy row)", () => {
+    const malformed = closedDeckSourceFromRow(row({ feature_vector: { pil_regime: 0.5 } }));
+    assert.equal(malformed?.score, 0);
+    assert.equal(malformed?.scoreWithheld, true);
+  });
+
+  it("does NOT flag scoreWithheld when the row genuinely scored evidence_score:0 (a real, measured zero)", () => {
+    const real = closedDeckSourceFromRow(row({ feature_vector: { evidence_score: 0 } }));
+    assert.equal(real?.score, 0);
+    assert.equal(real?.scoreWithheld, false, "a real measured 0 must not be conflated with an absent one");
   });
 
   // GAP FOUND (2026-09-28, Ask Largo standing mandate): entry_underlying_px/thesis_invalidation_px
@@ -286,6 +316,44 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.occ, "O:AMZN261016C00605000", "occ must identify the leg that actually lost -27.67%, not the terminal leg's own contract");
     assert.equal(out[0]!.contract.strike, 605, "strike must match the contract the P&L belongs to");
     assert.equal(out[0]!.contract.expiry, "2026-10-16");
+  });
+
+  // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16, same AMZN root-44/terminal-48 chain
+  // as the contract-identity fix above): the chain-composite path's `score`/`scoreWithheld` come
+  // from `closedDeckSourceFromRow(terminal)` — the rolled CHILD leg, which never carries its own
+  // `feature_vector` (roll-plan.ts's `buildRollPlan` never sets it). Live `GET
+  // /api/market/swing/record` served `"score": 0` verbatim for this exact chain. Note the PARENT
+  // leg (id 44) below keeps the default fixture's real `evidence_score: 82` — proving the withheld
+  // flag genuinely comes from the terminal leg's own missing feature_vector, not from any chain-wide
+  // absence-of-evidence check.
+  it("flags scoreWithheld on the served chain row when the terminal (rolled-child) leg has no feature_vector — the real AMZN 44/48 shape", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z",
+      // Real fixture default (evidence_score: 82) left deliberately in place on the PARENT — see
+      // this test's own comment above.
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      feature_vector: null, // roll children never get one — the actual root cause
+      closed_at: "2026-10-07T13:30:39.000Z",
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.score, 0, "still a 0 fallback -- score stays non-nullable");
+    assert.equal(
+      out[0]!.scoreWithheld,
+      true,
+      "must be flagged withheld -- a member must not read this as a real zero-conviction commit",
+    );
   });
 
   it("keeps entry/peak/trough premium when the worst leg IS the terminal leg (no mismatch to omit)", () => {
