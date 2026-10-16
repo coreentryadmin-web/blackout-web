@@ -292,6 +292,41 @@ export async function getSpxPlayState() {
     // src/app/api/market/nighthawk/edition/route.ts), applied to the field that's actually
     // exclusive to this payload's placeholder state.
     shouldCache: (value) => (value as Awaited<ReturnType<typeof evaluateSpxPlayState>>).assessed !== false,
+    // BUG (found live 2026-10-16, Ask Largo standing mandate — the fallback-timeout-race
+    // investigation that ALSO produced ServerCacheTimeoutError/the route catch-block fix):
+    // without `localOnly`, withServerCache's OWN generic Redis layer (server-cache.ts's
+    // `writeRedisCache`) was a SECOND, uncoordinated writer to the exact same Redis key
+    // (`server:spx-play-read:<date>`) that evaluateSpxPlayStateCrossReplica() ALSO publishes
+    // to directly a few lines up, via its own `sharedCacheSet(..., Math.max(playMemberReadCacheSec()
+    // * 2, 10))` — a DELIBERATE 10s TTL, double the 5s refresh cadence, specifically so a slow
+    // refresh cycle still has a stale copy for every OTHER replica's `!won` branch (and
+    // spxPlayReadFallback below) to serve. That 10s margin was being defeated on EVERY single
+    // successful eval, deterministically, not intermittently: evaluateSpxPlayStateCrossReplica's
+    // own write lands first (awaited via its `finally`'s sharedCacheDel before the promise even
+    // resolves back up to refreshCache), then refreshCache's own post-loader write
+    // (`writeRedisCache`, generation-guarded but NOT TTL-aware — it only skips a write that is
+    // OLDER than the last one, it has no concept of "don't shorten an existing longer TTL") fires
+    // moments later with the OUTER ttlMs (5s), silently overwriting the 10s TTL down to 5s every
+    // time. Confirmed via CloudWatch (live RTH throws at 2026-10-15 14:33/15:17/17:02/17:27/19:25
+    // UTC, `[server-cache] spx-play-read:<date>: cold miss exceeded maxBlockMs`, reproduced again
+    // 2026-10-16 02:12:27 UTC — 18s after the #6085/#6076 deploy rollout itself completed, so this
+    // is NOT explained by stale pre-deploy code) that these throws correlate with sustained UW
+    // provider queue congestion (same-window logs show individual UW calls queued 830ms-3.6s) —
+    // under that kind of congestion a cold eval can easily run past 5s, so halving its published
+    // snapshot's survival time from the intended 10s down to 5s measurably shrinks the window every
+    // OTHER replica has to find a usable stale copy instead of also going cold, compounding a
+    // transient upstream slowdown into a cluster-wide outage. `evaluateSpxPlayStateCrossReplica`'s
+    // own lock + explicit `sharedCacheGetWithTtl` reads (here and in spxPlayReadFallback) already
+    // fully own this key's cross-replica publish/read semantics — `localOnly` just removes the
+    // SECOND, conflicting generic writer/reader withServerCache would otherwise layer on top,
+    // restoring the intended 10s margin without changing anything about the purpose-built logic.
+    // (Considered instead retuning spxPlayReadFallback's/waitForPeerSpxPlaySnapshot's internal
+    // 800ms peer-wait against the same 800ms outer maxBlockMs — the originally-hypothesized "two
+    // races of the same duration" root cause. Live CloudWatch evidence above shows the actual cold
+    // evals are slow because of real upstream (UW) queue latency, not a timing-margin coincidence;
+    // shrinking that internal wait would not make a multi-second cold eval finish any faster and
+    // was not shipped — this TTL fix addresses the mechanism the evidence actually points to.)
+    localOnly: true,
   });
 }
 

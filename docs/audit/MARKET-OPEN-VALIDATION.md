@@ -1,3 +1,42 @@
+## WATCH LIST — 2026-10-16 SPX play cache-timeout mislabeled as "Desk warming" + a second Redis writer halving the published snapshot's intended TTL — fixed, deploy pending validation
+
+**What was fixed:** Ask Largo × Night Hawk standing mandate — live monitoring sweep found
+`GET /api/market/spx/play` intermittently serving `degradedPlayPayload()` ("Desk warming — play
+state unavailable") during confirmed-live RTH conditions (CloudWatch: recurring throws on
+2026-10-15 at 14:33/15:17/17:02/17:27/19:25 UTC, and again 2026-10-16 02:12:27 UTC — 18s after the
+#6085/#6076 deploy rollout itself completed, ruling out stale pre-deploy code). Investigated an
+initially-hypothesized "800ms-vs-800ms self-defeating race" root cause and found it unsupported by
+live evidence (same-window CloudWatch logs show the real cold evals are slow because of genuine UW
+provider queue congestion, not a timing coincidence) — did NOT ship that speculative change. Found
+instead, and fixed, two distinct real issues: (1) the route's catch block presented a cache/
+fallback-timeout exception identically to "the desk has no data," even on confirmed occasions
+where a parallel `/api/market/spx/desk` call at the same instant returned live data; (2)
+`getSpxPlayState()`'s outer `withServerCache` call was a SECOND, uncoordinated Redis writer to the
+same key `evaluateSpxPlayStateCrossReplica()` already publishes to with a deliberate 10s TTL
+(double the 5s refresh cadence) — the second writer deterministically overwrote it down to 5s on
+every successful eval, shrinking the window other replicas have to find a stale copy during
+upstream congestion. Fix: a new `ServerCacheTimeoutError` (`src/lib/server-cache.ts`) lets the
+route distinguish this specific cause and use honest "Play scan still catching up" language
+instead of asserting the desk is cold; `localOnly: true` on `getSpxPlayState()`'s cache call
+removes the conflicting second writer, restoring the intended 10s margin. Full write-up:
+`docs/audit/findings-staging/2026-10-16-spx-play-cache-timeout-mislabeled-and-ttl-clobber.md`.
+
+**Specific thing to check once this deploys:** (1) Repeat the live repro that found this — poll
+`GET /api/market/spx/play` repeatedly during RTH (ideally during a period with visible UW
+`queue wait` congestion in CloudWatch) and confirm the "cold miss exceeded maxBlockMs" throw rate
+drops, consistent with the republished snapshot now surviving the full intended ~10s instead of
+~5s. (2) On any occurrence that DOES still throw, confirm the served payload now reads
+"Play scan still catching up — retry shortly" rather than "Desk warming — play state unavailable",
+and cross-check a parallel `/api/market/spx/desk` call at the same instant to confirm the
+distinction is accurate (desk has data, play-eval just didn't finish in time). (3) Since
+`localOnly` removes `getSpxPlayState()`'s own generic Redis read on a true cold start (new
+replica, or ET session-date rollover), watch the first few requests after a deploy or just after
+midnight ET specifically for any regression in cold-start latency — none is expected (
+`evaluateSpxPlayStateCrossReplica`'s own lock + explicit Redis read already covers this case) but
+it is the one path with slightly different mechanics now.
+
+---
+
 ## WATCH LIST — 2026-10-16 SPX desk cross-replica Redis generation guard shipped — deploy pending validation
 
 **What was fixed:** 5-engine live monitor cycle (Ask Largo × Night Hawk standing mandate, SPX

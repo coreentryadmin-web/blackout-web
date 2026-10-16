@@ -72,6 +72,39 @@ test("getSpxPlayState's withServerCache call passes the SAME freshness bound pee
   assert.match(fn![0], /maxStaleAgeMs:\s*playMemberPeekMaxAgeSec\(\)\s*\*\s*1000/);
 });
 
+test("getSpxPlayState's withServerCache call is localOnly, so withServerCache's own generic Redis layer cannot clobber evaluateSpxPlayStateCrossReplica's deliberately-longer published TTL (2026-10-16 fix)", () => {
+  // evaluateSpxPlayStateCrossReplica() publishes its own result to
+  // `server:spx-play-read:<date>` via a direct sharedCacheSet with a DELIBERATE
+  // Math.max(playMemberReadCacheSec() * 2, 10) TTL (10s — double the 5s refresh cadence, so a
+  // slow refresh cycle still leaves a stale copy for every other replica's `!won` branch and
+  // spxPlayReadFallback to find). Without `localOnly`, withServerCache's OWN generic Redis write
+  // (server-cache.ts's writeRedisCache, fired moments later with the outer 5s ttlMs) is a SECOND,
+  // uncoordinated writer to the exact same key — its generation guard only skips a write that is
+  // OLDER than the last one, it has no concept of "don't shorten an already-longer TTL", so it
+  // deterministically overwrote the 10s TTL down to 5s on every single successful eval. Confirmed
+  // live via CloudWatch: repeated "cold miss exceeded maxBlockMs" throws on
+  // GET /api/market/spx/play during RTH (2026-10-15 14:33/15:17/17:02/17:27/19:25 UTC),
+  // correlating with sustained UW provider queue congestion in the same windows — exactly the
+  // scenario the 10s margin exists to survive. `localOnly` removes the second writer, leaving
+  // evaluateSpxPlayStateCrossReplica's own lock + explicit sharedCacheGetWithTtl reads (here and
+  // in spxPlayReadFallback) as the sole owner of this key's cross-replica publish/read semantics.
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const fn = service.match(/export async function getSpxPlayState\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, "getSpxPlayState function present");
+  assert.match(fn![0], /localOnly:\s*true/);
+});
+
+test("GET /api/market/spx/play's catch block distinguishes a cache-timing race from a generic crash (2026-10-16 fix)", () => {
+  // A ServerCacheTimeoutError (server-cache.ts) means the cache/fallback chain couldn't finish
+  // in time — NOT that the underlying desk has no data (confirmed live: a parallel
+  // GET /api/market/spx/desk call at the identical millisecond returned live price/VIX while
+  // this route was throwing). The catch block must not assert "Desk warming" (degradedPlayPayload's
+  // default headline) for this specific, known cause.
+  const route = readFileSync(join(ROOT, "src/app/api/market/spx/play/route.ts"), "utf8");
+  assert.match(route, /ServerCacheTimeoutError/);
+  assert.match(route, /instanceof ServerCacheTimeoutError/);
+});
+
 test("peekSpxPlayState checks isSpxPlaySnapshotFreshEnough on BOTH the in-process and Redis-backed peek paths (2026-09-13 fix)", () => {
   const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
   const fn = service.match(/export async function peekSpxPlayState\(\)[\s\S]*?\n\}/);

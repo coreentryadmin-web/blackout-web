@@ -194,6 +194,25 @@ export async function writeRedisCache<T>(key: string, value: T, ttlMs: number, g
   }
 }
 
+/**
+ * Thrown ONLY when a cold-path caller's own maxBlockMs budget (refresh + fallback + one more
+ * raced inflight check, all raced against the same cap) is fully exhausted with nothing usable
+ * to serve. Distinguishing this from a generic `Error` lets a route tell "the cache/fallback
+ * chain couldn't finish in time" apart from a genuine unexpected crash — the two are NOT the same
+ * fact (found live 2026-10-16, Ask Largo standing mandate, GET /api/market/spx/play): the catch
+ * block that only sees `instanceof Error` was presenting a cache-timing race identically to "the
+ * desk has no data," even on confirmed occasions where a parallel desk read at the same instant
+ * returned live data. A route can `instanceof ServerCacheTimeoutError`-check and choose honest
+ * language instead of asserting the underlying data source is cold when it was never actually
+ * checked.
+ */
+export class ServerCacheTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ServerCacheTimeoutError";
+  }
+}
+
 /** In-process TTL cache with in-flight dedup + optional stale-while-revalidate + Redis layer. */
 export async function withServerCache<T>(
   key: string,
@@ -343,7 +362,7 @@ export async function withServerCache<T>(
             new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
           ]);
           if (racedFallback !== "timeout") return racedFallback;
-          throw new Error(`[server-cache] ${key}: cold miss (inflight, fallback) exceeded maxBlockMs`);
+          throw new ServerCacheTimeoutError(`[server-cache] ${key}: cold miss (inflight, fallback) exceeded maxBlockMs`);
         }
         return opts.fallback() as Promise<T>;
       }
@@ -394,7 +413,7 @@ export async function withServerCache<T>(
       ]);
       if (racedPending !== "timeout") return racedPending;
     }
-    throw new Error(`[server-cache] ${key}: cold miss exceeded maxBlockMs`);
+    throw new ServerCacheTimeoutError(`[server-cache] ${key}: cold miss exceeded maxBlockMs`);
   }
 
   return refreshCache(key, ttlMs, loader, localOnly, shouldCache);
