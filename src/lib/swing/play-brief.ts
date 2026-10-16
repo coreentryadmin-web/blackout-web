@@ -126,7 +126,19 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   // sections of one brief disagreeing about the same fact. `roundTripSinceCommit` is computed
   // independently (not via `moves`, which has a second consumer — thesisPillarCoaching's "What
   // moved" line — that already renders this same fact; reusing `moves` here would duplicate it).
-  const noDriftSinceCommit = (h.moves?.[0]?.includes("unchanged") ?? false) && !h.roundTripSinceCommit;
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+  // Swings mandate — live GOOG repro, positionId 59): the 2026-10-14 fix above only covered a
+  // round-trip into a NEGATIVE P&L (`roundTripSinceCommit`, `mfeCaptureOutcome(...)?.kind ===
+  // "round_trip"`). A position that retraces hard from peak but stays net-POSITIVE still printed
+  // this exact contradiction — "unchanged since commit" beside a "Gave back 85% of peak —
+  // consider protecting runner" bullet two sections down, same brief. `materialGivebackSinceCommit`
+  // (thesis-health.ts) closes this using the IDENTICAL `capturePct < 75` threshold that giveback
+  // narrative already uses, so the two can never disagree again — see its own doc comment
+  // (zerodte/thesis-health.ts) for the full account. Supersedes the narrower `!h.roundTripSinceCommit`
+  // check (a strict subset of what `materialGivebackSinceCommit` now covers).
+  const noDriftSinceCommit =
+    (h.moves?.[0]?.includes("unchanged") ?? false) && !h.materialGivebackSinceCommit;
   const headline = noDriftSinceCommit
     ? `**${h.health}%** · ${h.rungLabel} — unchanged since commit`
     : `**${h.health}%** · ${h.rungLabel}`;

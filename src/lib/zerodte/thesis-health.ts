@@ -111,6 +111,40 @@ export interface ThesisHealthPayload {
    * duplicate-narration bug of the exact kind this codebase has repeatedly fixed elsewhere.
    */
   roundTripSinceCommit?: boolean;
+  /**
+   * Swing-only (optional — 0DTE never sets this, same discipline as `roundTripSinceCommit`
+   * immediately above, which this field extends rather than replaces).
+   *
+   * BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+   * Swings mandate). The 2026-10-14 `roundTripSinceCommit` fix above only covers the case where
+   * P&L has gone NEGATIVE since peak (`mfeCaptureOutcome(...)?.kind === "round_trip"`, which
+   * requires `exitPnlPct < 0`). A position that retraces hard from its peak but stays barely
+   * POSITIVE still printed the pre-2026-10-14 contradiction: "unchanged since commit" sitting
+   * directly above/below a "Gave back N% of peak" narrative line in the SAME response, because
+   * `thesisPillarCoaching`'s giveback computation (play-brief-narrative.ts's `actionNarrative`,
+   * reading the SAME `mfeCaptureOutcome(play.pnlPct, play.peak, null)`) fires its own "Gave back
+   * X% of peak" line whenever `giveback.kind === "capture" && giveback.capturePct < 75` — a
+   * threshold `roundTripSinceCommit`'s narrower `=== "round_trip"` check never sees.
+   *
+   * Live repro: GOOG OPEN brief, positionId 59 (2026-10-16 01:57 UTC) — "Thesis health" read
+   * "73% · Minor drift — unchanged since commit" with all five pillars showing "(Δ +0.0 pts)",
+   * while the SAME response's "Trade manager read" section opened with "Hold the line — thesis
+   * health 73%... **Gave back 85% of peak — consider protecting runner.**" Peak +9.2%, current
+   * P&L +1.4%, trough -4.0% — `(9.2-1.4)/9.2 = 84.8%` ≈ the cited 85% giveback, computed from the
+   * SAME peak/current numbers `roundTripSinceCommit` already reads, just never compared against
+   * the SAME 75% capture threshold the giveback narrative uses.
+   *
+   * Fix: reuse the IDENTICAL `mfeCaptureOutcome` call and the IDENTICAL `capturePct < 75`
+   * threshold the giveback narrative already uses (never a new, independently-tuned threshold —
+   * see `computeSwingThesisHealth`'s own comment for why) so this field and that narrative line
+   * can never disagree about what counts as a material giveback. True whenever EITHER
+   * `roundTripSinceCommit` already fires OR a real capture has fallen under that same 75%
+   * threshold while P&L stays net-positive — a strict superset of `roundTripSinceCommit`, kept as
+   * a separate field (rather than redefining `roundTripSinceCommit` itself) because the two names
+   * mean genuinely different things: a position that stays positive has not "round-tripped past
+   * breakeven," even though it HAS given back a material fraction of its peak.
+   */
+  materialGivebackSinceCommit?: boolean;
 }
 
 export interface ThesisLiveInputs {

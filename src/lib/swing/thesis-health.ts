@@ -460,7 +460,19 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
   // commit/current scores are both derived from the SAME single live-state input every call), so a
   // real round-trip through a genuine favorable peak into a current loss needs its own explicit
   // check rather than relying on `moves` staying non-empty.
-  const roundTripSinceCommit = mfeCaptureOutcome(input.pnlPct, input.peak, null)?.kind === "round_trip";
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+  // Swings mandate — live GOOG repro, positionId 59): computed ONCE here and read for both fields
+  // below, so `roundTripSinceCommit` and `materialGivebackSinceCommit` can never disagree about
+  // the underlying `mfeCaptureOutcome` call — see `materialGivebackSinceCommit`'s own doc comment
+  // (zerodte/thesis-health.ts) for the full positive-P&L giveback account this field closes.
+  // `capturePct < 75` is the IDENTICAL threshold `play-brief-narrative.ts`'s own giveback
+  // narrative ("Gave back X% of peak") already uses — reused verbatim, never a second,
+  // independently-tuned number, so this field and that narrative line can never drift apart.
+  const giveback = mfeCaptureOutcome(input.pnlPct, input.peak, null);
+  const roundTripSinceCommit = giveback?.kind === "round_trip";
+  const materialGivebackSinceCommit =
+    roundTripSinceCommit || (giveback?.kind === "capture" && giveback.capturePct < 75);
 
   return {
     health,
@@ -477,5 +489,6 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
     thesisBreakLevel: br.level,
     thesisBreakNote: br.note,
     roundTripSinceCommit,
+    materialGivebackSinceCommit,
   };
 }

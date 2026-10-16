@@ -426,4 +426,84 @@ describe("computeSwingThesisHealth", () => {
       assert.equal(h!.roundTripSinceCommit, false);
     });
   });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+  // Swings mandate -- live GOOG repro, positionId 59): `roundTripSinceCommit` above only covers a
+  // round-trip into a NEGATIVE pnlPct. A position that gives back a material fraction of its peak
+  // while STAYING net-positive (live GOOG: peak +9.2%, current +1.4%, capturePct ~15.2 -- well
+  // under the 75% floor `play-brief-narrative.ts`'s own giveback narrative uses) printed the exact
+  // same "unchanged since commit" contradiction, uncaught by `roundTripSinceCommit`'s narrower
+  // `exitPnlPct < 0` test. `materialGivebackSinceCommit` closes this using the IDENTICAL
+  // `capturePct < 75` threshold, reused verbatim rather than a new, independently-tuned number.
+  describe("materialGivebackSinceCommit", () => {
+    test("true when a round-trip already happened (strict superset of roundTripSinceCommit)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        pnlPct: -36.5,
+        peak: 15.3,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, true);
+      assert.equal(h!.materialGivebackSinceCommit, true);
+    });
+
+    test("true for a material giveback while STILL net-positive (live GOOG shape: peak +9.2%, current +1.4%)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        pnlPct: 1.4,
+        peak: 9.2,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false, "pnlPct is still positive -- this is NOT a round-trip");
+      assert.equal(
+        h!.materialGivebackSinceCommit,
+        true,
+        "capturePct = 1.4/9.2*100 ~= 15.2, well under the 75 floor -- a material giveback",
+      );
+    });
+
+    test("false for a shallow, immaterial giveback (capturePct still at/above the 75 floor)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        pnlPct: 18,
+        peak: 20,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false);
+      assert.equal(
+        h!.materialGivebackSinceCommit,
+        false,
+        "capturePct = 18/20*100 = 90 -- well over the 75 floor, not a material giveback",
+      );
+    });
+
+    test("false for a genuinely flat position (no peak ever recorded)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        pnlPct: -5,
+        peak: null,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.materialGivebackSinceCommit, false);
+    });
+  });
 });

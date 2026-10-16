@@ -3358,6 +3358,10 @@ test("composeSwingPlayBrief: Thesis health headline omits 'unchanged since commi
         thesisBreakLevel: "intact",
         thesisBreakNote: "multi-day thesis intact",
         roundTripSinceCommit: true,
+        // `computeSwingThesisHealth` always sets this alongside `roundTripSinceCommit` (a strict
+        // superset — see its own 2026-10-16 doc comment) — set here too so this hand-built
+        // fixture matches what production actually ships, same as every other field above.
+        materialGivebackSinceCommit: true,
       },
     }),
     asOf: "2026-10-14T20:42:00.000Z",
@@ -3378,6 +3382,145 @@ test("composeSwingPlayBrief: Thesis health headline omits 'unchanged since commi
     `Thesis health headline must NOT claim 'unchanged since commit' once the position has round-tripped past breakeven, got: ${thesis!.body}`,
   );
   assert.match(thesis!.body, /67%.*Weakening/is, `headline must still show the real health %/band, got: ${thesis!.body}`);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+// Swings mandate — live GOOG repro, positionId 59). The 2026-10-14 fix directly above only covers
+// a round-trip into a NEGATIVE P&L (`roundTripSinceCommit`). A position that retraces hard from
+// its peak but stays net-POSITIVE still printed the same contradiction: "unchanged since commit"
+// sitting above/below a "Gave back N% of peak" narrative line in the SAME response, because the
+// giveback narrative's own `capturePct < 75` threshold never aligned with `roundTripSinceCommit`'s
+// narrower `exitPnlPct < 0` test. Live GOOG numbers: entry +9.2% peak, current +1.4%, trough -4.0%
+// — `(9.2-1.4)/9.2 = 84.8%` giveback, well past the 75% capture floor, so the SAME
+// `mfeCaptureOutcome` call the giveback narrative uses classifies this as `capture` with
+// `capturePct` ~15.2 (well under 75), which `materialGivebackSinceCommit` must now catch even
+// though `pnlPct` (+1.4) stays positive and `roundTripSinceCommit` is correctly `false`.
+test("composeSwingPlayBrief: Thesis health headline omits 'unchanged since commit' when the position has given back a material fraction of peak while STILL net-positive (live repro 2026-10-16, GOOG positionId 59)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 14.875,
+      mark: 15.08,
+      pnlPct: 1.4,
+      peak: 9.2,
+      trough: -4.0,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 73,
+        entryIndex: 73,
+        currentIndex: 73,
+        delta: 0,
+        rung: "MINOR_DRIFT",
+        rungLabel: "Minor drift",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.6,
+            currentScore: 0.6,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 16.8,
+            deltaPts: 0,
+          },
+        ],
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 14, 10:00 AM",
+        computedAtEt: "Oct 16, 1:57 AM",
+        advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "thesis intact",
+        // The real-production signature of this bug: a genuine round-trip did NOT happen
+        // (pnlPct stays positive) but the giveback is still material.
+        roundTripSinceCommit: false,
+        materialGivebackSinceCommit: true,
+      },
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.doesNotMatch(
+    thesis!.body,
+    /unchanged since commit/i,
+    `Thesis health headline must NOT claim 'unchanged since commit' when a material giveback happened even while P&L stays positive, got: ${thesis!.body}`,
+  );
+  assert.match(thesis!.body, /73%.*Minor drift/is, `headline must still show the real health %/band, got: ${thesis!.body}`);
+});
+
+// Companion negative test: a SHALLOW giveback (still well inside the 75% capture floor) must NOT
+// trip `materialGivebackSinceCommit` — "unchanged since commit" is the correct, honest headline
+// here, and this proves the fix doesn't over-fire on ordinary, immaterial peak-to-current drift.
+test("composeSwingPlayBrief: Thesis health headline still reads 'unchanged since commit' for a shallow, immaterial giveback", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 10,
+      mark: 11.8,
+      pnlPct: 18,
+      peak: 20,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 80,
+        entryIndex: 80,
+        currentIndex: 80,
+        delta: 0,
+        rung: "INTACT",
+        rungLabel: "Thesis intact",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.6,
+            currentScore: 0.6,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 16.8,
+            deltaPts: 0,
+          },
+        ],
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 14, 10:00 AM",
+        computedAtEt: "Oct 16, 1:57 AM",
+        advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "thesis intact",
+        // capturePct = 18/20*100 = 90 -- well over the 75 floor, so NOT a material giveback.
+        roundTripSinceCommit: false,
+        materialGivebackSinceCommit: false,
+      },
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.match(
+    thesis!.body,
+    /unchanged since commit/i,
+    `a shallow, immaterial giveback must still read 'unchanged since commit', got: ${thesis!.body}`,
+  );
 });
 
 test("composeSwingPlayBrief: partially-calibrated Thesis health keeps real pillars and only withholds the aggregate % (2026-09-21 live gap, AAPL position 40 SECTOR_ROTATION)", () => {
