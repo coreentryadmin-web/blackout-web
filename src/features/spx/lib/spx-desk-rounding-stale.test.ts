@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gexStaleFromAge, roundPulseNumerics } from "./spx-desk-numerics";
+import { gexStaleFromAge, roundPulseNumerics, mapDbFlowRowToSpxFlowBrief } from "./spx-desk-numerics";
 import type { SpxDeskPulse } from "./spx-desk";
+import type { FlowRow } from "@/lib/db";
 
 // ── P1: the "GEX stale" pill must fire from the snapshot age on BOTH desk-GEX paths ──
 test("gexStaleFromAge: within the 30s threshold → not stale", () => {
@@ -72,4 +73,45 @@ test("roundPulseNumerics: preserves nulls (never fabricates a 0 for a missing va
   const r = roundPulseNumerics(withNulls);
   assert.equal(r.vwap, null);
   assert.equal(r.ema200, null);
+});
+
+// ── P3: the DB-first SPX flow path must forward alert_rule/trade_count, not hardcode null ──
+// (found live 2026-10-16, Ask Largo standing mandate — see mapDbFlowRowToSpxFlowBrief's own
+// doc comment for the full root cause: this used to permanently disable
+// computeFlowStrikeStacks's repeated-hits detector for every DB-sourced SPX flow row)
+function baseFlowRow(overrides: Partial<FlowRow> = {}): FlowRow {
+  return {
+    ticker: "SPX",
+    premium: 190_100,
+    option_type: "PUT",
+    expiry: "2026-10-16",
+    strike: 7750,
+    direction: "bearish",
+    score: 0,
+    route: "stock",
+    alerted_at: "2026-10-15T20:21:06.558Z",
+    ...overrides,
+  };
+}
+
+test("mapDbFlowRowToSpxFlowBrief: forwards a real alert_rule instead of hardcoding null", () => {
+  const brief = mapDbFlowRowToSpxFlowBrief(baseFlowRow({ alert_rule: "RepeatedHits" }));
+  assert.equal(brief.alert_rule, "RepeatedHits");
+});
+
+test("mapDbFlowRowToSpxFlowBrief: forwards a real trade_count instead of hardcoding null", () => {
+  const brief = mapDbFlowRowToSpxFlowBrief(baseFlowRow({ trade_count: 7 }));
+  assert.equal(brief.trade_count, 7);
+});
+
+test("mapDbFlowRowToSpxFlowBrief: reports null (not undefined) when the source row genuinely has neither field — honest absence, not a dropped field", () => {
+  const brief = mapDbFlowRowToSpxFlowBrief(baseFlowRow());
+  assert.equal(brief.alert_rule, null);
+  assert.equal(brief.trade_count, null);
+});
+
+test("mapDbFlowRowToSpxFlowBrief: still forwards ask_pct and has_sweep:false unchanged (no regression to the already-correct fields)", () => {
+  const brief = mapDbFlowRowToSpxFlowBrief(baseFlowRow({ ask_pct: 62.5 }));
+  assert.equal(brief.ask_pct, 62.5);
+  assert.equal(brief.has_sweep, false);
 });

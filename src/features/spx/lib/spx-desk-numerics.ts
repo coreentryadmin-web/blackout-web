@@ -2,7 +2,42 @@
 // WITHOUT importing that module's heavy, `server-only` dependency chain. No runtime imports here —
 // the SpxDeskPulse import is type-only (erased at compile), so this module pulls nothing server-side.
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
-import type { SpxDeskPulse } from "./spx-desk";
+import type { SpxDeskPulse, SpxFlowBrief } from "./spx-desk";
+import type { FlowRow } from "@/lib/db";
+
+/**
+ * Maps one DB-sourced flow row (db.ts's FlowRow) to the SpxFlowBrief shape the desk payload
+ * serves. Pure — no DB/env dependence, type-only imports so this module stays
+ * `server-only`-free.
+ *
+ * BUG (found live 2026-10-16, Ask Largo standing mandate): this used to hardcode
+ * `alert_rule: null, trade_count: null` instead of forwarding the real values, which
+ * permanently disabled computeFlowStrikeStacks's repeated-hits detector
+ * (`isUwRepeatedHitsRule(alert_rule) || trade_count >= 5`) for every SPX flow row sourced via
+ * this DB-first path — even though db.ts's `fetchRecentFlows` already extracts a real
+ * `alert_rule` from `raw_payload`, right next to the `ask_pct` field this same mapper already
+ * forwarded correctly. `trade_count` needed a companion fix in db.ts itself (its SQL projection
+ * never extracted it from `raw_payload` at all).
+ */
+export function mapDbFlowRowToSpxFlowBrief(f: FlowRow): SpxFlowBrief {
+  return {
+    ticker: f.ticker,
+    premium: f.premium,
+    option_type: f.option_type,
+    strike: f.strike,
+    expiry: f.expiry,
+    direction: f.direction,
+    alerted_at: f.alerted_at,
+    alert_rule: f.alert_rule ?? null,
+    trade_count: f.trade_count ?? null,
+    // The DB tape has no has_sweep column at all — `false` here is absence, not a dropped
+    // field. (`scoreHelixFlowAlignment` gates on has_sweep, so it cannot fire on DB-only
+    // rows; that is a separate question from this one and is raised, not changed, here.)
+    has_sweep: false,
+    // db.ts derives ask_pct in SQL as the mirror of askPctFromTwoSidedPremium.
+    ask_pct: f.ask_pct ?? null,
+  };
+}
 
 /** Round price-like desk numerics at the data layer (deep sweep #21). */
 export function roundDeskNum(n: number | null | undefined): number | null {
