@@ -175,6 +175,21 @@ test("MTSI (MACOM Technology Solutions) clusters into semis, not its own isolate
   assert.equal(sameThesis("MTSI", "AAPL"), false);
 });
 
+test("CRWV (CoreWeave) and NBIS (Nebius) cluster into semis, not isolated NAME: clusters (2026-10-16 live finding: both LONG in the same discovery batch as a flagged 9-name semis cluster, no Book-context concentration flag on either play-brief)", () => {
+  assert.equal(resolveTheme("CRWV"), "semis");
+  assert.equal(resolveTheme("NBIS"), "semis");
+  assert.equal(sameThesis("CRWV", "NBIS"), true);
+  assert.equal(sameThesis("CRWV", "MRVL"), true); // joins the WHOLE semis cluster, not just one peer
+  assert.equal(sameThesis("NBIS", "NVDA"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("CRWV", "AAPL"), false);
+});
+
+test("DRAM (Roundhill Memory ETF) clusters into semis alongside MU (same memory-cycle names) — added proactively, same precedent as AVGX", () => {
+  assert.equal(resolveTheme("DRAM"), "semis");
+  assert.equal(sameThesis("DRAM", "MU"), true);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-10-09): SOXS correctly shares the "semis" theme
 // with NVDA/MRVL (it is driven by the exact same basket) but is a -3x INVERSE fund, so a nominal
 // LONG SOXS position is an economically BEARISH bet — the opposite of a nominal LONG NVDA/MRVL
