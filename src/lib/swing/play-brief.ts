@@ -1569,6 +1569,39 @@ export function composeSwingPlayBrief(
   // `watchEntrySection`'s identical check; scoped to `bucket === "watch"` to match its two sibling
   // call sites exactly and leave OPEN/CLOSED invalidation logic untouched.
   const dead = bucket === "watch" ? deadPlayReason(play) : null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 3 of the standing Ask Largo x Night Hawk
+  // Swings mandate — live META repro). `resolveBreakInvalidation` returns null whenever it cannot
+  // resolve a live spot from EITHER Vector or GEX (see its own comment) — and that null has (at
+  // least) two structurally different causes this chain's own fallback used to treat identically:
+  // (1) the per-ticker read genuinely has no resolvable level (cold/absent data, a normal, honest
+  // "nothing to compute" case the comment above this block already documents the gate-reason
+  // fallback as the correct answer for), and (2) THIS ticker's own ecosystem/Vector context fetch
+  // FAILED this cycle (`ctx.ecosystemFetchFailed`/`ctx.vectorFetchFailed` — already surfaced
+  // elsewhere in this SAME envelope via `collectBriefUnavailableSources`'s "ecosystem context:
+  // fetch failed"/"Vector state: fetch failed" entries), which is a transient, per-ticker, this-
+  // cycle-only failure, not an honest absence of data to compute from.
+  //
+  // Live repro: META WATCH brief, 2026-10-16 01:57 UTC — `envelope.invalidation` read the literal
+  // `g_s12_halt_feed_stale` gate reason ("Trading-halt feed unavailable...") while META's
+  // `setupState` was `"FORMING"`/`entryStatus "PRE_TRIGGER"` (not dead) and `unavailableSources`
+  // listed META's own ecosystem/Vector fetch as failed — CloudWatch confirmed both reads timed out
+  // for META specifically at that exact timestamp. The SAME gate reason renders identically for
+  // EVERY ticker blocked by that gate right now (this file's own comment two paragraphs up already
+  // names this as the reason a real per-ticker level is preferred over it) — presenting it here,
+  // with no indication the per-ticker read simply never ran this cycle, reads as "this IS what
+  // invalidates META" when it is really "we don't know what invalidates META this cycle."
+  //
+  // Fix: when the fetch itself failed, never substitute the shared gate-block text as if it were
+  // META's real per-ticker answer — fall through past it instead. The per-position premium-stop
+  // fallback (a genuine, ticker-specific number from this position's own ledger row, not a shared
+  // system string) is left reachable either way: a fetch failure says nothing about whether that
+  // real number exists. The member already sees the HONEST reason this field has nothing more
+  // specific to say via `unavailableSources` in this same response (Largo C3 — absence must read
+  // as absence, never as a different fact dressed up as the real one) — no separate caveat string
+  // is invented here, mirroring the `dead`-case fix above's own choice to reframe the EXISTING
+  // text rather than fabricate a new one, except here the honest move is omission, not reframing,
+  // since there is no real per-ticker fact to reframe.
+  const sourceFetchFailed = ctx.ecosystemFetchFailed === true || ctx.vectorFetchFailed === true;
   const invalidation =
     bucket === "closed"
       ? null
@@ -1577,7 +1610,7 @@ export function composeSwingPlayBrief(
         : dead
           ? `${dead.charAt(0).toUpperCase()}${dead.slice(1)} — this setup is no longer live.`
           : resolveBreakInvalidation(ctx) ??
-            play.gateBlocks?.[0]?.reason ??
+            (sourceFetchFailed ? null : play.gateBlocks?.[0]?.reason) ??
             (bucket === "open" && play.exitPolicy?.stop_premium != null
               ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
               : null);

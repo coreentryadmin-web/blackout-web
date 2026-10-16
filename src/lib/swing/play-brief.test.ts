@@ -760,6 +760,66 @@ test("composeSwingPlayBrief: top-level Invalidation line still uses the real gat
   assert.equal(brief.envelope.invalidation, "Bucket not graduated");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 3 of the standing Ask Largo x Night Hawk
+// Swings mandate — live META repro). Live repro: META WATCH brief, 2026-10-16 01:57 UTC —
+// `envelope.invalidation` read the literal `g_s12_halt_feed_stale` gate reason ("Trading-halt
+// feed unavailable...") while META's setupState was FORMING/PRE_TRIGGER (not dead) and
+// `unavailableSources` listed META's own ecosystem/Vector context as having failed to fetch THIS
+// cycle (CloudWatch confirmed both reads timed out for META specifically at that timestamp) — a
+// transient per-ticker fetch failure, not an honest "nothing to compute" absence. The SAME gate
+// reason renders identically for every OTHER gate-blocked ticker on the board at the same time,
+// so presenting it as META's own invalidation level is misleading in exactly the way this file's
+// own surrounding comment already names for the generic case. Contrast with the test immediately
+// above (same gate reason, same missing ecosystem/vector data, but no fetch failure) — the gate
+// reason is a legitimate fallback for "no data to compute from"; it must not be for "the read
+// broke this cycle," which this test proves is now distinguished.
+test("composeSwingPlayBrief: top-level Invalidation line omits the generic gate reason (rather than presenting it as a real per-ticker fact) when the per-ticker ecosystem/Vector fetch genuinely failed this cycle", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    null,
+    "must not present the shared gate-block text as META's own invalidation level when the fetch itself failed",
+  );
+});
+
+test("composeSwingPlayBrief: top-level Invalidation line still falls through to the premium-stop fallback (a real per-position number) even when the ecosystem/Vector fetch failed", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      exitPolicy: { stop_premium: 1.5, target_premium: 3, trim_levels: [] },
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "Premium stop at $1.50",
+    "a genuinely per-position fallback (the ledger's own stop) is unaffected by a fetch failure -- only the shared gate-block text is suppressed",
+  );
+});
+
 test("composeSwingPlayBrief: Entry section still frames gates as the live blocker when the play is genuinely still enterable", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
