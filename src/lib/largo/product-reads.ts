@@ -27,7 +27,7 @@ import {
   getSwingServingLane,
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { buildZeroDteRecord, type ZeroDteRecordPlay } from "@/lib/zerodte/record";
 import { getNighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import { bangerPnlForModel } from "./banger-pnl";
 import { zeroDteHorizonSummary } from "./zero-dte-horizon-summary";
@@ -314,6 +314,44 @@ export async function nighthawkHorizonsForLargo() {
  *  grading lanes) which return it scoped to ONE ticker and comfortably in budget. */
 const ZERODTE_RECORD_MAX_SAMPLE_PLAYS = 40;
 
+/**
+ * The lean, model-facing projection of one committed 0DTE play: every member-facing
+ * column `record.ts` already computes, minus the `entry_context` commit-forensics
+ * blob (see the doc comment above this constant), PLUS one honest addition —
+ * `committed_score` — so stripping that blob doesn't also strip the one field out
+ * of it a model needs most.
+ *
+ * WHY `committed_score` EXISTS. Every `ZeroDteRecordPlay.score` is `score_max` — the
+ * session-PEAK evidence score, which keeps ratcheting UP across scan ticks even
+ * AFTER the play commits (record.ts's own doc comment on `ZeroDteRecordPlay.score`
+ * already names this gap: "the committed score, when the row carries entry_context,
+ * lives in entry_context.score"). The real commit-time score — the number every
+ * score-band gate actually acted on — lived ONLY in `entry_context`, which this
+ * tool strips wholesale for payload-size reasons, so Largo had no path to it at
+ * all: asked about a specific play's score, it would confidently cite the
+ * ratcheted peak as if it were what the play committed at, with no way to notice
+ * the two could differ. Found live 2026-10-16 alongside the identical defect in
+ * the member-facing Track Record UI (`PlayHistoryTable.tsx`, same finding) — a
+ * 30-day live window showed the top-level `score` disagreeing with
+ * `entry_context.score` on 121/215 rows (56.3%), e.g. TEM 2026-10-15 peak 100 vs
+ * committed 87.
+ *
+ * ADDITIVE, per the Largo product contract — `score` is left exactly as it was
+ * (some existing answers already rely on it meaning "peak"); `committed_score` is
+ * OMITTED (never emitted as an equal or fabricated value) whenever there's nothing
+ * new to say: no `entry_context`, a non-numeric/garbled `entry_context.score`, or a
+ * commit score that happens to equal the peak (no ratchet occurred). That keeps
+ * the field's presence itself meaningful — and keeps the payload cost on the ~44%
+ * of rows where the number actually differs, not on every row. */
+export function leanZeroDtePlayForModel(
+  play: ZeroDteRecordPlay
+): Omit<ZeroDteRecordPlay, "entry_context"> & { committed_score?: number } {
+  const { entry_context, ...rest } = play;
+  const ctxScore = entry_context?.score;
+  const hasRealCommitScore = typeof ctxScore === "number" && Number.isFinite(ctxScore);
+  return hasRealCommitScore && ctxScore !== rest.score ? { ...rest, committed_score: ctxScore } : rest;
+}
+
 /** Aggregate-only base is ~2.8k chars; each lean play is ~330. 40 is a reading
  *  ceiling, not a size one — the budget in `fitRowsToBudget` is the real bound and
  *  will cut below 40 on a wide window rather than let the aggregates be at risk. */
@@ -333,7 +371,7 @@ export async function zerodteRecordForLargo(days = 30) {
     // entry_context. This reshaping is for the MODEL's copy only, which is the one
     // that has a 16k tail-truncating transport in front of it.
     const { plays, ...aggregates } = record;
-    const leanPlays = plays.map(({ entry_context: _entryContext, ...play }) => play);
+    const leanPlays = plays.map(leanZeroDtePlayForModel);
     const base = roundFloats(aggregates) as Record<string, unknown>;
     const fitted = fitRowsToBudget(base, "plays", roundFloats(leanPlays) as typeof leanPlays, {
       maxRows: ZERODTE_RECORD_MAX_SAMPLE_PLAYS,
@@ -346,7 +384,13 @@ export async function zerodteRecordForLargo(days = 30) {
         fitted.kept.length,
         fitted.total,
         "committed 0DTE plays",
-        "Per-play commit forensics (entry_context) are omitted here — use get_cortex_decision for one ticker's evidence."
+        "Per-play commit forensics (entry_context) are omitted here — use get_cortex_decision for one " +
+          "ticker's evidence. `score` is the session-PEAK evidence score (score_max) and can keep " +
+          "rising after commit — when a play also carries `committed_score`, that is the REAL score " +
+          "at commit (the one every score-band gate acted on), and it should be quoted instead of " +
+          "`score` when citing why a specific play was taken. No `committed_score` on a play means " +
+          "either `score` already IS the commit-time value (no ratchet occurred) or no commit-time " +
+          "score was recorded for it — not that the two are known to match."
       ),
       // LAST on purpose. If anything downstream ever pushes this result back over the
       // transport cap, the tail cut must eat the sample rows, never the track record.
