@@ -416,82 +416,64 @@ function pnlSection(play: TerminalPlay): RichSection {
   // risking drift) a second time — see that function's own comment for the EBS repro that made a
   // second call site necessary.
   const markGenuinelyUnknown = optionMarkGenuinelyUnknown(play);
-  // BUG FOUND (2026-10-09, Ask Largo standing mandate — live SG repro, positionId 1396): `Mark:`
-  // above renders `play.mark` (the raw, full-precision mid — e.g. $0.575, a normal bid/ask
-  // midpoint, NOT an edge case) through `fmtUsd`, which rounds to the cent for display ("$0.57").
-  // `P&L:` renders `play.pnlPct`, which was computed upstream (banger-lane-merge.ts's
-  // `livePnlPct`/adapters.ts's `livePnl`) from that SAME raw, UNROUNDED mid — so the two displayed
-  // numbers stop reconciling whenever the true mid lands on a fractional cent. Live repro: entry
-  // $0.33, mid $0.575 showed "Mark: **$0.57**" / "P&L: **+74.2%**", but a member doing the obvious
-  // hand-check gets (0.57-0.33)/0.33 = +72.7%, a ~1.5pp gap right under the two numbers that most
-  // directly invite that check. Fix: redisplay `P&L:` from the SAME rounded-to-cent mark the
-  // `Mark:` line already shows, so hand arithmetic on the two displayed dollar figures always
-  // reproduces the displayed percentage — the exact self-consistency principle `reconcileStrikeTotal`
-  // (round-floats.ts) already applies one layer up ("a member could manually add up... always
-  // agree"), extended to this narrative pairing. Guarded by `markRoundTripsPnl`: only trust that
-  // `play.pnlPct` really is the plain mark/entry-1 read (and so is safe to redisplay this way) when
-  // recomputing it from the RAW mark already lands within ordinary 1dp rounding noise of the stored
-  // value — `exec.pnl_pct` (adapters.ts's WS-10 executable-lane fallback, a bid/ask-fill-based
-  // number with a different basis entirely) would NOT pass this check, so it is left untouched.
-  const markRoundTripsPnl =
-    !markGenuinelyUnknown &&
-    play.entry != null &&
-    Number.isFinite(play.entry) &&
-    play.entry !== 0 &&
-    play.mark != null &&
-    Number.isFinite(play.mark) &&
-    play.pnlPct != null &&
-    Number.isFinite(play.pnlPct) &&
-    Math.abs((play.mark / play.entry - 1) * 100 - play.pnlPct) <= 0.5;
-  let pnlForDisplay = markRoundTripsPnl
-    ? (Math.round(play.mark! * 100) / 100 / play.entry! - 1) * 100
-    : play.pnlPct;
-  // GUARD (2026-10-09, Ask Largo standing mandate — live CNXC repro, positionId 1624): the
-  // recompute above rounds `play.mark` to the cent BEFORE dividing, and standard half-up rounding
-  // can push the result either direction relative to the raw mid — the SG repro above only ever
-  // exercised the round-DOWN case (mid $0.575 -> displayed $0.57, understating P&L). The symmetric
-  // round-UP case (mid $0.425 -> displayed $0.43, entry $0.30) OVERSTATES: recompute gives +43.3%
-  // while this position's own `peak`/`trough` (adapters.ts's `peakDisplay`/`troughDisplay`,
-  // computed from the RAW un-rounded premium, never re-derived from a rounded Mark) both correctly
-  // read +41.7% — so the brief showed a current P&L visibly ABOVE the position's own recorded
-  // all-time high two lines below, which is a logical impossibility (the current mark IS one of
-  // the samples peak/trough were latched from, so the canonical `play.pnlPct` always lies inside
-  // [trough, peak] by construction — only this cent-rounded recompute can escape that range).
-  // Fall back to the canonical value whenever the recompute would contradict the position's own
-  // recorded extremes; left untouched (same as before this guard) when peak/trough aren't
-  // available to check against, or when the recompute stays inside bounds (the common case this
-  // guard must NOT regress — e.g. the original SG repro, whose round-trip stays well inside
-  // [-39.4, 81.8]). The 0.05pp tolerance absorbs peak/trough's own 1dp display rounding.
-  if (
-    pnlForDisplay != null &&
-    Number.isFinite(pnlForDisplay) &&
-    ((play.peak != null && Number.isFinite(play.peak) && pnlForDisplay > play.peak + 0.05) ||
-      (play.trough != null && Number.isFinite(play.trough) && pnlForDisplay < play.trough - 0.05))
-  ) {
-    pnlForDisplay = play.pnlPct;
-  }
+  // BUG FIX (2026-10-16, Ask Largo standing mandate — live GOOG/KMPR repro, Bug 1 of the
+  // standing "Ask Largo x Night Hawk Swings" ownership mandate; SUPERSEDES the 2026-10-09
+  // SG/CNXC and 2026-10-15 ENOV guards this comment used to describe — kept only in git history,
+  // not reproduced here, to avoid describing logic that no longer exists).
+  //
+  // The retired approach redisplayed `P&L:` from `Math.round(play.mark * 100) / 100` — the
+  // cent-rounded Mark — reasoning that a member's hand-check against the two displayed dollar
+  // figures should always reconcile with the displayed percentage. Two live repros proved that
+  // recompute can disagree with the single CANONICAL `pnlPct` every other surface already
+  // agrees on (the horizons board's own `livePnlPct`, PlayTerminal.tsx's Command Deck card, and
+  // every OTHER section of this same brief — play-brief-narrative.ts's "Round-tripped past
+  // breakeven"/"Gave back X% of peak" lines read `play.pnlPct` directly, never a recompute):
+  //   1. GOOG (positionId 59): entry $14.875, mark $15.075 — entry itself carries sub-cent
+  //      precision the recompute never rounds, so `(round(mark*100)/100) / RAW entry` can
+  //      straddle a 1-decimal display-rounding boundary even when the underlying drift is tiny
+  //      (0.03pp here): displayed "+1.4%" vs `GET /api/market/nighthawk/horizons?view=swings`'
+  //      canonical "+1.3%" for the IDENTICAL position at the IDENTICAL instant.
+  //   2. KMPR (positionId 1634): entry $0.05, mark $0.025 — `Math.round(2.5)` rounds UP (JS
+  //      half-up rounds ties away from zero) to $0.03, and because KMPR's mark happens to sit
+  //      EXACTLY at its own recorded trough (-50.0%), the resulting recompute (-40.0%) lands
+  //      safely INSIDE the [trough, peak] bounds the retired guard checked — a full 10-POINT
+  //      overstatement of how far a real loser has "recovered" that a bounds-only guard is
+  //      structurally unable to catch, because the error never escapes the position's own
+  //      recorded range, it just lies within it.
+  // Both are instances of the same root problem the prior guards never fully closed: deriving
+  // P&L from an INDEPENDENTLY cent-rounded dollar figure, rather than from the single canonical
+  // percentage every other surface reads, can disagree with that canonical value by construction
+  // — rounding one operand (the mark) of a ratio and not the other (the entry) does not commute
+  // with rounding the ratio itself, and no bound on the recompute's distance from `peak`/`trough`
+  // can catch a case where the recompute happens to stay inside an already-wide range.
+  //
+  // Fix: show the canonical `play.pnlPct` directly — no recompute. This is strictly simpler and
+  // removes the whole class of future cent-rounding-drift bugs this file had been accumulating
+  // increasingly narrow point-guards for since 2026-10-09, rather than adding a third. It also
+  // means every section of the brief (Position here, "Trade manager read", "Thesis health", the
+  // diff/snapshot narrative) now reads the exact same number, so this also keeps the 2026-10-09
+  // CTVA fix's original intent (one internally-consistent P&L per brief) — just from the
+  // opposite direction: by never diverging from canonical, instead of reconciling every section
+  // to a recompute that could itself diverge from canonical.
+  const pnlForDisplay = play.pnlPct;
   // GUARD #2 (2026-10-15, Ask Largo standing mandate — live ENOV repro, positionId 1739, BANGER-
-  // origin TRIM/PARTIAL). The guard above only protects against the CENT-ROUNDING RECOMPUTE
-  // introducing a NEW violation on top of an otherwise-in-bounds canonical `play.pnlPct` — its
-  // fallback target IS `play.pnlPct`, so whenever the canonical value itself is what's already
-  // out of bounds (no recompute involved, or the recompute happens to land back on the same
-  // canonical number), that fallback is a no-op: it reassigns the violating value to itself.
-  // Live repro: ENOV entry $0.05, mark $0.33 (a clean, non-cent-ambiguous value — `markRoundTripsPnl`
-  // is TRUE here, recompute reproduces play.pnlPct exactly), so the guard above fires and
-  // "falls back" to play.pnlPct = +560.0% — identical to what it already was. Meanwhile
-  // `play.peak` (adapters.ts's `peakDisplay`, derived from the ledger's own `peak_premium`
-  // watermark) reads +550.0% — ten points BELOW the P&L it's supposed to bound. Root cause traced
+  // origin TRIM/PARTIAL; kept unchanged by the 2026-10-16 fix above — `pnlForDisplay` is now
+  // always the canonical `play.pnlPct`, so this guard's job (protecting against a STALE
+  // peak/trough watermark, a different bug than the cent-rounding one the comment above
+  // describes) is unaffected). Live repro: ENOV entry $0.05, mark $0.33 (a clean,
+  // non-cent-ambiguous value) showed `play.pnlPct` = +560.0% while `play.peak` (adapters.ts's
+  // `peakDisplay`, derived from the ledger's own `peak_premium` watermark) read +550.0% — ten
+  // points BELOW the P&L it's supposed to bound. Root cause traced
   // to `src/lib/banger/positions-db.ts`'s `updateBangerLiveState`: its SQL ratchets
   // `peak_premium = GREATEST(peak_premium, $3)` and `last_mark = $3` in the SAME statement using
   // the SAME bound parameter, which is provably atomic and self-consistent per write — so this can
   // only mean some tick that advanced `last_mark` to its current value did not, for whatever reason
   // (a question that needs raw production DB access this read-only audit session doesn't have, and
   // is out of scope for this fix per this finding's own write-up), carry that same mark into the
-  // peak ratchet. Whatever the upstream trigger, the member-facing contract this file's own
-  // `markRoundTripsPnl` comment states — "the current mark IS one of the samples peak/trough were
-  // latched from, so ... `pnlPct` always lies inside [trough, peak] by construction" — must hold
-  // for what Largo actually DISPLAYS, independent of whether the upstream ledger watermark has
-  // caught up yet. Fix: WIDEN the displayed Peak/Trough to bracket the final displayed P&L — never
+  // peak ratchet. Whatever the upstream trigger, the member-facing contract — the canonical
+  // `pnlPct` always lies inside [trough, peak] by construction — must hold for what Largo
+  // actually DISPLAYS, independent of whether the upstream ledger watermark has caught up yet.
+  // Fix: WIDEN the displayed Peak/Trough to bracket the final displayed P&L — never
   // the reverse (clamping P&L down to a stale Peak would UNDERSTATE the member's real gain, the
   // same mistake this file's other absence/precision guards exist to avoid). This is the identical
   // "widen-only, converge-in-place" discipline `positions-db.ts`'s own entry_premium-bracket fix

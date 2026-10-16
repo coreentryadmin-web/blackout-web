@@ -615,28 +615,33 @@ describe("loadSwingPlayBriefContext: roll history is ticker-identity-checked (ba
   });
 });
 
-// BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): see
-// `reconcileLivePnlPctWithDisplayMark`'s own doc comment (play-brief-resolve-pure.ts) for the full
-// live repro. `ctx.play.pnlPct` is what EVERY section downstream reads for "current P&L" framing
-// (not just the Position section's own locally-reconciled display line) — this proves the loader
-// itself hands out the reconciled number, not the raw one, so every section composed from `ctx.play`
-// agrees with the "Mark:" line a member can see and hand-check.
-describe("loadSwingPlayBriefContext: pnlPct is reconciled with the displayed (rounded-to-cent) mark", () => {
+// BUG FIX (2026-10-16, Ask Largo standing mandate — Bug 1 of the standing "Ask Largo x Night
+// Hawk Swings" ownership mandate, live GOOG/KMPR repro). This SUPERSEDES the 2026-10-09 CTVA-shape
+// test that used to sit here (which asserted the OPPOSITE: that `ctx.play.pnlPct` gets REWRITTEN
+// to a cent-rounded-mark recompute). That recompute turned out to be able to disagree with the
+// single canonical `pnlPct` every OTHER surface agrees on (the horizons board's own `livePnlPct`,
+// PlayTerminal.tsx's Command Deck card) by up to 10 percentage points — see
+// `play-brief.ts`'s `pnlForDisplay` comment for the full two-repro (GOOG + KMPR) write-up. Fix:
+// `loadSwingPlayBriefContext` no longer reconciles `pnlPct` at all — `ctx.play.pnlPct` must always
+// be exactly the value `resolveSwingPlayForBrief` resolved, unchanged, so every section downstream
+// reads the one number that already matches the board.
+describe("loadSwingPlayBriefContext: pnlPct is the canonical livePnlPct, never a cent-rounded-mark recompute", () => {
   let mod: typeof import("./play-brief-context");
 
   before(async () => {
     mod = await import("./play-brief-context");
   });
 
-  it("replaces the raw mark/entry-1 pnlPct with the cent-rounded-mark recompute (live CTVA shape)", async () => {
+  it("passes the canonical pnlPct through unchanged even when the mark lands on a fractional cent (live CTVA shape)", async () => {
     mockOpenSwingRows = [];
     mockBangerRows = [];
     bangerEngineEnabled = true;
     bangerFetchShouldThrow = false;
 
-    // Live values: entry $0.23, raw mid $0.175 (displays as "Mark: $0.18"), raw livePnlPct -23.9
-    // (= 0.175/0.23-1 * 100, unrounded). The reconciled figure a member can hand-check against the
-    // displayed $0.18 mark is (0.18/0.23-1)*100 = -21.7391...%.
+    // Live values: entry $0.23, raw mid $0.175 (displays as "Mark: $0.18"), canonical livePnlPct
+    // -23.9 (horizons board: GET /api/market/nighthawk/horizons?view=swings). The old recompute
+    // would have shown -21.7391...% here (0.18/0.23-1)*100 — a value that disagreed with the
+    // board. The fix is that `ctx.play.pnlPct` must stay exactly -23.9, matching the board.
     mockResolvedPlay = {
       ...DEFAULT_RESOLVED_PLAY,
       id: "SWING:CTVA:1483",
@@ -656,30 +661,22 @@ describe("loadSwingPlayBriefContext: pnlPct is reconciled with the displayed (ro
         positionId: 1483,
       });
       assert.ok(ctx, "context must still resolve");
-      assert.ok(ctx!.play.pnlPct != null, "pnlPct must not be dropped");
-      assert.ok(
-        Math.abs(ctx!.play.pnlPct! - -21.7391) < 0.01,
-        `expected the cent-rounded-mark recompute (~-21.74), got ${ctx!.play.pnlPct}`,
-      );
-      assert.notEqual(
-        Math.round(ctx!.play.pnlPct! * 10),
-        -239,
-        "must not still be the raw, unreconciled -23.9 the live repro served",
+      assert.equal(
+        ctx!.play.pnlPct,
+        -23.9,
+        "pnlPct must stay exactly the canonical board value, never a cent-rounded-mark recompute",
       );
     } finally {
       mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
     }
   });
 
-  it("leaves pnlPct untouched when it is not a plain mark/entry-1 read (WS-10 executable-lane guard)", async () => {
+  it("passes the canonical pnlPct through unchanged for a non-mark/entry basis (WS-10 executable-lane shape)", async () => {
     mockOpenSwingRows = [];
     mockBangerRows = [];
     bangerEngineEnabled = true;
     bangerFetchShouldThrow = false;
 
-    // mark/entry-1 implies +50%, but pnlPct carries a genuinely different basis (e.g. exec.pnl_pct)
-    // far outside ordinary rounding noise — must be left exactly as given, same guard as
-    // play-brief.ts's own `markRoundTripsPnl`.
     mockResolvedPlay = {
       ...DEFAULT_RESOLVED_PLAY,
       id: "SWING:XYZ:9001",
@@ -697,7 +694,47 @@ describe("loadSwingPlayBriefContext: pnlPct is reconciled with the displayed (ro
         positionId: 9001,
       });
       assert.ok(ctx, "context must still resolve");
-      assert.equal(ctx!.play.pnlPct, 12.3, "a non-mark/entry pnlPct basis must not be rewritten");
+      assert.equal(ctx!.play.pnlPct, 12.3, "pnlPct must be passed through exactly as resolved");
+    } finally {
+      mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
+    }
+  });
+
+  it("live KMPR repro (positionId 1634): canonical -50.0% trough-mark pnlPct must not become -40.0% (Bug 1)", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    // Live values (2026-10-16): entry $0.05, mark $0.025 — exactly the position's own recorded
+    // trough. The old recompute rounded $0.025 UP to $0.03 (JS `Math.round` ties away from zero)
+    // and divided by the RAW entry, producing -40.0% — a 10-point overstatement that the old
+    // peak/trough guard could not catch because -40.0% never escaped the [-50, +50] band.
+    // Canonical `livePnlPct` (horizons board) for this exact position/instant is -50.0%.
+    mockResolvedPlay = {
+      ...DEFAULT_RESOLVED_PLAY,
+      id: "SWING:KMPR:1634",
+      ticker: "KMPR",
+      status: "OPEN",
+      entry: 0.05,
+      mark: 0.025,
+      pnlPct: -50.0,
+      peak: 50.0,
+      trough: -50.0,
+    };
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({
+        playId: "SWING:KMPR:1634",
+        ticker: "KMPR",
+        positionId: 1634,
+      });
+      assert.ok(ctx, "context must still resolve");
+      assert.equal(
+        ctx!.play.pnlPct,
+        -50.0,
+        "pnlPct must stay exactly the canonical -50.0%, matching the horizons board",
+      );
     } finally {
       mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
     }

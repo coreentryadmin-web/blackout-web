@@ -12,7 +12,6 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext, SwingRollHistory } from "./play-brief-types";
 import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
-import { reconcileLivePnlPctWithDisplayMark } from "./play-brief-resolve-pure";
 import { fetchMeridianForTicker, meridianUnavailableSlice } from "./play-brief-meridian";
 import { fetchMeridianPeerForBrief, meridianPeerUnavailableSlice } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
@@ -215,24 +214,24 @@ export async function loadSwingPlayBriefContext(
   const resolved = await resolveSwingPlayForBrief(input);
   if (!resolved) return null;
 
-  // BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): every
+  // BUG FIX (2026-10-16, Ask Largo standing mandate — live GOOG/KMPR repro, Bug 1 of the
+  // standing "Ask Largo x Night Hawk Swings" ownership mandate). This loader used to reconcile
+  // `pnlPct` here (via the now-removed `reconcileLivePnlPctWithDisplayMark`, added 2026-10-09 for
+  // a live CTVA repro) by recomputing it from a cent-rounded `mark` — intended to keep every
   // section downstream (`composeSwingPlayBrief` and the ~6 call sites across
   // play-brief-narrative.ts/-coaching.ts/-intel.ts that read `play.pnlPct` for "current P&L"
-  // framing) must see the SAME reconciled number `positionSection`'s own `pnlForDisplay` already
-  // shows — reconciled here, once, at the single point every live brief passes through, rather
-  // than left for each section to (not) redo. See `reconcileLivePnlPctWithDisplayMark`'s own doc
-  // comment (play-brief-resolve-pure.ts) for the full live repro and why this is the safe choke
-  // point (every existing section-level unit test builds its own fixture and calls
-  // `composeSwingPlayBrief` directly, bypassing this loader entirely, so none of them are
-  // affected by this change).
-  const play = {
-    ...resolved.play,
-    pnlPct: reconcileLivePnlPctWithDisplayMark({
-      entry: resolved.play.entry,
-      mark: resolved.play.mark,
-      pnlPct: resolved.play.pnlPct,
-    }),
-  };
+  // framing) showing the SAME number. That recompute itself turned out to be able to disagree
+  // with the single canonical `pnlPct` every OTHER surface already agrees on — the horizons
+  // board's own `livePnlPct`, PlayTerminal.tsx's Command Deck card — by up to 10 full percentage
+  // points (live KMPR repro, positionId 1634: canonical -50.0% vs the old recompute's -40.0%,
+  // caused by `Math.round(2.5)` rounding a $0.025 mark UP to $0.03 while that same mark sat
+  // exactly at the position's own recorded trough). See `play-brief.ts`'s own `pnlForDisplay`
+  // comment (Position section) for the full two-repro write-up (GOOG + KMPR) and why dropping
+  // the recompute, rather than adding a third narrower guard on top of it, is the fix: `play`
+  // now carries `resolved.play` untouched — `pnlPct` is already the single canonical value
+  // (`livePnlPct`, live-plays.ts/banger-lane-merge.ts) every other surface reads, so every
+  // section downstream automatically shows that same number with no reconciliation step needed.
+  const play = resolved.play;
 
   const ticker = play.ticker.toUpperCase();
 
