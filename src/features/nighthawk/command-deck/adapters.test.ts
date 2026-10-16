@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import {
   terminalPlayFromZeroDte,
   terminalPlayFromHorizon,
+  terminalPlayFromClosedSwing,
   terminalPlayFromEdition,
   managementFor,
   refreshSwingManagement,
   parseLevelNum,
   firstSeenIso,
 } from "./adapters.ts";
+import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import { overlayLegacyQuotes } from "./use-legacy-quotes.ts";
 import { swingActionDisplay } from "./play-card-lifecycle.ts";
 
@@ -124,6 +126,36 @@ test("horizon adapter: scoreWithheld threads through from HorizonDeckSource to T
   });
   assert.equal(real.score, 0);
   assert.equal(real.scoreWithheld, undefined, "a genuinely-scored 0 must not be flagged withheld");
+});
+
+// Live repro (GET /api/market/swing/record, 2026-10-16): AMZN positionId 48 (rootPositionId 44)
+// and AAPL positionId 40 (rootPositionId 37) — both ROLLED chains — served a fabricated literal
+// `"score": 0` on the CLOSED tab because closed-plays.ts's closedDeckSourceFromRow never flagged
+// its own 0-fallback. terminalPlayFromClosedSwing is the ONE place that bridges
+// SwingClosedDeckSource into terminalPlayFromHorizon; before this fix it built that bridging
+// object literal with no `scoreWithheld` key at all, so the sibling test just above
+// (`terminalPlayFromHorizon` forwards the flag correctly) never actually fired for a closed swing
+// play — the flag was always undefined going in, regardless of the source row.
+test("closed-swing adapter: scoreWithheld threads through from SwingClosedDeckSource to TerminalPlay (rolled-chain repro)", () => {
+  const closedSrc: SwingClosedDeckSource = {
+    positionId: 48,
+    ticker: "AMZN",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 0,
+    scoreWithheld: true,
+    status: "CLOSED",
+    reason: "closed — BREAKOUT thesis",
+    contract: { strike: 245, right: "C", expiry: "2026-10-09", dte: 0 },
+  };
+  const play = terminalPlayFromClosedSwing(closedSrc);
+  assert.equal(play.score, 0);
+  assert.equal(play.scoreWithheld, true, "a rolled-chain's fabricated 0 must reach TerminalPlay flagged, not bare");
+
+  const realClosedSrc: SwingClosedDeckSource = { ...closedSrc, positionId: 14, score: 77, scoreWithheld: undefined };
+  const realPlay = terminalPlayFromClosedSwing(realClosedSrc);
+  assert.equal(realPlay.score, 77);
+  assert.equal(realPlay.scoreWithheld, undefined, "a genuinely-scored closed play must not be flagged withheld");
 });
 
 test("horizon adapter (PR-12): thesisBreak DERIVES from setupState; INVALIDATED → break", () => {

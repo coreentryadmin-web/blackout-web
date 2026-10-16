@@ -27,6 +27,18 @@ export type SwingClosedDeckSource = {
   direction: "LONG" | "SHORT";
   horizon: "SWING";
   score: number;
+  /** True when `score` is a `0` FALLBACK (the terminal leg's `feature_vector.evidence_score` was
+   *  missing, never a real measured value — see `HorizonPlay.scoreWithheld`'s doc comment
+   *  (live-plays.ts) for the live/open-position sibling of this same field, and
+   *  `TerminalPlay.scoreWithheld`'s own doc comment (command-deck/types.ts) for the live repro
+   *  this closes. A ROLLED chain's child leg is the one row shape that reliably hits this: its
+   *  own commit (roll-plan.ts's `buildRollPlan`) never sets `feature_vector` on the child row at
+   *  all (confirmed live 2026-10-16, AMZN root-44/terminal-48 and AAPL root-37/terminal-40 — both
+   *  showed a literal `"score": 0` on `GET /api/market/swing/record`'s `closedDeck`, implying
+   *  zero conviction/evidence at commit, which was simply false: the chain's real evidence lived
+   *  on the parent leg's own feature_vector, never carried forward). A consumer of `score` must
+   *  check this before treating `0` as "the lowest real score". */
+  scoreWithheld?: boolean;
   status: "CLOSED";
   reason: string;
   contract: {
@@ -149,10 +161,18 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
   if (!bundle) return null;
   const { strike, right, expiry, dte } = bundle;
   const exitAt = row.closed_at ?? row.graded_at;
-  const score =
+  // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16, AMZN root-44/terminal-48 + AAPL
+  // root-37/terminal-40): `evidence_score` was unconditionally defaulted to the literal `0` with
+  // no companion flag — indistinguishable from a real, measured zero-conviction score. The
+  // live/open-position sibling path (live-plays.ts's `livePlayFromSwingPosition`) already treats
+  // this exact gap honestly with `scoreWithheld`; this mirrors that idiom rather than inventing a
+  // new one. See `SwingClosedDeckSource.scoreWithheld`'s doc comment for the full live repro.
+  const evidenceScore =
     row.feature_vector && typeof row.feature_vector.evidence_score === "number"
       ? (row.feature_vector.evidence_score as number)
-      : 0;
+      : null;
+  const score = evidenceScore ?? 0;
+  const scoreWithheld = evidenceScore == null;
   const entryPresentPillars = entryPresentPillarsFromFeatureVector(row.feature_vector);
   const archetypeNearTie = archetypeNearTieFromFeatureVector(row.feature_vector);
   // Gated to the root leg only (roll_seq === 0) — see live-plays.ts's topFlowProvenanceFromRow call
@@ -167,6 +187,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
     direction: row.direction === "short" ? "SHORT" : "LONG",
     horizon: "SWING",
     score,
+    scoreWithheld,
     status: "CLOSED",
     reason: `closed — ${row.archetype ?? "swing"} thesis`,
     contract: {
