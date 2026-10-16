@@ -15,7 +15,12 @@ import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { serverCache } from "@/lib/server-cache";
 // Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
 // so they can be unit-tested in isolation. See spx-desk-numerics.ts.
-import { roundDeskNum, gexStaleFromAge, roundPulseNumerics } from "./spx-desk-numerics";
+import {
+  roundDeskNum,
+  gexStaleFromAge,
+  roundPulseNumerics,
+  mapDbFlowRowToSpxFlowBrief,
+} from "./spx-desk-numerics";
 import { mergePulseIntoDesk } from "./spx-desk-merge";
 import { safeTime } from "@/lib/safe-time";
 import { tapeDedupKey } from "@/lib/tape-dedup-key";
@@ -1300,23 +1305,7 @@ async function _fetchSpxDeskFlowAlertsWithDbInner(limit = 32): Promise<SpxFlowBr
         const t = f.ticker.toUpperCase();
         return t === "SPX" || t === "SPXW";
       })
-      .map((f) => ({
-        ticker: f.ticker,
-        premium: f.premium,
-        option_type: f.option_type,
-        strike: f.strike,
-        expiry: f.expiry,
-        direction: f.direction,
-        alerted_at: f.alerted_at,
-        alert_rule: null,
-        trade_count: null,
-        // The DB tape has no has_sweep column at all — `false` here is absence, not a dropped
-        // field. (`scoreHelixFlowAlignment` gates on has_sweep, so it cannot fire on DB-only
-        // rows; that is a separate question from this one and is raised, not changed, here.)
-        has_sweep: false,
-        // db.ts derives ask_pct in SQL as the mirror of askPctFromTwoSidedPremium.
-        ask_pct: f.ask_pct ?? null,
-      }));
+      .map(mapDbFlowRowToSpxFlowBrief);
     if (spxDb.length) {
       lastGoodSpxFlowBriefs = spxDb.slice(0, limit);
       return lastGoodSpxFlowBriefs;
@@ -1332,23 +1321,7 @@ async function _fetchSpxDeskFlowAlertsWithDbInner(limit = 32): Promise<SpxFlowBr
         const t = f.ticker.toUpperCase();
         return t === "SPX" || t === "SPXW";
       })
-      .map((f) => ({
-        ticker: f.ticker,
-        premium: f.premium,
-        option_type: f.option_type,
-        strike: f.strike,
-        expiry: f.expiry,
-        direction: f.direction,
-        alerted_at: f.alerted_at,
-        alert_rule: null,
-        trade_count: null,
-        // The DB tape has no has_sweep column at all — `false` here is absence, not a dropped
-        // field. (`scoreHelixFlowAlignment` gates on has_sweep, so it cannot fire on DB-only
-        // rows; that is a separate question from this one and is raised, not changed, here.)
-        has_sweep: false,
-        // db.ts derives ask_pct in SQL as the mirror of askPctFromTwoSidedPremium.
-        ask_pct: f.ask_pct ?? null,
-      }));
+      .map(mapDbFlowRowToSpxFlowBrief);
 
     const merged = [...fromUw, ...spxDb].sort(
       (a, b) => new Date(b.alerted_at).getTime() - new Date(a.alerted_at).getTime()

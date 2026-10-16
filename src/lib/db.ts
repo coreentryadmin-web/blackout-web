@@ -3143,6 +3143,9 @@ export type FlowRow = {
   /** Per-contract fill price from the UW alert payload (what the print paid). */
   fill_price?: number;
   alert_rule?: string;
+  /** Number of individual trades this alert aggregates (UW `trade_count`); feeds the
+   *  repeated-hits detector alongside alert_rule. */
+  trade_count?: number;
   ask_pct?: number;
   underlying_price?: number;
   open_interest?: number;
@@ -3271,6 +3274,14 @@ export async function fetchRecentFlows(params: {
              raw_payload->>'alert_rule',
              raw_payload->>'rule_name'
            ), '') AS alert_rule,
+           -- UW's flow_alerts payload carries trade_count as a JSON number on most rows but,
+           -- same as the numeric fields below, sometimes as a numeric-looking string — accept
+           -- both rather than silently NULLing it out. Feeds the repeated-hits detector
+           -- (computeFlowStrikeStacks) alongside alert_rule; previously this was never
+           -- extracted at all (confirmed live, 2026-10-16).
+           CASE WHEN jsonb_typeof(raw_payload->'trade_count') = 'number'
+                  OR (raw_payload->>'trade_count') ~ '^-?[0-9]+(\.[0-9]+)?$'
+                THEN (raw_payload->>'trade_count')::numeric END AS trade_count,
            -- ask_pct (0-100): prefer a real ask_side_pct, else DERIVE the ask-side share of
            -- two-sided premium as a 0-100 pct from total_ask_side_prem/total_bid_side_prem. UW
            -- does NOT send ask_side_pct on flow_alerts (live-verified 2026-07-24: 0/2780 rows)
@@ -3365,6 +3376,7 @@ export async function fetchRecentFlows(params: {
     tape_time_estimated,
     dte: row.dte != null ? Number(row.dte) : undefined,
     alert_rule: row.alert_rule ? String(row.alert_rule) : undefined,
+    trade_count: row.trade_count != null ? Number(row.trade_count) : undefined,
     ask_pct: row.ask_pct != null ? Number(row.ask_pct) : undefined,
     fill_price: row.fill_price != null ? Number(row.fill_price) : undefined,
     underlying_price: row.underlying_price != null ? Number(row.underlying_price) : undefined,
