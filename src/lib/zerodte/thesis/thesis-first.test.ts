@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mergeSameTickerDiscovery } from "../board";
 import { classifyTradeArchetype, ARCHETYPE_LABEL } from "./archetype";
 import { evaluateArchetypeGates } from "./archetype-gates";
 import { pickBestExpression, rankContractsForThesis } from "./contract-engine";
@@ -174,6 +175,45 @@ test("pipeline: a real cross-origin conflict surfaces in disagreeing_rails, not 
   );
   // The disagreeing rail must NOT contribute to the aligned rail_scores/archetype conviction.
   assert.equal(result.thesis.rail_scores.POSITIONING, undefined);
+});
+
+test("pipeline: a real opposing FLOW origin that LOSES the board merge still surfaces in disagreeing_rails (2026-10-16 evidence-drop, GOOGL 2026-10-01 shape)", () => {
+  // The test above (2026-08-26) pins the DIRECTION-label half of this bug by hand-setting
+  // gross_premium=3_000_000 directly on the test fixture — it never actually calls the board's
+  // own `mergeSameTickerDiscovery`, so it could never catch the real production defect: the
+  // merge's opposing-direction "fight" branch zeroes out the losing FLOW origin's real
+  // gross_premium/flow_quality (BREAKOUT/PIN setups carry gross_premium=0 by construction), and
+  // that zeroed premium then trips `scoreFlowRail`'s own suppression gate (< $200k AND quality
+  // < 50 → null) — so disagreeing_rails stayed EMPTY on 214/214 live committed rows even when
+  // origin_contributions/origin_maps correctly recorded a real conflict. This test goes through
+  // the REAL merge, not a hand-built fixture, to prove the full board→thesis path.
+  const flow = {
+    ticker: "GOOGL",
+    direction: "long" as const,
+    discovery_origin: ["FLOW" as const],
+    score: 49,
+    play_type: "DIRECTIONAL",
+    gross_premium: 620_000,
+    flow_quality: null,
+  } as unknown as Parameters<typeof mergeSameTickerDiscovery>[0];
+  const breakout = {
+    ticker: "GOOGL",
+    direction: "short" as const,
+    discovery_origin: ["BREAKOUT" as const],
+    score: 50,
+    play_type: "DIRECTIONAL",
+    gross_premium: 0,
+  } as unknown as Parameters<typeof mergeSameTickerDiscovery>[0];
+
+  const merged = mergeSameTickerDiscovery(flow, breakout);
+  assert.equal(merged.direction, "short", "BREAKOUT wins the live GOOGL direction fight");
+
+  const result = runThesisPipelineForSetup(merged as never, {});
+  assert.equal(result.thesis.direction, "short", "thesis must describe the board's kept/traded direction");
+  assert.ok(
+    result.thesis.disagreeing_rails.some((r) => r.rail === "FLOW" && r.direction === "long"),
+    "the losing FLOW origin's real long vote must surface as a disagreeing rail instead of being silently suppressed by a zeroed-out gross_premium"
+  );
 });
 
 test("catalyst rail: flags + hot headline", () => {
