@@ -19,6 +19,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import type { ZeroDteRecordPlay } from "@/lib/zerodte/record";
+import { scoreForBanding } from "@/lib/zerodte/record";
 import type { ZeroDteTier } from "@/lib/zerodte/tiers";
 import { dailyPnlByDate } from "@/features/nighthawk/lib/analytics-panel";
 import { PlayHistoryCalendar } from "./PlayHistoryCalendar";
@@ -75,6 +76,37 @@ function hitTone(hit: boolean | null): "is-up" | "is-down" | "is-flat" {
 function fmtMovePct(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return EM_DASH;
   return `${v >= 0 ? "+" : ""}${v}%`;
+}
+
+/**
+ * The row's own `score` field is ALWAYS `score_max` — the session-PEAK evidence
+ * score, which keeps ratcheting UP across scan ticks even AFTER the play commits
+ * (record.ts's own doc comment on `ZeroDteRecordPlay.score` already names this gap:
+ * "the committed score, when the row carries entry_context, lives in
+ * entry_context.score"). This detail drawer used to render that bare, unqualified,
+ * under the label "Score" — the one place in this component that claimed to show
+ * what a play scored, while actually showing its post-commit high.
+ *
+ * `ZeroDteBoard.tsx` (the LIVE board) already renders the identical quantity
+ * correctly QUALIFIED — "(peak score {row.score})" — the historical Track Record
+ * table just never carried the same qualifier. Found live 2026-10-16: a 30-day
+ * window showed the top-level `score` disagreeing with `entry_context.score` on
+ * 121/215 rows (56.3%), e.g. TEM 2026-10-15 peak 100 vs committed 87.
+ *
+ * `scoreForBanding` (record.ts) is the canonical, already-tested resolution — reused
+ * here rather than re-derived, so this can never drift from the number every
+ * score-band gate actually acted on. This wrapper adds the one thing the raw number
+ * doesn't carry: WHICH case fired, so the caller can label a score_max fallback as a
+ * peak instead of presenting it as the real commit score.
+ */
+export function commitScoreFor(p: Pick<ZeroDteRecordPlay, "score" | "entry_context">): {
+  value: number;
+  isPeakFallback: boolean;
+} {
+  const ctxScore = p.entry_context?.score;
+  const isPeakFallback = !(typeof ctxScore === "number" && Number.isFinite(ctxScore));
+  const value = scoreForBanding({ score_max: p.score, entry_context: p.entry_context });
+  return { value, isPeakFallback };
 }
 
 // Widened from the original [7, 30, 90] to a fuller preset set (matching the density of a real
@@ -356,6 +388,7 @@ export function PlayHistoryTable({
               {sorted.map((p, i) => {
                 const rowKey = `${p.session_date}-${p.ticker}-${p.flagged_at}-${i}`;
                 const isOpen = expandedKey === rowKey;
+                const commitScore = commitScoreFor(p);
                 return (
                   <Fragment key={rowKey}>
                     <tr
@@ -390,8 +423,10 @@ export function PlayHistoryTable({
                               <span className="tabular-nums">{p.flagged_et}</span>
                             </div>
                             <div className="nh-history-detail-item">
-                              <span className="nh-history-detail-label">Score</span>
-                              <span className="tabular-nums">{p.score}</span>
+                              <span className="nh-history-detail-label">
+                                {commitScore.isPeakFallback ? "Score (peak)" : "Score"}
+                              </span>
+                              <span className="tabular-nums">{commitScore.value}</span>
                             </div>
                             <div className="nh-history-detail-item">
                               <span className="nh-history-detail-label">Conviction</span>
