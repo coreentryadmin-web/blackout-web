@@ -386,6 +386,96 @@ test("tradeManagerNarrativeSection: LONG Break watch never cites a level ABOVE s
   assert.doesNotMatch(section!.body, /Break watch.*105\.00/i);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): an OPEN position's
+// real, committed structural stop (`play.invalidationUnderlyingPx`, pinned at commit from
+// `thesis_invalidation_px` — manage.ts's own PRECEDENCE RANK #1 exit trigger, "fires at ANY
+// premium P&L... beats expiry_risk") never appeared anywhere in the OPEN-bucket narrative — only
+// the GEX-heuristic "Break watch" level (nearest put wall/dark pool/GEX king) did, with the same
+// confident framing, even when the real stop is 7x tighter. This fix ADDS a second, distinct,
+// clearly-labeled "Structural stop (committed)" bullet alongside — never instead of — "Break
+// watch", per the Largo product contract's additive principle.
+test("tradeManagerNarrativeSection: OPEN LONG surfaces the real committed structural stop as a distinct bullet alongside the GEX Break watch level (2026-10-16)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      // Real repro shape: spot much closer to the real committed stop (345.33) than to the far
+      // looser GEX put wall (330.00) — the exact "7x farther, same confident framing" gap found live.
+      play: play({ direction: "LONG", invalidationUnderlyingPx: 345.33 }),
+      vector: {
+        spot: 349.63,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 330, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  // The pre-existing GEX heuristic is untouched — still cites the put wall.
+  assert.match(section!.body, /Break watch.*330\.00/i);
+  // The new, distinct, additive line cites the REAL committed stop — a different number, never
+  // folded into (or replacing) the line above.
+  assert.match(section!.body, /Structural stop \(committed\).*345\.33/i);
+  assert.match(section!.body, /enforced exit regardless of option P&L/i);
+});
+
+test("tradeManagerNarrativeSection: committed structural stop uses 'already through' framing once spot has actually crossed it", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG", invalidationUnderlyingPx: 345.33 }),
+      vector: { spot: 344.0, gexWalls: { callWalls: [], putWalls: [] } } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Structural stop \(committed\).*already through.*345\.33/i);
+});
+
+test("tradeManagerNarrativeSection: SHORT committed structural stop reads 'already through' once spot has reclaimed it", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "SHORT", invalidationUnderlyingPx: 110 }),
+      vector: { spot: 112, gexWalls: { callWalls: [], putWalls: [] } } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Structural stop \(committed\).*already through.*110\.00/i);
+});
+
+test("tradeManagerNarrativeSection: no committed structural stop bullet when the real level is absent (no regression)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG" }), // invalidationUnderlyingPx left undefined — honest absence
+      vector: {
+        spot: 349.63,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 330, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*330\.00/i);
+  assert.doesNotMatch(section!.body, /Structural stop \(committed\)/i);
+});
+
+test("tradeManagerNarrativeSection: committed structural stop bullet never fires for a WATCH-bucket candidate (no committed position yet)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ status: "WATCH", direction: "LONG", invalidationUnderlyingPx: 345.33 }),
+      vector: {
+        spot: 349.63,
+        gexWalls: { callWalls: [], putWalls: [{ strike: 330, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "watch",
+  );
+
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /Structural stop \(committed\)/i);
+});
+
 // FINDING (Ask Largo standing mandate, forensic batch 30, 2026-09-15): breakTrigger's support/
 // resist predicates only recognized put_wall/dark_pool (support) and call_wall (resist) -- never
 // "king" (the GEX king strike), even though collectFocalLevels already includes it in the same

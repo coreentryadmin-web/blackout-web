@@ -868,6 +868,45 @@ function breakTrigger(
 }
 
 /**
+ * The REAL, committed structural stop for an already-OPEN swing position — `play.
+ * invalidationUnderlyingPx` (sourced from the ledger's `thesis_invalidation_px`, pinned once at
+ * commit, never recomputed). This is a DIFFERENT number from `breakTrigger`'s "Break watch" bullet
+ * above (and `resolveBreakInvalidation`'s `envelope.invalidation` headline), which both cite a
+ * GEX-heuristic level (nearest put wall / dark pool print / GEX king from `focal`) — an
+ * independently-computed dealer-positioning read, genuinely useful on its own terms, but NOT the
+ * number that actually governs the trade.
+ *
+ * WHY THIS MATTERS (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): `manage.ts`'s
+ * own header names `thesis_invalidation_px` PRECEDENCE RANK #1 among every management exit trigger
+ * ("fires at ANY premium P&L, even +30% — the thesis is what broke, not the option... beats
+ * expiry_risk" — see `manage-sync.ts`'s `structuralStopLevel: reads.structuralStopLevel ??
+ * row.thesis_invalidation_px`). Despite being the single most consequential exit trigger in the
+ * whole engine, it never appeared in the OPEN-bucket play-brief a member actually reads — every
+ * section instead cited only the GEX heuristic, with the same confident framing, even when the two
+ * numbers differ by 7x in distance from spot. `docs/audit/FINDINGS.md` (2026-09-12, "Structural
+ * stop on an OPEN position is a live recompute, not the position's real committed stop") named this
+ * exact gap for the Structure Ladder widget and explicitly deferred threading the real value onto
+ * `TerminalPlay` as separate, out-of-scope plumbing; that threading landed later (`invalidationUnderlyingPx`
+ * added to `TerminalPlay` 2026-09-28, for the CLOSED-bucket "stop fired" coaching line only) — but no
+ * OPEN-bucket narrative call site ever read the field once it existed. This closes that gap.
+ *
+ * ADDITIVE per the Largo product contract — never replaces the GEX read, only adds a second,
+ * clearly-labeled line when the real level is actually known. Returns null (never fabricates) when
+ * either the real stop or a live spot is unavailable; callers keep showing exactly today's
+ * GEX-only behavior in that case, no regression.
+ */
+export function committedStructuralStopLine(play: TerminalPlay, spot: number | null): string | null {
+  const inval = fin(play.invalidationUnderlyingPx);
+  if (inval == null || spot == null) return null;
+  const alreadyThrough = play.direction === "SHORT" ? spot >= inval : spot <= inval;
+  const distPct = Math.abs(((spot - inval) / inval) * 100);
+  if (alreadyThrough) {
+    return `**Structural stop (committed)** — already through **${fmtPriceLevel(inval)}**, the real stop pinned at entry → an enforced exit regardless of option P&L, independent of the GEX read above.`;
+  }
+  return `**Structural stop (committed)** — lose **${fmtPriceLevel(inval)}** on a closing basis (${distPct.toFixed(1)}% away) → an enforced exit regardless of option P&L, independent of the GEX read above.`;
+}
+
+/**
  * The real, per-ticker technical break level (put wall / dark pool / gamma flip for LONG,
  * call wall for SHORT) — the same staleness-guarded spot/flip/focal-level computation
  * `tradeManagerNarrativeSection` uses to build its "Break watch" bullet (see `breakTrigger`
@@ -1473,6 +1512,18 @@ export function tradeManagerNarrativeSection(
       : `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
+
+  // Ask Largo standing mandate (2026-10-16, live repro SWING:GOOGL:58): `breakLine` above is the
+  // GEX-heuristic "Break watch" level — add the REAL, committed structural stop as its own
+  // distinct, reserved bullet whenever it's known. See committedStructuralStopLine's own doc
+  // comment for the full root-cause/contract rationale. OPEN-bucket only (bucket==="closed"
+  // already returned above; a WATCH candidate has no committed position yet, so its
+  // `invalidationUnderlyingPx` — if a dossier pinned one — describes a hypothetical plan, not an
+  // enforced exit, and showing it here under this label would overclaim).
+  if (bucket === "open") {
+    const structuralStopLine = committedStructuralStopLine(play, spot);
+    if (structuralStopLine) add(structuralStopLine, { reserved: true });
+  }
 
   // crossDeskCoaching (collected into `bullets` above via collectCoachingBullets) already names
   // the same Vector headline when desks conflict — see counterThesisLine's own doc comment.
