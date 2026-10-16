@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-15T22:53:19Z",
+  "lastUpdated": "2026-10-16T04:08:34Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -797,6 +797,11 @@
       "ts": "2026-10-15T22:53:19Z",
       "cycle": "22:51 offset",
       "summary": "STALENESS CHECK on 2 escalated open items, both CONFIRMED STILL OPEN (no bug fixed by me, no PR -- report/hold per mandate, used a quiet overnight healthcheck-identical window for this per AGGRESSIVE MODE): (1) legacyGexWallsHorizonMismatch_2026_09_21 (escalated HIGH PRIORITY ~1 month ago): direct code read confirms nighthawk-morning-confirm/route.ts:410 still calls fetchCortexInputs(ps.ticker, direction, {now, timeoutMs:4000}) with no horizon option, so cortex/fetch.ts:403s vectorHorizonForCortexCommit(opts.horizon ?? \"0dte\") still silently defaults every Legacy play (DTE ~5-30) to the 0DTE Vector horizon for its gex-walls fresh-veto gate -- unfixed, exactly as originally found. (2) breakdownLaneOverlapScoreChange_2026_10_01 (BLOCKING, operator decision pending since 2026-10-01): confirmed screenBreakdownMovers is STILL dead code on main (defined candidates.ts:509, zero call sites repo-wide, market-wide.ts has no breakdown references at all) -- the pending fix branch fix/nighthawk-legacy-structure-lane-breakdown (f2d6fedda, 3-file/154-line real diff: candidates.ts/market-wide.ts/a new test) never got a PR and was never merged. NEW INFO: the branch has now diverged badly from main (merge-base is 2 weeks stale, ~424 files / 6477+ lines of unrelated drift between them) -- whenever this does get an accept decision, it will need a fresh rebase onto current main, not a straight merge; flagging this staleness risk now rather than discovering it later. Neither item is mine to resolve unilaterally (live pre-open invalidation logic / pending operator scope decision) -- both remain accurately logged as open, just re-verified against current main per this files own discipline. Healthcheck this cycle: repeat-clean (A GREEN 2026-10-16 edition, B AMBER pre-RTH as expected, C GREEN resolved=35, D SKIPPED pre-morning-confirm)."
+    },
+    {
+      "ts": "2026-10-16T04:08:34Z",
+      "cycle": "04:06 offset",
+      "summary": "C_record resolved count DROPPED 35->31 this cycle (04:08Z) -- investigated as a real decrease rather than dismissed, since resolved counts normally only grow. Root cause: GET /api/market/nighthawk/record?days=14 is a ROLLING 14-day window -- sessions dropped 11->10, consistent with the oldest trading day in the window aging out as the calendar date advanced past midnight (today is now 2026-10-16, well past the 00:06Z rollover). Verified fully internally consistent at the new count: segments.current buckets sum correctly (wins4+losses5+opens17+unfilled2+pulled3=31) and debrief failure_modes sum to 31 (13 wrong_direction+6 target_unreachable+3 clean_win+3 stopped_normal+2 pulled_correctly+2 unfilled_never_traded_back+1 gap_win+1 pulled_wrongly). No data loss, no bug -- purely the mechanical effect of a rolling lookback window dropping its oldest day. Documenting so a future cycle recognizes a day-to-day resolved-count DECREASE as expected rolling-window behavior rather than re-investigating from scratch. A/B/D stages unchanged from the established overnight pattern (A GREEN, B AMBER pre-RTH, D SKIPPED pre-morning-confirm)."
     }
   ],
   "knownOpenItems": {
