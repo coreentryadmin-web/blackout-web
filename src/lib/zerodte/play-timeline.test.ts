@@ -139,6 +139,94 @@ test("buildPlayTimeline: real live-only FLAT exit BEFORE a fictitious terminal t
   assert.equal(events.length, 2);
 });
 
+test("buildPlayTimeline: real live-only exit falling BETWEEN two non-terminal tranches drops only the later one (FINDINGS 2026-10-16 follow-up to #6086)", () => {
+  // #6086 only ever checked the reconstruction's TERMINAL leg (stopped/time_stop/doubled) for
+  // being fictitious once a real, live-only exit supersedes it. It never checked EARLIER,
+  // non-terminal legs (trim_scale_first/trim_scale_second) — but the bar-walk reconstruction
+  // replays the WHOLE session regardless of when the real exit happened, so a partial-bank leg
+  // can land chronologically AFTER the real close exactly like the terminal leg can. This
+  // fixture isolates that case with no terminal leg at all in the array, so only the new
+  // after-the-real-exit check (not the pre-existing terminal check) can be responsible for
+  // dropping the later tranche.
+  const events = buildPlayTimeline({
+    status: "CLOSED",
+    tranches: [
+      { tranche: 1, fraction: 0.5, exit_pnl_pct: 15, exit_reason: "trim_scale_first", at_et: "11:00" },
+      { tranche: 2, fraction: 0.5, exit_pnl_pct: 60, exit_reason: "trim_scale_second", at_et: "13:00" },
+    ],
+    closedReason: "ratchet",
+    exitReason: "ratchet",
+    exitAt: "2026-08-03T12:00:00-04:00",
+    exitPnlPct: 8,
+  });
+  // The earlier, genuinely-pre-exit trim survives untouched.
+  assert.ok(events.some((e) => e.label === "Trim" && e.pnlPct === 15 && e.atEt === "11:00"));
+  // The later, non-terminal tranche — chronologically AFTER the real exit — must now be dropped.
+  // Before this fix it would have survived (only terminal reasons were ever checked).
+  assert.ok(!events.some((e) => e.pnlPct === 60));
+  const real = events.find((e) => e.atEt === "12:00");
+  assert.equal(real?.label, "Ratchet exit");
+  assert.equal(real?.pnlPct, 8);
+  assert.equal(events.length, 2);
+});
+
+test("buildPlayTimeline: live ARM 2026-10-15 shape — non-terminal trim_scale_second AFTER the real ratchet exit is dropped alongside the terminal leg", () => {
+  // Real production shape confirmed live 2026-10-15 via GET /api/market/zerodte/record: ARM's
+  // real ratchet-floor close fired at 11:25 ET (peak armed at +5.14%, closed +1.87%), but the
+  // bar-walk reconstruction kept "trading" the already-closed position through a trim_scale_second
+  // at 15:03 ET (+40.79%) and a terminal doubled leg at 15:19 ET (+87.72%) — BOTH chronologically
+  // after the real close, and before this fix only the terminal leg was ever dropped.
+  const events = buildPlayTimeline({
+    status: "CLOSED",
+    tranches: [
+      { tranche: 1, fraction: 0.33, exit_pnl_pct: 12.63, exit_reason: "trim_scale_first", at_et: "11:21" },
+      { tranche: 2, fraction: 0.33, exit_pnl_pct: 40.79, exit_reason: "trim_scale_second", at_et: "15:03" },
+      { tranche: 3, fraction: 0.33, exit_pnl_pct: 87.72, exit_reason: "doubled", at_et: "15:19" },
+    ],
+    closedReason: "ratchet",
+    exitReason: "ratchet",
+    exitAt: "2026-10-15T15:25:01.522Z", // 11:25 ET (EDT, UTC-4)
+    exitPnlPct: 1.87,
+  });
+  // The genuine earlier trim (before the real exit) survives.
+  assert.ok(events.some((e) => e.label === "Trim" && e.pnlPct === 12.63 && e.atEt === "11:21"));
+  // Neither fictitious post-close leg renders — the non-terminal one (the actual gap) nor the
+  // terminal one (#6086's existing coverage).
+  assert.ok(!events.some((e) => e.pnlPct === 40.79));
+  assert.ok(!events.some((e) => e.pnlPct === 87.72));
+  const real = events.find((e) => e.atEt === "11:25");
+  assert.equal(real?.label, "Ratchet exit");
+  assert.equal(real?.pnlPct, 1.87);
+  assert.equal(events.length, 2);
+});
+
+test("buildPlayTimeline: live BB 2026-10-15 shape — every reconstructed tranche lands after the real flat exit, so none of them render", () => {
+  // Real production shape confirmed live 2026-10-15: BB's real flat-theta-bleed close fired at
+  // 12:21 ET, but ALL THREE reconstructed tranches (trim_scale_first 12:45 ET, trim_scale_second
+  // 15:02 ET, terminal doubled 15:29 ET) are chronologically after it — before this fix, the two
+  // non-terminal legs would both have rendered as if they happened to a position that was
+  // already closed for real.
+  const events = buildPlayTimeline({
+    status: "CLOSED",
+    tranches: [
+      { tranche: 1, fraction: 0.33, exit_pnl_pct: 14, exit_reason: "trim_scale_first", at_et: "12:45" },
+      { tranche: 2, fraction: 0.33, exit_pnl_pct: 42.5, exit_reason: "trim_scale_second", at_et: "15:02" },
+      { tranche: 3, fraction: 0.33, exit_pnl_pct: 90, exit_reason: "doubled", at_et: "15:29" },
+    ],
+    closedReason: "flat",
+    exitReason: "flat",
+    exitAt: "2026-10-15T16:21:19.581Z", // 12:21 ET (EDT, UTC-4)
+    exitPnlPct: -5,
+  });
+  assert.ok(!events.some((e) => e.pnlPct === 14));
+  assert.ok(!events.some((e) => e.pnlPct === 42.5));
+  assert.ok(!events.some((e) => e.pnlPct === 90));
+  const real = events.find((e) => e.atEt === "12:21");
+  assert.equal(real?.label, "Flat timeout");
+  assert.equal(real?.pnlPct, -5);
+  assert.equal(events.length, 1);
+});
+
 test("buildPlayTimeline: reconstruction with no real exit at all stands unmodified (legacy/incomplete row)", () => {
   // No exitPnlPct at all (no entry_context.exit ever stamped) — the reconstruction's own
   // terminal tranche is the only information available and must stand, exactly like
