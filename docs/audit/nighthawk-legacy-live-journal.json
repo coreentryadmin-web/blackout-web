@@ -1,6 +1,6 @@
 {
   "_readme": "Night Hawk Legacy live audit journal. Durable, git-tracked. Each hourly firing: git fetch origin main -q && git show origin/main:docs/audit/nighthawk-legacy-live-journal.json before trusting local state. Update in place per-ticker/edition-date. Prune entries older than ~5 trading days.",
-  "lastUpdated": "2026-10-16T04:08:34Z",
+  "lastUpdated": "2026-10-16T06:53:10Z",
   "coldStart": false,
   "coldStartNote": "2026-09-10: journal file did not exist at session start (git show origin/main:... returned 'path does not exist'). First cycle established it; no longer cold as of this update.",
   "mandateLog": [
@@ -802,6 +802,11 @@
       "ts": "2026-10-16T04:08:34Z",
       "cycle": "04:06 offset",
       "summary": "C_record resolved count DROPPED 35->31 this cycle (04:08Z) -- investigated as a real decrease rather than dismissed, since resolved counts normally only grow. Root cause: GET /api/market/nighthawk/record?days=14 is a ROLLING 14-day window -- sessions dropped 11->10, consistent with the oldest trading day in the window aging out as the calendar date advanced past midnight (today is now 2026-10-16, well past the 00:06Z rollover). Verified fully internally consistent at the new count: segments.current buckets sum correctly (wins4+losses5+opens17+unfilled2+pulled3=31) and debrief failure_modes sum to 31 (13 wrong_direction+6 target_unreachable+3 clean_win+3 stopped_normal+2 pulled_correctly+2 unfilled_never_traded_back+1 gap_win+1 pulled_wrongly). No data loss, no bug -- purely the mechanical effect of a rolling lookback window dropping its oldest day. Documenting so a future cycle recognizes a day-to-day resolved-count DECREASE as expected rolling-window behavior rather than re-investigating from scratch. A/B/D stages unchanged from the established overnight pattern (A GREEN, B AMBER pre-RTH, D SKIPPED pre-morning-confirm)."
+    },
+    {
+      "ts": "2026-10-16T06:53:10Z",
+      "cycle": "06:51 offset",
+      "summary": "ONE-SHOT TRANSIENT DEGRADED FALLBACK, self-healed, no bug fixed/PR (root-caused via code read, confirmed via immediate re-fetch): this cycle's healthcheck returned A_edition AMBER ('edition served from degraded fallback source') with editionFor jumped to 2026-10-19 (Monday -- correct weekend-skip value for nextTradingDayEt('2026-10-16') once the request landed past the carry-until-close window for Friday's still-open edition) and B_marks GREEN 'no open plays with a resolvable OCC' (zero plays, not the usual 4). Root cause via edition/route.ts + resolve-edition.ts read: this is the documented, intentional timeoutFallbackEdition() genuinely-unknown branch ({...emptyEdition(editionFor), degraded:true}) -- fires only when (a) the real resolveNighthawkEdition() call blows past its maxBlockMs timeout AND (b) the serving process's own in-memory lastGoodEdition is null (no prior successful resolve in THAT process's memory -- a per-ECS-task module-level var, not fleet-shared). Most likely explanation: this request's first-ever hit for the brand-new '2026-10-19' cache key (a guaranteed cache miss needing real DB work) landed on an ECS task that either just scaled up or had not yet served a warm edition read for any date -- textbook cold-task-at-a-cache-key-boundary timing, not a data or logic defect. Verified self-healed: an immediate re-fetch (same cycle) returned A_edition GREEN with the normal 4 real Friday plays (AI/EWY/MRNA/SHOP) carried forward, B_marks back to the familiar stale-pre-RTH AMBER on the same 4 OCCs. First instance of the DEGRADED state observed this session (distinct from the much more common 'stale' carry-forward pattern already journaled) -- noting for the 3-instance pattern threshold, not escalating on n=1 since the mechanism is already documented in the route's own code comments as intentional and it resolved on its own within seconds."
     }
   ],
   "knownOpenItems": {
