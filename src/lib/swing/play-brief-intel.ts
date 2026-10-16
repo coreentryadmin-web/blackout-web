@@ -33,6 +33,7 @@ import {
   tradeManagerNarrativeSection,
   collectFocalLevels,
   resolveInvalidationFocalLevel,
+  committedStructuralStopLine,
 } from "./play-brief-narrative";
 import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -1446,6 +1447,20 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   }
   if (play.direction === "SHORT" && invalidationLevel != null) {
     lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
+  }
+
+  // Ask Largo standing mandate (2026-10-16, live repro SWING:GOOGL:58): the "Structural
+  // support/resistance node" line above is the GEX heuristic (put wall/dark pool/GEX king) —
+  // ADD the REAL, committed structural stop (`thesis_invalidation_px`, pinned at commit — see
+  // committedStructuralStopLine's own doc comment in play-brief-narrative.ts for the full
+  // root-cause/contract rationale) as its own distinct line, independent of whether a GEX level
+  // was even resolvable above. OPEN-bucket only — a WATCH candidate has no committed position
+  // yet (its `invalidationUnderlyingPx`, if a dossier pinned one, describes a hypothetical plan,
+  // not an enforced exit); a CLOSED play's own "since it closed" reclaim framing a few lines
+  // below already answers a different, retrospective question off the same field.
+  if (bucket === "open") {
+    const committedStopLine = committedStructuralStopLine(play, spot);
+    if (committedStopLine) lines.push(committedStopLine);
   }
 
   // GAP FOUND (Ask Largo standing mandate, 2026-10-13): this section told a member where spot

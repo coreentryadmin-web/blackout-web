@@ -3894,6 +3894,106 @@ test("watchForSection: reclaim framing omitted when the play closed for a reason
   assert.doesNotMatch(section.body, /stop level/i);
 });
 
+// FINDING (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): "What to watch"'s
+// "Structural support node" line (a few lines above in play-brief-intel.ts) is a GEX heuristic
+// (nearest put wall/dark pool/GEX king) — it never surfaced the real, committed structural stop
+// (`play.invalidationUnderlyingPx`, pinned at commit from `thesis_invalidation_px`), even for an
+// OPEN position where that real level is the one that actually governs the trade. This fix adds a
+// distinct, clearly-labeled "Structural stop (committed)" line alongside it, never replacing it.
+test("watchForSection: OPEN bucket surfaces the real committed structural stop distinct from the GEX structural-support node (2026-10-16)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "OPEN",
+        direction: "LONG",
+        invalidationUnderlyingPx: 345.33,
+      }),
+      asOf: "2026-10-15 10:00 ET",
+      sessionDate: "2026-10-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 349.63, put_wall: 330 } } as EcosystemContext,
+      vector: null,
+    },
+    "open",
+  );
+
+  // GEX heuristic line untouched.
+  assert.match(section.body, /Structural support node.*330\.00/i);
+  // New, distinct, additive line — the real committed stop, a different number.
+  assert.match(section.body, /Structural stop \(committed\).*345\.33/i);
+});
+
+test("watchForSection: OPEN bucket still surfaces the committed structural stop when no GEX level is resolvable at all", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "OPEN",
+        direction: "LONG",
+        invalidationUnderlyingPx: 345.33,
+      }),
+      asOf: "2026-10-15 10:00 ET",
+      sessionDate: "2026-10-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      // No put_wall/dark pool/king at all — the GEX heuristic has nothing to cite.
+      ecosystem: { gex_positioning: { spot: 349.63 } } as EcosystemContext,
+      vector: null,
+    },
+    "open",
+  );
+
+  assert.doesNotMatch(section.body, /Structural support node/i);
+  assert.match(section.body, /Structural stop \(committed\).*345\.33/i);
+});
+
+test("watchForSection: committed structural stop line omitted (no regression) when the real level is absent", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ status: "OPEN", direction: "LONG" }), // invalidationUnderlyingPx absent
+      asOf: "2026-10-15 10:00 ET",
+      sessionDate: "2026-10-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 349.63, put_wall: 330 } } as EcosystemContext,
+      vector: null,
+    },
+    "open",
+  );
+
+  assert.match(section.body, /Structural support node.*330\.00/i);
+  assert.doesNotMatch(section.body, /Structural stop \(committed\)/i);
+});
+
+test("watchForSection: committed structural stop line never fires for a WATCH-bucket candidate", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "WATCH",
+        direction: "LONG",
+        invalidationUnderlyingPx: 345.33,
+      }),
+      asOf: "2026-10-15 10:00 ET",
+      sessionDate: "2026-10-15",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 349.63, put_wall: 330 } } as EcosystemContext,
+      vector: null,
+    },
+    "watch",
+  );
+
+  assert.doesNotMatch(section.body, /Structural stop \(committed\)/i);
+});
+
 test("watchForSection: live Vector put wall still shown when GEX matrix is stale (per-wall gate)", () => {
   const section = watchForSection(
     {
