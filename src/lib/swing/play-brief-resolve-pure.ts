@@ -42,50 +42,17 @@ export function rightFromContractType(contract_type: string | null | undefined):
   return null;
 }
 
-// BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): the
-// SG-repro fix (play-brief.ts's `pnlForDisplay`, 2026-10-09) made the "Position" section's own
-// `P&L:` line redisplay from the SAME rounded-to-cent mark the `Mark:` line shows, so those two
-// numbers always hand-check. But `play.pnlPct` itself — the raw, full-precision `mark/entry-1`
-// value every OTHER section reads (play-brief-narrative.ts's "Round-tripped past breakeven"/"Gave
-// back X% of peak"/"rail already cleared (now X%)" lines, mirrored in
-// play-brief-narrative-coaching.ts and play-brief-intel.ts) — was left untouched, so the SAME
-// reconciliation gap the SG fix closed in ONE section reopens in every OTHER section of the exact
-// same brief. Live CTVA repro (GET /api/market/swing/play-brief?playId=SWING:CTVA&positionId=1483,
-// 2026-10-09 ~05:56 UTC): entry $0.23, raw mid $0.175 (displayed "Mark: $0.18"), raw
-// `livePnlPct` -23.9 (horizons board: GET /api/market/nighthawk/horizons?view=swings). "Position"
-// correctly showed "P&L: **-21.7%**" (0.18/0.23-1 — reconciled), but "Trade manager read" in the
-// SAME response showed "**Round-tripped past breakeven** — was up 96% at peak, now **-24%**" —
-// -23.9 raw, NOT reconciled. A member reading one brief sees two different "current P&L" numbers
-// for the identical position at the identical instant, a 2.2pp gap from the exact same root cause
-// (rounding a sub-$1 mark to the cent) the SG fix was written to close.
-//
-// Fix: reconcile ONCE, upstream of every section, at the single choke point every live brief
-// passes through (`loadSwingPlayBriefContext` in play-brief-context.ts) — not duplicated into
-// each of the ~6 call sites that read `play.pnlPct` directly. `positionSection`'s own local
-// `markRoundTripsPnl`/`pnlForDisplay` logic (play-brief.ts) is left untouched: it is idempotent
-// against an already-reconciled `pnlPct` (its own raw-mark-vs-pnlPct guard just falls through to
-// the "leave as-is" branch, which is now already the reconciled value) and its existing unit tests
-// call `composeSwingPlayBrief` directly with hand-built fixtures that never go through
-// `loadSwingPlayBriefContext`, so they are unaffected by this change.
-//
-// Same guard shape as `markRoundTripsPnl`: only reconcile when `pnlPct` really is a plain
-// `mark/entry-1` read (recomputing from the RAW mark lands within ordinary 1dp rounding noise of
-// the stored value) — a genuinely different basis (e.g. the WS-10 executable-lane `exec.pnl_pct`
-// fallback) must not be silently replaced.
-export function reconcileLivePnlPctWithDisplayMark(input: {
-  entry: number | null | undefined;
-  mark: number | null | undefined;
-  pnlPct: number | null | undefined;
-}): number | null {
-  const entry = fin(input.entry);
-  const mark = fin(input.mark);
-  const pnlPct = fin(input.pnlPct);
-  if (entry == null || entry === 0 || mark == null || pnlPct == null) return pnlPct;
-  const rawRecompute = (mark / entry - 1) * 100;
-  if (Math.abs(rawRecompute - pnlPct) > 0.5) return pnlPct;
-  const roundedMark = Math.round(mark * 100) / 100;
-  return (roundedMark / entry - 1) * 100;
-}
+// REMOVED (2026-10-16, Ask Largo standing mandate — live GOOG/KMPR repro, Bug 1 of the standing
+// "Ask Largo x Night Hawk Swings" ownership mandate). `reconcileLivePnlPctWithDisplayMark` used
+// to live here (added 2026-10-09 for a live CTVA repro, see git history for its original body and
+// rationale) — it recomputed `pnlPct` from a cent-rounded `mark` so every section of a brief
+// showed the same number as the Position section's own cent-rounded display. That recompute could
+// itself disagree with the single canonical `pnlPct` every OTHER surface agrees on (the horizons
+// board's own `livePnlPct`, PlayTerminal.tsx's Command Deck card) by up to 10 full percentage
+// points (live KMPR repro, positionId 1634 — see play-brief.ts's `pnlForDisplay` comment for the
+// full write-up). Fix: stop reconciling to a recompute at all — `loadSwingPlayBriefContext`
+// (play-brief-context.ts) now passes `resolved.play` through untouched, so every section reads
+// the same single canonical `pnlPct` with no transform in between.
 
 function contractMatches(play: HorizonPlay, strike: number | null, right: "C" | "P" | null): boolean {
   if (strike == null) return true;

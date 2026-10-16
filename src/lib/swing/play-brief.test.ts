@@ -4454,7 +4454,7 @@ test("composeSwingPlayBrief: Position section does not call a mark 'unknown' whe
       recommendation: "HOLD",
       entry: 8.15,
       mark: 5.22, // a real, distinct-from-entry mark — proves markIsSync's "no timestamp" is not "no mark"
-      pnlPct: -35.9,
+      pnlPct: -36.0, // canonical livePnlPct: (5.22/8.15-1)*100 = -35.9509..., rounds to -36.0 at 1dp
       peak: -21.5,
       markIsSync: true,
       markAsOf: null,
@@ -4477,22 +4477,22 @@ test("composeSwingPlayBrief: Position section does not call a mark 'unknown' whe
     `Mark must not read "unknown" when a real P&L was derived from it, got: ${position!.body}`,
   );
   assert.match(position!.body, /Mark: \*\*\$5\.22\*\*/, `got: ${position!.body}`);
-  // -36.0%, not the fixture's input -35.9: (5.22-8.15)/8.15 = -35.9509%, which rounds to -36.0 at
-  // 1dp. Tightened by the 2026-10-09 SG-repro fix (see pnlSection's own comment) — P&L is now
-  // redisplayed from the SAME displayed Mark/Entry so hand arithmetic always reconciles; -35.9
-  // was the fixture's hand-picked approximation, not what these exact entry/mark values imply.
+  // P&L shows the canonical pnlPct directly (2026-10-16 Bug 1 fix — see pnlForDisplay's own
+  // comment in play-brief.ts): -36.0%, the real livePnlPct for entry $8.15 / mark $5.22.
   assert.match(position!.body, /P&L: \*\*-36\.0%\*\*/, `got: ${position!.body}`);
 });
 
-test("composeSwingPlayBrief: Position section's P&L reconciles with the displayed Mark, not the raw unrounded mid (live SG repro 2026-10-09)", () => {
+test("composeSwingPlayBrief: Position section's P&L shows the canonical pnlPct, not a cent-rounded-mark recompute (live SG shape, superseded 2026-10-16)", () => {
   // Live repro: GET /api/market/swing/play-brief?playId=SWING:SG (positionId 1396) — entry
   // $0.33, true mid $0.575 (a normal bid/ask midpoint, computed as `livePnlPct(entry, mark)`
   // upstream in banger-lane-merge.ts/adapters.ts BEFORE the mark is rounded to the cent for
-  // display here). Pre-fix this rendered "Mark: **$0.57**" / "P&L: **+74.2%**" — but
-  // (0.57-0.33)/0.33 = +72.7%, not +74.2%, a ~1.5pp gap a member doing the obvious hand-check
-  // on the two numbers directly above/below each other would hit immediately. Fixed: P&L is
-  // redisplayed from the SAME rounded-to-cent mark the Mark: line shows, so the two numbers
-  // always reconcile by hand.
+  // display here), canonical pnlPct +74.2%. The 2026-10-09 SG-repro fix (superseded 2026-10-16 —
+  // see pnlForDisplay's own comment in play-brief.ts) used to redisplay P&L from the cent-rounded
+  // mark ($0.57) instead: (0.57-0.33)/0.33 = +72.7%, a value that disagreed with the canonical
+  // livePnlPct every other surface (the horizons board, PlayTerminal.tsx) shows for the same
+  // position. Live GOOG/KMPR repros (2026-10-16, Bug 1 of the standing Ask Largo x Night Hawk
+  // Swings mandate) proved that recompute approach could disagree with canonical by up to 10
+  // points, so it was dropped — P&L now always shows the canonical `play.pnlPct` directly.
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       ticker: "SG",
@@ -4519,18 +4519,18 @@ test("composeSwingPlayBrief: Position section's P&L reconciles with the displaye
   const position = brief.envelope.sections.find((s) => s.title === "Position");
   assert.ok(position, "expected Position section");
   assert.match(position!.body, /Mark: \*\*\$0\.57\*\*/, `got: ${position!.body}`);
-  // +72.7% is (0.57 - 0.33) / 0.33 — the hand-check a member would do against the displayed
-  // Mark and Entry. The pre-fix body showed +74.2% here (the raw-mid-derived figure), which does
-  // not reconcile with the displayed $0.57 mark.
-  assert.match(position!.body, /P&L: \*\*\+72\.7%\*\*/, `got: ${position!.body}`);
-  assert.doesNotMatch(position!.body, /P&L: \*\*\+74\.2%\*\*/, `got: ${position!.body}`);
+  // +74.2% is the canonical pnlPct — matches the horizons board's own livePnlPct for the same
+  // position/instant. (The old, superseded recompute showed +72.7% here, derived from the
+  // cent-rounded $0.57 mark — a value that disagreed with the board.)
+  assert.match(position!.body, /P&L: \*\*\+74\.2%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+72\.7%\*\*/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Position section's P&L is left untouched when it does not round-trip from the raw mark (executable-lane fallback, not a mark/entry read)", () => {
-  // Guard test for the SG-repro fix above: when `pnlPct` is NOT simply mark/entry-1 (e.g. the
-  // WS-10 executable-lane `exec.pnl_pct` fallback — a bid/ask-fill-based number with a genuinely
-  // different basis from the mid), recomputing from the mark would silently REPLACE a correct
-  // number with a wrong one. `markRoundTripsPnl`'s tolerance guard must refuse to touch this case.
+  // `pnlForDisplay` is always `play.pnlPct` directly (2026-10-16 Bug 1 fix — no recompute at
+  // all), so a non-mark/entry basis (e.g. the WS-10 executable-lane `exec.pnl_pct` fallback — a
+  // bid/ask-fill-based number with a genuinely different basis from the mid) is shown exactly as
+  // given, same as every other case.
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       ticker: "XYZ",
@@ -4558,6 +4558,95 @@ test("composeSwingPlayBrief: Position section's P&L is left untouched when it do
   assert.ok(position, "expected Position section");
   assert.match(position!.body, /Mark: \*\*\$1\.50\*\*/, `got: ${position!.body}`);
   assert.match(position!.body, /P&L: \*\*\+12\.3%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L matches the horizons board's canonical livePnlPct (live GOOG repro, positionId 59, Bug 1 of the standing Ask Largo x Night Hawk Swings mandate, 2026-10-16)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:GOOG&ticker=GOOG&positionId=59 vs
+  // GET /api/market/nighthawk/horizons?view=swings for the IDENTICAL position at the IDENTICAL
+  // instant — horizons reported entryPremium=14.875, contract.mid=15.075, livePnlPct=1.3, but the
+  // live play-brief rendered "Entry: $14.88 / Mark: $15.08 / P&L: +1.4%". The old recompute
+  // rounded ONLY the mark to the cent ($15.075 -> $15.08) and divided by the RAW, un-rounded
+  // entry ($14.875): (15.08/14.875-1)*100 = 1.3782, which rounds to 1.4 at 1dp — crossing the
+  // 1-decimal display boundary away from the canonical 1.3, even though the underlying drift
+  // (1.3782 vs the raw ratio's 1.3445) is tiny. Fix: show the canonical pnlPct (1.3) directly.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "GOOG",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 14.875,
+      mark: 15.075,
+      pnlPct: 1.3,
+      peak: 5.0,
+      trough: -5.0,
+      markIsSync: false,
+      markAsOf: "2026-10-16T01:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$15\.08\*\*/, `got: ${position!.body}`);
+  assert.match(
+    position!.body,
+    /P&L: \*\*\+1\.3%\*\*/,
+    `must match the horizons board's canonical +1.3%, got: ${position!.body}`,
+  );
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+1\.4%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L matches the horizons board's canonical livePnlPct even when the cent-rounded mark rounds UP past the position's own trough (live KMPR repro, positionId 1634, Bug 1 of the standing Ask Largo x Night Hawk Swings mandate, 2026-10-16)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:KMPR&ticker=KMPR&positionId=1634 —
+  // entry $0.05, mark $0.025 (exactly the position's own recorded trough: troughPremium=0.025 on
+  // the horizons board). The old recompute's `Math.round(0.025 * 100)` rounds UP to 3 (JS
+  // `Math.round` rounds ties away from zero), so the cent-rounded mark becomes $0.03 and
+  // (0.03/0.05-1)*100 = -40.0% — a full 10-POINT overstatement of the canonical -50.0%
+  // (`GET /api/market/nighthawk/horizons?view=swings`'s livePnlPct for the same position/instant).
+  // This specific case is why a peak/trough BOUNDS check alone (the 2026-10-09 CNXC/EXTR guard)
+  // can never fully close this bug: -40.0% never escapes the [-50, +50] band (KMPR's own
+  // peak/trough), so a bounds-only guard sees nothing wrong — the error hides INSIDE the range,
+  // not outside it. Fix: show the canonical pnlPct (-50.0%) directly, no recompute at all.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "KMPR",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.05,
+      mark: 0.025,
+      pnlPct: -50.0,
+      peak: 50.0,
+      trough: -50.0,
+      markIsSync: false,
+      markAsOf: "2026-10-15T16:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.03\*\*/, `got: ${position!.body}`);
+  assert.match(
+    position!.body,
+    /P&L: \*\*-50\.0%\*\*/,
+    `must match the horizons board's canonical -50.0%, got: ${position!.body}`,
+  );
+  assert.doesNotMatch(position!.body, /P&L: \*\*-40\.0%\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*-50\.0%\*\*/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Position section's P&L never overstates the canonical pnlPct when the cent-rounded Mark rounds UP (live CNXC repro 2026-10-09, Ask Largo standing mandate)", () => {
@@ -4590,6 +4679,14 @@ test("composeSwingPlayBrief: Position section's P&L never overstates the canonic
   // harmless display-precision artifact (present in virtually every financial UI); silently
   // inflating or deflating the one number a member most directly acts on to paper over it is worse
   // than the cosmetic mismatch it "fixes".
+  //
+  // SUPERSEDED (2026-10-16, Bug 1 of the standing Ask Largo x Night Hawk Swings mandate): the
+  // 2026-10-09 fix this test describes was itself a PARTIAL fix — its peak/trough bound could not
+  // catch a case where the cent-rounding error stayed INSIDE the bound (live KMPR repro,
+  // positionId 1634 — see play-brief.ts's `pnlForDisplay` comment). The recompute mechanism this
+  // test originally exercised was removed entirely; P&L now always shows `play.pnlPct` directly,
+  // which trivially satisfies this test's own assertions (the fixture's `pnlPct` already IS the
+  // canonical 41.7%) without needing any bound check at all.
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       ticker: "CNXC",
