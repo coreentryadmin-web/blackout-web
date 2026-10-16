@@ -946,6 +946,70 @@ test("rankNewsItemsBySpecificity: an item with no tickers field sorts as maximal
   assert.deepEqual(ranked.map((i) => i.headline), [noTagField.headline, emptyTags.headline, broad.headline]);
 });
 
+test("rankNewsItemsBySpecificity: within a tied tag-count tier, a genuinely on-topic item outranks an incidentally co-tagged off-topic one (Ask Largo mandate, live repro GOOG OPEN brief, 2026-10-16)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:GOOG:59&ticker=GOOG&positionId=59 —
+  // all three items below tie at tagCount=3 from the SAME fetched batch. Pre-fix, the pure
+  // tag-count sort fell through straight to recency within that tie, and the X Corp story (most
+  // recent of the tier) won the #4/4 member-facing slot even though it has zero business
+  // connection to Alphabet/Google — it was tagged ['SPCX','GOOG','GOOGL'] purely incidentally.
+  // The other two genuinely discuss "Google" by name and lost on recency alone.
+  const xCorpOffTopic = {
+    headline: "X Corp Launches Creator Monetization Program For Premium Subscribers",
+    tickers: ["SPCX", "GOOG", "GOOGL"],
+  };
+  const bloomFuelCell = {
+    headline: "Google's $4 Billion Fuel-Cell Project Puts Bloom Energy's AI Power Backlog In The Spotlight",
+    tickers: ["GOOGL", "GOOG", "BE"],
+  };
+  const cnnPartnership = {
+    headline: "CNN And Google Strike Multiyear Partnership To Embrace Generative AI",
+    tickers: ["SKYD", "GOOG", "GOOGL"],
+  };
+  // Benzinga order: most-recent-first, exactly as fetchTickerNews returns it.
+  const items = [xCorpOffTopic, bloomFuelCell, cnnPartnership] as unknown as NewsItem[];
+
+  // Confirms the OLD bug reproduces when no ticker is passed (the pre-fix call shape): with no
+  // aboutness signal at all, the tie collapses straight to recency and the off-topic item wins.
+  const noTickerRanked = rankNewsItemsBySpecificity(items);
+  assert.equal(noTickerRanked[0].headline, xCorpOffTopic.headline);
+
+  // With the ticker passed, the two genuinely on-topic items now outrank the off-topic one within
+  // their shared tagCount=3 tier, even though it was more recent than both of them.
+  const ranked = rankNewsItemsBySpecificity(items, "GOOG");
+  assert.deepEqual(ranked.map((i) => i.headline), [
+    bloomFuelCell.headline,
+    cnnPartnership.headline,
+    xCorpOffTopic.headline,
+  ]);
+
+  // End-to-end through the real fold, as the swing play-brief's "Catalysts & news" section would
+  // see it: the off-topic X Corp story now survives (never hidden — only deprioritized) but drops
+  // out of the member-facing top-2 once a third tied, genuinely-on-topic item exists.
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    ticker: "GOOG",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: { items, asOf: "2026-10-16T00:00:00Z", newest: "2026-10-16T00:00:00Z" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, [bloomFuelCell.headline, cnnPartnership.headline, xCorpOffTopic.headline]);
+});
+
+test("rankNewsItemsBySpecificity: an untracked ticker (no alias-map entry) falls back to the pre-existing recency-only tiebreak, unchanged", () => {
+  // "ZZZZ" is deliberately not in NEWS_SPECIFICITY_COMPANY_ALIASES — the fix must degrade
+  // gracefully for any ticker it doesn't recognize rather than erroring or silently hiding anything.
+  const newer = { headline: "Some Newer Story Mentioning ZZZZ And Others", tickers: ["ZZZZ", "AAA", "BBB"] };
+  const older = { headline: "An Older Story Also Mentioning ZZZZ Directly", tickers: ["ZZZZ", "CCC", "DDD"] };
+  const items = [newer, older] as unknown as NewsItem[]; // most-recent-first
+  const ranked = rankNewsItemsBySpecificity(items, "ZZZZ");
+  // Tied tagCount (3,3); no alias signal for ZZZZ, so this reads identically to the pre-fix
+  // function — recency (original order) alone decides the tie.
+  assert.deepEqual(ranked.map((i) => i.headline), [newer.headline, older.headline]);
+});
+
 test("assembleEcosystemArsenal(single_name): market catalysts (no single ticker) are left in Benzinga's own recency order, not re-ranked", () => {
   // The specificity re-rank only makes sense when there IS a "this ticker" to be specific to.
   // A market-wide catalyst read (scope: "index") has no such anchor — re-ranking by tag-count
