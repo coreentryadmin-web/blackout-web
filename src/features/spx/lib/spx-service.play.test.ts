@@ -57,6 +57,21 @@ test("getSpxPlayState's withServerCache call never caches an unassessed/degraded
   assert.match(fn![0], /shouldCache:\s*\(\w+\)\s*=>.*assessed\s*!==\s*false/);
 });
 
+test("getSpxPlayState's withServerCache call passes the SAME freshness bound peekSpxPlayState enforces (2026-10-16 fix)", () => {
+  // Without this, withServerCache's own `!swr` fast lane measures staleness against the
+  // generic 10-minute MAX_STALE_AGE_MS for the `spx-play-read:<date>` key, while
+  // peekSpxPlayState() one call earlier in the same request enforces a tight 20s bound
+  // (playMemberPeekMaxAgeSec()) on the IDENTICAL key — the two call sites disagreeing let a
+  // snapshot peekSpxPlayState() had just rejected as too stale get served anyway. Live-
+  // reproduced: as_of jumping backward up to ~238s across consecutive /api/market/spx/play
+  // polls. Regression guard: the fast-lane bound must match the peek bound, not the generic
+  // default.
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const fn = service.match(/export async function getSpxPlayState\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, "getSpxPlayState function present");
+  assert.match(fn![0], /maxStaleAgeMs:\s*playMemberPeekMaxAgeSec\(\)\s*\*\s*1000/);
+});
+
 test("peekSpxPlayState checks isSpxPlaySnapshotFreshEnough on BOTH the in-process and Redis-backed peek paths (2026-09-13 fix)", () => {
   const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
   const fn = service.match(/export async function peekSpxPlayState\(\)[\s\S]*?\n\}/);
