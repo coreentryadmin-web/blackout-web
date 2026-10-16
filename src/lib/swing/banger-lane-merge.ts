@@ -22,6 +22,13 @@ import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { subLaneForDte } from "./taxonomy";
 import type { BangerMover } from "../banger/discovery";
+import type { ScaleOutAction } from "../zerodte/scale-out";
+
+/** The real, current `ScaleOutAction` values `deriveScaleOutAction` ever persists onto
+ *  `row.scale_out_action` (banger-live-sync.ts) — used to validate the raw DB string below rather
+ *  than trusting it blindly (the column is typed `string | null` in positions-db.ts, not the enum
+ *  itself, since it round-trips through Postgres). */
+const REAL_SCALE_OUT_ACTIONS = new Set<ScaleOutAction>(["HOLD", "TAKE_PARTIAL", "EXIT_RUNNER", "STOP_OUT"]);
 
 const BANGER_SIGNAL = "BANGER";
 const LIVE_BANGER = new Set(["OPEN", "PARTIAL"]);
@@ -100,12 +107,37 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
   const mid = mark;
   const gainPct = row.discovery_gain != null ? Math.round(row.discovery_gain * 1000) / 10 : null;
   const liveStatus = row.status === "PARTIAL" || row.scaled_already ? "TRIM" : "OPEN";
-  const manageAction =
-    row.scale_out_action === "TRIM" || row.scaled_already
-      ? "TAKE_PARTIAL"
-      : row.scale_out_action === "EXIT"
-        ? "EXIT"
-        : "HOLD";
+  // BUG FIX (found live 2026-10-16, Ask Largo standing mandate): this used to check
+  // `row.scale_out_action === "TRIM"` (never true — "TRIM" is a `liveStatus`/serving-section value,
+  // never a member of the real `ScaleOutAction` enum returned by `deriveScaleOutAction`) and
+  // `row.scale_out_action === "EXIT"` (also never true — `deriveScaleOutAction` only ever returns
+  // the string "EXIT_RUNNER", never bare "EXIT") `|| row.scaled_already`. Because `scaled_already`
+  // is a sticky "has this position EVER taken its first partial" latch that stays `true` for the
+  // rest of a runner's life (positions-db.ts), that `||` meant `manageAction` was permanently
+  // hardcoded to `"TAKE_PARTIAL"` for every already-scaled row, regardless of what the real,
+  // live-ticked state machine (`deriveScaleOutAction`, invoked every tick by banger-live-sync.ts and
+  // persisted onto this exact `row.scale_out_action` column) currently says. Live repro
+  // (2026-10-16, `GET /api/market/nighthawk/horizons?view=swings`): 17/17 open SCALING_OUT
+  // Banger-lane rows showed `manageAction:"TAKE_PARTIAL"` while the SAME row's `thesisNote` (sourced
+  // from `row.scale_out_reason`, the real text the state machine wrote that tick) read "runner still
+  // above its trailing stop" — the literal `HOLD`-reason string from scale-out.ts. Fix: read the
+  // REAL current `row.scale_out_action` value directly — it already carries exactly the
+  // member-facing semantics this field needs (`HOLD`/`TAKE_PARTIAL`/`EXIT_RUNNER`/`STOP_OUT`, the
+  // same `ScaleOutAction` union `SwingManageAction` is built from, manage.ts) — falling back to
+  // `"HOLD"` only when no tick has landed yet (`null`) or the stored string is somehow outside the
+  // real enum (defensive; `banger-live-sync.ts` never writes anything else). Mirrors the intent of
+  // the sibling fix already shipped for the native-swing path (`live-plays.ts`'s
+  // `manageObservablesFromEvent`, PR #4178/FINDINGS "TRIM manageAction stuck on TAKE_PARTIAL (#5)"):
+  // an honest current verdict must replace a stale status-seeded fallback, never be ORed with one.
+  // EXIT_RUNNER/STOP_OUT are included for completeness/type-correctness even though in practice a
+  // row carrying either already flips `row.status` away from OPEN/PARTIAL in the same update
+  // (`statusForAction`, live-sync.ts) and is filtered out above before reaching this line — there is
+  // no banger-lane analogue of the native path's thesis-break-driven "EXIT"/"ADD" verdicts, so this
+  // lane's `manageAction` only ever needs the plain `ScaleOutAction` domain, never the wider
+  // `SwingManageAction` superset.
+  const manageAction: ScaleOutAction = REAL_SCALE_OUT_ACTIONS.has(row.scale_out_action as ScaleOutAction)
+    ? (row.scale_out_action as ScaleOutAction)
+    : "HOLD";
   // score IS the whole banger read (there is no separate 7-pillar dossier for this lane), so the
   // "factors" breakdown below must attribute the ENTIRE score to this one signal — see the
   // FINDINGS 2026-09-12 note on `factors` a few lines down for why this must equal `score` exactly.

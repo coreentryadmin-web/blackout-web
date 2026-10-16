@@ -198,6 +198,81 @@ test("horizonPlayFromBangerPosition does not fabricate contract.mid as entry_pre
   assert.equal(withMark!.contract.mid, 0.45);
 });
 
+// BUG FIX regression (found live 2026-10-16, Ask Largo standing mandate): the exact live shape —
+// a position that scaled out its first partial long ago (`scaled_already: true`) whose CURRENT
+// tick says the real state machine verdict is `HOLD` ("runner still above its trailing stop") —
+// must NOT report `manageAction: "TAKE_PARTIAL"`. Before the fix, `scaled_already` was OR'd
+// straight into the TAKE_PARTIAL branch, so every already-scaled row was permanently stuck on
+// TAKE_PARTIAL regardless of the real current `scale_out_action`. 17/17 live open SCALING_OUT
+// Banger-lane rows showed this exact mismatch on 2026-10-16.
+test("manageAction reflects the REAL current scale_out_action, not a stale TAKE_PARTIAL stuck via scaled_already (live bug, 2026-10-16)", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({
+      scaled_already: true,
+      scale_out_action: "HOLD",
+      scale_out_reason: "runner still above its trailing stop",
+    }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(
+    play!.manageAction,
+    "HOLD",
+    "an already-scaled runner whose current verdict is HOLD must report HOLD, not a stale TAKE_PARTIAL",
+  );
+  // liveStatus (member-facing TRIM badge) is a SEPARATE, deliberately sticky signal — out of scope
+  // for this fix — and must stay "TRIM" once scaled, independent of manageAction.
+  assert.equal(play!.liveStatus, "TRIM");
+});
+
+test("manageAction passes through TAKE_PARTIAL when the state machine's CURRENT verdict really is TAKE_PARTIAL", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({
+      scaled_already: false,
+      scale_out_action: "TAKE_PARTIAL",
+      scale_out_reason: "peak ≥ 2× entry — realize 50%, trail the runner",
+    }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(play!.manageAction, "TAKE_PARTIAL");
+});
+
+test("manageAction passes through EXIT_RUNNER when the state machine's current verdict is EXIT_RUNNER", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({
+      scaled_already: true,
+      scale_out_action: "EXIT_RUNNER",
+      scale_out_reason: "runner retraced to 50% of peak — close it",
+    }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(play!.manageAction, "EXIT_RUNNER");
+});
+
+test("manageAction passes through STOP_OUT when the state machine's current verdict is STOP_OUT", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({
+      scaled_already: false,
+      scale_out_action: "STOP_OUT",
+      scale_out_reason: "mark ≤ 0.40× entry (hard stop −60%)",
+    }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(play!.manageAction, "STOP_OUT");
+});
+
+test("manageAction defaults to HOLD (never TAKE_PARTIAL) when no tick has landed yet (scale_out_action null)", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({ scaled_already: false, scale_out_action: null }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.ok(play);
+  assert.equal(play!.manageAction, "HOLD");
+});
+
 test("mergeBangerPositionsIntoSwingPlays replaces pre-entry row on same ticker", () => {
   const watch: HorizonPlay = {
     ticker: "ANET",
