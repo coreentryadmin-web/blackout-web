@@ -1700,6 +1700,191 @@ test("composeSwingPlayBrief: GEX market_session_note is suppressed when the GEX 
   }
 });
 
+// BUG FIX (Largo Product Contract C2, 2026-10-16, Ask Largo standing mandate — live TSM/BBWI
+// repro, Bug 2 of the standing Ask Largo x Night Hawk Swings mandate). The four tests above prove
+// the FREE-TEXT evidence fact surfaces the market-session caveat correctly — but that same fact's
+// OWN `provenance.freshness` field, and every GEX/Vector-sourced `levels[]` entry, still read
+// "live" with no caveat at all, a direct C2 violation for any consumer reading the STRUCTURED
+// fields rather than the prose. Live repro: TSM WATCH brief, 2026-10-16 01:57 UTC (market CLOSED)
+// — `envelope.evidence` carried the "market is CLOSED" fact with `provenance.freshness:"live"`,
+// and `envelope.levels[]` for call wall/put wall/spot/GEX king all carried `freshness:"live"` too.
+// These tests prove the fix: every GEX/Vector provenance block in the misleading combination now
+// ALSO carries `market_session_note` (additive — `freshness` itself is deliberately left "live",
+// per `BieProvenance.market_session_note`'s own doc comment on why overloading freshness here
+// would be the wrong fix).
+test("composeSwingPlayBrief: Vector-sourced levels carry market_session_note alongside an unchanged 'live' freshness (live TSM shape)", () => {
+  const nowIso = new Date().toISOString();
+  const noteText =
+    "Computed 3s ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks.";
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-20 14:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: nowIso,
+      asOfEt: "2026-09-20 14:00 ET",
+      sessionDate: "2026-09-20",
+      spot: 100,
+      maxPain: 95,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      market_session: "CLOSED",
+      market_session_note: noteText,
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const spotLevel = brief.envelope.levels.find((l) => l.label === "spot");
+  assert.ok(spotLevel, "expected a spot level");
+  assert.equal(spotLevel!.provenance?.freshness, "live", "freshness itself must stay unchanged (additive fix)");
+  assert.equal(
+    spotLevel!.provenance?.market_session_note,
+    noteText,
+    "spot level must carry the market-session caveat alongside its unchanged 'live' freshness",
+  );
+  const maxPainLevel = brief.envelope.levels.find((l) => l.label === "max pain");
+  assert.ok(maxPainLevel, "expected a max pain level");
+  assert.equal(maxPainLevel!.provenance?.market_session_note, noteText);
+  // The standalone evidence fact itself (already proven to surface above) must ALSO carry the
+  // note on its own provenance, not just in its free-text `text` field.
+  const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
+  assert.ok(note);
+  assert.equal(note!.provenance?.freshness, "live");
+  assert.equal(note!.provenance?.market_session_note, noteText);
+});
+
+test("composeSwingPlayBrief: GEX-sourced levels carry market_session_note alongside an unchanged freshness on a closed-market self-warm (live BBWI shape)", () => {
+  const frozenNowIso = "2026-09-20T14:00:00.000Z"; // a real Sunday 10:00 ET -- market CLOSED
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-20 10:00 ET",
+      sessionDate: "2026-09-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          call_wall: 27,
+          put_wall: 23,
+          flip: 24,
+          gamma_posture: "long",
+          asof: frozenNowIso, // computed at the exact frozen instant -- 0s old, live
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    const callWall = brief.envelope.levels.find((l) => l.label === "call wall");
+    assert.ok(callWall, "expected a call wall level");
+    assert.ok(
+      callWall!.provenance?.freshness === "live" || callWall!.provenance?.freshness === "recent",
+      `freshness must stay a live/recent compute-age verdict (additive fix), got ${callWall!.provenance?.freshness}`,
+    );
+    assert.ok(
+      callWall!.provenance?.market_session_note?.includes("market is CLOSED"),
+      `call wall level must carry the market-session caveat, got: ${callWall!.provenance?.market_session_note}`,
+    );
+    const gammaFlip = brief.envelope.levels.find((l) => l.label === "gamma flip");
+    assert.ok(gammaFlip, "expected a gamma flip level");
+    assert.ok(gammaFlip!.provenance?.market_session_note?.includes("market is CLOSED"));
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("composeSwingPlayBrief: GEX-sourced levels carry NO market_session_note when the market is genuinely OPEN (no false positive)", () => {
+  const frozenNowIso = "2026-09-21T15:00:00.000Z"; // a real Monday 11:00 ET -- market OPEN (RTH)
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-21 11:00 ET",
+      sessionDate: "2026-09-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          call_wall: 27,
+          put_wall: 23,
+          flip: 24,
+          gamma_posture: "long",
+          asof: frozenNowIso, // computed at the exact frozen instant -- 0s old, live, market OPEN
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    const callWall = brief.envelope.levels.find((l) => l.label === "call wall");
+    assert.ok(callWall, "expected a call wall level");
+    assert.ok(
+      callWall!.provenance?.freshness === "live" || callWall!.provenance?.freshness === "recent",
+      `got ${callWall!.provenance?.freshness}`,
+    );
+    assert.equal(
+      callWall!.provenance?.market_session_note,
+      null,
+      "must not attach a market-session caveat when the market is genuinely open and has moved today",
+    );
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("composeSwingPlayBrief: GEX-sourced levels carry NO market_session_note when the GEX matrix is already stale (that verdict's own caveat covers it; levels are suppressed entirely in this shape, not labeled stale)", () => {
+  const frozenNowIso = "2026-09-20T14:00:00.000Z";
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-20 10:00 ET",
+      sessionDate: "2026-09-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          call_wall: 27,
+          put_wall: 23,
+          flip: 24,
+          gamma_posture: "long",
+          asof: "2026-09-20T13:00:00.000Z", // 1h old -- well past GEX_MATRIX_STALE_MS (2min)
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    // A stale GEX matrix suppresses these levels at the source entirely (pre-existing behavior,
+    // unrelated to this fix — see `callWallFromStaleGex` in `levelsFromContext`), so there is no
+    // level here to assert `market_session_note` against directly; this test instead proves the
+    // existing (unrelated) suppression still holds, which is why the GEX evidence fact (test
+    // above, "GEX market_session_note is suppressed when the GEX matrix is already stale")
+    // remains the correct place to assert the no-false-positive behavior for a stale matrix.
+    const callWall = brief.envelope.levels.find((l) => l.label === "call wall");
+    assert.equal(callWall, undefined, "a stale GEX matrix suppresses the level entirely");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test("composeSwingPlayBrief: future-skewed fundamentals as_of freshness is stale, not unknown (Largo C2)", () => {
   const futureAsOf = new Date(Date.now() + 30_000).toISOString(); // 30s ahead — beyond tolerance
   const ctx: SwingPlayBriefContext = {
