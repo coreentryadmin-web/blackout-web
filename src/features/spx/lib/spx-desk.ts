@@ -1710,10 +1710,31 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     gamma_flip: gammaFlip,
   });
 
+  // BUG (found live 2026-10-16, Ask Largo standing mandate): this success branch never set
+  // market_open/market_status/market_label at all — only the COLD-PATH fallback
+  // (deskCacheOpts.fallback -> deskShellFromPulse -> mergePulseIntoDesk, spx-desk-loader.ts)
+  // carried them, sourced from the pulse builder below. Reproduced live against
+  // GET /api/market/spx/desk: a genuine `available:true, source:"polygon+uw-flow"` response
+  // had none of the three keys at all (not null — absent), while a degraded fallback response
+  // for the SAME route always has them. Every consumer that actually depends on these fields
+  // reads the MERGED bundle (mergeDeskLayers, spx-desk-merge.ts), which always overlays the
+  // pulse lane's own market_open/status/label on top regardless — so this never broke the
+  // member dashboard or Largo's get_spx_play/get_spx_desk tools — but the raw per-route schema
+  // was still inconsistent between this builder's two return paths, and any direct consumer of
+  // this standalone route (an audit/monitoring script, an external integration) sees a
+  // different shape depending purely on which cache path happened to serve it. Mirrors
+  // buildSpxDeskPulse's own RTH/premarket classification (same two helpers, same formula) so
+  // both builders agree on what these three fields mean for the identical instant.
+  const premarketPlanNow = isPremarketPlanningWindow();
+  const rthOpenNow = isSpxRthActive(new Date(), marketNow);
+
   return {
     available: true,
     as_of: asOf,
     source: intel?.available ? "merged" : uwConfigured() ? "polygon+uw-flow" : "polygon",
+    market_open: rthOpenNow,
+    market_status: premarketPlanNow && !rthOpenNow ? "premarket" : marketNow?.market ?? "open",
+    market_label: premarketPlanNow && !rthOpenNow ? "PRE-MARKET" : label,
     price: roundDeskNum(price)!,
     // Derived from prior_close (served two lines below as `pdc`) — see pulseChangePctFromPriorClose.
     spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),

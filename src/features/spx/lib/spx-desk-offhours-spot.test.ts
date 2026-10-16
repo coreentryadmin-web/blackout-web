@@ -259,6 +259,35 @@ test("stickyDeskGexFallback: preserves gex_net, gex_king, max_pain from last goo
   );
 });
 
+test("buildSpxDesk: success branch must set market_open/market_status/market_label (2026-10-16 fix)", () => {
+  // BUG (found live 2026-10-16, Ask Largo standing mandate): buildSpxDesk()'s success-branch
+  // return object never set market_open/market_status/market_label at all — only the COLD-PATH
+  // fallback (deskCacheOpts.fallback -> deskShellFromPulse -> mergePulseIntoDesk,
+  // spx-desk-loader.ts) carried them, sourced from the pulse builder. Confirmed live against
+  // GET /api/market/spx/desk: a genuine `available:true, source:"polygon+uw-flow"` response had
+  // NONE of the three keys (not null — absent), while a degraded fallback response for the
+  // SAME route always has them — a real schema inconsistency between one builder's two return
+  // paths. Every consumer that depends on these fields reads the merged bundle
+  // (mergeDeskLayers), which always overlays the pulse lane's own values regardless, so this
+  // never broke the member dashboard — but the raw standalone route's shape still differed
+  // depending purely on which cache path served it.
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  const buildIdx = src.indexOf("export async function buildSpxDesk(");
+  const nextFnIdx = src.indexOf("\nexport async function buildSpxDeskPulse(");
+  assert.ok(buildIdx >= 0 && nextFnIdx > buildIdx, "could not locate buildSpxDesk's own body");
+  const body = src.slice(buildIdx, nextFnIdx);
+  assert.match(
+    body,
+    /const premarketPlanNow = isPremarketPlanningWindow\(\);\s*\n\s*const rthOpenNow = isSpxRthActive\(new Date\(\), marketNow\);/,
+    "buildSpxDesk must classify RTH/premarket the same way buildSpxDeskPulse does"
+  );
+  assert.match(
+    body,
+    /return \{\s*\n\s*available: true,\s*\n\s*as_of: asOf,\s*\n\s*source: [^\n]+,\s*\n\s*market_open: rthOpenNow,\s*\n\s*market_status: premarketPlanNow && !rthOpenNow \? "premarket" : marketNow\?\.market \?\? "open",\s*\n\s*market_label: premarketPlanNow && !rthOpenNow \? "PRE-MARKET" : label,/,
+    "buildSpxDesk's success-branch return must set market_open/market_status/market_label right alongside available/as_of/source"
+  );
+});
+
 test("buildSpxDesk: off-hours prior_close must not collapse onto today's own close after ET midnight, for ANY non-RTH label (2026-10-09 fix, widened same day)", () => {
   // Root cause: `priorDayFromDailyBars(dailyBars)` here used bare default args (today,
   // anchorSessionComplete=false) unconditionally. That's correct BEFORE ET midnight — today's
