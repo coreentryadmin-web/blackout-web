@@ -1966,6 +1966,92 @@ test("mergeSameTickerDiscovery: opposing-dir score tie prefers CONDOR structure"
   assert.ok(winner.origin_direction_conflict);
 });
 
+test("mergeSameTickerDiscovery: opposing-dir fight where INCOMING wins must preserve the losing kept FLOW origin's real gross_premium/flow_quality (2026-10-16 evidence-drop)", () => {
+  // Reproduces the live GOOGL 2026-10-01 shape: FLOW discovers long at score 49 with real
+  // premium; BREAKOUT discovers short at score 50 and wins the direction fight. Before the fix,
+  // `mergeSameTickerDiscovery`'s opposing-direction branch only ever called
+  // `stampFlowEvidenceFromIncoming` on the SAME-direction paths — the fight branch dropped the
+  // losing FLOW origin's own gross_premium/flow_quality entirely, because the final object here
+  // is `incoming` (BREAKOUT), which carries gross_premium=0 by construction. That zeroed premium
+  // then trips `scoreFlowRail`'s own suppression gate downstream (< $200k AND quality < 50 →
+  // null), so the real disagreement never reaches `disagreeing_rails` even though
+  // `origin_contributions`/`buildOriginMaps` correctly recorded the conflict.
+  const flow = {
+    ticker: "GOOGL",
+    direction: "long",
+    discovery_origin: ["FLOW"],
+    score: 49,
+    play_type: "DIRECTIONAL",
+    gross_premium: 620_000,
+    prints: 4,
+    sweep_pct: 0.6,
+    side_dominance: 0.7,
+    aggression: 0.55,
+    flow_quality: { score: 54, reason: "building call tape" },
+    new_money: true,
+    spike: false,
+    recent_premium_30m: 200_000,
+    net_premium: 600_000,
+    first_seen: "2026-10-01T13:35:00Z",
+    last_seen: "2026-10-01T13:50:00Z",
+  } as unknown as EnrichedZeroDteSetup;
+  const breakout = {
+    ticker: "GOOGL",
+    direction: "short",
+    discovery_origin: ["BREAKOUT"],
+    score: 50,
+    play_type: "DIRECTIONAL",
+    gross_premium: 0, // breakouts carry no flow evidence by construction (board.ts's own comment)
+  } as unknown as EnrichedZeroDteSetup;
+
+  const merged = mergeSameTickerDiscovery(flow, breakout);
+  assert.equal(merged.direction, "short", "BREAKOUT's higher score wins the direction fight");
+  assert.ok(
+    merged.discovery_origin.includes("FLOW"),
+    "the losing FLOW origin is still unioned onto discovery_origin"
+  );
+  assert.equal(
+    merged.gross_premium,
+    620_000,
+    "the losing FLOW origin's real gross_premium must survive the fight, not be zeroed out by the winning BREAKOUT setup"
+  );
+  assert.ok(merged.flow_quality, "the losing FLOW origin's flow_quality must also survive the fight");
+  assert.equal((merged.flow_quality as { score: number }).score, 54);
+});
+
+test("mergeSameTickerDiscovery: opposing-dir fight where KEPT wins must preserve the losing incoming FLOW origin's real gross_premium/flow_quality (2026-10-16 evidence-drop)", () => {
+  // Mirror case: this time the non-FLOW origin (PIN) is seated first (kept) and wins the fight on
+  // a higher score, while the incoming FLOW origin loses. Pre-fix, the "kept wins" branch only
+  // calls `noteOriginDirectionConflict` — it never pulls the losing incoming FLOW's own evidence
+  // onto `kept`, so `kept.gross_premium` stays at whatever PIN's setup carried (0 by construction).
+  const pin = {
+    ticker: "AMD",
+    direction: "short",
+    discovery_origin: ["PIN"],
+    score: 55,
+    play_type: "DIRECTIONAL",
+    gross_premium: 0,
+  } as unknown as EnrichedZeroDteSetup;
+  const flow = {
+    ticker: "AMD",
+    direction: "long",
+    discovery_origin: ["FLOW"],
+    score: 50,
+    play_type: "DIRECTIONAL",
+    gross_premium: 540_000,
+    flow_quality: { score: 51, reason: "call sweep cluster" },
+  } as unknown as EnrichedZeroDteSetup;
+
+  const merged = mergeSameTickerDiscovery(pin, flow);
+  assert.equal(merged.direction, "short", "PIN's higher score wins the direction fight (kept retained)");
+  assert.ok(merged.discovery_origin.includes("FLOW"));
+  assert.equal(
+    merged.gross_premium,
+    540_000,
+    "the losing incoming FLOW origin's real gross_premium must survive onto the kept PIN setup"
+  );
+  assert.ok(merged.flow_quality, "the losing incoming FLOW origin's flow_quality must also survive");
+});
 
 test("setups (9-1): a tape with NO aggressor metadata (all ask_pct missing) is rejected, not committed on the 0.5 default", () => {
   // Every print lacks ask_pct → each gets the neutral 0.5 weight → aggression share ≈ 0.5 clears the
