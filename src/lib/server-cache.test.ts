@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serverCache, isDegraded, withServerCache, peekServerCache } from "./server-cache";
+import { serverCache, isDegraded, withServerCache, peekServerCache, ServerCacheTimeoutError } from "./server-cache";
 
 // Covers the load-bearing guarantee behind null-commentary-cache: when the loader
 // THROWS, serverCache stores nothing and clears the in-flight entry, so the next
@@ -398,5 +398,55 @@ test("maxBlockMs bounds a slow fallback on the COLD-START path too, when the pri
   assert.ok(
     elapsed < 300,
     `cold-start caller must be bounded near a small multiple of maxBlockMs (30ms), not the fallback's own 500ms duration — took ${elapsed}ms`
+  );
+});
+
+// Regression guard (found live 2026-10-16, Ask Largo standing mandate, GET /api/market/spx/play):
+// a route's catch block could only see `instanceof Error`, so a cache/fallback-timeout race here
+// was indistinguishable from a genuine unexpected crash — and GET /api/market/spx/play's own catch
+// block presented both identically as "Desk warming — play state unavailable" even on confirmed
+// occasions where the underlying data source had live data at the exact same instant. Both throw
+// sites below (the "already inflight" cold path and the cold-start path) must reject with
+// ServerCacheTimeoutError specifically, not a bare Error, so a caller can tell the two apart.
+test("both maxBlockMs-exhausted throw sites reject with ServerCacheTimeoutError, not a bare Error", async () => {
+  const { withServerCache } = await import("./server-cache");
+
+  // Cold-start path (server-cache.ts's final `throw` after refresh + fallback + one more
+  // raced inflight check all exhaust maxBlockMs).
+  const coldStartKey = `test:timeout-error-cold-start:${Math.random()}`;
+  const slowLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 500));
+  const slowFallback = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: false }), 500));
+  await assert.rejects(
+    withServerCache(coldStartKey, 60_000, slowLoader, {
+      staleWhileRevalidate: true,
+      maxBlockMs: 20,
+      fallback: slowFallback,
+    }),
+    (err: unknown) => {
+      assert.ok(err instanceof ServerCacheTimeoutError, `expected ServerCacheTimeoutError, got ${err}`);
+      return true;
+    }
+  );
+
+  // "Already inflight" path (a build for the key is already running when a second caller with
+  // its own maxBlockMs+fallback arrives, and both the fallback and the re-raced pending build
+  // exhaust the cap).
+  const inflightKey = `test:timeout-error-inflight:${Math.random()}`;
+  const firstCallerLoader = () =>
+    new Promise<{ ok: boolean }>((resolve) => setTimeout(() => resolve({ ok: true }), 2_000));
+  withServerCache(inflightKey, 60_000, firstCallerLoader, {}).catch(() => {});
+  await new Promise((r) => setTimeout(r, 5));
+  await assert.rejects(
+    withServerCache(inflightKey, 60_000, firstCallerLoader, {
+      staleOnInflight: true,
+      maxBlockMs: 20,
+      fallback: slowFallback,
+    }),
+    (err: unknown) => {
+      assert.ok(err instanceof ServerCacheTimeoutError, `expected ServerCacheTimeoutError, got ${err}`);
+      return true;
+    }
   );
 });
