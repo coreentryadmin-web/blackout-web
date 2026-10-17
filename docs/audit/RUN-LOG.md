@@ -20,6 +20,65 @@ HTML, measured live homepage CLS — **0.0002, GOOD**. Fetched `/api/og` with a 
 findings-fold, #6112 docs audit log, #6111 Largo truncation fix). Nothing for this lane to
 rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
 
+## 2026-10-17 (12:06 UTC / Sat 08:06 ET) — [COORDINATOR] 5-engine + coordinator cycle: 2 bugs fixed/merged (#6108, #6109), 1 new Largo truncation bug found/fixed (#6111 open), routine state sync (#6110 open), ELB tail-latency spike measured (no fix — root cause not pinned this pass)
+
+Picked up where the prior entry (below) left off. Merged both bugs that entry's background
+workflow (`wf_ade519a5-0e8`) had already found and RED→GREEN proven: **#6108** (SPX Slayer
+`gexOpposed()` trusting a stale sticky `gamma_regime` when `gamma_flip` was null — added the same
+`gamma_flip != null` guard `spx-signals.ts` already uses) and **#6109** (swing `gradeSwingPosition`
+freezing `realized_pnl_pct`/`exit_mark` from a fresh mark but never latching it onto `last_mark`, so
+a closed position's `contract.mid` could read 2x+ off its own real exit — `gradeParentFromMark` now
+exposes `exit_mark` top-level, `gradeSwingPosition`'s UPDATE latches it onto `last_mark`/
+`last_mark_at`, COALESCE-guarded). Both squash-merged, both confirmed landed on `origin/main`
+(`5936d6e28`, `f0190c67d5`), `tsc --noEmit` clean against the merged tip. Full local `npm test` was
+started but hit the sandbox's 30-min background-task limit with zero output before finishing (this
+container is slower than CI's runners for the 7000+ test suite) — not restarted, since both PRs'
+own `verify` CI check already ran the full suite on their branches and passed before merge; that is
+treated as sufficient evidence here, not skipped verification. `ecr-push-production.yml` fired for
+both merge commits, still in progress/pending as of this entry (~20+ min in) — not yet independently
+confirmed live.
+
+**Stop-hook cleanup, several rounds:** the still-running 5-engine/Largo-deepdive background workflow
+(launched this session, 7 agents) repeatedly wrote throwaway `.tmp-*.mjs` audit probes under
+`scripts/audit/` per its own instructions (to be self-deleted, but several sat momentarily untracked
+between turns) — inspected each (all matched the exact disclosed live-probe pattern, Clerk-session
+HTTP fetches against one of the 5 engines) and deleted them once confirmed scratch, never committed.
+
+**Genuinely untracked, non-scratch files also surfaced and were committed properly** (#6110,
+draft): `.blackout-agent/AGENT_STATE.json` / `HEARTBEAT/{claude,cursor}.json` / `data/x-intel/
+creative-rotation.json` — auto-updated ambient bookkeeping state (same shape as prior
+`chore(agent-state): routine heartbeat/rotation state sync` PRs #6099/#6080), branched/committed/
+pushed/PR'd rather than left dirty or force-included in an unrelated branch.
+
+**New finding, fixed (#6111, open):** CloudWatch Logs grep (chasing an ELB latency spike, see below)
+surfaced `[largo] tools: 2 calls, 428ms total, 1 TRUNCATED — get_options_flow 418ms TRUNCATED
+33210/16000` — a live instance of the same tool-result-truncation bug class as
+`get_zerodte_record`/`get_market_oi_change`/etc. `get_options_flow`'s non-SPX branch returned two
+unbounded raw UW row arrays (`flow_alerts` up to 50, `flow_recent` up to 100) with no budget check,
+so the real answer (`alert_premium`/`bias`/`strike_stacks`, which serialize AFTER both arrays) could
+be dropped by the transport's raw tail-cut once the raw UW pages alone exceeded 16k. Fixed with a
+new `fitOptionsFlowForModel` (`market-data-fits.ts`), following the file's own established
+budget-bound-not-fixed-count shape; RED→GREEN proven (`git stash --keep-index`, 4 new tests fail
+against unmodified `main`, pass restored); 34/34 combined test run; `tsc --noEmit` clean. SPX branch
+of the same tool deliberately NOT touched — not the measured truncation, no evidence it needs it.
+See staged finding for full detail.
+
+**Standing performance/latency audit — measured, not fabricated, no fix attempted:** pulled
+`AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s target group for the last
+~3h: **a real tail-latency spike, 10:52–11:22 UTC — avg climbed to 3.5s/6.9s/9.9s per 15-min bucket,
+p99 57.8s/74.9s/69.9s, max up to 78.9s** — markedly worse than the previously-documented "~40-44s"
+Vector-`/universe`-cache-miss pattern this same window's trigger prompt warns about. Request volume
+was LOW through this window (41–265 req/15min, Saturday pre-dawn ET — real Saturday low-traffic, not
+a load spike) and 4XX count rose to 21–62/15min in the same buckets. Tried to pin the exact slow
+route via CloudWatch Logs (`elapsed=`, `universe`, `gex-heatmap`, `spx/desk`, `force-rebuild`,
+`timeout`, `cold`, `rebuild` — all empty or near-empty in the spike window) and could NOT find a
+smoking-gun log line tying this specific spike to the known `/universe` mechanism or to anything
+else actionable. Per the trigger prompt's own explicit instruction ("do not attempt a speculative
+fix... two prior SPX-desk-specific attempts already failed that way"), this is reported as a
+measurement only — the spike is real and worse than previously documented, but without a pinned
+root cause for THIS instance, no fix was attempted. Flagging for the next cycle to re-check whether
+this recurs and, if so, whether a request-level trace (not just aggregate ELB stats) can localize it.
+
 ## 2026-10-17 (11:07 UTC / Sat 07:07 ET) — [COORDINATOR] Session resumed after ~24h stall; SPX Slayer off-hours `ServerCacheTimeoutError` candidate finding re-verified live — did NOT reproduce
 
 Session had stalled roughly 2026-10-16 ~07:00 UTC → 2026-10-17 ~11:00 UTC; drained the full
