@@ -4,36 +4,6 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## SPX desk intel "WALLS" brief line: gamma-flip distance sign-inverted relative to its own sibling clauses — FIXED
-
-> **kind:** `FINDING`
-
-| **Status** | Fixed (`wallsBriefLine()`, `src/lib/bie/spx-desk-intel.ts`) |
-|---|---|
-
-**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-17 ~21:21 UTC), a systematic static-code sweep for the same defect class just fixed in the swing play-brief (PR #6147).
-
-**Live repro.** `GET /api/market/gex-positioning?ticker=<T>` (production, 2026-10-17 ~21:25 UTC), 4/4 tickers checked with a resolved flip show the identical inversion:
-
-| Ticker | spot | flip | flip vs spot | raw `distance_to_flip_pct` | rendered (pre-fix) | correct sign |
-|---|---|---|---|---|---|---|
-| AAPL | 342.62 | 348.59 | +5.97 (ABOVE) | −1.74 | "−1.7% from γflip" | +1.7% |
-| META | 705.32 | 699.76 | −5.56 (BELOW) | +0.79 | "+0.8% from γflip" | −0.8% |
-| AMZN | 248.98 | 273.66 | +24.68 (ABOVE) | −9.91 | "−9.9% from γflip" | +9.9% |
-| MSFT | 526.83 | 523.76 | −3.07 (BELOW) | +0.58 | "+0.6% from γflip" | −0.6% |
-
-**Root cause.** Same shape as #6147 (swing play-brief), different file. `wallsBriefLine()`'s "WALLS" line composes several distance clauses via `signedPts(level - spot)` — e.g. `call wall ${n} (${signedPts(p.call_wall - spot)}, caps upside)` — positive when the level is ABOVE spot. The γflip clause instead rendered the raw `p.distance_to_flip_pct` field (`src/lib/providers/gex-positioning.ts`, `(spot - flip) / spot * 100`) directly — positive when flip is BELOW spot, the exact opposite convention from its own call-wall/put-wall neighbors three words earlier in the identical string.
-
-**Already baked into the committed test fixture as "expected."** `spx-desk-intel.test.ts`'s `fakePositioning()`: `spot: 5900, flip: 5890` (flip 10pts BELOW spot — true distance −0.17%), but the fixture supplied `distance_to_flip_pct: 0.17` (positive) — the raw, already-inverted field, baked in as a fixture value. The one existing test for this function (`wallsBriefLine lists call and put walls with distance`) only asserted `.includes("call wall")`/`.includes("put wall")`, never checking the γflip clause's sign at all, so the inversion was never caught.
-
-**Blast radius.** Two live Largo-reachable call sites compose this line: `src/lib/bie/wall-dynamics-read.ts` (`composeWallDynamicsRead("SPX"/"SPXW")`, Largo's "wall dynamics" tool answer) and `src/lib/bie/spx-desk-brief.ts` (the composed SPX full-state desk brief's `WALLS` line, the general "what's SPX doing" Largo answer). Confirmed **not** reachable from the swing play-brief (grepped `src/lib/swing/*.ts` for any import of `spx-desk-intel.ts` — zero hits) — this is a different Largo surface (SPX desk intel) from #6147's fix, same root-cause family rather than the same code.
-
-**Fix.** Compute the signed distance locally as `(flip - spot) / spot * 100` instead of reading the raw `distance_to_flip_pct` field — the same `(level - spot)` convention `signedPts` already uses for the call/put wall clauses a few lines above. Also merged the `flip != null` and (now-removed) `distance_to_flip_pct != null` gates into one, since the raw field is only ever non-null when `flip` is non-null in the first place (confirmed in `gex-positioning.ts`'s own computation) — no behavior change for the common case, and the clause now renders whenever `flip` and `spot` are valid rather than depending on a second field's own null-ness.
-
-**Tests.** Added a dedicated test asserting the γflip clause's sign (flip below spot ⟹ negative distance), using the existing fixture. RED→GREEN proven via `git stash` of `spx-desk-intel.ts` alone (1 failure without the fix, 0 with it restored). Full `src/lib/bie` suite: 782/782 pass. `tsc --noEmit`: clean.
-
-**Lower-confidence secondary observation (not fixed here, flagged for a second look):** `regimeBriefLine()` in `src/lib/bie/vector-desk-intel.ts` uses the same "spot relative to flip" convention, composed into the same Vector full-state brief alongside `magnetBriefLine`'s opposite "level relative to spot" convention — but it phrases the number as "spot vs γflip," a defensible self-contained reading rather than a clear inversion like the one fixed here. Not acted on in this PR.
-
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
@@ -67,6 +37,219 @@ Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so
 PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Night Hawk Swings play-brief hardcodes `ticker_class: "equity"` for every ticker, including live ETF positions — violates Largo contract C4 — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`composeSwingPlayBrief()`, `src/lib/swing/play-brief.ts`; `canonicalTicker`'s `ETF_KEYS`, `src/lib/largo/core/entities.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-17 ~22:10 UTC).
+
+**Live repro.** `GET /api/market/swing/play-brief?playId=SWING:<T>&ticker=<T>&positionId=<n>&expandIntel=1` (production, 2026-10-17), for every currently-committed swing position whose ticker is an ETF:
+
+| Ticker | What it actually is | `ticker_class` returned (pre-fix) |
+|---|---|---|
+| VXX | Volatility ETN | `"equity"` |
+| UVXY | 2x leveraged volatility ETF | `"equity"` |
+| SQQQ | 3x inverse Nasdaq ETF | `"equity"` |
+| SOXS | 3x inverse semiconductor ETF | `"equity"` |
+| UVIX | 2x leveraged volatility ETF | `"equity"` |
+| LABD | 3x inverse biotech ETF | `"equity"` |
+| NAIL | 3x leveraged homebuilders ETF | `"equity"` |
+| ETHA | Spot Ethereum ETF | `"equity"` |
+| ETHU | 2x leveraged Ether ETF | `"equity"` |
+| URA | Uranium ETF | `"equity"` |
+
+Verified live via `GET /api/market/nighthawk/horizons?view=swings`: all 10 of these were real, currently-committed Night Hawk Swings positions at the time of the repro (63 committed + 5 watch rows total), not hypothetical tickers.
+
+**Root cause, two layers.**
+
+1. `src/lib/swing/play-brief.ts`'s `composeSwingPlayBrief()` hardcoded the literal string `"equity"` at two call sites (inside `buildRichEnvelope({...})` and on the returned `SwingPlayBriefResult`), both carrying the comment "Largo C4 (IDENTITY): swings are always equities." That assumption was true when the field was added, and stopped being true once the Banger whole-market breakout engine started feeding leveraged/inverse/volatility ETFs into the swing lane (`banger-lane-merge.ts`). The type itself was pinned to the literal `"equity"` in `src/lib/swing/play-brief-types.ts` (not the shared `TickerClass` union), so a fix needed a type widen, not just a string swap.
+
+2. Even after wiring in the platform's canonical classifier (`canonicalTicker(ticker)?.kind` from `src/lib/largo/core/entities.ts` — the exact fix already shipped once for this same defect shape in `src/lib/largo/contract/product-adapters.ts`'s cross-product reads), 8 of the 10 live tickers above would have **still** misclassified as `"equity"`: `entities.ts`'s `ETF_KEYS` set is explicitly documented as "partial is safe" because, for its pre-existing callers, `kind` "only affects labelling, never routing." That tradeoff stopped being safe the moment a member-facing Largo identity field (swing's `ticker_class`) started reading it — omission there is a wrong classification a member sees, not a harmless label.
+
+**Blast radius.** Both hardcode sites are in the same function (`composeSwingPlayBrief`), so both needed the fix. The `ETF_KEYS` widening is shared infrastructure (`src/lib/largo/core/entities.ts`), so it also benefits `product-adapters.ts`'s existing cross-product `ticker_class` derivation for these same tickers, wherever they're queried through Helix/Vector/Night Hawk's Largo adapters — a positive side effect, not scope creep, since it's the same shared classifier the sibling fix already depends on.
+
+**Why this wasn't caught by the existing `product-adapters.ts` fix:** that fix only touches the adapters file; it never touched `play-brief.ts`'s own independent hardcode, because the two surfaces compose `ticker_class` through entirely separate code paths (swing's native play-brief composer vs. the cross-product adapter layer for Helix/Vector/Nighthawk/SPX).
+
+**Fix.**
+- `src/lib/swing/play-brief.ts`: derive `const tickerClass = canonicalTicker(play.ticker)?.kind ?? "equity";` once near the top of `composeSwingPlayBrief`, and use it at both the envelope-level and result-level `ticker_class` fields instead of the literal `"equity"`.
+- `src/lib/swing/play-brief-types.ts`: widen `SwingPlayBriefResult.ticker_class` from the literal `"equity"` to the shared `TickerClass` union (`"index" | "equity" | "etf"`, imported from `src/lib/largo/contract/product-read.ts`).
+- `src/lib/largo/core/entities.ts`: added `ETHA, ETHU, LABD, NAIL, SOXS, SQQQ, URA, UVIX` to `ETF_KEYS` — the 8 live swing-book ETFs not already covered by the pre-existing set (`VXX`/`UVXY` were already correctly classified).
+
+**Tests.** Added `entities.test.ts`: all 8 newly-added tickers classify as `"etf"`. Added `play-brief.test.ts`: `composeSwingPlayBrief` returns `ticker_class: "etf"` for SQQQ (both envelope-level and result-level fields) and still returns `"equity"` for a real equity (NVDA). RED→GREEN proven via `git stash` of the 3 source files (2 failures without the fix, 0 with it restored). Broader regression: `src/lib/swing/*.test.ts` + `src/lib/largo/**/*.test.ts` + `src/features/nighthawk/**/*.test.ts` — 4263/4263 pass. `tsc --noEmit`: clean.
+
+## Swing "Break watch" headline silently drops an already-breached executable stop when a structural GEX level is also broken — FIXED
+
+> **kind:** `FINDING`
+
+**Lane:** Night Hawk Swings · Ask Largo play-brief · `src/lib/swing/play-brief-narrative.ts`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 — correct data was present elsewhere in the brief, but the reserved risk headline a member actually reads under "HOLD" silently omitted the more urgent fact |
+
+### Root cause
+
+A 2026-09-15 fix (still in the file, unchanged) added logic so the "Break watch" headline bullet
+says **"stop already breached on the executable side"** when the bid (`play.execMark`) is already
+at or through the committed premium stop (`play.exitPolicy.stop_premium`) — rather than the
+forward-looking "lose premium stop $X" framing, which that fix's own comment correctly notes is
+misleading once the stop is already breached: *"A member trusting 'HOLD' at the top could easily
+miss that their real exit is already past the intended risk line."*
+
+That fix was gated behind `if (!breakLine && ...)` — it only fired when `breakTrigger()` (the
+GEX-heuristic nearest put-wall/call-wall/dark-pool/GEX-king break level) had found **nothing** to
+cite. Whenever `breakTrigger()` DID find a real structural level — which it very often will, since
+most committed swing plays have an active put/call wall nearby — the executable-breach override
+never ran, and the headline fell back to showing only the structural break line.
+
+The executable-breach fact doesn't disappear entirely: it still renders as a footnote in
+`play-brief-intel.ts`'s rails section (`cushionNote`, "no real cushion on the executable side").
+But that is exactly the "footnote in a reference section, never in this reserved, always-surfaced
+bullet" problem the 2026-09-15 fix's own comment describes — it just reappears whenever a
+structural break line also happens to exist, which the original fix never tested for.
+
+### Evidence
+
+Live `GET /api/market/swing/play-brief?playId=SWING:GTLB&ticker=GTLB&expandIntel=1` (2026-10-17,
+Night Hawk Swings standing mandate, weekend audit cycle):
+
+- Position: GTLB 59C 6DTE, LONG, status HOLD, entry $0.65, mid mark $0.30 (-53.8% P&L), **bid
+  $0.10 (-84.6% exec P&L)**, premium stop rail **$0.26**.
+- `$0.10 <= $0.26` → the executable side has unambiguously breached the stop.
+- The brief's rails footnote correctly said *"no real cushion on the executable side (bid already
+  at/through this level)"*.
+- But the reserved "Break watch" headline bullet — the one line every Ask Largo brief surfaces
+  up front as the risk callout — read: **"Break watch — lose 27.50 on a closing basis →
+  structural support failed; exit or cut size."** (the put-wall structural level), with no
+  mention anywhere in the headline that the executable side was *already* through its own stop.
+
+Confirmed via code read (`play-brief-narrative.ts` lines ~1506-1529 before this fix) that this is
+structural, not a one-off: `breakLine` is computed first from `breakTrigger()`, and the
+executable-breach override at the old `if (!breakLine && ...)` only ever ran when that call
+returned `null`. No existing test exercised the combined case — every prior test for the
+"already breached" bullet (`tradeManagerNarrativeSection: Break watch says the stop is ALREADY
+breached...`, `SHORT Break watch also flags an already-breached executable stop`) used a bare
+`ctx()` fixture with no `vector`/`ecosystem` data, so `spot` was `null`, `breakTrigger()` short-
+circuited to `null`, and the `!breakLine` guard was trivially satisfied every time — masking this
+exact gap.
+
+### Fix
+
+`src/lib/swing/play-brief-narrative.ts`: compute `execBreached` unconditionally and, when true,
+add it as its **own** reserved bullet (via `add(..., { reserved: true })`) regardless of whether
+`breakLine` is also non-null — additive, per the Largo product contract's additive principle
+(never replacing the structural break line, never replacing the fallback forward-looking framing
+when the stop is *not* yet breached). The non-breached fallback path (`!breakLine && execStop !=
+null`) is unchanged.
+
+### Blast radius
+
+Single call site — `tradeManagerNarrativeSection` in `play-brief-narrative.ts` is the only place
+this logic lives; `committedStructuralStopLine` (the separate 2026-10-16 fix for the real
+*underlying-price* committed stop) is an independent code path and unaffected. No other consumer
+imports this exec-breach branch.
+
+### Regression test
+
+`src/lib/swing/play-brief-narrative.test.ts`:
+*"tradeManagerNarrativeSection: executable-side stop breach still surfaces when a structural GEX
+break ALSO exists (live GTLB shape)"* — supplies both a structural put wall (via `vector.gexWalls`)
+AND an executable-side breach (`execMark <= stop_premium`), and asserts both bullets render
+independently. RED pre-fix (`git stash` on the source file alone reproduced the failure, 1/136
+failing), GREEN post-fix (136/136). Full suite: 16223 pass / 0 fail / 3 skipped. `tsc --noEmit`
+clean.
+
+## `ETF_KEYS` widening (#6153) was itself an incomplete sweep — ARKG/EWY/KORU/SNDQ still missed — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`src/lib/largo/core/entities.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive, a follow-up cycle that deliberately re-checked whether #6153 (merged minutes earlier) actually closed the gap it claimed to.
+
+**Context.** #6153 fixed `composeSwingPlayBrief()`'s hardcoded `ticker_class: "equity"` by deriving it from `canonicalTicker(ticker)?.kind`, and widened `entities.ts`'s `ETF_KEYS` with 8 tickers (`ETHA, ETHU, LABD, NAIL, SOXS, SQQQ, URA, UVIX`) found via a sample of that cycle's own repro. That sample was not exhaustive.
+
+**Live repro.** `GET /api/market/nighthawk/horizons?view=swings` lists all 68 committed/watch swing rows. Checking EVERY ticker against Polygon's own `GET /v3/reference/tickers/<T>` `type` field (not guessed from the name) found 4 more real ETFs the #6153 widening still missed:
+
+| Ticker | Polygon `type` | What it is |
+|---|---|---|
+| ARKG | ETF | ARK Genomic Revolution ETF |
+| EWY | ETF | iShares MSCI South Korea ETF |
+| KORU | ETF | Direxion Daily MSCI South Korea Bull 3X ETF |
+| SNDQ | ETF | Tradr 2X Short SNDK Daily ETF |
+
+All 4 were real, currently-committed swing positions at the time of the repro, and all 4 returned `ticker_class: "equity"` even after #6153 merged.
+
+**The remaining 60+ tickers in the live book were also checked** (not assumed) — every one returned `CS` (common stock) or, for two foreign names (TSM, ABVX), `ADRC` (ADR — correctly stays "equity", not a fund). No further misses found in this sweep.
+
+**Fix.** Added `ARKG, EWY, KORU, SNDQ` to `ETF_KEYS`.
+
+**Standing caveat, not fixed here.** `ETF_KEYS` is still a finite, hand-maintained set — this is the SECOND time in one session it needed a correction, and it will drift again the next time Banger's whole-market scan picks up a new leveraged/ETN/thematic name no one has enumerated yet. Raised on PR #4076 as an open design question: whether `canonicalTicker`'s `kind` resolution should stay a static set (accepting periodic manual correction, same discipline as today) or grow an optional Polygon-`type`-backed path (self-maintaining, but in tension with `entities.ts`'s own stated "PURE AND TOTAL — no IO" design principle, and with ~15+ existing synchronous call sites). Not unilaterally decided here — this is an architecturally significant call affecting a core shared primitive, not a quick patch.
+
+**Tests.** Added `entities.test.ts`: all 4 newly-added tickers classify as `"etf"`. RED→GREEN proven via `git stash` (1 failure without the fix, 0 with it restored). Broader regression: `src/lib/swing/*.test.ts` + `src/lib/largo/**/*.test.ts` + `src/features/nighthawk/**/*.test.ts` — 4265/4265 pass. `tsc --noEmit`: clean.
+
+## Book Context's "Internal conflict" line showed an inverse-leverage ETF as a bare "LONG", reading as self-contradictory against the same brief's "Concentration" line — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`formatOverlapPosition()`, `src/lib/swing/play-brief-intel.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-17 ~22:33 UTC).
+
+**Live repro.** `GET /api/market/swing/play-brief?playId=SWING:ALAB:1810&ticker=ALAB&positionId=1810&expandIntel=1` (production, 2026-10-17), "Book context" section:
+
+> **Concentration** — already holding 2 same-direction positions in theme "semis": NVDA LONG, CRWV LONG. ALAB stacks the same wager rather than diversifying risk.
+>
+> **Internal conflict** — theme "semis" already has an OPPOSED position: SQQQ LONG, SOXS LONG. One leg is structurally betting against the other; this is not a hedge unless intentional.
+
+Four tickers, all labeled "LONG", split across two sentences with opposite conclusions and zero explanation why.
+
+**Root cause.** `checkPortfolioOverlap()` (`src/lib/swing/portfolio.ts`) already classifies correctly: it compares positions by `effectiveDirection()` (`src/lib/swing/theme-cluster.ts`), which flips LONG↔SHORT for known inverse-leverage ETFs (`INVERSE_LEVERAGE_ETFS = {SOXS, SQQQ}` — a LONG SOXS/SQQQ position is economically a SHORT bet on "semis"). The classification math is right. But `formatOverlapPosition()` (`play-brief-intel.ts`), the only renderer `bookContextSection` uses for both the same-direction and opposed buckets, built the display string as `` `${p.ticker} ${p.direction}` `` — the raw, nominal ledger direction — never consulting `isInverseLeverageEtf`. The member-facing sentence never surfaced *why* the classification put a nominal "LONG" in the OPPOSED bucket.
+
+**Blast radius.** Every committed brief whose book holds SOXS or SQQQ alongside any other same-theme name hits this. Confirmed previously-unflagged on a second ticker too: PR #4076 comment 6104013319 (2026-10-11) independently quoted the identical unexplained pattern on MRVL ("SOXS LONG (#1648), SOXS LONG (#1572)") without flagging the missing annotation at the time.
+
+**Fix.** `formatOverlapPosition()` now annotates the label when `isInverseLeverageEtf(p.ticker)` is true: `"SQQQ LONG (inverse ETF — economically SHORT)"` instead of a bare `"SQQQ LONG"`. Reused the existing `effectiveDirection`/`isInverseLeverageEtf` helpers from `theme-cluster.ts` (already the source of truth the classification itself uses) rather than inventing a second notion of "inverse."
+
+**Deliberately not expanded in this PR.** A related, lower-confidence observation surfaced while investigating: `theme-cluster.ts`'s `INVERSE_LEVERAGE_ETFS`/`ETF_PROXY_THEMES` only cover the semis/Nasdaq complex (SOXS/SQQQ/SOXL/TQQQ) — `LABD` (3x inverse biotech, a real live swing-book ETF per the sibling #6153/#6154 fixes) isn't clustered into any theme at all (`sectorFor`'s "biotech" list is named clinical-stage tickers only, no ETF proxy), so a LONG LABD position currently gets NO concentration/conflict flag against a LONG biotech name — not mislabeled, simply never compared. This needs the same dedicated research the SQQQ addition got (2026-10-11, confirming the real risk driver before adding a theme mapping), not a quick patch alongside an unrelated label fix — raised on PR #4076 rather than silently expanded here.
+
+**Tests.** Added a regression test asserting the annotated label renders for a LONG SQQQ landing in the OPPOSED bucket against a LONG NVDA. RED→GREEN proven via `git stash` (1 failure without the fix, 0 with it restored). Broader regression: `src/lib/swing/*.test.ts` + `src/lib/largo/**/*.test.ts` + `src/features/nighthawk/**/*.test.ts` — 4265/4265 pass. `tsc --noEmit`: clean.
+
+## SPX desk intel "WALLS" brief line: gamma-flip distance sign-inverted relative to its own sibling clauses — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`wallsBriefLine()`, `src/lib/bie/spx-desk-intel.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-17 ~21:21 UTC), a systematic static-code sweep for the same defect class just fixed in the swing play-brief (PR #6147).
+
+**Live repro.** `GET /api/market/gex-positioning?ticker=<T>` (production, 2026-10-17 ~21:25 UTC), 4/4 tickers checked with a resolved flip show the identical inversion:
+
+| Ticker | spot | flip | flip vs spot | raw `distance_to_flip_pct` | rendered (pre-fix) | correct sign |
+|---|---|---|---|---|---|---|
+| AAPL | 342.62 | 348.59 | +5.97 (ABOVE) | −1.74 | "−1.7% from γflip" | +1.7% |
+| META | 705.32 | 699.76 | −5.56 (BELOW) | +0.79 | "+0.8% from γflip" | −0.8% |
+| AMZN | 248.98 | 273.66 | +24.68 (ABOVE) | −9.91 | "−9.9% from γflip" | +9.9% |
+| MSFT | 526.83 | 523.76 | −3.07 (BELOW) | +0.58 | "+0.6% from γflip" | −0.6% |
+
+**Root cause.** Same shape as #6147 (swing play-brief), different file. `wallsBriefLine()`'s "WALLS" line composes several distance clauses via `signedPts(level - spot)` — e.g. `call wall ${n} (${signedPts(p.call_wall - spot)}, caps upside)` — positive when the level is ABOVE spot. The γflip clause instead rendered the raw `p.distance_to_flip_pct` field (`src/lib/providers/gex-positioning.ts`, `(spot - flip) / spot * 100`) directly — positive when flip is BELOW spot, the exact opposite convention from its own call-wall/put-wall neighbors three words earlier in the identical string.
+
+**Already baked into the committed test fixture as "expected."** `spx-desk-intel.test.ts`'s `fakePositioning()`: `spot: 5900, flip: 5890` (flip 10pts BELOW spot — true distance −0.17%), but the fixture supplied `distance_to_flip_pct: 0.17` (positive) — the raw, already-inverted field, baked in as a fixture value. The one existing test for this function (`wallsBriefLine lists call and put walls with distance`) only asserted `.includes("call wall")`/`.includes("put wall")`, never checking the γflip clause's sign at all, so the inversion was never caught.
+
+**Blast radius.** Two live Largo-reachable call sites compose this line: `src/lib/bie/wall-dynamics-read.ts` (`composeWallDynamicsRead("SPX"/"SPXW")`, Largo's "wall dynamics" tool answer) and `src/lib/bie/spx-desk-brief.ts` (the composed SPX full-state desk brief's `WALLS` line, the general "what's SPX doing" Largo answer). Confirmed **not** reachable from the swing play-brief (grepped `src/lib/swing/*.ts` for any import of `spx-desk-intel.ts` — zero hits) — this is a different Largo surface (SPX desk intel) from #6147's fix, same root-cause family rather than the same code.
+
+**Fix.** Compute the signed distance locally as `(flip - spot) / spot * 100` instead of reading the raw `distance_to_flip_pct` field — the same `(level - spot)` convention `signedPts` already uses for the call/put wall clauses a few lines above. Also merged the `flip != null` and (now-removed) `distance_to_flip_pct != null` gates into one, since the raw field is only ever non-null when `flip` is non-null in the first place (confirmed in `gex-positioning.ts`'s own computation) — no behavior change for the common case, and the clause now renders whenever `flip` and `spot` are valid rather than depending on a second field's own null-ness.
+
+**Tests.** Added a dedicated test asserting the γflip clause's sign (flip below spot ⟹ negative distance), using the existing fixture. RED→GREEN proven via `git stash` of `spx-desk-intel.ts` alone (1 failure without the fix, 0 with it restored). Full `src/lib/bie` suite: 782/782 pass. `tsc --noEmit`: clean.
+
+**Lower-confidence secondary observation (not fixed here, flagged for a second look):** `regimeBriefLine()` in `src/lib/bie/vector-desk-intel.ts` uses the same "spot relative to flip" convention, composed into the same Vector full-state brief alongside `magnetBriefLine`'s opposite "level relative to spot" convention — but it phrases the number as "spot vs γflip," a defensible self-contained reading rather than a clear inversion like the one fixed here. Not acted on in this PR.
 
 ## Ask Largo swing play-brief: "nearest gamma-flip crossing" distance is sign-inverted relative to every other level in the same brief — FIXED
 
