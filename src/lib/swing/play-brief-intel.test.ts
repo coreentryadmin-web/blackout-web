@@ -4049,6 +4049,38 @@ test("watchForSection: closed+stopped LONG reports spot has reclaimed the stop l
   assert.match(section.body, /exit may have been early/i);
 });
 
+// BUG FIX (2026-10-17, Ask Largo standing mandate): the "% back through it" figure divided by the
+// stop level (inval) instead of spot — the same wrong-denominator shape independently found in
+// play-brief-narrative.ts's committedStructuralStopLine. Uses a wide gap (spot 120 vs inval 100)
+// so the buggy formula (|120-100|/100 = 20.0%) and the correct one (|120-100|/120 = 16.7%) produce
+// visibly different displayed values, rather than rounding to the same figure.
+test("watchForSection: 'reclaimed the stop level' percentage is computed as % of spot, not % of the stop level itself", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        status: "CLOSED",
+        direction: "LONG",
+        closedReason: "stopped",
+        invalidationUnderlyingPx: 100,
+      }),
+      asOf: "2026-10-13 10:00 ET",
+      sessionDate: "2026-10-13",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: { gex_positioning: { spot: 120 } } as EcosystemContext,
+      vector: null,
+    },
+    "closed",
+  );
+  assert.match(
+    section.body,
+    /16\.7% back through it/i,
+    `expected the spot-denominator 16.7%, got: ${section.body}`,
+  );
+});
+
 test("watchForSection: closed+stopped SHORT reports spot remains through the stop level, confirming the exit", () => {
   const section = watchForSection(
     {

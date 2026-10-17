@@ -914,7 +914,14 @@ export function committedStructuralStopLine(play: TerminalPlay, spot: number | n
   const inval = fin(play.invalidationUnderlyingPx);
   if (inval == null || spot == null) return null;
   const alreadyThrough = play.direction === "SHORT" ? spot >= inval : spot <= inval;
-  const distPct = Math.abs(((spot - inval) / inval) * 100);
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro CRWV: spot 60.99, inval 57.06,
+  // rendered "6.9% away" — that's (spot-inval)/inval, the WRONG denominator. Every sibling distance
+  // figure in this same brief (call/put wall, max pain, gamma magnet — this file's own distPct()
+  // helper above) divides by SPOT, not the target level, so this bullet's number silently used a
+  // different convention from its neighbors in the identical prose block. Correct value: 6.4%.
+  // Invisible at small distances (rounds identically either way below ~1%), which is why the
+  // TSLA repro that found the separate spot-SOURCING question (PR #4076) never caught this too.
+  const distPct = Math.abs(((spot - inval) / spot) * 100);
   if (alreadyThrough) {
     return `**Structural stop (committed)** — already through **${fmtPriceLevel(inval)}**, the real stop pinned at entry → an enforced exit regardless of option P&L, independent of the GEX read above.`;
   }

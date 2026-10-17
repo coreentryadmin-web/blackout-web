@@ -447,6 +447,32 @@ test("tradeManagerNarrativeSection: SHORT committed structural stop reads 'alrea
   assert.match(section!.body, /Structural stop \(committed\).*already through.*110\.00/i);
 });
 
+// BUG FIX (2026-10-17, Ask Largo standing mandate, live repro CRWV: spot 60.99, inval 57.06,
+// rendered "6.9% away" instead of the correct 6.4%). committedStructuralStopLine divided by the
+// STOP level (inval), not spot — every sibling "% away from a level" figure in this same brief
+// (call/put wall, max pain, gamma magnet — this file's own distPct() helper) divides by spot.
+// Invisible at small distances (the already-fixed open design question's own TSLA repro sat at
+// 0.6%, where /inval and /spot round to the same displayed value) — this fixture uses a gap wide
+// enough (6%) that the two formulas produce visibly different results, so a regression reintroducing
+// the wrong denominator fails loudly rather than rounding away.
+test("tradeManagerNarrativeSection: committed structural stop distance is computed as % of SPOT, not % of the stop level itself", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({ direction: "LONG", invalidationUnderlyingPx: 94 }),
+      vector: { spot: 100, gexWalls: { callWalls: [], putWalls: [] } } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+
+  assert.ok(section);
+  // Correct: |100-94|/100 = 6.0%. The bug's formula (|100-94|/94) would render 6.4%.
+  assert.match(
+    section!.body,
+    /Structural stop \(committed\).*\(6\.0% away\)/i,
+    `expected the spot-denominator 6.0%, got: ${section?.body}`,
+  );
+});
+
 test("tradeManagerNarrativeSection: no committed structural stop bullet when the real level is absent (no regression)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
