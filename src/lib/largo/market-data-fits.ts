@@ -373,7 +373,12 @@ export interface EarningsRelatedNewsFittedResult {
 
 export function fitEarningsRelatedNewsForModel(
   raw: Array<Record<string, unknown>>,
-  maxShown = 5
+  maxShown = 5,
+  /** Sibling fields already decided for this turn's get_earnings envelope (print_history,
+   *  next_report, …) — measured ALONGSIDE related_news so its own truncated flag is honest about
+   *  how much room was actually left, rather than measuring related_news in isolation. Defaults to
+   *  `{}` so every existing caller/test is unaffected. */
+  base: Record<string, unknown> = {}
 ): EarningsRelatedNewsFittedResult {
   const trimmed = (raw ?? []).map((a) => ({
     title: String(a.title ?? ""),
@@ -381,11 +386,73 @@ export function fitEarningsRelatedNewsForModel(
     published: String(a.published ?? ""),
     url: String(a.url ?? ""),
   }));
-  const { kept, total } = fitRowsToBudget({}, "related_news", trimmed, { maxRows: maxShown });
+  const { kept, total } = fitRowsToBudget(base, "related_news", trimmed, { maxRows: maxShown });
   return {
     related_news: kept,
     related_news_shown: kept.length,
     related_news_truncated: total > kept.length,
     related_news_max_shown: maxShown,
+  };
+}
+
+// ============ get_earnings unusual_whales (UW raw quarterly earnings history) ============
+// MEASURED live 2026-10-17 (this session's CloudWatch sweep found `get_earnings` TRUNCATED at
+// 83506/16000 and 90305/16000 chars — both the related_news fix above and the budget this file's
+// own header documents were already shipped, so neither explains an overflow of that size).
+// Root cause: `fetchUwEarnings(sym)` (unusual-whales.ts) returns EVERY quarter UW has on file with
+// no slice/limit at all — unlike every sibling UW fetcher in that file (fetchUwScreenerStocks,
+// fetchUwUnusualTrades, fetchUwOptionContractFlow all cap their own result). Measured live against
+// the real endpoint: NVDA 107 rows / ~70.6KB, AAPL ~80.9KB, TSLA ~47.5KB — several times the
+// entire 16k transport cap on this ONE field alone, merged into get_earnings's envelope completely
+// unfit (`unusual_whales: uw` in run-tool.ts). This data is also the LOWEST-value earnings source
+// per get_earnings's own precedence comment ("the structured feed is primary... the news channel
+// is not") — it exists only as a last-resort `source` label when Benzinga structured+news are both
+// empty, and print_history (Benzinga, reaction-aware, already capped to 6) already covers the
+// model's real need for historical prints. Fit it like every other list field in this module.
+export interface EarningsUwHistoryFittedResult {
+  unusual_whales: Array<Record<string, unknown>>;
+  unusual_whales_shown: number;
+  unusual_whales_truncated: boolean;
+}
+
+export function fitEarningsUwHistoryForModel(
+  base: Record<string, unknown>,
+  raw: Array<Record<string, unknown>>,
+  maxShown = 8
+): EarningsUwHistoryFittedResult {
+  const { kept, total } = fitRowsToBudget(base, "unusual_whales", raw ?? [], { maxRows: maxShown });
+  return {
+    unusual_whales: kept,
+    unusual_whales_shown: kept.length,
+    unusual_whales_truncated: total > kept.length,
+  };
+}
+
+// ============ get_earnings estimates (UW forward consensus) ============
+// MEASURED live 2026-10-17: `fetchUwEarningsEstimates(sym)` → `extractRows(data)` cannot unwrap
+// UW's `{ ticker, estimates: [...] }` response shape (the "estimates" key isn't in extractRows's
+// recognized-wrapper list), so it falls through to extractRows's single-row fallback and returns
+// the ENTIRE response as one opaque row. Measured consistently ~16KB regardless of ticker (NVDA
+// 15.96KB, AAPL 16.07KB, TSLA 16.01KB, META 16.05KB, GOOG 16.12KB) — already over this module's
+// own budget before anything else in get_earnings is counted, and merged in (`estimates`)
+// completely unfit. Since it is one indivisible row (not a flat list this module can shorten),
+// fitting it can only ever be all-or-nothing — but that is still real protection: if the fields
+// decided before it have already consumed the budget, this drops the whole thing with an honest
+// `estimates_truncated: true` instead of silently blowing the transport cap.
+export interface EarningsEstimatesFittedResult {
+  estimates: Array<Record<string, unknown>>;
+  estimates_shown: number;
+  estimates_truncated: boolean;
+}
+
+export function fitEarningsEstimatesForModel(
+  base: Record<string, unknown>,
+  raw: Array<Record<string, unknown>>
+): EarningsEstimatesFittedResult {
+  const { kept, total } = fitRowsToBudget(base, "estimates", raw ?? []);
+  return {
+    estimates: kept,
+    estimates_shown: kept.length,
+    estimates_truncated: total > kept.length,
   };
 }
