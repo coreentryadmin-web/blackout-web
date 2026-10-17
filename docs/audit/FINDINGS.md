@@ -4,33 +4,6 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## Ask Largo swing play-brief: "Chart technicals" and "Wall dynamics" silently vanish on CLOSED briefs once Vector's snapshot is stale — FIXED
-
-> **kind:** `FINDING`
-
-| **Status** | Fixed (`chartTechnicalsSection`/`wallDynamicsSection`, `src/lib/swing/play-brief-intel.ts`) |
-|---|---|
-
-**Found via:** this session's standing Ask Largo × Night Hawk Swings deep-dive (6-agent workflow, 2026-10-17 ~19:21 UTC cycle), auditing fresh tickers (TSM/GOOGL/AMD/KSS) against `docs/audit/LARGO-PRODUCT-CONTRACT.md`.
-
-**Live repro.** `GET /api/market/swing/play-brief?playId=SWING:GOOGL:58&ticker=GOOGL&positionId=58&status=CLOSED&expandIntel=1` (CLOSED position). First fetch (2026-10-17 15:33 ET) returned 13 sections including a full "Chart technicals" block (Spot 339.96, EMA stack down, VWAP 343.29, RSI 58, MACD bull, Golden pocket 344.65–345.02, Structure CHOCH up @ 339.46, Vector desk grade C). Three immediate re-fetches of the identical `playId`/`positionId` ~6 minutes later all returned **12 sections** — "Chart technicals" had disappeared entirely. `envelope.unavailableSources` was `[]` on every one of these reads and `confidence` was unchanged — nothing in the response disclosed that a section had dropped out. Sibling sections (Levels on chart, GEX posture, Vector desk) kept rendering throughout the same window.
-
-**Root cause.** Both functions gated their entire output on Vector snapshot staleness, unconditionally, before ever checking the play's bucket:
-
-- `chartTechnicalsSection` (~line 780, pre-fix): `if (vectorStale) return null;` — this line predates a 2026-10-13 fix that intentionally omits this section when stale *for OPEN/WATCH briefs* (to avoid duplicating `vectorDeskSection`'s "Vector desk grade: X (from prior snapshot)" line), but the omission was never scoped to exclude CLOSED. The function's own CLOSED-bucket disclosure code a few lines below (`closedDisclosure` + `closedMarketSessionNote`) was fully built but structurally unreachable.
-- `wallDynamicsSection` (~line 2240, pre-fix): identical shape — `if (vectorSnapshotStale(...)) return null;` before its own `bucket === "closed"` disclosure branch.
-- `vectorDeskSection` got the equivalent fix earlier the same day (2026-10-17): its closed-bucket branch was reordered to check `bucket === "closed"` *before* the stale early-return, with its own comment noting "Vector is almost always stale by the time the position closed" — i.e. CLOSED+stale is close to the *default* case for a resolved position, not a rare edge. That reorder was applied to one function and not its two siblings with the identical dead-code shape.
-
-**Blast radius / why it matters.** Per `vectorDeskSection`'s own fix comment, Vector is "almost always stale by the time the position closed" — so this wasn't a rare edge case, it was close to the default state for a CLOSED brief. "Chart technicals" and "Wall dynamics" were very likely silently absent from most CLOSED briefs members/Largo read, with zero trace in `unavailableSources` or `confidence` — a direct Largo C3 (absence) violation: a real EMA/VWAP/RSI/structure/wall-event read silently presented as "no data" rather than an honest "last known, from prior snapshot, since this trade closed" framing.
-
-**Fix.** Bucket-gated both early returns (`if (vectorStale && bucket !== "closed") return null;` / `if (vectorSnapshotStale(...) && bucket !== "closed") return null;`), mirroring the exact reorder already shipped in `vectorDeskSection` the same day. OPEN/WATCH behavior (the actual 2026-10-13 fix's intent — avoiding the Vector-desk-grade duplicate) is untouched; CLOSED now falls through to render whatever technicals/wall-event content the last snapshot carried, with the pre-existing closed-bucket disclosure (`closedDisclosure`/`"Current wall activity..."` + `closedMarketSessionNote`) now reachable.
-
-**Why this fix and not an alternative.** Considered leaving `chartTechnicalsSection`'s "Vector desk grade: X" line gated out for CLOSED to fully avoid any overlap with `vectorDeskSection`'s closed-bucket "Current Vector read: grade X · conviction Y (since this play closed)" line — but that specific duplicate-phrasing risk (the thing the 2026-10-13 fix actually targeted) no longer applies: `vectorDeskSection`'s CLOSED branch dropped the "(from prior snapshot)" stale-specific wording this line's original comment was warning about. The two sections already tolerate mentioning "grade" in both places for non-stale OPEN/WATCH briefs today (accepted, not previously flagged), so extending that same tolerance to CLOSED+stale is consistent, not a regression — and the EMA/VWAP/RSI/MACD/structure/wall-event content being restored has no other home in the brief.
-
-**Tests.** Two new tests in `src/lib/swing/play-brief-intel.test.ts`: one confirms `chartTechnicalsSection(vec, null, "closed")` renders technicals + the closed disclosure on a stale snapshot (previously `null`); one confirms the same for `wallDynamicsSection`. Both also assert OPEN/WATCH/default-bucket behavior is unchanged (still `null` on the same stale fixture) — the existing 2026-10-13 stale-omission tests for OPEN/WATCH continue to pass untouched. RED→GREEN proven via `git stash` of `play-brief-intel.ts` alone (2 failures without the fix, 0 with it restored). Full `src/lib/swing` suite: 1820/1820 pass. `tsc --noEmit`: clean.
-
-**Blast radius checked:** these are the only two call sites with this exact shape — `vectorDeskSection` (the third sibling) already got the matching fix earlier today; `chartLevelsSection`/`gexPostureSection` use a different, already-correct pattern (conditionally omit individual stale-dependent fields rather than early-returning the whole section), confirmed by re-reading both during this investigation.
-
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
@@ -64,6 +37,60 @@ Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so
 PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## SPX Slayer play narrative: `anchorPhrase()` cites the farthest GEX wall instead of the nearest one — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`anchorPhrase()`, `src/features/spx/lib/spx-play-intel.ts`) |
+|---|---|
+
+**Found via:** the standing 5-engine live monitor cycle (2026-10-17 ~19:21-19:29 UTC), SPX Slayer health check sub-agent.
+
+**Live repro.** `GET /api/market/spx/play` (cron auth), field `gates.play_idea`:
+```
+"play_idea": "Leaning Puts — 7660 Put could be the play off below 7900 resistance"
+```
+`desk.gex_walls` is returned strike-descending (confirmed live via `GET /api/market/spx/desk`: 7900, 7675, 7670, 7665, 7660, then supports 7655…7635 — price was 7659.44).
+
+**Root cause.** `anchorPhrase()`'s resistance branch (`src/features/spx/lib/spx-play-intel.ts`, ~line 65-67) used `desk.gex_walls?.find((w) => w.kind === "resistance")` with no proximity selection. `.find()` returns the FIRST element matching the predicate, and since the array is strike-descending, that is always the highest-strike (farthest) resistance wall — never the nearest one. Expected: the resistance cited should be the nearest one above spot (7660, only 0.56 pts away) — the exact wall the confluence score is keyed off of (`factors[]`: `{"label":"GEX resistance","weight":-18,"detail":"Into 0DTE resistance 7660 (−1 pts)"}`, produced by `buildLevels()`'s `nearestWall()` helper in `spx-signals.ts`). Actual: the narrative cited 7900, a wall 240.56 pts from spot, while the real near-term resistance that drove the score was never mentioned.
+
+The support branch (`desk.gex_walls?.find((w) => w.kind === "support")`) had the identical shape but happened to return the nearest support by coincidence of the descending sort order (supports sit below spot, so the first support hit scanning high-to-low is the closest one) — not by design, so it was fixed too for robustness rather than left "correct by accident."
+
+**Blast radius.** `humanizeGateBlock()` (same file) substitutes this exact `buildPlayIdeaIntel()` line for several real gate-block reasons (grade-too-low, score-too-low, "too many conflicts", weak confirmations) any time `desk.vwap` is null or price is on the "wrong" side of VWAP for the chosen direction — so the incoherent wall citation reaches `gates.blocks[]` text during live trading hours too, not just the closed-session `play_idea` field checked in this repro.
+
+**Fix.** Exported `nearestWall()` from `spx-signals.ts` (previously a private helper) and reused it in both `anchorPhrase()` branches — the identical resolver `buildLevels()` already uses to pick the wall that drives the confluence score, with its own `requireSide` constraint ("below"/"above" price) so the narrative always cites the same level the score is keyed off of, rather than re-deriving "nearest" a second way.
+
+**Why this fix and not an alternative.** Considered a local `.filter().sort()[0]` inline (mirroring `suggestPlayStrike()`'s own pattern a few lines above) instead of exporting `nearestWall`, but reusing the canonical resolver directly guarantees the narrative text and the score-driving factor can never disagree on which wall is "nearest" again — the two are now structurally the same computation, not two independent ones that happened to agree today.
+
+**Tests.** One new regression test in `src/features/spx/lib/spx-play-intel.test.ts` using the exact live repro shape (price 7659.44, resistances 7900/7675/7670/7665/7660 descending) asserts the anchor now cites 7660, not 7900. RED→GREEN proven via `git stash` of `spx-play-intel.ts`/`spx-signals.ts` alone (1 failure without the fix, 0 with it restored). Full `src/features/spx/lib` suite: 849/849 pass. `tsc --noEmit`: clean.
+
+## Ask Largo swing play-brief: "Chart technicals" and "Wall dynamics" silently vanish on CLOSED briefs once Vector's snapshot is stale — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`chartTechnicalsSection`/`wallDynamicsSection`, `src/lib/swing/play-brief-intel.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo × Night Hawk Swings deep-dive (6-agent workflow, 2026-10-17 ~19:21 UTC cycle), auditing fresh tickers (TSM/GOOGL/AMD/KSS) against `docs/audit/LARGO-PRODUCT-CONTRACT.md`.
+
+**Live repro.** `GET /api/market/swing/play-brief?playId=SWING:GOOGL:58&ticker=GOOGL&positionId=58&status=CLOSED&expandIntel=1` (CLOSED position). First fetch (2026-10-17 15:33 ET) returned 13 sections including a full "Chart technicals" block (Spot 339.96, EMA stack down, VWAP 343.29, RSI 58, MACD bull, Golden pocket 344.65–345.02, Structure CHOCH up @ 339.46, Vector desk grade C). Three immediate re-fetches of the identical `playId`/`positionId` ~6 minutes later all returned **12 sections** — "Chart technicals" had disappeared entirely. `envelope.unavailableSources` was `[]` on every one of these reads and `confidence` was unchanged — nothing in the response disclosed that a section had dropped out. Sibling sections (Levels on chart, GEX posture, Vector desk) kept rendering throughout the same window.
+
+**Root cause.** Both functions gated their entire output on Vector snapshot staleness, unconditionally, before ever checking the play's bucket:
+
+- `chartTechnicalsSection` (~line 780, pre-fix): `if (vectorStale) return null;` — this line predates a 2026-10-13 fix that intentionally omits this section when stale *for OPEN/WATCH briefs* (to avoid duplicating `vectorDeskSection`'s "Vector desk grade: X (from prior snapshot)" line), but the omission was never scoped to exclude CLOSED. The function's own CLOSED-bucket disclosure code a few lines below (`closedDisclosure` + `closedMarketSessionNote`) was fully built but structurally unreachable.
+- `wallDynamicsSection` (~line 2240, pre-fix): identical shape — `if (vectorSnapshotStale(...)) return null;` before its own `bucket === "closed"` disclosure branch.
+- `vectorDeskSection` got the equivalent fix earlier the same day (2026-10-17): its closed-bucket branch was reordered to check `bucket === "closed"` *before* the stale early-return, with its own comment noting "Vector is almost always stale by the time the position closed" — i.e. CLOSED+stale is close to the *default* case for a resolved position, not a rare edge. That reorder was applied to one function and not its two siblings with the identical dead-code shape.
+
+**Blast radius / why it matters.** Per `vectorDeskSection`'s own fix comment, Vector is "almost always stale by the time the position closed" — so this wasn't a rare edge case, it was close to the default state for a CLOSED brief. "Chart technicals" and "Wall dynamics" were very likely silently absent from most CLOSED briefs members/Largo read, with zero trace in `unavailableSources` or `confidence` — a direct Largo C3 (absence) violation: a real EMA/VWAP/RSI/structure/wall-event read silently presented as "no data" rather than an honest "last known, from prior snapshot, since this trade closed" framing.
+
+**Fix.** Bucket-gated both early returns (`if (vectorStale && bucket !== "closed") return null;` / `if (vectorSnapshotStale(...) && bucket !== "closed") return null;`), mirroring the exact reorder already shipped in `vectorDeskSection` the same day. OPEN/WATCH behavior (the actual 2026-10-13 fix's intent — avoiding the Vector-desk-grade duplicate) is untouched; CLOSED now falls through to render whatever technicals/wall-event content the last snapshot carried, with the pre-existing closed-bucket disclosure (`closedDisclosure`/`"Current wall activity..."` + `closedMarketSessionNote`) now reachable.
+
+**Why this fix and not an alternative.** Considered leaving `chartTechnicalsSection`'s "Vector desk grade: X" line gated out for CLOSED to fully avoid any overlap with `vectorDeskSection`'s closed-bucket "Current Vector read: grade X · conviction Y (since this play closed)" line — but that specific duplicate-phrasing risk (the thing the 2026-10-13 fix actually targeted) no longer applies: `vectorDeskSection`'s CLOSED branch dropped the "(from prior snapshot)" stale-specific wording this line's original comment was warning about. The two sections already tolerate mentioning "grade" in both places for non-stale OPEN/WATCH briefs today (accepted, not previously flagged), so extending that same tolerance to CLOSED+stale is consistent, not a regression — and the EMA/VWAP/RSI/MACD/structure/wall-event content being restored has no other home in the brief.
+
+**Tests.** Two new tests in `src/lib/swing/play-brief-intel.test.ts`: one confirms `chartTechnicalsSection(vec, null, "closed")` renders technicals + the closed disclosure on a stale snapshot (previously `null`); one confirms the same for `wallDynamicsSection`. Both also assert OPEN/WATCH/default-bucket behavior is unchanged (still `null` on the same stale fixture) — the existing 2026-10-13 stale-omission tests for OPEN/WATCH continue to pass untouched. RED→GREEN proven via `git stash` of `play-brief-intel.ts` alone (2 failures without the fix, 0 with it restored). Full `src/lib/swing` suite: 1820/1820 pass. `tsc --noEmit`: clean.
+
+**Blast radius checked:** these are the only two call sites with this exact shape — `vectorDeskSection` (the third sibling) already got the matching fix earlier today; `chartLevelsSection`/`gexPostureSection` use a different, already-correct pattern (conditionally omit individual stale-dependent fields rather than early-returning the whole section), confirmed by re-reading both during this investigation.
 
 ## Ask Largo swing play-brief: "Exec P&L" line missing the same open-runner-only qualifier its sibling P&L line already has — FIXED
 
