@@ -1797,9 +1797,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         limit: Number(input.limit ?? 15),
       });
     case "get_wall_dynamics": {
+      // MEASURED TRUNCATED live 2026-10-17 (391428/16000 and 792725/16000 chars) — composed.context
+      // carried the full, unfit SPX desk/intel or Vector full-state object. See
+      // wall-dynamics-fit.ts for the full root cause and fix.
       const { composeWallDynamicsRead } = await import("@/lib/bie/wall-dynamics-read");
+      const { fitWallDynamicsForModel } = await import("@/lib/largo/wall-dynamics-fit");
       const composed = await composeWallDynamicsRead(uwTicker(ticker));
-      return composed ?? { available: false, ticker: uwTicker(ticker) };
+      return composed ? fitWallDynamicsForModel(composed) : { available: false, ticker: uwTicker(ticker) };
     }
     case "get_meridian_timeline": {
       // Meridian's own loader, not the HTTP route: a tool calling its own app over HTTP would need
