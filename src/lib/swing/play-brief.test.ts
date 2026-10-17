@@ -4904,3 +4904,87 @@ test("composeSwingPlayBrief: an intel-section build failure is disclosed via una
   assert.equal(brief.envelope.confidence?.level, "moderate");
   assert.match(brief.envelope.confidence!.why, /unavailable this cycle/);
 });
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-15, PR #4076 comment 6239301876): CLOSED-brief
+// GEX/Vector absence-disclosure race. A CLOSED swing position whose brief fetches GEX/Vector data
+// on first fetch but encounters a silent-null failure (e.g., computeVectorFullState catches an
+// exception and returns null, indistinguishable from "no spot available") does not set the
+// vectorFetchFailed flag because the failure is not a rejection — it's a successful promise
+// resolved to null. Meanwhile, play-brief-absence.ts gates OFF GEX/Vector absence chips for any
+// CLOSED play via `isNotLive = isClosed || isDeadWatch`, contradicting the fact that
+// gexPostureSection/vectorDeskSection/chartTechnicalsSection actually DO render live GEX/Vector
+// data for CLOSED plays when available. This creates a race: (1) fetch silently fails and returns
+// null; (2) absence is not disclosed because isNotLive=true; (3) sections render null gracefully;
+// (4) member sees live GEX/Vector data on re-fetch and the earlier absence claim looks wrong.
+test("composeSwingPlayBrief: CLOSED play discloses Vector absence when vectorFetchFailed is true (Largo C3)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      id: "SWING:BE:51",
+      ticker: "BE",
+      status: "CLOSED",
+      recommendation: "HOLD",
+      entry: 25.5,
+      mark: 28.75,
+      pnlPct: 12.7,
+    }),
+    asOf: "2026-10-15T16:30:00.000Z",
+    sessionDate: "2026-10-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    // CLOSED play with null ecosystem and vector AND vectorFetchFailed flag set — simulates
+    // the silent-null failure case where computeVectorFullState returned null but the outer
+    // handler detected the failure in a .catch() and set the flag.
+    ecosystem: null,
+    vector: null,
+    vectorFetchFailed: true,
+    ecosystemFetchFailed: false,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  const unavailable = brief.envelope.unavailableSources ?? [];
+  const vectorAbsence = unavailable.find((s) => s.source === "Vector desk");
+
+  assert.ok(
+    vectorAbsence,
+    "CLOSED play with vectorFetchFailed=true must disclose Vector absence, not silently gate it off",
+  );
+  assert.match(vectorAbsence!.reason, /fetch failed|unavailable/i);
+});
+
+// Regression: the gate should not prevent disclosure for other sources on CLOSED plays.
+test("composeSwingPlayBrief: CLOSED play discloses ecosystem absence when ecosystemFetchFailed is true (Largo C3)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      ticker: "BE",
+      status: "CLOSED",
+      recommendation: "HOLD",
+      entry: 25.5,
+      mark: 28.75,
+      pnlPct: 12.7,
+    }),
+    asOf: "2026-10-15T16:30:00.000Z",
+    sessionDate: "2026-10-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    vectorFetchFailed: false,
+    ecosystemFetchFailed: true,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+
+  const unavailable = brief.envelope.unavailableSources ?? [];
+  const ecosystemAbsence = unavailable.find((s) => s.source === "GEX positioning");
+
+  assert.ok(
+    ecosystemAbsence,
+    "CLOSED play with ecosystemFetchFailed=true must disclose ecosystem absence, not silently gate it off",
+  );
+  assert.match(ecosystemAbsence!.reason, /fetch failed|unavailable/i);
+});

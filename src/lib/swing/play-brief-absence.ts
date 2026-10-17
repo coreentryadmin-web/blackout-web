@@ -745,6 +745,19 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
+  // CLOSED-brief GEX/Vector race fix (Ask Largo mandate, PR #4076): fetch failures must be
+  // disclosed regardless of play status, per Largo C3 (ABSENCE principle). A CLOSED play seeing
+  // a successful ecosystem fetch later is not evidence the earlier unavailability was wrong — but
+  // a silent-null fetch failure that never disclosed is exactly the race condition C3 guards
+  // against. Always disclose ecosystem fetch failure.
+  if (ctx.ecosystemFetchFailed) {
+    out.push({
+      source: "GEX positioning",
+      reason: "fetch failed",
+      what_is_missing: "a GEX positioning read from the ecosystem service",
+      retryable: true,
+    });
+  }
   // FINDINGS 2026-09-06 (#22) + live probe 2026-09-07: sync-without-timestamp AND aged markAsOf
   // must both reach unavailableSources — prose in dataHonestyCoaching alone is not enough (C3).
   const markAbsence = collectOptionMarkStalenessAbsence(ctx.play, readMs);
@@ -808,6 +821,19 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
         });
       }
     }
+  }
+  // CLOSED-brief GEX/Vector race fix (Ask Largo mandate, PR #4076): fetch failures must be
+  // disclosed regardless of play status, per Largo C3 (ABSENCE principle). A CLOSED play that
+  // later receives Vector data is not evidence the fetch failure was incorrect — but a silent-null
+  // fetch that was never disclosed is the race condition C3 forbids. Always disclose vector
+  // fetch failure.
+  if (ctx.vectorFetchFailed) {
+    out.push({
+      source: "Vector desk state",
+      reason: "fetch failed",
+      what_is_missing: "a Vector desk-state snapshot from the vector service",
+      retryable: true,
+    });
   }
   // Book-context concentration only informs a live/pending decision — irrelevant once a play is closed.
   if (!isNotLive && ctx.openBook === null) {
