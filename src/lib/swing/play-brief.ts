@@ -48,6 +48,7 @@ import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./p
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
+import { canonicalTicker } from "@/lib/largo/core/entities";
 
 function biasFromDirection(dir: string): BieBias {
   return dir === "SHORT" ? "bearish" : dir === "LONG" ? "bullish" : "neutral";
@@ -1514,6 +1515,12 @@ export function composeSwingPlayBrief(
   // multiple briefs off one shared anchor) untouched rather than overwriting it.
   ctx = { ...ctx, readMs: ctx.readMs ?? readMs };
   const { play } = ctx;
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro VXX/SQQQ/SOXS/UVIX): this used to
+  // hardcode "equity" below on the stale assumption that swings are always equities — true when
+  // this field was added, no longer true once the Banger whole-market engine started feeding
+  // leveraged/inverse/volatility ETFs into the swing lane. Mirrors the same fix already shipped for
+  // product-adapters.ts's cross-product reads (same root cause, different file).
+  const tickerClass = canonicalTicker(play.ticker)?.kind ?? "equity";
   const bucket = statusBucket(play);
   const headline = playContractHeadline(play);
   const grade = playGradeLabel(play);
@@ -1701,8 +1708,9 @@ export function composeSwingPlayBrief(
         () => swingPlayBriefConfidence(play, bucket, unavailableSources),
         undefined
       ),
-      // Largo C4 (IDENTITY): swings are always equities.
-      ticker_class: "equity",
+      // Largo C4 (IDENTITY): derive from the ticker itself — see the bug-fix comment at this
+      // function's top for why this can no longer be hardcoded "equity".
+      ticker_class: tickerClass,
     }),
     // Largo C8 (PROVENANCE): the brief is computed by the Swing Play Intelligence engine.
     source: "computed",
@@ -1730,7 +1738,7 @@ export function composeSwingPlayBrief(
   return {
     playId: play.id,
     ticker: play.ticker,
-    ticker_class: "equity" as const,
+    ticker_class: tickerClass,
     envelope,
     asOf: ctx.asOf,
     sessionDate: ctx.sessionDate,
