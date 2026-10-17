@@ -1881,6 +1881,47 @@ test("tradeManagerNarrativeSection: SHORT Break watch also flags an already-brea
   assert.doesNotMatch(section!.body, /Break watch.*reclaim/i);
 });
 
+// BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GTLB): every test above for
+// the "stop already breached on the executable side" bullet uses a bare `ctx()` with no
+// vector/ecosystem spot data, so `breakTrigger()` always returned null and the old `!breakLine`
+// guard never actually got exercised against a real structural break. Live on GTLB, a put wall
+// WAS present (breakTrigger found "lose 27.50"), which under the old guard silently swallowed the
+// executable-breach headline entirely -- it only survived as a footnote elsewhere in the brief.
+// This fixture supplies BOTH a structural put wall AND an executable-side breach to prove the two
+// are independent, additive bullets, neither eclipsing the other.
+test("tradeManagerNarrativeSection: executable-side stop breach still surfaces when a structural GEX break ALSO exists (live GTLB shape)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "LONG",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 0.3,
+        execMark: 0.1,
+        pnlPct: -53.8,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.26,
+          target_premium: 1.3,
+        },
+      }),
+      vector: {
+        spot: 52.75,
+        gexWalls: { callWalls: [{ strike: 60, gex: 1 }], putWalls: [{ strike: 27.5, gex: 1 }] },
+      } as SwingPlayBriefContext["vector"],
+    }),
+    "open",
+  );
+  assert.ok(section);
+  // The structural GEX break is untouched -- still cites the put wall.
+  assert.match(section!.body, /Break watch.*27\.50.*exit or cut size/i);
+  // The executable-side breach gets its OWN bullet, not swallowed by the structural one above.
+  assert.match(
+    section!.body,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.10\*\*.*through your premium stop \*\*\$0\.26\*\*/i,
+  );
+});
+
 // BUG FIX (2026-09-14, Ask Largo standing mandate, live repro RKLX/PGY OPEN briefs, forensic
 // batch 8): degradedReadLine's markBit rendered `play.mark` unconditionally whenever it was
 // non-null, including the TRUE entry-fallback case (a fresh banger-lane row with no synced quote

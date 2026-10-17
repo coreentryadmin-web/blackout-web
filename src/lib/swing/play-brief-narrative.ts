@@ -1517,14 +1517,28 @@ export function tradeManagerNarrativeSection(
   // the top could easily miss that their real exit is already past the intended risk line.
   const execStop = play.exitPolicy?.stop_premium;
   const execBreached = execStop != null && play.execMark != null && play.execMark <= execStop;
-  if (!breakLine && play.direction === "LONG" && execStop != null) {
-    breakLine = execBreached
-      ? `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`
-      : `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GTLB): the 2026-09-15 fix
+  // above only surfaced "stop already breached on the executable side" when `breakLine` was still
+  // null, i.e. when `breakTrigger()` found no structural GEX level to cite. Live on GTLB
+  // (committed LONG, exec P&L -84.6% vs mid -53.8%, bid $0.10 already through the $0.26 premium
+  // stop), `breakTrigger()` DID find a structural put-wall break ("lose 27.50 ... exit or cut
+  // size"), so this whole block was skipped under the old `!breakLine` guard and the executable
+  // breach silently reverted to being only a footnote (watchForSection's "no real cushion on the
+  // executable side" note, play-brief-intel.ts) — the exact "easily missed" failure mode the
+  // 2026-09-15 fix exists to prevent, reappearing whenever a structural break also exists. Fix:
+  // surface the executable-breach fact as its OWN reserved bullet whenever it's true, additive to
+  // (never replacing) any structural breakLine — the two are independent, equally real risks and
+  // the Largo contract's additive principle says keep both rather than letting one eclipse the
+  // other.
+  if (execBreached && (play.direction === "LONG" || play.direction === "SHORT")) {
+    add(
+      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`,
+      { reserved: true },
+    );
+  } else if (!breakLine && play.direction === "LONG" && execStop != null) {
+    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
   } else if (!breakLine && play.direction === "SHORT" && execStop != null) {
-    breakLine = execBreached
-      ? `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`
-      : `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
+    breakLine = `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
 
