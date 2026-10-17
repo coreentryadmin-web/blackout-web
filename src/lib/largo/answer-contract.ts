@@ -291,7 +291,15 @@ export type AnswerContractReport = {
 export function validateAnswerContract(markdown: string): AnswerContractReport {
   const sections = splitSections(markdown);
   const present = ANSWER_SECTIONS.filter((s) => sections.has(s.toLowerCase()));
-  const missing = REQUIRED_SECTIONS.filter((s) => !sections.has(s.toLowerCase()));
+  // A bare **Bottom line** satisfies the Verdict requirement, mirroring parseAnswerEnvelope's own
+  // `if (!verdict) verdict = get("Bottom line")` promotion. Measured live 2026-10-17: a refusal
+  // answer written with only Bottom line built a working envelope through that promotion, while
+  // this validator — checking the literal "Verdict" heading with no equivalent fallback — logged a
+  // false "missing: Verdict" miss on an answer that was never actually missing a verdict. The two
+  // passes are meant to agree on what counts as conforming; a validator stricter than the parser it
+  // measures corrupts the drift telemetry this contract exists to produce.
+  const hasVerdict = sections.has("verdict") || sections.has("bottom line");
+  const missing = REQUIRED_SECTIONS.filter((s) => (s === "Verdict" ? !hasVerdict : !sections.has(s.toLowerCase())));
   // Facts is conditional: demanded only when the answer actually states a figure. See
   // requiresFactsSection for the live measurement that produced this rule.
   if (!sections.has("facts") && requiresFactsSection(stripLargoBlocks(markdown))) missing.push("Facts");
