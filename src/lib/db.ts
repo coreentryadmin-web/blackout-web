@@ -2278,6 +2278,45 @@ async function runMigrations(): Promise<void> {
        AND (peak_premium < entry_premium * (1 + realized_pnl_pct / 100.0)
             OR trough_premium > entry_premium * (1 + realized_pnl_pct / 100.0));
   `);
+  // FINDINGS 2026-10-17 (Ask Largo standing mandate): `gradeSwingPosition`'s `exit_mark` param
+  // (this session) latches the grading tick's own mark onto `last_mark`/`last_mark_at` so a closed
+  // row's `contract.mid` (closed-plays.ts:198 `mid: row.last_mark`) can never again disagree with
+  // its own `exitPnlPct` — but that guard only protects rows graded AFTER it shipped. Every row
+  // graded before it is an unrepaired historical mismatch: `last_mark` is whatever the LAST live
+  // 15-min RTH latch happened to catch before the position closed, which has nothing to do with
+  // the real exit fill (the mechanical trough/peak-bracketed stop/target price `realized_pnl_pct`
+  // is actually computed from). Live proof, 100% of the 19-row closed deck as of 2026-10-17: BE
+  // entry 17.95, last_mark 36.65 (implies +104.2%) vs the real exitPnlPct +70.61% (33.6pp gap);
+  // INTC entry 4.72, last_mark 3.00 (implies -36.4%) vs real -73.12% (36.7pp gap); TSLA entry
+  // 15.95, last_mark 11.78 (implies -26.1%) vs real -32.76%. Member impact: PlayTerminal.tsx labels
+  // this field "Live mark" directly beside the correct P&L% badge on a CLOSED card, so every one of
+  // these rows shows a mark that visibly contradicts its own P&L%.
+  //
+  // Same converge-in-place discipline as the two backfills above, with one necessary difference:
+  // peak/trough above only ever WIDEN a range (GREATEST/LEAST are safe in any direction), but
+  // `last_mark` is a single point value being REPLACED outright by the one the row's own frozen
+  // entry_premium/realized_pnl_pct already prove is correct — not a widen, a correction. The WHERE
+  // clause (a >1-cent disagreement, past ordinary float/rounding noise) still makes it a no-op once
+  // converged, so it stays safe and cheap to re-run on every boot. `last_mark_at` is unconditionally
+  // backdated to `graded_at` (when this corrected value was actually established), never `NOW()`
+  // and never left at whatever earlier pre-close live latch it previously held — leaving a stale
+  // `last_mark_at` next to a now-corrected `last_mark` would itself be a fresh instance of the
+  // exact mark/timestamp mismatch this migration exists to repair. Covers CLOSED and ROLLED alike — a rolled
+  // PARENT leg's grade freeze (roll-plan.ts's `gradeParentFromMark`) latches the identical
+  // entry/mark/realized_pnl_pct triple through this same gradeSwingPosition call, so a rolled
+  // parent graded before the fix carries the identical mismatch even though it never reaches the
+  // member-facing closed deck directly (closedDeckSourceFromRow gates on status === 'CLOSED').
+  await p.query(`
+    UPDATE swing_positions
+       SET last_mark = entry_premium * (1 + realized_pnl_pct / 100.0),
+           last_mark_at = graded_at
+     WHERE status IN ('CLOSED', 'ROLLED')
+       AND entry_premium IS NOT NULL
+       AND entry_premium > 0
+       AND realized_pnl_pct IS NOT NULL
+       AND graded_at IS NOT NULL
+       AND ABS(COALESCE(last_mark, 0) - entry_premium * (1 + realized_pnl_pct / 100.0)) > 0.01;
+  `);
 
   // ── swing_shadow_positions (2026-08-06, member-authorized) — a DELIBERATELY SEPARATE table, never
   // read by fetchOpenSwingPositions/active-refresh/the member board. A candidate that clears every
