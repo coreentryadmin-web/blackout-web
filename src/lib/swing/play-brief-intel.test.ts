@@ -82,6 +82,23 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
   assert.match(section?.body ?? "", /AMD SHORT/);
 });
 
+// BUG FIX (2026-10-17, Ask Largo standing mandate, live repro ALAB): a LONG inverse-leverage ETF
+// (SQQQ, economically SHORT semis) classified correctly as an OPPOSED position against a LONG NVDA
+// — but rendered as bare "SQQQ LONG", so the "Internal conflict" sentence read as self-contradictory
+// (two "LONG" names split into a same-direction bucket and an opposed bucket with no visible reason
+// why). Must now annotate the real economic bet.
+test("bookContextSection: a LONG inverse-leverage ETF (SQQQ) in the OPPOSED bucket is annotated with its real economic direction, not rendered as a bare 'LONG'", () => {
+  const book: PortfolioPosition[] = [{ ticker: "SQQQ", direction: "LONG" }];
+  const section = bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book);
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Internal conflict/i);
+  assert.match(
+    section?.body ?? "",
+    /SQQQ LONG \(inverse ETF — economically SHORT\)/,
+    `expected an annotated label explaining the opposed classification, got: ${section?.body}`,
+  );
+});
+
 // Note: this must be an ALREADY-COMMITTED play (status != WATCH) to exercise the intended
 // self-exclusion fallback. It used to run against the default WATCH status and pass with `null`
 // -- which, per the 2026-09-21 fix below, was itself the exact bug this row now guards against

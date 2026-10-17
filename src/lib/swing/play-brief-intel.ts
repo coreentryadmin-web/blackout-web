@@ -42,7 +42,7 @@ import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
-import { describeThemeOverlap } from "./theme-cluster";
+import { describeThemeOverlap, effectiveDirection, isInverseLeverageEtf } from "./theme-cluster";
 import { NO_SECTOR_BENCHMARK_THEMES } from "./industry-group-rs";
 import { sectorFor } from "../portfolio/sector-map";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
@@ -386,7 +386,18 @@ function formatOverlapPosition(
   reviewedTicker: string,
   dupTickers: ReadonlySet<string>,
 ): string {
-  const base = `${p.ticker} ${p.direction}`;
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro ALAB: "Internal conflict — SQQQ
+  // LONG, SOXS LONG" rendered right next to a "Concentration — NVDA LONG, CRWV LONG" sentence, with
+  // no visible reason why two "LONG" rows land in the OPPOSED bucket). `checkPortfolioOverlap`
+  // already classifies correctly off `effectiveDirection` (SOXS/SQQQ's real economic bet is the
+  // OPPOSITE of their nominal long/short field — theme-cluster.ts's `INVERSE_LEVERAGE_ETFS`), but
+  // this renderer only ever printed the raw, nominal direction — so the classification was right
+  // and the sentence explaining it read as self-contradictory. Annotate with the real bet so the
+  // "LONG...OPPOSED" pairing is self-explanatory instead of requiring the reader to already know
+  // which tickers are inverse-leveraged.
+  const base = isInverseLeverageEtf(p.ticker)
+    ? `${p.ticker} ${p.direction} (inverse ETF — economically ${effectiveDirection(p.ticker, p.direction)})`
+    : `${p.ticker} ${p.direction}`;
   const isReviewedTicker = p.ticker.toUpperCase() === reviewedTicker.toUpperCase();
   const isDuplicateOtherTicker = !isReviewedTicker && dupTickers.has(p.ticker.toUpperCase());
   if (!isReviewedTicker && !isDuplicateOtherTicker) return base;
