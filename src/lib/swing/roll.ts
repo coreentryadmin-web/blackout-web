@@ -54,6 +54,10 @@ export interface ParentGradeFreeze {
   grade_methodology: string;
   legacy_grade?: Record<string, unknown> | null;
   realized_pnl_pct?: number | null;
+  /** The same fresh mark realized_pnl_pct was computed from — latched onto last_mark/last_mark_at at
+   *  grade time so a closed position's displayed contract.mid can never disagree with its own
+   *  realized exit (FINDINGS 2026-10-17). Omitted/null leaves last_mark untouched. */
+  exit_mark?: number | null;
 }
 
 /** The new leg to open on a ROLL, minus the chain-link columns — those are computed from the parent so the
