@@ -105,6 +105,40 @@ test("GET /api/market/spx/play's catch block distinguishes a cache-timing race f
   assert.match(route, /instanceof ServerCacheTimeoutError/);
 });
 
+test("evaluateSpxPlayState skips buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch when the market is closed and no play is open (2026-10-17 fix)", () => {
+  // MEASURED LIVE: buildPlayTechnicals makes real Polygon network calls on a cold per-process
+  // cache, which alone can exceed playMemberReadMaxBlockMs()'s 800ms budget — 5/5 live
+  // reproductions on a closed-market Saturday threw ServerCacheTimeoutError on every single
+  // call, 100% of that prework wasted, because evaluateSpxPlayCore's own fast "Session closed"
+  // branch (spx-play-engine.ts) was never reached: this function used to build technicals/
+  // or-break-memory/playbook-match UNCONDITIONALLY before calling into it. The fix mirrors
+  // evaluateSpxPlayCore's own `!desk.market_open && !premarket` + loadOpenPlay() gate and
+  // returns early via readSpxPlaySnapshot(merged, null, {}) — skipping all three expensive
+  // calls — whenever that same condition holds.
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const fn = service.match(/async function evaluateSpxPlayState\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(fn, "evaluateSpxPlayState block present");
+  const body = fn![0];
+
+  const guardIdx = body.search(/if \(!merged\.market_open && !isPremarketPlanningWindow\(\)\)/);
+  const openPlayIdx = body.search(/loadOpenPlay\(\)/);
+  const earlyReturnIdx = body.search(/readSpxPlaySnapshot\(merged,\s*null,\s*\{\}\)/);
+  const technicalsIdx = body.search(/buildPlayTechnicals\(merged\.price/);
+
+  assert.ok(guardIdx >= 0, "market-closed guard must be present");
+  assert.ok(openPlayIdx >= 0, "must check loadOpenPlay() before deciding to skip the full eval");
+  assert.ok(earlyReturnIdx >= 0, "must early-return via readSpxPlaySnapshot(merged, null, {})");
+  assert.ok(technicalsIdx >= 0, "buildPlayTechnicals(merged.price, ...) full-eval path must still exist");
+
+  // Ordering is the entire fix: the guard (and its early return) must appear BEFORE the
+  // unconditional buildPlayTechnicals call, not after — a regression that moves/removes the
+  // guard while leaving buildPlayTechnicals untouched would pass a "both strings present"
+  // check but silently reintroduce the live bug.
+  assert.ok(guardIdx < technicalsIdx, "market-closed guard must run BEFORE buildPlayTechnicals");
+  assert.ok(openPlayIdx < technicalsIdx, "loadOpenPlay() check must run BEFORE buildPlayTechnicals");
+  assert.ok(earlyReturnIdx < technicalsIdx, "early return must appear BEFORE buildPlayTechnicals");
+});
+
 test("peekSpxPlayState checks isSpxPlaySnapshotFreshEnough on BOTH the in-process and Redis-backed peek paths (2026-09-13 fix)", () => {
   const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
   const fn = service.match(/export async function peekSpxPlayState\(\)[\s\S]*?\n\}/);

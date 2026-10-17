@@ -15,6 +15,8 @@ import { resolveGuardedPlaybookMatch } from "@/features/spx/lib/playbook-match-r
 import { buildPlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-store";
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
+import { isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
+import { loadOpenPlay } from "@/features/spx/lib/spx-play-store";
 import { degradedPlayPayload } from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
 import { isSpxPlaySnapshotFreshEnough } from "@/features/spx/lib/spx-play-freshness";
@@ -86,6 +88,28 @@ export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
 
 async function evaluateSpxPlayState() {
   const { merged } = await loadMergedSpxDesk();
+
+  // MEASURED LIVE 2026-10-17 (closed-market/cold-cache, 5/5 reproductions): evaluateSpxPlayCore
+  // (spx-play-engine.ts) has its own fast, honest "Session closed" branch that needs none of
+  // buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch — but this function used
+  // to build all three UNCONDITIONALLY before ever reaching that branch. buildPlayTechnicals makes
+  // real Polygon network calls on a cold per-process cache (reliably cold off-hours on a
+  // near-zero-traffic replica), which alone exceeds playMemberReadMaxBlockMs()'s 800ms budget and
+  // throws ServerCacheTimeoutError on every single closed-market cold eval — 100% wasted work, and
+  // the honest closed answer was never reached; the route's catch-all then served a "still
+  // catching up, retry shortly" placeholder that can never resolve by retrying while the market
+  // stays closed. This check mirrors evaluateSpxPlayCore's own `!desk.market_open && !premarket`
+  // gate plus its loadOpenPlay() fallthrough (a position still open after the close needs the
+  // real evaluation to force-settle it), so behavior for every OTHER state is unchanged.
+  if (!merged.market_open && !isPremarketPlanningWindow()) {
+    const openAfterClose = merged.price > 0 ? await loadOpenPlay() : null;
+    if (!openAfterClose) {
+      const play = await readSpxPlaySnapshot(merged, null, {});
+      void observeSpxPlayVoiceTransitions(play, todayEtYmd()).catch(() => {});
+      return roundFloats({ ...play, playbook_shadow: null });
+    }
+  }
+
   const technicals = await buildPlayTechnicals(merged.price, {
     vwap: merged.vwap,
     pdh: merged.pdh,
