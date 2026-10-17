@@ -4,6 +4,36 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-17 (14:51 UTC / Sat 10:51 ET) — [COORDINATOR] Standing performance mandate: two real tail-latency contributors measured, neither fixed (needs more evidence/infra work, not speculative)
+
+Background 5-engine + perf-audit workflow (AWS creds present this session). ALB
+`TargetResponseTime` on `blackout-production-app` shows p50 staying under ~0.3s the whole 4h
+window while p90/p99/Max repeatedly spike into 40-78s. Two distinct, evidenced contributors, per
+this file's own measure-first discipline — **no fix shipped for either, both need more work before
+a scoped PR is possible**: (1) ECS task register/deregister churn during routine rolling deploys
+(3 completed in the last 90 min alone) correlates minute-for-minute with spikes, no CPU spike in the
+cleanest example — points at connection-draining/in-flight-request overhang during task shutdown
+(`deregistration_delay=30s` vs `idle_timeout=120s`, so a draining request can run ~2x the drain
+delay before the ALB's own idle timeout notices), not app compute. Needs an infra-side fix (shorter
+in-flight-request grace, or verifying the app itself handles SIGTERM promptly) — not something to
+guess at from a log correlation alone. (2) A separate, heavier 30-min sustained spike (60-78s,
+genuine CPU spike to 60-72% vs 15-30% baseline) correlates with 368 `[polygon-gex] full-chain
+escalation ADOPTED` events across 30+ tickers plus 84 concurrent `[largo/turn-phases]` deep-mode
+queries in the same window — same symptom signature as the already-fixed #5680 `/vector/universe`
+bug, on a sibling code path (GEX full-chain escalation, reachable from `get_gex_heatmap`/
+`get_wall_dynamics`) that evidently didn't get the same protection. Flagged, not fixed — this
+file's own standing discipline (and #5680's commit message) warns two prior SPX-desk-specific
+attempts at the sibling bug already failed from guessing without a scoped measurement of the
+escalation path itself first; that measurement is the natural next step, not a fix from this one
+correlation. Also noted, trivial: ALB access logging is disabled
+(`access_logs.s3.enabled=false`) — no per-path latency attribution available, so correlating a
+future spike to Largo-vs-other-route always needs this same manual CloudWatch-Logs-Insights
+exercise; and `data-correctness` cron logs a harmless `EACCES: permission denied, mkdir '/app/docs'`
+on every run (prod's app directory is read-only — already handled as a skip, pure log noise, not
+an active risk). No PRs opened for any of the four; see
+`docs/audit/MARKET-OPEN-VALIDATION.md`'s 2026-10-17 entry for the one real P1 from the same cycle
+(Legacy 2026-10-19 edition recap_only, PR #6124).
+
 ## 2026-10-17 (14:07 UTC / Sat 10:07 ET) — [SEO] Daily growth cycle: one new thin striking-distance entry, dead-staging-subdomain recurrence noted, no action
 
 New striking-distance entry: "dealer gamma positioning" (pos 20.0, **4imp**) — same thin-sample
