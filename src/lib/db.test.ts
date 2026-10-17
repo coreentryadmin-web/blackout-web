@@ -630,6 +630,26 @@ test("getMeta/setMeta: both route the no-transaction common case through dbQuery
   assert.match(setBody, /await db\.query\(/, "setMeta's db-supplied path must stay on that exact client");
 });
 
+// Regression for the 2026-10-17 audit finding: gradeSwingPosition freezes realized_pnl_pct/peak/
+// trough from a fresh mark at grade time but previously never touched last_mark — the field
+// closed-plays.ts serves as a closed position's contract.mid — so a closed row's displayed mid
+// could disagree with its own realized exit (observed live: >2x on a real closed INTC position).
+test("gradeSwingPosition: latches the fresh grading mark onto last_mark/last_mark_at (exit_mark param)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function gradeSwingPosition");
+  assert.ok(start > 0, "gradeSwingPosition exists");
+  const end = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, end > 0 ? end : undefined);
+  assert.match(body, /exit_mark\?:\s*number\s*\|\s*null/, "gradeSwingPosition's g param must accept exit_mark");
+  assert.match(body, /last_mark\s*=\s*COALESCE\(\$7,\s*last_mark\)/, "must latch exit_mark onto last_mark in the same UPDATE");
+  assert.match(
+    body,
+    /last_mark_at\s*=\s*CASE WHEN \$7 IS NOT NULL THEN NOW\(\) ELSE last_mark_at END/,
+    "must stamp last_mark_at only when a fresh mark was actually supplied"
+  );
+  assert.match(body, /g\.exit_mark\s*\?\?\s*null/, "must pass g.exit_mark through to the query params");
+});
+
 test("db-optional swing/SPX writers: transaction client path preserved, no-db path uses dbQuery", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   for (const fn of [

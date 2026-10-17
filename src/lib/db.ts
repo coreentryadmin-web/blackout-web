@@ -8039,6 +8039,10 @@ export async function gradeSwingPosition(
     legacy_grade?: Record<string, unknown> | null;
     realized_pnl_pct?: number | null;
     status?: "CLOSED" | "ROLLED";
+    /** The same fresh mark realized_pnl_pct was frozen from — latched onto last_mark/last_mark_at
+     *  in this same UPDATE so a closed row's contract.mid can never disagree with its own realized
+     *  exit (FINDINGS 2026-10-17). Omitted/null leaves last_mark untouched. */
+    exit_mark?: number | null;
   },
   db?: Db
 ): Promise<number> {
@@ -8082,7 +8086,18 @@ export async function gradeSwingPosition(
          WHEN $5 IS NOT NULL AND entry_premium IS NOT NULL
            THEN LEAST(COALESCE(trough_premium, entry_premium), entry_premium * (1 + $5 / 100.0))
          ELSE trough_premium
-       END
+       END,
+       -- FINDINGS 2026-10-17: last_mark previously stayed frozen at whatever the prior evidence-only
+       -- refresh tick latched (updateLiveState, the non-terminal path) — the terminal grade above
+       -- computes realized_pnl_pct/peak/trough from a FRESH mark but never touched last_mark, so a
+       -- closed position's displayed contract.mid (closed-plays.ts reads last_mark) could disagree
+       -- with its own realized exit by a wide margin (observed live: >2x on one real closed INTC
+       -- position). $7 is the SAME mark gradeParentFromMark used for realized_pnl_pct — latching it
+       -- here makes the two agree by construction. COALESCE/CASE leave last_mark/last_mark_at
+       -- untouched when $7 is omitted (a caller that didn't supply a fresh mark, e.g. a direct-call
+       -- test) rather than nulling out a previously-good latched value.
+       last_mark = COALESCE($7, last_mark),
+       last_mark_at = CASE WHEN $7 IS NOT NULL THEN NOW() ELSE last_mark_at END
      WHERE id = $1 AND graded_at IS NULL`;
   const params = [
     id,
@@ -8091,6 +8106,7 @@ export async function gradeSwingPosition(
     toJsonbParam(g.legacy_grade ?? null),
     g.realized_pnl_pct ?? null,
     g.status ?? "CLOSED",
+    g.exit_mark ?? null,
   ];
   // db-optional dual path (see setMeta's comment above): transaction client stays on its own
   // connection; the no-db common case now gets dbQuery's transient-error retry.
@@ -8121,6 +8137,7 @@ export async function withSwingRollTx<T>(
         legacy_grade?: Record<string, unknown> | null;
         realized_pnl_pct?: number | null;
         status?: "CLOSED" | "ROLLED";
+        exit_mark?: number | null;
       }
     ) => Promise<number>;
   }) => Promise<T>
@@ -8139,6 +8156,7 @@ export async function withSwingRollTx<T>(
           legacy_grade?: Record<string, unknown> | null;
           realized_pnl_pct?: number | null;
           status?: "CLOSED" | "ROLLED";
+          exit_mark?: number | null;
         }
       ): Promise<number> => {
         const affected = await gradeSwingPosition(id, g, client);
