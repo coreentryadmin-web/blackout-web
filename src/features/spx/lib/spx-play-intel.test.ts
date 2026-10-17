@@ -106,3 +106,56 @@ test("buildPlayIdea still falls back to the VWAP proxy when the score is exactly
   assert.ok(idea);
   assert.equal(idea!.direction, "short");
 });
+
+/**
+ * Regression for the "anchor cites the farthest wall instead of the nearest" bug flagged by the
+ * standing Ask Largo / 5-engine monitor (cycle 2026-10-17 ~19:21 UTC, live GET
+ * /api/market/spx/desk + /api/market/spx/play): `desk.gex_walls` is returned strike-descending
+ * (live: 7900, 7675, 7670, 7665, 7660 resistances, spot 7659.44). `anchorPhrase`'s old
+ * `desk.gex_walls?.find((w) => w.kind === "resistance")` had no proximity selection, so on a
+ * descending array it always returned the FIRST resistance encountered — the highest-strike
+ * (farthest) one, not the nearest. Live repro: play_idea cited "below 7900 resistance" (240.56
+ * pts away) while the confluence factor actually driving the score ("Into 0DTE resistance 7660")
+ * sat only 0.56 pts from spot and was never mentioned. Fixed by reusing `nearestWall` (the same
+ * resolver `buildLevels()` uses to pick the wall the score is keyed off of) instead of a bare
+ * `.find()`.
+ */
+test("buildPlayIdea's anchor cites the NEAREST resistance wall, not the farthest one in a descending gex_walls array (live repro 2026-10-17)", () => {
+  const desk = {
+    price: 7659.44,
+    vwap: null,
+    above_vwap: false,
+    gex_walls: [
+      { kind: "resistance", strike: 7900 },
+      { kind: "resistance", strike: 7675 },
+      { kind: "resistance", strike: 7670 },
+      { kind: "resistance", strike: 7665 },
+      { kind: "resistance", strike: 7660 },
+      { kind: "support", strike: 7635 },
+    ],
+    levels: [],
+  } as unknown as SpxDeskPayload;
+
+  const confluence = {
+    action: "WAIT",
+    bias: "bearish",
+    rawScore: 44,
+    score: -44,
+    headline: "",
+    thesis: "",
+    factors: [{ label: "GEX resistance", weight: -18, detail: "Into 0DTE resistance 7660 (−1 pts)" }],
+    levels: { entry: 7659.44, stop: null, target: null, invalidation: "" },
+    as_of: new Date().toISOString(),
+    grade: "D",
+    conflicts: 1,
+    weighted_conflicts: 1,
+    agreeing: 0,
+    direction: "short",
+  } as unknown as SpxConfluence;
+
+  const idea = buildPlayIdea(desk, confluence);
+  assert.ok(idea, "expected a play idea");
+  assert.equal(idea!.direction, "short");
+  assert.match(idea!.line, /below 7660 resistance/, `anchor must cite the nearest wall (7660), got: ${idea!.line}`);
+  assert.doesNotMatch(idea!.line, /7900/, "must not cite the farthest wall");
+});
