@@ -38,6 +38,234 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## `vectorDeskSection`'s stale-Vector early return made PR #6115's own closed-market disclosure fix unreachable — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+| **Severity** | P2 |
+| **Area** | Night Hawk Swings — `src/lib/swing/play-brief-intel.ts`, `vectorDeskSection()` |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate, post-merge verification cycle (independent background re-check of PR #6115) |
+
+### Root cause
+
+PR #6115 (merged earlier the same session, `701b5bcb`) added a `bucket === "closed"` branch to
+`vectorDeskSection()` that calls the new `closedMarketSessionNote()` helper (`play-brief-absence.ts`)
+so a CLOSED-bucket Largo play-brief read discloses when a fresh-looking compute is actually reporting
+on a shut market (Largo C2 — "a stale reading presented as merely delayed, not session-closed").
+
+The function's pre-existing structure put an UNCONDITIONAL `if (vectorStale) { ...; return ...}`
+branch *before* the new `bucket === "closed"` branch. `vectorStale` is Vector's own snapshot-age
+staleness (`vectorSnapshotStale`, threshold 120s) — and a real CLOSED-bucket read almost always has
+a Vector snapshot older than that, because the position's own data is from whenever it closed and
+Vector's live feed stops updating once the market shuts. So on essentially every real off-hours/
+weekend CLOSED read, the function returned from the generic "Last snapshot ... may lag spot" branch
+before ever reaching the `bucket === "closed"` branch — making PR #6115's fix dead code in exactly
+the scenario it was built for.
+
+This was not caught by PR #6115's own regression test
+(`vectorDeskSection: CLOSED bucket also surfaces Vector's market_session_note`) because that test's
+fixture used `freshness: "live", dataAgeMs: 0` — i.e. NOT Vector-stale — so it only ever exercised the
+`bucket === "closed"` branch directly, never the real production combination
+(`vectorStale === true` AND `bucket === "closed"`).
+
+Two sibling sections named as "fixed" by the same PR (`chartTechnicalsSection`, `wallDynamicsSection`)
+self-omit entirely under the identical stale condition, by design deferring to `vectorDeskSection` for
+the grade/staleness disclosure (see their own code comments) — so the net effect was that 3 of the 5
+sections PR #6115 named never actually surfaced the disclosure off-hours; only the two sections gated
+on GEX-matrix staleness instead of Vector staleness (`gexPostureSection`, `chartLevelsSection`) worked.
+
+### Evidence
+
+Live-reproduced 2026-10-17 (Saturday, market closed since Friday) against two real CLOSED positions
+(`SWING:TSLA:57`, `SWING:GOOGL:58`) via `GET /api/market/swing/play-brief`. Both envelopes' "Vector
+desk" section read exactly `**Last snapshot** (~Ns old) — Vector desk read may lag spot.` with zero
+occurrences of "CLOSED"/"market is"/"last session" — while the SAME envelopes' "GEX posture"/"Levels
+on chart" sections correctly carried the market-closed disclosure, proving the underlying
+`closedMarketSessionNote()`/`gexMarketSessionNote()` machinery is sound and the gap is specific to
+`vectorDeskSection`'s own branch ordering.
+
+RED→GREEN: a new test (`vectorDeskSection: CLOSED bucket reaches the closed-market disclosure even
+when Vector itself is stale`) constructs the exact combination the live positions hit
+(`dataAgeMs: 999_000` with `bucket: "closed"`, fixed `readMs` anchored to a known-CLOSED Sunday, fresh
+GEX fallback data) — confirmed failing against the unmodified source (`git stash` of the source fix
+alone) with the exact live failure text (`**Last snapshot** (~999s old) — Vector desk read may lag
+spot.`), then passing once the fix was restored.
+
+### Fix
+
+Reordered `vectorDeskSection()` so the `bucket === "closed"` check runs BEFORE the `vectorStale`
+early return, rather than after. A closed-bucket read now always takes its own framing ("Current
+Vector read: grade **X** · conviction **Y** (since this play closed)" + `closedMarketSessionNote()`,
+which itself already falls back to the GEX matrix when Vector is stale) regardless of Vector's own
+staleness. OPEN/WATCH buckets are completely unchanged — the `vectorStale`/live-directive branches
+below still apply exactly as before for those two buckets, since only CLOSED now short-circuits ahead
+of them.
+
+No change was needed in `chartTechnicalsSection`/`wallDynamicsSection` — their self-omission under
+`vectorStale` is an intentional design choice deferring to `vectorDeskSection` as the one canonical
+place the grade/staleness note lives (see their own code comments); fixing the one place it actually
+lives resolves the cascade without touching either sibling.
+
+### Blast radius
+
+Single call site/root cause — `vectorDeskSection()` is Largo's only renderer of the "Vector desk"
+section across Swings' WATCH/OPEN/CLOSED buckets. No other function duplicates this branch order.
+
+## Pre-#6109 closed Swing positions permanently showed a `last_mark` contradicting their own P&L% — FIXED (one-time backfill)
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+| **Severity** | P2 |
+| **Area** | Night Hawk Swings ledger — `src/lib/db.ts`, `ensureSchema()` (boot-time converge-in-place backfill) |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate, post-merge verification cycle (independent background re-check of PR #6109) |
+
+### Root cause / background
+
+PR #6109 (merged earlier this session) added an `exit_mark` parameter to `gradeSwingPosition()` so
+the grading tick's own mark latches onto `last_mark`/`last_mark_at` — this guarantees a closed row's
+`contract.mid` (`closed-plays.ts:198`, `mid: row.last_mark`) can never again disagree with its own
+`exitPnlPct`. That guard only protects rows graded **after** it shipped.
+
+Every row graded before it is left with an unrepaired historical mismatch: `last_mark` is whatever
+the last live 15-minute RTH latch happened to catch before the position closed, which has nothing to
+do with the real exit fill (the mechanical trough/peak-bracketed stop/target price
+`realized_pnl_pct` is actually computed from). `PlayTerminal.tsx` labels this field "Live mark"
+directly beside the correct P&L% badge — on a CLOSED card the two visibly contradict each other.
+
+Live-verified 2026-10-17 across the then-current 19-row closed deck (100% of the population showed
+the mismatch): BE entry 17.95, last_mark 36.65 (implies +104.2%) vs. real exitPnlPct +70.61% (33.6pp
+gap); INTC entry 4.72, last_mark 3.00 (implies −36.4%) vs. real −73.12% (36.7pp gap); TSLA entry
+15.95, last_mark 11.78 (implies −26.1%) vs. real −32.76%.
+
+### Fix
+
+Added a one-time, converge-in-place backfill to `ensureSchema()` (runs automatically on every ECS
+boot, same mechanism as the three pre-existing peak/trough-premium backfills already in this exact
+function for the identical "historical rows predate a grade-time fix" shape — `FINDINGS 2026-08-06`/
+`2026-09-11`/`2026-10-15`):
+
+```sql
+UPDATE swing_positions
+   SET last_mark = entry_premium * (1 + realized_pnl_pct / 100.0),
+       last_mark_at = graded_at
+ WHERE status IN ('CLOSED', 'ROLLED')
+   AND entry_premium IS NOT NULL
+   AND entry_premium > 0
+   AND realized_pnl_pct IS NOT NULL
+   AND graded_at IS NOT NULL
+   AND ABS(COALESCE(last_mark, 0) - entry_premium * (1 + realized_pnl_pct / 100.0)) > 0.01;
+```
+
+- The corrected value is the exact inverse of the formula `gradeParentFromMark` (roll-plan.ts)
+  already uses to derive `realized_pnl_pct` from a mark (`realized = ((mark − entry) / entry) * 100`),
+  so this is a faithful reconstruction, not an approximation.
+- `last_mark_at` is unconditionally backdated to `graded_at` (when the corrected value was actually
+  established) — never `NOW()`, and never left at the stale pre-close live-latch timestamp, which
+  would otherwise leave a corrected mark sitting beside a timestamp that still describes the old,
+  wrong one.
+- The `> 0.01` tolerance keeps this a no-op past ordinary float/rounding noise, same discipline as
+  the sibling peak/trough backfills; safe and cheap to re-run on every boot.
+- Scoped to `CLOSED`/`ROLLED` only — never touches an OPEN position's live mark. `ROLLED` is
+  included because a rolled PARENT leg's grade freeze (`gradeParentFromMark`) latches the identical
+  entry/mark/realized_pnl_pct triple through the same `gradeSwingPosition` call, so a rolled parent
+  graded before the fix carries the identical mismatch, even though it never reaches the member-facing
+  closed deck directly (`closedDeckSourceFromRow` gates on `status === 'CLOSED'`).
+- Never fabricates: a row missing `entry_premium`/`realized_pnl_pct`/`graded_at` has nothing to
+  correct against and is left entirely alone.
+
+Unlike the peak/trough backfills (which only ever WIDEN a range via GREATEST/LEAST, safe in any
+direction), this one REPLACES a single point value outright — called out explicitly in-code since
+it's the one place this migration departs from the established widen-only precedent it otherwise
+follows exactly.
+
+### Evidence
+
+New regression test (`src/lib/db-swing-ledger.test.ts`) confirmed RED against the unmodified source
+(`git stash` of the source fix alone) — failed with the backfill statement entirely absent — then
+GREEN restored. Pinned by source inspection, same idiom as every other `ensureSchema` backfill test
+in this file (no live Postgres in CI). Full `db-swing-ledger.test.ts` + `db.test.ts` (76 tests) and
+`tsc --noEmit` both clean.
+
+### Blast radius
+
+Single table (`swing_positions`), single column pair (`last_mark`/`last_mark_at`), applied only to
+already-terminal (`CLOSED`/`ROLLED`) rows. No other table carries the same `exit_mark`-latch gap —
+`zerodte_setup_log`/`banger_positions` have their own, separately-fixed peak/trough watermark
+backfills but neither has an equivalent "mark vs. realized P&L" grading field of this shape.
+
+## SPX news-risk keyword scorer had no negation/de-escalation awareness — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+| **Severity** | P1 |
+| **Area** | SPX Slayer confluence engine — `src/features/spx/lib/spx-signals.ts`, `scoreNewsRisk()` |
+| **Found by** | Ask Largo × Night Hawk Swings standing mandate, post-merge verification cycle |
+
+### Root cause
+
+`scoreNewsRisk()` scans up to 10 desk news headlines for bare bear/bull macro-shock keywords
+(`NEWS_BEAR_RE` — fed/fomc/halt/crash/war/sanctions/downgrade/..., `NEWS_BULL_RE` —
+rate-cut/ceasefire/stimulus/deal/rally/...) and counts a hit whenever the keyword appears anywhere
+in the headline. The scan had no awareness of negation or de-escalation language, so a headline
+reporting the keyword's event being AVERTED, RESOLVED, or CALLED OFF scored identically to the
+event actually happening:
+
+- `"Stimulus deal collapses in Congress"` — matched the bull keywords "stimulus"/"deal" and scored
+  as a positive headline, when the deal collapsing is the opposite of bullish news.
+- `"Geopolitical tensions ease after ceasefire reached"` / `"War fears ease as ceasefire holds"` —
+  matched the bear keywords "geopolit"/"war" alongside the correct bull hit "ceasefire", so a
+  genuinely de-escalating headline double-counted as both a bear AND a bull hit, netting to a
+  bearish factor instead of the bullish one it should have been.
+- `"Market crash averted as central banks step in"` — matched the bear keyword "crash" and scored
+  as a high-risk headline despite the crash explicitly NOT having occurred.
+
+This factor feeds directly into the live SPX 0DTE confluence score (`computeSpxConfluence`), which
+drives both the live intraday trading signal and the closed-session play-brief display — a
+miscounted headline is not just a display defect, it can tip a live BUY_CALL/BUY_PUT/HOLD call.
+
+### Fix
+
+Added a bounded, word-window negation/de-escalation check (`buildNewsNegationCheck`) that suppresses
+(never flips) a keyword hit when a reversal/resolution verb (avoided, averted, eases/eased/easing,
+resolved, lifted, scrapped, cancelled, called off, shelved, subsided, dashed, collapsed, fell
+through, de-escalated, ruled out, ...) appears within a bounded word-window immediately before or
+after the keyword. Suppression rather than sentiment-flipping was the deliberate, conservative
+choice — getting the direction wrong (scoring a collapsed deal as actively bearish) is worse than
+the honest, pre-existing "omit when uncertain" discipline this codebase already applies elsewhere
+(the Largo product contract's own absence/confidence principles).
+
+The window excludes common clause-boundary words (and/but/as/while/after/before/though/...) from
+being consumed as filler tokens, so a reversal verb belonging to one clause of a multi-clause
+headline cannot spuriously cancel a genuinely separate keyword hit in a different clause — verified
+by a dedicated test: `"Rate cut hopes dashed as Fed turns hawkish"` correctly cancels only the
+rate-cut bull hit (the headline is net bearish, -4) rather than cancelling the real "Fed turns
+hawkish" bear hit too.
+
+### Evidence
+
+4 new regression tests added, each confirmed RED (failing with the exact miscounted weight/sign)
+against the unmodified source via `git stash` of the source fix alone, then GREEN restored:
+- a reversal verb after the bear keyword correctly flips a would-be bearish double-count to a clean
+  net-bullish read (+3, was: net-bearish -4 pre-fix)
+- a bullish keyword followed by a collapse verb no longer scores bullish (was: +3, now: no factor)
+- a reversal verb tied to one clause does not over-suppress a genuinely bearish keyword in a
+  different clause of the same headline (stays -4, confirming cross-clause isolation works)
+- an averted-crash headline no longer scores bearish (was: -4, now: no factor)
+
+Full `spx-signals.test.ts` (11 tests) and `tsc --noEmit` both clean.
+
+### Blast radius
+
+Single call site — `scoreNewsRisk()` is the only implementation of this keyword scan; no duplicated
+logic found elsewhere in the repo (`grep -r NEWS_BEAR_RE\|NEWS_BULL_RE\|scoreNewsRisk src` returns
+only this file and its test).
+
 ## 2026-10-17 — [FINDING, P2, Ask Largo swing play-brief] CLOSED-bucket sections rendering a current GEX/Vector read never disclosed when the market is closed, unlike OPEN/WATCH — FIXED
 
 > **kind:** `FINDING`
