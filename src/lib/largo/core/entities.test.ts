@@ -45,6 +45,15 @@ test("leveraged/inverse/volatility ETFs live in the swing book classify as etf, 
   }
 });
 
+// CORRECTION, same day: a fresh sweep of the FULL live swing book (not just the sample the first
+// fix's repro happened to name) found 4 more real ETFs — each confirmed via Polygon's own
+// `type:"ETF"` reference field before adding, not guessed from the ticker name alone.
+test("a full live-book sweep's remaining ETFs (ARKG/EWY/KORU/SNDQ) also classify as etf", () => {
+  for (const ticker of ["ARKG", "EWY", "KORU", "SNDQ"]) {
+    assert.equal(canonicalTicker(ticker)?.kind, "etf", ticker);
+  }
+});
+
 test("non-symbols never become entities", () => {
   for (const junk of ["", "   ", null, undefined, "what is the price", "1234", "$", "TOOLONGSYMBOL12"]) {
     assert.equal(canonicalTicker(junk as string), null, JSON.stringify(junk));
