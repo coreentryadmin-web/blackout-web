@@ -4,6 +4,22 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-17 (12:16 UTC / Sat 08:17 ET) — [SEO] Lane heartbeat: catch-up after ~24h notification backlog, shipped fixes validated, no SEO-lane PR action
+
+9 scheduled-trigger notifications had queued unprocessed since the prior heartbeat (Thu
+2026-10-16 ~00:17 ET through Sat 08:16 ET) — this session was evidently restarting/disconnecting
+repeatedly over that window (confirmed via the coordinator's own ~24h-stall entry immediately
+above). Rather than replay each stale instruction retroactively (several were RTH-window checks
+that cannot be meaningfully re-run after the fact), ran one fresh consolidated cycle now.
+Saturday 08:17 ET — market closed for the weekend, no RTH work applicable. Resynced to
+`origin/main` (`dd60ebca`/`bd444a38` lineage → `4aeac0ad`, other-lane agent-state sync; many
+commits landed during the gap, not individually re-diffed). **Step 1:** purged Cloudflare edge
+HTML, measured live homepage CLS — **0.0002, GOOD**. Fetched `/api/og` with a Googlebot UA:
+`200`, `content-type: image/png`, real 1200×630 PNG — crawlable, confirmed on production.
+**Step 2 — PR sweep:** 3 open agent PRs fleet-wide, all other-lane and CI-RUNNING (#6113 docs
+findings-fold, #6112 docs audit log, #6111 Largo truncation fix). Nothing for this lane to
+rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
 ## 2026-10-17 (11:07 UTC / Sat 07:07 ET) — [COORDINATOR] Session resumed after ~24h stall; SPX Slayer off-hours `ServerCacheTimeoutError` candidate finding re-verified live — did NOT reproduce
 
 Session had stalled roughly 2026-10-16 ~07:00 UTC → 2026-10-17 ~11:00 UTC; drained the full
