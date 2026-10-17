@@ -2844,6 +2844,33 @@ test("dataHonestyCoaching: a genuinely stale Vector snapshot (by this file's own
   assert.doesNotMatch(line!, /SHOULD_NOT_APPEAR/);
 });
 
+test("dataHonestyCoaching: GEX-fallback closed-market note is attributed to the GEX matrix when Vector itself is stale (2026-10-17 fix, live repro NVDA:62/CRWV:61/TSM)", () => {
+  // Before the fix, this read "Vector **9853s** stale ... Computed 0s ago, but the market is
+  // CLOSED..." with no indication the two age claims describe DIFFERENT sources -- a member
+  // cannot tell whether the brief is contradicting itself about its own freshness. The GEX-sourced
+  // fallback note must be attributed explicitly in exactly this combination (Vector stale AND the
+  // fallback fired), since that is the only case where a separate "Vector ... stale" warning sits
+  // right next to it in the same joined sentence.
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      vector: { dataAgeMs: 9_853_000, freshness: "stale" } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*9853s\*\* stale/);
+  assert.match(line!, /market is CLOSED/i);
+  assert.match(line!, /\(via the GEX matrix\)/, "the GEX-fallback note must be explicitly attributed when a separate Vector-stale warning sits beside it");
+});
+
 // BUG FOUND 2026-09-20 (Ask Largo standing mandate): dataHonestyCoaching's "Data caveat" bullet
 // (Vector/GEX/HELIX/discovery-scan staleness) fired identically for a dead WATCH play as for a
 // live one -- the same wall-of-stale-warnings-for-a-setup-nobody-can-act-on shape
