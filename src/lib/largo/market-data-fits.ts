@@ -456,3 +456,44 @@ export function fitEarningsEstimatesForModel(
     estimates_truncated: total > kept.length,
   };
 }
+
+// ============ get_etf_flow in_outflow / etf_tide ============
+// MEASURED TRUNCATED live 2026-10-17 (`get_etf_flow TRUNCATED 224052/16000`). Both
+// `fetchUwEtfInOutflow` and `fetchUwEtfTide` (unusual-whales.ts) pass the raw UW response straight
+// through via `uwGetSafe<unknown>` with no row limit of any kind, and `get_etf_flow` (run-tool.ts)
+// merged both in with zero fitting. Measured live against the real endpoints: `in-outflow` carries
+// ~721 DAILY rows (years of history, ~144 bytes/row, up to 225KB for IWM) and `etf-tide` carries
+// ~390 INTRADAY ticks for a single session (~150 bytes/row, 58-70KB) — a trader asking about ETF
+// flow needs a recent window of either, not the full history.
+//
+// THE TWO SERIES SORT IN OPPOSITE DIRECTIONS — verified live, not assumed: `in-outflow` is
+// newest-first (today, yesterday, ...), `etf-tide` is oldest-first (market open -> now), because
+// one is a daily history and the other is today's own intraday walk. Naively keeping "the first N"
+// of both would silently show the STALEST slice of the one series the model most wants the LATEST
+// reading from (today's tide), so this function reverses an oldest-first series before fitting —
+// "most recent" always means the same thing to the caller regardless of which way UW sorted it.
+export interface EtfSeriesFittedResult {
+  data?: Array<Record<string, unknown>>;
+  data_shown: number;
+  data_total: number;
+  data_truncated: boolean;
+}
+
+export function fitEtfSeriesForModel(
+  raw: unknown,
+  base: Record<string, unknown>,
+  { maxShown = 30, newestFirst = true }: { maxShown?: number; newestFirst?: boolean } = {}
+): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return (raw ?? {}) as Record<string, unknown>;
+  const { data, ...rest } = raw as Record<string, unknown> & { data?: unknown };
+  const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  const ordered = newestFirst ? rows : [...rows].reverse();
+  const { kept, total } = fitRowsToBudget({ ...base, ...rest }, "data", ordered, { maxRows: maxShown });
+  return {
+    ...rest,
+    data: kept.length > 0 ? kept : undefined,
+    data_shown: kept.length,
+    data_total: total,
+    data_truncated: total > kept.length,
+  };
+}

@@ -11,6 +11,7 @@ import {
   fitGroupGreekFlowToolResultForModel,
   fitGexLadderForModel,
   fitOptionsFlowForModel,
+  fitEtfSeriesForModel,
 } from "./market-data-fits";
 
 const TRANSPORT_CAP = 16_384;
@@ -529,4 +530,118 @@ test("fitOptionsFlowForModel: honestly reports each field's own total even when 
   const fitted = fitOptionsFlowForModel(raw);
   assert.equal(fitted.flow_alerts_total, 50);
   assert.equal(fitted.flow_recent_total, 100);
+});
+
+// Real live shapes, MEASURED 2026-10-17 against the actual UW endpoints (inspect-etf-shapes.mjs):
+// `in-outflow` ~144 bytes/row, newest-first (today, yesterday, ...); `etf-tide` ~151 bytes/row,
+// oldest-first (market open -> now). Row count matches the live IWM response (721 / 390).
+const inOutRow = (i: number) => ({
+  close: (270.44 - i * 0.1).toFixed(2),
+  date: `2026-${String(10 - Math.floor(i / 30)).padStart(2, "0")}-${String(16 - (i % 28)).padStart(2, "0")}`,
+  change: 4_842_428 + i * 1000,
+  volume: 30_771_533 + i * 500,
+  expiration_cycle: i % 3 === 0 ? "monthly" : "weekly",
+  change_prem: String(1_321_982_844 + i * 10_000),
+  is_fomc: i % 17 === 0,
+});
+
+const tideRow = (i: number) => ({
+  timestamp: `2026-10-16T${String(9 + Math.floor((30 + i) / 60)).padStart(2, "0")}:${String((30 + i) % 60).padStart(2, "0")}:00-04:00`,
+  date: "2026-10-16",
+  net_call_premium: 125_000 + i * 50,
+  net_put_premium: 98_000 + i * 40,
+  net_volume: 4_200 + i,
+  underlying_price: 270.44 + i * 0.01,
+});
+
+test("get_etf_flow OLD unconditional merge shape blows the transport cap — the bug this fix closes", () => {
+  // Reproduces run-tool.ts's PRE-FIX get_etf_flow merge: in_outflow/etf_tide spread straight in
+  // with no fitting at all. MEASURED live 2026-10-17: `get_etf_flow TRUNCATED 224052/16000`.
+  const oldShape = {
+    etf: "IWM",
+    quote: { price: 270.44, change_pct: 1.2 },
+    in_outflow: { data: Array.from({ length: 721 }, (_, i) => inOutRow(i)), years: [2023, 2024, 2025, 2026] },
+    etf_tide: { data: Array.from({ length: 390 }, (_, i) => tideRow(i)), date: "2026-10-16" },
+  };
+  assert.ok(
+    JSON.stringify(oldShape).length > TRANSPORT_CAP,
+    `sanity: the old unconditional merge (${JSON.stringify(oldShape).length} chars) must exceed the transport cap to prove the bug`
+  );
+});
+
+test("fitEtfSeriesForModel(newestFirst) keeps in_outflow's own newest-first order untouched", () => {
+  const raw = { data: Array.from({ length: 721 }, (_, i) => inOutRow(i)), years: [2023, 2024, 2025, 2026] };
+  const base = { etf: "IWM", quote: { price: 270.44 } };
+  const fitted = fitEtfSeriesForModel(raw, base, { maxShown: 30, newestFirst: true });
+  assert.ok(
+    JSON.stringify({ ...base, in_outflow: fitted }).length < TRANSPORT_CAP,
+    `fitted envelope must stay under ${TRANSPORT_CAP}`
+  );
+  assert.equal(fitted.data_shown, 30);
+  assert.equal(fitted.data_total, 721);
+  assert.equal(fitted.data_truncated, true);
+  // newestFirst=true means no reversal — kept rows are raw's own first 30 (today backward).
+  assert.deepEqual(fitted.data, raw.data.slice(0, 30));
+  assert.equal((fitted.data as Array<Record<string, unknown>>)[0].date, inOutRow(0).date);
+  // Non-array metadata (years) survives alongside the fitted rows.
+  assert.deepEqual(fitted.years, raw.years);
+});
+
+test("fitEtfSeriesForModel(!newestFirst) reverses an oldest-first series so 'kept' is still the most recent window", () => {
+  const raw = { data: Array.from({ length: 390 }, (_, i) => tideRow(i)), date: "2026-10-16" };
+  const base = { etf: "IWM", quote: { price: 270.44 } };
+  const fitted = fitEtfSeriesForModel(raw, base, { maxShown: 30, newestFirst: false });
+  assert.ok(
+    JSON.stringify({ ...base, etf_tide: fitted }).length < TRANSPORT_CAP,
+    `fitted envelope must stay under ${TRANSPORT_CAP}`
+  );
+  assert.equal(fitted.data_shown, 30);
+  assert.equal(fitted.data_total, 390);
+  assert.equal(fitted.data_truncated, true);
+  // The raw series is oldest-first (index 0 = market open), so the LATEST reading is at the end.
+  // A naive "keep first N" would show the stalest slice (market open) — this must show the end.
+  const kept = fitted.data as Array<Record<string, unknown>>;
+  assert.equal(kept[0].timestamp, raw.data[raw.data.length - 1].timestamp);
+  assert.equal(kept[kept.length - 1].timestamp, raw.data[raw.data.length - 30].timestamp);
+  assert.deepEqual(fitted.date, raw.date);
+});
+
+test("get_etf_flow full sequential fit (base -> in_outflow -> etf_tide) stays under the transport cap at full measured real-world size", () => {
+  const base = { etf: "IWM", quote: { price: 270.44, change_pct: 1.2, volume: 30_771_533 } };
+  const inOutRaw = { data: Array.from({ length: 721 }, (_, i) => inOutRow(i)), years: [2023, 2024, 2025, 2026] };
+  const tideRaw = { data: Array.from({ length: 390 }, (_, i) => tideRow(i)), date: "2026-10-16" };
+
+  const fittedInOut = fitEtfSeriesForModel(inOutRaw, base, { maxShown: 30, newestFirst: true });
+  const baseWithInOut = { ...base, in_outflow: fittedInOut };
+  const fittedTide = fitEtfSeriesForModel(tideRaw, baseWithInOut, { maxShown: 30, newestFirst: false });
+  const final = { ...baseWithInOut, etf_tide: fittedTide };
+
+  assert.ok(
+    JSON.stringify(final).length < TRANSPORT_CAP,
+    `final get_etf_flow envelope (${JSON.stringify(final).length} chars) must stay under the transport cap`
+  );
+  assert.equal(final.in_outflow.data_truncated, true);
+  assert.equal(final.etf_tide.data_truncated, true);
+});
+
+test("fitEtfSeriesForModel: under-cap input (few rows) passes through untruncated", () => {
+  const raw = { data: Array.from({ length: 5 }, (_, i) => tideRow(i)), date: "2026-10-16" };
+  const fitted = fitEtfSeriesForModel(raw, { etf: "QQQ" }, { maxShown: 30, newestFirst: false });
+  assert.equal(fitted.data_shown, 5);
+  assert.equal(fitted.data_total, 5);
+  assert.equal(fitted.data_truncated, false);
+});
+
+test("fitEtfSeriesForModel: empty/missing data array never throws and reports nothing shown", () => {
+  const fitted = fitEtfSeriesForModel({ data: [], years: [] }, { etf: "QQQ" });
+  assert.equal(fitted.data, undefined);
+  assert.equal(fitted.data_shown, 0);
+  assert.equal(fitted.data_total, 0);
+  assert.equal(fitted.data_truncated, false);
+});
+
+test("fitEtfSeriesForModel: a non-object raw response passes through (or empties) rather than throwing", () => {
+  assert.deepEqual(fitEtfSeriesForModel(null, { etf: "QQQ" }), {});
+  assert.deepEqual(fitEtfSeriesForModel(undefined, { etf: "QQQ" }), {});
+  assert.deepEqual(fitEtfSeriesForModel("error string", { etf: "QQQ" }), "error string");
 });
