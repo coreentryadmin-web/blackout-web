@@ -37,8 +37,18 @@ export type CanonicalTicker = {
 /** Indices the platform reads through Polygon's `I:` namespace. */
 const INDEX_KEYS = new Set(["SPX", "VIX", "NDX", "RUT", "DJI", "VVIX", "SKEW"]);
 
-/** Common ETFs — kind only affects labelling, never routing, so this list being partial is safe. */
-const ETF_KEYS = new Set(["SPY", "QQQ", "IWM", "DIA", "SOXX", "XLF", "XLE", "XLK", "TLT", "GLD", "UVXY", "VXX"]);
+/**
+ * Common ETFs — kind only affects labelling, never routing, so this list being partial is safe FOR
+ * THAT USE. It stopped being safe the moment Night Hawk Swings started reading `kind` for Largo
+ * contract C4 (`ticker_class`, a cross-product identity field a member sees), because omission there
+ * reads as a wrong classification, not a harmless label. Live repro 2026-10-17: ETHA/ETHU/LABD/
+ * NAIL/SOXS/SQQQ/URA/UVIX were all real, currently-committed swing positions that fell through to
+ * "equity" — added here alongside the swing play-brief fix (play-brief.ts) that made `kind` matter.
+ */
+const ETF_KEYS = new Set([
+  "SPY", "QQQ", "IWM", "DIA", "SOXX", "XLF", "XLE", "XLK", "TLT", "GLD", "UVXY", "VXX",
+  "ETHA", "ETHU", "LABD", "NAIL", "SOXS", "SQQQ", "URA", "UVIX",
+]);
 
 /**
  * Collapse any spelling of an instrument to one canonical key.

@@ -38,6 +38,33 @@ function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   };
 }
 
+// BUG FIX (2026-10-17, Ask Largo standing mandate, live repro VXX/SQQQ/SOXS/UVIX — real
+// currently-committed swing positions all returning ticker_class: "equity"): composeSwingPlayBrief
+// used to hardcode "equity" on the stale assumption that swings are always equities, which stopped
+// being true once the Banger whole-market engine started feeding leveraged/inverse/volatility ETFs
+// into the swing lane. Covers both the envelope-level and result-level ticker_class fields (two
+// separate hardcode sites in the same function).
+test("composeSwingPlayBrief: ticker_class reflects the real instrument, not a hardcoded 'equity'", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "SQQQ", id: "SWING:SQQQ" }),
+    asOf: "2026-09-07T02:59:00.000Z",
+    sessionDate: "2026-09-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.ticker_class, "etf", "SQQQ is a leveraged ETF, not an equity");
+  assert.equal(brief.envelope.ticker_class, "etf", "envelope-level field must match the result-level field");
+
+  const equityCtx: SwingPlayBriefContext = { ...ctx, play: fixturePlay({ ticker: "NVDA", id: "SWING:NVDA" }) };
+  const equityBrief = composeSwingPlayBrief(equityCtx);
+  assert.equal(equityBrief.ticker_class, "equity", "a real equity must still classify as equity");
+});
+
 test("composeSwingPlayBrief: WATCH WAIT recommendation uses WAIT label, not raw HOLD (verdict parity)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ recommendation: "HOLD", swingEntryAction: undefined, status: "WATCH" }),

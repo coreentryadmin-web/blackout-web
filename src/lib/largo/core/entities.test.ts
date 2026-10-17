@@ -36,6 +36,15 @@ test("kind classification drives labelling, not routing", () => {
   assert.equal(canonicalTicker("ZZQQXX")?.key, "ZZQQXX");
 });
 
+// BUG FIX (2026-10-17): these were real, currently-committed Night Hawk Swings positions that all
+// fell through to "equity" — ETF_KEYS being "partial is safe" stopped being true the moment a
+// member-facing Largo identity field (swing play-brief's ticker_class) started reading `kind`.
+test("leveraged/inverse/volatility ETFs live in the swing book classify as etf, not equity", () => {
+  for (const ticker of ["ETHA", "ETHU", "LABD", "NAIL", "SOXS", "SQQQ", "URA", "UVIX"]) {
+    assert.equal(canonicalTicker(ticker)?.kind, "etf", ticker);
+  }
+});
+
 test("non-symbols never become entities", () => {
   for (const junk of ["", "   ", null, undefined, "what is the price", "1234", "$", "TOOLONGSYMBOL12"]) {
     assert.equal(canonicalTicker(junk as string), null, JSON.stringify(junk));
