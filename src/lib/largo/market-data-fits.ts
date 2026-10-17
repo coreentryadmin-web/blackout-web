@@ -255,6 +255,97 @@ export function fitGroupGreekFlowToolResultForModel(input: {
   return envelope as unknown as GroupGreekFlowToolResult;
 }
 
+// ============ get_options_flow (non-SPX, per-ticker branch) ============
+// MEASURED TRUNCATED live 2026-10-17 (CloudWatch /ecs/blackout-production, `[largo] tools:`
+// log line): `get_options_flow 418ms TRUNCATED 33210/16000` — less than half the tool's own
+// serialized answer survived the transport's raw tail-cut. Root cause is the same shape as
+// every other fix in this file: the per-ticker branch of `get_options_flow` (run-tool.ts)
+// returns TWO independently-sized raw row arrays — `flow_alerts` (up to 50 UW flow-alert rows)
+// and `flow_recent` (up to 100 recent-trade rows) — neither budget-checked, so a single
+// moderately-active ticker's raw UW pages alone exceed the 16k cap before the model ever sees
+// the aggregates (`alert_premium`, `bias`, `strike_stacks`) that are this tool's actual answer.
+// Fix follows this file's established shape: aggregates/metadata first (so a future cap hit
+// eats the row sample, never the answer), both row fields budget-fit via `fitRowsToBudget`
+// sequentially against the SAME running base object (so the combined serialized size — not
+// either array's size alone — is what gets measured against the cap), each with its own honest
+// shown/truncated/total trio. The SPX branch of this same tool (spx_sniper_desk source, a
+// separate code path in run-tool.ts) is NOT touched here — its `flow_alerts`/`unified_tape`
+// come from the live desk object and `unified_tape` is already row-capped at 20; it was not the
+// measured truncation and widening this fix to cover it on no measured evidence would repeat
+// the exact mistake fitMarketOiChangeForModel's own comment above documents (a fix sized to a
+// guess, not evidence) — tracked as a follow-up to verify separately, not fixed speculatively.
+export interface OptionsFlowFittedResult {
+  ticker: string;
+  source: string;
+  note: string;
+  window_hours: number | null;
+  helix_session_alerts: number;
+  intraday_0dte: unknown;
+  alert_premium: { calls: number; puts: number; net: number };
+  bias: string;
+  strike_stacks: unknown;
+  flow_alerts?: Record<string, unknown>[];
+  flow_alerts_shown: number;
+  flow_alerts_total: number;
+  flow_alerts_truncated: boolean;
+  flow_recent?: Record<string, unknown>[];
+  flow_recent_shown: number;
+  flow_recent_total: number;
+  flow_recent_truncated: boolean;
+}
+
+export function fitOptionsFlowForModel(
+  input: {
+    ticker: string;
+    source: string;
+    note: string;
+    window_hours: number | null;
+    helix_session_alerts: number;
+    intraday_0dte: unknown;
+    alert_premium: { calls: number; puts: number; net: number };
+    bias: string;
+    strike_stacks: unknown;
+    flow_alerts: Record<string, unknown>[];
+    flow_recent: Record<string, unknown>[];
+  },
+  maxEach = 30
+): OptionsFlowFittedResult {
+  // Aggregates + metadata FIRST — the tool's actual answer — so the row samples are what a
+  // future cap hit eats, never these fields. Measured against the budget below via the running
+  // `base` object, so `strike_stacks` (the costliest metadata field) is already accounted for
+  // before either row array gets a single entry.
+  const base: Record<string, unknown> = {
+    ticker: input.ticker,
+    source: input.source,
+    note: input.note,
+    window_hours: input.window_hours,
+    helix_session_alerts: input.helix_session_alerts,
+    intraday_0dte: input.intraday_0dte,
+    alert_premium: input.alert_premium,
+    bias: input.bias,
+    strike_stacks: input.strike_stacks,
+  };
+
+  const alertsFit = fitRowsToBudget(base, "flow_alerts", input.flow_alerts ?? [], { maxRows: maxEach });
+  // flow_recent is fit against base WITH the now-kept flow_alerts already included, so its
+  // budget check measures the true combined size rather than re-spending the same headroom
+  // flow_alerts already used.
+  const baseWithAlerts = { ...base, flow_alerts: alertsFit.kept };
+  const recentFit = fitRowsToBudget(baseWithAlerts, "flow_recent", input.flow_recent ?? [], { maxRows: maxEach });
+
+  return {
+    ...base,
+    flow_alerts: alertsFit.kept.length > 0 ? alertsFit.kept : undefined,
+    flow_alerts_shown: alertsFit.kept.length,
+    flow_alerts_total: alertsFit.total,
+    flow_alerts_truncated: alertsFit.total > alertsFit.kept.length,
+    flow_recent: recentFit.kept.length > 0 ? recentFit.kept : undefined,
+    flow_recent_shown: recentFit.kept.length,
+    flow_recent_total: recentFit.total,
+    flow_recent_truncated: recentFit.total > recentFit.kept.length,
+  } as OptionsFlowFittedResult;
+}
+
 // ============ get_earnings related_news ============
 // MEASURED TRUNCATED live 2026-08-29 (largo-truncation-probe.mjs, control PROVEN, truncation
 // point reported at `related_news`). `fetchBenzingaEarnings(sym, 15)` returns up to 15 news
