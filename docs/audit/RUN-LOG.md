@@ -4,6 +4,17 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-17 (14:07 UTC / Sat 10:07 ET) — [SEO] Daily growth cycle: one new thin striking-distance entry, dead-staging-subdomain recurrence noted, no action
+
+New striking-distance entry: "dealer gamma positioning" (pos 20.0, **4imp**) — same thin-sample
+band as prior noted-but-not-acted-on entries. Noticed `staging.blackouttrades.com/learn/largo-ai`
+in the PAGES list with 21imp/pos10.5 — confirmed this is a recurrence of the already-documented,
+already-delegated dead-`staging.*`-subdomain issue (root cause identified 2026-09-02, `SEO-GROWTH-
+STRATEGY.md` §5: `CF_API_TOKEN` lacks DNS/redirect-rule write, needs a human/wider token scope) —
+not a new finding. CLS/robots.txt already verified this morning's catch-up heartbeat (within
+rule 6's 3-day window) — skipped redundant re-check. 28-day avgpos 11.5 (18cl/1446imp), within
+the established noisy band — no material movement. No PR opened.
+
 ## 2026-10-17 (12:16 UTC / Sat 08:17 ET) — [SEO] Lane heartbeat: catch-up after ~24h notification backlog, shipped fixes validated, no SEO-lane PR action
 
 9 scheduled-trigger notifications had queued unprocessed since the prior heartbeat (Thu
