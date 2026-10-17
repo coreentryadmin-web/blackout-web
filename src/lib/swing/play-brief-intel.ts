@@ -9,6 +9,7 @@ import {
   playExpectsLiveOptionMark,
   ageDaysLabel,
   ageSecondsLabel,
+  closedMarketSessionNote,
   confluenceZoneKindsLabel,
   fundamentalsAgeMs,
   fundamentalsAncient,
@@ -805,7 +806,11 @@ export function chartTechnicalsSection(
   }
   if (vec.play?.grade) lines.push(`Vector desk grade: **${vec.play.grade}**`);
   if (!lines.length) return null;
-  if (bucket === "closed") lines.unshift(closedDisclosure);
+  if (bucket === "closed") {
+    lines.unshift(closedDisclosure);
+    const sessionNote = closedMarketSessionNote(vec, ctx?.ecosystem?.gex_positioning, readMs);
+    if (sessionNote) lines.splice(1, 0, sessionNote);
+  }
   // Bias is derived from the closed trade's OWN direction elsewhere (the "Trade manager read"
   // Lessons section already covers post-mortem framing); a closed brief's chart-technicals bias
   // is forced neutral so this current-market read is never badged bullish/bearish as if it were
@@ -993,6 +998,8 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   if (!lines.length) return null;
   if (statusBucket(ctx.play) === "closed") {
     lines.unshift("_Current levels — not what this trade traded under._");
+    const sessionNote = closedMarketSessionNote(vec, gex, readMs);
+    if (sessionNote) lines.splice(1, 0, sessionNote);
   }
   return { title: "Levels on chart", body: lines.join("\n\n") };
 }
@@ -2201,6 +2208,8 @@ export function gexPostureSection(ctx: SwingPlayBriefContext): RichSection | nul
   if (!lines.length) return null;
   if (statusBucket(ctx.play) === "closed") {
     lines.unshift("_Current dealer posture — not what this trade traded under._");
+    const sessionNote = closedMarketSessionNote(vectorOf(ctx), gex, readMs);
+    if (sessionNote) lines.splice(1, 0, sessionNote);
   }
   return { title: "GEX posture", body: lines.join("\n") };
 }
@@ -2239,6 +2248,8 @@ export function wallDynamicsSection(
     });
   if (bucket === "closed") {
     lines.unshift("_Current wall activity — not what this trade traded under._");
+    const sessionNote = closedMarketSessionNote(vec, ctx?.ecosystem?.gex_positioning, readMs);
+    if (sessionNote) lines.splice(1, 0, sessionNote);
   }
   return { title: "Wall dynamics", body: lines.join("\n") };
 }
@@ -2283,6 +2294,8 @@ export function vectorDeskSection(
   // "since it closed" market context, with no directives and a forced-neutral bias.
   if (bucket === "closed") {
     lines.push(`Current Vector read: grade **${p.grade}** · conviction **${p.conviction}** (since this play closed)`);
+    const sessionNote = closedMarketSessionNote(vec, ctx?.ecosystem?.gex_positioning, readMs);
+    if (sessionNote) lines.push(sessionNote);
     return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
   }
   lines.push(`**${p.headline}** · grade **${p.grade}** · conviction **${p.conviction}**`);

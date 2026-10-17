@@ -2408,6 +2408,19 @@ test("chartTechnicalsSection: CLOSED bucket returns null rather than a disclosur
   assert.equal(chartTechnicalsSection(vec, null, "closed"), null);
 });
 
+test("chartTechnicalsSection: CLOSED bucket also surfaces Vector's market_session_note (Largo C2, 2026-10-17 fix)", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    dataAgeMs: 0,
+    freshness: "live",
+    market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+    technicals: { vwap: 94.7, emaStack: "up", rsi: 67, macd: "bull", goldenPocket: null, structure: null },
+  });
+  const closedSection = chartTechnicalsSection(vec, null, "closed");
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
+});
+
 // FINDING (Ask Largo standing mandate, 2026-09-12): same defect class — wallDynamicsSection
 // rendered TODAY's building/fading wall events for a CLOSED play with no framing at all.
 test("wallDynamicsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
@@ -2426,6 +2439,18 @@ test("wallDynamicsSection: CLOSED bucket prefixes a current-not-as-traded disclo
   // Default (no bucket arg) must match every pre-existing call site — behavior unchanged.
   const defaultSection = wallDynamicsSection(vec);
   assert.doesNotMatch(defaultSection!.body, /Current wall activity/);
+});
+
+test("wallDynamicsSection: CLOSED bucket also surfaces Vector's market_session_note (Largo C2, 2026-10-17 fix)", () => {
+  const vec = fixtureVec({
+    dataAgeMs: 0,
+    freshness: "live",
+    market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+    wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+  });
+  const closedSection = wallDynamicsSection(vec, null, "closed");
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
 });
 
 test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (Largo C2)", () => {
@@ -2655,6 +2680,28 @@ test("vectorDeskSection: CLOSED bucket suppresses the live entry/targets/invalid
   assert.equal(open!.bias, "bullish");
   assert.match(open!.body, /Entry zone/i);
   assert.match(open!.body, /Watch now/i);
+});
+
+test("vectorDeskSection: CLOSED bucket also surfaces Vector's market_session_note (Largo C2, 2026-10-17 fix)", () => {
+  const vec = fixtureVec({
+    freshness: "live",
+    dataAgeMs: 0,
+    market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+    play: {
+      bias: "long",
+      headline: "POSITION",
+      grade: "B",
+      conviction: 68,
+      thesis: "thesis",
+      entryZone: "zone",
+      targets: ["t1"],
+      invalidation: "inv",
+      starred: ["POSITION"],
+    },
+  } as Partial<VectorFullState>);
+  const closed = vectorDeskSection(vec, null, "closed");
+  assert.ok(closed);
+  assert.match(closed!.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
 });
 
 test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), never fabricated", () => {
@@ -3395,6 +3442,32 @@ test("gexPostureSection: CLOSED bucket prefixes a current-not-as-traded disclosu
   });
   assert.ok(openSection);
   assert.doesNotMatch(openSection!.body, /Current dealer posture/, "open/watch buckets are unchanged");
+});
+
+test("gexPostureSection: CLOSED bucket also surfaces GEX's own market_session_note when Vector gives none (Largo C2, 2026-10-17 fix)", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const closedSection = gexPostureSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-20 10:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    readMs,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        asof: new Date(readMs).toISOString(),
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /market is CLOSED/i);
 });
 
 // FIX (Ask Largo standing mandate, 2026-10-13, live repro ASTS:53 CLOSED brief): this stale branch
@@ -4447,6 +4520,67 @@ test("chartLevelsSection: CLOSED bucket prefixes a current-not-as-traded disclos
   });
   assert.ok(openSection);
   assert.doesNotMatch(openSection!.body, /Current levels/, "open/watch buckets are unchanged");
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-17): the "Current levels" disclosure above says
+// a closed play's GEX/Vector levels are "not what this trade traded under" but never says whether
+// the market is even OPEN right now — a post-close/weekend self-warm computes a genuinely fresh
+// Vector/GEX read off the LAST session's tape, which this generic disclosure alone does not
+// disclose (Largo C2). Mirrors dataHonestyCoaching's own already-fixed market_session_note wiring
+// (#5306), ported here because collectCoachingBullets never reaches dataHonestyCoaching for the
+// closed bucket.
+test("chartLevelsSection: CLOSED bucket also surfaces Vector's market_session_note (Largo C2, 2026-10-17 fix)", () => {
+  const closedSection = chartLevelsSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-12 10:00 ET",
+    sessionDate: "2026-09-12",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        call_wall: 105,
+        put_wall: 95,
+        matrix_age_sec: 10,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: {
+      dataAgeMs: 0,
+      freshness: "live",
+      market_session_note: "VECTOR_CLOSED_MARKET_NOTE_MARKER",
+    } as SwingPlayBriefContext["vector"],
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
+});
+
+test("chartLevelsSection: CLOSED bucket falls back to GEX's own market_session_note when Vector gives none", () => {
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const closedSection = chartLevelsSection({
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-20 10:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    readMs,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        call_wall: 105,
+        put_wall: 95,
+        asof: new Date(readMs).toISOString(),
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(closedSection);
+  assert.match(closedSection!.body, /market is CLOSED/i);
 });
 
 // FINDING (Ask Largo standing mandate, 2026-09-18): the gamma magnet is a structural Vector level
