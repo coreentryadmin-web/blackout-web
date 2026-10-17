@@ -38,6 +38,118 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Largo `get_wall_dynamics` live-truncated at up to ~50x the transport cap — no fitting applied at all — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (new `src/lib/largo/wall-dynamics-fit.ts`, wired into `src/lib/largo/run-tool.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive. A live CloudWatch sweep of
+`/ecs/blackout-production` (10:45-11:40 UTC 2026-10-17) found 10 `TRUNCATED` tool results,
+including the two worst of the batch:
+```
+get_wall_dynamics TRUNCATED 391428/16000
+get_wall_dynamics TRUNCATED 792725/16000
+```
+— up to **~50x** the 16k transport cap, the largest overflow of any tool measured this session.
+
+**Root cause.** `composeWallDynamicsRead` (`src/lib/bie/wall-dynamics-read.ts`) returns
+`{ answer, context }` where `answer` is the real, already-concise market-facing prose summary and
+`context` is supplementary raw evidence — but the Largo tool case (`run-tool.ts`'s
+`get_wall_dynamics`) returned `composed` **completely unfit, with zero size handling of any kind**.
+Unlike every other oversized tool in this file, this one had no fitter applied at all:
+- **SPX branch**: `context: { desk, intel, ladder }` — `desk` is the same enrichment-tail-heavy
+  `SpxDeskSummary` shape `fitSpxStructureForModel` exists to trim (`gex_walls`, `spx_flows`,
+  `unified_tape`, `news_headlines`, `macro_events`, ...), returned raw; `ladder` duplicates
+  `desk.gex_walls` verbatim with no cap of its own; `intel` (`SpxDeskBriefIntel` — `positioning`,
+  `prevPositioning`, `heatmap`, `nighthawk`) has no dedicated fitter anywhere in the repo, and its
+  useful content is already surfaced as prose in `answer` via `spxWallsBriefLine`.
+- **non-SPX branch**: `context: state`, the full raw `fetchVectorFullState` result — bypassing
+  `fitVectorFullStateForModel`, the exact fitter `vectorFullStateForLargo` (`product-reads.ts`)
+  already applies for every OTHER Largo tool that reads Vector full state.
+
+`composeWallDynamicsRead` has exactly one caller (this tool) — verified via a repo-wide grep — so
+there was no competing full-data product consumer this ever needed to protect; it was simply never
+fit at the Largo boundary the way every sibling tool in this file already is.
+
+**Fix.** New `src/lib/largo/wall-dynamics-fit.ts` — `fitWallDynamicsForModel(composed)`:
+- Reserves budget as `LARGO_RESULT_CHAR_BUDGET - size(answer)`, so the combined result can never
+  exceed the transport cap regardless of how rich the live desk/Vector state is.
+- SPX branch: fits `desk` via the existing `fitSpxStructureForModel`; omits `intel` with a NAMED
+  reason (its content is already in `answer`, and no dedicated fitter exists for its own enrichment
+  tail) rather than returning it raw; drops the duplicate `ladder` field.
+- non-SPX branch: fits the state via the existing `fitVectorFullStateForModel`, matching what every
+  other Vector-full-state-reading Largo tool already does.
+- Wired into `run-tool.ts`'s `get_wall_dynamics` case.
+
+**Tests.** New `src/lib/largo/wall-dynamics-fit.test.ts`: a sanity test proving the raw pre-fix
+shape (realistic oversized desk+intel fixtures, matching `spx-structure-fit.test.ts`'s own fixture
+style) exceeds the transport cap; SPX-branch and non-SPX-branch fit tests confirming the fitted
+result stays under cap and omissions are named, not silent; a non-object-context passthrough test.
+Full `src/lib/largo` + `src/lib/bie` suites: 2135/2135 pass.
+
+**Remaining known-truncating tool from the same sweep, not yet fixed:** `get_etf_flow TRUNCATED
+224052/16000` — not investigated this pass; natural next step for a future cycle.
+
+## Largo `get_platform_snapshot` live-truncated — `fitSpxStructureForModel` fit in isolation, blind to sibling fields — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`src/lib/largo/platform-snapshot-fit.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive. A live CloudWatch sweep of
+`/ecs/blackout-production` (correctly re-dated 10:45-11:40 UTC 2026-10-17, not ET as the earlier
+agent report mis-labeled it — verified against the raw log timestamps) found 10 `TRUNCATED` tool
+results this session's own calls didn't cause, including:
+```
+get_platform_snapshot TRUNCATED 131690/16000
+```
+
+**Root cause.** `fitPlatformSnapshotForModel` (`platform-snapshot-fit.ts`) already fits `raw.spx`
+through `fitSpxStructureForModel` — the same fitter `get_spx_structure` uses — but called it with
+**no budget override**, so it defaulted to the full `LARGO_RESULT_CHAR_BUDGET` (14000 chars) in
+total isolation. `fitSpxStructureForModel`'s own "HARD BOUND" backstop deliberately *maximizes*
+usage up to whatever budget it's given (it only shrinks further once already over budget), so a
+rich live SPX desk legitimately lands `fitted.spx` close to 14000 bytes on its own. `nighthawk` and
+the (already row-capped) `flows` array are then added **on top of** that already-near-full budget,
+so the combined envelope can exceed the 16k transport cap whenever `spx` alone is non-trivial —
+exactly the measured 131690/16000.
+
+This is the same bug *shape* as two other fixes shipped this session: `get_earnings`
+(`unusual_whales`/`estimates` merged with zero budget fitting, #6130) and `get_options_flow`
+(`flow_alerts`/`flow_recent` fit in isolation, already fixed separately on `main` via #6111, merged
+before this session started working this finding — confirmed by timestamp: the 4
+`get_options_flow` truncations in the same sweep all predate #6111's 12:30 UTC merge, so those are
+stale pre-fix evidence, not a currently-live bug). A sub-object fit against its own standalone
+budget, merged with sibling fields with no shared accounting, blows the outer cap regardless of how
+correct the sub-object's own fitter is.
+
+**Evidence the fix targets the right field.** Live-measured `/api/market/spx/desk` (same
+underlying `SpxDeskSummary` shape) on a quiet weekend: whole payload 22057 bytes, every individual
+field (`dark_pool` 119B, `greek_exposure` 0B market-closed, `levels` 665B, `gex_walls` 802B,
+`spx_flows` 7507B, `unified_tape` 4562B, etc.) modest on its own — ruling out "one hidden huge
+field" as the cause and confirming the budget-isolation mechanism (which scales with live RTH
+desk richness, not a fixed leak) is the real explanation.
+
+**Fix.** Reordered `fitPlatformSnapshotForModel` to decide `nighthawk`/`largo`/`flows` first (small,
+or already row-capped), then fit `spx` **last** against whatever budget remains:
+`LARGO_RESULT_CHAR_BUDGET - JSON.stringify(fitted-so-far).length`. The combined envelope can now
+never exceed budget regardless of how rich the live SPX desk is.
+
+**Why the existing test didn't catch this.** `platform-snapshot-fit.test.ts` already had a test for
+"`raw.spx` oversized" (from the earlier #3156-era fix), but its fixture used `flows: []` (empty)
+and 2-byte `nighthawk`/`largo` stubs — so `spx` had the *entire* 16384-byte transport cap to itself
+and the combined total always passed regardless of whether the budget-isolation bug existed. New
+test added with a *realistic* `flows` array (50 rows, sliced to 20) and a realistic `nighthawk`
+digest shape alongside the oversized `spx` fixture — confirmed RED against unmodified source
+(22791/16384 chars) via `git stash`, GREEN after the fix.
+
+**Tests.** `src/lib/largo/platform-snapshot-fit.test.ts` — new test: "a near-budget spx combined
+with realistic flows+nighthawk still stays under the transport cap". Full `src/lib/largo` +
+`src/features/spx` suites: 2242/2242 pass.
+
 ## Largo `get_earnings` tool result live-truncated — `unusual_whales`/`estimates` merged with zero budget fitting — FIXED
 
 > **kind:** `FINDING`
