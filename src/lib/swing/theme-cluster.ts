@@ -73,6 +73,16 @@ export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze(
   XRP: "crypto-xrp",
   XRPZ: "crypto-xrp",
   XXRP: "crypto-xrp",
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-17, live repro: LABD and IOVA both
+  // currently-committed LONG in the same book, zero conflict flag between them). LABD (Direxion
+  // Daily S&P Biotech Bear 3X) tracks the S&P Biotech Select Industry Index — equal-weighted, so
+  // dominated by the same small/mid-cap clinical-stage names sectorFor's "biotech" bucket already
+  // lists, not a different, larger-cap population. Measured, not guessed: 96 real trading days of
+  // daily-return correlation vs sectorFor's own biotech names (NTLA r=-0.615, CRSP r=-0.758, VIR
+  // r=-0.712, avg |r|~0.61) is more than double the correlation vs large-cap diversified
+  // healthcare (UNH/LLY/PFE/JNJ, avg |r|~0.27) — confirming "biotech", not a separate "broad
+  // biotech" theme, is the correct cluster.
+  LABD: "biotech",
 });
 
 /**
@@ -103,8 +113,14 @@ export const ETF_PROXY_THEMES: Readonly<Record<string, string>> = Object.freeze(
  * sibling, same direction as QQQ — no inverse-direction flag needed, exactly like SOXL's relation
  * to SOXS) to `ETF_PROXY_THEMES` above, and SQQQ here, so the fix is a parallel pair just like
  * SOXL/SOXS already is, not a one-sided patch.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-17): same shape again — LABD (3x short S&P
+ * Biotech) was in neither ETF_PROXY_THEMES nor here, so a LONG LABD (bearish biotech bet) held
+ * alongside a LONG biotech name like IOVA (both real, live, currently-committed positions in the
+ * same book at time of fix) got zero flag at all. Added as a parallel fix to ETF_PROXY_THEMES
+ * above, same pattern as SOXS/SQQQ.
  */
-export const INVERSE_LEVERAGE_ETFS: ReadonlySet<string> = new Set(["SOXS", "SQQQ"]);
+export const INVERSE_LEVERAGE_ETFS: ReadonlySet<string> = new Set(["SOXS", "SQQQ", "LABD"]);
 
 /** True when `ticker` is a known inverse/short-leveraged ETF (its nominal LONG/SHORT direction is
  *  the opposite of its real directional bet on the theme it clusters into). */

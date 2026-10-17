@@ -231,6 +231,25 @@ test("SQQQ is a known inverse-leverage ETF clustering with QQQ/semis; its effect
   assert.equal(effectiveDirection("SQQQ", "SHORT"), "LONG");
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-17): LABD (Direxion Daily S&P Biotech Bear 3X)
+// was in neither ETF_PROXY_THEMES nor INVERSE_LEVERAGE_ETFS — a member holding LONG LABD (bearish
+// biotech) alongside a LONG sectorFor-biotech name (e.g. IOVA, both real, live, currently-
+// committed positions in the same book at time of fix) got no book-context flag whatsoever.
+// Measured, not guessed: 96 real trading days of daily-return correlation vs sectorFor's biotech
+// names (NTLA/CRSP/VIR, avg |r|~0.61) is more than double the correlation vs large-cap diversified
+// healthcare (avg |r|~0.27), confirming "biotech" (not a separate "broad biotech" theme) is the
+// correct cluster — same pattern as the SQQQ/semis fix above.
+test("LABD is a known inverse-leverage ETF clustering with sectorFor's biotech names; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(ETF_PROXY_THEMES.LABD, "biotech");
+  assert.equal(resolveTheme("LABD"), "biotech");
+  assert.equal(sameThesis("LABD", "IOVA"), true);
+  assert.equal(sameThesis("LABD", "NTLA"), true);
+  assert.equal(isInverseLeverageEtf("LABD"), true);
+  assert.equal(isInverseLeverageEtf("labd"), true); // case-insensitive
+  assert.equal(effectiveDirection("LABD", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("LABD", "SHORT"), "LONG");
+});
+
 test("TQQQ clusters with QQQ/semis but is NOT inverse — its effective direction equals its nominal one, like SOXL", () => {
   assert.equal(ETF_PROXY_THEMES.TQQQ, "semis");
   assert.equal(resolveTheme("TQQQ"), "semis");
