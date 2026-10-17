@@ -1511,7 +1511,11 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   ) {
     const inval = play.invalidationUnderlyingPx;
     const reclaimed = play.direction === "SHORT" ? spot < inval : spot > inval;
-    const pctFromInval = Math.abs(((spot - inval) / inval) * 100);
+    // BUG FIX (2026-10-17, Ask Largo standing mandate): same wrong-denominator shape as
+    // play-brief-narrative.ts's committedStructuralStopLine (independently written, not a
+    // copy-paste) — divided by the stop level itself instead of spot, disagreeing with every
+    // sibling "% away from a level" figure elsewhere in the brief, which divides by spot.
+    const pctFromInval = Math.abs(((spot - inval) / spot) * 100);
     lines.push(
       reclaimed
         ? `Spot has since reclaimed the stop level (**${fmtPriceLevel(inval)}**) — now **${fmtPriceLevel(spot)}**, ${pctFromInval.toFixed(1)}% back through it; the exit may have been early.`
