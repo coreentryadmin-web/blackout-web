@@ -4586,6 +4586,80 @@ test("composeSwingPlayBrief: Position section shows a BLENDED P&L once a trim ha
   );
 });
 
+test("composeSwingPlayBrief: Exec P&L line carries the same open-runner-only qualifier as the sibling P&L line once a trim has fired (live CAVA repro 2026-10-17)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:CAVA:1875&ticker=CAVA&positionId=1875
+  // — one trim banked at +100%, runner still open. Before this fix, the section rendered
+  // "P&L: **+102.2%** _(open runner only...)_" ... "Blended P&L: **+101.1%**" ... "Banked: 50% @
+  // +100%" ... "Exec P&L: **+76.8%**" with NO qualifier on the last line — reading, after the
+  // whole-position-framing Blended/Banked lines just above it, as the member's true remaining
+  // exit value rather than the runner leg's own fill-based P&L (the identical scope `pnlPct`
+  // already discloses two lines above). Mirror the same qualifier onto Exec P&L.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 16.65,
+      mark: 17.05,
+      pnlPct: 2.4,
+      peak: 129.7,
+      execPnlPct: -3.1, // a real, distinct-from-pnlPct fill-based figure
+      manageAction: "EXIT_RUNNER",
+      exitPolicy: {
+        policy: "ratchet",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 6.66,
+        target_premium: 33.3,
+        time_stop_et: "16:00",
+      },
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /Exec P&L: \*\*-3\.1%\*\* _\(open runner only — trim already banked, see above\)_/,
+    `got: ${position!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: Exec P&L line has no qualifier when no trim has fired (no false disclosure)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 16.65,
+      mark: 17.05,
+      pnlPct: 2.4,
+      peak: 2.4,
+      execPnlPct: 1.8,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Exec P&L: \*\*\+1\.8%\*\*$/m, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Exec P&L.*open runner only/, `got: ${position!.body}`);
+});
+
 // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
 // `play.trough` (adapters.ts's troughDisplay, computed symmetrically alongside peakDisplay on
 // every TerminalPlay row) was fully computed and threaded onto every position but had ZERO

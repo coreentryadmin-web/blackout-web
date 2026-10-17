@@ -627,7 +627,21 @@ function pnlSection(play: TerminalPlay): RichSection {
       lines.push(`Banked: ${parts.join(" · ")}`);
     }
   }
-  if (play.execPnlPct != null) lines.push(`Exec P&L: **${fmtPct(play.execPnlPct)}**`);
+  // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live CAVA repro,
+  // positionId 1875, one trim already banked at +100%). `execPnlPct` is priced on the exact same
+  // open-runner-only basis as `pnlPct` two sections above (`execSlippageCoaching`,
+  // play-brief-narrative-coaching.ts, diffs them "mid vs fill" on the identical scope) — the plain
+  // P&L line already discloses this with the `blended != null` qualifier below, but Exec P&L
+  // rendered with none. By the time a reader reaches Exec P&L, the "Blended P&L"/"Banked" lines
+  // just above it have established a whole-position frame, so an unqualified "Exec P&L: +76.8%"
+  // reads as "what I'd net exiting my entire remaining position" when it is only the runner leg's
+  // own fill-based P&L — the same misread class this file has fixed repeatedly for the plain P&L
+  // line (CRWD/NRG/NN 2026-09-10..14), just never reaching this sibling line. Mirror the same
+  // qualifier, not a new one, so the two lines read consistently.
+  if (play.execPnlPct != null)
+    lines.push(
+      `Exec P&L: **${fmtPct(play.execPnlPct)}**${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}`,
+    );
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
   return { title: "Position", body: lines.join("\n") };
 }
