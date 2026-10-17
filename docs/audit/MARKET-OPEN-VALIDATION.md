@@ -1,3 +1,59 @@
+## WATCH LIST — 2026-10-17 three fixes this cycle: vectorDeskSection closed-market note, SPX news-risk negation, Swing last_mark backfill — deploy pending validation
+
+**What was fixed (#6119):** Ask Largo × Night Hawk Swings standing mandate — an independent
+post-merge re-verification of this same session's earlier PR #6115 (which added a closed-market
+`market_session_note` disclosure to 5 swing play-brief sections) found that `vectorDeskSection()`'s
+own `if (vectorStale) return ...` early return fired BEFORE the new `bucket === "closed"` branch,
+so on a real CLOSED-bucket read (where Vector's snapshot is almost always stale by the time a
+position closed) the disclosure never rendered — making #6115's fix dead code for 3 of its 5 named
+sections. Live-reproduced on `SWING:TSLA:57`/`SWING:GOOGL:58`. Fixed by reordering the
+`bucket === "closed"` check ahead of the `vectorStale` early return; OPEN/WATCH buckets unchanged.
+Full write-up: `docs/audit/findings-staging/2026-10-17-swing-vector-desk-closed-note-early-return.md`.
+
+**Specific thing to check once this deploys:** fetch `GET /api/market/swing/play-brief` for a real
+CLOSED position off-hours/weekend and confirm the "Vector desk" section's body now contains the
+market-closed disclosure sentence ("...but the market is CLOSED as of this read...") rather than
+just the generic "Last snapshot ... may lag spot" line — the live repro from this session's own
+investigation.
+
+**What was fixed (#6120):** SPX Slayer's `scoreNewsRisk()` (`spx-signals.ts`) had no negation/
+de-escalation awareness in its bear/bull headline keyword scan — e.g. "Stimulus deal collapses"
+scored bullish off "stimulus"/"deal", "Market crash averted" scored bearish off "crash", and a
+de-escalating "tensions ease ... ceasefire" headline double-counted as net bearish instead of
+bullish. This factor feeds the live SPX 0DTE confluence score directly. Fixed with a bounded
+word-window negation check that suppresses (never flips) a keyword hit when a reversal/resolution
+verb appears nearby, excluding clause-boundary words so a reversal verb in one clause can't cancel a
+genuinely separate keyword hit in another clause of the same headline. Full write-up:
+`docs/audit/findings-staging/2026-10-17-spx-news-risk-negation-awareness.md`.
+
+**Specific thing to check once this deploys:** watch live SPX desk reads (`GET /api/market/spx/desk`)
+for a "News risk" factor during a session with a de-escalation/reversal-shaped headline (a deal
+collapsing, a crash averted, tensions easing) and confirm the factor no longer reads the wrong
+direction — this needs a real qualifying headline to actually observe, so may not show up every day;
+the regression tests are the primary evidence until a live headline of this shape appears.
+
+**What was fixed (#6121):** PR #6109 (this session) added an `exit_mark` latch so a freshly-graded
+Swing position's `last_mark` can never again disagree with its own `exitPnlPct` — but that only
+protects rows graded AFTER it shipped. Every row graded before it (100% of the then-current 19-row
+closed deck) kept a `last_mark` from the last live 15-min RTH latch, unrelated to the real mechanical
+exit fill — `PlayTerminal.tsx` labels this "Live mark" directly beside the correct P&L% badge, so the
+two visibly contradicted each other (live-verified: BE +104.2% implied mark vs +70.61% real P&L,
+INTC −36.4% vs −73.12%, TSLA −26.1% vs −32.76%). Fixed with a ONE-TIME, converge-in-place backfill
+added to `ensureSchema()` (runs automatically on next ECS boot) that corrects `last_mark`/
+`last_mark_at` for already-graded CLOSED/ROLLED rows from their own frozen `entry_premium`/
+`realized_pnl_pct`. Full write-up:
+`docs/audit/findings-staging/2026-10-17-swing-closed-position-last-mark-backfill.md`.
+
+**Specific thing to check once this deploys — this one NEEDS a live post-deploy check, not just a
+code read:** fetch `GET /api/market/swing/record?days=120` and confirm every row in `closedDeck[]`
+now has a `contract.mid` (the "Live mark" field) that agrees with that row's own `exitPnlPct` within
+rounding (`mid ≈ entryPremium * (1 + exitPnlPct/100)`) — this should flip from 100% mismatched to
+100% agreeing across the whole closed deck once the boot-time backfill has actually run. If any row
+still disagrees post-deploy, that is a live regression in the backfill's own WHERE clause, not a
+pre-existing data gap.
+
+---
+
 ## WATCH LIST — 2026-10-16 SPX play cache-timeout mislabeled as "Desk warming" + a second Redis writer halving the published snapshot's intended TTL — fixed, deploy pending validation
 
 **What was fixed:** Ask Largo × Night Hawk standing mandate — live monitoring sweep found
