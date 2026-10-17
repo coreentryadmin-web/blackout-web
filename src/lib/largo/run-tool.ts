@@ -869,16 +869,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         ]);
         const next_report = parseNextEarningsFromBenzinga(sym, calendar.rows, todayEtYmd());
         const calendar_error = (calendar as { error?: string | null }).error ?? null;
-        // MEASURED TRUNCATED live 2026-08-29 — `related` alone (up to 15 full articles, each
-        // carrying up to 2000 chars of body text) can run to ~37KB, more than double the 16k
-        // transport cap, before the structured fields below are even reached. Capped at the
-        // Largo boundary; `related.length` below still reads the FULL fetch for source
-        // detection, since fitting must never change what "no Benzinga news at all" means.
-        const { fitEarningsRelatedNewsForModel } = await import("@/lib/largo/market-data-fits");
-        const fittedRelatedNews = fitEarningsRelatedNewsForModel(related);
-        // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
-        // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
-        return normalizeUwEarnings({
+        // MEASURED TRUNCATED live 2026-08-29 (related_news) and again live 2026-10-17 at the WHOLE
+        // envelope level (83506/16000, 90305/16000 chars) — the dominant contributors turned out to
+        // be `unusual_whales`/`estimates` below, not `related_news`. Every large field is now fit
+        // SEQUENTIALLY against a growing `base` that carries everything already decided, so the
+        // final merged envelope can never exceed budget regardless of which field turns out to be
+        // the big one this time — see market-data-fits.ts for each field's own measurement.
+        const { fitEarningsRelatedNewsForModel, fitEarningsUwHistoryForModel, fitEarningsEstimatesForModel } =
+          await import("@/lib/largo/market-data-fits");
+        const earningsBase = {
           ticker: sym,
           source: calendar.rows.length ? "benzinga_structured" : related.length ? "benzinga_news" : "unusual_whales",
           // The single most-asked fact, and the one the news channel could never answer.
@@ -888,11 +887,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           // Absence of a lookup is not absence of a report date — a non-null error means the
           // calendar could not be READ, not that this company has nothing scheduled.
           calendar_error: calendar_error ?? history.history_error ?? null,
-          // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
-          // channel, NOT its own results. The old name invited exactly the wrong reading.
-          ...fittedRelatedNews,
-          unusual_whales: uw,
-          estimates,
+        };
+        // `related.length` here (not `fittedRelatedNews.related_news.length`) still reads the FULL
+        // fetch for source detection above, since fitting must never change what "no Benzinga news
+        // at all" means.
+        // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
+        // channel, NOT its own results. The old name invited exactly the wrong reading.
+        const fittedRelatedNews = fitEarningsRelatedNewsForModel(related, 5, earningsBase);
+        const baseWithNews = { ...earningsBase, ...fittedRelatedNews };
+        const fittedUw = fitEarningsUwHistoryForModel(baseWithNews, uw);
+        const baseWithUw = { ...baseWithNews, ...fittedUw };
+        const fittedEstimates = fitEarningsEstimatesForModel(baseWithUw, estimates);
+        // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
+        // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
+        return normalizeUwEarnings({
+          ...baseWithUw,
+          ...fittedEstimates,
         });
       });
     }

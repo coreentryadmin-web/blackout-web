@@ -6,6 +6,8 @@ import {
   fitGroupGreekFlowForModel,
   fitGroupGreekFlowRowsForModel,
   fitEarningsRelatedNewsForModel,
+  fitEarningsUwHistoryForModel,
+  fitEarningsEstimatesForModel,
   fitGroupGreekFlowToolResultForModel,
   fitGexLadderForModel,
   fitOptionsFlowForModel,
@@ -190,6 +192,155 @@ test("fitEarningsRelatedNewsForModel: under-cap input passes through untruncated
 test("fitEarningsRelatedNewsForModel: empty/undefined input never throws", () => {
   assert.deepEqual(fitEarningsRelatedNewsForModel([]).related_news, []);
   assert.deepEqual(fitEarningsRelatedNewsForModel(undefined as unknown as Record<string, unknown>[]).related_news, []);
+});
+
+// Realistic per-row shape, MEASURED live 2026-10-17 against the real UW endpoint
+// (GET /api/earnings/<ticker>): NVDA returned 107 rows averaging 660 bytes/row (~70.6KB total),
+// AAPL ~80.9KB, TSLA ~47.5KB — several times the entire 16k transport cap on this ONE field alone.
+const uwEarningsRow = (i: number) => ({
+  source: i === 0 ? "estimation" : "reported",
+  report_time: i % 2 ? "premarket" : "postmarket",
+  expected_move_perc: i === 0 ? null : "0.05330873875951118285",
+  report_date: `2026-${String((i % 12) + 1).padStart(2, "0")}-15`,
+  ending_fiscal_quarter: `2026-${String((i % 12) + 1).padStart(2, "0")}-31`,
+  expected_move: i === 0 ? null : 11.56 + i,
+  street_mean_est: `${(2 + i * 0.01).toFixed(4)}`,
+  post_earnings_move_1d: i === 0 ? null : "-0.0915",
+  actual_eps: i === 0 ? null : `${(2 + i * 0.01).toFixed(2)}`,
+  post_earnings_move_1w: i === 0 ? null : "-0.04864187586700675706",
+  post_earnings_move_2w: i === 0 ? null : "-0.03",
+  post_earnings_move_3d: i === 0 ? null : "-0.02",
+  pre_earnings_move_1d: i === 0 ? null : "0.01",
+  pre_earnings_move_1w: i === 0 ? null : "0.02",
+  pre_earnings_move_2w: i === 0 ? null : "0.03",
+  pre_earnings_move_3d: i === 0 ? null : "0.015",
+  short_straddle_1w: i === 0 ? null : "0.12",
+  short_straddle_1d: i === 0 ? null : "0.05",
+  long_straddle_1w: i === 0 ? null : "0.13",
+  long_straddle_1d: i === 0 ? null : "0.06",
+});
+
+// Realistic single-row shape, MEASURED live 2026-10-17 against the real UW endpoint
+// (GET /api/companies/<ticker>/earnings-estimates): extractRows cannot unwrap UW's
+// `{ ticker, estimates:[...] }` response (the "estimates" key isn't in its recognized-wrapper
+// list), so the whole response comes back as ONE opaque row — measured ~16KB regardless of ticker
+// (NVDA 15.96KB, AAPL 16.07KB, TSLA 16.01KB, META 16.05KB, GOOG 16.12KB).
+const uwEstimatesSingleRow = (approxBytes = 16_000) => ({
+  ticker: "NVDA",
+  estimates: Array.from({ length: Math.ceil(approxBytes / 260) }, (_, i) => ({
+    date: `202${7 + (i % 3)}-0${(i % 9) + 1}-28`,
+    horizon: i % 2 ? "fiscal quarter" : "fiscal year",
+    revenue_estimate_low: 100_000_000_000 + i,
+    revenue_estimate_high: 200_000_000_000 + i,
+    revenue_estimate_average: 150_000_000_000 + i,
+    revenue_estimate_analyst_count: 40 + i,
+    eps_estimate_low: 2 + i * 0.01,
+    eps_estimate_high: 3 + i * 0.01,
+    eps_estimate_average: 2.5 + i * 0.01,
+    eps_estimate_analyst_count: 40 + i,
+    eps_estimate_revision_down_last_week: null,
+    eps_estimate_revision_up_last_week: null,
+  })),
+});
+
+test("get_earnings OLD unconditional merge shape blows the transport cap — the bug this fix closes", () => {
+  // Reproduces run-tool.ts's PRE-FIX get_earnings merge: unusual_whales/estimates spread straight
+  // in with no fitting at all. This is not a call into any function this repo ships today — it is
+  // the literal shape the live bug had (CloudWatch measured TRUNCATED at 83506/16000 and
+  // 90305/16000 chars), kept here so the fix's necessity stays provable after it ships.
+  const base = {
+    ticker: "NVDA",
+    source: "benzinga_structured",
+    next_report: { report_date: "2026-11-18" },
+    print_history: [],
+    print_history_summary: null,
+    calendar_error: null,
+    related_news: [],
+    related_news_shown: 0,
+    related_news_truncated: false,
+    related_news_max_shown: 5,
+  };
+  const oldShape = {
+    ...base,
+    unusual_whales: Array.from({ length: 107 }, (_, i) => uwEarningsRow(i)),
+    estimates: [uwEstimatesSingleRow()],
+  };
+  assert.ok(
+    JSON.stringify(oldShape).length > TRANSPORT_CAP,
+    `sanity: the old unconditional merge (${JSON.stringify(oldShape).length} chars) must exceed the transport cap to prove the bug`
+  );
+});
+
+test("fitEarningsUwHistoryForModel stays under the transport cap at the measured real size (107 rows) AND a larger one, honoring an already-populated base", () => {
+  for (const rowCount of [107, 400]) {
+    const base = {
+      ticker: "NVDA",
+      source: "benzinga_structured",
+      print_history: Array.from({ length: 6 }, (_, i) => ({ x: i })),
+    };
+    const rows = Array.from({ length: rowCount }, (_, i) => uwEarningsRow(i));
+    const fitted = fitEarningsUwHistoryForModel(base, rows);
+    assert.ok(
+      JSON.stringify({ ...base, ...fitted }).length < TRANSPORT_CAP,
+      `${rowCount}-row case must stay under the transport cap`
+    );
+    assert.equal(fitted.unusual_whales_truncated, rowCount > fitted.unusual_whales_shown);
+  }
+});
+
+test("fitEarningsEstimatesForModel drops the whole estimates blob when the base has already consumed the budget", () => {
+  const bigBase = {
+    unusual_whales: Array.from({ length: 8 }, (_, i) => uwEarningsRow(i)),
+    padding: "x".repeat(13_500), // pushes bigBase itself past LARGO_RESULT_CHAR_BUDGET alone
+  };
+  const fitted = fitEarningsEstimatesForModel(bigBase, [uwEstimatesSingleRow()]);
+  assert.equal(fitted.estimates.length, 0);
+  assert.equal(fitted.estimates_truncated, true);
+});
+
+test("fitEarningsEstimatesForModel keeps the estimates blob when there is room", () => {
+  const smallBase = { ticker: "NVDA" };
+  const fitted = fitEarningsEstimatesForModel(smallBase, [uwEstimatesSingleRow(1000)]);
+  assert.equal(fitted.estimates.length, 1);
+  assert.equal(fitted.estimates_truncated, false);
+});
+
+test("get_earnings full sequential fit (base -> related_news -> unusual_whales -> estimates) stays under the transport cap at full measured real-world size", () => {
+  const earningsBase = {
+    ticker: "NVDA",
+    source: "benzinga_structured",
+    next_report: { report_date: "2026-11-18", confirmed: true },
+    print_history: Array.from({ length: 6 }, (_, i) => ({
+      report_date: `2026-0${i + 1}-15`,
+      eps: 1.2,
+      revenue: 1_000_000,
+      beat: true,
+      session_change_pct: 2.3,
+      next_day_change_pct: 1.1,
+      reaction_basis: "report_session",
+      reaction_pct: 2.3,
+    })),
+    print_history_summary: "6/6 EPS beats over last 6 prints · 83% rev beats of 6 · avg reaction +2.3%",
+    calendar_error: null,
+  };
+  const relatedRaw = Array.from({ length: 15 }, (_, i) => ({
+    title: `Analyst note ${i}`,
+    teaser: "x".repeat(300),
+    published: "2026-10-01",
+    url: "https://example.com",
+    body: "x".repeat(2000),
+  }));
+  const fittedRelatedNews = fitEarningsRelatedNewsForModel(relatedRaw, 5, earningsBase);
+  const baseWithNews = { ...earningsBase, ...fittedRelatedNews };
+  const uwRows = Array.from({ length: 107 }, (_, i) => uwEarningsRow(i));
+  const fittedUw = fitEarningsUwHistoryForModel(baseWithNews, uwRows);
+  const baseWithUw = { ...baseWithNews, ...fittedUw };
+  const fittedEstimates = fitEarningsEstimatesForModel(baseWithUw, [uwEstimatesSingleRow()]);
+  const final = { ...baseWithUw, ...fittedEstimates };
+  assert.ok(
+    JSON.stringify(final).length < TRANSPORT_CAP,
+    `final get_earnings envelope (${JSON.stringify(final).length} chars) must stay under the transport cap`
+  );
 });
 
 // Real live shape (SPX 0DTE, 2026-08-31, captured via vector-rth-quick-check.mjs / a direct
