@@ -806,12 +806,21 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return toolEconomicCalendar(Number(input.days_ahead ?? 14));
     case "get_etf_flow": {
       const etf = String(input.etf ?? "QQQ").toUpperCase();
-      const [quote, inOut, tide] = await Promise.all([
+      const [quote, inOutRaw, tideRaw] = await Promise.all([
         fetchStockSnapshot(etf),
         fetchUwEtfInOutflow(etf),
         fetchUwEtfTide(etf),
       ]);
-      return { etf, quote, in_outflow: inOut, etf_tide: tide };
+      // MEASURED TRUNCATED live 2026-10-17 (224052/16000 chars) — in_outflow (~721 daily rows,
+      // years of history) and etf_tide (~390 intraday ticks) are both long UW time series with no
+      // row limit. See fitEtfSeriesForModel (market-data-fits.ts) for why the two sort in opposite
+      // directions and are each reduced to a recent window, threaded through a growing base.
+      const { fitEtfSeriesForModel } = await import("@/lib/largo/market-data-fits");
+      const base = { etf, quote };
+      const fittedInOut = fitEtfSeriesForModel(inOutRaw, base, { maxShown: 30, newestFirst: true });
+      const baseWithInOut = { ...base, in_outflow: fittedInOut };
+      const fittedTide = fitEtfSeriesForModel(tideRaw, baseWithInOut, { maxShown: 30, newestFirst: false });
+      return { ...baseWithInOut, etf_tide: fittedTide };
     }
 
     case "get_company_profile": {
