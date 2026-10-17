@@ -1,3 +1,75 @@
+## ⚠️ ACTION NEEDED — 2026-10-19 Night Hawk Legacy edition is LIVE recap_only with 20 wasted candidates — awaiting operator/admin go-ahead to remediate (2026-10-17)
+
+**This is a live, time-sensitive P1 that needs a human (or a future session with explicit
+authorization) to trigger an admin action — not a code bug, so it does NOT go through the normal
+branch/PR/CI pipeline, and this session deliberately did not execute the remediation itself.**
+
+**What's broken, live, right now:** `GET /api/market/nighthawk/edition` (no date param — what
+members are served today) returns `edition_for:"2026-10-19"` (next Monday), `recap_only:true`,
+`plays:[]`, `recap_only_reason:"No scored dossiers after staging (20 candidate(s))."`,
+`funnel:{candidates:20,ranked:0,dossiers:0,synthesized:0,critic_passed:0,published:0}`. 20 real
+candidates (CRGY, AI, SNDQ, TRV, OVV, RPGL, KMI, FANG, PR, EOG, TRGP, EQT, USO, LNG, ALL, NOC, COP,
+RTX, APA, EXE) were found by discovery and are sitting in the frozen `rank_governor` pool, but every
+one of them failed to produce a scored dossier, so the edition published empty. **Unless remediated,
+Night Hawk Legacy members see an empty recap-only board for the entire Monday 2026-10-19 session.**
+
+**Root cause (confirmed via CloudWatch, not a code regression):** the edition build ran 2026-10-16
+21:30-21:42 UTC (Friday evening, normal schedule). All 20 tickers' dossier fetches hit the
+45000ms wall timeout in `nighthawk/dossier.ts`, each paired with a UW flow-alerts rate-limiter
+queue-budget-exceeded log line — concurrent queue-wait samples in that window ran 12-17 seconds,
+well past the dossier call's own 8000ms local timeout. The UW HTTP calls that DID get admitted in
+the same window were fast and healthy (242×200, 3×422, max 1708ms) — UW itself was up; the shared
+`UW_GLOBAL_MAX_RPS` queue was simply deep for a ~7.6-minute window (concurrent `platform-warm`/
+`meridian-warm`/`zerodte-warm` crons were also drawing on it at the same time). The PRIOR night's
+build (2026-10-15→2026-10-16) hit the identical 8000ms-timeout message but mostly recovered via a
+warm cache (only 4/21 tickers failed, 17 scored cleanly) — confirming this is a transient
+capacity/queue-depth spike, not a regression in identical code. **The congestion window has long
+passed (this was detected ~17 hours after the fact)** — a fresh rebuild attempt now would very
+likely succeed cleanly, same as every other night.
+
+**The exact, safe remediation — already-existing, purpose-built admin tooling, not a new script:**
+```
+POST https://blackouttrades.com/api/admin/nighthawk/run?asOfEt=2026-10-16&persist=1
+(admin-authenticated; maxDuration 800s / ~13min)
+```
+This calls the SAME `buildEveningEdition()` the nightly cron calls, with `force:true` — it fully
+resets the 2026-10-19 job (archives+clears staging, nulls candidates/scored/synthesis checkpoints)
+and reruns the WHOLE pipeline from scratch: fresh candidate discovery, fresh dossiers, fresh
+scoring/synthesis/critic/grounding, then publishes. It is the exact mechanism an admin would use for
+any "today's board run empty, rebuild it" recovery — nothing new was written for this. (A narrower
+route, `POST /api/admin/nighthawk/republish-backfill`, was considered first but ruled out: its own
+header comment says it "never re-scores/re-discovers" — it only appends lower-rigor BACKFILL-tagged
+contract picks from the already-failed candidate pool, not a real re-run of the dossier/scoring
+pipeline that actually failed. `/admin/nighthawk/run` is the correct tool because it re-runs the
+stage that broke, not a workaround around it.)
+
+**Why this session did not just call it:** this is a direct, immediate write to a live production
+system (re-publishing a real, currently-served member board) outside the normal PR/CI/review
+pipeline that every other autonomous fix this session went through — categorically different from
+a code change that only takes effect on a future deploy. The standing issue-handling policy's
+blanket autonomous authorization is written in terms of that pipeline (branch → fix → test → PR →
+merge); it does not, on a careful read, extend to ad hoc admin-API writes against live production
+state. This reads as exactly the "hard-to-reverse / affects shared systems" category that calls for
+a human to say go — so it's being surfaced here, prominently, rather than executed or silently
+dropped. **If you're reading this before Monday 2026-10-19 and want it fixed: run the POST above
+(or ask a session to run it) — it's safe, idempotent (a no-op if the edition already has enough
+plays), and scoped to this one edition only.**
+
+**Secondary, lower-priority findings from the same investigation (P2/P3, no action taken):**
+- The admin recovery route exists (`republish-backfill`) but nothing auto-retries a `recap_only`
+  publish — the weekday-only cron fired 4 more times that evening and each just confirmed the
+  already-published empty row without re-attempting the dossier stage (the next *natural* rebuild
+  builds Tuesday's edition, not a fix for Monday's). Worth considering a future enhancement: detect
+  `recap_only && funnel.candidates>0` and auto-trigger one retry a few hours later, when the UW
+  queue has likely cleared — not built here, flagging for a future cycle.
+- `scripts/audit/legacy-e2e-healthcheck.mjs`'s Stage A (EDITION) folds this exact anomaly into the
+  same GREEN bucket as a genuinely quiet market (`no_plays` reads as honest either way) — it has no
+  visibility into `funnel.candidates`, so it cannot distinguish "20 candidates got starved" from
+  "0 candidates found, market was quiet." A future enhancement should flag `recap_only &&
+  funnel.candidates>0` as AMBER/RED specifically.
+
+---
+
 ## WATCH LIST — 2026-10-17 three fixes this cycle: vectorDeskSection closed-market note, SPX news-risk negation, Swing last_mark backfill — deploy pending validation
 
 **What was fixed (#6119):** Ask Largo × Night Hawk Swings standing mandate — an independent
