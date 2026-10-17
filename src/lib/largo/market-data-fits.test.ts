@@ -8,6 +8,7 @@ import {
   fitEarningsRelatedNewsForModel,
   fitGroupGreekFlowToolResultForModel,
   fitGexLadderForModel,
+  fitOptionsFlowForModel,
 } from "./market-data-fits";
 
 const TRANSPORT_CAP = 16_384;
@@ -281,4 +282,100 @@ test("fitGexLadderForModel: under-cap input passes through untruncated", () => {
   assert.equal(fitted.rows_shown, 5);
   assert.equal(fitted.rows_truncated, false);
   assert.equal(fitted.ladder.rows.length, 5);
+});
+
+// Raw UW flow-alert/flow-recent row shape (unusual-whales.ts's parseUwFlowAlert input) —
+// MEASURED TRUNCATED live 2026-10-17: get_options_flow served 33210/16000 chars for a single
+// ticker's flow_alerts (up to 50 rows) + flow_recent (up to 100 rows) combined.
+const uwFlowRow = (i: number, blobChars = 300) => ({
+  ticker: "T",
+  strike: 100 + i,
+  strike_price: 100 + i,
+  option_type: i % 2 ? "call" : "put",
+  expiry: "2026-11-20",
+  premium: i * 1500,
+  total_premium: i * 1500,
+  price: 1.5 + i * 0.01,
+  size: 10 + i,
+  volume: 100 + i * 10,
+  open_interest: 500 + i,
+  alerted_at: `2026-10-17T${String(9 + (i % 7)).padStart(2, "0")}:00:00Z`,
+  alert_rule: i % 3 === 0 ? "RepeatedHits" : "VolumeOI",
+  ask_pct: 0.6,
+  trade_count: 1 + (i % 4),
+  underlying_price: 450.12,
+  blob: "x".repeat(blobChars), // pads toward a realistic raw-row size
+});
+
+const optionsFlowBase = (flowAlerts: Record<string, unknown>[], flowRecent: Record<string, unknown>[]) => ({
+  ticker: "TSLA",
+  source: "unusual_whales",
+  note: "Unusual Whales exclusive — not available on free tiers.",
+  window_hours: 48,
+  helix_session_alerts: 12,
+  intraday_0dte: { call_premium: 1_200_000, put_premium: 800_000, net: 400_000 },
+  alert_premium: { calls: 1_200_000, puts: 800_000, net: 400_000 },
+  bias: "bullish" as const,
+  strike_stacks: Array.from({ length: 24 }, (_, i) => ({ strike: 100 + i, kind: "accumulation" })),
+  flow_alerts: flowAlerts,
+  flow_recent: flowRecent,
+});
+
+test("fitOptionsFlowForModel stays under the transport cap at measured size (50+100 rows) AND at a much larger per-row size", () => {
+  for (const blobChars of [300, 1500]) {
+    const flowAlerts = Array.from({ length: 50 }, (_, i) => uwFlowRow(i, blobChars));
+    const flowRecent = Array.from({ length: 100 }, (_, i) => uwFlowRow(i, blobChars));
+    const raw = optionsFlowBase(flowAlerts, flowRecent);
+    const rawChars = JSON.stringify(raw).length;
+    assert.ok(rawChars > TRANSPORT_CAP, `sanity: fixture (${rawChars} chars) must exceed the transport cap`);
+
+    const fitted = fitOptionsFlowForModel(raw);
+    const fittedChars = JSON.stringify(fitted).length;
+    assert.ok(
+      fittedChars < TRANSPORT_CAP,
+      `blobChars=${blobChars}: fitted payload ${fittedChars} must be under ${TRANSPORT_CAP}`
+    );
+    // At least one of the two arrays must be reported truncated — a payload this big cannot
+    // honestly fit both 50 and 100 full rows under the cap.
+    assert.ok(
+      fitted.flow_alerts_truncated || fitted.flow_recent_truncated,
+      `blobChars=${blobChars}: at least one row field must be truncated`
+    );
+    // The aggregates that ARE this tool's actual answer must never be dropped, regardless of
+    // how the row budget shakes out.
+    assert.deepEqual(fitted.alert_premium, raw.alert_premium);
+    assert.equal(fitted.bias, raw.bias);
+    assert.deepEqual(fitted.strike_stacks, raw.strike_stacks);
+  }
+});
+
+test("fitOptionsFlowForModel: under-cap input (few rows) passes through untruncated", () => {
+  const flowAlerts = Array.from({ length: 3 }, (_, i) => uwFlowRow(i));
+  const flowRecent = Array.from({ length: 3 }, (_, i) => uwFlowRow(i));
+  const raw = optionsFlowBase(flowAlerts, flowRecent);
+  const fitted = fitOptionsFlowForModel(raw);
+  assert.equal(fitted.flow_alerts_shown, 3);
+  assert.equal(fitted.flow_alerts_truncated, false);
+  assert.equal(fitted.flow_recent_shown, 3);
+  assert.equal(fitted.flow_recent_truncated, false);
+});
+
+test("fitOptionsFlowForModel: empty flow arrays never throw and report nothing shown", () => {
+  const raw = optionsFlowBase([], []);
+  const fitted = fitOptionsFlowForModel(raw);
+  assert.equal(fitted.flow_alerts, undefined);
+  assert.equal(fitted.flow_alerts_shown, 0);
+  assert.equal(fitted.flow_alerts_truncated, false);
+  assert.equal(fitted.flow_recent, undefined);
+  assert.equal(fitted.flow_recent_shown, 0);
+  assert.equal(fitted.flow_recent_truncated, false);
+});
+
+test("fitOptionsFlowForModel: honestly reports each field's own total even when truncated", () => {
+  const flowAlerts = Array.from({ length: 50 }, (_, i) => uwFlowRow(i, 1500));
+  const flowRecent = Array.from({ length: 100 }, (_, i) => uwFlowRow(i, 1500));
+  const raw = optionsFlowBase(flowAlerts, flowRecent);
+  const fitted = fitOptionsFlowForModel(raw);
+  assert.equal(fitted.flow_alerts_total, 50);
+  assert.equal(fitted.flow_recent_total, 100);
 });

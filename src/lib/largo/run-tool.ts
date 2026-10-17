@@ -619,7 +619,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       }
       const strike_stacks = computeFlowStrikeStacks(mergedFlow, { limit: 24 });
 
-      return {
+      // MEASURED TRUNCATED live 2026-10-17 (418ms, 33210/16000 chars survived) — see
+      // fitOptionsFlowForModel's comment (market-data-fits.ts) for the full root cause. Both
+      // flow_alerts and flow_recent are raw UW pages with no budget check of their own.
+      const { fitOptionsFlowForModel } = await import("@/lib/largo/market-data-fits");
+      return fitOptionsFlowForModel({
         ticker: sym,
         source: helix.length ? "unusual_whales + helix" : "unusual_whales",
         note: UW_EXCLUSIVE_NOTE,
@@ -631,7 +635,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         alert_premium: { calls: callPrem, puts: putPrem, net: callPrem - putPrem },
         bias: callPrem > putPrem ? "bullish" : putPrem > callPrem ? "bearish" : "neutral",
         strike_stacks,
-      };
+      });
     }
     case "get_net_prem_ticks":
       return toolNetPremTicks(ticker);
