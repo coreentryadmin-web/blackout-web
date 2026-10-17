@@ -152,7 +152,13 @@ const SECTORS: Record<string, string[]> = {
   // (LLY/UNH/PFE/JNJ/ABBV/TMO/AMGN), a different risk profile from this small/mid-cap clinical-
   // catalyst cluster; reclassifying MRNA (also in `healthcare` today, arguably closer to this
   // bucket's risk profile) is a separate question out of scope for this fix.
-  biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY"],
+  // Added 2026-10-17 (Ask Largo standing mandate, live finding while researching the sibling LABD
+  // theme-cluster fix): ABVX (Abivax SA) was live, currently-committed LONG in the same book this
+  // bucket was built from, but wasn't in it. Verified via Polygon reference (not guessed): a
+  // France-based clinical-stage biotech in Phase 3 trials for obefazimod (ulcerative colitis) —
+  // a single-segment company whose entire value hinges on one trial readout, the exact same binary
+  // clinical/regulatory catalyst risk driver as every other name in this bucket.
+  biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY", "ABVX"],
 };
 
 // Inverted once at module load: TICKER → sector.

@@ -282,3 +282,15 @@ test("clinical/commercial-stage biotech names cluster together, not each in its 
   assert.equal(sameThesis("NTLA", "GRAL"), false);
   assert.equal(sameThesis("NTLA", "ABSI"), false);
 });
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-17, live finding while researching the sibling
+// LABD fix): ABVX (Abivax SA) was live, currently-committed LONG in the same book this bucket's
+// original 2026-10-10 fix was built from, but wasn't included — a France-based clinical-stage
+// biotech in Phase 3 trials for one drug candidate (obefazimod, ulcerative colitis), the exact same
+// binary clinical/regulatory catalyst risk driver as every other name in this bucket (verified via
+// Polygon reference, not guessed from the symbol).
+test("ABVX (clinical-stage biotech, Phase 3 single-asset bet) joins the same biotech cluster as the 2026-10-10 cohort", () => {
+  assert.equal(resolveTheme("ABVX"), "biotech");
+  assert.equal(sameThesis("ABVX", "NTLA"), true);
+  assert.equal(sameThesis("ABVX", "IOVA"), true);
+});
