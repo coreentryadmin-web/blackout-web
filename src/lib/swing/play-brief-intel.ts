@@ -764,20 +764,30 @@ export function chartTechnicalsSection(
   const lines: string[] = [];
   // FIX (Ask Largo standing mandate, 2026-10-13, live repro ASTS:53 CLOSED brief): this used to
   // render "Last snapshot ... chart read may lag spot" + "Vector desk grade: X (from prior
-  // snapshot)" — but `vectorDeskSection` (below) independently renders the exact same "Last
-  // snapshot ... Vector desk read may lag spot" + "Vector desk grade: X (from prior snapshot)"
-  // pair under its own title for the identical stale condition. The two sections grew this
-  // near-identical "honest degrade" fallback on different dates with neither referencing the
-  // other, so any brief where both render standalone (every CLOSED brief; any OPEN/WATCH brief
-  // not desk-detail-folded into "Trade manager read") showed the same fact twice under two
-  // section titles — live-confirmed on ASTS:53 (CLOSED, Vector ~1426s stale): both "Chart
-  // technicals" and "Vector desk" read "Vector desk grade: C (from prior snapshot)". `grade` is
-  // the play engine's own field, not "chart technicals" data — its one canonical home is
-  // vectorDeskSection. When stale there is no fresh EMA/VWAP/RSI/MACD/structure to show either,
-  // so this section has nothing left to add beyond what vectorDeskSection (the grade) and
-  // dataFreshnessSection (the staleness itself) already say — omit it entirely, the same
-  // no-real-content path this function already takes elsewhere.
-  if (vectorStale) return null;
+  // snapshot)" for OPEN/WATCH briefs — but `vectorDeskSection` (below) independently renders the
+  // exact same "Last snapshot ... Vector desk read may lag spot" + "Vector desk grade: X (from
+  // prior snapshot)" pair under its own title for the identical stale condition, so an OPEN/WATCH
+  // brief showed the same fact twice under two section titles. Omitting entirely was the fix for
+  // that specific duplicate phrasing.
+  //
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GOOGL:58 CLOSED brief):
+  // the omission above was unconditional, so it also fired for CLOSED briefs — but CLOSED is a
+  // different case: `vectorDeskSection` got its own fix the same day (see its comment) to render
+  // a distinct, non-stale-labeled line for CLOSED ("Current Vector read: grade X · conviction Y
+  // (since this play closed)") instead of the "(from prior snapshot)" phrasing this comment was
+  // originally about, so the specific duplicate text no longer exists for CLOSED. Meanwhile this
+  // section's own CLOSED-bucket disclosure code a few lines below (`closedDisclosure` +
+  // `closedMarketSessionNote`) was built but had been unreachable ever since this unconditional
+  // return — live-confirmed: GOOGL:58 CLOSED rendered a full 13-section "Chart technicals" block
+  // once, then vanished to 12 sections on three immediate re-fetches once Vector snapshot went
+  // stale, with the disappearance undisclosed anywhere in `unavailableSources`/`confidence`
+  // (Largo C3 violation — a real EMA/VWAP/RSI/structure read silently read as "no data" rather
+  // than an honest "last known, from prior snapshot" close framing). Vector is "almost always
+  // stale by the time the position closed" (vectorDeskSection's own fix comment), so CLOSED was
+  // close to the *default* case this early return was eating, not a rare edge. Bucket-gating the
+  // return (same shape as vectorDeskSection's reorder) restores the technicals for CLOSED while
+  // leaving OPEN/WATCH's omission — the actual fix this comment above describes — untouched.
+  if (vectorStale && bucket !== "closed") return null;
   if (vec.spot != null) lines.push(`Spot: **${fmtPriceLevel(vec.spot)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
   if (t?.vwap != null) {
@@ -2237,7 +2247,15 @@ export function wallDynamicsSection(
   ctx?: SwingPlayBriefContext | null,
 ): RichSection | null {
   const readMs = ctx?.readMs ?? Date.now();
-  if (vectorSnapshotStale(vec, readMs, sessionDate)) return null;
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GOOGL:58 CLOSED brief):
+  // this used to return null unconditionally on a stale Vector snapshot, so this section vanished
+  // entirely on CLOSED briefs — the exact same dead-code-on-CLOSED shape `vectorDeskSection` was
+  // fixed for the same day (see its comment): Vector is almost always stale by the time a
+  // position closes, so CLOSED was the default case being eaten here, not a rare edge, and the
+  // closed-bucket disclosure code a few lines below (`closedMarketSessionNote`) was unreachable.
+  // Bucket-gating the return restores wall-event history for CLOSED while leaving OPEN/WATCH's
+  // stale-omission behavior untouched.
+  if (vectorSnapshotStale(vec, readMs, sessionDate) && bucket !== "closed") return null;
   const events = vec?.wallEvents ?? [];
   if (!events.length) return null;
   const lines = events

@@ -2421,6 +2421,40 @@ test("chartTechnicalsSection: CLOSED bucket also surfaces Vector's market_sessio
   assert.match(closedSection!.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-17, live repro SWING:GOOGL:58 CLOSED brief):
+// the unconditional `if (vectorStale) return null` made this section vanish entirely on every
+// CLOSED brief once Vector's snapshot went stale — the common case, not a rare edge, since Vector
+// is almost always stale by the time a position closes. Live-confirmed: GOOGL:58 rendered a full
+// "Chart technicals" block once, then lost it on three immediate re-fetches once Vector went
+// stale, undisclosed in unavailableSources/confidence. Bucket-gating the stale return (mirroring
+// vectorDeskSection's own 2026-10-17 fix) restores this for CLOSED while leaving OPEN/WATCH's
+// documented 2026-10-13 omission untouched (see the stale-returns-null tests below, which still
+// use the default/open bucket and still pass).
+test("chartTechnicalsSection: CLOSED bucket renders technicals even when Vector snapshot is stale (Largo C3, 2026-10-17 fix, live repro SWING:GOOGL:58)", () => {
+  const vec = fixtureVec({
+    spot: 95,
+    dataAgeMs: 200_000,
+    play: { grade: "A" },
+    technicals: {
+      vwap: 94.7,
+      emaStack: "up",
+      rsi: 67,
+      macd: "bull",
+      goldenPocket: null,
+      structure: { type: "CHOCH", direction: "up", level: 94 },
+    },
+  });
+  const closedSection = chartTechnicalsSection(vec, null, "closed");
+  assert.ok(closedSection, "a CLOSED brief must still show the last-known chart read, not vanish silently");
+  assert.match(closedSection!.body, /Current chart read — not the technicals this trade closed under/);
+  assert.match(closedSection!.body, /EMA 9\/21\/50 stack: \*\*up\*\*/);
+  assert.match(closedSection!.body, /RSI: \*\*67\*\*/);
+
+  // Open/watch buckets are unaffected — same stale snapshot, same documented 2026-10-13 omission.
+  assert.equal(chartTechnicalsSection(vec, null, "open"), null);
+  assert.equal(chartTechnicalsSection(vec), null, "default bucket (open) behavior unchanged");
+});
+
 // FINDING (Ask Largo standing mandate, 2026-09-12): same defect class — wallDynamicsSection
 // rendered TODAY's building/fading wall events for a CLOSED play with no framing at all.
 test("wallDynamicsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
@@ -2451,6 +2485,25 @@ test("wallDynamicsSection: CLOSED bucket also surfaces Vector's market_session_n
   const closedSection = wallDynamicsSection(vec, null, "closed");
   assert.ok(closedSection);
   assert.match(closedSection!.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-17, live repro SWING:GOOGL:58 CLOSED brief): same
+// defect class as chartTechnicalsSection above — an unconditional stale-return made wall-event
+// history vanish on every CLOSED brief once Vector's snapshot aged out (the common case for a
+// closed position), with the closed-bucket disclosure code below the return left unreachable.
+test("wallDynamicsSection: CLOSED bucket renders wall events even when Vector snapshot is stale (Largo C3, 2026-10-17 fix, live repro SWING:GOOGL:58)", () => {
+  const vec = fixtureVec({
+    dataAgeMs: 200_000,
+    wallEvents: [{ kind: "call_wall_building", strike: 105, message: "Call wall building at 105" }],
+  });
+  const closedSection = wallDynamicsSection(vec, null, "closed");
+  assert.ok(closedSection, "a CLOSED brief must still show the last-known wall activity, not vanish silently");
+  assert.match(closedSection!.body, /Current wall activity — not what this trade traded under/);
+  assert.match(closedSection!.body, /Call wall building at 105/);
+
+  // Open/watch buckets are unaffected — same stale snapshot, same pre-existing omission.
+  assert.equal(wallDynamicsSection(vec, null, "open"), null);
+  assert.equal(wallDynamicsSection(vec), null, "default bucket (open) behavior unchanged");
 });
 
 test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (Largo C2)", () => {
