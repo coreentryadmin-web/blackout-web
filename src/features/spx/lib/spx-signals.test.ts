@@ -306,6 +306,73 @@ test("matchingHelixSweepFlows: excludes a future-dated flow directly — the sha
   assert.equal(matching[0], fresh);
 });
 
+// FIX (Ask Largo standing mandate, 2026-10-17): scoreNewsRisk's keyword scan had no negation/
+// de-escalation awareness — a headline reporting an event being AVERTED or RESOLVED scored
+// identically to the event actually happening.
+test("News risk factor: a reversal verb right after the bear keyword suppresses the bearish hit", (t) => {
+  // Without negation handling, each headline below double-counts: a bear hit (geopolit/war) AND
+  // a bull hit (ceasefire) land net -2 ("2 high-risk headlines"). With it, the de-escalation verb
+  // right next to each bear keyword suppresses it, leaving 2 clean bull hits -> net +2 bullish.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.news_headlines = [
+    { title: "Geopolitical tensions ease after ceasefire reached", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+    { title: "War fears ease as ceasefire holds", published: "2026-07-04T17:05:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.ok(newsFactor, "the un-negated 'ceasefire' bull hits must still fire");
+  assert.equal(newsFactor!.weight, 3, `expected a net-bullish read once both bear hits are suppressed, got ${newsFactor?.weight}`);
+  assert.doesNotMatch(newsFactor!.detail, /high-risk/i, "de-escalating headlines must not count as bearish");
+});
+
+test("News risk factor: a bullish keyword followed by a collapse verb does not score bullish", (t) => {
+  // Without suppression, 2 such headlines read net +2 bullish ("2 positive headlines") off the
+  // bare "stimulus"/"deal" words alone — the collapse is the opposite of bullish news.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.news_headlines = [
+    { title: "Stimulus deal collapses in Congress", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+    { title: "Relief deal collapses after talks fail", published: "2026-07-04T17:05:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.equal(newsFactor, undefined, "collapsed deals must not score as positive headlines");
+});
+
+test("News risk factor: a reversal verb tied to one clause does not suppress a genuinely bearish keyword in a different clause of the same headline", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  // "dashed" belongs to the rate-cut clause, not the Fed clause — it must cancel the bull hit
+  // ("rate cut") without also cancelling the separate, real bearish "Fed turns hawkish" clause.
+  desk.news_headlines = [
+    { title: "Rate cut hopes dashed as Fed turns hawkish", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.ok(newsFactor, "the un-negated 'fed' bear hit must still fire");
+  // -4 (bearHits=1, bullHits=0) only if "dashed" cancelled the rate-cut hit without ALSO
+  // cancelling the Fed hit; an un-isolated window would double-cancel to -2 instead (or leave both
+  // live at -2 the other way), so the exact magnitude is the discriminating assertion here.
+  assert.equal(newsFactor!.weight, -4, `expected -4 (bear hit alone), got ${newsFactor?.weight}`);
+  assert.match(newsFactor!.detail, /1 high-risk headline/i);
+});
+
+test("News risk factor: an averted-crash headline does not score bearish", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.news_headlines = [
+    { title: "Market crash averted as central banks step in", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.equal(newsFactor, undefined, "an averted crash must not score as a bearish headline");
+});
+
 // BUG FIX (2026-09-22): reclassifyConfluenceScore — spx-play-engine.ts's Night Hawk "morning
 // prior" bonus used to mutate `confluence.score`/`confluence.factors` in place without ever
 // re-deriving `grade`/`direction`/`agreeing`/`conflicts`, so a boundary-crossing bonus (bounded
