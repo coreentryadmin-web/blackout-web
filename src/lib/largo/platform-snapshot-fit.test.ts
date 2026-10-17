@@ -44,6 +44,35 @@ test("fitPlatformSnapshotForModel fits raw.spx through the SPX structure fitter,
   assert.ok(spx.sample_notes, "expected the SPX structure fitter to have trimmed/shed something");
 });
 
+test("fitPlatformSnapshotForModel: a near-budget spx combined with realistic flows+nighthawk still stays under the transport cap", () => {
+  // MEASURED live 2026-10-17: get_platform_snapshot TRUNCATED at 131690/16000 chars with the
+  // DEFAULT include set (spx+flows+nighthawk, no largo) — the test above (added for the earlier
+  // #3156 fix) uses `flows: []` and tiny nighthawk/largo stubs, so it never exercises the real
+  // bug: fitSpxStructureForModel was called with NO budget override, so it fit raw.spx to the
+  // FULL LARGO_RESULT_CHAR_BUDGET (14000 chars) in total isolation, then a REAL flows array and
+  // nighthawk summary got added on top of that already-full budget. This fixture uses a realistic
+  // flows array (not empty) and a realistic nighthawk digest shape (not a 2-byte stub) precisely
+  // so this test cannot pass by luck the way the old one did.
+  const raw = {
+    spx: oversizedSpx(),
+    flows: rows(50, 500),
+    nighthawk: {
+      available: true,
+      edition_for: "2026-10-19",
+      published_at: "2026-10-16T21:42:41.000Z",
+      recap_headline: "No scored dossiers after staging (20 candidate(s)).",
+      play_count: 4,
+      top_tickers: ["AI", "EWY", "MRNA", "SHOP"],
+    },
+    largo: null,
+  };
+  const { fitted } = fitPlatformSnapshotForModel(raw);
+  assert.ok(
+    JSON.stringify(fitted).length < TRANSPORT_CAP,
+    `fitted payload ${JSON.stringify(fitted).length} must be under ${TRANSPORT_CAP} even with realistic sibling fields present`
+  );
+});
+
 test("fitPlatformSnapshotForModel: small raw.spx passes through unchanged (scalars untouched)", () => {
   const raw = { spx: { price: 100, vix: 15 }, flows: [], nighthawk: null, largo: null };
   const { fitted } = fitPlatformSnapshotForModel(raw);
