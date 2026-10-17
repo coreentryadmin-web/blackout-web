@@ -209,11 +209,22 @@ function dealerPostureLine(
     // discard that specific, already-computed level and fall back to a bare "not resolved"
     // message. Gated on gexMatrixStale the same way fragileBit below is: a stale matrix's
     // crossing location is exactly as unreliable as its flip.
+    //
+    // BUG FIX (2026-10-17, Ask Largo standing mandate, live repros RDDT/SOFI): `gex.
+    // distance_to_nearest_flip_pct` is computed in gex-positioning.ts as (spot - flip) / spot —
+    // positive when the level is BELOW spot. Every other level in this same brief (gamma magnet,
+    // call/put wall, confluence) is phrased via this file's own `distPct(spot, level)` — the exact
+    // opposite convention, positive when the level is ABOVE spot. Rendering the raw field directly
+    // here put the sign backwards relative to every sibling "X% away"/"X% from spot" line in the
+    // same document. Live repro: RDDT spot 155.20, flip_nearest 229.60 (47.9% ABOVE spot) rendered
+    // "(-47.9% away)" next to a sibling "Gamma magnet 177.01 (+14.1% from spot)" in the identical
+    // brief. Recomputing via the file's own `distPct` (rather than just negating the raw field)
+    // keeps this call site on the one sign convention the rest of the file already uses.
     const nearestCrossingBit =
       gex?.flip_nearest != null && !gexMatrixStale(gex, readMs)
         ? ` — chain's only crossing sits at **${fmtPriceLevel(gex.flip_nearest)}**${
             gex.distance_to_nearest_flip_pct != null
-              ? ` (${fmtPct(gex.distance_to_nearest_flip_pct)} away)`
+              ? ` (${fmtPct(distPct(spot, gex.flip_nearest))} away)`
               : ""
           }, too far from spot to call a stable regime`
         : "";
@@ -257,11 +268,15 @@ function dealerPostureLine(
   // NEVER-SIT-IDLE precedent (comment 6168890076: implement after a reasonable wait rather than
   // block indefinitely on a design-call reply). Gated on the same gexStale check as the sibling
   // regime reads below -- a stale matrix's crossing count is as unreliable as its flip.
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repros RDDT/SOFI): same sign-inversion
+  // fix as nearestCrossingBit above — `gex.distance_to_nearest_flip_pct` uses the opposite
+  // "spot relative to level" sign convention from this file's own `distPct(spot, level)`, used by
+  // every sibling level in the brief. Recompute via `distPct` rather than negate the raw field.
   const fragileBit =
     !gexStale && gex?.flip_crossings != null && gex.flip_crossings > 1 && gex?.flip_nearest != null
       ? ` · fragile flip — nearer crossing **${fmtPriceLevel(gex.flip_nearest)}**${
           gex.distance_to_nearest_flip_pct != null
-            ? ` (${fmtPct(gex.distance_to_nearest_flip_pct)} away)`
+            ? ` (${fmtPct(distPct(spot, gex.flip_nearest))} away)`
             : ""
         }`
       : "";

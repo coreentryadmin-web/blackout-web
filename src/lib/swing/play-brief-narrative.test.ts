@@ -247,7 +247,11 @@ test("tradeManagerNarrativeSection: fragile flip (multiple crossings) surfaces t
     "open",
   );
   assert.ok(section);
-  assert.match(section!.body, /fragile flip — nearer crossing \*\*101\.50\*\* \(-1\.5% away\)/i);
+  // BUG FIX (2026-10-17): flip_nearest 101.5 sits ABOVE spot 100 (true distance +1.5%, matching
+  // this file's own distPct convention every sibling level uses) — the pre-fix expectation here
+  // (-1.5%) encoded the sign-inverted raw gex-positioning.ts field verbatim; see the fix's comment
+  // on nearestCrossingBit/fragileBit in play-brief-narrative.ts.
+  assert.match(section!.body, /fragile flip — nearer crossing \*\*101\.50\*\* \(\+1\.5% away\)/i);
 });
 
 test("tradeManagerNarrativeSection: a single stable crossing (flip_crossings<=1) never says fragile flip", () => {
@@ -752,9 +756,12 @@ test("tradeManagerNarrativeSection: unresolved posture still surfaces flip_neare
   );
   assert.ok(section);
   assert.match(section!.body, /dealer gamma posture not resolved on this read/i);
+  // BUG FIX (2026-10-17): flip_nearest 388.43 sits ABOVE spot 344.87 (true distance +12.6%,
+  // matching this file's own distPct convention) — the pre-fix expectation here (-12.6%) encoded
+  // the sign-inverted raw gex-positioning.ts field verbatim; see nearestCrossingBit's fix comment.
   assert.match(
     section!.body,
-    /chain's only crossing sits at \*\*388\.43\*\* \(-12\.6% away\), too far from spot to call a stable regime/i,
+    /chain's only crossing sits at \*\*388\.43\*\* \(\+12\.6% away\), too far from spot to call a stable regime/i,
   );
 });
 
