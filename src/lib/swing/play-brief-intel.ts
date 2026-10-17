@@ -2270,6 +2270,31 @@ export function vectorDeskSection(
   const readMs = ctx?.readMs ?? Date.now();
   const vectorStale = vectorSnapshotStale(vec, readMs, sessionDate);
   const lines: string[] = [];
+  // CLOSED plays: `p` is Vector's CURRENT read on the ticker, computed fresh at request time —
+  // it has nothing to do with the specific, already-resolved position under review. Rendering the
+  // full entry-zone/targets/invalidation/"Watch now" directive block (unchanged since before this
+  // fix) for a closed play reads as a live, actionable call to re-enter a trade that already
+  // exited, and badges it bullish/bearish as if it were guidance on the closed position — a
+  // contract violation (identity/direction: whose call is this, and is it live) of the same shape
+  // already fixed for the "Watch levels" section (see watchForSection's closed-bucket handling
+  // above). Closed briefs keep only the informational grade/conviction snapshot, framed as
+  // "since it closed" market context, with no directives and a forced-neutral bias.
+  //
+  // FIX (Ask Largo standing mandate, 2026-10-17, live repro SWING:TSLA:57 / SWING:GOOGL:58 CLOSED
+  // briefs): this branch used to sit AFTER the `vectorStale` early return below, so on a real
+  // CLOSED-bucket read — where Vector's live feed has stopped updating and is therefore almost
+  // always stale by the time the position closed — the generic "Last snapshot ... may lag spot"
+  // branch fired first and this function never reached its own closed-bucket framing or the
+  // #6115 closedMarketSessionNote() disclosure, making that fix dead code in exactly the scenario
+  // it was built for. `bucket === "closed"` is checked first now so the closed framing (and its
+  // market-closed disclosure, which itself falls back to the GEX matrix when Vector is stale) is
+  // reachable regardless of Vector's own staleness.
+  if (bucket === "closed") {
+    lines.push(`Current Vector read: grade **${p.grade}** · conviction **${p.conviction}** (since this play closed)`);
+    const sessionNote = closedMarketSessionNote(vec, ctx?.ecosystem?.gex_positioning, readMs);
+    if (sessionNote) lines.push(sessionNote);
+    return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
+  }
   if (vectorStale) {
     const ageLabel = ageSecondsLabel(vec?.dataAgeMs);
     lines.push(
@@ -2281,21 +2306,6 @@ export function vectorDeskSection(
     // so `lines.length >= 1` always holds by this point regardless of whether `p.grade` is set.
     // Removed rather than left as harmless-looking defensive code, since a guard that can never
     // fire reads as intentional (implying a real path returns null here) when none exists.
-    return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
-  }
-  // CLOSED plays: `p` is Vector's CURRENT read on the ticker, computed fresh at request time —
-  // it has nothing to do with the specific, already-resolved position under review. Rendering the
-  // full entry-zone/targets/invalidation/"Watch now" directive block (unchanged since before this
-  // fix) for a closed play reads as a live, actionable call to re-enter a trade that already
-  // exited, and badges it bullish/bearish as if it were guidance on the closed position — a
-  // contract violation (identity/direction: whose call is this, and is it live) of the same shape
-  // already fixed for the "Watch levels" section (see watchForSection's closed-bucket handling
-  // above). Closed briefs keep only the informational grade/conviction snapshot, framed as
-  // "since it closed" market context, with no directives and a forced-neutral bias.
-  if (bucket === "closed") {
-    lines.push(`Current Vector read: grade **${p.grade}** · conviction **${p.conviction}** (since this play closed)`);
-    const sessionNote = closedMarketSessionNote(vec, ctx?.ecosystem?.gex_positioning, readMs);
-    if (sessionNote) lines.push(sessionNote);
     return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
   }
   lines.push(`**${p.headline}** · grade **${p.grade}** · conviction **${p.conviction}**`);

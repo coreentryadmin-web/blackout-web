@@ -2704,6 +2704,65 @@ test("vectorDeskSection: CLOSED bucket also surfaces Vector's market_session_not
   assert.match(closed!.body, /VECTOR_CLOSED_MARKET_NOTE_MARKER/);
 });
 
+test("vectorDeskSection: CLOSED bucket reaches the closed-market disclosure even when Vector itself is stale (2026-10-17 fix, live repro SWING:TSLA:57/GOOGL:58)", () => {
+  // The realistic production case PR #6115's own test above never exercised: a real CLOSED-bucket
+  // read almost always has a Vector snapshot older than VECTOR_STALE_MS (the position's data is
+  // from whenever it closed; Vector's live feed stops updating once the market shuts). Before this
+  // fix, vectorStale=true made the function return from its generic "Last snapshot ... may lag
+  // spot" branch BEFORE ever reaching the bucket==="closed" branch/closedMarketSessionNote() —
+  // live-confirmed on SWING:TSLA:57 and SWING:GOOGL:58 2026-10-17.
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const vec = fixtureVec({
+    freshness: "live",
+    dataAgeMs: 999_000, // far past VECTOR_STALE_MS (120_000) -- Vector itself is stale
+    market_session_note: null,
+    play: {
+      bias: "long",
+      headline: "POSITION",
+      grade: "C",
+      conviction: 55,
+      thesis: "thesis",
+      entryZone: "zone",
+      targets: ["t1"],
+      invalidation: "inv",
+      starred: ["POSITION"],
+    },
+  } as Partial<VectorFullState>);
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-09-20 10:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    readMs,
+    ecosystem: {
+      gex_positioning: {
+        spot: 100,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        asof: new Date(readMs).toISOString(),
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  };
+  const closed = vectorDeskSection(vec, null, "closed", ctx);
+  assert.ok(closed);
+  assert.match(closed!.body, /since this play closed/i);
+  assert.match(
+    closed!.body,
+    /market is CLOSED/i,
+    "GEX-fallback closed-market disclosure must still reach vectorDeskSection when Vector itself is stale",
+  );
+  assert.doesNotMatch(
+    closed!.body,
+    /may lag spot/i,
+    "closed bucket must take its own framing, not the generic stale-Vector early return",
+  );
+});
+
 test("chartTechnicalsSection: bias is neutral on a genuine split vote (2-2), never fabricated", () => {
   const vec = fixtureVec({
     spot: 105, // above vwap -> bull
