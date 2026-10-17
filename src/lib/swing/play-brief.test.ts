@@ -4795,6 +4795,56 @@ test("composeSwingPlayBrief: Position section does not silently echo entry as Ma
   assert.match(position!.body, /Mark: \*\*unknown\*\*/, `got: ${position!.body}`);
 });
 
+test("composeSwingPlayBrief: Position section does not render a confident '0.0%' Peak/Trough when the position has never received a live tick (live NVDA:62 repro 2026-10-17)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:NVDA:62 (committed 2026-10-16, no
+  // live-marks tick since — same true entry-fallback signature as the IMPP/EBS/QCML test above:
+  // markIsSync:true, pnlPct:null). Peak/Trough watermarks are still seeded at the commit-time
+  // entry premium (FINDINGS 2026-08-06's "seed peak/trough at entry" fix), so `play.peak`/
+  // `play.trough` compute to 0 (entry vs entry = 0% move) — a real, non-null number. Before this
+  // fix, the Position section rendered "Mark: **unknown** ... do not read as flat" immediately
+  // followed, a few lines later, by "Peak: **0.0%**" / "Trough: **0.0%**" — a confident, specific
+  // reading indistinguishable from a genuinely observed flat excursion, contradicting the very
+  // line above it. Board-wide sweep (2026-10-17 Ask Largo deep-dive) found 9/63 committed SWING
+  // positions in this exact state, all committed in the final ~20 minutes before a session close.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 4.5,
+      mark: 4.5, // entry-fallback echo, same as the IMPP/EBS/QCML fixture
+      pnlPct: null,
+      peak: 0, // seeded at entry — a real number, not null, which is exactly why this bug slipped by
+      trough: 0,
+      markIsSync: true,
+      markAsOf: null,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-17T17:30:00.000Z",
+    sessionDate: "2026-10-17",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*unknown\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(
+    position!.body,
+    /Peak: \*\*0\.0%\*\*/,
+    `Peak must not render a confident 0.0% when no live tick has ever landed, got: ${position!.body}`,
+  );
+  assert.doesNotMatch(
+    position!.body,
+    /Trough: \*\*0\.0%\*\*/,
+    `Trough must not render a confident 0.0% when no live tick has ever landed, got: ${position!.body}`,
+  );
+  assert.match(position!.body, /Peak: \*\*—\*\*.*no live tick yet/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*—\*\*.*no live tick yet/, `got: ${position!.body}`);
+});
+
 test("composeSwingPlayBrief: Position section still shows a real Mark once the quote has synced (markIsSync false)", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({

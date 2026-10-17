@@ -510,7 +510,19 @@ function pnlSection(play: TerminalPlay): RichSection {
         ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
         : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
-    `Peak: **${fmtPct(peakForDisplay)}**`,
+    // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live NVDA:62 repro,
+    // board-wide sweep found 9/63 committed positions affected). Before this fix, Peak/Trough
+    // rendered `fmtPct(peakForDisplay)`/`fmtPct(troughForDisplay)` unconditionally whenever
+    // `play.peak`/`play.trough` were non-null — but a position that has NEVER received a single
+    // live-marks tick since commit has its peak/trough watermarks still seeded at the commit-time
+    // entry premium (entry===peak===trough), so this rendered a confident "0.0%" indistinguishable
+    // from a real, observed flat reading, three lines below the SAME section's own honest
+    // "Mark: unknown ... do not read as flat" line. `markGenuinelyUnknown` is already computed
+    // above and already gates the Mark line — gate Peak/Trough the identical way, since the
+    // underlying signal (no live tick has ever landed on this contract) is the same for all three.
+    markGenuinelyUnknown
+      ? `Peak: **—** _(no live tick yet)_`
+      : `Peak: **${fmtPct(peakForDisplay)}**`,
     // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
     // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
     // computed symmetrically alongside `peakDisplay` on every TerminalPlay row, condor-aware) was
@@ -518,9 +530,11 @@ function pnlSection(play: TerminalPlay): RichSection {
     // showed "Peak: +161.3%" with no way to know the same position was down -57.2% before it
     // worked. Conviction-relevant history a trade manager would cite ("this one tested you early,
     // don't flinch on the next drawdown scare") that the data already supports; mirrors Peak's own
-    // unconditional render (fmtPct handles null as "—" — same convention, both null together when
-    // entry/premium data is missing).
-    `Trough: **${fmtPct(troughForDisplay)}**`,
+    // render (fmtPct handles null as "—" — same convention, both null together when entry/premium
+    // data is missing; the 2026-10-17 fix above now also mirrors Peak's `markGenuinelyUnknown` gate).
+    markGenuinelyUnknown
+      ? `Trough: **—** _(no live tick yet)_`
+      : `Trough: **${fmtPct(troughForDisplay)}**`,
   ];
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.greeks` (DeckGreeks: delta/gamma/
   // theta/vega/iv) is a real, live per-contract read for every open swing position — the active-
