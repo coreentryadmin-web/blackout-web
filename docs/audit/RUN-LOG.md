@@ -4,6 +4,42 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-17 (11:07 UTC / Sat 07:07 ET) — [COORDINATOR] Session resumed after ~24h stall; SPX Slayer off-hours `ServerCacheTimeoutError` candidate finding re-verified live — did NOT reproduce
+
+Session had stalled roughly 2026-10-16 ~07:00 UTC → 2026-10-17 ~11:00 UTC; drained the full
+notification backlog (9 `ReadNotifications` batches, ~190 queued entries — every single one a
+duplicate of one of three known recurring triggers: PR-subscription sweep, 5-engine live monitor,
+30-min coordinator cycle; zero new actionable content in any of them). Re-verified repo state before
+doing anything else: `/home/user/blackout-web` intact, `git status` clean, re-fetched and detached
+to `origin/main` at `995fd636` (2026-10-16 06:55 UTC — this is the current tip; nothing had merged
+during the stall because no new agent PRs were open). Node 20 pre-installed at `/opt/node20`,
+`node_modules` populated (544 entries) — no reinstall needed. AWS creds live (`sts:GetCallerIdentity`
+→ `vinay-blackout`).
+
+**PR sweep:** only 4 open PRs fleet-wide, all 4 are Dependabot major-version bumps (#5547 next
+15→16, #5546 @whop/sdk 0→2, #5545 eslint-config-next, #4477 eslint-plugin-tailwindcss) — none
+eligible for auto-merge per standing policy ("Dependabot major-version bumps until CI is fixed").
+No agent-authored `fix/*`/`feat/*`/`cursor/*`/`claude/*` PRs sitting open, so nothing to release,
+merge, or chase this cycle — the fleet lanes were quiet, not stuck.
+
+**Triaged the one carried-over open finding** (SPX Slayer `/api/market/spx/play` serving a degraded
+`ServerCacheTimeoutError` placeholder off-hours, surfaced by a background workflow run `wori4ynyv`
+before the stall, never independently re-verified): today is Saturday — markets fully closed, no
+`spx-evaluate` cron has fired or will fire all day, the exact "nothing pre-warms the cache overnight"
+condition the finding's hypothesis needed. Hit the live route (`scripts/audit/lib/audit-auth-fetch.mjs`,
+cron-bearer auth): **200, fully-formed, non-degraded payload** — `assessed: true`, a real computed
+`score`/`direction`/`factors[]`, `headline: "Session closed"`, `thesis: "Desk offline · CLOSED ·
+resumes 6:30 AM PT"`, `gates.blocks: ["Session closed"]`. Not the claimed shape at all
+(`degraded:true, assessed:false, factors:[]`). Also grepped CloudWatch Logs `/ecs/blackout-production`
+for `ServerCacheTimeoutError` over the trailing 36h: **0 occurrences.** Conclusion: this finding does
+not currently reproduce and has no supporting log evidence over a day and a half that should have
+captured multiple off-hours windows if the mechanism were real — discarded rather than converted to
+a fix PR (no RED state to prove, no root cause to test against). The route's actual behavior here
+looks like a short-circuit on `session_phase: "closed"` returning a coherent desk-offline state
+before ever attempting a full confluence eval, which is the opposite of "nothing pre-warms, cold eval
+exceeds its budget." If this resurfaces, capture the exact live response body at the time, not just
+a description, before filing a fix.
+
 ## 2026-10-16 (06:17 UTC / Fri 02:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Market closed overnight. Resynced to `origin/main` (`9899dd46` → `1ee9bb07`, other-lane swing
