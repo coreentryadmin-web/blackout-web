@@ -1524,10 +1524,25 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
   // real RTH). Mirrors the `vectorConflictAlreadyNoted`-style dedup idiom already used elsewhere
   // in this file rather than inventing a new one.
   if (!dead) {
+    const vectorStale = vectorAgeStale(vec, readMs);
+    const vectorNote = !vectorStale ? vec?.market_session_note : null;
     const closedMarketNote =
-      (!vectorAgeStale(vec, readMs) ? vec?.market_session_note : null) ??
-      (!gexMatrixStale(gex, readMs) ? gexMarketSessionNote(gex, readMs) : null);
-    if (closedMarketNote) warnings.push(closedMarketNote);
+      vectorNote ?? (!gexMatrixStale(gex, readMs) ? gexMarketSessionNote(gex, readMs) : null);
+    if (closedMarketNote) {
+      // FIX (Ask Largo standing mandate, 2026-10-17, live repro NVDA:62 OPEN / CRWV:61 HOLD /
+      // TSM WATCH): when Vector itself is stale, `vectorStale` above pushed "Vector **Ns** stale"
+      // onto this SAME warnings array a few lines up, and this note falls through to the
+      // GEX-sourced fallback — but the fallback's generic "Computed Ns ago, but the market is
+      // CLOSED..." text never says which source it's describing. Joined with " · " into one
+      // sentence, a member reads "Vector 9853s stale ... Computed 0s ago, but the market is
+      // CLOSED" and cannot tell the two age claims apart, as if the brief were contradicting
+      // itself about its own freshness. Attribute explicitly only in the one case that actually
+      // produces this juxtaposition (Vector stale AND the fallback fired) — when `vectorNote`
+      // supplied it directly, there is no separate "Vector ... stale" warning alongside it to
+      // disambiguate from, so no attribution is added there.
+      const attribution = !vectorNote && vectorStale ? " (via the GEX matrix)" : "";
+      warnings.push(attribution ? `${closedMarketNote.replace(/\.+$/, "")}${attribution}` : closedMarketNote);
+    }
   }
 
   if (!warnings.length) return null;
