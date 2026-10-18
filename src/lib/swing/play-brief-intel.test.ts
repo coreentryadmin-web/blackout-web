@@ -2128,6 +2128,119 @@ test("catalystsSection: headlines from a fresh news read carry NO staleness disc
   assert.match(section!.body, /CrowdStrike stock moves higher/);
 });
 
+// ENHANCEMENT (Ask Largo standing mandate, AGGRESSIVE MODE, 2026-10-18, #4076 comment
+// 6243951905, live TSLA repro): earnings imminent + headlines present used to render as two
+// unrelated blocks with a blank line between them — no sentence ever connected an earnings
+// print to the headlines plausibly driving the move into it. Locks in the new bridging sentence
+// when earnings is within the ~2-week window, and locks in its ABSENCE when earnings is too far
+// out or missing, so the enhancement never fires on an unrelated or distant print.
+test("catalystsSection: imminent earnings + headlines get a connecting sentence (live TSLA shape)", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString();
+  const section = catalystsSection({
+    ticker: "TSLA",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: { earnings_date: "2026-10-22", days_until: 4, report_time: "afterhours", is_confirmed: true },
+      fundamentals: null,
+      related: null,
+      news: {
+        count: 4,
+        newest: freshAsOf,
+        headlines: [
+          "Tesla teases new Roadster reveal",
+          "Tesla Roadster: what we know so far",
+          "Analysts weigh in on the Roadster timeline",
+          "Tesla stock ticks up on Roadster buzz",
+        ],
+        as_of: freshAsOf,
+      },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.match(section!.body, /Earnings: \*\*2026-10-22\*\* in \*\*4 days\*\*/);
+  assert.match(
+    section!.body,
+    /That earnings date keeps IV\/positioning sensitive — the headlines below look like the likely driver into it\./,
+  );
+  assert.match(section!.body, /Tesla teases new Roadster reveal/);
+});
+
+test("catalystsSection: NO connecting sentence when earnings is well outside the window", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString();
+  const section = catalystsSection({
+    ticker: "TSLA",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: { earnings_date: "2027-01-20", days_until: 60, report_time: "afterhours", is_confirmed: true },
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: freshAsOf, headlines: ["Tesla teases new Roadster reveal"], as_of: freshAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /keeps IV\/positioning sensitive/);
+  assert.match(section!.body, /Tesla teases new Roadster reveal/);
+});
+
+test("catalystsSection: NO connecting sentence when there is no earnings date at all (regression guard)", () => {
+  const freshAsOf = new Date(Date.now() - 5_000).toISOString();
+  const section = catalystsSection({
+    ticker: "CRWD",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: { count: 1, newest: freshAsOf, headlines: ["CrowdStrike stock moves higher"], as_of: freshAsOf },
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section);
+  assert.doesNotMatch(section!.body, /keeps IV\/positioning sensitive/);
+  assert.match(section!.body, /CrowdStrike stock moves higher/);
+});
+
 // GAP FOUND (2026-09-28, Ask Largo standing mandate): live repro U/WATCH — arsenal.news.headlines
 // carried the SAME headline text twice ("10 Information Technology Stocks Whale Activity In
 // Today's Session" at both index 0 and 2), burning one of only 4 shown slots on a repeat.
