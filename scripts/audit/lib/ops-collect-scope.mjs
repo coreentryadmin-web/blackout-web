@@ -15,6 +15,16 @@ export function watchdogHttpPriority(status) {
   return "P0";
 }
 
+/**
+ * After exhausting health probes, a still-down /api/health is a full origin outage (P0).
+ * Watchdog-only 503 stays P2 so rolling deploy blips do not page; health failure does not.
+ */
+export function originHealthFailurePriority(status, attempts, maxAttempts) {
+  if (status === 200) return null;
+  if (attempts < maxAttempts) return null;
+  return "P0";
+}
+
 /** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
 export function parseOpsCollectPayload(stdout, stderr) {
   const blob = `${stdout}\n${stderr}`;

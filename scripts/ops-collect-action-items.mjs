@@ -24,7 +24,12 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
+import {
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+  shouldPageNighthawkZeroPlays,
+  originHealthFailurePriority,
+} from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -194,7 +199,47 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+async function probeOriginHealth() {
+  const HEALTH_MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= HEALTH_MAX_ATTEMPTS; attempt++) {
+    let status = 0;
+    let detail = "";
+    try {
+      const res = await fetch(`${BASE}/api/health`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      status = res.status;
+      if (status === 200) {
+        const body = await res.json().catch(() => ({}));
+        if (body.ok === true) return;
+        detail = "body.ok !== true";
+      }
+    } catch (e) {
+      detail = e instanceof Error ? e.message : String(e);
+      status = 0;
+    }
+    const pri = originHealthFailurePriority(status, attempt, HEALTH_MAX_ATTEMPTS);
+    if (pri) {
+      add(
+        pri,
+        "origin",
+        "origin:health",
+        "Production origin unhealthy",
+        detail
+          ? `GET /api/health failed after ${HEALTH_MAX_ATTEMPTS} attempts (last HTTP ${status || "network"}: ${detail})`
+          : `GET /api/health failed after ${HEALTH_MAX_ATTEMPTS} attempts (last HTTP ${status})`
+      );
+      return;
+    }
+    if (shouldRetryWatchdogFetch(status)) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+}
+
 async function httpItems() {
+  await probeOriginHealth();
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
 
