@@ -181,6 +181,14 @@ const resp = spawnSync(
 
 if (resp.status !== 0) {
   console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
+  // Issue creation is the durable ops signal — a transient Cursor API failure must not
+  // fail the whole ops-auto-fix workflow (red CI) when the GitHub action item exists.
+  if (issueNumber) {
+    console.warn(
+      `[ops-dispatch] Issue #${issueNumber} was created/updated — exiting 0 despite agent launch failure`
+    );
+    process.exit(0);
+  }
   process.exit(1);
 }
 
