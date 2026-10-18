@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-18T23:20:41.658Z",
+  "updated_at": "2026-10-18T23:26:36.361Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d1a177bc422ac7e1d5eb47a758c8540e209a2d0f",
-    "last_deploy_status": "failure",
-    "last_deploy_at": "2026-10-18T22:48:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39169030903",
-    "last_deploy_sha": "aa83d5d86a3eac8fc10ce15c55fedc2a4a37bc15"
+    "last_main_sha": "4bc6ec072ebaf7b0a410df3b90c581a9bcf22d1f",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-10-18T23:23:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
+    "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-09-28T02:16:17.485Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T02:16:17.814Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T05:49:46.245Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-28T05:49:47.027Z",
       "type": "context_sync",
@@ -1271,9 +1253,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-18T23:26:21.330Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-10-18T23:26:28.802Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-10-18T23:26:36.361Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
     }
   ],
   "open_prs": [
+    {
+      "number": 6260,
+      "title": "fix(swing): closed-deck chain contract mid/delta must come from the worst leg, not the terminal leg",
+      "branch": "fix/swing-closeddeck-contract-price-mismatch",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-18T23:24:03Z"
+    },
     {
       "number": 6259,
       "title": "fix(audit): legacy healthcheck Stage A can't tell quiet market from starved funnel",
@@ -1311,7 +1321,7 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "in_progress/pending",
+      "verify": "completed/success",
       "updated_at": "2026-10-18T23:11:27Z"
     },
     {
