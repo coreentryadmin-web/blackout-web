@@ -1746,6 +1746,28 @@ test("lessonsSection: omits the bare 'Exit: **{reason}**' restatement when Trade
   assert.match(stoppedSection!.body, /Exit: \*\*stopped\*\*/);
 });
 
+test("lessonsSection: never renders the 'Executable vs mid exit' slippage bullet for a CLOSED play — pins the intentional removal of dead code (SWING-SYSTEM-CTO-AUDIT-2026-09-06.md item #52)", () => {
+  // REMOVED (2026-10-18, Ask Largo × Night Hawk Swings mandate): the bullet's gate —
+  // `play.execPnlPct != null && play.exitPnlPct != null && |delta| > 5` — could never clear for a
+  // real CLOSED swing play because terminalPlayFromHorizon (adapters.ts) unconditionally forces
+  // execPnlPct to null whenever status === "CLOSED", and SwingClosedDeckSource never supplies an
+  // alternate value. This pins the intentional omission directly at the fixture level (supplying a
+  // non-null execPnlPct that diverges from exitPnlPct by well over 5, which — were the dead branch
+  // still present — would have fired it) so a future refactor can't silently resurrect it.
+  const execPnlPlay = fixturePlay({
+    status: "CLOSED",
+    peak: 40,
+    exitPnlPct: 36,
+    mfeCapturePct: 90,
+    closedReason: "target",
+    execPnlPct: 20, // diverges from exitPnlPct(36) by 16 — would have fired the old gate (>5)
+  });
+  const execPnlSection = lessonsSection(execPnlPlay, false, false, false, false);
+  assert.ok(execPnlSection);
+  assert.doesNotMatch(execPnlSection!.body, /executable vs mid exit/i);
+  assert.doesNotMatch(execPnlSection!.body, /slippage on the tape/i);
+});
+
 test("buildIntelSections: Lessons omits the bare exit-reason restatement when Trade manager read already stated it via the generic fallback", () => {
   const play = fixturePlay({
     status: "CLOSED",

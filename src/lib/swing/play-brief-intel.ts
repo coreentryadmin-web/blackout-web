@@ -1985,11 +1985,17 @@ export function lessonsSection(
   if (lessonsArchetypeLabel) {
     lines.push(`Archetype **${lessonsArchetypeLabel}** — tag this outcome in your playbook review.`);
   }
-  if (play.execPnlPct != null && play.exitPnlPct != null && Math.abs(play.execPnlPct - play.exitPnlPct) > 5) {
-    lines.push(
-      `Executable vs mid exit: **${fmtPct(play.execPnlPct)}** vs **${fmtPct(play.exitPnlPct)}** — slippage on the tape.`,
-    );
-  }
+  // REMOVED (2026-10-18, Ask Largo × Night Hawk Swings mandate; already catalogued as
+  // SWING-SYSTEM-CTO-AUDIT-2026-09-06.md item #52, never actioned until now): this used to be a
+  // `play.execPnlPct != null && play.exitPnlPct != null && |delta| > 5` gated "Executable vs mid
+  // exit ... slippage on the tape" bullet. Swing has no executable-fill-vs-mid grading concept —
+  // terminalPlayFromHorizon (adapters.ts) unconditionally sets `execPnlPct: null` whenever
+  // `status === "CLOSED"`, and SwingClosedDeckSource (closed-plays.ts) never supplies an alternate
+  // value, so the gate could never clear for any real closed swing position (confirmed live:
+  // execPnlPct is null on all 56 real closedDeck rows). Fabricating a real exec-vs-mid comparison
+  // to make this fire would need a genuine fill-price field swing doesn't track anywhere — out of
+  // scope for a minimal fix, and the Largo product contract's "omission is honest, fabrication is
+  // not" rule argues against inventing one just to satisfy this bullet. Deleted rather than wired.
   if (!lines.length) return null;
   return { title: "Lessons", body: lines.join("\n") };
 }
