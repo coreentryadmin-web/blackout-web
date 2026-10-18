@@ -24,7 +24,12 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
+import {
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+  isProductionOriginHealthy,
+  shouldPageNighthawkZeroPlays,
+} from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -194,7 +199,31 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+/** Public liveness — no auth. Retries before paging sustained origin-down (vs deploy blip). */
+async function originHealthItems() {
+  const ORIGIN_ATTEMPTS = 3;
+  let last = { status: 0, json: null, err: undefined };
+  for (let attempt = 0; attempt < ORIGIN_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    last = await fetchWithTimeout(`${BASE}/api/health`, { Accept: "application/json" }, 20_000);
+    if (isProductionOriginHealthy(last)) return last;
+  }
+  add(
+    "P0",
+    "origin",
+    "origin:health",
+    "Production origin unreachable",
+    `/api/health not ok after ${ORIGIN_ATTEMPTS} attempts (HTTP ${last.status}${last.err ? ` — ${last.err}` : ""})`
+  );
+  return last;
+}
+
 async function httpItems() {
+  const healthProbe = await originHealthItems();
+  const originHealthy = isProductionOriginHealthy(healthProbe);
+
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
 
@@ -213,7 +242,7 @@ async function httpItems() {
     }
     const wj = w.json ?? {};
     if (w.status !== 200) {
-      const pri = watchdogHttpPriority(w.status);
+      const pri = watchdogHttpPriority(w.status, { originHealthy });
       add(pri, "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
     } else {
       for (const key of wj.rth_stale_keys ?? []) {

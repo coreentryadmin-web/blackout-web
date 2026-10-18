@@ -6,6 +6,7 @@ import {
   spxOpsItems,
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
+  isProductionOriginHealthy,
   shouldPageNighthawkZeroPlays,
 } from "./ops-collect-scope.mjs";
 
@@ -21,6 +22,19 @@ describe("watchdogHttpPriority", () => {
 
   it("keeps real app failures at P0", () => {
     assert.equal(watchdogHttpPriority(500), "P0");
+  });
+
+  it("escalates transient 503 to P0 when origin liveness is also down", () => {
+    assert.equal(watchdogHttpPriority(503, { originHealthy: false }), "P0");
+    assert.equal(watchdogHttpPriority(503, { originHealthy: true }), "P2");
+  });
+});
+
+describe("isProductionOriginHealthy", () => {
+  it("requires 200 + ok:true JSON", () => {
+    assert.equal(isProductionOriginHealthy({ status: 200, json: { ok: true } }), true);
+    assert.equal(isProductionOriginHealthy({ status: 503, json: null }), false);
+    assert.equal(isProductionOriginHealthy({ status: 200, json: { ok: false } }), false);
   });
 });
 

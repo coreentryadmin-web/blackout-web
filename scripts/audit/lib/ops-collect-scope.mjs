@@ -9,10 +9,17 @@ export function shouldRetryWatchdogFetch(status) {
  * Priority for a failed cron-staleness-watchdog HTTP probe.
  * Auth gaps (401/403) and transient origin 5xx are audit-env / deploy noise — not prod cron outages.
  */
-export function watchdogHttpPriority(status) {
+export function watchdogHttpPriority(status, { originHealthy = true } = {}) {
   if (isAuthFailureStatus(status)) return "P2";
-  if (isTransientOriginError(status)) return "P2";
+  // Deploy blips: 503 on watchdog alone is P2. Sustained origin-down (health also dead) is P0.
+  if (isTransientOriginError(status)) return originHealthy ? "P2" : "P0";
   return "P0";
+}
+
+/** True when the public liveness route is not returning ok JSON (sustained outage, not a deploy blip). */
+export function isProductionOriginHealthy(healthProbe) {
+  if (!healthProbe) return true;
+  return healthProbe.status === 200 && healthProbe.json?.ok === true;
 }
 
 /** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
