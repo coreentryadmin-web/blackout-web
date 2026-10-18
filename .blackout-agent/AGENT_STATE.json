@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-17T18:46:35.047Z",
+  "updated_at": "2026-10-18T02:37:11.015Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "87a78384e733054b00e8e8701c81d313910bdd57",
+    "last_main_sha": "aac1300d406ec49fee33e1890c6974cb40b77f7d",
     "last_deploy_status": "success",
     "last_deploy_at": "2026-10-13T13:33:27Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/38400896026",
     "last_deploy_sha": "d665a96e1e4390d6269ab6c7dc103600981bf277"
   },
   "events": [
-    {
-      "at": "2026-10-10T17:25:09.189Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-10T17:25:16.803Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-10T17:58:54.795Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-10T17:58:59.602Z",
       "type": "context_sync",
@@ -1271,18 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-18T02:37:01.123Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-18T02:37:05.844Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-18T02:37:11.015Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6140,
-      "title": "chore(agent-state): routine heartbeat/rotation state sync",
-      "branch": "chore/agent-state-sync-1792262186",
+      "number": 6145,
+      "title": "fix: CLOSED brief Vector/GEX fetch-failure disclosure per Largo C3",
+      "branch": "audit/largo-swing-brief-contract-validator",
       "author": "coreentryadmin-web",
       "agent": "human",
       "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-17T18:36:37Z"
+      "verify": "completed/failure",
+      "updated_at": "2026-10-17T20:16:59Z"
     },
     {
       "number": 5547,
