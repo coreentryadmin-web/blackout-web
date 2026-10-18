@@ -180,8 +180,24 @@ const resp = spawnSync(
 );
 
 if (resp.status !== 0) {
-  console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
-  process.exit(1);
+  const detail = (resp.stderr || resp.stdout || "Cursor API error").trim().slice(0, 500);
+  console.error("[ops-dispatch] Cloud Agent launch failed:", detail);
+  // Issue is already the durable signal — do not fail the GHA job when dispatch blips (same
+  // discipline as blackout-hourly-checklist / grid-rth-all-day-agent launch steps).
+  if (issueUrl && ghToken) {
+    try {
+      gh([
+        "issue",
+        "comment",
+        issueUrl,
+        "--body",
+        `⚠️ Cloud Agent dispatch failed (Cursor API). Re-dispatch manually or wait for the next ops-auto-fix tick.\n\n\`${detail}\``,
+      ]);
+    } catch {
+      /* comment is best-effort */
+    }
+  }
+  process.exit(issueNumber ? 0 : 1);
 }
 
 const agent = JSON.parse(resp.stdout);
