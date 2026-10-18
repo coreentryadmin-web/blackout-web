@@ -47,7 +47,11 @@ jobs:
 
       - run: npm ci
 
+      # Invalid/rotated GitHub AWS keys must not block ops:collect — auditSecret()
+      # falls back to GitHub env secrets when Secrets Manager is unreachable.
       - name: Configure AWS credentials
+        id: aws_creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -70,6 +74,9 @@ jobs:
           # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
         run: |
+          if [ "${{ steps.aws_creds.outcome }}" != "success" ]; then
+            echo "::warning::AWS credentials step failed — collecting with GitHub secret fallbacks only"
+          fi
           set +e
           json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)
           code=$?
