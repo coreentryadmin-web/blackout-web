@@ -17,6 +17,7 @@ import {
   fetchUwFlow0dte,
   isDegenerateFlowAggregate,
   fetchUwMacroIndicators,
+  fetchUwGreekExposureExpiry,
 } from "./unusual-whales";
 import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
@@ -169,6 +170,47 @@ test("fetchUwIvRank caches within TTL: two sequential calls → ONE underlying f
     if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
     if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
     if (prevTtl === undefined) delete process.env.UW_IV_RANK_CACHE_SEC; else process.env.UW_IV_RANK_CACHE_SEC = prevTtl;
+  }
+});
+
+// ── fetchUwGreekExposureExpiry: NO cache layer at all (the 2026-10-18 tail-latency fix) ────────
+// WHY: live-measured ALB TargetResponseTime p99=8.94s/Max=43.2s, recurring every 13-51min, traced
+// to [api-queue-timing] bursts naming flow-per-expiry + greek-exposure/expiry + net-flow/expiry
+// together. Unlike its two pool-siblings in the SAME runUwPooled fan-out (fetchDeskEnrichmentFields
+// / buildSpxDeskFlow, spx-desk.ts) — fetchUwFlowPerExpiry (Redis L2, 120s) and fetchUwNetFlowExpiry
+// (this file's own L1, 120s) — fetchUwGreekExposureExpiry had NO cache anywhere. Its wrapper
+// (loadSpxDeskFlow, spx-desk-loader.ts) is cached for only 2s, matching the client's own live SWR
+// poll interval, so under RTH/extended-hours polling this was the highest-frequency fully-live UW
+// call in the app (~every 2s), competing for the same cluster-wide rate-limiter budget the periodic
+// economy/SPX-cluster enrichment bursts also need. Same pattern as the fetchUwIvRank test above:
+// two sequential calls within TTL issue exactly ONE underlying fetch.
+test("fetchUwGreekExposureExpiry caches within TTL: two sequential calls → ONE underlying fetch", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevRedis = process.env.REDIS_URL;
+  const prevTtl = process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC;
+  process.env.UW_API_KEY = "test-uw-key";
+  delete process.env.REDIS_URL;
+  process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC = "120";
+
+  let fetchCount = 0;
+  mock.method(globalThis, "fetch", async () => {
+    fetchCount += 1;
+    return new Response(JSON.stringify({ data: [{ expiry: "2026-10-24", call_gamma: "100", put_gamma: "-50" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  try {
+    const a = await fetchUwGreekExposureExpiry("GEXPIRYCACHETEST");
+    const b = await fetchUwGreekExposureExpiry("GEXPIRYCACHETEST");
+    assert.deepEqual(a, b, "identical cached rows served");
+    assert.equal(fetchCount, 1, "second call must be served from cache — only ONE upstream fetch");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
+    if (prevTtl === undefined) delete process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC; else process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC = prevTtl;
   }
 });
 
