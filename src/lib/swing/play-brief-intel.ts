@@ -52,7 +52,7 @@ import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
-import { deadPlayReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
@@ -1306,12 +1306,23 @@ export function catalystsSection(
  * checking the setup's own already-computed dead/invalidated state (`play.setupState`,
  * `play.watchEntryExpired` — both already carried on `TerminalPlay` for exactly this kind of check
  * elsewhere in this file). The number itself stays (still useful as "the level that would have
- * mattered") — only the false causal claim is corrected. `deadPlayReason` (entry-enterability.ts)
- * is the same check reused by the "Gates blocking entry" headers in play-brief.ts/play-brief-
- * narrative-coaching.ts — one shared source instead of three copies of the same two branches.
+ * mattered") — only the false causal claim is corrected.
+ *
+ * WIDENED (Ask Largo standing mandate, 2026-10-18): originally called the narrow `deadPlayReason`
+ * (entry-enterability.ts) — the 4-case check — which was the same one reused by the "Gates
+ * blocking entry" headers in play-brief.ts/play-brief-narrative-coaching.ts at the time this
+ * function was written. The same day, those two sibling call sites were widened to the broader
+ * `gateFramingMootReason` (adds FORMING and `aboveFloor===false`, plus a legacy_exempt-only
+ * gateBlocks case) after a live repro showed a TRIGGERED/AT_TRIGGER/below-floor WATCH play's
+ * "Entry trigger" bullet asserting an unqualified "this is what actually fires the setup" while
+ * the SAME brief's Verdict section, two sections earlier, correctly said the real blocker was the
+ * score floor — live repro TSM, 2026-10-18 (`score: 54.9` vs `scoreFloor: 60`, `setupState:
+ * "TRIGGERED"`, `entryStatus: "AT_TRIGGER"`, no gate tag at all). This function was the third
+ * caller of the shared narrow/wide pair and was missed by that same-day fix; swapped here to match
+ * its two siblings — now all three callers share one source instead of two widened and one stale.
  */
 export function entryTriggerDeadReason(play: TerminalPlay): string | null {
-  const reason = deadPlayReason(play);
+  const reason = gateFramingMootReason(play);
   if (reason) return `${reason} — this level no longer fires the setup`;
   // BUG FIX (Ask Largo standing mandate, 2026-10-06): a Legacy morning-confirm-promoted row's
   // `entryTriggerUnderlyingPx` is stamped ONCE at promotion (legacy-confirm-promote.ts's
