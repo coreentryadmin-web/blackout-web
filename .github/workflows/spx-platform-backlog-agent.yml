@@ -30,12 +30,22 @@ jobs:
 
       - run: npm ci
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (optional)
+        id: aws-creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Clear AWS env when configure failed
+        if: steps.aws-creds.outcome == 'failure'
+        run: |
+          echo "::warning::AWS credentials invalid — backlog agent uses GitHub secret fallbacks for ops probe"
+          echo "AWS_ACCESS_KEY_ID=" >> "$GITHUB_ENV"
+          echo "AWS_SECRET_ACCESS_KEY=" >> "$GITHUB_ENV"
+          echo "AWS_SESSION_TOKEN=" >> "$GITHUB_ENV"
 
       - name: Ensure spx-platform-backlog label exists
         env:
@@ -51,6 +61,9 @@ jobs:
         id: ops
         env:
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
         run: |
           set +e
           node scripts/ops-collect-action-items.mjs >/dev/null 2>&1
