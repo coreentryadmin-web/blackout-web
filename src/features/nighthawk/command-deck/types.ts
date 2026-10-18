@@ -301,6 +301,14 @@ export interface TerminalPlay {
   entryStatus?: SwingEntryState | null;
   /** The serving section (serving.ts) this play resolved to, for the section-grouped terminal. */
   servingSection?: SwingServingSection | null;
+  /** SWING only: the mechanical COMMIT/WATCH score-floor gate result (serving.ts's `aboveFloor`
+   *  observable) — false means this candidate hasn't cleared the lane's commit score floor yet,
+   *  independent of any commit-gate (`gateBlocks`) state. Carried here so `deadPlayReason`
+   *  (entry-enterability.ts) can tell a brief renderer when `gateBlocks` is moot because the real
+   *  reason entry is withheld is the score floor (or thesis still FORMING), not the gates
+   *  themselves — see that function's own doc comment for the bug class this closes. Null for
+   *  non-SWING horizons, where this observable doesn't apply. */
+  aboveFloor?: boolean | null;
   /** Live manage engine action (manage.ts) — drives EXITING / scale-out advisory on refresh. */
   manageAction?: SwingManageAction | null;
   /** The rung that decided manageAction (manage.ts) — e.g. "expiry_risk" (time-based, thesis still

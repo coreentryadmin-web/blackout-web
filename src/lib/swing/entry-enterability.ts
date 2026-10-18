@@ -168,6 +168,16 @@ function pastEntryDeadline(input: SwingEntryEnterabilityInput, nowMs: number): b
  * just for the two dead-reasons nobody had added yet. Narrow structural type (not the full
  * `TerminalPlay`) so this stays a dependency-free leaf export any brief-render module can import
  * without a cycle risk back through play-brief-narrative.ts/play-brief-intel.ts.
+ *
+ * Deliberately NOT extended to cover `setupState === "FORMING"` or `aboveFloor === false` (see
+ * `gateFramingMootReason` below for why those two need a SEPARATE function rather than a 5th/6th
+ * case here) — this function's two OTHER call sites (`isSwingPlayStaleCheckExempt` below, and
+ * `play-brief-absence.ts`'s `isNotLive`) key on it to mean "nothing will ever meaningfully refresh
+ * this play's live reads again," which is true for all 4 cases above (the play is categorically
+ * done) but FALSE for FORMING/below-floor candidates — those are still actively rescanned every
+ * cycle on the WATCH board (serving.ts: `aboveFloor===false` IS the WATCH-routing condition), so
+ * adding them here would wrongly suppress real staleness disclosures on a candidate that is very
+ * much still live, just not yet enterable.
  */
 export function deadPlayReason(play: {
   setupState?: string | null;
@@ -180,6 +190,44 @@ export function deadPlayReason(play: {
   if (play.setupState === "EXTENDED" || play.entryStatus === "EXTENDED_CHASE") {
     return "extended past the valid entry window";
   }
+  return null;
+}
+
+/**
+ * Short reason the "Gates blocking entry" framing is misleading — broader than `deadPlayReason`
+ * above by exactly two cases: `setupState === "FORMING"` and `aboveFloor === false`. Both are
+ * `evaluateSwingEntryEnterability`'s OTHER two reasons (besides the 4 `dont_buy` ones
+ * `deadPlayReason` covers) that are checked and returned BEFORE that function ever reaches its one
+ * true gate-check branch (this file, lines ~296-312) — so on a play held back by either of them,
+ * `commitGateBlockedBy`/`gateBlocks` is computed and populated independently (gates don't require
+ * TRIGGERED/above-floor to be evaluated) but clearing it would NOT open entry, same false
+ * implication `deadPlayReason` exists to catch for its 4 cases.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-18): live repro, GET /api/market/swing/play-brief
+ * for CLS (WATCH, 2026-10-18 ~06:17 ET) — score 59 vs a 60 lane commit floor (`aboveFloor: false`),
+ * setupState TRIGGERED, entryStatus AT_TRIGGER (none of `deadPlayReason`'s 4 cases apply).
+ * `signalKinds` is Legacy-only, so `resolveCommitGateBlockedBy` auto-stamps the non-blocking
+ * `legacy:exempt` provenance tag into `commitGateBlockedBy` (confirmed non-blocking: the identical
+ * tag is present on live COMMITTED Legacy-promoted positions in the same horizons payload). Both
+ * `watchEntrySection` (play-brief.ts) and `watchGateCoaching` (play-brief-narrative-coaching.ts)
+ * rendered an un-qualified "**Gates blocking entry:**" header as a result — implying clearing that
+ * tag would open entry, when the real (and separately, correctly stated, in the brief's Verdict
+ * section) reason is the score floor. Intentionally NOT merged into `deadPlayReason` itself — see
+ * that function's own comment for why a FORMING/below-floor candidate must NOT be treated as
+ * "dead" by its other two callers. Takes the same narrow structural type, widened by the one extra
+ * field (`aboveFloor`) this check needs — not the full `TerminalPlay`, for the same
+ * dependency-free-leaf-export reason `deadPlayReason` stays narrow.
+ */
+export function gateFramingMootReason(play: {
+  setupState?: string | null;
+  entryStatus?: string | null;
+  watchEntryExpired?: boolean | null;
+  aboveFloor?: boolean | null;
+}): string | null {
+  const dead = deadPlayReason(play);
+  if (dead) return dead;
+  if (play.setupState === "FORMING") return "thesis still forming — not yet at trigger";
+  if (play.aboveFloor === false) return "below the lane score floor";
   return null;
 }
 

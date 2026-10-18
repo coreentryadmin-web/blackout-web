@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   deadPlayReason,
   evaluateSwingEntryEnterability,
+  gateFramingMootReason,
   swingEntryActionLabel,
 } from "./entry-enterability";
 
@@ -298,5 +299,62 @@ describe("deadPlayReason", () => {
   it("a genuinely still-enterable play is not dead", () => {
     assert.equal(deadPlayReason({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER" }), null);
     assert.equal(deadPlayReason({ setupState: "FORMING", entryStatus: "PRE_TRIGGER" }), null);
+  });
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-18): live repro, CLS WATCH play-brief — score 59
+// vs a 60 lane commit floor (aboveFloor: false), setupState TRIGGERED/entryStatus AT_TRIGGER (none
+// of deadPlayReason's 4 cases apply), Legacy-only signalKinds auto-stamping the non-blocking
+// "legacy:exempt" tag into gateBlocks. watchEntrySection/watchGateCoaching rendered an un-qualified
+// "Gates blocking entry" header as a result — false, since the real reason is the score floor.
+// deadPlayReason itself must NOT gain these two cases (its other callers, isSwingPlayStaleCheckExempt
+// and play-brief-absence.ts's isNotLive, need a FORMING/below-floor play to read as still-live, not
+// dead) — gateFramingMootReason is the separate, wider check for exactly this "is the gate framing
+// misleading" question.
+describe("gateFramingMootReason", () => {
+  it("wraps every deadPlayReason case unchanged", () => {
+    assert.equal(gateFramingMootReason({ setupState: "INVALIDATED" }), "thesis already invalidated");
+    assert.equal(
+      gateFramingMootReason({ setupState: "TRIGGERED", watchEntryExpired: true }),
+      "entry-validity window expired",
+    );
+    assert.equal(
+      gateFramingMootReason({ setupState: "TRIGGERED", entryStatus: "EXPIRED" }),
+      "contract expired",
+    );
+    assert.equal(
+      gateFramingMootReason({ setupState: "EXTENDED", entryStatus: "PRE_TRIGGER" }),
+      "extended past the valid entry window",
+    );
+  });
+
+  it("below the lane score floor is moot — live repro CLS", () => {
+    assert.equal(
+      gateFramingMootReason({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: false }),
+      "below the lane score floor",
+    );
+  });
+
+  it("still-FORMING thesis is moot", () => {
+    assert.equal(
+      gateFramingMootReason({ setupState: "FORMING", entryStatus: "PRE_TRIGGER", aboveFloor: true }),
+      "thesis still forming — not yet at trigger",
+    );
+  });
+
+  it("a genuinely still-enterable, above-floor play is not moot", () => {
+    assert.equal(
+      gateFramingMootReason({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true }),
+      null,
+    );
+  });
+
+  it("a dont_buy reason takes precedence over a false aboveFloor", () => {
+    // Shouldn't happen in practice (evaluateSwingEntryEnterability's if-chain checks INVALIDATED
+    // before aboveFloor), but the dont_buy reason is the more specific/actionable one either way.
+    assert.equal(
+      gateFramingMootReason({ setupState: "INVALIDATED", aboveFloor: false }),
+      "thesis already invalidated",
+    );
   });
 });

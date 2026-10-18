@@ -854,12 +854,16 @@ export function liquidityFromContract(contract: HorizonDeckSource["contract"]): 
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const baseStatus = horizonDeckStatus(src);
   const deskCommitted = Boolean(src.liveStatus || src.committedAt);
+  // Computed once, reused below for both enterability calls AND carried onto TerminalPlay itself
+  // (see the `aboveFloor` field doc comment on TerminalPlay for why `deadPlayReason` needs it too).
+  const aboveFloor =
+    src.horizon === "SWING" ? String(src.status ?? "").toUpperCase() === "COMMIT" : null;
   const swingEnterability =
     src.horizon === "SWING"
       ? evaluateSwingEntryEnterability({
           setupState: src.setupState,
           entryStatus: src.entryStatus,
-          aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
+          aboveFloor,
           persistenceObserved: src.persistenceObserved,
           commitGateBlockedBy: src.commitGateBlockedBy,
           signalKinds: src.signalKinds,
@@ -890,7 +894,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
         servingSection: src.servingSection,
         setupState: src.setupState,
         entryStatus: src.entryStatus,
-        aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
+        aboveFloor,
         persistenceObserved: src.persistenceObserved,
         persistenceGapReason: src.persistenceGapReason,
         commitGateBlockedBy: src.commitGateBlockedBy,
@@ -1130,6 +1134,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     setupState: src.setupState ?? null,
     entryStatus: src.entryStatus ?? null,
     servingSection: src.servingSection ?? null,
+    aboveFloor,
     swingEntryAction,
     watchEntryExpired,
     entryDeadline: swingEnterability?.deadlineIso ?? null,
