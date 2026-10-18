@@ -70,6 +70,32 @@ plays), and scoped to this one edition only.**
 
 ---
 
+## WATCH LIST — 2026-10-18 Swing WATCH play-brief below-floor/still-forming gate framing — fixed, deployed, and live-confirmed same cycle
+
+**What was fixed (#6180):** `evaluateSwingEntryEnterability`'s if-chain checks `setupState==="FORMING"`
+and `aboveFloor===false` BEFORE it ever reaches the gate-check branch, but `deadPlayReason` (the
+"is the gate-block framing moot" check reused by `watchEntrySection` in `play-brief.ts` and
+`watchGateCoaching` in `play-brief-narrative-coaching.ts`) only recognized its 4 `dont_buy` cases
+(INVALIDATED/expired/contract-expired/EXTENDED), not these two `wait` cases — so a WATCH play held
+back by the score floor or a still-forming thesis rendered an un-qualified "**Gates blocking
+entry:**" header, implying clearing the listed gate would open entry when it would not. Live repro:
+CLS (score 59 vs a 60 commit floor), Legacy-only `signalKinds` auto-stamping the non-blocking
+`legacy:exempt` provenance tag into `gateBlocks`. Fixed with a new, separate `gateFramingMootReason`
+export (NOT merged into `deadPlayReason` itself, which has two other callers that need a
+FORMING/below-floor play to still read as live/rescanned, not dead). Full write-up:
+`docs/audit/findings-staging/2026-10-18-swing-watch-below-floor-gate-framing-moot.md` (already
+folded into `FINDINGS.md` via #6182).
+
+**Already live-confirmed this same cycle, not just deploy-pending:** re-fetched
+`GET /api/market/swing/play-brief?playId=SWING:CLS&ticker=CLS&status=WATCH` against production
+immediately after `ecr-push-production.yml` completed (sha `7ff4553d0`) — both "Entry" and "Trade
+manager read" sections now correctly render `"**Also gate-blocked** (moot — below the lane score
+floor) — ..."` instead of the old un-qualified `"**Gates blocking entry:** 1 gate"`. No further
+action needed on this one at next market open — this is a record of the confirmation, not a
+pending check.
+
+---
+
 ## WATCH LIST — 2026-10-17 three fixes this cycle: vectorDeskSection closed-market note, SPX news-risk negation, Swing last_mark backfill — deploy pending validation
 
 **What was fixed (#6119):** Ask Largo × Night Hawk Swings standing mandate — an independent
