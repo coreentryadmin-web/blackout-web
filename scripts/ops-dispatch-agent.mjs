@@ -181,6 +181,13 @@ const resp = spawnSync(
 
 if (resp.status !== 0) {
   console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
+  // Issue is already filed — do not fail the GHA job on transient Cursor API errors.
+  if (issueNumber) {
+    console.warn(
+      `[ops-dispatch] GitHub issue #${issueNumber} is open — exiting 0 so ops-auto-fix does not go red after a successful collect.`,
+    );
+    process.exit(0);
+  }
   process.exit(1);
 }
 
