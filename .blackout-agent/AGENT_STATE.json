@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-18T12:18:22.915Z",
+  "updated_at": "2026-10-18T12:51:30.304Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4fd0ca08386437ae258954e8d6296cafce306477",
+    "last_main_sha": "74104dfed850cb807eeb4b4e1f3d154de1463cb2",
     "last_deploy_status": "success",
     "last_deploy_at": "2026-10-13T13:33:27Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/38400896026",
     "last_deploy_sha": "d665a96e1e4390d6269ab6c7dc103600981bf277"
   },
   "events": [
-    {
-      "at": "2026-10-10T21:06:41.117Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T21:06:45.256Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T21:42:28.934Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-10T21:42:33.647Z",
       "type": "context_sync",
@@ -1268,6 +1250,24 @@
     },
     {
       "at": "2026-10-18T12:18:22.915Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-18T12:51:23.341Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-18T12:51:26.964Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-18T12:51:30.304Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
