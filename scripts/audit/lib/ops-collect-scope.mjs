@@ -15,6 +15,18 @@ export function watchdogHttpPriority(status) {
   return "P0";
 }
 
+/**
+ * Priority for GET /api/health — unlike the cron watchdog, sustained ALB 503 is a P0 outage
+ * (deploy smoke and validate:deploy gate on this route).
+ */
+export function platformHealthPriority(status) {
+  if (status === 200) return null;
+  if (status === 0) return "P0";
+  if (isAuthFailureStatus(status)) return "P2";
+  if (status >= 500) return "P0";
+  return "P1";
+}
+
 /** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
 export function parseOpsCollectPayload(stdout, stderr) {
   const blob = `${stdout}\n${stderr}`;

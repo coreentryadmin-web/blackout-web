@@ -24,7 +24,12 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
+import {
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+  platformHealthPriority,
+  shouldPageNighthawkZeroPlays,
+} from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -194,7 +199,26 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+async function platformHealthItems() {
+  try {
+    const r = await fetchWithTimeout(`${BASE}/api/health`, {}, 20_000);
+    const pri = platformHealthPriority(r.status);
+    if (pri) {
+      add(
+        pri,
+        "infra",
+        "platform:health",
+        `Platform /api/health HTTP ${r.status || "error"}`,
+        r.err ? String(r.err) : `GET ${BASE}/api/health`
+      );
+    }
+  } catch (e) {
+    add("P0", "infra", "platform:health", "Platform /api/health probe failed", e.message);
+  }
+}
+
 async function httpItems() {
+  await platformHealthItems();
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
 

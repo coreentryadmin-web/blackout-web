@@ -6,6 +6,7 @@ import {
   spxOpsItems,
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
+  platformHealthPriority,
   shouldPageNighthawkZeroPlays,
 } from "./ops-collect-scope.mjs";
 
@@ -21,6 +22,15 @@ describe("watchdogHttpPriority", () => {
 
   it("keeps real app failures at P0", () => {
     assert.equal(watchdogHttpPriority(500), "P0");
+  });
+});
+
+describe("platformHealthPriority", () => {
+  it("treats sustained origin 503 as P0 outage", () => {
+    assert.equal(platformHealthPriority(200), null);
+    assert.equal(platformHealthPriority(503), "P0");
+    assert.equal(platformHealthPriority(502), "P0");
+    assert.equal(platformHealthPriority(0), "P0");
   });
 });
 

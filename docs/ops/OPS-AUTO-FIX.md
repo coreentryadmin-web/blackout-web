@@ -67,10 +67,13 @@ node scripts/ops-dispatch-agent.mjs --dry-run --file /tmp/items.json
 
 | Secret | Purpose |
 |--------|---------|
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | Secrets Manager read for prod env (preferred). When invalid, collect still runs using the rows below. |
 | `DATABASE_PUBLIC_URL` | Postgres cron + error scan |
 | `CRON_SECRET` | Live watchdog + data-correctness probe |
 | `CURSOR_API_KEY` | Launch Cloud Agent |
 | `GITHUB_TOKEN` | Auto-provided — create/update issues |
+
+**Operator:** If `collect-and-dispatch` or `ECR push (production)` fails at `configure-aws-credentials` with *invalid security token*, rotate the IAM user keys in GitHub Actions secrets and redeploy — agents cannot fix ECS from the repo without valid AWS credentials.
 
 ## ECS / Discord (existing)
 
