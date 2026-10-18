@@ -30,6 +30,7 @@ Also triggers when **RTH deep audit** or **cron audit query** workflows fail.
 - Body contains a checklist table + `<!-- ops-fingerprint:... -->` for dedupe
 - Same fingerprint → comment on existing issue (no duplicate issues)
 - Cloud Agent URL posted as issue comment
+- If agent launch fails after the issue exists, `ops-dispatch-agent.mjs` exits **0** (workflow stays green) and posts a warning comment — the issue is the durable action item; fix `CURSOR_API_KEY` or dispatch manually.
 
 ## Agent fix loop (until GREEN)
 

@@ -180,8 +180,24 @@ const resp = spawnSync(
 );
 
 if (resp.status !== 0) {
-  console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
-  process.exit(1);
+  const errText = (resp.stderr || resp.stdout || "").trim();
+  console.error("[ops-dispatch] Cloud Agent launch failed:", errText);
+  if (issueUrl && ghToken) {
+    try {
+      const snippet = errText.slice(0, 1500);
+      gh([
+        "issue",
+        "comment",
+        issueUrl,
+        "--body",
+        `⚠️ **Cloud Agent dispatch failed** — issue remains open; check \`CURSOR_API_KEY\` and Cursor API status, or dispatch manually.\n\n\`\`\`\n${snippet}\n\`\`\``,
+      ]);
+    } catch (commentErr) {
+      console.warn("[ops-dispatch] Could not comment on issue:", commentErr.message);
+    }
+  }
+  // Durable action item is the GitHub issue — do not fail CI when only agent launch fails.
+  process.exit(issueNumber ? 0 : 1);
 }
 
 const agent = JSON.parse(resp.stdout);
