@@ -424,6 +424,44 @@ test("reclassifyConfluenceScore: a bonus that lifts abs score past 10 flips dire
   assert.equal(postBonus.bias, "bullish");
 });
 
+// BUG FIX (2026-10-18): reclassifyConfluenceScore's return type used to omit `rawScore`, so the
+// Night Hawk prior mutation site in spx-play-engine.ts (the only caller) reassigned every OTHER
+// derived field (score/bias/action/grade/direction/agreeing/conflicts/weighted_conflicts) but left
+// `confluence.rawScore` frozen at the PRE-bonus value computeSpxConfluence produced — evaluated on
+// the stale |score| and factors.length from before the "Night Hawk prior" factor was ever pushed.
+// That stale number reaches members as "confidence" (spx-signal-log.ts) and outcome snapshots used
+// for calibration (spx-play-outcomes.ts). This directly reproduces the mutation path end-to-end
+// (build factors -> push the NH prior factor -> reclassify with the bumped score) and asserts
+// rawScore reflects the POST-bonus score/factors.length, not the pre-bonus value.
+test("reclassifyConfluenceScore: rawScore reflects the POST-bonus score/factors.length, not the frozen pre-bonus value", () => {
+  const preFactors: SpxSignalFactor[] = [
+    { label: "VWAP", weight: 20, detail: "above" },
+    { label: "GEX support", weight: 20, detail: "at wall" },
+    { label: "Live tape", weight: 17, detail: "bullish" },
+  ];
+  const preScore = 57; // abs 57, 3 factors
+  const preRawScore = Math.round(Math.abs(preScore) * 1.15 + preFactors.length * 3); // 57*1.15 + 9 = 74.55 -> 75
+
+  // Simulate the exact spx-play-engine.ts mutation path: push the Night Hawk prior factor onto
+  // the SAME factors array, then reclassify with the bumped score.
+  const nhBonus = 3;
+  const postFactors = [...preFactors, { label: "Night Hawk prior", weight: nhBonus, detail: "NH edition bullish" }];
+  const postScore = preScore + nhBonus; // 60
+  const postRawScore = Math.round(Math.abs(postScore) * 1.15 + postFactors.length * 3); // 60*1.15 + 12 = 81
+
+  // Sanity: the post-bonus rawScore must actually differ from the pre-bonus one, or this test
+  // could pass vacuously even with the bug present (frozen-stale value == fresh value by accident).
+  assert.notEqual(postRawScore, preRawScore, "fixture must exercise a case where rawScore actually changes across the bonus");
+
+  const reclass = reclassifyConfluenceScore(reclassifyDesk(), postScore, postFactors);
+  assert.equal(
+    reclass.rawScore,
+    postRawScore,
+    `rawScore (${reclass.rawScore}) must be recomputed from the post-bonus score/factors.length (expected ${postRawScore}), not left at the pre-bonus value (${preRawScore})`
+  );
+  assert.notEqual(reclass.rawScore, preRawScore, "rawScore must not equal the stale pre-bonus value");
+});
+
 // REGRESSION (Ask Largo standing mandate, 2026-10-18): computeSpxConfluence's score/factors
 // invariant — top-level `score` must equal the sum of every pushed `factors[].weight`, clamped to
 // [-100, 100] — had drifted apart once before (the 2026-09-22 fix that introduced

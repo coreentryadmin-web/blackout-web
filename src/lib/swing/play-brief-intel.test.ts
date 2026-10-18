@@ -4788,6 +4788,63 @@ test("watchForSection: entry trigger claim is corrected for a Legacy-promoted pl
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-18, third instance): the same-day widening of
+// `entryTriggerDeadReason()` to check `gateFramingMootReason()` FIRST (see that function's own
+// doc comment above) accidentally SHADOWED this older, more specific 2026-10-06 Legacy-pinned-
+// price staleness check for the exact population it exists for — every Legacy-promoted WATCH
+// play unconditionally carries a `legacy_exempt`-only `gateBlocks` entry, which
+// `gateFramingMootReason` now matches and early-returns on before the staleness check below it is
+// ever reached. Live repro UNH, 2026-10-18: TRIGGERED/AT_TRIGGER/above-floor,
+// `discoveryOrigin: ["NIGHT HAWK"]`, `flagUnderlyingPx === entryTriggerUnderlyingPx === 399.15`
+// (firstSeenAt 3 days earlier), `commitGateBlockedBy: ["legacy:exempt"]` — both the gate-moot
+// framing and the pinned-price staleness disclosure are independently true and both matter (the
+// gate is moot AND the price is stale), but the brief rendered only the first, dropping the
+// staleness disclosure entirely for every Legacy-promoted play. Must compose both facts, not pick
+// one.
+test("watchForSection: entry trigger claim for a Legacy-promoted TRIGGERED/above-floor play composes BOTH the gate-moot framing AND the pinned-price staleness disclosure (live repro UNH)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        discoveryOrigin: ["NIGHT HAWK"],
+        flagUnderlyingPx: 399.15,
+        entryTriggerUnderlyingPx: 399.15,
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        aboveFloor: true,
+        gateBlocks: [
+          {
+            code: "legacy_exempt",
+            reason:
+              "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path.",
+          },
+        ],
+      }),
+      asOf: "2026-10-18 10:00 ET",
+      sessionDate: "2026-10-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*399\.15\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(
+    section.body,
+    /Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear/,
+    `expected the gate-moot framing to still be present, got: ${section.body}`,
+  );
+  assert.match(
+    section.body,
+    /pinned at Legacy promotion, not refreshed since/,
+    `expected the pinned-price staleness disclosure to ALSO be present (not shadowed), got: ${section.body}`,
+  );
+});
+
 // An organic (non-Legacy) WATCH row whose trigger happens to equal its flag anchor (e.g. the
 // very first scan tick after being flagged, before any price movement) must NOT be mislabeled
 // stale — only the Legacy-exempt signature changes the claim, never a coincidental equal value.

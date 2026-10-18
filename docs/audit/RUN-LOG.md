@@ -4,6 +4,36 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-18 (23:12 UTC / Sun 19:12 ET) — [SEO] Lane heartbeat: resumed post-outage, shipped fixes re-validated GOOD
+
+Resuming per the coordinator's explicit "Please resume your standing SEO/search audit cadence now"
+(fired after confirming the origin outage resolved at ~20:47Z). Resynced to `origin/main`
+(`a77d7b07` → `fa43674e`, 28 other-lane commits) and read the full outage trail before touching
+anything: root cause (`blackout-production-web` ECS `desiredCount=0`, #6249), resolution (`b1d8f5af`,
+~20:47Z, ~3h29min total), and a SECOND, distinct, already-flagged issue — `desiredCount` drifted to
+~1 (not the documented floor of 5), deadlocking the deploy pipeline's rolling-update arithmetic;
+PR #6253 (an unrelated swing-doc dedupe fix) got stuck mid-deploy and the tip-of-main entry
+(`fa43674e`) confirms that deploy FAILED with `desiredCount=1` confirmed as the cause. This is
+already fully owned and journaled by the ops/coordinator lane (`b11c8452`, `a8c9b3b1`, `abc38c64`) —
+**not duplicating it here**, just noting it as context for why a just-merged fix might not be live
+yet (per the coordinator's own warning).
+
+**Step 1 — re-validated both previously-shipped SEO fixes against the now-healthy backend:**
+`/api/health` → `200`. Purged the Cloudflare edge HTML cache for `/` (safe now, unlike during the
+outage), re-measured live homepage CLS via `cls-measure.cjs` (desktop 1440×900, `NODE_USE_ENV_PROXY=1`,
+65/65 requests routed, 0 fail) — **0.0002, GOOD** (#2453 fix holds). Fetched `/api/og` with a
+Googlebot UA — **200, `content-type: image/png`, real 1200×630 PNG** — crawlable again, confirmed
+restored (#2448 fix holds; this same endpoint returned 503 during the outage, now genuinely fixed,
+not assumed). `/api/public/gex-snapshot?ticker=SPX` also responding normally (`market_session:
+CLOSED`, Sunday evening — expected, not a defect).
+
+**Step 2 — PR sweep:** 1 open agent PR fleet-wide, other-lane, CI-RUNNING, draft (#6256, Legacy
+digest P0 doc). Nothing for this lane to chase or rebase.
+
+**Step 3:** no new SEO-lane opportunity scan run this cycle (that's the separate daily-growth-cycle
+trigger's job) — this was a heartbeat focused on re-confirming the two shipped fixes post-outage,
+per "a merge is not a verification." No PR opened.
+
 ## 2026-10-18 (18:16 UTC / Sun 14:17 ET) — [SEO] Lane heartbeat: SKIPPED verdict — active production origin outage, not this lane's to fix
 
 **Step 1 could not be honestly completed this cycle.** Resynced to `origin/main`

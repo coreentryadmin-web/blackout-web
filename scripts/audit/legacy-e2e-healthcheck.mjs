@@ -57,6 +57,12 @@ function log(...args) {
 async function checkEdition() {
   const res = await fetchAuditJson(BASE, "/api/market/nighthawk/edition");
   const plays = Array.isArray(res.json?.plays) ? res.json.plays : [];
+  // NH-funnel (found 2026-10-18, live P0 the standing healthcheck missed for >1 day): the edition
+  // response carries its own `funnel` object (edition-funnel.ts's EditionFunnelCounts, top-level —
+  // NOT nested under `meta`) whenever the board is recap_only/no_plays. Forward candidates/ranked so
+  // verdictForEdition can tell a genuinely quiet market (candidates===0) apart from a starved funnel
+  // (candidates>0 but none ever got ranked/scored) instead of blessing both as the same honest GREEN.
+  const funnel = res.json?.funnel && typeof res.json.funnel === "object" ? res.json.funnel : null;
   const stage = verdictForEdition({
     fetchOk: res.ok,
     available: res.json?.available,
@@ -64,6 +70,8 @@ async function checkEdition() {
     degraded: Boolean(res.json?.degraded),
     playsCount: plays.length,
     noPlays: Boolean(res.json?.no_plays),
+    funnelCandidates: typeof funnel?.candidates === "number" ? funnel.candidates : undefined,
+    funnelRanked: typeof funnel?.ranked === "number" ? funnel.ranked : undefined,
   });
   return { stage, plays, editionFor: res.json?.edition_for ?? null };
 }

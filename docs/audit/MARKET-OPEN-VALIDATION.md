@@ -70,6 +70,34 @@ plays), and scoped to this one edition only.**
 
 ---
 
+## WATCH LIST — 2026-10-18 SPX Slayer `confluence.rawScore` stale after Night Hawk morning-prior bonus — fixed, deploy pending validation
+
+**What was fixed:** `reclassifyConfluenceScore()` (`src/features/spx/lib/spx-signals.ts`) — added
+2026-09-22 specifically to keep every field derived from `score`/`factors` in sync after the Night
+Hawk morning-prior bonus mutates an already-built `SpxConfluence` — covered
+`score`/`bias`/`action`/`grade`/`direction`/`agreeing`/`conflicts`/`weighted_conflicts` but omitted
+`rawScore` from both its return type and the call site's reassignment list. `rawScore`
+(`clamp(round(|score|*1.15 + factors.length*3), 0, 96)`) is a function of the exact same two
+mutated inputs, so it stayed frozen at the pre-bonus value — the one shown to members and
+persisted as "confidence" (`spx-signal-log.ts`) and in outcome snapshots (`spx-play-outcomes.ts`).
+Does NOT affect any gating/trading decision (those key off `score`/`grade`/`direction`, already
+correctly fresh). Fixed by widening `reclassifyConfluenceScore`'s return type to also recompute
+`rawScore` with the same formula on the post-bonus inputs, and reassigning
+`confluence.rawScore` at the call site in `spx-play-engine.ts`. Full write-up:
+`docs/audit/findings-staging/2026-10-18-spx-rawscore-stale-nighthawk-bonus.md`.
+
+**Specific thing to check at next RTH open (needs real intraday conditions to confirm — market
+was closed when this was found/fixed):** on a session where `getNhConfluenceBonus()` actually
+returns a non-zero bonus (requires a fresh (<20h old) Night Hawk edition showing a clear
+directional A-grade cluster), pull the live SPX Slayer play payload (`/api/market/spx/*` or the
+admin SPX dashboard) and confirm `rawScore` equals
+`clamp(round(|score|*1.15 + factors.length*3), 0, 96)` evaluated on that SAME play's own
+post-bonus `score` and `factors.length` (factors array should include the pushed "Night Hawk
+prior" entry) — not a value consistent only with one fewer factor / the pre-bonus score, which
+would mean the frozen-stale bug reappeared.
+
+---
+
 ## WATCH LIST — 2026-10-18 Swing WATCH play-brief below-floor/still-forming gate framing — fixed, deployed, and live-confirmed same cycle
 
 **What was fixed (#6180):** `evaluateSwingEntryEnterability`'s if-chain checks `setupState==="FORMING"`
