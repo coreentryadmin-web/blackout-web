@@ -38,13 +38,50 @@ export function rollupVerdict(stageVerdicts) {
  * reported "no edition published yet" for a day whose edition was independently confirmed
  * `available: true` with 3 real plays moments before and after via a direct re-fetch — the
  * classic transient-timeout signature this eval was supposed to catch and label correctly.
+ *
+ * BUG (found 2026-10-18, live production audit): the `noPlays` branch used to bless EVERY
+ * honest-zero-plays edition as GREEN, with no way to tell "genuinely quiet market" (nothing to
+ * screen, or candidates existed and some were legitimately ranked/scored down to zero) apart from
+ * "the dossier/scoring stage starved every candidate it was handed" — a real pipeline failure, not
+ * a market condition. The edition response's own top-level `funnel` object (edition-funnel.ts's
+ * EditionFunnelCounts) already carries `candidates` and `ranked` and was sitting right there unread
+ * — this check never extracted it at all. Live-missed incident: Monday 2026-10-19's digest board
+ * was empty with 20 real candidates and 0 scored dossiers (a starved funnel), and this stage still
+ * reported GREEN for over a day because `noPlays` short-circuited before anything downstream of
+ * discovery was ever examined. `funnelCandidates`/`funnelRanked` are optional — an older/partial
+ * edition payload without a `funnel` field (or any payload where they're not both numbers) falls
+ * through to the original honest-empty GREEN unchanged, so this is a strict widening: it only ever
+ * turns a GREEN into a RED when the funnel data itself proves candidates existed and none were ever
+ * ranked, never the other direction.
  */
-export function verdictForEdition({ fetchOk, available, stale, degraded, playsCount, noPlays }) {
+export function verdictForEdition({
+  fetchOk,
+  available,
+  stale,
+  degraded,
+  playsCount,
+  noPlays,
+  funnelCandidates,
+  funnelRanked,
+}) {
   if (!fetchOk) return { verdict: "RED", evidence: "edition fetch failed (auth or network)" };
   if (degraded) return { verdict: "AMBER", evidence: "edition served from degraded fallback source" };
   if (available === false) return { verdict: "AMBER", evidence: "no edition published yet (honest empty state)" };
   if (stale) return { verdict: "AMBER", evidence: "edition is stale (served an older date than requested)" };
-  if (noPlays) return { verdict: "GREEN", evidence: "published edition, honestly zero plays this session" };
+  if (noPlays) {
+    const starved =
+      typeof funnelCandidates === "number" &&
+      typeof funnelRanked === "number" &&
+      funnelCandidates > 0 &&
+      funnelRanked === 0;
+    if (starved) {
+      return {
+        verdict: "RED",
+        evidence: `published edition with zero plays, but funnel shows ${funnelCandidates} candidate(s) and 0 ranked — starved funnel, not a quiet market`,
+      };
+    }
+    return { verdict: "GREEN", evidence: "published edition, honestly zero plays this session" };
+  }
   if (!playsCount || playsCount <= 0) return { verdict: "RED", evidence: "available edition carries zero plays and no_plays flag not set" };
   return { verdict: "GREEN", evidence: `${playsCount} play(s), fresh, not degraded` };
 }
