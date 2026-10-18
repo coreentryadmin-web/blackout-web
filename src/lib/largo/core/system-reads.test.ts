@@ -62,12 +62,28 @@ test("GAMMA is a regime row and can never become a directional vote", () => {
   assert.equal(above.kind, "regime");
   assert.equal(above.stance, "neutral");
   assert.equal(above.strength, null);
-  assert.match(above.basis, /^positive gamma · spot \+0\.78% vs flip$/);
+  // Distance is computed as % of SPOT (the file-wide convention every sibling "% from a level"
+  // read uses — vector-regime.ts, gex-positioning.ts, bie/*-desk-intel.ts), not % of the flip
+  // level. 60/7760 = 0.77%, not the wrong-denominator 60/7700 = 0.78%.
+  assert.match(above.basis, /^positive gamma · spot \+0\.77% vs flip$/);
 
   const below = gammaRegimeRead({ spot: 7700, gammaFlip: 7760 });
-  assert.match(below.basis, /^negative gamma · spot −0\.77% vs flip$/);
+  assert.match(below.basis, /^negative gamma · spot −0\.78% vs flip$/);
 
   assert.equal(gammaRegimeRead({ spot: null, gammaFlip: 7760 }).stance, "no-read");
+});
+
+test("GAMMA distance divides by spot, not the flip level — wide-gap regression (2026-10-18)", () => {
+  // A wide, realistic gap where dividing by the wrong operand produces a visibly different,
+  // not just differently-rounded, percentage: spot=100 vs flip=80 is 25% away from spot's own
+  // basis but 20/80=25.00%... pick values where the two conventions diverge by whole points.
+  const above = gammaRegimeRead({ spot: 120, gammaFlip: 100 });
+  // Correct: (120-100)/120*100 = 16.67%. Buggy (÷ flip): (120-100)/100*100 = 20.00%.
+  assert.match(above.basis, /^positive gamma · spot \+16\.67% vs flip$/);
+
+  const below = gammaRegimeRead({ spot: 100, gammaFlip: 120 });
+  // Correct: (100-120)/100*100 = -20.00%. Buggy (÷ flip): (100-120)/120*100 = -16.67%.
+  assert.match(below.basis, /^negative gamma · spot −20\.00% vs flip$/);
 });
 
 const bull: SystemRead = { system: "A", kind: "directional", stance: "bullish", strength: 60, basis: "" };

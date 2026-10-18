@@ -200,7 +200,12 @@ export function gammaRegimeRead(input: { spot: number | null; gammaFlip: number 
     return { ...base, stance: "no-read", strength: null, basis: "—", reason: "no flip level" };
   }
   const above = spot >= gammaFlip;
-  const pct = gammaFlip > 0 ? ((spot - gammaFlip) / gammaFlip) * 100 : 0;
+  // Wrong-denominator bug fixed 2026-10-18 (Ask Largo standing mandate): this divided by
+  // `gammaFlip` (the level) instead of `spot`, the opposite of every other "% distance from a
+  // level" computation in the repo (vector-regime.ts, gex-positioning.ts, bie/vector-desk-intel.ts,
+  // bie/spx-desk-intel.ts all divide by spot). Invisible at a small gap (spot=7760/flip=7700 only
+  // differs 0.78% vs 0.77%) but a real, member-visible precision error at a realistic 20%-wide gap.
+  const pct = spot > 0 ? ((spot - gammaFlip) / spot) * 100 : 0;
   return {
     ...base,
     stance: "neutral",
