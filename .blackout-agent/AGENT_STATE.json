@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-18T23:26:36.361Z",
+  "updated_at": "2026-10-18T23:53:43.713Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4bc6ec072ebaf7b0a410df3b90c581a9bcf22d1f",
+    "last_main_sha": "89a9e679524a18a08cd019e6c5669b14968fabd5",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-09-28T05:49:47.027Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T05:49:47.392Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-28T08:19:42.583Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-28T08:19:43.586Z",
       "type": "context_sync",
@@ -1271,59 +1253,27 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 9
+    },
+    {
+      "at": "2026-10-18T23:53:34.350Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-18T23:53:39.626Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-18T23:53:43.713Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6260,
-      "title": "fix(swing): closed-deck chain contract mid/delta must come from the worst leg, not the terminal leg",
-      "branch": "fix/swing-closeddeck-contract-price-mismatch",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-18T23:24:03Z"
-    },
-    {
-      "number": 6259,
-      "title": "fix(audit): legacy healthcheck Stage A can't tell quiet market from starved funnel",
-      "branch": "fix/legacy-healthcheck-funnel-starvation-blind",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-18T23:18:32Z"
-    },
-    {
-      "number": 6258,
-      "title": "fix(spx): recompute rawScore in Night Hawk morning-prior mutation path",
-      "branch": "fix/spx-rawscore-stale-nighthawk-bonus",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-18T23:18:14Z"
-    },
-    {
-      "number": 6257,
-      "title": "docs(audit): fold ECS deploy single-task-deadlock finding into FINDINGS.md",
-      "branch": "docs/fold-findings-6255-20261018231656",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-18T23:17:26Z"
-    },
-    {
-      "number": 6256,
-      "title": "docs(audit): P0 — Monday Legacy digest still empty, known remediation never executed",
-      "branch": "docs/legacy-monday-digest-empty-p0-20261018",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-10-18T23:11:27Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
