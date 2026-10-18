@@ -3786,6 +3786,109 @@ test("composeSwingPlayBrief: OPEN position with no live greeks omits the Greeks 
   assert.doesNotMatch(position!.body, /Greeks:/, "must not fabricate a Greeks line with no live quote");
 });
 
+// BUG FIX (2026-10-18, Ask Largo × Night Hawk Swings mandate): Greeks/Liquidity are read off the
+// identical `play.contract` snapshot the Mark line's staleness/sync disclosure already covers, but
+// neither ever carried the same caveat — a member could read "Mark: unknown ... do not read as
+// flat" immediately followed by a fully confident "Greeks: Δ +0.59" derived from that exact same
+// never-synced read. Live repro: NVDA (positionId 62, markGenuinelyUnknown).
+test("composeSwingPlayBrief: Greeks line carries the same 'no live tick yet' caveat as the Mark line when the position has never synced", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 4.5,
+      mark: 4.5,
+      pnlPct: null,
+      markIsSync: true,
+      markAsOf: null,
+      manageAction: "HOLD",
+      greeks: { delta: 0.59, gamma: null, theta: null, vega: null, iv: null },
+    }),
+    asOf: "2026-10-18T17:30:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: Date.parse("2026-10-18T17:30:00.000Z"),
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(position!.body, /Greeks:.*Δ \+0\.59.*no live tick since commit/, `got: ${position!.body}`);
+});
+
+// Same shape, the OTHER mechanism: a real markAsOf timestamp well past SWING_OPTION_MARK_STALE_MS
+// (18 minutes) — the brief's own separate "Data freshness" section independently flags this mark
+// stale, but Greeks/Spread in the SAME Position section carried zero mention it's the identical
+// quote. Live repro: TSLA/CRWV (both markAsOf-stamped, optionMarkIsStale true).
+test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when the mark is timestamped but past the staleness window, and neither caveat fires on a fresh mark", () => {
+  const stalePlay = fixturePlay({
+    status: "HOLD",
+    recommendation: "HOLD",
+    entry: 4.9,
+    mark: 6.1,
+    pnlPct: 24.5,
+    markIsSync: false,
+    markAsOf: "2026-10-18T13:00:00.000Z", // 4.5h before asOf below — well past the 18-min window
+    greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 0.485 },
+    subLane: "TACTICAL",
+    liquidity: { bid: 5.9, ask: 6.3, spreadPct: 0.0656 },
+  });
+  const staleBrief = composeSwingPlayBrief({
+    play: stalePlay,
+    asOf: "2026-10-18T17:30:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: Date.parse("2026-10-18T17:30:00.000Z"),
+  });
+  const stalePosition = staleBrief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(stalePosition, "Position section expected");
+  assert.match(stalePosition!.body, /Greeks:.*Δ \+0\.62.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
+  assert.match(stalePosition!.body, /Spread:.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
+
+  // Fresh mark (well within the staleness window) must carry no caveat at all — no false disclosure.
+  const freshPlay = fixturePlay({
+    status: "HOLD",
+    recommendation: "HOLD",
+    entry: 4.9,
+    mark: 6.1,
+    pnlPct: 24.5,
+    markIsSync: false,
+    markAsOf: "2026-10-18T17:25:00.000Z", // 5 min before asOf — well inside the 18-min window
+    greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 0.485 },
+    subLane: "TACTICAL",
+    liquidity: { bid: 5.9, ask: 6.3, spreadPct: 0.0656 },
+  });
+  const freshBrief = composeSwingPlayBrief({
+    play: freshPlay,
+    asOf: "2026-10-18T17:30:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: Date.parse("2026-10-18T17:30:00.000Z"),
+  });
+  const freshPosition = freshBrief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(freshPosition, "Position section expected");
+  assert.match(freshPosition!.body, /Greeks:.*Δ \+0\.62/, `got: ${freshPosition!.body}`);
+  assert.doesNotMatch(freshPosition!.body, /no live tick|no freshness timestamp|stale — same quote/, `got: ${freshPosition!.body}`);
+  assert.doesNotMatch(
+    freshPosition!.body.split("Greeks:")[0],
+    /stale/,
+    "fresh mark must not carry any staleness caveat",
+  );
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18): `play.liquidity` (DeckLiquidity: bid/ask/
 // spreadPct) mirrors `play.greeks` above — a real, live per-contract read `liquidityFromContract`
 // (adapters.ts) already builds onto every open TerminalPlay, wired the same way greeks was, but

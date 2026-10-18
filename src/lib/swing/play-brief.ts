@@ -379,7 +379,7 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
   };
 }
 
-function pnlSection(play: TerminalPlay): RichSection {
+function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   const blended = blendedPnlPct(play);
   // Bug found 2026-09-11 (Ask Largo standing mandate — swing/Largo ownership lane): for a
   // banger-lane position with no live-synced quote yet, `horizonPlayFromBangerPosition`
@@ -553,11 +553,34 @@ function pnlSection(play: TerminalPlay): RichSection {
   //
   // `greeksFromContract` already only returns a non-null object when at least one field is real
   // (Object.values(...).some(v => v != null)), the same honesty gate the deck's own `greeksLive`
-  // check applies — so `if (play.greeks)` alone is sufficient here; no extra staleness/absence
+  // check applies — so `if (play.greeks)` alone is sufficient to decide PRESENCE; no extra absence
   // plumbing to duplicate. Formatting matches PlayTerminal.tsx's `fmtGreek` exactly (signed
   // delta/gamma/vega, unsigned theta since a real theta value already carries its own minus sign,
   // iv as a rounded whole-number percent) so a member cross-referencing the deck and Largo never
   // sees the same number rendered two different ways.
+  //
+  // BUG FIX (2026-10-18, Ask Largo × Night Hawk Swings mandate): the comment above conflated
+  // PRESENCE (is the field non-null) with FRESHNESS (is it current) — `if (play.greeks)` is correct
+  // for the former but says nothing about the latter. Greeks/liquidity are read off the identical
+  // `play.contract` snapshot the Mark line is computed from (adapters.ts), so every staleness/sync
+  // caveat the Mark line already discloses applies equally here, but neither this block nor the
+  // Liquidity/Spread block below ever carried one. Live repro: NVDA (positionId 62,
+  // markGenuinelyUnknown — never ticked since commit) showed "Mark: unknown (sync quote, no live
+  // price yet — do not read as flat)" followed four lines later by a fully confident "Greeks: Δ
+  // +0.59" with no caveat, even though delta comes from the exact same never-synced read. TSLA/CRWV
+  // (both markAsOf-stamped but optionMarkIsStale) showed the brief's own separate "Data freshness"
+  // section independently flag "Option mark stale" while this same section's Greeks/Spread lines
+  // stayed fully confident with zero mention it's the identical quote. Disclosing, not suppressing
+  // — the entry-time/aged values are still real, useful context (e.g. "what were my greeks when I
+  // entered"), so hiding them would be a regression, not a fix. Computed once, shared with the
+  // Liquidity/Spread block below — both read the identical contract snapshot.
+  const staleCaveat = markGenuinelyUnknown
+    ? " _(entry-time read — no live tick since commit, do not read as current)_"
+    : markUnsynced
+      ? " _(live quote, no freshness timestamp)_"
+      : optionMarkIsStale(play, readMs)
+        ? " _(stale — same quote Mark flagged above)_"
+        : "";
   if (play.greeks) {
     const g = play.greeks;
     const sign = (v: number) => (v >= 0 ? "+" : "");
@@ -585,7 +608,7 @@ function pnlSection(play: TerminalPlay): RichSection {
       const iv = normalizeImpliedVol(g.iv);
       if (iv != null) parts.push(`IV ${Math.round(iv * 100)}%`);
     }
-    if (parts.length) lines.push(`Greeks: ${parts.join(" · ")}`);
+    if (parts.length) lines.push(`Greeks: ${parts.join(" · ")}${staleCaveat}`);
   }
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): the deck's own greek strip (fixed above) and
   // contract-ranker.ts's tradability score both already read live bid/ask on the held contract, but
@@ -604,12 +627,12 @@ function pnlSection(play: TerminalPlay): RichSection {
       const gate = SWING_SUB_LANES[play.subLane as SwingSubLane]?.liquidity.maxSpreadPct ?? null;
       const spreadLine = `Spread: **${(spreadPct * 100).toFixed(1)}%** (${quote})`;
       lines.push(
-        gate != null
+        (gate != null
           ? `${spreadLine} — this sub-lane's own entry liquidity bar was **${(gate * 100).toFixed(0)}%**, so current execution is ${spreadPct <= gate ? "still inside" : "now wider than"} it.`
-          : spreadLine,
+          : spreadLine) + staleCaveat,
       );
     } else {
-      lines.push(`Quote: **${quote}** _(one-sided book — spread not priceable)_`);
+      lines.push(`Quote: **${quote}**${staleCaveat} _(one-sided book — spread not priceable)_`);
     }
   }
   if (blended != null) {
@@ -1577,7 +1600,7 @@ export function composeSwingPlayBrief(
     if (mgmt) sections.push(mgmt);
     const th = safeCompose("Thesis health", () => thesisHealthSection(play), null);
     if (th) sections.push(th);
-    const pnl = safeCompose("Position", () => pnlSection(play), null);
+    const pnl = safeCompose("Position", () => pnlSection(play, ctx.readMs ?? readMs), null);
     if (pnl) sections.push(pnl);
     const siblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null);
     if (siblings) sections.push(siblings);
