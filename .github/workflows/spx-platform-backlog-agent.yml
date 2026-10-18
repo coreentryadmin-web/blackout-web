@@ -31,11 +31,18 @@ jobs:
       - run: npm ci
 
       - name: Configure AWS credentials
+        id: aws
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Note AWS credential status
+        if: steps.aws.outcome == 'failure'
+        run: |
+          echo "::warning::AWS credentials invalid — ops gate uses GitHub CRON_SECRET / DATABASE_PUBLIC_URL fallbacks"
 
       - name: Ensure spx-platform-backlog label exists
         env:
@@ -51,6 +58,8 @@ jobs:
         id: ops
         env:
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
         run: |
           set +e
           node scripts/ops-collect-action-items.mjs >/dev/null 2>&1
@@ -82,6 +91,7 @@ jobs:
 
       - name: Dispatch GitHub issue + Cloud Agent
         if: steps.ops.outputs.exit_code == '0' && steps.collect.outputs.count != '0'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
