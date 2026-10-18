@@ -188,10 +188,11 @@ node --import tsx proxy-browser.cjs \
 ### 3.4 Depth ladder tab
 
 ```bash
-npm run test:depth-ladder-ui-audit -- \
-  --base "https://blackouttrades.com" \
-  --viewport "1440x900"
+NODE_USE_ENV_PROXY=1 node scripts/audit/depth-ladder-ui-audit.mjs \
+  --base="https://blackouttrades.com"
 ```
+
+(No `--viewport` flag — the script drives both desktop and phone widths itself in one run.)
 
 **Validation**: Rungs painted, spot row visible, honest-limits note present, no console errors.
 
