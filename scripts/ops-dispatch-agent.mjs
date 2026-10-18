@@ -181,7 +181,11 @@ const resp = spawnSync(
 
 if (resp.status !== 0) {
   console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
-  process.exit(1);
+  // Issue creation is the durable signal; do not fail the GHA job when launch is flaky.
+  console.warn(
+    `[ops-dispatch] Continuing — GitHub issue #${issueNumber} was created; fix or re-dispatch manually.`
+  );
+  process.exit(issueNumber ? 0 : 1);
 }
 
 const agent = JSON.parse(resp.stdout);
