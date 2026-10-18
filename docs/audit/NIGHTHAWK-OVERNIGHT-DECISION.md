@@ -80,7 +80,9 @@ anything new.
 **Trigger.** `/api/cron/nighthawk-edition` (`src/app/api/cron/nighthawk-edition/route.ts`), window
 17:30 ET + 120min catch-up (`route.ts:27-37`, env-overridable). Fire-and-forget: the route dispatches
 `buildEveningEdition()` via `after()` and returns 202 in <60s (`route.ts:90-141`); the real work runs
-on the ECS worker (`npm run nighthawk:run`). Status/resume via the `nighthawk_jobs` checkpoint row.
+in-process on the long-lived ECS worker (there is no separate `npm run nighthawk:run` script — the
+build runs inside the same Next.js process via `after()`, not a shelled-out command). Status/resume
+via the `nighthawk_jobs` checkpoint row.
 
 **Builder.** `buildEveningEdition()` (`src/features/nighthawk/lib/edition-builder.ts:317`), staged and
 checkpoint-resumable, with a funnel accumulator logged at every exit (`edition-builder.ts:53-84`):
