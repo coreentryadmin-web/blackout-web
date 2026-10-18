@@ -9842,16 +9842,25 @@ export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<L
   );
 
   const out: LegacyDiscordLiveRow[] = [];
-  const { resolveLegacyPlayOcc } = await import("@/features/nighthawk/lib/legacy-play-contract");
+  const { resolveLegacyPlayOcc, publishedAtRef } = await import(
+    "@/features/nighthawk/lib/legacy-play-contract"
+  );
   const { legacyPublishFieldsFrom } = await import(
     "@/features/nighthawk/lib/legacy-publish-fields"
   );
 
   const editionDatesUnique = [...new Set(res.rows.map((r) => isoDateString(r.edition_for)))];
   const editionPlayByKey = new Map<string, Record<string, unknown>>();
+  // Anchors resolveLegacyPlayOcc's year-inference on each edition's own publish instant, not real
+  // wall-clock now — activeLegacyEditionDates() can span editions up to 14 trading days old, and
+  // re-resolving an already-expired play's bare "Mon DD" label against real "now" rolls it a full
+  // year forward (see resolveLegacyPlayOcc's own doc comment + option-contract-parse.ts). Mirrors
+  // the same anchor adapters.ts's terminalPlayFromEdition already applies.
+  const editionPublishedAtByDate = new Map<string, string>();
   for (const editionDate of editionDatesUnique) {
     const edition = await fetchNighthawkEditionByDate(editionDate);
     if (!edition || !Array.isArray(edition.plays)) continue;
+    editionPublishedAtByDate.set(editionDate, edition.published_at);
     for (const play of edition.plays) {
       if (!play || typeof play !== "object") continue;
       const ticker = String((play as { ticker?: string }).ticker ?? "").toUpperCase();
@@ -9880,7 +9889,11 @@ export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<L
       fields;
     if (!optionsPlay || entryPremium == null) continue;
 
-    const occ = resolveLegacyPlayOcc(row.ticker, optionsPlay);
+    const occ = resolveLegacyPlayOcc(
+      row.ticker,
+      optionsPlay,
+      publishedAtRef(editionPublishedAtByDate.get(row.edition_for))
+    );
     if (!occ) continue;
 
     out.push({
