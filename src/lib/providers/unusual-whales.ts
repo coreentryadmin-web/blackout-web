@@ -8,7 +8,7 @@ import {
   buildUwRequestKey,
   isUwCircuitOpen,
   noteUw429,
-  runUwSequential,
+  runUwPool,
   throttleUwCoalesced,
 } from "@/lib/providers/uw-rate-limiter";
 import { rateLimiterEnvNumber } from "@/lib/providers/provider-rate-limiter-shared";
@@ -104,6 +104,23 @@ function uwCacheTtlMs(path: string): number {
   if (path.startsWith("/api/economy/")) return uwEnvSec("UW_ECONOMY_CACHE_SEC", 3600) * 1000;
   if (path === "/api/market/market-tide") return uwEnvSec("UW_MARKET_TIDE_CACHE_SEC", 300) * 1000;
   if (path === "/api/net-flow/expiry") return uwEnvSec("UW_NET_FLOW_CACHE_SEC", 120) * 1000;
+  // ROOT-CAUSE FIX (Ask Largo standing perf mandate, 2026-10-18 — live ALB TargetResponseTime p99
+  // 8.94s/Max 43.2s, UW queue_wait_ms up to 19,460ms, recurring every 13-51min, traced to
+  // [api-queue-timing] bursts naming flow-per-expiry + greek-exposure/expiry + net-flow/expiry
+  // together). Unlike its two pool-siblings fetched in the SAME runUwPooled fan-out
+  // (fetchDeskEnrichmentFields / buildSpxDeskFlow, spx-desk.ts) — fetchUwFlowPerExpiry (Redis L2,
+  // 120s, UW_CACHE_TTL.flowPerExpiry) and fetchUwNetFlowExpiry (this file's own L1, just above,
+  // 120s) — fetchUwGreekExposureExpiry had NO cache layer anywhere, L1 or L2. buildSpxDeskFlow's
+  // wrapper (loadSpxDeskFlow, spx-desk-loader.ts) is cached for only 2s (deskFlowCacheTtlMs),
+  // matching the client's own SPX_FLOW_POLL_MS SWR interval — so under live RTH/extended-hours
+  // polling this was the single highest-frequency fully-live UW call in the app (~every 2s,
+  // continuously), competing for the same cluster-wide GLOBAL_MAX_CONCURRENCY/GLOBAL_MAX_RPS budget
+  // the periodic economy (GDP/CPI/UNRATE) + SPX-cluster enrichment bursts also need. 120s matches
+  // both siblings exactly — dealer positioning-by-expiry doesn't need sub-2s freshness any more
+  // than net-flow/expiry or flow-per-expiry do.
+  if (path.endsWith("/greek-exposure/expiry")) {
+    return uwEnvSec("UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC", 120) * 1000;
+  }
   if (path.includes("/api/group-flow/")) return uwEnvSec("UW_GROUP_FLOW_CACHE_SEC", 180) * 1000;
   if (path === "/api/market/economic-calendar") return uwEnvSec("UW_MACRO_CALENDAR_CACHE_SEC", 3600) * 1000;
   // IV rank + its daily series are END-OF-DAY data (UW recomputes once per session ~22:35 UTC —
@@ -2397,10 +2414,31 @@ export async function fetchUwEconomyIndicator(indicator: string): Promise<UwMacr
   return parseEconomyIndicatorRows(id, label, rows);
 }
 
+/**
+ * BUG FIX (Ask Largo standing performance mandate, 2026-10-15, live repro: `[uw] queue wait
+ * 13581ms (background sweep)` / `17303ms` on GDP + CPI inside ONE `fetchDeskEnrichmentFields`
+ * pass, coincident minute-for-minute with that session's AWS/ApplicationELB `TargetResponseTime`
+ * Max spiking to 40-43s): this used to fan `UW_MACRO_INDICATORS` out through `runUwSequential`
+ * (`await task()` one at a time), so each indicator's own rate-limiter admission wait was paid
+ * back-to-back rather than overlapped — with 3 indicators that can nearly TRIPLE the worst-case
+ * wall time under real contention, exactly the shape measured live. This function is shared by a
+ * latency-critical caller (`spx-desk.ts`'s `fetchDeskEnrichmentFields`, already documented
+ * elsewhere in this codebase as needing the pooled primitive for exactly this reason) and a batch
+ * one (nighthawk `market-wide.ts`, which can tolerate either shape) — it had defaulted to the
+ * slower, serializing shape for BOTH. `runUwPool` lets the fixed, small list (today: GDP/CPI/
+ * UNRATE) overlap their admission waits instead of stacking them, with no behavior change for
+ * either caller (same results, same per-task `.catch(() => null)` resilience) — just less total
+ * time spent competing for the shared UW rate limiter. Deliberately left at `runUwPool`'s own
+ * default concurrency (shared `MAX_CONCURRENCY`, currently 3 — matching today's 3-indicator list
+ * exactly) rather than passing `indicators.length` explicitly, so a future longer indicator list
+ * still respects the shared concurrency ceiling instead of silently bypassing it. See the
+ * regression test in unusual-whales.test.ts for a RED/GREEN reproduction of the stacking vs.
+ * overlap difference.
+ */
 export async function fetchUwMacroIndicators(
   indicators: string[] = UW_MACRO_INDICATORS.map((m) => m.id)
 ): Promise<UwMacroIndicatorSnapshot[]> {
-  const results = await runUwSequential(
+  const results = await runUwPool(
     indicators.map((id) => () => fetchUwEconomyIndicator(id).catch(() => null))
   );
   return results.filter((r): r is UwMacroIndicatorSnapshot => r != null);

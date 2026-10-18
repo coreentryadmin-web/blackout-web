@@ -8,7 +8,7 @@ import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/ve
 import type { GexPositioning } from "@/lib/providers/gex-positioning";
 import { nearestWallFromLevels } from "@/lib/providers/gex-nearest-wall";
 import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
-import { formatFixedNonZero } from "@/lib/swing/format-nonzero";
+import { formatDealerDollars } from "@/lib/swing/format-nonzero";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import { buildRichEnvelope, type RichSection } from "@/lib/bie/rich-narrative";
@@ -48,6 +48,7 @@ import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./p
 import { fmtOptionUsd as fmtUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
 import { etStampFromDateOrIso, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { calibratedThesisPillars, thesisHealthUncalibrated } from "./thesis-health";
+import { canonicalTicker } from "@/lib/largo/core/entities";
 
 function biasFromDirection(dir: string): BieBias {
   return dir === "SHORT" ? "bearish" : dir === "LONG" ? "bullish" : "neutral";
@@ -114,7 +115,31 @@ function thesisHealthSection(play: TerminalPlay): RichSection | null {
   // play-brief-narrative-coaching.ts's thesisPillarCoaching already gates its own "What moved" line
   // on) but this section never read it. Surface it right next to the band label instead of leaving
   // a reader to infer "unchanged" by checking all five deltas are exactly zero themselves.
-  const noDriftSinceCommit = h.moves?.[0]?.includes("unchanged") ?? false;
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14): `h.moves` staying at its fallback
+  // "unchanged" sentinel is NOT proof nothing moved — four of the five pillars can never trip it
+  // (see `roundTripSinceCommit`'s doc comment, zerodte/thesis-health.ts, for the full structural
+  // account) and a real round-trip through a genuine favorable peak falls through every one of
+  // `moves`'s own triggers unless it happens to cross the -40% backstop or flip thesisBreak.
+  // Live repro 2026-10-14, SWING:INTC:56 (peak +15.3% -> trough -36.6%, currently -36.5%): this
+  // line read "unchanged since commit" in the SAME envelope whose "Trade manager read" section
+  // correctly narrates "Round-tripped past breakeven ... consider protecting what's left" — two
+  // sections of one brief disagreeing about the same fact. `roundTripSinceCommit` is computed
+  // independently (not via `moves`, which has a second consumer — thesisPillarCoaching's "What
+  // moved" line — that already renders this same fact; reusing `moves` here would duplicate it).
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+  // Swings mandate — live GOOG repro, positionId 59): the 2026-10-14 fix above only covered a
+  // round-trip into a NEGATIVE P&L (`roundTripSinceCommit`, `mfeCaptureOutcome(...)?.kind ===
+  // "round_trip"`). A position that retraces hard from peak but stays net-POSITIVE still printed
+  // this exact contradiction — "unchanged since commit" beside a "Gave back 85% of peak —
+  // consider protecting runner" bullet two sections down, same brief. `materialGivebackSinceCommit`
+  // (thesis-health.ts) closes this using the IDENTICAL `capturePct < 75` threshold that giveback
+  // narrative already uses, so the two can never disagree again — see its own doc comment
+  // (zerodte/thesis-health.ts) for the full account. Supersedes the narrower `!h.roundTripSinceCommit`
+  // check (a strict subset of what `materialGivebackSinceCommit` now covers).
+  const noDriftSinceCommit =
+    (h.moves?.[0]?.includes("unchanged") ?? false) && !h.materialGivebackSinceCommit;
   const headline = noDriftSinceCommit
     ? `**${h.health}%** · ${h.rungLabel} — unchanged since commit`
     : `**${h.health}%** · ${h.rungLabel}`;
@@ -305,11 +330,28 @@ function blendedPnlPct(play: TerminalPlay): number | null {
  * proximity and costs nothing when it's available. Only fall back to the premium heuristic when
  * either side lacks a resolvable `positionId` — unchanged from before, and the one case this still
  * can't disambiguate is itself the subject of the comment above (banger rows never carry one).
+ *
+ * BUG FOUND (Ask Largo standing mandate, 2026-10-15 — same deep-dive that found #6023's
+ * `ownContractExpiry` gap, same root cause, a second independent call site). The early
+ * `play.entry == null` return above made this disclosure structurally unreachable for every WATCH
+ * candidate: `TerminalPlay.entry` is pnl-anchor-only, populated starting at commit, so it is ALWAYS
+ * null pre-entry. That silently hid a real, live, same-ticker sibling position from a member
+ * deciding whether to open a NEW position on a ticker they already hold — arguably more actionable
+ * than the already-committed case this function was built for. The guard is also unnecessary for
+ * correctness: a WATCH row is never itself committed, so it can never appear in `ctx.laneRows` with
+ * `liveStatus` set — there is no "self" for the entry-premium proximity test to accidentally
+ * exclude, so a same-ticker + `liveStatus` match alone is already a safe, genuine sibling test. Fix:
+ * only apply the positionId/premium self-test when THIS play actually has an entry premium to test
+ * against (i.e. it is itself a live/committed row that could appear in laneRows); a pre-entry WATCH
+ * play skips straight to "every live same-ticker row is a genuine sibling". This function-level fix
+ * is necessary but NOT sufficient on its own — `composeSwingPlayBrief`'s `bucket === "watch"` branch
+ * never called this function at all (only the `bucket === "open"` branch did), so the call site
+ * itself needed the same fix; see that branch below.
  */
 function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
   const { play } = ctx;
-  if (play.entry == null || !Number.isFinite(play.entry)) return null;
   const ticker = play.ticker.toUpperCase();
+  const hasOwnEntry = play.entry != null && Number.isFinite(play.entry);
   const { positionId: selfPositionId } = parseSwingPlayId(play.id);
   const siblings = ctx.laneRows.filter((r) => {
     if (r.ticker.toUpperCase() !== ticker) return false;
@@ -318,6 +360,7 @@ function siblingPositionsNote(ctx: SwingPlayBriefContext): RichSection | null {
     if (selfPositionId != null && r.positionId != null) {
       return r.positionId !== selfPositionId;
     }
+    if (!hasOwnEntry) return true; // pre-entry WATCH row: self can't be in laneRows, nothing to exclude
     return Math.abs(r.entryPremium - play.entry!) > 0.005;
   });
   if (!siblings.length) return null;
@@ -386,59 +429,79 @@ function pnlSection(play: TerminalPlay): RichSection {
   // risking drift) a second time — see that function's own comment for the EBS repro that made a
   // second call site necessary.
   const markGenuinelyUnknown = optionMarkGenuinelyUnknown(play);
-  // BUG FOUND (2026-10-09, Ask Largo standing mandate — live SG repro, positionId 1396): `Mark:`
-  // above renders `play.mark` (the raw, full-precision mid — e.g. $0.575, a normal bid/ask
-  // midpoint, NOT an edge case) through `fmtUsd`, which rounds to the cent for display ("$0.57").
-  // `P&L:` renders `play.pnlPct`, which was computed upstream (banger-lane-merge.ts's
-  // `livePnlPct`/adapters.ts's `livePnl`) from that SAME raw, UNROUNDED mid — so the two displayed
-  // numbers stop reconciling whenever the true mid lands on a fractional cent. Live repro: entry
-  // $0.33, mid $0.575 showed "Mark: **$0.57**" / "P&L: **+74.2%**", but a member doing the obvious
-  // hand-check gets (0.57-0.33)/0.33 = +72.7%, a ~1.5pp gap right under the two numbers that most
-  // directly invite that check. Fix: redisplay `P&L:` from the SAME rounded-to-cent mark the
-  // `Mark:` line already shows, so hand arithmetic on the two displayed dollar figures always
-  // reproduces the displayed percentage — the exact self-consistency principle `reconcileStrikeTotal`
-  // (round-floats.ts) already applies one layer up ("a member could manually add up... always
-  // agree"), extended to this narrative pairing. Guarded by `markRoundTripsPnl`: only trust that
-  // `play.pnlPct` really is the plain mark/entry-1 read (and so is safe to redisplay this way) when
-  // recomputing it from the RAW mark already lands within ordinary 1dp rounding noise of the stored
-  // value — `exec.pnl_pct` (adapters.ts's WS-10 executable-lane fallback, a bid/ask-fill-based
-  // number with a different basis entirely) would NOT pass this check, so it is left untouched.
-  const markRoundTripsPnl =
-    !markGenuinelyUnknown &&
-    play.entry != null &&
-    Number.isFinite(play.entry) &&
-    play.entry !== 0 &&
-    play.mark != null &&
-    Number.isFinite(play.mark) &&
-    play.pnlPct != null &&
-    Number.isFinite(play.pnlPct) &&
-    Math.abs((play.mark / play.entry - 1) * 100 - play.pnlPct) <= 0.5;
-  let pnlForDisplay = markRoundTripsPnl
-    ? (Math.round(play.mark! * 100) / 100 / play.entry! - 1) * 100
-    : play.pnlPct;
-  // GUARD (2026-10-09, Ask Largo standing mandate — live CNXC repro, positionId 1624): the
-  // recompute above rounds `play.mark` to the cent BEFORE dividing, and standard half-up rounding
-  // can push the result either direction relative to the raw mid — the SG repro above only ever
-  // exercised the round-DOWN case (mid $0.575 -> displayed $0.57, understating P&L). The symmetric
-  // round-UP case (mid $0.425 -> displayed $0.43, entry $0.30) OVERSTATES: recompute gives +43.3%
-  // while this position's own `peak`/`trough` (adapters.ts's `peakDisplay`/`troughDisplay`,
-  // computed from the RAW un-rounded premium, never re-derived from a rounded Mark) both correctly
-  // read +41.7% — so the brief showed a current P&L visibly ABOVE the position's own recorded
-  // all-time high two lines below, which is a logical impossibility (the current mark IS one of
-  // the samples peak/trough were latched from, so the canonical `play.pnlPct` always lies inside
-  // [trough, peak] by construction — only this cent-rounded recompute can escape that range).
-  // Fall back to the canonical value whenever the recompute would contradict the position's own
-  // recorded extremes; left untouched (same as before this guard) when peak/trough aren't
-  // available to check against, or when the recompute stays inside bounds (the common case this
-  // guard must NOT regress — e.g. the original SG repro, whose round-trip stays well inside
-  // [-39.4, 81.8]). The 0.05pp tolerance absorbs peak/trough's own 1dp display rounding.
-  if (
-    pnlForDisplay != null &&
-    Number.isFinite(pnlForDisplay) &&
-    ((play.peak != null && Number.isFinite(play.peak) && pnlForDisplay > play.peak + 0.05) ||
-      (play.trough != null && Number.isFinite(play.trough) && pnlForDisplay < play.trough - 0.05))
-  ) {
-    pnlForDisplay = play.pnlPct;
+  // BUG FIX (2026-10-16, Ask Largo standing mandate — live GOOG/KMPR repro, Bug 1 of the
+  // standing "Ask Largo x Night Hawk Swings" ownership mandate; SUPERSEDES the 2026-10-09
+  // SG/CNXC and 2026-10-15 ENOV guards this comment used to describe — kept only in git history,
+  // not reproduced here, to avoid describing logic that no longer exists).
+  //
+  // The retired approach redisplayed `P&L:` from `Math.round(play.mark * 100) / 100` — the
+  // cent-rounded Mark — reasoning that a member's hand-check against the two displayed dollar
+  // figures should always reconcile with the displayed percentage. Two live repros proved that
+  // recompute can disagree with the single CANONICAL `pnlPct` every other surface already
+  // agrees on (the horizons board's own `livePnlPct`, PlayTerminal.tsx's Command Deck card, and
+  // every OTHER section of this same brief — play-brief-narrative.ts's "Round-tripped past
+  // breakeven"/"Gave back X% of peak" lines read `play.pnlPct` directly, never a recompute):
+  //   1. GOOG (positionId 59): entry $14.875, mark $15.075 — entry itself carries sub-cent
+  //      precision the recompute never rounds, so `(round(mark*100)/100) / RAW entry` can
+  //      straddle a 1-decimal display-rounding boundary even when the underlying drift is tiny
+  //      (0.03pp here): displayed "+1.4%" vs `GET /api/market/nighthawk/horizons?view=swings`'
+  //      canonical "+1.3%" for the IDENTICAL position at the IDENTICAL instant.
+  //   2. KMPR (positionId 1634): entry $0.05, mark $0.025 — `Math.round(2.5)` rounds UP (JS
+  //      half-up rounds ties away from zero) to $0.03, and because KMPR's mark happens to sit
+  //      EXACTLY at its own recorded trough (-50.0%), the resulting recompute (-40.0%) lands
+  //      safely INSIDE the [trough, peak] bounds the retired guard checked — a full 10-POINT
+  //      overstatement of how far a real loser has "recovered" that a bounds-only guard is
+  //      structurally unable to catch, because the error never escapes the position's own
+  //      recorded range, it just lies within it.
+  // Both are instances of the same root problem the prior guards never fully closed: deriving
+  // P&L from an INDEPENDENTLY cent-rounded dollar figure, rather than from the single canonical
+  // percentage every other surface reads, can disagree with that canonical value by construction
+  // — rounding one operand (the mark) of a ratio and not the other (the entry) does not commute
+  // with rounding the ratio itself, and no bound on the recompute's distance from `peak`/`trough`
+  // can catch a case where the recompute happens to stay inside an already-wide range.
+  //
+  // Fix: show the canonical `play.pnlPct` directly — no recompute. This is strictly simpler and
+  // removes the whole class of future cent-rounding-drift bugs this file had been accumulating
+  // increasingly narrow point-guards for since 2026-10-09, rather than adding a third. It also
+  // means every section of the brief (Position here, "Trade manager read", "Thesis health", the
+  // diff/snapshot narrative) now reads the exact same number, so this also keeps the 2026-10-09
+  // CTVA fix's original intent (one internally-consistent P&L per brief) — just from the
+  // opposite direction: by never diverging from canonical, instead of reconciling every section
+  // to a recompute that could itself diverge from canonical.
+  const pnlForDisplay = play.pnlPct;
+  // GUARD #2 (2026-10-15, Ask Largo standing mandate — live ENOV repro, positionId 1739, BANGER-
+  // origin TRIM/PARTIAL; kept unchanged by the 2026-10-16 fix above — `pnlForDisplay` is now
+  // always the canonical `play.pnlPct`, so this guard's job (protecting against a STALE
+  // peak/trough watermark, a different bug than the cent-rounding one the comment above
+  // describes) is unaffected). Live repro: ENOV entry $0.05, mark $0.33 (a clean,
+  // non-cent-ambiguous value) showed `play.pnlPct` = +560.0% while `play.peak` (adapters.ts's
+  // `peakDisplay`, derived from the ledger's own `peak_premium` watermark) read +550.0% — ten
+  // points BELOW the P&L it's supposed to bound. Root cause traced
+  // to `src/lib/banger/positions-db.ts`'s `updateBangerLiveState`: its SQL ratchets
+  // `peak_premium = GREATEST(peak_premium, $3)` and `last_mark = $3` in the SAME statement using
+  // the SAME bound parameter, which is provably atomic and self-consistent per write — so this can
+  // only mean some tick that advanced `last_mark` to its current value did not, for whatever reason
+  // (a question that needs raw production DB access this read-only audit session doesn't have, and
+  // is out of scope for this fix per this finding's own write-up), carry that same mark into the
+  // peak ratchet. Whatever the upstream trigger, the member-facing contract — the canonical
+  // `pnlPct` always lies inside [trough, peak] by construction — must hold for what Largo
+  // actually DISPLAYS, independent of whether the upstream ledger watermark has caught up yet.
+  // Fix: WIDEN the displayed Peak/Trough to bracket the final displayed P&L — never
+  // the reverse (clamping P&L down to a stale Peak would UNDERSTATE the member's real gain, the
+  // same mistake this file's other absence/precision guards exist to avoid). This is the identical
+  // "widen-only, converge-in-place" discipline `positions-db.ts`'s own entry_premium-bracket fix
+  // (PR #6027, `db.ts`'s boot-time backfill UPDATE) already applies to the SAME ratchet pair at the
+  // storage layer — applied here at the display layer instead, since the task scope for this fix is
+  // this file, not a second, unconfirmed change to the live ledger's write path.
+  let peakForDisplay = play.peak;
+  let troughForDisplay = play.trough;
+  if (pnlForDisplay != null && Number.isFinite(pnlForDisplay)) {
+    if (peakForDisplay != null && Number.isFinite(peakForDisplay) && pnlForDisplay > peakForDisplay) {
+      peakForDisplay = pnlForDisplay;
+    }
+    if (troughForDisplay != null && Number.isFinite(troughForDisplay) && pnlForDisplay < troughForDisplay) {
+      troughForDisplay = pnlForDisplay;
+    }
   }
   const lines = [
     `Entry: **${fmtUsd(play.entry)}**`,
@@ -448,7 +511,19 @@ function pnlSection(play: TerminalPlay): RichSection {
         ? `Mark: **${fmtUsd(play.mark)}** _(live quote, no freshness timestamp)_`
         : `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}`,
     `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}`,
-    `Peak: **${fmtPct(play.peak)}**`,
+    // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live NVDA:62 repro,
+    // board-wide sweep found 9/63 committed positions affected). Before this fix, Peak/Trough
+    // rendered `fmtPct(peakForDisplay)`/`fmtPct(troughForDisplay)` unconditionally whenever
+    // `play.peak`/`play.trough` were non-null — but a position that has NEVER received a single
+    // live-marks tick since commit has its peak/trough watermarks still seeded at the commit-time
+    // entry premium (entry===peak===trough), so this rendered a confident "0.0%" indistinguishable
+    // from a real, observed flat reading, three lines below the SAME section's own honest
+    // "Mark: unknown ... do not read as flat" line. `markGenuinelyUnknown` is already computed
+    // above and already gates the Mark line — gate Peak/Trough the identical way, since the
+    // underlying signal (no live tick has ever landed on this contract) is the same for all three.
+    markGenuinelyUnknown
+      ? `Peak: **—** _(no live tick yet)_`
+      : `Peak: **${fmtPct(peakForDisplay)}**`,
     // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
     // `play.trough` (the position's own worst excursion — `troughDisplay`, adapters.ts:475-480,
     // computed symmetrically alongside `peakDisplay` on every TerminalPlay row, condor-aware) was
@@ -456,9 +531,11 @@ function pnlSection(play: TerminalPlay): RichSection {
     // showed "Peak: +161.3%" with no way to know the same position was down -57.2% before it
     // worked. Conviction-relevant history a trade manager would cite ("this one tested you early,
     // don't flinch on the next drawdown scare") that the data already supports; mirrors Peak's own
-    // unconditional render (fmtPct handles null as "—" — same convention, both null together when
-    // entry/premium data is missing).
-    `Trough: **${fmtPct(play.trough)}**`,
+    // render (fmtPct handles null as "—" — same convention, both null together when entry/premium
+    // data is missing; the 2026-10-17 fix above now also mirrors Peak's `markGenuinelyUnknown` gate).
+    markGenuinelyUnknown
+      ? `Trough: **—** _(no live tick yet)_`
+      : `Trough: **${fmtPct(troughForDisplay)}**`,
   ];
   // GAP FOUND (2026-09-18, Ask Largo standing mandate): `play.greeks` (DeckGreeks: delta/gamma/
   // theta/vega/iv) is a real, live per-contract read for every open swing position — the active-
@@ -551,7 +628,21 @@ function pnlSection(play: TerminalPlay): RichSection {
       lines.push(`Banked: ${parts.join(" · ")}`);
     }
   }
-  if (play.execPnlPct != null) lines.push(`Exec P&L: **${fmtPct(play.execPnlPct)}**`);
+  // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live CAVA repro,
+  // positionId 1875, one trim already banked at +100%). `execPnlPct` is priced on the exact same
+  // open-runner-only basis as `pnlPct` two sections above (`execSlippageCoaching`,
+  // play-brief-narrative-coaching.ts, diffs them "mid vs fill" on the identical scope) — the plain
+  // P&L line already discloses this with the `blended != null` qualifier below, but Exec P&L
+  // rendered with none. By the time a reader reaches Exec P&L, the "Blended P&L"/"Banked" lines
+  // just above it have established a whole-position frame, so an unqualified "Exec P&L: +76.8%"
+  // reads as "what I'd net exiting my entire remaining position" when it is only the runner leg's
+  // own fill-based P&L — the same misread class this file has fixed repeatedly for the plain P&L
+  // line (CRWD/NRG/NN 2026-09-10..14), just never reaching this sibling line. Mirror the same
+  // qualifier, not a new one, so the two lines read consistently.
+  if (play.execPnlPct != null)
+    lines.push(
+      `Exec P&L: **${fmtPct(play.execPnlPct)}**${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}`,
+    );
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
   return { title: "Position", body: lines.join("\n") };
 }
@@ -821,12 +912,30 @@ function levelsFromContext(
       });
     }
   }
-  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
+  // Cast to include VectorFreshnessBlock's `market_session_note` (PR #5306, vector-state-
+  // freshness.ts) — same cast `evidenceFromContext` already applies to its own `vec`, see that
+  // function's comment for why the declared `VectorFullState` type predates this runtime field.
+  const vec = (ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null) as
+    | (VectorFullState & Partial<VectorFreshnessBlock>)
+    | null;
   const gex = ctx.ecosystem?.gex_positioning;
   const vecFresh = vectorFreshness(vec, readMs);
   const gexFresh = gexFreshness(gex, readMs);
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  // BUG FIX (Largo Product Contract C2, 2026-10-16, Ask Largo standing mandate — live TSM/BBWI
+  // repro): every level below stamped `freshness: vecFresh`/`gexFresh` even in the exact
+  // after-hours scenario `gexMarketSessionNote`/`vec.market_session_note` already exist to catch
+  // — a matrix recomputed moments ago off a CLOSED market's last-session tape reads "live" with
+  // no caveat anywhere a consumer of the STRUCTURED `levels[]`/`provenance` fields (as opposed to
+  // the free-text evidence fact below, which already narrates this) would ever see it. Computed
+  // once here, same gating as `vecFresh`/`gexFresh`'s own stale checks (`gexMarketSessionNote`
+  // already returns null once `gexMatrixStale` is true, same as `vectorStale` below gates the
+  // Vector side), and threaded onto every GEX/Vector-sourced `provenance` alongside — never
+  // instead of — `freshness`, per `BieProvenance.market_session_note`'s own doc comment (ADDITIVE,
+  // not a new freshness value).
+  const vecSessionNote = vectorStale ? null : (vec?.market_session_note ?? null);
+  const gexSessionNote = gexMarketSessionNote(gex, readMs);
   // Null at the SOURCE when Vector is stale (not a separate suppression flag) so a live GEX
   // value for the same level still falls through via `??` instead of the whole entry being
   // dropped just because the Vector side happened to be present-but-stale.
@@ -855,6 +964,7 @@ function levelsFromContext(
         source: "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecCallWall != null ? "vector" : "gex"),
         freshness: vecCallWall != null ? vecFresh : gexFresh,
+        market_session_note: vecCallWall != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -866,6 +976,7 @@ function levelsFromContext(
         source: "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecPutWall != null ? "vector" : "gex"),
         freshness: vecPutWall != null ? vecFresh : gexFresh,
+        market_session_note: vecPutWall != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -877,6 +988,7 @@ function levelsFromContext(
         source: "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecFlip != null ? "vector" : "gex"),
         freshness: vecFlip != null ? vecFresh : gexFresh,
+        market_session_note: vecFlip != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -890,6 +1002,7 @@ function levelsFromContext(
         source: vecSpot != null ? "Vector" : "GEX",
         asOf: levelProvenanceAsOf(gex, vec, vecSpot != null ? "vector" : "gex"),
         freshness: vecSpot != null ? vecFresh : gexFresh,
+        market_session_note: vecSpot != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -898,7 +1011,12 @@ function levelsFromContext(
       levels.push({
         label: confluenceZoneLabel(z, { callWall, putWall }),
         price: z.center,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+        provenance: {
+          source: "Vector",
+          asOf: levelProvenanceAsOf(gex, vec, "vector"),
+          freshness: vecFresh,
+          market_session_note: vecSessionNote,
+        },
       });
     }
     // BUG FIX (2026-10-06, Ask Largo standing mandate): this used to stamp the WHOLE Vector
@@ -912,7 +1030,12 @@ function levelsFromContext(
         levels.push({
           label: "dark pool",
           price: dp.strike,
-          provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+          provenance: {
+            source: "Vector",
+            asOf: levelProvenanceAsOf(gex, vec, "vector"),
+            freshness: vecFresh,
+            market_session_note: vecSessionNote,
+          },
         });
       }
     }
@@ -924,7 +1047,12 @@ function levelsFromContext(
       levels.push({
         label: "gamma magnet",
         price: vec.magnet.strike,
-        provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+        provenance: {
+          source: "Vector",
+          asOf: levelProvenanceAsOf(gex, vec, "vector"),
+          freshness: vecFresh,
+          market_session_note: vecSessionNote,
+        },
       });
     }
   }
@@ -940,6 +1068,7 @@ function levelsFromContext(
         // Largo C8 fix (2026-09-15) — same vec-side test as call/put wall and gamma flip above.
         asOf: levelProvenanceAsOf(gex, vec, vecKing != null ? "vector" : "gex"),
         freshness: vecKing != null ? vecFresh : gexFresh,
+        market_session_note: vecKing != null ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -947,7 +1076,12 @@ function levelsFromContext(
     levels.push({
       label: "max pain",
       price: vec.maxPain,
-      provenance: { source: "Vector", asOf: levelProvenanceAsOf(gex, vec, "vector"), freshness: vecFresh },
+      provenance: {
+        source: "Vector",
+        asOf: levelProvenanceAsOf(gex, vec, "vector"),
+        freshness: vecFresh,
+        market_session_note: vecSessionNote,
+      },
     });
   }
   return levels.slice(0, 10);
@@ -1012,6 +1146,13 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     | null;
   const gexStale = gexMatrixStale(gex, readMs);
   const vectorStale = vectorSnapshotStale(vec, readMs, ctx.sessionDate);
+  // BUG FIX (Largo Product Contract C2, 2026-10-16, Ask Largo standing mandate — live TSM/BBWI
+  // repro): same fix as `levelsFromContext`'s own identically-named consts — see that function's
+  // comment for the full write-up. Threaded onto the dealer-posture `calc` fact and the two
+  // standalone market-session-note `fact` entries below, so every GEX/Vector-sourced provenance
+  // block in this function carries the same additive disclosure `levelsFromContext` now does.
+  const vecSessionNote = vectorStale ? null : (vec?.market_session_note ?? null);
+  const gexSessionNote = gexMarketSessionNote(gex, readMs);
   // BUG FIX (2026-09-15, Ask Largo standing mandate, live repro TSM WATCH brief): this used to
   // compute `postureFromVec` as `vec?.regime?.posture != null ? ... : null`, treating the literal
   // string "unknown" (Vector genuinely could not resolve a regime) as an equally-resolved answer
@@ -1029,13 +1170,16 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   if (gammaPosture) {
     const parts: string[] = [`γ ${gammaPosture}`];
     if (gex && !gexStale && Number.isFinite(gex.net_gex)) {
-      const netM = gex.net_gex / 1e6;
       // BUG FOUND (Ask Largo standing mandate, 2026-09-18, live repro ABTC $10.15 brief): a real,
       // signed net GEX under ~$50k (common on lower-priced/small-cap tickers) rounded to "0.0M" via
       // a plain toFixed(1) — reading as "no dealer exposure" when the sign and magnitude are both
-      // real and meaningful for the posture read. formatFixedNonZero widens precision only when
-      // the fixed rounding would otherwise collapse a real nonzero value to a false zero.
-      parts.push(`net GEX ${netM >= 0 ? "+" : ""}${formatFixedNonZero(netM, 1)}M`);
+      // real and meaningful for the posture read. formatFixedNonZero (inside formatDealerDollars)
+      // widens precision only when the fixed rounding would otherwise collapse a real nonzero
+      // value to a false zero.
+      // BUG FOUND (Ask Largo standing mandate, 2026-10-14): a large net GEX (routinely the case on
+      // SPY/SPX-scale tickers) rendered as e.g. "-17545.3M" under a fixed /1e6-then-"M" format —
+      // formatDealerDollars picks M/B/T by magnitude instead, so this reads "-17.5B".
+      parts.push(`net GEX ${gex.net_gex >= 0 ? "+" : ""}${formatDealerDollars(gex.net_gex)}`);
     }
     if (gex && !gexStale) {
       // Recompute against the SAME Vector-preferred call/put walls the levels array and narrative
@@ -1073,6 +1217,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
           etStampFromIso(gex?.asof) ??
           ctx.asOf,
         freshness: postureFromVec ? vectorFreshness(vec, readMs) : gexFreshness(gex, readMs),
+        market_session_note: postureFromVec ? vecSessionNote : gexSessionNote,
       },
     });
   }
@@ -1093,6 +1238,7 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
         source: "Vector",
         asOf: vec.asOfEt ?? etStampFromIso(vec.asOf) ?? ctx.asOf,
         freshness: vectorFreshness(vec, readMs),
+        market_session_note: vecSessionNote,
       },
     });
   }
@@ -1104,15 +1250,15 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // Friday's closing chain while the market itself has been shut for hours. Gated `!gexStale` for
   // the same reason the Vector block is gated `!vectorStale` — this can never surface a caveat
   // about a GEX read the rest of this function has already excluded as untrustworthy.
-  const gexMarketSessionNoteText = gexMarketSessionNote(gex, readMs);
-  if (!gexStale && gexMarketSessionNoteText) {
+  if (!gexStale && gexSessionNote) {
     out.push({
       kind: "fact",
-      text: gexMarketSessionNoteText,
+      text: gexSessionNote,
       provenance: {
         source: "GEX",
         asOf: gex?.as_of_et ?? etStampFromIso(gex?.asof) ?? ctx.asOf,
         freshness: gexFreshness(gex, readMs),
+        market_session_note: gexSessionNote,
       },
     });
   }
@@ -1191,16 +1337,25 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
       });
     }
   }
-  if (
-    statusBucket(ctx.play) === "open" &&
-    ctx.play.entry != null &&
-    Number.isFinite(ctx.play.entry)
-  ) {
+  // BUG FOUND (Ask Largo standing mandate, 2026-10-15 — paired with the identical fix on
+  // `siblingPositionsNote` above): this evidence[] feeder is supposed to carry "Same gating as the
+  // sections themselves" (see the Largo C7 comment above the book-overlap block just above), but it
+  // was STRICTER than `siblingPositionsNote` on two counts — `=== "open"` instead of `!== "closed"`,
+  // and an unconditional `ctx.play.entry != null` requirement — so for a WATCH candidate it would
+  // have silently disagreed with the section once that section was fixed to fire pre-entry: the
+  // member would read the "Other concurrent position(s)" section body but find no matching
+  // evidence[] entry backing it, the exact split this file's own C7 comment says must never happen.
+  // Fixed in lockstep: gate on non-closed (matching book overlap) and only require an entry premium
+  // for the self-test, not as a precondition to look at all — a pre-entry WATCH row can never
+  // appear in laneRows with liveStatus set, so there is no self to accidentally exclude.
+  if (statusBucket(ctx.play) !== "closed") {
     const ticker = ctx.play.ticker.toUpperCase();
+    const hasOwnEntry = ctx.play.entry != null && Number.isFinite(ctx.play.entry);
     const siblingCount = ctx.laneRows.filter((r) => {
       if (r.ticker.toUpperCase() !== ticker) return false;
       if (!r.liveStatus) return false;
       if (r.entryPremium == null || !Number.isFinite(r.entryPremium)) return false;
+      if (!hasOwnEntry) return true;
       return Math.abs(r.entryPremium - ctx.play.entry!) > 0.005;
     }).length;
     if (siblingCount > 0) {
@@ -1360,6 +1515,12 @@ export function composeSwingPlayBrief(
   // multiple briefs off one shared anchor) untouched rather than overwriting it.
   ctx = { ...ctx, readMs: ctx.readMs ?? readMs };
   const { play } = ctx;
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro VXX/SQQQ/SOXS/UVIX): this used to
+  // hardcode "equity" below on the stale assumption that swings are always equities — true when
+  // this field was added, no longer true once the Banger whole-market engine started feeding
+  // leveraged/inverse/volatility ETFs into the swing lane. Mirrors the same fix already shipped for
+  // product-adapters.ts's cross-product reads (same root cause, different file).
+  const tickerClass = canonicalTicker(play.ticker)?.kind ?? "equity";
   const bucket = statusBucket(play);
   const headline = playContractHeadline(play);
   const grade = playGradeLabel(play);
@@ -1393,6 +1554,13 @@ export function composeSwingPlayBrief(
     // on this section, which kept reading the real wall clock regardless.
     const watchSection = safeCompose("Entry", () => watchEntrySection(play, ctx.readMs ?? readMs), null);
     if (watchSection) sections.push(watchSection);
+    // BUG FOUND (Ask Largo standing mandate, 2026-10-15): `siblingPositionsNote` was never even
+    // CALLED from this branch — the function-level `play.entry == null` guard fixed just above is
+    // necessary but not sufficient, because the call site itself only invoked this section for
+    // `bucket === "open"`. Added here so a WATCH candidate on a ticker that already carries a real
+    // committed sibling position gets the same disclosure an open position would.
+    const watchSiblings = safeCompose("Other concurrent position(s)", () => siblingPositionsNote(ctx), null);
+    if (watchSiblings) sections.push(watchSiblings);
   } else if (bucket === "open") {
     const mgmt = safeCompose("Management", () => managementSection(play), null);
     if (mgmt) sections.push(mgmt);
@@ -1448,6 +1616,39 @@ export function composeSwingPlayBrief(
   // `watchEntrySection`'s identical check; scoped to `bucket === "watch"` to match its two sibling
   // call sites exactly and leave OPEN/CLOSED invalidation logic untouched.
   const dead = bucket === "watch" ? deadPlayReason(play) : null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 3 of the standing Ask Largo x Night Hawk
+  // Swings mandate — live META repro). `resolveBreakInvalidation` returns null whenever it cannot
+  // resolve a live spot from EITHER Vector or GEX (see its own comment) — and that null has (at
+  // least) two structurally different causes this chain's own fallback used to treat identically:
+  // (1) the per-ticker read genuinely has no resolvable level (cold/absent data, a normal, honest
+  // "nothing to compute" case the comment above this block already documents the gate-reason
+  // fallback as the correct answer for), and (2) THIS ticker's own ecosystem/Vector context fetch
+  // FAILED this cycle (`ctx.ecosystemFetchFailed`/`ctx.vectorFetchFailed` — already surfaced
+  // elsewhere in this SAME envelope via `collectBriefUnavailableSources`'s "ecosystem context:
+  // fetch failed"/"Vector state: fetch failed" entries), which is a transient, per-ticker, this-
+  // cycle-only failure, not an honest absence of data to compute from.
+  //
+  // Live repro: META WATCH brief, 2026-10-16 01:57 UTC — `envelope.invalidation` read the literal
+  // `g_s12_halt_feed_stale` gate reason ("Trading-halt feed unavailable...") while META's
+  // `setupState` was `"FORMING"`/`entryStatus "PRE_TRIGGER"` (not dead) and `unavailableSources`
+  // listed META's own ecosystem/Vector fetch as failed — CloudWatch confirmed both reads timed out
+  // for META specifically at that exact timestamp. The SAME gate reason renders identically for
+  // EVERY ticker blocked by that gate right now (this file's own comment two paragraphs up already
+  // names this as the reason a real per-ticker level is preferred over it) — presenting it here,
+  // with no indication the per-ticker read simply never ran this cycle, reads as "this IS what
+  // invalidates META" when it is really "we don't know what invalidates META this cycle."
+  //
+  // Fix: when the fetch itself failed, never substitute the shared gate-block text as if it were
+  // META's real per-ticker answer — fall through past it instead. The per-position premium-stop
+  // fallback (a genuine, ticker-specific number from this position's own ledger row, not a shared
+  // system string) is left reachable either way: a fetch failure says nothing about whether that
+  // real number exists. The member already sees the HONEST reason this field has nothing more
+  // specific to say via `unavailableSources` in this same response (Largo C3 — absence must read
+  // as absence, never as a different fact dressed up as the real one) — no separate caveat string
+  // is invented here, mirroring the `dead`-case fix above's own choice to reframe the EXISTING
+  // text rather than fabricate a new one, except here the honest move is omission, not reframing,
+  // since there is no real per-ticker fact to reframe.
+  const sourceFetchFailed = ctx.ecosystemFetchFailed === true || ctx.vectorFetchFailed === true;
   const invalidation =
     bucket === "closed"
       ? null
@@ -1456,7 +1657,7 @@ export function composeSwingPlayBrief(
         : dead
           ? `${dead.charAt(0).toUpperCase()}${dead.slice(1)} — this setup is no longer live.`
           : resolveBreakInvalidation(ctx) ??
-            play.gateBlocks?.[0]?.reason ??
+            (sourceFetchFailed ? null : play.gateBlocks?.[0]?.reason) ??
             (bucket === "open" && play.exitPolicy?.stop_premium != null
               ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
               : null);
@@ -1507,8 +1708,9 @@ export function composeSwingPlayBrief(
         () => swingPlayBriefConfidence(play, bucket, unavailableSources),
         undefined
       ),
-      // Largo C4 (IDENTITY): swings are always equities.
-      ticker_class: "equity",
+      // Largo C4 (IDENTITY): derive from the ticker itself — see the bug-fix comment at this
+      // function's top for why this can no longer be hardcoded "equity".
+      ticker_class: tickerClass,
     }),
     // Largo C8 (PROVENANCE): the brief is computed by the Swing Play Intelligence engine.
     source: "computed",
@@ -1536,7 +1738,7 @@ export function composeSwingPlayBrief(
   return {
     playId: play.id,
     ticker: play.ticker,
-    ticker_class: "equity" as const,
+    ticker_class: tickerClass,
     envelope,
     asOf: ctx.asOf,
     sessionDate: ctx.sessionDate,

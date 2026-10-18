@@ -173,6 +173,39 @@ export function gexMarketSessionNote(
 }
 
 /**
+ * CLOSED-bucket sibling of `dataHonestyCoaching`'s own Vector-first/GEX-fallback
+ * `closedMarketNote` (play-brief-narrative-coaching.ts) — the identical "compute is fresh but
+ * the MARKET is CLOSED" disclosure (Largo C2), wired for the sections `dataHonestyCoaching`
+ * itself never reaches.
+ *
+ * GAP FOUND (2026-10-17, Ask Largo standing mandate): `collectCoachingBullets` early-returns
+ * `closedCoaching(play)` ALONE for `bucket === "closed"` and never calls `dataHonestyCoaching`
+ * at all — so every CLOSED-bucket section that independently renders a CURRENT GEX/Vector read
+ * (chart technicals, chart levels, GEX posture, wall dynamics, Vector desk) carries its own
+ * generic "_Current ... — not what this trade traded under._" disclaimer but none of them check
+ * `market_session_note`/`gexMarketSessionNote` — so a post-close/weekend self-warm (a genuinely
+ * fresh compute off the LAST session's tape) reads as "current" with no hint the market has been
+ * shut for hours, exactly the Largo C2 violation #5306 already fixed for OPEN/WATCH's "Trade
+ * manager read" section. Live-reproduced on two independent CLOSED positions: machine-readable
+ * `envelope.evidence[]`/`envelope.levels[]` carried the correct `market_session_note` the whole
+ * time — only the CLOSED-bucket section prose never read it.
+ *
+ * Same dedup rule as `dataHonestyCoaching`: a post-close self-warm computes Vector AND the GEX
+ * matrix off the SAME last session's tape at nearly the same instant, so only fall through to
+ * the GEX-sourced note when Vector itself gave none (stale, absent, or genuinely live).
+ */
+export function closedMarketSessionNote(
+  vec: VectorWithReadContext | null | undefined,
+  gex: GexPositioning | null | undefined,
+  readMs: number = Date.now(),
+): string | null {
+  return (
+    (!vectorAgeStale(vec, readMs) ? (vec?.market_session_note ?? null) : null) ??
+    (!gexMatrixStale(gex, readMs) ? gexMarketSessionNote(gex, readMs) : null)
+  );
+}
+
+/**
  * Formats a millisecond age as a plain seconds label ("42s") for the "Last snapshot (~Ns old)"
  * narrative pattern several sections share (chart technicals, Vector desk, GEX posture, Meridian
  * catalysts, dark-pool/spot narration) — never a bare `Math.round(ageMs / 1000)`, which renders

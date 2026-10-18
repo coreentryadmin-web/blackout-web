@@ -1564,6 +1564,59 @@ test("banger risk_note reflects the ACTUAL contract's DTE: near-term stays 'week
   assert.match(farPlays[0]?.risk_note ?? "", /This 25-DTE contract can still spike/);
 });
 
+// 2026-10-14: found live on Night Hawk Legacy (ticker ETSY) — a banger-lane LONG ticker whose
+// ACTUAL picked contract struck BELOW spot (in-the-money, not OTM — pickChainContract's
+// preferAffordable ladder can legitimately land there) still got the unconditional "cheap OTM
+// weeklies" risk_note, a false moneyness claim about the exact contract. Fixed by threading the
+// play's own real spot into bangerScaleOutNote() (scale-out.ts) via a verified otm flag.
+test("banger risk_note reflects the ACTUAL contract's MONEYNESS: ITM contract drops the false 'OTM' claim", () => {
+  // Chain has ONLY strikes below spot (110, 115) — whatever pickChainContract.ts picks for a LONG
+  // is therefore necessarily in-the-money, no preferAffordable economics needed to force it.
+  const itmOnlyChain: EditionChainData = {
+    spot: 120,
+    rows: [
+      row(110, { callAsk: 11.2, callBid: 10.8, expiry: ymdPlus(4) }),
+      row(115, { callAsk: 6.2, callBid: 5.8, expiry: ymdPlus(4) }),
+    ],
+  };
+  const ranked = [scored("ETS", "long", 68)];
+  const chains = { ETS: itmOnlyChain };
+  const dossierMap = { ETS: dossier("ETS", 120) };
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    bangerTickers: new Set(["ETS"]),
+  });
+  const play = plays.find((p) => p.ticker === "ETS");
+  assert.ok(play, "ETS play built");
+  assert.ok(play!.options_play?.includes("$115"), `expected the nearer, 115 strike to be picked: ${play!.options_play}`);
+  assert.doesNotMatch(
+    play!.risk_note ?? "",
+    /cheap OTM weeklies/,
+    "a strike BELOW spot on a LONG call is in-the-money — must not claim OTM"
+  );
+  assert.match(play!.risk_note ?? "", /already in-the-money/i);
+});
+
+test("banger risk_note reflects the ACTUAL contract's MONEYNESS: genuinely OTM contract is unaffected, byte-for-byte", () => {
+  const ranked = [scored("AAA", "long", 68)];
+  // chainAround includes an ATM strike at exactly spot; near-term expiry keeps this in the
+  // <=10 DTE branch where the moneyness check actually applies.
+  const chains = { AAA: chainAround(120, { expiry: ymdPlus(4) }) };
+  const dossierMap = { AAA: dossier("AAA", 120) };
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    bangerTickers: new Set(["AAA"]),
+  });
+  const play = plays.find((p) => p.ticker === "AAA");
+  assert.match(play!.risk_note ?? "", /cheap OTM weeklies/, "ATM/OTM pick keeps the original framing unchanged");
+});
+
 // ── buildRescuePlays sector propagation ─────────────────────────────────────────
 // Regression: buildRescuePlays omitted `sector` from the play object, breaking
 // the cross-edition governor's per-sector cap.

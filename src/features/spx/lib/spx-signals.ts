@@ -49,7 +49,7 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-function nearestWall(
+export function nearestWall(
   walls: SpxDeskPayload["gex_walls"],
   kind: "support" | "resistance",
   price: number,
@@ -279,10 +279,53 @@ function buildLevels(
   return { entry, stop, target, invalidation, support, resistance };
 }
 
-const NEWS_BEAR_RE =
-  /\b(fed|fomc|halt|circuit.?breaker|crash|missile|attack|explosion|tariff.?hike|surprise.?cpi|surprise.?pce|geopolit|war|sanctions|default|downgrade)\b/i;
-const NEWS_BULL_RE =
-  /\b(rate.?cut|dovish|ceasefire|stimulus|deal|beat.?estimates|record.?high|rally)\b/i;
+const NEWS_BEAR_WORDS =
+  "fed|fomc|halt|circuit.?breaker|crash|missile|attack|explosion|tariff.?hike|surprise.?cpi|surprise.?pce|geopolit|war|sanctions|default|downgrade";
+const NEWS_BULL_WORDS =
+  "rate.?cut|dovish|ceasefire|stimulus|deal|beat.?estimates|record.?high|rally";
+const NEWS_BEAR_RE = new RegExp(`\\b(?:${NEWS_BEAR_WORDS})\\b`, "i");
+const NEWS_BULL_RE = new RegExp(`\\b(?:${NEWS_BULL_WORDS})\\b`, "i");
+
+// FIX (Ask Largo standing mandate, 2026-10-17, live repro): the keyword scan above had no
+// negation/de-escalation awareness, so a headline reporting an event being AVERTED, RESOLVED, or
+// CALLED OFF scored identically to the event actually happening — e.g. "Stimulus deal collapses
+// in Congress" scored as a +3 BULLISH headline off the bare word "stimulus"/"deal", and "War fears
+// ease after ceasefire reached" scored a bearish hit off "war" alongside the correct bullish
+// "ceasefire" hit. Rather than attempting full sentiment reversal (risky — getting the direction
+// wrong is worse than the silent-miscount this replaces), a nearby reversal/resolution verb simply
+// SUPPRESSES that keyword's hit for this headline — same "omit, don't fabricate" discipline this
+// codebase applies elsewhere to uncertain signals.
+//
+// Checked in a bounded word-window straddling the keyword (not the whole headline) so an unrelated
+// clause elsewhere in the same headline can't suppress a real, separate signal — live repro
+// "Rate cut hopes dashed as Fed turns hawkish" needs "dashed" to cancel the "rate cut" bull hit
+// WITHOUT also cancelling the separate, genuinely bearish "Fed turns hawkish" clause. Filler tokens
+// that are themselves clause-boundary words (and/but/as/while/after/...) are excluded from the
+// window, which stops the window from reaching across a clause break to borrow a reversal verb
+// that belongs to a different clause.
+const NEWS_REVERSAL_WORDS =
+  "avoids?|avoided|averts?|averted|unlikely|rules?\\s+out|ruled\\s+out|eas(?:e|es|ed|ing)|" +
+  "cools?|cooled|cooling|resolves?|resolved|lifts?|lifted|scraps?|scrapped|" +
+  "cancel(?:l?ed|s)?|calls?\\s+off|called\\s+off|shelves?|shelved|subsides?|subsided|" +
+  "dash(?:ed|es)?|collapses?|collapsed|falls?\\s+through|fell\\s+through|de-?escalat\\w*";
+const NEWS_CLAUSE_BOUNDARY_WORDS =
+  "and|but|as|while|after|before|though|although|since|because|when|if|yet";
+const NEWS_FILLER_TOKEN = `(?:\\s+(?!(?:${NEWS_CLAUSE_BOUNDARY_WORDS})\\b)\\S+)`;
+
+function buildNewsNegationCheck(keywordWords: string): (text: string) => boolean {
+  const before = new RegExp(
+    `\\b(?:${NEWS_REVERSAL_WORDS})\\b${NEWS_FILLER_TOKEN}{0,2}\\s+\\b(?:${keywordWords})\\b`,
+    "i",
+  );
+  const after = new RegExp(
+    `\\b(?:${keywordWords})\\b${NEWS_FILLER_TOKEN}{0,3}\\s+\\b(?:${NEWS_REVERSAL_WORDS})\\b`,
+    "i",
+  );
+  return (text: string) => before.test(text) || after.test(text);
+}
+
+const newsBearIsNegated = buildNewsNegationCheck(NEWS_BEAR_WORDS);
+const newsBullIsNegated = buildNewsNegationCheck(NEWS_BULL_WORDS);
 
 /**
  * Scan up to 10 desk news headlines for macro-shock keywords.
@@ -331,8 +374,8 @@ function scoreNewsRisk(
   let bullHits = 0;
   for (const h of headlines.slice(0, 10)) {
     const text = h.title ?? "";
-    if (NEWS_BEAR_RE.test(text)) bearHits++;
-    if (NEWS_BULL_RE.test(text)) bullHits++;
+    if (NEWS_BEAR_RE.test(text) && !newsBearIsNegated(text)) bearHits++;
+    if (NEWS_BULL_RE.test(text) && !newsBullIsNegated(text)) bullHits++;
   }
   if (bearHits === 0 && bullHits === 0) return 0;
   // Net skew: negative is stronger than positive (macro shocks are asymmetric).

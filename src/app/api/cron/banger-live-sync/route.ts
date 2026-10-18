@@ -22,6 +22,7 @@ import {
 import { fetchOptionsUnifiedSnapshot, reliableMarkFromSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchOpenClose } from "@/lib/providers/polygon-largo";
 import { buildBangerQuoteTickRow, persistBangerQuoteTick } from "@/lib/banger/quote-tick-log";
+import { occToPositionIds } from "./occ-to-position-ids";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,16 +48,16 @@ export async function GET(req: NextRequest) {
   // (live-sync.ts: `const rows = await deps.fetchOpenPositions(); ... const marks = await
   // deps.fetchMarks(occs);`), so this map is fully built before anything reads it. Lets the
   // bid/ask/greeks carriage below (FINDINGS 2026-10-09 / migration 017) identify WHICH position
-  // row a given OCC belongs to without changing live-sync.ts's typed Map<occ, mark> contract at
-  // all — zero risk to the scale-out decision engine's existing signature/tests.
-  const occToId = new Map<string, number>();
+  // row(s) a given OCC belongs to without changing live-sync.ts's typed Map<occ, mark> contract at
+  // all — zero risk to the scale-out decision engine's existing signature/tests. Keyed to an ARRAY
+  // of ids (occToPositionIds), not a single id — two open positions can share one contract.
+  let occToIds = new Map<string, number[]>();
 
   try {
     const result = await runBangerLiveSync({
       fetchOpenPositions: async () => {
         const rows = await fetchOpenBangerPositions();
-        occToId.clear();
-        for (const r of rows) occToId.set(r.contract_occ, r.id);
+        occToIds = occToPositionIds(rows);
         return rows.map((r) => ({
           id: r.id,
           session_date: r.session_date,
@@ -92,10 +93,11 @@ export async function GET(req: NextRequest) {
           // FINDINGS 2026-10-09 (Ask Largo standing mandate): carry the SAME snapshot's bid/ask/OI/
           // greeks onto the live position row — see migration 017's header for the full history.
           // Fire-and-forget, best-effort, additive-only (never read by the decision path above);
-          // a missing occToId entry (shouldn't happen — occToId is populated from the exact `rows`
-          // this `occs` list was derived from) is a silent no-op rather than a thrown error.
-          const positionId = occToId.get(occ);
-          if (positionId != null) {
+          // a missing occToIds entry (shouldn't happen — occToIds is populated from the exact
+          // `rows` this `occs` list was derived from) is a silent no-op rather than a thrown error.
+          // Writes to EVERY position sharing this occ (FINDINGS 2026-10-14) — not just one.
+          const positionIds = occToIds.get(occ) ?? [];
+          for (const positionId of positionIds) {
             void updateBangerQuoteFields(positionId, {
               bid: snap.bid,
               ask: snap.ask,
@@ -106,7 +108,7 @@ export async function GET(req: NextRequest) {
               vega: snap.vega,
               iv: snap.iv,
             }).catch((err) => {
-              console.warn(`[banger-quote-fields] persist failed for ${occ}:`, err);
+              console.warn(`[banger-quote-fields] persist failed for ${occ} (position ${positionId}):`, err);
             });
           }
         }

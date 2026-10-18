@@ -148,6 +148,65 @@ test("upsertZeroDteSetupLog: direction/top_strike/expiry are pinned (COALESCE-gu
   assert.match(upsertBody, /plan_json\s*=\s*COALESCE\(zerodte_setup_log\.plan_json,\s*EXCLUDED\.plan_json\)/);
 });
 
+// ─── SEV-2 (FINDINGS 2026-10-15, Ask Largo/Night Hawk standing mandate): zerodte_setup_log's
+// premium watermarks must be BRACKETED BY ENTRY — the EXACT SAME shape FINDINGS 2026-08-06 already
+// fixed on swing_positions, never ported to this table (a THIRD table found with this bug the same
+// session as the banger_positions companion fix). Live proof 2026-10-15 (GET
+// /api/market/zerodte/board, 30-row ledger): CRWV (trough 1.80 > entry 1.77), FLEX (peak 2.38 <
+// entry 2.40), APLD (peak 0.56 < entry 0.59) — arithmetically impossible, since the entry fill
+// itself IS an observed mark of the contract. ──────────────────────────────────────────────────
+
+test("ZERODTE_SETUP_LOG_UPSERT_SQL: SEEDS peak_premium/trough_premium from entry_premium ($13) at insert, and does NOT pin them on the ON CONFLICT re-touch", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("const ZERODTE_SETUP_LOG_UPSERT_SQL");
+  const stmt = src.slice(start, src.indexOf("RETURNING (xmax = 0) AS inserted", start));
+  assert.match(
+    stmt,
+    /entry_context, feature_vector, peak_premium, trough_premium,\s*\n\s*first_flagged_at, last_seen_at/
+  );
+  // Both seeded from $13 — the entry_premium placeholder — not a fresh param or a literal.
+  assert.match(stmt, /VALUES \(\$1,\$2,\$3,\$4,\$5,\$6,\$6,\$7,\$8,\$9,\$10,\$11,\$11,\$12,\$13,\$14,\$15,\$16,\$17,\$18,\$13,\$13,NOW\(\),NOW\(\)\)/);
+  // peak_premium/trough_premium must NOT appear in the ON CONFLICT DO UPDATE SET clause — a
+  // re-running scan must never rewind an already-ratcheted extreme (the live ratchet owns these
+  // after insert, same discipline as swing_positions/banger_positions).
+  const updateSet = stmt.slice(stmt.indexOf("DO UPDATE SET"));
+  assert.ok(!/\bpeak_premium\s*=/.test(updateSet), "peak_premium must not be written in the ON CONFLICT UPDATE");
+  assert.ok(!/\btrough_premium\s*=/.test(updateSet), "trough_premium must not be written in the ON CONFLICT UPDATE");
+});
+
+test("upsertZeroDteSetupLog's batched multi-row INSERT carries the SAME peak/trough seed as the shared single-row SQL", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function upsertZeroDteSetupLog");
+  const fn = src.slice(start, src.indexOf("\nexport ", start + 1));
+  assert.match(
+    fn,
+    /entry_context, feature_vector, peak_premium, trough_premium,\s*\n\s*first_flagged_at, last_seen_at/
+  );
+  // The tuple template reuses the entry_premium offset ($\{b+13\}) twice more, same convention as
+  // the existing $\{b+6\}/$\{b+11\} reuses for score_max/underlying_latest.
+  assert.match(
+    fn,
+    /\$\$\{b \+ 17\},\$\$\{b \+ 18\},\$\$\{b \+ 13\},\$\$\{b \+ 13\},NOW\(\),NOW\(\)\)/
+  );
+});
+
+test("ensureSchema: the zerodte_setup_log watermark backfill only ever WIDENS the bracket, and converges to a no-op", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("UPDATE zerodte_setup_log\n       SET peak_premium");
+  const stmt = src.slice(start, src.indexOf("Context-at-entry (decision doc C-2)", start));
+  assert.ok(stmt.length > 0, "the converge backfill must exist in ensureSchema");
+  // GREATEST on the peak / LEAST on the trough: a genuinely-ratcheted extreme can never be narrowed.
+  assert.match(stmt, /peak_premium = GREATEST\(COALESCE\(peak_premium, entry_premium\), entry_premium\)/);
+  assert.match(stmt, /trough_premium = LEAST\(COALESCE\(trough_premium, entry_premium\), entry_premium\)/);
+  // Guarded so a converged table matches zero rows — safe to re-run on every boot.
+  assert.match(stmt, /WHERE entry_premium IS NOT NULL/);
+  assert.match(stmt, /peak_premium < entry_premium/);
+  assert.match(stmt, /trough_premium > entry_premium/);
+  // NEVER fabricates: a row with no entry premium (e.g. an iron condor) has no observed mark to
+  // bracket around, so it is left entirely alone rather than seeded from a mark it never traded at.
+  assert.doesNotMatch(stmt, /entry_premium IS NULL/);
+});
+
 // P0 one-way commit door (fix/zerodte-status-latch): status transitions in
 // updateZeroDteLiveState only move FORWARD along the real ladder derivePlayStatus
 // (zerodte/plan.ts) encodes — OPEN ↔ HOLD are the same live rung (the mark drifting
@@ -571,6 +630,26 @@ test("getMeta/setMeta: both route the no-transaction common case through dbQuery
   assert.match(setBody, /await db\.query\(/, "setMeta's db-supplied path must stay on that exact client");
 });
 
+// Regression for the 2026-10-17 audit finding: gradeSwingPosition freezes realized_pnl_pct/peak/
+// trough from a fresh mark at grade time but previously never touched last_mark — the field
+// closed-plays.ts serves as a closed position's contract.mid — so a closed row's displayed mid
+// could disagree with its own realized exit (observed live: >2x on a real closed INTC position).
+test("gradeSwingPosition: latches the fresh grading mark onto last_mark/last_mark_at (exit_mark param)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function gradeSwingPosition");
+  assert.ok(start > 0, "gradeSwingPosition exists");
+  const end = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, end > 0 ? end : undefined);
+  assert.match(body, /exit_mark\?:\s*number\s*\|\s*null/, "gradeSwingPosition's g param must accept exit_mark");
+  assert.match(body, /last_mark\s*=\s*COALESCE\(\$7,\s*last_mark\)/, "must latch exit_mark onto last_mark in the same UPDATE");
+  assert.match(
+    body,
+    /last_mark_at\s*=\s*CASE WHEN \$7 IS NOT NULL THEN NOW\(\) ELSE last_mark_at END/,
+    "must stamp last_mark_at only when a fresh mark was actually supplied"
+  );
+  assert.match(body, /g\.exit_mark\s*\?\?\s*null/, "must pass g.exit_mark through to the query params");
+});
+
 test("db-optional swing/SPX writers: transaction client path preserved, no-db path uses dbQuery", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   for (const fn of [
@@ -814,4 +893,33 @@ test("parseZeroDteRejectionCounterfactual: an invalid pnl_pct (NaN/non-number) i
     basis: "premium",
   });
   assert.deepEqual(parsed, { verdict: "would_have_lost", outcome: "stopped", pnl_pct: null, basis: "premium" });
+});
+
+// ─── SEV-2 (FINDINGS 2026-10-15, Ask Largo/Night Hawk Swings standing mandate): banger_positions'
+// premium watermarks must be BRACKETED BY ENTRY — the EXACT SAME shape FINDINGS 2026-08-06 already
+// fixed on swing_positions (src/lib/db-swing-ledger.test.ts's own "watermark backfill" test below
+// is the direct template for this one), never ported to this sibling table until now. Live proof
+// 2026-10-15 (GET /api/market/nighthawk/horizons?view=swings): 7 real committed rows
+// (SLS/METU/SNXX/MUU/ALAB/CBRS/WDC) showed peak_premium < entry_premium and 2 (ORKA/SOXS) showed
+// trough_premium > entry_premium — arithmetically impossible, since the entry fill itself IS an
+// observed mark of the contract. insertBangerPosition now seeds both from entry_premium at commit
+// (positions-db.test.ts covers that half); this backfill repairs rows written before that fix. ───
+
+test("ensureSchema: the banger_positions watermark backfill only ever WIDENS the bracket, and converges to a no-op", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const stmt = src.slice(
+    src.indexOf("UPDATE banger_positions\n       SET peak_premium"),
+    src.indexOf("Prospective NBBO quote-tick log"),
+  );
+  assert.ok(stmt.length > 0, "the converge backfill must exist in ensureSchema");
+  // GREATEST on the peak / LEAST on the trough: a genuinely-ratcheted extreme can never be narrowed.
+  assert.match(stmt, /peak_premium = GREATEST\(COALESCE\(peak_premium, entry_premium\), entry_premium\)/);
+  assert.match(stmt, /trough_premium = LEAST\(COALESCE\(trough_premium, entry_premium\), entry_premium\)/);
+  // Guarded so a converged table matches zero rows — safe to re-run on every boot.
+  assert.match(stmt, /WHERE entry_premium IS NOT NULL/);
+  assert.match(stmt, /peak_premium < entry_premium/);
+  assert.match(stmt, /trough_premium > entry_premium/);
+  // NEVER fabricates: a row with no entry premium has no observed mark to bracket around, so it is
+  // left entirely alone rather than seeded from a mark it never traded at.
+  assert.doesNotMatch(stmt, /entry_premium IS NULL/);
 });

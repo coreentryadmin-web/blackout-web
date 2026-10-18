@@ -814,7 +814,12 @@ function buildPlay(
   levels: { entry_range: string; target: string; stop: string },
   rank: number,
   bangerTickers?: Set<string>,
-  asOfEtYmd?: string
+  asOfEtYmd?: string,
+  // BUG FIX (2026-10-14, live ETSY repro): needed to verify the picked contract's ACTUAL
+  // moneyness for the banger risk_note below — `pickChainContract`'s own strike choice is not,
+  // by itself, proof of OTM. See bangerScaleOutNote's doc comment (scale-out.ts) for the full
+  // live repro this threading fixes.
+  spot?: number | null
 ): PlaybookPlay {
   // PR-N29: ensure the stock target makes the option profitable — a LONG target below
   // the call strike means the option expires worthless at "target", which is incoherent.
@@ -903,7 +908,24 @@ function buildPlay(
   // OTM momentum plays spike then decay, so hold-to-target is the wrong exit. Advisory only (risk_note)
   // — it does NOT change the play's plan/target/stop or how it's graded.
   if (bangerTickers?.has(scored.ticker.toUpperCase())) {
-    base.risk_note = bangerScaleOutNote({ dte });
+    // BUG FIX (2026-10-14, live repro ETSY): verify the picked contract is NOT actually in-the-
+    // money before the note claims "OTM weeklies" — `pickChainContract`'s preferAffordable ladder
+    // (this file, ~line 376) can legitimately land a strike on the wrong side of spot when the
+    // affordability/delta-floor constraints exclude every true-OTM candidate. Only a genuinely ITM
+    // strike flips this to `false`: a LONG (call) is ITM when strike < spot, a SHORT (put) when
+    // strike > spot; an exactly-ATM strike (strike === spot) is left as OTM-compatible (no
+    // intrinsic value either, same "spikes then decays" shape the existing copy describes) so this
+    // fix changes behavior only for the case it was built to catch, not for the common ATM pick.
+    // Only computed when both the contract and a real spot are known — otherwise `otm` stays null
+    // (unknown), which bangerScaleOutNote treats identically to every pre-existing caller
+    // (unchanged text).
+    const otm =
+      contract != null && spot != null && Number.isFinite(spot)
+        ? scored.direction === "short"
+          ? contract.strike <= spot
+          : contract.strike >= spot
+        : null;
+    base.risk_note = bangerScaleOutNote({ dte, otm });
     base.exit_style = "scale_out"; // structured marker (not just prose) so the ledger can SELECT bangers
   }
   if (contract) {
@@ -997,7 +1019,7 @@ export function buildDeterministicEditionPlays(params: {
     }
 
     const levels = resolveLevels(dossier, scored.direction, spot);
-    const play = buildPlay(scored, dossier, contract, levels, built.length + 1, params.bangerTickers, params.edition_for);
+    const play = buildPlay(scored, dossier, contract, levels, built.length + 1, params.bangerTickers, params.edition_for, spot);
 
     if (contract && !contract.caveat && play.premium_cap_ok === false) {
       premiumCapCount += 1;
@@ -1082,7 +1104,7 @@ export function buildDeterministicEditionPlays(params: {
         if (sp == null || !Number.isFinite(sp) || sp <= 0) continue;
         const ctr = ch ? pickChainContract(ch, scored.direction, params.maxDte, undefined, true, params.edition_for) : null;
         const lvl = resolveLevels(dos, scored.direction, sp);
-        const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers, params.edition_for);
+        const p = buildPlay(scored, dos, ctr, lvl, target, params.bangerTickers, params.edition_for, sp);
         if (!validatePlayGeometry(p).ok) continue;
         const hedgeWarnings = p.gate_warnings ? [...p.gate_warnings] : [];
         hedgeWarnings.push(`Hedge/contrarian play (score ${scored.score}) — minority-view balance against ${dominant} book`);
@@ -1122,7 +1144,7 @@ export function buildDeterministicEditionPlays(params: {
 
           const ctr = ch ? pickChainContract(ch, contrarian.direction, params.maxDte, undefined, true, params.edition_for) : null;
           const lvl = resolveLevels(dos, contrarian.direction, sp);
-          const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers, params.edition_for);
+          const p = buildPlay(contrarian, dos, ctr, lvl, target, params.bangerTickers, params.edition_for, sp);
           if (!validatePlayGeometry(p).ok) { contrarianScores[contrarianScores.length - 1] += ":geom-fail"; continue; }
 
           if (!bestContrarian || contrarian.score > bestContrarian.scored.score) {

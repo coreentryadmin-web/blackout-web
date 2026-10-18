@@ -156,11 +156,17 @@ mock.module("../providers/gex-positioning", {
 // server graph (uw-socket / polygon providers) into the test at all.
 let mockVectorFullState: VectorFullState | null = null;
 let vectorFullStateCalls: Array<[string, string]> = [];
+// Set true only by the withEcosystemVectorSubTimeout integration regression test below, to prove a
+// hung internal Vector read no longer takes its siblings (gex_positioning chief among them) down
+// with it. Reset to false at the end of that one test so every other test keeps the normal,
+// immediately-resolving mock behavior.
+let vectorFullStateShouldHang = false;
 
 mock.module("./vector-full-state", {
   namedExports: {
     fetchVectorFullState: async (ticker: string, horizon: string) => {
       vectorFullStateCalls.push([ticker, horizon]);
+      if (vectorFullStateShouldHang) return new Promise<VectorFullState | null>(() => {});
       return mockVectorFullState;
     },
   },
@@ -266,6 +272,8 @@ let mapNighthawkEchoRows: typeof import("./ecosystem-context").mapNighthawkEchoR
 let assembleEcosystemArsenal: typeof import("./ecosystem-context").assembleEcosystemArsenal;
 let isEcosystemIndexTicker: typeof import("./ecosystem-context").isEcosystemIndexTicker;
 let rankNewsItemsBySpecificity: typeof import("./ecosystem-context").rankNewsItemsBySpecificity;
+let withEcosystemVectorSubTimeout: typeof import("./ecosystem-context").withEcosystemVectorSubTimeout;
+let ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS: typeof import("./ecosystem-context").ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS;
 
 before(async () => {
   ({
@@ -275,6 +283,8 @@ before(async () => {
     assembleEcosystemArsenal,
     isEcosystemIndexTicker,
     rankNewsItemsBySpecificity,
+    withEcosystemVectorSubTimeout,
+    ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS,
   } = await import("./ecosystem-context"));
 });
 
@@ -778,6 +788,73 @@ test('fetchEcosystemContext: vector_full_state is NOT gated by isSpxSlayerTicker
   assert.equal(fullStateCalls, 1);
 });
 
+// BUG FIX regression (Ask Largo standing mandate, 2026-10-18, live repro NVDA position #62):
+// withEcosystemVectorSubTimeout's own mechanics, unit-tested in isolation with a short override —
+// same three-case shape as swing/brief-source-timeout.test.ts's own tests for its sibling helper.
+test("withEcosystemVectorSubTimeout: rejects with a named EcosystemContextVectorSubTimeout before an upstream that never resolves", async () => {
+  const neverResolves = new Promise<never>(() => {});
+  await assert.rejects(withEcosystemVectorSubTimeout(neverResolves, 20), (err: Error) => {
+    assert.equal(err.name, "EcosystemContextVectorSubTimeout");
+    return true;
+  });
+});
+
+test("withEcosystemVectorSubTimeout: resolves with the upstream value when it finishes inside the budget", async () => {
+  const fast = Promise.resolve("ok");
+  assert.equal(await withEcosystemVectorSubTimeout(fast, 50), "ok");
+});
+
+test("withEcosystemVectorSubTimeout: propagates a genuine upstream rejection unchanged, not as a timeout", async () => {
+  const upstreamError = new Error("boom");
+  const failing = Promise.reject(upstreamError);
+  await assert.rejects(withEcosystemVectorSubTimeout(failing, 50), (err: Error) => {
+    assert.equal(err, upstreamError);
+    return true;
+  });
+});
+
+test("ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS is meaningfully shorter than the caller's 8s outer brief-source budget", () => {
+  // Not importing BRIEF_SOURCE_TIMEOUT_MS itself (that would pull swing's "server-only"-adjacent
+  // import graph into this hermetic BIE-layer test file) — the 8_000 literal is play-brief-context.ts's
+  // own documented outer budget (brief-source-timeout.ts), restated here as the fixed point this
+  // constant must stay under so the fix's whole premise (sub-timeout fires before the outer one) holds.
+  assert.ok(
+    ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS < 8_000,
+    "a sub-timeout that isn't shorter than the outer 8s brief-source budget can't prevent the outer timeout from firing first"
+  );
+});
+
+// Integration-level proof, at the REAL production constant (6s) — not a parameterized stand-in —
+// that a cold/hung internal Vector read no longer takes its siblings (gex_positioning chief among
+// them) down with it. Pre-fix, this exact scenario hung fetchEcosystemContext forever (no internal
+// timeout existed at all, so the Promise.all simply never settled); post-fix it resolves in just
+// over 6s with vector_full_state degraded to null and gex_positioning still fully populated.
+test(
+  "fetchEcosystemContext: a Vector read that never resolves degrades vector_full_state to null WITHOUT losing gex_positioning or any other sibling field (live repro NVDA#62)",
+  { timeout: 10_000 },
+  async () => {
+    vectorFullStateCalls = [];
+    gexPositioningCalls = [];
+    mockGexPositioning = makeGexPositioning();
+    vectorFullStateShouldHang = true;
+
+    try {
+      const ctx = await fetchEcosystemContext("NVDA");
+
+      assert.equal(ctx.vector_full_state, null, "a hung Vector read must degrade to null, not hang the whole context forever");
+      assert.deepEqual(
+        ctx.gex_positioning,
+        mockGexPositioning,
+        "gex_positioning must still populate — it must not share the hung Vector read's fate"
+      );
+      assert.deepEqual(gexPositioningCalls, ["NVDA"], "getGexPositioning's own fast read must still have run and resolved");
+      assert.deepEqual(vectorFullStateCalls, [["NVDA", "all"]], "the Vector read must still have been attempted");
+    } finally {
+      vectorFullStateShouldHang = false;
+    }
+  }
+);
+
 test("mapNighthawkEchoRows: maps rows keyed by uppercased ticker", () => {
   const map = mapNighthawkEchoRows([
     { ticker: "aapl", edition_for: "2026-07-01", direction: "long", conviction: "high", outcome: "target", score: 82 },
@@ -944,6 +1021,70 @@ test("rankNewsItemsBySpecificity: an item with no tickers field sorts as maximal
   const broad = { headline: "broad story", tickers: ["A", "B", "C"] } as unknown as NewsItem;
   const ranked = rankNewsItemsBySpecificity([broad, noTagField, emptyTags]);
   assert.deepEqual(ranked.map((i) => i.headline), [noTagField.headline, emptyTags.headline, broad.headline]);
+});
+
+test("rankNewsItemsBySpecificity: within a tied tag-count tier, a genuinely on-topic item outranks an incidentally co-tagged off-topic one (Ask Largo mandate, live repro GOOG OPEN brief, 2026-10-16)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:GOOG:59&ticker=GOOG&positionId=59 —
+  // all three items below tie at tagCount=3 from the SAME fetched batch. Pre-fix, the pure
+  // tag-count sort fell through straight to recency within that tie, and the X Corp story (most
+  // recent of the tier) won the #4/4 member-facing slot even though it has zero business
+  // connection to Alphabet/Google — it was tagged ['SPCX','GOOG','GOOGL'] purely incidentally.
+  // The other two genuinely discuss "Google" by name and lost on recency alone.
+  const xCorpOffTopic = {
+    headline: "X Corp Launches Creator Monetization Program For Premium Subscribers",
+    tickers: ["SPCX", "GOOG", "GOOGL"],
+  };
+  const bloomFuelCell = {
+    headline: "Google's $4 Billion Fuel-Cell Project Puts Bloom Energy's AI Power Backlog In The Spotlight",
+    tickers: ["GOOGL", "GOOG", "BE"],
+  };
+  const cnnPartnership = {
+    headline: "CNN And Google Strike Multiyear Partnership To Embrace Generative AI",
+    tickers: ["SKYD", "GOOG", "GOOGL"],
+  };
+  // Benzinga order: most-recent-first, exactly as fetchTickerNews returns it.
+  const items = [xCorpOffTopic, bloomFuelCell, cnnPartnership] as unknown as NewsItem[];
+
+  // Confirms the OLD bug reproduces when no ticker is passed (the pre-fix call shape): with no
+  // aboutness signal at all, the tie collapses straight to recency and the off-topic item wins.
+  const noTickerRanked = rankNewsItemsBySpecificity(items);
+  assert.equal(noTickerRanked[0].headline, xCorpOffTopic.headline);
+
+  // With the ticker passed, the two genuinely on-topic items now outrank the off-topic one within
+  // their shared tagCount=3 tier, even though it was more recent than both of them.
+  const ranked = rankNewsItemsBySpecificity(items, "GOOG");
+  assert.deepEqual(ranked.map((i) => i.headline), [
+    bloomFuelCell.headline,
+    cnnPartnership.headline,
+    xCorpOffTopic.headline,
+  ]);
+
+  // End-to-end through the real fold, as the swing play-brief's "Catalysts & news" section would
+  // see it: the off-topic X Corp story now survives (never hidden — only deprioritized) but drops
+  // out of the member-facing top-2 once a third tied, genuinely-on-topic item exists.
+  const ars = assembleEcosystemArsenal({
+    scope: "single_name",
+    ticker: "GOOG",
+    earnings: null,
+    fundamentals: null,
+    related: null,
+    news: { items, asOf: "2026-10-16T00:00:00Z", newest: "2026-10-16T00:00:00Z" } as unknown as NewsResult,
+    macro: null,
+    breadth: null,
+  });
+  assert.deepEqual(ars.news?.headlines, [bloomFuelCell.headline, cnnPartnership.headline, xCorpOffTopic.headline]);
+});
+
+test("rankNewsItemsBySpecificity: an untracked ticker (no alias-map entry) falls back to the pre-existing recency-only tiebreak, unchanged", () => {
+  // "ZZZZ" is deliberately not in NEWS_SPECIFICITY_COMPANY_ALIASES — the fix must degrade
+  // gracefully for any ticker it doesn't recognize rather than erroring or silently hiding anything.
+  const newer = { headline: "Some Newer Story Mentioning ZZZZ And Others", tickers: ["ZZZZ", "AAA", "BBB"] };
+  const older = { headline: "An Older Story Also Mentioning ZZZZ Directly", tickers: ["ZZZZ", "CCC", "DDD"] };
+  const items = [newer, older] as unknown as NewsItem[]; // most-recent-first
+  const ranked = rankNewsItemsBySpecificity(items, "ZZZZ");
+  // Tied tagCount (3,3); no alias signal for ZZZZ, so this reads identically to the pre-fix
+  // function — recency (original order) alone decides the tie.
+  assert.deepEqual(ranked.map((i) => i.headline), [newer.headline, older.headline]);
 });
 
 test("assembleEcosystemArsenal(single_name): market catalysts (no single ticker) are left in Benzinga's own recency order, not re-ranked", () => {

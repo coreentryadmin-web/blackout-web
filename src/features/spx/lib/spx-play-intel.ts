@@ -1,6 +1,7 @@
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxConfluence } from "@/features/spx/lib/spx-signals";
 import type { SpxPlayDirection } from "@/features/spx/lib/spx-signals";
+import { nearestWall } from "@/features/spx/lib/spx-signals";
 import { gradeRank } from "@/features/spx/lib/spx-play-config";
 import { keyLevelForDirection } from "@/features/spx/lib/spx-play-mtf";
 import { round5 } from "@/lib/round5";
@@ -55,14 +56,28 @@ function anchorPhrase(
     if (desk.vwap != null && desk.price >= desk.vwap) {
       return `above VWAP ${desk.vwap.toFixed(0)}`;
     }
-    const support = desk.gex_walls?.find((w) => w.kind === "support");
+    // BUG FIX (2026-10-17, Ask Largo × Night Hawk Swings standing mandate, live repro 2026-10-17
+    // ~19:21 UTC SPX desk check): this used to be `desk.gex_walls?.find((w) => w.kind ===
+    // "support")` with no proximity selection. `gex_walls` is returned strike-descending, so
+    // `.find()` on the support-kind subset returned the FIRST support hit while scanning
+    // high-to-low — which, for the resistance branch below, is always the FARTHEST (highest-
+    // strike) resistance wall rather than the nearest one, producing an incoherent play_idea
+    // narrative (live repro: text cited "below 7900 resistance" — 240.56 pts from spot — while the
+    // factor that actually drove the score was "Into 0DTE resistance 7660", only 0.56 pts away).
+    // The support branch happened to get the nearest wall by coincidence of the descending sort
+    // order (supports sit below spot, so the first one scanning high-to-low is the closest), not
+    // by design, so it got the same proximity-aware fix for robustness rather than leaving it
+    // correct by accident. Reuses `nearestWall` (spx-signals.ts, exported for this call site) —
+    // the exact same resolver `buildLevels()` uses to pick the wall that drives the confluence
+    // score — so the narrative always cites the same level the score is keyed off of.
+    const support = nearestWall(desk.gex_walls ?? [], "support", desk.price, "below");
     if (support) return `above ${support.strike.toFixed(0)} support`;
     return `above ${key.toFixed(0)}`;
   }
   if (desk.vwap != null && desk.price <= desk.vwap) {
     return `below VWAP ${desk.vwap.toFixed(0)}`;
   }
-  const resist = desk.gex_walls?.find((w) => w.kind === "resistance");
+  const resist = nearestWall(desk.gex_walls ?? [], "resistance", desk.price, "above");
   if (resist) return `below ${resist.strike.toFixed(0)} resistance`;
   return `below ${key.toFixed(0)}`;
 }

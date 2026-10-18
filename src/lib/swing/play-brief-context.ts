@@ -12,9 +12,8 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext, SwingRollHistory } from "./play-brief-types";
 import { resolveSwingPlayForBrief, type SwingBriefResolveHints } from "./play-brief-resolve";
-import { reconcileLivePnlPctWithDisplayMark } from "./play-brief-resolve-pure";
-import { fetchMeridianForTicker } from "./play-brief-meridian";
-import { fetchMeridianPeerForBrief } from "./play-brief-meridian-peer";
+import { fetchMeridianForTicker, meridianUnavailableSlice } from "./play-brief-meridian";
+import { fetchMeridianPeerForBrief, meridianPeerUnavailableSlice } from "./play-brief-meridian-peer";
 import type { PortfolioPosition } from "./portfolio";
 import { readSwingArchetypeTrackRecord } from "./calibration-cache";
 import { withBriefSourceTimeout } from "./brief-source-timeout";
@@ -215,24 +214,24 @@ export async function loadSwingPlayBriefContext(
   const resolved = await resolveSwingPlayForBrief(input);
   if (!resolved) return null;
 
-  // BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): every
+  // BUG FIX (2026-10-16, Ask Largo standing mandate — live GOOG/KMPR repro, Bug 1 of the
+  // standing "Ask Largo x Night Hawk Swings" ownership mandate). This loader used to reconcile
+  // `pnlPct` here (via the now-removed `reconcileLivePnlPctWithDisplayMark`, added 2026-10-09 for
+  // a live CTVA repro) by recomputing it from a cent-rounded `mark` — intended to keep every
   // section downstream (`composeSwingPlayBrief` and the ~6 call sites across
   // play-brief-narrative.ts/-coaching.ts/-intel.ts that read `play.pnlPct` for "current P&L"
-  // framing) must see the SAME reconciled number `positionSection`'s own `pnlForDisplay` already
-  // shows — reconciled here, once, at the single point every live brief passes through, rather
-  // than left for each section to (not) redo. See `reconcileLivePnlPctWithDisplayMark`'s own doc
-  // comment (play-brief-resolve-pure.ts) for the full live repro and why this is the safe choke
-  // point (every existing section-level unit test builds its own fixture and calls
-  // `composeSwingPlayBrief` directly, bypassing this loader entirely, so none of them are
-  // affected by this change).
-  const play = {
-    ...resolved.play,
-    pnlPct: reconcileLivePnlPctWithDisplayMark({
-      entry: resolved.play.entry,
-      mark: resolved.play.mark,
-      pnlPct: resolved.play.pnlPct,
-    }),
-  };
+  // framing) showing the SAME number. That recompute itself turned out to be able to disagree
+  // with the single canonical `pnlPct` every OTHER surface already agrees on — the horizons
+  // board's own `livePnlPct`, PlayTerminal.tsx's Command Deck card — by up to 10 full percentage
+  // points (live KMPR repro, positionId 1634: canonical -50.0% vs the old recompute's -40.0%,
+  // caused by `Math.round(2.5)` rounding a $0.025 mark UP to $0.03 while that same mark sat
+  // exactly at the position's own recorded trough). See `play-brief.ts`'s own `pnlForDisplay`
+  // comment (Position section) for the full two-repro write-up (GOOG + KMPR) and why dropping
+  // the recompute, rather than adding a third narrower guard on top of it, is the fix: `play`
+  // now carries `resolved.play` untouched — `pnlPct` is already the single canonical value
+  // (`livePnlPct`, live-plays.ts/banger-lane-merge.ts) every other surface reads, so every
+  // section downstream automatically shows that same number with no reconciliation step needed.
+  const play = resolved.play;
 
   const ticker = play.ticker.toUpperCase();
 
@@ -248,9 +247,30 @@ export async function loadSwingPlayBriefContext(
   // keeps the real dependency (meridianPeer still only starts once meridian resolves) while
   // letting every independent source race concurrently — worst case drops to ~16s (the
   // meridian→meridianPeer chain, still the tallest single path) instead of ~24s.
-  const meridianPromise = withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() => null);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-15): these two outer `withBriefSourceTimeout(...)`
+  // races used to `.catch(() => null)` — collapsing a TIMEOUT (the thing this race exists to bound,
+  // per the 2026-09-22 perf-fix header comment above) to the exact same `null` that `ctx.meridian`/
+  // `ctx.meridianPeer` can ALSO legitimately hold for an honest, common non-failure reason (no
+  // Meridian catalyst data / no nearby earnings catalyst to look peers up for). Neither
+  // `fetchMeridianForTicker` nor `fetchMeridianPeerForBrief` ever produces that overload on their
+  // OWN failure paths — both already return a real, typed `{ unavailable/available: false, ... }`
+  // sentinel internally (see each function's own try/catch) specifically so
+  // `collectBriefUnavailableSources` (play-brief-absence.ts) can disclose a real failure via
+  // `ctx.meridian?.unavailable` / `ctx.meridianPeer?.available === false` — but this OUTER race sat
+  // one layer above those internal catches and threw the disclosure away whenever IT was the one
+  // that fired (a real, measured failure mode: this race exists because these reads have shown real
+  // p99 stalls). Converging on the same sentinel each function already uses internally fixes it
+  // without inventing a third shape or a new `ctx` flag, and matches the identical principle this
+  // same file already applies to `ecosystemFetchFailed`/`vectorFetchFailed` just below (see that
+  // comment: "A timeout rejection is just another throw here, so it flows through the same
+  // failed-flag path").
+  const meridianPromise = withBriefSourceTimeout(fetchMeridianForTicker(ticker)).catch(() =>
+    meridianUnavailableSlice(),
+  );
   const meridianPeerPromise = meridianPromise.then((meridian) =>
-    withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() => null),
+    withBriefSourceTimeout(fetchMeridianPeerForBrief(meridian, ticker)).catch(() =>
+      meridianPeerUnavailableSlice(),
+    ),
   );
 
   // Distinguish a genuine "no data" null from a thrown fetch — FINDINGS 2026-09-06 (#11): an

@@ -4,6 +4,303 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-18 (06:16 UTC / Sun 02:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Sunday overnight, market closed. Resynced to `origin/main` (`e5e94040` → `9b810d20`, other-lane
+swing journal). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0.0003, GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`,
+real 1200×630 PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 2 open agent
+PRs fleet-wide, both other-lane and CI-RUNNING (#6177 docs findings-fold, #6176 swing
+catalysts). Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found.
+No PR opened.
+
+## 2026-10-18 (00:16 UTC / Sat 20:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Saturday night, market closed. Resynced to `origin/main` (`64a8d50d` → `bd9ed2f1`, other-lane
+swing journal). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0.0003, GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`,
+real 1200×630 PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 2 open agent
+PRs fleet-wide, both other-lane and CI-RUNNING (#6162 docs findings-fold, #6161 Meridian).
+Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-17 (18:16 UTC / Sat 14:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Saturday, market closed. Resynced to `origin/main` (`45d683c9` → `c234fa8c`, other-lane Largo
+fix). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0006,
+GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real
+1200×630 PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 1 open agent PR
+fleet-wide, not this lane's own — #6138 (docs findings-fold, CI-RUNNING). Nothing for this
+lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-17 (14:51 UTC / Sat 10:51 ET) — [COORDINATOR] Standing performance mandate: two real tail-latency contributors measured, neither fixed (needs more evidence/infra work, not speculative)
+
+Background 5-engine + perf-audit workflow (AWS creds present this session). ALB
+`TargetResponseTime` on `blackout-production-app` shows p50 staying under ~0.3s the whole 4h
+window while p90/p99/Max repeatedly spike into 40-78s. Two distinct, evidenced contributors, per
+this file's own measure-first discipline — **no fix shipped for either, both need more work before
+a scoped PR is possible**: (1) ECS task register/deregister churn during routine rolling deploys
+(3 completed in the last 90 min alone) correlates minute-for-minute with spikes, no CPU spike in the
+cleanest example — points at connection-draining/in-flight-request overhang during task shutdown
+(`deregistration_delay=30s` vs `idle_timeout=120s`, so a draining request can run ~2x the drain
+delay before the ALB's own idle timeout notices), not app compute. Needs an infra-side fix (shorter
+in-flight-request grace, or verifying the app itself handles SIGTERM promptly) — not something to
+guess at from a log correlation alone. (2) A separate, heavier 30-min sustained spike (60-78s,
+genuine CPU spike to 60-72% vs 15-30% baseline) correlates with 368 `[polygon-gex] full-chain
+escalation ADOPTED` events across 30+ tickers plus 84 concurrent `[largo/turn-phases]` deep-mode
+queries in the same window — same symptom signature as the already-fixed #5680 `/vector/universe`
+bug, on a sibling code path (GEX full-chain escalation, reachable from `get_gex_heatmap`/
+`get_wall_dynamics`) that evidently didn't get the same protection. Flagged, not fixed — this
+file's own standing discipline (and #5680's commit message) warns two prior SPX-desk-specific
+attempts at the sibling bug already failed from guessing without a scoped measurement of the
+escalation path itself first; that measurement is the natural next step, not a fix from this one
+correlation. Also noted, trivial: ALB access logging is disabled
+(`access_logs.s3.enabled=false`) — no per-path latency attribution available, so correlating a
+future spike to Largo-vs-other-route always needs this same manual CloudWatch-Logs-Insights
+exercise; and `data-correctness` cron logs a harmless `EACCES: permission denied, mkdir '/app/docs'`
+on every run (prod's app directory is read-only — already handled as a skip, pure log noise, not
+an active risk). No PRs opened for any of the four; see
+`docs/audit/MARKET-OPEN-VALIDATION.md`'s 2026-10-17 entry for the one real P1 from the same cycle
+(Legacy 2026-10-19 edition recap_only, PR #6124).
+
+## 2026-10-17 (14:07 UTC / Sat 10:07 ET) — [SEO] Daily growth cycle: one new thin striking-distance entry, dead-staging-subdomain recurrence noted, no action
+
+New striking-distance entry: "dealer gamma positioning" (pos 20.0, **4imp**) — same thin-sample
+band as prior noted-but-not-acted-on entries. Noticed `staging.blackouttrades.com/learn/largo-ai`
+in the PAGES list with 21imp/pos10.5 — confirmed this is a recurrence of the already-documented,
+already-delegated dead-`staging.*`-subdomain issue (root cause identified 2026-09-02, `SEO-GROWTH-
+STRATEGY.md` §5: `CF_API_TOKEN` lacks DNS/redirect-rule write, needs a human/wider token scope) —
+not a new finding. CLS/robots.txt already verified this morning's catch-up heartbeat (within
+rule 6's 3-day window) — skipped redundant re-check. 28-day avgpos 11.5 (18cl/1446imp), within
+the established noisy band — no material movement. No PR opened.
+
+## 2026-10-17 (12:16 UTC / Sat 08:17 ET) — [SEO] Lane heartbeat: catch-up after ~24h notification backlog, shipped fixes validated, no SEO-lane PR action
+
+9 scheduled-trigger notifications had queued unprocessed since the prior heartbeat (Thu
+2026-10-16 ~00:17 ET through Sat 08:16 ET) — this session was evidently restarting/disconnecting
+repeatedly over that window (confirmed via the coordinator's own ~24h-stall entry immediately
+above). Rather than replay each stale instruction retroactively (several were RTH-window checks
+that cannot be meaningfully re-run after the fact), ran one fresh consolidated cycle now.
+Saturday 08:17 ET — market closed for the weekend, no RTH work applicable. Resynced to
+`origin/main` (`dd60ebca`/`bd444a38` lineage → `4aeac0ad`, other-lane agent-state sync; many
+commits landed during the gap, not individually re-diffed). **Step 1:** purged Cloudflare edge
+HTML, measured live homepage CLS — **0.0002, GOOD**. Fetched `/api/og` with a Googlebot UA:
+`200`, `content-type: image/png`, real 1200×630 PNG — crawlable, confirmed on production.
+**Step 2 — PR sweep:** 3 open agent PRs fleet-wide, all other-lane and CI-RUNNING (#6113 docs
+findings-fold, #6112 docs audit log, #6111 Largo truncation fix). Nothing for this lane to
+rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-17 (12:06 UTC / Sat 08:06 ET) — [COORDINATOR] 5-engine + coordinator cycle: 2 bugs fixed/merged (#6108, #6109), 1 new Largo truncation bug found/fixed (#6111 open), routine state sync (#6110 open), ELB tail-latency spike measured (no fix — root cause not pinned this pass)
+
+Picked up where the prior entry (below) left off. Merged both bugs that entry's background
+workflow (`wf_ade519a5-0e8`) had already found and RED→GREEN proven: **#6108** (SPX Slayer
+`gexOpposed()` trusting a stale sticky `gamma_regime` when `gamma_flip` was null — added the same
+`gamma_flip != null` guard `spx-signals.ts` already uses) and **#6109** (swing `gradeSwingPosition`
+freezing `realized_pnl_pct`/`exit_mark` from a fresh mark but never latching it onto `last_mark`, so
+a closed position's `contract.mid` could read 2x+ off its own real exit — `gradeParentFromMark` now
+exposes `exit_mark` top-level, `gradeSwingPosition`'s UPDATE latches it onto `last_mark`/
+`last_mark_at`, COALESCE-guarded). Both squash-merged, both confirmed landed on `origin/main`
+(`5936d6e28`, `f0190c67d5`), `tsc --noEmit` clean against the merged tip. Full local `npm test` was
+started but hit the sandbox's 30-min background-task limit with zero output before finishing (this
+container is slower than CI's runners for the 7000+ test suite) — not restarted, since both PRs'
+own `verify` CI check already ran the full suite on their branches and passed before merge; that is
+treated as sufficient evidence here, not skipped verification. `ecr-push-production.yml` fired for
+both merge commits, still in progress/pending as of this entry (~20+ min in) — not yet independently
+confirmed live.
+
+**Stop-hook cleanup, several rounds:** the still-running 5-engine/Largo-deepdive background workflow
+(launched this session, 7 agents) repeatedly wrote throwaway `.tmp-*.mjs` audit probes under
+`scripts/audit/` per its own instructions (to be self-deleted, but several sat momentarily untracked
+between turns) — inspected each (all matched the exact disclosed live-probe pattern, Clerk-session
+HTTP fetches against one of the 5 engines) and deleted them once confirmed scratch, never committed.
+
+**Genuinely untracked, non-scratch files also surfaced and were committed properly** (#6110,
+draft): `.blackout-agent/AGENT_STATE.json` / `HEARTBEAT/{claude,cursor}.json` / `data/x-intel/
+creative-rotation.json` — auto-updated ambient bookkeeping state (same shape as prior
+`chore(agent-state): routine heartbeat/rotation state sync` PRs #6099/#6080), branched/committed/
+pushed/PR'd rather than left dirty or force-included in an unrelated branch.
+
+**New finding, fixed (#6111, open):** CloudWatch Logs grep (chasing an ELB latency spike, see below)
+surfaced `[largo] tools: 2 calls, 428ms total, 1 TRUNCATED — get_options_flow 418ms TRUNCATED
+33210/16000` — a live instance of the same tool-result-truncation bug class as
+`get_zerodte_record`/`get_market_oi_change`/etc. `get_options_flow`'s non-SPX branch returned two
+unbounded raw UW row arrays (`flow_alerts` up to 50, `flow_recent` up to 100) with no budget check,
+so the real answer (`alert_premium`/`bias`/`strike_stacks`, which serialize AFTER both arrays) could
+be dropped by the transport's raw tail-cut once the raw UW pages alone exceeded 16k. Fixed with a
+new `fitOptionsFlowForModel` (`market-data-fits.ts`), following the file's own established
+budget-bound-not-fixed-count shape; RED→GREEN proven (`git stash --keep-index`, 4 new tests fail
+against unmodified `main`, pass restored); 34/34 combined test run; `tsc --noEmit` clean. SPX branch
+of the same tool deliberately NOT touched — not the measured truncation, no evidence it needs it.
+See staged finding for full detail.
+
+**Standing performance/latency audit — measured, not fabricated, no fix attempted:** pulled
+`AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s target group for the last
+~3h: **a real tail-latency spike, 10:52–11:22 UTC — avg climbed to 3.5s/6.9s/9.9s per 15-min bucket,
+p99 57.8s/74.9s/69.9s, max up to 78.9s** — markedly worse than the previously-documented "~40-44s"
+Vector-`/universe`-cache-miss pattern this same window's trigger prompt warns about. Request volume
+was LOW through this window (41–265 req/15min, Saturday pre-dawn ET — real Saturday low-traffic, not
+a load spike) and 4XX count rose to 21–62/15min in the same buckets. Tried to pin the exact slow
+route via CloudWatch Logs (`elapsed=`, `universe`, `gex-heatmap`, `spx/desk`, `force-rebuild`,
+`timeout`, `cold`, `rebuild` — all empty or near-empty in the spike window) and could NOT find a
+smoking-gun log line tying this specific spike to the known `/universe` mechanism or to anything
+else actionable. Per the trigger prompt's own explicit instruction ("do not attempt a speculative
+fix... two prior SPX-desk-specific attempts already failed that way"), this is reported as a
+measurement only — the spike is real and worse than previously documented, but without a pinned
+root cause for THIS instance, no fix was attempted. Flagging for the next cycle to re-check whether
+this recurs and, if so, whether a request-level trace (not just aggregate ELB stats) can localize it.
+
+## 2026-10-17 (11:07 UTC / Sat 07:07 ET) — [COORDINATOR] Session resumed after ~24h stall; SPX Slayer off-hours `ServerCacheTimeoutError` candidate finding re-verified live — did NOT reproduce
+
+Session had stalled roughly 2026-10-16 ~07:00 UTC → 2026-10-17 ~11:00 UTC; drained the full
+notification backlog (9 `ReadNotifications` batches, ~190 queued entries — every single one a
+duplicate of one of three known recurring triggers: PR-subscription sweep, 5-engine live monitor,
+30-min coordinator cycle; zero new actionable content in any of them). Re-verified repo state before
+doing anything else: `/home/user/blackout-web` intact, `git status` clean, re-fetched and detached
+to `origin/main` at `995fd636` (2026-10-16 06:55 UTC — this is the current tip; nothing had merged
+during the stall because no new agent PRs were open). Node 20 pre-installed at `/opt/node20`,
+`node_modules` populated (544 entries) — no reinstall needed. AWS creds live (`sts:GetCallerIdentity`
+→ `vinay-blackout`).
+
+**PR sweep:** only 4 open PRs fleet-wide, all 4 are Dependabot major-version bumps (#5547 next
+15→16, #5546 @whop/sdk 0→2, #5545 eslint-config-next, #4477 eslint-plugin-tailwindcss) — none
+eligible for auto-merge per standing policy ("Dependabot major-version bumps until CI is fixed").
+No agent-authored `fix/*`/`feat/*`/`cursor/*`/`claude/*` PRs sitting open, so nothing to release,
+merge, or chase this cycle — the fleet lanes were quiet, not stuck.
+
+**Triaged the one carried-over open finding** (SPX Slayer `/api/market/spx/play` serving a degraded
+`ServerCacheTimeoutError` placeholder off-hours, surfaced by a background workflow run `wori4ynyv`
+before the stall, never independently re-verified): today is Saturday — markets fully closed, no
+`spx-evaluate` cron has fired or will fire all day, the exact "nothing pre-warms the cache overnight"
+condition the finding's hypothesis needed. Hit the live route (`scripts/audit/lib/audit-auth-fetch.mjs`,
+cron-bearer auth): **200, fully-formed, non-degraded payload** — `assessed: true`, a real computed
+`score`/`direction`/`factors[]`, `headline: "Session closed"`, `thesis: "Desk offline · CLOSED ·
+resumes 6:30 AM PT"`, `gates.blocks: ["Session closed"]`. Not the claimed shape at all
+(`degraded:true, assessed:false, factors:[]`). Also grepped CloudWatch Logs `/ecs/blackout-production`
+for `ServerCacheTimeoutError` over the trailing 36h: **0 occurrences.** Conclusion: this finding does
+not currently reproduce and has no supporting log evidence over a day and a half that should have
+captured multiple off-hours windows if the mechanism were real — discarded rather than converted to
+a fix PR (no RED state to prove, no root cause to test against). The route's actual behavior here
+looks like a short-circuit on `session_phase: "closed"` returning a coherent desk-offline state
+before ever attempting a full confluence eval, which is the opposite of "nothing pre-warms, cold eval
+exceeds its budget." If this resurfaces, capture the exact live response body at the time, not just
+a description, before filing a fix.
+
+## 2026-10-16 (06:17 UTC / Fri 02:18 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Market closed overnight. Resynced to `origin/main` (`9899dd46` → `1ee9bb07`, other-lane swing
+fix). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0, perfectly
+clean**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real
+1200×630 PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 2 open agent PRs
+fleet-wide, both other-lane and CI-RUNNING (#6104 docs findings-fold, #6103 0DTE). Nothing for
+this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-16 (00:16 UTC / Thu 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Container restart this cycle — verified repo intact at `/home/user/blackout-web`, Node 20
+pre-installed, `node_modules` populated (543 entries) before proceeding, per the standing
+restart-recovery discipline. Market closed for the day. Resynced to `origin/main` (`b1a2e316`
+→ `2655ae1f`, other-lane admin fix). **Step 1:** purged Cloudflare edge HTML, re-measured live
+homepage CLS — **0.0001, GOOD**. Fetched `/api/og` with a Googlebot UA: `200`,
+`content-type: image/png`, real 1200×630 PNG — crawlable, confirmed on production. **Step 2 —
+PR sweep:** 3 open agent PRs fleet-wide, all other-lane and still CI-RUNNING (#6078 swing,
+#6077 docs findings-fold, #6076 cache). Nothing for this lane to rebase or chase. **Step 3:**
+no new SEO-lane gap found. No PR opened.
+
+## 2026-10-15 (18:16 UTC / Thu 14:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Market closed for the day. Resynced to `origin/main` (`9e49999a` → `392ad568`, other-lane
+journal). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0.001,
+GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real 1200×630
+PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 0 open agent PRs fleet-wide.
+Nothing for this lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-15 (16:35 UTC / Thu 12:35 ET) — [SEO] RTH wake (near close): gamma-snapshot live, CLS clean
+
+Confirmed market open myself (12:35 ET, ~25min to close). Same redis_cluster/null-change_pct/
+null-flip state as the prior wake — already traced this cycle, not re-investigated. Confirmed
+refresh live (calculation_id advanced, spot ticked). Purged Cloudflare edge HTML, measured live
+homepage CLS — **0, perfectly clean**. No defect found. No PR opened.
+
+## 2026-10-15 (15:35 UTC / Thu 11:36 ET) — [SEO] RTH wake: SPX change_pct null investigated (index-vs-stock path, not a defect), CLS clean
+
+Confirmed market open myself (11:36 ET). `/api/public/gex-snapshot?ticker=SPX` —
+`market_session: "OPEN"`, `degraded: false`, but `change_pct: null` persisting 2+ hours into
+the session with `spot_source: "redis_cluster"` (age climbing 22s→33s across two polls).
+Cross-checked SPY/QQQ at the same instant: both real `change_pct` (0.02, -0.64), `spot_source:
+"ws"`. Traced via code (`resolveSpotSnapshot` in `polygon-options-gex.ts`): SPX is an INDEX,
+routed through `liveWsIndexSpot` → cross-replica `redis_cluster` fallback when this replica has
+no local index WS tick, which is fail-closed-null by design (`clusterIndexSpotChangePct`
+requires `open_source === "rest"`, already root-caused in a prior cycle). SPY/QQQ are STOCKS,
+routed through the separate `liveWsStockSpot` path entirely — not a like-for-like comparison,
+so their having real values doesn't imply SPX is broken. Zero public-render impact (already
+confirmed: no component renders `change_pct`). Not a new finding — same documented pattern
+recurring, not escalated. Purged Cloudflare edge HTML, measured live homepage CLS — **0.0003,
+GOOD**. No PR opened.
+
+## 2026-10-15 (14:06 UTC / Thu 10:06 ET) — [SEO] Daily growth cycle: one new thin striking-distance entry, no action
+
+New striking-distance entry: "gex" (pos 15.7, **6imp 1cl**) — falls in the same thin-sample
+band (3-7imp) as prior noted-but-not-acted-on entries, consistent with the standing "don't
+churn on thin signals" rule; also a bare generic term already well-covered by the existing
+glossary/dealer-gamma pillar content. Noting it, not acting. Same CTR-gap/deep-demand register
+otherwise. CLS/robots.txt already verified this morning's RTH wake (within rule 6's 3-day
+window) — skipped redundant re-check. 28-day avgpos 11.3 (17cl/1424imp), within the established
+noisy band — no material movement. No PR opened.
+
+## 2026-10-15 (13:35 UTC / Thu 09:35 ET) — [SEO] RTH wake: gamma-snapshot live, calculation_id non-monotonic blip self-resolved
+
+Confirmed market open myself (09:35 ET, 2026-10-15 not in `US_MARKET_HOLIDAYS`).
+`/api/public/gex-snapshot?ticker=SPX` — `market_session: "OPEN"`, `degraded: false`. Same
+`flip: null` short-gamma-at-every-strike condition as the last two days (already understood,
+not a defect); `change_pct: null` expected this early pre-REST-anchor. Polled 6x over ~40s to
+check refresh cadence: first 3 reads showed `calculation_id` briefly non-monotonic (age jumped
+to 18-49s then dropped) — the already-documented backend-replica/cache-read race, not a new
+issue — the last 3 reads settled clean and monotonic (age 2s, 0.4s, 0.8s). Purged Cloudflare
+edge HTML, measured live homepage CLS — **0.0002, GOOD**. No defect found. No PR opened.
+
+## 2026-10-15 (12:17 UTC / Thu 08:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Pre-market. Resynced to `origin/main` (`1cd8b234` → `e0e88df5`, other-lane swing/Largo fix).
+**Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS — **0.0002, GOOD**.
+Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real 1200×630 PNG —
+crawlable, confirmed on production. **Step 2 — PR sweep:** 1 open agent PR fleet-wide, not
+this lane's own — #6057 (docs, CI-RUNNING). Nothing for this lane to rebase or chase. **Step
+3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-15 (06:16 UTC / Thu 02:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Market closed overnight. Resynced to `origin/main` (`dd60ebca` → `8241e64d`, other-lane swing
+threshold-drift fix). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0.0004, GOOD**. Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real
+1200×630 PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 1 open agent PR
+fleet-wide, not this lane's own — #6034 (docs findings-fold, CI-RUNNING). Nothing for this
+lane to rebase or chase. **Step 3:** no new SEO-lane gap found. No PR opened.
+
+## 2026-10-15 (00:16 UTC / Wed 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Market closed for the day. Resynced to `origin/main` (`a810492` → `c1f36491`, other-lane swing
+play-brief fix). **Step 1:** purged Cloudflare edge HTML, re-measured live homepage CLS —
+**0.0001, GOOD**, back to the normal baseline (yesterday's transient-elevated reads self-
+resolved as expected). Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`,
+real 1200×630 PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 1 open agent PR
+fleet-wide, not this lane's own — #6019 (docs findings-fold, CI-RUNNING). The prior cycle's
+flagged draft jam (#6000) has resolved. Nothing for this lane to rebase or chase. **Step 3:** no
+new SEO-lane gap found. No PR opened.
+
+## 2026-10-14 (18:16 UTC / Wed 14:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, draft jam flagged (not this lane's)
+
+Market closed for the day. Resynced to `origin/main` (`2018404` → `756006d`, other-lane
+journal). **Step 1:** purged Cloudflare edge HTML, measured live homepage CLS — first two reads
+came back elevated (**0.0062, 0.0067** — still GOOD, but a step up from the usual 0.0001-0.0008
+floor), re-measured a third time and it settled to **0.0006** — no homepage-affecting commit in
+recent history (checked `git log` on `src/components/`/`src/app/` — only backend fixes), so this
+is a non-reproducible transient consistent with the previously-documented pattern, not escalated.
+Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, real 1200×630 PNG —
+crawlable, confirmed on production. **Step 2 — PR sweep:** 2 open agent PRs fleet-wide, neither
+this lane's own — #6000 (cron/platform-warm, READY-BUT-DRAFT, green CI — a genuine jam, flagged
+here per standing discipline but not acted on since it's another lane's PR and undrafting is the
+coordinator's call), #5537 (docs, CI-FAILED, long-confirmed intentional). **Step 3:** no new
+SEO-lane gap found. No PR opened.
+
 ## 2026-10-14 (16:35 UTC / Wed 12:36 ET) — [SEO] RTH wake (near close): gamma-snapshot live, CLS clean
 
 Confirmed market open myself (12:36 ET, ~24min to close). Same `flip: null` short-gamma-at-

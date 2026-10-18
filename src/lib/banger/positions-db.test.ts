@@ -273,3 +273,29 @@ test("fetchBangerOpenBookRows (the UNFILTERED sibling live-marks-active.ts depen
   const fn = SRC.slice(start, SRC.indexOf("\n}\n", start) + 3);
   assert.ok(!fn.includes("contract_expiry"), "the raw reader live-marks-active.ts uses must keep seeing expired rows to force-settle them");
 });
+
+// ─── SEV-2 (FINDINGS 2026-10-15, Ask Largo/Night Hawk Swings standing mandate): premium watermarks
+// must be BRACKETED BY ENTRY — the exact same shape FINDINGS 2026-08-06 already fixed on
+// swing_positions (src/lib/db-swing-ledger.test.ts), never ported to this sibling table. Live proof
+// 2026-10-15 (GET /api/market/nighthawk/horizons?view=swings): 7 real committed rows
+// (SLS/METU/SNXX/MUU/ALAB/CBRS/WDC) showed peak_premium < entry_premium and 2 (ORKA/SOXS) showed
+// trough_premium > entry_premium — arithmetically impossible, since the entry fill itself IS an
+// observed mark of the contract. Root cause: insertBangerPosition never seeded peak_premium/
+// trough_premium at INSERT, so updateBangerLiveState's ratchet (GREATEST(COALESCE(peak_premium,
+// $3), $3)) seeded peak_premium from the FIRST OBSERVED MARK instead — below entry whenever the
+// contract gapped against the position before the first live-sync tick ever sampled it. ───────────
+
+test("insertBangerPosition: SEEDS peak_premium/trough_premium from entry_premium ($11) at commit", () => {
+  const start = SRC.indexOf("export async function insertBangerPosition");
+  const fn = SRC.slice(start, SRC.indexOf("\n}\n", start) + 3);
+  assert.match(fn, /entry_context, status, peak_premium, trough_premium, committed_at, updated_at/);
+  // Both seeded from $11 — the entry_premium placeholder — not a fresh param or a literal.
+  assert.match(fn, /'OPEN',\$11,\$11,NOW\(\),NOW\(\)/);
+});
+
+test("insertBangerPosition: peak_premium/trough_premium are NOT pinned on the commit_key re-touch — the ratchet owns them after insert", () => {
+  const start = SRC.indexOf("const BANGER_PINNED_COLUMNS");
+  const block = SRC.slice(start, SRC.indexOf("] as const;", start));
+  assert.ok(!block.includes('"peak_premium"'), "peak_premium must not be COALESCE-pinned, or a re-running scan would rewind a ratcheted extreme");
+  assert.ok(!block.includes('"trough_premium"'), "trough_premium must not be COALESCE-pinned, same reasoning");
+});

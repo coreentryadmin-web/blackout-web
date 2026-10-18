@@ -46,7 +46,21 @@ const SECTORS: Record<string, string[]> = {
   // Polygon reference (`sic_code: "3674"`, "SEMICONDUCTORS & RELATED DEVICES") — not guessed from
   // the symbol — and the SAME live play-brief's own independently-sourced "Peers" line already
   // named LRCX and KLAC, both already in this list, corroborating the classification.
-  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC", "SMCX", "MULL", "AVGX", "MTSI"],
+  // CRWV/NBIS added 2026-10-16 (Ask Largo standing mandate, live finding, same gap shape as the
+  // ALAB/CRDO/KLAC and MTSI extensions above): a real committed book held CRWV LONG and NBIS LONG
+  // in the SAME discovery batch as a flagged 9-name semis cluster (MRVL/SOXL/TQQQ/ALAB/ARM/CRDO/
+  // QCOM/SOXS), but neither ticker had an entry here, so both resolved to isolated `NAME:` clusters
+  // and their live play-briefs rendered no "Book context" section at all. CRWV (CoreWeave) and NBIS
+  // (Nebius) are confirmed via Polygon reference (`/v3/reference/tickers/<T>`) as AI-GPU/HPC
+  // cloud-infrastructure providers — CoreWeave "offers Nvidia GPUs ... for AI training and inference
+  // workloads", Nebius a "vertically integrated cloud provider focusing on AI and high-performance
+  // computing" — an even more direct read on the same NVDA-capex thesis than the connectivity-chip
+  // makers (ALAB/CRDO) already in this bucket, since both directly rent out the GPUs. DRAM
+  // (Roundhill Memory ETF, confirmed via the same Polygon reference lookup) added proactively, same
+  // precedent as AVGX above ("not yet live... but the gap is identical in kind") — it tracks the
+  // same memory-cycle names MU (already listed) represents, with no live partner to demonstrate
+  // against in this book snapshot specifically.
+  semis: ["NVDA", "AMD", "SMCI", "MU", "AVGO", "TSM", "INTC", "ARM", "MRVL", "QCOM", "ASML", "LRCX", "AMAT", "TXN", "ON", "NXPI", "ALAB", "CRDO", "KLAC", "SMCX", "MULL", "AVGX", "MTSI", "CRWV", "NBIS", "DRAM"],
   // AMZU ("Direxion Daily AMZN Bull 2X ETF") added 2026-10-07 for the same reason as SMCX/MULL
   // above — AMZN already has a peer bucket here, so its leveraged wrapper joins it directly.
   megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AMZU"],
@@ -138,7 +152,13 @@ const SECTORS: Record<string, string[]> = {
   // (LLY/UNH/PFE/JNJ/ABBV/TMO/AMGN), a different risk profile from this small/mid-cap clinical-
   // catalyst cluster; reclassifying MRNA (also in `healthcare` today, arguably closer to this
   // bucket's risk profile) is a separate question out of scope for this fix.
-  biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY"],
+  // Added 2026-10-17 (Ask Largo standing mandate, live finding while researching the sibling LABD
+  // theme-cluster fix): ABVX (Abivax SA) was live, currently-committed LONG in the same book this
+  // bucket was built from, but wasn't in it. Verified via Polygon reference (not guessed): a
+  // France-based clinical-stage biotech in Phase 3 trials for obefazimod (ulcerative colitis) —
+  // a single-segment company whose entire value hinges on one trial readout, the exact same binary
+  // clinical/regulatory catalyst risk driver as every other name in this bucket.
+  biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY", "ABVX"],
 };
 
 // Inverted once at module load: TICKER → sector.

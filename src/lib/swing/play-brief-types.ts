@@ -9,6 +9,7 @@ import type { PortfolioPosition } from "./portfolio";
 import type { SwingArchetypeTrackRecordSnapshot } from "./calibration-cache";
 import type { SwingChainComposite } from "./record";
 import type { SwingTickerTrackRecord } from "./play-brief-ticker-history";
+import type { TickerClass } from "@/lib/largo/contract/product-read";
 
 /** Inputs gathered server-side for deterministic swing play brief composition. */
 export type SwingPlayBriefContext = {
@@ -142,8 +143,13 @@ export type SwingRollHistory = {
 export type SwingPlayBriefResult = {
   playId: string;
   ticker: string;
-  /** Asset class for Largo cross-product identity (C4). Swings are always equities. */
-  ticker_class: "equity";
+  /**
+   * Asset class for Largo cross-product identity (C4), derived from the ticker itself
+   * (`canonicalTicker(ticker).kind`). NOT always "equity" — Banger-origin swing positions include
+   * leveraged/inverse/volatility ETFs (VXX, UVXY, SQQQ, SOXS, UVIX, ...); see play-brief.ts's
+   * composition site for the live repro this field used to get wrong.
+   */
+  ticker_class: TickerClass;
   envelope: BieAnswerEnvelope;
   asOf: string;
   /** ET session date (YYYY-MM-DD) for the brief read — Largo C1 join key. */

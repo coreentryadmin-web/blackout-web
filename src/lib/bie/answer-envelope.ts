@@ -33,6 +33,24 @@ export type BieProvenance = {
   /** ISO timestamp of the underlying data, when known. */
   asOf?: string | null;
   freshness?: BieFreshness;
+  /**
+   * ADDITIVE, orthogonal to `freshness` (Largo Product Contract C2 fix, 2026-10-16 — live TSM/
+   * BBWI repro, Ask Largo standing mandate). `freshness` answers "how old is this compute" —
+   * for a snapshot-based read (GEX matrix, Vector full-state), a weekend/holiday self-warm can
+   * genuinely COMPUTE a fresh number *from* the last session's closing tape while the market
+   * itself has been shut for hours, so `freshness: "live"` is not wrong, only incomplete: it says
+   * nothing about whether the underlying TAPE the compute describes has moved since. This field
+   * carries that orthogonal disclosure (mirrors `vector-state-freshness.ts`'s own
+   * `VectorFreshnessBlock.market_session_note`, which this type predates — see that module's
+   * header for why a consumer needing "can I trust this as a live tick" must check BOTH fields,
+   * never `freshness` alone) — null whenever the compute genuinely reflects an open/moved
+   * session, or whenever `freshness` itself is already "stale"/"unknown" (that verdict's own
+   * caveat already covers it). Per the contract's own ADDITIVE rule (wrap, never flatten):
+   * `freshness` is deliberately left alone rather than overloaded to a new value for this case —
+   * see `gexMarketSessionNote`/`describeVectorFreshness` (swing play-brief's call sites) for the
+   * fix this field was added for.
+   */
+  market_session_note?: string | null;
 };
 
 /** One evidence item — the statement + its honesty kind + provenance. */

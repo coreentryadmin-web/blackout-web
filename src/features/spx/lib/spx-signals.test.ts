@@ -306,6 +306,73 @@ test("matchingHelixSweepFlows: excludes a future-dated flow directly — the sha
   assert.equal(matching[0], fresh);
 });
 
+// FIX (Ask Largo standing mandate, 2026-10-17): scoreNewsRisk's keyword scan had no negation/
+// de-escalation awareness — a headline reporting an event being AVERTED or RESOLVED scored
+// identically to the event actually happening.
+test("News risk factor: a reversal verb right after the bear keyword suppresses the bearish hit", (t) => {
+  // Without negation handling, each headline below double-counts: a bear hit (geopolit/war) AND
+  // a bull hit (ceasefire) land net -2 ("2 high-risk headlines"). With it, the de-escalation verb
+  // right next to each bear keyword suppresses it, leaving 2 clean bull hits -> net +2 bullish.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.news_headlines = [
+    { title: "Geopolitical tensions ease after ceasefire reached", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+    { title: "War fears ease as ceasefire holds", published: "2026-07-04T17:05:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.ok(newsFactor, "the un-negated 'ceasefire' bull hits must still fire");
+  assert.equal(newsFactor!.weight, 3, `expected a net-bullish read once both bear hits are suppressed, got ${newsFactor?.weight}`);
+  assert.doesNotMatch(newsFactor!.detail, /high-risk/i, "de-escalating headlines must not count as bearish");
+});
+
+test("News risk factor: a bullish keyword followed by a collapse verb does not score bullish", (t) => {
+  // Without suppression, 2 such headlines read net +2 bullish ("2 positive headlines") off the
+  // bare "stimulus"/"deal" words alone — the collapse is the opposite of bullish news.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.news_headlines = [
+    { title: "Stimulus deal collapses in Congress", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+    { title: "Relief deal collapses after talks fail", published: "2026-07-04T17:05:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.equal(newsFactor, undefined, "collapsed deals must not score as positive headlines");
+});
+
+test("News risk factor: a reversal verb tied to one clause does not suppress a genuinely bearish keyword in a different clause of the same headline", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  // "dashed" belongs to the rate-cut clause, not the Fed clause — it must cancel the bull hit
+  // ("rate cut") without also cancelling the separate, real bearish "Fed turns hawkish" clause.
+  desk.news_headlines = [
+    { title: "Rate cut hopes dashed as Fed turns hawkish", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.ok(newsFactor, "the un-negated 'fed' bear hit must still fire");
+  // -4 (bearHits=1, bullHits=0) only if "dashed" cancelled the rate-cut hit without ALSO
+  // cancelling the Fed hit; an un-isolated window would double-cancel to -2 instead (or leave both
+  // live at -2 the other way), so the exact magnitude is the discriminating assertion here.
+  assert.equal(newsFactor!.weight, -4, `expected -4 (bear hit alone), got ${newsFactor?.weight}`);
+  assert.match(newsFactor!.detail, /1 high-risk headline/i);
+});
+
+test("News risk factor: an averted-crash headline does not score bearish", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.news_headlines = [
+    { title: "Market crash averted as central banks step in", published: "2026-07-04T17:00:00.000Z", tickers: [] },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const newsFactor = result.factors.find((f) => f.label === "News risk");
+  assert.equal(newsFactor, undefined, "an averted crash must not score as a bearish headline");
+});
+
 // BUG FIX (2026-09-22): reclassifyConfluenceScore — spx-play-engine.ts's Night Hawk "morning
 // prior" bonus used to mutate `confluence.score`/`confluence.factors` in place without ever
 // re-deriving `grade`/`direction`/`agreeing`/`conflicts`, so a boundary-crossing bonus (bounded
@@ -355,4 +422,47 @@ test("reclassifyConfluenceScore: a bonus that lifts abs score past 10 flips dire
   const postBonus = reclassifyConfluenceScore(reclassifyDesk(), 11, withBonus);
   assert.equal(postBonus.direction, "long", "direction must not stay frozen at null once score crosses the HOLD threshold");
   assert.equal(postBonus.bias, "bullish");
+});
+
+// REGRESSION (Ask Largo standing mandate, 2026-10-18): computeSpxConfluence's score/factors
+// invariant — top-level `score` must equal the sum of every pushed `factors[].weight`, clamped to
+// [-100, 100] — had drifted apart once before (the 2026-09-22 fix that introduced
+// reclassifyConfluenceScore specifically to keep a post-hoc score mutation synced with its factor
+// list), but no test asserted the invariant directly; the existing golden-fixture snapshot test
+// above only encodes it implicitly, for one single (already-clamped) data point. `rawScore` is a
+// DIFFERENT, intentionally separate confidence metric (clamp(round(|score|*1.15 +
+// factors.length*3), 0, 96)) and must never be confused with this invariant — a bug that made
+// `score` drift from `sum(factors[].weight)` would NOT show up as a `rawScore` mismatch.
+test("computeSpxConfluence: score always equals clamp(sum(factors[].weight), -100, 100) — clamped case (golden fixture)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const result = computeSpxConfluence(richDesk());
+  assert.ok(result);
+  const rawSum = result.factors.reduce((s, f) => s + f.weight, 0);
+  const expected = Math.max(-100, Math.min(100, rawSum));
+  assert.equal(result.score, expected, `score (${result.score}) must equal clamp(sum(weights)=${rawSum}, -100, 100)=${expected}`);
+  // The golden fixture is deliberately in the CLAMPED regime (raw sum 154 > 100) — assert that
+  // explicitly so this test can't silently stop exercising the clamp path if the fixture changes.
+  assert.ok(rawSum > 100, "this fixture must exercise the clamp path (raw sum > 100) — if it no longer does, add an explicit clamped-case fixture instead of only testing the unclamped case below");
+});
+
+test("computeSpxConfluence: score always equals clamp(sum(factors[].weight), -100, 100) — unclamped case (sparse fixture)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  // A sparse desk that fires only a few small-weight factors, so the raw sum stays well inside
+  // [-100, 100] and the clamp never engages — proves the invariant holds in the ORDINARY regime
+  // too, not just the saturated one the golden fixture happens to hit.
+  const desk = richDesk();
+  desk.gamma_flip = null; // drop γ regime (+10)
+  desk.flow_0dte_net = null; // drop 0DTE flow (+14)
+  desk.tide_bias = "neutral"; // drop Market tide (+10)
+  desk.spx_flows = []; // drop HELIX sweeps (+15)
+  desk.unified_tape = []; // drop Live tape (+12)
+  desk.net_prem_ticks = []; // drop Net prem (+6)
+  desk.strike_stacks = []; // drop Strike stack (+3)
+  desk.news_headlines = []; // drop News risk (+3)
+  desk.leader_stocks = []; // drop Mega-caps (+6)
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const rawSum = result.factors.reduce((s, f) => s + f.weight, 0);
+  assert.ok(Math.abs(rawSum) < 100, `this fixture must stay inside the unclamped range, got raw sum ${rawSum}`);
+  assert.equal(result.score, rawSum, `unclamped: score (${result.score}) must equal the raw factor-weight sum (${rawSum}) exactly, with no clamp distortion`);
 });

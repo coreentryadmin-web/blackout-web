@@ -187,6 +187,22 @@ mock.module("../../features/nighthawk/lib/session", {
     nextTradingDayEt: () => "2026-07-08",
   },
 });
+// getZeroDteBoardPayload()'s off-hours branch calls isEtExtendedWarmHours() with NO `now`
+// argument, so it defaults to the REAL `new Date()` — the session mock above (fixed at a
+// simulated 11:30 ET) never reaches it. Left unmocked, this file's "cold-builds on EVERY
+// call" guarantee (comment below) silently breaks outside the real 4:00 AM-8:00 PM ET
+// window: the off-hours branch serves the module-scope `lastGoodBoardLocal` remembered from
+// an EARLIER test case in this same process instead of cold-building with THIS test's own
+// freshly-mutated `state`, so a later test's assertions see a stale board from an unrelated
+// case (wrong ledger status, missing fields, stale tier). Mocked true so every test here
+// actually gets the cold-build hermeticity the file already claims, regardless of when it runs.
+// isEtCashRth is mocked too (also true) since replacing a module's named exports drops any NOT
+// listed here to undefined — live-marks.ts's background mark refresh (reached via async
+// activity this file's board builds kick off) calls isEtCashRth() and would otherwise throw
+// "is not a function" after the triggering test has already ended.
+mock.module("../et-market-hours", {
+  namedExports: { isEtExtendedWarmHours: () => true, isEtCashRth: () => true },
+});
 // Always-miss shared cache so getZeroDteBoardPayload cold-builds on EVERY call in these
 // state-driven tests — each case must see its own freshly-mutated `state`, never a
 // snapshot published by a prior case. (The convergence/liveness/fail-soft behaviour of

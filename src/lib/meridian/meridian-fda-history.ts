@@ -2,6 +2,7 @@ import "server-only";
 
 import { fetchBenzingaCatalysts, fetchBenzingaNews } from "@/lib/providers/polygon";
 import { stockReactionsForDates } from "@/lib/meridian/meridian-reaction";
+import type { SessionReaction } from "@/lib/meridian/meridian-reaction-core";
 import { roundFloats } from "@/lib/round-floats";
 import type { MeridianFdaPriorDecision } from "@/features/meridian/lib/meridian-types";
 
@@ -43,7 +44,7 @@ export async function loadMeridianFdaHistory(input: {
 
   const dates = priorRows.map((r) => r.date);
   const [reactions, catalysts, fdaNews] = await Promise.all([
-    stockReactionsForDates(sym, dates),
+    stockReactionsForDates(sym, dates).catch(() => new Map<string, SessionReaction>()),
     fetchBenzingaCatalysts(sym, 12).catch(() => []),
     fetchBenzingaNews(10, { ticker: sym, channels: "fda" }).catch(() => []),
   ]);

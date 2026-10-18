@@ -160,6 +160,22 @@ const BANGER_PINNED_COLUMNS = [
  * Insert (or idempotently re-touch) a committed banger position. Upserts on commit_key so a re-running
  * discovery scan lands on the SAME row; every identity + commit-time column is COALESCE-pinned
  * first-write-wins. Returns the position id.
+ *
+ * SEV-2 FIX (Ask Largo/Night Hawk Swings standing mandate, 2026-10-15): peak_premium/trough_premium
+ * used to be left NULL here and only started accumulating on the FIRST successful
+ * updateBangerLiveState latch — which seeds them from COALESCE(peak_premium, $3)/(trough_premium, $3),
+ * i.e. the first OBSERVED MARK, never entry_premium. A contract that gapped against its position
+ * before that first tick ever sampled it therefore seeded peak_premium BELOW its own entry (or
+ * trough_premium ABOVE it) — arithmetically impossible for a watermark meant to bracket the
+ * contract's whole life since entry, since the entry fill itself IS an observed mark of that
+ * contract. This is the EXACT SAME shape FINDINGS 2026-08-06 already fixed on swing_positions
+ * (insertSwingPosition seeds both from entry_premium, db.ts) — never ported to this sibling table.
+ * Live proof 2026-10-15 (Ask Largo play-brief sweep): 7 real committed rows (SLS/METU/SNXX/MUU/
+ * ALAB/CBRS/WDC) showed peak_premium < entry_premium and 2 (ORKA/SOXS) showed
+ * trough_premium > entry_premium. Seeding both from entry_premium here (not added to
+ * BANGER_PINNED_COLUMNS below — the ratchet owns them after insert, same as swing_positions) closes
+ * the gap for every NEWLY committed position going forward; ensureSchema's boot-time backfill
+ * (db.ts, mirroring the swing_positions one) repairs rows written before this fix.
  */
 export async function insertBangerPosition(pos: BangerPositionInsert): Promise<number> {
   const res = await dbQuery<{ id: string }>(
@@ -167,9 +183,9 @@ export async function insertBangerPosition(pos: BangerPositionInsert): Promise<n
     INSERT INTO banger_positions (
       commit_key, session_date, ticker, discovery_gain, discovery_vol, discovery_dollar_vol,
       discovery_close_strength, contract_strike, contract_expiry, contract_occ, entry_premium,
-      entry_context, status, committed_at, updated_at
+      entry_context, status, peak_premium, trough_premium, committed_at, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,'OPEN',NOW(),NOW()
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,'OPEN',$11,$11,NOW(),NOW()
     )
     ON CONFLICT (commit_key) DO UPDATE SET
       ${BANGER_PINNED_COLUMNS.map((c) => `${c} = COALESCE(banger_positions.${c}, EXCLUDED.${c})`).join(",\n      ")},

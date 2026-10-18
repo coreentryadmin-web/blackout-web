@@ -200,6 +200,12 @@ export function gradeParentFromMark(
     },
     grade_methodology: "swing.roll.markfreeze.v1",
     realized_pnl_pct: realized,
+    // Top-level (not just nested in grade_json) so gradeSwingPosition can latch it onto last_mark/
+    // last_mark_at in the SAME terminal UPDATE — without this, the row's displayed contract.mid
+    // (closed-plays.ts reads row.last_mark) stays frozen at whatever the PRIOR evidence-only
+    // refresh tick latched, while realized_pnl_pct/peak/trough above are computed from THIS mark —
+    // two different point-in-time marks describing the same closed position (FINDINGS 2026-10-17).
+    exit_mark: mark,
   };
 }
 

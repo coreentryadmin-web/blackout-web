@@ -25,6 +25,7 @@ import type { VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { collectCoachingBullets } from "./play-brief-narrative-coaching";
 import { fmtOptionUsd, fmtPct, fmtPremium, fmtPriceLevel } from "@/lib/fmt-money";
+import { formatDealerDollars } from "./format-nonzero";
 import { technicalsBias } from "./play-brief-technicals";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { mfeCaptureOutcome } from "./mfe-capture";
@@ -180,7 +181,11 @@ export function collectFocalLevels(ctx: SwingPlayBriefContext, spot: number): Fo
   return out.sort((a, b) => Math.abs(a.distancePct) - Math.abs(b.distancePct));
 }
 
-function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | null {
+function dealerPostureLine(
+  ctx: SwingPlayBriefContext,
+  spot: number,
+  bucket: "watch" | "open" | "closed",
+): string | null {
   const vec = vectorOf(ctx);
   const gex = ctx.ecosystem?.gex_positioning;
   // Same #5351/#5353-class fix as counterThesisLine above: prefer the request-wide
@@ -195,8 +200,35 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
   const flip = flipFromStaleGex ? null : (vecFlip ?? gex?.flip ?? null);
 
   if (!posture || posture === "unknown") {
-    if (spot != null) return `Spot **${fmtPriceLevel(spot)}** — dealer gamma posture not resolved on this read.`;
-    return null;
+    // Ask Largo standing mandate (2026-10-15): live repro GOOG, posture unresolved
+    // (flip_reason=crossings_far_from_spot — the book's one crossing sits ~12.6% from spot, just
+    // outside the ±12% plausibility window cumulativeGammaFlipDetail uses to call a stable flip).
+    // gex-positioning.ts's own field doc for flip_nearest says it is "[a]lso populated when flip
+    // is null because every crossing sits outside the ... plausibility window: it names the
+    // closest crossing even when it was rejected as the headline flip" — this branch used to
+    // discard that specific, already-computed level and fall back to a bare "not resolved"
+    // message. Gated on gexMatrixStale the same way fragileBit below is: a stale matrix's
+    // crossing location is exactly as unreliable as its flip.
+    //
+    // BUG FIX (2026-10-17, Ask Largo standing mandate, live repros RDDT/SOFI): `gex.
+    // distance_to_nearest_flip_pct` is computed in gex-positioning.ts as (spot - flip) / spot —
+    // positive when the level is BELOW spot. Every other level in this same brief (gamma magnet,
+    // call/put wall, confluence) is phrased via this file's own `distPct(spot, level)` — the exact
+    // opposite convention, positive when the level is ABOVE spot. Rendering the raw field directly
+    // here put the sign backwards relative to every sibling "X% away"/"X% from spot" line in the
+    // same document. Live repro: RDDT spot 155.20, flip_nearest 229.60 (47.9% ABOVE spot) rendered
+    // "(-47.9% away)" next to a sibling "Gamma magnet 177.01 (+14.1% from spot)" in the identical
+    // brief. Recomputing via the file's own `distPct` (rather than just negating the raw field)
+    // keeps this call site on the one sign convention the rest of the file already uses.
+    const nearestCrossingBit =
+      gex?.flip_nearest != null && !gexMatrixStale(gex, readMs)
+        ? ` — chain's only crossing sits at **${fmtPriceLevel(gex.flip_nearest)}**${
+            gex.distance_to_nearest_flip_pct != null
+              ? ` (${fmtPct(distPct(spot, gex.flip_nearest))} away)`
+              : ""
+          }, too far from spot to call a stable regime`
+        : "";
+    return `Spot **${fmtPriceLevel(spot)}** — dealer gamma posture not resolved on this read${nearestCrossingBit}.`;
   }
 
   const aboveFlip = flip != null ? spot >= flip : null;
@@ -212,13 +244,94 @@ function dealerPostureLine(ctx: SwingPlayBriefContext, spot: number): string | n
       ? ` · γ-flip **${fmtPriceLevel(flip)}**${aboveFlip != null ? (aboveFlip ? " (spot above)" : " (spot below)") : ""}`
       : "";
 
-  const snapshotStale = vectorStale;
+  // Ask Largo standing mandate (2026-10-14): parity fix for PR #5994's VEX/DEX/CHARM additions to
+  // gexPostureSection (play-brief-intel.ts) — collapseRedundantIntelSections
+  // (play-brief-intel-collapse.ts) drops the WHOLE "GEX posture" section for OPEN/WATCH buckets
+  // whenever this narrative is present, under a "folded into Trade manager read" note, but this
+  // line never actually carried any vanna/dex/charm content — the VEX/DEX/CHARM fields silently
+  // vanished rather than folding into anything. Same interpretive-read pattern as `mechanic`
+  // above: a qualitative regime READ, not the raw $ figure (net_gex's own dollar value is likewise
+  // never narrated here, by design — gexPostureSection's `Net GEX: **$NM**` line is the one place
+  // for the number; this line is the one place for the "what it means" read). Gated on the SAME
+  // `gexMatrixStale` check gexPostureSection uses for these fields — a stale matrix's regime reads
+  // are exactly as unreliable here as there.
+  const gexStale = gexMatrixStale(gex, readMs);
+
+  // Ask Largo standing mandate (2026-10-15): gex-positioning.ts computes flip_crossings/
+  // flip_nearest/distance_to_nearest_flip_pct unconditionally for every ticker/brief
+  // ("the regime is more fragile than the single flip implies... read flip_nearest/
+  // distance_to_nearest_flip_pct before calling [flip] a comfortable distance from flipping")
+  // but this narrative line only ever cited the single stable `flip` above -- "a flip about to
+  // re-cross" is a genuinely different risk shape than "a stable flip", so it earns its own
+  // clause rather than silently riding inside flipBit. Raised on PR #4076 (comment 6175832614,
+  // 2026-10-14); implemented here after ~22h with no reply, per this same thread's established
+  // NEVER-SIT-IDLE precedent (comment 6168890076: implement after a reasonable wait rather than
+  // block indefinitely on a design-call reply). Gated on the same gexStale check as the sibling
+  // regime reads below -- a stale matrix's crossing count is as unreliable as its flip.
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repros RDDT/SOFI): same sign-inversion
+  // fix as nearestCrossingBit above — `gex.distance_to_nearest_flip_pct` uses the opposite
+  // "spot relative to level" sign convention from this file's own `distPct(spot, level)`, used by
+  // every sibling level in the brief. Recompute via `distPct` rather than negate the raw field.
+  const fragileBit =
+    !gexStale && gex?.flip_crossings != null && gex.flip_crossings > 1 && gex?.flip_nearest != null
+      ? ` · fragile flip — nearer crossing **${fmtPriceLevel(gex.flip_nearest)}**${
+          gex.distance_to_nearest_flip_pct != null
+            ? ` (${fmtPct(distPct(spot, gex.flip_nearest))} away)`
+            : ""
+        }`
+      : "";
+
+  const regimeBits = [
+    !gexStale && gex?.vanna_regime_read ? `vanna: ${gex.vanna_regime_read}` : null,
+    !gexStale && gex?.dex_regime_read ? `delta: ${gex.dex_regime_read}` : null,
+    !gexStale && gex?.charm_regime_read ? `charm: ${gex.charm_regime_read}` : null,
+  ].filter((bit): bit is string => bit != null);
+  const regimeBit = regimeBits.length ? ` · ${regimeBits.join(" · ")}` : "";
+
+  // Ask Largo standing mandate (2026-10-14, Largo deep-dive #2): same parity-fix class as the
+  // regimeBit fix above — gexPostureSection's `Net GEX: **$NM**` and `Underlying session: **pct%**`
+  // lines are ALSO content the "GEX posture" section's "folded into Trade manager read above" note
+  // (play-brief-intel-collapse.ts) claims this bullet replaced, but neither was ever narrated here
+  // either. Unlike the gamma-posture/VEX/DEX/CHARM qualitative reads, net_gex is itself the specific
+  // $ figure the contract's precision principle (C9) asks for — appending it keeps this the one
+  // place a member sees "why" dealers are long/short gamma without `expandIntel=1`. change_pct is
+  // likewise never duplicated anywhere else in the narrative. Nearest-wall distance is NOT added
+  // here — collectFocalLevels/narrateWall already narrate the nearest call/put wall from the same
+  // vector-first/GEX-fallback precedence elsewhere in this section, so that content is genuinely
+  // (if differently-framed) covered already.
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14): a large net GEX (SPY/SPX-scale tickers
+  // routinely clear 1B+) rendered as e.g. "-17545.3M" under a fixed /1e6-then-"M" format —
+  // formatDealerDollars picks M/B/T by magnitude instead, so this reads "-17.5B". See its header
+  // for the live GOOGL/TSLA/AAPL/SPY repro (net CHARM is the most extreme case, but net GEX hits
+  // the same defect on index-scale tickers).
+  const netGexBit =
+    !gexStale && gex?.net_gex != null
+      ? ` · net GEX **${formatDealerDollars(gex.net_gex)}**`
+      : "";
+  const sessionChangeBit =
+    !gexStale && gex?.change_pct != null ? ` · session **${fmtPct(gex.change_pct)}**` : "";
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14, live AMD repro): dealerPostureLine is a FOURTH
+  // call site reading the same "is today's live desk state current" fact `isSwingPlayStaleCheckExempt`
+  // was extracted (2026-10-07) to guard — degradedReadLine (this file, below) already gates on it,
+  // but this sibling function never was. A dead-but-not-closed WATCH play (setupState EXTENDED /
+  // entryStatus EXTENDED_CHASE) with a spot resolved via the GEX-matrix fallback (gexMatrixStale
+  // false) while Vector's own snapshot is stale rendered "**Last snapshot** (~7209s old) — spot
+  // **570.18** · dealers **short gamma**..." in the SAME envelope whose `confidence.why` read "Every
+  // live source this brief reads from resolved cleanly this cycle" and `unavailableSources: []` —
+  // the exact structured-chip-vs-free-text contradiction #5620 fixed twice already for sibling call
+  // sites, recurring here because this one was never updated. A dead WATCH candidate has nothing
+  // left to refresh, so "Last snapshot (~Ns old)" implies an active polling cadence that no longer
+  // applies — gate on the shared predicate exactly like degradedReadLine does, rather than inventing
+  // a fourth local check.
+  const staleCheckExempt = bucket === "watch" && isSwingPlayStaleCheckExempt(ctx.play);
+  const snapshotStale = vectorStale && !staleCheckExempt;
   const snapshotAgeLabel = snapshotStale ? ageSecondsLabel(vec?.dataAgeMs) : null;
   const lead = snapshotStale
     ? `**Last snapshot**${snapshotAgeLabel != null ? ` (~${snapshotAgeLabel} old)` : ""}`
     : "**Right now**";
 
-  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}`;
+  return `${lead} — spot **${fmtPriceLevel(spot)}** · ${mechanic}${flipBit}${fragileBit}${regimeBit}${netGexBit}${sessionChangeBit}`;
 }
 
 function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): string {
@@ -238,12 +351,44 @@ function narrateDarkPool(level: FocalLevel, play: TerminalPlay, spot: number): s
   );
 }
 
-function narrateWall(level: FocalLevel, play: TerminalPlay, spot: number): string {
+// CLEANUP (Ask Largo standing mandate, 2026-10-15): this used to take a `spot` parameter like its
+// siblings (narrateDarkPool/narrateMaxPain/narrateFlip, which all genuinely compare against it) —
+// but every branch here reads only `level.distancePct`/`level.price` (the signed distance already
+// computed from spot elsewhere), and `spot` itself was never referenced in the function body. Most
+// likely leftover from the 2026-10-14 BUG FIX above, which rewrote the `breached` logic to use
+// `distancePct`'s sign instead of a fresh spot comparison. No tsconfig `noUnusedParameters` catches
+// this at build time, so it survived; removed rather than left as unused cruft (both call sites
+// updated, no behavior change).
+function narrateWall(level: FocalLevel, play: TerminalPlay): string {
   const isCall = level.kind === "call_wall";
   const near = Math.abs(level.distancePct) < 1.5;
   const verb = isCall ? "caps upside" : "dealer support / put wall";
-  const action =
-    play.direction === "LONG"
+  // BUG FIX (Ask Largo standing mandate, 2026-10-14, live repro: AMD WATCH brief). A call wall's
+  // canonical side is ABOVE spot (resistance still ahead); a put wall's is BELOW (support still
+  // underfoot). `near` alone (|distancePct| < 1.5) does not check which side the level is
+  // actually on, so once price has genuinely traded THROUGH a level — e.g. a put wall sitting
+  // ABOVE spot because price fell below what used to be support — the old code still picked the
+  // "near, canonical side" text and said the opposite of reality: "support underfoot — hold while
+  // above" for a support that had already given way. Live repro (GET /api/market/swing/play-brief
+  // ?ticker=AMD, 2026-10-14): spot 558.15, put wall 560.00 (+0.3%, so "near"), LONG — this wrote
+  // "Support underfoot — hold while above" in the SAME brief whose own "Vector desk: starred
+  // level" bullet, two lines later, read "Lost the 560 put wall ... support gave way" — two
+  // bullets in one section flatly contradicting each other about the same level. `breached` is
+  // true exactly when the level is on the WRONG side of its canonical relationship to spot (a put
+  // wall at/above spot, or a call wall at/below it), independent of `near`/`isCall` combos that
+  // still assume the canonical side below.
+  const breached = isCall ? level.distancePct <= 0 : level.distancePct >= 0;
+  const action = breached
+    ? isCall
+      ? // Call wall now at/below spot: resistance has already been cleared on the way up.
+        play.direction === "LONG"
+          ? "cleared — former resistance, now potential support if it holds"
+          : "reclaimed — resistance broken; short thesis at risk"
+      : // Put wall now at/above spot: support has already given way on the way down.
+        play.direction === "LONG"
+          ? "support broken — now overhead; reclaim to get back in play, else expect continued downside"
+          : "already broke — downside target cleared; watch for a bounce or continuation"
+    : play.direction === "LONG"
       ? isCall
         ? near
           ? "into strength — trim if rejected here"
@@ -738,6 +883,52 @@ function breakTrigger(
 }
 
 /**
+ * The REAL, committed structural stop for an already-OPEN swing position — `play.
+ * invalidationUnderlyingPx` (sourced from the ledger's `thesis_invalidation_px`, pinned once at
+ * commit, never recomputed). This is a DIFFERENT number from `breakTrigger`'s "Break watch" bullet
+ * above (and `resolveBreakInvalidation`'s `envelope.invalidation` headline), which both cite a
+ * GEX-heuristic level (nearest put wall / dark pool print / GEX king from `focal`) — an
+ * independently-computed dealer-positioning read, genuinely useful on its own terms, but NOT the
+ * number that actually governs the trade.
+ *
+ * WHY THIS MATTERS (Ask Largo standing mandate, 2026-10-16, live repro SWING:GOOGL:58): `manage.ts`'s
+ * own header names `thesis_invalidation_px` PRECEDENCE RANK #1 among every management exit trigger
+ * ("fires at ANY premium P&L, even +30% — the thesis is what broke, not the option... beats
+ * expiry_risk" — see `manage-sync.ts`'s `structuralStopLevel: reads.structuralStopLevel ??
+ * row.thesis_invalidation_px`). Despite being the single most consequential exit trigger in the
+ * whole engine, it never appeared in the OPEN-bucket play-brief a member actually reads — every
+ * section instead cited only the GEX heuristic, with the same confident framing, even when the two
+ * numbers differ by 7x in distance from spot. `docs/audit/FINDINGS.md` (2026-09-12, "Structural
+ * stop on an OPEN position is a live recompute, not the position's real committed stop") named this
+ * exact gap for the Structure Ladder widget and explicitly deferred threading the real value onto
+ * `TerminalPlay` as separate, out-of-scope plumbing; that threading landed later (`invalidationUnderlyingPx`
+ * added to `TerminalPlay` 2026-09-28, for the CLOSED-bucket "stop fired" coaching line only) — but no
+ * OPEN-bucket narrative call site ever read the field once it existed. This closes that gap.
+ *
+ * ADDITIVE per the Largo product contract — never replaces the GEX read, only adds a second,
+ * clearly-labeled line when the real level is actually known. Returns null (never fabricates) when
+ * either the real stop or a live spot is unavailable; callers keep showing exactly today's
+ * GEX-only behavior in that case, no regression.
+ */
+export function committedStructuralStopLine(play: TerminalPlay, spot: number | null): string | null {
+  const inval = fin(play.invalidationUnderlyingPx);
+  if (inval == null || spot == null) return null;
+  const alreadyThrough = play.direction === "SHORT" ? spot >= inval : spot <= inval;
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro CRWV: spot 60.99, inval 57.06,
+  // rendered "6.9% away" — that's (spot-inval)/inval, the WRONG denominator. Every sibling distance
+  // figure in this same brief (call/put wall, max pain, gamma magnet — this file's own distPct()
+  // helper above) divides by SPOT, not the target level, so this bullet's number silently used a
+  // different convention from its neighbors in the identical prose block. Correct value: 6.4%.
+  // Invisible at small distances (rounds identically either way below ~1%), which is why the
+  // TSLA repro that found the separate spot-SOURCING question (PR #4076) never caught this too.
+  const distPct = Math.abs(((spot - inval) / spot) * 100);
+  if (alreadyThrough) {
+    return `**Structural stop (committed)** — already through **${fmtPriceLevel(inval)}**, the real stop pinned at entry → an enforced exit regardless of option P&L, independent of the GEX read above.`;
+  }
+  return `**Structural stop (committed)** — lose **${fmtPriceLevel(inval)}** on a closing basis (${distPct.toFixed(1)}% away) → an enforced exit regardless of option P&L, independent of the GEX read above.`;
+}
+
+/**
  * The real, per-ticker technical break level (put wall / dark pool / gamma flip for LONG,
  * call wall for SHORT) — the same staleness-guarded spot/flip/focal-level computation
  * `tradeManagerNarrativeSection` uses to build its "Break watch" bullet (see `breakTrigger`
@@ -836,9 +1027,19 @@ export function counterThesisLine(
 
   const flow = trustedHelixFlow(eco);
   if (flow) {
-    if (play.direction === "LONG" && flow.put_premium > flow.call_premium * 1.2) {
+    // BUG FIX (Ask Largo standing mandate, 2026-10-15): this was the only HELIX call/put-heavy
+    // gate in this file (or its play-brief-intel.ts/play-brief.ts/play-brief-narrative-coaching.ts
+    // siblings) using 1.2x — every other one (flowNarrative two screens up in this same file,
+    // flowIntelSection's "Flow & positioning" bias label, crossDeskCoaching's "Cross-desk
+    // friction" conflict check) uses 1.3x, with no comment here explaining a deliberate
+    // divergence. At a ratio between 1.2x and 1.3x the brief said two contradictory things about
+    // the identical flow numbers in the SAME "Trade manager read" bullet list this reason also
+    // renders into: flowNarrative's "HELIX tape" bullet calls it "balanced" while this steelmanned
+    // a "HELIX put-led"/"HELIX call-led" counter-thesis reason — a visible self-contradiction a
+    // member could read in one document. Standardized on the 1.3x every other call site uses.
+    if (play.direction === "LONG" && flow.put_premium > flow.call_premium * 1.3) {
       reasons.push(`HELIX put-led (${fmtFlowUsd(flow.put_premium)} vs ${fmtFlowUsd(flow.call_premium)} calls)`);
-    } else if (play.direction === "SHORT" && flow.call_premium > flow.put_premium * 1.2) {
+    } else if (play.direction === "SHORT" && flow.call_premium > flow.put_premium * 1.3) {
       reasons.push(`HELIX call-led (${fmtFlowUsd(flow.call_premium)} vs ${fmtFlowUsd(flow.put_premium)} puts)`);
     }
   }
@@ -967,9 +1168,19 @@ export function counterThesisLine(
   // it's `reasons.length`, the same array already gathered above — so this only labels evidence
   // strength honestly, the same discipline as the Largo product contract's confidence-omission
   // rule (state real weight, never invent it, never flatten it away either).
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-15): the comment above has always said the count
+  // is `reasons.length` — the code read `shown.length` instead, which this file's own `.slice(0,3)`
+  // two lines up pins at a max of 3. `reasons` can independently collect up to 10 distinct votes
+  // (HELIX flow, Night Hawk, 0DTE, Vector bias, a wall, EMA, MACD, structure break, dealer posture,
+  // fading pillar), all push-gated separately with nothing capping them before this point — so any
+  // time 4+ genuinely corroborate, a member saw "corroborated across 3 independent reads" while the
+  // real count was higher, understating conviction exactly when the counter-thesis is strongest.
+  // Only the DISPLAYED clauses are capped at 3 for join-string length; the count label now reflects
+  // the full evidence gathered, same precision discipline as everywhere else in this function.
   const weight =
-    shown.length >= 2
-      ? `corroborated across ${shown.length} independent reads — `
+    reasons.length >= 2
+      ? `corroborated across ${reasons.length} independent reads — `
       : "a single, uncorroborated signal — ";
   return `**Counter-thesis (${side} case)** — ${weight}${shown.join(" · ")}. If this wins, honor invalidation — don't hope.`;
 }
@@ -1199,7 +1410,7 @@ export function tradeManagerNarrativeSection(
   for (const line of collectCoachingBullets(ctx, bucket, spot)) add(line);
 
   if (spot != null) {
-    const posture = dealerPostureLine(ctx, spot);
+    const posture = dealerPostureLine(ctx, spot, bucket);
     if (posture) add(posture);
   } else {
     const degraded = degradedReadLine(play, bucket);
@@ -1244,10 +1455,10 @@ export function tradeManagerNarrativeSection(
         add(narrateDarkPool(level, play, spot), { reserved: isInvalidationLevel });
         used.add("dark_pool");
       } else if (level.kind === "put_wall" && !used.has("put_wall")) {
-        add(narrateWall(level, play, spot), { reserved: isInvalidationLevel });
+        add(narrateWall(level, play), { reserved: isInvalidationLevel });
         used.add("put_wall");
       } else if (level.kind === "call_wall" && !used.has("call_wall")) {
-        add(narrateWall(level, play, spot), { reserved: isInvalidationLevel });
+        add(narrateWall(level, play), { reserved: isInvalidationLevel });
         used.add("call_wall");
       } else if (level.kind === "magnet" && !used.has("magnet") && !bullets.some((b) => /Gamma magnet/i.test(b))) {
         add(narrateMagnet(level, resolveGammaPosture(ctx, vec)));
@@ -1313,16 +1524,42 @@ export function tradeManagerNarrativeSection(
   // the top could easily miss that their real exit is already past the intended risk line.
   const execStop = play.exitPolicy?.stop_premium;
   const execBreached = execStop != null && play.execMark != null && play.execMark <= execStop;
-  if (!breakLine && play.direction === "LONG" && execStop != null) {
-    breakLine = execBreached
-      ? `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`
-      : `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
+  // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GTLB): the 2026-09-15 fix
+  // above only surfaced "stop already breached on the executable side" when `breakLine` was still
+  // null, i.e. when `breakTrigger()` found no structural GEX level to cite. Live on GTLB
+  // (committed LONG, exec P&L -84.6% vs mid -53.8%, bid $0.10 already through the $0.26 premium
+  // stop), `breakTrigger()` DID find a structural put-wall break ("lose 27.50 ... exit or cut
+  // size"), so this whole block was skipped under the old `!breakLine` guard and the executable
+  // breach silently reverted to being only a footnote (watchForSection's "no real cushion on the
+  // executable side" note, play-brief-intel.ts) — the exact "easily missed" failure mode the
+  // 2026-09-15 fix exists to prevent, reappearing whenever a structural break also exists. Fix:
+  // surface the executable-breach fact as its OWN reserved bullet whenever it's true, additive to
+  // (never replacing) any structural breakLine — the two are independent, equally real risks and
+  // the Largo contract's additive principle says keep both rather than letting one eclipse the
+  // other.
+  if (execBreached && (play.direction === "LONG" || play.direction === "SHORT")) {
+    add(
+      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`,
+      { reserved: true },
+    );
+  } else if (!breakLine && play.direction === "LONG" && execStop != null) {
+    breakLine = `**Break watch** — lose premium stop **${fmtOptionUsd(execStop)}** → cut size or exit.`;
   } else if (!breakLine && play.direction === "SHORT" && execStop != null) {
-    breakLine = execBreached
-      ? `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(play.execMark)}** is at/through your premium stop **${fmtOptionUsd(execStop)}** right now → exit or cut size.`
-      : `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
+    breakLine = `**Break watch** — reclaim **${fmtOptionUsd(execStop)}** → cover shorts.`;
   }
   if (breakLine) add(breakLine, { reserved: true });
+
+  // Ask Largo standing mandate (2026-10-16, live repro SWING:GOOGL:58): `breakLine` above is the
+  // GEX-heuristic "Break watch" level — add the REAL, committed structural stop as its own
+  // distinct, reserved bullet whenever it's known. See committedStructuralStopLine's own doc
+  // comment for the full root-cause/contract rationale. OPEN-bucket only (bucket==="closed"
+  // already returned above; a WATCH candidate has no committed position yet, so its
+  // `invalidationUnderlyingPx` — if a dossier pinned one — describes a hypothetical plan, not an
+  // enforced exit, and showing it here under this label would overclaim).
+  if (bucket === "open") {
+    const structuralStopLine = committedStructuralStopLine(play, spot);
+    if (structuralStopLine) add(structuralStopLine, { reserved: true });
+  }
 
   // crossDeskCoaching (collected into `bullets` above via collectCoachingBullets) already names
   // the same Vector headline when desks conflict — see counterThesisLine's own doc comment.

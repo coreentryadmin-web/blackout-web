@@ -47,4 +47,22 @@ describe("computeWeightedConflicts", () => {
     const { weighted_conflicts } = computeWeightedConflicts(baseDesk(), 40, factors);
     assert.equal(weighted_conflicts, 2);
   });
+
+  it("does not treat a null gamma_flip's stale sticky gamma_regime as a live GEX conflict", () => {
+    // Live-observed shape (2026-10-17): gamma_flip resolves honestly null for the cycle, but
+    // gamma_regime is still carrying a prior cycle's sticky "amplification" label (spx-desk.ts
+    // falls back to lastGoodGammaRegime whenever the live regime computes "unknown"). above_gamma_flip
+    // correctly defaults to false when flip is null — gexOpposed must not treat that combination as
+    // a real GEX conflict, same as spx-signals.ts's own γ-regime factor already guards on
+    // `gamma_flip != null` before reading the regime at all.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      gamma_flip: null,
+      gamma_regime: "amplification",
+      above_gamma_flip: false,
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [{ label: "Live tape", weight: 12, detail: "calls" }];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, 50, factors);
+    assert.equal(weighted_conflicts, 0);
+  });
 });

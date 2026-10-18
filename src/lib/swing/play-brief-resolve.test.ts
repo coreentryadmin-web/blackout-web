@@ -5,7 +5,6 @@ import type { HorizonPlay } from "@/lib/horizon-plays";
 import {
   pickLanePlayForBrief,
   parseSwingPlayId,
-  reconcileLivePnlPctWithDisplayMark,
   resolveBriefIvRank,
   rightFromContractType,
 } from "./play-brief-resolve-pure";
@@ -645,38 +644,13 @@ describe("resolveSwingPlayForBrief: a lane-resolved play (banger-origin or swing
   });
 });
 
-// BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): see the
-// function's own doc comment for the full live repro (entry $0.23, raw mid $0.175 displayed as
-// "Mark: $0.18", raw livePnlPct -23.9 vs the displayed "P&L: -21.7%" — a 2.2pp within-brief
-// disagreement, same root cause the SG-repro fix closed for the Position section alone).
-describe("reconcileLivePnlPctWithDisplayMark", () => {
-  it("recomputes pnlPct from the cent-rounded mark when the raw figure round-trips from mark/entry (live CTVA shape)", () => {
-    const out = reconcileLivePnlPctWithDisplayMark({ entry: 0.23, mark: 0.175, pnlPct: -23.9 });
-    assert.ok(out != null);
-    // (round(0.175*100)/100 / 0.23 - 1) * 100 = (0.18/0.23 - 1) * 100
-    assert.ok(Math.abs(out! - -21.7391) < 0.001, `got ${out}`);
-  });
-
-  it("leaves pnlPct untouched when it is not a plain mark/entry-1 read (WS-10 executable-lane guard)", () => {
-    // mark/entry-1 implies +50%, but pnlPct is a genuinely different basis — far outside ordinary
-    // rounding noise (same guard shape as play-brief.ts's own `markRoundTripsPnl`).
-    const out = reconcileLivePnlPctWithDisplayMark({ entry: 1.0, mark: 1.5, pnlPct: 12.3 });
-    assert.equal(out, 12.3);
-  });
-
-  it("returns pnlPct unchanged when entry or mark is missing", () => {
-    assert.equal(reconcileLivePnlPctWithDisplayMark({ entry: null, mark: 1.5, pnlPct: 12.3 }), 12.3);
-    assert.equal(reconcileLivePnlPctWithDisplayMark({ entry: 1.0, mark: null, pnlPct: 12.3 }), 12.3);
-  });
-
-  it("returns null when pnlPct is null (Largo C3 absence — never fabricates a number)", () => {
-    assert.equal(reconcileLivePnlPctWithDisplayMark({ entry: 1.0, mark: 1.5, pnlPct: null }), null);
-  });
-
-  it("is a no-op when the mark does not land on a fractional cent (ordinary case)", () => {
-    // entry $8.15, mark $5.22 — already a clean 2dp price, so rounding changes nothing.
-    const out = reconcileLivePnlPctWithDisplayMark({ entry: 8.15, mark: 5.22, pnlPct: -35.9509 });
-    assert.ok(out != null);
-    assert.ok(Math.abs(out! - -35.9509) < 0.01, `got ${out}`);
-  });
-});
+// REMOVED (2026-10-16, Ask Largo standing mandate — Bug 1 of the standing "Ask Largo x Night
+// Hawk Swings" ownership mandate, live GOOG/KMPR repro): `reconcileLivePnlPctWithDisplayMark`
+// (added 2026-10-09 for a live CTVA repro) and its describe block that used to sit here are both
+// removed — the function recomputed `pnlPct` from a cent-rounded `mark`, which could itself
+// disagree with the canonical `pnlPct` by up to 10 percentage points (live KMPR repro,
+// positionId 1634). See `play-brief-context.ts`'s `loadSwingPlayBriefContext` and
+// `play-brief.ts`'s `pnlForDisplay` for the full write-up of the fix (show the canonical value
+// directly, no recompute) and `play-brief-context.test.ts`'s
+// "pnlPct is the canonical livePnlPct, never a cent-rounded-mark recompute" block for the
+// regression coverage that replaced this one.

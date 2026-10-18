@@ -31,3 +31,26 @@ test("the catch-branch as_of relies directly on etStamp(Date.now()), never a sep
     "the catch branch should assert the always-non-null etStamp result rather than falling back",
   );
 });
+
+// REGRESSION (Ask Largo standing mandate, 2026-10-15): `meridianUnavailableSlice()` is exported
+// specifically so `play-brief-context.ts`'s OUTER `withBriefSourceTimeout(...)` race (around the
+// call to this function) can converge its own rejection handling on the IDENTICAL sentinel this
+// function's own internal catch produces — see that function's doc comment for the full gap this
+// closes (an outer timeout used to collapse to a bare `null`, which `collectBriefUnavailableSources`
+// has no check for at all, unlike the real `{unavailable: true}` shape). This file is read as raw
+// source text (not imported) because `fetchMeridianForTicker`'s own dependency chain transitively
+// pulls in `"server-only"`, which throws outside Next's RSC compiler — same reason the two tests
+// above do the same. A plain source-text check is the only way to pin this function's existence
+// and its internal catch delegating to it (not re-deriving a second, driftable literal) without
+// that import.
+test("fetchMeridianForTicker's own internal catch delegates to the shared meridianUnavailableSlice() sentinel, not a second inline literal", () => {
+  assert.ok(
+    SRC.includes("export function meridianUnavailableSlice()"),
+    "meridianUnavailableSlice must be exported so play-brief-context.ts's outer timeout catch can reuse it",
+  );
+  const catchBlockMatch = /catch\s*\{\s*return\s+meridianUnavailableSlice\(\);\s*\}/.exec(SRC);
+  assert.ok(
+    catchBlockMatch,
+    "fetchMeridianForTicker's internal catch must call meridianUnavailableSlice(), not duplicate its literal",
+  );
+});

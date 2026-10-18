@@ -521,11 +521,24 @@ export function mergeSameTickerDiscovery(
         masked_origin: [...kept.discovery_origin],
       };
     }
+    // The LOSING kept setup can still carry real FLOW evidence (gross_premium/flow_quality) that
+    // the winning incoming setup lacks (a BREAKOUT/PIN setup carries gross_premium=0 by
+    // construction). Without this, that evidence is discarded entirely — only the losing origin's
+    // direction+score survive via origin_contributions — and `railHitsFromLegacySetup`'s
+    // scoreFlowRail gate then sees a zeroed gross_premium and silently suppresses the FLOW hit,
+    // so a real, recorded disagreement (origin_maps.disagreeing_origins) never reaches
+    // disagreeing_rails (FINDINGS 2026-10-16). No-op when incoming already has FLOW evidence of
+    // its own, or kept never carried any.
+    stampFlowEvidenceFromIncoming(incoming, kept);
     return incoming;
   }
   // Kept wins (higher or equal score). Stamp conflict; no corroboration boost on a fight.
   noteOriginDirectionConflict(kept, incoming);
   kept.discovery_origin = unionDiscoveryOrigins(kept.discovery_origin, incoming.discovery_origin);
+  // Mirror of the branch above: the LOSING incoming setup can carry real FLOW evidence that the
+  // winning kept setup lacks. Same rationale — preserve it so the disagreement is actually
+  // visible downstream instead of being gated out by a zeroed gross_premium.
+  stampFlowEvidenceFromIncoming(kept, incoming);
   return kept;
 }
 
@@ -1524,6 +1537,14 @@ export type SetupDossierView = {
     anomaly_penalty?: number;
     flow_conviction_bonus?: number;
     regime_adjustment?: number;
+    // Ask Largo standing mandate (2026-10-14): scoreCandidate added momentum_score as a
+    // SEVENTH component folded into `preRegimeSum`/`total` (and into `confirmingSignals`'s own
+    // `momentumScore >= 5` check) without a matching update here — the exact same "real score
+    // component, no typed path into factor_breakdown" gap the 9-8/9-9 comments above already
+    // describe fixing twice. deterministic-edition.ts's two factor_breakdown builders (Legacy)
+    // already carry `momentum: scored.momentum_score`; this view had simply drifted out of sync
+    // with that pattern again, not omitted it on purpose. See enrichSetup's mapping below.
+    momentum_score?: number;
   } | null;
   /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
   price_target?: string | null;
@@ -1901,6 +1922,10 @@ export function enrichSetup(
             ? { flow_conviction_bonus: scored.flow_conviction_bonus }
             : {}),
           ...(scored.regime_adjustment != null ? { regime_adjustment: scored.regime_adjustment } : {}),
+          // Ask Largo standing mandate (2026-10-14): the 7th scorer component — see the
+          // `momentum_score` field doc on SetupDossierView["scored"] above for the full
+          // root-cause. Mirrors deterministic-edition.ts's own `momentum: scored.momentum_score`.
+          ...(scored.momentum_score != null ? { momentum: scored.momentum_score } : {}),
         }
       : null,
     trend: tech?.trend ?? null,

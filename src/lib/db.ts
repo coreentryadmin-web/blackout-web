@@ -921,6 +921,31 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS trough_premium NUMERIC;
   `);
+  // FINDINGS 2026-10-15 (Ask Largo/Night Hawk standing mandate): zerodte_setup_log has the EXACT
+  // SAME SEV-2 unbracketed-watermark shape FINDINGS 2026-08-06 already fixed on swing_positions
+  // (see the converge-in-place UPDATE a few hundred lines up) — never ported here, and a THIRD
+  // table found carrying this bug the same session as the banger_positions companion fix. Both
+  // write paths to this table (ZERODTE_SETUP_LOG_UPSERT_SQL's single-row INSERT and
+  // upsertZeroDteSetupLog's batched multi-row INSERT) now seed peak_premium/trough_premium from
+  // entry_premium at INSERT, so this backfill only needs to repair rows written before that fix —
+  // same converge-in-place, widen-only (GREATEST/LEAST) discipline as the swing_positions UPDATE
+  // above, a no-op once converged, safe to re-run on every boot. Live proof 2026-10-15 (GET
+  // /api/market/zerodte/board, 30-row ledger): CRWV (trough 1.80 > entry 1.77), FLEX (peak 2.38 <
+  // entry 2.40), APLD (peak 0.56 < entry 0.59) — small gaps (0DTE positions move tick-to-tick, not
+  // overnight-gap-to-gap like banger's weekly contracts), but the same arithmetically-impossible
+  // shape: the entry fill itself IS an observed mark, so neither watermark should ever land on the
+  // wrong side of it. A row with no entry_premium (e.g. an iron condor's credit structure, which
+  // carries no single entry premium — see scan.ts's own comment on this population) is left alone.
+  await p.query(`
+    UPDATE zerodte_setup_log
+       SET peak_premium = GREATEST(COALESCE(peak_premium, entry_premium), entry_premium),
+           trough_premium = LEAST(COALESCE(trough_premium, entry_premium), entry_premium)
+     WHERE entry_premium IS NOT NULL
+       AND (peak_premium IS NULL
+            OR trough_premium IS NULL
+            OR peak_premium < entry_premium
+            OR trough_premium > entry_premium);
+  `);
   // Context-at-entry (decision doc C-2): day-open VIX, SPY session bias, gamma
   // regime, commit-time score, ET commit stamp — pinned at FIRST flag like the
   // plan columns, because the whole point is what the desk looked like when the
@@ -2253,6 +2278,45 @@ async function runMigrations(): Promise<void> {
        AND (peak_premium < entry_premium * (1 + realized_pnl_pct / 100.0)
             OR trough_premium > entry_premium * (1 + realized_pnl_pct / 100.0));
   `);
+  // FINDINGS 2026-10-17 (Ask Largo standing mandate): `gradeSwingPosition`'s `exit_mark` param
+  // (this session) latches the grading tick's own mark onto `last_mark`/`last_mark_at` so a closed
+  // row's `contract.mid` (closed-plays.ts:198 `mid: row.last_mark`) can never again disagree with
+  // its own `exitPnlPct` — but that guard only protects rows graded AFTER it shipped. Every row
+  // graded before it is an unrepaired historical mismatch: `last_mark` is whatever the LAST live
+  // 15-min RTH latch happened to catch before the position closed, which has nothing to do with
+  // the real exit fill (the mechanical trough/peak-bracketed stop/target price `realized_pnl_pct`
+  // is actually computed from). Live proof, 100% of the 19-row closed deck as of 2026-10-17: BE
+  // entry 17.95, last_mark 36.65 (implies +104.2%) vs the real exitPnlPct +70.61% (33.6pp gap);
+  // INTC entry 4.72, last_mark 3.00 (implies -36.4%) vs real -73.12% (36.7pp gap); TSLA entry
+  // 15.95, last_mark 11.78 (implies -26.1%) vs real -32.76%. Member impact: PlayTerminal.tsx labels
+  // this field "Live mark" directly beside the correct P&L% badge on a CLOSED card, so every one of
+  // these rows shows a mark that visibly contradicts its own P&L%.
+  //
+  // Same converge-in-place discipline as the two backfills above, with one necessary difference:
+  // peak/trough above only ever WIDEN a range (GREATEST/LEAST are safe in any direction), but
+  // `last_mark` is a single point value being REPLACED outright by the one the row's own frozen
+  // entry_premium/realized_pnl_pct already prove is correct — not a widen, a correction. The WHERE
+  // clause (a >1-cent disagreement, past ordinary float/rounding noise) still makes it a no-op once
+  // converged, so it stays safe and cheap to re-run on every boot. `last_mark_at` is unconditionally
+  // backdated to `graded_at` (when this corrected value was actually established), never `NOW()`
+  // and never left at whatever earlier pre-close live latch it previously held — leaving a stale
+  // `last_mark_at` next to a now-corrected `last_mark` would itself be a fresh instance of the
+  // exact mark/timestamp mismatch this migration exists to repair. Covers CLOSED and ROLLED alike — a rolled
+  // PARENT leg's grade freeze (roll-plan.ts's `gradeParentFromMark`) latches the identical
+  // entry/mark/realized_pnl_pct triple through this same gradeSwingPosition call, so a rolled
+  // parent graded before the fix carries the identical mismatch even though it never reaches the
+  // member-facing closed deck directly (closedDeckSourceFromRow gates on status === 'CLOSED').
+  await p.query(`
+    UPDATE swing_positions
+       SET last_mark = entry_premium * (1 + realized_pnl_pct / 100.0),
+           last_mark_at = graded_at
+     WHERE status IN ('CLOSED', 'ROLLED')
+       AND entry_premium IS NOT NULL
+       AND entry_premium > 0
+       AND realized_pnl_pct IS NOT NULL
+       AND graded_at IS NOT NULL
+       AND ABS(COALESCE(last_mark, 0) - entry_premium * (1 + realized_pnl_pct / 100.0)) > 0.01;
+  `);
 
   // ── swing_shadow_positions (2026-08-06, member-authorized) — a DELIBERATELY SEPARATE table, never
   // read by fetchOpenSwingPositions/active-refresh/the member board. A candidate that clears every
@@ -2536,6 +2600,33 @@ async function runMigrations(): Promise<void> {
   `);
   await p.query(`
     ALTER TABLE banger_positions ADD COLUMN IF NOT EXISTS quote_iv NUMERIC;
+  `);
+  // FINDINGS 2026-10-15 (Ask Largo/Night Hawk Swings standing mandate): banger_positions has the
+  // EXACT SAME SEV-2 unbracketed-watermark shape FINDINGS 2026-08-06 already fixed on
+  // swing_positions (see the converge-in-place UPDATE a few hundred lines up) — never ported to
+  // this sibling table. insertBangerPosition never seeded peak_premium/trough_premium at INSERT,
+  // and updateBangerLiveState's ratchet (positions-db.ts) only ever seeds them from
+  // COALESCE(peak_premium, $3)/(trough_premium, $3) — the FIRST OBSERVED MARK, not entry_premium.
+  // A position whose contract gapped against it before the first live-sync tick ever sampled it
+  // therefore seeded peak_premium BELOW its own entry (or trough_premium ABOVE it) —
+  // arithmetically impossible for a watermark that is supposed to bracket the contract's whole
+  // life since entry, since the entry fill itself IS an observed mark of that contract.
+  // Live proof 2026-10-15 (Ask Largo play-brief sweep, GET /api/market/nighthawk/horizons?view=
+  // swings): 7 real committed rows (SLS/METU/SNXX/MUU/ALAB/CBRS/WDC) showed
+  // peak_premium < entry_premium and 2 (ORKA/SOXS) showed trough_premium > entry_premium — same
+  // shape, same root cause, different table. insertBangerPosition now seeds both from
+  // entry_premium directly (positions-db.ts), so this backfill only needs to repair rows written
+  // before that fix — same converge-in-place, widen-only (GREATEST/LEAST) discipline as the
+  // swing_positions UPDATE above, a no-op once converged, safe to re-run on every boot.
+  await p.query(`
+    UPDATE banger_positions
+       SET peak_premium = GREATEST(COALESCE(peak_premium, entry_premium), entry_premium),
+           trough_premium = LEAST(COALESCE(trough_premium, entry_premium), entry_premium)
+     WHERE entry_premium IS NOT NULL
+       AND (peak_premium IS NULL
+            OR trough_premium IS NULL
+            OR peak_premium < entry_premium
+            OR trough_premium > entry_premium);
   `);
   // Prospective NBBO quote-tick log (015_banger_quote_tick_log.sql), inlined for ECS standalone cold
   // starts. Persists the SAME options-unified-snapshot data banger-live-sync already fetches every
@@ -3091,6 +3182,9 @@ export type FlowRow = {
   /** Per-contract fill price from the UW alert payload (what the print paid). */
   fill_price?: number;
   alert_rule?: string;
+  /** Number of individual trades this alert aggregates (UW `trade_count`); feeds the
+   *  repeated-hits detector alongside alert_rule. */
+  trade_count?: number;
   ask_pct?: number;
   underlying_price?: number;
   open_interest?: number;
@@ -3219,6 +3313,14 @@ export async function fetchRecentFlows(params: {
              raw_payload->>'alert_rule',
              raw_payload->>'rule_name'
            ), '') AS alert_rule,
+           -- UW's flow_alerts payload carries trade_count as a JSON number on most rows but,
+           -- same as the numeric fields below, sometimes as a numeric-looking string — accept
+           -- both rather than silently NULLing it out. Feeds the repeated-hits detector
+           -- (computeFlowStrikeStacks) alongside alert_rule; previously this was never
+           -- extracted at all (confirmed live, 2026-10-16).
+           CASE WHEN jsonb_typeof(raw_payload->'trade_count') = 'number'
+                  OR (raw_payload->>'trade_count') ~ '^-?[0-9]+(\.[0-9]+)?$'
+                THEN (raw_payload->>'trade_count')::numeric END AS trade_count,
            -- ask_pct (0-100): prefer a real ask_side_pct, else DERIVE the ask-side share of
            -- two-sided premium as a 0-100 pct from total_ask_side_prem/total_bid_side_prem. UW
            -- does NOT send ask_side_pct on flow_alerts (live-verified 2026-07-24: 0/2780 rows)
@@ -3313,6 +3415,7 @@ export async function fetchRecentFlows(params: {
     tape_time_estimated,
     dte: row.dte != null ? Number(row.dte) : undefined,
     alert_rule: row.alert_rule ? String(row.alert_rule) : undefined,
+    trade_count: row.trade_count != null ? Number(row.trade_count) : undefined,
     ask_pct: row.ask_pct != null ? Number(row.ask_pct) : undefined,
     fill_price: row.fill_price != null ? Number(row.fill_price) : undefined,
     underlying_price: row.underlying_price != null ? Number(row.underlying_price) : undefined,
@@ -6319,13 +6422,28 @@ export type ZeroDteSetupLogUpsert = {
 // (upsertZeroDteSetupLog) and the WS-01 atomic transactional path (commitFreshZeroDteRows
 // Atomic) run byte-identical SQL — the pinning COALESCEs must never drift between a fresh
 // commit and a refresh tick, and duplicating this string invited exactly that drift.
+// SEV-2 FIX (Ask Largo/Night Hawk standing mandate, 2026-10-15): peak_premium/trough_premium are
+// supposed to bracket a contract's premium SINCE ENTRY — the entry fill itself IS an observed mark,
+// so neither watermark should ever land on the wrong side of entry_premium. This table used to leave
+// both columns NULL at insert, so updateZeroDteLiveState's ratchet (GREATEST(COALESCE(peak_premium,
+// $4), $4)) seeded peak_premium from the FIRST OBSERVED MARK instead — below entry whenever the
+// contract moved against the position before the first live-sync tick ever sampled it. Live proof
+// 2026-10-15 (GET /api/market/zerodte/board, 30-row ledger): CRWV (trough 1.80 > entry 1.77), FLEX
+// (peak 2.38 < entry 2.40), APLD (peak 0.56 < entry 0.59) — the exact same shape FINDINGS 2026-08-06
+// already fixed on swing_positions (and this session's companion fix on banger_positions), never
+// ported to this THIRD table carrying the identical peak_premium/trough_premium GREATEST/LEAST
+// ratchet. Seeded here ($13, entry_premium, reused — same convention as $6/$11 above) at insert;
+// NOT added to any ON CONFLICT pinned column below, so the live ratchet still owns both after
+// commit. A row with no entry_premium (e.g. an iron condor's credit structure — see scan.ts's own
+// comment on why that population carries no single entry premium) simply seeds NULL, same as today.
 const ZERODTE_SETUP_LOG_UPSERT_SQL = `
       INSERT INTO zerodte_setup_log (
         session_date, ticker, direction, top_strike, expiry, score, score_max,
         dossier_score, conviction, gross_premium, spike, underlying_at_flag,
         underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
-        gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
+        gate_calibration_json, entry_context, feature_vector, peak_premium, trough_premium,
+        first_flagged_at, last_seen_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,$13,$13,NOW(),NOW())
       ON CONFLICT (session_date, ticker) DO UPDATE SET
         score = EXCLUDED.score,
         score_max = GREATEST(zerodte_setup_log.score_max, EXCLUDED.score),
@@ -6429,7 +6547,12 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
         r.entry_context ?? null,
         r.feature_vector ?? null
       );
-      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},$${b + 16},$${b + 17},$${b + 18},NOW(),NOW())`;
+      // $13,$13 (reusing entry_premium, same convention as the $6/$11 reuses above) seeds
+      // peak_premium/trough_premium from entry_premium — see ZERODTE_SETUP_LOG_UPSERT_SQL's
+      // header comment for the full rationale; this batched path carries the identical fix so
+      // the two write paths never drift (the bug this guards against is EXACTLY a case of two
+      // paths to the same table silently diverging).
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},$${b + 16},$${b + 17},$${b + 18},$${b + 13},$${b + 13},NOW(),NOW())`;
     })
     .join(", ");
 
@@ -6439,7 +6562,8 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
       session_date, ticker, direction, top_strike, expiry, score, score_max,
       dossier_score, conviction, gross_premium, spike, underlying_at_flag,
       underlying_latest, flags_json, entry_premium, flow_avg_fill, plan_json,
-      gate_calibration_json, entry_context, feature_vector, first_flagged_at, last_seen_at
+      gate_calibration_json, entry_context, feature_vector, peak_premium, trough_premium,
+      first_flagged_at, last_seen_at
     ) VALUES ${tuples}
     ON CONFLICT (session_date, ticker) DO UPDATE SET
       score = EXCLUDED.score,
@@ -7954,6 +8078,10 @@ export async function gradeSwingPosition(
     legacy_grade?: Record<string, unknown> | null;
     realized_pnl_pct?: number | null;
     status?: "CLOSED" | "ROLLED";
+    /** The same fresh mark realized_pnl_pct was frozen from — latched onto last_mark/last_mark_at
+     *  in this same UPDATE so a closed row's contract.mid can never disagree with its own realized
+     *  exit (FINDINGS 2026-10-17). Omitted/null leaves last_mark untouched. */
+    exit_mark?: number | null;
   },
   db?: Db
 ): Promise<number> {
@@ -7997,7 +8125,18 @@ export async function gradeSwingPosition(
          WHEN $5 IS NOT NULL AND entry_premium IS NOT NULL
            THEN LEAST(COALESCE(trough_premium, entry_premium), entry_premium * (1 + $5 / 100.0))
          ELSE trough_premium
-       END
+       END,
+       -- FINDINGS 2026-10-17: last_mark previously stayed frozen at whatever the prior evidence-only
+       -- refresh tick latched (updateLiveState, the non-terminal path) — the terminal grade above
+       -- computes realized_pnl_pct/peak/trough from a FRESH mark but never touched last_mark, so a
+       -- closed position's displayed contract.mid (closed-plays.ts reads last_mark) could disagree
+       -- with its own realized exit by a wide margin (observed live: >2x on one real closed INTC
+       -- position). $7 is the SAME mark gradeParentFromMark used for realized_pnl_pct — latching it
+       -- here makes the two agree by construction. COALESCE/CASE leave last_mark/last_mark_at
+       -- untouched when $7 is omitted (a caller that didn't supply a fresh mark, e.g. a direct-call
+       -- test) rather than nulling out a previously-good latched value.
+       last_mark = COALESCE($7, last_mark),
+       last_mark_at = CASE WHEN $7 IS NOT NULL THEN NOW() ELSE last_mark_at END
      WHERE id = $1 AND graded_at IS NULL`;
   const params = [
     id,
@@ -8006,6 +8145,7 @@ export async function gradeSwingPosition(
     toJsonbParam(g.legacy_grade ?? null),
     g.realized_pnl_pct ?? null,
     g.status ?? "CLOSED",
+    g.exit_mark ?? null,
   ];
   // db-optional dual path (see setMeta's comment above): transaction client stays on its own
   // connection; the no-db common case now gets dbQuery's transient-error retry.
@@ -8036,6 +8176,7 @@ export async function withSwingRollTx<T>(
         legacy_grade?: Record<string, unknown> | null;
         realized_pnl_pct?: number | null;
         status?: "CLOSED" | "ROLLED";
+        exit_mark?: number | null;
       }
     ) => Promise<number>;
   }) => Promise<T>
@@ -8054,6 +8195,7 @@ export async function withSwingRollTx<T>(
           legacy_grade?: Record<string, unknown> | null;
           realized_pnl_pct?: number | null;
           status?: "CLOSED" | "ROLLED";
+          exit_mark?: number | null;
         }
       ): Promise<number> => {
         const affected = await gradeSwingPosition(id, g, client);

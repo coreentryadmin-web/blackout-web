@@ -62,6 +62,16 @@ test("gradeParentFromMark: realized P&L% = (mark − entry)/entry × 100; null w
   assert.equal(gradeParentFromMark(parentRow({ entry_premium: 0 }), 6), null);
 });
 
+// Regression for the 2026-10-17 audit finding: the fresh mark used for realized_pnl_pct must also
+// be exposed top-level (not just inside grade_json) so gradeSwingPosition can latch it onto
+// last_mark/last_mark_at at grade time — otherwise a closed position's displayed contract.mid stays
+// frozen at a prior refresh tick and disagrees with its own realized exit.
+test("gradeParentFromMark: exposes the fresh mark top-level as exit_mark, matching grade_json's own copy", () => {
+  const g = gradeParentFromMark(parentRow({ entry_premium: 5 }), 6)!;
+  assert.equal(g.exit_mark, 6);
+  assert.equal(g.grade_json.exit_mark, 6);
+});
+
 // ─── FIX (B): mark provenance / staleness (docs/audit/findings-staging, RIOT-analog for swing) ────
 
 test("gradeParentFromMark: basis + provenance fields depend on markSource — a latched mark is never labeled live", () => {

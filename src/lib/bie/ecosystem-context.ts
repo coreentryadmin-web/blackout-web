@@ -286,9 +286,13 @@ export function isEcosystemIndexTicker(upperTicker: string): boolean {
   return ARSENAL_INDEX_TICKERS.has(upperTicker);
 }
 
-/** Raw reader outputs for the arsenal — the pure assembler's input (already fetched by the server). */
+/** Raw reader outputs for the arsenal — the pure assembler's input (already fetched by the server).
+ *  `ticker` is OPTIONAL and used only as the company-name tie-break signal inside
+ *  `rankNewsItemsBySpecificity` (see its doc) — every existing/omitting caller degrades gracefully
+ *  to the pre-existing recency-only tiebreak, nothing else here reads it. */
 export type EcosystemArsenalReads = {
   scope: "index" | "single_name";
+  ticker?: string;
   earnings: NextEarnings | null;
   fundamentals: TickerFundamentalsBundle | null;
   related: RelatedCompanies | null;
@@ -298,21 +302,109 @@ export type EcosystemArsenalReads = {
 };
 
 /**
+ * Small, bounded ticker → company-name/alias lookup used ONLY as a secondary tie-break signal
+ * inside `rankNewsItemsBySpecificity`, WITHIN an already-equal tag-count tier — it never changes
+ * which tier an item lands in, only the order within one. Not a general-purpose ticker/company
+ * directory: checked first and confirmed none exists in this codebase for arbitrary tickers
+ * (`meridian-ticker-lookup.ts` and Benzinga's own `company_name` field are both earnings-row-scoped,
+ * not a standalone always-available map) — building one would be out of scope for this fix, per the
+ * same "one function, one concern" discipline #5717 itself kept. Scoped to large, frequently
+ * swing-traded names rather than every optionable ticker, the same "small hardcoded Set, not a
+ * general lookup" precedent `ARSENAL_INDEX_TICKERS` above already sets for the index/single-name
+ * gate. A ticker absent here is NOT a bug: `rankNewsItemsBySpecificity` degrades gracefully straight
+ * back to its pre-existing recency-only tiebreak for it, exactly as it always has — this map only
+ * ever ADDS a signal, never removes the fallback.
+ */
+const NEWS_SPECIFICITY_COMPANY_ALIASES: Record<string, string[]> = {
+  AAPL: ["Apple"],
+  MSFT: ["Microsoft"],
+  AMZN: ["Amazon"],
+  GOOG: ["Google", "Alphabet"],
+  GOOGL: ["Google", "Alphabet"],
+  META: ["Meta", "Facebook", "Instagram"],
+  NVDA: ["Nvidia"],
+  TSLA: ["Tesla"],
+  NFLX: ["Netflix"],
+  AMD: ["AMD", "Advanced Micro Devices"],
+  AVGO: ["Broadcom"],
+  CRM: ["Salesforce"],
+  ORCL: ["Oracle"],
+  ADBE: ["Adobe"],
+  INTC: ["Intel"],
+  QCOM: ["Qualcomm"],
+  CSCO: ["Cisco"],
+  IBM: ["IBM"],
+  PYPL: ["PayPal"],
+  UBER: ["Uber"],
+  SHOP: ["Shopify"],
+  DIS: ["Disney"],
+  BA: ["Boeing"],
+  JPM: ["JPMorgan", "JP Morgan"],
+  GS: ["Goldman Sachs"],
+  V: ["Visa"],
+  MA: ["Mastercard"],
+  WMT: ["Walmart"],
+  COST: ["Costco"],
+  PLTR: ["Palantir"],
+  COIN: ["Coinbase"],
+  SNOW: ["Snowflake"],
+  CRWD: ["CrowdStrike"],
+  PANW: ["Palo Alto Networks"],
+  NOW: ["ServiceNow"],
+  SPOT: ["Spotify"],
+  BE: ["Bloom Energy"],
+};
+
+/** PURE: does `headline` actually mention one of `aliases` as a whole word (case-insensitive)?
+ *  Word-boundary match, not a bare substring test, so e.g. alias "Meta" doesn't false-positive on
+ *  "metabolic" — same defensive-matching discipline this file already applies elsewhere. */
+function headlineMentionsCompanyAlias(headline: string, aliases: string[]): boolean {
+  return aliases.some((alias) => {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`, "i").test(headline);
+  });
+}
+
+/**
  * PURE: re-rank a single-name ticker's news items so genuinely ticker-SPECIFIC stories aren't
  * crowded out by broad multi-company stories that merely co-tag the ticker (see the GAP FOUND note
- * at this function's one call site for the live repro). Stable ascending sort on `tickers.length`
- * (fewer co-tagged tickers = more specific to the one we asked about); ties keep the caller's
- * existing order, which is Benzinga's own `published.desc` for `fetchTickerNews` — so within a
- * specificity tier, the most recent item still wins. An item with no/empty `tickers` array (a
- * hand-built fixture, or a defensive-normalize miss) sorts as maximally specific (length 0) rather
- * than being penalized for a field it never had — never hides a headline for missing metadata.
+ * at this function's one call site for the live repro). Primary sort: ascending `tickers.length`
+ * (fewer co-tagged tickers = more specific to the one we asked about). An item with no/empty
+ * `tickers` array (a hand-built fixture, or a defensive-normalize miss) sorts as maximally specific
+ * (length 0) rather than being penalized for a field it never had — never hides a headline for
+ * missing metadata.
+ *
+ * SECOND tiebreak (Ask Largo standing mandate, live repro GOOG 2026-10-16 — see the GAP FOUND note
+ * below): WITHIN a tied tag-count tier, pure tag-count is a proxy for specificity, not aboutness,
+ * and Benzinga's own co-occurrence tagging is the noise source — a narrowly-but-WRONGLY-tagged
+ * story (e.g. an X Corp creator-monetization story incidentally co-tagged `['SPCX','GOOG','GOOGL']`)
+ * can be the single most recent item in its tier and crowd out genuinely on-topic stories at the
+ * SAME tier that merely aren't as fresh. When `ticker` is given and known to
+ * `NEWS_SPECIFICITY_COMPANY_ALIASES`, items whose headline text actually names the company sort
+ * ahead of items that don't, before falling through to the THIRD, final tiebreak — recency (the
+ * caller's existing order, which is Benzinga's own `published.desc` for `fetchTickerNews`).  When
+ * `ticker` is omitted, or isn't in the small alias map, this tiebreak is a no-op for every item
+ * (all read equally "unknown") and the sort degrades exactly to the pre-existing tag-count +
+ * recency behavior — never hides a headline, only reorders within a tier, same "never hide, only
+ * deprioritize noise" philosophy #5717 already established for this function.
+ *
  * Explicit index-tagged stable sort rather than relying on Array.prototype.sort's own stability,
  * so this does not quietly depend on an engine guarantee.
  */
-export function rankNewsItemsBySpecificity(items: NewsItem[]): NewsItem[] {
+export function rankNewsItemsBySpecificity(items: NewsItem[], ticker?: string): NewsItem[] {
+  const aliases = ticker ? NEWS_SPECIFICITY_COMPANY_ALIASES[ticker.toUpperCase()] : undefined;
   return items
-    .map((item, index) => ({ item, index, tagCount: item.tickers?.length ?? 0 }))
-    .sort((a, b) => a.tagCount - b.tagCount || a.index - b.index)
+    .map((item, index) => ({
+      item,
+      index,
+      tagCount: item.tickers?.length ?? 0,
+      // 0 = headline names the company (or no alias signal available at all), 1 = it doesn't.
+      // Keeping "no signal" at 0 (rather than skipping the field) means every item reads equal on
+      // this axis when `aliases` is undefined, so the comparator falls straight through to `index`
+      // (recency) unchanged — the exact fallback behavior this function had before this tiebreak.
+      offTopic: aliases && !headlineMentionsCompanyAlias(item.headline, aliases) ? 1 : 0,
+    }))
+    .sort((a, b) => a.tagCount - b.tagCount || a.offTopic - b.offTopic || a.index - b.index)
     .map((entry) => entry.item);
 }
 
@@ -455,7 +547,22 @@ export function assembleEcosystemArsenal(reads: EcosystemArsenalReads): Ecosyste
           // takes all 4), and `ticker-verdict.ts`/`ecosystem-narrative.ts` (each take only
           // `headlines[0]`, so this also fixes their single quoted headline, not just the brief's
           // list).
-          headlines: (single ? rankNewsItemsBySpecificity(reads.news.items) : reads.news.items)
+          //
+          // GAP FOUND (Ask Largo standing mandate, live repro GOOG OPEN brief, 2026-10-16): the
+          // #5717 re-rank above only ever measured specificity by CO-TAG COUNT, with no aboutness/
+          // text-relevance check at all — so within a TIED tag-count tier, an incidentally
+          // mistagged, genuinely off-topic headline (an X Corp creator-monetization story Benzinga
+          // tagged `['SPCX','GOOG','GOOGL']` — zero business connection to Alphabet/Google) won its
+          // tier's most-recent slot and crowded out two actually-on-topic GOOG stories tied at the
+          // SAME tag-count=3 ("Google's $4B Fuel-Cell Project...Bloom Energy...", "CNN And Google
+          // Strike Multiyear Partnership..."), which both lost purely on recency. Mirror-image of
+          // the #5717/2026-10-09-AMZN defect class (broad roundups crowding out specific stories by
+          // tag-count) — here a NARROWLY-but-WRONGLY-tagged story is the noise source, because pure
+          // tag-count is a proxy for specificity, not aboutness. `rankNewsItemsBySpecificity` now
+          // takes the ticker and, within a tied tier, prefers items whose headline text actually
+          // names the company (NEWS_SPECIFICITY_COMPANY_ALIASES) before falling through to recency
+          // — see that function's own doc for the full tiebreak order and graceful fallback.
+          headlines: (single ? rankNewsItemsBySpecificity(reads.news.items, reads.ticker) : reads.news.items)
             .slice(0, 4)
             .map((i) => sanitizeFeedText(i.headline)),
           as_of: reads.news.asOf ?? null,
@@ -508,7 +615,7 @@ async function fetchEcosystemArsenal(ticker: string, scope: "index" | "single_na
       single ? Promise.resolve(null) : fetchPolygonMacroBackdrop().catch(() => null),
       single ? Promise.resolve(null) : fetchMarketBreadthBundle().catch(() => null),
     ]);
-    return assembleEcosystemArsenal({ scope, earnings, fundamentals, related, news, macro, breadth });
+    return assembleEcosystemArsenal({ scope, ticker, earnings, fundamentals, related, news, macro, breadth });
   } catch {
     return emptyArsenal(scope);
   }
@@ -736,6 +843,55 @@ const ECOSYSTEM_CONTEXT_FIELD_DESCRIPTIONS: Record<Exclude<keyof EcosystemContex
 export const ECOSYSTEM_CONTEXT_FIELDS: { field: string; description: string }[] = Object.entries(
   ECOSYSTEM_CONTEXT_FIELD_DESCRIPTIONS
 ).map(([field, description]) => ({ field, description }));
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-18 — live repro NVDA position #62 via
+// GET /api/market/swing/play-brief): `gex_positioning` and every other field computed inside
+// `fetchEcosystemContext`'s single inner `Promise.all` below shared ONE fate with the internal
+// `fetchVectorFullState(upper, "all")` read in that same array. `vector-full-state-inflight.ts`'s
+// own header already documents that a cold Vector-state compute "routinely takes 4-6s" against an
+// 8s budget — and the CALLER wraps the entire `fetchEcosystemContext(ticker)` call in exactly one
+// `withBriefSourceTimeout` (play-brief-context.ts, BRIEF_SOURCE_TIMEOUT_MS=8_000ms). When the
+// shared, de-duplicated Vector compute is cold and exceeds that 8s outer budget, the WHOLE
+// Promise.all rejects, discarding every sibling field in it — including `gex_positioning`, whose
+// own read (`getGexPositioning`, a cache-reader with no live upstream fetch) had almost certainly
+// already resolved fast and was just sitting in the array waiting on its slow neighbor. Live
+// confirmation: NVDA#62 carried BOTH "ecosystem context: fetch failed" and "Vector state: fetch
+// failed" in `unavailableSources` while `GET /api/market/gex-heatmap?ticker=NVDA`, read directly
+// and independently at the same moment, returned a full live matrix — the data was never actually
+// unavailable, only entangled with a slower, unrelated sibling under one shared timeout.
+//
+// Fix: give the internal Vector-state read its own, shorter, bounded sub-timeout — same
+// race-against-a-timer shape already used twice elsewhere for this exact purpose
+// (`withBriefSourceTimeout` in swing/brief-source-timeout.ts, `withSourceTimeout` in
+// nighthawk/cortex/fetch.ts), kept as a third small local copy rather than imported from either
+// (both of those modules' own headers give the same reason: a shared trivial helper isn't worth
+// pulling an unrelated module's import graph in for). 6s leaves real margin inside the outer 8s
+// budget for the rest of this Promise.all (the DB queries and GEX read are consistently fast) plus
+// Promise.all/serialization overhead, while still giving Vector a realistic window on a warm cache.
+// A timeout here degrades `vector_full_state` to `null`, exactly matching that field's own
+// documented fail-open-to-null convention ("Null when there's no live spot for the ticker") — it
+// does not change what a timeout already meant for this field, only where it happens.
+export const ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS = 6_000;
+
+export function withEcosystemVectorSubTimeout<T>(p: Promise<T>, ms: number = ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(`ecosystem context vector sub-read exceeded ${ms}ms`);
+      err.name = "EcosystemContextVectorSubTimeout";
+      reject(err);
+    }, ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      }
+    );
+  });
+}
 
 function emptyContext(ticker: string): EcosystemContext {
   return {
@@ -988,7 +1144,12 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
       // null on no spot / any read failure and never throws), but wrap in .catch anyway
       // so it can never reject the whole ecosystem fan-out. The horizon is "all" — the
       // whole-chain view — matching get_vector_full_state's default.
-      fetchVectorFullState(upper, "all").catch(() => null),
+      //
+      // Also wrapped in its own bounded sub-timeout (see withEcosystemVectorSubTimeout's doc
+      // above emptyContext) so a cold/slow Vector compute degrades to null on its own, within
+      // its own budget, instead of entangling every OTHER field in this same Promise.all —
+      // gex_positioning chief among them — under the caller's single, shared 8s outer timeout.
+      withEcosystemVectorSubTimeout(fetchVectorFullState(upper, "all")).catch(() => null),
       ]),
       // #60 arsenal — relevance-gated + fail-open; runs concurrently with the platform fan-out above.
       fetchEcosystemArsenal(upper, arsenalScope),

@@ -1009,6 +1009,12 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
           triggerPx: src.entryTriggerUnderlyingPx,
         })
       : src.entryStatus;
+  // Same peak-%-gain formula `peakDisplay` below uses (computed early here, not reused from there,
+  // because `peakDisplay` isn't defined until after this call) — feeds ONLY the round-trip check
+  // inside computeSwingThesisHealth (see `roundTripSinceCommit`'s doc comment, zerodte/thesis-
+  // health.ts), never the pillar scoring itself.
+  const peakPctForThesis =
+    entry != null && fin(src.peakPremium) ? Math.round((src.peakPremium! / entry - 1) * 100 * 10) / 10 : null;
   const thesisHealth = working
     ? computeSwingThesisHealth({
         direction: src.direction,
@@ -1022,6 +1028,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
         servingSection: src.servingSection,
         manageAction: src.manageAction,
         pnlPct: livePnl,
+        peak: peakPctForThesis,
         dte: src.contract.dte,
         subLane: src.subLane,
         committedAtEt: src.committedAt ?? null,
@@ -1426,6 +1433,12 @@ export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): Termina
     direction: src.direction,
     horizon: src.horizon,
     score: src.score,
+    // See SwingClosedDeckSource.scoreWithheld's doc comment (closed-plays.ts) — without this,
+    // terminalPlayFromHorizon's own scoreWithheld forward (below) always received `undefined` for
+    // a CLOSED swing play, so a rolled chain's fabricated `score:0` reached TerminalPlay/the UI
+    // with no honest-absence flag at all (live repro: AMZN root-44/terminal-48, AAPL
+    // root-37/terminal-40, 2026-10-16).
+    scoreWithheld: src.scoreWithheld,
     status: src.status,
     reason: src.reason,
     contract: src.contract,

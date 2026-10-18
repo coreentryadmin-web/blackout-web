@@ -3,7 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { PlayHistoryTable } from "./PlayHistoryTable";
+import { PlayHistoryTable, commitScoreFor } from "./PlayHistoryTable";
 import type { ZeroDteRecordPlay } from "@/lib/zerodte/record";
 
 (globalThis as unknown as { React: typeof React }).React = React;
@@ -195,6 +195,53 @@ test("mobile P&L visibility: P&L is the 3rd header column, ahead of Dir/Tier/Out
     tickerIdx < pnlIdx && pnlIdx < dirIdx && dirIdx < tierIdx && tierIdx < outcomeIdx,
     `P&L header must sit right after Ticker and before Dir/Tier/Outcome (got Ticker@${tickerIdx} P&L@${pnlIdx} Dir@${dirIdx} Tier@${tierIdx} Outcome@${outcomeIdx})`
   );
+});
+
+// Regression for the live 2026-10-16 finding: the detail drawer's "Score" field rendered the
+// bare `score` column (which IS `score_max` — the session-PEAK evidence score that keeps
+// ratcheting up across scan ticks even AFTER a play commits; see record.ts's own doc comment
+// on ZeroDteRecordPlay.score), unqualified, as though it were the score the play committed at.
+// The real commit-time score lives in entry_context.score and disagreed with the peak on
+// 121/215 live rows (56.3%) over a 30-day window. ZeroDteBoard.tsx (the live board) already
+// renders the identical quantity correctly qualified ("peak score {row.score}"); the historical
+// Track Record table did not. `commitScoreFor` is the fix: prefer the real commit-time score
+// when entry_context carries one, falling back to the peak with `isPeakFallback: true` only
+// when it doesn't — so the caller can label the fallback instead of presenting it as a fact.
+test("commitScoreFor prefers the real commit-time score (entry_context.score) over the ratcheted peak", () => {
+  const play = { score: 100, entry_context: { score: 87 } } as unknown as ZeroDteRecordPlay;
+  const result = commitScoreFor(play);
+  assert.equal(result.value, 87, "must report the real commit-time score, not the session-peak 100");
+  assert.equal(result.isPeakFallback, false, "a real entry_context.score must not be labeled a peak fallback");
+});
+
+test("commitScoreFor falls back to the peak score, labeled, when entry_context carries no numeric score", () => {
+  const noContext = { score: 61, entry_context: null } as unknown as ZeroDteRecordPlay;
+  const r1 = commitScoreFor(noContext);
+  assert.equal(r1.value, 61);
+  assert.equal(r1.isPeakFallback, true, "a null entry_context must fall back to the peak, labeled as such");
+
+  const garbledContext = { score: 61, entry_context: { score: "61" } } as unknown as ZeroDteRecordPlay;
+  const r2 = commitScoreFor(garbledContext);
+  assert.equal(r2.value, 61);
+  assert.equal(r2.isPeakFallback, true, "a non-numeric entry_context.score must also fall back, labeled");
+});
+
+test("the detail drawer shows a bare 'Score' label (no qualifier) once the row is expanded and entry_context carries a real commit score", () => {
+  // renderToStaticMarkup can't simulate the row's own onClick-driven expand, so this exercises
+  // the exact same `commitScoreFor` the component calls per-row, over a fixture shaped like a
+  // live mismatched row (TEM 2026-10-15: peak 100, committed 87) — the regression this finding
+  // is actually about. The DOM-position/structure tests above already cover the collapsed-state
+  // render; this covers the label/value PAIR the fix changed.
+  const play = PLAYS[0];
+  const withMismatch: ZeroDteRecordPlay = { ...play, score: 100, entry_context: { score: 87 } };
+  const result = commitScoreFor(withMismatch);
+  assert.equal(result.value, 87);
+  assert.equal(result.isPeakFallback, false);
+
+  const legacyRow: ZeroDteRecordPlay = { ...play, score: 61, entry_context: null };
+  const legacy = commitScoreFor(legacyRow);
+  assert.equal(legacy.value, 61);
+  assert.equal(legacy.isPeakFallback, true);
 });
 
 test("mobile P&L visibility: each data row renders its P&L cell before Dir/Tier/Outcome cells", () => {

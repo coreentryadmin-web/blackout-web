@@ -175,6 +175,21 @@ test("MTSI (MACOM Technology Solutions) clusters into semis, not its own isolate
   assert.equal(sameThesis("MTSI", "AAPL"), false);
 });
 
+test("CRWV (CoreWeave) and NBIS (Nebius) cluster into semis, not isolated NAME: clusters (2026-10-16 live finding: both LONG in the same discovery batch as a flagged 9-name semis cluster, no Book-context concentration flag on either play-brief)", () => {
+  assert.equal(resolveTheme("CRWV"), "semis");
+  assert.equal(resolveTheme("NBIS"), "semis");
+  assert.equal(sameThesis("CRWV", "NBIS"), true);
+  assert.equal(sameThesis("CRWV", "MRVL"), true); // joins the WHOLE semis cluster, not just one peer
+  assert.equal(sameThesis("NBIS", "NVDA"), true);
+  // Not merged into an unrelated theme just because both are "tech"-adjacent.
+  assert.equal(sameThesis("CRWV", "AAPL"), false);
+});
+
+test("DRAM (Roundhill Memory ETF) clusters into semis alongside MU (same memory-cycle names) — added proactively, same precedent as AVGX", () => {
+  assert.equal(resolveTheme("DRAM"), "semis");
+  assert.equal(sameThesis("DRAM", "MU"), true);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-10-09): SOXS correctly shares the "semis" theme
 // with NVDA/MRVL (it is driven by the exact same basket) but is a -3x INVERSE fund, so a nominal
 // LONG SOXS position is an economically BEARISH bet — the opposite of a nominal LONG NVDA/MRVL
@@ -216,6 +231,25 @@ test("SQQQ is a known inverse-leverage ETF clustering with QQQ/semis; its effect
   assert.equal(effectiveDirection("SQQQ", "SHORT"), "LONG");
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-17): LABD (Direxion Daily S&P Biotech Bear 3X)
+// was in neither ETF_PROXY_THEMES nor INVERSE_LEVERAGE_ETFS — a member holding LONG LABD (bearish
+// biotech) alongside a LONG sectorFor-biotech name (e.g. IOVA, both real, live, currently-
+// committed positions in the same book at time of fix) got no book-context flag whatsoever.
+// Measured, not guessed: 96 real trading days of daily-return correlation vs sectorFor's biotech
+// names (NTLA/CRSP/VIR, avg |r|~0.61) is more than double the correlation vs large-cap diversified
+// healthcare (avg |r|~0.27), confirming "biotech" (not a separate "broad biotech" theme) is the
+// correct cluster — same pattern as the SQQQ/semis fix above.
+test("LABD is a known inverse-leverage ETF clustering with sectorFor's biotech names; its effective direction is the OPPOSITE of its nominal one", () => {
+  assert.equal(ETF_PROXY_THEMES.LABD, "biotech");
+  assert.equal(resolveTheme("LABD"), "biotech");
+  assert.equal(sameThesis("LABD", "IOVA"), true);
+  assert.equal(sameThesis("LABD", "NTLA"), true);
+  assert.equal(isInverseLeverageEtf("LABD"), true);
+  assert.equal(isInverseLeverageEtf("labd"), true); // case-insensitive
+  assert.equal(effectiveDirection("LABD", "LONG"), "SHORT");
+  assert.equal(effectiveDirection("LABD", "SHORT"), "LONG");
+});
+
 test("TQQQ clusters with QQQ/semis but is NOT inverse — its effective direction equals its nominal one, like SOXL", () => {
   assert.equal(ETF_PROXY_THEMES.TQQQ, "semis");
   assert.equal(resolveTheme("TQQQ"), "semis");
@@ -247,4 +281,16 @@ test("clinical/commercial-stage biotech names cluster together, not each in its 
   assert.equal(sameThesis("NTLA", "RGEN"), false);
   assert.equal(sameThesis("NTLA", "GRAL"), false);
   assert.equal(sameThesis("NTLA", "ABSI"), false);
+});
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-17, live finding while researching the sibling
+// LABD fix): ABVX (Abivax SA) was live, currently-committed LONG in the same book this bucket's
+// original 2026-10-10 fix was built from, but wasn't included — a France-based clinical-stage
+// biotech in Phase 3 trials for one drug candidate (obefazimod, ulcerative colitis), the exact same
+// binary clinical/regulatory catalyst risk driver as every other name in this bucket (verified via
+// Polygon reference, not guessed from the symbol).
+test("ABVX (clinical-stage biotech, Phase 3 single-asset bet) joins the same biotech cluster as the 2026-10-10 cohort", () => {
+  assert.equal(resolveTheme("ABVX"), "biotech");
+  assert.equal(sameThesis("ABVX", "NTLA"), true);
+  assert.equal(sameThesis("ABVX", "IOVA"), true);
 });

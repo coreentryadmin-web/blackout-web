@@ -13,6 +13,7 @@ import {
   type BieLevel,
   type BieScenario,
   type BieSection,
+  type BieTable,
   type BieUnavailableSource,
 } from "@/lib/bie/answer-envelope";
 
@@ -21,6 +22,18 @@ export type RichSection = {
   /** Member-readable prose/markdown. Blank → the section is dropped. */
   body: string;
   bias?: BieBias;
+  /**
+   * Optional structured table riding alongside `body` (Largo C10 "historical context" — a
+   * consumer should be able to join/cite the underlying numbers, not just parse prose). The
+   * envelope contract has carried `BieSection.table` since it shipped (`answer-envelope.ts`) and
+   * `renderEnvelopeMarkdown`/`dynamic-format.ts` already render it — but this builder never had a
+   * way to receive one from a `RichSection`, so NO composer routed through `buildRichEnvelope`
+   * (every deterministic composer, incl. the swing play brief) could ever attach one, even though
+   * the mechanism existed. ADDITIVE alongside `body`, same as `unavailableSources` below: a
+   * consumer that only reads `body` is unaffected, one that reads `table` gets the same numbers
+   * as discrete headers/rows instead of a formatted string.
+   */
+  table?: BieTable | null;
 };
 
 export type BuildRichEnvelopeInput = {
@@ -59,7 +72,12 @@ export type BuildRichEnvelopeInput = {
 export function buildRichEnvelope(input: BuildRichEnvelopeInput): BieAnswerEnvelope {
   const sections: BieSection[] = input.sections
     .filter((s) => s.body && s.body.trim().length > 0)
-    .map((s) => ({ title: s.title, body: s.body.trim(), ...(s.bias ? { bias: s.bias } : {}) }));
+    .map((s) => ({
+      title: s.title,
+      body: s.body.trim(),
+      ...(s.bias ? { bias: s.bias } : {}),
+      ...(s.table ? { table: s.table } : {}),
+    }));
 
   return makeEnvelope({
     headline: input.headline,

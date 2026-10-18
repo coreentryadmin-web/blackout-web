@@ -1578,6 +1578,56 @@ test("catalystCoaching: same-day UNKNOWN timing never claims already-printed", (
   assert.doesNotMatch(line!, /already printed/i);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-10-15, live repro CLS WATCH): `ownContractExpiry`
+// resolved THIS brief's own contract expiry by matching `ctx.laneRows` on ticker + `play.entry`
+// (the position's entry PREMIUM) — but a pre-entry WATCH candidate has no entry premium at all
+// (TerminalPlay.entry is pnl-anchor-only, populated starting at commit), so this match structurally
+// could never succeed for any WATCH row. That made the `noGapExposure` safety check above
+// unreachable for every WATCH candidate, even when the row's own prospective contract (known and
+// already rendered elsewhere in the SAME brief, e.g. the Verdict header's "350C 9DTE") would show
+// zero exposure. Live repro: CLS WATCH (2026-10-14/15) — prospective contract 350C expiring
+// 2026-10-23, earnings 2026-10-26 (afterhours), i.e. 3 days AFTER this contract already expires —
+// genuinely zero gap exposure, yet the live brief said "size down or exit before report" because
+// `ownContractExpiry` returned null and the safety check never evaluated. Fixed by resolving the
+// expiry from `play.occ` (parsed via the shared `parseOccSymbol`) FIRST — every TerminalPlay row,
+// WATCH or committed, carries an occ built straight off its own `contract.expiry/right/strike`
+// (adapters.ts) — falling back to the old laneRows/entryPremium match only when occ is absent.
+test("catalystCoaching: WATCH candidate (no entry premium yet) resolves expiry via occ — no gap-exposure instruction, not the generic warning", () => {
+  const line = catalystCoaching(
+    ctx({
+      // No `entry` at all — exactly the real WATCH shape (TerminalPlay.entry is unset pre-commit).
+      play: play({ ticker: "CLS", status: "WATCH", occ: "O:CLS261023C00350000" }),
+      laneRows: [], // no committed row to match against either — the real WATCH-only situation.
+      ecosystem: {
+        ticker: "CLS",
+        arsenal: {
+          earnings: { days_until: 12, earnings_date: "2026-10-26", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /expires 2026-10-23/);
+  assert.match(line!, /no earnings-gap exposure/i);
+  assert.doesNotMatch(line!, /size down or exit before report/i);
+});
+
+test("catalystCoaching: WATCH candidate with occ expiry still AFTER the print — original warning fires correctly", () => {
+  const line = catalystCoaching(
+    ctx({
+      play: play({ ticker: "CLS", status: "WATCH", occ: "O:CLS261030C00350000" }), // expiry 2026-10-30, after the print
+      laneRows: [],
+      ecosystem: {
+        ticker: "CLS",
+        arsenal: {
+          earnings: { days_until: 12, earnings_date: "2026-10-26", report_time: "afterhours" },
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+  );
+  assert.match(line!, /size down or exit before report/i);
+  assert.doesNotMatch(line!, /no earnings-gap exposure/i);
+});
+
 test("closedCoaching: MFE capture lesson", () => {
   const line = closedCoaching(
     play({
@@ -2792,6 +2842,33 @@ test("dataHonestyCoaching: a genuinely stale Vector snapshot (by this file's own
   );
   assert.match(line!, /Vector \*\*150s\*\* stale/);
   assert.doesNotMatch(line!, /SHOULD_NOT_APPEAR/);
+});
+
+test("dataHonestyCoaching: GEX-fallback closed-market note is attributed to the GEX matrix when Vector itself is stale (2026-10-17 fix, live repro NVDA:62/CRWV:61/TSM)", () => {
+  // Before the fix, this read "Vector **9853s** stale ... Computed 0s ago, but the market is
+  // CLOSED..." with no indication the two age claims describe DIFFERENT sources -- a member
+  // cannot tell whether the brief is contradicting itself about its own freshness. The GEX-sourced
+  // fallback note must be attributed explicitly in exactly this combination (Vector stale AND the
+  // fallback fired), since that is the only case where a separate "Vector ... stale" warning sits
+  // right next to it in the same joined sentence.
+  const readMs = Date.parse("2026-09-20T14:00:00.000Z"); // Sun 10:00 ET -- CLOSED
+  const line = dataHonestyCoaching(
+    ctx({
+      readMs,
+      vector: { dataAgeMs: 9_853_000, freshness: "stale" } as SwingPlayBriefContext["vector"],
+      ecosystem: {
+        gex_positioning: {
+          spot: 100,
+          asof: new Date(readMs).toISOString(),
+          gamma_posture: "long",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+    }),
+    play({ status: "OPEN" }),
+  );
+  assert.match(line!, /Vector \*\*9853s\*\* stale/);
+  assert.match(line!, /market is CLOSED/i);
+  assert.match(line!, /\(via the GEX matrix\)/, "the GEX-fallback note must be explicitly attributed when a separate Vector-stale warning sits beside it");
 });
 
 // BUG FOUND 2026-09-20 (Ask Largo standing mandate): dataHonestyCoaching's "Data caveat" bullet

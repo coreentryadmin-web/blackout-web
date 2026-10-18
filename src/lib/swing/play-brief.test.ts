@@ -38,6 +38,33 @@ function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   };
 }
 
+// BUG FIX (2026-10-17, Ask Largo standing mandate, live repro VXX/SQQQ/SOXS/UVIX — real
+// currently-committed swing positions all returning ticker_class: "equity"): composeSwingPlayBrief
+// used to hardcode "equity" on the stale assumption that swings are always equities, which stopped
+// being true once the Banger whole-market engine started feeding leveraged/inverse/volatility ETFs
+// into the swing lane. Covers both the envelope-level and result-level ticker_class fields (two
+// separate hardcode sites in the same function).
+test("composeSwingPlayBrief: ticker_class reflects the real instrument, not a hardcoded 'equity'", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "SQQQ", id: "SWING:SQQQ" }),
+    asOf: "2026-09-07T02:59:00.000Z",
+    sessionDate: "2026-09-07",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(brief.ticker_class, "etf", "SQQQ is a leveraged ETF, not an equity");
+  assert.equal(brief.envelope.ticker_class, "etf", "envelope-level field must match the result-level field");
+
+  const equityCtx: SwingPlayBriefContext = { ...ctx, play: fixturePlay({ ticker: "NVDA", id: "SWING:NVDA" }) };
+  const equityBrief = composeSwingPlayBrief(equityCtx);
+  assert.equal(equityBrief.ticker_class, "equity", "a real equity must still classify as equity");
+});
+
 test("composeSwingPlayBrief: WATCH WAIT recommendation uses WAIT label, not raw HOLD (verdict parity)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ recommendation: "HOLD", swingEntryAction: undefined, status: "WATCH" }),
@@ -216,6 +243,86 @@ test("composeSwingPlayBrief: a same-ticker sibling with a near-identical entry p
   );
   assert.match(sib!.body, /605C 2026-10-16/);
   assert.match(sib!.body, /2 concurrent live position/);
+});
+
+// BUG FOUND (Ask Largo standing mandate, 2026-10-15 — same deep-dive that found #6023's
+// ownContractExpiry gap, same root cause, a second independent call site). `siblingPositionsNote`
+// (and its envelope.evidence twin just below it in play-brief.ts) both early-return/gate on
+// `play.entry != null` — but `TerminalPlay.entry` is pnl-anchor-only, populated starting at commit
+// (see #6023's own doc comment on `ownContractExpiry`), so it is ALWAYS null for a pre-entry WATCH
+// candidate. That made this disclosure structurally unreachable for every WATCH row, even when a
+// real, live, same-ticker sibling position already exists in `ctx.laneRows` — exactly the kind of
+// book-overlap fact a member deciding whether to open a NEW position on a ticker they already hold
+// needs to see, arguably more than an already-committed position needs it. The early-return is also
+// unnecessary for correctness: a WATCH row is never itself committed, so it can never appear in
+// `ctx.laneRows` with `liveStatus` set — there is no "self" for the entry-premium proximity test to
+// accidentally exclude, so a plain same-ticker + `liveStatus` match is already a safe, genuine
+// sibling test with no risk of self-matching. Live repro shape: CLS WATCH (2026-10-14/15) sits
+// beside several tickers (ETSY/SOXS/MRNA/MUZ) that genuinely carry 2+ concurrent committed
+// positions right now — had CLS itself collided with one of those tickers, the brief would have
+// silently said nothing, the same "absence must be disclosed, never silent" (C3) violation this
+// function has already been fixed for twice (2026-09-11, 2026-10-11) via a different gap each time.
+test("composeSwingPlayBrief: a WATCH candidate (no entry premium yet) with a same-ticker live sibling still discloses it", () => {
+  const siblingRow: HorizonPlay = {
+    ticker: "CLS",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 71,
+    status: "COMMIT",
+    contract: {
+      ticker: "O:CLS261016C00300000",
+      strike: 300,
+      expiry: "2026-10-16",
+      right: "C",
+      dte: 2,
+      mid: 12.4,
+      bid: 12.1,
+      ask: 12.7,
+      delta: 0.58,
+      gamma: 0.0098,
+      theta: -1.21,
+      vega: 0.19,
+      iv: 0.61,
+      openInterest: 412,
+    },
+    scoreFloor: 60,
+    reason: "live hold — PULLBACK_CONTINUATION thesis",
+    archetype: "PULLBACK_CONTINUATION",
+    entryPremium: 9.1,
+    livePnlPct: 36.3,
+    liveStatus: "HOLD",
+    committedAt: "2026-10-08T14:30:00.000Z",
+    positionId: 40,
+  };
+  const ctx: SwingPlayBriefContext = {
+    // A WATCH row: no positionId, no entry premium — deliberately mirrors the real serving shape
+    // (`entryStatus: "PRE_TRIGGER"`, pre-commit) that reaches play-brief in production.
+    play: fixturePlay({
+      id: "SWING:CLS",
+      ticker: "CLS",
+      status: "WATCH",
+      recommendation: "BUY",
+    }),
+    asOf: "2026-10-15T02:00:00.000Z",
+    sessionDate: "2026-10-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [siblingRow],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const sib = brief.envelope.sections.find((s) => s.title === "Other concurrent position(s)");
+  assert.ok(
+    sib,
+    "a WATCH candidate with a real live sibling on the same ticker must disclose it — a member " +
+      "deciding whether to open a new position needs to know they already hold one",
+  );
+  assert.match(sib!.body, /300C 2026-10-16/);
+  assert.match(sib!.body, /2 concurrent live position/);
+  const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
+  assert.ok(sibEvidence, "the WATCH-row sibling claim must carry a matching evidence entry too (Largo C7)");
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-09-20): sibling of PR #5288's buildIntelSections
@@ -678,6 +785,66 @@ test("composeSwingPlayBrief: top-level Invalidation line still uses the real gat
   };
   const brief = composeSwingPlayBrief(ctx);
   assert.equal(brief.envelope.invalidation, "Bucket not graduated");
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 3 of the standing Ask Largo x Night Hawk
+// Swings mandate — live META repro). Live repro: META WATCH brief, 2026-10-16 01:57 UTC —
+// `envelope.invalidation` read the literal `g_s12_halt_feed_stale` gate reason ("Trading-halt
+// feed unavailable...") while META's setupState was FORMING/PRE_TRIGGER (not dead) and
+// `unavailableSources` listed META's own ecosystem/Vector context as having failed to fetch THIS
+// cycle (CloudWatch confirmed both reads timed out for META specifically at that timestamp) — a
+// transient per-ticker fetch failure, not an honest "nothing to compute" absence. The SAME gate
+// reason renders identically for every OTHER gate-blocked ticker on the board at the same time,
+// so presenting it as META's own invalidation level is misleading in exactly the way this file's
+// own surrounding comment already names for the generic case. Contrast with the test immediately
+// above (same gate reason, same missing ecosystem/vector data, but no fetch failure) — the gate
+// reason is a legitimate fallback for "no data to compute from"; it must not be for "the read
+// broke this cycle," which this test proves is now distinguished.
+test("composeSwingPlayBrief: top-level Invalidation line omits the generic gate reason (rather than presenting it as a real per-ticker fact) when the per-ticker ecosystem/Vector fetch genuinely failed this cycle", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    null,
+    "must not present the shared gate-block text as META's own invalidation level when the fetch itself failed",
+  );
+});
+
+test("composeSwingPlayBrief: top-level Invalidation line still falls through to the premium-stop fallback (a real per-position number) even when the ecosystem/Vector fetch failed", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      exitPolicy: { stop_premium: 1.5, target_premium: 3, trim_levels: [] },
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    ecosystemFetchFailed: true,
+    vectorFetchFailed: true,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  assert.equal(
+    brief.envelope.invalidation,
+    "Premium stop at $1.50",
+    "a genuinely per-position fallback (the ledger's own stop) is unaffected by a fetch failure -- only the shared gate-block text is suppressed",
+  );
 });
 
 test("composeSwingPlayBrief: Entry section still frames gates as the live blocker when the play is genuinely still enterable", () => {
@@ -1615,6 +1782,191 @@ test("composeSwingPlayBrief: GEX market_session_note is suppressed when the GEX 
     const brief = composeSwingPlayBrief(ctx);
     const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
     assert.equal(note, undefined, "must not surface the note off an already-stale GEX matrix");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+// BUG FIX (Largo Product Contract C2, 2026-10-16, Ask Largo standing mandate — live TSM/BBWI
+// repro, Bug 2 of the standing Ask Largo x Night Hawk Swings mandate). The four tests above prove
+// the FREE-TEXT evidence fact surfaces the market-session caveat correctly — but that same fact's
+// OWN `provenance.freshness` field, and every GEX/Vector-sourced `levels[]` entry, still read
+// "live" with no caveat at all, a direct C2 violation for any consumer reading the STRUCTURED
+// fields rather than the prose. Live repro: TSM WATCH brief, 2026-10-16 01:57 UTC (market CLOSED)
+// — `envelope.evidence` carried the "market is CLOSED" fact with `provenance.freshness:"live"`,
+// and `envelope.levels[]` for call wall/put wall/spot/GEX king all carried `freshness:"live"` too.
+// These tests prove the fix: every GEX/Vector provenance block in the misleading combination now
+// ALSO carries `market_session_note` (additive — `freshness` itself is deliberately left "live",
+// per `BieProvenance.market_session_note`'s own doc comment on why overloading freshness here
+// would be the wrong fix).
+test("composeSwingPlayBrief: Vector-sourced levels carry market_session_note alongside an unchanged 'live' freshness (live TSM shape)", () => {
+  const nowIso = new Date().toISOString();
+  const noteText =
+    "Computed 3s ago, but the market is CLOSED as of this read — this reflects the last session's tape, not a live tick, however fresh the compute looks.";
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay(),
+    asOf: "2026-09-20 14:00 ET",
+    sessionDate: "2026-09-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: nowIso,
+      asOfEt: "2026-09-20 14:00 ET",
+      sessionDate: "2026-09-20",
+      spot: 100,
+      maxPain: 95,
+      dataAgeMs: 1_000,
+      freshness: "live",
+      market_session: "CLOSED",
+      market_session_note: noteText,
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const spotLevel = brief.envelope.levels.find((l) => l.label === "spot");
+  assert.ok(spotLevel, "expected a spot level");
+  assert.equal(spotLevel!.provenance?.freshness, "live", "freshness itself must stay unchanged (additive fix)");
+  assert.equal(
+    spotLevel!.provenance?.market_session_note,
+    noteText,
+    "spot level must carry the market-session caveat alongside its unchanged 'live' freshness",
+  );
+  const maxPainLevel = brief.envelope.levels.find((l) => l.label === "max pain");
+  assert.ok(maxPainLevel, "expected a max pain level");
+  assert.equal(maxPainLevel!.provenance?.market_session_note, noteText);
+  // The standalone evidence fact itself (already proven to surface above) must ALSO carry the
+  // note on its own provenance, not just in its free-text `text` field.
+  const note = brief.envelope.evidence.find((e) => e.text.includes("market is CLOSED"));
+  assert.ok(note);
+  assert.equal(note!.provenance?.freshness, "live");
+  assert.equal(note!.provenance?.market_session_note, noteText);
+});
+
+test("composeSwingPlayBrief: GEX-sourced levels carry market_session_note alongside an unchanged freshness on a closed-market self-warm (live BBWI shape)", () => {
+  const frozenNowIso = "2026-09-20T14:00:00.000Z"; // a real Sunday 10:00 ET -- market CLOSED
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-20 10:00 ET",
+      sessionDate: "2026-09-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          call_wall: 27,
+          put_wall: 23,
+          flip: 24,
+          gamma_posture: "long",
+          asof: frozenNowIso, // computed at the exact frozen instant -- 0s old, live
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    const callWall = brief.envelope.levels.find((l) => l.label === "call wall");
+    assert.ok(callWall, "expected a call wall level");
+    assert.ok(
+      callWall!.provenance?.freshness === "live" || callWall!.provenance?.freshness === "recent",
+      `freshness must stay a live/recent compute-age verdict (additive fix), got ${callWall!.provenance?.freshness}`,
+    );
+    assert.ok(
+      callWall!.provenance?.market_session_note?.includes("market is CLOSED"),
+      `call wall level must carry the market-session caveat, got: ${callWall!.provenance?.market_session_note}`,
+    );
+    const gammaFlip = brief.envelope.levels.find((l) => l.label === "gamma flip");
+    assert.ok(gammaFlip, "expected a gamma flip level");
+    assert.ok(gammaFlip!.provenance?.market_session_note?.includes("market is CLOSED"));
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("composeSwingPlayBrief: GEX-sourced levels carry NO market_session_note when the market is genuinely OPEN (no false positive)", () => {
+  const frozenNowIso = "2026-09-21T15:00:00.000Z"; // a real Monday 11:00 ET -- market OPEN (RTH)
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-21 11:00 ET",
+      sessionDate: "2026-09-21",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          call_wall: 27,
+          put_wall: 23,
+          flip: 24,
+          gamma_posture: "long",
+          asof: frozenNowIso, // computed at the exact frozen instant -- 0s old, live, market OPEN
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    const callWall = brief.envelope.levels.find((l) => l.label === "call wall");
+    assert.ok(callWall, "expected a call wall level");
+    assert.ok(
+      callWall!.provenance?.freshness === "live" || callWall!.provenance?.freshness === "recent",
+      `got ${callWall!.provenance?.freshness}`,
+    );
+    assert.equal(
+      callWall!.provenance?.market_session_note,
+      null,
+      "must not attach a market-session caveat when the market is genuinely open and has moved today",
+    );
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("composeSwingPlayBrief: GEX-sourced levels carry NO market_session_note when the GEX matrix is already stale (that verdict's own caveat covers it; levels are suppressed entirely in this shape, not labeled stale)", () => {
+  const frozenNowIso = "2026-09-20T14:00:00.000Z";
+  mock.timers.enable({ apis: ["Date"], now: Date.parse(frozenNowIso) });
+  try {
+    const ctx: SwingPlayBriefContext = {
+      play: fixturePlay(),
+      asOf: "2026-09-20 10:00 ET",
+      sessionDate: "2026-09-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: {
+        ticker: "INTC",
+        gex_positioning: {
+          spot: 25,
+          call_wall: 27,
+          put_wall: 23,
+          flip: 24,
+          gamma_posture: "long",
+          asof: "2026-09-20T13:00:00.000Z", // 1h old -- well past GEX_MATRIX_STALE_MS (2min)
+          freshness: "cached",
+        },
+      } as SwingPlayBriefContext["ecosystem"],
+      vector: null,
+    };
+    const brief = composeSwingPlayBrief(ctx);
+    // A stale GEX matrix suppresses these levels at the source entirely (pre-existing behavior,
+    // unrelated to this fix — see `callWallFromStaleGex` in `levelsFromContext`), so there is no
+    // level here to assert `market_session_note` against directly; this test instead proves the
+    // existing (unrelated) suppression still holds, which is why the GEX evidence fact (test
+    // above, "GEX market_session_note is suppressed when the GEX matrix is already stale")
+    // remains the correct place to assert the no-false-positive behavior for a stale matrix.
+    const callWall = brief.envelope.levels.find((l) => l.label === "call wall");
+    assert.equal(callWall, undefined, "a stale GEX matrix suppresses the level entirely");
   } finally {
     mock.timers.reset();
   }
@@ -2982,6 +3334,222 @@ test("composeSwingPlayBrief: Thesis health headline discloses 'unchanged since c
   );
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-14, live repro SWING:INTC:56): the "unchanged since
+// commit" disclosure the test above added (2026-10-07) is itself wrong whenever the position has
+// round-tripped from a real favorable peak into a current loss — `moves` stays at its "unchanged"
+// fallback (none of its own triggers fire for a swing that falls short of the -40% backstop and
+// never flips thesisBreak) even though the SAME envelope's "Trade manager read" section correctly
+// narrates the round-trip two sections later. `roundTripSinceCommit` (set by computeSwingThesisHealth,
+// thesis-health.ts) is the independent signal that closes this gap; this test pins the fixture's
+// `thesisHealth` directly (same pattern as the test above) so it exercises ONLY `thesisHealthSection`'s
+// own headline logic, not the full computeSwingThesisHealth pipeline (covered separately in
+// thesis-health.test.ts's roundTripSinceCommit suite).
+test("composeSwingPlayBrief: Thesis health headline omits 'unchanged since commit' when the position has round-tripped past breakeven (live repro 2026-10-14, SWING:INTC:56)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      entry: 4.72,
+      mark: 3.0,
+      pnlPct: -36.5,
+      peak: 15.3,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 67,
+        entryIndex: 67,
+        currentIndex: 67,
+        delta: 0,
+        rung: "WEAKENING",
+        rungLabel: "Weakening",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.55,
+            currentScore: 0.55,
+            commitLabel: "forming",
+            currentLabel: "forming",
+            status: "intact",
+            contributionPts: 15.4,
+            deltaPts: 0,
+          },
+        ],
+        // The exact fallback string thesis-health.ts stamps when no pillar faded/lost — still fires
+        // here (same gap the fix addresses), which is why the headline must key off
+        // `roundTripSinceCommit` instead of trusting this string alone.
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 13, 4:10 PM",
+        computedAtEt: "Oct 14, 4:42 PM",
+        advisory: "Thesis fading — tighten risk or trim into strength.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "multi-day thesis intact",
+        roundTripSinceCommit: true,
+        // `computeSwingThesisHealth` always sets this alongside `roundTripSinceCommit` (a strict
+        // superset — see its own 2026-10-16 doc comment) — set here too so this hand-built
+        // fixture matches what production actually ships, same as every other field above.
+        materialGivebackSinceCommit: true,
+      },
+    }),
+    asOf: "2026-10-14T20:42:00.000Z",
+    sessionDate: "2026-10-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.doesNotMatch(
+    thesis!.body,
+    /unchanged since commit/i,
+    `Thesis health headline must NOT claim 'unchanged since commit' once the position has round-tripped past breakeven, got: ${thesis!.body}`,
+  );
+  assert.match(thesis!.body, /67%.*Weakening/is, `headline must still show the real health %/band, got: ${thesis!.body}`);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+// Swings mandate — live GOOG repro, positionId 59). The 2026-10-14 fix directly above only covers
+// a round-trip into a NEGATIVE P&L (`roundTripSinceCommit`). A position that retraces hard from
+// its peak but stays net-POSITIVE still printed the same contradiction: "unchanged since commit"
+// sitting above/below a "Gave back N% of peak" narrative line in the SAME response, because the
+// giveback narrative's own `capturePct < 75` threshold never aligned with `roundTripSinceCommit`'s
+// narrower `exitPnlPct < 0` test. Live GOOG numbers: entry +9.2% peak, current +1.4%, trough -4.0%
+// — `(9.2-1.4)/9.2 = 84.8%` giveback, well past the 75% capture floor, so the SAME
+// `mfeCaptureOutcome` call the giveback narrative uses classifies this as `capture` with
+// `capturePct` ~15.2 (well under 75), which `materialGivebackSinceCommit` must now catch even
+// though `pnlPct` (+1.4) stays positive and `roundTripSinceCommit` is correctly `false`.
+test("composeSwingPlayBrief: Thesis health headline omits 'unchanged since commit' when the position has given back a material fraction of peak while STILL net-positive (live repro 2026-10-16, GOOG positionId 59)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 14.875,
+      mark: 15.08,
+      pnlPct: 1.4,
+      peak: 9.2,
+      trough: -4.0,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 73,
+        entryIndex: 73,
+        currentIndex: 73,
+        delta: 0,
+        rung: "MINOR_DRIFT",
+        rungLabel: "Minor drift",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.6,
+            currentScore: 0.6,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 16.8,
+            deltaPts: 0,
+          },
+        ],
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 14, 10:00 AM",
+        computedAtEt: "Oct 16, 1:57 AM",
+        advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "thesis intact",
+        // The real-production signature of this bug: a genuine round-trip did NOT happen
+        // (pnlPct stays positive) but the giveback is still material.
+        roundTripSinceCommit: false,
+        materialGivebackSinceCommit: true,
+      },
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.doesNotMatch(
+    thesis!.body,
+    /unchanged since commit/i,
+    `Thesis health headline must NOT claim 'unchanged since commit' when a material giveback happened even while P&L stays positive, got: ${thesis!.body}`,
+  );
+  assert.match(thesis!.body, /73%.*Minor drift/is, `headline must still show the real health %/band, got: ${thesis!.body}`);
+});
+
+// Companion negative test: a SHALLOW giveback (still well inside the 75% capture floor) must NOT
+// trip `materialGivebackSinceCommit` — "unchanged since commit" is the correct, honest headline
+// here, and this proves the fix doesn't over-fire on ordinary, immaterial peak-to-current drift.
+test("composeSwingPlayBrief: Thesis health headline still reads 'unchanged since commit' for a shallow, immaterial giveback", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 10,
+      mark: 11.8,
+      pnlPct: 18,
+      peak: 20,
+      manageAction: "HOLD",
+      thesisHealth: {
+        health: 80,
+        entryIndex: 80,
+        currentIndex: 80,
+        delta: 0,
+        rung: "INTACT",
+        rungLabel: "Thesis intact",
+        pillars: [
+          {
+            id: "structure",
+            label: "Persistence",
+            weight: 0.28,
+            commitScore: 0.6,
+            currentScore: 0.6,
+            commitLabel: "triggered",
+            currentLabel: "triggered",
+            status: "intact",
+            contributionPts: 16.8,
+            deltaPts: 0,
+          },
+        ],
+        moves: ["All swing pillars unchanged since commit."],
+        committedAtEt: "Oct 14, 10:00 AM",
+        computedAtEt: "Oct 16, 1:57 AM",
+        advisory: "Hold while pillars hold — scale-out ladder governs profit-taking.",
+        thesisBreakLevel: "intact",
+        thesisBreakNote: "thesis intact",
+        // capturePct = 18/20*100 = 90 -- well over the 75 floor, so NOT a material giveback.
+        roundTripSinceCommit: false,
+        materialGivebackSinceCommit: false,
+      },
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const thesis = brief.envelope.sections.find((s) => s.title === "Thesis health");
+  assert.ok(thesis, "expected a Thesis health section");
+  assert.match(
+    thesis!.body,
+    /unchanged since commit/i,
+    `a shallow, immaterial giveback must still read 'unchanged since commit', got: ${thesis!.body}`,
+  );
+});
+
 test("composeSwingPlayBrief: partially-calibrated Thesis health keeps real pillars and only withholds the aggregate % (2026-09-21 live gap, AAPL position 40 SECTOR_ROTATION)", () => {
   // Live repro (2026-09-21, Ask Largo standing mandate): a committed non-Banger position can have
   // BOTH setupState AND entryStatus live-derived (real, calibrated) while signalKinds is genuinely
@@ -4045,6 +4613,80 @@ test("composeSwingPlayBrief: Position section shows a BLENDED P&L once a trim ha
   );
 });
 
+test("composeSwingPlayBrief: Exec P&L line carries the same open-runner-only qualifier as the sibling P&L line once a trim has fired (live CAVA repro 2026-10-17)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:CAVA:1875&ticker=CAVA&positionId=1875
+  // — one trim banked at +100%, runner still open. Before this fix, the section rendered
+  // "P&L: **+102.2%** _(open runner only...)_" ... "Blended P&L: **+101.1%**" ... "Banked: 50% @
+  // +100%" ... "Exec P&L: **+76.8%**" with NO qualifier on the last line — reading, after the
+  // whole-position-framing Blended/Banked lines just above it, as the member's true remaining
+  // exit value rather than the runner leg's own fill-based P&L (the identical scope `pnlPct`
+  // already discloses two lines above). Mirror the same qualifier onto Exec P&L.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 16.65,
+      mark: 17.05,
+      pnlPct: 2.4,
+      peak: 129.7,
+      execPnlPct: -3.1, // a real, distinct-from-pnlPct fill-based figure
+      manageAction: "EXIT_RUNNER",
+      exitPolicy: {
+        policy: "ratchet",
+        hard_stop_pct: -60,
+        target_pct: 100,
+        trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 33.3, fired: true }],
+        runner_fraction: 0.5,
+        stop_premium: 6.66,
+        target_premium: 33.3,
+        time_stop_et: "16:00",
+      },
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(
+    position!.body,
+    /Exec P&L: \*\*-3\.1%\*\* _\(open runner only — trim already banked, see above\)_/,
+    `got: ${position!.body}`,
+  );
+});
+
+test("composeSwingPlayBrief: Exec P&L line has no qualifier when no trim has fired (no false disclosure)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 16.65,
+      mark: 17.05,
+      pnlPct: 2.4,
+      peak: 2.4,
+      execPnlPct: 1.8,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-09-10T21:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Exec P&L: \*\*\+1\.8%\*\*$/m, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Exec P&L.*open runner only/, `got: ${position!.body}`);
+});
+
 // ENHANCEMENT (2026-09-15, Ask Largo standing mandate, live repro SWING:CRWD/positionId 19):
 // `play.trough` (adapters.ts's troughDisplay, computed symmetrically alongside peakDisplay on
 // every TerminalPlay row) was fully computed and threaded onto every position but had ZERO
@@ -4254,6 +4896,56 @@ test("composeSwingPlayBrief: Position section does not silently echo entry as Ma
   assert.match(position!.body, /Mark: \*\*unknown\*\*/, `got: ${position!.body}`);
 });
 
+test("composeSwingPlayBrief: Position section does not render a confident '0.0%' Peak/Trough when the position has never received a live tick (live NVDA:62 repro 2026-10-17)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:NVDA:62 (committed 2026-10-16, no
+  // live-marks tick since — same true entry-fallback signature as the IMPP/EBS/QCML test above:
+  // markIsSync:true, pnlPct:null). Peak/Trough watermarks are still seeded at the commit-time
+  // entry premium (FINDINGS 2026-08-06's "seed peak/trough at entry" fix), so `play.peak`/
+  // `play.trough` compute to 0 (entry vs entry = 0% move) — a real, non-null number. Before this
+  // fix, the Position section rendered "Mark: **unknown** ... do not read as flat" immediately
+  // followed, a few lines later, by "Peak: **0.0%**" / "Trough: **0.0%**" — a confident, specific
+  // reading indistinguishable from a genuinely observed flat excursion, contradicting the very
+  // line above it. Board-wide sweep (2026-10-17 Ask Largo deep-dive) found 9/63 committed SWING
+  // positions in this exact state, all committed in the final ~20 minutes before a session close.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 4.5,
+      mark: 4.5, // entry-fallback echo, same as the IMPP/EBS/QCML fixture
+      pnlPct: null,
+      peak: 0, // seeded at entry — a real number, not null, which is exactly why this bug slipped by
+      trough: 0,
+      markIsSync: true,
+      markAsOf: null,
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-17T17:30:00.000Z",
+    sessionDate: "2026-10-17",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*unknown\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(
+    position!.body,
+    /Peak: \*\*0\.0%\*\*/,
+    `Peak must not render a confident 0.0% when no live tick has ever landed, got: ${position!.body}`,
+  );
+  assert.doesNotMatch(
+    position!.body,
+    /Trough: \*\*0\.0%\*\*/,
+    `Trough must not render a confident 0.0% when no live tick has ever landed, got: ${position!.body}`,
+  );
+  assert.match(position!.body, /Peak: \*\*—\*\*.*no live tick yet/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*—\*\*.*no live tick yet/, `got: ${position!.body}`);
+});
+
 test("composeSwingPlayBrief: Position section still shows a real Mark once the quote has synced (markIsSync false)", () => {
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
@@ -4301,7 +4993,7 @@ test("composeSwingPlayBrief: Position section does not call a mark 'unknown' whe
       recommendation: "HOLD",
       entry: 8.15,
       mark: 5.22, // a real, distinct-from-entry mark — proves markIsSync's "no timestamp" is not "no mark"
-      pnlPct: -35.9,
+      pnlPct: -36.0, // canonical livePnlPct: (5.22/8.15-1)*100 = -35.9509..., rounds to -36.0 at 1dp
       peak: -21.5,
       markIsSync: true,
       markAsOf: null,
@@ -4324,22 +5016,22 @@ test("composeSwingPlayBrief: Position section does not call a mark 'unknown' whe
     `Mark must not read "unknown" when a real P&L was derived from it, got: ${position!.body}`,
   );
   assert.match(position!.body, /Mark: \*\*\$5\.22\*\*/, `got: ${position!.body}`);
-  // -36.0%, not the fixture's input -35.9: (5.22-8.15)/8.15 = -35.9509%, which rounds to -36.0 at
-  // 1dp. Tightened by the 2026-10-09 SG-repro fix (see pnlSection's own comment) — P&L is now
-  // redisplayed from the SAME displayed Mark/Entry so hand arithmetic always reconciles; -35.9
-  // was the fixture's hand-picked approximation, not what these exact entry/mark values imply.
+  // P&L shows the canonical pnlPct directly (2026-10-16 Bug 1 fix — see pnlForDisplay's own
+  // comment in play-brief.ts): -36.0%, the real livePnlPct for entry $8.15 / mark $5.22.
   assert.match(position!.body, /P&L: \*\*-36\.0%\*\*/, `got: ${position!.body}`);
 });
 
-test("composeSwingPlayBrief: Position section's P&L reconciles with the displayed Mark, not the raw unrounded mid (live SG repro 2026-10-09)", () => {
+test("composeSwingPlayBrief: Position section's P&L shows the canonical pnlPct, not a cent-rounded-mark recompute (live SG shape, superseded 2026-10-16)", () => {
   // Live repro: GET /api/market/swing/play-brief?playId=SWING:SG (positionId 1396) — entry
   // $0.33, true mid $0.575 (a normal bid/ask midpoint, computed as `livePnlPct(entry, mark)`
   // upstream in banger-lane-merge.ts/adapters.ts BEFORE the mark is rounded to the cent for
-  // display here). Pre-fix this rendered "Mark: **$0.57**" / "P&L: **+74.2%**" — but
-  // (0.57-0.33)/0.33 = +72.7%, not +74.2%, a ~1.5pp gap a member doing the obvious hand-check
-  // on the two numbers directly above/below each other would hit immediately. Fixed: P&L is
-  // redisplayed from the SAME rounded-to-cent mark the Mark: line shows, so the two numbers
-  // always reconcile by hand.
+  // display here), canonical pnlPct +74.2%. The 2026-10-09 SG-repro fix (superseded 2026-10-16 —
+  // see pnlForDisplay's own comment in play-brief.ts) used to redisplay P&L from the cent-rounded
+  // mark ($0.57) instead: (0.57-0.33)/0.33 = +72.7%, a value that disagreed with the canonical
+  // livePnlPct every other surface (the horizons board, PlayTerminal.tsx) shows for the same
+  // position. Live GOOG/KMPR repros (2026-10-16, Bug 1 of the standing Ask Largo x Night Hawk
+  // Swings mandate) proved that recompute approach could disagree with canonical by up to 10
+  // points, so it was dropped — P&L now always shows the canonical `play.pnlPct` directly.
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       ticker: "SG",
@@ -4366,18 +5058,18 @@ test("composeSwingPlayBrief: Position section's P&L reconciles with the displaye
   const position = brief.envelope.sections.find((s) => s.title === "Position");
   assert.ok(position, "expected Position section");
   assert.match(position!.body, /Mark: \*\*\$0\.57\*\*/, `got: ${position!.body}`);
-  // +72.7% is (0.57 - 0.33) / 0.33 — the hand-check a member would do against the displayed
-  // Mark and Entry. The pre-fix body showed +74.2% here (the raw-mid-derived figure), which does
-  // not reconcile with the displayed $0.57 mark.
-  assert.match(position!.body, /P&L: \*\*\+72\.7%\*\*/, `got: ${position!.body}`);
-  assert.doesNotMatch(position!.body, /P&L: \*\*\+74\.2%\*\*/, `got: ${position!.body}`);
+  // +74.2% is the canonical pnlPct — matches the horizons board's own livePnlPct for the same
+  // position/instant. (The old, superseded recompute showed +72.7% here, derived from the
+  // cent-rounded $0.57 mark — a value that disagreed with the board.)
+  assert.match(position!.body, /P&L: \*\*\+74\.2%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+72\.7%\*\*/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Position section's P&L is left untouched when it does not round-trip from the raw mark (executable-lane fallback, not a mark/entry read)", () => {
-  // Guard test for the SG-repro fix above: when `pnlPct` is NOT simply mark/entry-1 (e.g. the
-  // WS-10 executable-lane `exec.pnl_pct` fallback — a bid/ask-fill-based number with a genuinely
-  // different basis from the mid), recomputing from the mark would silently REPLACE a correct
-  // number with a wrong one. `markRoundTripsPnl`'s tolerance guard must refuse to touch this case.
+  // `pnlForDisplay` is always `play.pnlPct` directly (2026-10-16 Bug 1 fix — no recompute at
+  // all), so a non-mark/entry basis (e.g. the WS-10 executable-lane `exec.pnl_pct` fallback — a
+  // bid/ask-fill-based number with a genuinely different basis from the mid) is shown exactly as
+  // given, same as every other case.
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       ticker: "XYZ",
@@ -4405,6 +5097,95 @@ test("composeSwingPlayBrief: Position section's P&L is left untouched when it do
   assert.ok(position, "expected Position section");
   assert.match(position!.body, /Mark: \*\*\$1\.50\*\*/, `got: ${position!.body}`);
   assert.match(position!.body, /P&L: \*\*\+12\.3%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L matches the horizons board's canonical livePnlPct (live GOOG repro, positionId 59, Bug 1 of the standing Ask Largo x Night Hawk Swings mandate, 2026-10-16)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:GOOG&ticker=GOOG&positionId=59 vs
+  // GET /api/market/nighthawk/horizons?view=swings for the IDENTICAL position at the IDENTICAL
+  // instant — horizons reported entryPremium=14.875, contract.mid=15.075, livePnlPct=1.3, but the
+  // live play-brief rendered "Entry: $14.88 / Mark: $15.08 / P&L: +1.4%". The old recompute
+  // rounded ONLY the mark to the cent ($15.075 -> $15.08) and divided by the RAW, un-rounded
+  // entry ($14.875): (15.08/14.875-1)*100 = 1.3782, which rounds to 1.4 at 1dp — crossing the
+  // 1-decimal display boundary away from the canonical 1.3, even though the underlying drift
+  // (1.3782 vs the raw ratio's 1.3445) is tiny. Fix: show the canonical pnlPct (1.3) directly.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "GOOG",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 14.875,
+      mark: 15.075,
+      pnlPct: 1.3,
+      peak: 5.0,
+      trough: -5.0,
+      markIsSync: false,
+      markAsOf: "2026-10-16T01:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$15\.08\*\*/, `got: ${position!.body}`);
+  assert.match(
+    position!.body,
+    /P&L: \*\*\+1\.3%\*\*/,
+    `must match the horizons board's canonical +1.3%, got: ${position!.body}`,
+  );
+  assert.doesNotMatch(position!.body, /P&L: \*\*\+1\.4%\*\*/, `got: ${position!.body}`);
+});
+
+test("composeSwingPlayBrief: Position section's P&L matches the horizons board's canonical livePnlPct even when the cent-rounded mark rounds UP past the position's own trough (live KMPR repro, positionId 1634, Bug 1 of the standing Ask Largo x Night Hawk Swings mandate, 2026-10-16)", () => {
+  // Live repro: GET /api/market/swing/play-brief?playId=SWING:KMPR&ticker=KMPR&positionId=1634 —
+  // entry $0.05, mark $0.025 (exactly the position's own recorded trough: troughPremium=0.025 on
+  // the horizons board). The old recompute's `Math.round(0.025 * 100)` rounds UP to 3 (JS
+  // `Math.round` rounds ties away from zero), so the cent-rounded mark becomes $0.03 and
+  // (0.03/0.05-1)*100 = -40.0% — a full 10-POINT overstatement of the canonical -50.0%
+  // (`GET /api/market/nighthawk/horizons?view=swings`'s livePnlPct for the same position/instant).
+  // This specific case is why a peak/trough BOUNDS check alone (the 2026-10-09 CNXC/EXTR guard)
+  // can never fully close this bug: -40.0% never escapes the [-50, +50] band (KMPR's own
+  // peak/trough), so a bounds-only guard sees nothing wrong — the error hides INSIDE the range,
+  // not outside it. Fix: show the canonical pnlPct (-50.0%) directly, no recompute at all.
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "KMPR",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.05,
+      mark: 0.025,
+      pnlPct: -50.0,
+      peak: 50.0,
+      trough: -50.0,
+      markIsSync: false,
+      markAsOf: "2026-10-15T16:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-16T01:57:00.000Z",
+    sessionDate: "2026-10-16",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /Mark: \*\*\$0\.03\*\*/, `got: ${position!.body}`);
+  assert.match(
+    position!.body,
+    /P&L: \*\*-50\.0%\*\*/,
+    `must match the horizons board's canonical -50.0%, got: ${position!.body}`,
+  );
+  assert.doesNotMatch(position!.body, /P&L: \*\*-40\.0%\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*-50\.0%\*\*/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Position section's P&L never overstates the canonical pnlPct when the cent-rounded Mark rounds UP (live CNXC repro 2026-10-09, Ask Largo standing mandate)", () => {
@@ -4437,6 +5218,14 @@ test("composeSwingPlayBrief: Position section's P&L never overstates the canonic
   // harmless display-precision artifact (present in virtually every financial UI); silently
   // inflating or deflating the one number a member most directly acts on to paper over it is worse
   // than the cosmetic mismatch it "fixes".
+  //
+  // SUPERSEDED (2026-10-16, Bug 1 of the standing Ask Largo x Night Hawk Swings mandate): the
+  // 2026-10-09 fix this test describes was itself a PARTIAL fix — its peak/trough bound could not
+  // catch a case where the cent-rounding error stayed INSIDE the bound (live KMPR repro,
+  // positionId 1634 — see play-brief.ts's `pnlForDisplay` comment). The recompute mechanism this
+  // test originally exercised was removed entirely; P&L now always shows `play.pnlPct` directly,
+  // which trivially satisfies this test's own assertions (the fixture's `pnlPct` already IS the
+  // canonical 41.7%) without needing any bound check at all.
   const brief = composeSwingPlayBrief({
     play: fixturePlay({
       ticker: "CNXC",
@@ -4505,6 +5294,89 @@ test("composeSwingPlayBrief: Position section's P&L never overstates Peak — se
   assert.match(position!.body, /Mark: \*\*\$0\.38\*\*/, `got: ${position!.body}`);
   assert.match(position!.body, /P&L: \*\*\+150\.0%\*\*/, `got: ${position!.body}`);
   assert.doesNotMatch(position!.body, /P&L: \*\*\+153\.3%\*\*/, `got: ${position!.body}`);
+});
+
+// Live repro 2026-10-15 (Ask Largo standing mandate, SWING:ENOV:1739, BANGER-origin TRIM/PARTIAL).
+// Unlike the CNXC/EXTR cases above — where the CANONICAL `play.pnlPct` was always safely inside
+// [trough, peak] and only the CENT-ROUNDING RECOMPUTE escaped it — this is the case the existing
+// guard's fallback (`pnlForDisplay = play.pnlPct`) cannot fix: entry $0.05, mark $0.33 is a clean
+// value with no cent-rounding ambiguity (`markRoundTripsPnl` is TRUE and the recompute reproduces
+// `play.pnlPct` exactly), so the guard fires and "falls back" to the SAME +560.0% it already had —
+// a no-op — while `play.peak` (adapters.ts's `peakDisplay`, off the ledger's own `peak_premium`
+// watermark) independently reads +550.0%, ten points below. Confirmed live via
+// `GET /api/market/swing/play-brief?playId=SWING:ENOV:1739&ticker=ENOV&positionId=1739&status=OPEN`
+// (stable across repeated reads — not a mid-tick race) and cross-checked against the raw ledger row
+// (`GET /api/market/banger/board`: entry_premium 0.05, last_mark 0.33, peak_premium 0.33 — the two
+// premiums agree once rounded to the cent the board API displays at, but the P&L arithmetic here
+// runs on full, un-rounded precision, where a half-cent of difference on a nickel-sized entry
+// premium swings the displayed percentage by a full 10 points). This file's own `markRoundTripsPnl`
+// comment states the contract: "the current mark IS one of the samples peak/trough were latched
+// from, so ... pnlPct always lies inside [trough, peak] by construction" — this test is that
+// contract violated for the canonical value itself, not just the recompute.
+test("composeSwingPlayBrief: Position section's Peak/Trough always bracket the displayed P&L, even when the canonical pnlPct itself (not just the cent-rounding recompute) outruns the ledger's own peak watermark (live ENOV repro 2026-10-15, Ask Largo standing mandate)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "ENOV",
+      status: "TRIM",
+      recommendation: "TRIM",
+      entry: 0.05,
+      mark: 0.33,
+      pnlPct: 560.0,
+      peak: 550.0,
+      trough: 0.0,
+      markIsSync: false,
+      markAsOf: "2026-10-14T20:00:00.000Z",
+      manageAction: "TAKE_PARTIAL",
+    }),
+    asOf: "2026-10-15T03:46:00.000Z",
+    sessionDate: "2026-10-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /P&L: \*\*\+560\.0%\*\*/, `got: ${position!.body}`);
+  // Peak must never read BELOW the P&L it's supposed to bound — the ledger's own stale +550.0%
+  // watermark is widened to the live reading instead of being shown as a false ceiling.
+  assert.match(position!.body, /Peak: \*\*\+560\.0%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Peak: \*\*\+550\.0%\*\*/, `got: ${position!.body}`);
+});
+
+// Symmetric case: a stale TROUGH (worst-excursion watermark) sitting ABOVE the current, more
+// negative P&L — the mirror image of the ENOV repro above, same root cause, opposite direction.
+test("composeSwingPlayBrief: Position section's Trough widens to bracket a P&L that reads BELOW the ledger's stale trough watermark", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      ticker: "ZZZZ",
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.1,
+      mark: 0.02,
+      pnlPct: -80.0,
+      peak: 20.0,
+      trough: -70.0,
+      markIsSync: false,
+      markAsOf: "2026-10-15T15:00:00.000Z",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-10-15T15:05:00.000Z",
+    sessionDate: "2026-10-15",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  assert.match(position!.body, /P&L: \*\*-80\.0%\*\*/, `got: ${position!.body}`);
+  assert.match(position!.body, /Trough: \*\*-80\.0%\*\*/, `got: ${position!.body}`);
+  assert.doesNotMatch(position!.body, /Trough: \*\*-70\.0%\*\*/, `got: ${position!.body}`);
 });
 
 test("composeSwingPlayBrief: Thesis health section carries no bias for a healthy SHORT (Largo C5 — a non-directional quality score must never badge bullish on a bearish trade)", () => {

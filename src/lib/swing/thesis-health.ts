@@ -17,6 +17,7 @@ import type { DeckFactor } from "@/features/nighthawk/command-deck/types";
 import { SWING_SUBLANE_MANAGE } from "./manage";
 import type { SwingSubLane } from "./taxonomy";
 import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
+import { mfeCaptureOutcome } from "./mfe-capture";
 
 export type SwingThesisPillarId =
   | "persistence"
@@ -346,6 +347,14 @@ export interface SwingThesisHealthInput {
   servingSection?: SwingServingSection | null;
   manageAction?: SwingManageAction | null;
   pnlPct?: number | null;
+  /**
+   * Peak favorable premium %-gain reached (`play.peak`, same field `mfeCaptureOutcome` call sites
+   * elsewhere in this codebase already read) — used ONLY to detect a round-trip-past-breakeven
+   * swing (`pnlPct` now negative despite a real positive `peak`) so the aggregate headline below
+   * can stop claiming "unchanged since commit" for a position that visibly has NOT been. See
+   * `roundTripSinceCommit` on the returned payload for the full root-cause account.
+   */
+  peak?: number | null;
   dte?: number | null;
   subLane?: string | null;
   committedAtEt?: string | null;
@@ -446,6 +455,25 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
         ? "Thesis fading — tighten risk or trim into strength."
         : "Thesis broken or opposite — exit before premium catches up.";
 
+  // See `roundTripSinceCommit`'s own doc comment (zerodte/thesis-health.ts) for the full root-cause
+  // account: none of the four non-theta pillars above can detect this kind of swing (their
+  // commit/current scores are both derived from the SAME single live-state input every call), so a
+  // real round-trip through a genuine favorable peak into a current loss needs its own explicit
+  // check rather than relying on `moves` staying non-empty.
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+  // Swings mandate — live GOOG repro, positionId 59): computed ONCE here and read for both fields
+  // below, so `roundTripSinceCommit` and `materialGivebackSinceCommit` can never disagree about
+  // the underlying `mfeCaptureOutcome` call — see `materialGivebackSinceCommit`'s own doc comment
+  // (zerodte/thesis-health.ts) for the full positive-P&L giveback account this field closes.
+  // `capturePct < 75` is the IDENTICAL threshold `play-brief-narrative.ts`'s own giveback
+  // narrative ("Gave back X% of peak") already uses — reused verbatim, never a second,
+  // independently-tuned number, so this field and that narrative line can never drift apart.
+  const giveback = mfeCaptureOutcome(input.pnlPct, input.peak, null);
+  const roundTripSinceCommit = giveback?.kind === "round_trip";
+  const materialGivebackSinceCommit =
+    roundTripSinceCommit || (giveback?.kind === "capture" && giveback.capturePct < 75);
+
   return {
     health,
     entryIndex,
@@ -460,5 +488,7 @@ export function computeSwingThesisHealth(input: SwingThesisHealthInput): ThesisH
     advisory,
     thesisBreakLevel: br.level,
     thesisBreakNote: br.note,
+    roundTripSinceCommit,
+    materialGivebackSinceCommit,
   };
 }

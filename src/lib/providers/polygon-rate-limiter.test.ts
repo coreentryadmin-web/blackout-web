@@ -111,6 +111,83 @@ test("polygonTrackedFetch records a queue timeout via isQueueTimeout before re-t
   assert.match(fn!, /noteQueueAdmissionRecoveryForAlert\(\);/);
 });
 
+// Regression for the 2026-10-15 live incident (FINDINGS.md "Live ALB tail-latency incident" /
+// #4076 comments 6197984130, 6199692739): vector-bead-recorder-leader.ts's continuous 5s/15s
+// universe-wide GEX polling structurally saturated this shared limiter's global_rps AND local_slot
+// admission stages at once, starving OTHER desks' (0DTE/SPX/Thermal) Polygon chain fetches of the
+// same shared budget — two confirmed live-RTH 0DTE discovery/governor outages were time-correlated
+// with it. reserveForLiveTraffic is the fix: a caller tagged via runWithBackgroundPolygonSweep sees
+// a REDUCED ceiling at admission; every other (untagged) caller — which is every existing caller
+// today — sees the ceiling completely unchanged, so this is purely additive until a call site
+// opts in.
+test("reserveForLiveTraffic returns the ceiling UNCHANGED outside runWithBackgroundPolygonSweep (default-safe: every existing caller is unaffected)", async () => {
+  const { reserveForLiveTraffic } = await import("./polygon-rate-limiter");
+  assert.equal(reserveForLiveTraffic(150), 150);
+  assert.equal(reserveForLiveTraffic(48), 48);
+  assert.equal(reserveForLiveTraffic(1), 1);
+});
+
+test("reserveForLiveTraffic reduces the ceiling for a tagged background sweep, by a real (non-trivial) share, never to zero", async () => {
+  const { reserveForLiveTraffic, runWithBackgroundPolygonSweep } = await import("./polygon-rate-limiter");
+  const [rps, concurrency, tiny] = await runWithBackgroundPolygonSweep(async () =>
+    [reserveForLiveTraffic(150), reserveForLiveTraffic(48), reserveForLiveTraffic(1)] as const
+  );
+  assert.ok(rps < 150 && rps > 0, `expected a real reduction below 150, got ${rps}`);
+  assert.ok(concurrency < 48 && concurrency > 0, `expected a real reduction below 48, got ${concurrency}`);
+  // Default share is 0.5 — proves this isn't UW's flat "-1" (which would be a near-no-op at these
+  // ceilings): half of 150 is a real double-digit reservation, not 149.
+  assert.ok(rps <= 90, `default share must reserve a meaningful (not token) fraction of 150, got ${rps}`);
+  assert.equal(tiny, 1, "a ceiling of 1 must never be reserved down to 0 — the sweep can always make SOME progress");
+});
+
+test("reserveForLiveTraffic tagging is isolated per async context — a concurrent untagged caller is never affected by a sweep running elsewhere", async () => {
+  const { reserveForLiveTraffic, runWithBackgroundPolygonSweep } = await import("./polygon-rate-limiter");
+  const [sweepSeen, liveSeen] = await Promise.all([
+    runWithBackgroundPolygonSweep(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return reserveForLiveTraffic(150);
+    }),
+    (async () => {
+      await new Promise((r) => setTimeout(r, 1));
+      return reserveForLiveTraffic(150);
+    })(),
+  ]);
+  assert.ok(sweepSeen < 150, "the tagged call must see a reduced ceiling");
+  assert.equal(liveSeen, 150, "a concurrent call OUTSIDE the tagged context must see the full ceiling, unaffected by the sweep running at the same time");
+});
+
+test("acquireGlobalRedisSlot passes the RESERVED ceiling to the RPS sliding window, not the raw GLOBAL_MAX_RPS (source scan — Redis is not mockable here, mirrors uw-rate-limiter.test.ts's identical convention)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./polygon-rate-limiter.ts", import.meta.url)), "utf8");
+  const callLine = src.split("\n").find((line) => line.includes('"blackout:polygon:rps"'));
+  assert.ok(callLine, "expected to find the blackout:polygon:rps acquireSlidingWindowRedisSlot call site");
+  assert.ok(
+    callLine!.includes("reserveForLiveTraffic(GLOBAL_MAX_RPS)"),
+    `the RPS ceiling must be reservation-aware — got: ${callLine}`
+  );
+  assert.ok(
+    !callLine!.includes(", GLOBAL_MAX_RPS)"),
+    "the raw unreserved GLOBAL_MAX_RPS must not be passed directly any more"
+  );
+});
+
+test("acquireLocalSlot's concurrency admission uses effectiveMaxConcurrency(), not the raw MAX_CONCURRENCY, on both the admit check and the delay branch", () => {
+  const src = readFileSync(fileURLToPath(new URL("./polygon-rate-limiter.ts", import.meta.url)), "utf8");
+  const fn = src.match(/async function acquireLocalSlot[\s\S]*?\n}/)?.[0];
+  assert.ok(fn, "acquireLocalSlot() not found");
+  assert.match(fn!, /const concurrencyCap = effectiveMaxConcurrency\(\);/);
+  assert.match(fn!, /if \(inFlight < concurrencyCap && tokens >= 1\)/);
+  assert.match(fn!, /const delay = inFlight >= concurrencyCap \? 50 : waitMsForToken\(\);/);
+  assert.doesNotMatch(fn!, /MAX_CONCURRENCY/, "no raw MAX_CONCURRENCY reference should remain in the admission loop itself");
+});
+
+test("effectiveMaxConcurrency() composes MAX_CONCURRENCY through reserveForLiveTraffic, mirroring the RPS side", () => {
+  const src = readFileSync(fileURLToPath(new URL("./polygon-rate-limiter.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /function effectiveMaxConcurrency\(\): number \{\s*return reserveForLiveTraffic\(MAX_CONCURRENCY\);\s*\}/
+  );
+});
+
 test("runPolygonPool defaults to a concurrency well below the raw admission ceiling (source scan)", () => {
   // Not a numeric behavioral assertion (the default is env-overridable and this must not pin the
   // env-tunable number) — proves the DEFAULT parameter exists and is distinct from MAX_CONCURRENCY,

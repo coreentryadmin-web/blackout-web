@@ -769,7 +769,7 @@ test("ensureSchema: the watermark backfill only ever WIDENS the bracket, and con
   const src = dbSource();
   const stmt = src.slice(
     src.indexOf("UPDATE swing_positions\n       SET peak_premium"),
-    src.indexOf("swing_shadow_positions (2026-08-06")
+    src.indexOf("FINDINGS 2026-10-17 (Ask Largo standing mandate): `gradeSwingPosition`'s `exit_mark` param")
   );
   assert.ok(stmt.length > 0, "the converge backfill must exist in ensureSchema");
   // GREATEST on the peak / LEAST on the trough: a genuinely-ratcheted extreme can never be narrowed.
@@ -782,6 +782,39 @@ test("ensureSchema: the watermark backfill only ever WIDENS the bracket, and con
   // NEVER fabricates: a row with no entry premium has no observed mark to bracket around, so it is
   // left entirely alone rather than seeded from a mark it never traded at.
   assert.doesNotMatch(stmt, /entry_premium IS NULL/);
+});
+
+// FINDINGS 2026-10-17 (Ask Largo standing mandate): gradeSwingPosition's new exit_mark latch
+// (this session, PR #6109) only protects rows graded AFTER it shipped — every row graded before it
+// has a last_mark that can permanently disagree with its own realized_pnl_pct (PlayTerminal.tsx
+// labels it "Live mark" directly beside the correct P&L% badge). This one-time, converge-in-place
+// backfill repairs the historical population the same way the peak/trough backfills above repair
+// theirs — no live PG in CI, so pinned by source inspection (same idiom as every test above).
+test("ensureSchema: the last_mark backfill corrects a graded row's mark to match its own frozen entry/realized_pnl_pct, and converges to a no-op", () => {
+  const src = dbSource();
+  const stmt = src.slice(
+    src.indexOf("UPDATE swing_positions\n       SET last_mark"),
+    src.indexOf("swing_shadow_positions (2026-08-06")
+  );
+  assert.ok(stmt.length > 0, "the last_mark converge backfill must exist in ensureSchema");
+  // The implied exit premium from the row's OWN frozen entry_premium/realized_pnl_pct — the exact
+  // formula gradeParentFromMark (roll-plan.ts) derives realized_pnl_pct FROM, inverted.
+  assert.match(stmt, /last_mark = entry_premium \* \(1 \+ realized_pnl_pct \/ 100\.0\)/);
+  // last_mark_at is corrected to graded_at (when this value was actually established) — never
+  // NOW() (would misrepresent a historical correction as a fresh live observation) and never left
+  // untouched (would leave a stale timestamp next to a now-corrected mark).
+  assert.match(stmt, /last_mark_at = graded_at/);
+  assert.doesNotMatch(stmt, /last_mark_at = NOW\(\)/);
+  // Scoped to already-graded CLOSED/ROLLED rows only — never touches a still-OPEN position's live mark.
+  assert.match(stmt, /WHERE status IN \('CLOSED', 'ROLLED'\)/);
+  assert.match(stmt, /AND graded_at IS NOT NULL/);
+  // Guarded to a real (>1-cent) disagreement, past ordinary float/rounding noise — a converged row
+  // matches zero rows, safe and cheap to re-run on every boot.
+  assert.match(stmt, /ABS\(COALESCE\(last_mark, 0\) - entry_premium \* \(1 \+ realized_pnl_pct \/ 100\.0\)\) > 0\.01/);
+  // NEVER fabricates: a row with no entry premium or no realized grade has nothing to correct
+  // against, so it is left entirely alone.
+  assert.match(stmt, /AND entry_premium IS NOT NULL/);
+  assert.match(stmt, /AND realized_pnl_pct IS NOT NULL/);
 });
 
 // FINDINGS 2026-09-11 (SEV-2, unbracketed watermarks at EXIT): peak_premium/trough_premium are

@@ -6,8 +6,12 @@ import {
   fitGroupGreekFlowForModel,
   fitGroupGreekFlowRowsForModel,
   fitEarningsRelatedNewsForModel,
+  fitEarningsUwHistoryForModel,
+  fitEarningsEstimatesForModel,
   fitGroupGreekFlowToolResultForModel,
   fitGexLadderForModel,
+  fitOptionsFlowForModel,
+  fitEtfSeriesForModel,
 } from "./market-data-fits";
 
 const TRANSPORT_CAP = 16_384;
@@ -191,6 +195,155 @@ test("fitEarningsRelatedNewsForModel: empty/undefined input never throws", () =>
   assert.deepEqual(fitEarningsRelatedNewsForModel(undefined as unknown as Record<string, unknown>[]).related_news, []);
 });
 
+// Realistic per-row shape, MEASURED live 2026-10-17 against the real UW endpoint
+// (GET /api/earnings/<ticker>): NVDA returned 107 rows averaging 660 bytes/row (~70.6KB total),
+// AAPL ~80.9KB, TSLA ~47.5KB — several times the entire 16k transport cap on this ONE field alone.
+const uwEarningsRow = (i: number) => ({
+  source: i === 0 ? "estimation" : "reported",
+  report_time: i % 2 ? "premarket" : "postmarket",
+  expected_move_perc: i === 0 ? null : "0.05330873875951118285",
+  report_date: `2026-${String((i % 12) + 1).padStart(2, "0")}-15`,
+  ending_fiscal_quarter: `2026-${String((i % 12) + 1).padStart(2, "0")}-31`,
+  expected_move: i === 0 ? null : 11.56 + i,
+  street_mean_est: `${(2 + i * 0.01).toFixed(4)}`,
+  post_earnings_move_1d: i === 0 ? null : "-0.0915",
+  actual_eps: i === 0 ? null : `${(2 + i * 0.01).toFixed(2)}`,
+  post_earnings_move_1w: i === 0 ? null : "-0.04864187586700675706",
+  post_earnings_move_2w: i === 0 ? null : "-0.03",
+  post_earnings_move_3d: i === 0 ? null : "-0.02",
+  pre_earnings_move_1d: i === 0 ? null : "0.01",
+  pre_earnings_move_1w: i === 0 ? null : "0.02",
+  pre_earnings_move_2w: i === 0 ? null : "0.03",
+  pre_earnings_move_3d: i === 0 ? null : "0.015",
+  short_straddle_1w: i === 0 ? null : "0.12",
+  short_straddle_1d: i === 0 ? null : "0.05",
+  long_straddle_1w: i === 0 ? null : "0.13",
+  long_straddle_1d: i === 0 ? null : "0.06",
+});
+
+// Realistic single-row shape, MEASURED live 2026-10-17 against the real UW endpoint
+// (GET /api/companies/<ticker>/earnings-estimates): extractRows cannot unwrap UW's
+// `{ ticker, estimates:[...] }` response (the "estimates" key isn't in its recognized-wrapper
+// list), so the whole response comes back as ONE opaque row — measured ~16KB regardless of ticker
+// (NVDA 15.96KB, AAPL 16.07KB, TSLA 16.01KB, META 16.05KB, GOOG 16.12KB).
+const uwEstimatesSingleRow = (approxBytes = 16_000) => ({
+  ticker: "NVDA",
+  estimates: Array.from({ length: Math.ceil(approxBytes / 260) }, (_, i) => ({
+    date: `202${7 + (i % 3)}-0${(i % 9) + 1}-28`,
+    horizon: i % 2 ? "fiscal quarter" : "fiscal year",
+    revenue_estimate_low: 100_000_000_000 + i,
+    revenue_estimate_high: 200_000_000_000 + i,
+    revenue_estimate_average: 150_000_000_000 + i,
+    revenue_estimate_analyst_count: 40 + i,
+    eps_estimate_low: 2 + i * 0.01,
+    eps_estimate_high: 3 + i * 0.01,
+    eps_estimate_average: 2.5 + i * 0.01,
+    eps_estimate_analyst_count: 40 + i,
+    eps_estimate_revision_down_last_week: null,
+    eps_estimate_revision_up_last_week: null,
+  })),
+});
+
+test("get_earnings OLD unconditional merge shape blows the transport cap — the bug this fix closes", () => {
+  // Reproduces run-tool.ts's PRE-FIX get_earnings merge: unusual_whales/estimates spread straight
+  // in with no fitting at all. This is not a call into any function this repo ships today — it is
+  // the literal shape the live bug had (CloudWatch measured TRUNCATED at 83506/16000 and
+  // 90305/16000 chars), kept here so the fix's necessity stays provable after it ships.
+  const base = {
+    ticker: "NVDA",
+    source: "benzinga_structured",
+    next_report: { report_date: "2026-11-18" },
+    print_history: [],
+    print_history_summary: null,
+    calendar_error: null,
+    related_news: [],
+    related_news_shown: 0,
+    related_news_truncated: false,
+    related_news_max_shown: 5,
+  };
+  const oldShape = {
+    ...base,
+    unusual_whales: Array.from({ length: 107 }, (_, i) => uwEarningsRow(i)),
+    estimates: [uwEstimatesSingleRow()],
+  };
+  assert.ok(
+    JSON.stringify(oldShape).length > TRANSPORT_CAP,
+    `sanity: the old unconditional merge (${JSON.stringify(oldShape).length} chars) must exceed the transport cap to prove the bug`
+  );
+});
+
+test("fitEarningsUwHistoryForModel stays under the transport cap at the measured real size (107 rows) AND a larger one, honoring an already-populated base", () => {
+  for (const rowCount of [107, 400]) {
+    const base = {
+      ticker: "NVDA",
+      source: "benzinga_structured",
+      print_history: Array.from({ length: 6 }, (_, i) => ({ x: i })),
+    };
+    const rows = Array.from({ length: rowCount }, (_, i) => uwEarningsRow(i));
+    const fitted = fitEarningsUwHistoryForModel(base, rows);
+    assert.ok(
+      JSON.stringify({ ...base, ...fitted }).length < TRANSPORT_CAP,
+      `${rowCount}-row case must stay under the transport cap`
+    );
+    assert.equal(fitted.unusual_whales_truncated, rowCount > fitted.unusual_whales_shown);
+  }
+});
+
+test("fitEarningsEstimatesForModel drops the whole estimates blob when the base has already consumed the budget", () => {
+  const bigBase = {
+    unusual_whales: Array.from({ length: 8 }, (_, i) => uwEarningsRow(i)),
+    padding: "x".repeat(13_500), // pushes bigBase itself past LARGO_RESULT_CHAR_BUDGET alone
+  };
+  const fitted = fitEarningsEstimatesForModel(bigBase, [uwEstimatesSingleRow()]);
+  assert.equal(fitted.estimates.length, 0);
+  assert.equal(fitted.estimates_truncated, true);
+});
+
+test("fitEarningsEstimatesForModel keeps the estimates blob when there is room", () => {
+  const smallBase = { ticker: "NVDA" };
+  const fitted = fitEarningsEstimatesForModel(smallBase, [uwEstimatesSingleRow(1000)]);
+  assert.equal(fitted.estimates.length, 1);
+  assert.equal(fitted.estimates_truncated, false);
+});
+
+test("get_earnings full sequential fit (base -> related_news -> unusual_whales -> estimates) stays under the transport cap at full measured real-world size", () => {
+  const earningsBase = {
+    ticker: "NVDA",
+    source: "benzinga_structured",
+    next_report: { report_date: "2026-11-18", confirmed: true },
+    print_history: Array.from({ length: 6 }, (_, i) => ({
+      report_date: `2026-0${i + 1}-15`,
+      eps: 1.2,
+      revenue: 1_000_000,
+      beat: true,
+      session_change_pct: 2.3,
+      next_day_change_pct: 1.1,
+      reaction_basis: "report_session",
+      reaction_pct: 2.3,
+    })),
+    print_history_summary: "6/6 EPS beats over last 6 prints · 83% rev beats of 6 · avg reaction +2.3%",
+    calendar_error: null,
+  };
+  const relatedRaw = Array.from({ length: 15 }, (_, i) => ({
+    title: `Analyst note ${i}`,
+    teaser: "x".repeat(300),
+    published: "2026-10-01",
+    url: "https://example.com",
+    body: "x".repeat(2000),
+  }));
+  const fittedRelatedNews = fitEarningsRelatedNewsForModel(relatedRaw, 5, earningsBase);
+  const baseWithNews = { ...earningsBase, ...fittedRelatedNews };
+  const uwRows = Array.from({ length: 107 }, (_, i) => uwEarningsRow(i));
+  const fittedUw = fitEarningsUwHistoryForModel(baseWithNews, uwRows);
+  const baseWithUw = { ...baseWithNews, ...fittedUw };
+  const fittedEstimates = fitEarningsEstimatesForModel(baseWithUw, [uwEstimatesSingleRow()]);
+  const final = { ...baseWithUw, ...fittedEstimates };
+  assert.ok(
+    JSON.stringify(final).length < TRANSPORT_CAP,
+    `final get_earnings envelope (${JSON.stringify(final).length} chars) must stay under the transport cap`
+  );
+});
+
 // Real live shape (SPX 0DTE, 2026-08-31, captured via vector-rth-quick-check.mjs / a direct
 // GET /api/market/vector/gex-ladder?ticker=SPX&dte=0dte fetch): 200 rows, 5-point strikes,
 // spot 7673.58, kings at 7700 (call) and 7650 (put), 18,858 raw chars — 118% of the 16k cap.
@@ -281,4 +434,214 @@ test("fitGexLadderForModel: under-cap input passes through untruncated", () => {
   assert.equal(fitted.rows_shown, 5);
   assert.equal(fitted.rows_truncated, false);
   assert.equal(fitted.ladder.rows.length, 5);
+});
+
+// Raw UW flow-alert/flow-recent row shape (unusual-whales.ts's parseUwFlowAlert input) —
+// MEASURED TRUNCATED live 2026-10-17: get_options_flow served 33210/16000 chars for a single
+// ticker's flow_alerts (up to 50 rows) + flow_recent (up to 100 rows) combined.
+const uwFlowRow = (i: number, blobChars = 300) => ({
+  ticker: "T",
+  strike: 100 + i,
+  strike_price: 100 + i,
+  option_type: i % 2 ? "call" : "put",
+  expiry: "2026-11-20",
+  premium: i * 1500,
+  total_premium: i * 1500,
+  price: 1.5 + i * 0.01,
+  size: 10 + i,
+  volume: 100 + i * 10,
+  open_interest: 500 + i,
+  alerted_at: `2026-10-17T${String(9 + (i % 7)).padStart(2, "0")}:00:00Z`,
+  alert_rule: i % 3 === 0 ? "RepeatedHits" : "VolumeOI",
+  ask_pct: 0.6,
+  trade_count: 1 + (i % 4),
+  underlying_price: 450.12,
+  blob: "x".repeat(blobChars), // pads toward a realistic raw-row size
+});
+
+const optionsFlowBase = (flowAlerts: Record<string, unknown>[], flowRecent: Record<string, unknown>[]) => ({
+  ticker: "TSLA",
+  source: "unusual_whales",
+  note: "Unusual Whales exclusive — not available on free tiers.",
+  window_hours: 48,
+  helix_session_alerts: 12,
+  intraday_0dte: { call_premium: 1_200_000, put_premium: 800_000, net: 400_000 },
+  alert_premium: { calls: 1_200_000, puts: 800_000, net: 400_000 },
+  bias: "bullish" as const,
+  strike_stacks: Array.from({ length: 24 }, (_, i) => ({ strike: 100 + i, kind: "accumulation" })),
+  flow_alerts: flowAlerts,
+  flow_recent: flowRecent,
+});
+
+test("fitOptionsFlowForModel stays under the transport cap at measured size (50+100 rows) AND at a much larger per-row size", () => {
+  for (const blobChars of [300, 1500]) {
+    const flowAlerts = Array.from({ length: 50 }, (_, i) => uwFlowRow(i, blobChars));
+    const flowRecent = Array.from({ length: 100 }, (_, i) => uwFlowRow(i, blobChars));
+    const raw = optionsFlowBase(flowAlerts, flowRecent);
+    const rawChars = JSON.stringify(raw).length;
+    assert.ok(rawChars > TRANSPORT_CAP, `sanity: fixture (${rawChars} chars) must exceed the transport cap`);
+
+    const fitted = fitOptionsFlowForModel(raw);
+    const fittedChars = JSON.stringify(fitted).length;
+    assert.ok(
+      fittedChars < TRANSPORT_CAP,
+      `blobChars=${blobChars}: fitted payload ${fittedChars} must be under ${TRANSPORT_CAP}`
+    );
+    // At least one of the two arrays must be reported truncated — a payload this big cannot
+    // honestly fit both 50 and 100 full rows under the cap.
+    assert.ok(
+      fitted.flow_alerts_truncated || fitted.flow_recent_truncated,
+      `blobChars=${blobChars}: at least one row field must be truncated`
+    );
+    // The aggregates that ARE this tool's actual answer must never be dropped, regardless of
+    // how the row budget shakes out.
+    assert.deepEqual(fitted.alert_premium, raw.alert_premium);
+    assert.equal(fitted.bias, raw.bias);
+    assert.deepEqual(fitted.strike_stacks, raw.strike_stacks);
+  }
+});
+
+test("fitOptionsFlowForModel: under-cap input (few rows) passes through untruncated", () => {
+  const flowAlerts = Array.from({ length: 3 }, (_, i) => uwFlowRow(i));
+  const flowRecent = Array.from({ length: 3 }, (_, i) => uwFlowRow(i));
+  const raw = optionsFlowBase(flowAlerts, flowRecent);
+  const fitted = fitOptionsFlowForModel(raw);
+  assert.equal(fitted.flow_alerts_shown, 3);
+  assert.equal(fitted.flow_alerts_truncated, false);
+  assert.equal(fitted.flow_recent_shown, 3);
+  assert.equal(fitted.flow_recent_truncated, false);
+});
+
+test("fitOptionsFlowForModel: empty flow arrays never throw and report nothing shown", () => {
+  const raw = optionsFlowBase([], []);
+  const fitted = fitOptionsFlowForModel(raw);
+  assert.equal(fitted.flow_alerts, undefined);
+  assert.equal(fitted.flow_alerts_shown, 0);
+  assert.equal(fitted.flow_alerts_truncated, false);
+  assert.equal(fitted.flow_recent, undefined);
+  assert.equal(fitted.flow_recent_shown, 0);
+  assert.equal(fitted.flow_recent_truncated, false);
+});
+
+test("fitOptionsFlowForModel: honestly reports each field's own total even when truncated", () => {
+  const flowAlerts = Array.from({ length: 50 }, (_, i) => uwFlowRow(i, 1500));
+  const flowRecent = Array.from({ length: 100 }, (_, i) => uwFlowRow(i, 1500));
+  const raw = optionsFlowBase(flowAlerts, flowRecent);
+  const fitted = fitOptionsFlowForModel(raw);
+  assert.equal(fitted.flow_alerts_total, 50);
+  assert.equal(fitted.flow_recent_total, 100);
+});
+
+// Real live shapes, MEASURED 2026-10-17 against the actual UW endpoints (inspect-etf-shapes.mjs):
+// `in-outflow` ~144 bytes/row, newest-first (today, yesterday, ...); `etf-tide` ~151 bytes/row,
+// oldest-first (market open -> now). Row count matches the live IWM response (721 / 390).
+const inOutRow = (i: number) => ({
+  close: (270.44 - i * 0.1).toFixed(2),
+  date: `2026-${String(10 - Math.floor(i / 30)).padStart(2, "0")}-${String(16 - (i % 28)).padStart(2, "0")}`,
+  change: 4_842_428 + i * 1000,
+  volume: 30_771_533 + i * 500,
+  expiration_cycle: i % 3 === 0 ? "monthly" : "weekly",
+  change_prem: String(1_321_982_844 + i * 10_000),
+  is_fomc: i % 17 === 0,
+});
+
+const tideRow = (i: number) => ({
+  timestamp: `2026-10-16T${String(9 + Math.floor((30 + i) / 60)).padStart(2, "0")}:${String((30 + i) % 60).padStart(2, "0")}:00-04:00`,
+  date: "2026-10-16",
+  net_call_premium: 125_000 + i * 50,
+  net_put_premium: 98_000 + i * 40,
+  net_volume: 4_200 + i,
+  underlying_price: 270.44 + i * 0.01,
+});
+
+test("get_etf_flow OLD unconditional merge shape blows the transport cap — the bug this fix closes", () => {
+  // Reproduces run-tool.ts's PRE-FIX get_etf_flow merge: in_outflow/etf_tide spread straight in
+  // with no fitting at all. MEASURED live 2026-10-17: `get_etf_flow TRUNCATED 224052/16000`.
+  const oldShape = {
+    etf: "IWM",
+    quote: { price: 270.44, change_pct: 1.2 },
+    in_outflow: { data: Array.from({ length: 721 }, (_, i) => inOutRow(i)), years: [2023, 2024, 2025, 2026] },
+    etf_tide: { data: Array.from({ length: 390 }, (_, i) => tideRow(i)), date: "2026-10-16" },
+  };
+  assert.ok(
+    JSON.stringify(oldShape).length > TRANSPORT_CAP,
+    `sanity: the old unconditional merge (${JSON.stringify(oldShape).length} chars) must exceed the transport cap to prove the bug`
+  );
+});
+
+test("fitEtfSeriesForModel(newestFirst) keeps in_outflow's own newest-first order untouched", () => {
+  const raw = { data: Array.from({ length: 721 }, (_, i) => inOutRow(i)), years: [2023, 2024, 2025, 2026] };
+  const base = { etf: "IWM", quote: { price: 270.44 } };
+  const fitted = fitEtfSeriesForModel(raw, base, { maxShown: 30, newestFirst: true });
+  assert.ok(
+    JSON.stringify({ ...base, in_outflow: fitted }).length < TRANSPORT_CAP,
+    `fitted envelope must stay under ${TRANSPORT_CAP}`
+  );
+  assert.equal(fitted.data_shown, 30);
+  assert.equal(fitted.data_total, 721);
+  assert.equal(fitted.data_truncated, true);
+  // newestFirst=true means no reversal — kept rows are raw's own first 30 (today backward).
+  assert.deepEqual(fitted.data, raw.data.slice(0, 30));
+  assert.equal((fitted.data as Array<Record<string, unknown>>)[0].date, inOutRow(0).date);
+  // Non-array metadata (years) survives alongside the fitted rows.
+  assert.deepEqual(fitted.years, raw.years);
+});
+
+test("fitEtfSeriesForModel(!newestFirst) reverses an oldest-first series so 'kept' is still the most recent window", () => {
+  const raw = { data: Array.from({ length: 390 }, (_, i) => tideRow(i)), date: "2026-10-16" };
+  const base = { etf: "IWM", quote: { price: 270.44 } };
+  const fitted = fitEtfSeriesForModel(raw, base, { maxShown: 30, newestFirst: false });
+  assert.ok(
+    JSON.stringify({ ...base, etf_tide: fitted }).length < TRANSPORT_CAP,
+    `fitted envelope must stay under ${TRANSPORT_CAP}`
+  );
+  assert.equal(fitted.data_shown, 30);
+  assert.equal(fitted.data_total, 390);
+  assert.equal(fitted.data_truncated, true);
+  // The raw series is oldest-first (index 0 = market open), so the LATEST reading is at the end.
+  // A naive "keep first N" would show the stalest slice (market open) — this must show the end.
+  const kept = fitted.data as Array<Record<string, unknown>>;
+  assert.equal(kept[0].timestamp, raw.data[raw.data.length - 1].timestamp);
+  assert.equal(kept[kept.length - 1].timestamp, raw.data[raw.data.length - 30].timestamp);
+  assert.deepEqual(fitted.date, raw.date);
+});
+
+test("get_etf_flow full sequential fit (base -> in_outflow -> etf_tide) stays under the transport cap at full measured real-world size", () => {
+  const base = { etf: "IWM", quote: { price: 270.44, change_pct: 1.2, volume: 30_771_533 } };
+  const inOutRaw = { data: Array.from({ length: 721 }, (_, i) => inOutRow(i)), years: [2023, 2024, 2025, 2026] };
+  const tideRaw = { data: Array.from({ length: 390 }, (_, i) => tideRow(i)), date: "2026-10-16" };
+
+  const fittedInOut = fitEtfSeriesForModel(inOutRaw, base, { maxShown: 30, newestFirst: true });
+  const baseWithInOut = { ...base, in_outflow: fittedInOut };
+  const fittedTide = fitEtfSeriesForModel(tideRaw, baseWithInOut, { maxShown: 30, newestFirst: false });
+  const final = { ...baseWithInOut, etf_tide: fittedTide };
+
+  assert.ok(
+    JSON.stringify(final).length < TRANSPORT_CAP,
+    `final get_etf_flow envelope (${JSON.stringify(final).length} chars) must stay under the transport cap`
+  );
+  assert.equal(final.in_outflow.data_truncated, true);
+  assert.equal(final.etf_tide.data_truncated, true);
+});
+
+test("fitEtfSeriesForModel: under-cap input (few rows) passes through untruncated", () => {
+  const raw = { data: Array.from({ length: 5 }, (_, i) => tideRow(i)), date: "2026-10-16" };
+  const fitted = fitEtfSeriesForModel(raw, { etf: "QQQ" }, { maxShown: 30, newestFirst: false });
+  assert.equal(fitted.data_shown, 5);
+  assert.equal(fitted.data_total, 5);
+  assert.equal(fitted.data_truncated, false);
+});
+
+test("fitEtfSeriesForModel: empty/missing data array never throws and reports nothing shown", () => {
+  const fitted = fitEtfSeriesForModel({ data: [], years: [] }, { etf: "QQQ" });
+  assert.equal(fitted.data, undefined);
+  assert.equal(fitted.data_shown, 0);
+  assert.equal(fitted.data_total, 0);
+  assert.equal(fitted.data_truncated, false);
+});
+
+test("fitEtfSeriesForModel: a non-object raw response passes through (or empties) rather than throwing", () => {
+  assert.deepEqual(fitEtfSeriesForModel(null, { etf: "QQQ" }), {});
+  assert.deepEqual(fitEtfSeriesForModel(undefined, { etf: "QQQ" }), {});
+  assert.deepEqual(fitEtfSeriesForModel("error string", { etf: "QQQ" }), "error string");
 });

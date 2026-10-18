@@ -365,4 +365,145 @@ describe("computeSwingThesisHealth", () => {
       assert.deepEqual(kept, [], "persistence's manage-driven label must not exempt a Banger-origin row from the full withhold");
     });
   });
+
+  // Live repro 2026-10-14, Ask Largo standing mandate, SWING:INTC:56: peak +15.3% -> trough -36.6%,
+  // currently -36.5% (3.5pts short of the -40 capital-backstop trigger, thesisBreak still "intact" so
+  // persistence never diverges either) -- none of `moves`'s own triggers fire, so the aggregate
+  // headline (`thesisHealthSection`, play-brief.ts) read "unchanged since commit" for a position that
+  // had just round-tripped through one of its most volatile days, directly contradicting the SAME
+  // brief's "Trade manager read" section one scroll down. `roundTripSinceCommit` is this payload's own
+  // independent signal for that exact case -- see its doc comment (zerodte/thesis-health.ts) for the
+  // full structural account of why `moves` alone can never catch it.
+  describe("roundTripSinceCommit", () => {
+    test("true when pnlPct is negative despite a real positive peak (round-tripped past breakeven)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW", "VECTOR", "CATALYST"],
+        thesisBreak: { level: "intact" },
+        pnlPct: -36.5,
+        peak: 15.3,
+        dte: 9,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, true);
+      // Sanity anchor on the exact failure mode: moves stays at its "unchanged" fallback even
+      // though a real round-trip happened, because none of its own triggers (pillar
+      // faded/lost, a non-HOLD manage action, or pnlPct <= -40) fire for this input -- that gap
+      // is precisely why a separate, explicit signal was needed.
+      assert.deepEqual(h!.moves, ["All swing pillars unchanged since commit."]);
+    });
+
+    test("false for a genuinely flat position (no peak ever recorded)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        pnlPct: -5,
+        peak: null,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false);
+    });
+
+    test("false when currently favorable (peak and pnlPct both positive -- no round trip yet)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        pnlPct: 9.1,
+        peak: 9.1,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false);
+    });
+  });
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-16, Bug 4 of the standing Ask Largo x Night Hawk
+  // Swings mandate -- live GOOG repro, positionId 59): `roundTripSinceCommit` above only covers a
+  // round-trip into a NEGATIVE pnlPct. A position that gives back a material fraction of its peak
+  // while STAYING net-positive (live GOOG: peak +9.2%, current +1.4%, capturePct ~15.2 -- well
+  // under the 75% floor `play-brief-narrative.ts`'s own giveback narrative uses) printed the exact
+  // same "unchanged since commit" contradiction, uncaught by `roundTripSinceCommit`'s narrower
+  // `exitPnlPct < 0` test. `materialGivebackSinceCommit` closes this using the IDENTICAL
+  // `capturePct < 75` threshold, reused verbatim rather than a new, independently-tuned number.
+  describe("materialGivebackSinceCommit", () => {
+    test("true when a round-trip already happened (strict superset of roundTripSinceCommit)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        pnlPct: -36.5,
+        peak: 15.3,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, true);
+      assert.equal(h!.materialGivebackSinceCommit, true);
+    });
+
+    test("true for a material giveback while STILL net-positive (live GOOG shape: peak +9.2%, current +1.4%)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        pnlPct: 1.4,
+        peak: 9.2,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false, "pnlPct is still positive -- this is NOT a round-trip");
+      assert.equal(
+        h!.materialGivebackSinceCommit,
+        true,
+        "capturePct = 1.4/9.2*100 ~= 15.2, well under the 75 floor -- a material giveback",
+      );
+    });
+
+    test("false for a shallow, immaterial giveback (capturePct still at/above the 75 floor)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        thesisBreak: { level: "intact" },
+        pnlPct: 18,
+        peak: 20,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.roundTripSinceCommit, false);
+      assert.equal(
+        h!.materialGivebackSinceCommit,
+        false,
+        "capturePct = 18/20*100 = 90 -- well over the 75 floor, not a material giveback",
+      );
+    });
+
+    test("false for a genuinely flat position (no peak ever recorded)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "HOLD",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        pnlPct: -5,
+        peak: null,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      assert.equal(h!.materialGivebackSinceCommit, false);
+    });
+  });
 });

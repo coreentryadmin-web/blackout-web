@@ -51,6 +51,12 @@ let meridianDelayMs = 0;
 let ecosystemDelayMs = 0;
 let ecosystemShouldThrow = false;
 let vectorShouldThrow = false;
+// REGRESSION (Ask Largo standing mandate, 2026-10-15): these two simulate the OUTER
+// `withBriefSourceTimeout(...)` race in play-brief-context.ts rejecting (a real timeout, or any
+// other failure reaching that race) — distinct from `fetchMeridianForTicker`'s own mock above
+// resolving to `null`, which simulates the function's own (never-thrown) "no data" return.
+let meridianShouldThrow = false;
+let meridianPeerShouldThrow = false;
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -199,14 +205,37 @@ mock.module("../bie/vector-full-state", {
 mock.module("./play-brief-meridian", {
   namedExports: {
     fetchMeridianForTicker: async () => {
+      if (meridianShouldThrow) throw new Error("meridian fetch failed");
       if (meridianDelayMs > 0) await delay(meridianDelayMs);
       return null;
     },
+    // `play-brief-context.ts` imports this directly (its outer-timeout catch calls it) — mocking
+    // the whole module means it must be supplied here too, or that import resolves to `undefined`
+    // and the catch handler itself throws. Shape mirrors the real sentinel
+    // (play-brief-meridian.ts); exact `as_of` value doesn't matter to any test in this file.
+    meridianUnavailableSlice: () => ({
+      as_of: "2026-01-01 00:00 ET",
+      items: [],
+      total_matched: 0,
+      unavailable: true,
+    }),
   },
 });
 
 mock.module("./play-brief-meridian-peer", {
-  namedExports: { fetchMeridianPeerForBrief: async () => null },
+  namedExports: {
+    fetchMeridianPeerForBrief: async () => {
+      if (meridianPeerShouldThrow) throw new Error("meridian peer fetch failed");
+      return null;
+    },
+    // Same reason as `meridianUnavailableSlice` above — play-brief-context.ts's outer-timeout
+    // catch for the peer read calls this directly.
+    meridianPeerUnavailableSlice: () => ({
+      available: false,
+      error: "fetch_failed",
+      note: "mock meridian peer failure",
+    }),
+  },
 });
 
 mock.module("./calibration-cache", {
@@ -416,6 +445,82 @@ describe("loadSwingPlayBriefContext: a genuine ecosystem/vector fetch failure is
   });
 });
 
+// REGRESSION (Ask Largo standing mandate, 2026-10-15): `fetchMeridianForTicker`/
+// `fetchMeridianPeerForBrief` never legitimately resolve to `null` on their OWN failure paths —
+// both catch their own errors internally and return a typed `{unavailable/available: false, ...}`
+// sentinel so `collectBriefUnavailableSources` (play-brief-absence.ts) can disclose the failure.
+// But the OUTER `withBriefSourceTimeout(...)` race this file wraps around each call used to
+// `.catch(() => null)` — collapsing a timeout (or any other rejection reaching that race) to a
+// bare `null`, indistinguishable from `ctx.meridian`/`ctx.meridianPeer` legitimately holding no
+// data. `collectBriefUnavailableSources` has no check at all for a null `ctx.meridian`
+// (`null?.unavailable` is `undefined`), so this silently dropped the ONE failure mode this race
+// exists to bound — the live repro-driving performance fix (2026-09-22) accidentally reopened the
+// exact absence-disclosure gap `ecosystemFetchFailed`/`vectorFetchFailed` were built to close for
+// the sibling reads in the SAME file. Proven here by rejecting the (mocked) underlying fetch
+// directly rather than waiting out the real 8s timeout — `withBriefSourceTimeout` forwards a
+// rejection from the wrapped promise identically to its own timer firing, so this exercises the
+// same `.catch()` chain the real timeout does.
+describe("loadSwingPlayBriefContext: a Meridian/Meridian-peer outer-timeout rejection surfaces as a real unavailable sentinel, never a bare null", () => {
+  let mod: typeof import("./play-brief-context");
+
+  before(async () => {
+    mod = await import("./play-brief-context");
+  });
+
+  it("converges ctx.meridian on the unavailable sentinel instead of null when the outer race rejects", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+    meridianShouldThrow = true;
+    meridianPeerShouldThrow = false;
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+      assert.ok(ctx, "context must still resolve despite the fetch failure");
+      assert.notEqual(
+        ctx!.meridian,
+        null,
+        "a real outer-race rejection must not collapse to the SAME null a legitimate empty read produces",
+      );
+      assert.equal(
+        ctx!.meridian?.unavailable,
+        true,
+        "must carry the same disclosed-failure sentinel fetchMeridianForTicker's own internal catch uses",
+      );
+    } finally {
+      meridianShouldThrow = false;
+    }
+  });
+
+  it("converges ctx.meridianPeer on the unavailable sentinel instead of null when the outer race rejects", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+    meridianShouldThrow = false;
+    meridianPeerShouldThrow = true;
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({ playId: "SWING:TEST", ticker: "TEST" });
+      assert.ok(ctx, "context must still resolve despite the fetch failure");
+      assert.notEqual(
+        ctx!.meridianPeer,
+        null,
+        "a real outer-race rejection must not collapse to the SAME null a legitimate " +
+          "no-nearby-earnings-catalyst read produces",
+      );
+      assert.equal(
+        ctx!.meridianPeer?.available,
+        false,
+        "must carry the same disclosed-failure sentinel fetchMeridianPeerForBrief's own internal catch uses",
+      );
+    } finally {
+      meridianPeerShouldThrow = false;
+    }
+  });
+});
+
 // BUG FOUND (Ask Largo standing mandate, 2026-10-08, live-audit cycle): `loadRollHistory`/
 // `resolveRootPositionId` (play-brief-context.ts) resolve a reviewed play's ledger row with a
 // bare `fetchSwingPositionById(positionId)` — a flat `swing_positions` lookup by numeric id, with
@@ -510,28 +615,33 @@ describe("loadSwingPlayBriefContext: roll history is ticker-identity-checked (ba
   });
 });
 
-// BUG FIX (2026-10-09, Ask Largo standing mandate — live CTVA repro, positionId 1483): see
-// `reconcileLivePnlPctWithDisplayMark`'s own doc comment (play-brief-resolve-pure.ts) for the full
-// live repro. `ctx.play.pnlPct` is what EVERY section downstream reads for "current P&L" framing
-// (not just the Position section's own locally-reconciled display line) — this proves the loader
-// itself hands out the reconciled number, not the raw one, so every section composed from `ctx.play`
-// agrees with the "Mark:" line a member can see and hand-check.
-describe("loadSwingPlayBriefContext: pnlPct is reconciled with the displayed (rounded-to-cent) mark", () => {
+// BUG FIX (2026-10-16, Ask Largo standing mandate — Bug 1 of the standing "Ask Largo x Night
+// Hawk Swings" ownership mandate, live GOOG/KMPR repro). This SUPERSEDES the 2026-10-09 CTVA-shape
+// test that used to sit here (which asserted the OPPOSITE: that `ctx.play.pnlPct` gets REWRITTEN
+// to a cent-rounded-mark recompute). That recompute turned out to be able to disagree with the
+// single canonical `pnlPct` every OTHER surface agrees on (the horizons board's own `livePnlPct`,
+// PlayTerminal.tsx's Command Deck card) by up to 10 percentage points — see
+// `play-brief.ts`'s `pnlForDisplay` comment for the full two-repro (GOOG + KMPR) write-up. Fix:
+// `loadSwingPlayBriefContext` no longer reconciles `pnlPct` at all — `ctx.play.pnlPct` must always
+// be exactly the value `resolveSwingPlayForBrief` resolved, unchanged, so every section downstream
+// reads the one number that already matches the board.
+describe("loadSwingPlayBriefContext: pnlPct is the canonical livePnlPct, never a cent-rounded-mark recompute", () => {
   let mod: typeof import("./play-brief-context");
 
   before(async () => {
     mod = await import("./play-brief-context");
   });
 
-  it("replaces the raw mark/entry-1 pnlPct with the cent-rounded-mark recompute (live CTVA shape)", async () => {
+  it("passes the canonical pnlPct through unchanged even when the mark lands on a fractional cent (live CTVA shape)", async () => {
     mockOpenSwingRows = [];
     mockBangerRows = [];
     bangerEngineEnabled = true;
     bangerFetchShouldThrow = false;
 
-    // Live values: entry $0.23, raw mid $0.175 (displays as "Mark: $0.18"), raw livePnlPct -23.9
-    // (= 0.175/0.23-1 * 100, unrounded). The reconciled figure a member can hand-check against the
-    // displayed $0.18 mark is (0.18/0.23-1)*100 = -21.7391...%.
+    // Live values: entry $0.23, raw mid $0.175 (displays as "Mark: $0.18"), canonical livePnlPct
+    // -23.9 (horizons board: GET /api/market/nighthawk/horizons?view=swings). The old recompute
+    // would have shown -21.7391...% here (0.18/0.23-1)*100 — a value that disagreed with the
+    // board. The fix is that `ctx.play.pnlPct` must stay exactly -23.9, matching the board.
     mockResolvedPlay = {
       ...DEFAULT_RESOLVED_PLAY,
       id: "SWING:CTVA:1483",
@@ -551,30 +661,22 @@ describe("loadSwingPlayBriefContext: pnlPct is reconciled with the displayed (ro
         positionId: 1483,
       });
       assert.ok(ctx, "context must still resolve");
-      assert.ok(ctx!.play.pnlPct != null, "pnlPct must not be dropped");
-      assert.ok(
-        Math.abs(ctx!.play.pnlPct! - -21.7391) < 0.01,
-        `expected the cent-rounded-mark recompute (~-21.74), got ${ctx!.play.pnlPct}`,
-      );
-      assert.notEqual(
-        Math.round(ctx!.play.pnlPct! * 10),
-        -239,
-        "must not still be the raw, unreconciled -23.9 the live repro served",
+      assert.equal(
+        ctx!.play.pnlPct,
+        -23.9,
+        "pnlPct must stay exactly the canonical board value, never a cent-rounded-mark recompute",
       );
     } finally {
       mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
     }
   });
 
-  it("leaves pnlPct untouched when it is not a plain mark/entry-1 read (WS-10 executable-lane guard)", async () => {
+  it("passes the canonical pnlPct through unchanged for a non-mark/entry basis (WS-10 executable-lane shape)", async () => {
     mockOpenSwingRows = [];
     mockBangerRows = [];
     bangerEngineEnabled = true;
     bangerFetchShouldThrow = false;
 
-    // mark/entry-1 implies +50%, but pnlPct carries a genuinely different basis (e.g. exec.pnl_pct)
-    // far outside ordinary rounding noise — must be left exactly as given, same guard as
-    // play-brief.ts's own `markRoundTripsPnl`.
     mockResolvedPlay = {
       ...DEFAULT_RESOLVED_PLAY,
       id: "SWING:XYZ:9001",
@@ -592,7 +694,47 @@ describe("loadSwingPlayBriefContext: pnlPct is reconciled with the displayed (ro
         positionId: 9001,
       });
       assert.ok(ctx, "context must still resolve");
-      assert.equal(ctx!.play.pnlPct, 12.3, "a non-mark/entry pnlPct basis must not be rewritten");
+      assert.equal(ctx!.play.pnlPct, 12.3, "pnlPct must be passed through exactly as resolved");
+    } finally {
+      mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
+    }
+  });
+
+  it("live KMPR repro (positionId 1634): canonical -50.0% trough-mark pnlPct must not become -40.0% (Bug 1)", async () => {
+    mockOpenSwingRows = [];
+    mockBangerRows = [];
+    bangerEngineEnabled = true;
+    bangerFetchShouldThrow = false;
+
+    // Live values (2026-10-16): entry $0.05, mark $0.025 — exactly the position's own recorded
+    // trough. The old recompute rounded $0.025 UP to $0.03 (JS `Math.round` ties away from zero)
+    // and divided by the RAW entry, producing -40.0% — a 10-point overstatement that the old
+    // peak/trough guard could not catch because -40.0% never escaped the [-50, +50] band.
+    // Canonical `livePnlPct` (horizons board) for this exact position/instant is -50.0%.
+    mockResolvedPlay = {
+      ...DEFAULT_RESOLVED_PLAY,
+      id: "SWING:KMPR:1634",
+      ticker: "KMPR",
+      status: "OPEN",
+      entry: 0.05,
+      mark: 0.025,
+      pnlPct: -50.0,
+      peak: 50.0,
+      trough: -50.0,
+    };
+
+    try {
+      const ctx = await mod.loadSwingPlayBriefContext({
+        playId: "SWING:KMPR:1634",
+        ticker: "KMPR",
+        positionId: 1634,
+      });
+      assert.ok(ctx, "context must still resolve");
+      assert.equal(
+        ctx!.play.pnlPct,
+        -50.0,
+        "pnlPct must stay exactly the canonical -50.0%, matching the horizons board",
+      );
     } finally {
       mockResolvedPlay = DEFAULT_RESOLVED_PLAY;
     }

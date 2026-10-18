@@ -16,6 +16,8 @@ import {
   darkPoolBias,
   fetchUwFlow0dte,
   isDegenerateFlowAggregate,
+  fetchUwMacroIndicators,
+  fetchUwGreekExposureExpiry,
 } from "./unusual-whales";
 import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
@@ -169,6 +171,100 @@ test("fetchUwIvRank caches within TTL: two sequential calls → ONE underlying f
     if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
     if (prevTtl === undefined) delete process.env.UW_IV_RANK_CACHE_SEC; else process.env.UW_IV_RANK_CACHE_SEC = prevTtl;
   }
+});
+
+// ── fetchUwGreekExposureExpiry: NO cache layer at all (the 2026-10-18 tail-latency fix) ────────
+// WHY: live-measured ALB TargetResponseTime p99=8.94s/Max=43.2s, recurring every 13-51min, traced
+// to [api-queue-timing] bursts naming flow-per-expiry + greek-exposure/expiry + net-flow/expiry
+// together. Unlike its two pool-siblings in the SAME runUwPooled fan-out (fetchDeskEnrichmentFields
+// / buildSpxDeskFlow, spx-desk.ts) — fetchUwFlowPerExpiry (Redis L2, 120s) and fetchUwNetFlowExpiry
+// (this file's own L1, 120s) — fetchUwGreekExposureExpiry had NO cache anywhere. Its wrapper
+// (loadSpxDeskFlow, spx-desk-loader.ts) is cached for only 2s, matching the client's own live SWR
+// poll interval, so under RTH/extended-hours polling this was the highest-frequency fully-live UW
+// call in the app (~every 2s), competing for the same cluster-wide rate-limiter budget the periodic
+// economy/SPX-cluster enrichment bursts also need. Same pattern as the fetchUwIvRank test above:
+// two sequential calls within TTL issue exactly ONE underlying fetch.
+test("fetchUwGreekExposureExpiry caches within TTL: two sequential calls → ONE underlying fetch", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  const prevRedis = process.env.REDIS_URL;
+  const prevTtl = process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC;
+  process.env.UW_API_KEY = "test-uw-key";
+  delete process.env.REDIS_URL;
+  process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC = "120";
+
+  let fetchCount = 0;
+  mock.method(globalThis, "fetch", async () => {
+    fetchCount += 1;
+    return new Response(JSON.stringify({ data: [{ expiry: "2026-10-24", call_gamma: "100", put_gamma: "-50" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  try {
+    const a = await fetchUwGreekExposureExpiry("GEXPIRYCACHETEST");
+    const b = await fetchUwGreekExposureExpiry("GEXPIRYCACHETEST");
+    assert.deepEqual(a, b, "identical cached rows served");
+    assert.equal(fetchCount, 1, "second call must be served from cache — only ONE upstream fetch");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+    if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
+    if (prevTtl === undefined) delete process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC; else process.env.UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC = prevTtl;
+  }
+});
+
+// ── fetchUwMacroIndicators: sequential fan-out stacks admission waits additively (2026-10-15) ──
+// WHY: live-measured in production the same day this test was written — `[uw] queue wait` log
+// lines tagged "(background sweep)" showed TWO of the THREE UW_MACRO_INDICATORS (GDP, CPI,
+// UNRATE) each independently paying 13.6s/17.3s rate-limiter admission waits inside the SAME
+// `fetchDeskEnrichmentFields` pass, stacking to ~31s of pure queue dead time for just these two
+// indicators — coincident, minute-for-minute, with that session's recurring AWS/ApplicationELB
+// TargetResponseTime Max spikes to 40-43s. Root cause: `fetchUwMacroIndicators` fanned its 3
+// indicator fetches out through `runUwSequential` (`await task()` one at a time) rather than
+// `runUwPool` (this file's sibling functions already use the pooled form for every other
+// latency-sensitive fan-out — see `fetchDeskEnrichmentFields`'s own call site and `runUwPooled`'s
+// doc comment: "latency-critical lanes (live SPX desk)... batch jobs (nighthawk dossiers) can
+// stay on runUwSequential"). `fetchUwMacroIndicators` is shared by BOTH a latency-critical caller
+// (spx-desk.ts's desk-enrichment pool) and a batch one (nighthawk market-wide), so it had
+// defaulted to the slower, serializing shape for both. Sequential execution means each
+// indicator's full rate-limiter admission wait is paid back-to-back rather than overlapped — with
+// 3 indicators this can nearly TRIPLE the worst-case wall time under real contention, exactly
+// the shape of the measured incident. Switching its internal fan-out to the pooled primitive
+// (concurrency = all 3, since the list is always small and fixed) lets their admission waits
+// overlap instead of stack, with no behavior change for either caller (same results, same
+// resilience — each task still independently `.catch(() => null)`-protected).
+//
+// This is a SOURCE-SCAN test (same established pattern as the adjacent "readUwCache... (source
+// scan)" test above), not a timing-based behavioral one — deliberately. A behavioral timing test
+// here would have to go through the REAL throttleUw/acquireSlot admission stack (there is no
+// mockable seam between `fetchUwMacroIndicators` and the rate limiter: `fetchUwEconomyIndicator`/
+// `uwGetSafe` are internal, non-exported same-module functions), and that stack's own concurrency
+// ceiling is itself environment-sensitive: `effectiveMaxConcurrency()` divides
+// `UW_GLOBAL_MAX_CONCURRENCY` (default 2) by `REPLICA_COUNT` whenever Redis is unavailable (as in
+// any sandbox/CI run without a live Redis) — e.g. this very sandbox exports `REPLICA_COUNT=5`
+// ambiently, which collapses the degraded local concurrency ceiling to 1 regardless of whether the
+// caller dispatches its 3 tasks sequentially or pooled. Under a concurrency-1 ceiling, pooled and
+// sequential dispatch are OBSERVATIONALLY IDENTICAL from outside (the shared semaphore itself
+// forces serialization no matter how the caller scheduled its promises) — a timing assertion would
+// therefore flip between RED and GREEN depending on an unrelated ambient env var, not on whether
+// this fix is actually in place. The fix is a real, meaningful improvement wherever more than one
+// concurrency slot is actually available (production, with Redis up, uses the real cluster-wide
+// `UW_GLOBAL_MAX_CONCURRENCY` ceiling un-divided) — this test instead pins the concrete code shape
+// that makes that true, so it stays both deterministic and still fails if someone reverts the fix
+// or "fixes" it back to sequential for a seemingly unrelated reason.
+test("fetchUwMacroIndicators: fans its indicators out through the pooled primitive, not the sequential one (source scan)", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/unusual-whales.ts"), "utf8");
+  assert.match(
+    src,
+    /function fetchUwMacroIndicators[\s\S]*?runUwPool\(/,
+    "fetchUwMacroIndicators must fan its indicator fetches out through runUwPool so their rate-limiter admission waits can overlap instead of stacking serially (live-measured 2026-10-15: GDP+CPI sequential admission waits of 13.6s/17.3s inside one fetchDeskEnrichmentFields pass, coincident with that session's 40-43s ALB TargetResponseTime Max spikes)"
+  );
+  assert.doesNotMatch(
+    src,
+    /function fetchUwMacroIndicators[\s\S]*?runUwSequential\(/,
+    "fetchUwMacroIndicators must not fall back to the sequential fan-out — see the block comment above the function for why stacking (not just slow upstream) was the live-measured root cause"
+  );
 });
 
 // ── 0DTE flow-per-strike zero-cache poisoning (2026-10-14) ──────────────────────────────────

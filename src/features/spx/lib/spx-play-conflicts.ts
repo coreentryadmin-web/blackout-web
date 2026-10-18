@@ -37,14 +37,23 @@ function isHardOpposingFactor(factor: SpxSignalFactor): boolean {
 }
 
 function gexOpposed(desk: SpxDeskPayload, direction: "long" | "short"): boolean {
+  // gamma_flip!=null guard (regression 2026-10-17), scoped to the regime clause ONLY: spx-desk.ts
+  // falls back to a stale sticky gamma_regime whenever the live flip resolves "unknown" (gamma_flip
+  // null), and above_gamma_flip defaults to false in that same case — so an unguarded read here
+  // would treat a leftover prior-cycle "amplification" label as a live GEX conflict with zero
+  // current evidence behind it. The real γ-regime signal factor (spx-signals.ts) already guards the
+  // identical read on `gamma_flip != null`; this mirrors that established pattern. The gex_walls
+  // proximity check below is an independent signal (derived from the strike ladder, not from
+  // gamma_flip/gamma_regime) and must keep firing regardless of flip state.
+  const regimeOpposed = desk.gamma_flip != null && desk.gamma_regime === "amplification";
   if (direction === "long") {
     return (
-      (desk.gamma_regime === "amplification" && !desk.above_gamma_flip) ||
+      (regimeOpposed && !desk.above_gamma_flip) ||
       Boolean(desk.gex_walls?.some((w) => w.kind === "resistance" && Math.abs(desk.price - w.strike) <= 12))
     );
   }
   return (
-    (desk.gamma_regime === "amplification" && desk.above_gamma_flip) ||
+    (regimeOpposed && desk.above_gamma_flip) ||
     Boolean(desk.gex_walls?.some((w) => w.kind === "support" && Math.abs(desk.price - w.strike) <= 12))
   );
 }

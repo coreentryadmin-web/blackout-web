@@ -764,6 +764,55 @@ test("enrich: factor_breakdown omits (not zero-fills) subscores the scorer never
   assert.ok(!("skew" in (e.factor_breakdown ?? {})));
 });
 
+// Ask Largo standing mandate (2026-10-14, live 5-engine monitor cycle, real-board repro):
+// scoreCandidate (scorer.ts) folds a SEVENTH component — momentum_score — into `preRegimeSum`
+// (and therefore `total`/dossier_score) and even counts it in `confirmingSignals`
+// (`momentumScore >= 5`), but neither `SetupDossierView["scored"]` nor enrichSetup's
+// factor_breakdown mapping ever declared or read it — the exact same "real score component with
+// no rendered line item" defect already fixed twice in this file (the 9-8 six-subscore gap above
+// and the 9-9 iv/anomaly/flow-conviction/regime-adjustment gap above), recurring because this one
+// field was added to scorer.ts without the same mirroring pass. deterministic-edition.ts (Legacy's
+// two factor_breakdown builders — the "already-shipped mapping" the 9-8 comment above references)
+// already carries `momentum: scored.momentum_score` at both its own call sites; board.ts is the
+// one surface that drifted out of sync again. Live measured 2026-10-14 ~19:52 ET: QQQ
+// factor_breakdown summed to 56.2 against a live dossier_score of 61 (gap 4.8), SMH 56.0 vs 61
+// (gap 5.0), SPY 25.6 vs 31 (gap 5.4), IWM 39.6 vs 45 (gap 5.4) — all FLOW-origin setups with a
+// real nonzero momentum_score never surfaced; SPXW/MU/TSLA (momentum ≈ 0 that cycle) showed no gap.
+test("enrich: factor_breakdown carries momentum_score and sums to dossier_score (7th scorer component)", () => {
+  const dossier = fakeDossier({
+    scored: {
+      score: 66,
+      direction: "long",
+      conviction: "HIGH",
+      flow_score: 30,
+      tech_score: 18,
+      pos_score: 10,
+      news_score: 8,
+      smart_money_score: 12,
+      momentum_score: -12,
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.factor_breakdown, {
+    flow: 30,
+    tech: 18,
+    positioning: 10,
+    news: 8,
+    smart_money: 12,
+    momentum: -12,
+  });
+  const sum = Object.values(e.factor_breakdown ?? {}).reduce((a, b) => a + b, 0);
+  assert.equal(sum, e.dossier_score, "factor_breakdown must reconcile to dossier_score once momentum is included");
+});
+
+// Same "absent vs real zero" convention as the other optional dimensions: a dossier whose scorer
+// never evaluated momentum (field absent, matching every pre-existing `scored` fixture in this
+// file) must not render a fabricated "momentum: 0" bar.
+test("enrich: factor_breakdown omits momentum when the scorer never returned it", () => {
+  const e = enrichSetup(baseSetup(), fakeDossier());
+  assert.ok(!("momentum" in (e.factor_breakdown ?? {})));
+});
+
 test("enrich: earnings + hot-news extras pass through", () => {
   const e = enrichSetup(baseSetup(), null, {
     earnings: { when: "afterhours", report_date: "2026-07-06", expected_move_pct: 8.2 },
@@ -1917,6 +1966,92 @@ test("mergeSameTickerDiscovery: opposing-dir score tie prefers CONDOR structure"
   assert.ok(winner.origin_direction_conflict);
 });
 
+test("mergeSameTickerDiscovery: opposing-dir fight where INCOMING wins must preserve the losing kept FLOW origin's real gross_premium/flow_quality (2026-10-16 evidence-drop)", () => {
+  // Reproduces the live GOOGL 2026-10-01 shape: FLOW discovers long at score 49 with real
+  // premium; BREAKOUT discovers short at score 50 and wins the direction fight. Before the fix,
+  // `mergeSameTickerDiscovery`'s opposing-direction branch only ever called
+  // `stampFlowEvidenceFromIncoming` on the SAME-direction paths — the fight branch dropped the
+  // losing FLOW origin's own gross_premium/flow_quality entirely, because the final object here
+  // is `incoming` (BREAKOUT), which carries gross_premium=0 by construction. That zeroed premium
+  // then trips `scoreFlowRail`'s own suppression gate downstream (< $200k AND quality < 50 →
+  // null), so the real disagreement never reaches `disagreeing_rails` even though
+  // `origin_contributions`/`buildOriginMaps` correctly recorded the conflict.
+  const flow = {
+    ticker: "GOOGL",
+    direction: "long",
+    discovery_origin: ["FLOW"],
+    score: 49,
+    play_type: "DIRECTIONAL",
+    gross_premium: 620_000,
+    prints: 4,
+    sweep_pct: 0.6,
+    side_dominance: 0.7,
+    aggression: 0.55,
+    flow_quality: { score: 54, reason: "building call tape" },
+    new_money: true,
+    spike: false,
+    recent_premium_30m: 200_000,
+    net_premium: 600_000,
+    first_seen: "2026-10-01T13:35:00Z",
+    last_seen: "2026-10-01T13:50:00Z",
+  } as unknown as EnrichedZeroDteSetup;
+  const breakout = {
+    ticker: "GOOGL",
+    direction: "short",
+    discovery_origin: ["BREAKOUT"],
+    score: 50,
+    play_type: "DIRECTIONAL",
+    gross_premium: 0, // breakouts carry no flow evidence by construction (board.ts's own comment)
+  } as unknown as EnrichedZeroDteSetup;
+
+  const merged = mergeSameTickerDiscovery(flow, breakout);
+  assert.equal(merged.direction, "short", "BREAKOUT's higher score wins the direction fight");
+  assert.ok(
+    merged.discovery_origin.includes("FLOW"),
+    "the losing FLOW origin is still unioned onto discovery_origin"
+  );
+  assert.equal(
+    merged.gross_premium,
+    620_000,
+    "the losing FLOW origin's real gross_premium must survive the fight, not be zeroed out by the winning BREAKOUT setup"
+  );
+  assert.ok(merged.flow_quality, "the losing FLOW origin's flow_quality must also survive the fight");
+  assert.equal((merged.flow_quality as { score: number }).score, 54);
+});
+
+test("mergeSameTickerDiscovery: opposing-dir fight where KEPT wins must preserve the losing incoming FLOW origin's real gross_premium/flow_quality (2026-10-16 evidence-drop)", () => {
+  // Mirror case: this time the non-FLOW origin (PIN) is seated first (kept) and wins the fight on
+  // a higher score, while the incoming FLOW origin loses. Pre-fix, the "kept wins" branch only
+  // calls `noteOriginDirectionConflict` — it never pulls the losing incoming FLOW's own evidence
+  // onto `kept`, so `kept.gross_premium` stays at whatever PIN's setup carried (0 by construction).
+  const pin = {
+    ticker: "AMD",
+    direction: "short",
+    discovery_origin: ["PIN"],
+    score: 55,
+    play_type: "DIRECTIONAL",
+    gross_premium: 0,
+  } as unknown as EnrichedZeroDteSetup;
+  const flow = {
+    ticker: "AMD",
+    direction: "long",
+    discovery_origin: ["FLOW"],
+    score: 50,
+    play_type: "DIRECTIONAL",
+    gross_premium: 540_000,
+    flow_quality: { score: 51, reason: "call sweep cluster" },
+  } as unknown as EnrichedZeroDteSetup;
+
+  const merged = mergeSameTickerDiscovery(pin, flow);
+  assert.equal(merged.direction, "short", "PIN's higher score wins the direction fight (kept retained)");
+  assert.ok(merged.discovery_origin.includes("FLOW"));
+  assert.equal(
+    merged.gross_premium,
+    540_000,
+    "the losing incoming FLOW origin's real gross_premium must survive onto the kept PIN setup"
+  );
+  assert.ok(merged.flow_quality, "the losing incoming FLOW origin's flow_quality must also survive");
+});
 
 test("setups (9-1): a tape with NO aggressor metadata (all ask_pct missing) is rejected, not committed on the 0.5 default", () => {
   // Every print lacks ask_pct → each gets the neutral 0.5 weight → aggression share ≈ 0.5 clears the

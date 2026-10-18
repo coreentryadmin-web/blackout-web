@@ -6,7 +6,7 @@ import {
   fetchSpxAdminRollups,
 } from "@/lib/db";
 import { observeSpxPlayVoiceTransitions } from "@/features/spx/lib/spx-voice-feed-store";
-import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { loadMergedSpxDesk, peekMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchRecentSpxSnapshots } from "@/features/spx/lib/spx-signal-log";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { readSpxPlaySnapshot } from "@/features/spx/lib/spx-evaluator";
@@ -15,6 +15,8 @@ import { resolveGuardedPlaybookMatch } from "@/features/spx/lib/playbook-match-r
 import { buildPlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-store";
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
+import { isPremarketPlanningWindow, isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
+import { loadOpenPlay } from "@/features/spx/lib/spx-play-store";
 import { degradedPlayPayload } from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
 import { isSpxPlaySnapshotFreshEnough } from "@/features/spx/lib/spx-play-freshness";
@@ -84,8 +86,61 @@ export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
   return roundFloats(summarizeSpxDesk(merged));
 }
 
+/** Shared closed-market fast path — builds the honest "Session closed" snapshot from an
+ *  already-loaded (fresh OR peeked-stale, caller's choice) merged desk bundle. Returns null when
+ *  a position is still open after the close (needs the real evaluation below to force-settle
+ *  it) — mirrors evaluateSpxPlayCore's own `!desk.market_open && !premarket` gate. */
+async function closedMarketPlaySnapshot(
+  merged: Awaited<ReturnType<typeof loadMergedSpxDesk>>["merged"]
+): Promise<Awaited<ReturnType<typeof readSpxPlaySnapshot>> | null> {
+  const openAfterClose = merged.price > 0 ? await loadOpenPlay() : null;
+  if (openAfterClose) return null;
+  const play = await readSpxPlaySnapshot(merged, null, {});
+  void observeSpxPlayVoiceTransitions(play, todayEtYmd()).catch(() => {});
+  return play;
+}
+
 async function evaluateSpxPlayState() {
+  // MEASURED LIVE 2026-10-18: even after the 2026-10-17 fix below skipped
+  // buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch on a closed-market read,
+  // the fast path still depended on `merged` from the UNCONDITIONAL `await loadMergedSpxDesk()`
+  // just below — and on a cold `spx-merged:<date>` cache (reliably cold off-hours/weekends, since
+  // nothing RTH-gated keeps it warm then), that load alone can legitimately take up to
+  // deskBootstrapMaxBlockMs() (3s default), which already exceeds the OUTER
+  // playMemberReadMaxBlockMs() budget (800ms) wrapping this whole function — so the honest
+  // closed-market branch was STILL never reached; `getSpxPlayState()`'s own withServerCache threw
+  // ServerCacheTimeoutError before ever getting here. Reproduced live 2026-10-18: 15-19/19 cold
+  // evals over two separate 15-min windows, 0 successes.
+  //
+  // Fix: when we're confidently OUTSIDE real trading hours (isSpxEngineCronWindow() false — i.e.
+  // not 7am-4:15pm ET on a trading day), try a cheap, non-blocking PEEK of the merged desk first
+  // (peekMergedSpxDesk(), Redis/L1 only, never triggers a rebuild). Once the market is genuinely
+  // closed, "stale" and "correct" are the same thing — a Friday-close snapshot read on a quiet
+  // Sunday is accurate, not wrong — so a generous staleness ceiling is safe here specifically.
+  // isSpxEngineCronWindow() being false guarantees this branch NEVER activates during or near real
+  // trading hours (cron ticks + real member traffic both keep the cache warm well within that
+  // window regardless), so the existing fresh/correct path below is completely unchanged for
+  // every trading-hours eval — this only shortcuts the already-broken off-hours case.
+  if (!isSpxEngineCronWindow()) {
+    const peeked = await peekMergedSpxDesk({ maxStaleMs: 24 * 60 * 60 * 1000 });
+    if (peeked && !peeked.merged.market_open && !isPremarketPlanningWindow()) {
+      const play = await closedMarketPlaySnapshot(peeked.merged);
+      if (play) return roundFloats({ ...play, playbook_shadow: null });
+    }
+  }
+
   const { merged } = await loadMergedSpxDesk();
+
+  // Same gate as above, now against a FRESH `merged` — the only path trading-hours evals (and any
+  // off-hours eval the peek above couldn't shortcut, e.g. a genuinely cold replica with no cached
+  // snapshot anywhere) ever take. Mirrors evaluateSpxPlayCore's own `!desk.market_open &&
+  // !premarket` gate plus its loadOpenPlay() fallthrough, so behavior for every OTHER state is
+  // unchanged from before the 2026-10-17 fix.
+  if (!merged.market_open && !isPremarketPlanningWindow()) {
+    const play = await closedMarketPlaySnapshot(merged);
+    if (play) return roundFloats({ ...play, playbook_shadow: null });
+  }
+
   const technicals = await buildPlayTechnicals(merged.price, {
     vwap: merged.vwap,
     pdh: merged.pdh,
@@ -260,6 +315,17 @@ export async function getSpxPlayState() {
     staleOnInflight: true,
     maxBlockMs: playMemberReadMaxBlockMs(),
     fallback: spxPlayReadFallback,
+    // BUG (found live 2026-10-16, Ask Largo standing mandate): without this, withServerCache's
+    // own `!swr` fast lane (server-cache.ts) measures staleness against the generic
+    // MAX_STALE_AGE_MS (10 minutes) for this exact cache key — a much looser bound than
+    // peekSpxPlayState() enforces one call earlier in the same request via
+    // playMemberPeekMaxAgeSec() (20s). So a snapshot peekSpxPlayState() had just correctly
+    // rejected as too stale was served anyway by this fallback, unchanged, because the two
+    // call sites touching the SAME `spx-play-read:<date>` entry disagreed on "how old is too
+    // old." Live-reproduced: `as_of` jumping backward up to ~238s across consecutive polls of
+    // GET /api/market/spx/play. Passing the same bound here closes the gap at the source
+    // rather than relying on the generic 10-minute default to coincidentally agree.
+    maxStaleAgeMs: playMemberPeekMaxAgeSec() * 1000,
     // BUG (found live 2026-10-08, ~50% degraded rate measured via repeated polling):
     // evaluateSpxPlayStateCrossReplica() INTENTIONALLY RESOLVES (never throws) to
     // degradedPlayPayload() when this replica loses the cross-replica Redis lock and
@@ -281,6 +347,41 @@ export async function getSpxPlayState() {
     // src/app/api/market/nighthawk/edition/route.ts), applied to the field that's actually
     // exclusive to this payload's placeholder state.
     shouldCache: (value) => (value as Awaited<ReturnType<typeof evaluateSpxPlayState>>).assessed !== false,
+    // BUG (found live 2026-10-16, Ask Largo standing mandate — the fallback-timeout-race
+    // investigation that ALSO produced ServerCacheTimeoutError/the route catch-block fix):
+    // without `localOnly`, withServerCache's OWN generic Redis layer (server-cache.ts's
+    // `writeRedisCache`) was a SECOND, uncoordinated writer to the exact same Redis key
+    // (`server:spx-play-read:<date>`) that evaluateSpxPlayStateCrossReplica() ALSO publishes
+    // to directly a few lines up, via its own `sharedCacheSet(..., Math.max(playMemberReadCacheSec()
+    // * 2, 10))` — a DELIBERATE 10s TTL, double the 5s refresh cadence, specifically so a slow
+    // refresh cycle still has a stale copy for every OTHER replica's `!won` branch (and
+    // spxPlayReadFallback below) to serve. That 10s margin was being defeated on EVERY single
+    // successful eval, deterministically, not intermittently: evaluateSpxPlayStateCrossReplica's
+    // own write lands first (awaited via its `finally`'s sharedCacheDel before the promise even
+    // resolves back up to refreshCache), then refreshCache's own post-loader write
+    // (`writeRedisCache`, generation-guarded but NOT TTL-aware — it only skips a write that is
+    // OLDER than the last one, it has no concept of "don't shorten an existing longer TTL") fires
+    // moments later with the OUTER ttlMs (5s), silently overwriting the 10s TTL down to 5s every
+    // time. Confirmed via CloudWatch (live RTH throws at 2026-10-15 14:33/15:17/17:02/17:27/19:25
+    // UTC, `[server-cache] spx-play-read:<date>: cold miss exceeded maxBlockMs`, reproduced again
+    // 2026-10-16 02:12:27 UTC — 18s after the #6085/#6076 deploy rollout itself completed, so this
+    // is NOT explained by stale pre-deploy code) that these throws correlate with sustained UW
+    // provider queue congestion (same-window logs show individual UW calls queued 830ms-3.6s) —
+    // under that kind of congestion a cold eval can easily run past 5s, so halving its published
+    // snapshot's survival time from the intended 10s down to 5s measurably shrinks the window every
+    // OTHER replica has to find a usable stale copy instead of also going cold, compounding a
+    // transient upstream slowdown into a cluster-wide outage. `evaluateSpxPlayStateCrossReplica`'s
+    // own lock + explicit `sharedCacheGetWithTtl` reads (here and in spxPlayReadFallback) already
+    // fully own this key's cross-replica publish/read semantics — `localOnly` just removes the
+    // SECOND, conflicting generic writer/reader withServerCache would otherwise layer on top,
+    // restoring the intended 10s margin without changing anything about the purpose-built logic.
+    // (Considered instead retuning spxPlayReadFallback's/waitForPeerSpxPlaySnapshot's internal
+    // 800ms peer-wait against the same 800ms outer maxBlockMs — the originally-hypothesized "two
+    // races of the same duration" root cause. Live CloudWatch evidence above shows the actual cold
+    // evals are slow because of real upstream (UW) queue latency, not a timing-margin coincidence;
+    // shrinking that internal wait would not make a multi-second cold eval finish any faster and
+    // was not shipped — this TTL fix addresses the mechanism the evidence actually points to.)
+    localOnly: true,
   });
 }
 
