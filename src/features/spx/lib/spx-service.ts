@@ -6,7 +6,7 @@ import {
   fetchSpxAdminRollups,
 } from "@/lib/db";
 import { observeSpxPlayVoiceTransitions } from "@/features/spx/lib/spx-voice-feed-store";
-import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { loadMergedSpxDesk, peekMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchRecentSpxSnapshots } from "@/features/spx/lib/spx-signal-log";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { readSpxPlaySnapshot } from "@/features/spx/lib/spx-evaluator";
@@ -15,7 +15,7 @@ import { resolveGuardedPlaybookMatch } from "@/features/spx/lib/playbook-match-r
 import { buildPlaybookShadowPanel } from "@/features/spx/lib/playbook-shadow-panel";
 import { refreshOrBreakMemory } from "@/features/spx/lib/playbook-break-memory-store";
 import { maybeLogPlaybookShadowMatch } from "@/features/spx/lib/playbook-shadow-log";
-import { isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-guards";
+import { isPremarketPlanningWindow, isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { loadOpenPlay } from "@/features/spx/lib/spx-play-store";
 import { degradedPlayPayload } from "@/features/spx/lib/spx-play-payload";
 import { playMemberReadCacheSec, playMemberPeekMaxAgeSec } from "@/features/spx/lib/spx-play-config";
@@ -86,28 +86,59 @@ export async function getSpxDeskSummary(): Promise<SpxDeskSummary> {
   return roundFloats(summarizeSpxDesk(merged));
 }
 
+/** Shared closed-market fast path — builds the honest "Session closed" snapshot from an
+ *  already-loaded (fresh OR peeked-stale, caller's choice) merged desk bundle. Returns null when
+ *  a position is still open after the close (needs the real evaluation below to force-settle
+ *  it) — mirrors evaluateSpxPlayCore's own `!desk.market_open && !premarket` gate. */
+async function closedMarketPlaySnapshot(
+  merged: Awaited<ReturnType<typeof loadMergedSpxDesk>>["merged"]
+): Promise<Awaited<ReturnType<typeof readSpxPlaySnapshot>> | null> {
+  const openAfterClose = merged.price > 0 ? await loadOpenPlay() : null;
+  if (openAfterClose) return null;
+  const play = await readSpxPlaySnapshot(merged, null, {});
+  void observeSpxPlayVoiceTransitions(play, todayEtYmd()).catch(() => {});
+  return play;
+}
+
 async function evaluateSpxPlayState() {
+  // MEASURED LIVE 2026-10-18: even after the 2026-10-17 fix below skipped
+  // buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch on a closed-market read,
+  // the fast path still depended on `merged` from the UNCONDITIONAL `await loadMergedSpxDesk()`
+  // just below — and on a cold `spx-merged:<date>` cache (reliably cold off-hours/weekends, since
+  // nothing RTH-gated keeps it warm then), that load alone can legitimately take up to
+  // deskBootstrapMaxBlockMs() (3s default), which already exceeds the OUTER
+  // playMemberReadMaxBlockMs() budget (800ms) wrapping this whole function — so the honest
+  // closed-market branch was STILL never reached; `getSpxPlayState()`'s own withServerCache threw
+  // ServerCacheTimeoutError before ever getting here. Reproduced live 2026-10-18: 15-19/19 cold
+  // evals over two separate 15-min windows, 0 successes.
+  //
+  // Fix: when we're confidently OUTSIDE real trading hours (isSpxEngineCronWindow() false — i.e.
+  // not 7am-4:15pm ET on a trading day), try a cheap, non-blocking PEEK of the merged desk first
+  // (peekMergedSpxDesk(), Redis/L1 only, never triggers a rebuild). Once the market is genuinely
+  // closed, "stale" and "correct" are the same thing — a Friday-close snapshot read on a quiet
+  // Sunday is accurate, not wrong — so a generous staleness ceiling is safe here specifically.
+  // isSpxEngineCronWindow() being false guarantees this branch NEVER activates during or near real
+  // trading hours (cron ticks + real member traffic both keep the cache warm well within that
+  // window regardless), so the existing fresh/correct path below is completely unchanged for
+  // every trading-hours eval — this only shortcuts the already-broken off-hours case.
+  if (!isSpxEngineCronWindow()) {
+    const peeked = await peekMergedSpxDesk({ maxStaleMs: 24 * 60 * 60 * 1000 });
+    if (peeked && !peeked.merged.market_open && !isPremarketPlanningWindow()) {
+      const play = await closedMarketPlaySnapshot(peeked.merged);
+      if (play) return roundFloats({ ...play, playbook_shadow: null });
+    }
+  }
+
   const { merged } = await loadMergedSpxDesk();
 
-  // MEASURED LIVE 2026-10-17 (closed-market/cold-cache, 5/5 reproductions): evaluateSpxPlayCore
-  // (spx-play-engine.ts) has its own fast, honest "Session closed" branch that needs none of
-  // buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch — but this function used
-  // to build all three UNCONDITIONALLY before ever reaching that branch. buildPlayTechnicals makes
-  // real Polygon network calls on a cold per-process cache (reliably cold off-hours on a
-  // near-zero-traffic replica), which alone exceeds playMemberReadMaxBlockMs()'s 800ms budget and
-  // throws ServerCacheTimeoutError on every single closed-market cold eval — 100% wasted work, and
-  // the honest closed answer was never reached; the route's catch-all then served a "still
-  // catching up, retry shortly" placeholder that can never resolve by retrying while the market
-  // stays closed. This check mirrors evaluateSpxPlayCore's own `!desk.market_open && !premarket`
-  // gate plus its loadOpenPlay() fallthrough (a position still open after the close needs the
-  // real evaluation to force-settle it), so behavior for every OTHER state is unchanged.
+  // Same gate as above, now against a FRESH `merged` — the only path trading-hours evals (and any
+  // off-hours eval the peek above couldn't shortcut, e.g. a genuinely cold replica with no cached
+  // snapshot anywhere) ever take. Mirrors evaluateSpxPlayCore's own `!desk.market_open &&
+  // !premarket` gate plus its loadOpenPlay() fallthrough, so behavior for every OTHER state is
+  // unchanged from before the 2026-10-17 fix.
   if (!merged.market_open && !isPremarketPlanningWindow()) {
-    const openAfterClose = merged.price > 0 ? await loadOpenPlay() : null;
-    if (!openAfterClose) {
-      const play = await readSpxPlaySnapshot(merged, null, {});
-      void observeSpxPlayVoiceTransitions(play, todayEtYmd()).catch(() => {});
-      return roundFloats({ ...play, playbook_shadow: null });
-    }
+    const play = await closedMarketPlaySnapshot(merged);
+    if (play) return roundFloats({ ...play, playbook_shadow: null });
   }
 
   const technicals = await buildPlayTechnicals(merged.price, {

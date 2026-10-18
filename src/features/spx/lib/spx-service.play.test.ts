@@ -105,7 +105,7 @@ test("GET /api/market/spx/play's catch block distinguishes a cache-timing race f
   assert.match(route, /instanceof ServerCacheTimeoutError/);
 });
 
-test("evaluateSpxPlayState skips buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch when the market is closed and no play is open (2026-10-17 fix)", () => {
+test("evaluateSpxPlayState skips buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch when the market is closed and no play is open (2026-10-17 fix, updated 2026-10-18)", () => {
   // MEASURED LIVE: buildPlayTechnicals makes real Polygon network calls on a cold per-process
   // cache, which alone can exceed playMemberReadMaxBlockMs()'s 800ms budget — 5/5 live
   // reproductions on a closed-market Saturday threw ServerCacheTimeoutError on every single
@@ -113,30 +113,74 @@ test("evaluateSpxPlayState skips buildPlayTechnicals/refreshOrBreakMemory/resolv
   // branch (spx-play-engine.ts) was never reached: this function used to build technicals/
   // or-break-memory/playbook-match UNCONDITIONALLY before calling into it. The fix mirrors
   // evaluateSpxPlayCore's own `!desk.market_open && !premarket` + loadOpenPlay() gate and
-  // returns early via readSpxPlaySnapshot(merged, null, {}) — skipping all three expensive
-  // calls — whenever that same condition holds.
+  // returns early via the shared closedMarketPlaySnapshot() helper — skipping all three
+  // expensive calls — whenever that same condition holds.
+  //
+  // 2026-10-18 update: the early-return body was extracted into closedMarketPlaySnapshot()
+  // (shared by both the fresh-desk gate here AND the off-hours peeked-desk gate added the same
+  // day — see the next test) — so this test now checks evaluateSpxPlayState()'s body calls that
+  // helper before buildPlayTechnicals, and separately checks the helper's own body for the
+  // loadOpenPlay()/readSpxPlaySnapshot ordering that used to be inlined here.
   const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+
+  const helperFn = service.match(/async function closedMarketPlaySnapshot\([\s\S]*?\n\}/);
+  assert.ok(helperFn, "closedMarketPlaySnapshot helper must be present");
+  const openPlayIdx = helperFn![0].search(/loadOpenPlay\(\)/);
+  const earlyReturnIdx = helperFn![0].search(/readSpxPlaySnapshot\(merged,\s*null,\s*\{\}\)/);
+  assert.ok(openPlayIdx >= 0, "helper must check loadOpenPlay() before deciding to skip the full eval");
+  assert.ok(earlyReturnIdx >= 0, "helper must build the closed-market snapshot via readSpxPlaySnapshot(merged, null, {})");
+  assert.ok(openPlayIdx < earlyReturnIdx, "loadOpenPlay() must be checked before building the closed-market snapshot");
+
   const fn = service.match(/async function evaluateSpxPlayState\(\)\s*\{[\s\S]*?\n\}/);
   assert.ok(fn, "evaluateSpxPlayState block present");
   const body = fn![0];
 
   const guardIdx = body.search(/if \(!merged\.market_open && !isPremarketPlanningWindow\(\)\)/);
-  const openPlayIdx = body.search(/loadOpenPlay\(\)/);
-  const earlyReturnIdx = body.search(/readSpxPlaySnapshot\(merged,\s*null,\s*\{\}\)/);
+  const helperCallIdx = body.search(/closedMarketPlaySnapshot\(merged\)/);
   const technicalsIdx = body.search(/buildPlayTechnicals\(merged\.price/);
 
   assert.ok(guardIdx >= 0, "market-closed guard must be present");
-  assert.ok(openPlayIdx >= 0, "must check loadOpenPlay() before deciding to skip the full eval");
-  assert.ok(earlyReturnIdx >= 0, "must early-return via readSpxPlaySnapshot(merged, null, {})");
+  assert.ok(helperCallIdx >= 0, "must call closedMarketPlaySnapshot(merged) on the fresh-desk path");
   assert.ok(technicalsIdx >= 0, "buildPlayTechnicals(merged.price, ...) full-eval path must still exist");
 
-  // Ordering is the entire fix: the guard (and its early return) must appear BEFORE the
+  // Ordering is the entire fix: the guard (and its helper call) must appear BEFORE the
   // unconditional buildPlayTechnicals call, not after — a regression that moves/removes the
   // guard while leaving buildPlayTechnicals untouched would pass a "both strings present"
   // check but silently reintroduce the live bug.
   assert.ok(guardIdx < technicalsIdx, "market-closed guard must run BEFORE buildPlayTechnicals");
-  assert.ok(openPlayIdx < technicalsIdx, "loadOpenPlay() check must run BEFORE buildPlayTechnicals");
-  assert.ok(earlyReturnIdx < technicalsIdx, "early return must appear BEFORE buildPlayTechnicals");
+  assert.ok(helperCallIdx < technicalsIdx, "closedMarketPlaySnapshot(merged) call must appear BEFORE buildPlayTechnicals");
+});
+
+test("evaluateSpxPlayState peeks the merged desk off-hours instead of paying loadMergedSpxDesk()'s cold-cache cost (2026-10-18 fix)", () => {
+  // MEASURED LIVE 2026-10-18: even with the 2026-10-17 fix above, the closed-market fast path
+  // still depended on `merged` from an UNCONDITIONAL `await loadMergedSpxDesk()` — and on a cold
+  // spx-merged:<date> cache (reliably cold off-hours/weekends), that load alone can legitimately
+  // take up to deskBootstrapMaxBlockMs() (3s default), which already exceeds the OUTER
+  // playMemberReadMaxBlockMs() budget (800ms) wrapping the whole SPX-play read — so the honest
+  // closed-market branch was STILL never reached. Reproduced live: 15-19/19 cold evals over two
+  // separate 15-min windows, 0 successes. Fix: outside isSpxEngineCronWindow() (i.e. not real
+  // trading hours), try a cheap, non-blocking peekMergedSpxDesk() first; only fall through to the
+  // full loadMergedSpxDesk() call when the peek can't answer (null, market open, or premarket).
+  const service = readFileSync(join(ROOT, "src/features/spx/lib/spx-service.ts"), "utf8");
+  const fn = service.match(/async function evaluateSpxPlayState\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(fn, "evaluateSpxPlayState block present");
+  const body = fn![0];
+
+  const cronWindowGuardIdx = body.search(/if \(!isSpxEngineCronWindow\(\)\)/);
+  const peekCallIdx = body.search(/peekMergedSpxDesk\(/);
+  const peekHelperCallIdx = body.search(/closedMarketPlaySnapshot\(peeked\.merged\)/);
+  const freshLoadIdx = body.search(/const \{ merged \} = await loadMergedSpxDesk\(\);/);
+
+  assert.ok(cronWindowGuardIdx >= 0, "must gate the peek shortcut on !isSpxEngineCronWindow() — never active during real trading hours");
+  assert.ok(peekCallIdx >= 0, "must call peekMergedSpxDesk() (non-blocking) instead of loadMergedSpxDesk() on the off-hours fast path");
+  assert.ok(peekHelperCallIdx >= 0, "must build the closed-market snapshot from the PEEKED bundle (peeked.merged), not a fresh load, when the peek succeeds");
+  assert.ok(freshLoadIdx >= 0, "the unconditional fresh loadMergedSpxDesk() call must still exist as the fallback for every other case");
+
+  // Ordering: the cron-window-gated peek attempt must happen BEFORE the unconditional fresh
+  // load — that is the entire fix. A regression that reorders these would silently reintroduce
+  // the bug (every off-hours eval would again pay loadMergedSpxDesk()'s full cold-cache cost).
+  assert.ok(cronWindowGuardIdx < freshLoadIdx, "cron-window guard must run BEFORE the fresh loadMergedSpxDesk() call");
+  assert.ok(peekCallIdx < freshLoadIdx, "peekMergedSpxDesk() call must run BEFORE the fresh loadMergedSpxDesk() call");
 });
 
 test("peekSpxPlayState checks isSpxPlaySnapshotFreshEnough on BOTH the in-process and Redis-backed peek paths (2026-09-13 fix)", () => {
