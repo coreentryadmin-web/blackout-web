@@ -844,6 +844,55 @@ export const ECOSYSTEM_CONTEXT_FIELDS: { field: string; description: string }[] 
   ECOSYSTEM_CONTEXT_FIELD_DESCRIPTIONS
 ).map(([field, description]) => ({ field, description }));
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-18 — live repro NVDA position #62 via
+// GET /api/market/swing/play-brief): `gex_positioning` and every other field computed inside
+// `fetchEcosystemContext`'s single inner `Promise.all` below shared ONE fate with the internal
+// `fetchVectorFullState(upper, "all")` read in that same array. `vector-full-state-inflight.ts`'s
+// own header already documents that a cold Vector-state compute "routinely takes 4-6s" against an
+// 8s budget — and the CALLER wraps the entire `fetchEcosystemContext(ticker)` call in exactly one
+// `withBriefSourceTimeout` (play-brief-context.ts, BRIEF_SOURCE_TIMEOUT_MS=8_000ms). When the
+// shared, de-duplicated Vector compute is cold and exceeds that 8s outer budget, the WHOLE
+// Promise.all rejects, discarding every sibling field in it — including `gex_positioning`, whose
+// own read (`getGexPositioning`, a cache-reader with no live upstream fetch) had almost certainly
+// already resolved fast and was just sitting in the array waiting on its slow neighbor. Live
+// confirmation: NVDA#62 carried BOTH "ecosystem context: fetch failed" and "Vector state: fetch
+// failed" in `unavailableSources` while `GET /api/market/gex-heatmap?ticker=NVDA`, read directly
+// and independently at the same moment, returned a full live matrix — the data was never actually
+// unavailable, only entangled with a slower, unrelated sibling under one shared timeout.
+//
+// Fix: give the internal Vector-state read its own, shorter, bounded sub-timeout — same
+// race-against-a-timer shape already used twice elsewhere for this exact purpose
+// (`withBriefSourceTimeout` in swing/brief-source-timeout.ts, `withSourceTimeout` in
+// nighthawk/cortex/fetch.ts), kept as a third small local copy rather than imported from either
+// (both of those modules' own headers give the same reason: a shared trivial helper isn't worth
+// pulling an unrelated module's import graph in for). 6s leaves real margin inside the outer 8s
+// budget for the rest of this Promise.all (the DB queries and GEX read are consistently fast) plus
+// Promise.all/serialization overhead, while still giving Vector a realistic window on a warm cache.
+// A timeout here degrades `vector_full_state` to `null`, exactly matching that field's own
+// documented fail-open-to-null convention ("Null when there's no live spot for the ticker") — it
+// does not change what a timeout already meant for this field, only where it happens.
+export const ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS = 6_000;
+
+export function withEcosystemVectorSubTimeout<T>(p: Promise<T>, ms: number = ECOSYSTEM_VECTOR_SUB_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(`ecosystem context vector sub-read exceeded ${ms}ms`);
+      err.name = "EcosystemContextVectorSubTimeout";
+      reject(err);
+    }, ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      }
+    );
+  });
+}
+
 function emptyContext(ticker: string): EcosystemContext {
   return {
     ticker: ticker.toUpperCase(),
@@ -1095,7 +1144,12 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
       // null on no spot / any read failure and never throws), but wrap in .catch anyway
       // so it can never reject the whole ecosystem fan-out. The horizon is "all" — the
       // whole-chain view — matching get_vector_full_state's default.
-      fetchVectorFullState(upper, "all").catch(() => null),
+      //
+      // Also wrapped in its own bounded sub-timeout (see withEcosystemVectorSubTimeout's doc
+      // above emptyContext) so a cold/slow Vector compute degrades to null on its own, within
+      // its own budget, instead of entangling every OTHER field in this same Promise.all —
+      // gex_positioning chief among them — under the caller's single, shared 8s outer timeout.
+      withEcosystemVectorSubTimeout(fetchVectorFullState(upper, "all")).catch(() => null),
       ]),
       // #60 arsenal — relevance-gated + fail-open; runs concurrently with the platform fan-out above.
       fetchEcosystemArsenal(upper, arsenalScope),
