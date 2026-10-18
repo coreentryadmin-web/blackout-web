@@ -48,11 +48,19 @@ jobs:
       - run: npm ci
 
       - name: Configure AWS credentials
+        id: aws_creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: AWS credentials warning
+        if: steps.aws_creds.outcome == 'failure'
+        run: |
+          echo "::warning::AWS credentials rejected — continuing with GitHub secret fallbacks for ops:collect"
+          echo "Rotate AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in repo secrets when convenient."
 
       - name: Ensure ops-auto-fix label exists
         env:
@@ -67,8 +75,11 @@ jobs:
       - name: Collect action items (prod)
         id: collect
         env:
-          # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
+          # Prefer AWS Secrets Manager (auditSecret); GitHub secrets used when AWS step failed/skipped.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           set +e
           json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)
