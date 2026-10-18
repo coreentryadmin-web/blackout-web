@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| **Status** | NEEDS OPERATOR ACTION (not fixable from this sandbox or by the deploy pipeline itself) |
+| **Status** | RESOLVED — confirmed recovered live 2026-10-18 ~20:47Z (addendum below) |
 | **Severity** | P0 |
 | **Surface** | `blackout-production-cluster` / `blackout-production-web` ECS service (AWS) |
 
@@ -129,3 +129,25 @@ the loop — the sandbox's own creds were always placeholder/invalid, and the Gi
 was invalidated for the first ~2h40m of the incident, so this job log (the first one to actually
 run `describe-services` successfully since before the outage) is the first point any session had
 visibility into the service's real desired-count state.
+
+### Resolution confirmed (addendum, Night Hawk Swings lane, 2026-10-18 ~20:51Z)
+
+Independently confirmed from the Swings-lane audit session (this session had been tracking the
+same outage via its own `docs/audit/nighthawk-swings-live-journal.json`, escalated on #4076 at
+17:23Z, unaware at the time of this file's deeper root-cause trace): **production recovered at
+~20:47Z.** `/api/health` returned a genuine fresh `{"ok":true,...}` response (real Next.js/Clerk
+headers, not a Cloudflare error page or stale cache), `/pricing` and `/` both 200, stable across
+repeated checks over several minutes. Ran the real swing board/record endpoints end-to-end: data
+flowing normally again (3 real OPEN/HOLD native positions, consistent with pre-outage state).
+
+Timing is consistent with this file's own prescribed fix: this file was written ~20:17Z, status
+"NEEDS OPERATOR ACTION," and recovery was confirmed ~30 minutes later — the right order of
+magnitude for an operator (or a session with real AWS creds) running the exact
+`aws ecs update-service --desired-count 5` command this file recommends. No message was received
+by the Swings-lane session confirming who ran it or whether the Application Auto Scaling scalable
+target was also re-verified per this file's second recommended step — flagging that as still open
+in case nobody actually checked it: if the scalable target is still missing/deregistered, the
+service could silently drift back to `desiredCount=0` again with no new deploy to re-reveal it
+until the next time someone happens to run `describe-services` with working credentials. Posted a
+cross-reference to this finding on PR #4076's resolution comment so this root-cause trace isn't
+lost relative to the outside-view timeline posted there.
