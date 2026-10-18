@@ -4444,9 +4444,17 @@ test("composeSwingPlayBrief: gamma magnet is surfaced as a structured envelope l
 // fully known.
 test("composeSwingPlayBrief: WATCH flag anchor + entry trigger are surfaced as structured envelope levels", () => {
   const ctx: SwingPlayBriefContext = {
+    // setupState/entryStatus overridden to a genuinely enterable state (the base fixture defaults
+    // to FORMING/PRE_TRIGGER, which — correctly, per the 2026-10-18 gateFramingMootReason widening
+    // — now qualifies entryTriggerDeadReason's claim; that moot-reason behavior is covered
+    // separately and directly in play-brief-intel.test.ts). This test is about structural level
+    // PRESENCE/provenance/direction-verb correctness, which needs the unqualified claim to assert
+    // against.
     play: fixturePlay({
       status: "WATCH",
       direction: "SHORT",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
       flagUnderlyingPx: 411.79,
       entryTriggerUnderlyingPx: 411.04,
     }),
