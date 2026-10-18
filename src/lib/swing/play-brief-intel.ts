@@ -1319,10 +1319,23 @@ export function catalystsSection(
  * "TRIGGERED"`, `entryStatus: "AT_TRIGGER"`, no gate tag at all). This function was the third
  * caller of the shared narrow/wide pair and was missed by that same-day fix; swapped here to match
  * its two siblings — now all three callers share one source instead of two widened and one stale.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-18, caught the same day as the widening above):
+ * the widened `gateFramingMootReason` check was wired as an unconditional early return BEFORE the
+ * older, more specific 2026-10-06 Legacy-pinned-price staleness check below it — and
+ * `gateFramingMootReason`'s own legacy_exempt-only-`gateBlocks` case (entry-enterability.ts) is
+ * EXACTLY the case every Legacy-promoted WATCH play unconditionally carries (Legacy promotion
+ * never runs real commit gates, so `commitGateBlockedBy` resolves to `[legacy:exempt]` alone on
+ * every one of these rows — see `resolveCommitGateBlockedBy`'s own comment). So the gate-moot
+ * early-return permanently shadowed the staleness check for the one population it exists for,
+ * silently dropping the pinned-price disclosure from every Legacy-promoted WATCH brief. Live
+ * repro UNH, 2026-10-18: TRIGGERED/AT_TRIGGER/above-floor, `discoveryOrigin: ["NIGHT HAWK"]`,
+ * `flagUnderlyingPx === entryTriggerUnderlyingPx === 399.15` (3 days stale),
+ * `commitGateBlockedBy: ["legacy:exempt"]` — both facts are independently true and both matter
+ * (the gate is moot AND the price is stale), so both checks are now evaluated and composed rather
+ * than the first one short-circuiting the second.
  */
 export function entryTriggerDeadReason(play: TerminalPlay): string | null {
-  const reason = gateFramingMootReason(play);
-  if (reason) return `${reason} — this level no longer fires the setup`;
   // BUG FIX (Ask Largo standing mandate, 2026-10-06): a Legacy morning-confirm-promoted row's
   // `entryTriggerUnderlyingPx` is stamped ONCE at promotion (legacy-confirm-promote.ts's
   // `buildLegacySwingArtifacts` → `deriveSwingPlanLevels(direction, groundedSpotAtPromotion, atr)`,
@@ -1334,12 +1347,19 @@ export function entryTriggerDeadReason(play: TerminalPlay): string | null {
   // flagged, before any rebuild. Equality alone on an organic row is not evidence of staleness (it
   // would wrongly flag every freshly-flagged name), so this only fires for the Legacy-exempt
   // signature specifically, never from the numeric coincidence by itself.
-  if (
+  const legacyPinnedStale =
     isLegacyPromotedSignal(play.discoveryOrigin) &&
     play.flagUnderlyingPx != null &&
     play.entryTriggerUnderlyingPx != null &&
-    play.flagUnderlyingPx === play.entryTriggerUnderlyingPx
-  ) {
+    play.flagUnderlyingPx === play.entryTriggerUnderlyingPx;
+  const gateMootReason = gateFramingMootReason(play);
+  if (legacyPinnedStale && gateMootReason) {
+    // Both facts are true at once for a Legacy-promoted WATCH play — compose them rather than let
+    // either shadow the other (see the BUG FIX doc comment above, live repro UNH).
+    return `pinned at Legacy promotion, not refreshed since, and ${gateMootReason} — this level no longer fires the setup`;
+  }
+  if (gateMootReason) return `${gateMootReason} — this level no longer fires the setup`;
+  if (legacyPinnedStale) {
     return "pinned at Legacy promotion, not refreshed since — this level no longer fires the setup";
   }
   return null;
