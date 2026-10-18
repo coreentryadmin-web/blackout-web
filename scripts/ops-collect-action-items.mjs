@@ -194,6 +194,36 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+/** Public /api/health — pages sustained origin outage (Cloudflare 503) as P0, not deploy blip. */
+async function originHealthItems() {
+  const attempts = 3;
+  let lastStatus = 0;
+  let lastErr = null;
+  let healthy = false;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    const w = await fetchWithTimeout(`${BASE}/api/health`, {}, 20_000);
+    lastStatus = w.status;
+    lastErr = w.err ?? null;
+    if (w.status === 200 && w.json?.ok === true) {
+      healthy = true;
+      break;
+    }
+    if (!shouldRetryWatchdogFetch(w.status)) break;
+  }
+  if (!healthy) {
+    add(
+      "P0",
+      "origin",
+      "origin:health",
+      "Production origin unhealthy",
+      `/api/health not ok after ${attempts} attempts (HTTP ${lastStatus}${lastErr ? `, ${lastErr}` : ""})`
+    );
+  }
+}
+
 async function httpItems() {
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
@@ -351,6 +381,7 @@ function inEtEditionCatchup(now = new Date()) {
 }
 
 await postgresItems();
+await originHealthItems();
 await httpItems();
 
 // Dedupe by id (watchdog + postgres may overlap)

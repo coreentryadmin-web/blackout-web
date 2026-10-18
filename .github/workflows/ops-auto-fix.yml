@@ -47,12 +47,22 @@ jobs:
 
       - run: npm ci
 
+      # Invalid/rotated GitHub AWS keys must not block HTTP-based collect (CRON_SECRET /
+      # DATABASE_PUBLIC_URL fallbacks in scripts/audit/lib/prod-secrets.mjs).
       - name: Configure AWS credentials
+        id: aws_creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: AWS credentials note
+        if: steps.aws_creds.outcome == 'failure'
+        run: |
+          echo "::warning::AWS credentials invalid or missing — Postgres via Secrets Manager skipped."
+          echo "Set valid AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or DATABASE_PUBLIC_URL + CRON_SECRET in GitHub secrets."
 
       - name: Ensure ops-auto-fix label exists
         env:
