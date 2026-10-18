@@ -4476,6 +4476,64 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
   assert.match(section.body, /Entry trigger: \*\*182\.50\*\* — Break\/reclaim above this is what actually fires the setup/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-18): entryTriggerDeadReason() used to call only
+// the narrow deadPlayReason (4 cases: INVALIDATED/expired-window/contract-expired/EXTENDED), which
+// returns null for a TRIGGERED/AT_TRIGGER play that is merely below the lane score floor — so this
+// bullet rendered the unqualified "this is what actually fires the setup" claim even while the
+// SAME brief's Verdict section (composeSwingPlayBrief) correctly said the real blocker was the
+// score floor. Live repro TSM, 2026-10-18: score 54.9 vs scoreFloor 60 (aboveFloor:false),
+// setupState TRIGGERED, entryStatus AT_TRIGGER, no gate tag at all. Widened to gateFramingMootReason
+// (same-day sibling fix already applied to watchEntrySection/watchGateCoaching) to match.
+test("watchForSection: entry trigger claim is corrected when the play is below the lane score floor, even though TRIGGERED/AT_TRIGGER", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 412.61,
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        aboveFloor: false,
+      }),
+      asOf: "2026-10-18 10:00 ET",
+      sessionDate: "2026-10-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Entry trigger: \*\*412\.61\*\*/);
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(section.body, /below the lane score floor — this level no longer fires the setup/);
+});
+
+// Sibling case: a play still FORMING (not yet at trigger at all) must get the same correction.
+test("watchForSection: entry trigger claim is corrected when the play is still FORMING", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        entryTriggerUnderlyingPx: 100.0,
+        setupState: "FORMING",
+      }),
+      asOf: "2026-10-18 10:00 ET",
+      sessionDate: "2026-10-18",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /this is what actually fires the setup/);
+  assert.match(section.body, /thesis still forming — not yet at trigger — this level no longer fires the setup/);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 at -59.1% P&L and
 // SWING:GLW:1479 at -56.1% P&L): `horizonPlayFromBangerPosition` (banger-lane-merge.ts) stamps
 // `thesisLevel: "intact"` as a fixed literal on every Banger-origin row regardless of price action
