@@ -48,11 +48,18 @@ jobs:
       - run: npm ci
 
       - name: Configure AWS credentials
+        id: aws-creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Note AWS credentials status
+        if: steps.aws-creds.outcome == 'failure'
+        run: |
+          echo "::warning::AWS credentials invalid or missing — ops-collect falls back to GitHub secrets (CRON_SECRET, DATABASE_PUBLIC_URL)."
 
       - name: Ensure ops-auto-fix label exists
         env:
@@ -67,8 +74,12 @@ jobs:
       - name: Collect action items (prod)
         id: collect
         env:
-          # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
+          # Prefer AWS Secrets Manager (auditSecret) when the step above succeeds.
+          # When GitHub's AWS_ACCESS_KEY_ID is stale (InvalidClientTokenId), still collect via
+          # legacy GitHub secrets so deploy-smoke failures can open ops-auto-fix issues.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
         run: |
           set +e
           json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)
