@@ -38,6 +38,32 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ops auto-fix hard-fails when GitHub AWS secrets are invalid — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`.github/workflows/ops-auto-fix.yml`) |
+|---|---|
+
+**Severity:** P2 — ops pipeline blind during cred rotation (surfaced live during the 2026-10-18
+production outage response, when stale AWS creds silently blocked the ops-auto-fix collector).
+
+**Symptom.** `collect-and-dispatch` failed before `ops:collect` ever ran, with:
+```
+The security token included in the request is invalid.
+```
+
+**Root cause.** `configure-aws-credentials` is a hard gate in the workflow. When
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are stale, the job exits before reaching the collector —
+even though `auditSecret()` can fall back to `secrets.CRON_SECRET`/`secrets.DATABASE_PUBLIC_URL`
+when those env vars are injected directly, so the collector didn't actually need working AWS creds
+to do useful work.
+
+**Fix.** Added `continue-on-error: true` on the AWS-configure step (with a workflow warning
+annotation on failure) and passed `CRON_SECRET`/`DATABASE_PUBLIC_URL` into the collect step's env
+directly, so the collector still runs and reports via its non-AWS fallback path when AWS creds are
+unavailable.
+
 ## 2026-10-18 — [FINDING, P1, Ask Largo × Night Hawk Swings / Anthropic tool loop] `anthropicToolLoop`'s wall-clock loop budget only re-checked the clock BETWEEN rounds — a single round's own tool fan-out had no deadline of its own, so one stalled tool call could blow past the whole loop's budget regardless of how much was left — FIXED
 
 > **kind:** `FINDING`
