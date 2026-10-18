@@ -7,6 +7,8 @@ import {
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
   shouldPageNighthawkZeroPlays,
+  isOriginHealthOk,
+  originHealthFailurePriority,
 } from "./ops-collect-scope.mjs";
 
 describe("watchdogHttpPriority", () => {
@@ -21,6 +23,20 @@ describe("watchdogHttpPriority", () => {
 
   it("keeps real app failures at P0", () => {
     assert.equal(watchdogHttpPriority(500), "P0");
+  });
+});
+
+describe("origin health", () => {
+  it("isOriginHealthOk requires 200 + ok:true", () => {
+    assert.equal(isOriginHealthOk(200, { ok: true }), true);
+    assert.equal(isOriginHealthOk(200, { ok: false }), false);
+    assert.equal(isOriginHealthOk(503, null), false);
+  });
+
+  it("originHealthFailurePriority pages sustained edge 503 at P0", () => {
+    assert.equal(originHealthFailurePriority(503, null), "P0");
+    assert.equal(originHealthFailurePriority(200, { ok: false }), "P0");
+    assert.equal(originHealthFailurePriority(200, { ok: true }), null);
   });
 });
 
