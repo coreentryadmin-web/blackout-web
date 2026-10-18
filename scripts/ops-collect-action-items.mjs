@@ -24,7 +24,13 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
+import {
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+  shouldPageNighthawkZeroPlays,
+  isProdHealthOk,
+  prodHealthFailureItem,
+} from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -194,6 +200,23 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+/** Unauthenticated prod liveness — runs even when CRON_SECRET is missing (e.g. invalid GHA AWS creds). */
+async function publicHealthItems() {
+  const HEALTH_TIMEOUT_MS = 15_000;
+  const HEALTH_MAX_ATTEMPTS = 3;
+  let last = { status: 0, json: null, err: "" };
+  for (let attempt = 0; attempt < HEALTH_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    last = await fetchWithTimeout(`${BASE}/api/health`, { Accept: "application/json" }, HEALTH_TIMEOUT_MS);
+    if (isProdHealthOk(last.status, last.json)) return;
+    if (!shouldRetryWatchdogFetch(last.status)) break;
+  }
+  const fail = prodHealthFailureItem(last.status, last.err);
+  add(fail.priority, fail.source, fail.id, fail.title, fail.detail);
+}
+
 async function httpItems() {
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
@@ -350,6 +373,7 @@ function inEtEditionCatchup(now = new Date()) {
   return mins >= target + 60 && mins <= target + 120;
 }
 
+await publicHealthItems();
 await postgresItems();
 await httpItems();
 

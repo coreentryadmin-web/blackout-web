@@ -5,6 +5,31 @@ export function shouldRetryWatchdogFetch(status) {
   return status === 0 || isTransientOriginError(status);
 }
 
+/** True when public /api/health reports the app is serving (not edge HTML 503). */
+export function isProdHealthOk(status, body) {
+  return status === 200 && body?.ok === true;
+}
+
+/**
+ * After health poll retries, classify a sustained failure for ops paging.
+ * Transient origin errors during deploy are still P0 once retries exhaust — sustained 503 is an outage.
+ */
+export function prodHealthFailureItem(status, err) {
+  const detail =
+    status === 0
+      ? `Network error${err ? `: ${err}` : ""}`
+      : status === 200
+        ? "HTTP 200 but ok!==true (degraded health payload)"
+        : `HTTP ${status}${err ? ` (${err})` : ""}`;
+  return {
+    priority: "P0",
+    source: "health",
+    id: "prod:health-down",
+    title: "Production health check failed",
+    detail: `${detail} — /api/health did not report ok:true`,
+  };
+}
+
 /**
  * Priority for a failed cron-staleness-watchdog HTTP probe.
  * Auth gaps (401/403) and transient origin 5xx are audit-env / deploy noise — not prod cron outages.

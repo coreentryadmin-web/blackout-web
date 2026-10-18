@@ -71,6 +71,9 @@ node scripts/ops-dispatch-agent.mjs --dry-run --file /tmp/items.json
 | `CRON_SECRET` | Live watchdog + data-correctness probe |
 | `CURSOR_API_KEY` | Launch Cloud Agent |
 | `GITHUB_TOKEN` | Auto-provided — create/update issues |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | Optional — load prod env from Secrets Manager; when invalid, workflow continues and uses the GitHub secrets above |
+
+Public `/api/health` is probed on every collect (no auth) so a full origin outage still opens a P0 action item even when AWS/GitHub cron secrets are missing.
 
 ## ECS / Discord (existing)
 
