@@ -81,6 +81,15 @@ const DAY_MS = 86_400_000;
 
 const ENTERABLE_ENTRY_STATES = new Set<SwingEntryState>(["AT_TRIGGER", "PULLBACK_TO_ENTRY"]);
 
+/**
+ * The member-facing `TerminalPlay.gateBlocks[].code` entry-verdict.ts's `commitGateBlocksForVerdict`
+ * maps `LEGACY_COMMIT_GATE_EXEMPT` ("legacy:exempt") to. Duplicated as a literal rather than
+ * imported — entry-verdict.ts imports FROM this file, so importing back would cycle — but it is a
+ * narrow, display-only mapping unlikely to drift (both sides are swing-specific and reviewed
+ * together); `gateFramingMootReason`'s own tests pin this string.
+ */
+const LEGACY_EXEMPT_GATE_CODE = "legacy_exempt";
+
 function resolveCommitGateBlockedBy(input: SwingEntryEnterabilityInput): string[] {
   if (input.commitGateBlockedBy?.length) return [...input.commitGateBlockedBy];
   const kinds = input.signalKinds ?? [];
@@ -217,17 +226,36 @@ export function deadPlayReason(play: {
  * "dead" by its other two callers. Takes the same narrow structural type, widened by the one extra
  * field (`aboveFloor`) this check needs — not the full `TerminalPlay`, for the same
  * dependency-free-leaf-export reason `deadPlayReason` stays narrow.
+ *
+ * GAP FOUND (Ask Largo standing mandate, 2026-10-18, second instance): live repro, UNH — a
+ * TRIGGERED/AT_TRIGGER/above-floor, Legacy-promoted play whose ONLY gate block is the
+ * `legacy_exempt` provenance code (never a real failed gate — see `resolveCommitGateBlockedBy`'s
+ * own comment: a Legacy-only `signalKinds` row resolves to exactly `[LEGACY_COMMIT_GATE_EXEMPT]`
+ * before real gate evaluation ever runs). This is a DIFFERENT case from the two above — neither
+ * FORMING nor below-floor, so `evaluateSwingEntryEnterability` genuinely reaches its one gate-check
+ * branch — but the gate it finds is the same kind of non-real marker, so "Gates blocking entry"
+ * is equally misleading here. **Deliberately does NOT change `action`/`enterable`** (unlike the
+ * two cases above, which only ever affected framing because the real `wait`/`dont_buy` reason had
+ * already won before the gate check ran): a TRIGGERED Legacy-promoted play staying on WATCH instead
+ * of auto-committing is the operator's own recorded, intentional caution on this exact real-money
+ * commit path (the Legacy-commit bridge, `isSwingLegacyCommitBridgeEnabled()`, is flag-gated OFF by
+ * default — see `docs/audit/FINDINGS.md`'s 2026-10-09 #5577 entry). This function only corrects
+ * what the member reads about WHY it's still WAIT, not whether it should be.
  */
 export function gateFramingMootReason(play: {
   setupState?: string | null;
   entryStatus?: string | null;
   watchEntryExpired?: boolean | null;
   aboveFloor?: boolean | null;
+  gateBlocks?: readonly { code: string }[] | null;
 }): string | null {
   const dead = deadPlayReason(play);
   if (dead) return dead;
   if (play.setupState === "FORMING") return "thesis still forming — not yet at trigger";
   if (play.aboveFloor === false) return "below the lane score floor";
+  if (play.gateBlocks?.length && play.gateBlocks.every((g) => g.code === LEGACY_EXEMPT_GATE_CODE)) {
+    return "Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear";
+  }
   return null;
 }
 
@@ -351,10 +379,21 @@ export function evaluateSwingEntryEnterability(
   // IS at trigger and gates are the one thing still holding it back.
   if (setup === "TRIGGERED" && entry != null && ENTERABLE_ENTRY_STATES.has(entry)) {
     if (gateBlocked.length > 0) {
+      // Deliberately still "wait" even when `gateBlocked` is legacy:exempt-only — the Legacy-
+      // commit-bridge wiring gap (FINDINGS.md 2026-10-09, #5577) is intentionally flag-gated OFF
+      // by default per the operator's own recorded caution on this exact real-money commit path;
+      // this function does not decide whether to arm it. Only the REASON TEXT differs for that
+      // case: "commit gates have not cleared" falsely implies a real, clearable gate is pending
+      // (live repro: UNH, TRIGGERED/AT_TRIGGER/above-floor, Legacy-promoted, gateBlocked exactly
+      // [LEGACY_COMMIT_GATE_EXEMPT]) — `gateFramingMootReason` (below) separately corrects the
+      // SAME false implication in the Entry/Trade-manager-read sections' gate-list framing.
+      const legacyExemptOnly = gateBlocked.every((b) => b === LEGACY_COMMIT_GATE_EXEMPT);
       return {
         action: "wait",
         enterable: false,
-        reason: "At trigger, but commit gates have not cleared — wait before sizing.",
+        reason: legacyExemptOnly
+          ? "At trigger, but this is a Legacy-promoted thesis — held on WATCH until the commit bridge is armed, not blocked by a live gate."
+          : "At trigger, but commit gates have not cleared — wait before sizing.",
         deadlineIso,
       };
     }

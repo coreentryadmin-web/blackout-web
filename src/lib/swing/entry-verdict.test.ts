@@ -294,4 +294,20 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.notEqual(v?.recommendation, "BUY");
     assert.equal(v?.gateBlocks?.[0]?.code, "legacy_exempt");
   });
+
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-18): live repro, UNH — the Q22 case above is
+  // still correctly WAIT (the Legacy-commit bridge stays flag-gated OFF per the operator's own
+  // recorded caution, FINDINGS.md 2026-10-09 #5577 — this test does NOT reopen that), but the
+  // member-facing `recNote` said "commit gates have not cleared — wait before sizing", falsely
+  // implying a real gate would eventually clear. Corrected to name the real reason instead.
+  it("Q22's WAIT verdict no longer implies a real, clearable gate — live repro UNH", () => {
+    const v = swingEntryVerdict({
+      servingSection: "COMMIT_NOW",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["NIGHT HAWK"],
+    });
+    assert.doesNotMatch(v?.recNote ?? "", /commit gates have not cleared/i);
+    assert.match(v?.recNote ?? "", /legacy-promoted/i);
+  });
 });

@@ -912,6 +912,40 @@ test("composeSwingPlayBrief: Entry section frames a below-floor gate as moot, no
   assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-18, second instance): live repro, UNH —
+// TRIGGERED/AT_TRIGGER/above-floor, Legacy-promoted, gateBlocks exactly [{code:"legacy_exempt"}].
+// Before this fix, the Entry section rendered an un-qualified "Gates blocking entry: 1 gate",
+// implying clearing that tag would open entry. Deliberately does NOT change `swingEntryAction`/
+// `recommendation` (still WAIT/HOLD — the Legacy-commit bridge stays flag-gated OFF by design,
+// FINDINGS.md 2026-10-09 #5577) — only the gate-framing text and the Verdict's reason are fixed.
+test("composeSwingPlayBrief: Entry section frames a legacy_exempt-only gate as moot, not a live blocker — live repro UNH", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      recommendation: "HOLD",
+      gateBlocks: [{ code: "legacy_exempt", reason: "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path." }],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.match(
+    entry!.body,
+    /\*\*Also gate-blocked\*\* \(moot — Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear\) — see Trade manager read below\./,
+  );
+  assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/);
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-08): full end-to-end proof, through the real
 // composeSwingPlayBrief assembly (not just watchEntrySection in isolation), that a WATCH play's
 // gate reason text appears in exactly ONE of the brief's sections — "Trade manager read" — never
