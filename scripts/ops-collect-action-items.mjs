@@ -194,7 +194,46 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+/** Sustained /api/health failure — distinct from a single 503 during ECS drain (watchdog P2). */
+async function originHealthItems() {
+  const attempts = 5;
+  const gapMs = 5000;
+  let lastStatus = 0;
+  let healthy = false;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const res = await fetch(`${BASE}/api/health`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      lastStatus = res.status;
+      if (res.status === 200) {
+        const body = await res.json().catch(() => ({}));
+        if (body.ok === true) {
+          healthy = true;
+          break;
+        }
+      }
+    } catch {
+      lastStatus = 0;
+    }
+    if (attempt < attempts - 1) {
+      await new Promise((r) => setTimeout(r, gapMs));
+    }
+  }
+  if (!healthy) {
+    add(
+      "P0",
+      "origin",
+      "origin:health",
+      "Production origin unhealthy",
+      `${BASE}/api/health failed ${attempts} checks (last HTTP ${lastStatus || "network"})`
+    );
+  }
+}
+
 async function httpItems() {
+  await originHealthItems();
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
 
