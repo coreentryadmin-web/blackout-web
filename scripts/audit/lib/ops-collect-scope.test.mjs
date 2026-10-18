@@ -7,6 +7,7 @@ import {
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
   shouldPageNighthawkZeroPlays,
+  originHealthActionItem,
 } from "./ops-collect-scope.mjs";
 
 describe("watchdogHttpPriority", () => {
@@ -21,6 +22,18 @@ describe("watchdogHttpPriority", () => {
 
   it("keeps real app failures at P0", () => {
     assert.equal(watchdogHttpPriority(500), "P0");
+  });
+});
+
+describe("originHealthActionItem", () => {
+  it("returns null when health is ok", () => {
+    assert.equal(originHealthActionItem(200, true), null);
+  });
+
+  it("pages P0 on edge 503", () => {
+    const item = originHealthActionItem(503, false);
+    assert.equal(item?.priority, "P0");
+    assert.equal(item?.id, "origin:health");
   });
 });
 

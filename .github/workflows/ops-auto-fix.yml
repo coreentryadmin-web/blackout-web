@@ -47,7 +47,12 @@ jobs:
 
       - run: npm ci
 
+      # Legacy static AWS keys in GitHub secrets may be rotated without a repo update.
+      # ops-collect reads CRON_SECRET / DATABASE_PUBLIC_URL directly; AWS is optional
+      # (Secrets Manager enrichment only). Never block collection on bad AWS creds.
       - name: Configure AWS credentials
+        id: aws-creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -67,8 +72,11 @@ jobs:
       - name: Collect action items (prod)
         id: collect
         env:
-          # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
+          # Prefer AWS Secrets Manager when creds work; GitHub secrets are the fallback.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
         run: |
           set +e
           json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)

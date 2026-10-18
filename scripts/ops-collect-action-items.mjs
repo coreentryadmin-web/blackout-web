@@ -24,7 +24,12 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
+import {
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+  shouldPageNighthawkZeroPlays,
+  originHealthActionItem,
+} from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -350,7 +355,33 @@ function inEtEditionCatchup(now = new Date()) {
   return mins >= target + 60 && mins <= target + 120;
 }
 
+async function originHealthItems() {
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 20_000);
+    const r = await fetch(`${BASE}/api/health`, {
+      headers: { Accept: "application/json" },
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    let bodyOk = false;
+    if (r.status === 200) {
+      const body = await r.json().catch(() => ({}));
+      bodyOk = body?.ok === true;
+    }
+    const item = originHealthActionItem(r.status, bodyOk);
+    if (item) add(item.priority, "origin", item.id, item.title, item.detail);
+  } catch (e) {
+    const item = originHealthActionItem(0, false);
+    if (item) {
+      const detail = e instanceof Error ? e.message : String(e);
+      add(item.priority, "origin", item.id, item.title, detail.slice(0, 500));
+    }
+  }
+}
+
 await postgresItems();
+await originHealthItems();
 await httpItems();
 
 // Dedupe by id (watchdog + postgres may overlap)

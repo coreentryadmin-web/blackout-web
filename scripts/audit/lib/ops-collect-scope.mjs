@@ -15,6 +15,45 @@ export function watchdogHttpPriority(status) {
   return "P0";
 }
 
+/**
+ * Classify GET /api/health for ops:collect. Watchdog 503 stays P2 (deploy blip);
+ * a failed health probe is P0 — sustained origin outage, not a single cron route.
+ * @returns {{ priority: 'P0'|'P1', id: string, title: string, detail: string } | null}
+ */
+export function originHealthActionItem(status, bodyOk) {
+  if (status === 200 && bodyOk === true) return null;
+  if (status === 200) {
+    return {
+      priority: "P0",
+      id: "origin:health",
+      title: "Production health check degraded",
+      detail: "GET /api/health returned 200 but ok!==true",
+    };
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return {
+      priority: "P0",
+      id: "origin:health",
+      title: "Production origin unreachable",
+      detail: `GET /api/health HTTP ${status} (edge/origin — not app JSON)`,
+    };
+  }
+  if (status === 0) {
+    return {
+      priority: "P1",
+      id: "origin:health",
+      title: "Production health check failed",
+      detail: "GET /api/health network error",
+    };
+  }
+  return {
+    priority: "P1",
+    id: "origin:health",
+    title: "Production health check unexpected status",
+    detail: `GET /api/health HTTP ${status}`,
+  };
+}
+
 /** Parse ops:collect JSON from stdout (stderr may carry postgres-skip info). */
 export function parseOpsCollectPayload(stdout, stderr) {
   const blob = `${stdout}\n${stderr}`;
