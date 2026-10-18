@@ -318,6 +318,112 @@ describe("closedDeckSourcesFromChains", () => {
     assert.equal(out[0]!.contract.expiry, "2026-10-16");
   });
 
+  // BUG FIX (Ask Largo standing mandate, 2026-10-18, live repro AAPL positionId 40 (root 37 ->
+  // terminal 40) + AMZN positionId 48 (root 44 -> terminal 48)): the 2026-10-11 fix just above
+  // correctly re-points strike/right/expiry/occ at the worst leg — but `closedDeckSourcesFromChains`
+  // built `contract` as `{ ...src.contract, <identity fields only> }`, so `mid`/`delta` survived the
+  // spread UNCHANGED from `src.contract` (closedDeckSourceFromRow(terminal)'s own `last_mark`/
+  // `contract_delta`) — a DIFFERENT real contract's own price, merged onto the correctly-identified
+  // worst leg's card. Live AAPL: served contract 330C 2026-09-21 (leg 37, correctly identified)
+  // carried mid 7.70/delta 0.48 — leg 40's (terminal) own exit_mark/delta; leg 37's REAL exit_mark
+  // was 5.23, matching its own -22.3% realizedPnlPct. Live AMZN: served contract showed mid
+  // 10.00/delta 0.6 — leg 48's (terminal) own quote; leg 44's (worst leg) REAL exit_mark was 3.73,
+  // matching its own -27.67% realizedPnlPct. Must source mid/delta from the SAME worst-leg row the
+  // identity fields already come from, never from the terminal leg.
+  it("resolves the WORST leg's own mid/delta too, not just its identity (mismatched-leg contract price — live repro AMZN positionId 48/44)", () => {
+    const parent = row({
+      id: 44,
+      roll_seq: 0,
+      realized_pnl_pct: -27.67,
+      contract_strike: 605,
+      contract_expiry: "2026-10-16",
+      contract_type: "call",
+      contract_occ: "O:AMZN261016C00605000",
+      contract_delta: 0.42,
+      entry_premium: 5.15,
+      last_mark: 3.73, // leg 44's REAL own exit_mark — matches its -27.67% realizedPnlPct
+      graded_at: "2026-09-30T13:31:19.000Z",
+      closed_at: "2026-09-30T13:31:19.000Z",
+    });
+    const terminal = row({
+      id: 48,
+      roll_seq: 1,
+      parent_position_id: 44,
+      root_position_id: 44,
+      realized_pnl_pct: 72.41,
+      contract_strike: 245,
+      contract_expiry: "2026-10-09",
+      contract_type: "call",
+      contract_occ: "AMZN261009C00245000",
+      contract_delta: 0.6,
+      entry_premium: 5.8,
+      last_mark: 10.0, // leg 48's own exit_mark — a DIFFERENT contract's price, must not leak onto leg 44's card
+      closed_at: "2026-10-07T13:30:39.000Z",
+      graded_at: "2026-10-07T13:30:39.000Z",
+    });
+    const out = closedDeckSourcesFromChains([[parent, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -27.67, "worst leg (parent) still drives the reported exit P&L");
+    assert.equal(out[0]!.occ, "O:AMZN261016C00605000", "occ must identify the leg that actually lost -27.67%");
+    assert.equal(out[0]!.contract.strike, 605);
+    assert.equal(
+      out[0]!.contract.mid,
+      3.73,
+      "mid must be the WORST leg's own exit_mark (3.73), not the terminal leg's own exit_mark (10.00) — two different real contracts must not be merged onto one card",
+    );
+    assert.equal(out[0]!.contract.delta, 0.42, "delta must be the WORST leg's own delta, not the terminal leg's (0.6)");
+  });
+
+  // Second independent live repro of the same bug (AAPL positionId 40, root 37) — a DIFFERENT chain
+  // shape than the AMZN one above (the worst leg here is the ROOT/first leg, not a middle leg), kept
+  // as its own test so a fix that happens to work only for one chain shape can't pass silently.
+  it("resolves the WORST leg's own mid/delta too — live repro AAPL positionId 40/37", () => {
+    const worst = row({
+      id: 37,
+      roll_seq: 0,
+      ticker: "AAPL",
+      realized_pnl_pct: -22.3,
+      contract_strike: 330,
+      contract_expiry: "2026-09-21",
+      contract_type: "call",
+      contract_occ: "AAPL260921C00330000",
+      contract_delta: 0.3,
+      entry_premium: 6.73,
+      last_mark: 5.23, // leg 37's REAL own exit_mark — matches its -22.3% realizedPnlPct
+      graded_at: "2026-09-10T15:00:00Z",
+      closed_at: "2026-09-10T15:00:00Z",
+    });
+    const terminal = row({
+      id: 40,
+      roll_seq: 1,
+      parent_position_id: 37,
+      root_position_id: 37,
+      ticker: "AAPL",
+      realized_pnl_pct: 15.0,
+      contract_strike: 350,
+      contract_expiry: "2026-10-16",
+      contract_type: "call",
+      contract_occ: "AAPL261016C00350000",
+      contract_delta: 0.48,
+      entry_premium: 6.7,
+      last_mark: 7.7, // leg 40's own exit_mark — a DIFFERENT contract's price, must not leak onto leg 37's card
+      closed_at: "2026-09-18T15:00:00Z",
+      graded_at: "2026-09-18T15:00:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[worst, terminal]]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.exitPnlPct, -22.3);
+    assert.equal(out[0]!.occ, "AAPL260921C00330000");
+    assert.equal(out[0]!.contract.strike, 330);
+    assert.equal(out[0]!.contract.expiry, "2026-09-21");
+    assert.equal(
+      out[0]!.contract.mid,
+      5.23,
+      "mid must be leg 37's own exit_mark (5.23), not leg 40's own exit_mark (7.70)",
+    );
+    assert.equal(out[0]!.contract.delta, 0.3, "delta must be leg 37's own delta, not leg 40's (0.48)");
+  });
+
   // BUG FIX (Ask Largo standing mandate, live repro 2026-10-16, same AMZN root-44/terminal-48 chain
   // as the contract-identity fix above): the chain-composite path's `score`/`scoreWithheld` come
   // from `closedDeckSourceFromRow(terminal)` — the rolled CHILD leg, which never carries its own
