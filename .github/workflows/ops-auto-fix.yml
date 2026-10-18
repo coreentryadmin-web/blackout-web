@@ -48,11 +48,19 @@ jobs:
       - run: npm ci
 
       - name: Configure AWS credentials
+        id: aws-creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: AWS credentials note
+        if: steps.aws-creds.outcome != 'success'
+        run: |
+          echo "::warning::AWS credentials invalid or missing — ops:collect will use GitHub Actions secrets only (Secrets Manager unavailable)."
+          echo "Rotate AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in repo secrets if Postgres/cron collection from SM is required."
 
       - name: Ensure ops-auto-fix label exists
         env:
@@ -69,6 +77,8 @@ jobs:
         env:
           # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
         run: |
           set +e
           json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)
