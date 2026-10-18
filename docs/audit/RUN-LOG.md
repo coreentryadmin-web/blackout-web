@@ -4,6 +4,28 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-18 (18:16 UTC / Sun 14:17 ET) — [SEO] Lane heartbeat: SKIPPED verdict — active production origin outage, not this lane's to fix
+
+**Step 1 could not be honestly completed this cycle.** Resynced to `origin/main`
+(`fea458a6` → `78c9cd55`) and found the tip itself was an outage-status journal entry
+("outage status at 58min, no reply yet, holding"). Independently verified live rather than
+trusting the commit message alone: `/api/health`, `/api/og`, and
+`/api/public/gex-snapshot?ticker=SPX` all returned a consistent, repeated `503` (3 polls each,
+~2s apart) while the Cloudflare-edge-cached homepage still served `200` — a real origin outage,
+not a single flaky request. `git log` confirms this has been live and escalated for well over
+an hour: outage first journaled, escalated directly to the operator at ~43min
+(`3e5a8b87`), a P0 health-probe paging fix already shipped (`44f8fefb`), and 16 open
+ops-auto-fix/incident-response PRs from other lanes/the coordinator actively hardening the
+response pipeline around this exact incident. **Deliberately did NOT purge the Cloudflare
+edge cache** — doing so would evict the currently-serving cached homepage in favor of an error
+page while the origin is down, making things worse, not better. Did not fabricate a CLS/`/api/og`
+"GOOD" verdict — the backend is down, so there is nothing meaningful to measure; `/api/og`
+returning `503` to a Googlebot UA right now is a real, live symptom of the known outage, not a
+new, separate SEO defect. **No SEO-lane action taken** — this is already at the operator's
+attention via other lanes' PR comments and journal entries; duplicating that escalation would
+add noise, not signal. Will re-verify CLS/`/api/og` once the outage resolves, per the standing
+"a merge is not a verification" discipline — a clean read right now would prove nothing.
+
 ## 2026-10-18 (14:04 UTC / Sun 10:04 ET) — [SEO] Daily growth cycle: quiet, no new opportunity
 
 Identical striking-distance/CTR-gap register to the prior cycle — same 5 entries, same
