@@ -175,16 +175,50 @@ const agentPayload = JSON.stringify({
 
 const resp = spawnSync(
   "curl",
-  ["-sf", "-X", "POST", "https://api.cursor.com/v1/agents", "-u", `${cursorKey}:`, "-H", "Content-Type: application/json", "-d", agentPayload],
+  [
+    "-sS",
+    "-w",
+    "\n%{http_code}",
+    "-X",
+    "POST",
+    "https://api.cursor.com/v1/agents",
+    "-u",
+    `${cursorKey}:`,
+    "-H",
+    "Content-Type: application/json",
+    "-d",
+    agentPayload,
+  ],
   { encoding: "utf8" }
 );
 
 if (resp.status !== 0) {
-  console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
+  const detail = (resp.stderr || resp.stdout || `curl exit ${resp.status}`).trim();
+  console.error("[ops-dispatch] Cloud Agent launch failed:", detail);
+  if (issueNumber) {
+    console.warn(
+      `[ops-dispatch] GitHub issue #${issueNumber} is updated — agent launch is non-fatal (check CURSOR_API_KEY / API quota).`
+    );
+    process.exit(0);
+  }
   process.exit(1);
 }
 
-const agent = JSON.parse(resp.stdout);
+const raw = resp.stdout ?? "";
+const httpCode = Number(raw.trim().split("\n").pop() || "0");
+const bodyText = raw.trim().split("\n").slice(0, -1).join("\n");
+if (httpCode < 200 || httpCode >= 300) {
+  console.error("[ops-dispatch] Cloud Agent launch failed:", `HTTP ${httpCode}`, bodyText.slice(0, 400));
+  if (issueNumber) {
+    console.warn(
+      `[ops-dispatch] GitHub issue #${issueNumber} is updated — agent launch is non-fatal (check CURSOR_API_KEY / API quota).`
+    );
+    process.exit(0);
+  }
+  process.exit(1);
+}
+
+const agent = JSON.parse(bodyText || "{}");
 const agentUrl = agent.agent?.url ?? agent.url ?? "(see response)";
 console.log("[ops-dispatch] Cloud Agent started:", agentUrl);
 

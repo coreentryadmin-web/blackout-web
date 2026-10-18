@@ -98,6 +98,7 @@ jobs:
 
       - name: Dispatch GitHub issue + Cloud Agent
         if: steps.collect.outputs.count != '0'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
