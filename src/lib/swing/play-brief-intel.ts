@@ -34,7 +34,6 @@ import {
   tradeManagerNarrativeSection,
   collectFocalLevels,
   resolveInvalidationFocalLevel,
-  committedStructuralStopLine,
 } from "./play-brief-narrative";
 import { technicalsBias } from "./play-brief-technicals";
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
@@ -1511,19 +1510,17 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(`Structural resistance node: ${invalidationLevel.label} **${fmtPriceLevel(invalidationLevel.price)}**`);
   }
 
-  // Ask Largo standing mandate (2026-10-16, live repro SWING:GOOGL:58): the "Structural
-  // support/resistance node" line above is the GEX heuristic (put wall/dark pool/GEX king) —
-  // ADD the REAL, committed structural stop (`thesis_invalidation_px`, pinned at commit — see
-  // committedStructuralStopLine's own doc comment in play-brief-narrative.ts for the full
-  // root-cause/contract rationale) as its own distinct line, independent of whether a GEX level
-  // was even resolvable above. OPEN-bucket only — a WATCH candidate has no committed position
-  // yet (its `invalidationUnderlyingPx`, if a dossier pinned one, describes a hypothetical plan,
-  // not an enforced exit); a CLOSED play's own "since it closed" reclaim framing a few lines
-  // below already answers a different, retrospective question off the same field.
-  if (bucket === "open") {
-    const committedStopLine = committedStructuralStopLine(play, spot);
-    if (committedStopLine) lines.push(committedStopLine);
-  }
+  // DEDUP FIX (Ask Largo standing mandate, 2026-10-18, live repro SWING:TSLA:60): this block used
+  // to ALSO render the committed-structural-stop bullet here — added 2026-10-16 (live repro
+  // SWING:GOOGL:58) in parallel with an independent, same-date fix to the identical effect in
+  // `tradeManagerNarrativeSection` (play-brief-narrative.ts), neither fix aware of the other.
+  // Both gate on the same `bucket === "open"` plus the same `invalidationUnderlyingPx`/spot
+  // inputs, so whenever one rendered the bullet, the other did too — a byte-identical sentence
+  // in two different sections of the same envelope, every time, confirmed live on TSLA's real
+  // OPEN brief. `tradeManagerNarrativeSection` keeps sole ownership (it already sits next to the
+  // GEX-heuristic "Break watch" bullet this fact complements); this section keeps only its own,
+  // distinct "Structural support/resistance node" (GEX heuristic) line above. See
+  // play-brief-intel.test.ts's cross-section dedup test for the regression proof.
 
   // GAP FOUND (Ask Largo standing mandate, 2026-10-13): this section told a member where spot
   // sits vs the gamma flip and vs a live structural level for a closed play, but never answered
