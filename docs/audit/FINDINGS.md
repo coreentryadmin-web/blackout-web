@@ -38,6 +38,72 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## ABVX (clinical-stage biotech) missing from `sectorFor`'s biotech cluster — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`src/lib/portfolio/sector-map.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive, as a smaller, independent follow-up discovered while researching the sibling LABD theme-clustering fix (PR #6159).
+
+**Live repro.** `GET /api/market/nighthawk/horizons?view=swings`: ABVX is a real, currently-committed LONG position. `sectorFor`'s `biotech` sector list (`NTLA, CRSP, VIR, MIRM, IONS, NVAX, IOVA, PCVX, TNGX, RLAY`, added 2026-10-10 from a live book snapshot) did not include it — it was simply never live at the time that bucket was built — so ABVX resolved to its own isolated `NAME:ABVX` cluster, and any other biotech position in the same book would get no concentration/conflict flag against it.
+
+**Verification before adding (matching this bucket's own documented discipline of explicit per-ticker verification rather than guessing from the symbol).** Polygon reference (`GET /v3/reference/tickers/ABVX`): Abivax SA, a France-based clinical-stage biotechnology company, single operating segment (R&D), currently in Phase 3 trials for one drug candidate (obefazimod, ulcerative colitis). This is exactly the "binary clinical/regulatory catalyst" risk driver the bucket's own criteria require — the same shape as every other name already in it, not the different-risk-driver shape of the three names the original fix explicitly excluded (RGEN's bioprocessing-tools revenue, GRAL's diagnostics-commercial-adoption catalyst, ABSI's platform-partnership model).
+
+**Fix.** Added `"ABVX"` to the `biotech` array.
+
+**Tests.** Added a regression test (`theme-cluster.test.ts`, the file that already exercises this sector bucket via `resolveTheme`/`sameThesis`): `resolveTheme("ABVX") === "biotech"`, `sameThesis("ABVX", "NTLA") === true`, `sameThesis("ABVX", "IOVA") === true`. RED→GREEN proven via `git stash` (1 failure without the fix, 0 with it restored). Broader regression: `src/lib/swing/*.test.ts` + `src/lib/portfolio/*.test.ts` + `src/features/nighthawk/**/*.test.ts` + `src/lib/zerodte/**/*.test.ts` (this sector map is also read by the 0DTE governor's correlation groups) — 3940/3940 pass. `tsc --noEmit`: clean.
+
+## LABD (3x inverse biotech ETF) was clustered into no theme at all — a real, live LONG LABD + LONG IOVA conflict went unflagged — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`src/lib/swing/theme-cluster.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-17 ~23:32 UTC) — a dedicated follow-up investigation on a gap flagged earlier the same session (PR #4076 comment 6242601175, ~22:52 UTC) but deliberately not fixed at the time pending research.
+
+**Live repro.** `GET /api/market/nighthawk/horizons?view=swings` (2026-10-17 ~23:33 UTC): LABD committed twice (LONG, BREAKOUT/STANDARD and BREAKOUT/TACTICAL) and IOVA committed once (LONG) — all three real, currently-open positions in the same book, right now. `theme-cluster.ts`'s `ETF_PROXY_THEMES` had no entry for LABD and `INVERSE_LEVERAGE_ETFS` didn't include it, so `resolveTheme("LABD")` fell through to its own isolated `NAME:LABD` cluster — `sameThesis("LABD", "IOVA")` returned `false`, and a member holding both got **zero** concentration/conflict flag in Book Context, despite LABD (economically a bearish biotech bet, per `effectiveDirection`) directly opposing IOVA's bullish biotech bet.
+
+**Why this wasn't fixed immediately when first found.** The initial finding flagged a real risk: `sectorFor`'s `biotech` sector list (`NTLA, CRSP, VIR, MIRM, IONS, NVAX, IOVA, PCVX, TNGX, RLAY`) names only narrow, individual clinical-stage/gene-therapy names — mapping LABD (a broad index-tracking ETF) into that cluster could have been a mismatched proxy if LABD's real risk driver were a different, larger-cap biotech population than that specific basket.
+
+**Research done before fixing (this cycle), mirroring the rigor the 2026-10-11 SQQQ addition to this same file used:**
+- Confirmed via Polygon reference data: LABD = Direxion Daily S&P Biotech Bear 3X ETF, tracking the S&P Biotech **Select Industry Index** — equal-weighted, not cap-weighted.
+- Pulled 96 real trading days of daily closes (2026-06-01→2026-10-17) and computed Pearson correlation of daily returns between LABD and: (a) XBI (sanity check, r=−0.999, confirms the data/method), (b) three of `sectorFor`'s own biotech names (NTLA r=−0.615, CRSP r=−0.758, VIR r=−0.712, avg |r|≈0.61), (c) four large-cap diversified healthcare names (UNH, LLY, PFE, JNJ, avg |r|≈0.27).
+- The correlation to the narrow clinical-stage basket is **more than double** the correlation to large-cap healthcare — confirming the equal-weighted index is dominated by the same small/mid-cap population `sectorFor` already lists, not a different, larger population. The "mismatched proxy" concern is refuted by measurement, not just argued away.
+
+**Fix.** Added `LABD: "biotech"` to `ETF_PROXY_THEMES` and `"LABD"` to `INVERSE_LEVERAGE_ETFS` — the identical parallel-pair pattern the SOXS and SQQQ fixes already established in this same file.
+
+**Separate, smaller gap found during this research, not fixed here:** `ABVX` (Abivax SA, a clinical-stage biotech per Polygon reference — ulcerative-colitis asset) is also currently committed in the live book and is *not* in `sectorFor`'s biotech list — a second, independent `sector-map.ts` completeness gap, flagged as a candidate follow-up rather than silently expanded into this PR.
+
+**Tests.** Added a regression test mirroring the existing SOXS/SQQQ tests: `ETF_PROXY_THEMES.LABD === "biotech"`, `resolveTheme("LABD") === "biotech"`, `sameThesis("LABD", "IOVA") === true`, `sameThesis("LABD", "NTLA") === true`, `isInverseLeverageEtf("LABD") === true` (case-insensitive), `effectiveDirection("LABD", "LONG") === "SHORT"`. RED→GREEN proven via `git stash` (1 failure without the fix, 0 with it restored). Broader regression: `src/lib/swing/*.test.ts` + `src/lib/portfolio/*.test.ts` — 1846/1846 pass. `tsc --noEmit`: clean.
+
+## Swing play-brief's "committed structural stop" distance divided by the stop level instead of spot — wrong denominator, two independent occurrences — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`committedStructuralStopLine()`, `src/lib/swing/play-brief-narrative.ts`; the CLOSED "reclaimed the stop level" line, `src/lib/swing/play-brief-intel.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-17 ~23:10 UTC).
+
+**Live repro.** `GET /api/market/swing/play-brief?ticker=CRWV&playId=SWING:CRWV:61&positionId=61&expandIntel=1` (production, 2026-10-17 ~19:14 ET), CRWV OPEN/HOLD. Envelope's own `spot` level: 60.99. "Trade manager read" rendered:
+
+> **Structural stop (committed)** — lose **57.06** on a closing basis (**6.9%** away) → an enforced exit regardless of option P&L, independent of the GEX read above.
+
+**Root cause.** `committedStructuralStopLine(play, spot)` computed `Math.abs(((spot - inval) / inval) * 100)` — dividing by `inval` (the stop/target level) instead of `spot` (the current price). Every sibling "% away from a level" figure in the exact same brief (call wall, put wall, max pain, gamma magnet) uses the file's own `distPct(spot, level)` helper, which divides by `spot` — confirmed by cross-checking CRWV's other sibling figures against their shown values (put wall −1.6%, max pain +23.0%, gamma magnet +17.6% — all match `(level-spot)/spot`). With spot=60.99/inval=57.06: the buggy formula gives 6.887%→"6.9%" (exactly what rendered); the correct formula gives 6.444%→"6.4%".
+
+**Why this is a distinct bug from the already-open spot-SOURCING question (PR #4076, comment 6242808561, 2026-10-17 ~22:52 UTC):** that question is about which spot VALUE feeds this calculation (Vector/GEX snapshot vs. the swing-serving-lane's cached spot vs. a live read) — still open, not addressed here. This finding is about the FORMULA applied to whatever spot value arrives — a separate, independent defect. The earlier TSLA repro that surfaced the sourcing question sat at only 0.6% distance, where `/inval` and `/spot` round to the identical displayed value, which is exactly why this formula bug was invisible there and only became visible once a wider gap (CRWV's 6.9% vs 6.4%) crossed a rounding boundary.
+
+**Blast radius — a second, independently-written occurrence of the identical bug.** `src/lib/swing/play-brief-intel.ts`'s CLOSED-bucket "stop fired, did spot reclaim it" coaching line (scoped to `closedReason === "stopped"/"stop"`) computed `pctFromInval` with the same wrong denominator. Confirmed via `grep -rn "/ inval)" src/lib/swing/*.ts` — exactly these two occurrences, not a shared/copy-pasted function.
+
+**No prior test coverage on either function** (`grep -rn "committedStructuralStopLine" src/lib/swing/*.test.ts` returned nothing before this fix).
+
+**Fix.** Both sites now divide by `spot`, matching this file's own established `distPct()` convention and every sibling distance figure in the same brief.
+
+**Tests.** Added one regression test per site, each using a wide gap (6-17 points) so the buggy and correct formulas produce visibly different displayed percentages rather than rounding to the same value. RED→GREEN proven via `git stash` of the 2 source files (2 failures without the fix, 0 with it restored). Broader regression: `src/lib/swing/*.test.ts` — 1825/1825 pass. `tsc --noEmit`: clean.
+
 ## Night Hawk Swings play-brief hardcodes `ticker_class: "equity"` for every ticker, including live ETF positions — violates Largo contract C4 — FIXED
 
 > **kind:** `FINDING`
