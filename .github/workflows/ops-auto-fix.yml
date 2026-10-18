@@ -47,7 +47,11 @@ jobs:
 
       - run: npm ci
 
+      # Invalid/expired GitHub AWS secrets must not block HTTP watchdog collection — ops-collect
+      # falls back to CRON_SECRET + CRON_TARGET_BASE_URL when Secrets Manager is unreachable.
       - name: Configure AWS credentials
+        continue-on-error: true
+        id: aws_creds
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -69,7 +73,11 @@ jobs:
         env:
           # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          if [ "${{ steps.aws_creds.outcome }}" != "success" ]; then
+            echo "AWS credentials unavailable — collecting via HTTP watchdog + GitHub CRON_SECRET fallback"
+          fi
           set +e
           json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)
           code=$?
