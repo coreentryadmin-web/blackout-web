@@ -1857,6 +1857,21 @@ export function lessonsSection(
   adviceAlreadyNoted?: boolean,
   stopAdviceAlreadyNoted?: boolean,
   captureAlreadyNoted?: boolean,
+  /**
+   * BUG FIX (2026-10-18, Ask Largo × Night Hawk Swings mandate): the bare `Exit: **{reason}**`
+   * line below used to fire unconditionally. `closedCoaching` (play-brief-narrative-coaching.ts)
+   * already states the same closedReason fact in "Trade manager read" (rendered immediately above
+   * "Lessons" in the same response) for every reason OUTSIDE its two special-cased phrasings
+   * ("thesis", "stopped"/"stop") via a generic `Exit reason: **${r}**` fallback — so for the
+   * common target/ratchet/flat cases, the exact same word appeared twice, two sections apart.
+   * Live repro (2026-10-18, real closed positions): BE/MSFT (target), PYPL (flat) all rendered
+   * both "Exit reason: **target**"/"**flat**" and "Exit: **target**"/"**flat**". Same restatement
+   * class this function has already gated four other times (see the BUG FIX comments above); this
+   * was the one branch with zero gating. Scoped narrowly to the reasons that hit the generic
+   * fallback — thesis/stopped/stop keep their own distinct phrasing in "Trade manager read" (a
+   * paraphrase, not a duplicate), so this line still renders for those.
+   */
+  exitReasonAlreadyNoted?: boolean,
 ): RichSection | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
@@ -1929,7 +1944,11 @@ export function lessonsSection(
   }
   if (play.closedReason) {
     const reason = play.closedReason.replace(/_/g, " ");
-    lines.push(`Exit: **${reason}**`);
+    const exitReasonIsRestatement =
+      play.closedReason !== "thesis" && play.closedReason !== "stopped" && play.closedReason !== "stop";
+    if (!(exitReasonIsRestatement && exitReasonAlreadyNoted)) {
+      lines.push(`Exit: **${reason}**`);
+    }
     if (play.closedReason === "target" || play.closedReason === "ratchet") {
       // BUG FIX (2026-09-21, Ask Largo × Night Hawk Swings mandate): this line used to fire
       // UNCONDITIONALLY whenever closedReason was "target"/"ratchet", with no regard for how the
@@ -2717,10 +2736,21 @@ export function buildIntelSections(
     // Closes the capture>=75 "Strong exit discipline" gap the flags above left open — see
     // lessonsSection's own doc comment (2026-09-18) for the live repro (CRWD:19).
     const captureAlreadyNoted = narrative?.body?.includes("replicate trim timing") ?? false;
+    // Closes the bare "Exit: **{reason}**" restatement gap — see lessonsSection's own doc comment
+    // (2026-10-18) for the live repro. Safe, collision-free dedup key: "Exit reason: **" appears
+    // nowhere else in src/lib/swing.
+    const exitReasonAlreadyNoted = narrative?.body?.includes("Exit reason: **") ?? false;
     const lessons = safeSection(
       "Lessons",
       () =>
-        lessonsSection(play, roundTripAlreadyNoted, adviceAlreadyNoted, stopAdviceAlreadyNoted, captureAlreadyNoted),
+        lessonsSection(
+          play,
+          roundTripAlreadyNoted,
+          adviceAlreadyNoted,
+          stopAdviceAlreadyNoted,
+          captureAlreadyNoted,
+          exitReasonAlreadyNoted,
+        ),
       onFailure,
     );
     if (lessons) out.push(lessons);

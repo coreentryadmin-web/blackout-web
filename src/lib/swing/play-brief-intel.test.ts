@@ -1708,6 +1708,82 @@ test("lessonsSection: omits the 'Strong exit discipline' capture verdict when Tr
   assert.match(suppressed!.body, /sector rotation leadership/i);
 });
 
+test("lessonsSection: omits the bare 'Exit: **{reason}**' restatement when Trade manager read already stated the same reason, but keeps it for thesis/stopped whose Trade-manager phrasing is a paraphrase, not a duplicate", () => {
+  // Live repro (2026-10-18, Ask Largo × Night Hawk Swings mandate, real production play-briefs):
+  // BE/MSFT (closedReason=target) and PYPL (closedReason=flat) all rendered BOTH "Trade manager
+  // read" — "Exit reason: **target**" (closedCoaching's generic fallback, play-brief-
+  // narrative-coaching.ts:1624, which fires for every closedReason outside its "thesis"/"stopped"/
+  // "stop" special cases) — AND, one section later in the same response, "Lessons" (this function)
+  // independently restating "Exit: **target**" — the identical word twice, two sections apart.
+  const targetPlay = fixturePlay({
+    status: "CLOSED",
+    peak: 40,
+    exitPnlPct: 36,
+    mfeCapturePct: 90,
+    closedReason: "target",
+  });
+  const withoutSuppression = lessonsSection(targetPlay, false, false, false, false, false);
+  assert.ok(withoutSuppression);
+  assert.match(withoutSuppression!.body, /Exit: \*\*target\*\*/);
+
+  const suppressed = lessonsSection(targetPlay, false, false, false, false, true);
+  assert.ok(suppressed);
+  assert.doesNotMatch(suppressed!.body, /Exit: \*\*target\*\*/);
+  // Independent evidence must survive — only the restated reason line is suppressed.
+  assert.match(suppressed!.body, /Peak was/i);
+  assert.match(suppressed!.body, /mechanical exit fired as designed/i);
+
+  // thesis/stopped keep their own distinctly-worded phrasing in "Trade manager read" (a paraphrase,
+  // not an exact duplicate), so the Lessons line must still render even when the flag is true.
+  const thesisPlay = fixturePlay({ status: "CLOSED", closedReason: "thesis" });
+  const thesisSection = lessonsSection(thesisPlay, false, false, false, false, true);
+  assert.ok(thesisSection);
+  assert.match(thesisSection!.body, /Exit: \*\*thesis\*\*/);
+
+  const stoppedPlay = fixturePlay({ status: "CLOSED", peak: 5, exitPnlPct: -50, closedReason: "stopped" });
+  const stoppedSection = lessonsSection(stoppedPlay, false, false, false, false, true);
+  assert.ok(stoppedSection);
+  assert.match(stoppedSection!.body, /Exit: \*\*stopped\*\*/);
+});
+
+test("buildIntelSections: Lessons omits the bare exit-reason restatement when Trade manager read already stated it via the generic fallback", () => {
+  const play = fixturePlay({
+    status: "CLOSED",
+    peak: 40,
+    exitPnlPct: 36,
+    mfeCapturePct: 90,
+    closedReason: "flat",
+    archetype: "PULLBACK_CONTINUATION",
+  });
+  const ctx: SwingPlayBriefContext = {
+    play,
+    asOf: "2026-10-18T16:00:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const sections = buildIntelSections(ctx, "closed");
+  const narrative = sections.find((s) => s.title === "Trade manager read");
+  const lessons = sections.find((s) => s.title === "Lessons");
+
+  assert.ok(narrative, "Trade manager read must render");
+  assert.match(narrative!.body, /Exit reason: \*\*flat\*\*/);
+
+  assert.ok(lessons, "Lessons must still render (independent evidence survives)");
+  assert.doesNotMatch(
+    lessons!.body,
+    /Exit: \*\*flat\*\*/,
+    "Lessons must not restate the exact exit-reason fact Trade manager read already gave",
+  );
+  assert.match(lessons!.body, /Peak was/i);
+  assert.match(lessons!.body, /pullback continuation/i);
+});
+
 test("buildIntelSections: Lessons omits the generic invalidation-check ask when Trade manager read already answered it with the computed cushion", () => {
   // GAP FOUND (2026-09-29, Ask Largo standing mandate, live repro HUT:43 CLOSED/stopped, real
   // production play-brief): closedCoaching's 2026-09-28 fix (play-brief-narrative-coaching.ts)
