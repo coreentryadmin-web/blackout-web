@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       edition_present,
       play_count,
       recap_only,
-      note: "Long runs execute via `npm run nighthawk:run` (ECS cron worker). This route nudges/resumes within 300s.",
+      note: "Long runs execute in-process via next/server after() on the long-lived ECS worker (no separate `npm run` script). This route nudges/resumes within 300s.",
     });
   }
 
