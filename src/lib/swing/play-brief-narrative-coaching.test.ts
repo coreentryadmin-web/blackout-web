@@ -651,6 +651,47 @@ test("watchGateCoaching: reframes as moot when the thesis is already invalidated
   assert.match(line!, /\*\*Also gate-blocked\*\* \(moot — thesis already invalidated\)/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-18, second instance): live repro, UNH —
+// TRIGGERED/AT_TRIGGER/above-floor, Legacy-promoted, gateBlocks exactly [{code:"legacy_exempt"}].
+// Deliberately does not change the real-money WAIT/HOLD verdict (see entry-enterability.ts's
+// gateFramingMootReason doc comment, FINDINGS.md 2026-10-09 #5577) — only the framing a member
+// reads about why the one listed "gate" isn't actually a live blocker.
+test("watchGateCoaching: reframes as moot when the only gate is legacy_exempt — live repro UNH", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "COMMIT",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      gateBlocks: [{ code: "legacy_exempt", reason: "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path." }],
+    }),
+  );
+  assert.ok(line);
+  assert.match(
+    line!,
+    /\*\*Also gate-blocked\*\* \(moot — Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear\)/,
+  );
+  assert.doesNotMatch(line!, /^\*\*Gates blocking entry\*\*/, "must not read as an active/clearable blocker");
+});
+
+test("watchGateCoaching: a real gate alongside legacy_exempt still reads as an active blocker", () => {
+  const line = watchGateCoaching(
+    play({
+      status: "COMMIT",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      gateBlocks: [
+        { code: "legacy_exempt", reason: "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path." },
+        { code: "g_s4_regime", reason: "Broad-market regime degraded." },
+      ],
+    }),
+  );
+  assert.ok(line);
+  assert.match(line!, /^\*\*Gates blocking entry\*\*/);
+  assert.doesNotMatch(line!, /Also gate-blocked/);
+});
+
 test("crossDeskCoaching: friction when NH conflicts", () => {
   const line = crossDeskCoaching(
     ctx({

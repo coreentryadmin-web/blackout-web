@@ -162,6 +162,38 @@ describe("evaluateSwingEntryEnterability", () => {
     assert.equal(r.enterable, false);
   });
 
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-18): live repro, UNH — TRIGGERED/AT_TRIGGER/
+  // aboveFloor:true, Legacy-only signalKinds so commitGateBlockedBy resolves to exactly
+  // ["legacy:exempt"] (a pure provenance marker, never a real failed gate). The ACTION here is
+  // deliberately unchanged (still "wait") — the Legacy-commit-bridge wiring gap (FINDINGS.md
+  // 2026-10-09, #5577) is intentionally flag-gated OFF by default per the operator's own recorded
+  // caution on this exact real-money commit path. Only the REASON TEXT is corrected so it no
+  // longer implies a real, clearable gate is pending ("commit gates have not cleared" read as if
+  // price/time would eventually clear something, when the real reason is the bridge being unarmed).
+  it("legacy:exempt-only gate block still returns wait, with a corrected (non-misleading) reason", () => {
+    const r = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      signalKinds: ["NIGHT HAWK"],
+    });
+    assert.equal(r.action, "wait");
+    assert.equal(r.enterable, false);
+    assert.doesNotMatch(r.reason, /commit gates have not cleared/i);
+    assert.match(r.reason, /legacy-promoted/i);
+  });
+
+  it("a real gate alongside legacy:exempt keeps the original 'gates have not cleared' reason", () => {
+    const r = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      commitGateBlockedBy: ["legacy:exempt", "gate:G-S4:regime_degraded"],
+    });
+    assert.equal(r.action, "wait");
+    assert.match(r.reason, /commit gates have not cleared/i);
+  });
+
   // Live repro 2026-09-14 (PLTR): setup FORMING/entry PRE_TRIGGER AND gate-blocked at once —
   // the old unconditional gate-blocked check (before the FORMING/PRE_TRIGGER checks in the
   // if-chain) claimed "At trigger, but commit gates have not cleared" on a play that had
@@ -355,6 +387,48 @@ describe("gateFramingMootReason", () => {
     assert.equal(
       gateFramingMootReason({ setupState: "INVALIDATED", aboveFloor: false }),
       "thesis already invalidated",
+    );
+  });
+
+  // GAP FOUND (Ask Largo standing mandate, 2026-10-18, second instance): live repro, UNH —
+  // TRIGGERED/AT_TRIGGER/above-floor Legacy-promoted play whose only gate is the mapped
+  // "legacy_exempt" code. Deliberately does NOT change action/enterable (see this function's own
+  // doc comment and entry-gate-constants.ts — a real-money commit-path decision the operator has
+  // explicitly, separately gated off by default) — this only corrects the misleading "Gates
+  // blocking entry" framing a member reads.
+  it("legacy_exempt-only gateBlocks is moot framing — live repro UNH", () => {
+    assert.equal(
+      gateFramingMootReason({
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        aboveFloor: true,
+        gateBlocks: [{ code: "legacy_exempt" }],
+      }),
+      "Legacy-promoted — commit gates were never evaluated on this path, not a live gate to clear",
+    );
+  });
+
+  it("a REAL gate alongside legacy_exempt is NOT moot — the exempt marker never masks a real block", () => {
+    assert.equal(
+      gateFramingMootReason({
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        aboveFloor: true,
+        gateBlocks: [{ code: "legacy_exempt" }, { code: "g_s4_regime" }],
+      }),
+      null,
+    );
+  });
+
+  it("empty gateBlocks is not moot-via-legacy (nothing to be moot about)", () => {
+    assert.equal(
+      gateFramingMootReason({
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        aboveFloor: true,
+        gateBlocks: [],
+      }),
+      null,
     );
   });
 });
