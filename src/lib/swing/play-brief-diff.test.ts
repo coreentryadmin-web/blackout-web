@@ -355,6 +355,69 @@ test("diffBriefSnapshots: a new gate appearing is narrated", () => {
   assert.match(line!, /1 → 2 gates blocking entry/);
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-18): a gate-set change on a play that remains
+// categorically moot throughout (still FORMING, below the lane score floor, or legacy_exempt-
+// only) used to read as meaningful progress/regression toward commit-eligibility with zero
+// awareness that clearing those gates would not open entry anyway. See
+// BriefSnapshot.gateFramingMoot's own doc comment for the full gap — constructed from real ARKG
+// field values (score 39.9 vs scoreFloor 60, setupState FORMING) live-pulled the same day.
+test("diffBriefSnapshots: a gate-set change on a still-FORMING play is qualified as moot", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      setupState: "FORMING",
+      aboveFloor: false,
+      gateBlocks: [
+        { code: "gate:G-S4:regime_degraded", reason: "regime degraded" },
+        { code: "gate:G-S6:confluence", reason: "thin confluence" },
+        { code: "gate:G-S14:cortex_net_negative", reason: "cortex net negative" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({
+      setupState: "FORMING",
+      aboveFloor: false,
+      gateBlocks: [
+        { code: "gate:G-S6:confluence", reason: "thin confluence" },
+        { code: "gate:G-S14:cortex_net_negative", reason: "cortex net negative" },
+      ],
+    }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line, "must still narrate the gate-set change");
+  assert.match(line!, /\*\*Entry gates shifted \(moot — thesis still forming — not yet at trigger\)\*\*/);
+  assert.match(line!, /cleared gate:G-S4:regime_degraded/);
+  assert.match(line!, /clearing them would not open entry/);
+});
+
+// A gate-set change on a play that is genuinely TRIGGERED/above-floor (not categorically moot)
+// must keep the original, unqualified line — this fix must not soften a claim that is true.
+test("diffBriefSnapshots: a gate-set change on a live, enterable play keeps the unqualified line", () => {
+  const prev = snapshotFromBrief(
+    env(),
+    play({
+      setupState: "TRIGGERED",
+      aboveFloor: true,
+      gateBlocks: [
+        { code: "g_s12_halt", reason: "halted" },
+        { code: "g_s4_regime", reason: "regime mismatch" },
+      ],
+    }),
+  );
+  const next = snapshotFromBrief(
+    env(),
+    play({ setupState: "TRIGGERED", aboveFloor: true, gateBlocks: [{ code: "g_s4_regime", reason: "regime mismatch" }] }),
+  );
+  const lines = diffBriefSnapshots(prev, next);
+  const line = lines.find((l) => l.includes("Entry gates shifted"));
+  assert.ok(line);
+  assert.doesNotMatch(line!, /moot/);
+  assert.match(line!, /\*\*Entry gates shifted\*\* — cleared g_s12_halt/);
+});
+
 test("diffBriefSnapshots: the same gate set (even a different order) is not re-narrated", () => {
   const prev = snapshotFromBrief(
     env(),
@@ -616,6 +679,37 @@ test("loadPersistedBriefSnapshot: rejects a stored snapshot missing gateBlocks (
     assert.throws(() =>
       diffBriefSnapshots({ headline: "old schema", sectionTitles: ["Verdict"] } as never, nextSnap),
     );
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-18): same guard shape as gateBlocks above, for the
+// gateFramingMoot field this same PR adds. Unlike gateBlocks/sectionTitles, this field has no
+// crash risk of its own (diffBriefSnapshots only ever reads `next.gateFramingMoot`, never a
+// possibly-stale `prev`'s) — the guard exists for type-schema honesty, not crash prevention, so
+// this test (correctly) does not assert a throw the way the two tests above do.
+test("loadPersistedBriefSnapshot: rejects a stored snapshot missing gateFramingMoot (pre-dates this field) instead of returning it", () => {
+  const store = new Map<string, string>();
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+      },
+    },
+  });
+  try {
+    store.set(
+      "swing-brief-snap:SWING:TEST:3:2026-10-17",
+      JSON.stringify({ headline: "old schema", sectionTitles: ["Verdict"], gateBlocks: [] }),
+    );
+    const stored = loadPersistedBriefSnapshot("swing-brief-snap:SWING:TEST:3:2026-10-17");
+    assert.equal(stored, null, "a snapshot missing gateFramingMoot must be rejected, not handed back as a usable prev");
   } finally {
     Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
   }

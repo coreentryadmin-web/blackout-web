@@ -5,6 +5,7 @@
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { thesisHealthUncalibrated } from "./thesis-health";
+import { gateFramingMootReason } from "./entry-enterability";
 import { roundFloats } from "@/lib/round-floats";
 import { fmtPriceLevel } from "@/lib/fmt-money";
 
@@ -68,6 +69,23 @@ export type BriefSnapshot = {
    * every refresh regardless (this only narrates the SET changing, not re-states the reasons).
    */
   gateBlocks: string[];
+  /**
+   * `gateFramingMootReason(play)` at the time this snapshot was taken (entry-enterability.ts) —
+   * non-null when the play is categorically not enterable for a reason OTHER than its gate-block
+   * set (still FORMING, below the lane score floor, or legacy_exempt-only) and clearing those
+   * gates would not open entry regardless. GAP FOUND (Ask Largo standing mandate, 2026-10-18):
+   * `diffBriefSnapshots`' "Entry gates shifted" line (below) narrates a `gateBlocks` code-set
+   * change as if it were meaningful progress/regression toward commit-eligibility ("cleared X" /
+   * "N → M gates blocking entry") with zero awareness that the play can remain categorically moot
+   * throughout the whole transition — e.g. a FORMING play whose gate set narrows tick-to-tick
+   * while `setupState`/`aboveFloor` stay unchanged. The primary Entry/Trade-manager-read sections
+   * already render this moot qualifier (play-brief.ts/play-brief-narrative-coaching.ts, since
+   * earlier today) — this diff pulse had no equivalent. Only `next`'s value is ever read (the
+   * qualifier describes the CURRENT state, not a diffed delta), so no backward-compat concern for
+   * an older persisted `prev` missing this field — see loadPersistedBriefSnapshot's guard anyway,
+   * kept for type-schema honesty to match its sibling fields' own discipline.
+   */
+  gateFramingMoot: string | null;
   sectionTitles: string[];
 };
 
@@ -283,6 +301,7 @@ export function snapshotFromBrief(
     trimsFired: fin(extras?.trimsFired),
     rollCandidateReason: play?.rollCandidate?.reason ?? null,
     gateBlocks: (play?.gateBlocks ?? []).map((g) => g.code).sort(),
+    gateFramingMoot: play ? gateFramingMootReason(play) : null,
     sectionTitles: envelope.sections.map((s) => s.title),
   };
 }
@@ -424,8 +443,14 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     if (cleared.length) parts.push(`cleared ${cleared.join(", ")}`);
     if (added.length) parts.push(`now also blocked by ${added.join(", ")}`);
     const gateWord = next.gateBlocks.length === 1 ? "gate" : "gates";
+    // GAP FOUND (Ask Largo standing mandate, 2026-10-18): a gate-set change on a play that is
+    // categorically moot throughout (still FORMING, below the lane score floor, or legacy_exempt-
+    // only) read as meaningful progress/regression toward commit-eligibility — see
+    // BriefSnapshot.gateFramingMoot's own doc comment for the live-constructed repro this closes.
     lines.push(
-      `**Entry gates shifted** — ${parts.join("; ")} (${prev.gateBlocks.length} → ${next.gateBlocks.length} ${gateWord} blocking entry).`,
+      next.gateFramingMoot
+        ? `**Entry gates shifted (moot — ${next.gateFramingMoot})** — ${parts.join("; ")} (${prev.gateBlocks.length} → ${next.gateBlocks.length} ${gateWord} blocking entry, but clearing them would not open entry).`
+        : `**Entry gates shifted** — ${parts.join("; ")} (${prev.gateBlocks.length} → ${next.gateBlocks.length} ${gateWord} blocking entry).`,
     );
   }
   // BUG FIX (Ask Largo standing mandate, 2026-09-18): the raw headline is
@@ -592,12 +617,19 @@ export function loadPersistedBriefSnapshot(key: string): BriefSnapshot | null {
     // calls `prev.gateBlocks.join(",")` unconditionally, and a snapshot persisted by client code
     // from before this field existed would parse back with `gateBlocks: undefined` — exactly the
     // crash this guard already exists to prevent for `sectionTitles`, just one field over.
+    //
+    // `gateFramingMoot` (added 2026-10-18) has no crash risk of its own — diffBriefSnapshots only
+    // ever reads `next.gateFramingMoot` (never `prev`'s), and a plain `string | null` field can't
+    // throw the way an unconditional `.join()`/`.includes()` on a missing array would. Guarded
+    // here anyway for type-schema honesty, matching this function's own established discipline for
+    // every other field added to BriefSnapshot since this guard was written.
     if (
       !parsed ||
       typeof parsed !== "object" ||
       typeof parsed.headline !== "string" ||
       !Array.isArray(parsed.sectionTitles) ||
-      !Array.isArray(parsed.gateBlocks)
+      !Array.isArray(parsed.gateBlocks) ||
+      (parsed.gateFramingMoot !== null && typeof parsed.gateFramingMoot !== "string")
     ) {
       return null;
     }
