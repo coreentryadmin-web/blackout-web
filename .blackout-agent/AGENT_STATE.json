@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-18T15:45:52.233Z",
+  "updated_at": "2026-10-18T20:58:50.571Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "52bcdcf6845462ca20b22e149c582947a3fa0153",
+    "last_main_sha": "c0fac24ebf461afe6a1c0c314917535d5ce53eea",
     "last_deploy_status": "success",
     "last_deploy_at": "2026-10-13T13:33:27Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/38400896026",
     "last_deploy_sha": "d665a96e1e4390d6269ab6c7dc103600981bf277"
   },
   "events": [
-    {
-      "at": "2026-10-11T00:37:29.001Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T00:37:33.358Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T01:36:38.726Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
     {
       "at": "2026-10-11T01:36:43.723Z",
       "type": "context_sync",
@@ -1271,9 +1253,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-18T20:58:41.778Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-18T20:58:46.629Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-18T20:58:50.571Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
+    {
+      "number": 6250,
+      "title": "docs(audit): production outage RECOVERED after ~3h18m — site confirmed HTTP 200",
+      "branch": "fix/outage-recovery-confirmed",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-18T20:42:31Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
