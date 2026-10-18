@@ -22,6 +22,17 @@ import assert from "node:assert/strict";
 // polygon-largo-cancellation.test.ts.
 process.env.POLYGON_API_KEY = "test-polygon-key";
 
+// The pagination loop builds `new URL(nextPath, BASE)` for every page after the first. In a
+// sandbox where POLYGON_API_BASE is an unresolved literal (e.g. the literal string
+// "POLYGON_API_BASE" itself, not a URL — the exact trap CLAUDE.md documents for several other
+// audit scripts in this repo), `new URL()` throws on page 2 onward, caught by the loop's own
+// generic `catch { break; }` and silently truncating to just the first page's row — which read
+// as "the mocked pagination only returns 1 row" rather than "BASE isn't a URL here" until traced.
+// Same established pattern as polygon-short-interest-cancellation.test.ts /
+// polygon-largo-cancellation.test.ts: pin BASE to a real URL so the module under test resolves
+// `new URL(nextPath, BASE)` the same way it would against the real Polygon/Massive API.
+process.env.POLYGON_API_BASE = "https://api.massive.com";
+
 // Relative specifier, not the "@/..." alias — tsx's alias rewrite only applies to statically-
 // parsed top-level `import ... from` statements, not to mock.module()'s specifier string.
 let requestedUrls: string[] = [];
