@@ -5,6 +5,18 @@ export function shouldRetryWatchdogFetch(status) {
   return status === 0 || isTransientOriginError(status);
 }
 
+/** True when public /api/health is not serving ok:true (origin down or app unhealthy). */
+export function siteHealthNeedsAction(status, bodyOk) {
+  return status !== 200 || bodyOk !== true;
+}
+
+/** Priority for a failed public health probe — sustained origin outage is always P0. */
+export function siteHealthItemPriority(status, bodyOk) {
+  if (!siteHealthNeedsAction(status, bodyOk)) return null;
+  if (status === 0) return "P0";
+  return "P0";
+}
+
 /**
  * Priority for a failed cron-staleness-watchdog HTTP probe.
  * Auth gaps (401/403) and transient origin 5xx are audit-env / deploy noise — not prod cron outages.

@@ -7,6 +7,8 @@ import {
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
   shouldPageNighthawkZeroPlays,
+  siteHealthNeedsAction,
+  siteHealthItemPriority,
 } from "./ops-collect-scope.mjs";
 
 describe("watchdogHttpPriority", () => {
@@ -21,6 +23,22 @@ describe("watchdogHttpPriority", () => {
 
   it("keeps real app failures at P0", () => {
     assert.equal(watchdogHttpPriority(500), "P0");
+  });
+});
+
+describe("siteHealthNeedsAction", () => {
+  it("flags non-200 or body.ok !== true", () => {
+    assert.equal(siteHealthNeedsAction(200, true), false);
+    assert.equal(siteHealthNeedsAction(200, false), true);
+    assert.equal(siteHealthNeedsAction(503, false), true);
+  });
+});
+
+describe("siteHealthItemPriority", () => {
+  it("pages P0 when health is down", () => {
+    assert.equal(siteHealthItemPriority(200, true), null);
+    assert.equal(siteHealthItemPriority(503, false), "P0");
+    assert.equal(siteHealthItemPriority(0, false), "P0");
   });
 });
 

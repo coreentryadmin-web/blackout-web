@@ -24,7 +24,13 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
+import {
+  shouldRetryWatchdogFetch,
+  watchdogHttpPriority,
+  shouldPageNighthawkZeroPlays,
+  siteHealthNeedsAction,
+  siteHealthItemPriority,
+} from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -194,6 +200,34 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+async function siteHealthItems() {
+  const HEALTH_TIMEOUT_MS = 30_000;
+  const MAX_ATTEMPTS = 3;
+  let status = 0;
+  let bodyOk = false;
+  let err = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+    const res = await fetchWithTimeout(`${BASE}/api/health`, {}, HEALTH_TIMEOUT_MS);
+    status = res.status;
+    err = res.err ?? null;
+    bodyOk = res.json?.ok === true;
+    if (!siteHealthNeedsAction(status, bodyOk) || !shouldRetryWatchdogFetch(status)) break;
+  }
+  const pri = siteHealthItemPriority(status, bodyOk);
+  if (pri) {
+    add(
+      pri,
+      "site",
+      "site:health",
+      "Production /api/health not OK",
+      `HTTP ${status}${err ? ` (${err})` : ""}${bodyOk ? "" : "; body.ok !== true"}`,
+    );
+  }
+}
+
 async function httpItems() {
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
@@ -351,6 +385,7 @@ function inEtEditionCatchup(now = new Date()) {
 }
 
 await postgresItems();
+await siteHealthItems();
 await httpItems();
 
 // Dedupe by id (watchdog + postgres may overlap)
