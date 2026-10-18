@@ -44,10 +44,16 @@ Contract violation is also silent: the API returns 200 with a valid response sha
 
 ## Status
 
-Open. Requires either:
+**FIXED (2026-10-18 23:25 UTC, commit 4349848f5)**
 
-**Option A: Adapter at response boundary** — wrap BieAnswerEnvelope fields into ProductRead shape before exposing to Largo (timestamp format conversion, infer freshness, derive direction from sections, extract evidence numbers, attach source/cohort).
+Implemented Option A (adapter at response boundary). New module `src/lib/swing/play-brief-adapter.ts` transforms BieAnswerEnvelope → ProductRead<SwingPlayBriefSignal>, conforming to all ten contract points. API response now carries native envelope (for UI) + normalized contract fields at top level (for Largo):
+- C1 TIME: `as_of: "YYYY-MM-DD HH:mm ET"` (ET-formatted timestamp)
+- C2 FRESHNESS: `freshness` (categorical: live/delayed/cached/snapshot/stale)
+- C5 DIRECTION: `direction` (bullish/bearish/neutral)
+- C7 EVIDENCE: `evidence_numbers` (specific numbers, not prose)
+- C8 PROVENANCE: `source` + `cohort` at envelope level
+- C3 ABSENCE: structured unavailable reasons (carried through BieAnswerEnvelope's own `unavailableSources`)
 
-**Option B: Dual-emit strategy** — expose both envelope (for UI) and ProductRead<SwingPlayBrief> (for Largo) from the same composed context, keeping native + normalized fields per contract principle.
+Contract audit (all 9 audited plays) should clear all 6 RED violations once deployed.
 
-See `docs/audit/LARGO-PRODUCT-CONTRACT.md` § "The contract" and `src/lib/bie/answer-envelope.ts` type definition.
+See `src/lib/swing/play-brief-adapter.ts` (lines 72–155 for contract field extraction) and route update `src/app/api/market/swing/play-brief/route.ts` (lines 65–93 for adapter integration).
