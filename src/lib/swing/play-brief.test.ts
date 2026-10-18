@@ -847,9 +847,18 @@ test("composeSwingPlayBrief: top-level Invalidation line still falls through to 
   );
 });
 
+// FIXTURE FIX (Ask Largo standing mandate, 2026-10-18): this test's own title says "when the play
+// is genuinely still enterable", but its fixture used the base `fixturePlay()` defaults
+// (setupState FORMING / entryStatus PRE_TRIGGER) — NOT genuinely still enterable at all;
+// `evaluateSwingEntryEnterability`'s if-chain returns `wait`/"Thesis is still building" for FORMING
+// BEFORE it would ever reach the one branch that actually treats a gate as the live blocker
+// (setup===TRIGGERED && an ENTERABLE_ENTRY_STATE && aboveFloor). `gateFramingMootReason` (new,
+// entry-enterability.ts) now correctly recognizes FORMING as moot, which is what changed this test
+// from green to red — the fixture, not the fix, was wrong. Overridden here to the actual
+// genuinely-still-enterable-but-gate-blocked state this test's title describes.
 test("composeSwingPlayBrief: Entry section still frames gates as the live blocker when the play is genuinely still enterable", () => {
   const ctx: SwingPlayBriefContext = {
-    play: fixturePlay(),
+    play: fixturePlay({ setupState: "TRIGGERED", entryStatus: "AT_TRIGGER", aboveFloor: true }),
     asOf: "2026-09-10T09:00:00.000Z",
     sessionDate: "2026-09-10",
     scanAsOf: null,
@@ -869,6 +878,38 @@ test("composeSwingPlayBrief: Entry section still frames gates as the live blocke
   // Live repro: AMD WATCH brief, 2026-10-08 — this section and "Trade manager read" both carried
   // the verbatim gate reason text.
   assert.doesNotMatch(entry!.body, /Bucket not graduated/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-18): live repro, CLS WATCH play-brief — score below
+// the lane's 60 commit floor (aboveFloor: false), setupState TRIGGERED/entryStatus AT_TRIGGER (so
+// none of deadPlayReason's 4 dead-entry cases apply), Legacy-only signalKinds auto-stamping the
+// non-blocking "legacy:exempt" provenance tag into gateBlocks. Before this fix, the Entry section
+// rendered an un-qualified "Gates blocking entry: 1 gate" header, implying clearing that tag would
+// open entry — false, since the real (and separately, correctly stated elsewhere in the brief)
+// reason is the score floor. RED before the fix (`git stash` on entry-enterability.ts/play-brief.ts
+// reproduces the un-qualified header), GREEN after.
+test("composeSwingPlayBrief: Entry section frames a below-floor gate as moot, not a live blocker — live repro CLS", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: false,
+      gateBlocks: [{ code: "legacy_exempt", reason: "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path." }],
+    }),
+    asOf: "2026-09-10T09:00:00.000Z",
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const entry = brief.envelope.sections.find((s) => s.title === "Entry");
+  assert.ok(entry);
+  assert.match(entry!.body, /\*\*Also gate-blocked\*\* \(moot — below the lane score floor\) — see Trade manager read below\./);
+  assert.doesNotMatch(entry!.body, /\*\*Gates blocking entry:\*\*/);
 });
 
 // BUG FIX (Ask Largo standing mandate, 2026-10-08): full end-to-end proof, through the real

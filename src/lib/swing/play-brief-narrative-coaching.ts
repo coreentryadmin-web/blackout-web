@@ -29,7 +29,7 @@ import { thesisHealthUncalibrated } from "./thesis-health";
 import { technicalsBias } from "./play-brief-technicals";
 import { formatFixedNonZero } from "./format-nonzero";
 import { ARCHETYPE_META, type SwingArchetype } from "./taxonomy";
-import { deadPlayReason } from "./entry-enterability";
+import { deadPlayReason, gateFramingMootReason } from "./entry-enterability";
 import { etStampFromDateOrIso, parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeImpliedVol } from "@/lib/providers/options-snapshot";
 import { parseOccSymbol, sameTicker } from "@/lib/largo/core/entities";
@@ -299,8 +299,17 @@ export function watchGateCoaching(play: TerminalPlay): string | null {
   // is already past its entry deadline or invalidated, since entry-enterability.ts's own if-chain
   // checks those FIRST and independently blocks entry either way. Same shared check
   // `watchEntrySection` (play-brief.ts) now uses for its own "Gates blocking entry:" header.
-  const dead = deadPlayReason(play);
-  return dead ? `**Also gate-blocked** (moot — ${dead}) — ${punctuated}` : `**Gates blocking entry** — ${punctuated}`;
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-18): widened from `deadPlayReason` to
+  // `gateFramingMootReason` — the former missed the score-floor and still-FORMING cases, which
+  // are ALSO checked before gate-blocked in entry-enterability.ts's if-chain (just as moot a
+  // framing as the 4 `deadPlayReason` cases); see that function's own doc comment for the live
+  // repro (CLS) and for why this needed a separate, wider function rather than widening
+  // `deadPlayReason` itself (that function's OTHER callers need the narrow 4-case version).
+  const gateFramingMoot = gateFramingMootReason(play);
+  return gateFramingMoot
+    ? `**Also gate-blocked** (moot — ${gateFramingMoot}) — ${punctuated}`
+    : `**Gates blocking entry** — ${punctuated}`;
 }
 
 /** Gamma magnet pin gravity. */

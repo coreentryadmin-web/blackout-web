@@ -41,7 +41,7 @@ import { buildIntelSections, entryTriggerDeadReason } from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
-import { deadPlayReason } from "./entry-enterability";
+import { deadPlayReason, gateFramingMootReason } from "./entry-enterability";
 import { buildStructureLadder } from "./play-brief-ladder";
 import { resolveBreakInvalidation } from "./play-brief-narrative";
 import { briefContentKey, extrasFromBriefResponse, snapshotFromBrief } from "./play-brief-diff";
@@ -774,11 +774,22 @@ function watchEntrySection(play: TerminalPlay, readMs: number): RichSection {
     // — rather than the reverse — loses no information and needs no new plumbing. The
     // "Watch levels" pointer below was repointed at "Trade manager read" too, so there is now
     // exactly one full-text home instead of two independent ones.
-    // `dead` reused from the top of this function (same value — computed once, not re-derived).
+    //
+    // BUG FIX (Ask Largo standing mandate, 2026-10-18): `dead` (above, `deadPlayReason`) only
+    // covers the 4 cases where the play is categorically done — it stayed false for a play held
+    // back by the score floor or a still-forming thesis, so THOSE plays got the un-qualified
+    // "**Gates blocking entry:**" header, the same false "clearing this opens entry" implication
+    // the 2026-09-14 fix above addressed for the other 4 cases. Live repro: CLS WATCH brief
+    // (score 59 vs a 60 floor, Legacy-only `signalKinds` auto-stamping the non-blocking
+    // `legacy:exempt` tag). `gateFramingMootReason` is `deadPlayReason` plus exactly those two
+    // extra cases — see its own doc comment for why they're a separate function rather than two
+    // more cases on `deadPlayReason` itself (that function has other callers for which a
+    // FORMING/below-floor play must NOT read as dead).
+    const gateFramingMoot = gateFramingMootReason(play);
     const gateCount = play.gateBlocks.length;
     lines.push(
-      dead
-        ? `**Also gate-blocked** (moot — ${dead}) — see Trade manager read below.`
+      gateFramingMoot
+        ? `**Also gate-blocked** (moot — ${gateFramingMoot}) — see Trade manager read below.`
         : `**Gates blocking entry:** ${gateCount} gate${gateCount === 1 ? "" : "s"} — see Trade manager read below.`,
     );
   } else if (play.recommendation === "BUY") {
