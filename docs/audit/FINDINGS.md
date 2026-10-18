@@ -38,6 +38,352 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-18 — SPX backlog agent hard-fails on invalid GHA AWS creds — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Priority** | P2 CI noise on `main` |
+| **Found by** | Cursor — `collect-and-dispatch` RED @ `baec3f755` (SPX platform backlog agent, not ops-auto-fix) |
+| **Status** | FIXED — mirror ops-auto-fix optional AWS + GitHub secret env on ops gate step |
+
+**Root cause.** `spx-platform-backlog-agent.yml` required AWS configure to succeed before the prod ops gate (`ops-collect-action-items.mjs`) ran. Invalid GHA `AWS_*` keys failed the job even though `CRON_SECRET` could still detect the live outage.
+
+**Fix.** `.github/workflows/spx-platform-backlog-agent.yml` — same `continue-on-error` + GitHub-secret-fallback pattern as `ops-auto-fix.yml`.
+
+## 2026-10-18 — [FINDING, ops] ops-auto-fix fails when Cloud Agent launch fails after issue create
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED (PR `fix/ops-dispatch-launch-fail-soft`) |
+| **Severity** | P2 |
+| **Surface** | `scripts/ops-dispatch-agent.mjs` |
+
+### Symptom
+
+After AWS fail-soft landed on `main`, `collect-and-dispatch` reached dispatch, created GitHub issue
+#6223, then exited 1 because `curl` to the Cursor agents API failed — marking the whole workflow red.
+
+### Fix
+
+Exit 0 when an issue was created; agent launch remains best-effort with a warning.
+
+## 2026-10-18 — ops-auto-fix collect-and-dispatch hard-fails on invalid AWS GHA creds — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Priority** | P1 ops / false RED on `main` |
+| **Found by** | Cursor — CI `collect-and-dispatch` failure alongside Deploy smoke 503 @ `be77ca75` |
+| **Status** | FIXED — AWS configure step `continue-on-error`; collect gets `CRON_SECRET` + `DATABASE_PUBLIC_URL` from GitHub secrets |
+
+**Root cause.** `ops-auto-fix.yml` required `aws-actions/configure-aws-credentials` to succeed before `ops-collect-action-items.mjs` ran. GitHub `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` returned **invalid security token** (2026-10-18), so the job failed even though `CRON_SECRET` was valid and the collector could still detect the live **HTTP 503** outage.
+
+Deploy **smoke** failed separately: `/api/health` never recovered during `gha-wait-deploy` (real origin outage — Cloudflare 503, not app JSON).
+
+**Fix.** `.github/workflows/ops-auto-fix.yml` — optional AWS creds + explicit GitHub secret env for collect.
+
+**Test.** Manual: re-run Ops auto-fix workflow after merge; job must reach "Collect action items" when AWS creds are bad but `CRON_SECRET` is set.
+
+## 2026-10-18 — [FINDING, security] Next.js SSG/ISR cache-poisoning CVE + transitive high-severity vulns
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Surface** | `next` (direct dep), `brace-expansion`/`fast-uri` (transitive, under `glob`) |
+
+### Symptom
+
+`npm audit --omit=dev` (production-reachable dependency scope) reported 3 vulnerabilities while
+auditing the live site's overall security posture:
+
+- **`next` 15.5.19–15.5.26 (moderate, direct dependency)** — two real CVEs
+  ([GHSA-4jqv-mc3x-m676](https://github.com/advisories/GHSA-4jqv-mc3x-m676),
+  [GHSA-mcj8-r9mp-w47p](https://github.com/advisories/GHSA-mcj8-r9mp-w47p)): cache poisoning of
+  SSG/ISR pages in self-hosted deployments, leading to cross-user content substitution and
+  persistent DoS. This repo is self-hosted on ECS (not Vercel), so the self-hosted attack surface
+  applies.
+- **`brace-expansion` (high, transitive under `glob`)** — ReDoS / stack-exhaustion DoS
+  ([GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr),
+  [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7),
+  [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p)).
+- **`fast-uri` (moderate, transitive)** — host-case-normalization inconsistency
+  ([GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj)).
+
+Found during a live production security review (headers, cookies, exposed files, admin-route
+gating, CORS, error disclosure, and `npm audit`) run at the operator's explicit request right
+after the 2026-10-18 production outage recovered. Every other check passed clean (strong security
+headers including HSTS/CSP/X-Frame-Options, no exposed `.env`/credentials/debug endpoints, all 6
+probed admin routes correctly 401/307 when unauthenticated, no CORS reflection for an arbitrary
+origin, no stack-trace leakage on malformed requests) — this dependency-CVE set was the only real
+gap.
+
+### Fix
+
+- Bumped `next` from `^15.5.19` to `^15.5.28` (current stable; the CVEs are fixed as of 15.5.27).
+  Patch-level bump, not the major v15→v16 migration already sitting in Dependabot PR #5547 — this
+  closes the CVE without taking on that migration's risk/blast-radius.
+- `npm audit fix` (non-forcing) cleared `brace-expansion` and `fast-uri`.
+
+`npm audit --omit=dev` now reports **0 vulnerabilities**. `tsc --noEmit` clean on Node 20. Full
+`npm test` run in progress to confirm no regression from the patch bump.
+
+### Deliberately left alone (out of scope)
+
+The remaining 15 vulnerabilities (2 moderate, 13 high) surfaced by a full (non-`--omit=dev`)
+`npm audit` are entirely in **devDependencies** — the `stylelint`/`postcss`/`tailwindcss` lint
+toolchain, which never runs in the deployed application and has zero production attack surface.
+Clearing them needs `npm audit fix --force` (major-version bumps of stylelint and tailwindcss),
+a real breaking-change migration unrelated to runtime security. Left for a separate, deliberate PR
+if the team wants to take on that toolchain upgrade — forcing it here would be scope creep on a
+security-only patch.
+
+## 2026-10-18 — [FINDING, infra] `blackout-production-web` ECS service running with `desiredCount=0` — root cause of the 2026-10-18 production outage
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | RESOLVED — confirmed recovered live 2026-10-18 ~20:47Z (addendum below) |
+| **Severity** | P0 |
+| **Surface** | `blackout-production-cluster` / `blackout-production-web` ECS service (AWS) |
+
+### Symptom chain (full incident, ~17:23Z onward)
+
+1. ~17:23Z: production started returning HTTP 503 ("Service Temporarily Unavailable", ALB's
+   own no-healthy-targets page, not an app-level error) on `/api/health`, `/pricing`, board
+   routes, etc.
+2. ~18:17Z: a sibling session found the GitHub Actions `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
+   secret was itself invalidated at the IAM level (`InvalidClientTokenId` on every call, including
+   a manual `workflow_dispatch` redeploy attempt) — this blocked recovery (nobody could push a new
+   image or roll ECS) but was never claimed to be the original cause of the ECS-unhealthy state.
+3. ~18:47Z–20:15Z: symptom intermittently read as HTTP 403 (Cloudflare WAF "Attention Required!"
+   block page) from multiple independent vantage points (this sandbox, a sibling sandbox, and
+   production's own `ops-collect-action-items.mjs` GitHub-Actions-hosted health probe) — cause
+   still unconfirmed, but now moot (see below).
+4. ~20:00Z: the GitHub Actions AWS credential started working again (operator action, inferred —
+   no message was ever sent to any session, but `aws-actions/configure-aws-credentials` and
+   `amazon-ecr-login` both succeeded on run `39161355948` for the first time since the outage
+   began). PR #6248 (`fix(deploy): skip static-asset gate when Cloudflare blocks GHA egress`)
+   merged and triggered this run.
+5. The deploy ran end-to-end successfully: image built and pushed, `blackout-production-web`
+   "rolled" (trivially — see below), Cloudflare edge cache purged, static-asset validation step
+   warned-and-passed (PR #6248's new edge-block handling, not a real pass), market-worker rolled
+   normally. **The whole workflow run completed with `conclusion: success`.** Despite this, the
+   site is STILL returning 503 as of this writing (20:17Z, ~2h54m into the incident) — now a clean
+   Cloudflare/ALB "503 Service Temporarily Unavailable" page (WAF block gone), not the WAF 403.
+
+### Root cause (confirmed from this run's own GitHub Actions job log, run 39161355948, job
+`build-and-push`, step "Roll ECS production web")
+
+The job's own `aws ecs describe-services --cluster blackout-production-cluster --services
+blackout-production-web` output, captured immediately after registering the new task definition
+(20:05:50Z), shows:
+
+```json
+{
+  "status": "ACTIVE",
+  "desiredCount": 0,
+  "runningCount": 0,
+  "pendingCount": 0,
+  ...
+}
+```
+
+**`blackout-production-web`'s desired task count is 0.** The deploy script's own in-repo comment
+(`.github/workflows/ecr-push-production.yml`, same step) states explicitly and for good reason:
+
+> "Do NOT pass `--desired-count` here: auto-scaling manages the task count. Overriding it resets
+> the count on every deploy and fights the scaling target. The live scalable target is min 5 /
+> max 12 (verified 2026-08-06)."
+
+So the deploy pipeline **by design never touches desiredCount** — it only registers a new task
+definition and calls `--force-new-deployment`, trusting Application Auto Scaling to keep the
+service between 5 and 12 tasks. With desiredCount already at 0, `--force-new-deployment` against
+a 0-desired service does nothing (there is nothing to roll): the wait loop immediately observes
+`running=0/0, rollout=COMPLETED` and exits "successfully" — explaining why a fully green,
+successful deploy run left the site still down. **This is not a deploy-pipeline bug** — the
+pipeline behaved exactly as documented/intended. The bug is that the service's desired count is
+at 0 in the first place, well below the documented floor of 5, and nothing is bringing it back up.
+
+By contrast, `blackout-production-market-worker` (the second service this same run rolls) showed
+`desiredCount: 2, runningCount: 2` — healthy and normal. **Only the web-tier service is affected.**
+
+This is very likely the actual root cause of the entire 3-hour outage, not merely a symptom of
+it — the invalidated AWS key (item 2 above) only ever explained why nobody could *redeploy*; it
+never explained why the ALREADY-RUNNING fleet went to zero tasks in the first place. Two
+possibilities, not yet distinguished from this sandbox (no working AWS credentials here — see
+Evidence gap below):
+
+- Someone/something called `aws ecs update-service --desired-count 0` on
+  `blackout-production-web` directly (manual action, a runbook/incident-response script, or a
+  malfunctioning automation), overriding the Application Auto Scaling target until the next
+  scaling evaluation — and the scaling policy is either not re-asserting its floor, or was itself
+  disabled/detached.
+- The Application Auto Scaling **scalable target** for this service (`service/blackout-production-
+  cluster/blackout-production-web`, min 5 / max 12 per the script's own 2026-08-06 verification)
+  was deleted or deregistered, so nothing is enforcing the floor anymore and the service will sit
+  at 0 indefinitely until someone manually restores it.
+
+### Fix (cannot be applied from this sandbox — needs the operator or a session with live AWS creds)
+
+Minimal, immediate, reversible restore to the documented normal floor:
+
+```
+aws ecs update-service \
+  --cluster blackout-production-cluster \
+  --service blackout-production-web \
+  --desired-count 5 \
+  --region us-east-1
+```
+
+Then verify the Application Auto Scaling scalable target still exists and has the documented
+min=5/max=12 range (so this doesn't silently drift back to 0 again):
+
+```
+aws application-autoscaling describe-scalable-targets \
+  --service-namespace ecs \
+  --resource-ids service/blackout-production-cluster/blackout-production-web \
+  --region us-east-1
+```
+
+If the scalable target is missing entirely, it needs to be re-registered (per
+`terraform/` — check for drift against the live resource rather than blindly re-applying, per
+this repo's standing "do not `terraform apply` against production" rule).
+
+### Evidence gap (why this sandbox could not apply the fix itself)
+
+This sandbox's own `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are a SEPARATE credential object
+from the one stored in GitHub Actions secrets. Re-tested via `boto3.client("sts").
+get_caller_identity()` twice during this incident (20:05Z and 20:11Z) — both times
+`InvalidClientTokenId`, even after the GitHub Actions secret was confirmed working (same error as
+documented in CLAUDE.md's "AWS — WORKS IN-SESSION when the operator's creds are present" note, but
+this time genuinely absent, not a stale assumption). No session in this sandbox model can run the
+fix command above; it needs direct operator action (AWS Console or CLI with real credentials) or a
+session where the operator has pasted working creds into the environment.
+
+### Why this was findable only now
+
+Nobody could see `desiredCount` on the live service without a working AWS credential anywhere in
+the loop — the sandbox's own creds were always placeholder/invalid, and the GitHub Actions secret
+was invalidated for the first ~2h40m of the incident, so this job log (the first one to actually
+run `describe-services` successfully since before the outage) is the first point any session had
+visibility into the service's real desired-count state.
+
+### Resolution confirmed (addendum, Night Hawk Swings lane, 2026-10-18 ~20:51Z)
+
+Independently confirmed from the Swings-lane audit session (this session had been tracking the
+same outage via its own `docs/audit/nighthawk-swings-live-journal.json`, escalated on #4076 at
+17:23Z, unaware at the time of this file's deeper root-cause trace): **production recovered at
+~20:47Z.** `/api/health` returned a genuine fresh `{"ok":true,...}` response (real Next.js/Clerk
+headers, not a Cloudflare error page or stale cache), `/pricing` and `/` both 200, stable across
+repeated checks over several minutes. Ran the real swing board/record endpoints end-to-end: data
+flowing normally again (3 real OPEN/HOLD native positions, consistent with pre-outage state).
+
+Timing is consistent with this file's own prescribed fix: this file was written ~20:17Z, status
+"NEEDS OPERATOR ACTION," and recovery was confirmed ~30 minutes later — the right order of
+magnitude for an operator (or a session with real AWS creds) running the exact
+`aws ecs update-service --desired-count 5` command this file recommends. No message was received
+by the Swings-lane session confirming who ran it or whether the Application Auto Scaling scalable
+target was also re-verified per this file's second recommended step — flagging that as still open
+in case nobody actually checked it: if the scalable target is still missing/deregistered, the
+service could silently drift back to `desiredCount=0` again with no new deploy to re-reveal it
+until the next time someone happens to run `describe-services` with working credentials. Posted a
+cross-reference to this finding on PR #4076's resolution comment so this root-cause trace isn't
+lost relative to the outside-view timeline posted there.
+
+## 2026-10-18 — [FINDING, deploy] ECR deploy false-fails when Cloudflare blocks GHA egress
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Surface** | `scripts/validate-static-assets.mjs`, `ecr-push-production.yml` |
+
+### Symptom
+
+`build-and-push` on `94d132283` failed at **Validate static assets on origin**: `/`, `/sign-in`,
+`/sign-up` returned **HTTP 403** with Cloudflare “you have been blocked” HTML during the live
+outage (WAF blocking GitHub Actions egress). ECS roll may have succeeded; CI treated it as broken
+`/_next/static` hashes.
+
+### Fix
+
+Detect Cloudflare edge-block HTML (exit code 2). After the full retry window, if every failure was
+edge-block only, warn and exit 0 so deploy pipeline does not cry-wolf. Real asset mismatches still
+exit 1.
+
+## 2026-10-18 — [FINDING, test-infra] `benzinga-earnings-pagination.test.ts` crashes in sandbox/CI on an unresolved `POLYGON_API_BASE`, silently truncating the test's own assertion to 1 row
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 |
+| **Surface** | `src/lib/providers/benzinga-earnings-pagination.test.ts` |
+
+### Symptom
+
+Found while running the full test suite (`npm test`) to validate an unrelated change (a Next.js
+security-patch PR) — `fetchBenzingaStructuredEarnings pagination` failed both of its subtests:
+
+```
+expected 7, actual 1
+expected 21, actual 1
+```
+
+Confirmed **not caused by that unrelated change**: reproduced identically in an isolated git
+worktree checked out at `origin/main` with completely fresh, independently-installed
+dependencies (`npm ci`, no trace of the security PR's `package.json`/`package-lock.json`
+changes). This is a real, pre-existing failure already on `main`.
+
+### Root cause
+
+`fetchBenzingaStructuredEarnings`'s pagination loop (`src/lib/providers/polygon.ts`, added
+2026-10-18 for the Ask Largo standing mandate's RBLX/SOFI truncation fix) builds
+`new URL(nextPath, BASE)` for every page after the first, where `BASE` is
+`process.env.POLYGON_API_BASE ?? "https://api.massive.com"`. In this sandbox (and apparently
+CI, since the test is part of `npm test`/`verify`), `POLYGON_API_BASE` is set to the **literal,
+unresolved string `"POLYGON_API_BASE"`** — the exact `${{shared.*}}`-doesn't-resolve trap
+CLAUDE.md documents for several other audit scripts in this repo (e.g. `helix-score-signal.mjs`'s
+own note: "this sandbox ships it as the literal unresolved string 'POLYGON_API_BASE'"). `new
+URL("/benzinga/v1/earnings?page=1", "POLYGON_API_BASE")` throws `Invalid URL`, which the loop's
+own `catch { break; }` swallows generically (indistinguishable from a legitimate network/
+entitlement failure) — silently stopping pagination after exactly one page, every time.
+
+The test file already worked around the sibling gotcha (`POLYGON_API_KEY` unset in CI) with an
+explicit `process.env.POLYGON_API_KEY = "test-polygon-key"` and a comment citing the established
+pattern in `polygon-short-interest-cancellation.test.ts` / `polygon-largo-cancellation.test.ts` —
+both of which ALSO explicitly pin `process.env.POLYGON_API_BASE` to a real URL before exercising
+Polygon-fetching code, for exactly this reason. This test missed that second half of the same
+established pattern.
+
+### Fix
+
+Added `process.env.POLYGON_API_BASE = "https://api.massive.com";` right after the existing
+`POLYGON_API_KEY` pin, matching the two sibling test files' precedent exactly. Verified:
+- Both subtests pass (`pass 2, fail 0`) on this branch.
+- Both subtests ALSO pass when the identical fix is applied against a clean `origin/main` worktree
+  with independently-installed dependencies — confirms the fix is correct on its own, not an
+  artifact of anything else in this session.
+
+### Deliberately out of scope
+
+The loop's blanket `catch { break; }` (which conflates a real upstream failure with a local
+bug like this one) is a separate, smaller code-quality observation, not touched here — the test-env
+fix alone restores the test to green and matches the established sibling-file pattern exactly;
+widening this into a behavior change in `polygon.ts` itself was not attempted.
+
 ## Ops auto-fix hard-fails when GitHub AWS secrets are invalid — FIXED
 
 > **kind:** `FINDING`
