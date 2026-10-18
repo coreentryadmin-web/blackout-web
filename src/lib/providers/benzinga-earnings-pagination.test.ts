@@ -14,6 +14,14 @@
 import { test, mock, describe, before } from "node:test";
 import assert from "node:assert/strict";
 
+// polygonGet() throws "POLYGON_API_KEY not set" (via polygonConfigured(), which reads
+// process.env live) BEFORE ever calling polygonTrackedFetch — mocking the fetch alone isn't
+// enough in CI, which has no live Polygon secret (this passed in a local sandbox where
+// POLYGON_API_KEY happens to be set, and failed in CI with 0 rows instead of 7/21). Same
+// established pattern as polygon-short-interest-cancellation.test.ts /
+// polygon-largo-cancellation.test.ts.
+process.env.POLYGON_API_KEY = "test-polygon-key";
+
 // Relative specifier, not the "@/..." alias — tsx's alias rewrite only applies to statically-
 // parsed top-level `import ... from` statements, not to mock.module()'s specifier string.
 let requestedUrls: string[] = [];
