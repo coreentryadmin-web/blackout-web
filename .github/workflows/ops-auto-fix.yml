@@ -48,11 +48,18 @@ jobs:
       - run: npm ci
 
       - name: Configure AWS credentials
+        id: aws_creds
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Note AWS credential failure (non-fatal)
+        if: steps.aws_creds.outcome == 'failure'
+        run: |
+          echo "::warning::AWS credentials invalid or expired — ops:collect will fall back to GitHub secrets (CRON_SECRET, DATABASE_PUBLIC_URL) for HTTP/Postgres audit."
 
       - name: Ensure ops-auto-fix label exists
         env:
@@ -67,8 +74,10 @@ jobs:
       - name: Collect action items (prod)
         id: collect
         env:
-          # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks.
+          # Prefer AWS Secrets Manager (auditSecret) — GitHub secrets are legacy fallbacks when AWS is down.
           CRON_TARGET_BASE_URL: https://blackouttrades.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
         run: |
           set +e
           json=$(node scripts/ops-collect-action-items.mjs 2>/dev/null)

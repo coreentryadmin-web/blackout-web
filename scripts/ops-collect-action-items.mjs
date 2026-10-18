@@ -194,6 +194,30 @@ async function fetchWithTimeout(url, headers, timeoutMs) {
   }
 }
 
+async function originHealthItems() {
+  const attempts = 3;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt));
+    const h = await fetchWithTimeout(`${BASE}/api/health`, { Accept: "application/json" }, 20_000);
+    if (h.status === 200) {
+      const ok = h.json?.ok === true;
+      if (!ok) {
+        add("P0", "origin", "origin:health-degraded", "Production /api/health not ok", JSON.stringify(h.json ?? {}).slice(0, 200));
+      }
+      return;
+    }
+    if (attempt === attempts - 1) {
+      add(
+        "P0",
+        "origin",
+        "origin:health-down",
+        "Production /api/health unreachable",
+        `HTTP ${h.status}${h.err ? ` (${h.err})` : ""} — origin may be down (ALB/ECS).`
+      );
+    }
+  }
+}
+
 async function httpItems() {
   if (!CRON) return;
   const H = { Authorization: `Bearer ${CRON}` };
@@ -350,6 +374,7 @@ function inEtEditionCatchup(now = new Date()) {
   return mins >= target + 60 && mins <= target + 120;
 }
 
+await originHealthItems();
 await postgresItems();
 await httpItems();
 
