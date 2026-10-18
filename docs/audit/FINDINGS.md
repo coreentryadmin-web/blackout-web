@@ -38,6 +38,181 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## `fetchUwGreekExposureExpiry` had no cache layer at all — the single highest-frequency fully-live UW call in the app, contributing to recurring ALB tail-latency spikes — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`uwCacheTtlMs()`, `src/lib/providers/unusual-whales.ts`) |
+|---|---|
+
+**Found via:** this session's standing performance/latency audit mandate. A live CloudWatch sweep
+(2026-10-18) measured `blackout-production-app`'s ALB `TargetResponseTime` over a 3-hour window:
+avg=0.85s, p50=0.036s (healthy), but **p99=8.94s, Max=43.2s** — a tail-latency problem, not a
+capacity problem (ECS CPU avg 4.1%/Max 59%, Memory avg 9.2%/Max 32.7%, plenty of headroom). The Max
+spikes recurred roughly every 13-51 minutes. `[api-queue-timing]` log lines (UW rate-limiter) showed
+bursts of concurrent calls to `/api/economy/gdp`, `/api/economy/cpi`, `/api/economy/unemployment`
+and separately `/api/stock/SPX/flow-per-expiry` + `/greek-exposure/expiry` + `/api/net-flow/expiry`
+queuing behind the shared rate limiter, with `queue_wait_ms` up to 19,460ms in one observed burst,
+timed to line up with the ALB Max spikes.
+
+**Root cause.** Traced both burst clusters to exactly two call sites in `src/features/spx/lib/
+spx-desk.ts` — `fetchDeskEnrichmentFields` (fired from the `desk-warm` cron every ~5min RTH, and
+fire-and-forget off the live `buildSpxDesk()` path) and `buildSpxDeskFlow` (wrapped by
+`loadSpxDeskFlow`, cached for only 2s to match the client's own `SPX_FLOW_POLL_MS` live SWR poll
+interval) — both running the same `runUwPooled` fan-out of `fetchUwGreekExposureExpiry`,
+`fetchUwFlowPerExpiry`, and `fetchUwNetFlowExpiry` (the economy GDP/CPI/UNRATE triplet is a separate,
+already-fixed nested pool inside `fetchUwMacroIndicators`, landed 2026-10-15). This is one legitimate
+caller's own fan-out, not duplicated/competing callers.
+
+Of the three pooled calls, two already have caching: `fetchUwFlowPerExpiry` (Redis L2, 120s,
+`UW_CACHE_TTL.flowPerExpiry`) and `fetchUwNetFlowExpiry` (in-process L1, 120s, `uwCacheTtlMs`).
+**`fetchUwGreekExposureExpiry` had neither** — `uwCacheTtlMs()` had no branch for
+`/greek-exposure/expiry` at all (confirmed: zero matches grepping `uw-shared-cache.ts` for
+`greekExposure`/`greek-exposure`), so every call went straight into the shared rate-limiter queue.
+Because `buildSpxDeskFlow`'s own wrapper revalidates every 2 seconds under live RTH/extended-hours
+member polling, this made it the single highest-frequency fully-live UW call in the whole app — hit
+roughly every 2 seconds, continuously, all day — competing for the same tiny cluster-wide
+`GLOBAL_MAX_CONCURRENCY`/`GLOBAL_MAX_RPS` budget that the periodic 5-min enrichment bursts (which
+also re-fetch it, alongside the economy triplet) then collide with. That collision is what tips
+queue wait into multi-second territory and produces the correlated ALB p99/Max spikes.
+
+**Confirmed organic production traffic, not audit-script traffic**: both call sites are real cron
+(`desk-warm`) and real member-facing live polling, not anything in `scripts/audit/`. A third,
+on-demand call site (Largo's `get_greek_flow` chat tool, `src/lib/largo/run-tool.ts:1474`) is not a
+recurring-burst contributor.
+
+**Not the fix:** `UW_GLOBAL_MAX_RPS` is already 8 (not the stale "default 2" an older doc note
+implied — bumped 2026-10-14), so the real problem is call volume on an uncached hot path, not the
+rate ceiling. Raising it further was explicitly not recommended or touched.
+
+**Fix.** Added a `uwCacheTtlMs()` branch for `path.endsWith("/greek-exposure/expiry")` returning a
+120s TTL (`UW_GREEK_EXPOSURE_EXPIRY_CACHE_SEC`, matching its two pool-siblings exactly — dealer
+positioning-by-expiry doesn't need sub-2s freshness any more than net-flow/expiry or
+flow-per-expiry do). Caching is generic through the existing `uwGetSafe`/L1-cache mechanism, gated
+purely on `uwCacheTtlMs(path) > 0` — no change needed to `fetchUwGreekExposureExpiry` itself or
+either caller.
+
+**Tests.** Added `fetchUwGreekExposureExpiry caches within TTL` to `unusual-whales.test.ts`,
+mirroring the existing `fetchUwIvRank` cache-proof test exactly: two sequential calls within TTL
+must produce exactly one underlying `fetch`. RED→GREEN proven via `git stash` of the source file
+alone (2 !== 1 without the fix, 1 === 1 with it restored). Broader regression:
+`src/lib/providers/*.test.ts` + `src/features/spx/**/*.test.ts` + `src/lib/largo/**/*.test.ts` —
+2791/2791 pass (1898 providers+largo, 893 spx). `tsc --noEmit`: clean.
+
+**Market-open validation.** Confirm `[api-queue-timing]` log lines for `greek-exposure/expiry` drop
+from roughly once/2s to roughly once/120s per unique ticker once this deploys, and that the
+recurring ALB p99/Max spikes correlated with this specific burst pattern stop recurring (any
+unrelated burst, if one exists, would persist — isolating this fix's actual effect from other
+causes).
+
+## Largo cross-product GAMMA system read divided by the flip level instead of spot — wrong denominator, third instance of this defect class this week — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`gammaRegimeRead()`, `src/lib/largo/core/system-reads.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-18), a
+background agent extending the already-shipped wrong-denominator sweep (PR #6158, 2026-10-17 —
+`committedStructuralStopLine()` in `src/lib/swing/play-brief-narrative.ts` and the CLOSED-bucket
+"reclaimed the stop level" line in `src/lib/swing/play-brief-intel.ts`) from `src/lib/swing/*.ts` /
+`src/lib/bie/*.ts` into `src/lib/largo/core/*.ts`, the cross-product consensus layer, which hadn't
+been checked yet.
+
+**Root cause.** `gammaRegimeRead(input)` computed `pct` as `((spot - gammaFlip) / gammaFlip) * 100`
+— dividing by `gammaFlip` (the level) instead of `spot`. Every other implementation of this exact
+"spot's % distance from a level" quantity in the repo divides by `spot`: `vector-regime.ts:86`,
+`gex-positioning.ts:376`/`391`, `bie/vector-desk-intel.ts`, `bie/spx-desk-intel.ts`. The function's
+own unit test (`system-reads.test.ts:61-68`) baked in the buggy output as its expected value
+(`spot: 7760, gammaFlip: 7700` → `"+0.78%"`) — at that ~0.8%-wide gap the two conventions round to
+visibly different-looking but easy-to-miss values; the correct spot-denominator convention gives
+`"+0.77%"`. At a realistic wider gap (e.g. spot=120/flip=100) the divergence is a full 3.33
+percentage points (16.67% correct vs 20.00% buggy) — a real, member-visible precision error, not a
+rounding artifact.
+
+**Blast radius.** `gammaRegimeRead` is called from exactly one site,
+`src/lib/largo/core/system-reads-extract.ts:125`, which feeds Largo's cross-product "System reads"
+panel. Confirmed member-visible: `src/features/largo/answer/LargoDeskRead.tsx:176` renders the
+`basis` string (which embeds this percentage) verbatim in the rendered panel — not dead code.
+
+**Why this one is lower severity than the swing-brief instances (#6158).** `gammaRegimeRead` is
+explicitly `kind: "regime"` and hardcodes `stance: "neutral"` — per its own doc comment ("a state,
+never a vote"), nothing downstream treats it as directional, so this is a display-precision defect
+against the Largo Product Contract's "precision" point, not a trading-impacting one. Still fixed
+with the same rigor, since LARGO-PRODUCT-CONTRACT.md's precision point exists precisely so members
+can trust every number a product surface shows, not just the ones that move a trade decision.
+
+**Fix.** Divide by `spot` instead of `gammaFlip`, matching the file-wide convention. Updated the
+existing unit test's expected values to the correct convention and added a wide-gap regression test
+(spot=120/flip=100 and the inverse) where the two conventions diverge by whole percentage points
+rather than rounding to the same display value.
+
+**Tests.** RED→GREEN proven via `git stash` of the source file alone (2 failures without the fix —
+the pre-existing test's now-corrected expectations — 0 with it restored). Broader regression:
+all of `src/lib/largo/**/*.test.ts` — 1364/1364 pass. `tsc --noEmit`: clean.
+
+## Meridian's market-wide Benzinga earnings-window fetch silently truncated a busy window to the first ~2 pages — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`fetchBenzingaStructuredEarnings()`, `src/lib/providers/polygon.ts`) |
+|---|---|
+
+**Found via:** this session's standing Ask Largo deep-dive (5-engine monitor cycle, 2026-10-18), while
+auditing the swing play-brief's "Catalysts & news" vs "Meridian catalysts" sections for consistency.
+
+**Live repro.** Two real, currently-committed Swing positions — RBLX (earnings 2026-10-29) and SOFI
+(earnings 2026-10-27) — both showed their real earnings date correctly in the brief's main "Catalysts
+& news" section (a different, per-ticker Benzinga lookup), but the brief's separate "Meridian catalysts"
+section said *"No catalysts in the 14-day Meridian window... calendar is quiet, not missing"* — a direct
+contradiction for a ticker with a real, known, near-term print.
+
+**Root cause.** `loadBenzingaEarningsBundle()` (`src/lib/meridian/meridian-benzinga-earnings.ts`) feeds
+Meridian's market-wide window scan (Meridian's timeline, Largo's `get_meridian_timeline` tool, and
+Swing's "Meridian catalysts" section all read this same `window_rows`) via
+`fetchBenzingaStructuredEarnings({ ..., limit: 120, sort: "date.asc", paginate: true })`. The pagination
+loop inside `fetchBenzingaStructuredEarnings` was hardcoded to follow at most **2 more** `next_url`
+pages after the first (`for (let page = 0; page < 2 && nextPath; page += 1)`) — a fixed 3-page / 360-row
+total budget regardless of how dense the requested date window actually is. Results are sorted
+`date.asc`, so once a window's early dates alone produce enough rows to exhaust that budget, every later
+date — including RBLX's and SOFI's own, already-known earnings dates — is silently dropped before the
+fetch ever reaches them. This is the exact same shape as the already-fixed `barLimitForWindow` defect
+documented in this file's own "Data-correctness notes" (a fixed cap on a date-sorted fetch silently
+drops the far end, presenting as "we don't have that data" rather than as a truncated fetch).
+
+**Evidence of density.** A direct market-wide timeline fetch over the relevant window showed a single
+real earnings week (days 2–6 of a 21-day Meridian window) alone producing **~269 rows** at
+`limit=120`/page — already past the old 360-row total budget before the date-ascending fetch could ever
+reach day 10+ of the window, let alone RBLX (day ~11) or SOFI (day ~9).
+
+**Blast radius.** One call site: `loadBenzingaEarningsBundle()` is the only caller that passes
+`paginate: true` to `fetchBenzingaStructuredEarnings`. Confirmed `loadBenzingaBoardEarnings()` (a
+separate rescue path limited to today's 0DTE board tickers) does not set `paginate: true` and is
+unaffected.
+
+**Fix.** Widened the cap to a named `MAX_EXTRA_PAGES = 20` (chosen off the live-measured peak single-day
+density of 99 earnings items — generous headroom without removing the bound entirely, since an
+adversarial/malformed `next_url` chain must not hang a request forever). Per this file's "no silent
+caps" discipline, if the cap is still hit while a `next_url` remains, a `console.warn` logs it so a
+still-truncated result is discoverable rather than silently read as "the calendar is quiet."
+
+**Tests.** New `src/lib/providers/benzinga-earnings-pagination.test.ts` mocks `polygonTrackedFetch` (via
+`node:test`'s `--experimental-test-module-mocks` + `mock.module()`, per the established
+`ex-dividend-reads.test.ts` pattern) so the real pagination loop runs for real against a fake paginated
+upstream: one test confirms more than 2 extra pages are followed when available (the live RBLX/SOFI
+repro shape), one confirms the safety cap still bounds the loop and logs a warning when exceeded.
+RED→GREEN proven via `git stash` of the source file alone (both subtests fail against the old
+hardcoded 2-page cap — 1 and 3 rows respectively instead of 7 and 21 — 0 fail with the fix restored).
+Broader regression: `src/lib/meridian/*.test.ts` + `src/lib/providers/*.test.ts` + `src/lib/swing/*.test.ts`
+— 2927/2927 pass. `tsc --noEmit`: clean.
+
+**Sandbox note for future runs of this test:** this sandbox's `POLYGON_API_BASE` env var can resolve to
+the literal unresolved string `"POLYGON_API_BASE"` (documented elsewhere in this file) rather than a
+real URL — `fetchBenzingaStructuredEarnings`'s own `BASE` constant reads straight off that env var, and
+its pagination loop's `new URL(nextPath, BASE)` throws on that literal, silently truncating to 1 page
+via the loop's own `catch { break; }`. Run the test with `POLYGON_API_BASE` unset
+(`env -u POLYGON_API_BASE`) to get a real base URL default.
+
 ## ABVX (clinical-stage biotech) missing from `sectorFor`'s biotech cluster — FIXED
 
 > **kind:** `FINDING`
