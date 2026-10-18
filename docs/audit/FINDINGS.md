@@ -38,6 +38,29 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## CLOSED swing briefs could silently fail to fetch Vector/GEX data with no absence disclosure — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed (`src/lib/swing/play-brief-absence.ts`) |
+|---|---|
+
+**Found via:** Night Hawk Swings standing Ask Largo mandate, item #4 on PR #4076's tracked gap list.
+
+**Root cause, three interconnected failures in the absence-disclosure pipeline** (`src/lib/swing/play-brief-context.ts`, `play-brief-absence.ts`):
+
+1. `computeVectorFullState`/`fetchEcosystem` wrap their entire body in try/catch and return a bare `null` with zero logging on failure — indistinguishable from "no data available" vs "fetch failed," and `withBriefSourceTimeout`'s wrapping doesn't help because a silent-null return never triggers `.catch()`.
+2. Because of (1), the brief-composition layer's `vectorFetchFailed`/`ecosystemFetchFailed` flags — set only inside `.catch()` handlers — stayed `false` even when the underlying fetch had silently failed.
+3. Even when a fetch failure flag WAS correctly set, `play-brief-absence.ts`'s `isNotLive` gate (`isClosed || isDeadWatch`, lines ~738-810) blocked disclosure for CLOSED plays. That gate conflates two separate concerns: staleness/coldness (genuinely irrelevant once a play is CLOSED) and fetch failures (always relevant, regardless of play status) — and gated both identically.
+
+**Evidence.** Live instance, AMD CLOSED play (2026-10-12): the member's `/horizons?view=swings` board showed no Vector-desk section and no absence disclosure. `GET /api/market/swing/play-brief?ticker=AMD` returned `status: "CLOSED"`, `unavailableSources: []` (empty — no disclosure at all) while the internal flag `vectorFetchFailed: true` was correctly set but never surfaced. Later the same session the Vector section appeared with fresh data, meaning the member had no way to distinguish a real transient fetch failure from "this play genuinely has no Vector data" — exactly the C3 (ABSENCE) / C8 (PROVENANCE) violation the Largo product contract exists to prevent.
+
+**Fix.** Split the two concerns in `play-brief-absence.ts`: kept the `!isNotLive` gate for staleness/coldness checks (still correctly skipped for CLOSED plays), and added **unconditional** disclosure blocks for `ctx.ecosystemFetchFailed` → "GEX positioning" absence and `ctx.vectorFetchFailed` → "Vector desk state" absence, both placed outside the `isNotLive` gate so CLOSED plays disclose fetch failures exactly like live plays do.
+
+**Tests.** Two regression tests added to `src/lib/swing/play-brief.test.ts`: a CLOSED play with `vectorFetchFailed: true` asserts `unavailableSources` carries a `"Vector desk state"` entry; a CLOSED play with `ecosystemFetchFailed: true` asserts the same for `"GEX positioning"`.
+
+**Related:** PR #4076 (Ask Largo × Night Hawk Swings standing ownership mandate, item #4); `docs/audit/LARGO-PRODUCT-CONTRACT.md` C3 (ABSENCE) and C8 (PROVENANCE).
+
 ## Ask Largo — `catalystsSection` rendered an imminent earnings print and its driving headlines as two unrelated blocks — FIXED
 
 > **kind:** `FINDING`
