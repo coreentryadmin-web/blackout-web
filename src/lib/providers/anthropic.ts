@@ -396,6 +396,42 @@ export function extractTextFromLastAssistant(messages: AnthropicMessage[]): stri
   return null;
 }
 
+/** Sentinel returned by {@link raceToolRoundAgainstBudget} when the round's own wall-clock budget
+ *  ran out before its tool fan-out settled. A unique symbol rather than `null`/`undefined` so it can
+ *  never collide with a real (possibly falsy) tool result. */
+export const TOOL_ROUND_BUDGET_EXCEEDED = Symbol("tool-round-budget-exceeded");
+
+/**
+ * Races a round's in-flight tool fan-out against the time left in the loop's wall-clock budget.
+ *
+ * WHY THIS EXISTS. The between-round budget check (below, in `anthropicToolLoop`) only runs BEFORE a
+ * round's `create`/`stream` call starts — nothing previously re-checked the clock while that round's
+ * OWN `Promise.all(toolCalls.map(...))` was in flight. If one tool call inside it stalled (queued
+ * behind the UW rate limiter, a slow Polygon chain fetch, a cold GEX matrix rebuild), the entire
+ * round — and therefore the loop — blocked until that call's own worst-case ceiling resolved,
+ * regardless of how much loop budget remained. Measured live (2026-10-18, 11:36-12:09 UTC): 85 Deep
+ * turns, mean total_ms ~47000, worst 121197ms against a 75000ms loop budget — up to +41000ms past the
+ * wall it was supposed to enforce, correlated with UW queue_wait_ms up to 18428ms.
+ *
+ * Pure and SDK-free so it is unit-testable without mocking the Anthropic client (same reason
+ * `shouldFallBackToEscalationModel`/`extractTextFromLastAssistant` above are factored out — `getClient()`
+ * is not dependency-injected).
+ *
+ * `remainingMs` is clamped to >=0: a budget that has already been exhausted by the time this round's
+ * tools start must resolve to the sentinel immediately, not wait out a negative delay.
+ */
+export async function raceToolRoundAgainstBudget<T>(
+  toolsPromise: Promise<T>,
+  remainingMs: number
+): Promise<T | typeof TOOL_ROUND_BUDGET_EXCEEDED> {
+  return Promise.race([
+    toolsPromise,
+    new Promise<typeof TOOL_ROUND_BUDGET_EXCEEDED>((resolve) => {
+      setTimeout(() => resolve(TOOL_ROUND_BUDGET_EXCEEDED), Math.max(0, remainingMs));
+    }),
+  ]);
+}
+
 /**
  * Org-wide hard AI-spend kill-switch, shared by EVERY Anthropic surface — not just Largo (audit S-5;
  * previously only largo/query checked it, so SPX commentary, GEX explain, NW narrative, NH critic etc.
@@ -876,7 +912,7 @@ export async function anthropicToolLoop(params: {
       }
     }
 
-    const results = await Promise.all(
+    const toolsPromise = Promise.all(
       toolCalls.map(async (tc) => {
         const name = tc.name;
         try {
@@ -892,6 +928,36 @@ export async function anthropicToolLoop(params: {
         }
       })
     );
+
+    // ROUND-LEVEL DEADLINE, NOT JUST BETWEEN-ROUND. The check above (before the create/stream call)
+    // only runs BEFORE a round starts — it cannot see a round that is already past budget because
+    // ITS OWN tool fan-out stalled. Race the fan-out against whatever budget is left so one slow
+    // tool call (rate-limiter queue, a cold GEX rebuild, a slow upstream fetch) can't block the round
+    // — and therefore the loop — past its wall clock. Applied on EVERY round including round 0: by
+    // the time execution reaches here the model's round-0 response has already arrived, so the
+    // between-round check's "give the loop at least one attempt" floor has already been satisfied.
+    //
+    // Deliberately does NOT cancel the abandoned call(s) — there is no AbortSignal threaded from here
+    // down into runTool/the individual provider fetchers, so a timed-out call keeps running to its
+    // own natural completion/failure in the background. It still releases its rate-limiter slot
+    // whenever it settles, and each call above is already try/caught into `{error}`, so orphaning it
+    // carries no unhandled-rejection risk — just a wasted (already-in-flight) upstream call.
+    let results: unknown[];
+    if (loopBudgetMs > 0) {
+      const remainingMs = loopStartedAt + loopBudgetMs - Date.now();
+      const raced = await raceToolRoundAgainstBudget(toolsPromise, remainingMs);
+      if (raced === TOOL_ROUND_BUDGET_EXCEEDED) {
+        console.warn(
+          `[anthropic] tool loop round ${round}'s tool fan-out (${toolCalls.length} call(s)) exceeded ` +
+            `the ${loopBudgetMs}ms wall-clock budget with ${remainingMs}ms remaining when it started — ` +
+            `returning partial`
+        );
+        return stop("loop_budget", extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null);
+      }
+      results = raced;
+    } else {
+      results = await toolsPromise;
+    }
 
     messages.push({
       role: "user",
