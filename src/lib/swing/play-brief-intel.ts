@@ -1180,8 +1180,15 @@ export function catalystsSection(
   const readMs = ctx?.readMs ?? Date.now();
   const lines: string[] = [];
 
+  // ENHANCEMENT (Ask Largo standing mandate, AGGRESSIVE MODE, 2026-10-18, flagged on #4076
+  // comment 6243951905): earningsDaysUntil is hoisted out of this block (was previously a local
+  // `d` used only here) so the headlines block below can connect an imminent print to this
+  // week's headlines with one synthesizing sentence, instead of two unrelated bullet blocks
+  // separated by a blank line — see that block's own comment for the live repro.
+  let earningsDaysUntil: number | null = null;
   if (arsenal.earnings?.earnings_date) {
     const d = arsenal.earnings.days_until;
+    earningsDaysUntil = d ?? null;
     const when =
       d != null && d <= 0
         ? "**today**"
@@ -1245,8 +1252,24 @@ export function catalystsSection(
       seenHeadlines.add(key);
       return true;
     });
+    // ENHANCEMENT (Ask Largo standing mandate, AGGRESSIVE MODE, 2026-10-18, #4076 comment
+    // 6243951905): when earnings falls inside the same ~2-week window meridianCatalystSection's
+    // own "14-day Meridian window" messaging uses below, the headlines are plausibly
+    // the very catalyst driving the move into that print — live repro: TSLA, earnings in 4 days
+    // afterhours, sitting directly above four Roadster-reveal headlines, rendered as two
+    // isolated blocks with zero connective tissue. Add one synthesizing sentence ahead of the
+    // bullets rather than leaving the reader to infer the connection themselves. The "Earnings:
+    // ..." line above still renders exactly as before — this only adds a lead-in, never removes
+    // or restates the date — and when earnings is null/far-out, earningsDaysUntil is null/out of
+    // range and this is a no-op (bridgeLead stays "").
+    const earningsSoon =
+      earningsDaysUntil != null && earningsDaysUntil >= 0 && earningsDaysUntil <= 14;
+    const bridgeLead = earningsSoon
+      ? "_That earnings date keeps IV/positioning sensitive — the headlines below look like the likely driver into it._\n\n"
+      : "";
     lines.push(
-      staleLead +
+      bridgeLead +
+        staleLead +
         "**Headlines:**\n" +
         dedupedHeadlines
           .slice(0, 4)
