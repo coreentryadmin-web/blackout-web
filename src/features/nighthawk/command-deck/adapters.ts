@@ -29,7 +29,7 @@ import type { SwingManageAction, SwingManageRung } from "@/lib/swing/manage";
 import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
-import { resolveLegacyPlayOcc } from "@/features/nighthawk/lib/legacy-play-contract";
+import { resolveLegacyPlayOcc, publishedAtRef } from "@/features/nighthawk/lib/legacy-play-contract";
 import type {
   DeckCondor,
   DeckDirection,
@@ -1240,14 +1240,6 @@ function parseEntryMid(range: string | null | undefined): number | null {
   if (nums.length === 0) return null;
   if (nums.length === 1) return nums[0];
   return (nums[0] + nums[nums.length - 1]) / 2;
-}
-
-/** Parse `published_at` into a Date for resolveLegacyPlayOcc's year-inference anchor, or undefined
- *  (falls back to real now) when absent/unparseable — never hands a NaN Date downstream. */
-function publishedAtRef(publishedAt: string | null | undefined): Date | undefined {
-  if (typeof publishedAt !== "string" || publishedAt.length === 0) return undefined;
-  const d = new Date(publishedAt);
-  return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {

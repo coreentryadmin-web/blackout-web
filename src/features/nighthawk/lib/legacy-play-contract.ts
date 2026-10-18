@@ -24,6 +24,15 @@ export function resolveLegacyPlayOcc(
   return buildOccContractId(ticker, parsed.expiryYmd, optionType, parsed.strike);
 }
 
+/** Parse an edition/row's `published_at` into a Date for resolveLegacyPlayOcc's year-inference
+ *  anchor, or undefined (falls back to real now) when absent/unparseable — never hands a NaN
+ *  Date downstream. Shared by every caller that re-resolves an OCC from a possibly-old edition. */
+export function publishedAtRef(publishedAt: string | null | undefined): Date | undefined {
+  if (typeof publishedAt !== "string" || publishedAt.length === 0) return undefined;
+  const d = new Date(publishedAt);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
 /** Polygon unified snapshot keys use the `O:` prefix; Legacy play rows store bare OCC. */
 export function legacyOccForSnapshot(occ: string): string {
   const bare = occ.trim().toUpperCase().replace(/^O:/, "");
