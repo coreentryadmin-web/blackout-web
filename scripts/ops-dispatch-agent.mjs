@@ -180,8 +180,22 @@ const resp = spawnSync(
 );
 
 if (resp.status !== 0) {
-  console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
-  process.exit(1);
+  const detail = (resp.stderr || resp.stdout || "unknown error").trim();
+  console.warn("[ops-dispatch] Cloud Agent launch failed:", detail);
+  if (issueUrl && ghToken) {
+    try {
+      gh([
+        "issue",
+        "comment",
+        issueUrl,
+        "--body",
+        `⚠️ Cloud Agent dispatch failed (ops-auto-fix will retry on next tick):\n\n\`\`\`\n${detail.slice(0, 1500)}\n\`\`\``,
+      ]);
+    } catch (e) {
+      console.warn("[ops-dispatch] Could not comment launch failure on issue:", e.message);
+    }
+  }
+  process.exit(issueNumber ? 0 : 1);
 }
 
 const agent = JSON.parse(resp.stdout);
