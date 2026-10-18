@@ -1783,8 +1783,13 @@ async function evaluateSpxPlayCore(
     // evaluatePlayGates gates on confluence.grade/direction directly and evaluateMtfHybrid below
     // is called with both confluence.grade (would have been stale) and confluence.score (already
     // mutated) — reassign every derived field together so they can never disagree with score.
+    // BUG FIX (2026-10-18): `rawScore` was the one field this fix's own Pick<...> omitted, so it
+    // stayed frozen at the pre-bonus value (persisted downstream as "confidence" — see
+    // reclassifyConfluenceScore's updated header) while every other field here was already fresh.
+    // Now included in `reclass` and reassigned alongside the rest.
     const reclass = reclassifyConfluenceScore(desk, confluence.score + nhBonus.bonus, confluence.factors);
     confluence.score = reclass.score;
+    confluence.rawScore = reclass.rawScore;
     confluence.bias = reclass.bias;
     confluence.action = reclass.action;
     confluence.grade = reclass.grade;
