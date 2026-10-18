@@ -719,11 +719,26 @@ export async function fetchBenzingaStructuredEarnings(opts: {
   );
   if (!opts.paginate || !first.entitled || first.error) return first;
 
-  // Follow up to two next_url pages for busy earnings weeks.
+  // BUG FIX (2026-10-18, Ask Largo standing mandate, live repro RBLX/SOFI): this followed a
+  // HARDCODED "up to two more pages" regardless of how dense the requested date window actually
+  // is — the same "fixed cap on a date-sorted fetch silently drops the far end" shape this file's
+  // own `barLimitForWindow` precedent already fixed once for Polygon aggregate bars. Measured live
+  // 2026-10-18 via a direct market-wide timeline fetch: a single real week's earnings density
+  // (days 2-6 of a 21-day Meridian window) alone produced ~269 rows at limit=120/page — already
+  // enough to exhaust the old 3-page (360-row) total budget before the fetch (sorted date.asc)
+  // ever reached day 10+, silently truncating real, already-known, near-term earnings prints for
+  // live committed Swing positions (RBLX 2026-10-29, SOFI 2026-10-27) out of the market-wide
+  // window `loadBenzingaEarningsBundle` feeds Meridian's timeline / Largo's get_meridian_timeline
+  // tool / Swing's "Meridian catalysts" section — all three read this same truncated `window_rows`.
+  // Widened to a generous, still-bounded cap (not unbounded — a malformed/adversarial next_url
+  // chain must not hang a request forever) sized off the real measured peak density (99 items on
+  // the single densest day observed) rather than a guessed round number.
+  const MAX_EXTRA_PAGES = 20;
   let rows = [...first.rows];
   let nextPath = first.nextUrl ?? "";
+  let pagesFollowed = 0;
 
-  for (let page = 0; page < 2 && nextPath; page += 1) {
+  for (; pagesFollowed < MAX_EXTRA_PAGES && nextPath; pagesFollowed += 1) {
     try {
       const url = new URL(nextPath, BASE);
       const pageParams = Object.fromEntries(url.searchParams.entries());
@@ -739,6 +754,15 @@ export async function fetchBenzingaStructuredEarnings(opts: {
     } catch {
       break;
     }
+  }
+
+  // No silent caps: if the safety cap itself was the reason pagination stopped (there was still
+  // a next_url when the loop ended), the result can still be truncated — log so this is
+  // discoverable instead of silently read as "the calendar is quiet."
+  if (pagesFollowed >= MAX_EXTRA_PAGES && nextPath) {
+    console.warn(
+      `[benzinga] /benzinga/v1/earnings window fetch hit the ${MAX_EXTRA_PAGES}-page safety cap with more pages remaining — result may still be truncated (dateGte=${opts.dateGte ?? "?"}, dateLte=${opts.dateLte ?? "?"})`
+    );
   }
 
   return { ...first, rows, nextUrl: null };
