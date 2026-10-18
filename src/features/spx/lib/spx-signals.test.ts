@@ -423,3 +423,46 @@ test("reclassifyConfluenceScore: a bonus that lifts abs score past 10 flips dire
   assert.equal(postBonus.direction, "long", "direction must not stay frozen at null once score crosses the HOLD threshold");
   assert.equal(postBonus.bias, "bullish");
 });
+
+// REGRESSION (Ask Largo standing mandate, 2026-10-18): computeSpxConfluence's score/factors
+// invariant — top-level `score` must equal the sum of every pushed `factors[].weight`, clamped to
+// [-100, 100] — had drifted apart once before (the 2026-09-22 fix that introduced
+// reclassifyConfluenceScore specifically to keep a post-hoc score mutation synced with its factor
+// list), but no test asserted the invariant directly; the existing golden-fixture snapshot test
+// above only encodes it implicitly, for one single (already-clamped) data point. `rawScore` is a
+// DIFFERENT, intentionally separate confidence metric (clamp(round(|score|*1.15 +
+// factors.length*3), 0, 96)) and must never be confused with this invariant — a bug that made
+// `score` drift from `sum(factors[].weight)` would NOT show up as a `rawScore` mismatch.
+test("computeSpxConfluence: score always equals clamp(sum(factors[].weight), -100, 100) — clamped case (golden fixture)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const result = computeSpxConfluence(richDesk());
+  assert.ok(result);
+  const rawSum = result.factors.reduce((s, f) => s + f.weight, 0);
+  const expected = Math.max(-100, Math.min(100, rawSum));
+  assert.equal(result.score, expected, `score (${result.score}) must equal clamp(sum(weights)=${rawSum}, -100, 100)=${expected}`);
+  // The golden fixture is deliberately in the CLAMPED regime (raw sum 154 > 100) — assert that
+  // explicitly so this test can't silently stop exercising the clamp path if the fixture changes.
+  assert.ok(rawSum > 100, "this fixture must exercise the clamp path (raw sum > 100) — if it no longer does, add an explicit clamped-case fixture instead of only testing the unclamped case below");
+});
+
+test("computeSpxConfluence: score always equals clamp(sum(factors[].weight), -100, 100) — unclamped case (sparse fixture)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  // A sparse desk that fires only a few small-weight factors, so the raw sum stays well inside
+  // [-100, 100] and the clamp never engages — proves the invariant holds in the ORDINARY regime
+  // too, not just the saturated one the golden fixture happens to hit.
+  const desk = richDesk();
+  desk.gamma_flip = null; // drop γ regime (+10)
+  desk.flow_0dte_net = null; // drop 0DTE flow (+14)
+  desk.tide_bias = "neutral"; // drop Market tide (+10)
+  desk.spx_flows = []; // drop HELIX sweeps (+15)
+  desk.unified_tape = []; // drop Live tape (+12)
+  desk.net_prem_ticks = []; // drop Net prem (+6)
+  desk.strike_stacks = []; // drop Strike stack (+3)
+  desk.news_headlines = []; // drop News risk (+3)
+  desk.leader_stocks = []; // drop Mega-caps (+6)
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const rawSum = result.factors.reduce((s, f) => s + f.weight, 0);
+  assert.ok(Math.abs(rawSum) < 100, `this fixture must stay inside the unclamped range, got raw sum ${rawSum}`);
+  assert.equal(result.score, rawSum, `unclamped: score (${result.score}) must equal the raw factor-weight sum (${rawSum}) exactly, with no clamp distortion`);
+});
