@@ -180,7 +180,15 @@ const resp = spawnSync(
 );
 
 if (resp.status !== 0) {
-  console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
+  const detail = (resp.stderr || resp.stdout || "(no curl output)").trim();
+  console.error("[ops-dispatch] Cloud Agent launch failed:", detail);
+  // Issue tracking is the durable signal; agent launch is best-effort (API quota, transient 5xx).
+  if (issueNumber) {
+    console.warn(
+      `[ops-dispatch] GitHub issue #${issueNumber} updated — exiting 0 so ops-auto-fix does not fail after paging.`
+    );
+    process.exit(0);
+  }
   process.exit(1);
 }
 
