@@ -4945,7 +4945,7 @@ test("composeSwingPlayBrief: CLOSED play discloses Vector absence when vectorFet
   const brief = composeSwingPlayBrief(ctx);
 
   const unavailable = brief.envelope.unavailableSources ?? [];
-  const vectorAbsence = unavailable.find((s) => s.source === "Vector desk");
+  const vectorAbsence = unavailable.find((s) => s.source === "Vector desk state");
 
   assert.ok(
     vectorAbsence,
