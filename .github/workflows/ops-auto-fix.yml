@@ -79,6 +79,7 @@ jobs:
           CRON_TARGET_BASE_URL: https://blackouttrades.com
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           set +e
