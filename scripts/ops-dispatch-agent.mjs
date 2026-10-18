@@ -180,8 +180,19 @@ const resp = spawnSync(
 );
 
 if (resp.status !== 0) {
-  console.error("[ops-dispatch] Cloud Agent launch failed:", resp.stderr || resp.stdout);
-  process.exit(1);
+  const detail = (resp.stderr || resp.stdout || "unknown error").trim();
+  console.error("[ops-dispatch] Cloud Agent launch failed:", detail);
+  if (issueUrl && ghToken) {
+    gh([
+      "issue",
+      "comment",
+      issueUrl,
+      "--body",
+      `⚠️ Cloud Agent auto-launch failed (ops-auto-fix workflow still filed this issue):\n\n\`\`\`\n${detail.slice(0, 1500)}\n\`\`\`\n\nDispatch manually from Cursor or re-run workflow_dispatch when API is healthy.`,
+    ]);
+  }
+  // Issue creation is the durable signal — do not fail GHA when launch flakes (rate limit, outage).
+  process.exit(issueNumber ? 0 : 1);
 }
 
 const agent = JSON.parse(resp.stdout);
