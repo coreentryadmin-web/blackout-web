@@ -769,5 +769,12 @@
     "finding": "Confirmed benign on inspection: positionId 1955 (O:LABD261023C00009500, strike 9.5, firstSeenAt 2026-10-16) and positionId 1761 (O:LABD261023C00009000, strike 9.0, firstSeenAt 2026-10-13) are two genuinely distinct Banger-origin BREAKOUT positions on the same underlying, different strikes/entry times, both 4 DTE into 2026-10-23 expiry. Not a duplication bug -- the board correctly carries both.",
     "also_observed_not_escalated": "GET /api/market/nighthawk/horizons top-level upstream_ok:false this cycle -- traced to route.ts line 152 (payload?.upstream_ok ?? true), which forwards the ZERO_DTE lane's own upstream flag, not a SWING-specific signal. Out of this lane's scope per the standing mandate (Swings only, not 0DTE); noted here for continuity, not investigated further.",
     "status": "no action needed; both tracked P0s (ECS deploy deadlock at run 39217679064, Legacy digest stale/no_plays) remain unchanged this cycle, health 200."
+  },
+  "deploy_deadlock_first_new_attempt_in_11h_2026_10_19": {
+    "ts": "2026-10-19T18:49:00Z",
+    "what": "First new ECR push (production) workflow attempt since the ECS deploy capacity deadlock began (~17:23Z 2026-10-18). Previous run (39217679064, push-triggered) failed at 2026-10-19T08:26:50Z and nothing fired for ~11h after.",
+    "finding": "Run 39304665194 (workflow_dispatch, manually triggered -- not a push) is in_progress as of 18:42:03Z, carrying a docs-only journal commit from a parallel session (session_01NbceycYRFTMCYx5TBEEw7V) escalating the SAME upstream_ok:false flag this journal already noted this cycle (0DTE-lane scoped, posted to #4076 by that session). Likely a manual retry to test whether the capacity deadlock still blocks a fresh deploy.",
+    "status": "WATCHING -- still in_progress as of this write, not yet confirmed success or failure. Next cycle should check run 39304665194's final conclusion; if it succeeds, previously-merged Swings fixes (incl. PR #6276/the structural-stop dedup work, PR #6253) should finally be live and worth spot-checking.",
+    "also": "Legacy digest unchanged (published_at 2026-10-16T21:42:41Z, stale:true, no_plays:true). Health 200."
   }
 }
