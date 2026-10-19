@@ -52,7 +52,20 @@ export async function GET(req: NextRequest) {
       right,
     });
     if (!ctx) {
-      return NextResponse.json({ available: false, error: "play not found" }, { status: 404, headers: NO_STORE_HEADERS });
+      return NextResponse.json(
+        {
+          available: false,
+          error: "play not found",
+          // Largo contract C3 (never signal absence without a reason) — see the catch-all
+          // below for the full rationale shared across this route's failure paths.
+          unavailable: {
+            reason: "play not found",
+            what_is_missing: "a matching Swing position for the given playId/ticker",
+            retryable: false,
+          },
+        },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
     const brief = composeSwingPlayBrief(ctx, { expandIntel });
     // `distancePct` (structureLadder rungs/risk) is narrated everywhere at 1dp (`fmtPct`'s
@@ -69,7 +82,13 @@ export async function GET(req: NextRequest) {
     const largoRead = adaptSwingBriefToLargo(brief);
 
     if (!largoRead.ok) {
-      return NextResponse.json({ available: false, error: "swing brief unavailable" }, { status: 503, headers: NO_STORE_HEADERS });
+      // largoRead is a Largo ProductRead<T> — when ok:false it already carries the C3
+      // Unavailable shape (reason/what_is_missing/retryable), so forward it verbatim rather
+      // than discarding it the way this branch used to.
+      return NextResponse.json(
+        { available: false, error: "swing brief unavailable", unavailable: largoRead.unavailable },
+        { status: 503, headers: NO_STORE_HEADERS }
+      );
     }
 
     return NextResponse.json(
@@ -98,6 +117,25 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("[market/swing/play-brief]", error);
-    return NextResponse.json({ available: false, degraded: true }, { status: 503, headers: NO_STORE_HEADERS });
+    // BUG FIX (Ask Largo standing mandate, 2026-10-19): this path, the 404 above, and the
+    // Largo tool wrapper's own three failure paths (swing-play-brief-read.ts) all used to
+    // return a bare {available:false, ...} with no reason/what_is_missing/retryable — the exact
+    // C3 ambiguity LARGO-PRODUCT-CONTRACT.md calls a defect "even when every test passes,"
+    // confirmed live (NVDA/SLV both returned exactly this bare shape on 2026-10-19). An
+    // uncaught exception is the ambiguous case the Unavailable type exists for — default
+    // retryable:true, since this route cannot tell a transient hiccup from a real bug any
+    // better than the caller can.
+    return NextResponse.json(
+      {
+        available: false,
+        degraded: true,
+        unavailable: {
+          reason: error instanceof Error ? error.message : "unexpected error composing swing play-brief",
+          what_is_missing: "a successfully composed play-brief",
+          retryable: true,
+        },
+      },
+      { status: 503, headers: NO_STORE_HEADERS }
+    );
   }
 }
