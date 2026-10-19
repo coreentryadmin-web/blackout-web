@@ -456,6 +456,80 @@ test("composeSwingPlayBrief: CLOSED play never surfaces a Book overlap evidence 
   assert.ok(!brief.envelope.evidence.some((e) => e.text.startsWith("Book overlap:")));
 });
 
+// Largo C5/C8 fix (2026-10-19), built on the 2026-10-18 staged finding
+// docs/audit/findings-staging/2026-10-18-closed-brief-direction-thesis.md: a CLOSED swing brief's
+// `envelope.bias` and `headline` both correctly named the direction/recommendation in prose, but
+// the envelope carried no explicit `direction`/`thesis` field a programmatic reader (Largo, an
+// audit script) could bind to structurally. Live repro in the finding: NVDA/CRWV/TSLA CLOSED
+// chains all returned `envelope.direction`/`envelope.thesis` as undefined.
+test("composeSwingPlayBrief: CLOSED play envelope carries explicit direction and thesis fields (Largo C5/C8)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      ticker: "NVDA",
+      direction: "SHORT",
+      status: "CLOSED",
+      closedReason: "stopped",
+      exitPnlPct: -48.2,
+      archetype: "BREAKOUT",
+    }),
+    asOf: "2026-10-18T22:46:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+
+  // C5 DIRECTION — the explicit field, sourced from the same play.direction `bias` derives from.
+  assert.equal(brief.envelope.direction, "SHORT");
+  assert.equal(brief.envelope.direction, ctx.play.direction);
+
+  // C8 NARRATIVE — a non-empty, data-grounded thesis string, never null/missing.
+  assert.ok(brief.envelope.thesis, "thesis must be populated, not null/missing");
+  assert.equal(typeof brief.envelope.thesis, "string");
+  assert.ok(brief.envelope.thesis!.length > 0);
+  // Grounded in the real play data (direction + ticker/contract + the closedReason-driven
+  // action label `swingActionDisplay` resolves "stopped" to) — never a fabricated claim.
+  assert.match(brief.envelope.thesis!, /SHORT/);
+  assert.match(brief.envelope.thesis!, /NVDA/);
+  assert.match(brief.envelope.thesis!, /STOPPED/);
+});
+
+test("composeSwingPlayBrief: OPEN and WATCH briefs also carry explicit direction/thesis (not CLOSED-specific)", () => {
+  const openCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "AAPL", direction: "LONG", status: "OPEN", recommendation: "HOLD" }),
+    asOf: "2026-10-18T15:00:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const openBrief = composeSwingPlayBrief(openCtx);
+  assert.equal(openBrief.envelope.direction, "LONG");
+  assert.ok(openBrief.envelope.thesis);
+
+  const watchCtx: SwingPlayBriefContext = {
+    play: fixturePlay({ ticker: "MU", direction: "SHORT", status: "WATCH" }),
+    asOf: "2026-10-18T15:00:00.000Z",
+    sessionDate: "2026-10-18",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const watchBrief = composeSwingPlayBrief(watchCtx);
+  assert.equal(watchBrief.envelope.direction, "SHORT");
+  assert.ok(watchBrief.envelope.thesis);
+});
+
 test("composeSwingPlayBrief: SKIP-status Verdict line agrees with the envelope headline, not raw status (2026-09-10 gap fix)", () => {
   // Live repro (SLV, 2026-09-10 09:47 ET): a RESEARCH-section WATCH row gets
   // swingEntryVerdict's deliberate split — deckStatus:"SKIP" (drives play.status, so the
