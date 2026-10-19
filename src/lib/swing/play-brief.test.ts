@@ -2895,6 +2895,46 @@ test("composeSwingPlayBrief: future-skewed option mark freshness is stale, not u
   );
 });
 
+// BUG FIX (2026-10-19, Ask Largo x Night Hawk Swings standing mandate — round 5): the 2026-10-12 fix
+// (see watchEntrySection/pnlSection's own call-site comments a few hundred lines up) wired those two
+// call sites to `ctx.readMs ?? readMs` instead of the bare `readMs` local, closing two of the
+// "~18 Date.now() call sites" play-brief-types.ts's own `readMs` doc comment names as a documented,
+// still-open follow-up. `evidenceFromContext`/`levelsFromContext` — the sole feeders of
+// `envelope.evidence`/`envelope.levels` — were never part of that fix's blast radius and still pass
+// the bare `readMs` local at their composeSwingPlayBrief call sites. Currently latent in production
+// (the one real caller, the API route, never pre-stamps `ctx.readMs`, so `ctx.readMs ?? readMs`
+// would equal the real `readMs` anyway today) — but it silently reverts to the exact already-fixed
+// bug class (2026-09-21 SNXX repro, play-brief-types.ts's `readMs` header) the moment any caller or
+// test pins `ctx.readMs` to a shared anchor, which that same header explicitly anticipates ("a
+// caller that composes multiple briefs off one shared anchor"). This test is exactly that case: a
+// fixture with `ctx.readMs` pinned to the PAST and a mark 30s before it (which must read "live")
+// — if the fix regresses and the call site falls back to the real wall clock, the mark reads from
+// roughly six weeks ago and fails closed to "stale" instead.
+test("composeSwingPlayBrief: option-mark evidence freshness honors ctx.readMs, not the real wall clock (2026-10-19 bug fix, evidenceFromContext/levelsFromContext call sites missed the 2026-10-12 readMs fix)", () => {
+  const pinnedReadMs = Date.parse("2026-09-10T09:00:00.000Z");
+  const markAsOf = new Date(pinnedReadMs - 30_000).toISOString();
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "OPEN", recommendation: "HOLD", markAsOf, markIsSync: false }),
+    asOf: "2026-09-10 05:00 ET",
+    readMs: pinnedReadMs,
+    sessionDate: "2026-09-10",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const markEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Option mark as of"));
+  assert.ok(markEvidence, "expected an option-mark evidence entry");
+  assert.equal(
+    markEvidence!.provenance?.freshness,
+    "live",
+    "a mark 30s before the pinned ctx.readMs must read live — falling through to the real wall clock would read this 2026-09-10 mark as stale instead",
+  );
+});
+
 test("composeSwingPlayBrief: option-mark evidence/provenance use the Largo C1 ET stamp, not a bare UTC instant (FINDINGS 2026-09-06 #21)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "OPEN", recommendation: "HOLD", markAsOf: "2026-09-04T21:45:18.663Z" }),

@@ -1751,8 +1751,17 @@ export function composeSwingPlayBrief(
   // 2026-10-10 comment on that call) can be folded into the SAME `unavailableSources` list the
   // envelope field and `confidence` both read — otherwise a build failure would have nowhere
   // honest to surface (the pre-existing `[]` fallback alone looks identical to a real empty read).
-  const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, readMs), [], trackBuildFailure);
-  const levels = safeCompose("levels", () => levelsFromContext(ctx, readMs, bucket), [], trackBuildFailure);
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19 — round 5 of the deep-dive):
+  // same gap the 2026-10-12 fix closed for watchEntrySection/pnlSection above (bare `readMs` local —
+  // always the real `Date.now()` sampled at this function's top — instead of `ctx.readMs ?? readMs`,
+  // which respects an already-injected shared anchor). evidenceFromContext/levelsFromContext are the
+  // sole feeders of envelope.evidence/envelope.levels and were never part of that fix's blast-radius
+  // check, so two more of play-brief-types.ts's own documented "~18 Date.now() call sites" follow-up
+  // were still open. Currently latent in production (the one real caller never pre-stamps
+  // ctx.readMs), but reverts to the exact already-fixed bug class (2026-09-21 SNXX repro) the moment
+  // any caller or test pins a shared anchor — see this file's own regression test for the live proof.
+  const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, ctx.readMs ?? readMs), [], trackBuildFailure);
+  const levels = safeCompose("levels", () => levelsFromContext(ctx, ctx.readMs ?? readMs, bucket), [], trackBuildFailure);
 
   // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19): moved up from inside the
   // envelope literal below, to BEFORE `unavailableSources` is assembled. It was previously computed
