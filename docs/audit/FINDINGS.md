@@ -38,6 +38,135 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-19 — [FINDING, P3 infra/monitoring] 4 of 5 live X-marketing crons are absent from `CRON_JOBS` — the pause-aware admin-health override built for them is dead code — OPEN, not implemented (operator-gated)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/lib/cron-registry.ts`, `src/lib/admin-cron-health.ts`, `src/app/api/cron/cron-staleness-watchdog/route.ts`, `src/app/api/cron/x-{autopost,replies,growth,intel}/route.ts` |
+| **Status** | OPEN — deliberately **not fixed** in this PR; see "Why not fixed directly" below |
+
+**What's wrong.** `src/lib/cron-registry.ts`'s `CRON_JOBS` array registers 50 jobs. Six real,
+deployed `/api/cron/x-*` routes exist on disk (`x-analytics`, `x-autopost`, `x-replies`,
+`x-growth`, `x-intel`, `x-engage`), all using the same `isCronAuthorized` + `logCronRun` pattern
+as every other registered cron. Of those six, only **`x-analytics`** has a `CRON_JOBS` entry.
+`x-autopost`, `x-replies`, `x-growth`, and `x-intel` have **none** — confirmed by direct
+inspection of the file (`grep -c "key:" src/lib/cron-registry.ts` → 50; `grep -n "autopost"
+src/lib/cron-registry.ts` → zero matches; same for `replies`/`growth`\b/`intel` as a `key:`
+value). `x-engage` is correctly unregistered — per `docs/ops/X-MARKETING.md`: *"Not scheduled:
+`x-engage` (manual alias of growth with `?manual=1`)"* — it has no EventBridge schedule at all,
+so it is not a cron in the sense this registry tracks.
+
+**This is the exact same bug class CLAUDE.md documents as already fixed once, for different
+crons.** `cron-registry.ts` itself carries this comment immediately above the `x-analytics`
+entry:
+
+> `// THREE LIVE DISCORD-DIGEST CRONS (added 2026-09-04) — routes logged runs but`
+> `// were absent from CRON_JOBS, so cron-staleness-watchdog never watched them.`
+
+That 2026-09-04 fix added `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` to
+`CRON_JOBS` after discovering they were live/enabled in production while invisible to the
+registry. The same defect independently exists today for 4 of the 5 scheduled X-marketing
+crons — it was never swept for in that area.
+
+**Concrete, already-written consequence: dead code.** `src/lib/admin-cron-health.ts` builds its
+`jobs` array strictly from `CRON_JOBS` (`const jobs = CRON_JOBS.map((job) => { ... })`,
+line ~357), then has a dedicated block (lines ~490–504) that exists *specifically* to handle
+X-marketing crons:
+
+```ts
+// X marketing crons may have EventBridge disabled while pause env flags are set — don't page
+// STALE for an intentionally idle stack (ops still sees "Paused" in admin cron health).
+for (let i = 0; i < jobs.length; i++) {
+  const health = jobs[i];
+  if (!xMarketingCronPaused(health.key)) continue;
+  ...
+}
+```
+
+`xMarketingCronPaused(jobKey)` (`src/lib/x-marketing-env.ts`) checks `jobKey` against
+`X_MARKETING_CRON_KEYS = new Set(["x-intel", "x-autopost", "x-growth", "x-replies",
+"x-analytics"])` — i.e. the code was written expecting exactly these 5 keys to show up in
+`jobs`. Because 4 of them never appear in `CRON_JOBS` in the first place, this loop can **never**
+match `"x-autopost"`, `"x-replies"`, `"x-growth"`, or `"x-intel"` — the override is unreachable
+for them. The practical effect: the admin cron-health dashboard shows **nothing at all** for
+these 4 jobs (not "stale", not "Paused" — simply absent), and `cron-staleness-watchdog`
+(`buildCronHealthSnapshot` → filters `status === "stale" || status === "failed"`) never
+evaluates them either way. `x-analytics`, the one sibling that IS registered, correctly shows
+"Paused (X marketing env)" today — proving the override logic itself works; it's purely the
+missing registrations blocking it for the other four.
+
+**Stale/contradictory docs found as a byproduct (the "check for stale docs" angle).** Two
+existing repo docs assert the opposite of what's actually in the file:
+- `docs/agents/briefs/x-content.md:63`: *"Cron registration (`0 12,14,16,18,20,22,0 * * *`) |
+  `src/lib/cron-registry.ts` → `x-autopost`"* — states this registration exists.
+- `docs/audit/X-CONTENT-CERTIFICATION.md:34`: *"**Cron registration** | `src/lib/cron-registry.ts`
+  | `x-autopost` entry: UTC `0 12,14,16,18,20,22,0 * * *` | LIVE + **DST BROKEN**"* — same claim,
+  plus a separately-flagged DST defect in that (claimed) schedule.
+
+Neither is true against current `main`. Either the registration was reverted at some point and
+these docs never updated, or the docs described an intended state that was never actually
+implemented — either way, two docs are currently misleading about this file's contents, and
+whoever implements the fix below should not assume these docs' quoted UTC cron expression is
+still the real deployed EventBridge schedule (see next section — it may carry the DST bug
+`X-CONTENT-CERTIFICATION.md` itself flags, and may have changed since 2026-07-30 when X
+marketing was paused).
+
+**Why not fixed directly here.** The change itself is additive-only and, on inspection, carries
+no dispatch risk: `src/lib/cron-dispatch.ts`'s `CRON_DISPATCH` (the explicit allowlist
+`cron-staleness-watchdog`'s optional `CRON_WATCHDOG_SELF_HEAL` consults via `isDispatchableCron`)
+has **zero** `x-*` entries — registering these 4 jobs in `CRON_JOBS` cannot cause self-heal to
+ever re-trigger a live X-posting cron. Despite that, this repo carries an explicit, repeated,
+standing operator order specifically about this subsystem:
+
+> `docs/ops/X-MARKETING.md`: *"**STANDING OPERATOR POLICY (2026-07-30): X marketing is OFF.** Do
+> **not** re-enable EventBridge rules, do **not** clear pause flags, and do **not** open
+> ops-auto-fix issues for stale `x-*` crons unless the operator explicitly asks to turn X back
+> on."*
+> `docs/ops/OPS-AUTO-FIX.md`: *"Never re-enable EventBridge rules or 'fix' stale X crons unless
+> the operator explicitly requests it."*
+
+That gate is broad enough ("fix stale X crons") that it's safer to write this up than to
+interpret it as not covering a registry-only change, even though the practical effect of this
+specific fix is to make the dashboard show "Paused" instead of invisible — arguably more aligned
+with the pause's own intent, not less. There's also a real unknown this sandbox cannot resolve:
+the TRUE current `schedule_cron_utc` for each of the 4 routes. `docs/ops/X-MARKETING.md`
+describes cadence only in ET-relative English ("Even ET hours 8–20 (UTC-aligned)", "Hourly
+weekdays", "Hourly :20 weekdays") and explicitly says the EventBridge rules are currently
+**DISABLED** and the `railway.x-*.toml` catalog files were **removed on purpose** (2026-07-30) —
+so there is no committed-in-this-repo source of truth for the exact cron expression, and the one
+two docs DO quote for x-autopost is independently flagged elsewhere as DST-broken. Getting this
+right needs either the operator's confirmation or a session with real `blackout-infra`/AWS
+EventBridge access (this sandbox's AWS creds are consistently `InvalidClientTokenId`), not a
+guess reverse-engineered from already-contradictory docs.
+
+**Proposed fix (for whoever picks this up with operator authorization or real infra access).**
+Add 4 entries to `CRON_JOBS` in `src/lib/cron-registry.ts`, mirroring the existing `x-analytics`
+entry's shape exactly:
+
+```ts
+{
+  key: "x-autopost", // and x-replies / x-growth / x-intel, one block each
+  name: "X Autopost", // human label per job
+  kind: "http",
+  path: "/api/cron/x-autopost",
+  schedule_label: "...",          // from the real EventBridge rule, not guessed
+  stale_after_min: ...,           // sized to the real cadence, same convention as x-analytics
+  schedule_cron_utc: "...",       // confirm against AWS EventBridge / blackout-infra first
+  weekdays_only: true,            // x-growth/x-replies are weekdays-only per X-MARKETING.md; confirm x-autopost/x-intel
+  description: "...",
+  // deliberately no produces_member_alert — these aren't member-visible signals
+},
+```
+
+No `produces_member_alert: true` on any of them (consistent with `x-analytics`) — these aren't
+member-visible signals, so `bie/missed-alerts.ts`'s `ALERT_PRODUCING_CRON_KEYS` filter is
+unaffected either way. Once added, verify live: confirm the admin cron-health dashboard shows
+"Paused (X marketing env)" for all 5 X-marketing keys (not just `x-analytics`), and confirm
+`cron-staleness-watchdog` does not fire a new Discord alert for any of them (per the
+`xMarketingCronPaused` override already covering the pause case).
+
 ## 2026-10-19 — [FINDING, P3 Largo/Swing] play-brief-adapter.ts reimplemented its own ticker_class classifier, disagreeing with the brief's own C4 identity field — FIXED
 
 > **kind:** `FINDING`
