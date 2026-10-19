@@ -38,6 +38,73 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-19 — [ENHANCEMENT IDEAS, P2 infra] Two proposals for the recurring ECS web deploy deadlock (#6255) — OPEN, not implemented
+
+> **kind:** `FINDING`
+
+| **Status** | OPEN — write-up only, two proposals for the operator/ops lane to weigh, no code changed |
+|---|---|
+
+**Context.** As of this writing the `blackout-production-web` deploy deadlock first found in #6255
+has reproduced identically on every one of 7 consecutive deploy attempts spanning ~13+ hours
+(runs tied to PRs #6251/#6252/#6253/#6258/#6260/#6261/#6263/#6265/#6270/#6272/#6274, each burning
+the full 36-minute `.github/workflows/ecr-push-production.yml` wait budget before failing).
+Production itself has stayed healthy throughout (already-serving tasks are never touched, per
+`minimumHealthyPercent=100`'s own design) — this is purely a deploy-pipeline/capacity problem,
+not a renewed outage. Already thoroughly diagnosed and escalated (see #6255's own finding and the
+Night Hawk Swings lane's journal) — this entry adds two concrete remediation ideas that have not
+yet been proposed anywhere in that thread, rather than re-diagnosing the root cause.
+
+**Idea 1 — self-heal `desiredCount` before the roll, inside the same workflow step.**
+`ecr-push-production.yml`'s "Roll ECS production web" step calls `aws ecs update-service` without
+ever passing `--desired-count` — it assumes the service's existing desired count is already at or
+above the documented autoscaling floor of 5 (the floor the whole `minHealthy=100`/`max=120`
+arithmetic in that same step's own comment block is solved for). The step's AWS credentials are
+demonstrably working (it successfully calls `describe-services`/`update-service` every single one
+of the 7 failed runs — the failure is a capacity deadlock, not an auth failure, unlike the earlier,
+separate `ops-auto-fix` AWS-key issue from earlier in this incident). A pre-flight check — read
+`desiredCount` via `describe-services` before calling `update-service`, and if it is below 5,
+restore it first — is mechanically simple and uses credentials already proven to work in this exact
+job.
+
+*Why not implemented directly*: whether the drift from 5 to the observed 2 was Application Auto
+Scaling settling toward a deliberately-lowered target, or a real misconfiguration, is unknown from
+this sandbox (no AWS access to inspect the scalable target's current min/max or scaling-activity
+history) — the two cases call for different responses, and forcing `desiredCount` back to 5
+without knowing which one it is risks fighting an intentional change. This needs either real AWS
+access to check `describe-scalable-targets` first, or an explicit operator decision to always
+restore the floor unconditionally.
+
+**Idea 2 — fail fast on a genuinely stalled rollout instead of burning the full 36-minute budget.**
+The wait loop (`ecr-push-production.yml`, the `for i in $(seq 1 144); do sleep 15; ...` block)
+already has a well-reasoned, previously-tuned exit condition — it deliberately does NOT break on
+`running == desired` (a past version of this exact loop did, and shipped a false-"RED" static-asset
+gate result 13 minutes before the real rollout had actually converged; see that block's own
+comment). This proposal is a different, additive signal, not a repeat of that mistake: the step's
+own cost-of-a-normal-cycle estimate ("task start + image pull + Next boot + ALB health checks + the
+old task's 30s deregistration drain (~2 min)") implies `runningCount` should move at least once
+every ~2 minutes under a healthy rollout. If `runningCount` (not `rolloutState`) has been
+IDENTICAL for some generous threshold — e.g. 20 consecutive polls (5 minutes) — that is a strong,
+independent signal of exactly this deadlock shape (`running=0/1` frozen for the observed full 36
+minutes on all 7 failures), and the job could exit early with a clear diagnostic instead of
+spending the remaining ~30 minutes proving nothing new.
+
+*Why not implemented directly*: the right "stuck" threshold needs tuning against real deploy
+telemetry this sandbox cannot generate (what's the longest legitimate quiet gap during a slow but
+healthy image pull or ALB health-check grace period?) — getting the threshold wrong risks a false
+early-exit on a deploy that would have succeeded, which is a worse failure mode than the current
+"slow but eventually honest" 36-minute timeout. Low risk only if hand-tuned by someone who can
+watch it against a live healthy rollout first.
+
+**Net effect if either ships**: Idea 1 could end the deadlock outright (if the capacity-restore
+hypothesis is correct). Idea 2 does not fix the deadlock but would cut each failed attempt's cost
+from 36 minutes to ~5, meaningfully reducing the CI-minutes and wall-clock cost of continuing to
+retry while the real fix (operator AWS action, or Idea 1) is pending.
+
+**Blast radius / scope.** Neither idea was implemented this cycle. Both are confined to
+`.github/workflows/ecr-push-production.yml`'s existing "Roll ECS production web" step; neither
+touches application code or any other workflow.
+
 ## 2026-10-19 — [FINDING, P2 Meridian] Two sibling Benzinga loaders still swallowed fetch failures into a generic "cache_error" string, missed by the 2026-08-18 fix — FIXED
 
 > **kind:** `FINDING`
