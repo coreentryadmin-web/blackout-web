@@ -138,7 +138,7 @@ function extractEvidence(envelope: BieAnswerEnvelope): string[] {
  * conforming to Largo contract requirements.
  */
 export function adaptSwingBriefToLargo(result: SwingPlayBriefResult): ProductRead<SwingPlayBriefSignal> {
-  const { envelope, asOf, sessionDate, ticker, ticker_class, playId } = result;
+  const { envelope, asOf, ticker, ticker_class, playId } = result;
   const canonicalTick = canonicalTicker(ticker);
 
   const signal: SwingPlayBriefSignal = {
