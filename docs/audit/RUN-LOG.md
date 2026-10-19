@@ -4,6 +4,16 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-19 (15:33 UTC / Mon 11:34 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Still within the RTH window confirmed earlier this session. Resynced to `origin/main`
+(`e9490483` → `add002cd`, other-lane status-check doc, not SEO-relevant). Polled
+`/tools/gamma-snapshot`'s underlying API twice, 15s apart: `calculation_id`/`spot` both advanced
+(`SPX:1792424021692`@7722.23 → `SPX:1792424079472`@7724.72), `market_session: OPEN`,
+`degraded: false` — genuinely live, not frozen. Purged Cloudflare edge HTML for `/` and
+`/tools/gamma-snapshot`, re-measured CLS on both: homepage **0.0002, GOOD** (66/66 routed);
+gamma-snapshot page **0, GOOD** (59/59 routed). No defect found. No PR opened.
+
 ## 2026-10-19 (14:05 UTC / Mon 10:05 ET) — [SEO] Daily growth cycle: SKIPPED opportunity scan — no AWS creds this session
 
 Resynced to `origin/main` (`5b4244f5` → `02cc9e5f`, other-lane docs clarification). **Step 1:**
