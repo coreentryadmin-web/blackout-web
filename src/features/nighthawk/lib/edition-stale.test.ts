@@ -6,6 +6,7 @@ import {
   nighthawkStaleJobIdleMinutes,
   publishedAtEtMeta,
   shouldRebuildStalePublishedEdition,
+  shouldRetryRecapOnlyEdition,
 } from "./edition-stale";
 
 test("publishedAtEtMeta parses UTC stamp to ET date + minutes", () => {
@@ -145,6 +146,123 @@ test("inNighthawkEditionCatchupAlertWindow pages one hour after edition start", 
     if (prevCatchup === undefined) delete process.env.NIGHTHAWK_EDITION_CATCHUP_MIN;
     else process.env.NIGHTHAWK_EDITION_CATCHUP_MIN = prevCatchup;
   }
+});
+
+// BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19): confirmed live, twice in a
+// row — the 2026-10-16 build and the 2026-10-19 build both collapsed to recap-only with real
+// candidates (20 each) but zero scored dossiers (transient UW rate-limiter congestion during the
+// build window), and nothing ever re-attempted either one: `shouldRebuildStalePublishedEdition`
+// only rebuilds a PRIOR day's/window's stale publish, so once today's own window has already
+// produced a published (even if empty) row, every subsequent cron tick this same evening just
+// confirms the empty row — serving members an empty board for the rest of the night and the
+// entire next trading day (the natural next rebuild is for the FOLLOWING day's edition, not a
+// fix for the one that collapsed). `shouldRetryRecapOnlyEdition` closes that gap.
+test("shouldRetryRecapOnlyEdition retries once the cooldown has elapsed on a dossier-stage collapse", () => {
+  assert.equal(
+    shouldRetryRecapOnlyEdition({
+      recapOnly: true,
+      candidates: 20,
+      dossiers: 0,
+      publishedAtIso: "2026-10-19T21:41:46.000Z",
+      inEditionWindow: true,
+      now: new Date("2026-10-19T22:30:00.000Z"), // +48min
+      cooldownMinutes: 45,
+    }),
+    true
+  );
+});
+
+test("shouldRetryRecapOnlyEdition withholds retry before the cooldown elapses", () => {
+  assert.equal(
+    shouldRetryRecapOnlyEdition({
+      recapOnly: true,
+      candidates: 20,
+      dossiers: 0,
+      publishedAtIso: "2026-10-19T21:41:46.000Z",
+      inEditionWindow: true,
+      now: new Date("2026-10-19T22:10:00.000Z"), // +28min, under the 45min cooldown
+      cooldownMinutes: 45,
+    }),
+    false
+  );
+});
+
+test("shouldRetryRecapOnlyEdition never fires on a normal full edition (recap_only false)", () => {
+  assert.equal(
+    shouldRetryRecapOnlyEdition({
+      recapOnly: false,
+      candidates: 20,
+      dossiers: 18,
+      publishedAtIso: "2026-10-19T21:41:46.000Z",
+      inEditionWindow: true,
+      now: new Date("2026-10-19T23:30:00.000Z"),
+      cooldownMinutes: 45,
+    }),
+    false
+  );
+});
+
+test("shouldRetryRecapOnlyEdition never fires when publish gates blocked real scored plays (dossiers>0)", () => {
+  // publishGateBlockedRecapReason's shape: candidates existed AND reached dossier scoring, just
+  // got blocked by a real risk/quality gate — retrying would just re-run a working gate decision,
+  // not recover from transient upstream congestion, so this must stay recap-only untouched.
+  assert.equal(
+    shouldRetryRecapOnlyEdition({
+      recapOnly: true,
+      candidates: 20,
+      dossiers: 17,
+      publishedAtIso: "2026-10-19T21:41:46.000Z",
+      inEditionWindow: true,
+      now: new Date("2026-10-19T23:30:00.000Z"),
+      cooldownMinutes: 45,
+    }),
+    false
+  );
+});
+
+test("shouldRetryRecapOnlyEdition never fires when candidates is zero (genuinely quiet market)", () => {
+  assert.equal(
+    shouldRetryRecapOnlyEdition({
+      recapOnly: true,
+      candidates: 0,
+      dossiers: 0,
+      publishedAtIso: "2026-10-19T21:41:46.000Z",
+      inEditionWindow: true,
+      now: new Date("2026-10-19T23:30:00.000Z"),
+      cooldownMinutes: 45,
+    }),
+    false
+  );
+});
+
+test("shouldRetryRecapOnlyEdition never fires outside the edition window", () => {
+  assert.equal(
+    shouldRetryRecapOnlyEdition({
+      recapOnly: true,
+      candidates: 20,
+      dossiers: 0,
+      publishedAtIso: "2026-10-19T21:41:46.000Z",
+      inEditionWindow: false,
+      now: new Date("2026-10-19T23:30:00.000Z"),
+      cooldownMinutes: 45,
+    }),
+    false
+  );
+});
+
+test("shouldRetryRecapOnlyEdition never fires with a missing/corrupt published_at (defers to shouldRebuildStalePublishedEdition's own corrupt-stamp handling instead)", () => {
+  assert.equal(
+    shouldRetryRecapOnlyEdition({
+      recapOnly: true,
+      candidates: 20,
+      dossiers: 0,
+      publishedAtIso: null,
+      inEditionWindow: true,
+      now: new Date("2026-10-19T23:30:00.000Z"),
+      cooldownMinutes: 45,
+    }),
+    false
+  );
 });
 
 test("nighthawkStaleJobIdleMinutes is shorter during the edition window", () => {
