@@ -388,6 +388,24 @@ test("composeSwingPlayBrief: a throwing top-level section (Management/Position) 
     brief!.envelope.sections.some((s) => s.title === "Why this setup"),
     "buildIntelSections's own sections (unaffected by this malformed field) still render",
   );
+  // BUG FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-10-19): the omission above is
+  // correct (don't fabricate a broken section), but until this fix it was also UNDISCLOSED — the
+  // seven top-level safeCompose calls in composeSwingPlayBrief (Management/Thesis health/Position/
+  // Entry/Outcome/sibling-position disclosure/structureLadder) were never passed `trackBuildFailure`,
+  // unlike evidence/levels and buildIntelSections's own sections (fixed 2026-10-07/2026-10-10 — see
+  // the two tests directly below this one, "a levels-build failure is disclosed..." and "an
+  // intel-section build failure is disclosed..."). A member reading this exact brief could not tell
+  // "Management/Position genuinely have nothing to say" from "Management/Position crashed this
+  // cycle" — the Largo C3 violation ("any fallback that returns a degraded result the caller cannot
+  // distinguish from a real one is a defect even when every test passes") this fix closes.
+  assert.ok(
+    brief!.envelope.unavailableSources?.some((u) => u.what_is_missing === "Management"),
+    "a Management build failure must be disclosed via unavailableSources, not silently dropped (Largo C3)",
+  );
+  assert.ok(
+    brief!.envelope.unavailableSources?.some((u) => u.what_is_missing === "Position"),
+    "a Position build failure must be disclosed via unavailableSources, not silently dropped (Largo C3)",
+  );
 });
 
 test("composeSwingPlayBrief: Book context concentration carries a matching evidence entry (Largo C7)", () => {
