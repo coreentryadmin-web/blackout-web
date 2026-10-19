@@ -10,7 +10,6 @@ import {
   type Direction,
   type ProductRead,
   type ProductSignal,
-  type TickerClass,
 } from "@/lib/largo/contract/product-read";
 import type { SwingPlayBriefResult } from "@/lib/swing/play-brief-types";
 
@@ -135,40 +134,21 @@ function extractEvidence(envelope: BieAnswerEnvelope): string[] {
 }
 
 /**
- * Compute ticker class from ticker string (Largo C4).
- */
-function tickerClassFromTicker(ticker: string): TickerClass {
-  const upper = ticker.toUpperCase();
-  // Index detection
-  if (upper === "SPX" || upper === "SPY" || upper === "QQQ" || upper === "IWM") {
-    return "index";
-  }
-  // ETF detection (common swing tickers)
-  if (
-    upper === "XLF" ||
-    upper === "GLD" ||
-    upper === "SLV" ||
-    upper === "XBI" ||
-    upper === "XLV" ||
-    upper === "XLE"
-  ) {
-    return "etf";
-  }
-  // Default to equity
-  return "equity";
-}
-
-/**
  * Adapt a SwingPlayBriefResult (composed BieAnswerEnvelope) into a ProductRead<SwingPlayBriefSignal>
  * conforming to Largo contract requirements.
  */
 export function adaptSwingBriefToLargo(result: SwingPlayBriefResult): ProductRead<SwingPlayBriefSignal> {
-  const { envelope, asOf, sessionDate, ticker, playId } = result;
+  const { envelope, asOf, ticker, ticker_class, playId } = result;
   const canonicalTick = canonicalTicker(ticker);
 
   const signal: SwingPlayBriefSignal = {
     ticker: canonicalTick,
-    ticker_class: tickerClassFromTicker(canonicalTick),
+    // C4 IDENTITY: reuse the brief's own classification (composeSwingPlayBrief derives it from
+    // the shared largo/core/entities.ts canonicalTicker) rather than a second, independently
+    // hardcoded guess — a prior version of this adapter kept its own 6-ETF allowlist here, which
+    // disagreed with the native field (e.g. SQQQ) inside the very same response. One brief, one
+    // classification.
+    ticker_class,
     direction: extractDirection(envelope.bias),
     evidence: extractEvidence(envelope),
     native: {
@@ -178,12 +158,6 @@ export function adaptSwingBriefToLargo(result: SwingPlayBriefResult): ProductRea
     },
     narrative: envelope.markdown,
   };
-
-  // Optional: archetype, sub_lane, entry/peak premiums from tradeDecision if present
-  if (envelope.tradeDecision?.ticker) {
-    // These would come from the play's own context, not the envelope
-    // Populated by caller if available
-  }
 
   // No confidence here — swing play-brief is deterministic (no model uncertainty to calibrate)
   // The confidence field is intentionally omitted per C6 ("OMIT this entirely when a product cannot calibrate")
