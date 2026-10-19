@@ -38,6 +38,281 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Ask Largo truncation probe never covered `get_swing_play_brief` — COVERAGE FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (probe coverage gap closed; no active truncation found) |
+|---|---|
+| **Severity** | P3 — tooling coverage gap, not a live product defect |
+| **Found by** | Ask Largo × Night Hawk Swings standing deep-dive mandate (2026-10-19) |
+
+### Root cause
+
+`scripts/audit/largo-truncation-probe.mjs` exists to catch exactly one class of bug: a Largo tool
+whose payload "works" (the call succeeds, the loop completes) while `anthropicToolLoop`'s
+`MAX_TOOL_RESULT_CHARS` cap (16,000 chars, head-kept/tail-dropped) silently cuts the JSON handed
+back to the model. Three real Night Hawk bugs shipped exactly this way before the probe existed
+(`get_zerodte_record` delivered 1.5% of itself, `get_nighthawk_edition` cut every play,
+`get_nighthawk_outcomes` quoted a wrong win rate from a truncated window).
+
+The probe's own `LANE_TOOLS` comment for the swing lane claimed: *"Night Hawk Swings' only real
+tool... there is no second swing tool to probe."* That was true when written (2026-08-23/
+2026-09-09 cleanup of the phantom `get_swing_discovery` entry) but went stale the moment
+`get_swing_play_brief` shipped (2026-09-12, `src/lib/largo/swing-play-brief-read.ts` — see that
+file's own header on why it was added: `composeSwingPlayBrief` was previously reachable only from
+the Command Deck UI route, never from a live Largo chat answer). Nothing re-checked the comment's
+claim against the tool registry when the new tool landed, so the probe silently stopped covering
+roughly half of Largo's swing surface area.
+
+This matters more than an ordinary coverage gap because of a second, related fact found while
+tracing it: `get_swing_play_brief`'s dispatch in `src/lib/largo/run-tool.ts` (`case
+"get_swing_play_brief"`) applies **no shaping/compaction step** before returning —
+`swingPlayBriefForLargo` hands back `composeSwingPlayBrief`'s raw object verbatim
+(`roundFloats({ available: true, ...brief })`, no reordering, no truncation-aware field ordering).
+Contrast `get_nighthawk_edition`, whose case routes through `compactNightHawkEditionForModel`
+specifically because a raw edition object put `market_recap` before `plays` and the tail-cut ate
+every play. The swing play-brief is the richest single-position Largo surface in the repo (per the
+previous round of this same mandate: 7 narrative/intel sections that can each run to several
+hundred characters of trade-manager prose, plus book context, track record, meridian catalysts,
+roll history) — exactly the shape of payload the other three bugs came from. Nobody had asked
+whether it is actually at risk, including the probe that exists to ask that question.
+
+### Evidence
+
+- `grep -c "title:" src/lib/swing/play-brief-intel.ts` → 26 titled sections across the full
+  composition surface (play-brief.ts + play-brief-intel.ts + play-brief-narrative*.ts).
+- Measured (not guessed) via a standalone script invoking `composeSwingPlayBrief` directly with a
+  maximally-populated OPEN-position context (meridian catalyst + peer lens, graduated archetype
+  track record, ticker history, 2-roll history, trade-manager narrative, 11 of ~24 possible
+  sections rendering with no errors): serialized result is **9,382 characters** against the
+  **16,000-char cap** — 59%, with real headroom even before accounting for sections this fixture
+  didn't trigger (Book context needs a real theme/direction portfolio overlap via
+  `checkPortfolioOverlap`, not just any sibling position — correctly did not fire here).
+- `src/lib/largo/run-tool.ts`'s `get_swing_play_brief` case (confirmed by reading): no
+  compaction/fit call, unlike `get_nighthawk_edition`'s case two cases above it.
+- `scripts/audit/largo-truncation-probe.test.ts`'s own guard (`every LANE_TOOLS entry... names a
+  real, currently-defined Largo tool`) passes with the new entry added — `get_swing_play_brief` is
+  confirmed present in `LARGO_TOOL_DEFS` (`src/lib/largo/tool-defs.ts`).
+
+### Fix
+
+Added `["get_swing_play_brief", "ticker NVDA"]` to `LANE_TOOLS` in
+`scripts/audit/largo-truncation-probe.mjs`, and corrected the stale "no second swing tool to
+probe" comment to describe what actually changed and why the new entry exists, including the
+by-inspection size measurement above so a future reader doesn't have to re-derive it. `npx tsc
+--noEmit` clean; `largo-truncation-probe.test.ts` (the existing phantom-tool-name guard) passes
+2/2 with the new entry in place.
+
+### What this fix does NOT do, and why
+
+Does not add a `compactSwingPlayBriefForModel`-style shaping step to `run-tool.ts`'s
+`get_swing_play_brief` case. The measured evidence (9,382/16,000 chars on a deliberately rich
+fixture) shows this is not currently an active truncation bug — adding a fitting layer for a risk
+that isn't materializing would be the same mistake this repo's own performance-mandate discipline
+explicitly warns against (`CLAUDE.md`: "do not add an overlap guard... to a cron/route that is not
+actually measured to be at risk — check its own numbers first, every time"). What this fix actually
+buys is that the probe will now ACTUALLY WATCH this tool going forward: the next live
+`node --import tsx scripts/audit/largo-truncation-probe.mjs` run exercises it, and if a future
+change to the swing play-brief (more sections, richer book-context prose, more sibling positions)
+pushes a real position over the cap, this probe — not another live-model misreport — is what
+catches it.
+
+## 2026-10-19 — [FINDING, swing] Seven top-level `composeSwingPlayBrief` section builders could fail silently with no `unavailableSources` disclosure — Largo C3 gap
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED |
+| **Severity** | P2 (WATCH — requires a degraded upstream row shape to trigger; the brief never crashes, the gap is a silent disclosure miss) |
+| **Surface** | `src/lib/swing/play-brief.ts` — `composeSwingPlayBrief()` |
+
+### Context
+
+Part of the standing "Ask Largo × Night Hawk Swings" ownership mandate's non-skippable deep-dive
+sub-task: audit the swing play-brief against `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s ten points,
+specifically hunting for dead-wired data and silent-absence gaps of the same shape as the already-
+fixed `arsenal.unavailable_sources` bug (#4101) and the `entryTriggerDeadReason` shadowing bug
+(#6261). Found while re-reading `composeSwingPlayBrief` end to end rather than relying on earlier
+knowledge of the file (other lanes/sessions touch this same file routinely per the standing
+collaboration protocol).
+
+### Root cause
+
+`safeCompose(label, build, fallback, onFailure?)` is this file's own error-boundary helper (added
+2026-09-20, sibling of PR #5288's `buildIntelSections` protection): if `build()` throws, the
+section is silently replaced with `fallback` (usually `null`, dropping the section) rather than
+crashing the whole brief. The 2026-10-07 fix extended this with an `onFailure` callback
+specifically for the `evidence`/`levels` builders, so a thrown builder there gets folded into
+`envelope.unavailableSources` instead of being indistinguishable from "this product genuinely has
+nothing to show" — the exact Largo C3 absence principle ("any fallback that returns a degraded
+result the caller cannot distinguish from a real one is a defect even when every test passes").
+
+That `onFailure` wiring was never extended to the other seven `safeCompose` call sites in this same
+function: `watchEntrySection` ("Entry"), the WATCH-bucket and OPEN-bucket `siblingPositionsNote`
+calls ("Other concurrent position(s)"), `managementSection` ("Management"), `thesisHealthSection`
+("Thesis health"), `pnlSection` ("Position"), `closedSection` ("Outcome"), and
+`buildStructureLadder` (the `structureLadder` envelope field). Each was still called as
+`safeCompose(label, fn, null)` — three args, the ORIGINAL 2026-09-20 shape, pre-dating the fourth
+`onFailure` parameter added 2026-10-07 for evidence/levels only. The existing regression test for
+this exact error boundary ("composeSwingPlayBrief: a throwing top-level section (Management/
+Position) does not take down the whole brief") already proved these seven sections can throw on a
+realistic degraded row (a malformed `exitPolicy.trim_levels`) and get silently dropped — it just
+never checked whether that drop was disclosed anywhere, because until this fix it genuinely was
+not.
+
+Concretely: a member asking Largo "how should I manage this open position" on a row whose
+`exitPolicy.trim_levels` came back malformed got a brief with no Management section, no Position
+(P&L!) section, and zero trace in `unavailableSources` — indistinguishable from "nothing to
+report" for two of the brief's most load-bearing sections.
+
+### Secondary defect found while implementing: wrong ordering for `structureLadder`
+
+`structureLadder` was originally computed inline inside the envelope object literal, which is
+built *after* `unavailableSources` is already assembled from `buildFailures`. Simply adding
+`trackBuildFailure` as a fourth argument there (without moving the computation) would have pushed
+to `buildFailures` too late to ever reach the `unavailableSources` array already baked into the
+envelope — the ordering, not a missing argument, was the real defect for this one call site. Fixed
+by hoisting the `structureLadder` computation to a local `const`, before `unavailableSources` is
+assembled, and referencing that local in the envelope literal instead of calling `safeCompose`
+inline there.
+
+### Fix
+
+1. Hoisted `const buildFailures: string[] = []; const trackBuildFailure = ...` from its previous
+   position (declared only after the bucket branches, immediately before the `buildIntelSections`
+   call) to immediately after `sections` is initialized — before the `if (bucket === "watch") ...`
+   branches — so every top-level `safeCompose` call in this function can feed the same collector.
+2. Added `trackBuildFailure` as the fourth argument to all seven previously-bare `safeCompose`
+   calls: the WATCH-branch `watchEntrySection`/`siblingPositionsNote` calls, the OPEN-branch
+   `managementSection`/`thesisHealthSection`/`pnlSection`/`siblingPositionsNote` calls, and the
+   CLOSED-branch `closedSection` call.
+3. Moved the `structureLadder` computation to a local `const` before `unavailableSources` is
+   assembled (see "Secondary defect" above), keeping the same `safeCompose("structureLadder", ...,
+   null, trackBuildFailure)` call, and referenced the local in the envelope literal.
+
+No change to `safeCompose` itself, to `buildIntelSections`'s already-protected 20 sections, or to
+the evidence/levels builders — this is purely closing the SAME disclosure gap those already-fixed
+call sites close, for the seven call sites that were missed when the pattern was first introduced.
+
+### Evidence (RED → GREEN)
+
+Extended the existing regression test ("a throwing top-level section (Management/Position) does
+not take down the whole brief") with two new assertions: `unavailableSources` must contain an
+entry with `what_is_missing === "Management"` and one with `what_is_missing === "Position"` for the
+same malformed-`trim_levels` fixture the test already uses to prove the sections are dropped.
+
+- **Pre-fix (`git stash` of `play-brief.ts` only, test kept):** `not ok 7` —
+  `AssertionError: a Management build failure must be disclosed via unavailableSources, not
+  silently dropped (Largo C3)`, `expected: true, actual: false`.
+- **Post-fix (`git stash pop`):** all 155 tests in `play-brief.test.ts` pass, including both new
+  assertions.
+
+`npx tsc --noEmit` clean both before and after (the pre-fix state for this RED/GREEN check was the
+test-only stash, not a type-error state).
+
+### Blast radius
+
+Confined to `src/lib/swing/play-brief.ts`'s own `composeSwingPlayBrief` — `safeCompose` itself,
+`buildIntelSections`'s sections, and the evidence/levels builders were already correctly wired and
+are untouched. No other composer in the repo uses this specific `safeCompose` helper (it is a
+private, file-local function), so this fix does not generalize to other Largo-facing products —
+each product's own composer would need the equivalent audit if it has a similar error-boundary
+pattern.
+
+## 2026-10-19 — [FINDING, infra] `blackout-production-web` deploy deadlock STILL UNRESOLVED ~8h after it first appeared — zero deploys have actually rolled new code since before the 2026-10-18 ~17:23Z outage began
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | NEEDS OPERATOR ACTION (AWS creds required — no sandbox session has working creds; same blocker as the two prior entries on this incident) |
+| **Severity** | P1 (escalating — not a new mechanism, but confirmed still live and now spanning ~8 hours / 5+ merged PRs) |
+| **Surface** | `blackout-production-web` ECS service (AWS) / `.github/workflows/ecr-push-production.yml` "Roll ECS production web" step |
+
+### This is an escalation addendum, not a new root cause
+
+This is the same `floor(desired × 1.20) == desired` deployment-arithmetic deadlock already fully
+documented in the 2026-10-18 FINDINGS.md entry ("`blackout-production-web` deploy stuck for the
+FULL 36-min budget — service's real desiredCount appears to have drifted back below 5..."),
+itself building on the original 2026-10-18 `desiredCount=0` outage root-cause entry. This entry
+exists only to record that **the prescribed fix (`aws ecs update-service --desired-count 5`) has
+still not visibly taken effect**, and to correct the record on how long deploys have actually been
+blocked.
+
+### New evidence (run 39182118791, job 117838467408, this session's own live check 2026-10-19
+~01:33Z)
+
+The "Roll ECS production web" step ran the full 36-minute budget (00:55:25Z→01:33:21Z) and timed
+out with the identical signature as the two prior documented occurrences:
+
+```
+[46/144] PRIMARY: running=0/1, rollout=IN_PROGRESS
+... (frozen at running=0/1 for the remaining ~98 polls, ~25 more minutes) ...
+[144/144] PRIMARY: running=0/1, rollout=IN_PROGRESS
+Timed out waiting for PRIMARY deployment to stabilize.
+##[error]Process completed with exit code 1.
+```
+
+Production itself remained healthy throughout (`/api/health` → 200 at every check this session
+made across the whole window) — same as both prior occurrences, for the same reason
+(`minimumHealthyPercent=100` means ECS can only add capacity before stopping an existing healthy
+task, so a deadlocked rollout can never touch the already-serving fleet).
+
+### Corrected timeline — deploys have been blocked longer than previously recorded
+
+Checked directly against the GitHub Actions API rather than assumed: the **last `ECR push
+(production)` run with `conclusion: success` is run 39161355948 (2026-10-18 20:00:56Z–20:17:25Z,
+carrying PR #6248)**. But per that same incident's own FINDINGS.md entry, that run's own
+"successful" roll was itself trivial/vacuous — `desiredCount` was still 0 at that point, so there
+was nothing to roll and the step exited green without actually deploying anything. **No deploy has
+genuinely rolled new code to `blackout-production-web` since before the outage began at
+~17:23Z on 2026-10-18** — i.e. this has now been blocked for roughly **8+ hours**, not the shorter
+window either prior entry's title implied at the time it was written.
+
+Every run since has failed the same way: 39169030903 (22:10Z, desired≈2 observed), 39178212540
+(23:51Z→00:27Z, timed out), 39182118791 (00:55Z→01:33Z, timed out — this entry's own evidence).
+That is at least 3 independent timed-out occurrences of the identical `running=0/1` freeze,
+clearing this repo's own 3-instance noise threshold for "this is a real, persistent pattern," not
+a transient blip.
+
+### Merged PRs still not live in production as of this writing
+
+At minimum, the following merged-to-`main` fixes have never actually reached production: #6251
+(security CVE patch), #6252 (Benzinga pagination test fix), #6253 (this session's own swing
+structural-stop dedup fix), #6258 (SPX rawScore recompute fix), #6260 (closed-deck chain contract
+mid/delta fix), #6261 (swing entry-trigger dead-reason compose fix), #6263 (swing play-brief
+direction/thesis fields). None of these are implicated in the deadlock itself — this is purely an
+infra capacity-state issue, independent of what is queued behind it.
+
+### Fix — unchanged from the prior entry, still not executable from any sandbox session
+
+```
+aws ecs describe-services --cluster blackout-production-cluster \
+  --services blackout-production-web --query 'services[0].desiredCount' --region us-east-1
+
+aws application-autoscaling describe-scalable-targets \
+  --service-namespace ecs \
+  --resource-ids service/blackout-production-cluster/blackout-production-web --region us-east-1
+
+aws ecs update-service --cluster blackout-production-cluster \
+  --service blackout-production-web --desired-count 5 --region us-east-1
+```
+
+If the scalable target's min is not 5 (or it is missing/deregistered), that is very likely *why*
+the first fix attempt (inferred from the 2026-10-18 ~20:47Z recovery) did not hold — something
+keeps pulling desired back down toward 1-2 rather than settling at the documented floor of 5. This
+needs the scalable target itself checked and re-registered if necessary (per this repo's standing
+"check live state, do not blindly `terraform apply` against production" rule), not just another
+one-off `update-service` call that could drift back down again the same way.
+
+### Evidence gap
+
+Same as both prior entries on this incident: this sandbox's own AWS credentials are invalid
+placeholders (`InvalidClientTokenId`, re-confirmed 2026-10-19T01:3x Z). No session here can run
+the diagnostic/fix commands directly.
+
 ## 2026-10-19 — [FINDING, swing] `composeSwingPlayBrief` never populated `envelope.direction`/`envelope.thesis` — Largo C5/C8 gap, every bucket (not just CLOSED)
 
 > **kind:** `FINDING`
