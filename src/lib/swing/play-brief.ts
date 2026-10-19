@@ -54,6 +54,37 @@ function biasFromDirection(dir: string): BieBias {
   return dir === "SHORT" ? "bearish" : dir === "LONG" ? "bullish" : "neutral";
 }
 
+/**
+ * Largo C5/C8 fix (2026-10-19, built on the 2026-10-18 staged finding
+ * `docs/audit/findings-staging/2026-10-18-closed-brief-direction-thesis.md`): `BieAnswerEnvelope`
+ * carried `bias` (normalized) and a `headline` that NAMES the direction/recommendation in prose,
+ * but never an explicit `direction`/`thesis` field a programmatic reader could bind to — for ANY
+ * bucket, not just CLOSED (the finding tested CLOSED chains specifically, but the root cause —
+ * `buildRichEnvelope` only ever sets `bias`, never `direction`/`thesis` — was never bucket-scoped;
+ * confirmed by reading `composeSwingPlayBrief` itself before this fix, no WATCH/OPEN branch set
+ * either field either).
+ *
+ * `thesis` is synthesized here rather than invented: it reuses the EXACT same fields the Verdict
+ * section's own opening line (`verdictLines[0]`, just below) and the envelope `headline` already
+ * compute — direction, the contract headline, and the identical
+ * action-label -> recommendation -> status fallback chain used in both other places — so `thesis`
+ * can never state a claim the Verdict card or headline doesn't already make, just as one flat
+ * sentence instead of markdown. For a CLOSED play this naturally resolves `verb` to
+ * `swingActionDisplay`'s own closedReason-driven label (TARGET/STOPPED/SCRATCH) when known, same
+ * as the Verdict line and headline — genuinely data-grounded, never a fabricated claim about why
+ * the position closed. Archetype is appended only when the play actually carries one.
+ */
+function briefThesis(
+  play: TerminalPlay,
+  contractHeadline: string,
+  action: { label: string } | null,
+  archetypeLabel: string | null,
+): string {
+  const verb = action?.label ?? play.recommendation ?? play.status;
+  const archetypeSuffix = archetypeLabel ? ` · ${archetypeLabel}` : "";
+  return `${play.direction} ${contractHeadline} — ${verb}${archetypeSuffix}.`;
+}
+
 function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
   if (play.status === "CLOSED") return "closed";
   if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") return "open";
@@ -1750,6 +1781,12 @@ export function composeSwingPlayBrief(
     source: "computed",
     asOf: ctx.asOf,
     session_date: ctx.sessionDate,
+    // Largo C5 (DIRECTION) / C8 (NARRATIVE) fix — see `briefThesis`'s own doc comment above for
+    // the full account (built on the 2026-10-18 staged finding). `direction` is the same native
+    // source `bias` above already derives from (`biasFromDirection(play.direction)`), kept here
+    // as the raw "LONG"/"SHORT" label rather than flattened into bias's normalized read.
+    direction: play.direction,
+    thesis: briefThesis(play, headline, action, verdictArchetypeLabel),
     // Structure Ladder widget (Ask Largo standing mandate, 2026-09-12) — null on CLOSED plays and
     // on any read with no live spot/structural nodes to build from; never fabricated.
     structureLadder: safeCompose("structureLadder", () => buildStructureLadder(ctx, play, bucket), null),
