@@ -4,6 +4,29 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-19 (16:33 UTC / Mon 12:34 ET) — [SEO] RTH wake: transient degraded blip observed and self-resolved, CLS GOOD
+
+Last RTH window before 13:00 ET close. Confirmed window myself (12:34 ET). Resynced to
+`origin/main` (`9eb0c34d` → `ba541cf8`, other-lane nighthawk-journal entries, not SEO-relevant).
+
+**Caught a real, longer-than-usual degraded blip on the live gamma-snapshot API** (worth noting in
+detail, not escalating): first SPX poll returned `degraded: true`, `degraded_note: "Live refresh
+has stalled — showing the most recent computed snapshot (5m old)"`, `snapshot_data_age_seconds:
+284`, `calculation_id` unchanged across a 15s re-poll. SPY (different WS path) was also degraded,
+2m old. ~20s after the first observation, a fresh SPX poll showed `degraded: false`,
+`calculation_id` advanced, `snapshot_data_age_seconds: 27` — self-resolved. QQQ was already clean.
+This is the same self-healing backend-replica/cache-read pattern already documented from prior
+RTH wakes (shorter instances), just a longer stall this time; `git log` shows another lane logged
+a "CRWV 1-instance transient degraded" the same session (`e9f10ea5`), confirming this is a known,
+fleet-wide transient, not an SEO-specific or new defect. **The degraded flag itself worked
+correctly** — the public page honestly reported staleness rather than silently serving a frozen
+value as fresh, which is the right behavior for a public-facing surface. Not escalating; noting
+for the record in case the stall duration trend grows.
+
+**CLS:** purged Cloudflare edge HTML for `/` and `/tools/gamma-snapshot`, re-measured — homepage
+**0.0003, GOOD** (69/69 routed); gamma-snapshot page **0, GOOD** (59/59 routed). No PR opened.
+Returning to normal search/authority work now that the window has closed (13:00 ET).
+
 ## 2026-10-19 (15:33 UTC / Mon 11:34 ET) — [SEO] RTH wake: public live surface validated GOOD
 
 Still within the RTH window confirmed earlier this session. Resynced to `origin/main`
