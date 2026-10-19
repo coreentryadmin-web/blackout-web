@@ -38,6 +38,78 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-19 — [FINDING, P2 reliability] Shared Discord webhook sender had no fetch timeout — a hung Discord endpoint could consume a cron's entire `maxDuration`, including the stale-cron watchdog's own alert — FIXED (fix/discord-post-fetch-timeout)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Area** | `src/lib/discord-post.ts` (shared by every Discord-posting caller, including `notifyOpsDiscord` in `src/features/spx/lib/spx-play-notify.ts`, which is a thin wrapper over the same `postDiscordWebhook`) |
+| **Status** | FIXED |
+
+**Root cause.** `postOnce`/`postOnceWithFiles` (the two private functions every Discord
+delivery in the app goes through) called `fetch(url, {...})` with no `AbortSignal` and no other
+deadline. Node's global `fetch` has no implicit request timeout — an unresponsive or
+slow-to-respond Discord endpoint would hold the `await` open for as long as the underlying
+socket stayed alive, with nothing in this module able to bound it.
+
+**Why this wasn't caught earlier.** The module's own header already documents a careful
+contract ("NEVER throws into callers", fallback-webhook retry, redacted logging) — it reads as
+thoroughly hardened, which is exactly why a missing timeout is easy to miss: every other failure
+mode (non-2xx status, network error, DNS failure) is handled in the existing `try/catch`, and
+those all surface quickly in practice. A genuine *hang* (the endpoint accepts the TCP connection
+but never sends a response) is the one case that single `try/catch` cannot bound on its own —
+it needs a signal.
+
+**Blast radius.** Real production callers that `await` this synchronously in their main
+execution path (not fire-and-forget):
+- `src/app/api/cron/cron-staleness-watchdog/route.ts` — `await notifyOpsDiscord(...)` (twice).
+  This is the job whose entire purpose is alerting when every OTHER cron goes stale or fails. A
+  hang here doesn't just delay one Discord message — it risks the watchdog's own run never
+  completing, at exactly the moment (an outage) when its alert matters most.
+- `src/app/api/cron/helix-discord-digest/route.ts` — `await postDiscordWebhook(...)` (×3: 15m/30m
+  digests, EOD recap).
+- `src/app/api/cron/darkpool-discord/route.ts` — `await postDiscordWebhook(...)` (×2: digest, EOD
+  recap).
+- `src/features/spx/lib/spx-play-notify.ts`'s `notifyOpsDiscord` — confirmed to be a thin wrapper
+  calling the same `postDiscordWebhook` (not a separate implementation), so this fix covers it
+  too without touching that file (which sits under the SPX Slayer owned lane and was deliberately
+  left untouched here).
+
+Each of these cron routes has its own bounded `maxDuration` (90s–300s depending on the route),
+so a hang here was never literally infinite — but it would silently burn the entire remaining
+duration budget on one webhook POST, which reads externally as "this cron is stuck/slow" rather
+than "Discord didn't respond," and for `cron-staleness-watchdog` specifically risks the alert for
+a real outage never being sent at all.
+
+**Fix.** Added `const DISCORD_FETCH_TIMEOUT_MS = 10_000` and `signal:
+AbortSignal.timeout(DISCORD_FETCH_TIMEOUT_MS)` to both `fetch()` calls in `postOnce` and
+`postOnceWithFiles`. 10s is generous for a webhook POST (Discord's own API is typically
+sub-second) while staying well inside every caller's `maxDuration`. The existing `catch` block in
+both functions already converts any thrown error — including the `AbortError`/`TimeoutError`
+`AbortSignal.timeout()` throws — into the same `{ ok: false, status: null, error }` shape every
+other failure already produces, so the "never throws, falls back to the secondary webhook, logs
+at error" contract is completely unchanged; a timeout now just fails fast instead of hanging.
+
+**Fix rationale — why this, not something larger.** Considered adding a configurable timeout
+parameter to the public `postDiscordWebhook`/`postDiscordWebhookWithFiles` signatures (matching
+the override pattern `api-tracked-fetch.ts` uses for its own `DEFAULT_FETCH_TIMEOUT_MS`), but
+every real caller wants the same bound and none currently has a reason to tune it — adding an
+unused parameter to every call site would be scope creep for a fix this module-local. If a caller
+ever genuinely needs a different deadline, add the override then.
+
+**Evidence (tests).** New `src/lib/discord-post.test.ts` (3 tests): (1) `postDiscordWebhook`
+passes a real `AbortSignal` instance to `fetch` — mocked `fetch` captures `init.signal` and
+asserts `instanceof AbortSignal`; (2) same for `postDiscordWebhookWithFiles`; (3) a timeout-style
+abort (`TimeoutError`) from `fetch` is handled exactly like any other failure — resolves to
+`false`, never throws, and still exercises the existing one-retry-to-fallback contract (2 fetch
+calls: primary then fallback). RED→GREEN proven via `git stash` on `discord-post.ts` alone:
+2/3 fail pre-fix (both `AbortSignal` assertions — pre-fix `fetch` is called with no `signal` key
+at all), 3/3 pass post-fix. Also ran the existing suites for every real caller touched by this
+change (`discord-post.test.ts`, `helix-discord-digest/route.test.ts`,
+`darkpool-discord/route.test.ts`, `cron-staleness-watchdog/route.test.ts`) together: 10/10 pass.
+`npx tsc --noEmit -p .` clean.
+
 ## 2026-10-19 — [FINDING, P3 infra/monitoring] 4 of 5 live X-marketing crons are absent from `CRON_JOBS` — the pause-aware admin-health override built for them is dead code — OPEN, not implemented (operator-gated)
 
 > **kind:** `FINDING`
