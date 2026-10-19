@@ -4,6 +4,33 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-19 (13:35 UTC / Mon 09:36 ET) — [SEO] RTH wake: public live surface validated GOOD
+
+Confirmed RTH window myself (`TZ=America/New_York date` → 09:36 ET; 2026-10-19 absent from
+`US_MARKET_HOLIDAYS` in `session.ts`) before switching to RTH-specific checks per this trigger's
+own instruction. Resynced to `origin/main` (`5d327f50` → `33b6aa9e`, other-lane Legacy P0
+confirmation, not SEO-relevant).
+
+**`/tools/gamma-snapshot`'s underlying API, polled 3× over ~35s:** `market_session: OPEN`,
+`degraded: false` throughout. `calculation_id`/`calculated_at`/`spot` all advanced between polls
+(`SPX:1792416958532`@spot 7700.8 → `SPX:1792416982958`@spot 7695.83) — the snapshot genuinely
+refreshes on a live ~12s server-side TTL, not frozen on a stale value (the page's own 5s client
+poll just re-requests more often than the TTL rotates). `flip: null`/`spot_source: redis_cluster`
+both match the already-root-caused SPX index-routing/short-gamma-at-every-strike behavior from
+prior sessions — not re-litigated here. **Response shape is genuinely derived** (gamma flip,
+call/put wall, regime, posture — no chain, no strike matrix), consistent with
+`docs/marketing/RESEARCH-PUBLISH-POSTURE.md`'s own description of this page as an accepted,
+already-flagged licensing risk tracked separately — no new finding to raise.
+
+**Core Web Vitals on a live-rendering page (not an off-hours frozen one):** purged Cloudflare edge
+HTML for both `/` and `/tools/gamma-snapshot`, measured CLS on both through `cls-measure.cjs`
+(desktop 1440×900, `NODE_USE_ENV_PROXY=1`) — homepage **0.0002, GOOD** (62/62 routed, 0 fail);
+gamma-snapshot page **0, GOOD** (59/59 routed, 0 fail). #2453 fix holds under real RTH rendering
+conditions, not just off-hours.
+
+No defect found. No PR opened. Will return to normal search/authority work at 13:00 ET per this
+trigger's own instruction.
+
 ## 2026-10-19 (12:17 UTC / Mon 08:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Monday pre-market (market opens 09:30 ET). Resynced to `origin/main` (`6e3130ef` → `51b0f935`,
