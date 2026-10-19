@@ -23187,6 +23187,20 @@ html.product-shell .nav-mega {
     pointer-events:none;
   }
   .nh-deck[data-mobile-view="detail"] .nh-deck-right{transform:translateY(0);pointer-events:auto}
+  /* Override the unconditional `.nh-deck-right.nh-deck-dim{opacity:.84}` rule above — that rule's
+     own comment says "the whole detail dims", written for the desktop 3-column layout where
+     `.nh-deck-right` is a normal side panel next to the list. Below this breakpoint `.nh-deck-right`
+     is instead the `position:fixed` FULL-SCREEN takeover two rules up, and `opacity:.84` on a
+     backdrop that is supposed to fully obscure the list behind it lets ~16% of the list's rendered
+     text bleed through — measured live on a real STALE swing position (mobile Ask Largo audit,
+     2026-10-19): the list rows ("#1 HOLD NVDA 212.5C 3DTE" etc.) visibly double-exposed with the
+     Largo panel's own "Unavailable — ..." chip text, both rendered simultaneously and largely
+     unreadable. Same 2-class specificity as the opacity:.84 rule, later in source + inside a
+     matching media query, so it wins at ≤820px per the normal cascade (same pattern this file's own
+     comments document elsewhere in this block). The textual "STALE" pill elsewhere in the panel
+     already carries the staleness signal, so nothing is lost by keeping the full-screen overlay
+     opaque. */
+  .nh-deck-right.nh-deck-dim{opacity:1}
   .nh-deck-mobile-back{display:inline-flex;position:sticky;top:0;z-index:1;
     background:var(--dk-bg-panel);margin:0 0 4px}
 }
