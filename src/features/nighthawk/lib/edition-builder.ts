@@ -43,6 +43,7 @@ import {
   editionWindowStartMinutes,
   isInEditionWindow,
   shouldRebuildStalePublishedEdition,
+  shouldRetryRecapOnlyEdition,
 } from "./edition-stale";
 import {
   anyRankedClearsScoreFloor,
@@ -733,16 +734,52 @@ export async function buildEveningEdition(opts?: {
 
     if (job?.status === "published") {
       const existing = await fetchNighthawkEditionByDate(editionFor);
-      return {
-        ok: true,
-        edition_for: editionFor,
-        plays_count: existing?.plays?.length ?? 0,
-        candidates: job.candidates_json?.length ?? 0,
-        duration_ms: Date.now() - started,
-        job_status: job.status,
-        current_stage: job.current_stage,
-        resumed: true,
-      };
+      const existingMapped = existing ? rowToNightHawkEdition(existing) : null;
+
+      if (
+        shouldRetryRecapOnlyEdition({
+          recapOnly: existingMapped?.recap_only ?? false,
+          candidates: existingMapped?.funnel?.candidates ?? 0,
+          dossiers: existingMapped?.funnel?.dossiers ?? -1,
+          publishedAtIso: job.published_at,
+          inEditionWindow: inWindow,
+        })
+      ) {
+        const starvedCandidates = existingMapped?.funnel?.candidates ?? 0;
+        console.info(
+          `[nighthawk/edition] recap-only retry window open — ${editionFor} published ${job.published_at} ` +
+            `with ${starvedCandidates} starved candidate(s) (stage_dossiers zeroed). Retrying dossier stage.`
+        );
+        await archiveAndClearNighthawkStaging(editionFor);
+        await upsertNighthawkJob(editionFor, {
+          status: "running",
+          current_stage: "stage_context",
+          context_json: null,
+          candidates_json: null,
+          scored_json: null,
+          synthesis_json: null,
+          error: null,
+          published_at: null,
+        });
+        job = await fetchNighthawkJob(editionFor);
+        logNighthawkJob(
+          editionFor,
+          "info",
+          null,
+          `Recap-only retry — prior publish had ${starvedCandidates} starved candidate(s), 0 scored dossiers`
+        );
+      } else {
+        return {
+          ok: true,
+          edition_for: editionFor,
+          plays_count: existing?.plays?.length ?? 0,
+          candidates: job.candidates_json?.length ?? 0,
+          duration_ms: Date.now() - started,
+          job_status: job.status,
+          current_stage: job.current_stage,
+          resumed: true,
+        };
+      }
     }
   }
 
