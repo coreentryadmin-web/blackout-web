@@ -208,23 +208,39 @@ export async function loadBenzingaBoardEarnings(tickers: string[], todayYmd: str
   const uniq = [...new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))].slice(0, 24);
   if (!uniq.length) return { rows: [], entitled: true, error: null };
   const dateLte = addDaysYmd(todayYmd, Math.max(1, daysAhead));
-  return serverCache(`meridian:benzinga:board:${uniq.join(",")}:${todayYmd}`, BENZINGA_TICKER_TTL_MS, () =>
-    fetchBenzingaStructuredEarnings({
+  return serverCache(`meridian:benzinga:board:${uniq.join(",")}:${todayYmd}`, BENZINGA_TICKER_TTL_MS, async () => {
+    const res = await fetchBenzingaStructuredEarnings({
       tickers: uniq,
       dateGte: todayYmd,
       dateLte,
       limit: 60,
       sort: "date.asc",
-    })
-  ).catch(() => ({ rows: [], entitled: true, error: "cache_error" }));
+    });
+    // Same discipline as loadBenzingaTickerEarnings above: throw on a provider error so the
+    // cache never stores a failed result as an indistinguishable empty one.
+    if (res.error) throw new Error(`benzinga_board_earnings:${res.error}`);
+    return res;
+  }).catch((e: unknown) => ({
+    rows: [] as Awaited<ReturnType<typeof fetchBenzingaStructuredEarnings>>["rows"],
+    entitled: true,
+    // Carried, not swallowed — same reasoning as loadBenzingaTickerEarnings's own fix (the
+    // 2026-08-18 Meridian enrichment outage this sibling function was missed from).
+    error: String(e instanceof Error ? e.message : e).slice(0, 200),
+  }));
 }
 
 export async function loadBenzingaTickerGuidance(ticker: string) {
   const sym = ticker.trim().toUpperCase();
   const yearAgo = addDaysYmd(new Date().toISOString().slice(0, 10), -400);
-  return serverCache(`meridian:benzinga:guidance:${sym}`, BENZINGA_TICKER_TTL_MS, () =>
-    fetchBenzingaCorporateGuidance({ ticker: sym, dateGte: yearAgo, limit: 6 })
-  ).catch(() => ({ rows: [], entitled: false, error: "cache_error" }));
+  return serverCache(`meridian:benzinga:guidance:${sym}`, BENZINGA_TICKER_TTL_MS, async () => {
+    const res = await fetchBenzingaCorporateGuidance({ ticker: sym, dateGte: yearAgo, limit: 6 });
+    if (res.error) throw new Error(`benzinga_ticker_guidance:${res.error}`);
+    return res;
+  }).catch((e: unknown) => ({
+    rows: [] as Awaited<ReturnType<typeof fetchBenzingaCorporateGuidance>>["rows"],
+    entitled: false,
+    error: String(e instanceof Error ? e.message : e).slice(0, 200),
+  }));
 }
 
 /** Next earnings date from Benzinga structured calendar (Meridian/Largo — no UW REST). */

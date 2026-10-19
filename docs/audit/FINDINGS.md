@@ -38,6 +38,243 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-19 — [FINDING, P3 Largo/Swing] play-brief-adapter.ts reimplemented its own ticker_class classifier, disagreeing with the brief's own C4 identity field — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Severity:** P3 — not yet live (the field this adapter computes is unused by `route.ts`'s HTTP
+response today), but `ticker_class` is a **required** field on `ProductSignal` (the base Largo
+contract type every product surface must populate per C4 IDENTITY), and a second in-process
+consumer that reads `adaptSwingBriefToLargo(...).data.ticker_class` — which is clearly the field's
+intended purpose — would get a silently wrong, self-contradictory answer today.
+
+**What's wrong.** `src/lib/swing/play-brief-adapter.ts`'s `adaptSwingBriefToLargo` computed
+`ticker_class` via its own private `tickerClassFromTicker()` — a 6-name hardcoded ETF allowlist
+(XLF/GLD/SLV/XBI/XLV/XLE) plus a 4-name index allowlist — instead of reusing
+`SwingPlayBriefResult.ticker_class`, the field `composeSwingPlayBrief` (`play-brief.ts:1588`)
+already derives correctly from the shared, actively-maintained `canonicalTicker` in
+`src/lib/largo/core/entities.ts` (whose own header warns: *"This list being partial is safe for
+[labelling]. It stopped being safe the moment Night Hawk Swings started reading `kind` for
+Largo"* — exactly the situation this adapter recreated). The result: for any ticker in the real,
+maintained ETF list but NOT in the adapter's own 6-name copy — e.g. **SQQQ**, the same
+leveraged-ETF ticker `play-brief.test.ts`'s own regression test already covers for the native
+field — `brief.ticker_class === "etf"` while `adaptSwingBriefToLargo(brief).data.ticker_class
+=== "equity"` in the **same response**, the exact two-classifications-of-one-fact pattern the
+2026-10-17 fix (`play-brief.ts` commit history) was written to eliminate.
+
+**Also found in the same function, same cleanup:** an inert `if (envelope.tradeDecision?.ticker)`
+block whose body was comments only (no assignment, no side effect — a half-finished
+"populate archetype/sub_lane/entry/peak premium later" stub). `tradeDecision` is a wholly
+unrelated field (`BieAnswerEnvelope.tradeDecision` — "Integrity supplement for play questions —
+badges only," `ticker`/`actionLabel`/`signalRows`, no archetype/premium fields at all) that
+`composeSwingPlayBrief` never sets, so the condition was structurally always false — guaranteed
+dead code, not just unfinished. Removed rather than wired up: populating `archetype`/`sub_lane`/
+`entry_premium`/`peak_premium`/`bucket`/`thesis_strength_pct`/`grade`/`invalidation` correctly
+needs real plumbing from `ctx`/`play` the adapter doesn't receive today, and those fields are
+optional on `SwingPlayBriefSignal` — a genuine follow-up, not a one-line fix, logged for Cursor/
+next-session pickup via the standing #4076 collaboration thread rather than half-wired here.
+
+**Root cause.** The adapter was written fresh (introduced this week as part of the in-flight
+Largo-contract-compliance work, commit `4349848f5` and follow-ons) without reusing the one place
+ticker classification was already correct and tested — a second, independently-hardcoded guess at
+a fact one call away (`result.ticker_class`) or one import away (`canonicalTicker` from
+`largo/core/entities.ts`, which the adapter doesn't import at all — it only imports the
+differently-named, differently-shaped `canonicalTicker` from `largo/contract/product-read.ts`,
+which normalizes a ticker STRING and has nothing to do with instrument classification; two
+functions named `canonicalTicker` in two modules with unrelated return shapes is itself a latent
+trap worth flagging for whoever touches this next).
+
+**Fix.** `adaptSwingBriefToLargo` now takes `ticker_class` straight from the `SwingPlayBriefResult`
+it's given (`const { ..., ticker_class, ... } = result`) — one brief, one classification, no
+second guess. Deleted the now-dead `tickerClassFromTicker()` function (23 lines) and its
+now-unused `TickerClass` type import, and deleted the inert `tradeDecision` if-block.
+
+**Evidence.** New regression tests in `src/lib/swing/play-brief-adapter.test.ts` (the file had
+zero test coverage before this fix): SQQQ fails RED on the pre-fix code
+(`largoRead.data.ticker_class` returns `"equity"`, expected `"etf"`) and passes GREEN post-fix,
+plus a same-response cross-check (`largoRead.data.ticker_class === brief.ticker_class`) and an
+equity-ticker sanity case. `npx tsc --noEmit` clean; full `npm test` run on Node 20 green.
+
+**Note for context:** production is currently serving pre-`play-brief-adapter.ts` code (the
+standing ECS web deploy deadlock, 7+ consecutive failed deploys as of this writing — already
+tracked, not re-escalated here), so this fix has not yet been observed live — confirmed by
+diffing the live `GET /api/market/swing/play-brief` response (no `freshness`/`as_of`/`direction`/
+etc. top-level fields present) against this file's own wiring in `route.ts`. Caught via static
+review of the new, not-yet-deployed code rather than a live probe, since the live route can't yet
+exercise it.
+
+## 2026-10-19 — [ENHANCEMENT IDEAS, P2 infra] Two proposals for the recurring ECS web deploy deadlock (#6255) — OPEN, not implemented
+
+> **kind:** `FINDING`
+
+| **Status** | OPEN — write-up only, two proposals for the operator/ops lane to weigh, no code changed |
+|---|---|
+
+**Context.** As of this writing the `blackout-production-web` deploy deadlock first found in #6255
+has reproduced identically on every one of 7 consecutive deploy attempts spanning ~13+ hours
+(runs tied to PRs #6251/#6252/#6253/#6258/#6260/#6261/#6263/#6265/#6270/#6272/#6274, each burning
+the full 36-minute `.github/workflows/ecr-push-production.yml` wait budget before failing).
+Production itself has stayed healthy throughout (already-serving tasks are never touched, per
+`minimumHealthyPercent=100`'s own design) — this is purely a deploy-pipeline/capacity problem,
+not a renewed outage. Already thoroughly diagnosed and escalated (see #6255's own finding and the
+Night Hawk Swings lane's journal) — this entry adds two concrete remediation ideas that have not
+yet been proposed anywhere in that thread, rather than re-diagnosing the root cause.
+
+**Idea 1 — self-heal `desiredCount` before the roll, inside the same workflow step.**
+`ecr-push-production.yml`'s "Roll ECS production web" step calls `aws ecs update-service` without
+ever passing `--desired-count` — it assumes the service's existing desired count is already at or
+above the documented autoscaling floor of 5 (the floor the whole `minHealthy=100`/`max=120`
+arithmetic in that same step's own comment block is solved for). The step's AWS credentials are
+demonstrably working (it successfully calls `describe-services`/`update-service` every single one
+of the 7 failed runs — the failure is a capacity deadlock, not an auth failure, unlike the earlier,
+separate `ops-auto-fix` AWS-key issue from earlier in this incident). A pre-flight check — read
+`desiredCount` via `describe-services` before calling `update-service`, and if it is below 5,
+restore it first — is mechanically simple and uses credentials already proven to work in this exact
+job.
+
+*Why not implemented directly*: whether the drift from 5 to the observed 2 was Application Auto
+Scaling settling toward a deliberately-lowered target, or a real misconfiguration, is unknown from
+this sandbox (no AWS access to inspect the scalable target's current min/max or scaling-activity
+history) — the two cases call for different responses, and forcing `desiredCount` back to 5
+without knowing which one it is risks fighting an intentional change. This needs either real AWS
+access to check `describe-scalable-targets` first, or an explicit operator decision to always
+restore the floor unconditionally.
+
+**Idea 2 — fail fast on a genuinely stalled rollout instead of burning the full 36-minute budget.**
+The wait loop (`ecr-push-production.yml`, the `for i in $(seq 1 144); do sleep 15; ...` block)
+already has a well-reasoned, previously-tuned exit condition — it deliberately does NOT break on
+`running == desired` (a past version of this exact loop did, and shipped a false-"RED" static-asset
+gate result 13 minutes before the real rollout had actually converged; see that block's own
+comment). This proposal is a different, additive signal, not a repeat of that mistake: the step's
+own cost-of-a-normal-cycle estimate ("task start + image pull + Next boot + ALB health checks + the
+old task's 30s deregistration drain (~2 min)") implies `runningCount` should move at least once
+every ~2 minutes under a healthy rollout. If `runningCount` (not `rolloutState`) has been
+IDENTICAL for some generous threshold — e.g. 20 consecutive polls (5 minutes) — that is a strong,
+independent signal of exactly this deadlock shape (`running=0/1` frozen for the observed full 36
+minutes on all 7 failures), and the job could exit early with a clear diagnostic instead of
+spending the remaining ~30 minutes proving nothing new.
+
+*Why not implemented directly*: the right "stuck" threshold needs tuning against real deploy
+telemetry this sandbox cannot generate (what's the longest legitimate quiet gap during a slow but
+healthy image pull or ALB health-check grace period?) — getting the threshold wrong risks a false
+early-exit on a deploy that would have succeeded, which is a worse failure mode than the current
+"slow but eventually honest" 36-minute timeout. Low risk only if hand-tuned by someone who can
+watch it against a live healthy rollout first.
+
+**Net effect if either ships**: Idea 1 could end the deadlock outright (if the capacity-restore
+hypothesis is correct). Idea 2 does not fix the deadlock but would cut each failed attempt's cost
+from 36 minutes to ~5, meaningfully reducing the CI-minutes and wall-clock cost of continuing to
+retry while the real fix (operator AWS action, or Idea 1) is pending.
+
+**Blast radius / scope.** Neither idea was implemented this cycle. Both are confined to
+`.github/workflows/ecr-push-production.yml`'s existing "Roll ECS production web" step; neither
+touches application code or any other workflow.
+
+## 2026-10-19 — [FINDING, P2 Meridian] Two sibling Benzinga loaders still swallowed fetch failures into a generic "cache_error" string, missed by the 2026-08-18 fix — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Severity:** P2 — live, member-facing honest-absence violation (not a crash), same root-cause class as the already-fixed 2026-08-18 Meridian ESTIMATES/HISTORY-empty P1 (`docs/audit/FINDINGS.md`, re-confirmed FIXED on 2026-08-30).
+
+**What's wrong.** `src/lib/meridian/meridian-benzinga-earnings.ts`'s `loadBenzingaTickerEarnings` was fixed on 2026-08-18 to (a) explicitly `throw` when the provider returns `{error: ...}` without itself rejecting — so a soft failure is never cached as an indistinguishable empty result — and (b) carry the real thrown message through its `.catch()` instead of a generic string. Two sibling functions in the **same file**, doing the exact same `serverCache(...).catch(...)` shape, were never given the same fix:
+
+- `loadBenzingaBoardEarnings(tickers, todayYmd, daysAhead)` — called from `loadMeridianEarningsTimeline` (`meridian-timeline-server.ts`), merged directly into the market-wide earnings timeline with no error check at the call site. A real upstream failure silently produces a timeline missing those tickers' prints.
+- `loadBenzingaTickerGuidance(ticker)` — called from `loadMeridianEarningsEnrichment` (`meridian-earnings-enrich.ts`), the **exact same `Promise.all`** the 2026-08-18 fix already lives in. A fetch failure here resolved to `corporate_guidance: null`, `guidance_entitled: false`, `guidance_on_file: false` — indistinguishable from "this company has no corporate guidance on file," which is precisely the confusion the 2026-08-18 fix's own comment warns about one line above: *"An outage must be distinguishable from an empty company... measured on 8/8 mega-caps."*
+
+**Root cause.** The 2026-08-18 fix was scoped to the one function whose live reproduction (8/8 mega-caps) proved the defect, and the PR write-up policy's "every other call site/consumer touched by the same root cause" sweep did not extend to these two textually-adjacent sibling functions in the same file at the time.
+
+**Fix.**
+- `loadBenzingaBoardEarnings` and `loadBenzingaTickerGuidance` now both throw on `res.error` inside the cached loader (so a soft provider error is never cached as a real empty answer) and carry the real thrown message through their `.catch()`, mirroring `loadBenzingaTickerEarnings` exactly.
+- `loadMeridianEarningsEnrichment`'s existing `calendar_error` field (already the designated "an outage must be distinguishable from an empty company" signal) now also checks `guidanceRes.error`, closing the one sibling fetch in that `Promise.all` that wasn't feeding it.
+- `loadBenzingaBoardEarnings`'s error is not yet wired into `MeridianEarningsTimelineResult` (a new field on a shared result type, out of scope for this fix) — its caller (`loadMeridianEarningsTimeline`) still silently drops it; this remains a known gap, not claimed as closed.
+
+**Blast radius — a third instance found, deliberately not fixed here.** `loadBenzingaEarningsBundle` (same file, ~line 68) has the identical "cache_error" literal twice — its inner `hist` fetch catch (~line 104) and its outer whole-function catch (~line 149-162) — but is structurally more complex than the two functions fixed above: it interleaves two unguarded parallel `fetchBenzingaStructuredEarnings` calls, revision-diffing (`diffEstimateRevisionTimeline`), and a Redis-persistence side effect (`recordMeridianEstimateRevision`) inside the same cached block, so applying the same throw-and-carry fix correctly needs more careful scoping than a mechanical copy of the pattern (in particular, whether `windowRes.error`/`revisionRes.error` should also gain a throw guard changes caching behavior for a function with more interdependent fields than the two already fixed). Left as a follow-up rather than risking a rushed fix to a more delicate function in the same PR as the two clean ones.
+
+**Regression test.** `src/lib/meridian/meridian-benzinga-earnings.test.ts` (new file, 4 tests): proves both functions carry the real provider error — for both a hard-thrown fetch exception and a soft `{error: ...}` response — instead of the literal string `"cache_error"`, and that a genuinely empty/no-error result still returns cleanly. Proved RED (2/4 fail, `got: cache_error`) against the pre-fix source via `git stash`, GREEN (4/4) after.
+
+**Verification.** `npx tsc --noEmit` clean. `npx eslint` clean on both touched files + new test. Full Meridian suite (`src/lib/meridian/*.test.ts src/features/meridian/**/*.test.ts`): 528/528 pass, no regressions. Full `npm test` run in progress at time of writing (background, to be confirmed before merge).
+
+## Swing play-brief evidence/levels still sample the real wall clock, not `ctx.readMs` — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — PR #6272 (merged 2026-10-19). |
+|---|---|
+| **Severity** | P3 — latent in production today (no real caller pre-stamps `ctx.readMs` yet), live-risk the moment one does |
+| **Found by** | Ask Largo × Night Hawk Swings standing deep-dive mandate, round 5 (2026-10-19) |
+
+### Root cause
+
+`composeSwingPlayBrief` (`src/lib/swing/play-brief.ts`) stamps one canonical "now" onto `ctx.readMs`
+at the top of the function (`ctx = { ...ctx, readMs: ctx.readMs ?? readMs }`) specifically so every
+staleness check downstream reads the *same* instant rather than each section independently sampling
+`Date.now()` at whatever moment it happens to compose (the function does real sequential I/O between
+sections, so those instants can be seconds apart). `play-brief-types.ts`'s own doc comment on the
+`readMs` field documents the live defect this closes (2026-09-21, SNXX repro: two sections reading
+the identical cached Vector snapshot landed on opposite sides of the 120s staleness boundary and
+silently disagreed about whether a GEX wall was live or stale) — and names it as a **known, still-open
+follow-up**: *"Only `confluenceCoaching` and `watchForSection` ... are wired to this anchor so far;
+the other ~18 `Date.now()` call sites are the same class of latent risk and a natural next sweep."*
+
+A 2026-10-12 fix (same file, `composeSwingPlayBrief`'s WATCH/OPEN branches) closed two more of those
+~18 — `watchEntrySection`/`pnlSection` were being called with the bare `readMs` local (always the
+real `Date.now()` sampled at this function's top) instead of `ctx.readMs ?? readMs`. That fix's own
+blast-radius check never reached `evidenceFromContext`/`levelsFromContext` — the sole feeders of
+`envelope.evidence`/`envelope.levels` — which were calling `evidenceFromContext(ctx, readMs)` /
+`levelsFromContext(ctx, readMs, bucket)` with the same bare local, unchanged.
+
+### Why this is latent, not an active production bug today
+
+The one real caller (`GET /api/market/swing/play-brief`, via `loadSwingPlayBriefContext`) never
+pre-stamps `ctx.readMs` before calling `composeSwingPlayBrief` — so `ctx.readMs ?? readMs` and the
+bare `readMs` evaluate identically in production right now. This is not a live, member-visible defect
+today. It *is* a real, traceable deviation from this file's own established and partially-enforced
+convention, and it silently reactivates the exact already-twice-documented bug class (SNXX repro,
+2026-09-21; the 2026-10-12 watch/pnl fix) the moment any future caller or test pins `ctx.readMs` to a
+shared anchor — which `readMs`'s own doc comment explicitly anticipates ("a caller that composes
+multiple briefs off one shared anchor"). `evidence`/`levels` are core, high-visibility parts of every
+brief (every "Why this setup"/"Watch levels" freshness tag derives from them), so a regression here
+would be exactly as consequential as the original SNXX repro.
+
+### Fix
+
+`src/lib/swing/play-brief.ts` — changed the two call sites to `ctx.readMs ?? readMs`, matching the
+2026-10-12 precedent exactly:
+
+```ts
+const evidence = safeCompose("evidence", () => evidenceFromContext(ctx, ctx.readMs ?? readMs), [], trackBuildFailure);
+const levels = safeCompose("levels", () => levelsFromContext(ctx, ctx.readMs ?? readMs, bucket), [], trackBuildFailure);
+```
+
+### Regression test
+
+`src/lib/swing/play-brief.test.ts` — new test "option-mark evidence freshness honors ctx.readMs, not
+the real wall clock": pins `ctx.readMs` to a past instant (2026-09-10) and sets `play.markAsOf` 30s
+before it (must read `freshness: "live"`). RED before the fix (read `"stale"` — the mark's real age
+against today's wall clock is ~six weeks); GREEN after. `npx tsc --noEmit` clean; full
+`play-brief.test.ts` suite 156/156 pass.
+
+### What this does NOT do
+
+Does not sweep the remaining ~16 documented `Date.now()` call sites named in `readMs`'s own doc
+comment — those live inside the staleness HELPER functions themselves (`gexFreshness`,
+`vectorFreshness`, `gexMatrixStale`, etc.), which correctly use whatever `readMs` value their caller
+passes them; the defect here was specifically at the two remaining `composeSwingPlayBrief`-level call
+sites that hadn't been updated to pass the right value in. A wider sweep of every other caller of
+those helpers (outside `composeSwingPlayBrief`) is explicitly out of scope for this fix, consistent
+with the file's own "a natural next sweep" framing — this closes two more of the ~18, not all of them.
+
+### Blast radius
+
+`src/lib/swing/play-brief.ts` only (two call-site arguments changed) + its own test file. No type or
+behavioral change to any helper function; `evidenceFromContext`/`levelsFromContext` themselves are
+untouched.
+
 ## Night Hawk mobile detail overlay: stale-dim opacity breaks the full-screen takeover — list bleeds through — FIXED
 > **kind:** `FINDING`
 
