@@ -79,7 +79,7 @@ candidate(s))."`, `funnel:{candidates:20,ranked:0,dossiers:0,synthesized:0,criti
 published:0}` — same candidate count, same total collapse, one day later. Two consecutive build
 nights with the identical signature changes the risk read from "transient blip, unlikely to recur"
 to "needs a safety net regardless of root cause." **The first secondary bullet above — "detect
-`recap_only && funnel.candidates>0` and auto-trigger one retry" — is now BUILT**: `#TODO-PR` added
+`recap_only && funnel.candidates>0` and auto-trigger one retry" — is now BUILT**: PR #6286 added
 `shouldRetryRecapOnlyEdition` (`edition-stale.ts`), gated on `dossiers===0` specifically (not any
 recap-only) and a 45-minute cooldown, wired into `buildEveningEdition`'s existing same-day
 "already published" branch. Full write-up: `docs/audit/findings-staging/
