@@ -51,7 +51,7 @@ import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import { formatDealerDollars } from "./format-nonzero";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
-import { gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
+import { deadPlayReason, gateFramingMootReason, isSwingPlayStaleCheckExempt } from "./entry-enterability";
 import { isLegacyPromotedSignal } from "./legacy-confirm-promote";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { BANGER_LEDGER_REGIME_LABEL } from "./banger-lane-merge";
@@ -1334,6 +1334,21 @@ export function catalystsSection(
  * `commitGateBlockedBy: ["legacy:exempt"]` — both facts are independently true and both matter
  * (the gate is moot AND the price is stale), so both checks are now evaluated and composed rather
  * than the first one short-circuiting the second.
+ *
+ * BUG FIX (Ask Largo standing mandate, 2026-10-19): the 2026-10-18 widening above over-applied the
+ * "no longer fires the setup" claim to `gateFramingMootReason`'s two NON-dead cases (FORMING,
+ * `aboveFloor===false`) — that function's own doc comment is explicit these two mean the play "is
+ * very much still live, just not yet enterable," the opposite of "no longer fires." Live repro
+ * EWY WATCH brief, 2026-10-19: Entry section correctly says the entry window is still open with
+ * 2 days left, while this Watch-levels line (pre-fix) claimed the trigger "no longer fires the
+ * setup" for the same still-FORMING play — a direct self-contradiction two sections apart in the
+ * same brief. Fix: only the genuinely-dead reasons (`deadPlayReason`'s 4 cases) or a pinned-stale
+ * price justify "no longer fires" — a framing-moot-but-alive reason (FORMING / below-floor) is
+ * still composed and disclosed (so the TSM below-floor bug this file's widening fixed stays
+ * fixed), just without the false permanence claim tacked onto it. The legacy-exempt-only gate-moot
+ * case is unaffected: it is only ever reachable un-composed-with-deadness when NOT also
+ * `legacyPinnedStale`, in which case the play is likewise still live, not dead, so the same
+ * correction applies there too.
  */
 export function entryTriggerDeadReason(play: TerminalPlay): string | null {
   // BUG FIX (Ask Largo standing mandate, 2026-10-06): a Legacy morning-confirm-promoted row's
@@ -1353,15 +1368,28 @@ export function entryTriggerDeadReason(play: TerminalPlay): string | null {
     play.entryTriggerUnderlyingPx != null &&
     play.flagUnderlyingPx === play.entryTriggerUnderlyingPx;
   const gateMootReason = gateFramingMootReason(play);
+  // `gateFramingMootReason` returns `deadPlayReason(play)` verbatim when that's non-null (it checks
+  // `deadPlayReason` first and returns it immediately) — so whenever BOTH are non-null they are the
+  // SAME string, and this flag distinguishes "genuinely dead" from "framing-moot but still live"
+  // without duplicating deadPlayReason's own branch logic.
+  const isGenuinelyDead = deadPlayReason(play) != null;
   if (legacyPinnedStale && gateMootReason) {
     // Both facts are true at once for a Legacy-promoted WATCH play — compose them rather than let
-    // either shadow the other (see the BUG FIX doc comment above, live repro UNH).
+    // either shadow the other (see the BUG FIX doc comment above, live repro UNH). The pinned-stale
+    // price independently justifies "no longer fires" regardless of which gateMootReason fired.
     return `pinned at Legacy promotion, not refreshed since, and ${gateMootReason} — this level no longer fires the setup`;
   }
-  if (gateMootReason) return `${gateMootReason} — this level no longer fires the setup`;
+  if (gateMootReason && isGenuinelyDead) {
+    return `${gateMootReason} — this level no longer fires the setup`;
+  }
   if (legacyPinnedStale) {
     return "pinned at Legacy promotion, not refreshed since — this level no longer fires the setup";
   }
+  // Framing-moot but NOT dead (FORMING / below-floor / legacy-exempt-only gate, none composed with
+  // a pinned-stale price): the trigger level itself is still live and will fire the setup once
+  // reached — disclose the reason entry isn't open yet, but never claim the level "no longer
+  // fires," which is reserved for the genuinely-dead and pinned-stale cases above.
+  if (gateMootReason) return gateMootReason;
   return null;
 }
 
