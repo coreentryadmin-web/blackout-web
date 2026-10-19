@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-19T01:53:41.217Z",
+  "updated_at": "2026-10-19T03:45:18.875Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "27814ad191080bfcd3a013e1adef8d9015bc783a",
+    "last_main_sha": "9269c851d1002993d87a23761213405d85689b59",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,35 +1255,25 @@
       "open_pr_count": 9
     },
     {
-      "at": "2026-10-19T01:53:32.672Z",
+      "at": "2026-10-19T03:45:11.739Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 4
     },
     {
-      "at": "2026-10-19T01:53:36.966Z",
+      "at": "2026-10-19T03:45:15.568Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 4
     },
     {
-      "at": "2026-10-19T01:53:41.217Z",
+      "at": "2026-10-19T03:45:18.875Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 6266,
-      "title": "docs(audit): confirm ECS web deploy deadlock still unresolved ~8h in",
-      "branch": "docs/ecs-web-deadlock-still-unresolved-8h-20261019",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-19T01:49:37Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
