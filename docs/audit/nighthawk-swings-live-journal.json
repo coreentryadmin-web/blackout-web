@@ -848,5 +848,10 @@
     "what": "PR #6286 merged (session_01Qtnftc16CuWyVLxR8LaMoC, same session that shipped #6283/#6284): shouldRetryRecapOnlyEdition auto-retries a Legacy recap-only edition that starved every dossier (funnel.dossiers===0 with real candidates present), confirmed recurring on BOTH 2026-10-16 and 2026-10-19 builds -- exactly the funnel shape (candidates:20, dossiers:0) this journal's own legacy_p0_partially_resolved_fresh_run entry flagged a few cycles ago as the still-open half of the Legacy P0.",
     "finding": "Direct corroboration: independent confirmation (a sibling audit lane + this journal) of the same root pattern, now fixed with an auto-retry mechanism (45min cooldown, archive-staging + job-reset reuse) rather than a root-cause fix for WHY dossiers collapse (still open per the PR's own text -- 'no AWS/CloudWatch access this cycle to trace why every dossier fetch fails'). Operational resilience, not a scoring/gate change.",
     "status": "Triggered a new deploy run (39335914432), now at 'Roll ECS production web' since 22:39:52Z (~7min elapsed of the 36min budget) -- 3rd deploy attempt observed this session. Watching whether it succeeds. Legacy digest/funnel unchanged on the currently-live (pre-fix) edition. Health 200."
+  },
+  "deploy_deadlock_third_confirmed_failure_2026_10_19": {
+    "ts": "2026-10-19T23:33:00Z",
+    "what": "Run 39335914432 (carrying PR #6286, Legacy recap-only auto-retry fix) completed: conclusion failure at 23:18:01Z, ~38.5min total (same shape as the prior two failures).",
+    "status": "3rd consecutive deploy failure observed directly by this journal (cross-referenced with the general Night Hawk lane's PR #6279 'journal 8th consecutive deploy timeout' seen this session -- same underlying deadlock, larger count from their higher push volume). PR #6283/#6284/#6286 all remain merged-but-not-live. No new action possible from this session (no AWS access). Legacy digest unchanged, health 200."
   }
 }
