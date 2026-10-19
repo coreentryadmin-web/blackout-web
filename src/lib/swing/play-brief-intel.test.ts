@@ -4615,6 +4615,11 @@ test("watchForSection: a live, still-enterable trigger keeps the unqualified cau
 // score floor. Live repro TSM, 2026-10-18: score 54.9 vs scoreFloor 60 (aboveFloor:false),
 // setupState TRIGGERED, entryStatus AT_TRIGGER, no gate tag at all. Widened to gateFramingMootReason
 // (same-day sibling fix already applied to watchEntrySection/watchGateCoaching) to match.
+//
+// BUG FIX (Ask Largo standing mandate, 2026-10-19): that same-day widening over-corrected — a
+// below-floor play is NOT dead, just not-yet-enterable (gateFramingMootReason's own doc comment:
+// "very much still live"), so claiming "this level no longer fires the setup" is itself false.
+// Assertions below updated to the corrected text (reason disclosed, no false-permanence claim).
 test("watchForSection: entry trigger claim is corrected when the play is below the lane score floor, even though TRIGGERED/AT_TRIGGER", () => {
   const section = watchForSection(
     {
@@ -4638,10 +4643,20 @@ test("watchForSection: entry trigger claim is corrected when the play is below t
   );
   assert.match(section.body, /Entry trigger: \*\*412\.61\*\*/);
   assert.doesNotMatch(section.body, /this is what actually fires the setup/);
-  assert.match(section.body, /below the lane score floor — this level no longer fires the setup/);
+  assert.match(section.body, /below the lane score floor/);
+  assert.doesNotMatch(
+    section.body,
+    /this level no longer fires the setup/,
+    `below-floor is not dead, just not-yet-enterable — must not claim the level "no longer fires", got: ${section.body}`,
+  );
 });
 
 // Sibling case: a play still FORMING (not yet at trigger at all) must get the same correction.
+//
+// BUG FIX (Ask Largo standing mandate, 2026-10-19, live repro EWY WATCH brief): FORMING is the
+// other non-dead gateFramingMootReason case, same over-correction as below-floor above — a
+// still-forming play's Entry section says the window is open with days left, so this line must
+// not simultaneously claim the trigger "no longer fires."
 test("watchForSection: entry trigger claim is corrected when the play is still FORMING", () => {
   const section = watchForSection(
     {
@@ -4662,7 +4677,12 @@ test("watchForSection: entry trigger claim is corrected when the play is still F
     "watch",
   );
   assert.doesNotMatch(section.body, /this is what actually fires the setup/);
-  assert.match(section.body, /thesis still forming — not yet at trigger — this level no longer fires the setup/);
+  assert.match(section.body, /thesis still forming — not yet at trigger/);
+  assert.doesNotMatch(
+    section.body,
+    /this level no longer fires the setup/,
+    `FORMING is not dead, just not-yet-at-trigger — must not claim the level "no longer fires", got: ${section.body}`,
+  );
 });
 
 // GAP FOUND (Ask Largo standing mandate, 2026-10-08, live repro SWING:CRI:1510 at -59.1% P&L and
