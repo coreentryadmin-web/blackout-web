@@ -1518,9 +1518,23 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // a per-position judgment the lane cannot calibrate — the C6 absence principle (omission over
   // fabrication) applied to this one line, not just the aggregate panel.
   const bangerOriginNoRealThesis = play.regime === BANGER_LEDGER_REGIME_LABEL;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro UNH and MU WATCH briefs, same
+  // cycle): this line had no `deadPlayReason(play)` guard, so for a genuinely dead WATCH play
+  // (EXTENDED/EXTENDED_CHASE) it rendered "Thesis **intact**" directly beneath this SAME section's
+  // own "this level no longer fires the setup" line (entryTriggerDeadReason, a few lines above —
+  // which DOES gate on deadPlayReason) and directly contradicted the Verdict section's "Extended
+  // past the valid entry window — do not chase; wait for a reset." Two sections of one brief
+  // disagreeing about the same fact is the exact bug class this mandate has fixed repeatedly
+  // elsewhere in this file (thesisHealthSection, watchEntrySection) — this one line just never got
+  // the equivalent guard. Scoped to deadPlayReason's 4 genuinely-dead cases only (not the broader
+  // gateFramingMootReason, which also covers FORMING/below-floor plays that are still live and
+  // could reasonably still have an "intact" thesis) — see deadPlayReason/gateFramingMootReason's own
+  // doc comments above entryTriggerDeadReason.
+  const isDeadPlay = deadPlayReason(play) != null;
   if (
     bucket !== "closed" &&
     !bangerOriginNoRealThesis &&
+    !isDeadPlay &&
     (play.thesisBreak?.note || play.thesisBreak?.level)
   ) {
     lines.push(
