@@ -62,6 +62,18 @@ test("humanizeGateBlocks: two unrelated raw gates (grade-below-minimum, score-to
   // score gate at once, so a plain .map() over raw blocks let the same idea line through twice —
   // live repro: "...· waiting for grade confirmation" and the identical line without the suffix,
   // back to back in the same gates.blocks array.
+  //
+  // UPDATED 2026-10-20 (Ask Largo/5-engine standing mandate, live repro): this fixture's first
+  // raw block ("too many conflicting signals") used to NEVER match any humanize branch (a
+  // separate keyword-mismatch bug, since fixed below) and so never entered the dedup pool at
+  // all — which is why the ORIGINAL version of this test could assert the suffixed
+  // grade-confirmation variant "wins": with mixed-tape sitting outside the pool, the
+  // grade-below-minimum gate was genuinely the FIRST real idea-prefix entry. Now that mixed-tape
+  // is correctly humanized too, it is first in evaluation order (matching this file's own
+  // documented first-occurrence-wins tie-break, "whichever gate rule ran first, not an arbitrary
+  // pick") and so is the one kept; the suffixed duplicate is deduped away. This is the correct
+  // outcome of the keyword fix, not a regression — see the sibling test below for the specific
+  // keyword-match bug this closes.
   const { desk, confluence } = fixture(8, false);
   const rawBlocks = [
     "Tape's mixed — too many conflicting signals for clean entry",
@@ -73,11 +85,46 @@ test("humanizeGateBlocks: two unrelated raw gates (grade-below-minimum, score-to
   const out = humanizeGateBlocks(rawBlocks, desk, confluence);
   const ideaLines = out.filter((b) => /Tape's mixed, but/.test(b));
   assert.equal(ideaLines.length, 1, `expected exactly one humanized idea line, got: ${JSON.stringify(out)}`);
-  assert.match(ideaLines[0], /waiting for grade confirmation/, "the more informative (suffixed) variant should win");
   // Everything that never matched a humanize branch must survive untouched.
-  assert.ok(out.some((b) => b.includes("too many conflicting signals")));
   assert.ok(out.some((b) => b.includes("Cold BUY needs score")));
   assert.ok(out.some((b) => b.includes("Cold BUY requires grade")));
+});
+
+// BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro). humanizeGateBlock's
+// mixed-tape check matched the substring "too many conflicts", but the real gate message (built
+// once in spx-play-gates.ts) reads "too many conflicting signals for clean entry" — that
+// substring never appears, so the mixed-tape block was NEVER humanized and never entered the
+// dedup pool humanizeGateBlocks relies on. Live production evidence: gates.blocks carried the
+// raw, untouched mixed-tape string AND a separately-humanized idea line for the grade gate, back
+// to back — reading as two unrelated problems when both describe the identical mixed-tape
+// condition.
+test("humanizeGateBlocks: the mixed-tape raw block is itself humanized, not left as an incoherent raw duplicate alongside another gate's idea line", () => {
+  const { desk, confluence } = fixture(8, false);
+  const rawBlocks = [
+    "Tape's mixed — too many conflicting signals for clean entry",
+    "Grade D below minimum (need B or better)",
+  ];
+  const out = humanizeGateBlocks(rawBlocks, desk, confluence);
+  assert.ok(
+    !out.some((b) => b.includes("too many conflicting signals")),
+    `the raw mixed-tape string must not survive untouched — got: ${JSON.stringify(out)}`,
+  );
+  const ideaLines = out.filter((b) => /Tape's mixed, but/.test(b));
+  assert.equal(
+    ideaLines.length,
+    1,
+    `mixed-tape and grade-below-minimum describe the same condition and must collapse to one idea line, got: ${JSON.stringify(out)}`,
+  );
+});
+
+test("humanizeGateBlock: dead 'headwinds' keyword matches nothing (confirmed no gate message anywhere contains it)", () => {
+  const { desk, confluence } = fixture(8, false);
+  const out = humanizeGateBlocks(["Some gate blocked due to macro headwinds today"], desk, confluence);
+  assert.equal(
+    out[0],
+    "Some gate blocked due to macro headwinds today",
+    "a message merely containing the word 'headwinds' must not be rewritten — that keyword branch is gone",
+  );
 });
 
 test("buildPlayIdea leans with the score's own sign in the neutral zone, not an unrelated VWAP proxy that can disagree with it", () => {
