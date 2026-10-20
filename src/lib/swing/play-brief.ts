@@ -1074,9 +1074,17 @@ function levelsFromContext(
   }
   if (!vectorStale) {
     for (const z of vec?.confluenceZones ?? []) {
+      // BUG FIX (Ask Largo standing mandate, 2026-10-20): `z.center` is a weighted average
+      // (vector-confluence.ts's `weightedPrice / centerWeightSum`) and routinely carries a long
+      // floating-point tail (e.g. 7499.390909090909) — the exact "round at the data layer"
+      // systemic issue this file's own CLAUDE.md names. Every other sibling read of this same
+      // `ConfluenceZone.center` field rounds it (play-brief-intel.ts's `fmtPriceLevel(z.center)`,
+      // play-brief-narrative-coaching.ts's `fmtPriceLevel(top.center)`) — this was the one
+      // omission. Rounding here, at the source, means this level is correct on its own rather
+      // than depending on route.ts's external roundFloats() wrapper two layers away.
       levels.push({
         label: confluenceZoneLabel(z, { callWall, putWall }),
-        price: z.center,
+        price: Math.round(z.center * 100) / 100,
         provenance: {
           source: "Vector",
           asOf: levelProvenanceAsOf(gex, vec, "vector"),
