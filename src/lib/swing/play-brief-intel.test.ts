@@ -82,6 +82,38 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
   assert.match(section?.body ?? "", /AMD SHORT/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro TSLA 385P SHORT candidate against a
+// real TSLA 352.5C LONG already held): a literal same-ticker opposed position used to flatten into
+// the same generic "theme X has an opposed position" sentence as a genuinely different name in the
+// same theme — distinguishable only by a parenthetical among several names. Now gets its own
+// sharper "same underlying" sentence.
+test("bookContextSection: a same-TICKER opposed position gets a sharper 'same underlying' sentence, distinct from a same-theme/different-ticker one", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "TSLA", direction: "LONG", positionId: 60 },
+    { ticker: "TSLL", direction: "LONG" },
+  ];
+  const section = bookContextSection(fixturePlay({ ticker: "TSLA", direction: "SHORT" }), book);
+  assert.ok(section);
+  assert.match(
+    section?.body ?? "",
+    /Internal conflict — same underlying.*already holding TSLA LONG \(separate position #60\) on TSLA itself/,
+    `expected a distinct same-underlying sentence, got: ${section?.body}`,
+  );
+  assert.match(
+    section?.body ?? "",
+    /Internal conflict\*\* — theme "ev-auto" already has an OPPOSED position: TSLL LONG/,
+    `expected the different-ticker (TSLL) conflict to keep the generic theme sentence, got: ${section?.body}`,
+  );
+});
+
+test("bookContextSection: a same-theme but DIFFERENT-ticker opposed position keeps the generic theme sentence (no same-underlying framing)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "TSLL", direction: "LONG" }];
+  const section = bookContextSection(fixturePlay({ ticker: "TSLA", direction: "SHORT" }), book);
+  assert.ok(section);
+  assert.doesNotMatch(section?.body ?? "", /same underlying/);
+  assert.match(section?.body ?? "", /Internal conflict\*\* — theme "ev-auto" already has an OPPOSED position: TSLL LONG/);
+});
+
 // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro ALAB): a LONG inverse-leverage ETF
 // (SQQQ, economically SHORT semis) classified correctly as an OPPOSED position against a LONG NVDA
 // — but rendered as bare "SQQQ LONG", so the "Internal conflict" sentence read as self-contradictory
