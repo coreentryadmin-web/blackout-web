@@ -20,6 +20,7 @@ import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { thesisHealthUncalibrated } from "./thesis-health";
 import { daysBetweenYmd } from "@/lib/meridian/meridian-event-expiry-core";
 import { deadPlayReason } from "./entry-enterability";
+import { SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC } from "./calibration-cache";
 
 type VectorWithReadContext = VectorFullState & Partial<VectorAbsenceReport & VectorFreshnessBlock>;
 
@@ -476,6 +477,31 @@ export function optionMarkIsStale(play: TerminalPlay, readMs: number = Date.now(
   const ageMs = readMs - markMs;
   if (ageMs < 0) return freshnessFromObservedMs(markMs, readMs) === "stale"; // fail-closed on future skew (Largo C2)
   return ageMs >= SWING_OPTION_MARK_STALE_MS;
+}
+
+/**
+ * The archetype/sub-lane calibration-cache snapshot's ONLY writer is `swing-active-refresh`
+ * (cron-registry.ts), the exact same 15-minute-during-RTH-only cron as the option mark above — so
+ * this fact's `asOf` legitimately ranges from 0 to ~15 minutes old under fully healthy operation,
+ * and the generic 10-minute `freshnessFromObservedMs` bucket false-positives on it the same
+ * ~1/3-of-every-cycle way `optionMarkIsStale` exists to fix for `markAsOf` — a defect class
+ * identified but never swept to this sibling fact (Ask Largo standing mandate, 2026-10-20).
+ *
+ * Unlike the option mark, this data's correct staleness horizon is NOT the cron's own tick rate —
+ * `calibration-cache.ts`'s own `SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC` doc comment is explicit that
+ * which archetypes/sub-lanes have graduated "moves far slower than every 15 minutes" and "a
+ * many-hours-stale graduation verdict is still an honest, useful citation" — the TTL is sized to
+ * span an ordinary Friday-close -> Monday-open gap plus a holiday, with margin. Reusing that SAME
+ * documented horizon here (rather than inventing a second, looser-than-markAsOf's-18-minutes but
+ * still arbitrary constant) keeps "how stale is too stale to cite" answered in exactly one place.
+ */
+export function archetypeTrackRecordIsStale(asOfIso: string | null | undefined, readMs: number = Date.now()): boolean {
+  if (!asOfIso) return false;
+  const snapshotMs = Date.parse(asOfIso);
+  if (!Number.isFinite(snapshotMs)) return false;
+  const ageMs = readMs - snapshotMs;
+  if (ageMs < 0) return freshnessFromObservedMs(snapshotMs, readMs) === "stale"; // fail-closed on future skew (Largo C2)
+  return ageMs >= SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC * 1000;
 }
 
 /**

@@ -46,7 +46,12 @@ import { describeThemeOverlap, effectiveDirection, isInverseLeverageEtf } from "
 import { NO_SECTOR_BENCHMARK_THEMES } from "./industry-group-rs";
 import { sectorFor } from "../portfolio/sector-map";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
-import { trustedHelixFlow, zerodteLiveForSession, relativeAgeLabel } from "./play-brief-absence";
+import {
+  trustedHelixFlow,
+  zerodteLiveForSession,
+  relativeAgeLabel,
+  archetypeTrackRecordIsStale,
+} from "./play-brief-absence";
 import { mfeCaptureOutcome } from "./mfe-capture";
 import { collapseRedundantIntelSections } from "./play-brief-intel-collapse";
 import { etSessionDate, etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
@@ -602,6 +607,7 @@ function trackRecordTableRow(
 export function archetypeTrackRecordSection(
   play: TerminalPlay,
   snapshot: SwingArchetypeTrackRecordSnapshot | null | undefined,
+  readMs: number = Date.now(),
 ): RichSection | null {
   const archetype = (SWING_ARCHETYPES as readonly string[]).includes(play.archetype ?? "")
     ? (play.archetype as (typeof SWING_ARCHETYPES)[number])
@@ -659,6 +665,21 @@ export function archetypeTrackRecordSection(
   // plays vs 12 of a lane with only 15 — the exact context this field exists to supply.
   if (snapshot) {
     blocks.push(`*Across ${snapshot.gradedPlays} lane-wide graded plays as of this read.*`);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20): this section rendered the win-rate/Wilson-LB
+    // numbers above with ZERO age disclosure, unlike every sibling section in this file (Vector,
+    // GEX, Meridian, dark-pool, option mark all render an explicit "last synced"/staleness line) —
+    // even though `snapshot.asOf` (documented on the type as "Largo C1/C2 provenance") was
+    // available the whole time. Mirrors the option-mark pattern exactly: only call out staleness
+    // when it's genuine (`archetypeTrackRecordIsStale`, the same cadence-aware check now used for
+    // this fact's evidence[] entry), never for an on-schedule read.
+    const syncedAt = etStampFromIso(snapshot.asOf);
+    if (syncedAt) {
+      blocks.push(
+        archetypeTrackRecordIsStale(snapshot.asOf, readMs)
+          ? `Track record data **stale** — last synced **${syncedAt}**.`
+          : `Track record data as of **${syncedAt}**.`,
+      );
+    }
   }
   return {
     title: "Track record",
@@ -2804,7 +2825,7 @@ export function buildIntelSections(
 
   const trackRecord = safeSection(
     "Archetype track record",
-    () => archetypeTrackRecordSection(play, ctx.archetypeTrackRecord),
+    () => archetypeTrackRecordSection(play, ctx.archetypeTrackRecord, ctx.readMs ?? Date.now()),
     onFailure,
   );
   if (trackRecord) out.push(trackRecord);

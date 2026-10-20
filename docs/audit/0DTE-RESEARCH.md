@@ -389,6 +389,69 @@ real-cost, held-out testing have not found a reliable edge either way. If the fl
 anyway (an operator call this investigation does not make), do so as a small, monitored,
 reversible rollout — not a blind flip — given the sign instability between TRAIN and VALIDATION
 in the one real-cost model built so far.
+### Loss-side early de-risk A/B — the exit ladder's missing symmetric half, MEASURED, no gate changed (2026-10-20)
+
+**WHY THIS EXISTS.** A live member audit of today's open book (2026-10-20) flagged a real,
+visible asymmetry: closed winners averaging ~+8% (ratchet/trim_scale arming off peaks as low
+as +5-20%) while numerous OPEN positions sat at -20% to -34% with nothing between -10% and
+the -50% hard stop able to touch them. Reading `exit-engine.ts` confirms this is structural,
+not an artifact: the shipped profit ladder (both modes) actively de-risks winners early and
+often; the ONLY loss-side protections are the -50% hard stop, thesis-break (evidence-based —
+a Cortex veto or >=2 clustered opposes exceeding the entry's own margin), and
+`flat_theta_bleed` (unreachable once a position has moved past -10%, i.e. unreachable for
+exactly the population sitting at -20% to -34%). E5 above already measured and documented
+the PROFIT side's own cost (the ratchet "buys win-rate, not EV — scratches runners"); the
+LOSS side had never been measured at all. Member directive: "test proposed improvements on
+separate historical sessions with realistic costs before changing production rules."
+
+**THE CANDIDATE.** `scripts/audit/zerodte-loss-side-exit-ab.mjs`: a LOSS-side tranche,
+symmetric in spirit to the existing profit ladder, layered ONLY onto the still-fully-open
+loser population (never touching a row that already banked a profit tranche, never touching
+the winner side) — once peak-to-current drawdown reaches a trigger threshold AND the
+position has aged past a minimum, exit the whole remainder immediately rather than holding
+to the hard stop/thesis-break. Pulls the REAL historical committed population (`GET
+/api/admin/zerodte/tier-export`, same source `tier-exit-mode-ab.mjs` uses), replays each
+row's REAL contract minute bars under its OWN frozen `exit_policy_at_commit` using the REAL,
+imported `exit-engine.ts` functions (`ratchetFloorPct`/`trimTranchesArmed`/
+`trimScaleFloorPct`/`ratchetTargetReached`/`TRIM_SCALE_RULES` — never reimplemented), with
+real point-in-time NBBO entry/exit quotes and the same $100-multiplier-correct fee model this
+toolkit's sibling real-cost scripts already use. Thesis-break/`flat_theta_bleed` are NOT
+replayed (no point-in-time Cortex evidence to reconstruct them from historical bars alone —
+same disclosed simplification `swing-early-trim-ab.mjs` uses for its own sibling question) —
+this measures the mechanical profit-ladder + hard-stop + time-stop skeleton only. Chronological
+TRAIN/VALIDATION split, held out.
+
+**First live run, 45-day window, n=29 graded per half (capped), 4 candidate thresholds
+(-15%/age>=10min, -20%/age>=15min, -25%/age>=15min, -30%/age>=20min):**
+
+```
+TRAIN:      all 4 thresholds mean_delta NEGATIVE (-2.48pp .. -0.08pp), all CI95 straddle zero
+VALIDATION: all 4 thresholds mean_delta NEGATIVE (-3.39pp .. -2.37pp), all CI95 straddle zero
+```
+
+No single threshold's CI clears zero in either half (every cell reads INCONCLUSIVE by the
+strict bar), but the DIRECTION is consistent across all 8 cells (4 thresholds × 2 halves):
+the candidate loss-side cut underperforms the baseline every time, and the effect is LARGER,
+not smaller, in the held-out validation half. **This is the opposite of a confirming result**
+— a naive, context-free P&L-triggered early loss cut is not supported by real data, and the
+trend argues against it rather than toward it. The likely mechanism is the same one E5 already
+documents for the profit side: 0DTE intraday moves are noisy enough that a fixed threshold cuts
+real chop that would have mean-reverted before the actual time-stop, exactly as a tight
+trailing stop on the profit side was already shown to scratch real runners. This is also a
+coherent (if unmeasured-until-now) justification for why the existing design relies on
+EVIDENCE (thesis-break) rather than raw P&L to cut a loser early — evidence can distinguish a
+real breakdown from noise; a P&L threshold alone cannot.
+
+**No gate/exit rule changed.** The asymmetry is real and now measured on both sides (E5:
+profit side costs EV; this: a naive loss-side fix doesn't clearly help either) — this closes
+the "is the obvious fix actually a fix" question for the P&L-threshold shape specifically,
+without claiming the asymmetry is optimal or closing the broader question. A SMARTER
+loss-side candidate — e.g., a looser EVIDENCE-weighted margin specifically for the loss
+direction (symmetric to thesis-break's own cluster+margin design, not a bare % trigger), or
+conditioning the trigger on regime/age differently — remains open and unmeasured; this run
+only rules out the simplest, most obvious shape. Re-run with a larger population (today's
+45-day/n=29-per-half cap was chosen for a reasonable API budget) before concluding the
+direction is final.
 
 ### Range-regime sub-+15%-peak dead zone — live same-day observation, 2026-09-17, NOT YET MEASURED
 

@@ -1636,6 +1636,39 @@ test("composeSwingPlayBrief: archetype track record also surfaces as a citable e
     false,
     "an ungraduated bucket must not be cited as evidence",
   );
+
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): the archetype track-record evidence entry's
+  // `freshness` used the generic 10-minute cross-product bucket directly, mislabeling an
+  // on-schedule read (written by the 15-minute swing-active-refresh cron) as "stale" roughly a
+  // third of every refresh cycle — the exact defect class already fixed for the sibling `markAsOf`
+  // fact elsewhere in this file.
+  const onScheduleReadMs = Date.parse("2026-09-10T15:11:00.000Z"); // 11 minutes after graduatedSnap.asOf
+  const onScheduleBrief = composeSwingPlayBrief({
+    ...baseCtx,
+    archetypeTrackRecord: graduatedSnap,
+    readMs: onScheduleReadMs,
+  });
+  const onScheduleEvidence = onScheduleBrief.envelope.evidence.find((e) =>
+    e.text.startsWith("Archetype track record:"),
+  );
+  assert.notEqual(
+    onScheduleEvidence?.provenance?.freshness,
+    "stale",
+    "an 11-minute-old on-schedule snapshot must not be mislabeled stale",
+  );
+
+  const genuinelyStaleReadMs = Date.parse("2026-09-20T15:00:00.000Z"); // 10 days later, past the 120h TTL
+  const staleBrief = composeSwingPlayBrief({
+    ...baseCtx,
+    archetypeTrackRecord: graduatedSnap,
+    readMs: genuinelyStaleReadMs,
+  });
+  const staleEvidence = staleBrief.envelope.evidence.find((e) => e.text.startsWith("Archetype track record:"));
+  assert.equal(
+    staleEvidence?.provenance?.freshness,
+    "stale",
+    "a snapshot genuinely past the documented TTL must still read stale — this fix narrows false",
+  );
 });
 
 test("composeSwingPlayBrief: ticker track record also surfaces as a citable evidence[] entry, not just prose (Largo C10)", () => {
@@ -2653,6 +2686,53 @@ test("composeSwingPlayBrief: a confluence zone citing a DIFFERENT call wall than
     "confluence (call-wall@125+max-pain)",
     "confluence citing a call-wall strike different from the primary must disclose the actual strike",
   );
+});
+
+test("composeSwingPlayBrief: a confluence zone's weighted-average center is rounded before reaching envelope.levels, not served as a raw float", () => {
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): confluenceZones() computes `center` as a
+  // weighted average (weightedPrice / centerWeightSum), which routinely produces a long
+  // floating-point tail — CLAUDE.md's own documented "round at the data layer" systemic issue
+  // (e.g. 7499.360000000001). Two sibling call sites of this same ConfluenceZone.center field
+  // already round it (play-brief-intel.ts, play-brief-narrative-coaching.ts via fmtPriceLevel);
+  // this was the one omission, fixed at the source rather than relying on route.ts's external
+  // roundFloats() wrapper two layers away.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-10-20 16:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-10-20 16:00 ET",
+      spot: 7499.4,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 7499.3, pct: 1 }], putWalls: [{ strike: 7400, pct: 2 }] },
+      gammaFlip: 7499.5,
+      maxPain: 7450,
+      confluenceZones: [
+        {
+          // (3*7499.30 + 2.5*7499.50) / 5.5 = 7499.390909090909 — a real non-terminating tail.
+          center: 7499.390909090909,
+          kinds: ["call-wall", "gamma-flip"],
+          score: 5,
+          levels: [
+            { price: 7499.3, kind: "call-wall" },
+            { price: 7499.5, kind: "gamma-flip" },
+          ],
+        },
+      ],
+      darkPoolLevels: [],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const confluenceLevel = brief.envelope.levels?.find((l) => l.label.startsWith("confluence"));
+  assert.ok(confluenceLevel, "expected a confluence level to render");
+  assert.equal(confluenceLevel?.price, 7499.39, "confluence center must be rounded to 2dp at the source");
 });
 
 test("composeSwingPlayBrief: a confluence zone whose call wall MATCHES the primary is unaffected (no spurious @price qualifier)", () => {

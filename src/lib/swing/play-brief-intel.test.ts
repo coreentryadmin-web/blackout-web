@@ -477,6 +477,27 @@ test("archetypeTrackRecordSection: states the lane-wide graded-play count for co
   assert.match(body, /across 70 lane-wide graded plays/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): this section rendered the win-rate/Wilson-LB
+// numbers with ZERO age disclosure, unlike every sibling section in this file (Vector, GEX,
+// Meridian, dark-pool, option mark all render an explicit "last synced"/staleness line) — even
+// though `snapshot.asOf` (documented on the type as "Largo C1/C2 provenance") was available the
+// whole time, and the evidence[] entry for this SAME fact could (pre-2026-10-20 fix) disagree with
+// this section's silence about whether the data was fresh at all.
+test("archetypeTrackRecordSection: discloses an honest 'as of' sync time for an on-schedule snapshot", () => {
+  const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ n: 60 }) }); // asOf 2026-09-10T15:00:00.000Z
+  const readMs = Date.parse("2026-09-10T15:11:00.000Z"); // 11 minutes later — on-schedule, not stale
+  const body = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap, readMs)?.body ?? "";
+  assert.match(body, /Track record data as of/);
+  assert.doesNotMatch(body, /\*\*stale\*\*/);
+});
+
+test("archetypeTrackRecordSection: discloses genuine staleness past the documented TTL, never silently", () => {
+  const snap = trackRecordSnapshot({ BREAKOUT: trackRecordEntry({ n: 60 }) }); // asOf 2026-09-10T15:00:00.000Z
+  const readMs = Date.parse("2026-09-20T15:00:00.000Z"); // 10 days later — well past the 120h TTL
+  const body = archetypeTrackRecordSection(fixturePlay({ archetype: "BREAKOUT" }), snap, readMs)?.body ?? "";
+  assert.match(body, /Track record data \*\*stale\*\* — last synced/);
+});
+
 // ── sub-lane citation (graduatedSubLaneEntry — previously wired write-side/tested but never read
 // from a brief section; see this file's header comment on why it now ships as an additive line
 // alongside the archetype citation rather than replacing it) ──────────────────────────────────────

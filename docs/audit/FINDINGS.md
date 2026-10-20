@@ -38,6 +38,520 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P3 Accessibility] Admin UserManagement modals had ~10 visible labels never associated with their inputs/selects — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Same DISCOVERY-lane accessibility sweep batch as `#6370`/`#6371`
+(placeholder-only inputs). A background sweep agent also found this related — but
+distinct — defect class in `src/components/admin/UserManagement.tsx`: here a visible
+`<label>` element exists for every field, but it's a plain sibling of its control with no
+`htmlFor`/`id` link, so a screen reader still gets no accessible name on focus despite the
+label text being right there visually.
+
+**Root cause.** `EditUserModal` (First name, Last name, Tier, Role) and `CreateUserModal`
+(Email, Phone, First name, Last name, Tier, Role) each render the pattern:
+```tsx
+<div>
+  <label className="admin-filter-label block mb-1">Tier</label>
+  <select className="admin-filter-select w-full" value={tier} onChange={...}>...</select>
+</div>
+```
+with no `htmlFor` on the label and no matching `id` on the control. Additionally,
+`EditUserModal`'s read-only "one-time sign-in link" input had no `<label>` element at all —
+only a preceding `<p>` — and no `aria-label`/`aria-labelledby`.
+
+**Fix.** Added a unique `id` to each control (`edit-user-*` / `create-user-*` prefixes to
+keep the two modals' ids distinct) and `htmlFor` on its corresponding `<label>`; added
+`aria-label="One-time sign-in link"` to the read-only sign-in-link input, which has no
+dedicated label element to attach to.
+
+**Blast radius.** Two modal components (`EditUserModal`, `CreateUserModal`), both
+admin-only, both in the same file — no other consumer renders this markup.
+
+**Evidence of fix.** Extended the existing `src/components/admin/UserManagement.test.ts`
+(which already had a `componentBody()` source-inspection helper for this file) with 3 new
+tests covering all 10 field/label pairs plus the sign-in-link input. RED→GREEN proven via
+`git stash` on just `UserManagement.tsx`: the 3 new tests fail on the pre-fix source
+(3 pass / 3 fail), all 6 pass once the fix is restored. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** The other two instances of the placeholder-only
+labeling defect class found by the same sweep (`x-intel/[id]/page.tsx`'s tweet-ID input,
+`ThermalSavedDesksMenu.tsx`'s save-desk-name input) are each fixed in their own separate
+PR (`#6370`, `#6371`) per the one-issue-per-PR policy — this finding covers only the
+unassociated-label pattern specific to `UserManagement.tsx`.
+
+## 2026-10-20 — [FINDING, P3 Accessibility] Thermal saved-desk-name input relied on a dynamic placeholder for its accessible name — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** DISCOVERY-lane accessibility sweep, same batch as the X-intel tweet-ID input
+fix (`#6370`) — a background sweep agent looked for other instances of the "placeholder-only
+labeling" defect class first found in `ExitIntentCapture.tsx` (`#6352`).
+
+**Root cause.** `src/features/thermal/components/ThermalSavedDesksMenu.tsx`'s "save current
+view" menu renders an `<input>` for the saved-desk name with
+`placeholder={defaultSavedDeskName(snapshot.ticker, snapshot.lens)}` and no `aria-label`, no
+`<label>`, no `aria-labelledby`. This is worse than a static placeholder: the placeholder
+text itself is dynamic (changes per ticker/lens), so there is no stable accessible name at
+all, and the preceding `<p>Save current view</p>` is plain text, not a `<label>` — not
+programmatically associated with the input either way.
+
+**Fix.** Added `aria-label="Saved desk name"` to the input, keeping the dynamic placeholder
+as a sighted-user hint.
+
+**Blast radius.** Single input, one dropdown menu component (`ThermalSavedDesksMenu`), one
+consumer surface (the Thermal desk).
+
+**Evidence of fix.** New test `src/features/thermal/components/ThermalSavedDesksMenu.test.ts`
+asserts the input's surrounding source carries `aria-label="Saved desk name"`. RED→GREEN
+proven via `git stash` on just the component file: fails on the pre-fix source (`not ok 1`),
+passes once the fix is restored. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** Two other instances of the same defect class found
+by the same sweep (`x-intel/[id]/page.tsx`'s tweet-ID input — fixed separately in `#6370` —
+and `UserManagement.tsx`'s ~10 unassociated-label inputs/selects) are each handled in their
+own branch/PR per the one-issue-per-PR policy.
+
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Loss-side early de-risk A/B — MEASURED, candidate does NOT clearly improve outcomes, no gate changed
+
+> **kind:** `FINDING`
+
+**Context.** Member live-book audit directive, today's open 0DTE book: "Investigate why
+we're closing winners around +8% while holding numerous positions down 20-34%... don't
+dismiss this as normal chop simply because the -50% stop hasn't triggered... Test proposed
+improvements on separate historical sessions with realistic costs before changing production
+rules."
+
+**The real asymmetry (read directly from `src/lib/zerodte/exit-engine.ts`, not inferred).**
+The shipped profit-management ladder (ratchet OR trim_scale, per-row frozen
+`exit_policy_at_commit`) actively de-risks WINNERS early and often — the ratchet arms a floor
+off a peak as low as +5%; trim_scale banks a third of the position at a peak of only
++15-20% (range) to +40% (trend). There is NO symmetric mechanism on the LOSS side. A losing
+position's only protections are the -50% hard stop, a thesis-break (evidence-based: a Cortex
+veto or >=2 clustered opposing readings exceeding the entry's own committed score margin —
+not a P&L trigger), or `flat_theta_bleed` (only fires if the play stayed inside the ±10% band
+the whole time — unreachable once a position has moved past -10%, exactly the population
+sitting at -20% to -34% live). Live evidence, today's book: RIOT -30-36%, OUST -33-38%, NBIS
+-27-36%, HUT -20-26%, BTDR -23-35%, SMR -30%, CBRS/RARE/SBET/KORU -16-26% — all thesis
+`intact`/`MINOR` rung, no veto fired, all well inside the -50% stop — a real, structural
+"nothing between -10% and -50% can touch a loser" gap, not a data glitch.
+
+**The candidate tested.** A LOSS-side tranche, symmetric in spirit to the existing profit
+ladder, layered ONLY onto the still-fully-open loser population (never touches a row that
+already banked a profit tranche, never touches the winner side): once peak-to-current
+drawdown reaches a trigger threshold AND the position has aged past a minimum, exit the whole
+remainder immediately.
+
+**Method.** `scripts/audit/zerodte-loss-side-exit-ab.mjs` — real historical committed
+population (`GET /api/admin/zerodte/tier-export`, 45-day window), each row's REAL contract
+minute bars (Polygon), replayed under its OWN frozen `exit_policy_at_commit` using the REAL,
+imported `exit-engine.ts` functions (`ratchetFloorPct`/`trimTranchesArmed`/
+`trimScaleFloorPct`/`ratchetTargetReached`/`TRIM_SCALE_RULES`) — never reimplemented — with
+real point-in-time NBBO entry/exit quotes and the same $100-multiplier-correct fee model this
+toolkit's sibling real-cost scripts already fee-bug-fixed. Thesis-break/`flat_theta_bleed` are
+NOT replayed (no point-in-time Cortex evidence exists to reconstruct them from historical bars
+alone — same disclosed simplification `swing-early-trim-ab.mjs` uses). Chronological
+TRAIN/VALIDATION split, held out.
+
+**Result (first live run, 45-day window, n=29 graded per half, capped; 4 candidate
+thresholds: -15%/age>=10min, -20%/age>=15min, -25%/age>=15min, -30%/age>=20min).**
+
+| half | all 4 thresholds' mean_delta (candidate − baseline) |
+|---|---|
+| TRAIN | -2.48pp .. -0.08pp (all negative) |
+| VALIDATION (held out) | -3.39pp .. -2.37pp (all negative, larger) |
+
+No single threshold's 95% CI clears zero in either half (every cell INCONCLUSIVE by the
+strict statistical bar), but the DIRECTION is consistent across all 8 cells: the candidate
+underperforms the shipped baseline every time, and the effect is LARGER in the held-out
+validation half, not smaller. **This is the opposite of a confirming result.**
+
+**Interpretation.** A naive, context-free P&L-triggered early loss cut is not supported by
+real data — likely the same mechanism E5 (`docs/audit/0DTE-RESEARCH.md`) already measured
+for the profit side: 0DTE intraday moves are noisy enough that a fixed threshold cuts real
+chop that would have mean-reverted before the actual time-stop, the same way a tight trailing
+stop on the profit side was shown to scratch real runners. This is a coherent, now-measured
+justification for why the existing design relies on EVIDENCE (thesis-break) rather than raw
+P&L to cut a loser — evidence can distinguish a real breakdown from noise; a bare threshold
+cannot.
+
+| **Status** | MEASURED — no gate/exit rule changed. The asymmetry is real and documented on both sides (E5: profit side costs EV; this: a naive loss-side fix doesn't clearly help either). A smarter, evidence-weighted loss-side candidate remains open and unmeasured; this run only rules out the simplest P&L-threshold shape. Re-run with a larger population before treating the direction as final. |
+
+Full write-up: `docs/audit/0DTE-RESEARCH.md`, "Loss-side early de-risk A/B" section (inserted
+after E5's follow-ups).
+
+## 2026-10-20 — [FINDING, P3 Accessibility] Admin X-intel "record tweet ID" input relied on placeholder-only labeling — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** DISCOVERY-lane accessibility sweep, follow-up to the earlier
+`ExitIntentCapture.tsx` fix (same session, `#6352`) which found a marketing email input
+with no accessible name beyond its placeholder. Dispatched a background sweep agent to look
+for other instances of the same defect class across the non-owned-lane surface.
+
+**Root cause.** `src/app/(site)/admin/x-intel/[id]/page.tsx`'s "After Publishing to X" form
+renders a plain `<input>` for pasting the published tweet ID with only
+`placeholder="Paste the X/Twitter post ID here..."` — no `aria-label`, no `<label>`, no
+`aria-labelledby`. The preceding `<h3>Why This Package?</h3>`/`<h3>After Publishing to
+X</h3>` headings are not programmatically associated with the input. Screen readers don't
+reliably announce placeholder text (and it disappears once the field has a value), so the
+input has no accessible name at all for an assistive-technology user.
+
+**Fix.** Added `aria-label="X/Twitter post ID"` to the input, alongside its existing
+placeholder (kept for sighted users — same approach as the ExitIntentCapture fix).
+
+**Blast radius.** Single input, single admin-only page — no other consumer of this markup.
+
+**Evidence of fix.** New test
+`src/app/(site)/admin/x-intel/[id]/tweet-id-input-label.test.ts` asserts the input's
+surrounding source carries `aria-label="X/Twitter post ID"`. RED→GREEN proven via
+`git stash` on just `page.tsx`: fails on the pre-fix source (`not ok 1`), passes once the
+fix is restored. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** Two other instances of the same defect class
+found by the same sweep (`ThermalSavedDesksMenu.tsx`'s save-desk-name input,
+`UserManagement.tsx`'s ~10 unassociated-label inputs/selects across two modals) are each
+being fixed in their own separate branch/PR per the one-issue-per-PR policy.
+
+## A swing play-brief's archetype/sub-lane track-record evidence mislabeled an on-schedule read as "STALE" roughly a third of every refresh cycle, and the member-visible section disclosed no age at all — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit cross-checking the
+swing play-brief against `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s ten points, adversarially
+verified (4-agent pipeline: 2 independent investigation angles, each finding independently
+re-traced against current source by a dedicated skeptic agent; confirmed real).
+
+**Root cause:** `evidenceFromContext` (`src/lib/swing/play-brief.ts`) computed the "Archetype track
+record" evidence fact's `freshness` via the generic cross-product `freshnessFromObservedMs` bucket
+(`<60s live, <10min recent, else stale`). `ctx.archetypeTrackRecord` is written only by the
+`swing-active-refresh` cron, which runs every 15 minutes during market hours — so any brief
+requested 10-15 minutes after the last tick (a normal ~1/3 of every cycle, not a missed tick) got
+tagged `freshness: "stale"`, rendered verbatim as `(Swing ledger · STALE · <timestamp>)` in the
+evidence[] array Largo reads.
+
+This is the EXACT defect class this same file already found and fixed for the sibling `markAsOf`
+field (`optionMarkIsStale`, live repro 2026-09-23 NVDA) — written by the identical 15-minute cron —
+but the fix was never swept to the archetype-track-record evidence line, added 2026-09-20 and never
+revisited. It is actually worse than the mark case: `calibration-cache.ts`'s own TTL rationale
+(`SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC = 120h`) explicitly argues this data's correct staleness
+horizon is hours-to-days ("a many-hours-stale graduation verdict is still an honest, useful
+citation") — the generic 10-minute bucket was not just reused incorrectly, but reused
+backwards-tight versus the module's own documented intent.
+
+Separately: the only member-visible rendering of this data, `archetypeTrackRecordSection`
+(`play-brief-intel.ts`), received the full `snapshot` (which carries `asOf`, documented on the type
+as "Largo C1/C2 provenance") but never read it anywhere in the function — zero age/staleness
+framing in the rendered prose, unlike every sibling section in the same file (Vector, GEX, Meridian,
+dark-pool, option mark all render an explicit "last synced"/staleness line). A member could see a
+"stale" tag in the hidden evidence array and no staleness disclosure at all in the visible section
+for the identical fact — the "two mechanisms disagree about the same field" failure class this
+codebase's own comments elsewhere warn about.
+
+**Live impact:** reachable on every swing play-brief citing a graduated archetype/sub-lane bucket —
+not an edge case, a normal ~1/3-of-cycle false positive under fully healthy operation.
+
+**Fix:**
+- Added `archetypeTrackRecordIsStale(asOfIso, readMs)` (`play-brief-absence.ts`, alongside
+  `optionMarkIsStale`) — a cadence-aware check using this data's OWN documented staleness horizon
+  (`calibration-cache.ts`'s `SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC`), fail-closed on future skew
+  (Largo C2), same discipline as its sibling.
+- `evidenceFromContext`'s archetype-track-record fact now only downgrades a generic "stale" verdict
+  to "recent" when `archetypeTrackRecordIsStale` disagrees — never touches "live"/"recent", same
+  pattern as the existing `markAsOf` fix.
+- `archetypeTrackRecordSection` now takes a `readMs` parameter and renders an honest "Track record
+  data as of **HH:MM ET**" / "Track record data **stale** — last synced **HH:MM ET**" line, mirroring
+  the option-mark section's own phrasing exactly.
+
+**Fix rationale:** Reused the data's own documented TTL rather than inventing a second, looser (or
+tighter) constant — keeps "how stale is too stale to cite" answered in exactly one place
+(`calibration-cache.ts`). Did not touch the generic `freshnessFromObservedMs` bucket itself — it is
+correct for the feeds it was built for; the bug was reusing it unconditionally for a slower-moving
+fact with its own documented cadence, exactly as the prior `markAsOf` fix diagnosed for its sibling.
+
+**Blast radius:** both the hidden `evidence[]` entry and the member-visible "Track record" section
+fixed in this one PR — the same root cause (a documented staleness horizon that existed but was
+never consulted) reaches both surfaces.
+
+**Tests:** 5 new regression tests for `archetypeTrackRecordIsStale` (on-schedule not stale;
+many-hours-old but within TTL not stale; past TTL stale; future-skew fail-closed; absent/malformed
+`asOf` never throws) — RED→GREEN proven via `git stash` (5/5 fail pre-fix, pass post-fix). 2 new
+tests for `archetypeTrackRecordSection`'s new disclosure line (on-schedule "as of", genuine
+staleness "stale — last synced") — RED→GREEN proven (2/2 fail pre-fix). 1 new assertion block in
+`composeSwingPlayBrief`'s existing evidence[] test (on-schedule read not stale; genuinely-past-TTL
+read still stale) — RED→GREEN proven (1/1 fails pre-fix). Full suite green on Node 20, `tsc
+--noEmit` clean.
+
+## 2026-10-20 — [FINDING, P3 Error-handling] admin/users create + sync swallow a real Clerk/Whop failure with zero server-side log — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** DISCOVERY-lane error-handling sweep, follow-up to the earlier batch of 5
+GET-handler swallowed-error fixes (`#6357`). Dispatched a background sweep agent to look for
+the same pattern — a bare `catch` with no logging — in POST/PUT/PATCH/DELETE handlers
+outside the 9 owned lanes.
+
+**Root cause.** Two routes in the same small admin-users module each wrap a real external
+call in a `try`/`catch` whose `catch` block returns an error response with **no logging call
+at all**:
+- `src/app/api/admin/users/create/route.ts` — the outer `catch` wraps
+  `client.users.createUser(...)` (Clerk). The strongest signal that this was missed rather
+  than deliberate: a sibling `catch` 24 lines earlier in the SAME function (the Whop sync
+  immediately after create) already does `console.warn("[admin-users] Whop sync after
+  create failed:", err)`, and the success path two statements later does
+  `console.log(...)`. The file logs on every other exit path except this one.
+- `src/app/api/admin/users/sync/route.ts` — the outer `catch` wraps
+  `syncWhopMembershipForEmail(...)` with no log before returning a 500. This is the exact
+  same call that IS logged on failure one directory over, in `create/route.ts`'s own inner
+  catch — the convention clearly exists in this module, just wasn't applied here.
+
+**Consequence.** A failed admin user-creation (duplicate email, bad phone, Clerk-side
+validation, Clerk outage) or a failed billing-tier sync (which directly affects what a
+member can access) currently leaves zero server-side trace — an admin sees only a generic
+error toast, with nothing in the logs to distinguish "duplicate email" from "Clerk API down"
+after the fact.
+
+**Fix.** Added `console.error("[admin-users] create failed:", err)` /
+`console.error("[admin-users] sync failed:", err)` to each outer catch, before the existing
+error-response logic (unchanged).
+
+**Blast radius.** Two call sites, each the sole handler in its file — no other consumer.
+
+**Evidence of fix.** New shared test file
+`src/app/api/admin/users/admin-users-catch-logging.test.ts` checks both routes' outer catch
+blocks for a `console.error(...)` call identifying the failing operation. RED→GREEN proven
+via `git stash` on just the two route files: both fail on the pre-fix source (`not ok 1`,
+`not ok 2`), both pass once the fix is restored. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** A third, lower-confidence candidate the same sweep
+flagged — `src/app/api/auth/native-oauth/complete/route.ts`'s catch, which deliberately does
+NOT leak error detail to the client for a stated security reason (a rejected identity token
+could be a legitimate misconfig or an attacker probing) — is NOT fixed here: the file has no
+sibling handler proving logging was "intended but missed," so whether the omission is
+deliberate (vs. unintentional) is genuinely ambiguous and better raised as a question than
+unilaterally changed. Noting it here for a future cycle rather than guessing.
+
+## 2026-10-20 — [FINDING, P1 Night Hawk 0DTE] Every single-name 0DTE position was permanently excluded from the live quote lane — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Member live-book audit directive on today's open 0DTE book: "Verify quote
+freshness, executable exit prices, stop execution... don't dismiss this as normal chop."
+
+**Root cause.** `toActivePlay` (`src/lib/zerodte/live-marks.ts`) — the function that decides
+which ledger rows the ~1s live-marks lane (real bid/ask/greeks/executable P&L, WS-first +
+REST fallback) actually tracks — required the tracked OCC's expiry to be **EXACTLY equal**
+to the row's own `session_date`:
+```js
+if (occExpiry != null && occExpiry !== r.session_date) return null;
+```
+That premise ("0DTE's whole premise is same-day expiry") is only true for underlyings with
+DAILY option listings — SPY/QQQ/IWM/SPX/NDX. Every single-name 0DTE play (RIOT, NBIS, HUT,
+OUST, SMR, BTDR, CBRS, RARE, SBET, ASST, KORU, BB, ...) is deliberately committed against the
+nearest AVAILABLE expiry, up to `ZERODTE_MAX_DTE` (4) calendar days out — `board.ts`'s own
+`SETUP_MAX_DTE`, explicitly widened 1→4 on 2026-08-06 for exactly this reason. The strict
+equality check silently excluded **every single-name 0DTE row, permanently, from this lane**:
+`getActivePlays`/`boundActivePlays` never returned them, so the poller never quoted them, and
+`attachLiveMarkMeta` (`zerodte-service.ts`) always fell through to its fail-soft default —
+`bid: null, ask: null, mark_source: null, mark_as_of: null, live_pnl_pct_exec: null` — for the
+entire single-name population, every session, with no error anywhere.
+
+**Live evidence.** A board poll during RTH today showed 0/12 open single-name rows ever
+carrying a bid/ask, across 4 repeated polls spanning several minutes (ruling out a one-tick
+cold-start). In the SAME window, the lane's own dedicated `/api/market/zerodte/marks` route
+showed real, <1s-fresh bid/ask/mid/greeks for genuinely-tracked (swing-merged) contracts
+(WRBY/CELH/DKNG/etc.) — proving the lane itself works; this guard simply never let a
+single-name 0DTE row register with it.
+
+**Consequence.** `live_pnl_pct_exec` (the executable, sell-into-the-bid P&L the exit engine's
+own design treats as "the honest exit-side number") was structurally unavailable for exactly
+the population an audit most needs to verify — the names sitting at the deepest drawdowns.
+`last_mark`/`live_pnl_pct` kept moving (the legacy SYNC lane fallback still works), so the raw
+P&L number itself was not necessarily wrong, but it could never be cross-checked against a
+real, fresh two-sided NBBO quote for any single-name 0DTE play.
+
+**Fix.** Changed the guard to accept any `occExpiry` within `[session_date, session_date +
+ZERODTE_MAX_DTE]` — still excludes a genuinely-expired row (`occExpiry < session_date`, the
+real 2026-09-11 "zombie row" case the original check existed to catch) and an implausibly-far
+OCC (`occExpiry` beyond the window), but no longer conflates "not literally today" with
+"wrong." Mirrors the semantics `src/lib/swing/live-marks-active.ts`'s own `occAlreadyExpired`
+guard already uses correctly (`expiry < today`, never strict equality) — swing never had this
+bug.
+
+**Blast radius.** Single call site (`toActivePlay`), consumed by `getActivePlays`/
+`boundActivePlays` (the ~1s poller's own active-set fetch) and therefore by `attachLiveMarkMeta`
+(the board's `bid`/`ask`/`mark_source`/`live_pnl_pct_exec` fields), the SSE/REST `/marks`
+payload, and `runZeroDteMarkTick`'s own exit-engine evaluation (which only acts on a `mark`
+sourced from this same lane within `ZERODTE_MARK_STALE_MS`) — all three now get real quotes
+for the single-name population for the first time.
+
+**Evidence of fix.** `src/lib/zerodte/live-marks.test.ts`: the pre-existing zombie-row test
+(2026-09-11, `occExpiry` a week in the past) still passes unchanged (dte<0 is still
+excluded). Two new tests: a 3-DTE single-name OCC (RIOT, no daily listing) is now tracked
+(RED on pre-fix code, confirmed via `git stash` on just the source file: `not ok`, 35 pass/1
+fail); an OCC 10 days out (past `ZERODTE_MAX_DTE`) is still excluded, unchanged. Full file:
+36/36 pass (was 34). `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** The lane's cap (`ZERODTE_LIVE_CONTRACT_CAP`),
+WS-first/REST-fallback mechanics, and staleness thresholds (`ZERODTE_MARK_STALE_MS`/
+`LATCH_MAX_MARK_AGE_MS`) are untouched — this fix only widens WHICH rows qualify to be
+tracked at all, strictly additive (more real coverage, nothing removed).
+
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] No bitcoin-miner correlation group — same-direction crypto concentration never capped — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Member live-book audit directive: "verify... correlated exposure... don't
+dismiss this as normal chop." Investigating today's open 0DTE book (several positions down
+-20% to -34%) surfaced a concentration gap the governor's own enforcement history should have
+already closed, but never did.
+
+**Root cause.** `governor.ts`'s `CORRELATION_GROUPS` — the static list `concentrationReasonForCandidate`/
+`freezeConcentrationState` use to cap same-direction correlated exposure
+(`GOVERNOR_MAX_CORRELATED_SAME_DIR = 2`, `GOVERNOR_ENFORCE_CONCENTRATION` default ON) — had
+exactly five groups: broad index/ETF, semiconductors, mega-cap tech, tech/enterprise,
+financials. **No crypto/bitcoin-miner group existed at all**, despite the file's own standing
+comment literally citing *"the 2026-07-30 session... a real P0/P1 incident (14 losers / 1
+winner) where unmeasured same-direction concentration was one of five named contributing root
+causes"* as **the reason concentration enforcement was flipped on by default** — that comment
+names a crypto cluster incident as motivation, yet the group list was never actually extended
+to cover one.
+
+**Live evidence (same day, 2026-10-20).** RIOT and HUT both flagged LONG at the identical
+instant (`first_flagged_at: 2026-10-20T14:42:09.000Z`), BTDR five minutes later
+(`14:47:14.000Z`) — all three open simultaneously, all LONG, none sharing a correlation group
+with any other, so the concentration cap never saw them as related at all. MARA and CLSK were
+also LONG earlier the same session (both closed winners). At the point the 15:12Z audit check
+ran, 3 of the day's 8 worst open drawdowns were RIOT (-30 to -36%), HUT (-21 to -26%), BTDR
+(-23 to -35%) — a real same-direction correlated cluster the governor exists specifically to
+catch, uncapped.
+
+**Fix.** Added a sixth `CORRELATION_GROUPS` entry: `RIOT, MARA, CLSK, HUT, BTDR, CIFR, WULF,
+CORZ, BITF, IREN` — the core publicly-traded bitcoin miners, whose operating economics (hash
+price, power cost, BTC-denominated revenue) co-move on BTC spot even more tightly intraday
+than the existing sector pairs. Deliberately scoped to miners only — NOT exchanges
+(`COIN`) or treasury-holding names (`MSTR`, `SBET`), which are BTC-exposed but a structurally
+different business and a separate, larger judgment call — same "narrowest precedented
+addition" discipline the TQQQ/SQQQ fix (`FINDINGS.md`) used for the broad-index group rather
+than extending it wholesale.
+
+**Precedent for shipping without a dedicated backtest.** The four EXISTING sector-pair groups
+(semiconductors/mega-cap tech/tech-enterprise/financials) were themselves added by domain
+judgment during a broad audit pass (`FINDINGS.md`, "Wave A/B strongest-engines hardening",
+item 11), not from an individual backtest per group — this fix follows the identical,
+already-established pattern, on stronger motivating evidence (today's live 3-wide cluster)
+than most of the four it joins.
+
+**Blast radius.** `CORRELATION_GROUPS` is also the shared source for the SWING theme-cluster
+resolver (`src/lib/swing/theme-cluster.ts`'s own comment: "the ONE correlation-group source
+instead of hand-copying the index/ETF list") — verified `theme-cluster.test.ts` (28/28) still
+passes unchanged; the new group is purely additive to that consumer too. `CONCENTRATION_POLICY_VERSION`
+left at `v2` — the policy's own counting/grouping LOGIC is unchanged, only the group
+membership list grew, same as every prior sector-pair addition (which also didn't bump it).
+
+**Evidence of fix.** `src/lib/zerodte/governor.test.ts`: two new tests — `correlationGroupOf`
+resolves RIOT/HUT/BTDR/MARA/CLSK to the same new group (and confirms COIN/MSTR stay
+unscoped, `null`); `freezeConcentrationState` on a third same-direction miner candidate now
+reports `same_beta_open_count: 2`, meeting/exceeding `GOVERNOR_MAX_CORRELATED_SAME_DIR`. Full
+file: 60/60 pass (was 58). `theme-cluster.test.ts`: 28/28 pass, unchanged. `tsc --noEmit`
+clean.
+
+**What was deliberately left unchanged.** This only affects FUTURE commits going forward
+(the concentration check runs at commit time) — it does not touch any currently-open position
+or any exit/risk-management behavior. No separate real-cost backtest was run for this specific
+addition (see "Precedent" above for why that bar hasn't applied to any prior group addition
+either); if the operator wants this group measured before enforcement the same way Q9's
+same-direction concentration measure itself was ("measured first... enforced... evidence-
+driven" per this file's own history), that is a natural, scoped follow-up, not a blocker to
+shipping a fix for an already-incomplete, already-precedented list.
+
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Board mislabels an unstamped CLOSED row as "time_stop" when it was never a time-stop — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Member audit directive on today's live 0DTE book: "Verify quote freshness,
+executable exit prices, stop execution, thesis invalidation, time stops, and correlated
+exposure. Don't dismiss this as normal chop... Fix and verify the missing SNXX return field
+too." Investigating the "missing SNXX return field" (`exit_pnl_pct: null` on a CLOSED row)
+surfaced a more specific root cause than a simple write-timing gap: the board's
+`closed_reason` field was actively **mislabeling** the row, not just omitting data.
+
+**Root cause.** `mapLedgerRow` (`src/lib/platform/zerodte-service.ts`, `boardClosedReason`)
+derives the member-facing close label as: `stopped` (pinned) → else, if the exit-engine
+stamped a reason (`entry_context.exit`, written by `stampZeroDteExitContext` on an
+exit-engine EXIT) → that category (`ratchet`/`thesis`/`flat`/`target`/`stop`) → **else a
+blind fallback literal `"time_stop"`, unconditionally, any time `status === "CLOSED"` and
+no engine category exists.**
+
+That fallback conflates two completely different situations:
+1. A **genuine** 15:50 ET hard time-stop (`PLAN_RULES.time_stop_et_minutes`, `plan.ts`) —
+   which never stamps an exit-engine context at all, so `"time_stop"` is the correct, only
+   available label.
+2. A row the **exit engine already closed** (ratchet floor / thesis break / flat-timeout /
+   plan stop / trim-scale runner target) whose `stampZeroDteExitContext` write simply
+   **hasn't landed in Postgres yet**. `status` and `entry_context.exit` are written by two
+   separate, unsynchronized UPDATE statements from the ~1s live-marks lane
+   (`src/lib/zerodte/live-marks.ts`) / the ~2min cron sync (`src/lib/zerodte/scan.ts`):
+   `evaluateLedgerRowExit` (`exit-sync.ts`) stamps the exit context FIRST, then the caller
+   flips `status` to `CLOSED` via `updateZeroDteLiveState` SECOND — but either write can
+   also originate from `derivePlayStatus`'s own direct close path, which never calls the
+   stamp at all for some closes, and a board read landing inside that window sees
+   `status=CLOSED` with no stamp yet. Under the old code, case (2) was **indistinguishable**
+   from case (1) and silently printed the same specific, meaningful-sounding label.
+
+**Evidence (live, 2026-10-20).** SNXX committed ~10:11 ET (BREAKOUT origin, nowhere near the
+15:50 ET boundary). A board read at 15:23 UTC showed:
+```
+status: CLOSED, closed_reason: "time_stop", exit_pnl_pct: null, exit_reason: null
+```
+A second read six minutes later (15:29 UTC), once the real stamp had landed, showed:
+```
+status: CLOSED, closed_reason: "ratchet", exit_pnl_pct: 14.04, exit_reason: "ratchet"
+```
+The `"time_stop"` label shown in the first read was never true — the real close was a
+ratchet-floor exit. `live_pnl_pct` (computed independently from `last_mark`/`entry_premium`,
+not from the stamp) correctly showed +14.04% in BOTH reads, so the raw P&L number was never
+wrong — only `closed_reason` (and, transiently, `exit_pnl_pct`) misrepresented *why* and
+*exactly how much* the trade closed by.
+
+**Fix.** Gate the `"time_stop"` fallback on the row's own **frozen** `last_mark_at`
+(CASE-guarded to the close instant once `status='CLOSED'` — see `updateZeroDteLiveState` in
+`db.ts`) genuinely falling at/after `PLAN_RULES.time_stop_et_minutes` (with 2 minutes of
+slack for the sync lanes' own tick latency, via the existing `etMinutes()` ET-wall-clock
+helper, `src/features/spx/lib/spx-play-session-time.ts`). When it does not — i.e., no
+evidence this was a real end-of-day close — report `closed_reason: null` ("exit reason not
+yet persisted") instead of a specific reason the row cannot yet support. This makes
+`closed_reason` consistent with `exit_pnl_pct`/`exit_reason` (which already read `null`
+honestly in this window) rather than contradicting them with a wrong label.
+
+**Blast radius.** Single call site (`mapLedgerRow`), consumed by every reader of the board
+payload: `/api/market/zerodte/board`, Largo's `get_zerodte_plays` tool, and the BIE
+composers — all three funnel through `buildZeroDteBoardPayload()`/`mapLedgerRow`, so the fix
+applies uniformly; no second implementation of this derivation exists elsewhere.
+
+**Evidence of fix.** `src/lib/platform/zerodte-service.test.ts`: the pre-existing test
+("a plain 15:30 close... reads closed_reason 'time_stop'") asserted the OLD, wrong fallback
+as correct — it never actually set `last_mark_at`, so it was testing the bug, not a genuine
+time-stop. Replaced with two tests: (1) a CLOSED row with no engine stamp and `last_mark_at`
+at 10:30 ET now correctly reads `closed_reason: null` (RED on the pre-fix code, confirmed via
+`git stash` on just the source file: `not ok`); (2) a CLOSED row with no engine stamp and
+`last_mark_at` genuinely at 15:50 ET still correctly reads `closed_reason: "time_stop"`
+(passes on both old and new code — the genuine case was never broken). Full suite:
+`npx tsx --experimental-test-module-mocks --test src/lib/platform/zerodte-service.test.ts` —
+25/25 pass. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** The underlying two-write race itself (status flip
+and exit-context stamp as separate, unsynchronized DB writes) is not fixed here — that would
+require either wrapping both writes in a single transaction or merging them into one UPDATE,
+a larger change across `live-marks.ts`/`scan.ts`/`exit-sync.ts`/`db.ts` than this finding's
+scope. This fix stops the board from actively MISLABELING the row during that window;
+`exit_pnl_pct` continuing to read `null` for a few seconds/minutes until the real stamp lands
+is the existing, already-honest behavior and is unchanged.
+
 ## A swing play-brief's Structure Ladder named a different "stop" than the SAME envelope's "Structural stop (committed)" line for an already-OPEN position — FIXED
 
 > **kind:** `FINDING`
