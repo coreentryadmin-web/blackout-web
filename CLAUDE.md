@@ -656,6 +656,26 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   an assertion. Always run scoped ad-hoc checks as `npx tsx --experimental-test-module-mocks --test
   <path>` — there is no scoped npm script that adds the flag for you; plain `npm test` already
   carries it, so a full-suite run was never at risk, only a targeted ad-hoc one.
+- **`node --import tsx -e "..."` (inline eval) silently drops named exports from an imported
+  `.ts` file — reads as "the source file doesn't export this function" when it's a tooling
+  artifact (hit live 2026-10-20, Night Hawk Swings mandate).** A one-off audit check tried
+  `node --import tsx -e "import { mfeCaptureOutcome } from './src/lib/swing/mfe-capture.ts'; ..."`
+  to replay a real production pure function (`mfeCaptureOutcome`, `mfe-capture.ts`) against live
+  closed-position data pulled from `/record` — a normal, useful pattern this toolkit uses
+  constantly for pure helpers. It failed: `SyntaxError: The requested module
+  './src/lib/swing/mfe-capture.ts' does not provide an export named 'mfeCaptureOutcome'`, even
+  though the file plainly has `export function mfeCaptureOutcome(...)`. Minimal repro (confirmed
+  on both Node 20 and 22, so not a Node-version issue): any `.ts` file with `export function
+  foo() {}`, imported via `import * as m from './that.ts'` inside a `node --import tsx -e "..."`
+  inline script, yields `Object.keys(m) === ['default']` — every named export vanishes, replaced
+  by a spurious `default`. The identical import, written to a real `.mjs`/`.ts` **file** and run as
+  `node --import tsx that-file.mjs` instead of via `-e`, resolves correctly (`['foo', 'default']`,
+  `typeof m.foo === 'function'`) — so this is specific to tsx's inline-eval transform, not a real
+  defect in whatever source file you're testing. **Consequence: before concluding a production
+  `.ts` file is missing an export it plainly has, check whether you're importing it from `-e`
+  inline — if so, write the check to a real scratch file (e.g. under the scratchpad directory) and
+  run that file instead** (`node --import tsx /path/to/check.mjs`), rather than trusting the
+  misleading "does not provide an export" message as a statement about the source.
 - **Plain Node `fetch()` can silently stop honoring `HTTPS_PROXY` mid-session, reading as a live
   site outage until you check `curl` against the same URL (hit live 2026-09-18).** A routine swing
   audit script (`scripts/audit/lib/audit-auth-fetch.mjs`, the shared authenticated-fetch helper
