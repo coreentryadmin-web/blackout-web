@@ -4796,6 +4796,48 @@ test("watchForSection: entry trigger level is shown distinctly from the flag anc
   assert.match(section.body, /Break\/reclaim above/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): `trackPct` (the board card's "Since flag" %,
+// only ever populated for WATCH/SKIP status) used to be rendered ONLY by `pnlSection`
+// (play-brief.ts), which `composeSwingPlayBrief` only calls for `bucket === "open"` — a bucket
+// where `trackPct` is always null. So the number was dead on arrival for the bucket that had it.
+// Pins the fix: a WATCH play with a real `trackPct` must show it here, beside the flag anchor.
+test("watchForSection: 'Since flag' underlying move is shown for a WATCH play (was dead-wired to the open-only Position section)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "SHORT", flagUnderlyingPx: 374.5, trackPct: -1.42 }),
+      asOf: "2026-10-20 17:14 ET",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.match(section.body, /Flag anchor: \*\*374\.50\*\*/);
+  assert.match(section.body, /Since flag: \*\*-1\.4%\*\*/);
+});
+
+test("watchForSection: 'Since flag' is omitted when trackPct is null (e.g. an open play, where it is never populated)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({ direction: "LONG", flagUnderlyingPx: 175.87, trackPct: null }),
+      asOf: "2026-09-12 10:00 ET",
+      sessionDate: "2026-09-12",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "watch",
+  );
+  assert.doesNotMatch(section.body, /Since flag/);
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-09-12): the "Entry trigger" bullet used to claim,
 // unconditionally, that crossing this level "is what actually fires the setup" — false once the
 // setup itself is dead. Live repro: SKHY WATCH brief with `setupState: "INVALIDATED"` (thesis
