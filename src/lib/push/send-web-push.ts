@@ -18,6 +18,14 @@
 
 import { dbConfigured, dbQuery } from "@/lib/db";
 
+// Bounded fan-out for the send loop below. A broadcast (no `userId`) sends to EVERY row in
+// `push_subscriptions` with no cap — sequentially, that is one round-trip to the push service per
+// subscriber, so as the subscriber base grows this walks straight into a serverless route's own
+// timeout. Parallelizing unboundedly would trade that for a different failure (hundreds/thousands
+// of concurrent outbound connections at once). A small worker pool, same shape as
+// `membership.ts`'s reconcile loop, gets the throughput win without either extreme.
+const PUSH_SEND_CONCURRENCY = 10;
+
 /** True only when BOTH VAPID keys are present — same check the scaffold route uses. */
 export function vapidConfigured(): boolean {
   return Boolean(
@@ -104,19 +112,40 @@ export async function sendWebPush(
         ).rows
       : (await dbQuery(`SELECT endpoint, p256dh, auth FROM push_subscriptions`)).rows;
 
+    const subs = rows as Array<{ endpoint: string; p256dh: string; auth: string }>;
+    // TS cannot carry the `if (!webpush) return ...` narrowing above into a nested closure
+    // (a function boundary resets narrowing even for a const), so rebind to a local the closure
+    // can see as non-null.
+    const push = webpush;
+    let nextIdx = 0;
+    async function worker(): Promise<{ sent: number; stale: string[] }> {
+      let workerSent = 0;
+      const workerStale: string[] = [];
+      for (;;) {
+        const i = nextIdx++;
+        if (i >= subs.length) break;
+        const r = subs[i]!;
+        try {
+          await push.sendNotification(
+            { endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } },
+            body
+          );
+          workerSent++;
+        } catch (err: unknown) {
+          const code = (err as { statusCode?: number })?.statusCode;
+          if (code === 404 || code === 410) workerStale.push(r.endpoint); // gone — prune
+        }
+      }
+      return { sent: workerSent, stale: workerStale };
+    }
+    const results = await Promise.all(
+      Array.from({ length: Math.min(PUSH_SEND_CONCURRENCY, subs.length) }, () => worker())
+    );
     let sent = 0;
     const stale: string[] = [];
-    for (const r of rows as Array<{ endpoint: string; p256dh: string; auth: string }>) {
-      try {
-        await webpush.sendNotification(
-          { endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } },
-          body
-        );
-        sent++;
-      } catch (err: unknown) {
-        const code = (err as { statusCode?: number })?.statusCode;
-        if (code === 404 || code === 410) stale.push(r.endpoint); // gone — prune
-      }
+    for (const r of results) {
+      sent += r.sent;
+      stale.push(...r.stale);
     }
 
     if (stale.length) {
