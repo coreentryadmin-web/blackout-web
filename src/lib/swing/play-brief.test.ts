@@ -243,6 +243,15 @@ test("composeSwingPlayBrief: a same-ticker sibling with a near-identical entry p
   );
   assert.match(sib!.body, /605C 2026-10-16/);
   assert.match(sib!.body, /2 concurrent live position/);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): `evidenceFromContext`'s own sibling-count
+  // block used to omit the positionId exact-match branch `siblingPositionsNote` uses above, so a
+  // near-identical-premium sibling resolved by positionId here was still silently excluded from
+  // evidence[] by the premium-proximity fallback. Largo C7 (2026-09-15): this concrete, checkable
+  // claim must carry a matching evidence entry, same discipline the sibling tests above/below this
+  // one already pin.
+  const sibEvidence = brief.envelope.evidence.find((e) => e.text.includes("concurrent live position"));
+  assert.ok(sibEvidence, "sibling-position claim must carry a matching evidence entry (Largo C7)");
+  assert.match(sibEvidence!.text, /2 concurrent live position/);
 });
 
 // BUG FOUND (Ask Largo standing mandate, 2026-10-15 — same deep-dive that found #6023's
