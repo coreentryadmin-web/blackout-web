@@ -2589,6 +2589,33 @@ test("chartTechnicalsSection: bias reads bearish from the technicals on a LONG p
   assert.equal(section?.bias, "bearish");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): `displaySpot != null && displaySpot >= t.vwap
+// ? "above" : "below"` folds "spot unknown" into the FALSE branch via the `&&` short-circuit, so a
+// null displaySpot rendered "price below session VWAP" -- a fabricated directional claim with no
+// supporting data, not an honest absence. This function's own entry guard deliberately continues
+// when technicals exists even though vec.spot is null (otherwise it would just check `!technicals`).
+test("chartTechnicalsSection: VWAP line omits the side clause (never defaults to 'below') when spot is unknown", () => {
+  const vec = fixtureVec({
+    spot: null,
+    technicals: {
+      vwap: 150.0,
+      emaStack: "9>21>50",
+      rsi: null,
+      macd: null,
+      goldenPocket: null,
+      structure: null,
+    },
+  });
+  const section = chartTechnicalsSection(vec);
+  assert.ok(section);
+  assert.match(section!.body, /VWAP \*\*150\.00\*\*/);
+  assert.doesNotMatch(
+    section!.body,
+    /VWAP.*price (above|below) session VWAP/,
+    `must not fabricate a side when spot is unknown, got: ${section!.body}`,
+  );
+});
+
 test("chartTechnicalsSection: Vector regime is labeled as dealer GAMMA posture, never bare long/short (2026-09-06)", () => {
   // Live NN repro: chart technicals showed "Vector regime: long" (long-GAMMA dealer posture)
   // immediately followed by the Vector desk section's own directional call "momentum short" for
