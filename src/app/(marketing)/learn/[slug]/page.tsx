@@ -104,6 +104,7 @@ export default async function LearnSlugPage({ params }: Props) {
   const article = getArticle(slug);
   if (!article) notFound();
   const articleDates = getArticleDates(article.slug);
+  const articleFaqs = getArticleFaqs(article.slug);
 
   return (
     <>
@@ -117,7 +118,12 @@ export default async function LearnSlugPage({ params }: Props) {
         datePublished={articleDates.datePublished}
         dateModified={articleDates.dateModified}
       />
-      <FAQPageJsonLd items={getArticleFaqs(article.slug)} />
+      {/* Every one of today's 52 article slugs has an ARTICLE_FAQS entry, but
+          getArticleFaqs() falls through to [] for any slug that doesn't — an
+          empty "mainEntity" is an invalid FAQPage per Google's structured-data
+          guidelines (requires >=1 Question). Guard it the same way the guide
+          branch above already does; this branch never did. */}
+      {articleFaqs.length > 0 && <FAQPageJsonLd items={articleFaqs} />}
       {article.type === "glossary" && (
         <DefinedTermSetJsonLd
           path={article.path}
