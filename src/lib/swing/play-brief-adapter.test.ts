@@ -4,6 +4,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { composeSwingPlayBrief } from "./play-brief";
 import { adaptSwingBriefToLargo } from "./play-brief-adapter";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { contractViolations } from "@/lib/largo/contract/product-read";
 
 function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   return {
@@ -37,7 +38,11 @@ function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
 function fixtureCtx(overrides: Partial<SwingPlayBriefContext> = {}): SwingPlayBriefContext {
   return {
     play: fixturePlay(),
-    asOf: "2026-09-07T02:59:00.000Z",
+    // Real shape, not a raw ISO instant: `loadSwingPlayBriefContext` always sets this via
+    // `etStamp(nowMs)` (play-brief-context.ts), which is already "YYYY-MM-DD HH:mm ET" — the
+    // prior ISO-string fixture here let adaptSwingBriefToLargo's now-removed re-parse-as-ISO
+    // bug ship to production undetected (every real request threw `Invalid time value`).
+    asOf: "2026-09-07 02:59 ET",
     sessionDate: "2026-09-07",
     scanAsOf: null,
     scanSessionDay: null,
@@ -83,4 +88,22 @@ test("adaptSwingBriefToLargo: ticker_class still agrees with the brief for a pla
   if (!largoRead.ok) return;
   assert.equal(largoRead.data.ticker_class, "equity");
   assert.equal(largoRead.data.ticker_class, brief.ticker_class);
+});
+
+// BUG (production 2026-10-20): every swing play-brief 503'd with "Invalid time value" — the
+// adapter re-parsed `asOf` with `new Date(asOf)` as if it were a raw ISO instant, but `asOf` is
+// always already the Largo C1 "YYYY-MM-DD HH:mm ET" stamp (`etStamp(nowMs)` in
+// play-brief-context.ts). `new Date("2026-10-20 00:41 ET")` is an Invalid Date, and
+// `Intl.DateTimeFormat.formatToParts()` throws `RangeError: Invalid time value` on one — every
+// ticker, every status, 100% of requests, since this runs on every single composed brief. The
+// fixture above used to paper over this with a hand-written ISO string no real caller ever
+// passes; it now matches production's actual shape.
+test("adaptSwingBriefToLargo: does not throw on the real ET-stamp asOf shape, and passes it through as C1 as_of verbatim", () => {
+  const ctx = fixtureCtx({ asOf: "2026-10-20 00:41 ET" });
+  const brief = composeSwingPlayBrief(ctx);
+  assert.doesNotThrow(() => adaptSwingBriefToLargo(brief));
+
+  const largoRead = adaptSwingBriefToLargo(brief);
+  assert.equal(largoRead.as_of, "2026-10-20 00:41 ET");
+  assert.deepEqual(contractViolations(largoRead), [], "must be a fully C1-compliant as_of, not just non-throwing");
 });
