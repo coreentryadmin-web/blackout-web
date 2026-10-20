@@ -249,6 +249,146 @@ than 0-3 real trend samples. **Re-run `npm run ab:regime-dead-zone -- --days=90`
 `session_regime`-stamped trend rows have accumulated — the script is built, live-auth-tested, and ready;
 it just needs a population that doesn't exist yet.
 
+### Live trim_scale tranche-banking never fires in production — CONFIRMED, severity P1, operator decision pending (2026-10-20)
+
+**WHY THIS EXISTS.** Member live-book audit directive: "Verify whether Night Hawk's intended
+trim ladder is +25%, +50%, and +100%... Explain which rules closed today's winners before the
+first trim, especially the ratchet exits. Check whether those rules conflict with the
+intended ladder, and test any correction before changing production."
+
+**The intended ladder, verified against the real shipped constants** (`TRIM_SCALE_RULES`,
+`exit-engine.ts`): tranche_fraction = **1/3** (not half), banked at TWO regime-conditioned peak
+thresholds — `neutral: [20%, 50%]`, `trend: [40%, 80%]`, `range: [15%, 40%]` — then the last
+third runs to the **+100%** target (`PLAN_RULES.target_pct`) or the plan stop/time-stop. The
+module's own doc comment describes the E5-measured recommendation as "⅓@+25% / ⅓@+50%" — the
+SHIPPED neutral constant is actually **+20%**, not +25%; a minor, separate discrepancy between
+the documented recommendation and the live constant, flagged here but not itself the main
+finding. Between tranches, the remaining position is protected by the SAME peak-scaled shared
+floor the ratchet mode uses (`0.4 x peak`, via `trimScaleFloorPct`/`ratchetFloorPct`); once both
+thirds are banked (or peak clears target), a flat **+50%** "runner floor" protects the last
+third.
+
+**What's actually closing today's (and every day's) trim_scale-committed winners: the SAME
+shared floor the ratchet path uses — never a trim.** Checked every one of today's 19 closed
+trades: 13 were frozen at commit as `exit_policy_at_commit: "trim_scale"` (A/B-tier, which
+SHOULD get the ⅓/⅓/run ladder). **Every one of the 13 exited via a `categorizeExitReason`
+"ratchet" bucket** (`ratchet_early_profit_floor`/`ratchet_breakeven_floor`/etc.), `timeline_tranches: null`
+(no partial bank ever recorded), `mfe_capture_pct` consistently ~35-46% of peak — the exact
+signature of a pure `peak*0.4` floor dump, not a banked-then-run ladder. Cross-checked against
+the AUTHORITATIVE (not display-only) `managed_outcome`/`managed_source` fields on
+`GET /api/market/zerodte/record` across a real 14-day window (109 trim_scale rows with a WS-11
+reconstruction present): **every single one** shows `managed_source: "engine"` with a single,
+whole-position exit as the REAL, as-managed outcome — never a genuine partial scale-out —
+while several of those SAME rows' own WS-11 bar-walk reconstruction (`entry_context.executable.tranches`)
+independently shows a real, achievable first-tranche trigger price the underlying genuinely
+reached during the position's real holding window (e.g. MSTR 2026-10-16: reconstruction shows
+a real tranche at 12:35 ET banking 1/3 at +16.13%, a second at 13:06 ET banking another 1/3 at
++45.16% — real price levels that really occurred — yet the row's REAL, live-managed outcome was
+a single "ratchet" exit at +5%, zero tranches ever actually banked). `managedGradeView`
+(record.ts) correctly does NOT substitute the reconstruction's number for the real outcome
+here (its own documented precedence rule: a real exit whose reason needs live state a bar-walk
+can't replay — a ratchet-style floor, thesis-break, flat-timeout — always wins, because
+continuing the bar-walk past an already-closed position is a FICTITIOUS continuation, not a
+correction) — so this is NOT a case of members being shown a wrong number. It IS a case of the
+real, live position management never doing what its own frozen policy promises.
+
+**The mechanism this is consistent with** (`exit-sync.ts`): `resolveTrimBankLive()`/
+`resolveTrimRegimeLive()` gate whether the live engine reads a REAL persisted `trims_taken`
+count, or instead RECOMPUTES it fresh every tick via `trimTranchesArmed(peak, regime)` — the
+EXACT SAME function `decideTrimScale` (exit-engine.ts) calls to compute its own `armed`
+variable, on the SAME inputs. When effectively off, `trimsTaken === armed` by construction on
+every call, so `trimAvailable = armed > taken` can never be true — the trim-ladder's own TRIM
+action is structurally unreachable, and every position instead falls straight through to the
+shared floor-breach EXIT, indistinguishable from a true ratchet row. This exact failure mode
+is independently documented in `FINDINGS.md`'s own history (`ZERODTE_TRIM_BANK_LIVE` "merged
+disarmed... flipping it live is a deliberate operator follow-up" — and `ZERODTE_TRIM_REGIME_LIVE`
+"stays off") as the KNOWN, NAMED bug this exact flag was built to fix. Separately, EVERY
+`exit_policy_snapshot.trailing_rule` checked today shows `active_regime=neutral` regardless of
+the row's own `session_regime` column (`range` in several cases) — directly, observably
+confirming `resolveTrimRegimeLive` is NOT honoring the stamped regime live, consistent with it
+being off. **This sandbox has no access to the live `ZERODTE_TRIM_BANK_LIVE`/
+`ZERODTE_TRIM_REGIME_LIVE` env values** (no AWS creds this session) — the inline code comments
+next to each function's `return true` fallback claim "ON by default (2026-09-03)," which
+directly contradicts both FINDINGS.md's own account and 14+ real days of observed production
+behavior. Whether that is a stale comment describing a flag that was later reverted, or an
+explicit env override in the deployed secret, is NOT resolved here — only the OBSERVED,
+EMPIRICAL production behavior (zero genuine tranche banks across the entire sample) is a
+confirmed fact.
+
+**Test run before any change (per the member's own instruction — "test any correction before
+changing production"):** `scripts/audit/zerodte-trim-bank-live-ab.mjs` replays the real
+historical trim_scale-committed population on real Polygon minute bars through the REAL,
+imported `exit-engine.ts` functions, comparing `broken_live` (today's real shipped mechanics —
+`trimsTaken` forced equal to `armed`) against `fixed` (a genuine, monotonic `trims_taken`
+latch). First run, 45-day window, capped samples: **most real trim_scale rows never reach a
+peak high enough to arm even one tranche at all** (median real peak across 249 real rows:
++5.5%, well under the neutral regime's +20% first trigger; only 45/249, 18%, ever reach
++20%+) — so a capped random sample thins the population this question actually has power over.
+First pass (n=23/25 per half, cap 25): mean_delta TRAIN +0.82% (CI [-0.84, +2.48]), VALIDATION
+-0.01% (CI [-0.43, +0.40]) — thin (3/23, 2/25 rows ever armed a tranche). Re-run with cap 100
+(n=96/90 graded, 8/96 and 19/90 rows now arming a tranche): mean_delta TRAIN -0.39% (CI
+[-1.31, +0.53]), VALIDATION -0.61% (CI [-1.55, +0.34]) — still INCONCLUSIVE (CI straddles zero
+both times), but now consistently slightly NEGATIVE in both halves.
+
+**v2 (member follow-up — "verify the effective flags... test each flag separately and
+together, using realistic fills, costs, and out-of-sample results"):** rewrote the script to
+test all FOUR flag combinations (`neither`/`bank_only`/`regime_only`/`both`) plus a fifth cell
+substituting the member's literal +25% first trigger for the shipped +20%, and switched from a
+bar-derived mechanical fill to a REAL point-in-time NBBO quote at each fill's own bar timestamp,
+filled at the bid (the same conservative, executable-side convention `executableFill`/
+`live_pnl_pct_exec` already use) — a genuinely more realistic cost model than v1's. Also
+directly verified the two flags' EFFECTIVE production state via two independent, non-inferred
+signatures rather than the raw env values (unreadable from this sandbox, no AWS creds): (1)
+every real `exit_policy_snapshot.trailing_rule` checked shows `active_regime=neutral` even for
+rows whose own `session_regime` column says `range` — REGIME_LIVE is off, directly observed,
+not guessed; (2) zero genuine partial-tranche banks across 122 real rows checked (109
+reconstructed + 13 live), despite ~18% of the population clearing a high-enough peak —
+statistically implausible if BANK_LIVE were genuinely on. Both signatures agree: **both flags
+are confirmed off in production today.**
+
+Result, 45-day window, n=57/55 graded per half (cap 60):
+
+```
+TRAIN      BANK_LIVE only: delta +0.74% CI[-0.27,+1.74]   REGIME_LIVE only: delta -0.03% CI[-0.09,+0.03]
+           BOTH:           delta +0.77% CI[-0.19,+1.74]   LITERAL (+25% trigger): delta +0.77% (identical to BOTH)
+VALIDATION BANK_LIVE only: delta -0.21% CI[-2.32,+1.89]   REGIME_LIVE only: delta  0.00% CI[ 0.00, 0.00]
+           BOTH:           delta -0.09% CI[-1.94,+1.75]   LITERAL (+25% trigger): delta -0.09% (identical to BOTH)
+```
+
+Every cell INCONCLUSIVE (CI straddles zero), and — unlike the v1 result — the point estimate
+now **flips sign between TRAIN and VALIDATION** for both BANK_LIVE and BOTH, a weaker and more
+honest "no evidence of benefit either way" result than v1's consistent-negative read; the
+realistic bid-side fill appears to erase most of what looked like a mild edge under v1's
+frictionless mechanical fill. REGIME_LIVE alone never banks anything (expected — its effect
+runs entirely through the shared floor's trend-regime dead-zone branch, a rare case in this
+sample) and its own delta is statistically zero in both halves. The LITERAL +25%-trigger cell
+produced byte-identical results to the shipped +20% cell in both halves (same rows banked, same
+count) — in this sample, the 5-point gap between the member's stated intent and the shipped
+constant never actually changed which bar a tranche armed on, so it does not appear to be the
+source of any of this question's uncertainty.
+
+**No gate, exit rule, or env flag changed by this investigation (either round).** This is a
+confirmed, high-severity (every A/B-tier play, every session, for at least 14 real days)
+finding that the live trim ladder's protective/partial-profit-taking mechanism does not fire —
+but fixing it is an env-var flip, not a code change, and the codebase's own calibration-first
+discipline (FINDINGS.md) explicitly reserves that decision for a deliberate operator review once
+the economic case is clear. Two independent real-cost backtests (v1 and v2, different fill
+models) now agree the economic case is NOT clear on current evidence: v1 leaned mildly negative,
+v2 (the more realistic fill model) is a coin flip with the sign depending on which half of the
+data is looked at. **Protective and time exits (hard stop, thesis-break, flat-timeout, the
+shared floor itself) are all independently verified intact and firing correctly, and are checked
+on every single bar in every cell before any trim/floor logic — a position is never forced to
+wait for a profit target** — this finding is specifically about the MISSING partial-profit-taking
+step, not about any of the capital-protection rules.
+
+**Recommendation:** do not flip `ZERODTE_TRIM_BANK_LIVE`/`ZERODTE_TRIM_REGIME_LIVE` on the
+evidence gathered so far. The mechanism genuinely not firing live is a real, confirmed defect
+relative to the documented design — but "the ladder doesn't run" and "running the ladder would
+make money" are two different claims, and only the first is established. Two rounds of
+real-cost, held-out testing have not found a reliable edge either way. If the flags are flipped
+anyway (an operator call this investigation does not make), do so as a small, monitored,
+reversible rollout — not a blind flip — given the sign instability between TRAIN and VALIDATION
+in the one real-cost model built so far.
 ### Loss-side early de-risk A/B — the exit ladder's missing symmetric half, MEASURED, no gate changed (2026-10-20)
 
 **WHY THIS EXISTS.** A live member audit of today's open book (2026-10-20) flagged a real,
