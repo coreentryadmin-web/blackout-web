@@ -5014,6 +5014,57 @@ test("watchForSection: a NATIVE position's thesis line still renders (suppressio
   assert.match(section.body, /Thesis \*\*intact\*\* — structure holding/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): the section's `bias` field used to badge
+// "bearish" whenever `thesisBreak.level === "break"`, with no reference to `play.direction` —
+// `thesisBreak.level` is a direction-agnostic "has this setup's own edge invalidated" verdict, not
+// a market-direction read. For a SHORT play, a thesis break typically coincides with the underlying
+// breaking UPWARD (the move that invalidates a short) — the opposite of what the old code badged.
+// Same defect class already fixed at a sibling call site (thesisHealthSection, play-brief.ts,
+// Largo C5, 2026-09-15) by dropping the bias mapping for a non-directional signal entirely.
+test("watchForSection: bias is never badged bearish off a direction-agnostic thesis break (SHORT play, live repro shape)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "SHORT",
+        regime: "Breakdown continuation · regime 1.00",
+        thesisBreak: { level: "break", note: "persistence lost" },
+      }),
+      asOf: "2026-10-20 08:30 ET",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.equal(section.bias, "neutral", "a direction-agnostic thesis break must not badge a market-direction bias");
+});
+
+test("watchForSection: bias stays neutral on a LONG play's thesis break too (same fix, not direction-specific)", () => {
+  const section = watchForSection(
+    {
+      play: fixturePlay({
+        direction: "LONG",
+        regime: "Pullback continuation · regime 1.00",
+        thesisBreak: { level: "break", note: "persistence lost" },
+      }),
+      asOf: "2026-10-20 08:30 ET",
+      sessionDate: "2026-10-20",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+    },
+    "open",
+  );
+  assert.equal(section.bias, "neutral");
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro UNH and MU WATCH briefs, same
 // cycle): the thesis-intact line above had no `deadPlayReason(play)` guard, so it rendered
 // unconditionally for a genuinely dead (EXTENDED/EXTENDED_CHASE) WATCH play — directly
