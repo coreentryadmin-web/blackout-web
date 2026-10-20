@@ -11,6 +11,7 @@ import {
   type ProductRead,
   type ProductSignal,
 } from "@/lib/largo/contract/product-read";
+import { etStampFromIso } from "@/lib/largo/temporal/bar-session-date";
 import type { SwingPlayBriefResult } from "@/lib/swing/play-brief-types";
 
 /** Swing play brief data for Largo consumption — the structured answer. */
@@ -35,37 +36,26 @@ export type SwingPlayBriefSignal = ProductSignal & {
 };
 
 /**
- * Convert ET time to "YYYY-MM-DD HH:mm ET" format required by Largo C1.
+ * Produce the "YYYY-MM-DD HH:mm ET" string Largo C1 requires for `as_of`.
  *
- * @param isoString ISO 8601 timestamp (e.g., "2026-10-18T15:30:45.123Z")
- * @returns "YYYY-MM-DD HH:mm ET"
+ * BUG THIS REPLACES (found live 2026-10-20, 100% of play-brief requests 503ing with
+ * "Invalid time value"): the real `SwingPlayBriefResult.asOf` comes from
+ * `play-brief-context.ts`'s `etStamp(nowMs)`, which already returns this exact ET-stamp display
+ * format — never a raw ISO-8601 string. A prior version of this function assumed an ISO input and
+ * called `new Date(isoString)` on it directly; fed an ET-stamp string, that produces an Invalid
+ * Date, and `Intl.DateTimeFormat.formatToParts()` throws `RangeError: Invalid time value` on an
+ * Invalid Date — on every single call, since the ISO-fallback branch in `play-brief-context.ts`
+ * (`etStamp(nowMs) ?? new Date(nowMs).toISOString()`) is effectively dead code (`etStamp` only
+ * returns null for a non-finite/non-positive timestamp, never for `Date.now()`).
+ *
+ * Reuses the shared `etStampFromIso` (src/lib/largo/temporal/bar-session-date.ts) instead of a
+ * second, ad-hoc formatter: it already handles both shapes this field can actually carry — an
+ * already-ET-stamped string passes through unchanged (`Date.parse` on "YYYY-MM-DD HH:mm ET"
+ * fails, so it falls back to returning the input as-is, which is already correct), and a genuine
+ * ISO string is parsed and reformatted into the same ET-stamp shape.
  */
-function formatAsOfET(isoString: string): string {
-  const date = new Date(isoString);
-  // Convert to ET (UTC-4 in summer, UTC-5 in winter)
-  const etFormatter = new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: undefined,
-    timeZone: "America/New_York",
-    hour12: false,
-  });
-
-  const parts = etFormatter.formatToParts(date);
-  const year = parts.find((p) => p.type === "year")?.value;
-  const month = parts.find((p) => p.type === "month")?.value;
-  const day = parts.find((p) => p.type === "day")?.value;
-  const hour = parts.find((p) => p.type === "hour")?.value;
-  const minute = parts.find((p) => p.type === "minute")?.value;
-
-  if (!year || !month || !day || !hour || !minute) {
-    throw new Error(`Failed to format date: ${isoString}`);
-  }
-
-  return `${year}-${month}-${day} ${hour}:${minute} ET`;
+function formatAsOfET(asOf: string): string {
+  return etStampFromIso(asOf) ?? asOf;
 }
 
 /**
