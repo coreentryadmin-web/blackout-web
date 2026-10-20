@@ -15,6 +15,8 @@ import {
   resolveImageTag,
   rewriteImage,
   stripStaleSecretRefs,
+  computeWebDeployMaximumPercent,
+  minimumMaximumPercentForRoll,
   // @ts-expect-error — untyped .mjs sibling
 } from "./lib/taskdef-rewrite.mjs";
 
@@ -247,14 +249,15 @@ test("dropReadOnlyTaskDefFields: removes exactly the register-rejected fields, k
 const WORKFLOW = ".github/workflows/ecr-push-production.yml";
 
 /** Every `--deployment-configuration "..."` literal in the deploy workflow, parsed. */
-function workflowDeploymentConfigs(): { min: number; max: number; raw: string }[] {
+function workflowDeploymentConfigs(): { min: number; max: number; raw: string; dynamicMax: boolean }[] {
   const src = readFileSync(WORKFLOW, "utf8");
-  const out: { min: number; max: number; raw: string }[] = [];
+  const out: { min: number; max: number; raw: string; dynamicMax: boolean }[] = [];
   for (const m of src.matchAll(/--deployment-configuration\s+"([^"]+)"/g)) {
     const raw = m[1];
     const min = Number(/minimumHealthyPercent=(\d+)/.exec(raw)?.[1]);
-    const max = Number(/maximumPercent=(\d+)/.exec(raw)?.[1]);
-    out.push({ min, max, raw });
+    const dynamicMax = /\$\{WEB_DEPLOY_MAX\}/.test(raw);
+    const max = dynamicMax ? 120 : Number(/maximumPercent=(\d+)/.exec(raw)?.[1]);
+    out.push({ min, max, raw, dynamicMax });
   }
   return out;
 }
@@ -269,23 +272,23 @@ test("deploy workflow declares a deployment window at all", () => {
 });
 
 test("deploy workflow's WEB window survives assertDeploymentConfigSane across the autoscaling range", () => {
-  // blackout-production-web autoscales desired 5..12. The workflow's literal is applied to the
-  // live service, so it must be sane at EVERY desired count the autoscaler can reach — not just
-  // the count that happens to be live when someone edits it. 100/112 passes at no count in this
-  // range (floor(d * 1.12) == d for 5..8), which is precisely the deadlock that shipped before.
+  // blackout-production-web autoscales desired 5..12 (and can dip lower). maximumPercent is
+  // recomputed from live desiredCount — see computeWebDeployMaximumPercent.
   const web = workflowDeploymentConfigs().find((c) => c.min >= 100 || c.min === 50);
   assert.ok(web, "no web-shaped deployment window found");
-  for (let desired = 5; desired <= 12; desired++) {
+  assert.equal(web!.dynamicMax, true, "web roll must compute maximumPercent dynamically");
+  for (let desired = 2; desired <= 12; desired++) {
+    const max = computeWebDeployMaximumPercent(desired);
     const r = assertDeploymentConfigSane({
       serviceName: "blackout-production-web",
       desiredCount: desired,
       deploymentConfiguration: {
         deploymentCircuitBreaker: CB_OK,
         minimumHealthyPercent: web!.min,
-        maximumPercent: web!.max,
+        maximumPercent: max,
       },
     });
-    assert.equal(r.ok, true, `workflow window ${web!.min}/${web!.max} FAILS at desiredCount=${desired}: ${r.failures.join(" ")}`);
+    assert.equal(r.ok, true, `workflow window ${web!.min}/${max} FAILS at desiredCount=${desired}: ${r.failures.join(" ")}`);
   }
 });
 
@@ -385,6 +388,23 @@ test("assertDeploymentConfigSane: 100/112 is the known deadlock and must FAIL ac
 test("assertDeploymentConfigSane: 100/120 clears the whole 5..12 autoscaling range", () => {
   for (let desired = 5; desired <= 12; desired += 1) {
     assert.equal(assertDeploymentConfigSane(svc({ desiredCount: desired })).ok, true, `desired=${desired}`);
+  }
+});
+
+test("computeWebDeployMaximumPercent: unblocks low desiredCount rolls without exceeding vCPU quota", () => {
+  assert.equal(minimumMaximumPercentForRoll(2), 150);
+  assert.equal(computeWebDeployMaximumPercent(2), 150);
+  assert.equal(computeWebDeployMaximumPercent(4), 125);
+  assert.equal(computeWebDeployMaximumPercent(5), 120);
+  for (let desired = 2; desired <= 12; desired += 1) {
+    const max = computeWebDeployMaximumPercent(desired);
+    const r = assertDeploymentConfigSane(
+      svc({
+        desiredCount: desired,
+        deploymentConfiguration: { deploymentCircuitBreaker: CB_OK, minimumHealthyPercent: 100, maximumPercent: max },
+      }),
+    );
+    assert.equal(r.ok, true, `desired=${desired} max=${max}: ${r.failures.join(" ")}`);
   }
 });
 

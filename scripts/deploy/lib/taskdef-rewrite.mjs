@@ -310,6 +310,62 @@ export function assertDeploymentConfigSane(service) {
   return { ok: failures.length === 0, failures, notes, config: dc };
 }
 
+/** Account Fargate On-Demand vCPU quota (L-3032A538). Must stay in sync with ecs-deploy-config.test.ts. */
+export const WEB_DEPLOY_VCPU_QUOTA = 30;
+/** blackout-production-web task size (2048 CPU units). */
+export const WEB_DEPLOY_TASK_VCPU = 2;
+/** blackout-production-market-worker vCPU reserved during a web roll (2 tasks × 1 vCPU). */
+export const WEB_DEPLOY_WORKER_VCPU = 2;
+/** Smallest maximumPercent that clears deadlocks at desiredCount ≥ 5 under minHealthy=100. */
+export const WEB_DEPLOY_MAX_PERCENT_FLOOR = 120;
+
+export function ceilingTasksForDeploy(desired, maximumPercent) {
+  return Math.floor((Number(desired) * Number(maximumPercent)) / 100);
+}
+
+/**
+ * Minimum maximumPercent so minHealthy=100 can start one replacement task without stopping first.
+ * ECS rounds the ceiling DOWN: need floor(desired × max/100) ≥ desired + 1.
+ */
+export function minimumMaximumPercentForRoll(desired, minimumHealthyPercent = 100) {
+  const d = Number(desired);
+  if (!Number.isFinite(d) || d <= 0) return WEB_DEPLOY_MAX_PERCENT_FLOOR;
+  if (minimumHealthyPercent < 100) return WEB_DEPLOY_MAX_PERCENT_FLOOR;
+  return Math.ceil((100 * (d + 1)) / d);
+}
+
+/**
+ * maximumPercent for blackout-production-web's `update-service --deployment-configuration`.
+ * Recomputes from the LIVE desiredCount on every deploy — a fixed 120 deadlocks below 5 tasks
+ * (measured 2026-10-20: desiredCount=2 hung 36 min with running=0/1 and ECS events
+ * "unable to stop or start tasks during a deployment because of the service deployment
+ * configuration").
+ */
+export function computeWebDeployMaximumPercent(
+  desired,
+  {
+    minimumHealthyPercent = 100,
+    floorPercent = WEB_DEPLOY_MAX_PERCENT_FLOOR,
+    vcpuQuota = WEB_DEPLOY_VCPU_QUOTA,
+    webTaskVcpu = WEB_DEPLOY_TASK_VCPU,
+    workerVcpu = WEB_DEPLOY_WORKER_VCPU,
+  } = {},
+) {
+  const d = Number(desired);
+  if (!Number.isFinite(d) || d <= 0) return floorPercent;
+  const minForRoll = minimumMaximumPercentForRoll(d, minimumHealthyPercent);
+  let maxPct = Math.max(floorPercent, minForRoll);
+  while (ceilingTasksForDeploy(d, maxPct) * webTaskVcpu + workerVcpu > vcpuQuota) {
+    maxPct -= 1;
+    if (maxPct < minForRoll) {
+      throw new Error(
+        `cannot satisfy vCPU quota (${vcpuQuota}) and roll headroom at desiredCount=${d} (needs maximumPercent≥${minForRoll})`,
+      );
+    }
+  }
+  return maxPct;
+}
+
 /**
  * Verdict for one poll of the PRIMARY deployment. Ported VERBATIM from the workflow's poll loop:
  * `rolloutState == COMPLETED` → done; `FAILED` → fail; `running == desired && desired != 0` → done.

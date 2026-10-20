@@ -266,11 +266,28 @@ jobs:
           # desired=4 would need max >= 125 to avoid deadlocking, and that same max permits 15
           # tasks (32 vCPU) at desired=12. If the min capacity is ever reduced, this whole block
           # must be re-solved (the test will fail loudly first).
+          #
+          # maximumPercent is NOT a constant: at desiredCount=2, minHealthy=100 and max=120 deadlocks
+          # (floor(2×1.20)=2, zero spare slots). Measured 2026-10-20 when the fleet scaled to 2.
+          # Recompute from the live desiredCount every deploy — see computeWebDeployMaximumPercent
+          # in scripts/deploy/lib/taskdef-rewrite.mjs (unit-tested).
+          WEB_DESIRED_COUNT=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].desiredCount' --output text)
+          echo "Live web desiredCount=${WEB_DESIRED_COUNT}"
+          WEB_DEPLOY_MAX=$(WEB_DESIRED_COUNT="${WEB_DESIRED_COUNT}" node --input-type=module -e "
+          import { computeWebDeployMaximumPercent } from './scripts/deploy/lib/taskdef-rewrite.mjs';
+          const d = Number(process.env.WEB_DESIRED_COUNT);
+          if (!Number.isFinite(d) || d <= 0) throw new Error('invalid desiredCount: ' + process.env.WEB_DESIRED_COUNT);
+          console.log(computeWebDeployMaximumPercent(d));
+          ")
+          echo "Computed web maximumPercent=${WEB_DEPLOY_MAX} (minHealthy=100, zero-loss roll)"
           aws ecs update-service \
             --cluster "${ECS_CLUSTER}" \
             --service "${ECS_SERVICE}" \
             --task-definition "${NEW_ARN}" \
-            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=120,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=${WEB_DEPLOY_MAX},deploymentCircuitBreaker={enable=true,rollback=true}" \
             --force-new-deployment
 
           # Custom stability check: poll the PRIMARY deployment only.

@@ -23,6 +23,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+// @ts-expect-error — untyped .mjs sibling
+import { computeWebDeployMaximumPercent } from "../../scripts/deploy/lib/taskdef-rewrite.mjs";
 
 const WORKFLOW = join(__dirname, "..", "..", ".github", "workflows", "ecr-push-production.yml");
 const workflow = readFileSync(WORKFLOW, "utf8");
@@ -51,31 +53,44 @@ const WORKER_VCPU = WORKER_TASKS * WORKER_TASK_VCPU;
  * land. Keep these in sync with the scalable target.
  */
 const WEB_MIN_TASKS = 5;
+/** Autoscaling can dip below MinCapacity; deploy must not deadlock when it does (2026-10-20 @ desired=2). */
+const WEB_SWEEP_MIN_TASKS = 2;
 const WEB_MAX_TASKS = 12;
-
-type DeployConfig = { minimumHealthyPercent: number; maximumPercent: number; circuitBreaker: boolean };
+/** Smallest max% used at desired ≥ 5; dynamic helper may go higher below that. */
+const WEB_DEPLOY_MAX_PERCENT_FLOOR = 120;
 
 /**
  * Pull the Nth `--deployment-configuration "..."` out of the workflow. Deliberately a regex over
  * the raw file rather than a YAML parse: these live inside a `run: |` shell block, so a YAML parser
  * only hands back one opaque string anyway.
  */
+function deployConfigRawStrings(): string[] {
+  return [...workflow.matchAll(/--deployment-configuration "([^"]+)"/g)].map((m) => m[1]);
+}
+
 function deployConfigs(): DeployConfig[] {
-  const matches = [...workflow.matchAll(/--deployment-configuration "([^"]+)"/g)];
-  return matches.map((m) => {
-    const raw = m[1];
+  return deployConfigRawStrings().map((raw) => {
     const num = (key: string): number => {
       const found = raw.match(new RegExp(`${key}=(\\d+)`));
       assert.ok(found, `deployment configuration is missing ${key}: ${raw}`);
       return Number(found[1]);
     };
+    const dynamicMax = /\$\{WEB_DEPLOY_MAX\}/.test(raw);
     return {
       minimumHealthyPercent: num("minimumHealthyPercent"),
-      maximumPercent: num("maximumPercent"),
+      maximumPercent: dynamicMax ? WEB_DEPLOY_MAX_PERCENT_FLOOR : num("maximumPercent"),
       circuitBreaker: /deploymentCircuitBreaker=\{enable=true,rollback=true\}/.test(raw),
+      dynamicMax,
     };
   });
 }
+
+type DeployConfig = {
+  minimumHealthyPercent: number;
+  maximumPercent: number;
+  circuitBreaker: boolean;
+  dynamicMax?: boolean;
+};
 
 const ceilingTasks = (desired: number, maximumPercent: number) =>
   Math.floor((desired * maximumPercent) / 100);
@@ -105,13 +120,20 @@ test("web service never drains below desiredCount during a deploy (minimumHealth
 // THE assertion that matters: sweep EVERY task count the autoscaler can hold, not a spot check.
 // A config can be perfectly valid at the counts you happen to think of and still deadlock at the
 // floor — maximumPercent=115 clears desired=8 and desired=12 but hangs at 5 and 6.
+test("web deploy workflow computes maximumPercent from live desiredCount", () => {
+  const [web] = deployConfigs();
+  assert.equal(web.dynamicMax, true, "web roll must recompute maximumPercent — a fixed 120 deadlocks below desired=5");
+  assert.match(workflow, /computeWebDeployMaximumPercent/);
+});
+
 test("web rolling deploy can make progress at EVERY task count in the autoscaling range", () => {
   const [web] = deployConfigs();
   const deadlocked: number[] = [];
   const noSpareSlot: number[] = [];
 
-  for (let desired = WEB_MIN_TASKS; desired <= WEB_MAX_TASKS; desired++) {
-    const ceiling = ceilingTasks(desired, web.maximumPercent);
+  for (let desired = WEB_SWEEP_MIN_TASKS; desired <= WEB_MAX_TASKS; desired++) {
+    const maximumPercent = computeWebDeployMaximumPercent(desired);
+    const ceiling = ceilingTasks(desired, maximumPercent);
     const floor = healthyFloorTasks(desired, web.minimumHealthyPercent);
     const canAdd = ceiling > desired;
     const canRemove = floor < desired;
@@ -167,12 +189,12 @@ test("the web roll's REQUIRED concurrency fits under the vCPU quota with headroo
 });
 
 test("the web maximumPercent ceiling never demands more vCPU than the quota allows", () => {
-  const [web] = deployConfigs();
-  const peakTasks = ceilingTasks(WEB_MAX_TASKS, web.maximumPercent);
+  const peakMax = computeWebDeployMaximumPercent(WEB_MAX_TASKS);
+  const peakTasks = ceilingTasks(WEB_MAX_TASKS, peakMax);
   const peakVcpu = peakTasks * WEB_TASK_VCPU + WORKER_VCPU;
   assert.ok(
     peakVcpu <= VCPU_QUOTA,
-    `maximumPercent=${web.maximumPercent} permits ${peakTasks} web tasks at ` +
+    `maximumPercent=${peakMax} permits ${peakTasks} web tasks at ` +
       `desiredCount=${WEB_MAX_TASKS} (${peakTasks * WEB_TASK_VCPU} vCPU) + worker ${WORKER_VCPU} ` +
       `vCPU = ${peakVcpu} vCPU, over the ${VCPU_QUOTA} vCPU quota (L-3032A538). Lower ` +
       `maximumPercent, or raise VCPU_QUOTA once AWS grants the increase.`,
