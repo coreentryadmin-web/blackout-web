@@ -38,6 +38,269 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## vectorDeskSection rendered live entry/target/invalidation directives for a genuinely dead WATCH play, contradicting the brief's own Verdict — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit of the swing
+play-brief's chart/GEX technical-level sections, adversarially verified (3-agent pipeline,
+confirmed real on independent verification, not a single-pass guess).
+
+**Root cause:** `vectorDeskSection` (`src/lib/swing/play-brief-intel.ts`, feeds "Vector desk")
+renders Vector's current live directive block — headline, thesis, entry zone, targets,
+invalidation, "Watch now" bullets, badged bullish/bearish — for any non-closed, non-stale play.
+Unlike its sibling `watchForSection` (fixed earlier the same day, PR #6337, same standing
+mandate), it carried **no `deadPlayReason(play)` guard**. A genuinely dead WATCH candidate
+(entry-validity window expired, extended past the valid entry window, contract expired, or
+thesis already invalidated — `deadPlayReason`'s 4 cases) keeps `statusBucket === "watch"`, so
+this section's live-directive block still rendered concrete, actionable instructions for a setup
+the brief's own top-level Verdict already says not to chase.
+
+**Live impact:** "Vector desk" is folded into the narrative by default and only reachable as its
+own standalone section via the member-facing `expandIntel=1` ("Show detail") toggle
+(`SwingLargoInsightsPanel.tsx`) — real traffic, not a theoretical path. On a dead WATCH play, a
+member expanding the brief would see the Verdict section say *"Extended past the valid entry
+window — do not chase; wait for a reset."* and then, further down, "Vector desk" say *"Entry
+zone: **118-120** · Targets: **125** · **130** · Invalidation: **below 115**"* with a bullish/
+bearish badge — concrete, specific numbers directly contradicting the instruction not to act.
+
+**Fix:** Threaded the existing `ctx` parameter's `.play` into a `deadPlayReason(ctx.play) != null`
+check (the identical helper and 4-case scope `watchForSection`'s own fix uses). When the play is
+dead, the section keeps its informational content — headline, grade, conviction, thesis — the
+same design `vectorDeskSection`'s own closed-bucket branch already established one branch up
+(informational snapshot, no directives, forced-neutral bias) — and drops entry zone, targets,
+invalidation, and "Watch now" before they're pushed, returning early with a neutral bias.
+
+**Fix rationale:** Mirroring the closed-bucket branch's own established shape (rather than
+inventing new framing) keeps the file internally consistent: both "this play is not something to
+act on right now" states (closed, or dead-but-still-WATCH) now get the same treatment — keep the
+read, drop the call to action. `ctx?.play` is optional in the signature (unchanged), so a caller
+that doesn't supply `ctx` (or a `ctx` without `.play` set) defaults `isDeadPlay` to `false` —
+identical to prior behavior, no regression for any existing call site.
+
+**Blast radius:** `vectorDeskSection` has exactly one production call site
+(`buildIntelSections`, same file), which already passes `ctx` — a one-line guard, not a new
+computation or parameter.
+
+**Tests:** 3 new regression tests in `play-brief-intel.test.ts` (dead WATCH play suppresses all
+four directive lines + forces neutral bias; a live WATCH play keeps the full block, no
+regression; no-`ctx.play`-supplied keeps the full block, safe default) — all fail against the
+pre-fix code (verified via `git stash`), pass after. Full suite green on Node 20, `tsc --noEmit`
+clean.
+
+## A swing play-brief could name a GEX wall as "nearest" while a different section in the SAME brief named the gamma flip — the third unreconciled "nearest level" precedence in this file — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit of the swing
+play-brief's chart/GEX technical-level sections (`chartTechnicalsSection`, `chartLevelsSection`,
+`gexPostureSection`, `wallDynamicsSection`, `vectorDeskSection`), adversarially verified (3-agent
+pipeline: investigate → verify-by-source-tracing; confirmed real, not refuted).
+
+**Root cause:** Three independent places in the swing play-brief answer "what's the nearest level
+to spot" and used three different inputs:
+
+1. `gexPostureSection`'s "Nearest wall" line (`src/lib/swing/play-brief-intel.ts`) called the
+   shared `nearestWallFromLevels(callWall, putWall, spot)` (`gex-nearest-wall.ts`), which **only
+   ever compares the call/put wall — it has no gamma-flip parameter at all.**
+2. `chartLevelsSection`'s own "Nearest wall" line (same file) is sourced from
+   `vec.proximity`/`deriveWallProximity`, which **does** consider the flip as a third, equally
+   eligible candidate (`WallProximitySide = "call" | "put" | "flip"`).
+3. `play-brief.ts`'s structured "Dealer posture" evidence line computed its own local wall-only
+   answer via the same shared helper, then fell back to the raw (non-Vector-preferred) `gex.flip`
+   **only when no wall existed at all** (`else if (gex.flip != null)`) — never comparing the two.
+
+Whenever the flip genuinely sat closer to spot than either wall, (1) and (3) could only ever name
+a wall, while (2) correctly named the flip — three sections of one envelope disagreeing about the
+identical conceptual question. Same bug class this file has already fixed twice before for other
+"two precedence rules, one conceptual level" cases (GEX king strike, 2026-09-09; GEX walls+spot,
+2026-09-11) — this is the third instance, on the flip specifically.
+
+A fourth, same-section defect surfaced tracing this: `chartLevelsSection`'s OWN "Nearest wall" line
+(via `vec.proximity`) restates the identical value its own immediately-preceding "Gamma flip:" line
+already rendered, whenever `vec.proximity.side === "flip"` — a same-section self-duplicate, not
+just a cross-section one.
+
+**Live impact:** Reachable in production for every CLOSED-bucket brief (the collapse pipeline
+never strips these sections there) and for any bucket via the member-facing `expandIntel=1`
+("Show detail") toggle. Concrete repro traced by the audit: spot 7550, call wall 7650 (1.3% away),
+put wall 7400 (2.0% away), gamma flip 7560 (0.13% away, clearly nearest) — `chartLevelsSection`
+correctly says *"Nearest wall: 7560.00 gamma flip overhead (0.13% away)..."* directly under its own
+*"Gamma flip: 7560.00 — +0.1% ($10.00 from spot)"* (the self-duplicate), while `gexPostureSection`
+in the SAME envelope says *"Nearest wall: 7650.00 (resistance, 100.0 pts from spot 7550.00)"* —
+naming a level ten times farther away as "nearest."
+
+**Fix:**
+- Added `nearestLevelWithFlip(wall, flip, flipFromStaleGex, spot)` (`play-brief-intel.ts`) — a
+  thin wrapper that extends a wall-only `NearestWall` answer with the flip as a third candidate,
+  returning whichever is genuinely nearest.
+- Extended `preferredGexWalls(ctx)` to also resolve `flip`/`flipFromStaleGex` with the identical
+  Vector-first/GEX-matrix-fallback precedence `chartLevelsSection` already established inline —
+  centralizing it the same way the function's own header already does for the walls, so every
+  "nearest level" consumer reads the same flip value.
+- `gexPostureSection` now calls `nearestLevelWithFlip` instead of rendering the wall-only answer
+  directly; the rendered label swaps to "gamma flip" when the flip wins, otherwise unchanged.
+- `play-brief.ts`'s Dealer-posture line now compares wall vs. flip via the same helper instead of
+  an `else if` fallback-only-when-absent, and reads the Vector-preferred flip (previously raw
+  `gex.flip`) — safe unconditionally there since that call site is already gated on `!gexStale`.
+- `chartLevelsSection`'s own "Nearest wall" line is now suppressed when `vec.proximity.side ===
+  "flip"` and the flip is already rendered above it — the self-duplicate fix. A genuine wall
+  callout (`side === "call"`/`"put"`) is untouched.
+
+**Fix rationale:** Deliberately NOT fixed inside the shared `nearestWallFromLevels` itself — that
+helper also backs `gex-positioning.ts`'s general-purpose `nearest_wall` field, read by other desks
+(e.g. Thermal) with no flip concept wired into this call shape; widening it there risks an
+unreviewed behavior change outside swing. Wrapping at the three swing call sites keeps the fix
+scoped to the actual bug and the actual blast radius.
+
+**Blast radius:** All three call sites that answer "nearest level to spot" for swing
+(`gexPostureSection`, `chartLevelsSection`, `play-brief.ts`'s Dealer-posture line) are now fixed in
+this one PR, per the standing PR write-up policy's blast-radius requirement — not just the one the
+audit happened to trip over first.
+
+**Tests:** 2 pre-existing `play-brief.test.ts` fixtures had an incidental flip value closer to spot
+than the wall they were asserting on (testing a different, still-valid concern — Vector-vs-GEX-matrix
+wall precedence) — adjusted to a flip value that doesn't interfere, with a comment explaining why,
+preserving each test's original intent. 5 new regression tests added (gexPostureSection flip-wins +
+no-regression; chartLevelsSection self-duplicate suppression + no-regression; Dealer-posture
+flip-wins) — all fail against the pre-fix code (verified via `git stash`), pass after. Full suite
+green on Node 20, `tsc --noEmit` clean.
+
+## `resend.emails.send()` had no timeout — could stall an unauthenticated HTTP response indefinitely — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, DISCOVERY-lane error-handling/retry-logic sweep, via a background
+Explore-agent audit of non-owned-lane API routes and provider modules.
+
+**Root cause:** `src/lib/email/resend-client.ts`'s `sendEmail()` called `resend.emails.send(...)`
+with no second `options` argument. Traced into the installed SDK
+(`node_modules/resend/dist/index.cjs`): `Emails.send` → `Resend.post` → `Resend.fetchRequest` is a
+plain `fetch(url, options)` with whatever `options` the caller passed — the SDK has no built-in
+timeout of its own. Every other external call in this codebase (Polygon, UW) goes through a
+governed wrapper (`trackedFetch`/`polygonTrackedFetch`) that applies `AbortSignal.timeout(...)` by
+default; Resend calls had no equivalent, so a hung upstream connection (slow TLS handshake, dead
+socket) left the call pending indefinitely.
+
+**Live impact:** `src/app/api/public/email-capture/route.ts` `await`s `sendEmail()` before
+responding to an **unauthenticated** caller — a hung Resend call would stall that live HTTP
+response with no timeout anywhere in the chain, and no auth gate limits who can trigger it. Every
+other `sendEmail()` caller (Whop webhook nudges, billing-lifecycle emails) is fire-and-forget
+(`void sendEmail(...).catch(...)`), where the same hang would "only" leak a pending async call
+rather than block a response — but the fix applies uniformly since it's set once in the shared
+client.
+
+**Fix:** added `AbortSignal.timeout(SEND_TIMEOUT_MS)` (10s, matching the order of magnitude of
+this codebase's other external-API timeouts, e.g. `polygon-news.ts`'s `NEWS_TIMEOUT_MS=8000`, with
+a little extra margin for attachment payloads) as the `send()` call's second argument. The SDK's
+own TypeScript type (`CreateEmailRequestOptions extends PostOptions`) only declares
+`query`/`headers` and doesn't know about `signal`, even though the runtime `Resend.post()` spreads
+the whole options object into `fetch()` and honors it — a type-definition gap, not a real runtime
+restriction. Cast past it with `as Parameters<typeof resend.emails.send>[1]` rather than widening
+the SDK's own types.
+
+**Blast radius:** single shared client (`resend-client.ts`), used by every `sendEmail()` caller in
+the codebase. A timeout firing surfaces through the existing `catch (err)` block exactly like any
+other send failure (`{ ok: false, error: ... }`) — no new error path, no behavior change for the
+success case.
+
+**Test:** `src/lib/email/resend-client.test.ts` (new file) — mocks the `resend` package and
+asserts `sendEmail()` passes a real `AbortSignal` as the `send()` call's second argument.
+RED→GREEN proven via `git stash` on `resend-client.ts` alone (fails without the fix, passes with
+it). Repo-wide `npx tsc --noEmit` clean.
+
+## Five member-facing GET routes swallowed DB/query errors with zero logging — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, DISCOVERY-lane error-handling/retry-logic sweep, via a background
+Explore-agent audit of non-owned-lane API routes.
+
+**Root cause:** a recurring pattern across five GET routes — a bare `catch { return
+<fail-state> }` with no `console.error`, no telemetry, nothing — meant a real Postgres outage or
+query error was indistinguishable from "legitimately no data yet" for both the client and ops.
+Confirmed in:
+- `src/app/api/coaching/alerts/route.ts` → `{ alerts: [] }` (200)
+- `src/app/api/market/regime/route.ts` → `{ available: false }` (200)
+- `src/app/api/market/anomalies/route.ts` → `{ anomalies: [] }` (200)
+- `src/app/api/track-record/plays/route.ts` → `{ available: false }` (503)
+- `src/app/api/brief/premarket/route.ts` → `{ available: false }` (200)
+
+Each of these files' own **POST** handler a few lines below already does
+`console.error("[route] POST failed:", err)` on the exact same kind of failure — the asymmetry
+between a logged write path and a silent read path reads as an oversight, not a deliberate
+fail-open decision (this codebase's genuinely-intentional fail-open catches elsewhere, e.g. Redis
+reads in `market/largo/query/route.ts`, explain themselves in a comment; none of these five did).
+
+**Live impact:** low-to-moderate — none of these are hard outages (every route still returns a
+coherent fail-state to the client), but a genuine DB problem on any of these five paths would have
+produced zero signal anywhere, making it effectively undiagnosable from logs/alerts until a member
+noticed missing data and reported it.
+
+**Fix:** changed each `catch {` to `catch (err)` and added the matching
+`console.error("[route] GET failed:", err)` line, mirroring each file's own POST-handler
+convention exactly. No behavior change for callers — same status codes, same response shapes.
+
+**Blast radius:** five files, one line each. No other change.
+
+**Test:** `src/app/api/get-handler-error-logging.test.ts` (new file) — asserts each route's GET
+catch block binds the error and logs it, anchored on the first `} catch` in the file (the POST
+handler's own, already-logging catch comes later) so the check targets the right block.
+RED→GREEN proven via `git stash` on all five route files together (5/5 fail against the pre-fix
+sources; 5/5 pass restored). Combined with the two routes' own existing test files
+(`market/anomalies`, `market/regime`): 15/15 clean. Repo-wide `npx tsc --noEmit` clean.
+
+## Site-wide exit-intent lead-capture form had an unlabeled email input — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, DISCOVERY-lane accessibility sweep (`docs/audit/FULL-LIFECYCLE SCOPE
+EXPANSION` mandate), via a background Explore-agent static audit of marketing-facing components.
+
+**Root cause:** `src/components/marketing/ExitIntentCapture.tsx`'s email `<input>` (the site-wide
+exit-intent lead-capture modal, offering the free GEX cheat sheet) had no `<label htmlFor>`,
+`aria-label`, or `aria-labelledby` — only a `placeholder="you@example.com"`. The surrounding
+`Modal` primitive correctly labels the *dialog* itself (`aria-label`/`aria-labelledby` on the
+panel, title "Before you go"), but that labeling does not propagate to the input inside it.
+Placeholder text is not a reliable accessible-name substitute: it is not consistently announced by
+screen readers the way a real label is, and it disappears entirely once the visitor starts typing,
+leaving the field with no name at all for the rest of the interaction.
+
+**Live impact:** this component mounts once in `MarketingPageShell`, so it applies to every
+marketing page (homepage, pricing, FAQ, learn articles, etc.) — a screen-reader user tabbing into
+the exit-intent form heard only "edit text" with no indication the field expected an email address,
+on any page where the modal could fire.
+
+**Fix:** added `aria-label="Email address"` to the input — no visual change (the placeholder stays
+as the visible hint), purely an accessible-name fix for assistive technology.
+
+**Blast radius:** single component, single mount point (`MarketingPageShell`). No other form input
+in the files checked this cycle (`StaticMarketingNav`, `MarketingMobileNav`, `RedesignHome`,
+`StaticLandingFooter`, `HomeGammaPromo`, `MethodologyLaneNav`, `LegalPageLayout`,
+`Breadcrumbs`) had the same defect — all were independently verified clean (real `<button>`/`<Link>`
+elements for interactive controls, correct `alt`/`aria-hidden` on images, no color-only
+information, no skipped heading levels).
+
+**Test:** `src/components/marketing/ExitIntentCapture.test.ts` (new file) — source-inspection
+regression test asserting the email input carries an `aria-label`. RED→GREEN proven via `git
+stash` on the component alone (fails without the fix, passes with it). Repo-wide `npx tsc --noEmit`
+clean.
+
 ## A CLOSED+stopped swing play-brief told a member the stop wasn't wrong, then two sections later told them it may have been too early — FIXED
 
 > **kind:** `FINDING`
