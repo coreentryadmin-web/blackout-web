@@ -806,6 +806,89 @@ test("trim_scale: a thesis break with no tranche banked says nothing about banke
   );
 });
 
+// ── Live bug, 2026-10-20 (SLS): ZERODTE_TRIM_BANK_LIVE is off in production, so
+// exit-sync.ts recomputes `trimsTaken` as trimTranchesArmed(peak, regime) — a COSMETIC
+// stand-in needed so the dead-zone guard above still behaves (see decideTrimScale's own
+// doc), never a real persisted bank. decideTrimScale had no way to tell the two apart and
+// built "already banked"/"thirds banked" narrative straight off that cosmetic count, so a
+// real SLS exit today read "Thesis broken... (2/2 tranches (33% each) already banked on
+// the way up.)" while the row's own timeline_tranches was null — the WHOLE position was a
+// single sale, nothing was ever banked, but the sentence a member reads claimed otherwise.
+// `trimsTakenIsGenuine: false` is the caller's honest signal that `trimsTaken` is cosmetic;
+// the FUNCTIONAL ladder math (armed/taken/dead-zone) must stay byte-identical — only the
+// claim that a bank occurred should disappear.
+test("trim_scale: trimsTakenIsGenuine:false suppresses the false 'already banked' claim on a floor exit", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 6.1016,
+      currentMark: 4.8,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "ratchet_profit_floor");
+  assert.equal(d.floorPnlPct, 21.02, "the floor math itself is unchanged — cosmetic vs real affects narrative only");
+  assert.doesNotMatch(d.detail, /already banked/);
+});
+
+test("trim_scale: trimsTakenIsGenuine:false suppresses the false 'already banked' claim on a thesis break (the live SLS shape)", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      currentMark: 5.0,
+      peakPremium: 6.0,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend", detail: "wall building against it" }]),
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "thesis_break:wall-trend");
+  assert.doesNotMatch(d.detail, /already banked/);
+});
+
+test("trim_scale: trimsTakenIsGenuine:false reports no-bank wording on 'both thirds armed, running' instead of claiming a bank", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 6.0,
+      currentMark: 5.6,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+    })
+  );
+  assert.equal(d.action, "RAISE_FLOOR");
+  assert.equal(d.reason, "trim_scale_running");
+  assert.doesNotMatch(d.detail, /\d\/2 thirds banked/);
+  assert.match(d.detail, /no tranche banked/);
+});
+
+test("trim_scale: trimsTakenIsGenuine:false reports the runner-target exit without claiming 'after both trims'", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      peakPremium: 8.0,
+      currentMark: 8.0,
+      trimsTaken: 2,
+      trimsTakenIsGenuine: false,
+    })
+  );
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "trim_scale_runner_target");
+  assert.doesNotMatch(d.detail, /after both trims|banked in full/);
+});
+
+test("trim_scale: trimsTakenIsGenuine omitted (default) preserves the existing genuine-bank narrative byte-for-byte", () => {
+  // Backward-compat guard: every pre-existing caller/test that passes trimsTaken directly
+  // (meaning it genuinely) must see unchanged text when this new field is simply absent.
+  const d = evaluateExitState(
+    input({ exitMode: "trim_scale", peakPremium: 6.1016, currentMark: 4.8, trimsTaken: 2 })
+  );
+  assert.match(d.detail, /This is the runner only — 2\/2 tranches \(33% each\) already banked on the way up\.$/);
+});
+
 test("trim_scale: a play that never armed a tranche still scratches on the flat timeout", () => {
   const d = evaluateExitState(
     input({ exitMode: "trim_scale", ageMinutes: 25, peakPremium: 4.16, currentMark: 3.8, trimsTaken: 0 }) // peak +4%, below the early-arm floor

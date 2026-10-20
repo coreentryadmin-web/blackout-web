@@ -228,6 +228,19 @@ export type ExitEngineInput = {
    *  the two-stage scale-out needs, same pattern as `trimmed` for the ratchet runner.
    *  trim_scale only; omitted → 0. Ignored in ratchet mode. */
   trimsTaken?: number;
+  /** Whether `trimsTaken` reflects a REAL persisted bank rather than a cosmetic
+   *  stand-in. Omitted → true (every existing caller/test that sets `trimsTaken`
+   *  directly means it genuinely). exit-sync.ts sets this to `false` while
+   *  ZERODTE_TRIM_BANK_LIVE is off: `trimsTaken` is recomputed there as
+   *  trimTranchesArmed(peak, regime) ONLY so the dead-zone guard below still behaves —
+   *  it is never a real bank. Controls narrative ONLY ("already banked" / "thirds
+   *  banked" text) — never the ladder math (armed/taken/dead-zone), which must stay
+   *  byte-identical regardless, so a cosmetic `taken` can still suppress the floor's
+   *  breakeven dump exactly as designed, while the member-facing sentence stops
+   *  claiming a bank that never happened (live 2026-10-20, SLS: a thesis-break exit
+   *  read "2/2 tranches already banked" while the row's own timeline_tranches was
+   *  null — the whole position was a single sale). trim_scale only. */
+  trimsTakenIsGenuine?: boolean;
   /** When GEX is on UW fallback (not Polygon chain), skip gex-walls thesis-break exits. */
   gexQualityDegraded?: boolean;
   /** True when this play's entry was committed by RELIEVING its only veto (a `gex-walls`
@@ -643,8 +656,11 @@ function decideTrimScale(
   // only narrative a member sees for that exit — never mentioned them.
   // A bare clause (no leading space, no trailing punctuation) so each call site below
   // can splice it into its own sentence naturally.
+  // Only claim a bank in the narrative when the caller says `taken` is real (see the
+  // field's own doc) — a cosmetic stand-in must never read as a trade that happened.
+  const genuinelyBanked = input.trimsTakenIsGenuine !== false;
   const bankedTranchesClause =
-    taken > 0
+    genuinelyBanked && taken > 0
       ? `${taken}/${thresholds.length} tranche${taken === 1 ? "" : "s"} ` +
         `(${Math.round(TRIM_SCALE_RULES.tranche_fraction * 100)}% each) already banked on the way up`
       : null;
@@ -788,7 +804,9 @@ function decideTrimScale(
       action: "EXIT",
       floorPnlPct: null,
       reason: "trim_scale_runner_target",
-      detail: `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} after both trims — the last third is banked in full.`,
+      detail: genuinelyBanked
+        ? `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} after both trims — the last third is banked in full.`
+        : `Mark ${currentMark} (${fmtPct(pnlPct)}) tagged the target ${input.planTarget} — exiting the full position at target.`,
     };
   }
 
@@ -815,9 +833,11 @@ function decideTrimScale(
       action: "RAISE_FLOOR",
       floorPnlPct: null,
       reason: "trim_scale_running",
-      detail:
-        `${taken}/2 thirds banked (regime ${regime}); running the last third at ${fmtPct(pnlPct)} ` +
-        `(peak ${fmtPct(peakPnlPct)}) to the plan target/stop.`,
+      detail: genuinelyBanked
+        ? `${taken}/2 thirds banked (regime ${regime}); running the last third at ${fmtPct(pnlPct)} ` +
+          `(peak ${fmtPct(peakPnlPct)}) to the plan target/stop.`
+        : `Profit floor armed by a ${fmtPct(peakPnlPct)} peak (regime ${regime}); running the full position ` +
+          `at ${fmtPct(pnlPct)} toward the plan target/stop (no tranche banked).`,
     };
   }
   return {
