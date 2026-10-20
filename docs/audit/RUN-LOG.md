@@ -4,6 +4,23 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-10-20 (06:17 UTC / Mon 02:18 ET) — [SEO] Lane heartbeat: container restart recovery, shipped fixes validated, flagged other-lane draft jam
+
+**Container restarted — `/home/user/blackout-web` was gone (empty `/home/user`).** Recovered per
+the standing restart-recovery discipline: `gh repo clone` failed (GraphQL blocked for this
+session), fell back to plain `git clone https://github.com/coreentryadmin-web/blackout-web.git`
+— succeeded, landed clean on `main` at tip `03c09f24f`. Node 20 was pre-installed
+(`/opt/node20/bin/node`) but `node_modules` was missing (fresh clone) — ran `npm ci` (756
+packages, ~31s). Confirmed `CF_API_TOKEN`/`CF_ZONE_ID` still set and the audit scripts present
+before trusting any of this session's prior state.
+
+Tuesday overnight, market closed. **Step 1:** purged Cloudflare edge HTML, re-measured live
+homepage CLS — **0.0002, GOOD** (69/69 routed, 0 fail). Fetched `/api/og` with a Googlebot UA:
+`200`, `content-type: image/png` — crawlable, confirmed on production. **Step 2 — PR sweep:** 1
+open agent PR fleet-wide, other-lane (0DTE/RVOL) — **#6317 (READY-BUT-DRAFT, `verify: pass`,
+still draft)**, a green-draft jam per the standing discipline. Flagged, not acted on — not this
+lane's PR to undraft. **Step 3:** no new SEO-lane gap found. No PR opened.
+
 ## 2026-10-20 (00:16 UTC / Mon 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, flagged other-lane draft jam
 
 Monday evening, market closed. Resynced to `origin/main` (`8c7a9eb4` → `9627f849`, other-lane
