@@ -130,7 +130,7 @@ async function mapPool(items, fn) {
     for (;;) {
       const i = next++;
       if (i >= items.length) return;
-      out[i] = await fn(items[i], i);
+      out[i] = await fn(items[i]);
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length || 1) }, () => worker()));
@@ -372,8 +372,8 @@ function summarize(label, sessionResults) {
   return all;
 }
 
-const trainAll = summarize("TRAIN", trainOut);
-const valAll = summarize("VALIDATION — HELD OUT, UNSEEN", valOut);
+summarize("TRAIN", trainOut);
+summarize("VALIDATION — HELD OUT, UNSEEN", valOut);
 
 console.log(`\n${line("═")}`);
 console.log(`  No gate, filter, or exit rule changed by this run — evidence-gathering only.`);
