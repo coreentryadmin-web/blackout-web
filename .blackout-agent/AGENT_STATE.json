@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T07:07:59.368Z",
+  "updated_at": "2026-10-20T08:09:07.128Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d932d15cc3d75c2008f8067b215c32a0412ec136",
+    "last_main_sha": "a1eb97f311b3cce8bd71c5491f410a7871ecc8dc",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-06T18:53:48.582Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-06T18:53:53.298Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-07T19:09:30.704Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-07T19:09:36.139Z",
       "type": "context_sync",
@@ -1271,9 +1253,47 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-10-20T08:08:56.279Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T08:09:01.557Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T08:09:07.128Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "open_prs": [
+    {
+      "number": 6326,
+      "title": "feat(audit): RVOL universe shadow scan across the full eligible scan universe",
+      "branch": "feat/zerodte-rvol-universe-shadow-scan",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-20T08:07:22Z"
+    },
+    {
+      "number": 6325,
+      "title": "feat(audit): thesis_rank_reject real-cost A/B with held-out split",
+      "branch": "fix/zerodte-thesis-rank-reject-real-cost-ab",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-20T08:07:20Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
