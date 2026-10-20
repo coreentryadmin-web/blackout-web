@@ -7,6 +7,8 @@ import {
   counterThesisLine,
   tradeManagerNarrativeSection,
   rollRunwayExtensionDays,
+  resolveInvalidationFocalLevel,
+  type FocalLevel,
 } from "./play-brief-narrative";
 import { computeSwingThesisHealth, thesisHealthUncalibrated } from "./thesis-health";
 
@@ -3712,4 +3714,30 @@ test("tradeManagerNarrativeSection: SHORT put wall ABOVE spot reads as already b
     /already broke|broken|cleared/i,
     "an above-spot put wall on a SHORT must read as already-cleared downside, not a future invalidation risk",
   );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): the LONG branch of resolveInvalidationFocalLevel
+// treats put_wall, dark_pool, AND king as candidate invalidation levels; the SHORT branch omitted
+// dark_pool entirely, breaking this function's own documented guarantee ("every section quoting the
+// one structural level that matters routes through here so they can never disagree") for any SHORT
+// play whose nearest real structure above spot happens to be a dark-pool print rather than a call
+// wall or GEX king.
+test("resolveInvalidationFocalLevel: a SHORT candidate now includes a resistance-side dark_pool level, matching the LONG branch's treatment", () => {
+  const focal: FocalLevel[] = [
+    { price: 106, kind: "dark_pool", label: "Dark pool 106.00", distancePct: 0.8 },
+    { price: 112, kind: "call_wall", label: "Call wall 112.00", distancePct: 6.0 },
+  ];
+  const level = resolveInvalidationFocalLevel(play({ direction: "SHORT" }), focal);
+  assert.ok(level, "a resistance-side dark_pool print must be selectable for a SHORT candidate");
+  assert.equal(level?.kind, "dark_pool");
+  assert.equal(level?.price, 106);
+});
+
+test("resolveInvalidationFocalLevel: a SHORT candidate still ignores a dark_pool level on the support side (below spot)", () => {
+  const focal: FocalLevel[] = [
+    { price: 95, kind: "dark_pool", label: "Dark pool 95.00", distancePct: -5.0 },
+    { price: 112, kind: "call_wall", label: "Call wall 112.00", distancePct: 6.0 },
+  ];
+  const level = resolveInvalidationFocalLevel(play({ direction: "SHORT" }), focal);
+  assert.equal(level?.kind, "call_wall", "a below-spot dark_pool print is not a SHORT's invalidation risk");
 });
