@@ -2512,6 +2512,22 @@ export function vectorDeskSection(
   }
   lines.push(`**${p.headline}** · grade **${p.grade}** · conviction **${p.conviction}**`);
   if (p.thesis) lines.push(p.thesis);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit): a genuinely
+  // dead WATCH candidate (deadPlayReason's 4 cases — invalidated, entry-window expired, contract
+  // expired, extended past the valid entry window) still reached this branch with none of the
+  // live-directive content below gated on it — unlike watchForSection's own "Thesis intact" line
+  // (play-brief-intel.ts, fixed the same day, same mandate), which got exactly this guard. A dead
+  // WATCH play's own top-level Verdict already says e.g. "Extended past the valid entry window —
+  // do not chase; wait for a reset.", but this section — reachable via the live, member-facing
+  // `expandIntel=1` toggle ("Show detail") since Vector desk is otherwise folded into the
+  // narrative — kept printing concrete "Entry zone"/"Targets"/"Watch now" directives for the
+  // SAME dead setup, directly contradicting the brief's own verdict. Mirrors vectorDeskSection's
+  // own closed-bucket design one branch up: keep the informational headline/grade/conviction/
+  // thesis snapshot, drop the actionable directives, force a neutral bias.
+  const isDeadPlay = ctx?.play ? deadPlayReason(ctx.play) != null : false;
+  if (isDeadPlay) {
+    return { title: "Vector desk", body: lines.join("\n\n"), bias: "neutral" };
+  }
   if (p.entryZone) lines.push(`Entry zone: **${p.entryZone}**`);
   if (p.targets.length) lines.push(`Targets: ${p.targets.map((t) => `**${t}**`).join(" · ")}`);
   if (p.invalidation) lines.push(`Invalidation: **${p.invalidation}**`);
