@@ -73,8 +73,8 @@ test("a cross-cron concurrency slot is acquired after the self-overlap lock and 
   );
 });
 
-test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
-  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
+test("the lock TTL matches the cron's own stale_after_min safety net (25 min = 1500s)", () => {
+  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 1500/);
 });
 
 // REGRESSION 2026-09-03: the original 480s TTL was shorter than real observed runtime
@@ -82,14 +82,50 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
 // a second sweep start while the first was still in flight — the exact overlap this guard exists
 // to prevent, confirmed by overlapping log timestamps the same window. The TTL must stay
 // comfortably above the worst measured elapsed time, not just above the schedule interval.
-test("the lock TTL has real margin above the worst measured sweep runtime (694s observed)", () => {
+//
+// REGRESSION 2026-10-12: the 900s TTL this raised it to was itself undershot — elapsed=1036542ms
+// measured on prod 14:35-14:52 UTC RTH-open, with overlapping log timestamps confirming the same
+// lock-expires-mid-sweep mechanism recurred at a new peak. Updated the worst-observed floor to
+// match so this test keeps catching the NEXT undershoot rather than quietly passing on a stale bar.
+//
+// REGRESSION 2026-10-13->10-20: #5975 silently reverted both this test and the TTL itself back to
+// the pre-2026-10-12 900s/694s values while adding the unrelated cross-cron concurrency guard,
+// re-opening the exact gap this test exists to catch (and it DID catch it structurally — the
+// reverted version of this test still passed against the reverted 900s TTL, because both moved
+// together; the regression needed cross-checking against cron-registry.ts's stale_after_min,
+// which #5975 did NOT touch, to surface). Restored to the correct 1500s/1037s values.
+test("the lock TTL has real margin above the worst measured sweep runtime (1036s observed)", () => {
   const match = routeSrc.match(/OVERLAP_LOCK_TTL_SEC = (\d+)/);
   assert.ok(match, "OVERLAP_LOCK_TTL_SEC must be a bare numeric literal for this check to hold");
   const ttlSec = Number(match[1]);
-  const worstObservedSec = 694; // ceil(693684ms)
+  const worstObservedSec = 1037; // ceil(1036542ms)
   assert.ok(
     ttlSec > worstObservedSec,
     `TTL (${ttlSec}s) must exceed the worst measured runtime (${worstObservedSec}s) or the lock expires mid-sweep`
+  );
+});
+
+// REGRESSION 2026-10-20 (DISCOVERY-lane re-verification): neither test above can catch a silent
+// revert of OVERLAP_LOCK_TTL_SEC on its own, because both assertions are internal to route.ts —
+// if the TTL constant and its own two tests all move together (as happened when #5975 reverted
+// 1500->900 while adding an unrelated feature), everything in THIS file still reports green. The
+// only place the "right" value was still recorded was cron-registry.ts's stale_after_min: 25 for
+// this cron's key, which every prior TTL-raising PR explicitly kept in lockstep with the TTL but
+// #5975 never touched. Cross-checking against that independent source of truth is what actually
+// catches this class of regression.
+test("the lock TTL stays in lockstep with this cron's own stale_after_min in cron-registry.ts", async () => {
+  const { CRON_JOBS } = await import("../../../../lib/cron-registry.ts");
+  const entry = CRON_JOBS.find((j: { key: string }) => j.key === "vector-pick-sweep");
+  assert.ok(entry, "cron-registry.ts must still carry a vector-pick-sweep entry");
+  const match = routeSrc.match(/OVERLAP_LOCK_TTL_SEC = (\d+)/);
+  assert.ok(match, "OVERLAP_LOCK_TTL_SEC must be a bare numeric literal for this check to hold");
+  const ttlMinutes = Number(match[1]) / 60;
+  assert.equal(
+    ttlMinutes,
+    (entry as { stale_after_min: number }).stale_after_min,
+    `OVERLAP_LOCK_TTL_SEC (${Number(match[1])}s = ${ttlMinutes}min) must match cron-registry.ts's ` +
+      `stale_after_min (${(entry as { stale_after_min: number }).stale_after_min}min) for this cron — ` +
+      "a mismatch means one was changed without the other, per this file's own stated lockstep intent"
   );
 });
 
