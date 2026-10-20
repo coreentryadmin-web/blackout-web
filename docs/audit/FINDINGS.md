@@ -38,6 +38,22 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## ECS production web deploy deadlock when desiredCount &lt; autoscaling floor — FIXED
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged via #6302 (`d235e5f5f`), confirmed in `main`'s own git log |
+| --- | --- |
+
+**Symptom:** `ECR push (production)` `build-and-push` timed out after 36m with PRIMARY `running=0/1` on commit `4e7f2eb22`. ECS events: "unable to stop or start tasks during a deployment because of the service deployment configuration."
+
+**Root cause:** Live `desiredCount` was **2** while deploy uses `minimumHealthyPercent=100` and `maximumPercent=120`. At desired=2, `floor(2×1.20)=2` tasks max — no spare slot for rolling replacement. Arithmetic is guarded for **[5,12]** in `ecs-deploy-config.test.ts` but not enforced at deploy time when count drifts below 5.
+
+**Fix:** Pre-scale web service to `WEB_AUTOSCALE_MIN=5` before `update-service --force-new-deployment` when current desired is lower; wait for `runningCount ≥ 5`. Regression test asserts workflow contains the guard.
+
+**Blast radius:** Production deploy pipeline only; does not change steady-state autoscaling bounds. Origin remained healthy on old tasks during failed roll.
+
+**Verify:** Next green `ecr-push-production` on `main` completes PRIMARY rollout; no ECS deployment-configuration errors at low desired counts.
+
 ## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Look-ahead leak in the point-in-time gate-replay tools — fixed, numbers corrected
 
 > **kind:** `FINDING`
