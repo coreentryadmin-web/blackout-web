@@ -66,7 +66,15 @@ const SECTORS: Record<string, string[]> = {
   megatech: ["AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "AMZU"],
   // PLTU is a leveraged single-stock ETF tracking PLTR itself — same bet, different wrapper.
   software: ["PLTR", "PLTU", "CRM", "NOW", "SNOW", "ADBE", "ORCL", "CRWD", "NET", "DDOG", "PANW", "MDB", "ZS", "SHOP"],
-  "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM"],
+  // Added 2026-10-20 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held TSLA and TSLL ("Direxion Daily TSLA Bull 2X ETF", confirmed via Polygon
+  // reference, not guessed from the symbol) concurrently LONG — the exact same single-stock
+  // leveraged-wrapper shape already fixed for SMCX/MULL/AVGX (semis), AMZU (megatech), PLTU
+  // (software) and GLWG (its own "corning" bucket) above: a leveraged ETF tracking ONE underlying
+  // that already has an entry here joins that entry's bucket directly, not its own isolated
+  // cluster. TSLA already has a peer bucket ("ev-auto"), so TSLL joins it rather than needing a
+  // new single-pair bucket the way GLW/GLWG did.
+  "ev-auto": ["TSLA", "RIVN", "LCID", "F", "GM", "TSLL"],
   financials: ["JPM", "GS", "BAC", "MS", "WFC", "C", "SCHW", "BLK", "AXP", "V", "MA"],
   energy: ["XOM", "CVX", "OXY", "SLB", "COP", "MPC", "PSX", "DVN", "HAL"],
   // MSTU/MSTX are leveraged single-stock ETFs tracking MSTR itself — same bet, different wrapper.

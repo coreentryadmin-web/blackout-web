@@ -308,3 +308,19 @@ test("KGC and AEM (large-cap gold-mining producers) cluster together as a precio
   assert.equal(sameThesis("KGC", "NVDA"), false);
   assert.equal(sameThesis("AEM", "XOM"), false);
 });
+
+// GAP FOUND (Ask Largo standing mandate, 2026-10-20, live finding): a real committed book held
+// TSLA and TSLL ("Direxion Daily TSLA Bull 2X ETF", confirmed via Polygon reference) concurrently
+// LONG. TSLL was in neither sector-map.ts nor ETF_PROXY_THEMES, so it resolved to an isolated
+// `NAME:TSLL` own-cluster and never flagged the real, literal-same-underlying concentration
+// against the TSLA position — the same single-stock leveraged-wrapper shape already fixed for
+// SMCX/MULL/AVGX/AMZU/GLWG, just TSLA's turn.
+test("TSLA and TSLL (plain stock vs its 2x-leveraged wrapper) cluster together, joining the whole ev-auto theme, not an isolated pair", () => {
+  assert.equal(resolveTheme("TSLA"), "ev-auto");
+  assert.equal(resolveTheme("TSLL"), "ev-auto");
+  assert.equal(sameThesis("TSLA", "TSLL"), true);
+  assert.equal(sameThesis("TSLL", "RIVN"), true); // joins the WHOLE ev-auto cluster, not just TSLA
+  // Not merged into an unrelated theme just because both are large-cap, options-liquid names.
+  assert.equal(sameThesis("TSLL", "NVDA"), false);
+  assert.equal(sameThesis("TSLA", "AAPL"), false);
+});
