@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T19:23:39.524Z",
+  "updated_at": "2026-10-20T20:07:47.549Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3f132e4e7a7677705a2892243c3ad4eedbf7aedb",
+    "last_main_sha": "5fc227c40b6b2f4379802f21f8440b48c3e85573",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-11T02:02:28.780Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T02:02:34.770Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T02:10:42.770Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
     {
       "at": "2026-10-11T02:10:48.402Z",
       "type": "context_sync",
@@ -1271,28 +1253,36 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T20:07:38.757Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T20:07:43.345Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T20:07:47.549Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 6395,
-      "title": "docs(findings): stage two zerodte-lane findings from re-verification sweep",
-      "branch": "docs/stage-zerodte-pin-measurement-debt",
+      "number": 6401,
+      "title": "docs(findings): fold batch-10 findings into FINDINGS.md",
+      "branch": "docs/fold-findings-20261020-batch10",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T19:20:27Z"
-    },
-    {
-      "number": 6394,
-      "title": "docs(findings): fold batch-8 findings into FINDINGS.md",
-      "branch": "docs/fold-findings-20261020-batch8",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T19:15:23Z"
+      "updated_at": "2026-10-20T20:01:21Z"
     },
     {
       "number": 5547,
