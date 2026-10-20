@@ -278,3 +278,23 @@ test("Pricing page SEO description derives its product count from the manifest, 
   const word = manifestProductCountWord();
   assert.equal(word, "seven", "sanity check: today's live count should spell out as \"seven\"");
 });
+
+// Regression (2026-10-20, DISCOVERY-lane SEO sweep): the root layout's default OG image alt
+// text said "BlackOut — 6 live engines, institutional-grade trading desk" — a hand-typed number
+// that went stale the moment the catalog grew to 7, same bug class as the Pricing-page finding
+// above. Any route that doesn't override openGraph.images (noindex/app pages, raw link shares)
+// serves this alt text, so a stale count there ships a product-count claim contradicting the
+// site's own manifest-derived copy everywhere else.
+test("root layout's default OG image alt text derives its product count from the manifest, not a hardcoded number", () => {
+  const rootLayout = readFileSync(join(REPO, "src/app/layout.tsx"), "utf8");
+  assert.match(
+    rootLayout,
+    /manifestProductCount\(\)/,
+    "root layout's OG alt text must derive its product count from the manifest, not a literal number"
+  );
+  assert.doesNotMatch(
+    rootLayout,
+    /alt:\s*["'`][^"'`]*\b\d+\b[^"'`]*live engines/i,
+    "no hardcoded stale product-count digit in the OG alt text"
+  );
+});
