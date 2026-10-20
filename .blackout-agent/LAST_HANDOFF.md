@@ -1,25 +1,27 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-07T20:01:00.000Z
+**At:** 2026-10-20T04:05:00.000Z
 **Run:** autopilot-state-recovery-loop-125e
 
 ## Summary
 
-**main GREEN** at `18ba5c386` — **#4561** (sibling warm-cron off-window cooldown) and **#4563** (SPX desk age clamp for modest future timestamp skew) merged atop #4560. ops:collect 0.
+**main CI:** `4e7f2eb22` — **verify + smoke GREEN**; **build-and-push RED** (ECS web roll timeout).
 
-## Deploy
+**Prod:** `/api/health` + `/api/ready` **200** (serving prior image).
 
-- main: `18ba5c386` (#4561 perf + #4563 SPX desk age clamp)
+## Deploy failure (triaged)
 
-## Peer review queue
+- Run: https://github.com/coreentryadmin-web/blackout-web/actions/runs/39363440942
+- Step: `Roll ECS production web` — PRIMARY stuck **running=0/1** for full 36m poll; timeout.
+- ECS events: repeated *"unable to stop or start tasks during a deployment because of the service deployment configuration"*; some new tasks **unhealthy (target request timed out)**.
+- **Not a code regression on this SHA** — Docker build succeeded; same capacity-deadlock pattern as prior runs (#6298 journal, 5th+ consecutive ECR failure).
+- **Action:** infra/ops — Fargate vCPU quota + rolling deploy minHealthy=100/max=120 vs live `desiredCount` (observed **2** in failed run describe). Clear stuck deployments or temporarily scale before re-run `ecr-push-production.yml`.
 
-- **#4566** `fix/vector-walls-warm-off-window-cooldown` — verify in progress (not draft)
-- **#4567** draft `fix/watch-age-future-skew-clamp` — SPX WATCH age clamp sibling to #4563
-- **#4568/#4569** draft handoff-only — do not merge (docs-only policy)
+## ops:collect
 
-Dependabot #4476–#4480 held.
+- 1 item: watchdog HTTP 401 (cron secret mismatch in agent env — expected).
 
 ## Next
 
-- **Tue 2026-09-08 09:00 ET:** `npm run blackout:rth-lifecycle` + MARKET-OPEN-VALIDATION §66–§67
-- ✅ GO AHEAD MERGE on #4566 when verify green; review #4567 when undrafted
+- Re-run ECR push after ECS fleet unstuck / quota headroom.
+- Tue RTH: `npm run blackout:rth-lifecycle` when ET ≥ 09:00.
