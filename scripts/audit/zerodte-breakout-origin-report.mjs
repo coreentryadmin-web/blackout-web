@@ -71,6 +71,7 @@ const { fetchAuditJson, releaseAuditClerkSession } = await import("./lib/audit-a
 
 const SRC = new URL("../../src/", import.meta.url).pathname;
 const { fetchStockMinuteBars } = await import(`${SRC}lib/providers/polygon.ts`);
+const { etWallClockToUtcMs } = await import("./lib/swing-cadence-gap-eval.mjs");
 
 const line = (c = "─", w = 112) => c.repeat(w);
 const fmtPct = (n) => (n == null ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
@@ -140,12 +141,18 @@ try {
 
   console.log(`\n${line()}`);
   console.log(`  [A] COMMITTED PERFORMANCE`);
+  console.log(`  (max_drawdown is a non-compounding, equal-weighted additive sum of every play's own`);
+  console.log(`  pnl_pct in chronological order — a relative MECHANICAL-vs-MANAGED comparator, never`);
+  console.log(`  a real portfolio/dollar drawdown figure; its magnitude scales with trade COUNT, not`);
+  console.log(`  just loss severity, so read the two bases side by side, never the number alone)`);
   console.log(line());
   reportSplit("BREAKOUT-ONLY", breakoutOnly);
   reportSplit("BREAKOUT-INVOLVING (any co-discovery)", breakoutInvolving);
 
   console.log(`\n${line()}`);
   console.log(`  [B] ENTRY-TIMING LAG — how much of the underlying's own move was already banked by flag time`);
+  console.log(`  (anchored to the REAL 9:30 ET RTH open, RTH bars only — Polygon's minute-agg endpoint`);
+  console.log(`  returns pre/post-market bars too, which would otherwise inflate "minutes since open")`);
   console.log(line());
   const timingRows = [];
   for (const p of breakoutOnly) {
@@ -154,20 +161,23 @@ try {
     if (!Number.isFinite(flagMs)) continue;
     const bars = await fetchStockMinuteBars(p.ticker, day, day).catch(() => []);
     if (!bars?.length) continue;
-    const rthBars = bars.filter((b) => b.t <= flagMs + 1); // real bars available at/before the flag
-    if (!rthBars.length) continue;
-    const openPx = rthBars[0]?.o ?? rthBars[0]?.c;
-    const atFlagPx = rthBars[rthBars.length - 1]?.c;
+    const rthOpenMs = etWallClockToUtcMs(day, 9 * 60 + 30);
+    const rthCloseMs = etWallClockToUtcMs(day, 16 * 60);
+    const rthBarsAll = bars.filter((b) => b.t >= rthOpenMs && b.t < rthCloseMs);
+    if (!rthBarsAll.length) continue;
+    const rthBarsUpToFlag = rthBarsAll.filter((b) => b.t <= flagMs + 1);
+    if (!rthBarsUpToFlag.length) continue; // flagged before the RTH open ever printed a bar — skip
+    const openPx = rthBarsAll[0]?.o ?? rthBarsAll[0]?.c;
+    const atFlagPx = rthBarsUpToFlag[rthBarsUpToFlag.length - 1]?.c;
     if (!(openPx > 0) || !(atFlagPx > 0)) continue;
     const gainAtFlagPct = ((atFlagPx - openPx) / openPx) * 100 * (p.direction === "long" ? 1 : -1);
-    const allRthBars = bars.filter((b) => b.t >= rthBars[0].t);
     let peakFavorablePct = gainAtFlagPct;
-    for (const b of allRthBars) {
+    for (const b of rthBarsAll) {
       const px = p.direction === "long" ? b.h : b.l;
       const movePct = ((px - openPx) / openPx) * 100 * (p.direction === "long" ? 1 : -1);
       if (movePct > peakFavorablePct) peakFavorablePct = movePct;
     }
-    const lagMinutes = Math.round((flagMs - rthBars[0].t) / 60_000);
+    const lagMinutes = Math.round((flagMs - rthOpenMs) / 60_000);
     const bankedFraction = peakFavorablePct > 0 ? Math.max(0, Math.min(1, gainAtFlagPct / peakFavorablePct)) : null;
     timingRows.push({ ticker: p.ticker, day, lagMinutes, gainAtFlagPct, peakFavorablePct, bankedFraction });
   }
