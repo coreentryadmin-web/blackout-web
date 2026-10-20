@@ -254,16 +254,26 @@ for (const day of sortedDays) {
     (byTickerDir.get(key) ?? byTickerDir.set(key, []).get(key)).push(r);
   }
   const vixDayOpen = await vixDayOpenFor(day);
+  // SPY bars are the SAME for every ticker/direction pair this day — fetch ONCE per day, not
+  // once per pair. A prior version re-fetched it inside the per-pair loop below: harmless but
+  // wasteful (caught live 2026-10-20 — a 43-day/30-session-day run with ~50+ pairs/day was
+  // silently re-fetching SPY ~50x/day for no reason, materially slowing an already-expensive walk).
+  const spyBarsAll = await fetchStockMinuteBars("SPY", day, day).catch(() => []);
+  let pairIdx = 0;
+  const totalPairs = byTickerDir.size;
   for (const [key, tdRows] of byTickerDir) {
     const [ticker, dir] = key.split(":");
+    pairIdx++;
+    if (pairIdx === 1 || pairIdx % 10 === 0 || pairIdx === totalPairs) {
+      console.log(`    [${day}] ${pairIdx}/${totalPairs} ticker/direction pairs…`);
+    }
     const ownPrints = [...tdRows]
       .map((r) => Date.parse(r.alerted_at))
       .filter((ms) => Number.isFinite(ms))
       .sort((a, b) => a - b);
     if (!ownPrints.length) continue;
 
-    // Expensive fetches ONCE per ticker/day — truncated per-instant below, never re-fetched.
-    const spyBarsAll = await fetchStockMinuteBars("SPY", day, day).catch(() => []);
+    // Expensive fetch ONCE per ticker/day — truncated per-instant below, never re-fetched.
     const tkBarsAll = await fetchStockMinuteBars(ticker, day, day).catch(() => []);
 
     let best = null; // earliest COMMIT, if any
