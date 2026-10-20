@@ -393,7 +393,7 @@ function managedOutcomeLabel(reason: string | null, pnl: number): string {
  *  (conservative-executable, WS-10) lane with a mid fallback for legacy rows. This is the
  *  simulated plan P&L the directive switches to the executable frame; the AS-MANAGED headline
  *  (the engine's realized exit) moves to the executable side separately in WS-11. */
-function mechanicalGradeView(row: ZeroDteSetupLogRow): GradeView {
+function mechanicalGradeView(row: OfficialGradableRow): GradeView {
   const graded = isGradedZeroDteRow(row);
   const pnl = graded ? round2(officialPlanPnlPct(row) as number) : null;
   return {
@@ -499,7 +499,7 @@ function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pc
  *      reconstruction whose real-exit counterpart is a live-only reason per (1b).
  *  (3) no engine exit → the reconstruction (even if degenerate) if present, else the play rode
  *      to the plan's own stop/target/time-stop (mechanical) — never silently ungraded. */
-function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
+function managedGradeView(row: OfficialGradableRow): GradeView {
   const reco = readReconstructedTrimScale(row.entry_context);
   const exit = readManagedExit(row.entry_context);
   const hasRealTerminalExit = exit != null && exit.pnl_pct != null;
@@ -533,8 +533,12 @@ function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
 /** WS-11 — the member-facing AS-MANAGED plan P&L for a row (the same number managedGradeView's
  *  headline reports). Exported so the grade path (scan.ts) can measure
  *  grade_vs_asmanaged_delta = officialPlanPnlPct(row) − asManagedPnlPct(row) and confirm the
- *  reconciliation holds (≈ 0 for a reconstructed TRIM-SCALE row). Null when the row is ungraded. */
-export function asManagedPnlPct(row: ZeroDteSetupLogRow): number | null {
+ *  reconciliation holds (≈ 0 for a reconstructed TRIM-SCALE row). Null when the row is ungraded.
+ *  Typed on the narrower `OfficialGradableRow` (not the full `ZeroDteSetupLogRow`) so governor.ts
+ *  can call this directly off its own `GovernorLedgerRow` Pick — see that file's
+ *  ledgerRowRealizedPnlPct for why it needs the SAME as-managed precedence this function already
+ *  implements, not the raw mechanical `plan_pnl_pct` column. */
+export function asManagedPnlPct(row: OfficialGradableRow): number | null {
   const view = managedGradeView(row);
   return view.graded ? view.pnl_pct : null;
 }
