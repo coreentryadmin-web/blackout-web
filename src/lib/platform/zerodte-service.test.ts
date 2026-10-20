@@ -492,6 +492,50 @@ test("mfe capture: a genuine gain-on-gain exit still computes a real capture rat
   assert.equal(board.ledger[0]!.mfe_capture_pct, 50, "unchanged behavior for a real capture: 25/50 * 100");
 });
 
+// BUG FIX (2026-10-20, Ask Largo/5-engine standing mandate, live repro BMNR): mapLedgerRow computes
+// peak_pnl_pct/mfe_capture_pct/floor_pnl_pct from the RAW pre-roundFloats entry_premium/peak_premium,
+// but the outer roundFloats() call rounds entry_premium/peak_premium INDEPENDENTLY of each other — so
+// a half-cent peak (real BMNR: entry 0.64, raw peak 0.695) rounds the DISPLAYED peak_premium up to
+// 0.70 while peak_pnl_pct kept reporting the number derived from the raw, never-shown 0.695 — a member
+// doing (0.70−0.64)/0.64 by hand from the row's own displayed fields got 9.37%, not the 8.59% the board
+// showed. live_pnl_pct/live_pnl_pct_exec/exit_policy already got this exact re-derivation treatment;
+// these three fields never did until this fix.
+test("rounding reconcile: peak_pnl_pct/mfe_capture_pct/floor_pnl_pct are recomputed from the member-visible ROUNDED premiums, not the raw pre-round ones (half-cent peak, live BMNR repro)", async () => {
+  state.ledgerRead = {
+    rows: [
+      ledgerRow({
+        entry_premium: 0.64,
+        last_mark: 0.65,
+        peak_premium: 0.695,
+        trough_premium: 0.64,
+        status: "CLOSED",
+        entry_context: { exit: { pnl_pct: 5, peak_pnl_pct: 8.59, reason: "plan_target_final", at: "2026-07-07T15:00:00.000Z" } },
+      }),
+    ],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.peak_premium, 0.7, "roundFloats rounds the raw half-cent peak up to the displayed 0.70");
+  assert.equal(
+    board.ledger[0]!.peak_pnl_pct,
+    9.37,
+    "peak_pnl_pct must reconcile with the DISPLAYED peak_premium/entry_premium (0.70 vs 0.64 → 9.37%), " +
+      "not the raw pre-round 0.695 (which would read 8.59%)",
+  );
+  assert.equal(
+    board.ledger[0]!.mfe_capture_pct,
+    53,
+    "mfe_capture_pct must be derived from the reconciled peak_pnl_pct (5/9.37), not the stale raw one (5/8.59=58)",
+  );
+  assert.equal(
+    board.ledger[0]!.floor_pnl_pct,
+    3.75,
+    "floor_pnl_pct (peak×0.4 ratchet lock) must use the reconciled peak_pnl_pct too (9.37×0.4=3.75), not 8.59×0.4=3.44",
+  );
+});
+
 /** The META-class row: peaked +87% (arming both trim tranches), then stopped at −50%. */
 function metaStoppedRunner(entryContext: Record<string, unknown> | null) {
   return ledgerRow({
