@@ -38,6 +38,223 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P1 Night Hawk 0DTE] Every single-name 0DTE position was permanently excluded from the live quote lane — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Member live-book audit directive on today's open 0DTE book: "Verify quote
+freshness, executable exit prices, stop execution... don't dismiss this as normal chop."
+
+**Root cause.** `toActivePlay` (`src/lib/zerodte/live-marks.ts`) — the function that decides
+which ledger rows the ~1s live-marks lane (real bid/ask/greeks/executable P&L, WS-first +
+REST fallback) actually tracks — required the tracked OCC's expiry to be **EXACTLY equal**
+to the row's own `session_date`:
+```js
+if (occExpiry != null && occExpiry !== r.session_date) return null;
+```
+That premise ("0DTE's whole premise is same-day expiry") is only true for underlyings with
+DAILY option listings — SPY/QQQ/IWM/SPX/NDX. Every single-name 0DTE play (RIOT, NBIS, HUT,
+OUST, SMR, BTDR, CBRS, RARE, SBET, ASST, KORU, BB, ...) is deliberately committed against the
+nearest AVAILABLE expiry, up to `ZERODTE_MAX_DTE` (4) calendar days out — `board.ts`'s own
+`SETUP_MAX_DTE`, explicitly widened 1→4 on 2026-08-06 for exactly this reason. The strict
+equality check silently excluded **every single-name 0DTE row, permanently, from this lane**:
+`getActivePlays`/`boundActivePlays` never returned them, so the poller never quoted them, and
+`attachLiveMarkMeta` (`zerodte-service.ts`) always fell through to its fail-soft default —
+`bid: null, ask: null, mark_source: null, mark_as_of: null, live_pnl_pct_exec: null` — for the
+entire single-name population, every session, with no error anywhere.
+
+**Live evidence.** A board poll during RTH today showed 0/12 open single-name rows ever
+carrying a bid/ask, across 4 repeated polls spanning several minutes (ruling out a one-tick
+cold-start). In the SAME window, the lane's own dedicated `/api/market/zerodte/marks` route
+showed real, <1s-fresh bid/ask/mid/greeks for genuinely-tracked (swing-merged) contracts
+(WRBY/CELH/DKNG/etc.) — proving the lane itself works; this guard simply never let a
+single-name 0DTE row register with it.
+
+**Consequence.** `live_pnl_pct_exec` (the executable, sell-into-the-bid P&L the exit engine's
+own design treats as "the honest exit-side number") was structurally unavailable for exactly
+the population an audit most needs to verify — the names sitting at the deepest drawdowns.
+`last_mark`/`live_pnl_pct` kept moving (the legacy SYNC lane fallback still works), so the raw
+P&L number itself was not necessarily wrong, but it could never be cross-checked against a
+real, fresh two-sided NBBO quote for any single-name 0DTE play.
+
+**Fix.** Changed the guard to accept any `occExpiry` within `[session_date, session_date +
+ZERODTE_MAX_DTE]` — still excludes a genuinely-expired row (`occExpiry < session_date`, the
+real 2026-09-11 "zombie row" case the original check existed to catch) and an implausibly-far
+OCC (`occExpiry` beyond the window), but no longer conflates "not literally today" with
+"wrong." Mirrors the semantics `src/lib/swing/live-marks-active.ts`'s own `occAlreadyExpired`
+guard already uses correctly (`expiry < today`, never strict equality) — swing never had this
+bug.
+
+**Blast radius.** Single call site (`toActivePlay`), consumed by `getActivePlays`/
+`boundActivePlays` (the ~1s poller's own active-set fetch) and therefore by `attachLiveMarkMeta`
+(the board's `bid`/`ask`/`mark_source`/`live_pnl_pct_exec` fields), the SSE/REST `/marks`
+payload, and `runZeroDteMarkTick`'s own exit-engine evaluation (which only acts on a `mark`
+sourced from this same lane within `ZERODTE_MARK_STALE_MS`) — all three now get real quotes
+for the single-name population for the first time.
+
+**Evidence of fix.** `src/lib/zerodte/live-marks.test.ts`: the pre-existing zombie-row test
+(2026-09-11, `occExpiry` a week in the past) still passes unchanged (dte<0 is still
+excluded). Two new tests: a 3-DTE single-name OCC (RIOT, no daily listing) is now tracked
+(RED on pre-fix code, confirmed via `git stash` on just the source file: `not ok`, 35 pass/1
+fail); an OCC 10 days out (past `ZERODTE_MAX_DTE`) is still excluded, unchanged. Full file:
+36/36 pass (was 34). `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** The lane's cap (`ZERODTE_LIVE_CONTRACT_CAP`),
+WS-first/REST-fallback mechanics, and staleness thresholds (`ZERODTE_MARK_STALE_MS`/
+`LATCH_MAX_MARK_AGE_MS`) are untouched — this fix only widens WHICH rows qualify to be
+tracked at all, strictly additive (more real coverage, nothing removed).
+
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] No bitcoin-miner correlation group — same-direction crypto concentration never capped — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Member live-book audit directive: "verify... correlated exposure... don't
+dismiss this as normal chop." Investigating today's open 0DTE book (several positions down
+-20% to -34%) surfaced a concentration gap the governor's own enforcement history should have
+already closed, but never did.
+
+**Root cause.** `governor.ts`'s `CORRELATION_GROUPS` — the static list `concentrationReasonForCandidate`/
+`freezeConcentrationState` use to cap same-direction correlated exposure
+(`GOVERNOR_MAX_CORRELATED_SAME_DIR = 2`, `GOVERNOR_ENFORCE_CONCENTRATION` default ON) — had
+exactly five groups: broad index/ETF, semiconductors, mega-cap tech, tech/enterprise,
+financials. **No crypto/bitcoin-miner group existed at all**, despite the file's own standing
+comment literally citing *"the 2026-07-30 session... a real P0/P1 incident (14 losers / 1
+winner) where unmeasured same-direction concentration was one of five named contributing root
+causes"* as **the reason concentration enforcement was flipped on by default** — that comment
+names a crypto cluster incident as motivation, yet the group list was never actually extended
+to cover one.
+
+**Live evidence (same day, 2026-10-20).** RIOT and HUT both flagged LONG at the identical
+instant (`first_flagged_at: 2026-10-20T14:42:09.000Z`), BTDR five minutes later
+(`14:47:14.000Z`) — all three open simultaneously, all LONG, none sharing a correlation group
+with any other, so the concentration cap never saw them as related at all. MARA and CLSK were
+also LONG earlier the same session (both closed winners). At the point the 15:12Z audit check
+ran, 3 of the day's 8 worst open drawdowns were RIOT (-30 to -36%), HUT (-21 to -26%), BTDR
+(-23 to -35%) — a real same-direction correlated cluster the governor exists specifically to
+catch, uncapped.
+
+**Fix.** Added a sixth `CORRELATION_GROUPS` entry: `RIOT, MARA, CLSK, HUT, BTDR, CIFR, WULF,
+CORZ, BITF, IREN` — the core publicly-traded bitcoin miners, whose operating economics (hash
+price, power cost, BTC-denominated revenue) co-move on BTC spot even more tightly intraday
+than the existing sector pairs. Deliberately scoped to miners only — NOT exchanges
+(`COIN`) or treasury-holding names (`MSTR`, `SBET`), which are BTC-exposed but a structurally
+different business and a separate, larger judgment call — same "narrowest precedented
+addition" discipline the TQQQ/SQQQ fix (`FINDINGS.md`) used for the broad-index group rather
+than extending it wholesale.
+
+**Precedent for shipping without a dedicated backtest.** The four EXISTING sector-pair groups
+(semiconductors/mega-cap tech/tech-enterprise/financials) were themselves added by domain
+judgment during a broad audit pass (`FINDINGS.md`, "Wave A/B strongest-engines hardening",
+item 11), not from an individual backtest per group — this fix follows the identical,
+already-established pattern, on stronger motivating evidence (today's live 3-wide cluster)
+than most of the four it joins.
+
+**Blast radius.** `CORRELATION_GROUPS` is also the shared source for the SWING theme-cluster
+resolver (`src/lib/swing/theme-cluster.ts`'s own comment: "the ONE correlation-group source
+instead of hand-copying the index/ETF list") — verified `theme-cluster.test.ts` (28/28) still
+passes unchanged; the new group is purely additive to that consumer too. `CONCENTRATION_POLICY_VERSION`
+left at `v2` — the policy's own counting/grouping LOGIC is unchanged, only the group
+membership list grew, same as every prior sector-pair addition (which also didn't bump it).
+
+**Evidence of fix.** `src/lib/zerodte/governor.test.ts`: two new tests — `correlationGroupOf`
+resolves RIOT/HUT/BTDR/MARA/CLSK to the same new group (and confirms COIN/MSTR stay
+unscoped, `null`); `freezeConcentrationState` on a third same-direction miner candidate now
+reports `same_beta_open_count: 2`, meeting/exceeding `GOVERNOR_MAX_CORRELATED_SAME_DIR`. Full
+file: 60/60 pass (was 58). `theme-cluster.test.ts`: 28/28 pass, unchanged. `tsc --noEmit`
+clean.
+
+**What was deliberately left unchanged.** This only affects FUTURE commits going forward
+(the concentration check runs at commit time) — it does not touch any currently-open position
+or any exit/risk-management behavior. No separate real-cost backtest was run for this specific
+addition (see "Precedent" above for why that bar hasn't applied to any prior group addition
+either); if the operator wants this group measured before enforcement the same way Q9's
+same-direction concentration measure itself was ("measured first... enforced... evidence-
+driven" per this file's own history), that is a natural, scoped follow-up, not a blocker to
+shipping a fix for an already-incomplete, already-precedented list.
+
+## 2026-10-20 — [FINDING, P2 Night Hawk 0DTE] Board mislabels an unstamped CLOSED row as "time_stop" when it was never a time-stop — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Member audit directive on today's live 0DTE book: "Verify quote freshness,
+executable exit prices, stop execution, thesis invalidation, time stops, and correlated
+exposure. Don't dismiss this as normal chop... Fix and verify the missing SNXX return field
+too." Investigating the "missing SNXX return field" (`exit_pnl_pct: null` on a CLOSED row)
+surfaced a more specific root cause than a simple write-timing gap: the board's
+`closed_reason` field was actively **mislabeling** the row, not just omitting data.
+
+**Root cause.** `mapLedgerRow` (`src/lib/platform/zerodte-service.ts`, `boardClosedReason`)
+derives the member-facing close label as: `stopped` (pinned) → else, if the exit-engine
+stamped a reason (`entry_context.exit`, written by `stampZeroDteExitContext` on an
+exit-engine EXIT) → that category (`ratchet`/`thesis`/`flat`/`target`/`stop`) → **else a
+blind fallback literal `"time_stop"`, unconditionally, any time `status === "CLOSED"` and
+no engine category exists.**
+
+That fallback conflates two completely different situations:
+1. A **genuine** 15:50 ET hard time-stop (`PLAN_RULES.time_stop_et_minutes`, `plan.ts`) —
+   which never stamps an exit-engine context at all, so `"time_stop"` is the correct, only
+   available label.
+2. A row the **exit engine already closed** (ratchet floor / thesis break / flat-timeout /
+   plan stop / trim-scale runner target) whose `stampZeroDteExitContext` write simply
+   **hasn't landed in Postgres yet**. `status` and `entry_context.exit` are written by two
+   separate, unsynchronized UPDATE statements from the ~1s live-marks lane
+   (`src/lib/zerodte/live-marks.ts`) / the ~2min cron sync (`src/lib/zerodte/scan.ts`):
+   `evaluateLedgerRowExit` (`exit-sync.ts`) stamps the exit context FIRST, then the caller
+   flips `status` to `CLOSED` via `updateZeroDteLiveState` SECOND — but either write can
+   also originate from `derivePlayStatus`'s own direct close path, which never calls the
+   stamp at all for some closes, and a board read landing inside that window sees
+   `status=CLOSED` with no stamp yet. Under the old code, case (2) was **indistinguishable**
+   from case (1) and silently printed the same specific, meaningful-sounding label.
+
+**Evidence (live, 2026-10-20).** SNXX committed ~10:11 ET (BREAKOUT origin, nowhere near the
+15:50 ET boundary). A board read at 15:23 UTC showed:
+```
+status: CLOSED, closed_reason: "time_stop", exit_pnl_pct: null, exit_reason: null
+```
+A second read six minutes later (15:29 UTC), once the real stamp had landed, showed:
+```
+status: CLOSED, closed_reason: "ratchet", exit_pnl_pct: 14.04, exit_reason: "ratchet"
+```
+The `"time_stop"` label shown in the first read was never true — the real close was a
+ratchet-floor exit. `live_pnl_pct` (computed independently from `last_mark`/`entry_premium`,
+not from the stamp) correctly showed +14.04% in BOTH reads, so the raw P&L number was never
+wrong — only `closed_reason` (and, transiently, `exit_pnl_pct`) misrepresented *why* and
+*exactly how much* the trade closed by.
+
+**Fix.** Gate the `"time_stop"` fallback on the row's own **frozen** `last_mark_at`
+(CASE-guarded to the close instant once `status='CLOSED'` — see `updateZeroDteLiveState` in
+`db.ts`) genuinely falling at/after `PLAN_RULES.time_stop_et_minutes` (with 2 minutes of
+slack for the sync lanes' own tick latency, via the existing `etMinutes()` ET-wall-clock
+helper, `src/features/spx/lib/spx-play-session-time.ts`). When it does not — i.e., no
+evidence this was a real end-of-day close — report `closed_reason: null` ("exit reason not
+yet persisted") instead of a specific reason the row cannot yet support. This makes
+`closed_reason` consistent with `exit_pnl_pct`/`exit_reason` (which already read `null`
+honestly in this window) rather than contradicting them with a wrong label.
+
+**Blast radius.** Single call site (`mapLedgerRow`), consumed by every reader of the board
+payload: `/api/market/zerodte/board`, Largo's `get_zerodte_plays` tool, and the BIE
+composers — all three funnel through `buildZeroDteBoardPayload()`/`mapLedgerRow`, so the fix
+applies uniformly; no second implementation of this derivation exists elsewhere.
+
+**Evidence of fix.** `src/lib/platform/zerodte-service.test.ts`: the pre-existing test
+("a plain 15:30 close... reads closed_reason 'time_stop'") asserted the OLD, wrong fallback
+as correct — it never actually set `last_mark_at`, so it was testing the bug, not a genuine
+time-stop. Replaced with two tests: (1) a CLOSED row with no engine stamp and `last_mark_at`
+at 10:30 ET now correctly reads `closed_reason: null` (RED on the pre-fix code, confirmed via
+`git stash` on just the source file: `not ok`); (2) a CLOSED row with no engine stamp and
+`last_mark_at` genuinely at 15:50 ET still correctly reads `closed_reason: "time_stop"`
+(passes on both old and new code — the genuine case was never broken). Full suite:
+`npx tsx --experimental-test-module-mocks --test src/lib/platform/zerodte-service.test.ts` —
+25/25 pass. `tsc --noEmit` clean.
+
+**What was deliberately left unchanged.** The underlying two-write race itself (status flip
+and exit-context stamp as separate, unsynchronized DB writes) is not fixed here — that would
+require either wrapping both writes in a single transaction or merging them into one UPDATE,
+a larger change across `live-marks.ts`/`scan.ts`/`exit-sync.ts`/`db.ts` than this finding's
+scope. This fix stops the board from actively MISLABELING the row during that window;
+`exit_pnl_pct` continuing to read `null` for a few seconds/minutes until the real stamp lands
+is the existing, already-honest behavior and is unchanged.
+
 ## A swing play-brief's Structure Ladder named a different "stop" than the SAME envelope's "Structural stop (committed)" line for an already-OPEN position — FIXED
 
 > **kind:** `FINDING`
