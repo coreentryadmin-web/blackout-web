@@ -1590,6 +1590,22 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     if (play.flagUnderlyingPx != null) {
       lines.push(`Flag anchor: **${fmtPriceLevel(play.flagUnderlyingPx)}** — track move from here`);
     }
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro TSLA WATCH brief): `trackPct`
+    // (command-deck/adapters.ts's `watchUnderlyingTrackPct` — the direction-signed underlying %
+    // move since this exact flag anchor, the same "Since flag" number the live board card already
+    // shows for this row) is only ever populated on `TerminalPlay` for WATCH/SKIP status
+    // (adapters.test.ts pins `open.trackPct === null`) — but the one place that ever rendered it,
+    // `pnlSection`'s "Since flag" line (play-brief.ts), is only called from the `bucket === "open"`
+    // branch of `composeSwingPlayBrief`. So the line was dead on arrival for the bucket that
+    // produces it (open plays have `trackPct: null`) and never reached the bucket that actually has
+    // it (watch). A member asking Largo "how far has this moved since it was flagged" on a live
+    // WATCH play got the flag anchor and the current spot (a few lines below, via Trade manager
+    // read) but never the computed answer, even though the member-facing board card for the
+    // identical row already displays it. Surfaced here instead, right beside the anchor it measures
+    // from — same wording as the (unreachable) `pnlSection` copy, so nothing new to recognize.
+    if (play.trackPct != null) {
+      lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
+    }
     // Distinct from the flag anchor above (pinned, historical): this is the CURRENT level a
     // break/reclaim of actually flips entry geometry from PRE_TRIGGER/FORMING to AT_TRIGGER/
     // TRIGGERED. Found live 2026-09-12: a member read "Flag anchor" as this number, which it is
