@@ -1509,6 +1509,15 @@ async function attachContractPlans(
       vwap: s.vwap,
       chasePct,
       illiquidSpreadPct,
+      // Contract selection using Greeks alongside liquidity (2026-10-20, member audit
+      // directive) — OptionSnapshot already fetches delta/gamma/theta/vega for the live
+      // quote; threaded through here (previously discarded) so buildContractPlan can compute
+      // the SHADOW-ONLY evaluateContractGreeksQuality diagnostic. Omitted entirely (not just
+      // null-filled) when there's no live snapshot at all, matching every other conditional
+      // field's "absence is not a measured zero" discipline.
+      ...(snap
+        ? { greeks: { delta: snap.delta ?? null, gamma: snap.gamma ?? null, theta: snap.theta ?? null, vega: snap.vega ?? null } }
+        : {}),
     });
     s.plan_chase_exempt = planChaseExempt(chaseCtx);
   }
@@ -2003,14 +2012,23 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       ...(s.thesis_first
         ? { thesis_first: thesisFirstEntryContext(s.thesis_first) }
         : {}),
-      // RVOL SHADOW SIGNAL — additive, non-gating diagnostic only (see the pre-pass above and
-      // relative-volume.ts's header). Present only on a fresh commit that got a real shadow read;
-      // omitted otherwise so the blob stays honest (never a fabricated/null-filled placeholder).
-      // Persists BOTH the baseline (flat proration) and candidate (real time-of-day profile) reads
-      // side by side — the "log baseline and candidate before outcomes" discipline this audit's own
-      // directive asked for, joinable later against this same row's own graded outcome.
-      ...(rvolShadowByTicker.has(s.ticker)
-        ? { shadow_signals: { relative_volume: rvolShadowByTicker.get(s.ticker) } }
+      // SHADOW SIGNALS — additive, non-gating diagnostics only. Combined into ONE spread
+      // (not two independent ones) specifically because a plain object spread doesn't deep-
+      // merge: two separate `...(cond ? {shadow_signals: {...}} : {})` entries in this same
+      // literal would silently let the later one clobber the earlier one's `shadow_signals`
+      // key at runtime. This was caught at merge time reconciling two independently authored
+      // PRs (RVOL shadow wiring + contract-greeks shadow diagnostic) that each originally wrote
+      // their own spread — see CLAUDE.md's "CROSS-PR ORDERING DEPENDENCIES" section for why
+      // this class of bug is dangerous to merge blind. Each sub-key is present only when that
+      // signal actually computed a real read for this setup; the whole `shadow_signals` key is
+      // omitted when neither did, so the blob stays honest (never a fabricated placeholder).
+      ...(rvolShadowByTicker.has(s.ticker) || s.plan?.greeks_quality
+        ? {
+            shadow_signals: {
+              ...(rvolShadowByTicker.has(s.ticker) ? { relative_volume: rvolShadowByTicker.get(s.ticker) } : {}),
+              ...(s.plan?.greeks_quality ? { contract_greeks: s.plan.greeks_quality } : {}),
+            },
+          }
         : {}),
       // Play STRUCTURE (Phase 4) pinned at first flag: play_type routes the CONDOR grade path in
       // gradeZeroDteLedger (a condor is graded WIN/breach, never on the −50/+100 directional grader)

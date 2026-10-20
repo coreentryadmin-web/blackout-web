@@ -10,10 +10,13 @@ import {
   buildContractPlan,
   evaluateQuoteValidity,
   evaluateContractLiquidity,
+  evaluateContractGreeksQuality,
   gradePlanExecutableFromBars,
   gradePlanFromBars,
   CONTRACT_LIQUIDITY,
   DIRECTIONAL_LATE_CUTOFF_ET_MINUTES,
+  GREEKS_LOW_DELTA_FLOOR,
+  GREEKS_HIGH_THETA_DECAY_PCT,
   NEW_PLAY_CUTOFF_ET_MINUTES,
   PLAN_ILLIQUID_SPREAD_PCT,
   PLAN_RULES,
@@ -240,6 +243,102 @@ test("buildContractPlan: illiquidSpreadPct override widens G-9 cap", () => {
   });
   assert.equal(wide.illiquid, false);
   assert.equal(wide.illiquid_spread_cap, 22);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// evaluateContractGreeksQuality + buildContractPlan's greeks/greeks_quality threading —
+// SHADOW-ONLY diagnostic (2026-10-20, contract-selection-using-Greeks audit directive).
+// Never gates — these tests assert the DIAGNOSTIC verdict only, never that a plan is blocked.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("evaluateContractGreeksQuality: a healthy directional contract (real delta, modest theta) flags neither concern", () => {
+  const r = evaluateContractGreeksQuality({ delta: 0.42, theta: -0.05, mark: 2.0 });
+  assert.equal(r.low_delta, false);
+  assert.equal(r.high_theta_decay, false);
+  assert.equal(r.theta_decay_pct, 2.5);
+  assert.equal(r.note, null);
+});
+
+test("evaluateContractGreeksQuality: |delta| below the floor flags low_delta (deep OTM, weak directional exposure)", () => {
+  const r = evaluateContractGreeksQuality({ delta: 0.08, theta: -0.01, mark: 2.0 });
+  assert.equal(r.low_delta, true);
+  assert.ok(r.note?.includes("delta"));
+});
+
+test("evaluateContractGreeksQuality: a short-put negative delta is judged on its ABSOLUTE value, not raw sign", () => {
+  const strongShort = evaluateContractGreeksQuality({ delta: -0.5, theta: -0.05, mark: 2.0 });
+  assert.equal(strongShort.low_delta, false);
+  const weakShort = evaluateContractGreeksQuality({ delta: -0.1, theta: -0.05, mark: 2.0 });
+  assert.equal(weakShort.low_delta, true);
+});
+
+test("evaluateContractGreeksQuality: theta decay exceeding the ceiling (% of mark/day) flags high_theta_decay", () => {
+  // theta -0.40 on a mark of 2.0 => 20%/day, above the 15% ceiling.
+  const r = evaluateContractGreeksQuality({ delta: 0.5, theta: -0.4, mark: 2.0 });
+  assert.equal(r.high_theta_decay, true);
+  assert.equal(r.theta_decay_pct, 20);
+  assert.ok(r.note?.includes("theta"));
+});
+
+test("evaluateContractGreeksQuality: exactly at GREEKS_LOW_DELTA_FLOOR does not flag (strict <, not <=)", () => {
+  const r = evaluateContractGreeksQuality({ delta: GREEKS_LOW_DELTA_FLOOR, theta: null, mark: 2.0 });
+  assert.equal(r.low_delta, false);
+});
+
+test("evaluateContractGreeksQuality: exactly at GREEKS_HIGH_THETA_DECAY_PCT does not flag (strict >, not >=)", () => {
+  const theta = -(2.0 * GREEKS_HIGH_THETA_DECAY_PCT) / 100;
+  const r = evaluateContractGreeksQuality({ delta: 0.5, theta, mark: 2.0 });
+  assert.equal(r.high_theta_decay, false);
+  assert.equal(r.theta_decay_pct, GREEKS_HIGH_THETA_DECAY_PCT);
+});
+
+test("evaluateContractGreeksQuality: missing/non-finite/non-positive inputs degrade to unmeasured, never fabricated", () => {
+  for (const bad of [null, NaN, Infinity]) {
+    const r = evaluateContractGreeksQuality({ delta: bad, theta: -0.1, mark: 2.0 });
+    assert.equal(r.low_delta, false, `delta=${bad} must not fabricate low_delta`);
+  }
+  for (const bad of [null, NaN, Infinity]) {
+    const r = evaluateContractGreeksQuality({ delta: 0.5, theta: -0.1, mark: bad });
+    assert.equal(r.theta_decay_pct, null, `mark=${bad} must not fabricate a decay pct`);
+    assert.equal(r.high_theta_decay, false);
+  }
+  const bothUnmeasured = evaluateContractGreeksQuality({ delta: null, theta: null, mark: null });
+  assert.deepEqual(bothUnmeasured, { low_delta: false, high_theta_decay: false, theta_decay_pct: null, note: null });
+});
+
+test("buildContractPlan: threads greeks through and computes greeks_quality when supplied", () => {
+  const withGreeks = buildContractPlan({
+    occ: "O:TEST",
+    direction: "long",
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.95,
+    ask: 2.05,
+    mark: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+    greeks: { delta: 0.08, gamma: 0.02, theta: -0.1, vega: 0.01 },
+  });
+  assert.deepEqual(withGreeks.greeks, { delta: 0.08, gamma: 0.02, theta: -0.1, vega: 0.01 });
+  assert.equal(withGreeks.greeks_quality?.low_delta, true);
+});
+
+test("buildContractPlan: omitting greeks leaves greeks/greeks_quality undefined/null — never fabricated", () => {
+  const noGreeks = buildContractPlan({
+    occ: "O:TEST",
+    direction: "long",
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.95,
+    ask: 2.05,
+    mark: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+  });
+  assert.equal(noGreeks.greeks, undefined);
+  assert.equal(noGreeks.greeks_quality, null);
 });
 
 test("buildContractPlan: threads tickerClass/dayVolume/openInterest into liquidity_invalid_reason (G-21)", () => {
