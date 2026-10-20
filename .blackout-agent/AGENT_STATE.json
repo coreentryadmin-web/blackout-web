@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T17:54:34.941Z",
+  "updated_at": "2026-10-20T18:28:43.511Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "119c0a8d6f4c3cf8cc502e6363164ab8e603ba1b",
+    "last_main_sha": "8772854535e04b3914b152472ff20ec8897218be",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-10T23:37:05.330Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T23:37:09.584Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-11T00:37:24.518Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-11T00:37:29.001Z",
       "type": "context_sync",
@@ -1271,18 +1253,56 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 10
+    },
+    {
+      "at": "2026-10-20T18:28:29.728Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-20T18:28:36.559Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-20T18:28:43.511Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
     }
   ],
   "open_prs": [
     {
-      "number": 6382,
-      "title": "fix(swing): render notable flow-print premiums K/M-scaled, not a raw per-contract price",
-      "branch": "fix/swing-flow-print-premium-formatter",
+      "number": 6388,
+      "title": "docs(findings): fold batch-5 findings into FINDINGS.md",
+      "branch": "docs/fold-findings-20261020-batch5",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": true,
+      "draft": false,
+      "verify": "completed/success",
+      "updated_at": "2026-10-20T18:19:26Z"
+    },
+    {
+      "number": 6387,
+      "title": "fix(admin): guard admin users list page/limit against NaN reaching DB/Clerk",
+      "branch": "fix/admin-users-list-nan-page-limit-uncaught",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T17:52:39Z"
+      "updated_at": "2026-10-20T18:17:41Z"
+    },
+    {
+      "number": 6386,
+      "title": "fix(admin): malformed limit silently no-ops bulk tool-access update",
+      "branch": "fix/admin-bulk-tool-access-nan-limit-silent-noop",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T18:16:03Z"
     },
     {
       "number": 6380,
@@ -1293,46 +1313,6 @@
       "draft": true,
       "verify": "completed/success",
       "updated_at": "2026-10-20T17:45:18Z"
-    },
-    {
-      "number": 6379,
-      "title": "docs(audit): staged finding — Night Hawk Legacy starved-funnel incident recurred on a fresh build",
-      "branch": "docs/nighthawk-legacy-starved-funnel-recurrence",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-10-20T17:34:40Z"
-    },
-    {
-      "number": 6378,
-      "title": "fix(swing): name curve-vs-breadth disagreement in macro-tape coaching instead of dropping the curve signal",
-      "branch": "fix/swing-macro-tape-curve-breadth-disagreement",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-10-20T17:35:56Z"
-    },
-    {
-      "number": 6377,
-      "title": "fix(seo): Night Hawk public copy omitted the shipped Swing Command tab",
-      "branch": "fix/night-hawk-swing-command-seo-copy-stale",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-10-20T17:39:29Z"
-    },
-    {
-      "number": 6369,
-      "title": "research(zerodte): trim-bank flags — verified off, tested separately/together, no reliable edge",
-      "branch": "research/zerodte-trim-bank-live-ab",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-10-20T17:42:24Z"
     },
     {
       "number": 5547,
