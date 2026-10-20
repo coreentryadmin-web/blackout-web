@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   buildContractPlan,
+  envOverridePct,
   evaluateQuoteValidity,
   evaluateContractLiquidity,
   evaluateContractGreeksQuality,
@@ -205,6 +206,58 @@ test("reconstructTrimScale: no post-flag bars → ungradeable (never a fabricate
     reconstructTrimScaleExecutableFromBars(bars, 1.0, flag, 0.1, NEUTRAL_TRIM),
     { outcome: "ungradeable", pnl_pct: null }
   );
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// envOverridePct — the configurable-stops/scaling helper (2026-10-20 audit directive).
+// PLAN_RULES.stop_pct/target_pct are resolved from this ONCE at module load, so these tests
+// exercise the pure helper directly rather than PLAN_RULES itself (which would need a fresh
+// module import per env value to observe — the standard way to test a module-load-time
+// env-resolved constant without relying on import-order timing).
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("envOverridePct: absent env var falls back to the default", () => {
+  delete process.env.ZERODTE_TEST_PCT_UNSET;
+  assert.equal(envOverridePct("ZERODTE_TEST_PCT_UNSET", -50, true), -50);
+});
+
+test("envOverridePct: a valid negative override is honored for a stop (mustBeNegative=true)", () => {
+  process.env.ZERODTE_TEST_STOP = "-35";
+  assert.equal(envOverridePct("ZERODTE_TEST_STOP", -50, true), -35);
+  delete process.env.ZERODTE_TEST_STOP;
+});
+
+test("envOverridePct: a POSITIVE value for a stop is rejected (wrong sign never silently flips intent)", () => {
+  process.env.ZERODTE_TEST_STOP = "35";
+  assert.equal(envOverridePct("ZERODTE_TEST_STOP", -50, true), -50);
+  delete process.env.ZERODTE_TEST_STOP;
+});
+
+test("envOverridePct: a valid positive override is honored for a target (mustBeNegative=false)", () => {
+  process.env.ZERODTE_TEST_TARGET = "150";
+  assert.equal(envOverridePct("ZERODTE_TEST_TARGET", 100, false), 150);
+  delete process.env.ZERODTE_TEST_TARGET;
+});
+
+test("envOverridePct: a NEGATIVE value for a target is rejected", () => {
+  process.env.ZERODTE_TEST_TARGET = "-10";
+  assert.equal(envOverridePct("ZERODTE_TEST_TARGET", 100, false), 100);
+  delete process.env.ZERODTE_TEST_TARGET;
+});
+
+test("envOverridePct: zero, non-finite, and malformed values all fall back to the default", () => {
+  for (const bad of ["0", "abc", "NaN", "Infinity", ""]) {
+    process.env.ZERODTE_TEST_BAD = bad;
+    assert.equal(envOverridePct("ZERODTE_TEST_BAD", -50, true), -50, `"${bad}" must fall back`);
+  }
+  delete process.env.ZERODTE_TEST_BAD;
+});
+
+test("PLAN_RULES: the default (no env override present this run) matches the documented -50/+100 member-facing rule", () => {
+  // Guards "keep existing hard stops and member-facing behavior unchanged" — these two numbers
+  // must never silently drift just because configurability was added.
+  assert.equal(PLAN_RULES.stop_pct, -50);
+  assert.equal(PLAN_RULES.target_pct, 100);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
