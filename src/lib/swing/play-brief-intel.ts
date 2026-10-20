@@ -1901,7 +1901,17 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   return {
     title: bucket === "open" ? "What to watch" : bucket === "closed" ? "Since it closed" : "Watch levels",
     body: lines.join("\n\n"),
-    bias: bucket === "closed" ? "neutral" : play.thesisBreak?.level === "break" ? "bearish" : "neutral",
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20): this used to badge the section "bearish"
+    // whenever `play.thesisBreak?.level === "break"`, with no reference to `play.direction` —
+    // `thesisBreak.level` (thesis-health.ts's `thesisBreakFromHealth`) is a direction-agnostic "has
+    // this setup's own edge invalidated" verdict, not a market-direction read. For a SHORT play, a
+    // thesis break typically coincides with the underlying breaking UPWARD (the move that
+    // invalidates a short) — the opposite of what this line badged. Same defect class already fixed
+    // at a sibling call site (thesisHealthSection, play-brief.ts, Largo C5, 2026-09-15: "No
+    // section-level bias for a non-directional quality signal — bias is already optional on
+    // RichSection") — applying the identical fix here rather than attempting a new direction-aware
+    // mapping this section doesn't have the signal to support.
+    bias: "neutral",
   };
 }
 
