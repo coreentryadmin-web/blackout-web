@@ -328,22 +328,67 @@ First pass (n=23/25 per half, cap 25): mean_delta TRAIN +0.82% (CI [-0.84, +2.48
 -0.01% (CI [-0.43, +0.40]) — thin (3/23, 2/25 rows ever armed a tranche). Re-run with cap 100
 (n=96/90 graded, 8/96 and 19/90 rows now arming a tranche): mean_delta TRAIN -0.39% (CI
 [-1.31, +0.53]), VALIDATION -0.61% (CI [-1.55, +0.34]) — still INCONCLUSIVE (CI straddles zero
-both times), but now consistently slightly NEGATIVE in both halves, the same direction as the
-separate loss-side-exit-ab.mjs finding above: a mechanical rule that banks/exits on a bare
-peak-cross, with no evidence filter, tends to cut real chop that would have recovered. This
-does not clearly support flipping the flag on the evidence gathered so far; a larger population
-(the 18% of rows with a real qualifying peak is the one that matters here) is the natural next
-step before any recommendation.
+both times), but now consistently slightly NEGATIVE in both halves.
 
-**No gate, exit rule, or env flag changed by this investigation.** This is a confirmed,
-high-severity (every A/B-tier play, every session, for at least 14 real days) finding that the
-live trim ladder's protective/partial-profit-taking mechanism does not fire — but fixing it is
-an env-var flip, not a code change, and the codebase's own calibration-first discipline
-(FINDINGS.md) explicitly reserves that decision for a deliberate operator review once the
-economic case is clear, which this first backtest pass does not yet establish either way.
-**Protective and time exits (hard stop, thesis-break, flat-timeout, the shared floor itself)
-are all independently verified intact and firing correctly** — this finding is specifically
-about the MISSING partial-profit-taking step, not about any of the capital-protection rules.
+**v2 (member follow-up — "verify the effective flags... test each flag separately and
+together, using realistic fills, costs, and out-of-sample results"):** rewrote the script to
+test all FOUR flag combinations (`neither`/`bank_only`/`regime_only`/`both`) plus a fifth cell
+substituting the member's literal +25% first trigger for the shipped +20%, and switched from a
+bar-derived mechanical fill to a REAL point-in-time NBBO quote at each fill's own bar timestamp,
+filled at the bid (the same conservative, executable-side convention `executableFill`/
+`live_pnl_pct_exec` already use) — a genuinely more realistic cost model than v1's. Also
+directly verified the two flags' EFFECTIVE production state via two independent, non-inferred
+signatures rather than the raw env values (unreadable from this sandbox, no AWS creds): (1)
+every real `exit_policy_snapshot.trailing_rule` checked shows `active_regime=neutral` even for
+rows whose own `session_regime` column says `range` — REGIME_LIVE is off, directly observed,
+not guessed; (2) zero genuine partial-tranche banks across 122 real rows checked (109
+reconstructed + 13 live), despite ~18% of the population clearing a high-enough peak —
+statistically implausible if BANK_LIVE were genuinely on. Both signatures agree: **both flags
+are confirmed off in production today.**
+
+Result, 45-day window, n=57/55 graded per half (cap 60):
+
+```
+TRAIN      BANK_LIVE only: delta +0.74% CI[-0.27,+1.74]   REGIME_LIVE only: delta -0.03% CI[-0.09,+0.03]
+           BOTH:           delta +0.77% CI[-0.19,+1.74]   LITERAL (+25% trigger): delta +0.77% (identical to BOTH)
+VALIDATION BANK_LIVE only: delta -0.21% CI[-2.32,+1.89]   REGIME_LIVE only: delta  0.00% CI[ 0.00, 0.00]
+           BOTH:           delta -0.09% CI[-1.94,+1.75]   LITERAL (+25% trigger): delta -0.09% (identical to BOTH)
+```
+
+Every cell INCONCLUSIVE (CI straddles zero), and — unlike the v1 result — the point estimate
+now **flips sign between TRAIN and VALIDATION** for both BANK_LIVE and BOTH, a weaker and more
+honest "no evidence of benefit either way" result than v1's consistent-negative read; the
+realistic bid-side fill appears to erase most of what looked like a mild edge under v1's
+frictionless mechanical fill. REGIME_LIVE alone never banks anything (expected — its effect
+runs entirely through the shared floor's trend-regime dead-zone branch, a rare case in this
+sample) and its own delta is statistically zero in both halves. The LITERAL +25%-trigger cell
+produced byte-identical results to the shipped +20% cell in both halves (same rows banked, same
+count) — in this sample, the 5-point gap between the member's stated intent and the shipped
+constant never actually changed which bar a tranche armed on, so it does not appear to be the
+source of any of this question's uncertainty.
+
+**No gate, exit rule, or env flag changed by this investigation (either round).** This is a
+confirmed, high-severity (every A/B-tier play, every session, for at least 14 real days)
+finding that the live trim ladder's protective/partial-profit-taking mechanism does not fire —
+but fixing it is an env-var flip, not a code change, and the codebase's own calibration-first
+discipline (FINDINGS.md) explicitly reserves that decision for a deliberate operator review once
+the economic case is clear. Two independent real-cost backtests (v1 and v2, different fill
+models) now agree the economic case is NOT clear on current evidence: v1 leaned mildly negative,
+v2 (the more realistic fill model) is a coin flip with the sign depending on which half of the
+data is looked at. **Protective and time exits (hard stop, thesis-break, flat-timeout, the
+shared floor itself) are all independently verified intact and firing correctly, and are checked
+on every single bar in every cell before any trim/floor logic — a position is never forced to
+wait for a profit target** — this finding is specifically about the MISSING partial-profit-taking
+step, not about any of the capital-protection rules.
+
+**Recommendation:** do not flip `ZERODTE_TRIM_BANK_LIVE`/`ZERODTE_TRIM_REGIME_LIVE` on the
+evidence gathered so far. The mechanism genuinely not firing live is a real, confirmed defect
+relative to the documented design — but "the ladder doesn't run" and "running the ladder would
+make money" are two different claims, and only the first is established. Two rounds of
+real-cost, held-out testing have not found a reliable edge either way. If the flags are flipped
+anyway (an operator call this investigation does not make), do so as a small, monitored,
+reversible rollout — not a blind flip — given the sign instability between TRAIN and VALIDATION
+in the one real-cost model built so far.
 
 ### Range-regime sub-+15%-peak dead zone — live same-day observation, 2026-09-17, NOT YET MEASURED
 

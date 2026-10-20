@@ -61,15 +61,31 @@ entire sample) is a confirmed fact.
 **Test run before any change** (member directive: "test any correction before changing
 production"). `scripts/audit/zerodte-trim-bank-live-ab.mjs`: real historical trim_scale
 population, real Polygon minute bars, real NBBO costs, through the REAL imported
-`exit-engine.ts` functions, comparing `broken_live` (today's real mechanics) vs `fixed`
-(a genuine monotonic `trims_taken` latch). 45-day window, cap 100/half: n=96/90 graded (8/96,
-19/90 rows ever armed a tranche — most real rows never reach a high enough peak at all; median
-real peak across 249 rows is +5.5%, well under the +20% first trigger). Result: mean_delta
-TRAIN -0.39% (CI [-1.31, +0.53]), VALIDATION -0.61% (CI [-1.55, +0.34]) — both INCONCLUSIVE, CI
-straddles zero, but consistently slightly negative in both halves (same direction as the
-sibling loss-side-exit-ab.mjs finding).
+`exit-engine.ts` functions. v1: `broken_live` (today's real mechanics) vs `fixed` (both flags
+on). 45-day window, cap 100/half: n=96/90 graded, mean_delta TRAIN -0.39% (CI [-1.31, +0.53]),
+VALIDATION -0.61% (CI [-1.55, +0.34]) — INCONCLUSIVE, consistently slightly negative.
 
-| **Status** | CONFIRMED (the mechanism does not fire live) — no gate/exit rule/env flag changed. Fixing this is a config decision (flip `ZERODTE_TRIM_BANK_LIVE`/possibly `ZERODTE_TRIM_REGIME_LIVE`), not a code change, and this codebase's own calibration-first discipline explicitly reserves that decision for a deliberate operator review once the economic case is clear — this first backtest does not yet establish a clear case either way. **Protective and time exits (hard stop, thesis-break, flat-timeout, the shared floor itself) are independently verified intact and firing correctly** — this finding is specifically about the missing partial-profit-taking step, not any capital-protection rule. |
+**v2 (member follow-up: verify the effective flags directly, test each flag separately and
+together, use realistic fills).** Verified the flags' EFFECTIVE production state via two
+independent, directly-observed (not inferred) signatures: every real `exit_policy_snapshot`
+shows `active_regime=neutral` even for rows whose own `session_regime` says `range`
+(REGIME_LIVE off, observed not guessed); zero genuine partial-tranche banks across 122 real
+rows despite ~18% clearing a high-enough peak (BANK_LIVE off — statistically implausible
+otherwise). **Both flags confirmed off in production.** Rewrote the backtest to test all four
+combinations (`neither`/`bank_only`/`regime_only`/`both`) plus a literal +25%-first-trigger
+variant, switched fills from a bar-derived mechanical price to a real point-in-time NBBO quote
+at each fill's own timestamp, filled at the bid (the same conservative convention
+`executableFill` already uses). 45-day window, n=57/55 graded per half (cap 60): every cell
+INCONCLUSIVE, and — unlike v1 — the point estimate now flips sign between TRAIN (+0.74% to
++0.77%) and VALIDATION (-0.09% to -0.21%) for BANK_LIVE/BOTH, a weaker "no evidence of benefit
+either way" result once realistic bid-side fills replace v1's frictionless assumption.
+REGIME_LIVE alone never banks anything and its own delta is ~0 in both halves (its effect only
+runs through the trend-regime dead-zone branch, rare in this sample). The literal +25%-trigger
+cell produced byte-identical results to the shipped +20% cell in both halves — the 5-point gap
+between stated intent and the shipped constant did not change which bar a tranche armed on, in
+this sample.
+
+| **Status** | CONFIRMED (the mechanism does not fire live; both flags verified off via two independent observed production signatures) — no gate/exit rule/env flag changed across either round. Fixing this is a config decision, not a code change, explicitly reserved for operator review by this codebase's own calibration-first discipline — and two rounds of real-cost, held-out testing (different fill models) have NOT found a reliable edge either way; v2's more realistic fill model is a coin flip with the sign depending on which half of the data is examined. **Recommendation: do not flip the flags on the evidence gathered so far.** **Protective and time exits (hard stop, thesis-break, flat-timeout, the shared floor itself) are independently verified intact and firing correctly, checked on every bar in every cell before any trim/floor logic — a position is never forced to wait for a profit target.** This finding is specifically about the missing partial-profit-taking step, not any capital-protection rule. |
 
 Full write-up: `docs/audit/0DTE-RESEARCH.md`, "Live trim_scale tranche-banking never fires in
 production" section.
