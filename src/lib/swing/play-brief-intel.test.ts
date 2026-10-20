@@ -3825,6 +3825,78 @@ test("gexPostureSection: nearest wall prefers a live Vector ladder wall over the
   assert.doesNotMatch(section!.body, /120\.00/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit, adversarially
+// verified): gexPostureSection's "Nearest wall" line never considered the gamma flip as a
+// candidate, while chartLevelsSection's own "Nearest wall" line (via vec.proximity) DOES — so the
+// two could disagree in the same envelope whenever the flip genuinely sat closer to spot than
+// either wall. Live repro shape: spot 7550, call wall 7650 (1.3% away), put wall 7400 (2.0% away),
+// gamma flip 7560 (0.13% away) — the flip is clearly nearest, but the old wall-only logic could
+// only ever report a wall.
+test("gexPostureSection: 'Nearest wall' cites the gamma flip when it is genuinely closer to spot than either wall", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 7550,
+        gamma_posture: "short",
+        net_gex: 17_800_000,
+        call_wall: 7650,
+        put_wall: 7400,
+        flip: 7560,
+        nearest_wall: { strike: 7650, kind: "resistance", distance_pts: 100 },
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Nearest wall: \*\*7560\.00\*\* \(gamma flip, 10\.0 pts from spot \*\*7550\.00\*\*\)/,
+    `expected the flip to win as the genuinely nearest level, got: ${section!.body}`,
+  );
+  assert.doesNotMatch(section!.body, /7650\.00/, "must not cite the farther-away call wall as nearest");
+});
+
+test("gexPostureSection: 'Nearest wall' keeps citing the wall (not the flip) when the wall is genuinely nearer — no regression", () => {
+  const section = gexPostureSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 7550,
+        gamma_posture: "short",
+        net_gex: 17_800_000,
+        call_wall: 7560,
+        put_wall: 7400,
+        flip: 7000, // far away — must not win
+        nearest_wall: { strike: 7560, kind: "resistance", distance_pts: 10 },
+        matrix_age_sec: 30,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: null,
+  });
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /Nearest wall: \*\*7560\.00\*\* \(resistance, 10\.0 pts from spot \*\*7550\.00\*\*\)/,
+  );
+  assert.doesNotMatch(section!.body, /gamma flip/i);
+});
+
 // FINDING (Ask Largo standing mandate, 2026-09-12): gexPostureSection rendered TODAY's dealer
 // posture for a CLOSED play with no disclosure at all — unlike vectorDeskSection/watchForSection/
 // dataFreshnessSection, which were already fixed the same day for the identical defect class (a
@@ -5379,6 +5451,69 @@ test("chartLevelsSection: Nearest wall line is the real callout verbatim, not do
   // Strike must appear exactly once — not once in a prefix and again inside the callout.
   const occurrences = section!.body.split("332.50").length - 1;
   assert.equal(occurrences, 1, `strike must appear exactly once, found ${occurrences}`);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit, adversarially
+// verified): when vec.proximity resolves to the gamma flip (side === "flip"), its callout restates
+// the EXACT value the "Gamma flip:" line (a few lines above, same section) already rendered — a
+// same-section self-duplicate. Live repro shape: spot 7550, gamma flip 7560 (0.13% away, closest
+// level) — "Gamma flip: 7560.00 — +0.1% ($10.00 from spot)" immediately followed by "Nearest wall:
+// 7560.00 gamma flip overhead (0.13% away) — a cross flips the regime...".
+test("chartLevelsSection: 'Nearest wall' line is suppressed when it would only restate the 'Gamma flip' line above it (self-duplicate)", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 7550,
+      gammaFlip: 7560,
+      proximity: {
+        strike: 7560,
+        side: "flip",
+        distancePct: 0.13,
+        nearness: "at",
+        callout: "7560.00 gamma flip overhead (0.13% away) — a cross flips the regime.",
+      },
+    } as unknown as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /\*\*Gamma flip:\*\* 7560\.00/, "the Gamma flip line itself must still render");
+  assert.doesNotMatch(
+    section!.body,
+    /Nearest wall:/,
+    `must not restate the identical flip value under a second heading, got: ${section!.body}`,
+  );
+});
+
+test("chartLevelsSection: 'Nearest wall' line still renders when proximity resolves to a real wall, not the flip — no regression", () => {
+  const section = chartLevelsSection({
+    play: fixturePlay(),
+    asOf: "2026-09-06 10:00 ET",
+    sessionDate: "2026-09-06",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      spot: 7550,
+      gammaFlip: 7000, // present, but proximity resolved to a wall, not this
+      proximity: {
+        strike: 7560,
+        side: "call",
+        distancePct: 0.13,
+        nearness: "at",
+        callout: "Testing 7560.00 call wall (0.13% away) — dealers sell strength; resistance unless it breaks.",
+      },
+    } as unknown as VectorFullState,
+  });
+  assert.ok(section);
+  assert.match(section!.body, /Nearest wall: Testing 7560\.00 call wall/);
 });
 
 test("chartLevelsSection: live Vector spot wins over stale GEX spot for wall distance (Largo C2)", () => {

@@ -37,7 +37,7 @@ import {
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
-import { buildIntelSections, entryTriggerDeadReason } from "./play-brief-intel";
+import { buildIntelSections, entryTriggerDeadReason, nearestLevelWithFlip } from "./play-brief-intel";
 import { checkPortfolioOverlap } from "./portfolio";
 import { describeThemeOverlap } from "./theme-cluster";
 import { parseSwingPlayId } from "./play-brief-resolve-pure";
@@ -1265,10 +1265,21 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
               spotForWall
             )
           : null;
-      if (wall) {
-        parts.push(`nearest wall ${fmtPriceLevel(wall.strike)} (${wall.distance_pts.toFixed(1)} pts)`);
-      } else if (gex.flip != null) {
-        parts.push(`γ-flip ${fmtPriceLevel(gex.flip)}`);
+      // BUG FIX (Ask Largo standing mandate, 2026-10-20, fresh-angle technicals audit, adversarially
+      // verified): this used to pick the flip ONLY when no wall existed at all (`else if`), never
+      // comparing the two — so a wall farther from spot than the flip still won here, naming a
+      // "nearest wall" that wasn't actually nearest, the same bug shape fixed the same day in
+      // gexPostureSection/chartLevelsSection (see nearestLevelWithFlip's own header). Also
+      // previously read raw `gex.flip` with no Vector-preferred precedence at all; this call site
+      // is already inside `gex && !gexStale`, so the Vector-preferred value is safe to read
+      // unconditionally (flipFromStaleGex can never be true here — gex itself is confirmed fresh).
+      const vecFlipPosture = vectorStale ? undefined : vec?.gammaFlip;
+      const flipForWall = vecFlipPosture ?? gex.flip ?? null;
+      const nearestLevel =
+        spotForWall != null ? nearestLevelWithFlip(wall, flipForWall, false, spotForWall) : null;
+      if (nearestLevel) {
+        const levelLabel = nearestLevel.kind === "flip" ? "γ-flip" : "nearest wall";
+        parts.push(`${levelLabel} ${fmtPriceLevel(nearestLevel.strike)} (${nearestLevel.distance_pts.toFixed(1)} pts)`);
       }
     }
     out.push({
