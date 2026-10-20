@@ -2614,8 +2614,20 @@ export function wallDynamicsSection(
   if (vectorSnapshotStale(vec, readMs, sessionDate) && bucket !== "closed") return null;
   const events = vec?.wallEvents ?? [];
   if (!events.length) return null;
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): `vec.wallEvents` is chronologically ASCENDING
+  // (oldest-first) — `eventsFromWallHistory` (vector-wall-events.ts) builds it by iterating wall-
+  // history samples forward, so index 0 is the earliest detected wall transition and the last index
+  // is the newest. Every sibling reader of this SAME field takes from the END to get the most
+  // recent activity: `wallDynamicsCoaching` (play-brief-narrative-coaching.ts) does `events.slice(-2)`;
+  // `tradeManagerNarrativeSection`'s own "Wall just moved" bullet (play-brief-narrative.ts) explicitly
+  // does `walls[walls.length - 1]`. This section's `.slice(0, 5)` took the FIRST 5 — the 5 OLDEST
+  // events — backwards relative to its own title ("Wall bead dynamics — building/fading nodes") and
+  // doc comment ("these are TODAY's building/fading wall events"). On a session with more than 5
+  // wall events, this section showed stale, superseded activity from hours earlier while the same
+  // brief's "Trade manager read" section, built from the exact same array, correctly cited the
+  // newest shift — two sections of one brief disagreeing about what "current" wall activity is.
   const lines = events
-    .slice(0, 5)
+    .slice(-5)
     .map((e) => {
       const at = e.strike != null ? ` @ ${fmtPriceLevel(e.strike)}` : e.flip != null ? ` @ flip ${fmtPriceLevel(e.flip)}` : "";
       return `• **${e.kind.replace(/_/g, " ")}**${at} — ${e.message}`;
