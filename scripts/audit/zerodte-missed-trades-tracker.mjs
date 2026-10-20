@@ -79,6 +79,7 @@ const { computeIntradayRead, marketBias, intradayScoreAdjust } = await import(`$
 const { fetchStockMinuteBars, fetchOptionMinuteBars } = await import(`${SRC}lib/providers/polygon.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
 const { PLAN_RULES } = await import(`${SRC}lib/zerodte/plan.ts`);
+const { loadHistoricalFlowDays } = await import("./lib/zerodte-flow-history.mjs");
 
 const POLYGON_BASE = process.env.POLYGON_API_BASE;
 const POLYGON_KEY = process.env.POLYGON_API_KEY;
@@ -160,11 +161,27 @@ console.log(`  0DTE MISSED-TRADES / FALSE-ALERTS TRACKER — real costs, point-i
 console.log(`  window ${DAYS}d · min premium ${fmtUsd(MIN_PREMIUM)} · cap ${MAX_SETUPS_PER_HALF} setups/half · entry delay ${ENTRY_DELAY_SEC}s · hold ${HOLD_MINUTES}min`);
 console.log(line("═"));
 
-console.log(`\n[1] Fetching multi-day UW flow…`);
-const mrows = await fetchMultiDayFlow(nowMs, DAYS, MIN_PREMIUM);
-console.log(`    ${mrows.length} raw alerts`);
+console.log(`\n[1] Loading persisted flow history + a small live top-up for whatever's not collected yet…`);
+// Every sibling tool used to re-page UW's flow-alerts API from scratch on every run, which tops
+// out after ~3 real session days at real alert volume (~2k+ rows/day at this min_premium) before
+// the page budget is spent — read as "that's all the history there is." It is not: a direct probe
+// of the UW API returned real rows at `older_than` cutoffs back to 2025-12-31, so the budget was
+// the limit, not the provider. `zerodte-history-collect.mjs` now persists each COMPLETE real
+// session day's rows to docs/audit/history/zerodte-flow/, growing across runs — load that first
+// (free, instant) and only live-fetch the thin, recent window the collector can't persist yet
+// (today's still-open session, and whatever closed day hasn't been collected since).
+const cutoffMs = nowMs - DAYS * 86_400_000;
+const localByDay = loadHistoricalFlowDays({ cutoffMs, endMs: nowMs });
+console.log(`    ${localByDay.size} day(s) loaded from local history store`);
+const newestLocalMs = localByDay.size
+  ? Math.max(...[...localByDay.keys()].map((d) => Date.parse(`${d}T20:00:00Z`)))
+  : cutoffMs;
+const topUpDays = Math.max(1, Math.ceil((nowMs - newestLocalMs) / 86_400_000) + 1);
+const mrows = await fetchMultiDayFlow(nowMs, topUpDays, MIN_PREMIUM);
+console.log(`    ${mrows.length} raw alerts fetched live (top-up window ~${topUpDays}d, beyond the local store)`);
 
 const byDay = new Map();
+for (const [day, rows] of localByDay) byDay.set(day, rows.slice());
 for (const mr of mrows) {
   const f = mr.flow;
   const raw = mr.raw ?? {};
@@ -173,6 +190,7 @@ for (const mr of mrows) {
   const alertMs = Date.parse(f.alerted_at ?? "");
   if (!Number.isFinite(alertMs)) continue;
   const day = etYmd(alertMs);
+  if (localByDay.has(day)) continue; // already have this day complete from local history
   const row = {
     ticker: f.ticker, premium: f.premium, option_type: f.option_type, strike: f.strike, expiry: f.expiry,
     dte: f.expiry ? dteFromExpiry(f.expiry) ?? undefined : undefined,
