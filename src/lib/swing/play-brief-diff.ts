@@ -501,7 +501,22 @@ export function diffBriefSnapshots(prev: BriefSnapshot | null, next: BriefSnapsh
     lines.push(`No longer showing: ${removedSections.join(", ")}`);
   }
 
-  return lines.slice(0, 8);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, Largo C3 absence violation): this cap used to
+  // be a bare `lines.slice(0, 8)` with no disclosure when more than 8 real changes fired in one
+  // pulse — up to ~17 independent facts can be pushed above (direction flip, thesis/pnl synthesis,
+  // recommendation, mark, spot, gamma flip, call/put wall, HELIX flow, trims, roll-watch,
+  // entry-gate shift, headline, section add/remove). A refresh after a long gap (overnight,
+  // multi-hour stall) could legitimately produce more than 8, and the lowest-priority ones were
+  // dropped with zero indication to the member — the exact silent-truncation shape
+  // `scripts/audit/largo-truncation-probe.mjs` exists to catch on other Largo surfaces (three real
+  // shipped bugs: #2433, #2436, #2480), just unguarded here. Name the cut instead of hiding it.
+  const MAX_DIFF_LINES = 8;
+  if (lines.length <= MAX_DIFF_LINES) return lines;
+  const overflow = lines.length - MAX_DIFF_LINES;
+  return [
+    ...lines.slice(0, MAX_DIFF_LINES),
+    `+${overflow} more change${overflow === 1 ? "" : "s"} this refresh (not shown — see the live board for full detail).`,
+  ];
 }
 
 /**
