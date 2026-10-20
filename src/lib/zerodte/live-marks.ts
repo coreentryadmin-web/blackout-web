@@ -42,6 +42,7 @@ import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/provider
 import { roundFloats, type RoundFloatsKeyDp } from "@/lib/round-floats";
 import { getLiveOptionMark, subscribeContracts, unsubscribeContracts } from "@/lib/ws/options-socket";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+import { ZERODTE_MAX_DTE } from "@/lib/horizons";
 import {
   advancePlayLatch,
   condorSellerPnlPct,
@@ -305,18 +306,39 @@ export function toActivePlay(r: ZeroDteSetupLogRow): ActiveZeroDtePlay | null {
   const isCondor = condorLegs.length === 4 && (ec?.play_type === "CONDOR" || ec?.condor);
   const occ = isCondor ? condorLegs[0]!.occ : typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
   if (!occ) return null;
-  // 0DTE's whole premise is same-day expiry: a row whose tracked OCC expired on a
-  // DIFFERENT calendar day than its own session_date can never be a live 0DTE
-  // position — either the contract has already expired (a stale row an end-of-day
-  // close missed, left forever polling a dead symbol with mark:null/source:"none")
-  // or the OCC itself is wrong. Either way it is not trackable; excluding it here
-  // (same early-return shape as the CLOSED guard above) stops the live-marks poller
-  // from wasting a tick on it every second and stops it pinning stage D of
-  // zerodte-e2e-healthcheck.mjs permanently RED. Skip the check when occExpiryYmd
-  // can't parse the symbol at all — that's a format problem, not an expiry one, and
-  // the existing null-mark path already surfaces it honestly.
+  // BUG FIX (2026-10-20, live member audit — "verify quote freshness, executable exit
+  // prices... don't dismiss this"): this guard used to require occExpiry === session_date
+  // EXACTLY, on the premise "0DTE's whole premise is same-day expiry." That premise is only
+  // true for underlyings with DAILY option listings (SPY/QQQ/IWM/SPX/NDX); every single-name
+  // 0DTE play (RIOT, NBIS, HUT, ...) is committed against the NEAREST available expiry, up to
+  // ZERODTE_MAX_DTE (4) calendar days out (board.ts's own SETUP_MAX_DTE, widened 1->4 on
+  // 2026-08-06 specifically to cover this population) — so the strict equality silently
+  // excluded EVERY single-name 0DTE row from this lane, permanently: `getActivePlays` never
+  // returns them, so the ~1s poller never quotes them, and attachLiveMarkMeta
+  // (zerodte-service.ts) always falls back to bid:null/ask:null/mark_source:null/
+  // live_pnl_pct_exec:null for the ENTIRE single-name population, every session, with no
+  // error anywhere (same shape as every other "silently correct, structurally always
+  // excluded" bug this toolkit has caught). Live evidence: a board poll during RTH showed
+  // 0/12 open single-name rows ever carrying a bid/ask across repeated polls spanning several
+  // minutes, while the SAME lane's dedicated /marks route showed real, <1s-fresh bid/ask/
+  // greeks for genuinely-tracked (swing) contracts the whole time — the lane itself works;
+  // this guard just never let single-name 0DTE rows register with it. Fixed to accept any
+  // occExpiry within [session_date, session_date + ZERODTE_MAX_DTE] — still excludes a
+  // genuinely-expired row (occExpiry < session_date, the real "stale zombie row" case the
+  // original comment was protecting against) or an implausibly-far OCC (occExpiry too far
+  // past the window, the real "OCC is wrong" case) — same two failure modes as before, just
+  // no longer conflating "not today" with "wrong." Skip the check when occExpiryYmd can't
+  // parse the symbol at all — a format problem, not an expiry one; the existing null-mark
+  // path already surfaces it honestly.
   const occExpiry = occExpiryYmd(occ);
-  if (occExpiry != null && occExpiry !== r.session_date) return null;
+  if (occExpiry != null) {
+    const expiryMs = Date.parse(`${occExpiry}T00:00:00Z`);
+    const sessionMs = Date.parse(`${r.session_date}T00:00:00Z`);
+    if (Number.isFinite(expiryMs) && Number.isFinite(sessionMs)) {
+      const dte = Math.round((expiryMs - sessionMs) / 86_400_000);
+      if (dte < 0 || dte > ZERODTE_MAX_DTE) return null;
+    }
+  }
   if (isCondor) {
     return {
       session_date: r.session_date,
