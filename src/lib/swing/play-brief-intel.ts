@@ -812,10 +812,23 @@ export function chartTechnicalsSection(
   // return (same shape as vectorDeskSection's reorder) restores the technicals for CLOSED while
   // leaving OPEN/WATCH's omission — the actual fix this comment above describes — untouched.
   if (vectorStale && bucket !== "closed") return null;
-  if (vec.spot != null) lines.push(`Spot: **${fmtPriceLevel(vec.spot)}**`);
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro SWING:TSLA:57 CLOSED brief): once
+  // Vector goes stale, this line still rendered the raw, stale `vec.spot` unconditionally, while
+  // `gexPostureSection`/`chartLevelsSection` (same envelope, via `preferredGexWalls`) already fall
+  // back to the GEX matrix's own spot in that exact case — the same "two different precedence
+  // rules for one conceptual level" defect class the king-strike/wall fixes above this function
+  // already cover, just never applied to spot itself. Live-confirmed: TSLA:57 CLOSED showed "Spot:
+  // 368.95" here (stale Vector) and "spot 367.43" in GEX posture/Since-it-closed (GEX-matrix
+  // fallback) in the same brief, neither flagging the other. `vectorStale` true at this point can
+  // only happen for `bucket === "closed"` (the early return above already excludes every other
+  // case), so this only changes the CLOSED, stale-Vector path; ctx is optional here (older callers
+  // that don't pass it keep the old raw-vec.spot behavior, same as every other ctx-gated read in
+  // this file).
+  const displaySpot = vectorStale && ctx ? preferredGexWalls(ctx).spot : vec.spot;
+  if (displaySpot != null) lines.push(`Spot: **${fmtPriceLevel(displaySpot)}**`);
   if (t?.emaStack) lines.push(`EMA 9/21/50 stack: **${t.emaStack}**`);
   if (t?.vwap != null) {
-    const side = vec.spot != null && vec.spot >= t.vwap ? "above" : "below";
+    const side = displaySpot != null && displaySpot >= t.vwap ? "above" : "below";
     lines.push(`VWAP **${fmtPriceLevel(t.vwap)}** — price ${side} session VWAP`);
   }
   if (t?.rsi != null) lines.push(`RSI: **${t.rsi.toFixed(0)}**`);

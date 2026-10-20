@@ -2683,6 +2683,55 @@ test("chartTechnicalsSection: CLOSED bucket renders technicals even when Vector 
   assert.equal(chartTechnicalsSection(vec), null, "default bucket (open) behavior unchanged");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro SWING:TSLA:57 CLOSED brief): with a
+// stale Vector snapshot, this section still rendered the raw, stale `vec.spot` unconditionally,
+// while `gexPostureSection`'s "Nearest wall ... from spot" line (same envelope, via
+// `preferredGexWalls`) already falls back to the GEX matrix's own spot in that exact case — two
+// different "current" spot numbers in one brief, neither flagging the other. Live TSLA:57 numbers
+// reproduced here: Vector's stale spot 368.95 vs the GEX matrix's fresher spot 367.43.
+test("chartTechnicalsSection: CLOSED bucket with a stale Vector snapshot shows the SAME preferred spot as gexPostureSection, not Vector's own stale spot (Largo C2, live repro TSLA:57)", () => {
+  const ctx = {
+    play: fixturePlay({ status: "CLOSED" }),
+    asOf: "2026-10-20 08:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: {
+      gex_positioning: {
+        spot: 367.43,
+        gamma_posture: "long",
+        net_gex: 5_000_000,
+        call_wall: 375,
+        put_wall: 360,
+        matrix_age_sec: 10,
+        freshness: "live",
+      },
+    } as EcosystemContext,
+    vector: fixtureVec({
+      spot: 368.95,
+      dataAgeMs: 10 * 60_000, // well past the staleness threshold
+      technicals: { vwap: 368, emaStack: "down", rsi: 40, macd: "bear", goldenPocket: null, structure: null },
+    }),
+  } as unknown as SwingPlayBriefContext;
+
+  const technicals = chartTechnicalsSection(ctx.vector as VectorFullState, ctx.sessionDate, "closed", ctx);
+  const gex = gexPostureSection(ctx);
+
+  assert.ok(technicals);
+  assert.ok(gex);
+  // Chart technicals must show the SAME GEX-matrix-fallback spot the GEX posture section shows —
+  // never Vector's own stale 368.95.
+  assert.match(technicals!.body, /Spot: \*\*367\.43\*\*/);
+  assert.doesNotMatch(technicals!.body, /368\.95/, "must not show Vector's stale spot once a fresher fallback exists");
+  assert.match(gex!.body, /spot \*\*367\.43\*\*/);
+
+  // The VWAP above/below call must agree with the displayed spot (367.43 < vwap 368 => below),
+  // not with Vector's stale 368.95 (which would read "above").
+  assert.match(technicals!.body, /VWAP \*\*368\.00\*\* — price below session VWAP/);
+});
+
 // FINDING (Ask Largo standing mandate, 2026-09-12): same defect class — wallDynamicsSection
 // rendered TODAY's building/fading wall events for a CLOSED play with no framing at all.
 test("wallDynamicsSection: CLOSED bucket prefixes a current-not-as-traded disclosure", () => {
