@@ -853,5 +853,10 @@
     "ts": "2026-10-19T23:33:00Z",
     "what": "Run 39335914432 (carrying PR #6286, Legacy recap-only auto-retry fix) completed: conclusion failure at 23:18:01Z, ~38.5min total (same shape as the prior two failures).",
     "status": "3rd consecutive deploy failure observed directly by this journal (cross-referenced with the general Night Hawk lane's PR #6279 'journal 8th consecutive deploy timeout' seen this session -- same underlying deadlock, larger count from their higher push volume). PR #6283/#6284/#6286 all remain merged-but-not-live. No new action possible from this session (no AWS access). Legacy digest unchanged, health 200."
+  },
+  "deploy_deadlock_fourth_confirmed_failure_2026_10_19": {
+    "ts": "2026-10-20T00:32:00Z",
+    "what": "Run 39343114418 (PR #6287, 0DTE lane) also failed, same shape, at 00:24:33Z.",
+    "status": "4th consecutive failure directly observed. Pattern fully established -- no longer deep-diving each occurrence (logs are identical: running=0/1 throughout, 36min timeout). Will note only material changes (success, or a materially different failure mode) going forward rather than re-confirming the same shape each time. Legacy digest unchanged, health 200."
   }
 }
