@@ -1569,7 +1569,7 @@ export function dataHonestyCoaching(ctx: SwingPlayBriefContext, play: TerminalPl
 }
 
 /** Closed play post-mortem coaching. */
-export function closedCoaching(play: TerminalPlay): string | null {
+export function closedCoaching(play: TerminalPlay, spot?: number | null): string | null {
   if (play.status !== "CLOSED") return null;
   const lines: string[] = [];
 
@@ -1614,8 +1614,25 @@ export function closedCoaching(play: TerminalPlay): string | null {
           typeof inval === "number" && Number.isFinite(inval)) {
         const cushionPct =
           (play.direction === "SHORT" ? (inval - trig) / trig : (trig - inval) / trig) * 100;
+        // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro CRWV:61/MSFT:49): this
+        // clause used to unconditionally conclude "not that the stop was wrong" — a verdict on
+        // whether the STOP ITSELF was premature. watchForSection's own "Since it closed" section
+        // (play-brief-intel.ts, same envelope, rendered later) independently checks whether spot
+        // has since moved back through this exact `invalidationUnderlyingPx` level and, when it
+        // has, says the opposite: "the exit may have been early." Neither section knew about the
+        // other, so a member reading a closed+stopped brief whose underlying had since reclaimed
+        // the stop level saw both verdicts in the same document — this line clearing the stop,
+        // "Since it closed" implicating it, for the identical event. Since "Since it closed"
+        // already carries the real post-close reclaim evidence (how far back through, as of
+        // today), this line defers to it instead of asserting a verdict a later section can
+        // contradict — using the SAME reclaim test (direction-aware spot-vs-invalidation compare)
+        // "Since it closed" uses, so the two can't independently drift into disagreement again.
+        const reclaimed = spot != null && (play.direction === "SHORT" ? spot < inval : spot > inval);
+        const verdict = reclaimed
+          ? `spot has since moved back through this level — see "Since it closed" below for how far.`
+          : `a thin cushion here means the entry was already extended, not that the stop was wrong.`;
         lines.push(
-          `**Stop fired** (${r}) — entry **${fmtPriceLevel(trig)}** vs invalidation **${fmtPriceLevel(inval)}**, a **${fmtPct(cushionPct)}** cushion at commit; a thin cushion here means the entry was already extended, not that the stop was wrong.`,
+          `**Stop fired** (${r}) — entry **${fmtPriceLevel(trig)}** vs invalidation **${fmtPriceLevel(inval)}**, a **${fmtPct(cushionPct)}** cushion at commit; ${verdict}`,
         );
       } else {
         lines.push(`**Stop fired** (${r}) — check if entry was extended past invalidation.`);
@@ -1693,7 +1710,7 @@ export function collectCoachingBullets(
   };
 
   if (bucket === "closed") {
-    push(closedCoaching(play));
+    push(closedCoaching(play, spot));
     return out;
   }
 
