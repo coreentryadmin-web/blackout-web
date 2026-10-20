@@ -818,7 +818,17 @@ export function resolveInvalidationFocalLevel(play: TerminalPlay, focal: FocalLe
     );
   }
   if (play.direction === "SHORT") {
-    return focal.find((l) => (l.kind === "call_wall" || l.kind === "king") && l.distancePct > 0);
+    // BUG FIX (Ask Largo standing mandate, 2026-10-20): the LONG branch above treats put_wall,
+    // dark_pool, AND king as candidate invalidation levels; this SHORT branch omitted dark_pool —
+    // not a deliberate asymmetry (narrateDarkPool explicitly supports a dark-pool print acting as
+    // resistance for a SHORT thesis, and play-brief-ladder.ts's `riskTheOtherSide` treats dark_pool
+    // fully symmetrically for both directions when picking the Structure Ladder's own focal level).
+    // This function's own doc comment above states its whole purpose is that every section quoting
+    // "the one structural level that matters" routes through here so they can never disagree — an
+    // omitted kind on one side only is exactly the asymmetry that guarantee exists to prevent.
+    return focal.find(
+      (l) => (l.kind === "call_wall" || l.kind === "dark_pool" || l.kind === "king") && l.distancePct > 0,
+    );
   }
   return undefined;
 }
