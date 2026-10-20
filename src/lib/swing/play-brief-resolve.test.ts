@@ -145,6 +145,33 @@ test("pickLanePlayForBrief: contract strike disambiguates same ticker", () => {
   assert.equal(picked?.contract.strike, 580);
 });
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate — live-reproduced two-leg repro, found by the
+// 5-engine/Largo fresh-angle audit). `contractMatches` (play-brief-resolve-pure.ts) used to
+// short-circuit `if (strike == null) return true;` BEFORE ever checking `right`, so a caller
+// supplying only `right` (no `strike`) matched EVERY same-ticker contract regardless of call/put —
+// exactly the Largo tool's own documented call shape ("Optional positionId/strike/right/status
+// disambiguate ... omit them for the single obvious match," any subset, including right alone).
+test("pickLanePlayForBrief: right-only hint (no strike) picks the matching side, not the higher-scored one", () => {
+  // Scores deliberately favor the WRONG (call) leg so the old buggy code's score-tiebreak
+  // (byContract.sort((a,b)=>b.score-a.score)[0] over an unfiltered-by-right byContract) cannot
+  // accidentally land on the right answer — only an actual right-filter can pick the put here.
+  const rows = [
+    laneRow({
+      ticker: "XYZ",
+      score: 90,
+      contract: { ticker: "XYZ", strike: 100, right: "C", expiry: "x", dte: 14, mid: 5, bid: null, ask: null, delta: 0.5, openInterest: 0 },
+    }),
+    laneRow({
+      ticker: "XYZ",
+      score: 50,
+      contract: { ticker: "XYZ", strike: 90, right: "P", expiry: "x", dte: 14, mid: 5, bid: null, ask: null, delta: -0.5, openInterest: 0 },
+    }),
+  ];
+  const picked = pickLanePlayForBrief(rows, "XYZ", { right: "P" });
+  assert.equal(picked?.contract.right, "P", "a right=P request must never resolve to the call leg");
+  assert.equal(picked?.contract.strike, 90);
+});
+
 // BANGER-ORIGIN IDENTITY FIX (Ask Largo standing mandate, 2026-09-21). Live-repro'd on ABTC
 // 2026-09-21: two concurrent banger-origin swing positions (9.5C TRIM +200%, 10.5C OPEN +25%),
 // each carrying its own real `positionId` (banger_positions.id — see banger-lane-merge.ts).
@@ -368,6 +395,24 @@ describe("loadOpenTerminalPlay: restores factors/regime for a committed row (Lar
       play!.occ,
       "O:NRG261016C00115000",
       "a committed row's stored contract_occ must win over a strike/expiry/right reconstruction, normalized O:-prefixed",
+    );
+  });
+
+  // BUG FIX (2026-10-20, Ask Largo standing mandate — same defect class as pickLanePlayForBrief's
+  // sibling fix above, found the same cycle). `rowContractMatches` had the identical short-circuit:
+  // `if (strike == null) return true;` ran before `right` was ever checked, so a right-only hint
+  // matched every open row for the ticker regardless of call/put.
+  test("BUG FIX: right-only hint (no strike, no positionId) resolves the matching side, not just the first row", async () => {
+    const callRow = { ...openRow("DUAL", 10), contract_strike: 100, contract_type: "call" };
+    const putRow = { ...openRow("DUAL", 11), contract_strike: 95, contract_type: "put" };
+    mockOpenRows = [callRow, putRow];
+    mockDiscovered = { dossiers: [], plays: [] };
+
+    const play = await mod.loadOpenTerminalPlay("DUAL", { right: "P" });
+    assert.ok(play, "the committed play must resolve");
+    assert.ok(
+      play!.contract.includes("95"),
+      `a right=P request must resolve the put leg (strike 95), not the call — got contract "${play!.contract}"`,
     );
   });
 });
