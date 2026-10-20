@@ -5910,6 +5910,35 @@ test("whyThisSetupSection: surfaces a real divergence when the pick landed on a 
   );
 });
 
+// GAP FOUND (Ask Largo standing mandate, 2026-10-20, live NVDA repro): the mismatch branch above
+// named only the flow's magnet strike, never the pick's OWN strike -- a reader had to cross-
+// reference the Verdict section's separate `play.contract` label to see how far apart the two
+// actually were. `play.occ` (parsed via the shared `parseOccSymbol`) now resolves the pick's real
+// strike so the comparison is self-contained in this one line.
+test("whyThisSetupSection: the mismatch line names the pick's OWN strike too, when occ resolves it", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      occ: "NVDA261121C00212500",
+      topFlowProvenance: { topFlowStrike: 225, matchedPick: false },
+    }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Strike vs flow:\*\* the accumulation flow's magnet strike was \*\*\$225\*\*; this pick used \*\*\$212\.5\*\* instead/,
+  );
+});
+
+test("whyThisSetupSection: mismatch line falls back to the generic wording when occ can't be parsed (never fabricated)", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({ occ: null, topFlowProvenance: { topFlowStrike: 175, matchedPick: false } }),
+  );
+  assert.match(
+    section.body,
+    /\*\*Strike vs flow:\*\* the accumulation flow's magnet strike was \*\*\$175\*\*; this pick landed at a different strike \(chosen independently on tradability\/fit\)\.$/m,
+  );
+  assert.doesNotMatch(section.body, /this pick used/);
+});
+
 test("whyThisSetupSection: omits the strike-vs-flow line when no flow strike was ever resolved (never fabricated)", () => {
   const section = whyThisSetupSection(fixturePlay({ topFlowProvenance: null }));
   assert.doesNotMatch(section.body, /Strike vs flow/);
