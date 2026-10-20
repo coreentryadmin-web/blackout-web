@@ -2848,6 +2848,35 @@ test("wallDynamicsSection: CLOSED bucket renders wall events even when Vector sn
   assert.equal(wallDynamicsSection(vec), null, "default bucket (open) behavior unchanged");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): `vec.wallEvents` is chronologically ASCENDING
+// (oldest-first, per eventsFromWallHistory's forward iteration) -- every sibling reader of this
+// same field (wallDynamicsCoaching's `.slice(-2)`, tradeManagerNarrativeSection's
+// `walls[walls.length - 1]`) takes from the END to get the most recent activity. This section's
+// `.slice(0, 5)` took the FIRST 5 (oldest) instead, so a session with more than 5 events showed
+// stale, superseded wall activity from hours earlier while never showing the newest shift at all.
+test("wallDynamicsSection: shows the 5 MOST RECENT wall events, not the 5 oldest", () => {
+  const vec = fixtureVec({
+    dataAgeMs: 1_000,
+    wallEvents: [
+      { kind: "call_wall_building", strike: 100, message: "e0 oldest — premarket noise" },
+      { kind: "call_wall_building", strike: 101, message: "e1" },
+      { kind: "call_wall_building", strike: 102, message: "e2" },
+      { kind: "call_wall_building", strike: 103, message: "e3" },
+      { kind: "call_wall_building", strike: 104, message: "e4" },
+      { kind: "call_wall_building", strike: 105, message: "e5" },
+      { kind: "call_wall_building", strike: 106, message: "e6" },
+      { kind: "put_wall_fading", strike: 107, message: "e7 newest — 10 minutes ago" },
+    ],
+  });
+  const section = wallDynamicsSection(vec, null, "open");
+  assert.ok(section);
+  assert.match(section!.body, /e7 newest/, "must show the newest event");
+  assert.match(section!.body, /e3/, "the 5 most recent span e3..e7");
+  assert.doesNotMatch(section!.body, /e0 oldest/, "must not show the oldest, superseded events");
+  assert.doesNotMatch(section!.body, /\be1\b/);
+  assert.doesNotMatch(section!.body, /\be2\b/);
+});
+
 test("vectorDeskSection: stale Vector play.bias must not badge bullish/bearish (Largo C2)", () => {
   const vec = fixtureVec({
     freshness: "stale",
