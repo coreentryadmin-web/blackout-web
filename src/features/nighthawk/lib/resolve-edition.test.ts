@@ -1,4 +1,4 @@
-import { before, test, mock } from "node:test";
+import { before, after, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { NighthawkEditionRow } from "@/lib/db";
 
@@ -74,35 +74,54 @@ function fakeRowToNightHawkEdition(row: NighthawkEditionRow) {
   };
 }
 
+// `node --test` can schedule multiple test FILES inside the same worker process, so a
+// `mock.module()` registration left in place after this file's own tests finish can leak into a
+// LATER-scheduled file in that same worker and silently swap its real dependencies for this file's
+// fakes — not hypothetical: this exact leak corrupted `route.test.ts` (a different, pre-existing
+// file) in CI, which also exercises `resolveNighthawkEdition`'s real `@/lib/db` reads and got this
+// file's `state`-driven fakes instead. Capture every handle `mock.module()` returns and `.restore()`
+// it in `after()` so the mocks are scoped to this file only, regardless of worker scheduling.
+const moduleMocks: Array<{ restore(): void }> = [];
+
 before(async () => {
   const realDb = await import("../../../lib/db");
-  mock.module("../../../lib/db", {
-    namedExports: {
-      ...realDb,
-      fetchLatestNighthawkEdition: async () => state.latest,
-      fetchLatestPlayableNighthawkEdition: async () => state.playable,
-      fetchNighthawkEditionByDate: async () => state.byDate,
-      fetchNighthawkPulledPlays: async () => [],
-      fetchNighthawkEditionOutcomeOverlays: async () => [],
-    },
-  });
+  moduleMocks.push(
+    mock.module("../../../lib/db", {
+      namedExports: {
+        ...realDb,
+        fetchLatestNighthawkEdition: async () => state.latest,
+        fetchLatestPlayableNighthawkEdition: async () => state.playable,
+        fetchNighthawkEditionByDate: async () => state.byDate,
+        fetchNighthawkPulledPlays: async () => [],
+        fetchNighthawkEditionOutcomeOverlays: async () => [],
+      },
+    }),
+  );
 
-  mock.module("./edition-builder", {
-    namedExports: {
-      rowToNightHawkEdition: fakeRowToNightHawkEdition,
-    },
-  });
+  moduleMocks.push(
+    mock.module("./edition-builder", {
+      namedExports: {
+        rowToNightHawkEdition: fakeRowToNightHawkEdition,
+      },
+    }),
+  );
 
   const realSession = await import("./session");
-  mock.module("./session", {
-    namedExports: {
-      ...realSession,
-      // The real implementation reads the actual wall clock with no way for a caller to inject
-      // "now" — stub it so the test is deterministic regardless of when it runs, while every
-      // other export (todayEt, nextTradingDayEt, ...) stays real.
-      isBeforeOrAtMarketCloseEt: (_sessionYmd: string | null | undefined) => state.beforeClose,
-    },
-  });
+  moduleMocks.push(
+    mock.module("./session", {
+      namedExports: {
+        ...realSession,
+        // The real implementation reads the actual wall clock with no way for a caller to inject
+        // "now" — stub it so the test is deterministic regardless of when it runs, while every
+        // other export (todayEt, nextTradingDayEt, ...) stays real.
+        isBeforeOrAtMarketCloseEt: (_sessionYmd: string | null | undefined) => state.beforeClose,
+      },
+    }),
+  );
+});
+
+after(() => {
+  for (const m of moduleMocks) m.restore();
 });
 
 const mod = () => import("./resolve-edition");
