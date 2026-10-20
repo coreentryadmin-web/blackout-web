@@ -99,15 +99,27 @@ export function meridianPeerEarningsCoaching(
     }
     const peers = (peer.members ?? []).filter((m) => !m.is_subject && m.beat_rate_n >= 3);
     if (peers.length) {
-      const snippets = peers
-        .slice(0, 3)
+      // BUG FIX (2026-10-20, Ask Largo standing mandate — same Largo C3 absence-disclosure shape
+      // already fixed today in play-brief-diff.ts/envelopeWithDiffSection and already correctly
+      // handled by the sibling meridianCatalystsSection, play-brief-intel.ts). Up to
+      // MAX_PEER_REACTION_TICKERS=6 non-subject peers can qualify with beat_rate_n>=3, but only
+      // the first 3 were ever shown — silently, with no "+N more" note, so a trader had no way to
+      // know the real cohort was larger than the 3 names rendered.
+      const PEER_SNIPPET_LIMIT = 3;
+      const shown = peers.slice(0, PEER_SNIPPET_LIMIT);
+      const snippets = shown
         .map((m) => {
           const beat =
             m.beat_rate != null ? `${Math.round(m.beat_rate * 100)}% beat` : "beat n/a";
           return `**${m.ticker}** ${beat} (n=${m.beat_rate_n})`;
         })
         .join(" · ");
-      parts.push(`peer history: ${snippets}`);
+      const overflow = peers.length - shown.length;
+      parts.push(
+        overflow > 0
+          ? `peer history: ${snippets} (+${overflow} more peer${overflow === 1 ? "" : "s"} not shown)`
+          : `peer history: ${snippets}`,
+      );
     }
     if (peer.insufficient_reason?.trim()) {
       parts.push(

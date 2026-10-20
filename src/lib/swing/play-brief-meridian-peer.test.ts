@@ -70,6 +70,57 @@ test("meridianPeerEarningsCoaching: peer beat rates when cohort available", () =
   assert.match(line!, /75% beat/i);
 });
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate — live fresh-angle audit). Up to
+// MAX_PEER_REACTION_TICKERS=6 non-subject peers can clear the beat_rate_n>=3 floor this function
+// applies, but the old code did a bare `.slice(0, 3)` with no disclosure that the cohort was
+// actually larger — a Largo C3 absence-disclosure violation, the same shape already fixed the
+// same day in play-brief-diff.ts.
+test("meridianPeerEarningsCoaching: more than 3 qualifying peers discloses the overflow instead of silently dropping it", () => {
+  function peerMember(ticker: string, beatRate: number, beatRateN: number) {
+    return {
+      ticker,
+      report_date: "2026-09-05",
+      expected_move_pct: 6,
+      avg_reaction_pct: -2,
+      reaction_sample_n: beatRateN,
+      beat_rate: beatRate,
+      beat_rate_n: beatRateN,
+      is_subject: false,
+    };
+  }
+  const line = meridianPeerEarningsCoaching(
+    {
+      available: true,
+      id: "earnings:BBWI:2026-09-10",
+      subject_ticker: "BBWI",
+      position_summary: null,
+      members: [
+        peerMember("ULTA", 0.75, 4),
+        peerMember("TJX", 0.6, 5),
+        peerMember("ROST", 0.5, 6),
+        peerMember("GPS", 0.4, 4),
+        peerMember("ANF", 0.3, 3),
+      ],
+      interpretation: "",
+      sector_label: "Retail",
+      major_group: "52",
+      distribution: null,
+      insufficient_reason: null,
+    },
+    earningsItem(),
+  );
+  assert.match(line!, /ULTA/i);
+  assert.match(line!, /TJX/i);
+  assert.match(line!, /ROST/i);
+  assert.doesNotMatch(line!, /GPS/i, "only the first 3 peers should be named inline");
+  assert.doesNotMatch(line!, /ANF/i, "only the first 3 peers should be named inline");
+  assert.match(
+    line!,
+    /\+2 more peers not shown/i,
+    "the 2 dropped peers (GPS, ANF) must be disclosed as an overflow count, not silently dropped",
+  );
+});
+
 test("meridianPeerEarningsCoaching: surfaces the SUBJECT ticker's own beat rate/reaction, not just peers'", () => {
   const line = meridianPeerEarningsCoaching(
     {
