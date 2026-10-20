@@ -865,45 +865,68 @@ export async function buildEveningEdition(opts?: {
     // STAGE 3 — Dossiers (resume-aware)
     resetEditionCongressCache();
     const regime = regimeContextFromMarket(ctx);
-    const alreadyDone = checkpointing ? await fetchStagedDossierTickers(editionFor) : [];
-    const remaining = candidates.filter((t) => !alreadyDone.includes(t.toUpperCase()));
+    const dossierSessionCtx = { today: ctx.today, tomorrow: ctx.tomorrow, tomorrow_earnings: ctx.tomorrow_earnings ?? [] };
+    // Captured once, before any fetch/retry below — this is what `resumed` in the final result
+    // reflects (did THIS invocation pick up dossiers staged by an earlier run), not whatever the
+    // retry loop's own re-checks see after it stages work itself.
+    const alreadyDoneAtStart = checkpointing ? await fetchStagedDossierTickers(editionFor) : [];
 
-    let dossiers: Record<string, TickerDossier>;
+    // BUG FIX (2026-10-20): the bounded retry used to live around the rescore pass below,
+    // retrying rescoreDossier()/scoreCandidate() — a synchronous, pure function with zero network
+    // I/O (verified: no await/fetch/async anywhere in scoreCandidate's 270-line body). All real
+    // network I/O (UW flow, IV rank, positioning, tech, news, financials) happens HERE, in
+    // fetchAllDossiers -> fetchTickerDossierWithWall, which returns null on its 45s per-ticker
+    // timeout; fetchAllDossiers silently drops nulls (`if (!d) continue`). So under the exact
+    // congestion scenario the old retry was written for, `dossiers` ended up with ZERO keys
+    // before the rescore loop ever ran, and retrying a pure function over an empty object can
+    // never recover — it was a no-op dressed as resilience. The bounded retry now wraps THIS
+    // stage (the actual network fetch) instead, so a transient outage has something real to
+    // retry against.
+    let dossiers: Record<string, TickerDossier> = {};
+    let dossierFetchAttempt = 0;
+    const MAX_DOSSIER_FETCH_ATTEMPTS = 2; // initial + one bounded retry
 
-    if (checkpointing) {
-      if (remaining.length) {
-        await upsertNighthawkJob(editionFor, { status: "running", current_stage: "stage_dossiers" });
-        console.info(`[nighthawk/edition] stage_dossiers: ${remaining.length} remaining (${alreadyDone.length} staged)`);
-
-        let completed = alreadyDone.length;
-        const total = candidates.length;
-
-        const dossierSessionCtx = { today: ctx.today, tomorrow: ctx.tomorrow, tomorrow_earnings: ctx.tomorrow_earnings ?? [] };
-        await fetchAllDossiers(remaining, DOSSIER_BATCH_SIZE, regime, async (dossier) => {
-          completed += 1;
-          await saveDossierStaging(
-            editionFor,
-            dossier.ticker,
-            dossier as unknown as Record<string, unknown>,
-            dossier.scored as unknown as Record<string, unknown> | undefined
-          );
-          logNighthawkJob(
-            editionFor,
-            "info",
-            "stage_dossiers",
-            `Dossier ${dossier.ticker} done (${completed}/${total})`
-          );
-        }, dossierSessionCtx);
+    while (dossierFetchAttempt < MAX_DOSSIER_FETCH_ATTEMPTS && Object.keys(dossiers).length === 0 && candidates.length > 0) {
+      if (dossierFetchAttempt > 0) {
+        console.warn(`[nighthawk/edition] stage_dossiers: 0/${candidates.length} dossiers fetched — retrying fetch after 2s delay (attempt ${dossierFetchAttempt + 1}/${MAX_DOSSIER_FETCH_ATTEMPTS})`);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      dossiers = stagedToDossierMap(await fetchStagedDossiers(editionFor));
-    } else {
-      console.info(`[nighthawk/edition] dossiers for ${candidates.length} tickers (no checkpointing)`);
-      dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime, undefined, {
-        today: ctx.today,
-        tomorrow: ctx.tomorrow,
-        tomorrow_earnings: ctx.tomorrow_earnings ?? [],
-      });
+      const alreadyDone = checkpointing ? await fetchStagedDossierTickers(editionFor) : [];
+      const remaining = candidates.filter((t) => !alreadyDone.includes(t.toUpperCase()));
+
+      if (checkpointing) {
+        if (remaining.length) {
+          await upsertNighthawkJob(editionFor, { status: "running", current_stage: "stage_dossiers" });
+          console.info(`[nighthawk/edition] stage_dossiers: ${remaining.length} remaining (${alreadyDone.length} staged)`);
+
+          let completed = alreadyDone.length;
+          const total = candidates.length;
+
+          await fetchAllDossiers(remaining, DOSSIER_BATCH_SIZE, regime, async (dossier) => {
+            completed += 1;
+            await saveDossierStaging(
+              editionFor,
+              dossier.ticker,
+              dossier as unknown as Record<string, unknown>,
+              dossier.scored as unknown as Record<string, unknown> | undefined
+            );
+            logNighthawkJob(
+              editionFor,
+              "info",
+              "stage_dossiers",
+              `Dossier ${dossier.ticker} done (${completed}/${total})`
+            );
+          }, dossierSessionCtx);
+        }
+
+        dossiers = stagedToDossierMap(await fetchStagedDossiers(editionFor));
+      } else {
+        console.info(`[nighthawk/edition] dossiers for ${candidates.length} tickers (no checkpointing)`);
+        dossiers = await fetchAllDossiers(candidates, DOSSIER_BATCH_SIZE, regime, undefined, dossierSessionCtx);
+      }
+
+      dossierFetchAttempt += 1;
     }
 
     // Session-aware re-score (audit fix, historical + belt-and-suspenders): fetchAllDossiers
@@ -913,46 +936,36 @@ export async function buildEveningEdition(opts?: {
     // not just the edition path, gets a correct earnings_date/today_ymd/tomorrow_ymd, since two
     // real non-edition callers — zerodte/scan.ts's own dossier borrow and play-explainer.ts's
     // fallback narrative path — read dossier.scored straight from that first pass with no
-    // subsequent rescore at all). This loop is now redundant FOR THE EDITION PATH SPECIFICALLY
+    // subsequent rescore at all). This pass is now redundant FOR THE EDITION PATH SPECIFICALLY
     // (both passes compute the identical correct value) but is kept exactly as-is rather than
     // removed: it's still the one deterministic, idempotent, checkpoint-resume-safe re-score
     // this path has always relied on, and removing it is an unrelated optimization, not part of
-    // this data-completeness fix.
-    let scoredList: ScoredCandidate[] = [];
-    let rescoreAttempt = 0;
-    const MAX_RESCORE_ATTEMPTS = 2; // initial + one bounded retry
-
-    while (rescoreAttempt < MAX_RESCORE_ATTEMPTS && scoredList.length === 0) {
-      if (rescoreAttempt > 0) {
-        console.warn(`[nighthawk/edition] stage_dossiers rescore retry ${rescoreAttempt} of ${MAX_RESCORE_ATTEMPTS - 1} — retrying after 2s delay`);
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+    // this data-completeness fix. Single pass, no retry here: scoreCandidate is pure/synchronous
+    // (no I/O), so re-running it over the same dossier object is deterministic — retrying it buys
+    // nothing. The bounded retry that matters now lives on the fetch stage above.
+    for (const d of Object.values(dossiers)) {
+      try {
+        rescoreDossier(d, regime, 1, {
+          today: ctx.today,
+          tomorrow: ctx.tomorrow,
+          tomorrow_earnings: ctx.tomorrow_earnings ?? [],
+        });
+      } catch (err) {
+        console.warn(`[nighthawk/edition] session rescore failed for ${d.ticker} — keeping base score:`, err);
       }
-
-      for (const d of Object.values(dossiers)) {
-        try {
-          rescoreDossier(d, regime, 1, {
-            today: ctx.today,
-            tomorrow: ctx.tomorrow,
-            tomorrow_earnings: ctx.tomorrow_earnings ?? [],
-          });
-        } catch (err) {
-          console.warn(`[nighthawk/edition] session rescore failed for ${d.ticker} — keeping base score:`, err);
-        }
-      }
-
-      scoredList = Object.values(dossiers)
-        .filter((d) => d.scored != null)
-        .map((d) => d.scored!);
-
-      rescoreAttempt += 1;
     }
+
+    const scoredList: ScoredCandidate[] = Object.values(dossiers)
+      .filter((d) => d.scored != null)
+      .map((d) => d.scored!);
 
     recordScoringStageSnapshots(editionFor, "scored", scoredList, dossiers);
 
     if (!scoredList.length) {
-      // Funnel collapsed at stage_dossiers — all rescore attempts failed (candidates existed but none produced a scored dossier).
-      // Publish a recap-only edition rather than failing dark. Bounded retry exhausted.
-      const reason = `No scored dossiers after ${rescoreAttempt} rescore attempt(s) (${candidates.length} candidate(s)).`;
+      // Funnel collapsed at stage_dossiers — all dossier-fetch attempts failed (candidates existed
+      // but none produced a dossier). Publish a recap-only edition rather than failing dark.
+      // Bounded fetch retry exhausted.
+      const reason = `No scored dossiers after ${dossierFetchAttempt} dossier-fetch attempt(s) (${candidates.length} candidate(s)).`;
       console.warn(`[nighthawk/edition] stage_dossiers zeroed — recap-only fallback: ${reason}`);
       funnel.ranked = 0;
       funnel.dossiers = 0;
@@ -1796,7 +1809,7 @@ export async function buildEveningEdition(opts?: {
       duration_ms: Date.now() - started,
       job_status: finalJob?.status ?? (dryRun ? "dry_run" : "published"),
       current_stage: finalJob?.current_stage ?? "published",
-      resumed: alreadyDone.length > 0,
+      resumed: alreadyDoneAtStart.length > 0,
     };
   } catch (error) {
     const message = serializeBuildError(error);
