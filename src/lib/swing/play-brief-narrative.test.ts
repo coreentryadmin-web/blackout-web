@@ -1332,8 +1332,13 @@ test("tradeManagerNarrativeSection: SHORT break watch uses stop_premium not targ
   // stop_premium is an absolute price, never a signed delta; see the fmtOptionUsd regression
   // tests below) — not rounded to a whole dollar, which previously made this contradict the
   // Management section's "Rails: stop $3.50" rendered from the same stop_premium value.
-  assert.match(section!.body, /Break watch.*reclaim \*\*\$3\.50\*\*/i);
-  assert.doesNotMatch(section!.body, /reclaim \*\*\+?\$1/);
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): this test used to pin "reclaim **$3.50**",
+  // which was itself the bug — a premium stop is breached by the premium FALLING to it, not rising
+  // back to it, for both directions alike (see the LONG branch a few lines above this block, which
+  // already says "lose"). Updated to assert the corrected wording.
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\$3\.50\*\*/i);
+  assert.doesNotMatch(section!.body, /lose premium stop \*\*\+?\$1/);
 });
 
 // FINDINGS 2026-09-10 (live NRG repro): actionNarrative's peak-giveback bullet used to compute
@@ -1907,6 +1912,38 @@ test("tradeManagerNarrativeSection: SHORT Break watch also flags an already-brea
     /Break watch — stop already breached on the executable side.*bid \*\*\$0\.70\*\*.*through your premium stop \*\*\$0\.78\*\*/i,
   );
   assert.doesNotMatch(section!.body, /Break watch.*reclaim/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-10-20): the SHORT forward-looking premium-stop
+// fallback (no structural GEX level found, stop not yet breached) used to say "reclaim $X -> cover
+// shorts", implying the trigger is the premium RISING back to X -- backwards. execBreached (used by
+// the sibling test above) fires on a FALL to or through the stop, for both directions alike -- a
+// swing play is always long premium regardless of direction. The LONG branch already says "lose"
+// for the identical kind of value; this fixture (bid still above the stop, no vector/ecosystem spot
+// data so breakTrigger finds no structural level) exercises the SHORT branch and pins the fix.
+test("tradeManagerNarrativeSection: SHORT Break watch premium-stop fallback says 'lose', not 'reclaim' (the trigger is a fall, not a rise)", () => {
+  const section = tradeManagerNarrativeSection(
+    ctx({
+      play: play({
+        direction: "SHORT",
+        status: "HOLD",
+        recommendation: "HOLD",
+        mark: 1.13,
+        execMark: 0.85, // above the 0.78 stop -- not yet breached
+        pnlPct: -12,
+        exitPolicy: {
+          trim_levels: [{ trigger_pct: 100, fired: false }],
+          stop_premium: 0.78,
+          target_premium: 3.9,
+        },
+      }),
+    }),
+    "open",
+  );
+  assert.ok(section);
+  assert.match(section!.body, /Break watch.*lose premium stop \*\*\$0\.78\*\*.*cover shorts/i);
+  assert.doesNotMatch(section!.body, /Break watch.*reclaim/i);
+  assert.doesNotMatch(section!.body, /already breached/i);
 });
 
 // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro SWING:GTLB): every test above for
