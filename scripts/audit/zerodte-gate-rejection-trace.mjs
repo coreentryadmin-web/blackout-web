@@ -156,28 +156,7 @@ for (const mr of mrows) {
 }
 console.log(`    ${flowRows.length} usable directional rows`);
 
-console.log(`\n[2] Running the REAL evidence-gate funnel (deriveZeroDteSetups)…`);
-const rejections = [];
-const rawSetups = deriveZeroDteSetups(flowRows, { maxSetups: MAX_TICKERS, nowMs, todayYmd: today, rejections });
-console.log(`    ${rawSetups.length} setups survived evidence gates`);
-if (!rawSetups.length) {
-  console.log("\n  No setups survived evidence gates. Trace ends here.");
-  process.exit(0);
-}
-
-// For each setup, find its own DECISION INSTANT: the latest `alerted_at` among the flow rows that
-// evidence-gated it in, i.e. the last moment new information arrived before it would have qualified.
-// This is the real "alert time" this trace replays from — never a global, shared "now".
-const latestAlertMsByTicker = new Map();
-for (const row of flowRows) {
-  const ms = Date.parse(row.alerted_at ?? "");
-  if (!Number.isFinite(ms)) continue;
-  const key = `${row.ticker}:${row.option_type === "CALL" ? "long" : "short"}`;
-  const prev = latestAlertMsByTicker.get(key);
-  if (prev == null || ms > prev) latestAlertMsByTicker.set(key, ms);
-}
-
-console.log(`\n[3] Per-setup VIX day-open (cached, day-level — knowable from the open onward)…`);
+console.log(`\n[2] Per-ticker VIX day-open (cached, day-level — knowable from the open onward)…`);
 const vixByDate = new Map();
 async function vixDayOpenFor(dateYmd) {
   if (vixByDate.has(dateYmd)) return vixByDate.get(dateYmd);
@@ -187,71 +166,90 @@ async function vixDayOpenFor(dateYmd) {
   return v;
 }
 
-console.log(`\n[4] Tracing ${rawSetups.length} setups — EACH against its OWN decision instant (real per-setup bar fetches, no look-ahead)…`);
+console.log(`\n[3] Tracing each ticker/direction across EVERY one of its own real print instants (no look-ahead on EITHER the evidence gates or the hard gates)…`);
+// CORRECTNESS FIX (2026-10-20, caught live): the original version of this script called
+// deriveZeroDteSetups ONCE with the WHOLE day's rows, then evaluated hard gates at a single
+// "latest alert" instant — a double look-ahead bug. deriveZeroDteSetups AGGREGATES every row
+// it's given into one scored setup per ticker/direction, so feeding it the full day silently
+// leaks every LATER print into the evidence-gate math (score/gross_premium/aggr_share/
+// dominance/max_itm_pct) used to judge an EARLIER instant. Caught via a real discrepancy
+// against production: a real TSLA commit at 10:21 ET (score 91) was REJECTED outright by the
+// old full-day-aggregated call on max_itm_pct, because prints through the END of that day
+// pushed the aggregate OTM% past the threshold — a fact that did not exist yet at 10:21 ET.
+// Fixed below: for each ticker/direction, walk EVERY one of its own real print instants in
+// order; at EACH one, re-derive the setup from rows truncated to that exact instant (fixing the
+// evidence-gate leak) AND evaluate the full hard-gate stack at that same instant (fixing the
+// single-snapshot leak) — this is cheap, since only deriveZeroDteSetups/computeIntradayRead/
+// computeConfluence/evaluateZeroDteGates repeat per instant (all pure, no network); the
+// EXPENSIVE SPY/ticker bar + VIX fetches still happen ONCE per ticker, reused via in-memory
+// truncation. Reports the EARLIEST instant that would have reached COMMIT, or — if it never
+// does — the LAST instant (the ticker's own most complete, most mature picture of itself that
+// day), so a "never qualifies" verdict reflects the full day's real evidence, not a partial one.
+const byTickerDir = new Map();
+for (const r of flowRows) {
+  const dir = r.option_type === "CALL" ? "long" : "short";
+  const key = `${r.ticker}:${dir}`;
+  (byTickerDir.get(key) ?? byTickerDir.set(key, []).get(key)).push(r);
+}
+
 const traces = [];
-for (const s of rawSetups) {
-  const key = `${s.ticker}:${s.direction}`;
-  const decisionMs = latestAlertMsByTicker.get(key) ?? nowMs;
-  const decisionYmd = etYmd(decisionMs);
-  const decisionEtMinutes = etMinutesOf(decisionMs);
+for (const [key, tdRows] of byTickerDir) {
+  if (traces.length >= MAX_TICKERS) break;
+  const [ticker, dir] = key.split(":");
+  const ownPrints = [...tdRows]
+    .map((r) => Date.parse(r.alerted_at))
+    .filter((ms) => Number.isFinite(ms))
+    .sort((a, b) => a - b);
+  if (!ownPrints.length) continue;
 
-  // SPY bias AS OF the decision instant — bars truncated to decisionMs, never later.
-  const spyBarsAll = await fetchStockMinuteBars("SPY", decisionYmd, decisionYmd).catch(() => []);
-  const spyBarsUpToNow = (spyBarsAll ?? []).filter((b) => b.t <= decisionMs);
-  const spyRead = computeIntradayRead(spyBarsUpToNow.map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c, v: b.v })));
-  const bias = marketBias(spyRead);
+  // Expensive fetches ONCE per ticker — truncated per-instant below, never re-fetched.
+  const spyBarsAll = await fetchStockMinuteBars("SPY", today, today).catch(() => []);
+  const tkBarsAll = await fetchStockMinuteBars(ticker, today, today).catch(() => []);
+  const vixDayOpen = await vixDayOpenFor(today);
 
-  // Ticker's own intraday read AS OF the decision instant.
-  const tkBarsAll = await fetchStockMinuteBars(s.ticker, decisionYmd, decisionYmd).catch(() => []);
-  const tkBarsUpToNow = (tkBarsAll ?? []).filter((b) => b.t <= decisionMs);
-  const read = tkBarsUpToNow.length
-    ? computeIntradayRead(tkBarsUpToNow.map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c, v: b.v })))
-    : null;
-  const marketAligned = bias == null || bias === "flat" ? null : (bias === "up") === (s.direction === "long");
-  const intradayConflict = read ? intradayScoreAdjust(s.direction, read).conflict : false;
-  const confluence = computeConfluence({ direction: s.direction, intraday: read, market_aligned: marketAligned }, decisionEtMinutes);
+  let best = null; // the earliest COMMIT, if any
+  let last = null; // the last instant's result, if never COMMIT
+  for (const cutoffMs of ownPrints) {
+    const truncatedFlow = flowRows.filter((r) => (Date.parse(r.alerted_at) || Infinity) <= cutoffMs);
+    const setups = deriveZeroDteSetups(truncatedFlow, { maxSetups: 200, nowMs: cutoffMs, todayYmd: today, rejections: [] });
+    const s = setups.find((x) => x.ticker === ticker && x.direction === dir && x.expiry && x.top_strike);
+    if (!s) continue; // doesn't even clear evidence gates yet at this instant
 
-  const vixDayOpen = await vixDayOpenFor(decisionYmd);
+    const decisionEtMinutes = etMinutesOf(cutoffMs);
+    const spyBarsUpToNow = (spyBarsAll ?? []).filter((b) => b.t <= cutoffMs);
+    const spyRead = computeIntradayRead(spyBarsUpToNow.map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c, v: b.v })));
+    const bias = marketBias(spyRead);
+    const tkBarsUpToNow = (tkBarsAll ?? []).filter((b) => b.t <= cutoffMs);
+    const read = tkBarsUpToNow.length
+      ? computeIntradayRead(tkBarsUpToNow.map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c, v: b.v })))
+      : null;
+    const marketAligned = bias == null || bias === "flat" ? null : (bias === "up") === (s.direction === "long");
+    const intradayConflict = read ? intradayScoreAdjust(s.direction, read).conflict : false;
+    const confluence = computeConfluence({ direction: s.direction, intraday: read, market_aligned: marketAligned }, decisionEtMinutes);
 
-  const verdict = evaluateZeroDteGates({
-    ticker: s.ticker,
-    direction: s.direction,
-    score: s.score,
-    discovery_origin: ["FLOW"],
-    nowEtMinutes: decisionEtMinutes,
-    nowMs: decisionMs,
-    bias,
-    biasAsOfMs: spyRead.last_bar_ms ?? null,
-    governor: { open_plans: [], stops: [] }, // APPROXIMATED, see header
-    vixDayOpen,
-    vixUnavailable: vixDayOpen == null,
-    slayerLive: null,
-    nighthawkTake: null,
-    macroEvents: [],
-    plan: null,
-    deferPlanQualityGates: true,
-    contractHorizon: "ZERO_DTE",
-    intradayConflict,
-    market_aligned: marketAligned,
-    halted: false,
-    haltFeedStale: false,
-    earnings: null,
-    earningsUnavailable: false,
-    confluence,
-  });
+    const verdict = evaluateZeroDteGates({
+      ticker: s.ticker, direction: s.direction, score: s.score, discovery_origin: ["FLOW"],
+      nowEtMinutes: decisionEtMinutes, nowMs: cutoffMs, bias, biasAsOfMs: spyRead.last_bar_ms ?? null,
+      governor: { open_plans: [], stops: [] }, vixDayOpen, vixUnavailable: vixDayOpen == null,
+      slayerLive: null, nighthawkTake: null, macroEvents: [], plan: null, deferPlanQualityGates: true,
+      contractHorizon: "ZERO_DTE", intradayConflict, market_aligned: marketAligned,
+      halted: false, haltFeedStale: false, earnings: null, earningsUnavailable: false, confluence,
+    });
 
-  traces.push({
-    ticker: s.ticker,
-    direction: s.direction,
-    score: s.score,
-    decisionMs,
-    decisionEt: `${decisionYmd} ${etClock(decisionMs)}`,
-    verdict: verdict.verdict,
-    blocks: verdict.blocks.map((b) => b.code),
-  });
+    const result = {
+      ticker: s.ticker, direction: s.direction, score: s.score, decisionMs: cutoffMs,
+      decisionEt: `${today} ${etClock(cutoffMs)}`, verdict: verdict.verdict, blocks: verdict.blocks.map((b) => b.code),
+    };
+    last = result;
+    if (verdict.verdict === "COMMIT") { best = result; break; }
+  }
+  const chosen = best ?? last;
+  if (!chosen) continue; // never even cleared evidence gates at any of its own instants
+  traces.push(chosen);
   console.log(
-    `    ${pad(s.ticker, 7)}${pad(s.direction, 6)} score=${pad(String(s.score), 4)} @ ${traces[traces.length - 1].decisionEt} ET  →  ${verdict.verdict}` +
-      (verdict.blocks.length ? `  [${verdict.blocks.map((b) => b.code).join(", ")}]` : "")
+    `    ${pad(chosen.ticker, 7)}${pad(chosen.direction, 6)} score=${pad(String(chosen.score), 4)} @ ${chosen.decisionEt} ET  →  ${chosen.verdict}` +
+      (chosen.blocks.length ? `  [${chosen.blocks.join(", ")}]` : "") +
+      (best ? "" : "  (shown at its LAST real print instant — never cleared at any point today)")
   );
 }
 

@@ -192,18 +192,37 @@ for (const mr of mrows) {
 }
 console.log(`    spread across ${byDay.size} session days`);
 
-console.log(`\n[2] Deriving real setups per day, computing REAL as-of confluence, resolving contracts…`);
+console.log(`\n[2] Per ticker/direction, finding the EARLIEST real print instant at which it evidence-qualifies (no look-ahead), computing REAL as-of confluence, resolving contracts…`);
+// CORRECTNESS NOTE (2026-10-20): an earlier version of this script derived each day's setups
+// ONCE from the WHOLE day's rows, then used that ticker/direction's LATEST alert as the
+// "decision instant" — which is self-consistent (decisionMs is literally the max timestamp among
+// the rows deriveZeroDteSetups aggregated, so there's no later-print contamination of THIS
+// setup's own score) but always lands on the LAST print of the day, the opposite of what "catch
+// setups early" needs: it measures confluence/outcome at the most mature, lowest-value entry
+// point, not a realistic early one. Fixed to match the sibling tools' point-in-time discipline:
+// walk this ticker/direction's own prints in order and take the FIRST truncated-row instant at
+// which deriveZeroDteSetups returns a qualifying setup — the earliest the real evidence gates
+// would have let it through, never fed a single row that hadn't printed yet.
 const candidates = [];
 for (const [day, rows] of byDay) {
-  const dayRejections = [];
-  const daySetups = deriveZeroDteSetups(rows, { maxSetups: 50, nowMs: Date.parse(`${day}T20:00:00Z`), todayYmd: day, rejections: dayRejections });
-  for (const s of daySetups) {
-    if (!s.expiry || !s.top_strike) continue;
-    const latestAlertMs = rows
-      .filter((r) => r.ticker === s.ticker && (r.option_type === "CALL") === (s.direction === "long"))
-      .reduce((m, r) => Math.max(m, Date.parse(r.alerted_at) || 0), 0);
-    if (!latestAlertMs) continue;
-    candidates.push({ setup: s, day, decisionMs: latestAlertMs });
+  const byTickerDir = new Map();
+  for (const r of rows) {
+    const dir = r.option_type === "CALL" ? "long" : "short";
+    const key = `${r.ticker}:${dir}`;
+    (byTickerDir.get(key) ?? byTickerDir.set(key, []).get(key)).push(r);
+  }
+  for (const [key, tdRows] of byTickerDir) {
+    const [ticker, dir] = key.split(":");
+    const ownPrints = [...tdRows]
+      .map((r) => Date.parse(r.alerted_at))
+      .filter((ms) => Number.isFinite(ms))
+      .sort((a, b) => a - b);
+    for (const cutoffMs of ownPrints) {
+      const truncated = rows.filter((r) => (Date.parse(r.alerted_at) || Infinity) <= cutoffMs);
+      const setups = deriveZeroDteSetups(truncated, { maxSetups: 200, nowMs: cutoffMs, todayYmd: day, rejections: [] });
+      const s = setups.find((x) => x.ticker === ticker && x.direction === dir && x.expiry && x.top_strike);
+      if (s) { candidates.push({ setup: s, day, decisionMs: cutoffMs }); break; }
+    }
   }
 }
 candidates.sort((a, b) => a.decisionMs - b.decisionMs);
