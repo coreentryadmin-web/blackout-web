@@ -29,6 +29,7 @@ import {
   gexMarketSessionNote,
   gexMatrixAgeMs,
   gexMatrixStale,
+  archetypeTrackRecordIsStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
   playExpectsLiveOptionMark,
@@ -1457,13 +1458,29 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   const graduatedEntry = graduatedArchetypeEntry(ctx.archetypeTrackRecord, swingArchetype);
   if (graduatedEntry && swingArchetype && ctx.archetypeTrackRecord) {
     const snapshotMs = Date.parse(ctx.archetypeTrackRecord.asOf);
+    // BUG FIX (2026-10-20, Ask Largo standing mandate): this used the generic 10-minute
+    // `freshnessFromObservedMs` bucket directly, the same false-positive this file already found
+    // and fixed for the sibling `markAsOf` fact below (`optionMarkIsStale`) — a snapshot written by
+    // the identical 15-minute-cadence cron landing 10-15 minutes after its last tick (a normal
+    // ~1/3 of every cycle, not a missed tick) was mislabeled "stale". `archetypeTrackRecordIsStale`
+    // uses this data's own documented staleness horizon (calibration-cache.ts's
+    // SWING_ARCHETYPE_TRACK_RECORD_TTL_SEC) instead — looser than the option mark's 18 minutes,
+    // since this data legitimately moves far slower. Only downgrades a generic "stale" verdict
+    // (never "live"/"recent"), same fail-closed-on-future-skew discipline as the option mark fix.
+    const genericArchetypeFreshness = Number.isFinite(snapshotMs)
+      ? freshnessFromObservedMs(snapshotMs, readMs)
+      : "unknown";
+    const archetypeFreshness =
+      genericArchetypeFreshness === "stale" && !archetypeTrackRecordIsStale(ctx.archetypeTrackRecord.asOf, readMs)
+        ? "recent"
+        : genericArchetypeFreshness;
     out.push({
       kind: "fact",
       text: `Archetype track record: ${ARCHETYPE_META[swingArchetype].label} ${graduatedEntry.wins}W / ${graduatedEntry.losses}L across ${graduatedEntry.n} graded plays (Wilson 95% floor ${graduatedEntry.wilsonLbPct.toFixed(0)}%).`,
       provenance: {
         source: "Swing ledger",
         asOf: etStampFromIso(ctx.archetypeTrackRecord.asOf) ?? ctx.asOf,
-        freshness: Number.isFinite(snapshotMs) ? freshnessFromObservedMs(snapshotMs, readMs) : "unknown",
+        freshness: archetypeFreshness,
       },
     });
   }
