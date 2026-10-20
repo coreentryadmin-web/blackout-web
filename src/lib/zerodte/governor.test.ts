@@ -22,6 +22,7 @@ import {
   correlationGroupId,
   CONCENTRATION_POLICY_VERSION,
   GOVERNOR_MAX_CONCURRENT_PLANS,
+  GOVERNOR_MAX_CORRELATED_SAME_DIR,
   GOVERNOR_MAX_SESSION_STOPS,
   GOVERNOR_REENTRY_LOCK_MS,
   GOVERNOR_LOSS_HALT_COUNT,
@@ -655,6 +656,38 @@ test("correlationGroupOf: index/ETF names resolve to their group; sector names r
   assert.match(id, /^cg:/);
   assert.equal(id, correlationGroupId(correlationGroupOf("QQQ")!), "SPY and QQQ share the group → same id");
   assert.notEqual(id, correlationGroupId(correlationGroupOf("NVDA")!), "NVDA is in a different group than SPY");
+});
+
+// BUG FIX (2026-10-20, live member book audit): CORRELATION_GROUPS had no crypto-miner group at
+// all despite GOVERNOR_ENFORCE_CONCENTRATION's own comment citing a "2026-07-30 crypto cluster
+// session" as the reason concentration enforcement shipped — live evidence the same day this gap
+// was found showed RIOT+HUT+BTDR all open long simultaneously, uncapped, none sharing a group.
+test("correlationGroupOf: bitcoin miners resolve to their own group, uncapped before this fix", () => {
+  assert.ok(correlationGroupOf("RIOT"), "RIOT must now resolve to a correlation group");
+  assert.ok(correlationGroupOf("HUT"));
+  assert.ok(correlationGroupOf("BTDR"));
+  assert.ok(correlationGroupOf("MARA"));
+  assert.ok(correlationGroupOf("CLSK"));
+  const id = correlationGroupId(correlationGroupOf("RIOT")!);
+  assert.equal(id, correlationGroupId(correlationGroupOf("HUT")!), "RIOT and HUT share the same group");
+  assert.equal(id, correlationGroupId(correlationGroupOf("BTDR")!), "RIOT and BTDR share the same group");
+  assert.notEqual(id, correlationGroupId(correlationGroupOf("SPY")!), "miners are a distinct group from the broad index/ETF group");
+  // COIN/MSTR/SBET are BTC-exposed but a structurally different business (exchange/treasury) —
+  // deliberately NOT folded into the miner group by this fix.
+  assert.equal(correlationGroupOf("COIN"), null, "exchanges are a separate, unscoped judgment call");
+  assert.equal(correlationGroupOf("MSTR"), null, "treasury-holding names are a separate, unscoped judgment call");
+});
+
+test("freezeConcentrationState: a THIRD same-direction crypto-miner candidate now trips the same-beta concentration count the broad-index group already enforces", () => {
+  const c = freezeConcentrationState({ ticker: "BTDR", direction: "long" }, [
+    { ticker: "RIOT", direction: "long" },
+    { ticker: "HUT", direction: "long" },
+  ]);
+  assert.equal(c.same_beta_open_count, 2, "RIOT and HUT both share BTDR's new miner group");
+  assert.ok(
+    c.same_beta_open_count >= GOVERNOR_MAX_CORRELATED_SAME_DIR,
+    "a third same-direction miner now meets/exceeds the governor's existing concentration cap"
+  );
 });
 
 // ── freezeConcentrationState: adversarial (opposed direction, dedup, rounding, single name) ──
