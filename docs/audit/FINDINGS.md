@@ -38,6 +38,239 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P1 Night Hawk 0DTE] trim_scale exit narrative claimed tranches were "already banked" when none ever were — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Caught live, in real time, during the standing Night Hawk 0DTE forensic-monitor
+cadence: a real position (SLS, committed 2026-10-20 13:06 ET) ran from +52% to a +66.67% peak
+while `status=TRIM`, then exited via a Cortex veto thesis-break at +61.46%. Its `exit_detail`
+read:
+
+> "Thesis broken (veto) at +61.46% — exiting the remaining position at market, not hoping:
+> [gex-walls] ... (had reached a +66.67% peak before the thesis broke) **(2/2 tranches (33%
+> each) already banked on the way up.)**"
+
+But the SAME row's own `timeline_tranches` field — the WS-11 post-session trim-leg
+reconstruction — was `null`. If two real partial sales had actually executed on the way up,
+this row would carry two reconstructed legs. It carries none, because none ever happened: the
+entire position was closed in a single sale at the thesis-break instant. The narrative sentence
+members read is false.
+
+**Root cause.** `ZERODTE_TRIM_BANK_LIVE` is effectively **off** in production (confirmed this
+same day via two independent live signatures — see `docs/audit/0DTE-RESEARCH.md`, "Live
+trim_scale tranche-banking never fires in production", and the now-merged PR #6369). While off,
+`exit-sync.ts`'s live sync tick recomputes `trimsTaken` fresh every tick as
+`trimTranchesArmed(peak, regime)` — **byte-identical to `decideTrimScale`'s own `armed`
+variable** — purely so the dead-zone guard inside `decideTrimScale` (exit-engine.ts) keeps
+working (a documented, deliberate, tested stand-in: see `resolveTrimBankLive`'s own doc
+comment and the 2026-08-27 dead-zone fix). This value was never meant to assert a real bank
+happened.
+
+The bug: `decideTrimScale` had no way to tell a REAL persisted `trimsTaken` apart from this
+cosmetic recompute. It built its "already banked"/"thirds banked" narrative text straight off
+whichever value arrived, with no distinction — so every single exit (floor, thesis-break,
+runner-target, or the "running" status report) whose peak had armed a tranche automatically
+claimed, in the sentence a member reads, that a real partial close had executed at a better
+price. It never had, for any row, the entire time `ZERODTE_TRIM_BANK_LIVE` has been off.
+
+**Blast radius.** Four narrative sites in `decideTrimScale` (exit-engine.ts), all keyed off the
+same `taken` count:
+1. The floor-exit `detail` ("`This is the runner only — N/2 tranches ... already banked`").
+2. The thesis-break `detail` (the exact live SLS shape above).
+3. The runner-target exit ("`after both trims — the last third is banked in full`").
+4. The RAISE_FLOOR "running" status report ("`N/2 thirds banked ... running the last third`").
+
+Every trim_scale (A/B-tier) position whose peak ever cleared a tranche trigger and then exited
+via floor/thesis-break/runner-target — i.e. every trim_scale exit that wasn't a plan-stop or
+flat-timeout scratch — carried this false claim. Spot-checked against the same 122-row
+population PR #6369 already audited (109 reconstructed + 13 live): the "~18% of the population
+that clears a qualifying peak" is exactly the population this bug's narrative affected.
+
+**Fix.** Added `trimsTakenIsGenuine?: boolean` to `ExitEngineInput` (exit-engine.ts) — omitted
+defaults to `true` (every existing caller/test that sets `trimsTaken` directly already means it
+genuinely, so this is purely additive and backward-compatible). `decideTrimScale` now gates all
+four narrative sites on `input.trimsTakenIsGenuine !== false`; when it's explicitly `false`, each
+site falls back to honest wording that makes no banking claim (e.g. "exiting the full position
+at target" instead of "after both trims — the last third is banked in full"; "no tranche banked"
+instead of "N/2 thirds banked"). **The ladder math itself — `armed`, `taken`, the dead-zone
+guard, every functional branch condition — is completely unchanged**: this is a narrative-only
+fix, by design, since the dead-zone fix this cosmetic `trimsTaken` supports is itself correct and
+load-bearing (CLAUDE.md-documented, 2026-08-27). `exit-sync.ts` (the one production call site)
+now passes `trimsTakenIsGenuine: deps.trimsTaken != null ? true : trimBankLive` — real only when
+the flag is genuinely on, same precedence pattern as its sibling AB-test overrides.
+
+**Why this fix and not an alternative.** Considered zeroing `taken` itself when not live, but
+that would corrupt the dead-zone guard's `armed > taken` comparison and reintroduce the exact
+2026-08-27 breakeven-dump bug (`SLS`/`TSM` round-tripping to flat because the coarse floor beat
+the trim check) — the cosmetic `taken=armed` equality is doing real, necessary work there.
+Separating "what the ladder math needs" from "what the narrative may claim" with one new boolean
+is the minimal change that fixes the lie without touching the one thing it's deliberately lying
+to (functionally) for.
+
+**Tests.** 6 new cases in `exit-engine.test.ts` (RED before the fix, confirmed via
+`npx tsx --experimental-test-module-mocks --test` before implementing `trimsTakenIsGenuine`):
+the four narrative sites each tested with `trimsTakenIsGenuine: false` suppressing the false
+claim without changing `action`/`reason`/`floorPnlPct`, plus a default-omitted backward-compat
+test proving every pre-existing genuine-bank narrative is byte-for-byte unchanged. Full
+`exit-engine.test.ts` (107/107) and `exit-sync.test.ts` (17/17) pass; `tsc --noEmit` clean;
+`npm test` full suite run alongside this PR.
+
+| **Status** | FIXED. No gate, EV, or sizing behavior changed anywhere — this is a pure member-facing-narrative correctness fix. `ZERODTE_TRIM_BANK_LIVE`/`ZERODTE_TRIM_REGIME_LIVE` remain untouched per PR #6369's own recommendation (two rounds of real-cost testing found no reliable edge from flipping either flag). |
+
+Related: `docs/audit/0DTE-RESEARCH.md` "Live trim_scale tranche-banking never fires in
+production" (the structural finding this narrative bug is a direct consequence of); PR #6369
+(merged, the economic-impact investigation of the same underlying flag state).
+
+## A swing play-brief identity resolver silently ignored a right-only (call/put) disambiguation hint — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit reading
+`play-brief-resolve.ts` directly, targeting source not yet deep-audited this cycle, adversarially
+verified (2-agent pipeline: investigation + independent skeptic re-trace against current source,
+including a live, no-mocks repro via `npx tsx`; confirmed real).
+
+**Root cause:** Both contract-matching helpers in this file's family short-circuited on `strike`
+before ever examining `right`:
+
+```ts
+// play-brief-resolve-pure.ts — contractMatches (used by pickLanePlayForBrief)
+function contractMatches(play: HorizonPlay, strike: number | null, right: "C" | "P" | null): boolean {
+  if (strike == null) return true;   // <-- returns before `right` is ever checked
+  if (play.contract.strike !== strike) return false;
+  if (right == null) return true;
+  return play.contract.right === right;
+}
+```
+```ts
+// play-brief-resolve.ts — rowContractMatches (used by loadOpenTerminalPlay)
+function rowContractMatches(row: SwingPositionRow, strike: number | null, right: "C" | "P" | null): boolean {
+  if (strike == null) return true;   // <-- same short-circuit
+  ...
+}
+```
+
+`strike` and `right` are documented as independent, optional disambiguation hints — the Largo tool
+schema (`src/lib/largo/tool-defs.ts`'s `get_swing_play_brief`) defines them as separate optional
+params and its own description says any subset of `positionId`/`strike`/`right`/`status` may be
+supplied to disambiguate, explicitly including `right` alone. But both implementations treated
+"strike present" as a precondition for even considering `right` — a caller asking only for "the put
+position" on a ticker carrying both a live call and a live put matched **every** contract
+regardless of side, then fell through to whichever tiebreak ran next (first match for the DB-row
+path, live-status/highest-score for the lane-row path) — never the one actually requested.
+
+This is the exact ticker/contract-collision identity class (Largo C4) this file's header and its
+many 2026-09 fixes (NRG OPEN 110C vs WATCH 115C, ABTC 9C/9.5C, SG 9C/9.5C) were written to close —
+except on `right` specifically, which none of those prior fixes tested. Every existing test in
+`play-brief-resolve.test.ts` that passed `right` also passed `strike` in the same call, so the gap
+was never exercised.
+
+**Live impact:** reachable on any ticker carrying two live legs of opposite type (a call and a put
+open/watched concurrently) when the Largo tool is asked to disambiguate by `right` alone — a
+documented, supported call shape. Live-reproduced with real repo code (no mocks, `npx tsx`): a call
+(strike 100, score 50) and a put (strike 90, score 90) on the same ticker, `pickLanePlayForBrief`
+asked for `{right: "P"}` returned the **call**.
+
+**Fix:** Both helpers now check `strike` and `right` independently — each disqualifies a candidate
+only when it was actually supplied and doesn't match; neither can short-circuit past the other.
+
+**Fix rationale:** Minimal, symmetric fix at both call sites — the two helpers are structurally
+identical duplicates (one over `HorizonPlay`, one over `SwingPositionRow`), so the same correction
+applies verbatim to both rather than inventing two different resolutions for one defect class. The
+DB-row helper's existing fail-closed behavior for an unrecorded `contract_type` (added 2026-09-22)
+is preserved exactly — only the ordering relative to the `strike` check changed.
+
+**Blast radius:** Two call sites (`pickLanePlayForBrief` via `contractMatches`, `loadOpenTerminalPlay`
+via `rowContractMatches`) — the only two functions in this file family that match on strike/right.
+No other caller of either helper exists.
+
+**Tests:** 3 new regression tests — `pickLanePlayForBrief` with a right-only hint (scores
+deliberately favor the wrong leg so the old buggy score-tiebreak can't accidentally land on the
+right answer); `loadOpenTerminalPlay` (DB-row path) with a right-only hint. RED→GREEN proven via
+`git stash` (both new tests fail against the pre-fix source — the first attempt's fixture
+accidentally passed on buggy code via a coincidental score tiebreak, corrected before trusting the
+RED result). `tsc --noEmit` clean. Full `play-brief-resolve.test.ts` (23 tests) green.
+
+## Night Hawk Legacy's bounded dossier retry (PR #6380) retried the wrong pipeline stage and could never recover from the starved-funnel scenario it was written for — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, 5-engine live monitor cycle, Night Hawk Legacy live correctness check
+(production, read-only) — independently verified against the current source before fixing.
+
+**Root cause:** PR #6380 (merged `2026-10-20T18:54:25Z`, commit `326320d17`) added a bounded retry
+in `src/features/nighthawk/lib/edition-builder.ts` meant to recover from the funnel collapsing to
+`scoredList.length === 0` (recap-only, zero plays) — the incident it names cites "UW rate-limiter
+congestion during the rescore pass" as the root cause. That retry wrapped the wrong call:
+
+```ts
+while (rescoreAttempt < MAX_RESCORE_ATTEMPTS && scoredList.length === 0) {
+  if (rescoreAttempt > 0) { ...; await new Promise((resolve) => setTimeout(resolve, 2000)); }
+  for (const d of Object.values(dossiers)) {
+    rescoreDossier(d, regime, 1, { ... }); // <-- retried this
+  }
+  scoredList = Object.values(dossiers).filter((d) => d.scored != null).map((d) => d.scored!);
+  rescoreAttempt += 1;
+}
+```
+
+`rescoreDossier` (`hunt-builder.ts:148`) is a non-`async` function that synchronously calls
+`scoreCandidate` (`scorer.ts:1059`, 270-line body, grep-verified zero `await`/`fetch(`/`async`
+anywhere in it) — a pure function of already-in-memory dossier fields, with **zero network I/O**.
+All the real network I/O (UW flow alerts, IV rank, positioning, tech, news, financials) happens
+earlier and exactly once, in `fetchAllDossiers` → `fetchTickerDossierWithWall` → `fetchTickerDossier`,
+**before** the retry loop ever runs. `fetchTickerDossierWithWall` returns `null` on its 45s
+per-ticker wall timeout, and `fetchAllDossiers` silently drops nulls (`if (!d) continue;`) — so
+under the exact congestion scenario the retry targets (every ticker times out), `dossiers` ends up
+with **zero keys**, not "20 attempted, 0 scored." The retry loop then ran `Object.values(dossiers)`
+(empty) twice with a 2s sleep in between, touching nothing that could change between attempts, and
+fell through to recap-only exactly as before — a no-op dressed as resilience.
+
+**Live impact confirmed before fixing:** `GET /api/market/nighthawk/edition` showed
+`edition_for: "2026-10-20"`, `recap_only: true`, `no_plays: true`, `published_at` unchanged since
+first publish (confirming no retry — old or new — ever re-fired for this edition), and
+`funnel: {candidates: 20, dossiers: 0, ...}` — the `dossiers: 0` signature matches the "every
+fetch timed out" failure mode exactly, not a "fetched but failed to score" one. This is also
+Night Hawk Legacy's **4th** consecutive recap-only session day (Oct 17–20), worse than the "two
+consecutive nights" PR #6380's own framing cited.
+
+**Fix:** Moved the bounded retry to wrap the actual dossier-FETCH stage (both the checkpointing
+and non-checkpointing branches of STAGE 3) instead of the rescore pass. The retry condition is now
+`Object.keys(dossiers).length === 0 && candidates.length > 0` — i.e. it retries when the fetch
+itself produced nothing, which is the real, recoverable failure mode. The rescore pass after the
+loop is now a single, un-retried pass (retrying a pure function buys nothing). The `resumed` field
+in the final result is captured once, before the retry loop (`alreadyDoneAtStart`), so a retry that
+stages some dossiers on its own first pass doesn't get misreported as "resumed from an earlier run."
+
+**Fix rationale:** The minimal correct fix is to retry the stage that can actually fail
+transiently (network fetch) rather than invent a new mechanism — same fetch function
+(`fetchAllDossiers`), same staging/job-status calls, just invoked again inside a bounded loop keyed
+on the real failure signal (empty `dossiers`, not empty `scoredList`). Left unchanged: the
+checkpointing/staging machinery itself, the `MAX_DOSSIER_FETCH_ATTEMPTS = 2` (initial + one retry)
+and 2s delay (same bound PR #6380 picked, not re-litigated here), and every stage after dossier
+scoring.
+
+**Blast radius:** Single function (`buildEveningEdition`, STAGE 3). No other caller retries this
+stage; `fetchAllDossiers`'s own signature and behavior are untouched.
+
+**Tests:** `src/features/nighthawk/lib/edition-builder-dossier-fetch-retry.test.ts` — 5 new
+source-inspection regression tests (full behavioral mocking of this "multi-thousand-line pipeline"
+function is prohibitively expensive, per this same file's own established precedent in
+`candidate-snapshot-alert-wiring.test.ts`): the retry condition checks `dossiers`, not
+`scoredList`; `fetchAllDossiers` is called from inside the retry loop on both branches; the
+rescore pass has no retry/sleep wrapper and the old `MAX_RESCORE_ATTEMPTS` constant is gone; the
+recap-only reason names the fetch-attempt count; `resumed` reflects the pre-retry state.
+RED→GREEN proven via `git stash` (5/5 fail against the pre-fix source, pass post-fix).
+`tsc --noEmit` clean. Full nighthawk edition-builder test family (80 tests across 7 files) green,
+no regressions.
+
 ## PIN single-snapshot measurement debt is overdue, not merely open — two ready-to-run tools idle 5-11 weeks
 
 > **kind:** `FINDING`
