@@ -178,6 +178,50 @@ test("bookContextSection: two distinct cross-engine siblings on the same ticker 
   );
 });
 
+// BUG FIX (2026-10-20, Ask Largo standing mandate, live repro LABD #1955/#1761 and RNG #1966/
+// #1902): a null positionId on the SIBLING means that sibling is Banger-origin, but the old code
+// treated that alone as sufficient for "cross-engine" -- it never checked whether the REVIEWED
+// play is ALSO Banger-origin. When both sides are Banger (same engine, same ticker, twice), the
+// "cross-engine" claim is false. 21 of 26 live committed Swing positions the day this was found
+// were Banger-origin, so this is common, not an edge case.
+test("bookContextSection: a same-ticker sibling is NOT labeled cross-engine when the REVIEWED play is itself Banger-origin (2026-10-20 fix, live repro LABD/RNG)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG", bangerId: 1761 }];
+  const section = bookContextSection(
+    fixturePlay({
+      id: "SWING:CRWD:1955",
+      ticker: "CRWD",
+      direction: "LONG",
+      status: "OPEN",
+      regime: BANGER_LEDGER_REGIME_LABEL,
+    }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(
+    section!.body,
+    /CRWD LONG \(separate position #1761\)/,
+    `a Banger-origin reviewed play's Banger sibling must read as a same-engine "separate position", not "cross-engine", got: ${section!.body}`,
+  );
+  assert.doesNotMatch(
+    section!.body,
+    /cross-engine/,
+    "must not claim a cross-engine relationship when both sides are the same (Banger) engine",
+  );
+});
+
+// Sibling guard: the cross-engine label must still fire when the reviewed play is swing-native
+// (not Banger) and the sibling is Banger-origin -- the fix above is scoped to the reviewed play's
+// own origin, not a removal of the cross-engine label generally.
+test("bookContextSection: cross-engine label still fires for a swing-native reviewed play with a Banger sibling (no regression)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "CRWD", direction: "LONG", bangerId: 1123 }];
+  const section = bookContextSection(
+    fixturePlay({ id: "SWING:CRWD:39", ticker: "CRWD", direction: "LONG", status: "OPEN" }),
+    book,
+  );
+  assert.ok(section);
+  assert.match(section!.body, /CRWD LONG \(separate, cross-engine position #1123\)/);
+});
+
 // Live repro (2026-09-18, Ask Largo standing mandate): BYND is unmapped in sector-map.ts, so
 // resolveTheme() gives it the internal own-cluster sentinel "NAME:BYND" rather than a real theme
 // (theme-cluster.ts's OWN_CLUSTER_PREFIX). Before the fix, bookContextSection interpolated
