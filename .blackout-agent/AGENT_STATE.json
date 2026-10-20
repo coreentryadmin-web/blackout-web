@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T13:39:13.544Z",
+  "updated_at": "2026-10-20T14:14:24.826Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,49 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ef236d41eed71a0a1f32956cf505c868693ccbab",
+    "last_main_sha": "f6fb77ec666f668e3e4814368edcb3b96821465d",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-10T11:08:19.437Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T11:08:23.971Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T17:25:02.258Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-10T17:25:09.189Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-10T17:25:16.803Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-10T17:58:54.795Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-10T17:58:59.602Z",
       "type": "context_sync",
@@ -1271,28 +1235,74 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 6
+    },
+    {
+      "at": "2026-10-20T14:00:41.211Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T14:00:45.873Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T14:00:50.349Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T14:14:12.240Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-20T14:14:18.550Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-10-20T14:14:24.826Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 6347,
-      "title": "docs(findings): correct stale \"Meridian still missing from catalog\" claim",
-      "branch": "docs/correct-meridian-catalog-finding-20261020",
+      "number": 6351,
+      "title": "fix(cron): correct platform-warm's stale_after_min mismatch (15 → 10)",
+      "branch": "fix/platform-warm-stale-after-min-mismatch",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T13:29:15Z"
+      "updated_at": "2026-10-20T14:04:43Z"
     },
     {
-      "number": 6346,
-      "title": "fix(cron): restore vector-pick-sweep overlap-lock TTL silently reverted 1500s→900s",
-      "branch": "fix/vector-pick-sweep-ttl-regression",
+      "number": 6350,
+      "title": "fix(swing): closedCoaching no longer asserts a stop verdict \"Since it closed\" can contradict",
+      "branch": "fix/swing-stop-fired-reclaim-contradiction",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T14:02:16Z"
+    },
+    {
+      "number": 6349,
+      "title": "docs(findings): fold Meridian catalog stale-correction finding into FINDINGS.md",
+      "branch": "docs/fold-findings-meridian-correction-20261020",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T13:27:03Z"
+      "updated_at": "2026-10-20T13:57:46Z"
     },
     {
       "number": 5547,
