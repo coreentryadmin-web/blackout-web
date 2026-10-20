@@ -38,6 +38,146 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## wallDynamicsSection showed the OLDEST wall events, not the most recent ones — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief.ts`/`play-brief-narrative.ts`/`play-brief-intel.ts`).
+
+**Root cause:** `vec.wallEvents` is chronologically ASCENDING (oldest-first) — `eventsFromWallHistory`
+(`vector-wall-events.ts`) builds the array by iterating wall-history samples FORWARD (`for (let i =
+1; i < history.length; i++)`, appending each diff), so index 0 is the earliest detected wall
+transition and the last index is the newest. Every other reader of this identical field treats it
+this way and takes from the END to get the most recent activity: `wallDynamicsCoaching`
+(`play-brief-narrative-coaching.ts`, the sibling section rendering in the same brief's "Trade
+manager read") does `events.slice(-2)`; `tradeManagerNarrativeSection`'s own "Wall just moved"
+bullet (`play-brief-narrative.ts`) explicitly does `walls[walls.length - 1]`. `wallDynamicsSection`
+instead used `events.slice(0, 5)` — the FIRST 5 elements — backwards relative to both its own title
+("Wall bead dynamics — building/fading nodes") and doc comment ("these are TODAY's building/fading
+wall events").
+
+**Live impact:** a ticker accumulating more than 5 wall events in a session (routine by midday)
+renders this dedicated "Wall dynamics" section showing the 5 EARLIEST events — e.g. pre-market noise
+from hours earlier — and never shows the most recent 3+ events at all, while the SAME brief's "Trade
+manager read" section, built from the exact same `vec.wallEvents` array, correctly describes the
+newest, most decision-relevant wall shift. Two sections of one composed brief disagree about what
+"current" wall activity looks like, purely because one slices from the front and the other from the
+back of the same chronologically-ordered array.
+
+**Fix:** Change `.slice(0, 5)` to `.slice(-5)`, matching the sibling sections' convention.
+
+**Fix rationale:** Minimal, single-call fix — no change to how the array is built or ordered,
+just correcting which end this one section reads from.
+
+**Blast radius:** Single function (`wallDynamicsSection`). No other call site slices this array the
+old way.
+
+**Tests:** 1 new regression test — 8 synthetic wall events (ascending, oldest to newest), asserts
+the rendered section includes the 5 most recent (e3 through e7) and excludes the 3 oldest (e0-e2).
+RED→GREEN proven via `git stash` on just the source file (test failed pre-fix — showed e0-e4 instead
+— passes post-fix). Full `play-brief-intel.test.ts` (287 tests) green on Node 20. `tsc --noEmit`
+clean.
+
+## chartTechnicalsSection's VWAP side defaulted to "below" when spot was unknown instead of omitting the directional claim — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief.ts`/`play-brief-narrative.ts`/`play-brief-intel.ts`).
+
+**Root cause:** `chartTechnicalsSection`'s own entry guard (`if (!vec?.technicals && vec?.spot ==
+null) return null;`) is an AND of two negated conditions, which only short-circuits when BOTH
+technicals is missing AND spot is null — the function deliberately continues when `technicals`
+exists even though `vec.spot` is null (otherwise the guard would just be `if (!vec?.technicals)
+return null;`). `displaySpot` can likewise resolve to null in the non-closed-bucket path. The VWAP
+line computed `const side = displaySpot != null && displaySpot >= t.vwap ? "above" : "below";` —
+this evaluates to `"below"` whenever `displaySpot` is null, not just when spot is genuinely below
+VWAP; the `&&` short-circuit silently folded "unknown" into the "below" branch instead of omitting
+the directional claim. This is inconsistent with the file's own established defensive convention a
+few functions away — `chartLevelsSection`'s wall/flip lines only append a spot-relative clause when
+spot is known, never asserting a side otherwise — and the Largo C3 absence principle this file cites
+repeatedly (omit when you cannot determine, never fabricate).
+
+**Live impact:** a Vector snapshot with `technicals.vwap` set but `spot: null` (reachable via the
+entry guard above, or via the CLOSED-bucket GEX-fallback path's own `preferredGexWalls(ctx).spot`
+resolving to null) rendered "VWAP **150.00** — price below session VWAP", asserting the position is
+below VWAP when the actual current spot is completely unresolved — a fabricated directional claim
+with no supporting data.
+
+**Fix:** Omit the side clause entirely when `displaySpot` is null, rendering just "VWAP **$X**" with
+no directional assertion, matching the file's convention elsewhere.
+
+**Fix rationale:** Minimal — no new mechanism, just removing the `&&`-short-circuit's silent default
+and rendering the bare level when the side cannot be determined.
+
+**Blast radius:** Single conditional inside `chartTechnicalsSection`. No other call site computes
+this side clause.
+
+**Tests:** 1 new regression test — a vec with `spot: null` and `technicals.vwap` set renders the
+VWAP level with no "above"/"below" side clause. RED→GREEN proven via `git stash` on just the source
+file (test failed pre-fix — rendered "price below session VWAP" — passes post-fix). Full
+`play-brief-intel.test.ts` (287 tests) green on Node 20. `tsc --noEmit` clean.
+
+## formatOverlapPosition's cross-engine label for a duplicate OTHER ticker answered a question about the wrong ticker's engine — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate static-code sweep (Workflow correctness audit of
+`play-brief.ts`/`play-brief-narrative.ts`/`play-brief-intel.ts`).
+
+**Root cause:** `formatOverlapPosition(p, reviewedTicker, dupTickers, reviewedIsBangerOrigin)` has
+two distinct reasons to disambiguate a position: (a) `p.ticker === reviewedTicker` (the reviewed
+play's own ticker showing up again via a cross-engine sibling), and (b) `isDuplicateOtherTicker` —
+some OTHER ticker (not the one being reviewed) appearing twice in the same overlap list (the
+2026-09-20 fix, live repro RIOT's brief showing MSTX twice). For case (a), checking
+`reviewedIsBangerOrigin` (computed once from the REVIEWED play) is sound — the comparison is
+literally "is this sibling's engine different from the reviewed play's own engine" for the SAME
+ticker. But for case (b), the two duplicate rows belong to some OTHER ticker entirely — whether
+those two rows are cross-engine to EACH OTHER has nothing to do with whether the reviewed ticker
+happens to be Banger-origin. The code applied the same `reviewedIsBangerOrigin` check to both cases,
+so for the duplicate-other-ticker branch it answered a question about the wrong ticker's engine.
+
+**Live impact:** RIOT reviewed as a swing-native play (`reviewedIsBangerOrigin = false`), with the
+open book independently holding TWO Banger-origin positions on MSTX (both `positionId == null`,
+distinct `bangerId`s) landing in RIOT's same-theme overlap list — both MSTX rows rendered as
+"(separate, cross-engine position #N)", falsely implying two independent engines both like MSTX
+when in fact it is the exact "same engine, same ticker, twice" case the 2026-10-20 same-ticker fix
+was written specifically to stop mislabeling. The inverse failure is equally reachable: if the
+reviewed play were ITSELF Banger-origin while the duplicate MSTX rows were genuinely mixed-origin
+(one swing-native, one Banger), the Banger row would be mislabeled as merely "(separate position
+#bangerId)" with the real cross-engine distinction silently dropped.
+
+**Fix:** Added `tickersWithMixedOriginDuplicates` — computes, per rendered list (scoped the same way
+`tickersAppearingMoreThanOnce`'s `dupTickers` already is), which tickers' duplicate groups mix a
+native swing row (`positionId` set) with a Banger-origin row (`positionId` null). `formatOverlapPosition`
+now uses this set for the `isDuplicateOtherTicker` branch's cross-engine determination, while the
+`isReviewedTicker` branch keeps using `reviewedIsBangerOrigin` (still the right question for that
+case).
+
+**Fix rationale:** Additive — a new, correctly-scoped signal for the one branch that needed a
+different question answered; the `isReviewedTicker` branch and its existing `reviewedIsBangerOrigin`
+logic are untouched.
+
+**Blast radius:** `formatOverlapPosition`'s signature gained one parameter; both call sites in
+`bookContextSection` (same-direction and opposed-direction blocks) updated to compute and pass it.
+
+**Tests:** 2 new regression tests — (1) two Banger-origin duplicate-OTHER-ticker rows are labeled
+same-engine ("separate position #N"), not falsely cross-engine, regardless of the reviewed play's
+own origin; (2) a genuinely mixed-origin duplicate-OTHER-ticker pair stays correctly labeled
+cross-engine even when the reviewed play is itself Banger-origin. RED→GREEN proven via `git stash`
+on just the source file (both new tests failed pre-fix — rendered the wrong label — pass post-fix).
+Full `play-brief-intel.test.ts` (288 tests) green on Node 20. `tsc --noEmit` clean.
+
 ## WATCH plays' already-computed "Since flag" underlying move never reached the Largo play-brief — dead-wired to the one bucket that never has it — FIXED
 
 > **kind:** `FINDING`
