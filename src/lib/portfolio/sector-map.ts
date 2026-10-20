@@ -159,6 +159,21 @@ const SECTORS: Record<string, string[]> = {
   // a single-segment company whose entire value hinges on one trial readout, the exact same binary
   // clinical/regulatory catalyst risk driver as every other name in this bucket.
   biotech: ["NTLA", "CRSP", "VIR", "MIRM", "IONS", "NVAX", "IOVA", "PCVX", "TNGX", "RLAY", "ABVX"],
+  // Added 2026-10-20 (Ask Largo standing mandate, Night Hawk Swings lane, live finding): a real
+  // committed book held KGC and AEM concurrently LONG (both Banger-origin BREAKOUT calls, same
+  // discovery batch) with neither ticker mapped anywhere in this file, so both resolved to
+  // isolated `NAME:KGC`/`NAME:AEM` own-clusters and NEITHER position's play-brief rendered a
+  // "Book context" section at all — the same gap shape as every other extension in this file
+  // (ALAB/CRDO/KLAC, quantum-computing, biotech): two names whose dominant risk driver is the SAME
+  // underlying commodity price (gold), not two independent edges. Verified via Polygon reference
+  // (`/v3/reference/tickers/<T>`), not guessed from the symbol: KGC (Kinross Gold Corporation) and
+  // AEM (Agnico Eagle Mines Ltd.) are both large-cap gold-mining producers whose equity price is
+  // dominated by the spot gold price and mine-level production/cost results, not by any sector
+  // already listed above. Deliberately conservative, same discipline as the crypto-equity/
+  // quantum-computing/biotech precedents: only the two names actually live in the book at time of
+  // fix, not a speculative broader miners basket (e.g. NEM, GOLD) with no live partner to
+  // demonstrate against in this snapshot.
+  "precious-metals": ["KGC", "AEM"],
 };
 
 // Inverted once at module load: TICKER → sector.
