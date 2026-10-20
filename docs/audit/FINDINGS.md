@@ -38,6 +38,246 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-10-20 — [FINDING, P1 Night Hawk 0DTE] Governor SEV-3 loss-halt read the naive mechanical grade instead of the real as-managed outcome — FIXED
+
+> **kind:** `FINDING`
+
+**Context.** Standing Night Hawk 0DTE forensic-monitor sweep. After today's trim_scale
+narrative fix (PR #6396) merged, the board's `governor` payload was checked as part of a
+routine end-of-session review (this lane hadn't looked at the governor/condor surface at all
+today). It reported `realized_losers: 19` and `session_pnl_pct: -68.91%` out of 30 closed
+positions — directly contradicting the SAME board's own `live_pnl_pct` field, which showed 19
+POSITIVE closes and only 9 negative. One of these two numbers had to be wrong.
+
+**Root cause.** `governor.ts`'s `ledgerRowRealizedPnlPct` read `r.plan_pnl_pct` — the raw
+`zerodte_setup_log.plan_pnl_pct` DB column — as its first-preference signal for "did this
+position realize a win or a loss." Per `docs/audit/OUTCOME-GRADING-SPEC.md` (and `record.ts`'s
+own `mechanicalGradeView`/`managedGradeView` split), that column is the **MECHANICAL** grade:
+`gradePlanFromBars` walking the contract's MID price against the fixed −50%/+100%/15:30-ET plan
+rules, from first flag to the END OF THE SESSION — a simulation of what a completely unmanaged,
+passive hold would have done. It is **never** the real outcome once the live exit engine
+actually closed the position earlier for a different reason (a ratchet profit floor, a
+thesis-break veto, a flat-timeout scratch). `record.ts` encodes this precedence deliberately and
+explicitly: its own doc says the mechanical grade is "NEVER the headline" — only a labeled,
+side-by-side comparison. `governor.ts`'s inline comment, by contrast, called `plan_pnl_pct` "the
+true close P&L" — a direct mischaracterization of the exact field record.ts goes out of its way
+to avoid treating as authoritative.
+
+**Live evidence.** HOOD (today, 2026-10-20): real `live_pnl_pct = +3.35%`, `closed_reason:
+"ratchet"` — a genuine win, the position exited via the live ratchet-profit-floor mechanism.
+Its `plan_pnl_pct` (mechanical) read **-50** with `plan_outcome: "stopped"` — because after the
+real engine had already closed the position, the underlying later traded down far enough that a
+naive, unmanaged hold (the mechanical simulation) would have hit the hard stop. Both numbers are
+individually correct for what they measure; the bug is that the governor's SEV-3 loss-halt
+diagnostic picked the wrong one. Six more rows today showed the same shape in magnitude (BMNR,
+MUU, APLD, AAL, CRWV, CLSK, HIMS: all real wins or smaller real losses under `live_pnl_pct`,
+all showing a materially worse mechanical `plan_pnl_pct`).
+
+**Blast radius.** `realized_losers`, `session_pnl_pct`, and `would_halt` — all three fields
+surfaced live on `GET /api/market/zerodte/board`'s `governor` payload, documented in the
+function's own comment as "calibration evidence" for a human deciding whether to flip
+`GOVERNOR_ENFORCE_LOSS_HALT` (currently off by default, so this did not actually block any
+commit today — the board's `halted: true` came from the separate, unaffected 4-hard-stop
+channel). But the diagnostic itself was badly wrong: it reported today as a losing session
+(-68.91%, 19/30 "losers") when the real, as-managed outcome was a clearly profitable day (19
+positive / 9 negative / 2 flat by `live_pnl_pct`). Anyone using this as calibration evidence —
+exactly its stated purpose — would be working from a fabricated picture of risk.
+
+**Fix.** `ledgerRowRealizedPnlPct` now calls `record.ts`'s `asManagedPnlPct` (the SAME precedence
+`managedGradeView` already implements and the record route already headlines: a real engine exit
+first, a genuine WS-11 trim-scale reconstruction second, the mechanical grade only as the final
+fallback for a row with no live-managed exit at all) instead of reading `plan_pnl_pct` directly.
+`asManagedPnlPct`'s signature was narrowed from `ZeroDteSetupLogRow` to the already-exported
+`OfficialGradableRow` (just `plan_outcome`/`plan_pnl_pct`/`entry_context` — the only fields it
+ever touches, via `managedGradeView`/`mechanicalGradeView`, also narrowed the same way) so
+`governor.ts`'s own `GovernorLedgerRow` — which already carries `entry_context` — satisfies it
+directly with no new field plumbing. The stop-trough fallback (`ledgerRowStopped`) and the
+THIRD CHANNEL (mark-vs-entry estimate for a CLOSED-but-ungraded row, the original 2026-08-11
+AUDIT SEV-3 fix) are both unchanged — this only replaces what counts as "graded."
+
+**Fix rationale.** Considered reimplementing the as-managed precedence locally in governor.ts,
+but that would create a second, driftable copy of logic record.ts already owns and tests
+extensively (managedGradeView's WS-11 reconstruction precedence, `realExitIsBarWalkReproducible`,
+etc.) — reusing `asManagedPnlPct` directly means governor.ts can never silently fall out of sync
+with what the member-facing record route itself calls the real outcome.
+
+**Tests.** 3 new cases in `governor.test.ts`: the HOOD-shaped real-win-vs-fictitious-mechanical-
+loss case (RED before the fix — confirmed via `npx tsx --experimental-test-module-mocks --test`
+— the old code read `-75` from the mark-fallback or `-50` from plan_pnl_pct, new code reads the
+real `+3.35`), a genuine-loss case proving a real loss with a *different* mechanical magnitude
+still counts correctly, and a legacy/no-live-exit case proving the mechanical fallback is
+unchanged for rows with no as-managed stamp at all. One pre-existing test
+("a graded row still wins — the mark channel never overrides plan_pnl_pct") had its fixture
+corrected to pair `plan_outcome` with `plan_pnl_pct` (the real DB always writes both columns in
+the same `UPDATE` — the fixture previously set only one, which happened to also expose the gap
+between the old loose `r.plan_pnl_pct != null` check and the stricter, correct
+`isGradedZeroDteRow` the fix now goes through). `governor.test.ts` 63/63, `record.test.ts` 41/41,
+`scan.test.ts` 46/46 pass; `tsc --noEmit` clean (Node 20); full `npm test` run alongside this PR.
+
+| **Status** | FIXED. `GOVERNOR_ENFORCE_LOSS_HALT` remains off by default (unchanged) — this fix corrects the diagnostic's VALUE, not whether it enforces anything. No gate/threshold/halt behavior changed for the one channel that IS always enforced (the 4-hard-stop count, `ledgerRowStopped` — untouched). |
+
+Related: `docs/audit/OUTCOME-GRADING-SPEC.md` (the mechanical-vs-managed duality this bug
+confused); PR #6396 (today's earlier, related trim_scale narrative fix — same root family of
+"a live-only real outcome vs. a naive bar-walk simulation disagreeing," different surface).
+
+## `src/lib/swing/play-brief-adapter.ts` — `SwingPlayBriefSignal` declares 8 fields the adapter never populates and nothing ever reads
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | REPORTED, NOT FIXED — flagged for the swing play-brief/Largo-contract owner to decide wire-up vs retire; not unilaterally touched (same precedent as `composite-confidence.ts`, WS-22/`flow-amendment.ts`, the x-intel trio, and `meridian-play-suggestions.ts` below in FINDINGS.md) |
+| **Severity** | P4 (dead-weight type surface, not a runtime defect — no user-facing impact; nothing currently expects these fields to be present) |
+| **Surface** | `src/lib/swing/play-brief-adapter.ts` (`SwingPlayBriefSignal` type + `adaptSwingBriefToLargo()`) |
+
+### What it is
+
+`adaptSwingBriefToLargo()` is the Largo-contract adapter for the deterministic Swing Play
+Intelligence brief (`GET /api/market/swing/play-brief`), transforming the UI-facing
+`SwingPlayBriefResult`/`BieAnswerEnvelope` into a `ProductRead<SwingPlayBriefSignal>` per
+`docs/audit/LARGO-PRODUCT-CONTRACT.md`. The `SwingPlayBriefSignal` type declares 8 optional
+fields clearly intended to carry structured swing-position context for Largo/aggregation
+consumers:
+
+```ts
+export type SwingPlayBriefSignal = ProductSignal & {
+  archetype?: string;
+  sub_lane?: string;
+  entry_premium?: number;
+  peak_premium?: number | null;
+  bucket?: string;
+  thesis_strength_pct?: number | null;
+  grade?: string;
+  invalidation?: string | null;
+  narrative?: string;
+};
+```
+
+### Evidence it's dead
+
+`adaptSwingBriefToLargo()`'s own `signal` object (lines 110-126) only ever sets `ticker`,
+`ticker_class`, `direction`, `evidence`, `native`, and `narrative` — never `archetype`,
+`sub_lane`, `entry_premium`, `peak_premium`, `bucket`, `thesis_strength_pct`, `grade`, or
+`invalidation`. This isn't an oversight at the call site alone: `SwingPlayBriefResult`
+(`play-brief-types.ts`) — the adapter's only input — has no typed fields of those names at all
+(`playId`, `ticker`, `ticker_class`, `envelope`, `asOf`, `sessionDate`, `engine`, `flowSnapshot`,
+`briefContentKey`, `trimsFired`). The envelope itself is UI-facing markdown/sections/levels, not a
+structured source for a position's archetype/sub_lane/bucket/grade. The adapter has nothing to
+populate these 8 fields FROM, which is why it never does.
+
+Repo-wide grep for every consumer that could read them off the adapter's output:
+
+```
+$ grep -rn "largoRead\.data\.\|signal\.archetype\|signal\.sub_lane\|signal\.entry_premium\|\
+  signal\.peak_premium\|signal\.bucket\|signal\.thesis_strength_pct\|signal\.grade\|\
+  signal\.invalidation" --include="*.ts" --include="*.tsx" .
+src/app/api/market/swing/play-brief/route.ts:106   largoRead.data.direction
+src/app/api/market/swing/play-brief/route.ts:108   largoRead.data.evidence
+src/lib/swing/play-brief-adapter.test.ts           largoRead.data.ticker_class (x4)
+```
+
+The ONLY `signal`/`largoRead.data` fields any caller ever reads are `direction`, `evidence`, and
+`ticker_class` — all three of which ARE populated. Zero references anywhere to `.archetype`,
+`.sub_lane`, `.entry_premium`, `.peak_premium`, `.bucket`, `.thesis_strength_pct`, `.grade`, or
+`.invalidation` on this type. Separately, the route handler itself (`play-brief/route.ts`
+lines 94-115) only forwards a hand-picked subset of `largoRead`'s top-level meta fields
+(`as_of`/`freshness`/`age_seconds`/`direction`/`evidence_numbers`/`source`/`cohort`) into the HTTP
+response — it never spreads `largoRead.data` wholesale, so even the fields the adapter DOES
+populate (`native`, `narrative`) never reach the wire either (`ticker`/`ticker_class` do reach it,
+but redundantly — via the separate `...brief` spread a few lines above, not via `largoRead.data`).
+
+Note: `archetype` and `sub_lane` are NOT dead concepts in the swing engine generally — they're
+real, actively-used DB columns (`swing_positions.sub_lane`/`.archetype`, read/written throughout
+`commit.ts`, `feature-vector.ts`, `calibration.ts`, `closed-plays.ts`, `live-plays.ts`, etc.). The
+dead part is narrowly this ONE type's declaration of same-named fields with no path to ever
+receive that real data, because this adapter's only input (`SwingPlayBriefResult`) was never
+extended to carry a position row alongside the envelope.
+
+### Why reported, not fixed
+
+Same shape this file has repeatedly flagged and declined to unilaterally resolve:
+`composite-confidence.ts` (zero importers 3 months after shipping), `flow-amendment.ts` (WS-22),
+the x-intel trio, and `meridian-play-suggestions.ts`. Wiring these 8 fields up for real would mean
+threading a `SwingPositionRow` (or equivalent) into `composeSwingPlayBrief`/`SwingPlayBriefResult`
+specifically so this adapter can populate them — a real, scoped design change to the brief's own
+contract, not a one-line fix, and one the swing play-brief / Largo-contract owner should decide
+(wire up vs. trim the dead fields from the type) rather than a drive-by audit pass guessing at
+which of the 8 are actually wanted.
+
+### Suggested next step
+
+Whoever owns the swing play-brief / Ask Largo swing-contract thread should decide: (a) wire
+`archetype`/`sub_lane`/`entry_premium`/`peak_premium`/`bucket`/`thesis_strength_pct`/`grade`/
+`invalidation` up for real by extending `SwingPlayBriefResult` to carry the position row these
+values would come from, plus forwarding `largoRead.data` (or the specific fields wanted) through
+the route response, or (b) trim the 8 unpopulated fields from `SwingPlayBriefSignal` if they were
+aspirational scaffolding that's no longer wanted. No code behavior changes until that decision is
+made — not unilaterally touched here.
+
+## `play-brief-absence.ts`'s GEX flip-reason disclosure table used the wrong vocabulary — 2 of 3 real reason codes silently dropped the C3 chip — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo × Night Hawk Swings standing mandate, Workflow static-code sweep
+of not-yet-audited `play-brief-*.ts` files against `docs/audit/LARGO-PRODUCT-CONTRACT.md`.
+
+**Root cause:** `collectGexFlipAbsence`'s `GEX_FLIP_REASON_DISCLOSURE` lookup table
+(`src/lib/swing/play-brief-absence.ts`) existed specifically to surface WHY a gamma-flip level is
+null — a genuine data gap vs. an honest structural fact (per its own 2026-10-08 doc comment, the
+original fix for the INTC live repro). But its keys were a drifted vocabulary, not the real
+`GammaFlipReason` string literals (`src/lib/providers/gex-cross-validation-core.ts`:
+`"resolved" | "insufficient_strikes" | "net_short_everywhere" | "crossings_far_from_spot"`) that
+`polygon-options-gex.ts` actually assigns to `gex.flip_reason` at its two real producer call sites
+(`flip_reason: gexFlipDetail.reason`). The table used `insufficient_data` (real:
+`insufficient_strikes`) and `crossings_far` (real: `crossings_far_from_spot`) — so a real
+`flip_reason` of either of those two genuine data-gap codes matched NOTHING in the table, and
+`collectGexFlipAbsence` silently returned `null` (no disclosure chip) for both — reproducing, for
+2 of the 3 real reason codes, the exact C3 absence-disclosure silence this function was built to
+fix in the first place. `net_long_everywhere` (also in the old table) was never a real value at
+all: `cumulativeGammaFlipDetail`'s own doc comment confirms the cumulative-gamma definition can
+only go null on the "never turns positive" (net-short-everywhere) side — there is no symmetric
+"net-long-everywhere" null case the current algorithm can produce.
+
+**Why it wasn't caught:** the existing regression test for the `insufficient_data` case used the
+IDENTICAL wrong fixture string (`flip_reason: "insufficient_data"`), so it passed against the bug
+instead of catching it — the test and the production code shared the same stale vocabulary, traced
+back to `gex-positioning.ts:92`'s own loosely-worded doc comment. There was no test at all for
+`crossings_far_from_spot`.
+
+**Live impact:** any ticker whose GEX matrix is fresh but has either genuinely too few strikes
+(`insufficient_strikes`) or every crossing sitting outside the plausible band
+(`crossings_far_from_spot`) renders with a silently-missing "gamma flip" level and nothing in
+`unavailableSources` explaining why — a member or Largo reader cannot distinguish "we don't have
+it yet" from "there genuinely isn't one," the exact ambiguity this function's own header comment
+says it exists to resolve.
+
+**Fix:** Corrected the two wrong keys to the real `GammaFlipReason` values, dropped the dead
+`net_long_everywhere` entry, and retyped the table as `Partial<Record<GammaFlipReason, {...}>>`
+(imported from `gex-cross-validation-core.ts`) instead of a bare `Record<string, {...}>` — a
+future rename or removal of a `GammaFlipReason` value now fails this table at compile time instead
+of silently drifting out of sync again. The read site casts `gex.flip_reason` (loosely typed
+`string | null` on `GexPositioning`) to `GammaFlipReason | undefined`, documenting the real
+invariant (both producer call sites only ever assign a `GammaFlipDetail.reason`) rather than
+widening the lookup table's key type back to a bare string.
+
+**Fix rationale:** Minimal, targeted correction to the three key strings plus a type tightening
+that directly prevents the SAME failure mode (a disclosure table's vocabulary silently drifting
+from its source enum) from recurring undetected. Left the dead `net_long_everywhere` key removed
+rather than kept, since the type now makes its deadness a compile-time fact rather than a
+by-inspection claim.
+
+**Blast radius:** Single function (`collectGexFlipAbsence`), single lookup table. No other caller
+reads `GEX_FLIP_REASON_DISCLOSURE` (repo-wide grep).
+
+**Tests:** Corrected the existing `insufficient_data` test's fixture to the real
+`insufficient_strikes` value, added a new dedicated `crossings_far_from_spot` test (previously
+uncovered under either spelling). RED→GREEN proven via `git stash` (both new/corrected tests fail
+against the pre-fix source — 90/92 pass, 2 fail — pass post-fix, 92/92). `tsc --noEmit` clean.
+Full `play-brief-absence.test.ts` (92 tests) green, run on Node 20.
+
 ## 0DTE peak_pnl_pct/mfe_capture_pct/floor_pnl_pct computed from the raw pre-rounding premium, disagreeing with the row's own displayed peak_premium — FIXED
 
 > **kind:** `FINDING`
