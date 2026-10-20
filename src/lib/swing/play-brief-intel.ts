@@ -404,6 +404,7 @@ function formatOverlapPosition(
   reviewedTicker: string,
   dupTickers: ReadonlySet<string>,
   reviewedIsBangerOrigin: boolean,
+  crossEngineDupTickers: ReadonlySet<string>,
 ): string {
   // BUG FIX (2026-10-17, Ask Largo standing mandate, live repro ALAB: "Internal conflict — SQQQ
   // LONG, SOXS LONG" rendered right next to a "Concentration — NVDA LONG, CRWV LONG" sentence, with
@@ -434,7 +435,23 @@ function formatOverlapPosition(
   // engine, same ticker, twice" (a narrower, single-source signal) — and 21 of 26 live committed
   // Swing positions the day this was found were Banger-origin, so same-ticker Banger/Banger pairs
   // are common, not an edge case.
-  if (reviewedIsBangerOrigin) {
+  //
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro RIOT reviewing a duplicate OTHER
+  // ticker MSTX): the line above answers "is THIS sibling cross-engine relative to the REVIEWED
+  // play" — sound for `isReviewedTicker` (both rows share the reviewed ticker, so that comparison
+  // IS the cross-engine question), but wrong for `isDuplicateOtherTicker`: those two duplicate rows
+  // belong to some OTHER ticker entirely, so whether THEY are cross-engine to EACH OTHER has
+  // nothing to do with whether the REVIEWED ticker happens to be Banger-origin. Two Banger-origin
+  // MSTX rows duplicated in RIOT's list were falsely labeled "cross-engine" solely because RIOT
+  // itself was swing-native — the exact mislabeling the 2026-10-17 fix above was written to stop,
+  // just reached from the other ticker. `crossEngineDupTickers` (computed by the caller from the
+  // SAME rendered list, scoped the same way `dupTickers` already is) answers the right question for
+  // this branch: does THIS ticker's own duplicate group actually mix a native swing row with a
+  // Banger row.
+  const isCrossEngine = isReviewedTicker
+    ? !reviewedIsBangerOrigin
+    : crossEngineDupTickers.has(p.ticker.toUpperCase());
+  if (!isCrossEngine) {
     return p.bangerId != null
       ? `${base} (separate position #${p.bangerId})`
       : `${base} (separate position)`;
@@ -457,6 +474,28 @@ function tickersAppearingMoreThanOnce(positions: readonly PortfolioPosition[]): 
     if (count > 1) dup.add(ticker);
   }
   return dup;
+}
+
+/** Tickers whose SAME-ticker duplicate group (within `positions`) mixes a native swing row
+ *  (`positionId` set) with a Banger-origin row (`positionId` null — `loadOpenBook`'s own
+ *  convention). This is the only shape that makes a duplicate-OTHER-ticker pair genuinely
+ *  cross-engine for `formatOverlapPosition`'s `isDuplicateOtherTicker` branch — two Banger rows of
+ *  the same ticker are the same engine committing twice, not two independent engines; a row
+ *  carrying `positionId` already short-circuits to its own "(separate position #N)" branch before
+ *  this set is ever consulted, so only Banger-origin duplicates reach it in practice. */
+function tickersWithMixedOriginDuplicates(positions: readonly PortfolioPosition[]): ReadonlySet<string> {
+  const hasNativeRow = new Set<string>();
+  const hasBangerRow = new Set<string>();
+  for (const p of positions) {
+    const key = p.ticker.toUpperCase();
+    if (p.positionId != null) hasNativeRow.add(key);
+    else hasBangerRow.add(key);
+  }
+  const mixed = new Set<string>();
+  for (const ticker of hasBangerRow) {
+    if (hasNativeRow.has(ticker)) mixed.add(ticker);
+  }
+  return mixed;
 }
 
 /**
@@ -525,9 +564,10 @@ export function bookContextSection(
   const lines: string[] = [];
   if (overlap.sameThemeSameDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeSameDirection);
+    const crossEngineDupTickers = tickersWithMixedOriginDuplicates(overlap.sameThemeSameDirection);
     const names = joinOverlapNames(
       overlap.sameThemeSameDirection.map((p) =>
-        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin),
+        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin, crossEngineDupTickers),
       ),
     );
     const closer = isPendingEntryDecision
@@ -541,9 +581,10 @@ export function bookContextSection(
   }
   if (overlap.sameThemeOpposedDirection.length) {
     const dupTickers = tickersAppearingMoreThanOnce(overlap.sameThemeOpposedDirection);
+    const crossEngineDupTickers = tickersWithMixedOriginDuplicates(overlap.sameThemeOpposedDirection);
     const names = joinOverlapNames(
       overlap.sameThemeOpposedDirection.map((p) =>
-        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin),
+        formatOverlapPosition(p, play.ticker, dupTickers, reviewedIsBangerOrigin, crossEngineDupTickers),
       ),
     );
     lines.push(
