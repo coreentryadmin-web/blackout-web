@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T15:34:44.997Z",
+  "updated_at": "2026-10-20T17:27:22.977Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,31 +65,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "07513b65e3f13b644a443db9888feeae501e2358",
+    "last_main_sha": "78e7c6272572fa7716b9189a96f9794105d3bea0",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
     "last_deploy_sha": "4349848f5ecbb6a697d1f4209e70c04853bac914"
   },
   "events": [
-    {
-      "at": "2026-10-10T21:42:33.647Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T21:42:37.874Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-10T22:37:00.496Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-10-10T22:37:04.949Z",
       "type": "context_sync",
@@ -1271,18 +1253,66 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-10-20T17:27:10.731Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-20T17:27:17.078Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-10-20T17:27:22.977Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
     }
   ],
   "open_prs": [
     {
-      "number": 6359,
-      "title": "fix(vector): stop re-querying vector_alert_rules per (user, ticker) pair",
-      "branch": "fix/vector-alerts-rule-rows-n-plus-1",
+      "number": 6378,
+      "title": "fix(swing): name curve-vs-breadth disagreement in macro-tape coaching instead of dropping the curve signal",
+      "branch": "fix/swing-macro-tape-curve-breadth-disagreement",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T17:25:52Z"
+    },
+    {
+      "number": 6377,
+      "title": "fix(seo): Night Hawk public copy omitted the shipped Swing Command tab",
+      "branch": "fix/night-hawk-swing-command-seo-copy-stale",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T15:24:13Z"
+      "verify": "completed/failure",
+      "updated_at": "2026-10-20T17:15:53Z"
+    },
+    {
+      "number": 6376,
+      "title": "fix(swing): round confluence-zone center before it reaches play-brief envelope.levels",
+      "branch": "fix/swing-confluence-zone-center-unrounded",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "completed/success",
+      "updated_at": "2026-10-20T17:11:33Z"
+    },
+    {
+      "number": 6369,
+      "title": "research(zerodte): trim-bank flags — verified off, tested separately/together, no reliable edge",
+      "branch": "research/zerodte-trim-bank-live-ab",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-10-20T16:39:08Z"
     },
     {
       "number": 5547,
