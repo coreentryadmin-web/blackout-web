@@ -38,6 +38,217 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## Night Hawk Legacy Starved Funnel — Recurrence 2026-10-18 / 2026-10-19 — FIXED
+
+> **kind:** `FINDING`
+
+### Summary
+
+Night Hawk Legacy edition came back `recap_only=true` with zero plays on **two consecutive nightly builds** (2026-10-18 evening for 2026-10-19 session, and 2026-10-19 evening for 2026-10-20 session).
+
+Both incidents share the identical root cause: **100% dossier-scoring failure** — all 20 discovered candidates exited the rescore loop with `d.scored == null`, resulting in an empty `scoredList` and triggering the recap-only fallback.
+
+### Root Cause
+
+**File:** `src/features/nighthawk/lib/edition-builder.ts`
+
+**Lines 933-942** (original, pre-fix):
+```typescript
+const scoredList = Object.values(dossiers)
+  .filter((d) => d.scored != null)
+  .map((d) => d.scored!);
+recordScoringStageSnapshots(editionFor, "scored", scoredList, dossiers);
+
+if (!scoredList.length) {
+  // Funnel collapsed at stage_dossiers
+  const reason = `No scored dossiers after staging (${candidates.length} candidate(s)).`;
+  console.warn(`[nighthawk/edition] stage_dossiers zeroed — recap-only fallback: ${reason}`);
+  // ... publish recap-only edition and return
+}
+```
+
+The rescore loop (lines 921-931) executes `rescoreDossier()` on each dossier. If **all** calls fail or leave `d.scored == null`, the filter produces an empty list, and the funnel collapses with zero plays.
+
+**Triggering condition:** The 2026-10-18 incident was traced to **UW rate-limiter congestion** during the rescore pass (`fetchAllDossiers` + `rescoreDossier` both call upstream UW endpoints). A transient failure that clears after a brief delay had no automatic recovery path — it required manual re-run via `POST /api/admin/nighthawk/run?asOfEt=...`.
+
+### Evidence
+
+**2026-10-20 17:34:59 UTC alert** (scheduled monitor trigger):
+```json
+{
+  "edition_for": "2026-10-20",
+  "published_at": "2026-10-19T21:41:46.000Z",
+  "recap_only": true,
+  "recap_only_reason": "No scored dossiers after staging (20 candidate(s)).",
+  "funnel": {
+    "candidates": 20,
+    "ranked": 0,
+    "dossiers": 0,
+    "synthesized": 0,
+    "critic_passed": 0,
+    "published": 0
+  },
+  "no_plays": true
+}
+```
+
+This is a **fresh build** from 2026-10-19 evening (not a stale cached edition), yet exhibits the exact same zero-dossier-count signature as 2026-10-18.
+
+Two consecutive nights with identical failure mode argues this is not a transient blip but a pattern worth defensive hardening.
+
+### Fix
+
+**PR #6380 (merged):** Add a single bounded retry before falling back to recap-only.
+
+**Mechanism:**
+- Add `MAX_RESCORE_ATTEMPTS = 2` (initial attempt + one retry)
+- After initial rescore pass: if `scoredList.length === 0`, wait 2 seconds and retry the loop once
+- If still empty after retry, proceed to recap-only fallback (identical to pre-fix behavior)
+- Update `recap_only_reason` to indicate retry count: `"No scored dossiers after N rescore attempt(s) (M candidate(s))."`
+
+**Why 2 seconds?**
+- UW rate-limiter congestion (the confirmed 2026-10-16 cause) typically clears in a single RTH cycle (~1-2 minutes)
+- A 2-second delay is cheap insurance against transient queue timeouts without adding noticeable latency to the build
+- Retry is idempotent and preserves checkpoint/resume behavior
+
+**Why one retry?**
+- Bounded — not an infinite loop
+- Sufficient for transient failures (rate-limit reset, network hiccup)
+- If 100% dossier failure persists after retry, it's likely a systemic issue (bad data, upstream outage) that won't be fixed by trying again
+
+### Impact Assessment
+
+- **Blast radius:** Night Hawk Legacy evening edition only; does not affect 0DTE or swing boards
+- **User-facing:** Member sees recap-only Evening Playbook for one night instead of zero plays, then resumes normal plays the next night when the transient clears
+- **Code risk:** Minimal — adds 2-second delay and re-executes identical rescore loop; all downstream behavior (recap-only fallback) unchanged if retry still fails
+
+### Status
+
+| Field | Value |
+| --- | --- |
+| **Status** | FIXED — PR #6380 merged (confirmed in `main` as commit `326320d17`) |
+| **Deployment** | Shipped |
+| **Validation** | Monitor the next nightly builds (2026-10-21, 2026-10-22) to confirm the retry actually clears transient failures in practice; not yet observationally confirmed |
+
+---
+
+**Next step:** Monitor the next two nightly builds to confirm the retry succeeds in clearing transient failures.
+
+## A swing play-brief's "Watch levels"/"What to watch" section badged the wrong market-direction bias for a SHORT play whose thesis broke — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit reading
+`watchForSection` (`src/lib/swing/play-brief-intel.ts`) directly, specifically targeting source not
+yet audited this cycle, adversarially verified (2-agent pipeline: investigation + independent
+skeptic re-trace against current source; confirmed real).
+
+**Root cause:** `watchForSection`'s return statement computed its section-level `bias` as:
+```ts
+bias: bucket === "closed" ? "neutral" : play.thesisBreak?.level === "break" ? "bearish" : "neutral",
+```
+with no reference to `play.direction`. `bias` is rendered as a real, color-coded directional-market
+pill (`BieSectionCard` → `BiasPill`, `BieChips.tsx`'s own doc comment: "Directional bias pill
+(bullish/bearish/neutral/mixed)") — not inert JSON. `thesisBreak.level` (`thesis-health.ts`'s
+`thesisBreakFromHealth`/`computeSwingThesisHealth`) is a direction-agnostic "has this setup's own
+edge invalidated" verdict (persistence/entry-geometry/flow/regime/theta pillars degrading relative
+to the play's OWN entry thesis) — it says nothing by itself about which way the underlying actually
+moved. For a SHORT play, a thesis break typically coincides with the underlying breaking UPWARD
+(bullish price action — the move that invalidates a short), yet this line still badged the whole
+section "bearish," the opposite of what the market evidence actually showed. For a LONG play the
+label happened to usually line up, but the code had no direction-aware basis for either case — it
+was purely keyed off `thesisBreak.level`, unlike every other bias computation in this same file
+(`technicalsBias`, `vectorDeskSection`'s bias mapping, `resolveGammaPosture`'s long/short handling).
+
+**Live impact:** reachable on any OPEN or WATCH swing play (any direction) whose thesis has broken —
+not an edge case; thesis breaks are a routine, expected outcome this section exists specifically to
+report on.
+
+**Same defect class already found and fixed at a sibling call site:** `thesisHealthSection`
+(`play-brief.ts`, Largo C5, 2026-09-15) used to map `h.health` (the same direction-agnostic health
+score) straight to bullish/bearish and badged a SHORT play with a healthy (correctly-falling) thesis
+"Bullish" — "the literal opposite of what the trade is betting." That fix's own resolution: "No
+section-level bias for a non-directional quality signal — `bias` is already optional on
+`RichSection`." `watchForSection`'s line did the identical direction-blind mapping and was never
+swept for the same fix.
+
+**Fix:** `watchForSection`'s `bias` field is now unconditionally `"neutral"`, applying the identical
+resolution already established at the sibling site rather than attempting a new direction-aware
+mapping this section doesn't have the signal to support correctly.
+
+**Fix rationale:** Followed the existing precedent exactly rather than inventing a different
+resolution for the same defect class — `bias` is optional on `RichSection`, so simply not asserting
+a market-direction claim this section cannot support is the same honest choice already made at
+`thesisHealthSection`.
+
+**Blast radius:** single call site (`watchForSection`'s return statement). No other function in this
+file maps `thesisBreak.level` to a bias value.
+
+**Tests:** 2 new regression tests — a SHORT play with a broken thesis no longer badges "bearish"
+(asserts `bias === "neutral"`); a LONG play with a broken thesis also stays "neutral" (confirming the
+fix removes the mapping for both directions uniformly, not just the SHORT case). RED→GREEN proven
+via `git stash` (2/2 fail pre-fix — old code returned "bearish" for both directions — pass
+post-fix). Zero prior test coverage existed for this branch at all (confirmed via grep for
+`level: "break"` fixtures in the test file before this change — zero matches). `tsc --noEmit` clean.
+Full suite green on Node 20.
+
+## `src/lib/confidence/composite-confidence.ts` — fully-built composite-confidence aggregator, zero importers 3 months after shipping
+
+> **kind:** `FINDING`
+
+| Field | Value |
+| --- | --- |
+| **Status** | REPORTED, NOT FIXED — flagged for the confidence/scoring design thread to decide wire-up vs retire; not unilaterally touched (same precedent as WS-22/x-intel/meridian-play-suggestions below) |
+| **Severity** | P4 (dead-weight infra, not a runtime defect — no user-facing impact) |
+| **Surface** | `src/lib/confidence/composite-confidence.ts` |
+
+### What it is
+
+Shipped PR #1011 (2026-07-23, commit `f396ca964`), "composite confidence scalar — regime ×
+data-quality × calibration (review #6+#7+#9 unified)". A complete, well-documented, pure/
+deterministic module exporting `compositeConfidence()` and `dataQualityScore()` plus their types
+(`CompositeConfidenceInput`, `CompositeConfidence`, `FeedHealth`, `ConfidenceTier`). It geometric-
+means three sub-confidence signals (regime decisiveness, data quality, calibration freshness) into
+one EV/size multiplier, with an honest completeness discount when a sub-signal is missing (no
+silent "assume everything is fine" default) and a 7-test own test file (`composite-confidence.test.ts`).
+
+### Evidence it's an orphan
+
+Repo-wide grep for every export the module provides, outside the module itself and its own test:
+
+```
+$ grep -rn "compositeConfidence\|dataQualityScore\|composite-confidence" --include="*.ts" --include="*.tsx" src scripts
+src/lib/confidence/composite-confidence.ts        (the module itself)
+src/lib/confidence/composite-confidence.test.ts   (its own test)
+src/features/spx/lib/playbook-primary-score.ts    (unrelated — see below)
+```
+
+The one other hit is a **same-named, unrelated local function**: `playbook-primary-score.ts`
+(owned SPX lane) defines its own private `function dataQualityScore(playbook_id, ctx)` with a
+different signature — it does not import from `composite-confidence.ts`. So the module has
+**zero real callers anywhere in the codebase**, three months after shipping.
+
+### Why reported, not fixed
+
+This is the same shape this file has repeatedly flagged and declined to unilaterally delete:
+`src/lib/flow-amendment.ts` (WS-22, FINDINGS 2026-09-12, still REPORTED/NOT FIXED), the x-intel
+trio (`capture-harness.ts`/`package-scorer.ts`/`visual-memory-persist.ts`, consistently deferred
+to the X-intel lane as "deliberate designed-ahead scaffolding"), and `meridian-play-suggestions.ts`
+("omitted: detailed calibration pending Coordinator approval" per its own header). A module this
+deliberately reviewed ("review #6+#7+#9 unified") reads as forward-looking infrastructure built
+ahead of its consumer, not accidental leftover — deleting it on a DISCOVERY-lane pass without the
+scoring-design owner's sign-off risks destroying real design intent for a one-cycle tidiness win.
+
+### Suggested next step
+
+Whoever owns the confidence/scoring design thread (likely Vector/Helix/0DTE scoring, the natural
+EV/size-multiplier consumers) should decide: wire `compositeConfidence()` into an actual scoring
+path, or retire the module + its test if the design was superseded. Either resolution is a small,
+scoped PR once decided — this entry exists so the decision isn't lost, not to force it.
+
 ## 2026-10-20 — [FINDING, P3 Input-validation] A malformed `page`/`limit` query param on the admin users list reaches Postgres/Clerk as NaN with no try/catch anywhere — FIXED
 
 > **kind:** `FINDING`
