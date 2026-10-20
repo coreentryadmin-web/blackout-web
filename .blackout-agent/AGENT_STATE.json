@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-10-20T17:16:21.663Z",
+  "updated_at": "2026-10-20T17:27:22.977Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -65,7 +65,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "72370612ad66b8c848419a2d0c90644722ab9dab",
+    "last_main_sha": "78e7c6272572fa7716b9189a96f9794105d3bea0",
     "last_deploy_status": "",
     "last_deploy_at": "2026-10-18T23:23:43Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/39176327884",
@@ -1255,19 +1255,19 @@
       "open_pr_count": 5
     },
     {
-      "at": "2026-10-20T17:16:09.181Z",
+      "at": "2026-10-20T17:27:10.731Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
     },
     {
-      "at": "2026-10-20T17:16:15.523Z",
+      "at": "2026-10-20T17:27:17.078Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
     },
     {
-      "at": "2026-10-20T17:16:21.663Z",
+      "at": "2026-10-20T17:27:22.977Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
@@ -1275,13 +1275,23 @@
   ],
   "open_prs": [
     {
+      "number": 6378,
+      "title": "fix(swing): name curve-vs-breadth disagreement in macro-tape coaching instead of dropping the curve signal",
+      "branch": "fix/swing-macro-tape-curve-breadth-disagreement",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-10-20T17:25:52Z"
+    },
+    {
       "number": 6377,
       "title": "fix(seo): Night Hawk public copy omitted the shipped Swing Command tab",
       "branch": "fix/night-hawk-swing-command-seo-copy-stale",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "in_progress/pending",
+      "verify": "completed/failure",
       "updated_at": "2026-10-20T17:15:53Z"
     },
     {
@@ -1291,18 +1301,8 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "in_progress/pending",
+      "verify": "completed/success",
       "updated_at": "2026-10-20T17:11:33Z"
-    },
-    {
-      "number": 6375,
-      "title": "docs(findings): fold batch-3 findings into FINDINGS.md",
-      "branch": "docs/fold-findings-20261020-batch3",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-10-20T17:06:21Z"
     },
     {
       "number": 6369,
