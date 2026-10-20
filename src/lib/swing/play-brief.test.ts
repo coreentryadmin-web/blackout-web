@@ -2688,6 +2688,53 @@ test("composeSwingPlayBrief: a confluence zone citing a DIFFERENT call wall than
   );
 });
 
+test("composeSwingPlayBrief: a confluence zone's weighted-average center is rounded before reaching envelope.levels, not served as a raw float", () => {
+  // BUG FIX (Ask Largo standing mandate, 2026-10-20): confluenceZones() computes `center` as a
+  // weighted average (weightedPrice / centerWeightSum), which routinely produces a long
+  // floating-point tail — CLAUDE.md's own documented "round at the data layer" systemic issue
+  // (e.g. 7499.360000000001). Two sibling call sites of this same ConfluenceZone.center field
+  // already round it (play-brief-intel.ts, play-brief-narrative-coaching.ts via fmtPriceLevel);
+  // this was the one omission, fixed at the source rather than relying on route.ts's external
+  // roundFloats() wrapper two layers away.
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
+    asOf: "2026-10-20 16:00 ET",
+    sessionDate: "2026-10-20",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: {
+      asOf: new Date().toISOString(),
+      asOfEt: "2026-10-20 16:00 ET",
+      spot: 7499.4,
+      dataAgeMs: 5_000,
+      freshness: "live",
+      gexWalls: { callWalls: [{ strike: 7499.3, pct: 1 }], putWalls: [{ strike: 7400, pct: 2 }] },
+      gammaFlip: 7499.5,
+      maxPain: 7450,
+      confluenceZones: [
+        {
+          // (3*7499.30 + 2.5*7499.50) / 5.5 = 7499.390909090909 — a real non-terminating tail.
+          center: 7499.390909090909,
+          kinds: ["call-wall", "gamma-flip"],
+          score: 5,
+          levels: [
+            { price: 7499.3, kind: "call-wall" },
+            { price: 7499.5, kind: "gamma-flip" },
+          ],
+        },
+      ],
+      darkPoolLevels: [],
+    } as SwingPlayBriefContext["vector"],
+  };
+  const brief = composeSwingPlayBrief(ctx);
+  const confluenceLevel = brief.envelope.levels?.find((l) => l.label.startsWith("confluence"));
+  assert.ok(confluenceLevel, "expected a confluence level to render");
+  assert.equal(confluenceLevel?.price, 7499.39, "confluence center must be rounded to 2dp at the source");
+});
+
 test("composeSwingPlayBrief: a confluence zone whose call wall MATCHES the primary is unaffected (no spurious @price qualifier)", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "HOLD", recommendation: "HOLD" }),
