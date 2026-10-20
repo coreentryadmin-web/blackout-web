@@ -158,6 +158,21 @@ export const CORRELATION_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(["MSFT", "GOOGL", "META", "AMZN"]), // Mega-cap tech — correlated on macro/NQ moves
   new Set(["AAPL", "AVGO", "CRM", "ADBE"]),   // Tech/enterprise — second tech cluster
   new Set(["JPM", "GS", "MS", "BAC"]),         // Financials — rate-sensitive, move together on yields
+  // Bitcoin miners — operating economics (hash price, power cost, BTC-denominated revenue) move
+  // almost entirely on BTC spot, so these co-move far MORE tightly intraday than the sector pairs
+  // above. Added 2026-10-20 (live member book audit): the "2026-07-30 crypto cluster session"
+  // comment two blocks below has cited a crypto-cluster incident as the REASON same-direction
+  // concentration enforcement shipped at all since this file's own git history — but no crypto
+  // group was ever actually added, so the governor could never see one. Live evidence the SAME
+  // day this gap was found: RIOT and HUT both flagged long at the identical instant (14:42:09Z),
+  // BTDR five minutes later (14:47:14Z), all three open simultaneously and uncapped (none sharing
+  // a group with any other), plus MARA/CLSK long earlier the same session — a real 3-5-wide
+  // same-direction cluster the GOVERNOR_MAX_CORRELATED_SAME_DIR=2 cap exists specifically to catch
+  // and never did. Scoped to the core publicly-traded miners only (not exchanges/treasury-holding
+  // names like COIN/MSTR/SBET, which are BTC-exposed but a structurally different business and a
+  // separate, larger judgment call) — same "narrowest precedented addition" discipline as the
+  // TQQQ/SQQQ fix (FINDINGS.md) used for the broad-index group.
+  new Set(["RIOT", "MARA", "CLSK", "HUT", "BTDR", "CIFR", "WULF", "CORZ", "BITF", "IREN"]),
 ];
 
 /** WS-05 version stamp for the concentration MEASURE frozen at commit (freezeConcentration
