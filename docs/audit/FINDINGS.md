@@ -38,6 +38,206 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 0DTE peak_pnl_pct/mfe_capture_pct/floor_pnl_pct computed from the raw pre-rounding premium, disagreeing with the row's own displayed peak_premium — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo × Night Hawk Swings standing mandate / 5-engine live monitor
+Workflow deep-dive, live `GET /api/market/zerodte/board` + `/api/market/zerodte/record` spot-check —
+a real BMNR ledger row showed `entry_premium: 0.64`, `peak_premium: 0.70`, `peak_pnl_pct: 8.59`. A
+member computing the obvious (peak−entry)/entry off the row's own two DISPLAYED numbers gets
+`(0.70−0.64)/0.64 = 9.37%`, not the `8.59%` the board actually showed — the two fields on the same
+row disagreed with each other by ~0.78pp.
+
+**Root cause:** `mapLedgerRow` (`src/lib/platform/zerodte-service.ts`) computes `peak_pnl_pct`,
+`mfe_capture_pct`, and `floor_pnl_pct` from the RAW, pre-`roundFloats()` `entry_premium`/
+`peak_premium` read off the DB row. `buildZeroDteBoardPayload`'s closing `roundFloats()` call then
+rounds `entry_premium` and `peak_premium` to 2dp INDEPENDENTLY of each other — so a half-cent raw
+peak (`0.695`) rounds UP to a displayed `0.70` while `peak_pnl_pct` keeps reporting the number
+derived from the raw, never-shown `0.695` (`(0.695−0.64)/0.64 = 8.59%`). `live_pnl_pct`,
+`live_pnl_pct_exec`, and `exit_policy` already get an identical post-`roundFloats()` re-derivation a
+few lines below this exact spot (with their own comment explaining why), for the exact same
+reason — but `peak_pnl_pct`/`mfe_capture_pct`/`floor_pnl_pct` never got the same treatment. The gap
+is structural, not a one-off typo: any ledger row whose raw peak lands within ~0.008 of a cent
+boundary reproduces it, and it is strictly more likely on cheap (sub-$1) 0DTE premiums, where a
+half-cent is already several percent of the premium itself.
+
+**Live impact:** `mfe_capture_pct` compounds the same staleness (it divides the exit P&L by the
+STALE `peak_pnl_pct`), and `floor_pnl_pct` (the ratchet's `peak×0.4` protective-floor display) does
+too — so three separate member-facing numbers, not just one, quietly used a peak percentage the row
+itself no longer displays. This reaches Largo's `get_zerodte_plays` tool and the board route
+identically (both delegate to `buildZeroDteBoardPayload`), so an Ask Largo narration of "your floor
+is now at X%" or "you captured Y% of the peak move" could cite a number inconsistent with the same
+reply's own `peak_premium`/`entry_premium` fields — a Largo product-contract C3/precision concern
+(a number the model can be asked to double-check against sibling fields in the same payload and get
+a different answer from arithmetic a member can do by hand).
+
+**Fix:** Re-derive `peak_pnl_pct` (`peakPnlPct`), `mfe_capture_pct` (`mfeCapturePct`), and
+`floor_pnl_pct` (`ratchetFloorPct` + `ratchetTargetReached`) from the already-rounded `row.
+entry_premium`/`row.peak_premium`/`row.exit_pnl_pct`/`row.target_pct` inside the SAME post-
+`roundFloats()` ledger remap block that already re-derives `live_pnl_pct`/`live_pnl_pct_exec`/
+`exit_policy` — the identical functions `mapLedgerRow` itself uses, just fed the rounded inputs
+instead of the raw ones. `target_pct` is `number | null` on the row (frozen target may be absent),
+so the re-derivation falls back to `PLAN_RULES.target_pct` exactly as `playRailsFromRow`'s own
+resolution chain already does.
+
+**Fix rationale:** Mirrors the established, already-shipped pattern for `live_pnl_pct` rather than
+inventing a new one — same file, same block, same "recompute from the member-visible rounded
+numbers" principle. Left `mapLedgerRow`'s own raw computation of these three fields in place
+(harmless — it's immediately overwritten by the re-derivation) rather than removing it, since other
+internal logic in `mapLedgerRow` (e.g. the row's own `floorPnlPct` local var feeding `closed_reason`/
+`exit_reason` categorization a few lines earlier) legitimately needs the raw, pre-rounding value at
+that point in the pipeline — only the FINAL payload fields needed re-deriving, not the intermediate
+computation.
+
+**Blast radius:** Single block, single call site (`buildZeroDteBoardPayload`'s closing ledger remap,
+already shared by both the member board route and Largo's `zeroDtePlaysForLargo`/`get_zerodte_plays`
+— no second consumer to fix separately).
+
+**Tests:** 1 new regression test in `zerodte-service.test.ts` — a half-cent-peak scenario
+(`entry_premium: 0.64, peak_premium: 0.695`, the real live BMNR numbers) asserts `peak_premium`
+rounds to the displayed `0.70`, `peak_pnl_pct` reconciles to `9.37` (not the stale raw `8.59`),
+`mfe_capture_pct` reconciles to `53` (not the stale raw `58`), and `floor_pnl_pct` reconciles to
+`3.75` (not the stale raw `3.44`). RED→GREEN proven via `git stash` (fails against pre-fix source
+with the exact stale `8.59`, passes post-fix). `tsc --noEmit` clean. Full `zerodte-service.test.ts`
+(26 tests) + `zerodte-service-marks.test.ts` (1 test) green, run on Node 20.
+
+## A swing play-brief's earnings peer-history line silently dropped up to 3 qualifying sector peers with no disclosure — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, Ask Largo standing mandate — a fresh-angle Workflow audit reading
+`play-brief-meridian-peer-core.ts` directly, targeting source not yet deep-audited this cycle,
+adversarially verified (2-agent pipeline: investigation + independent skeptic re-trace against
+current source; confirmed real).
+
+**Root cause:** `meridianPeerEarningsCoaching`'s peer-history snippet did a bare
+`peers.slice(0, 3)` with no check against `peers.length`:
+
+```ts
+const peers = (peer.members ?? []).filter((m) => !m.is_subject && m.beat_rate_n >= 3);
+if (peers.length) {
+  const snippets = peers
+    .slice(0, 3)
+    .map((m) => { ... })
+    .join(" · ");
+  parts.push(`peer history: ${snippets}`);
+}
+```
+
+Up to `MAX_PEER_REACTION_TICKERS = 6` (`meridian-sector-core.ts`) non-subject peers can legitimately
+carry real `beat_rate_n >= 3` data (`peerTickersForReactionFetch` fetches reaction history for up
+to 6 non-subject cohort members), so `peers.length` can reach 4-6 — and in every such case, 1-3 of
+them were silently dropped with zero disclosure that the cohort was larger than the 3 names shown.
+A trader reading the peer-history line had no way to know the real cohort size.
+
+This is the exact same Largo C3 (absence-must-be-disclosed) defect class already fixed the same
+day in `play-brief-diff.ts`'s `envelopeWithDiffSection` (bare `lines.slice(0, 8)` → disclosed
+overflow count), and the correct pattern already existed a few lines away in the same file family —
+`play-brief-intel.ts`'s `meridianCatalystsSection` computes `droppedForWindow` and discloses it as
+`"_N more in window — ..._"`. `meridianPeerEarningsCoaching`'s peer-history block never got the
+same treatment.
+
+**Live impact:** reachable on any swing play with a near-term earnings catalyst whose sector cohort
+has more than 3 qualifying (sufficiently-sampled) peers — not an edge case for a liquid/well-covered
+sector.
+
+**Fix:** The peer-history snippet now computes the overflow count and appends
+`"(+N more peers not shown)"` when more than 3 peers qualify, mirroring the existing
+`droppedForWindow` pattern exactly.
+
+**Fix rationale:** Same minimal, already-established disclosure idiom used twice elsewhere in this
+file family today — no new mechanism invented, just applied consistently to the one call site that
+was missing it.
+
+**Blast radius:** Single function (`meridianPeerEarningsCoaching`, `play-brief-meridian-peer-core.ts`).
+Checked all 3 other references in the repo (`play-brief-intel.ts`'s caller, `play-brief-meridian-peer.ts`'s
+re-export, a comment in `play-brief-narrative-coaching.ts`) — none re-truncate or otherwise
+post-process the returned string, so the disclosure reaches the member unmodified.
+
+**Tests:** 1 new regression test — 5 qualifying peers (only `MAX_PEER_REACTION_TICKERS=6`-bounded
+cohorts can reach this), asserts the first 3 are named inline, the other 2 are NOT named, and the
+overflow count `"+2 more peers not shown"` is present. RED→GREEN proven via `git stash` (fails
+against the pre-fix source — old code silently included/excluded peers with no count — passes
+post-fix). `tsc --noEmit` clean. Full `play-brief-meridian-peer.test.ts` (9 tests) green.
+
+## SPX Slayer's gate-block humanizer never recognized the mixed-tape gate, producing an incoherent raw-plus-humanized duplicate in `gates.blocks` — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed |
+|---|---|
+
+**Found:** 2026-10-20, 5-engine live monitor cycle, SPX Slayer live correctness check
+(production, read-only) — independently re-verified against the current source before fixing.
+
+**Root cause:** `humanizeGateBlock` (`src/features/spx/lib/spx-play-intel.ts:155`) checked for
+the mixed-tape gate via:
+
+```ts
+if (block.includes("headwinds") || block.includes("too many conflicts")) {
+  return buildPlayIdeaIntel(desk, confluence) ?? block;
+}
+```
+
+but the only real mixed-tape gate message, built once in `spx-play-gates.ts:314`:
+
+```ts
+const mixedTapeMsg = `${GATE_BLOCK.MIXED_TAPE} — too many conflicting signals for clean entry`;
+// = "Tape's mixed — too many conflicting signals for clean entry"
+```
+
+does **not** contain the substring `"too many conflicts"` — the real text says "conflicting
+signals", not "conflicts". So this branch never fires for the one real gate it was written for.
+`"headwinds"` is also dead code — grepped the whole `src/` tree; that word never appears in any
+gate message anywhere.
+
+**Live impact confirmed before fixing:** current production payload (`GET /api/market/spx/play`,
+grade `C`, `desk_context.mixed_tape_blocked: true`) carried, back to back in `gates.blocks`:
+```
+"Tape's mixed — too many conflicting signals for clean entry"
+"Tape's mixed, but Calls lean — 7710 Call on watch · At 0DTE support node 7710 (+1 pts) · waiting for grade confirmation"
+```
+Both describe the identical mixed-tape condition, but a member/Largo reader sees them as two
+unrelated reasons — one raw technical string, one an actionable idea with a `"waiting for grade
+confirmation"` suffix that actually belongs to a *different* gate (grade-below-minimum), not the
+mixed-tape gate. This silently defeats `humanizeGateBlocks`' own dedup logic (added 2026-09-28 for
+exactly this incoherent-duplicate failure mode), since dedup only tracks strings it actually
+transformed — an untouched raw string never enters the dedup pool.
+
+**Fix:** Corrected the keyword match to `"too many conflicting signals"` (the real substring) and
+dropped the dead `"headwinds"` alternative.
+
+**Fix rationale:** Minimal, targeted correction of the match string — no new mechanism, just
+making the existing (already-correct) humanize-and-dedup pipeline actually reach the one real gate
+message it was supposed to cover from the start.
+
+**Blast radius / test update required:** fixing this means the mixed-tape block now correctly
+enters the SAME dedup pool as every other gate, and under the existing (unchanged) "first
+occurrence wins" tie-break (`humanizeGateBlocks`' own documented design — "whichever gate rule ran
+first, not an arbitrary pick"), mixed-tape — now evaluated first in realistic gate order — wins
+over a later, more-suffixed duplicate for the same condition. The existing regression test
+(`spx-play-intel.test.ts`, 2026-09-28 live-repro test) had unknowingly encoded the OLD buggy
+behavior as its expectation (asserting the suffixed variant "wins" and that the raw mixed-tape
+string "survives untouched") only because mixed-tape was accidentally excluded from the dedup pool
+by this exact bug. Updated that test's assertions to the now-correct outcome, with an inline note
+explaining why, and added a dedicated new test that proves the original live-reported defect
+(raw-plus-humanized incoherent duplicate) is gone.
+
+**Tests:** 2 new/updated tests in `spx-play-intel.test.ts` — the mixed-tape block is now itself
+humanized and collapses to one idea line with `grade-below-minimum`'s duplicate (not left as an
+incoherent raw+humanized pair); a dead-keyword regression test confirms a message merely
+containing the word "headwinds" is no longer rewritten. RED→GREEN proven via `git stash` (2/2 fail
+against the pre-fix source — the dead-keyword test gets the wrong (humanized) output instead of
+the expected untouched one). `tsc --noEmit` clean. Full `spx-play-intel.test.ts` (7 tests) and
+`spx-play-payload.test.ts` (7 tests) green, no other regressions.
+
 ## Legacy-carried swing candidates served stale option greeks with full confidence right next to a quote the same code path honestly nulled for staleness — FIXED
 
 > **kind:** `FINDING`
